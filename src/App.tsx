@@ -7,8 +7,9 @@ import {
   BrainCircuit, Check, SlidersHorizontal, Wifi, WifiOff,
   Heart,
   LockKeyhole, LogOut, ShieldCheck, RefreshCw, Store,
+  Bot, PawPrint, Skull, WandSparkles,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, CampaignSummary, CombatMechanics, CombatSpell, EncounterProposal, GameState, MapCell, Merchant, PendingCheck, Player, SummonedCreature } from './types'
+import type { Account, AgentInteraction, AiHealth, CampaignSummary, CombatMechanics, CombatSpell, EncounterProposal, Enemy, GameState, MapCell, Merchant, PendingCheck, Player, SummonedCreature } from './types'
 import { getAiHealth } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
@@ -136,6 +137,15 @@ const featureIcons: Record<NonNullable<MapCell['feature']>, React.ReactNode> = {
   enemy: <Swords size={17} />,
 }
 
+const techFeatureIcons: Record<NonNullable<MapCell['feature']>, React.ReactNode> = {
+  chest: <Store size={16} />,
+  altar: <BrainCircuit size={17} />,
+  torch: <Wifi size={15} />,
+  rune: <Target size={16} />,
+  stairs: <DoorOpen size={17} />,
+  enemy: <Swords size={17} />,
+}
+
 function Logo() {
   return <div className="logo"><div className="logo-mark"><Dices size={21} /></div><span>СКАЗАНИЕ</span></div>
 }
@@ -163,7 +173,13 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, m
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-top">
         <Logo />
-        <button className="icon-button collapse-button" onClick={onToggle} aria-label="Свернуть меню">
+        <button
+          className="icon-button collapse-button"
+          onClick={onToggle}
+          aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+          aria-expanded={!collapsed}
+          title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+        >
           {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
         </button>
       </div>
@@ -196,6 +212,32 @@ function MapSymbol() {
 
 function BackpackIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 8V6a5 5 0 0 1 10 0v2M5 9h14l1 12H4L5 9Z"/><path d="M8 13h8v5H8z"/></svg>
+}
+
+type EnemyVisualKind = 'construct' | 'undead' | 'beast' | 'mystic' | 'raider'
+
+function enemyVisualKind(enemy: Enemy): EnemyVisualKind {
+  const signature = `${enemy.name} ${enemy.stat_block_id ?? ''}`.toLocaleLowerCase('ru')
+  if (/(дрон|робот|андроид|автомат|мех|голем|конструкт|страж|construct|golem|guardian|drone|robot)/u.test(signature)) return 'construct'
+  if (/(скелет|нежит|призрак|зомби|упыр|undead|skeleton|ghost|wraith|zombie)/u.test(signature)) return 'undead'
+  if (/(волк|звер|крыса|паук|медвед|beast|wolf|rat|spider|bear)/u.test(signature)) return 'beast'
+  if (/(маг|чарод|колдун|жрец|шаман|культист|mage|caster|warlock|cultist|shaman)/u.test(signature)) return 'mystic'
+  return 'raider'
+}
+
+function EnemyGlyph({ kind }: { kind: EnemyVisualKind }) {
+  if (kind === 'construct') return <Bot size={17} />
+  if (kind === 'undead') return <Skull size={17} />
+  if (kind === 'beast') return <PawPrint size={17} />
+  if (kind === 'mystic') return <WandSparkles size={17} />
+  return <Swords size={17} />
+}
+
+function boardVisualTheme(state: GameState) {
+  const signature = [state.scene.location, state.scene.theme, state.campaignConcept?.era, state.campaignConcept?.technologyLevel].filter(Boolean).join(' ').toLocaleLowerCase('ru')
+  if (/(станци|косм|орбит|кибер|техно|футур|звезд|sci.?fi|space|station)/u.test(signature)) return 'map-theme-tech'
+  if (/(лес|чащ|джунг|болот|природ|роща|forest|wild|jungle|swamp)/u.test(signature)) return 'map-theme-wild'
+  return 'map-theme-ruins'
 }
 
 function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onChangeWeapon, onFinishTurn }: {
@@ -284,6 +326,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     ? state.enemies?.find((enemy) => enemy.id === pendingAttack.enemyId) ?? null
     : projectileTarget
   const trajectory = active && projectileEnd ? { x1: (active.x + .5) / columns * 100, y1: (active.y + .5) / rows * 100, x2: (projectileEnd.x + .5) / columns * 100, y2: (projectileEnd.y + .5) / rows * 100 } : null
+  const visualTheme = boardVisualTheme(state)
 
   useEffect(() => {
     const defaultItem = combatItems.find((item) => item.equipped) ?? combatItems[0]
@@ -340,7 +383,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   }
 
   return (
-    <div className="map-stage">
+    <div className={`map-stage ${visualTheme}`}>
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
       <div
@@ -374,14 +417,16 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             const canSummonHere = Boolean(selected && combatMode === 'magic' && selectedSpell && selectedSpellKind === 'summon' && spellEconomyReady && active && chebyshevFeet(active, cell) <= selectedSpellRange && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && !occupied)
             const canAimHere = canThrowHere || canSummonHere
             const inBlastArea = Boolean(projectileTarget && areaRadiusFeet && chebyshevFeet(projectileTarget, cell) <= areaRadiusFeet)
-            const CellElement: 'button' | 'div' = canMoveHere || canAimHere ? 'button' : 'div'
+            const cellIsInteractive = (canMoveHere || canAimHere) && !occupied
+            const CellElement: 'button' | 'div' = cellIsInteractive ? 'button' : 'div'
             const cellFeedback = (state.mapFeedback ?? []).filter((item) => item.x === cell.x && item.y === cell.y)
             const cellLabel = canSummonHere ? `Призвать ${selectedSpell?.summon?.name ?? selectedSpell?.summonName ?? 'существо'} в клетку ${cell.x}, ${cell.y}` : canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}` : canMoveHere ? `Переместить ${activeName} в клетку ${cell.x}, ${cell.y}` : undefined
+            const enemyKind = enemy ? enemyVisualKind(enemy) : null
             return (
               <CellElement
                 key={cell.x + '-' + cell.y}
-                type={canMoveHere || canAimHere ? 'button' : undefined}
-                className={'map-cell ' + cell.type + ' ' + (cell.revealed ? '' : 'hidden') + ' ' + (canMoveHere && !canAimHere ? 'move-target' : '') + ' ' + (canAimHere ? 'aim-target' : '') + ' ' + (canSummonHere ? 'summon-target' : '') + ' ' + (inBlastArea ? 'blast-area' : '')}
+                type={cellIsInteractive ? 'button' : undefined}
+                className={'map-cell ' + cell.type + ' parity-' + ((cell.x + cell.y) % 2 ? 'odd' : 'even') + ' ' + (cell.revealed ? '' : 'hidden') + ' ' + (canMoveHere && !canAimHere ? 'move-target' : '') + ' ' + (canAimHere ? 'aim-target' : '') + ' ' + (canSummonHere ? 'summon-target' : '') + ' ' + (inBlastArea ? 'blast-area' : '')}
                 data-cell={cellKey}
                 aria-label={cellLabel}
                 onPointerEnter={() => { if (canAimHere) setAimCell({ x: cell.x, y: cell.y }) }}
@@ -403,23 +448,25 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                   else onMove(selected, cell.x, cell.y)
                 }}
               >
-                {cell.revealed && cell.feature && cell.feature !== 'enemy' && <span className={'feature ' + cell.feature}>{featureIcons[cell.feature]}</span>}
+                {cell.revealed && cell.feature && cell.feature !== 'enemy' && <span className={'feature ' + cell.feature}>{(visualTheme === 'map-theme-tech' ? techFeatureIcons : featureIcons)[cell.feature]}</span>}
                 {enemy && cell.revealed && (
                   <button
-                    className={'enemy-token ' + (canWeaponTargetEnemy || canSpellTargetEnemy ? 'targetable' : '')}
+                    className={'enemy-token ' + (canWeaponTargetEnemy || canSpellTargetEnemy || canThrowHere ? 'targetable' : '')}
+                    data-enemy-kind={enemyKind}
                     style={{ '--counter-rotation': -rotation + 'deg' } as React.CSSProperties}
                     onPointerDown={(event) => event.stopPropagation()}
                     onPointerUp={(event) => event.stopPropagation()}
                     onMouseEnter={() => setAimCell({ x: enemy.x, y: enemy.y })}
                     onMouseLeave={() => { if (!pendingAttack) setAimCell(null) }}
-                    onClick={(event) => { event.stopPropagation(); if (canSpellTargetEnemy) castAtTarget(enemy.id); else if (canWeaponTargetEnemy) chooseTarget(enemy.id) }}
-                    disabled={tacticalBusy || (!canWeaponTargetEnemy && !canSpellTargetEnemy)}
-                    aria-label={`${canSpellTargetEnemy ? 'Наложить заклинание на' : 'Атаковать'} ${enemy.name}, ${enemy.hp} из ${enemy.maxHp} ОЗ`}
+                    onClick={(event) => { event.stopPropagation(); if (canThrowHere) chooseArea(cell.x, cell.y); else if (canSpellTargetEnemy) castAtTarget(enemy.id); else if (canWeaponTargetEnemy) chooseTarget(enemy.id) }}
+                    disabled={tacticalBusy || (!canWeaponTargetEnemy && !canSpellTargetEnemy && !canThrowHere)}
+                    aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${enemy.name}` : `${canSpellTargetEnemy ? 'Наложить заклинание на' : 'Атаковать'} ${enemy.name}, ${enemy.hp} из ${enemy.maxHp} ОЗ`}
                     title={!selectedCommandReady ? 'Нужная часть экономики хода уже потрачена' : combatMode === 'magic' ? !selectedSpell ? 'У героя нет боевых заклинаний' : !enemyInSpellRange ? `Цель вне дальности (${selectedSpellRange} фт)` : selectedSpellKind === 'healing' ? 'Лечение выбирает союзника' : selectedSpellKind === 'summon' ? 'Призыв выбирает свободную клетку' : `Сотворить «${selectedSpell.name}»` : needsWeaponChange ? 'Сначала смените экипированное оружие' : !enemyInWeaponRange ? `Цель вне дальности (${attackRangeFeet} фт)` : attackDistanceFeet > normalRangeFeet ? 'Дальний диапазон: бросок с помехой' : selectedItem ? `Атаковать: ${selectedItem.name}` : 'Базовая атака'}
                   >
-                    <Swords size={16} />
-                    <span><i style={{ width: enemy.hp / enemy.maxHp * 100 + '%' }} /></span>
-                    <small>{enemy.hp}</small>
+                    <span className="enemy-emblem"><EnemyGlyph kind={enemyKind ?? 'raider'} /></span>
+                    <span className="enemy-nameplate">{enemy.name}</span>
+                    <span className="enemy-health"><i style={{ width: enemy.hp / enemy.maxHp * 100 + '%' }} /></span>
+                    <small className="enemy-health-value">{enemy.hp}</small>
                   </button>
                 )}
                 {player && cell.revealed && (() => {
@@ -432,9 +479,9 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                     onPointerUp={(event) => event.stopPropagation()}
                     onMouseEnter={() => { if (canHeal) setAimCell({ x: player.x, y: player.y }) }}
                     onMouseLeave={() => { if (!pendingAttack) setAimCell(null) }}
-                    onClick={(event) => { event.stopPropagation(); if (canHeal) castAtTarget(player.id) }}
-                    aria-label={canHeal ? `Наложить ${selectedSpell?.name} на ${player.character}` : player.character + (player.id === turnActorId ? ', активный герой' : '')}
-                    aria-disabled={!canHeal}
+                    onClick={(event) => { event.stopPropagation(); if (canThrowHere) chooseArea(cell.x, cell.y); else if (canHeal) castAtTarget(player.id) }}
+                    aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${player.character}` : canHeal ? `Наложить ${selectedSpell?.name} на ${player.character}` : player.character + (player.id === turnActorId ? ', активный герой' : '')}
+                    aria-disabled={!canHeal && !canThrowHere}
                     title={canHeal ? `Исцелить: ${selectedSpell?.name}` : undefined}
                   >
                     <span className="map-token-hp"><i style={{ width: Math.max(0, player.hp / player.maxHp * 100) + '%' }} /></span>
@@ -452,9 +499,9 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                     onPointerUp={(event) => event.stopPropagation()}
                     onMouseEnter={() => { if (canHeal) setAimCell({ x: summon.x, y: summon.y }) }}
                     onMouseLeave={() => { if (!pendingAttack) setAimCell(null) }}
-                    onClick={(event) => { event.stopPropagation(); if (canHeal) castAtTarget(summon.id) }}
-                    aria-label={canHeal ? `Наложить ${selectedSpell?.name} на ${summon.name}` : `${summon.name}, призванный союзник${summon.id === turnActorId ? ', активный участник' : ''}`}
-                    aria-disabled={!canHeal}
+                    onClick={(event) => { event.stopPropagation(); if (canThrowHere) chooseArea(cell.x, cell.y); else if (canHeal) castAtTarget(summon.id) }}
+                    aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${summon.name}` : canHeal ? `Наложить ${selectedSpell?.name} на ${summon.name}` : `${summon.name}, призванный союзник${summon.id === turnActorId ? ', активный участник' : ''}`}
+                    aria-disabled={!canHeal && !canThrowHere}
                     title={canHeal ? `Исцелить: ${selectedSpell?.name}` : `Призвано заклинанием ${summon.sourceSpellId}`}
                   >
                     <Sparkles size={15} />
@@ -687,11 +734,11 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
   }
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal" onMouseDown={(event) => event.stopPropagation()}>
-        <button className="modal-close" onClick={onClose}><X size={19} /></button>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="invite-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} aria-label="Закрыть приглашение" title="Закрыть"><X size={19} /></button>
         <div className="modal-icon"><Users size={23} /></div>
         <span className="eyebrow">ПРИГЛАШЕНИЕ В ОТРЯД</span>
-        <h2>Соберите героев</h2>
+        <h2 id="invite-modal-title">Соберите героев</h2>
         <p>Откройте эту ссылку в другой вкладке, чтобы проверить синхронизацию игрового состояния в MVP.</p>
         <div className="invite-code"><span>{code}</span><button onClick={copy}><Copy size={16} />{copied ? 'Скопировано' : 'Копировать'}</button></div>
         <small className="modal-note">В полной версии ссылка будет работать между разными устройствами.</small>
@@ -774,11 +821,11 @@ function CampaignModal({ state, isAdmin, onSwitch, onClose }: { state: GameState
   const chosenHeroes = [...heroLibrary, ...newHeroes].filter((hero) => selectedHeroIds.includes(hero.id))
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className={'modal campaign-modal ' + (wizard ? 'campaign-wizard' : '')} onMouseDown={(event) => event.stopPropagation()}>
-        <button className="modal-close" onClick={onClose}><X size={19} /></button>
+      <div className={'modal campaign-modal ' + (wizard ? 'campaign-wizard' : '')} role="dialog" aria-modal="true" aria-labelledby="campaign-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} aria-label="Закрыть выбор кампании" title="Закрыть"><X size={19} /></button>
         <div className="modal-icon"><ScrollText size={23} /></div>
         <span className="eyebrow">КАМПАНИИ И ГРУППЫ</span>
-        <h2>{wizard ? 'Создание нового мира' : 'Выберите приключение'}</h2>
+        <h2 id="campaign-modal-title">{wizard ? 'Создание нового мира' : 'Выберите приключение'}</h2>
         {!wizard ? <>
           <div className="campaign-list">
             {campaigns.map((campaign) => <button key={campaign.code} className={campaign.code === state.sessionCode ? 'active' : ''} onClick={async () => { setBusy(true); setError(''); try { await onSwitch(campaign.code); onClose() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Ошибка переключения') } finally { setBusy(false) } }} disabled={busy}>
@@ -1150,8 +1197,8 @@ function WaitingForHero({ account, onRefresh, onLogout }: { account: Account; on
 
 function GameApp({ account, onLogout }: { account: Account; onLogout: () => void }) {
   const { state, tacticalBusy, tacticalError, merchantBusy, merchantError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, changeWeapon, finishMapTurn, switchCampaign, setEngineMode, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, addItem, updateItem, removeItem, updateWorld } = useGameSession()
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 680)
-  const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680 || window.innerHeight > 650)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
+  const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [campaignsOpen, setCampaignsOpen] = useState(false)
   const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
@@ -1201,7 +1248,7 @@ function GameApp({ account, onLogout }: { account: Account; onLogout: () => void
       <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} merchantAvailable={availableMerchants.length > 0} isAdmin={isAdmin} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
       <main className="game-main">
         <header className="topbar">
-          <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)}><Menu size={20} /></button>
+          <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
           <button className="campaign-title" onClick={() => setCampaignsOpen(true)} title="Переключить кампанию или группу"><span>КАМПАНИЯ · {state.partyName}</span><strong>{state.campaign}</strong><ChevronDown size={15} /></button>
           <div className="top-actions">
             <div className="session-code"><i />КОМНАТА <b>{state.sessionCode}</b></div>

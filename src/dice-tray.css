@@ -124,11 +124,11 @@
 }
 
 @media (max-width: 680px) {
-  .dice-tray { top: 126px; right: 12px; width: 206px; }
-  .dice-tray__button { min-height: 76px; grid-template-columns: 65px minmax(0, 1fr); padding: 5px 8px 5px 5px; }
-  .dice-tray__die-scene { width: 62px; height: 65px; }
-  .dice-tray__die { width: 59px; height: 54px; }
-  .dice-tray__copy > strong { font-size: 13px; }
+  .dice-tray:not(.dice-tray--rolling) { top: auto; right: 12px; bottom: 52px; width: 184px; }
+  .dice-tray:not(.dice-tray--rolling) .dice-tray__button { min-height: 64px; grid-template-columns: 54px minmax(0, 1fr); padding: 4px 7px 4px 4px; }
+  .dice-tray:not(.dice-tray--rolling) .dice-tray__die-scene { width: 52px; height: 54px; }
+  .dice-tray:not(.dice-tray--rolling) .dice-tray__die { width: 49px; height: 45px; }
+  .dice-tray:not(.dice-tray--rolling) .dice-tray__copy > strong { font-size: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
