@@ -1,0 +1,44 @@
+services:
+  skazanie:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      AGENT_HOST: 0.0.0.0
+      AGENT_PORT: 8787
+      DND_STORAGE_DIR: /app/storage
+      GAME_ENGINE_MODE: ${GAME_ENGINE_MODE:-shadow}
+      DND_DEFAULT_RULESET_ID: ${DND_DEFAULT_RULESET_ID:-srd_5_2_1}
+      DND_DEFAULT_RULESET_VERSION: ${DND_DEFAULT_RULESET_VERSION:-5.2.1}
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./storage:/app/storage
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  tunnel:
+    build:
+      context: .
+      dockerfile: tunnel/Dockerfile
+    profiles: ["public"]
+    restart: unless-stopped
+    environment:
+      TUNNEL_TARGET: skazanie:8787
+      TUNNEL_STATE_DIR: /state
+    volumes:
+      - ./storage/generated/.tunnel:/state
+    depends_on:
+      skazanie:
+        condition: service_healthy

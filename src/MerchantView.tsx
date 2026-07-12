@@ -1,0 +1,229 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  BadgeCheck, CircleAlert, Coins, HandCoins, LoaderCircle, MapPin,
+  PackageOpen, RefreshCw, ScrollText, Search, ShieldCheck, ShoppingBag, Sparkles,
+} from 'lucide-react'
+import type { Merchant, MerchantQuote, MerchantView as MerchantViewModel, Player } from './types'
+
+type MerchantScreenProps = {
+  merchants: Merchant[]
+  player: Player
+  sceneLocation: string
+  stateVersion: number
+  engineMode: 'legacy' | 'shadow' | 'enforce'
+  view: MerchantViewModel | null
+  narration: string | null
+  busy: boolean
+  error: string | null
+  onLoad: (merchantId: string, actorId: string) => void
+  onBargain: (merchantId: string, actorId: string) => void
+  onBuy: (merchantId: string, actorId: string, stockId: string, quantity: number) => void
+  onSell: (merchantId: string, actorId: string, itemId: string, quantity: number) => void
+  onAppraise: (merchantId: string, actorId: string, itemId: string) => void
+}
+
+const coinLabels = [
+  ['platinum', 'пм'],
+  ['gold', 'зм'],
+  ['silver', 'см'],
+  ['copper', 'мм'],
+] as const
+
+function formatCopper(value?: number) {
+  if (!Number.isFinite(value)) return '—'
+  const cp = Math.max(0, Math.round(value ?? 0))
+  if (cp >= 100) return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(cp / 100)} зм`
+  if (cp >= 10) return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(cp / 10)} см`
+  return `${cp} мм`
+}
+
+function percentage(value?: number) {
+  if (!Number.isFinite(value)) return 'без поправки'
+  const normalized = Number(value)
+  if (normalized === 0) return 'без поправки'
+  return `${normalized > 0 ? '+' : ''}${normalized}%`
+}
+
+function quoteTotal(quote: MerchantQuote | undefined, quantity: number) {
+  if (!quote || !Number.isFinite(quote.unit_price_cp)) return null
+  return Math.max(0, Math.round(quote.unit_price_cp)) * Math.max(1, Math.floor(quantity || 1))
+}
+
+function QuoteBreakdown({ quote, quantity, direction }: { quote?: MerchantQuote; quantity: number; direction: 'buy' | 'sell' }) {
+  if (!quote || quote.unit_price_cp <= 0) return <div className="merchant-no-quote">Серверная котировка недоступна</div>
+  const breakdown = quote.breakdown
+  const total = quoteTotal(quote, quantity)
+  return (
+    <div className="merchant-quote">
+      <div className="merchant-server-badge"><ShieldCheck size={12} />Расчёт сервера</div>
+      {breakdown ? <div className="merchant-price-flow" aria-label="Расшифровка цены">
+        <span><small>{quote.price_provenance === 'server_appraisal_policy' ? 'ОЦЕНКА ТОРГОВЦА' : 'БАЗА КАТАЛОГА'}</small><b>{formatCopper(breakdown.catalog_base_unit_cp)}</b></span>
+        <i>→</i>
+        <span><small>ПОЛИТИКА ТОРГОВЦА</small><b>{percentage(breakdown.merchant_adjustment_percent)}</b></span>
+        <i>→</i>
+        <span><small>РЕЗУЛЬТАТ ТОРГА</small><b>{percentage(breakdown.bargain_adjustment_percent)}</b></span>
+        <i>→</i>
+        <span className="merchant-final-price"><small>ЦЕНА ЗА 1</small><b>{formatCopper(breakdown.final_unit_price_cp)}</b></span>
+      </div> : <div className="merchant-price-flow compact">
+        <span className="merchant-final-price"><small>СЕРВЕРНАЯ ЦЕНА ЗА 1</small><b>{formatCopper(quote.unit_price_cp)}</b></span>
+        <p>Сервер не передал подробную раскладку этой котировки.</p>
+      </div>}
+      <div className="merchant-transaction-total" aria-live="polite">
+        <span>{direction === 'buy' ? 'К СПИСАНИЮ' : 'К ПОЛУЧЕНИЮ'}</span>
+        <b><small>{formatCopper(quote.unit_price_cp)}</small><i>×</i><small>{Math.max(1, quantity)}</small><i>=</i><strong>{formatCopper(total ?? undefined)}</strong></b>
+      </div>
+    </div>
+  )
+}
+
+function QuantityPicker({ value, max, disabled, onChange }: { value: number; max: number; disabled: boolean; onChange: (quantity: number) => void }) {
+  return <label className="merchant-quantity">
+    <span>КОЛИЧЕСТВО</span>
+    <input
+      type="number"
+      min={1}
+      max={Math.max(1, max)}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(Math.min(Math.max(1, Math.floor(Number(event.target.value) || 1)), Math.max(1, max)))}
+    />
+  </label>
+}
+
+export function MerchantScreen({ merchants, player, sceneLocation, stateVersion, engineMode, view, narration, busy, error, onLoad, onBargain, onBuy, onSell, onAppraise }: MerchantScreenProps) {
+  const [tab, setTab] = useState<'buy' | 'sell'>('buy')
+  const [selectedMerchantId, setSelectedMerchantId] = useState(merchants[0]?.id ?? '')
+  const [buyQuantities, setBuyQuantities] = useState<Record<string, number>>({})
+  const [sellQuantities, setSellQuantities] = useState<Record<string, number>>({})
+  const lastAutoLoadKey = useRef('')
+
+  useEffect(() => {
+    if (!merchants.some((merchant) => merchant.id === selectedMerchantId)) setSelectedMerchantId(merchants[0]?.id ?? '')
+  }, [merchants, selectedMerchantId])
+
+  const selectedMerchant = merchants.find((merchant) => merchant.id === selectedMerchantId) ?? merchants[0]
+  const quotedVersion = Number(view?.expected_state_version ?? view?.state_version)
+  const viewMatchesContext = view?.merchant.id === selectedMerchant?.id
+    && view.actor_id === player.id
+    && Number.isInteger(quotedVersion)
+    && quotedVersion === stateVersion
+  const serverView = viewMatchesContext ? view : null
+  const shownMerchant = serverView?.merchant ?? selectedMerchant
+
+  useEffect(() => {
+    const autoLoadKey = `${sceneLocation}\0${stateVersion}\0${selectedMerchant?.id ?? ''}\0${player.id}`
+    if (viewMatchesContext) lastAutoLoadKey.current = autoLoadKey
+    if (engineMode === 'enforce' && selectedMerchant?.id && !busy && !viewMatchesContext && lastAutoLoadKey.current !== autoLoadKey) {
+      lastAutoLoadKey.current = autoLoadKey
+      onLoad(selectedMerchant.id, player.id)
+    }
+  }, [busy, engineMode, onLoad, player.id, sceneLocation, selectedMerchant?.id, stateVersion, viewMatchesContext])
+
+  const currency = serverView?.balance ?? player.currency
+  const balanceCp = serverView?.balance_cp ?? currency.copper + currency.silver * 10 + currency.gold * 100 + currency.platinum * 1000
+  const merchantPurseCp = serverView?.merchant_purse_cp ?? shownMerchant?.purse_cp
+  const stock = shownMerchant?.stock ?? []
+  const buyQuoteById = useMemo(() => new Map((serverView?.buy_quotes ?? []).map((quote) => [quote.stock_id, quote])), [serverView?.buy_quotes])
+  const sellQuoteById = useMemo(() => new Map((serverView?.sell_quotes ?? []).map((quote) => [quote.item_id, quote])), [serverView?.sell_quotes])
+  const controlsDisabled = busy || Boolean(error) || engineMode !== 'enforce' || shownMerchant?.available !== true || !serverView
+  const bargainAttempted = Boolean(serverView?.bargain?.attempted)
+
+  if (!shownMerchant) return <section className="section-page merchant-page">
+    <div className="merchant-empty-state"><ShoppingBag size={38} /><span>ТОРГОВАЯ ПЛОЩАДКА</span><h1>Здесь сейчас нет торговцев</h1><p>Торговое меню появляется только рядом с доступным NPC. Текущая локация: «{sceneLocation}».</p></div>
+  </section>
+
+  return <section className="section-page merchant-page">
+    <header className="merchant-page-head">
+      <div><span>ТОРГОВЛЯ И ПЕРЕГОВОРЫ</span><h1>Лавка в пути</h1><p>Все цены, остатки и монеты подтверждаются сервером до изменения состояния игры.</p></div>
+      <div className="merchant-location"><MapPin size={15} /><span><small>ТЕКУЩАЯ ЛОКАЦИЯ</small><b>{sceneLocation}</b></span></div>
+    </header>
+
+    {engineMode !== 'enforce' && <div className="merchant-mode-warning"><CircleAlert size={17} /><div><b>Безопасная торговля требует режима enforce</b><p>В режимах legacy и shadow витрина доступна только для просмотра: клиент не меняет деньги и склад самостоятельно.</p></div></div>}
+    {!shownMerchant.available && <div className="merchant-mode-warning" role="status"><CircleAlert size={17} /><div><b>Торговец сейчас недоступен</b><p>Покупка, продажа и торг заблокированы до возвращения NPC в текущую сцену.</p></div></div>}
+    {error && <div className="merchant-error" role="alert"><CircleAlert size={15} /><span>{error}</span><button onClick={() => onLoad(shownMerchant.id, player.id)} disabled={busy || !shownMerchant.available}><RefreshCw size={13} />Повторить</button></div>}
+
+    {merchants.length > 1 && <div className="merchant-selector" aria-label="Доступные торговцы">
+      {merchants.map((merchant) => <button key={merchant.id} className={merchant.id === shownMerchant.id ? 'active' : ''} disabled={busy} onClick={() => setSelectedMerchantId(merchant.id)}>{merchant.name}</button>)}
+    </div>}
+
+    <div className="merchant-layout">
+      <aside className="merchant-profile">
+        <div className="merchant-avatar">{shownMerchant.portrait ? <img src={shownMerchant.portrait} alt="" /> : <span>{shownMerchant.initials ?? shownMerchant.name.slice(0, 2).toLocaleUpperCase('ru')}</span>}<i className="available" /></div>
+        <span className={`merchant-status ${shownMerchant.available ? '' : 'unavailable'}`}><BadgeCheck size={12} />{shownMerchant.available ? 'ДОСТУПЕН В ЭТОЙ СЦЕНЕ' : 'ТОРГОВЕЦ УЖЕ НЕДОСТУПЕН'}</span>
+        <h2>{shownMerchant.name}</h2>
+        <small>{shownMerchant.title}</small>
+        <p>{shownMerchant.description}</p>
+        <blockquote><MessageBubble />{narration || shownMerchant.greeting || 'Торговец молча раскладывает товар на прилавке.'}</blockquote>
+        <div className="merchant-policy">
+          <ScrollText size={16} /><span><b>Как формируется цена</b><p>{serverView?.pricing_explanation || shownMerchant.pricing.description || 'Каталожная база, политика торговца и результат торга рассчитываются отдельно.'}</p><small>КАТАЛОГ · {shownMerchant.pricing.catalog_id}</small></span>
+        </div>
+        <button className="merchant-bargain" onClick={() => onBargain(shownMerchant.id, player.id)} disabled={controlsDisabled || bargainAttempted}>
+          {busy ? <LoaderCircle className="spinning" size={16} /> : <Sparkles size={16} />}{busy ? 'Торговец отвечает…' : bargainAttempted ? 'Условия торга определены' : 'Попробовать поторговаться'}
+        </button>
+        {serverView?.bargain?.attempted && <div className={`merchant-bargain-result ${serverView.bargain.success ? 'success' : 'failure'}`}>
+          <b>{serverView.bargain.success ? 'Торг удался' : 'Торг не удался'}</b>
+          <span>{serverView.bargain.message || (serverView.bargain.discount_percent ? `Изменение цены: ${serverView.bargain.discount_percent}%` : 'Торговец оставил прежние условия.')}</span>
+        </div>}
+      </aside>
+
+      <div className="merchant-market">
+        <div className="merchant-wallet">
+          <div><Coins size={20} /><span><small>КОШЕЛЁК · {player.character}</small><b>{new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(balanceCp / 100)} зм всего</b></span></div>
+          <div className="merchant-purse"><HandCoins size={18} /><span><small>КАССА ТОРГОВЦА</small><b>{formatCopper(merchantPurseCp)}</b></span></div>
+          <div className="merchant-coins">{coinLabels.map(([coin, label]) => <span key={coin}><b>{currency[coin]}</b><small>{label}</small></span>)}</div>
+          <button onClick={() => onLoad(shownMerchant.id, player.id)} disabled={busy || engineMode !== 'enforce' || !shownMerchant.available}><RefreshCw className={busy ? 'spinning' : ''} size={14} />Обновить котировки</button>
+        </div>
+
+        <div className="merchant-tabs" role="tablist" aria-label="Торговые операции">
+          <button role="tab" aria-selected={tab === 'buy'} className={tab === 'buy' ? 'active' : ''} onClick={() => setTab('buy')}><ShoppingBag size={15} />Купить <b>{stock.length}</b></button>
+          <button role="tab" aria-selected={tab === 'sell'} className={tab === 'sell' ? 'active' : ''} onClick={() => setTab('sell')}><HandCoins size={15} />Продать <b>{player.inventory.length}</b></button>
+        </div>
+
+        {busy && !serverView ? <div className="merchant-loading"><LoaderCircle className="spinning" size={24} /><b>Торговец пересчитывает цены…</b><span>Получаем серверные котировки для {player.character}.</span></div> : tab === 'buy' ? (
+          stock.length ? <div className="merchant-items">{stock.map((item) => {
+            const quote = buyQuoteById.get(item.stock_id)
+            const stockAvailable = Math.max(0, quote?.available_quantity ?? item.quantity)
+            const purchaseMax = Math.max(0, Math.min(stockAvailable, quote?.max_quantity ?? stockAvailable))
+            const quantity = Math.min(buyQuantities[item.stock_id] ?? 1, Math.max(1, purchaseMax))
+            return <article className="merchant-item" key={item.stock_id}>
+              <div className="merchant-item-title"><PackageOpen size={20} /><span><small>{item.type} · {item.catalog_id}</small><h3>{item.name}</h3><p>{item.description}</p></span><em>{stockAvailable} в наличии</em></div>
+              <QuoteBreakdown quote={quote} quantity={quantity} direction="buy" />
+              <div className="merchant-item-actions">
+                <QuantityPicker value={quantity} max={purchaseMax} disabled={controlsDisabled || !quote || purchaseMax < 1} onChange={(next) => setBuyQuantities((values) => ({ ...values, [item.stock_id]: next }))} />
+                <button onClick={() => onBuy(shownMerchant.id, player.id, item.stock_id, quantity)} disabled={controlsDisabled || !quote || purchaseMax < 1 || quote.can_afford === false}><ShoppingBag size={15} />{!quote ? 'Нет котировки' : stockAvailable < 1 ? 'Нет в наличии' : quote.can_afford === false || purchaseMax < 1 ? 'Недостаточно монет' : `Купить ×${quantity} · ${formatCopper(quoteTotal(quote, quantity) ?? undefined)}`}</button>
+              </div>
+            </article>
+          })}</div> : <div className="merchant-list-empty"><PackageOpen size={28} /><b>Прилавок пуст</b><span>У торговца закончились товары или сервер ещё не открыл склад.</span></div>
+        ) : (
+          player.inventory.length ? <div className="merchant-items">{player.inventory.map((item) => {
+            const quote = sellQuoteById.get(item.id)
+            const maximumCandidates = [item.quantity, quote?.available_quantity, quote?.max_quantity].filter((value): value is number => Number.isFinite(value))
+            const maximum = Math.max(0, maximumCandidates.length ? Math.min(...maximumCandidates) : 0)
+            const quantity = Math.max(1, Math.min(sellQuantities[item.id] ?? 1, Math.max(1, maximum)))
+            const canSell = quote?.can_sell !== false
+            const appraisalRequired = quote?.appraisal_required === true
+            const canAppraise = appraisalRequired && quote?.can_appraise === true
+            const merchantCanAfford = quote?.can_afford !== false
+            return <article className="merchant-item" key={item.id}>
+              <div className="merchant-item-title"><PackageOpen size={20} /><span><small>{item.type} · в инвентаре: {item.quantity}</small><h3>{item.name}</h3><p>{item.description}</p></span>{item.equipped && <em>НАДЕТО</em>}</div>
+              {appraisalRequired
+                ? <div className="merchant-appraisal-note"><Search size={16} /><span><b>Нужна серверная оценка</b><small>Торговец осмотрит предмет, а цену рассчитает правило кампании.</small></span></div>
+                : <QuoteBreakdown quote={quote} quantity={quantity} direction="sell" />}
+              {!canSell && quote?.reason && <p className="merchant-refusal">{quote.reason}</p>}
+              <div className="merchant-item-actions">
+                {canAppraise
+                  ? <><span className="merchant-appraisal-hint">Цена будет записана в состояние мира</span><button onClick={() => onAppraise(shownMerchant.id, player.id, item.id)} disabled={controlsDisabled}><Search size={15} />{busy ? 'Оценивает…' : 'Оценить'}</button></>
+                  : <><QuantityPicker value={quantity} max={maximum} disabled={controlsDisabled || !quote || !canSell || maximum < 1} onChange={(next) => setSellQuantities((values) => ({ ...values, [item.id]: next }))} />
+                    <button onClick={() => onSell(shownMerchant.id, player.id, item.id, quantity)} disabled={controlsDisabled || !quote || !canSell || maximum < 1}><HandCoins size={15} />{!quote ? 'Нет котировки' : !merchantCanAfford ? 'У торговца нет монет' : canSell && maximum > 0 ? `Продать ×${quantity} · ${formatCopper(quoteTotal(quote, quantity) ?? undefined)}` : 'Не покупает'}</button></>}
+              </div>
+            </article>
+          })}</div> : <div className="merchant-list-empty"><PackageOpen size={28} /><b>Нечего продавать</b><span>В инвентаре героя пока нет предметов.</span></div>
+        )}
+      </div>
+    </div>
+  </section>
+}
+
+function MessageBubble() {
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M7 17.5 3.5 20l1.2-4.3A8 8 0 1 1 7 17.5Z" /></svg>
+}

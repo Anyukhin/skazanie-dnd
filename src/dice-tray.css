@@ -1,0 +1,149 @@
+.dice-tray {
+  position: absolute;
+  z-index: 9;
+  top: 88px;
+  right: 286px;
+  width: 246px;
+  border: 1px solid rgba(221, 178, 121, .2);
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(213, 150, 76, .14), transparent 46%),
+    linear-gradient(145deg, rgba(29, 24, 19, .94), rgba(14, 12, 10, .92));
+  box-shadow: 0 16px 42px rgba(0, 0, 0, .46), inset 0 1px rgba(255, 255, 255, .035);
+  backdrop-filter: blur(13px);
+}
+
+.dice-tray__button {
+  width: 100%;
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px 7px 7px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dice-tray__button:hover:not(:disabled) {
+  background: rgba(216, 158, 89, .045);
+}
+
+.dice-tray__button:disabled { cursor: default; }
+.dice-tray__button:disabled:not([aria-label^='Выполняется']) { opacity: .48; }
+
+.dice-tray__die-scene {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  perspective: 500px;
+}
+
+.dice-tray__die-scene > i {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 4px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .72);
+  filter: blur(5px);
+  transform: scaleX(.9);
+}
+
+.dice-tray__die {
+  position: relative;
+  z-index: 1;
+  width: 68px;
+  height: 62px;
+  display: block;
+  transform-origin: 50% 62%;
+  filter: drop-shadow(0 7px 6px rgba(0, 0, 0, .72));
+}
+
+.dice-tray__polyhedron { width: 100%; height: 100%; overflow: visible; }
+.dice-tray__die-shell { fill: url(#dice-tray-gold); stroke: #f0c98f; stroke-width: 1.35; stroke-linejoin: round; }
+.dice-tray__die-face { fill: rgba(63, 36, 20, .42); stroke: rgba(255, 226, 181, .58); stroke-width: 1; }
+.dice-tray__die-lines { fill: none; stroke: rgba(255, 226, 181, .38); stroke-width: .9; stroke-linejoin: round; }
+.dice-tray__polyhedron text { fill: #fff0d4; paint-order: stroke; stroke: rgba(44, 23, 12, .72); stroke-width: 3px; font: 700 28px Spectral, Georgia, serif; }
+
+.dice-tray__copy { min-width: 0; display: grid; align-content: center; }
+.dice-tray__copy > small { display: flex; align-items: center; gap: 5px; color: #a97a45; font-size: 6.5px; font-weight: 700; letter-spacing: .12em; }
+.dice-tray__copy > strong { margin-top: 4px; color: #dfd2c0; font: 600 15px Spectral, Georgia, serif; }
+.dice-tray__copy > span { min-height: 15px; display: flex; align-items: center; gap: 4px; margin-top: 3px; overflow: hidden; color: #746b62; font-size: 7px; line-height: 1.35; text-overflow: ellipsis; }
+.dice-tray__copy .dice-tray__error { color: #bd786d; }
+.dice-tray--error { border-color: rgba(190, 90, 77, .3); }
+
+.dice-tray__sr-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dice-tray--rolling .dice-tray__die { animation: diceTrayTumble .72s cubic-bezier(.45, .03, .52, .96) infinite; }
+.dice-tray--rolling .dice-tray__die-scene > i { animation: diceTrayShadow .72s ease-in-out infinite; }
+.dice-tray--rolling .dice-tray__copy > strong { animation: diceTrayPulse .8s ease-in-out infinite; }
+.dice-tray--settled .dice-tray__die { animation: diceTrayLand .42s cubic-bezier(.2, .9, .25, 1); }
+
+@keyframes diceTrayTumble {
+  0% { transform: translate3d(-3px, 3px, 0) rotate(-10deg) rotateY(0deg) scale(.88); }
+  26% { transform: translate3d(5px, -9px, 20px) rotate(74deg) rotateY(105deg) scale(1.02); }
+  55% { transform: translate3d(-5px, -4px, 12px) rotate(176deg) rotateY(218deg) scale(.96); }
+  78% { transform: translate3d(4px, -10px, 18px) rotate(274deg) rotateY(312deg) scale(1.03); }
+  100% { transform: translate3d(-3px, 3px, 0) rotate(350deg) rotateY(360deg) scale(.88); }
+}
+
+@keyframes diceTrayShadow {
+  0%, 100% { opacity: .78; transform: scaleX(.92); }
+  45% { opacity: .3; transform: scaleX(.55); }
+}
+
+@keyframes diceTrayPulse { 50% { opacity: .5; } }
+
+@keyframes diceTrayLand {
+  0% { transform: translateY(-10px) rotate(18deg) scale(1.05); }
+  56% { transform: translateY(3px) rotate(-4deg) scale(.94); }
+  76% { transform: translateY(-2px) rotate(2deg) scale(1.01); }
+  100% { transform: none; }
+}
+
+@media (max-width: 920px) {
+  .dice-tray { top: 132px; right: 18px; }
+}
+
+@media (max-width: 680px) {
+  .dice-tray { top: 126px; right: 12px; width: 206px; }
+  .dice-tray__button { min-height: 76px; grid-template-columns: 65px minmax(0, 1fr); padding: 5px 8px 5px 5px; }
+  .dice-tray__die-scene { width: 62px; height: 65px; }
+  .dice-tray__die { width: 59px; height: 54px; }
+  .dice-tray__copy > strong { font-size: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dice-tray *, .dice-tray *::before, .dice-tray *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+.dice-tray__copy > small { font-size: calc(6.5px * var(--ui-readable-scale, 1)); }
+.dice-tray__copy > strong { font-size: calc(15px * var(--ui-readable-scale, 1)); }
+.dice-tray__copy > span { font-size: calc(7px * var(--ui-readable-scale, 1)); }
+.dice-tray__copy svg { transform: scale(var(--ui-readable-scale, 1)); }
+.dice-tray__copy > small { font-size: calc(9px * var(--ui-readable-scale, 1)); }
+.dice-tray__copy > strong { font-size: calc(16px * var(--ui-readable-scale, 1)); }
+.dice-tray__copy > span { font-size: calc(9px * var(--ui-readable-scale, 1)); }

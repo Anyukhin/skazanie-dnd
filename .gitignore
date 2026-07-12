@@ -1,0 +1,11 @@
+node_modules
+.pnpm-store
+dist
+storage/
+PUBLIC_LINK.txt
+.env
+.env.local
+*.log
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

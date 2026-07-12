@@ -1,0 +1,26 @@
+canonical_id,term_en,term_ru,aliases_ru,notes
+term:ability-check,ability check,проверка характеристики,проверка навыка|чек характеристики|бросок характеристики,Normalized game term
+term:saving-throw,saving throw,спасбросок,спасительный бросок|сейв|спас,Normalized game term
+term:attack-roll,attack roll,бросок атаки,атака на попадание|бросок на попадание|атакующий бросок,Normalized game term
+term:armor-class,Armor Class,класс доспеха,КД|защита|armor class,Normalized game term
+term:advantage,advantage,преимущество,бросок с преимуществом|лучший из двух|advantage,Normalized game term
+term:disadvantage,disadvantage,помеха,бросок с помехой|худший из двух|дисадвантаж|disadvantage,Normalized game term
+term:critical-hit,critical hit,критическое попадание,крит|критический удар|critical hit,Normalized game term
+term:damage,damage,урон,повреждение|дамаг|damage,Normalized game term
+term:resistance,resistance,сопротивление,резист|половина урона|resistance,Normalized game term
+term:vulnerability,vulnerability,уязвимость,двойной урон|vulnerability,Normalized game term
+term:immunity,immunity,иммунитет,невосприимчивость|immunity,Normalized game term
+term:healing,healing,лечение,исцеление|восстановление здоровья|heal,Normalized game term
+term:hit-points,Hit Points,хиты,очки хитов|здоровье|HP|хп,Normalized game term
+term:temporary-hit-points,temporary Hit Points,временные хиты,временные очки хитов|temporary HP|темп хп,Normalized game term
+term:initiative,initiative,инициатива,порядок инициативы|бросок инициативы|initiative,Normalized game term
+term:turn,turn,ход,очередь хода|turn,Normalized game term
+term:action,action,действие,основное действие|action,Normalized game term
+term:bonus-action,bonus action,бонусное действие,бонус-действие|bonus action|бонусник,Normalized game term
+term:reaction,reaction,реакция,ответное действие|reaction|реакционное действие,Normalized game term
+term:condition,condition,состояние,эффект состояния|статус|condition,Normalized game term
+term:concentration,concentration,концентрация,поддержание заклинания|концентра|concentration,Normalized game term
+term:death-saving-throw,death saving throw,спасбросок от смерти,бросок смерти|death save|сейв от смерти,Normalized game term
+term:resource,resource,ресурс,заряд|использование способности|resource,Normalized game term
+term:currency,currency,валюта,монеты|деньги|золото|серебро|медь|платина,Normalized economy term
+term:equipment,equipment,снаряжение,экипировка|предмет|товар|инвентарь,Normalized economy term

@@ -1,0 +1,203 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Backpack, Check, Coins, Download, FileJson, ImagePlus, Maximize2, PackageOpen,
+  Pencil, Plus, Save, Search, Shield, Sparkles, Trash2, Upload, Weight, X, ZoomIn, ZoomOut,
+} from 'lucide-react'
+import { generateItemImage } from './ai-client'
+import { importCharacterJson } from './lss-import'
+import type { InventoryItem, Player } from './types'
+
+const abilityNames: Record<keyof Player['abilities'], string> = { str: 'СИЛ', dex: 'ЛОВ', con: 'ТЕЛ', int: 'ИНТ', wis: 'МДР', cha: 'ХАР' }
+const itemTypeNames: Record<InventoryItem['type'], string> = { weapon: 'Оружие', armor: 'Доспех', consumable: 'Расходник', tool: 'Инструмент', quest: 'Задание', treasure: 'Сокровище', document: 'Документ', other: 'Прочее' }
+
+function modifier(score: number) {
+  const value = Math.floor((score - 10) / 2)
+  return value >= 0 ? `+${value}` : String(value)
+}
+
+function Field({ label, value, onChange, type = 'text', min, max }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; min?: number; max?: number }) {
+  return <label className="sheet-field"><span>{label}</span><input type={type} min={min} max={max} value={value} onChange={(event) => onChange(event.target.value)} /></label>
+}
+
+function TextField({ label, value, onChange, rows = 3 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) {
+  return <label className="sheet-field textarea-field"><span>{label}</span><textarea rows={rows} value={value} onChange={(event) => onChange(event.target.value)} /></label>
+}
+
+export function CharacterEditor({ player, onClose, onSave }: { player: Player; onClose: () => void; onSave: (patch: Partial<Player>) => void }) {
+  const [draft, setDraft] = useState<Player>(() => structuredClone(player))
+  const [tab, setTab] = useState<'sheet' | 'story'>('sheet')
+  const [notice, setNotice] = useState('')
+  const avatarInput = useRef<HTMLInputElement>(null)
+  const importInput = useRef<HTMLInputElement>(null)
+
+  useEffect(() => setDraft(structuredClone(player)), [player])
+  const patch = <K extends keyof Player>(key: K, value: Player[K]) => setDraft((current) => ({ ...current, [key]: value }))
+
+  const uploadAvatar = (file?: File) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) return setNotice('Выберите изображение PNG, JPEG или WebP.')
+    if (file.size > 2_000_000) return setNotice('Изображение должно быть меньше 2 МБ.')
+    const reader = new FileReader()
+    reader.onload = () => setDraft((current) => ({ ...current, portrait: String(reader.result), portraitPosition: 'center' }))
+    reader.readAsDataURL(file)
+  }
+
+  const importSheet = async (file?: File) => {
+    if (!file) return
+    try {
+      const imported = importCharacterJson(await file.text(), draft)
+      setDraft((current) => ({ ...current, ...imported, abilities: { ...current.abilities, ...imported.abilities }, currency: { ...current.currency, ...imported.currency } }))
+      setNotice('Лист импортирован. Проверьте данные и нажмите «Сохранить».')
+    } catch (error) {
+      setNotice(error instanceof Error ? `Не удалось импортировать: ${error.message}` : 'Не удалось импортировать JSON.')
+    }
+  }
+
+  const exportSheet = () => {
+    const blob = new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' })
+    const anchor = document.createElement('a')
+    anchor.href = URL.createObjectURL(blob)
+    anchor.download = `${draft.character || 'character'}-skazanie.json`
+    anchor.click()
+    URL.revokeObjectURL(anchor.href)
+  }
+
+  return (
+    <div className="sheet-overlay" onMouseDown={onClose}>
+      <section className="character-editor" role="dialog" aria-modal="true" aria-label={`Лист персонажа: ${draft.character}`} onMouseDown={(event) => event.stopPropagation()}>
+        <header className="editor-head">
+          <div className="editor-avatar" style={{ backgroundImage: `url(${draft.portrait})`, backgroundPosition: draft.portraitPosition }}>
+            <button onClick={() => avatarInput.current?.click()}><ImagePlus size={17} />Сменить фото</button>
+            <input ref={avatarInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => uploadAvatar(event.target.files?.[0])} />
+          </div>
+          <div><span>ЛИСТ ПЕРСОНАЖА</span><h2>{draft.character}</h2><p>{draft.role}</p></div>
+          <div className="editor-actions">
+            <input ref={importInput} hidden type="file" accept="application/json,.json" onChange={(event) => importSheet(event.target.files?.[0])} />
+            <button onClick={() => importInput.current?.click()}><Upload size={15} />Импорт LSS / JSON</button>
+            <button onClick={exportSheet}><Download size={15} />Экспорт</button>
+            <button className="close-editor" onClick={onClose} aria-label="Закрыть лист персонажа"><X size={20} /></button>
+          </div>
+        </header>
+        <nav className="editor-tabs"><button className={tab === 'sheet' ? 'active' : ''} onClick={() => setTab('sheet')}>Основной лист</button><button className={tab === 'story' ? 'active' : ''} onClick={() => setTab('story')}>История и особенности</button><span><Backpack size={14} />{draft.inventory.length} предметов</span></nav>
+        <div className="editor-content">
+          {tab === 'sheet' ? <>
+            <div className="sheet-section identity-grid">
+              <Field label="Имя персонажа" value={draft.character} onChange={(value) => patch('character', value)} />
+              <Field label="Имя игрока" value={draft.name} onChange={(value) => patch('name', value)} />
+              <Field label="Класс" value={draft.role} onChange={(value) => patch('role', value)} />
+              <Field label="Раса / вид" value={draft.species} onChange={(value) => patch('species', value)} />
+              <Field label="Предыстория" value={draft.background} onChange={(value) => patch('background', value)} />
+              <Field label="Мировоззрение" value={draft.alignment} onChange={(value) => patch('alignment', value)} />
+            </div>
+            <div className="ability-editor">
+              {(Object.keys(abilityNames) as Array<keyof Player['abilities']>).map((key) => <label key={key}><span>{abilityNames[key]}</span><input type="number" min="1" max="30" value={draft.abilities[key]} onChange={(event) => patch('abilities', { ...draft.abilities, [key]: Number(event.target.value) })} /><b>{modifier(draft.abilities[key])}</b></label>)}
+            </div>
+            <div className="sheet-section combat-grid">
+              <Field label="Уровень" type="number" min={1} max={20} value={draft.level} onChange={(value) => patch('level', Number(value))} />
+              <Field label="Опыт" type="number" min={0} value={draft.experience} onChange={(value) => patch('experience', Number(value))} />
+              <Field label="Текущие хиты" type="number" min={0} value={draft.hp} onChange={(value) => patch('hp', Number(value))} />
+              <Field label="Максимум хитов" type="number" min={1} value={draft.maxHp} onChange={(value) => patch('maxHp', Number(value))} />
+              <Field label="Класс брони" type="number" min={0} value={draft.armor} onChange={(value) => patch('armor', Number(value))} />
+              <Field label="Скорость" type="number" min={0} value={draft.speed} onChange={(value) => patch('speed', Number(value))} />
+              <Field label="Бонус мастерства" type="number" min={0} value={draft.proficiency} onChange={(value) => patch('proficiency', Number(value))} />
+            </div>
+            <div className="currency-editor"><span><Coins size={16} />МОНЕТЫ</span>{(['copper', 'silver', 'gold', 'platinum'] as const).map((key) => <Field key={key} label={{ copper: 'Медь', silver: 'Серебро', gold: 'Золото', platinum: 'Платина' }[key]} type="number" min={0} value={draft.currency[key]} onChange={(value) => patch('currency', { ...draft.currency, [key]: Number(value) })} />)}</div>
+          </> : <div className="story-editor-grid">
+            <TextField label="Предыстория" value={draft.backstory} onChange={(value) => patch('backstory', value)} rows={7} />
+            <TextField label="Черты характера" value={draft.traits} onChange={(value) => patch('traits', value)} />
+            <TextField label="Идеалы" value={draft.ideals} onChange={(value) => patch('ideals', value)} />
+            <TextField label="Привязанности" value={draft.bonds} onChange={(value) => patch('bonds', value)} />
+            <TextField label="Слабости" value={draft.flaws} onChange={(value) => patch('flaws', value)} />
+            <TextField label="Умения и особенности" value={draft.features} onChange={(value) => patch('features', value)} rows={6} />
+            <TextField label="Заметки" value={draft.notes} onChange={(value) => patch('notes', value)} rows={5} />
+          </div>}
+        </div>
+        <footer className="editor-footer"><p>{notice || 'Изменения сохраняются в общей сессии и сразу видны отряду.'}</p><button onClick={() => { onClose(); onSave(draft) }}><Save size={16} />Сохранить персонажа</button></footer>
+      </section>
+    </div>
+  )
+}
+
+function ItemImage({ item, zoom = 1 }: { item: InventoryItem; zoom?: number }) {
+  if (!item.image) return <div className="item-image-placeholder"><Sparkles size={25} /><span>{item.imageStatus === 'failed' ? 'Генерация не удалась' : 'Изображение создаётся'}</span></div>
+  if (item.image.includes('item-atlas')) return <div className="item-atlas-crop" role="img" aria-label={item.name} style={{ backgroundImage: `url(${item.image})`, backgroundPosition: item.imagePosition ?? '0% 0%', transform: `scale(${zoom})` }} />
+  return <img src={item.image} alt={item.name} style={{ objectPosition: item.imagePosition ?? 'center', transform: `scale(${zoom})` }} />
+}
+
+function ItemModal({ item, isNew, onClose, onSave, onRemove }: { item: InventoryItem; isNew: boolean; onClose: () => void; onSave: (item: InventoryItem) => void; onRemove: (id: string) => void }) {
+  const [draft, setDraft] = useState<InventoryItem>(() => structuredClone(item))
+  const [editing, setEditing] = useState(isNew)
+  const [zoom, setZoom] = useState(1)
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState('')
+  const patch = <K extends keyof InventoryItem>(key: K, value: InventoryItem[K]) => setDraft((current) => ({ ...current, [key]: value }))
+
+  const createImage = async () => {
+    if (!draft.imagePrompt?.trim()) return setError('Сначала добавьте промпт изображения в режиме редактирования.')
+    setGenerating(true); setError('')
+    try {
+      const landscape = draft.type === 'document' && /карт|map|схем|план/i.test(`${draft.name} ${draft.description}`)
+      const result = await generateItemImage(draft.imagePrompt, landscape)
+      const next = { ...draft, image: result.url, imageStatus: 'ready' as const }
+      setDraft(next); onSave(next)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Ошибка генерации') }
+    finally { setGenerating(false) }
+  }
+
+  return <div className="item-modal-backdrop" onMouseDown={onClose}><section className="item-modal" role="dialog" aria-modal="true" aria-label={isNew ? 'Создание предмета' : `Предмет: ${draft.name}`} onMouseDown={(event) => event.stopPropagation()}>
+    <button className="item-modal-close" onClick={onClose} aria-label="Закрыть предмет"><X size={20} /></button>
+    <div className={`item-hero ${draft.type === 'document' ? 'landscape' : ''}`}><ItemImage item={draft} zoom={zoom} />
+      {draft.image && <div className="item-zoom"><button onClick={() => setZoom((value) => Math.max(1, value - .25))}><ZoomOut size={16} /></button><span>{Math.round(zoom * 100)}%</span><button onClick={() => setZoom((value) => Math.min(3, value + .25))}><ZoomIn size={16} /></button></div>}
+    </div>
+    <div className="item-modal-body">
+      {editing ? <div className="item-form">
+        <Field label="Название" value={draft.name} onChange={(value) => patch('name', value)} />
+        <label className="sheet-field"><span>Тип</span><select value={draft.type} onChange={(event) => patch('type', event.target.value as InventoryItem['type'])}>{Object.entries(itemTypeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label className="sheet-field"><span>Редкость</span><select value={draft.rarity} onChange={(event) => patch('rarity', event.target.value as InventoryItem['rarity'])}>{['обычный','необычный','редкий','очень редкий','легендарный','сюжетный'].map((value) => <option key={value}>{value}</option>)}</select></label>
+        <Field label="Количество" type="number" min={1} value={draft.quantity} onChange={(value) => patch('quantity', Number(value))} />
+        <Field label="Вес" type="number" min={0} value={draft.weight} onChange={(value) => patch('weight', Number(value))} />
+        <TextField label="Описание" value={draft.description} onChange={(value) => patch('description', value)} rows={5} />
+        <TextField label="Свойства" value={draft.properties} onChange={(value) => patch('properties', value)} rows={3} />
+        <TextField label="Промпт изображения" value={draft.imagePrompt ?? ''} onChange={(value) => patch('imagePrompt', value)} rows={4} />
+        <label className="equipped-check"><input type="checkbox" checked={draft.equipped} onChange={(event) => patch('equipped', event.target.checked)} /><Check size={14} />Экипировано</label>
+      </div> : <>
+        <div className="item-eyebrow"><span>{itemTypeNames[draft.type]}</span><em className={`rarity ${draft.rarity.replace(' ', '-')}`}>{draft.rarity}</em></div>
+        <h2>{draft.name}</h2><p className="item-description">{draft.description}</p>
+        <div className="item-properties"><Shield size={16} /><div><small>СВОЙСТВА</small><p>{draft.properties}</p></div></div>
+        <div className="item-facts"><span><b>{draft.quantity}</b><small>КОЛИЧЕСТВО</small></span><span><b>{draft.weight} фнт.</b><small>ВЕС</small></span><span><b>{draft.equipped ? 'Да' : 'Нет'}</b><small>ЭКИПИРОВАНО</small></span></div>
+      </>}
+      {error && <p className="item-error">{error}</p>}
+      <div className="item-actions">
+        {editing ? <button className="primary" onClick={() => { onSave(draft); setEditing(false) }}><Save size={15} />Сохранить</button> : <button onClick={() => setEditing(true)}><Pencil size={15} />Редактировать</button>}
+        <button onClick={createImage} disabled={generating}><Sparkles size={15} />{generating ? 'Создаём…' : draft.image ? 'Перерисовать' : 'Создать изображение'}</button>
+        {!isNew && <button className="danger" onClick={() => { onRemove(draft.id); onClose() }}><Trash2 size={15} />Удалить</button>}
+      </div>
+    </div>
+  </section></div>
+}
+
+export function InventoryView({ player, onAdd, onUpdate, onRemove }: { player: Player; onAdd: (item: InventoryItem) => void; onUpdate: (id: string, patch: Partial<InventoryItem>) => void; onRemove: (id: string) => void }) {
+  const [selected, setSelected] = useState<InventoryItem | null>(null)
+  const [isNew, setIsNew] = useState(false)
+  const [query, setQuery] = useState('')
+  const totalWeight = useMemo(() => player.inventory.reduce((sum, item) => sum + item.weight * item.quantity, 0), [player.inventory])
+  const items = player.inventory.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()))
+
+  const createNew = () => {
+    setIsNew(true)
+    setSelected({ id: `manual-${Date.now()}`, name: 'Новый предмет', type: 'other', quantity: 1, weight: 0, equipped: false, rarity: 'обычный', description: 'Опишите внешний вид и историю предмета.', properties: 'Укажите игровые свойства.', image: '', imagePrompt: 'Single fantasy RPG inventory item, centered, dark neutral background, painterly realistic game art', imageStatus: 'queued' })
+  }
+
+  return <section className="section-page inventory-page">
+    <div className="inventory-head"><div><span>ЛИЧНЫЕ ВЕЩИ</span><h1>Инвентарь {player.character}</h1><p>Предметы можно открывать, изучать, экипировать и редактировать.</p></div>
+      <div className="inventory-owner"><div className="mini-owner-avatar" style={{ backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition }} /><span><small>ВЛАДЕЛЕЦ</small><b>{player.character}</b></span></div>
+    </div>
+    <div className="inventory-summary"><div><PackageOpen size={19} /><span><b>{player.inventory.length}</b><small>предметов</small></span></div><div><Weight size={19} /><span><b>{totalWeight.toFixed(1)}</b><small>фунтов</small></span></div><div><Coins size={19} /><span><b>{player.currency.gold}</b><small>золотых</small></span></div></div>
+    <div className="inventory-toolbar"><label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти предмет…" /></label><button onClick={createNew}><Plus size={16} />Добавить предмет</button></div>
+    {items.length ? <div className="inventory-grid">{items.map((item) => <button className="inventory-card" key={item.id} onClick={() => { setIsNew(false); setSelected(item) }}>
+      <div className="inventory-art"><ItemImage item={item} />{item.equipped && <span><Check size={11} />НАДЕТО</span>}{item.quantity > 1 && <b>×{item.quantity}</b>}</div>
+      <div className="inventory-card-info"><small>{itemTypeNames[item.type]}</small><strong>{item.name}</strong><p>{item.description}</p><em className={`rarity ${item.rarity.replace(' ', '-')}`}>{item.rarity}</em></div>
+    </button>)}</div> : <div className="empty-inventory"><Backpack size={31} /><h3>Ничего не найдено</h3><p>Измените запрос или добавьте новый предмет.</p></div>}
+    {selected && <ItemModal item={selected} isNew={isNew} onClose={() => setSelected(null)} onSave={(item) => { if (isNew) { onAdd(item); setIsNew(false) } else onUpdate(item.id, item); setSelected(item) }} onRemove={onRemove} />}
+  </section>
+}
