@@ -162,24 +162,13 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   const user = users.body.users.find((candidate) => candidate.email === 'player@merchant.test')
   const assigned = await request(baseUrl, `/api/admin/users/${user.id}`, { method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero'] } })
   assertStatus(assigned, 200, log)
-  const shadowView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
-  assertStatus(shadowView, 200, log)
-  const beforeEnforce = await merchantCommand(baseUrl, 'SHOP-HTTP', 'marten.shop', playerCookie, 'before-enforce', {
-    command_type: 'BuyItem', actor_id: 'hero', stock_id: 'torch', quantity: 1,
-    expected_state_version: shadowView.body.merchant_view.expected_state_version,
-  })
-  assertStatus(beforeEnforce, 409, log)
-  assert.equal(beforeEnforce.body.code, 'ENGINE_MODE_NOT_ENFORCE')
+  const initialView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
+  assertStatus(initialView, 200, log)
   const foreignView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'foreign', playerCookie)
   assertStatus(foreignView, 403, log)
   assert.equal(foreignView.body.code, 'ACTOR_FORBIDDEN')
-  const enforced = await request(baseUrl, '/api/campaigns/SHOP-HTTP/engine-mode', { method: 'PATCH', cookie: adminCookie, body: { mode: 'enforce' } })
-  assertStatus(enforced, 200, log)
-
   const adminView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', adminCookie)
   assertStatus(adminView, 200, log)
-  const initialView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
-  assertStatus(initialView, 200, log)
   assert.equal(initialView.body.merchant_view.merchant.location, 'РЫНОЧНАЯ   ПЛОЩАДЬ')
   assert.equal(initialView.body.merchant_view.merchant_purse_cp, 20_000)
   assert.equal(initialView.body.merchant_view.buy_quotes.find((quote) => quote.stock_id === 'potion').unit_price_cp, 5_500)

@@ -150,6 +150,13 @@ test('инициатива, порядок хода и экономика дей
   const started = resolveCommand({ command_type: 'StartCombat', participant_ids: ['hero', 'goblin'] }, stateFixture(), { diceService: dice([8, 16]) })
   const combatState = applyGameEvent(stateFixture(), started.events[0])
   assert.equal(combatState.mechanics.combat.initiative[0].actor_id, 'goblin')
+  assert.deepEqual(
+    combatState.mechanics.combat.initiative.map((entry) => ({ actor: entry.actor_id, roll: entry.roll, modifier: entry.modifier, total: entry.total })),
+    [
+      { actor: 'goblin', roll: 16, modifier: 2, total: 18 },
+      { actor: 'hero', roll: 8, modifier: 2, total: 10 },
+    ],
+  )
   assert.throws(() => resolveCommand({ command_type: 'MakeAttack', actor_id: 'hero', target_id: 'goblin' }, combatState, { diceService: dice([20]) }), (error) => error instanceof RulesValidationError && error.code === 'OUT_OF_TURN')
 
   const ended = resolveCommand({ command_type: 'EndTurn', actor_id: 'goblin' }, combatState, { diceService: dice([]) })
@@ -164,6 +171,104 @@ test('инициатива, порядок хода и экономика дей
   assert.equal(finished.events[0].event_type, 'CombatEnded')
   assert.equal(peaceful.mechanics.combat.active, false)
   assert.deepEqual(peaceful.mechanics.combat.initiative, [])
+})
+
+test('исследование не режется на боевые ходы, а в бою скорость ограничивает перемещение', () => {
+  const cells = Array.from({ length: 10 }, (_, x) => ({ x, y: 0, type: 'floor', revealed: true }))
+  const exploration = normalizeCampaignState({
+    partyMemberIds: ['hero'],
+    players: [{ id: 'hero', character: 'Адара', hp: 12, maxHp: 12, speed: 30, x: 0, y: 0, inventory: [] }],
+    scene: { cells, turn: 1 },
+  })
+  const explored = resolveCommand(
+    { command_type: 'MoveActor', actor_id: 'hero', to: { x: 9, y: 0 }, server_authoritative: true },
+    exploration,
+    { diceService: dice([]), context: { allowedActorIds: ['hero'], serverAuthoritativeCombat: true } },
+  )
+  const movement = explored.events.find((event) => event.event_type === 'ActorMoved')
+  assert.equal(movement.payload.distance, 45)
+  assert.equal(movement.payload.movement_spent, 0)
+  assert.equal(movement.payload.phase, 'exploration')
+  assert.deepEqual(explored.events.reduce(applyGameEvent, exploration).mechanics.positions.hero, { x: 9, y: 0 })
+
+  const combat = normalizeCampaignState({
+    ...exploration,
+    mechanics: { combat: { active: true, round: 1, initiative: [{ actor_id: 'hero' }], active_index: 0, action_economy: { hero: { ...exploration.mechanics.combat.action_economy.hero, movement_spent: 0 } } } },
+  })
+  assert.throws(
+    () => resolveCommand(
+      { command_type: 'MoveActor', actor_id: 'hero', to: { x: 7, y: 0 }, server_authoritative: true },
+      combat,
+      { diceService: dice([]), context: { allowedActorIds: ['hero'], serverAuthoritativeCombat: true } },
+    ),
+    (error) => error instanceof RulesValidationError && error.code === 'SPEED_EXCEEDED',
+  )
+})
+
+function opportunityState({ heroHp = 12, disengaged = false } = {}) {
+  const cells = Array.from({ length: 5 }, (_, x) => ({ x, y: 0, type: 'floor', revealed: true }))
+  return normalizeCampaignState({
+    players: [{ id: 'hero', character: 'Адара', hp: heroHp, maxHp: 12, armor: 12, speed: 30, x: 1, y: 0, inventory: [] }],
+    enemies: [{
+      id: 'goblin', name: 'Гоблин', hp: 9, maxHp: 9, armor: 13, alive: true, x: 0, y: 0,
+      attack_profile: { attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'slashing', range_feet: 5 },
+    }],
+    scene: { cells, turn: 1 },
+    mechanics: {
+      conditions: disengaged ? { hero: [{ id: 'disengaged', duration: 'until-next-turn' }] } : {},
+      combat: {
+        active: true,
+        round: 1,
+        initiative: [{ actor_id: 'hero', total: 15 }, { actor_id: 'goblin', total: 10 }],
+        active_index: 0,
+        action_economy: {
+          hero: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+          goblin: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+        },
+      },
+    },
+  })
+}
+
+test('выход из ближнего боя вызывает серверную атаку по возможности и расходует реакцию', () => {
+  const state = opportunityState()
+  const result = resolveCommand(
+    { command_type: 'MoveActor', actor_id: 'hero', to: { x: 3, y: 0 }, server_authoritative: true },
+    state,
+    { diceService: dice([12, 4]), context: { allowedActorIds: ['hero'], serverAuthoritativeCombat: true } },
+  )
+  const attack = result.events.find((event) => event.event_type === 'AttackResolved')
+  assert.equal(attack?.actor_id, 'goblin')
+  assert.equal(attack?.payload.reaction_attack, true)
+  assert.ok(result.events.some((event) => event.event_type === 'CombatActionUsed' && event.payload.action_id === 'opportunity-attack'))
+  assert.ok(result.events.some((event) => event.event_type === 'ActorMoved'))
+
+  const next = result.events.reduce(applyGameEvent, state)
+  assert.equal(next.players[0].hp, 6)
+  assert.deepEqual({ x: next.players[0].x, y: next.players[0].y }, { x: 3, y: 0 })
+  assert.equal(next.mechanics.combat.action_economy.goblin.reaction, false)
+  assert.equal(next.mechanics.combat.action_economy.goblin.action, true)
+})
+
+test('Отход отменяет атаку по возможности, а смертельная реакция прерывает перемещение', () => {
+  const disengaged = opportunityState({ disengaged: true })
+  const safeMove = resolveCommand(
+    { command_type: 'MoveActor', actor_id: 'hero', to: { x: 3, y: 0 }, server_authoritative: true },
+    disengaged,
+    { diceService: dice([]), context: { allowedActorIds: ['hero'], serverAuthoritativeCombat: true } },
+  )
+  assert.deepEqual(safeMove.events.map((event) => event.event_type), ['ActorMoved'])
+
+  const fragile = opportunityState({ heroHp: 3 })
+  const interrupted = resolveCommand(
+    { command_type: 'MoveActor', actor_id: 'hero', to: { x: 3, y: 0 }, server_authoritative: true },
+    fragile,
+    { diceService: dice([12, 4]), context: { allowedActorIds: ['hero'], serverAuthoritativeCombat: true } },
+  )
+  assert.equal(interrupted.events.some((event) => event.event_type === 'ActorMoved'), false)
+  const defeated = interrupted.events.reduce(applyGameEvent, fragile)
+  assert.equal(defeated.players[0].hp, 0)
+  assert.deepEqual({ x: defeated.players[0].x, y: defeated.players[0].y }, { x: 1, y: 0 })
 })
 
 test('боевое заклинание берётся из доверенного набора и расходует правильную часть хода', () => {

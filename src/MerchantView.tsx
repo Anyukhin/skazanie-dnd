@@ -10,7 +10,6 @@ type MerchantScreenProps = {
   player: Player
   sceneLocation: string
   stateVersion: number
-  engineMode: 'legacy' | 'shadow' | 'enforce'
   view: MerchantViewModel | null
   narration: string | null
   busy: boolean
@@ -90,7 +89,7 @@ function QuantityPicker({ value, max, disabled, onChange }: { value: number; max
   </label>
 }
 
-export function MerchantScreen({ merchants, player, sceneLocation, stateVersion, engineMode, view, narration, busy, error, onLoad, onBargain, onBuy, onSell, onAppraise }: MerchantScreenProps) {
+export function MerchantScreen({ merchants, player, sceneLocation, stateVersion, view, narration, busy, error, onLoad, onBargain, onBuy, onSell, onAppraise }: MerchantScreenProps) {
   const [tab, setTab] = useState<'buy' | 'sell'>('buy')
   const [selectedMerchantId, setSelectedMerchantId] = useState(merchants[0]?.id ?? '')
   const [buyQuantities, setBuyQuantities] = useState<Record<string, number>>({})
@@ -113,11 +112,11 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
   useEffect(() => {
     const autoLoadKey = `${sceneLocation}\0${stateVersion}\0${selectedMerchant?.id ?? ''}\0${player.id}`
     if (viewMatchesContext) lastAutoLoadKey.current = autoLoadKey
-    if (engineMode === 'enforce' && selectedMerchant?.id && !busy && !viewMatchesContext && lastAutoLoadKey.current !== autoLoadKey) {
+    if (selectedMerchant?.id && !busy && !viewMatchesContext && lastAutoLoadKey.current !== autoLoadKey) {
       lastAutoLoadKey.current = autoLoadKey
       onLoad(selectedMerchant.id, player.id)
     }
-  }, [busy, engineMode, onLoad, player.id, sceneLocation, selectedMerchant?.id, stateVersion, viewMatchesContext])
+  }, [busy, onLoad, player.id, sceneLocation, selectedMerchant?.id, stateVersion, viewMatchesContext])
 
   const currency = serverView?.balance ?? player.currency
   const balanceCp = serverView?.balance_cp ?? currency.copper + currency.silver * 10 + currency.gold * 100 + currency.platinum * 1000
@@ -125,7 +124,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
   const stock = shownMerchant?.stock ?? []
   const buyQuoteById = useMemo(() => new Map((serverView?.buy_quotes ?? []).map((quote) => [quote.stock_id, quote])), [serverView?.buy_quotes])
   const sellQuoteById = useMemo(() => new Map((serverView?.sell_quotes ?? []).map((quote) => [quote.item_id, quote])), [serverView?.sell_quotes])
-  const controlsDisabled = busy || Boolean(error) || engineMode !== 'enforce' || shownMerchant?.available !== true || !serverView
+  const controlsDisabled = busy || Boolean(error) || shownMerchant?.available !== true || !serverView
   const bargainAttempted = Boolean(serverView?.bargain?.attempted)
 
   if (!shownMerchant) return <section className="section-page merchant-page">
@@ -138,7 +137,6 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
       <div className="merchant-location"><MapPin size={15} /><span><small>ТЕКУЩАЯ ЛОКАЦИЯ</small><b>{sceneLocation}</b></span></div>
     </header>
 
-    {engineMode !== 'enforce' && <div className="merchant-mode-warning"><CircleAlert size={17} /><div><b>Безопасная торговля требует режима enforce</b><p>В режимах legacy и shadow витрина доступна только для просмотра: клиент не меняет деньги и склад самостоятельно.</p></div></div>}
     {!shownMerchant.available && <div className="merchant-mode-warning" role="status"><CircleAlert size={17} /><div><b>Торговец сейчас недоступен</b><p>Покупка, продажа и торг заблокированы до возвращения NPC в текущую сцену.</p></div></div>}
     {error && <div className="merchant-error" role="alert"><CircleAlert size={15} /><span>{error}</span><button onClick={() => onLoad(shownMerchant.id, player.id)} disabled={busy || !shownMerchant.available}><RefreshCw size={13} />Повторить</button></div>}
 
@@ -171,7 +169,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
           <div><Coins size={20} /><span><small>КОШЕЛЁК · {player.character}</small><b>{new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(balanceCp / 100)} зм всего</b></span></div>
           <div className="merchant-purse"><HandCoins size={18} /><span><small>КАССА ТОРГОВЦА</small><b>{formatCopper(merchantPurseCp)}</b></span></div>
           <div className="merchant-coins">{coinLabels.map(([coin, label]) => <span key={coin}><b>{currency[coin]}</b><small>{label}</small></span>)}</div>
-          <button onClick={() => onLoad(shownMerchant.id, player.id)} disabled={busy || engineMode !== 'enforce' || !shownMerchant.available}><RefreshCw className={busy ? 'spinning' : ''} size={14} />Обновить котировки</button>
+          <button onClick={() => onLoad(shownMerchant.id, player.id)} disabled={busy || !shownMerchant.available}><RefreshCw className={busy ? 'spinning' : ''} size={14} />Обновить котировки</button>
         </div>
 
         <div className="merchant-tabs" role="tablist" aria-label="Торговые операции">

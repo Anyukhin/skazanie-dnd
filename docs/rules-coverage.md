@@ -42,9 +42,9 @@
 | Advantage/disadvantage | да | да | да на server paths | unit | Legacy browser fallback всё ещё может бросать отдельно |
 | Initiative | да | да | да, enforce UI/API | unit + domain integration + HTTP | Участники выводятся из живых party и enemy IDs staged encounter; tie rule упрощён и не настраивается кампанией |
 | Turn order / EndCombat | да | да | да, enforce UI/API | unit + domain integration + HTTP | NPC scheduler идёт до следующего PC, завершает бой при поражении стороны и закрывает encounter; loot/reward flow отсутствует |
-| Action/movement consumption | да | частично | да для combat slice | unit + HTTP | Attack/spell расходуют action; path расходует movement; spell с нужным casting time расходует bonus action. Ready/reaction windows отсутствуют |
+| Action/movement consumption | да | частично | да для combat slice | unit + HTTP | Attack/spell расходуют action; path расходует movement; spell с нужным casting time расходует bonus action; атака по возможности расходует reaction. Ready отсутствует |
 | Bonus action | да | частично | да для combat spell slice | unit | Отдельно расходуется `healing-word`; общего feature/action corpus пока нет |
-| Reaction | да | нет | нет | нет | Нет `UseReaction` и trigger validation |
+| Reaction | да | частично | да, enforce UI/API | unit | `UseCombatAction` закрывает проверяемые окна Shield/Parry/Riposte/Uncanny Dodge/Opportunity Attack; нет универсального Ready и произвольных триггеров |
 | Basic resource pools | да | да | да, enforce | unit | Generic spend/restore; rest не восстанавливает pools автоматически |
 | Conditions | да | частично | частично | unit | Add/remove хранится, эффекты конкретных conditions не исполняются |
 | Concentration | да | частично | частично | unit | Start/end и `ConcentrationCheckRequired` есть; save/fail завершение не собрано полностью |
@@ -56,7 +56,7 @@
 
 | Механика | Корпус | Engine | Runtime | Тест | Ограничение |
 |---|---|---|---|---|---|
-| Перемещение | нет | частично | да, enforce UI/API | unit + HTTP | Ортогональный shortest path, стены, occupancy, speed/action economy проверяются; нет диагоналей, difficult terrain, forced movement и opportunity attacks |
+| Перемещение | нет | частично | да, enforce UI/API | unit + HTTP | Ортогональный shortest path, стены, occupancy, speed/action economy и выход из 5-футовой зоны досягаемости проверяются; нет диагоналей, difficult terrain и forced movement |
 | Дальность и зоны | нет | частично | да для attack/spell slice | unit + HTTP | Атаки и боевые заклинания используют общую Chebyshev-дистанцию; нет cover, reach/size и полного набора area templates |
 | Укрытие | нет | нет | нет | нет | Нет corpus rule и вычисления |
 | Line of sight | нет | нет | нет | нет | Legacy revealed cells не образуют formal LOS |

@@ -23,7 +23,7 @@
 
 ### Action economy
 
-Action расходуется для attack/spell; combat spell с casting time `bonus_action` отдельно расходует бонусное действие. В server-authoritative combat перемещение учитывается по пройденному ортогональному пути и сбрасывается при начале следующего хода. Реакция отображается и восстанавливается вместе с экономикой хода, но trigger validation, ready action и reaction windows пока отсутствуют.
+Action расходуется для attack/spell; combat spell с casting time `bonus_action` отдельно расходует бонусное действие. В server-authoritative combat перемещение учитывается по пройденному ортогональному пути и сбрасывается при начале следующего хода. Реакция отображается и восстанавливается вместе с экономикой хода. Есть проверяемые окна для ряда защитных реакций и атаки по возможности; универсальные `Ready`, произвольные триггеры и одновременные конкурирующие окна пока отсутствуют.
 
 ### Conditions
 
@@ -39,19 +39,19 @@ Engine хранит generic condition ID/duration, но не применяет 
 
 ### Initiative и turns
 
-Есть сортировка, active index/round и команда/event `EndCombat`/`CombatEnded`; собранная встреча дополнительно получает `EncounterEnded`. Bounded scheduler автоматически пропускает побеждённых и завершает базовый бой, когда не осталось живых героев либо врагов. Tie policy упрощена; отсутствуют surprise, held/delayed turns, полные reaction windows, surrender/flee/objective outcomes и reward/loot lifecycle.
+Есть сортировка, active index/round и команда/event `EndCombat`/`CombatEnded`; собранная встреча дополнительно получает `EncounterEnded`. Bounded scheduler автоматически пропускает побеждённых и завершает базовый бой, когда не осталось живых героев либо врагов. Tie policy упрощена; отсутствуют surprise, held/delayed turns, групповые ходы союзников с одинаковой инициативой, surrender/flee/objective outcomes и reward/loot lifecycle.
 
 ### Карта, дальность и NPC scheduler
 
-В `enforce` ортогональный BFS проверяет проходимые клетки, стены, occupancy, скорость и уже потраченное movement; дальняя атака использует сеточную дистанцию, проверяет прямую траекторию через стены, а метательный предмет — серверную область. Присланные клиентом distance/path/range не считаются источником истины. Ограничения: нет difficult terrain, размерности существ, forced movement, opportunity attacks, cover, высоты/трёхмерной LOS и per-player vision.
+В `enforce` ортогональный BFS проверяет проходимые клетки, стены, occupancy, скорость и уже потраченное movement; дальняя атака использует сеточную дистанцию, проверяет прямую траекторию через стены, а метательный предмет — серверную область. Присланные клиентом distance/path/range не считаются источником истины. Выход из соседней зоны досягаемости вызывает атаку по возможности, расходует реакцию, учитывает `Отход` и обездвиживающие состояния; для хода героя сервер разрешает её автоматически, для хода NPC открывает игроку окно выбора. Ограничения: нет difficult terrain, размерности существ и reach больше 5 футов, forced movement, cover, высоты/трёхмерной LOS и per-player vision.
 
-NPC scheduler представляет bounded deterministic policy: выбирает ближайшего достижимого героя, при необходимости двигается, делает одну базовую атаку и завершает ход до следующего PC. Это не `npc_controller` и не Tactical Controller agent; нет тактических целей, сложных действий, заклинаний, bonus actions/reactions, morale и координации группы.
+NPC scheduler представляет bounded deterministic policy: оценивает допустимые пары «цель + действие», дальность и ожидаемый урон, добивание, КД цели, контроль, поддержку союзников и безопасную позицию для дальнего боя. Он выбирает ближнюю или дальнюю атаку, умеет один раз применять паутину, использует ловкое отступление и агрессивный рывок, а также учитывает тактику стаи и воинское преимущество. Это не `npc_controller` и не LLM Tactical Controller: нет полноценного планирования на несколько ходов, spellcasting, multiattack, сложных реакций, cover/высоты и взаимодействия с окружением.
 
 ### EncounterAssembler и mini-compendium
 
-Admin UI/API в `enforce` умеет собрать и сразу начать встречу. Сервер принимает только allowlisted difficulty/theme, считает официальный XP Budget per Character SRD 5.2.1 для уровней 1–20 и выбирает противников из пяти server-owned profiles. Spawn ограничен раскрытыми проходимыми клетками, достижимыми от группы, без feature/occupancy и минимум в 10 футах от каждого героя; `EncounterCreated` и `CombatStarted` входят в один commit, а reducer/replay и player projection подключены к общему контуру.
+Admin UI/API в `enforce` умеет собрать и сразу начать встречу. Сервер принимает только allowlisted difficulty/theme, считает официальный XP Budget per Character SRD 5.2.1 для уровней 1–20 и выбирает противников из 12 server-owned profiles в темах `generic|goblinoids|undead|beasts|raiders`. Spawn ограничен раскрытыми проходимыми клетками, достижимыми от группы, без feature/occupancy и минимум в 10 футах от каждого героя; `EncounterCreated` и `CombatStarted` входят в один commit, а reducer/replay и player projection подключены к общему контуру.
 
-Это не полный encounter/monster subsystem. Пять записей — только primary-attack projections без traits, saves/skills, resistances/immunities, multiattack, spells, reactions и особых действий. Нет tactics profiles, loot/rewards, Tactical Controller, автоматического Director trigger или realtime multi-browser гарантии.
+Это не полный encounter/monster subsystem. 12 записей поддерживают несколько профилей атак и ограниченный набор исполняемых traits/особых действий, но не образуют полный monster corpus: нет полной модели saves/skills, resistances/immunities, multiattack, spellcasting, legendary/lair actions, recharge и большинства реакций. Нет loot/rewards, автоматического Director trigger или realtime multi-browser гарантии.
 
 ### Resources, rest и spells
 
@@ -72,7 +72,7 @@ Generic resource pools работают, но rest создаёт marker event �
 ## Rule Pack и Retrieval
 
 - В corpus только 21 короткий оригинальный RU/EN пересказ базовой механики, включая 2 economy rules, а не полный SRD или rulebook.
-- Нет полного spell, monster, item, class, feat, encounter или economy corpus; отдельно от Rule Pack существуют лишь пять monster primary-attack projections и небольшой server catalog стартового снаряжения.
+- Нет полного spell, monster, item, class, feat, encounter или economy corpus; отдельно от Rule Pack существуют 12 monster-профилей с ограниченным набором исполняемых действий и небольшой server catalog стартового снаряжения.
 - Local vector использует deterministic feature hashing, не обученную semantic embedding model.
 - Russian stemming и fuzzy matching эвристические; возможны false positives/negatives.
 - Ontology expansion ограничен одним bounded шагом.

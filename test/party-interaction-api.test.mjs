@@ -127,12 +127,13 @@ test('агент открывает общее голосование, а неа
   })
   assert.equal(continued.status, 200)
   const transition = await continued.json()
-  assert.equal(transition.provider, 'AgentDirector')
+  assert.equal(transition.provider, 'deterministic-scene')
   assert.equal(transition.turn_consumed, true)
   assert.notEqual(transition.effects.scene.scene.location, '\u041D\u0438\u0436\u043D\u0438\u0439 \u0437\u0430\u043B')
   assert.ok(transition.agent_trace.some((stage) => stage.agent === 'AgentCartographer'))
   assert.equal(transition.effects.scene.adventure.chapter, 2)
-  assert.equal(transition.effects.scene.scene.cells.length, 117)
+  assert.ok(transition.effects.scene.scene.cells.length > 80)
+  assert.ok(transition.effects.scene.scene.cells.length < 117, 'organic scene should keep a non-rectangular silhouette')
 
   const labResponse = await fetch(baseUrl + '/api/agent-lab/scene-transition', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adminCookie },

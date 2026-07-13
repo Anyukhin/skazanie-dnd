@@ -97,6 +97,21 @@ function fallbackTheme(world, entropy = '') {
   return automaticThemes[index]
 }
 
+const MAP_SCALES = new Set(['room', 'site', 'stronghold', 'region'])
+const MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
+const MAP_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
+
+function startingVisualSpec(theme, world) {
+  const value = `${theme.location} ${theme.theme} ${world.startingLocation} ${world.openingSituation}`.toLocaleLowerCase('ru')
+  if (/крепост|замок|цитадел/u.test(value)) return { scale: 'stronghold', pattern: 'keep', material: 'stone', width: 23, height: 17 }
+  if (/комнат|кабинет|мал.*зал|кают/u.test(value)) return { scale: 'room', pattern: 'small-room', material: /станци|косм|тех/u.test(value) ? 'metal' : /дом|таверн/u.test(value) ? 'wood' : 'stone', width: 9, height: 7 }
+  if (theme.layout === 'streets') return { scale: 'site', pattern: 'village', material: /станци|тех|кибер/u.test(value) ? 'metal' : 'stone', width: 17, height: 11 }
+  if (theme.layout === 'rooms') return { scale: 'site', pattern: 'great-hall', material: /станци|тех|косм/u.test(value) ? 'metal' : 'stone', width: 15, height: 11 }
+  if (/лес|роща|луг/u.test(value)) return { scale: 'site', pattern: 'natural', material: 'grass', width: 15, height: 11 }
+  if (/пустын|пес/u.test(value)) return { scale: 'site', pattern: 'natural', material: 'sand', width: 15, height: 11 }
+  return { scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 11 }
+}
+
 function fallbackOpening({ name, partyName, world, heroes, entropy }) {
   const theme = fallbackTheme(world, entropy)
   const location = world.startingLocation || theme.location
@@ -106,6 +121,7 @@ function fallbackOpening({ name, partyName, world, heroes, entropy }) {
   const tone = world.tone || 'Атмосфера полна тайн и обещает открытия'
   const premise = world.premise || 'Привычный порядок нарушает событие, которое может навсегда изменить этот мир.'
   const situation = world.openingSituation || premise
+  const visual = startingVisualSpec(theme, world)
   return {
     campaignName: name === 'Новая кампания' ? `Хроники: ${location}` : name,
     partyName: partyName === 'Новый отряд' ? 'Искатели нового мира' : partyName,
@@ -116,7 +132,7 @@ function fallbackOpening({ name, partyName, world, heroes, entropy }) {
       mood: tone,
       objective: 'Разобраться в происходящем и решить, кому можно доверять',
       theme: theme.theme, danger: theme.danger,
-      map: { layout: theme.layout, width: 15, height: 11, openness: 0.66, water: theme.water, featureCount: 6 },
+      map: { layout: theme.layout, ...visual, openness: 0.66, water: theme.water, featureCount: 6 },
     },
     hook: situation,
     suggestions: ['Осмотреть место встречи', 'Поговорить с очевидцами', 'Сопоставить истории героев'],
@@ -127,8 +143,13 @@ function normalizeOpening(input, fallback) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const scene = source.scene && typeof source.scene === 'object' && !Array.isArray(source.scene) ? source.scene : {}
   const map = scene.map && typeof scene.map === 'object' && !Array.isArray(scene.map) ? scene.map : {}
-  const layouts = new Set(['rooms', 'streets', 'open', 'winding'])
+  const layouts = new Set(['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'])
   const danger = new Set(['низкая', 'средняя', 'высокая'])
+  const scale = MAP_SCALES.has(map.scale) ? map.scale : fallback.scene.map.scale
+  const scaleMinimum = scale === 'stronghold' ? { width: 19, height: 13 }
+    : scale === 'region' ? { width: 21, height: 15 }
+      : scale === 'site' ? { width: 11, height: 9 }
+        : { width: 7, height: 7 }
   return {
     campaignName: clean(source.campaignName, 120) || fallback.campaignName,
     partyName: clean(source.partyName, 120) || fallback.partyName,
@@ -143,8 +164,11 @@ function normalizeOpening(input, fallback) {
       danger: danger.has(scene.danger) ? scene.danger : fallback.scene.danger,
       map: {
         layout: layouts.has(map.layout) ? map.layout : fallback.scene.map.layout,
-        width: integer(map.width, fallback.scene.map.width, 7, 25),
-        height: integer(map.height, fallback.scene.map.height, 7, 19),
+        scale,
+        pattern: MAP_PATTERNS.has(map.pattern) ? map.pattern : fallback.scene.map.pattern,
+        material: MAP_MATERIALS.has(map.material) ? map.material : fallback.scene.map.material,
+        width: integer(map.width, fallback.scene.map.width, scaleMinimum.width, 25),
+        height: integer(map.height, fallback.scene.map.height, scaleMinimum.height, 19),
         openness: decimal(map.openness, fallback.scene.map.openness, 0.35, 0.85),
         water: decimal(map.water, fallback.scene.map.water, 0, 0.3),
         featureCount: integer(map.featureCount, fallback.scene.map.featureCount, 2, 12),
@@ -204,7 +228,7 @@ export class CampaignBootstrapper {
       partyMemberIds: positionedHeroes.map((hero) => hero.id),
       campaignConcept: { ...world, worldSummary: opening.worldSummary, generatedBy },
       state_version: 0,
-      ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], enabled_house_rules: merchants.length ? [ECONOMY_POLICY_ID] : [], ruleset_locked_at: new Date().toISOString(), engine_mode: 'shadow',
+      ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], enabled_house_rules: merchants.length ? [ECONOMY_POLICY_ID] : [], ruleset_locked_at: new Date().toISOString(), engine_mode: 'enforce',
       players: positionedHeroes,
       merchants,
       enemies: [], entities: [], mapFeedback: [], battleLog: [], mechanics: {}, rulings: [],

@@ -137,14 +137,6 @@ test('admin merchant lifecycle API is enforce-only, event-sourced, idempotent, p
     },
   })
   assertStatus(playerAssemblyDenied, 403, log)
-  const shadowDenied = await lifecycleCommand(baseUrl, 'SHOP-LIFECYCLE', adminCookie, 'shadow-create-merchant', {
-    command_type: 'CreateMerchant', expected_state_version: 0, merchant: { id: 'shadow', name: 'Shadow' },
-  })
-  assertStatus(shadowDenied, 409, log)
-  assert.equal(shadowDenied.body.code, 'ENGINE_MODE_NOT_ENFORCE')
-
-  const enforced = await request(baseUrl, '/api/campaigns/SHOP-LIFECYCLE/engine-mode', { method: 'PATCH', cookie: adminCookie, body: { mode: 'enforce' } })
-  assertStatus(enforced, 200, log)
   let room = await request(baseUrl, '/api/rooms/SHOP-LIFECYCLE', { cookie: adminCookie })
   assertStatus(room, 200, log)
   let version = Number(room.body.state.state_version)

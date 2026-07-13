@@ -39,11 +39,19 @@ export function publicAdventureFor(adventure = {}) {
 
 function publicCellFor(cell = {}) {
   const revealed = cell.revealed === true
+  const material = String(cell.material ?? '')
+  const pattern = String(cell.pattern ?? '')
+  const allowedMaterials = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
+  const allowedPatterns = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
   return {
     x: integer(cell.x),
     y: integer(cell.y),
     type: ['wall', 'floor', 'water', 'door'].includes(String(cell.type)) ? String(cell.type) : 'floor',
     revealed,
+    ...(allowedMaterials.has(material) ? { material } : {}),
+    ...(allowedPatterns.has(pattern) ? { pattern } : {}),
+    ...(Number.isSafeInteger(Number(cell.variant)) ? { variant: Math.max(0, Math.min(5, Number(cell.variant))) } : {}),
+    ...(typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask) ? { edge_mask: cell.edge_mask } : {}),
     ...(revealed && cell.feature != null ? { feature: text(cell.feature, 40) } : {}),
   }
 }

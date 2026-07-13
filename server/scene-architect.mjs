@@ -15,6 +15,17 @@ function clampInteger(value, fallback, minimum, maximum) {
   return Number.isSafeInteger(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback
 }
 
+const MAP_SCALES = new Set(['room', 'site', 'stronghold', 'region'])
+const MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
+const MAP_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
+
+function scaleDimensions(scale) {
+  if (scale === 'room') return { width: 9, height: 7, minimumWidth: 7, minimumHeight: 7 }
+  if (scale === 'stronghold') return { width: 23, height: 17, minimumWidth: 19, minimumHeight: 13 }
+  if (scale === 'region') return { width: 25, height: 19, minimumWidth: 21, minimumHeight: 15 }
+  return { width: 15, height: 11, minimumWidth: 11, minimumHeight: 9 }
+}
+
 /** Builds a data-only, public context for the external Scene Architect. */
 export function buildDirectorPlanningBrief(state = {}) {
   const source = state && typeof state === 'object' && !Array.isArray(state) ? state : {}
@@ -33,6 +44,30 @@ export function buildDirectorPlanningBrief(state = {}) {
   return {
     current_scene: currentScene,
     adventure_memory: publicAdventureMemory(source.adventure),
+    campaign_premise: {
+      preset: clean(source.campaignConcept?.preset, 160),
+      era: clean(source.campaignConcept?.era, 80),
+      genre: clean(source.campaignConcept?.genre, 100),
+      tone: clean(source.campaignConcept?.tone, 160),
+      premise: clean(source.campaignConcept?.premise, 400),
+      themes: clean(source.campaignConcept?.themes, 240),
+      magic_level: clean(source.campaignConcept?.magicLevel, 80),
+      technology_level: clean(source.campaignConcept?.technologyLevel, 80),
+    },
+    heroes: (source.players ?? []).map((hero) => ({
+      id: clean(hero?.id, 40),
+      name: clean(hero?.character ?? hero?.name, 80),
+      role: clean(hero?.role, 100),
+      species: clean(hero?.species, 80),
+      background: clean(hero?.background, 100),
+      backstory: clean(hero?.backstory, 400),
+      traits: clean(hero?.traits, 200),
+    })).slice(0, 12),
+    visible_enemies: (source.enemies ?? []).filter((enemy) => enemy?.alive !== false).map((enemy) => ({
+      id: clean(enemy?.id, 40),
+      name: clean(enemy?.name, 80),
+      kind: clean(enemy?.kind ?? enemy?.type, 80),
+    })).slice(0, 16),
   }
 }
 
@@ -67,11 +102,16 @@ export function interpretResolvedPartyDecision(action, state = {}) {
 
 function themeFor(destination, action) {
   const value = `${destination} ${action}`.toLocaleLowerCase('ru')
-  if (/город|деревн|порт|рынок|таверн|улиц/u.test(value)) return { theme: 'городские улицы', layout: 'streets', width: 17, height: 11, openness: 0.68, water: /порт|канал/u.test(value) ? 0.12 : 0.02, featureCount: 7, danger: 'низкая' }
-  if (/лес|чащ|болот|роща/u.test(value)) return { theme: 'дикая местность', layout: 'winding', width: 15, height: 11, openness: 0.62, water: /болот/u.test(value) ? 0.22 : 0.06, featureCount: 6, danger: 'средняя' }
-  if (/тракт|дорог|путь|перевал/u.test(value)) return { theme: 'дорога', layout: 'winding', width: 15, height: 9, openness: 0.58, water: 0.03, featureCount: 5, danger: 'средняя' }
-  if (/пещер|подзем|склеп|архив|руин|храм/u.test(value)) return { theme: 'подземные помещения', layout: 'rooms', width: 13, height: 9, openness: 0.55, water: 0.08, featureCount: 5, danger: 'средняя' }
-  return { theme: 'новая местность', layout: 'open', width: 15, height: 11, openness: 0.64, water: 0.05, featureCount: 5, danger: 'средняя' }
+  if (/крепост|замок|цитадел/u.test(value)) return { theme: 'крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 23, height: 17, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
+  if (/комнат|кабинет|небольш.*зал|камор/u.test(value)) return { theme: 'небольшое помещение', layout: 'rooms', scale: 'room', pattern: 'small-room', material: /таверн|дом/u.test(value) ? 'wood' : 'stone', width: 9, height: 7, openness: 0.8, water: 0, featureCount: 3, danger: 'низкая' }
+  if (/город|деревн|порт|рынок|таверн|улиц/u.test(value)) return { theme: 'городские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 17, height: 11, openness: 0.68, water: /порт|канал/u.test(value) ? 0.12 : 0.02, featureCount: 7, danger: 'низкая' }
+  if (/лес|чащ|болот|роща/u.test(value)) return { theme: 'дикая местность', layout: 'winding', scale: 'site', pattern: 'natural', material: 'grass', width: 15, height: 11, openness: 0.62, water: /болот/u.test(value) ? 0.22 : 0.06, featureCount: 6, danger: 'средняя' }
+  if (/мост/u.test(value)) return { theme: 'мост и подступы', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'wood', width: 17, height: 9, openness: 0.7, water: 0.2, featureCount: 5, danger: 'средняя' }
+  if (/тракт|дорог|путь|перевал/u.test(value)) return { theme: 'дорога', layout: 'winding', scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 9, openness: 0.58, water: 0.03, featureCount: 5, danger: 'средняя' }
+  if (/руин|развал|храм/u.test(value)) return { theme: 'древние руины', layout: 'ruins', scale: 'site', pattern: 'courtyard', material: /храм/u.test(value) ? 'marble' : 'stone', width: 15, height: 11, openness: 0.58, water: 0.05, featureCount: 6, danger: 'средняя' }
+  if (/пещер|подзем|склеп|архив|шахт/u.test(value)) return { theme: 'подземные пещеры', layout: 'cavern', scale: 'site', pattern: /склеп|архив/u.test(value) ? 'crypt' : 'cave-cluster', material: 'earth', width: 15, height: 11, openness: 0.62, water: 0.08, featureCount: 6, danger: 'средняя' }
+  if (/арен|круг|кольц|башн/u.test(value)) return { theme: 'радиальная локация', layout: 'radial', scale: 'site', pattern: 'great-hall', material: 'stone', width: 15, height: 15, openness: 0.58, water: 0.02, featureCount: 6, danger: 'средняя' }
+  return { theme: 'новая местность', layout: 'open', scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 11, openness: 0.64, water: 0.05, featureCount: 5, danger: 'средняя' }
 }
 
 function fallbackPlan({ action, state, decision, destinationHint }) {
@@ -98,16 +138,18 @@ function fallbackPlan({ action, state, decision, destinationHint }) {
     objective_status: 'unresolved',
     carry_unresolved: true,
     suggestions: map.theme === 'городские улицы' ? ['Расспросить горожан', 'Найти архив или храм', 'Осмотреть городские ворота'] : ['Осмотреться', 'Проверить ближайший путь', 'Обсудить следующий шаг'],
-    map: { layout: map.layout, width: map.width, height: map.height, openness: map.openness, water: map.water, featureCount: map.featureCount },
+    map: { layout: map.layout, scale: map.scale, pattern: map.pattern, material: map.material, width: map.width, height: map.height, openness: map.openness, water: map.water, featureCount: map.featureCount },
   }
 }
 
 function normalizePlan(value, fallback) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
   const mapSource = source.map && typeof source.map === 'object' && !Array.isArray(source.map) ? source.map : {}
-  const layouts = new Set(['rooms', 'streets', 'open', 'winding'])
+  const layouts = new Set(['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'])
   const danger = new Set(['низкая', 'средняя', 'высокая'])
   const objectiveStatus = new Set(['completed', 'unresolved', 'abandoned'])
+  const scale = MAP_SCALES.has(mapSource.scale) ? mapSource.scale : fallback.map.scale
+  const dimensions = scaleDimensions(scale)
   return {
     title: clean(source.title, 80) || fallback.title,
     location: clean(source.location, 120) || fallback.location,
@@ -124,8 +166,11 @@ function normalizePlan(value, fallback) {
     suggestions: (Array.isArray(source.suggestions) ? source.suggestions : fallback.suggestions).map((item) => clean(item, 100)).filter(Boolean).slice(0, 3),
     map: {
       layout: layouts.has(mapSource.layout) ? mapSource.layout : fallback.map.layout,
-      width: clampInteger(mapSource.width, fallback.map.width, 7, 25),
-      height: clampInteger(mapSource.height, fallback.map.height, 7, 19),
+      scale,
+      pattern: MAP_PATTERNS.has(mapSource.pattern) ? mapSource.pattern : fallback.map.pattern,
+      material: MAP_MATERIALS.has(mapSource.material) ? mapSource.material : fallback.map.material,
+      width: clampInteger(mapSource.width, dimensions.width, dimensions.minimumWidth, 25),
+      height: clampInteger(mapSource.height, dimensions.height, dimensions.minimumHeight, 19),
       openness: Math.max(0.35, Math.min(0.85, Number(mapSource.openness) || fallback.map.openness)),
       water: Math.max(0, Math.min(0.3, Number(mapSource.water) || fallback.map.water)),
       featureCount: clampInteger(mapSource.featureCount, fallback.map.featureCount, 2, 12),

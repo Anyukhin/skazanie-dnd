@@ -11,6 +11,8 @@ import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
 import { RouterAIClient } from './llm-client.mjs'
 import { Narrator } from './narrator.mjs'
+import { CreativeDirector } from './creative-director.mjs'
+import { NpcControllerAgent } from './npc-controller.mjs'
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
@@ -63,6 +65,8 @@ const eventStore = new FileEventStore({
 })
 const traceStore = new FileTraceStore({ rootDir: join(storageDir, 'turn-traces') })
 const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
+const creativeDirector = new CreativeDirector({ narrator })
+const npcController = new NpcControllerAgent({ llmClient: apiKey ? llmClient : null })
 const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null })
 
 const tools = [
@@ -226,7 +230,7 @@ const tools = [
           map: {
             type: 'object', additionalProperties: false,
             properties: {
-              layout: { type: 'string', enum: ['rooms', 'streets', 'open', 'winding'] },
+              layout: { type: 'string', enum: ['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'] },
               width: { type: 'integer', minimum: 7, maximum: 25 },
               height: { type: 'integer', minimum: 7, maximum: 19 },
               openness: { type: 'number', minimum: 0.35, maximum: 0.85 },
@@ -319,7 +323,7 @@ function canUseHero(user, heroId) {
   return user?.role === 'admin' || user?.heroIds?.includes(String(heroId || ''))
 }
 
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'EndTurn'])
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'EndTurn'])
 const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem'])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
@@ -603,6 +607,17 @@ function sanitizePlayerCombatCommand(user, state, input) {
       ...(input?.to ? { to: { x: input.to.x, y: input.to.y } } : {}),
     }
   }
+  if (type === 'UseCombatAction') {
+    const actionId = String(input?.action_id ?? input?.actionId ?? '').slice(0, 120)
+    if (!actionId) throw commandPolicyError('Не выбрано боевое действие', 'COMBAT_ACTION_NOT_AVAILABLE')
+    const target = String(input?.target_id ?? input?.targetId ?? '').slice(0, 120)
+    return {
+      ...base,
+      action_id: actionId,
+      ...(target ? { target_id: target } : {}),
+      ...(input?.item_id ? { item_id: String(input.item_id).slice(0, 120) } : {}),
+    }
+  }
   return base
 }
 
@@ -677,6 +692,10 @@ function tacticalNarration(events, state) {
       meaningful.push(`${target} получает ${Number(payload.applied_amount)} урона; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`)
     } else if (event.event_type === 'HitPointsReducedToZero') {
       meaningful.push(`${target} выбывает из боя.`)
+    } else if (event.event_type === 'ConditionAdded' && payload.condition === 'fled') {
+      meaningful.push(`${target} отступает и покидает бой.`)
+    } else if (event.event_type === 'ConditionAdded' && payload.condition === 'surrendered') {
+      meaningful.push(`${target} прекращает сопротивление и сдаётся.`)
     } else if (event.event_type === 'CombatEnded') {
       meaningful.push(`Бой завершён в раунде ${Number(payload.round) || 1}.`)
     } else if (event.event_type === 'TurnEnded') {
@@ -1435,8 +1454,8 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     if (journalMessage?.id && journalMessage?.text && !messages.some((message) => String(message.id) === String(journalMessage.id))) {
       messages.push({
         id: String(journalMessage.id),
-        speaker: 'narrator',
-        author: 'Рассказчик',
+        speaker: journalMessage.speaker === 'system' ? 'system' : 'narrator',
+        author: String(journalMessage.author || (journalMessage.speaker === 'system' ? 'Система боя' : 'Рассказчик')).slice(0, 80),
         timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
         text: String(journalMessage.text).slice(0, 2000),
         turnConsumed: Boolean(journalMessage.turnConsumed),
@@ -1640,9 +1659,9 @@ const server = createServer(async (req, res) => {
         scene: { title: 'Начало', location: '', mood: '', objective: '', turn: 0, cells: [] },
       })
       state.sessionCode = code
-      state.engine_mode = body.engine_mode ?? state.engine_mode ?? 'shadow'
-      const room = saveRoom(code, state, 0)
-      await eventStore.importLegacySnapshot({ campaign_id: code, legacy_state: state, idempotency_key: `legacy-import:${code}`, ruleset_id: state.ruleset_id, ruleset_version: state.ruleset_version, enabled_rule_packs: state.enabled_rule_packs })
+      state.engine_mode = 'enforce'
+      const imported = await eventStore.importLegacySnapshot({ campaign_id: code, legacy_state: state, idempotency_key: `legacy-import:${code}`, ruleset_id: state.ruleset_id, ruleset_version: state.ruleset_version, enabled_rule_packs: state.enabled_rule_packs })
+      const room = saveRoom(code, { ...imported.state, engine_mode: 'enforce' }, 0)
       return json(res, 201, room.room)
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось создать кампанию' }) }
   }
@@ -1663,13 +1682,11 @@ const server = createServer(async (req, res) => {
     try {
       const room = getRoom(engineModeMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
-      const body = await readBody(req)
-      const mode = new EngineModeResolver({ env: {}, defaultMode: body.mode }).resolve()
+      await readBody(req)
+      const mode = 'enforce'
       let nextState = { ...room.state, engine_mode: mode }
-      if (mode === 'enforce') {
-        const synchronized = await gameOrchestrator.synchronizeLegacyState(engineModeMatch[1], nextState, `enforce-${room.version}`)
-        nextState = { ...synchronized.state, engine_mode: mode }
-      }
+      const synchronized = await gameOrchestrator.synchronizeLegacyState(engineModeMatch[1], nextState, `enforce-${room.version}`)
+      nextState = { ...synchronized.state, engine_mode: mode }
       const result = saveRoom(engineModeMatch[1], nextState, room.version)
       return json(res, 200, { mode, room: result.room })
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Некорректный режим' }) }
@@ -1681,8 +1698,6 @@ const server = createServer(async (req, res) => {
     try {
       const room = getRoom(merchantLifecycleMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
-      const effectiveMode = engineModeResolver.resolve({ user: admin, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Управление жизненным циклом торговцев доступно только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       if (exceedsRate(`merchant-lifecycle:${admin.id}`, 60)) {
         return json(res, 429, { error: 'Слишком много изменений торговцев. Подождите немного и повторите попытку', code: 'MERCHANT_LIFECYCLE_RATE_LIMITED' })
       }
@@ -1714,8 +1729,6 @@ const server = createServer(async (req, res) => {
       const campaignId = merchantAssembleMatch[1]
       const room = getRoom(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
-      const effectiveMode = engineModeResolver.resolve({ user: admin, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Сборка магазина доступна только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       if (exceedsRate(`shop-assemble:${admin.id}`, 30)) {
         return json(res, 429, { error: 'Слишком много запросов сборки магазинов. Подождите немного и повторите попытку', code: 'SHOP_ASSEMBLY_RATE_LIMITED' })
       }
@@ -1770,8 +1783,6 @@ const server = createServer(async (req, res) => {
       const campaignId = encounterAssembleMatch[1]
       const room = getRoom(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
-      const effectiveMode = engineModeResolver.resolve({ user: admin, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Сборка столкновения доступна только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       if (exceedsRate(`encounter-assemble:${admin.id}`, 30)) {
         return json(res, 429, { error: 'Слишком много запросов сборки столкновений', code: 'ENCOUNTER_ASSEMBLY_RATE_LIMITED' })
       }
@@ -1829,7 +1840,7 @@ const server = createServer(async (req, res) => {
       })
       assertEncounterResultFingerprint(result, command)
       const originalVersion = Number(result.state_version ?? result.authoritative_state?.state_version ?? 0)
-      const scheduler = await runNpcTurnScheduler({ campaignId, eventStore, rulesEngine, advanceNpc: true })
+      const scheduler = await runNpcTurnScheduler({ campaignId, eventStore, rulesEngine, npcController, advanceNpc: true })
       const latest = await eventStore.load(campaignId)
       const subsequentEvents = latest.state_version > originalVersion
         ? await eventStore.getEvents(campaignId, { after_version: originalVersion, up_to_version: latest.state_version })
@@ -1886,8 +1897,6 @@ const server = createServer(async (req, res) => {
       if (exceedsRate(`merchant-command:${user.id}`, 120)) {
         return json(res, 429, { error: 'Слишком много торговых операций. Подождите немного и повторите попытку', code: 'MERCHANT_RATE_LIMITED' })
       }
-      const effectiveMode = engineModeResolver.resolve({ user, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Безопасная торговля доступна только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       const body = await readBody(req)
       if (!body.command || typeof body.command !== 'object' || Array.isArray(body.command)) return json(res, 400, { error: 'Нужна одна торговая command' })
       const authoritativeBefore = await latestCampaignState(merchantMatch[1], room.state)
@@ -1938,8 +1947,6 @@ const server = createServer(async (req, res) => {
       const room = getRoom(commandMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
-      const effectiveMode = engineModeResolver.resolve({ user, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Структурированные команды доступны только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       const body = await readBody(req)
       let commands = Array.isArray(body.commands) ? body.commands : body.command ? [body.command] : []
       if (!commands.length) return json(res, 400, { error: 'Нужна command или commands' })
@@ -1965,6 +1972,8 @@ const server = createServer(async (req, res) => {
         throw commandPolicyError('Создание столкновения принимается только endpoint /encounters/assemble', 'ENCOUNTER_LIFECYCLE_ENDPOINT_REQUIRED')
       }
       const merchantCommands = commands.filter((command) => PLAYER_MERCHANT_COMMANDS.has(commandType(command)))
+      const reactionActorId = String(room.state.mechanics?.combat?.reaction_window?.actor_id ?? '')
+      const resolvesReaction = commands.some((command) => commandType(command) === 'UseCombatAction' && String(command.actor_id ?? '') === reactionActorId)
       if (merchantCommands.length) {
         if (exceedsRate(`merchant-command:${user.id}`, 120)) {
           return json(res, 429, { error: 'Слишком много торговых операций. Подождите немного и повторите попытку', code: 'MERCHANT_RATE_LIMITED' })
@@ -1979,8 +1988,8 @@ const server = createServer(async (req, res) => {
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))
         const scheduler = shouldSettleCombat
           ? await runNpcTurnScheduler({
-            campaignId: commandMatch[1], eventStore, rulesEngine,
-            advanceNpc: types.has('StartCombat') || types.has('EndTurn'),
+            campaignId: commandMatch[1], eventStore, rulesEngine, npcController,
+            advanceNpc: types.has('StartCombat') || types.has('EndTurn') || resolvesReaction,
           })
           : { turns: [], events: [] }
         const latest = await eventStore.load(commandMatch[1])
@@ -1997,15 +2006,37 @@ const server = createServer(async (req, res) => {
           npc_turns: scheduler.turns,
         }
       }
-      const narration = result.authoritative_state ? tacticalNarration(result.mechanics, result.authoritative_state) : ''
+      const creativeMoment = result.authoritative_state
+        ? await creativeDirector.renderCriticalMoment({
+          events: result.mechanics,
+          state: result.authoritative_state,
+          viewer: { playerId: actor, partyIds: user.heroIds ?? [], isPartyMember: true, role: user.role },
+        })
+        : null
+      const tacticalLog = result.authoritative_state ? tacticalNarration(result.mechanics, result.authoritative_state) : ''
+      const narration = creativeMoment?.narration || tacticalLog
       const narrationMessageId = narration
         ? combatMessageId(idempotencyKey)
         : merchantCommands.length && result.narration ? merchantMessageId(idempotencyKey) : null
       const journalNarration = narration || (merchantCommands.length ? String(result.narration || '') : '')
-      if (narration) result = { ...result, narration, narration_message_id: narrationMessageId }
+      if (narration) result = {
+        ...result,
+        narration,
+        narration_message_id: narrationMessageId,
+        narration_speaker: creativeMoment ? 'narrator' : 'system',
+        narration_author: creativeMoment ? 'Рассказчик' : 'Система боя',
+        creative_trigger: creativeMoment?.trigger ?? null,
+        creative_provider: creativeMoment?.provider ?? null,
+      }
       else if (journalNarration) result = { ...result, narration_message_id: narrationMessageId }
       const projected = result.authoritative_state
-        ? persistAuthoritativeProjection(commandMatch[1], result.authoritative_state, result.mechanics, journalNarration ? { id: narrationMessageId, text: journalNarration, turnConsumed: types.has('EndTurn') } : null)
+        ? persistAuthoritativeProjection(commandMatch[1], result.authoritative_state, result.mechanics, journalNarration ? {
+          id: narrationMessageId,
+          text: journalNarration,
+          turnConsumed: types.has('EndTurn'),
+          speaker: creativeMoment ? 'narrator' : 'system',
+          author: creativeMoment ? 'Рассказчик' : 'Система боя',
+        } : null)
         : null
       const responseState = projected?.state ?? result.authoritative_state
       const merchantCommand = commands.find((command) => PLAYER_MERCHANT_COMMANDS.has(commandType(command)))
@@ -2073,7 +2104,7 @@ const server = createServer(async (req, res) => {
       if (effectiveMode === 'enforce' && user.role !== 'admin') {
         const authoritative = await eventStore.load(roomMatch[1])
         const actors = new Map((authoritative.state.players ?? []).map((player) => [String(player.id), player]))
-        const presentationFields = ['character', 'name', 'portrait', 'portraitPosition', 'color', 'notes', 'traits', 'ideals', 'bonds', 'flaws', 'backstory', 'online']
+        const presentationFields = ['character', 'name', 'portrait', 'portraitPosition', 'color', 'notes', 'traits', 'ideals', 'bonds', 'flaws', 'backstory', 'online', 'subclass', 'selectedFeatureIds', 'classSkillProficiencies', 'knownSpellIds', 'preparedSpellIds']
         nextState = normalizeCampaignState({
           ...nextState,
           players: nextState.players.map((player) => {

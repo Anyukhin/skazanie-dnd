@@ -21,73 +21,24 @@ export function normalizeEngineMode(value, { source = null, allowEmpty = false }
     if (allowEmpty) return null
     throw new EngineModeError('Режим движка не задан', { source, value })
   }
-
   const normalized = String(value).trim().toLowerCase()
-  if (!ENGINE_MODE_SET.has(normalized)) {
-    throw new EngineModeError(`Неизвестный режим движка: ${normalized}`, { source, value })
-  }
+  if (!ENGINE_MODE_SET.has(normalized)) throw new EngineModeError(`Неизвестный режим движка: ${normalized}`, { source, value })
   return normalized
 }
 
-function firstDefined(...values) {
-  return values.find((value) => value != null && String(value).trim() !== '')
-}
+const firstDefined = (...values) => values.find((value) => value != null && String(value).trim() !== '')
 
 function modeCandidates(context, environment) {
-  const test = firstDefined(
-    context.testMode,
-    context.test_mode,
-    context.testOverride,
-    typeof context.test === 'string' ? context.test : null,
-    context.test?.mode,
-    context.test?.engineMode,
-    context.test?.engine_mode,
-    environment.GAME_ENGINE_TEST_MODE,
-  )
-  const user = firstDefined(
-    context.userMode,
-    context.user_mode,
-    context.userOverride,
-    typeof context.user === 'string' ? context.user : null,
-    context.user?.mode,
-    context.user?.engineMode,
-    context.user?.engine_mode,
-    context.user?.game_engine_mode,
-  )
-  const campaign = firstDefined(
-    context.campaignMode,
-    context.campaign_mode,
-    context.campaignOverride,
-    typeof context.campaign === 'string' ? context.campaign : null,
-    context.campaign?.mode,
-    context.campaign?.engineMode,
-    context.campaign?.engine_mode,
-    context.campaign?.game_engine_mode,
-  )
-  const global = firstDefined(
-    context.globalMode,
-    context.global_mode,
-    context.globalOverride,
-    typeof context.global === 'string' ? context.global : null,
-    context.global?.mode,
-    context.global?.engineMode,
-    context.global?.engine_mode,
-    context.global?.game_engine_mode,
-    environment.GAME_ENGINE_MODE,
-  )
-
   return [
-    ['test', test],
-    ['user', user],
-    ['campaign', campaign],
-    ['global', global],
+    ['test', firstDefined(context.testMode, context.test_mode, context.testOverride, typeof context.test === 'string' ? context.test : null, context.test?.mode, context.test?.engineMode, context.test?.engine_mode, environment.GAME_ENGINE_TEST_MODE)],
+    ['user', firstDefined(context.userMode, context.user_mode, context.userOverride, typeof context.user === 'string' ? context.user : null, context.user?.mode, context.user?.engineMode, context.user?.engine_mode, context.user?.game_engine_mode)],
+    ['campaign', firstDefined(context.campaignMode, context.campaign_mode, context.campaignOverride, typeof context.campaign === 'string' ? context.campaign : null, context.campaign?.mode, context.campaign?.engineMode, context.campaign?.engine_mode, context.campaign?.game_engine_mode)],
+    ['global', firstDefined(context.globalMode, context.global_mode, context.globalOverride, typeof context.global === 'string' ? context.global : null, context.global?.mode, context.global?.engineMode, context.global?.engine_mode, context.global?.game_engine_mode, environment.GAME_ENGINE_MODE)],
   ]
 }
 
-/**
- * Resolves a feature flag without silently accepting a misspelled high-priority
- * override. Precedence is always test > user > campaign > global > legacy.
- */
+/** Kept for importing old snapshots and legacy narration tests. Structured
+ * gameplay commands no longer use this switch: they always use Rules Engine. */
 export function explainEngineMode(context = {}, { env = process.env, defaultMode = 'legacy' } = {}) {
   const environment = env && typeof env === 'object' ? env : {}
   for (const [source, value] of modeCandidates(context ?? {}, environment)) {
@@ -106,12 +57,6 @@ export class EngineModeResolver {
     this.env = env
     this.defaultMode = normalizeEngineMode(defaultMode, { source: 'default' })
   }
-
-  resolve(context = {}) {
-    return resolveEngineMode(context, { env: this.env, defaultMode: this.defaultMode })
-  }
-
-  explain(context = {}) {
-    return explainEngineMode(context, { env: this.env, defaultMode: this.defaultMode })
-  }
+  resolve(context = {}) { return resolveEngineMode(context, { env: this.env, defaultMode: this.defaultMode }) }
+  explain(context = {}) { return explainEngineMode(context, { env: this.env, defaultMode: this.defaultMode }) }
 }

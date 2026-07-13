@@ -198,7 +198,7 @@ test('encounter assembly HTTP endpoint is privileged, strict, idempotent and res
   assertStatus(assigned, 200, log)
 
   let requestBody = {
-    expected_state_version: 0,
+    expected_state_version: created.body.state.state_version,
     difficulty: 'easy',
     theme: 'beasts',
     seed: 'encounter-api-stable-seed',
@@ -207,20 +207,6 @@ test('encounter assembly HTTP endpoint is privileged, strict, idempotent and res
 
   const playerDenied = await assemble(baseUrl, playerCookie, requestBody)
   assertStatus(playerDenied, 403, log)
-
-  const shadowDenied = await assemble(baseUrl, adminCookie, requestBody)
-  assertStatus(shadowDenied, 409, log)
-  assert.equal(shadowDenied.body.code, 'ENGINE_MODE_NOT_ENFORCE')
-
-  const enforced = await request(baseUrl, '/api/campaigns/ENCOUNTER-API/engine-mode', {
-    method: 'PATCH', cookie: adminCookie, body: { mode: 'enforce' },
-  })
-  assertStatus(enforced, 200, log)
-  requestBody = {
-    ...requestBody,
-    expected_state_version: enforced.body.room.state.state_version,
-  }
-  requestBody.expected_state_version = enforced.body.room.state.state_version
 
   const forged = await assemble(baseUrl, adminCookie, {
     ...requestBody,

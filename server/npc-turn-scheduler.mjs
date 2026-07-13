@@ -10,6 +10,7 @@ import {
   shortestTacticalPath,
 } from './rules-engine.mjs'
 import { isPartySummon } from './combat-spells.mjs'
+import { commandsForMoraleDecision, isMoraleMoment } from './npc-controller.mjs'
 
 const CELL_FEET = 5
 
@@ -37,28 +38,94 @@ function gridDistance(left, right) {
   return a && b ? Math.abs(a.x - b.x) + Math.abs(a.y - b.y) : Number.MAX_SAFE_INTEGER
 }
 
-function targetCandidates(state, enemy) {
-  return livingParty(state).map((target) => {
-    const path = shortestTacticalPath(state, actorId(enemy), actorPosition(state, actorId(target)), { allowOccupiedDestination: true })
-    return {
-      actor: target,
-      path,
-      inRange: inAttackRange(state, actorId(enemy), actorId(target)),
-      distance: path ? path.length : gridDistance({ state, id: actorId(enemy) }, { state, id: actorId(target) }),
-    }
-  }).sort((left, right) => Number(right.inRange) - Number(left.inRange)
-    || Number(Boolean(right.path)) - Number(Boolean(left.path))
-    || left.distance - right.distance
-    || actorId(left.actor).localeCompare(actorId(right.actor)))
+function conditionIds(state, id) {
+  return new Set((state.mechanics?.conditions?.[String(id)] ?? []).map((condition) => String(condition?.id ?? condition)))
 }
 
-function inAttackRange(state, attackerId, targetId) {
+function hasTrait(actor, id) {
+  return (Array.isArray(actor?.traits) ? actor.traits : []).some((trait) => String(trait?.id ?? trait) === id)
+}
+
+function actionProfiles(state, enemy) {
+  const explicit = Array.isArray(enemy?.action_profiles) ? enemy.action_profiles : []
+  const spent = conditionIds(state, actorId(enemy))
+  const available = explicit.filter((action) => !(Number(action?.uses) > 0 && spent.has(`monster-action-used:${action.id}`)))
+  if (available.length) return available.map((action) => attackProfileFor(state, actorId(enemy), action.id)).filter(Boolean)
+  const fallback = attackProfileFor(state, actorId(enemy))
+  return fallback ? [fallback] : []
+}
+
+function inAttackRange(state, attackerId, targetId, profile = attackProfileFor(state, attackerId), from = actorPosition(state, attackerId)) {
   const attacker = actorPosition(state, attackerId)
   const target = actorPosition(state, targetId)
-  const profile = attackProfileFor(state, attackerId)
-  if (!attacker || !target || !profile) return false
-  const distance = Math.max(Math.abs(attacker.x - target.x), Math.abs(attacker.y - target.y)) * CELL_FEET
-  return distance >= CELL_FEET && distance <= profile.range_feet && (profile.range_feet <= CELL_FEET || hasClearTrajectory(state, attacker, target))
+  const origin = from ?? attacker
+  if (!origin || !target || !profile) return false
+  const distance = Math.max(Math.abs(origin.x - target.x), Math.abs(origin.y - target.y)) * CELL_FEET
+  return distance >= CELL_FEET && distance <= profile.range_feet && (profile.range_feet <= CELL_FEET || hasClearTrajectory(state, origin, target))
+}
+
+function averageDamage(expression, flat = 0) {
+  const match = String(expression ?? '').match(/^(\d+)d(\d+)([+-]\d+)?$/u)
+  if (!match) return Math.max(0, Number(flat) || 0)
+  return Number(match[1]) * (Number(match[2]) + 1) / 2 + Number(match[3] || 0)
+}
+
+function adjacentEnemyAlly(state, enemy, target) {
+  const targetAt = actorPosition(state, actorId(target))
+  return targetAt && livingEnemies(state).some((ally) => actorId(ally) !== actorId(enemy) && (() => {
+    const at = actorPosition(state, actorId(ally))
+    return at && Math.max(Math.abs(at.x - targetAt.x), Math.abs(at.y - targetAt.y)) === 1
+  })())
+}
+
+function targetCandidates(state, enemy) {
+  const enemyAt = actorPosition(state, actorId(enemy))
+  const profiles = actionProfiles(state, enemy)
+  const candidates = []
+  for (const target of livingParty(state)) {
+    const targetAt = actorPosition(state, actorId(target))
+    const path = shortestTacticalPath(state, actorId(enemy), targetAt, { allowOccupiedDestination: true })
+    const pathDistance = path ? path.length : gridDistance({ state, id: actorId(enemy) }, { state, id: actorId(target) })
+    const support = adjacentEnemyAlly(state, enemy, target)
+    for (const profile of profiles) {
+      const inRange = inAttackRange(state, actorId(enemy), actorId(target), profile)
+      const damage = averageDamage(profile.damage_expression, profile.damage_amount)
+      const targetHp = Math.max(1, Number(target.hp) || 1)
+      const targetArmor = Math.max(0, Number(target.armor) || 10)
+      const alreadyControlled = profile.on_hit?.condition && conditionIds(state, actorId(target)).has(String(profile.on_hit.condition))
+      const controlValue = profile.on_hit?.condition && !alreadyControlled ? 80 + Number(profile.tactical_priority || 0) * 10 : 0
+      const packValue = support && (hasTrait(enemy, 'pack-tactics') || hasTrait(enemy, 'martial-advantage')) ? 90 : 0
+      const rangedAtMeleePenalty = profile.kind === 'ranged' && enemyAt && targetAt && Math.max(Math.abs(enemyAt.x - targetAt.x), Math.abs(enemyAt.y - targetAt.y)) === 1 ? 70 : 0
+      const score = Number(inRange) * 1_000 + Number(Boolean(path)) * 400 + Math.min(300, damage * 12)
+        + (damage >= targetHp ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))
+        + Math.max(0, 22 - targetArmor) * 4 + controlValue + packValue - pathDistance * 3 - rangedAtMeleePenalty
+      candidates.push({ actor: target, path, inRange, distance: pathDistance, profile, score })
+    }
+  }
+  return candidates.sort((left, right) => right.score - left.score
+    || Number(right.inRange) - Number(left.inRange)
+    || left.distance - right.distance
+    || actorId(left.actor).localeCompare(actorId(right.actor))
+    || String(left.profile.id ?? '').localeCompare(String(right.profile.id ?? '')))
+}
+
+function retreatDestination(state, enemy, target, profile) {
+  const from = actorPosition(state, actorId(enemy))
+  const targetAt = actorPosition(state, actorId(target))
+  if (!from || !targetAt) return null
+  const maximumSteps = Math.max(1, Math.floor((Number(enemy.speed) || 30) / CELL_FEET))
+  let best = null
+  for (const cell of state.scene?.cells ?? []) {
+    if (!cell.revealed || !['floor', 'door'].includes(cell.type)) continue
+    const path = shortestTacticalPath(state, actorId(enemy), { x: Number(cell.x), y: Number(cell.y) })
+    if (!path?.length || path.length > maximumSteps) continue
+    const destination = path.at(-1)
+    const distance = Math.max(Math.abs(destination.x - targetAt.x), Math.abs(destination.y - targetAt.y)) * CELL_FEET
+    if (distance > profile.range_feet || distance < CELL_FEET || !hasClearTrajectory(state, destination, targetAt)) continue
+    const score = Math.min(distance, profile.normal_range_feet) * 10 + path.length
+    if (!best || score > best.score) best = { score, destination }
+  }
+  return best?.destination ?? null
 }
 
 export function planNpcTurn(rawState, enemyId) {
@@ -69,23 +136,34 @@ export function planNpcTurn(rawState, enemyId) {
   if (!candidate) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
   const targetId = actorId(candidate.actor)
   const commands = []
-  if (!inAttackRange(state, enemyId, targetId) && candidate.path?.length) {
-    const profile = attackProfileFor(state, enemyId)
+  const profile = candidate.profile
+  const enemyAt = actorPosition(state, enemyId)
+  const targetAt = actorPosition(state, targetId)
+  const adjacent = enemyAt && targetAt && Math.max(Math.abs(enemyAt.x - targetAt.x), Math.abs(enemyAt.y - targetAt.y)) === 1
+  if (candidate.inRange && profile.kind === 'ranged' && adjacent && hasTrait(enemy, 'nimble-escape')) {
+    const retreat = retreatDestination(state, enemy, candidate.actor, profile)
+    if (retreat) {
+      commands.push({ command_type: 'AddCondition', actor_id: String(enemyId), target_id: String(enemyId), condition: 'disengaged', duration: 'until-next-turn', monster_ability: 'nimble-escape' })
+      commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: retreat })
+      commands.push({ command_type: 'MakeAttack', actor_id: String(enemyId), target_id: targetId, action_id: profile.id })
+    }
+  } else if (!candidate.inRange && candidate.path?.length) {
     const rangeCells = Math.max(1, Math.floor((profile?.range_feet ?? CELL_FEET) / CELL_FEET))
     const speed = Number(enemy.speed)
-    const maximumSteps = Math.max(0, Math.floor((Number.isFinite(speed) ? speed : 30) / CELL_FEET))
+    const normalSteps = Math.max(0, Math.floor((Number.isFinite(speed) ? speed : 30) / CELL_FEET))
+    const needsAggressive = hasTrait(enemy, 'aggressive') && candidate.path.length - rangeCells > normalSteps
+    const maximumSteps = needsAggressive ? normalSteps * 2 : normalSteps
     const steps = Math.min(maximumSteps, Math.max(0, candidate.path.length - rangeCells))
-    if (steps > 0) commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: candidate.path[steps - 1] })
+    if (steps > 0) commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: candidate.path[steps - 1], ...(needsAggressive ? { monster_ability: 'aggressive' } : {}) })
     const destination = steps > 0 ? candidate.path[steps - 1] : actorPosition(state, enemyId)
-    const targetAt = actorPosition(state, targetId)
     const distanceAfterMove = destination && targetAt
       ? Math.max(Math.abs(destination.x - targetAt.x), Math.abs(destination.y - targetAt.y)) * CELL_FEET
       : Number.MAX_SAFE_INTEGER
-    if (profile && distanceAfterMove >= CELL_FEET && distanceAfterMove <= profile.range_feet) {
-      commands.push({ command_type: 'MakeAttack', actor_id: String(enemyId), target_id: targetId })
+    if (profile && distanceAfterMove >= CELL_FEET && distanceAfterMove <= profile.range_feet && (profile.range_feet <= CELL_FEET || hasClearTrajectory(state, destination, targetAt))) {
+      commands.push({ command_type: 'MakeAttack', actor_id: String(enemyId), target_id: targetId, action_id: profile.id })
     }
-  } else if (inAttackRange(state, enemyId, targetId)) {
-    commands.push({ command_type: 'MakeAttack', actor_id: String(enemyId), target_id: targetId })
+  } else if (candidate.inRange) {
+    commands.push({ command_type: 'MakeAttack', actor_id: String(enemyId), target_id: targetId, ...(profile?.id ? { action_id: profile.id } : {}) })
   }
   commands.push({ command_type: 'EndTurn', actor_id: String(enemyId) })
   return commands
@@ -121,14 +199,15 @@ async function commitPlan({ campaignId, eventStore, rulesEngine, loaded, command
 }
 
 /**
- * Advances only server-owned actors. Decisions are deterministic for a given
- * state; dice remain server-generated. Every turn is a separately idempotent
- * event-store commit and the loop is hard-bounded.
+ * Advances only server-owned actors. Ordinary tactics are deterministic. A
+ * bounded creative controller may be consulted once when an enemy reaches a
+ * morale threshold; the server converts its intent into validated commands.
  */
 export async function runNpcTurnScheduler({
   campaignId,
   eventStore,
   rulesEngine,
+  npcController = null,
   advanceNpc = true,
   maxTurns = 64,
 } = {}) {
@@ -141,6 +220,7 @@ export async function runNpcTurnScheduler({
     const state = normalizeCampaignState(loaded.state)
     const combat = state.mechanics.combat
     if (!combat.active) return { state: state, state_version: loaded.state_version, turns, events }
+    if (combat.reaction_window) return { state, state_version: loaded.state_version, turns, events }
     const currentId = String(combat.initiative[combat.active_index]?.actor_id ?? '')
     const party = livingParty(state)
     const enemies = livingEnemies(state)
@@ -166,10 +246,17 @@ export async function runNpcTurnScheduler({
       return { state: loaded.state, state_version: loaded.state_version, turns, events }
     }
     if (!current) throw new RulesValidationError('Initiative references an unknown actor', 'INVALID_COMBAT_STATE')
-    const commands = current && isLivingActor(current) && isEnemyActor(state, currentId)
+    const ordinaryCommands = current && isLivingActor(current) && isEnemyActor(state, currentId)
       ? planNpcTurn(state, currentId)
       : [{ command_type: 'EndTurn', actor_id: currentId }]
-    const key = schedulerKey(campaignId, combat, currentId, isLivingActor(current) ? 'turn' : 'skip')
+    const creativeDecision = npcController && isMoraleMoment(state, currentId)
+      ? await npcController.decide({ state, enemyId: currentId })
+      : null
+    const commands = creativeDecision
+      ? commandsForMoraleDecision(state, currentId, creativeDecision, ordinaryCommands)
+      : ordinaryCommands
+    const suffix = creativeDecision ? `morale-${creativeDecision.disposition}` : isLivingActor(current) ? 'turn' : 'skip'
+    const key = schedulerKey(campaignId, combat, currentId, suffix)
     const { committed } = await commitPlan({ campaignId, eventStore, rulesEngine, loaded, commands, key })
     events.push(...committed.events)
     turns.push({
@@ -178,6 +265,11 @@ export async function runNpcTurnScheduler({
       active_index: combat.active_index,
       kind: isLivingActor(current) ? 'enemy-turn' : 'skipped-defeated',
       commands: commands.map((command) => command.command_type),
+      creative_decision: creativeDecision ? {
+        disposition: creativeDecision.disposition,
+        reaction: creativeDecision.reaction,
+        provider: creativeDecision.provider,
+      } : null,
       idempotency_key: key,
       state_version: committed.state_version,
     })

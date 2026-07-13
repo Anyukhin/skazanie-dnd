@@ -113,6 +113,17 @@ function deterministicReplayNarration(brief, knownRuleIds) {
   }
 }
 
+function deterministicMechanicsNarration(brief, knownRuleIds) {
+  const fallback = deterministicNarration(brief)
+  return {
+    ...fallback,
+    suggestions: [],
+    verification: verifyNarration(fallback.narration, brief, { knownRuleIds }),
+    prompt_version: 'mechanics-log/v1',
+    provider: 'deterministic-mechanics',
+  }
+}
+
 function deterministicMerchantNarration(events, state, brief, knownRuleIds) {
   const narration = merchantNarration(events, state) ?? deterministicNarration(brief).narration
   return {
@@ -237,9 +248,13 @@ export class GameOrchestrator {
     const turnId = Array.isArray(input.commands)
       ? structuredCommandTurnId(campaignId, idempotencyKey)
       : this.idFactory()
-    const mode = typeof this.modeResolver === 'function'
+    const configuredMode = typeof this.modeResolver === 'function'
       ? this.modeResolver(input)
       : this.modeResolver.resolve({ testMode: input.testMode, user: input.user, campaign: { ...originalState, ...(input.campaign ?? {}) } })
+    // Structured actions are the one canonical gameplay path. The old mode
+    // resolver remains only for importing snapshots and legacy free-form
+    // narration; buttons/API commands always commit authoritative events.
+    const mode = Array.isArray(input.commands) ? 'enforce' : configuredMode
 
     if (message === '/why' || input.why === true) {
       const explanation = this.explanation(campaignId, input.turnId ?? input.turn_id)
@@ -345,6 +360,10 @@ export class GameOrchestrator {
         : hasEncounterEvent(committedEvents)
           ? deterministicEncounterNarration(committedEvents, brief, resolvedRuleIds)
           : deterministicReplayNarration(brief, resolvedRuleIds)
+    const structuredMechanics = Array.isArray(input.commands)
+      && !hasSceneEvent(committedEvents)
+      && !hasMerchantEvent(committedEvents)
+      && !hasEncounterEvent(committedEvents)
     const narration = idempotentReplay
       ? cachedNarration(replayTrace, brief, resolvedRuleIds) ?? replayFallback
       : hasSceneEvent(committedEvents)
@@ -353,7 +372,9 @@ export class GameOrchestrator {
           ? deterministicMerchantNarration(committedEvents, committed.state, brief, resolvedRuleIds)
           : hasEncounterEvent(committedEvents)
             ? deterministicEncounterNarration(committedEvents, brief, resolvedRuleIds)
-            : await this.narrator.render(brief, { knownRuleIds: resolvedRuleIds })
+            : structuredMechanics
+              ? deterministicMechanicsNarration(brief, resolvedRuleIds)
+              : await this.narrator.render(brief, { knownRuleIds: resolvedRuleIds })
     const response = {
       narration: narration.narration,
       suggestions: narration.suggestions,

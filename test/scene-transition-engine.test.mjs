@@ -263,7 +263,7 @@ test('SceneAdvanced reducer очищает старую сцену, размещ
   assert.deepEqual(next.enemies, [])
   assert.deepEqual(next.entities, [])
   assert.deepEqual(next.mapFeedback, [])
-  assert.deepEqual(next.mechanics.combat, { active: false, round: 0, initiative: [], active_index: -1, action_economy: {} })
+  assert.deepEqual(next.mechanics.combat, { active: false, round: 0, initiative: [], active_index: -1, action_economy: {}, reaction_window: null })
   assert.equal(next.tacticalTurn, undefined)
   assert.equal(next.agentInteraction, null)
   assert.deepEqual(next.suggestions, result.events[0].payload.suggestions)
