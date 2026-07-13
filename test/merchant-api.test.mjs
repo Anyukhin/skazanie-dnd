@@ -162,6 +162,14 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   const user = users.body.users.find((candidate) => candidate.email === 'player@merchant.test')
   const assigned = await request(baseUrl, `/api/admin/users/${user.id}`, { method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero'] } })
   assertStatus(assigned, 200, log)
+  const adminRoom = await request(baseUrl, '/api/rooms/SHOP-HTTP', { cookie: adminCookie })
+  assertStatus(adminRoom, 200, log)
+  const adminEditedState = structuredClone(adminRoom.body.state)
+  adminEditedState.players[0].currency.gold = 101
+  adminEditedState.players[0].abilities.str = 16
+  adminEditedState.players[0].inventory[0].combat = { kind: 'melee', ability: 'dex', damage: '1d4', damageType: 'piercing', normalRange: 5 }
+  const adminEdited = await request(baseUrl, '/api/rooms/SHOP-HTTP', { method: 'PUT', cookie: adminCookie, body: { state: adminEditedState, baseVersion: adminRoom.body.version } })
+  assertStatus(adminEdited, 200, log)
   const initialView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
   assertStatus(initialView, 200, log)
   const foreignView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'foreign', playerCookie)
@@ -178,6 +186,7 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   assert.equal(initialCustomQuote.can_sell, false)
   assert.equal(initialCustomQuote.appraisal_required, true)
   assert.equal(initialCustomQuote.can_appraise, true)
+  assert.equal(initialView.body.merchant_view.balance_cp, 10_100)
   assert.doesNotMatch(JSON.stringify(initialView.body), /GM_ONLY_/u)
 
   const roomBeforeTamper = await request(baseUrl, '/api/rooms/SHOP-HTTP', { cookie: playerCookie })
@@ -193,7 +202,7 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   tampered.economyLog = [{ id: 'forged-log', totalPriceCp: 0 }]
   const tamperResult = await request(baseUrl, '/api/rooms/SHOP-HTTP', { method: 'PUT', cookie: playerCookie, body: { state: tampered, baseVersion: roomBeforeTamper.body.version } })
   assertStatus(tamperResult, 200, log)
-  assert.equal(totalCp(tamperResult.body.state.players[0].currency), 10_000)
+  assert.equal(totalCp(tamperResult.body.state.players[0].currency), 10_100)
   assert.equal(tamperResult.body.state.players[0].inventory[0].id, 'hero-dagger')
   assert.equal(tamperResult.body.state.players[0].abilities.cha, 16)
   assert.equal(tamperResult.body.state.players[0].skills.persuasion_bonus, 2)
@@ -215,7 +224,7 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   assertStatus(fresh, 200, log)
   const afterRaceBalance = fresh.body.merchant_view.balance_cp
   const winnerCost = businessEvent(raceWinner.body, 'MerchantPurchaseCompleted').payload.total_price_cp
-  assert.equal(afterRaceBalance, 10_000 - winnerCost)
+  assert.equal(afterRaceBalance, 10_100 - winnerCost)
 
   const insufficient = await merchantCommand(baseUrl, 'SHOP-HTTP', 'marten.shop', playerCookie, 'insufficient-funds', {
     command_type: 'BuyItem', actor_id: 'hero', stock_id: 'potion', quantity: 2,
@@ -281,6 +290,8 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   assert.ok(Number.isInteger(bargain.payload.natural_roll) && bargain.payload.natural_roll >= 1 && bargain.payload.natural_roll <= 20)
   assert.equal(bargain.payload.modifier, 5)
   assert.equal(bargain.payload.difficulty, 15)
+  assert.equal(bargained.body.authoritative_state.scene.location, 'рыночная площадь')
+  assert.equal(bargained.body.authoritative_state.merchants[0].id, 'marten.shop')
   const stateAfterBargain = bargained.body.merchant_view
   const staleBuy = await merchantCommand(baseUrl, 'SHOP-HTTP', 'marten.shop', playerCookie, 'stale-buy-must-fail', {
     command_type: 'BuyItem', actor_id: 'hero', stock_id: 'rope', quantity: 1, expected_state_version: staleVersion,

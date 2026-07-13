@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 import {
+  FallbackLLMClient,
   FakeLLM,
   LLMResponseError,
   LLMTimeoutError,
@@ -214,6 +215,42 @@ test('RouterAI adapter sends bounded JSON request and parses structured response
   assert.match(captured.url, /\/chat\/completions$/)
   assert.equal(captured.options.headers.Authorization, 'Bearer test-key')
   assert.deepEqual(captured.body.response_format, { type: 'json_object' })
+})
+
+test('RouterAI adapter forwards per-model reasoning policy', async () => {
+  let capturedBody
+  const client = new RouterAIClient({
+    apiKey: 'test-key', model: 'reasoning-model', reasoning: { enabled: false },
+    fetchImpl: async (_url, options) => {
+      capturedBody = JSON.parse(options.body)
+      return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { role: 'assistant', content: '{"ok":true}' } }] }) }
+    },
+  })
+  await client.completeJson({ messages })
+  assert.deepEqual(capturedBody.reasoning, { enabled: false })
+})
+
+test('fallback cascade switches models on timeout and observes cooldown', async () => {
+  const calls = []
+  const primary = { model: 'primary', async complete() { calls.push('primary'); throw new LLMTimeoutError(10) } }
+  const secondary = { model: 'secondary', async complete() { calls.push('secondary'); return { role: 'assistant', content: 'A complete usable response.', tool_calls: [], model: 'secondary' } } }
+  const cascade = new FallbackLLMClient({ clients: [primary, secondary], failureCooldownMs: 1000, now: () => 100 })
+  const first = await cascade.complete({ messages })
+  const second = await cascade.complete({ messages })
+  assert.equal(first.model, 'secondary')
+  assert.equal(first.fallback_used, true)
+  assert.deepEqual(first.fallback_attempts, [{ model: 'primary', code: 'LLM_TIMEOUT' }])
+  assert.equal(second.fallback_used, false)
+  assert.deepEqual(calls, ['primary', 'secondary', 'secondary'])
+})
+
+test('fallback cascade rejects a formally successful but unusable model response', async () => {
+  const primary = { model: 'empty-model', async complete() { return { role: 'assistant', content: 'no', tool_calls: [], model: 'empty-model' } } }
+  const secondary = { model: 'answering-model', async complete() { return { role: 'assistant', content: 'The fallback gives a useful answer.', tool_calls: [], model: 'answering-model' } } }
+  const cascade = new FallbackLLMClient({ clients: [primary, secondary] })
+  const result = await cascade.complete({ messages, validateResponse: (response) => response.content.length >= 20 })
+  assert.equal(result.model, 'answering-model')
+  assert.deepEqual(result.fallback_attempts, [{ model: 'empty-model', code: 'LLM_RESPONSE_INVALID' }])
 })
 
 test('RouterAI adapter accepts a single fenced transport envelope but keeps strict inner JSON', async () => {

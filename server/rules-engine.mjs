@@ -4520,7 +4520,10 @@ export function applyGameEvent(rawState, event) {
         source_rule_ids: event.source_rule_ids ?? [],
       })
       state.mechanics.conditions[target] = current
-      if (condition === 'fled' || condition === 'surrendered') {
+      const pendingFleeReaction = condition === 'fled'
+        && state.mechanics.combat.reaction_window?.trigger === 'enemy-left-reach'
+        && String(state.mechanics.combat.reaction_window?.source_actor_id ?? '') === target
+      if ((condition === 'fled' && !pendingFleeReaction) || condition === 'surrendered') {
         replaceActor(state, target, (actor) => ({ ...actor, alive: false }))
       }
       if (condition === 'no-reactions' && state.mechanics.combat.active) {
@@ -4796,9 +4799,19 @@ export function applyGameEvent(rawState, event) {
     case 'ReactionWindowOpened':
       state.mechanics.combat.reaction_window = clone(payload)
       break
-    case 'ReactionWindowClosed':
-      if (!payload.id || String(state.mechanics.combat.reaction_window?.id ?? '') === String(payload.id)) state.mechanics.combat.reaction_window = null
+    case 'ReactionWindowClosed': {
+      const reactionWindow = state.mechanics.combat.reaction_window
+      if (!payload.id || String(reactionWindow?.id ?? '') === String(payload.id)) {
+        const fleeingActorId = reactionWindow?.trigger === 'enemy-left-reach'
+          ? String(reactionWindow.source_actor_id ?? '')
+          : ''
+        if (fleeingActorId && conditionIdsFor(state, fleeingActorId).has('fled')) {
+          replaceActor(state, fleeingActorId, (actor) => ({ ...actor, alive: false }))
+        }
+        state.mechanics.combat.reaction_window = null
+      }
       break
+    }
     case 'ReactionDamageReduced':
       replaceActor(state, target, (actor) => ({ ...actor, hp: Math.min(actorMaxHp(actor), Math.max(0, safeInteger(payload.hp_after, actorHp(actor)))) }))
       if (payload.temporary_hp_after != null) state.mechanics.temporary_hp[target] = Math.max(0, safeInteger(payload.temporary_hp_after, 0))

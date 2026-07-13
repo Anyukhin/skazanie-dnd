@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
+import { withStarterKit } from './starter-kit.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v1.txt', import.meta.url)), 'utf8')
 
@@ -194,7 +195,7 @@ export class CampaignBootstrapper {
     const groupName = clean(partyName, 120) || 'Новый отряд'
     if (!/^[A-Z0-9-]{3,24}$/.test(campaignCode)) throw new Error('Некорректный код кампании')
     if (!Array.isArray(rawPlayers) || rawPlayers.length < 1 || rawPlayers.length > 12) throw new Error('Для новой кампании выберите от 1 до 12 героев')
-    const heroes = rawPlayers.map(normalizeHero)
+    const heroes = rawPlayers.map(normalizeHero).map(withStarterKit)
     if (new Set(heroes.map((hero) => hero.id)).size !== heroes.length) throw new Error('В кампании повторяются id героев')
     const world = normalizeWorld(rawWorld)
     const fallback = fallbackOpening({ name: campaignName, partyName: groupName, world, heroes, entropy: campaignCode })

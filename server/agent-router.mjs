@@ -10,6 +10,7 @@ export const AGENT_ROLES = Object.freeze({
 
 const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
 const DIRECTOR_REQUEST = /(?:покида|уходим|маршрут|куда\s+дальше|голосован|вместе\s+реш|цель\s+достиг|следующ\w*\s+локац|\[РЕШЕНИЕ ГРУППЫ\])/iu
+const DIRECTION_REQUEST = /(?:куда\s+(?:нам\s+)?(?:идти|пойти|уходить|направляться|двигаться)(?:\s+дальше|\s+отсюда|\s+по\s+заданию)?|куда\s+по\s+заданию|что\s+делать\s+дальше)/iu
 const FATE_REQUEST = /(?:пусть|пускай|давайте|может)\s+(?:решит|определит|бросим)\s+(?:кубик|кость)|кубик\s+судьбы/iu
 const RULES_REQUEST = /(?:правил|можно\s+ли|провер|брос|куб|атак|урон|заклин|спасброс|инициатив|класс\s+брони)/iu
 const EXIT_REQUEST = /(?:предлагаю\s+)?(?:покинуть|уйти\s+из|выбраться\s+из|уходим\s+из)\s+(?:этого\s+)?(?:подземель\w*|локац\w*|мест\w*|город\w*|деревн\w*|лес\w*|чащ\w*|порт\w*|замок\w*|лагер\w*|храм\w*|пещер\w*|руин\w*|архив\w*|здани\w*|район\w*|улиц\w*)/iu
@@ -59,9 +60,27 @@ export function proposeAgentInteraction(action, state = {}) {
 }
 
 export function answerKnownLore(action, state = {}) {
-  if (selectAgentRole(action) !== 'worldkeeper') return null
+  const asksDirection = DIRECTION_REQUEST.test(String(action || '').normalize('NFKC'))
+  if (!asksDirection && selectAgentRole(action) !== 'worldkeeper') return null
   const adventure = state.adventure ?? {}
   const scene = state.scene ?? {}
+  if (asksDirection) {
+    const location = String(scene.location || scene.title || 'текущая локация')
+    const objective = String(scene.objective || adventure.currentHook || '').trim()
+    const hasNamedDestination = /(?:отправиться|путь|дорога|маршрут|следовать|идти)\s+(?:в|на|к)\s+[^,.!?;:]+/iu.test(objective)
+    const narration = hasNamedDestination
+      ? `Из подтверждённых сведений направление связано с текущей задачей: ${objective}. Сейчас отряд находится здесь: ${location}.`
+      : `Подтверждённый пункт назначения пока не открыт. Текущая задача: ${objective || 'исследовать обстановку и найти новую зацепку'}. Отряд находится здесь: ${location}. Сначала нужно осмотреть место, поговорить со свидетелями или найти запись, которая откроет конкретный маршрут.`
+    return {
+      narration,
+      suggestions: hasNamedDestination ? [`Следовать задаче: ${objective}`.slice(0, 120), 'Уточнить безопасный маршрут'] : ['Осмотреть место в поисках зацепки', 'Расспросить свидетеля о маршруте'],
+      effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
+      provider: 'AgentWorldkeeper',
+      model: 'campaign-memory',
+      turn_consumed: false,
+      action_kind: 'free',
+    }
+  }
   const facts = []
   if (adventure.currentHook) facts.push(String(adventure.currentHook))
   if (scene.objective) facts.push('Сейчас с этим связана цель: ' + String(scene.objective))

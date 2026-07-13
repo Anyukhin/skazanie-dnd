@@ -178,6 +178,7 @@ function normalizeAssistantMessage(message, request, defaults) {
   })
   const content = message.content == null ? '' : typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
   const normalized = { role: 'assistant', content, tool_calls: toolCalls }
+  if (!content.trim() && !toolCalls.length) throw new LLMResponseError('LLM returned an empty assistant response', 'LLM_RESPONSE_INVALID')
   if (wantsJson(request)) normalized.json = strictJsonParse(content, { label: 'JSON content', expected: request.jsonExpected ?? 'object' })
   return normalized
 }
@@ -237,6 +238,7 @@ export class RouterAIClient extends LLMClient {
     baseUrl = process.env.ROUTERAI_BASE_URL ?? 'https://routerai.ru/api/v1',
     model = process.env.DND_AI_MODEL ?? 'qwen/qwen3.7-plus',
     maxTokens = Number(process.env.DND_AI_MAX_TOKENS) || 1200,
+    reasoning = null,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxToolCalls = DEFAULT_MAX_TOOL_CALLS,
     maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
@@ -248,6 +250,7 @@ export class RouterAIClient extends LLMClient {
     this.baseUrl = String(baseUrl).replace(/\/$/, '')
     this.model = String(model)
     this.maxTokens = positiveInteger(maxTokens, 1200, 'maxTokens')
+    this.reasoning = reasoning && typeof reasoning === 'object' ? { ...reasoning } : null
     this.timeoutMs = positiveInteger(timeoutMs, DEFAULT_TIMEOUT_MS, 'timeoutMs')
     this.maxToolCalls = positiveInteger(maxToolCalls, DEFAULT_MAX_TOOL_CALLS, 'maxToolCalls')
     this.maxResponseBytes = positiveInteger(maxResponseBytes, DEFAULT_MAX_RESPONSE_BYTES, 'maxResponseBytes')
@@ -269,6 +272,8 @@ export class RouterAIClient extends LLMClient {
       body.tools = request.tools
       body.tool_choice = request.toolChoice ?? request.tool_choice ?? 'auto'
     }
+    const reasoning = request.reasoning && typeof request.reasoning === 'object' ? request.reasoning : this.reasoning
+    if (reasoning) body.reasoning = reasoning
     if (wantsJson(request)) body.response_format = { type: 'json_object' }
 
     try {
@@ -295,6 +300,134 @@ export class RouterAIClient extends LLMClient {
   async completeJson(input, options = {}) {
     const result = await this.complete(input, { ...options, json: true })
     return result.json
+  }
+}
+
+export class FallbackLLMClient extends LLMClient {
+  constructor({
+    clients = [],
+    failureCooldownMs = 120_000,
+    probeTimeoutMs = 8_000,
+    now = () => Date.now(),
+  } = {}) {
+    super()
+    if (!Array.isArray(clients) || !clients.length || clients.some((client) => !client || typeof client.complete !== 'function')) {
+      throw new TypeError('FallbackLLMClient requires at least one LLM client')
+    }
+    this.clients = [...clients]
+    this.model = String(this.clients[0].model ?? 'fallback-cascade')
+    this.models = this.clients.map((client) => String(client.model ?? 'unknown-model'))
+    this.failureCooldownMs = positiveInteger(failureCooldownMs, 120_000, 'failureCooldownMs')
+    this.probeTimeoutMs = positiveInteger(probeTimeoutMs, 8_000, 'probeTimeoutMs')
+    this.now = now
+    this.statuses = new Map(this.models.map((model) => [model, {
+      model,
+      state: 'unknown',
+      failures: 0,
+      disabledUntil: 0,
+      lastErrorCode: null,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+    }]))
+  }
+
+  _status(client) {
+    return this.statuses.get(String(client.model ?? 'unknown-model'))
+  }
+
+  _markSuccess(client) {
+    const status = this._status(client)
+    Object.assign(status, {
+      state: 'ready', failures: 0, disabledUntil: 0, lastErrorCode: null, lastSuccessAt: this.now(),
+    })
+  }
+
+  _markFailure(client, error) {
+    const status = this._status(client)
+    Object.assign(status, {
+      state: 'cooldown',
+      failures: status.failures + 1,
+      disabledUntil: this.now() + this.failureCooldownMs,
+      lastErrorCode: String(error?.code ?? error?.name ?? 'LLM_ERROR').slice(0, 80),
+      lastFailureAt: this.now(),
+    })
+  }
+
+  _retryable(error) {
+    if (error instanceof LLMResponseError || error instanceof LLMTimeoutError) return true
+    if (!(error instanceof LLMError)) return false
+    if (['LLM_ABORTED', 'LLM_NOT_CONFIGURED'].includes(error.code)) return false
+    if (error.code === 'LLM_PROVIDER_ERROR' && [401, 402].includes(Number(error.status))) return false
+    return ['LLM_PROVIDER_ERROR', 'LLM_PROVIDER_UNAVAILABLE', 'LLM_RESPONSE_INVALID', 'LLM_JSON_INVALID', 'LLM_RESPONSE_TOO_LARGE'].includes(error.code)
+  }
+
+  _candidates() {
+    const now = this.now()
+    const ready = this.clients.filter((client) => this._status(client).disabledUntil <= now)
+    return ready.length ? ready : [...this.clients].sort((left, right) => this._status(left).disabledUntil - this._status(right).disabledUntil)
+  }
+
+  async complete(input, options = {}) {
+    const validateResponse = options.validateResponse ?? (input && !Array.isArray(input) ? input.validateResponse : null)
+    const attempts = []
+    for (const client of this._candidates()) {
+      try {
+        const result = await client.complete(input, options)
+        if (typeof validateResponse === 'function' && await validateResponse(result) === false) {
+          throw new LLMResponseError(`Model ${client.model} returned an unusable response`, 'LLM_RESPONSE_INVALID')
+        }
+        this._markSuccess(client)
+        return { ...result, fallback_attempts: attempts, fallback_used: attempts.length > 0 }
+      } catch (error) {
+        if (!this._retryable(error)) throw error
+        this._markFailure(client, error)
+        attempts.push({ model: String(client.model ?? 'unknown-model'), code: String(error?.code ?? error?.name ?? 'LLM_ERROR') })
+      }
+    }
+    throw new LLMError('All configured RouterAI models failed', 'LLM_FALLBACK_EXHAUSTED', { attempts })
+  }
+
+  async completeJson(input, options = {}) {
+    const result = await this.complete(input, { ...options, json: true })
+    return result.json
+  }
+
+  async probe() {
+    for (const client of this.clients) {
+      try {
+        const result = await client.complete({
+          messages: [
+            { role: 'system', content: 'Return only a JSON object with {"ok":true}.' },
+            { role: 'user', content: 'Health check.' },
+          ],
+          json: true,
+          jsonExpected: 'object',
+          temperature: 0,
+          maxTokens: 128,
+          timeoutMs: this.probeTimeoutMs,
+        })
+        if (result.json?.ok !== true) throw new LLMResponseError('Model health check returned invalid JSON', 'LLM_PROBE_INVALID')
+        this._markSuccess(client)
+      } catch (error) {
+        this._markFailure(client, error)
+      }
+    }
+    return this.health()
+  }
+
+  health() {
+    const now = this.now()
+    return this.models.map((model, index) => {
+      const status = this.statuses.get(model)
+      return {
+        model,
+        primary: index === 0,
+        state: status.disabledUntil > now ? 'cooldown' : status.state === 'cooldown' ? 'retry-ready' : status.state,
+        failures: status.failures,
+        last_error_code: status.lastErrorCode,
+        retry_after_ms: Math.max(0, status.disabledUntil - now),
+      }
+    })
   }
 }
 

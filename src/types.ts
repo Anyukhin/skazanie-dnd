@@ -832,6 +832,15 @@ export type AiHealth = {
   configured: boolean
   provider: string
   model: string
+  fallbackModels?: string[]
+  models?: Array<{
+    model: string
+    primary: boolean
+    state: 'unknown' | 'ready' | 'cooldown' | 'retry-ready'
+    failures: number
+    last_error_code: string | null
+    retry_after_ms: number
+  }>
   imageModel?: string
   tools: string[]
   engineMode?: 'legacy' | 'shadow' | 'enforce'

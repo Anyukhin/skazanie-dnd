@@ -1437,6 +1437,7 @@ function GameApp({ account, onLogout }: { account: Account; onLogout: () => void
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null)
   const [uiScale, setUiScale] = useState(loadUiScale)
   const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') !== 'false')
+  const combatWasActive = useRef(false)
   const isAdmin = account.role === 'admin'
   const partyIdSet = new Set(state.partyMemberIds?.length ? state.partyMemberIds : state.players.map((player) => player.id))
   const partyPlayers = state.players.filter((player) => partyIdSet.has(player.id))
@@ -1448,6 +1449,11 @@ function GameApp({ account, onLogout }: { account: Account; onLogout: () => void
     window.localStorage.setItem(UI_SCALE_KEY, String(uiScale))
   }, [uiScale])
   useEffect(() => { window.localStorage.setItem('skazanie-auto-attack-roll', String(autoAttackRoll)) }, [autoAttackRoll])
+  useEffect(() => {
+    const combatActive = Boolean(state.mechanics?.combat?.active)
+    if (combatActive && !combatWasActive.current) setChatOpen(false)
+    combatWasActive.current = combatActive
+  }, [state.mechanics?.combat?.active])
   useEffect(() => {
     if (!accessibleHeroIds.includes(selectedHeroId)) setSelectedHeroId(accessibleHeroIds[0])
   }, [state.sessionCode, state.partyMemberIds?.join(',')])
@@ -1504,7 +1510,7 @@ function GameApp({ account, onLogout }: { account: Account; onLogout: () => void
         {view === 'room' && <div className="game-area">
           <SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} onReset={reset} />
           <DungeonMap state={state} players={partyPlayers} turnActorId={mapActorId} canAct={canAct} tacticalBusy={tacticalBusy} tacticalError={tacticalError} autoAttackRoll={autoAttackRoll} onClearTacticalError={clearTacticalError} onStartCombat={() => startCombat(activePlayer.id)} onMove={movePlayer} onAttack={attackEnemy} onAreaAttack={throwAreaItem} onCastSpell={castSpell} onUseCombatAction={useCombatAction} onChangeWeapon={changeWeapon} onFinishTurn={finishMapTurn} />
-          <DiceTray latestRoll={state.lastDiceRoll} onRoll={() => rollFreeDie(activePlayer.id)} />
+          <DiceTray key={state.sessionCode} latestRoll={state.lastDiceRoll} onRoll={() => rollFreeDie(activePlayer.id)} />
           <div className={`turn-indicator ${combatActive ? 'combat' : 'exploration'}`}><span>{combatActive ? turnEnemy ? 'ХОД ПРОТИВНИКА' : turnSummon ? 'ХОД ПРИЗЫВА' : 'ХОД ИГРОКА' : 'РЕЖИМ ИССЛЕДОВАНИЯ'}</span><strong>{combatActive ? turnActorName : activePlayer.character}</strong><i /></div>
           <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
           <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} canFinishTurn={canFinishTurn} turnName={turnActorName} onSend={submitAction} onFinishTurn={finishMapTurn} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} open={chatOpen} onToggle={() => setChatOpen(value => !value)} suggestions={state.suggestions} />

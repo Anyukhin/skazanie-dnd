@@ -9,7 +9,7 @@ import { DiceService } from './dice-service.mjs'
 import { EngineModeResolver } from './engine-mode.mjs'
 import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
-import { RouterAIClient } from './llm-client.mjs'
+import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { Narrator } from './narrator.mjs'
 import { CreativeDirector } from './creative-director.mjs'
 import { NpcControllerAgent } from './npc-controller.mjs'
@@ -26,7 +26,7 @@ import { decideTurnConsumption, isExplicitEndTurn } from './turn-policy.mjs'
 import { answerKnownLore, proposeAgentInteraction, resolvePartyDecision, roleAllowsWorldTools, selectAgentRole } from './agent-router.mjs'
 import { applyHazardEffects, createHazardEffect, createHazardResolution } from './persistent-hazards.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
-import { MAX_CURRENCY_CP, merchantIsAtLocation, merchantViewFor, publicMerchantFor } from './merchant-economy.mjs'
+import { MAX_CURRENCY_CP, merchantIsAtLocation, merchantViewFor } from './merchant-economy.mjs'
 import { assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnResultForViewer } from './viewer-projection.mjs'
@@ -45,7 +45,12 @@ const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
 const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').replace(/\/$/, '')
 const model = process.env.DND_AI_MODEL || 'qwen/qwen3.7-plus'
+const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'z-ai/glm-5.2,deepseek/deepseek-v4-flash,google/gemini-2.5-flash-lite,openai/gpt-4.1-nano')
+  .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
+const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
+const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)
+const modelFailureCooldownMs = Number(process.env.DND_AI_FAILURE_COOLDOWN_MS || 120_000)
 const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
@@ -53,7 +58,15 @@ mkdirSync(generatedDir, { recursive: true })
 const diceService = new DiceService()
 const rollRegistry = new RollRegistry({ diceService })
 const engineModeResolver = new EngineModeResolver()
-const llmClient = new RouterAIClient({ apiKey, baseUrl, model, maxTokens })
+const llmClient = new FallbackLLMClient({
+  clients: [model, ...fallbackModels].map((modelId) => new RouterAIClient({
+    apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
+    reasoning: ['z-ai/glm-5.2', 'deepseek/deepseek-v4-flash'].includes(modelId) ? { enabled: false } : null,
+  })),
+  probeTimeoutMs: modelProbeTimeoutMs,
+  failureCooldownMs: modelFailureCooldownMs,
+})
+if (apiKey) void llmClient.probe().catch(() => {})
 const sceneArchitect = new SceneArchitectAgent({ llmClient: apiKey ? llmClient : null })
 const rulePack = await loadRulePack(process.env.DND_DEFAULT_RULESET_ID || 'srd_5_2_1')
 const ruleRetriever = createRuleRetriever([rulePack])
@@ -986,8 +999,25 @@ function validateNarration(result, roll) {
 }
 
 async function callRouter(messages, availableTools = tools) {
-  const result = await llmClient.complete({ messages, tools: availableTools, toolChoice: 'auto', temperature: 0.75, maxTokens })
-  return { role: 'assistant', content: result.content, tool_calls: result.tool_calls.map((call) => ({ id: call.id, type: call.type, function: call.function })) }
+  const result = await llmClient.complete({
+    messages,
+    tools: availableTools,
+    toolChoice: 'auto',
+    temperature: 0.75,
+    maxTokens,
+    validateResponse: (candidate) => {
+      if (candidate.tool_calls?.length) return true
+      const text = String(candidate.content || '').trim()
+      return text.length >= 20 && !/\bi(?:'m| am) (?:claude|an ai)|system message|system prompt|injection attack|conflicting directives|should i proceed|core values/i.test(text)
+    },
+  })
+  return {
+    role: 'assistant',
+    content: result.content,
+    tool_calls: result.tool_calls.map((call) => ({ id: call.id, type: call.type, function: call.function })),
+    model: result.model,
+    fallback_used: result.fallback_used,
+  }
 }
 
 async function generateItemImage(prompt, aspectRatio = '1:1') {
@@ -1052,17 +1082,19 @@ async function narrate(body) {
   ]
   const effects = { roll: suppliedRoll, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
   const availableTools = !roleAllowsWorldTools(agentRole) ? [] : suppliedRoll ? tools.filter((tool) => tool.function.name !== 'roll_check') : tools
+  let responseModel = model
   for (let step = 0; step < 4; step += 1) {
     const assistant = await callRouter(messages, availableTools)
     if (!assistant) throw new Error('RouterAI не вернул сообщение')
-    messages.push(assistant)
+    responseModel = assistant.model || responseModel
+    messages.push({ role: assistant.role, content: assistant.content, tool_calls: assistant.tool_calls })
     if (!assistant.tool_calls?.length) {
       const final = validateNarration(parseFinal(assistant.content), suppliedRoll)
       if (effects.scene && !final.narration.toLocaleLowerCase('ru').includes(effects.scene.scene.location.toLocaleLowerCase('ru'))) {
         final.narration = `${effects.scene.transition} ${effects.scene.arrival} ${final.narration}`.trim()
       }
       if (effects.scene && !final.suggestions.length) final.suggestions = effects.scene.suggestions
-      return { ...final, effects, provider: 'RouterAI', model }
+      return { ...final, effects, provider: 'RouterAI', model: responseModel }
     }
     for (const call of assistant.tool_calls) {
       if (!suppliedRoll && call.function?.name === 'roll_check') {
@@ -1082,7 +1114,7 @@ async function narrate(body) {
         }
         return {
           narration: `Чтобы узнать, чем закончится это действие, нужна проверка «${check.label}». Брось d20.`,
-          suggestions: [], check, effects, provider: 'RouterAI', model,
+          suggestions: [], check, effects, provider: 'RouterAI', model: responseModel,
         }
       }
       const toolName = call.function?.name
@@ -1099,7 +1131,7 @@ async function narrate(body) {
           action_kind: 'free',
           effects,
           provider: 'RouterAI',
-          model,
+          model: responseModel,
         }
       }
       if (toolName === 'advance_scene' && effects.scene) {
@@ -1110,12 +1142,12 @@ async function narrate(body) {
           action_kind: 'substantive',
           effects,
           provider: 'RouterAI',
-          model,
+          model: responseModel,
         }
       }
     }
   }
-  return { narration: 'События развиваются слишком стремительно. Уточните ваше действие.', suggestions: [], effects, provider: 'RouterAI', model }
+  return { narration: 'События развиваются слишком стремительно. Уточните ваше действие.', suggestions: [], effects, provider: 'RouterAI', model: responseModel }
 }
 
 async function legacyTurnHandler(input) {
@@ -1384,49 +1416,6 @@ async function replayDirectorSceneTransition({ campaignId, room, user, action, i
   }
 }
 
-function merchantClientState(state, actorId) {
-  const trusted = normalizeCampaignState(state)
-  const location = String(trusted.scene?.location ?? '')
-  const publicMerchants = trusted.merchants
-    .filter((merchant) => merchant.available !== false && merchantIsAtLocation(merchant.location, location))
-    .map(publicMerchantFor)
-  const publicPlayers = trusted.players.map((player) => String(player.id) === String(actorId)
-    ? player
-    : {
-      id: player.id,
-      name: player.name,
-      character: player.character,
-      role: player.role,
-      color: player.color,
-      initials: player.initials,
-      portrait: player.portrait,
-      portraitPosition: player.portraitPosition,
-      hp: player.hp,
-      maxHp: player.maxHp,
-      armor: player.armor,
-      online: player.online,
-      x: player.x,
-      y: player.y,
-    })
-  return {
-    sessionCode: trusted.sessionCode,
-    campaign: trusted.campaign,
-    partyName: trusted.partyName,
-    partyMemberIds: trusted.partyMemberIds,
-    state_version: trusted.state_version,
-    ruleset_id: trusted.ruleset_id,
-    ruleset_version: trusted.ruleset_version,
-    enabled_rule_packs: trusted.enabled_rule_packs,
-    enabled_house_rules: trusted.enabled_house_rules,
-    engine_mode: trusted.engine_mode,
-    activePlayerId: trusted.activePlayerId,
-    tacticalTurn: trusted.tacticalTurn,
-    players: publicPlayers,
-    merchants: publicMerchants,
-    economyLog: trusted.economyLog,
-  }
-}
-
 function persistAuthoritativeProjection(campaignId, engineState, events = [], journalMessage = null) {
   const proposedStateVersion = Number(engineState?.state_version ?? -1)
   if (!Number.isSafeInteger(proposedStateVersion)) return null
@@ -1541,7 +1530,7 @@ const server = createServer(async (req, res) => {
   applySecurityHeaders(res)
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4173', 'Access-Control-Allow-Headers': 'Content-Type, X-Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Credentials': 'true' }); return res.end() }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || '') && !originAllowed(req)) return json(res, 403, { error: 'Запрос с другого источника отклонён' })
-  if (req.url === '/api/health') return json(res, 200, { configured: Boolean(apiKey), provider: 'RouterAI', model, imageModel, engineMode: engineModeResolver.resolve(), rulesetId: rulePack.manifest.ruleset_id, ruleCount: rulePack.rules.length, tools: tools.map((tool) => tool.function.name) })
+  if (req.url === '/api/health') return json(res, 200, { configured: Boolean(apiKey), provider: 'RouterAI', model, fallbackModels, models: llmClient.health(), imageModel, engineMode: engineModeResolver.resolve(), rulesetId: rulePack.manifest.ruleset_id, ruleCount: rulePack.rules.length, tools: tools.map((tool) => tool.function.name) })
   if (req.url === '/api/auth/me' && req.method === 'GET') {
     const user = userForToken(cookies(req).skazanie_session)
     return json(res, 200, { user, setupRequired: !hasAdmin() })
@@ -1926,7 +1915,10 @@ const server = createServer(async (req, res) => {
       const responsePayload = {
         ...result,
         ...(narrationMessageId ? { narration_message_id: narrationMessageId } : {}),
-        authoritative_state: responseState ? merchantClientState(responseState, command.actor_id) : responseState,
+        // Keep the internal state whole here. turnResultForViewer performs the
+        // single public projection below; pre-projecting a partial merchant
+        // state used to erase the scene and merchant list on the client.
+        authoritative_state: responseState,
         merchant_view: view,
         room_version: projected?.version ?? room.version,
       }
@@ -2043,7 +2035,7 @@ const server = createServer(async (req, res) => {
       const merchantView = merchantCommand && responseState
         ? merchantViewFor(responseState, merchantCommand.merchant_id, merchantCommand.actor_id)
         : undefined
-      const responsePayload = { ...result, authoritative_state: merchantCommand && responseState ? merchantClientState(responseState, merchantCommand.actor_id) : responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
+      const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code) ? 409 : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
@@ -2133,6 +2125,15 @@ const server = createServer(async (req, res) => {
           scene: authoritative.state.scene ?? nextState.scene,
           adventure: authoritative.state.adventure ?? nextState.adventure,
         })
+      }
+      if (effectiveMode === 'enforce' && user.role === 'admin') {
+        if (Number(body.baseVersion) !== Number(existingRoom.version)) return json(res, 409, existingRoom)
+        const synchronized = await gameOrchestrator.synchronizeLegacyState(
+          roomMatch[1],
+          nextState,
+          `admin-room-${existingRoom.version + 1}`,
+        )
+        nextState = normalizeCampaignState({ ...synchronized.state, engine_mode: 'enforce' })
       }
       const result = saveRoom(roomMatch[1], nextState, body.baseVersion)
       return json(res, result.conflict ? 409 : 200, result.room)
@@ -2341,4 +2342,4 @@ const server = createServer(async (req, res) => {
   return serveStatic(req, res)
 })
 
-server.listen(port, host, () => console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} подключён` : 'демо-режим'}`))
+server.listen(port, host, () => console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`))

@@ -157,12 +157,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-token-hp { position: absolute; left: 1px; right: 1px; bottom: -7px; height: 4px; overflow: hidden; border-radius: 4px; background: #16110e; box-shadow: 0 1px 2px #000; }
 .map-token-hp > i { display: block; height: 100%; background: #65a875; }
 .map-token-hp-value { position: absolute; top: -8px; right: -8px; min-width: 16px; padding: 2px 3px; border-radius: 8px; background: #17271b; color: #b9dec0; font-size: 7px; line-height: 1; }
-.token-label { position: absolute; left: 50%; bottom: 42px; min-width: 100px; transform: translateX(-50%); padding: 6px 8px; border: 1px solid rgba(220,183,132,.25); border-radius: 4px; background: #17130f; color: #d8cec1; font: 10px Manrope, sans-serif; white-space: nowrap; }
+.token-label { position: absolute; left: 50%; bottom: 42px; min-width: 100px; transform: translateX(-50%); padding: 6px 8px; border: 1px solid rgba(220,183,132,.25); border-radius: 4px; background: #17130f; color: #d8cec1; font: 10px Manrope, sans-serif; white-space: nowrap; pointer-events: none; }
 .token-label::after { content: ''; position: absolute; left: 50%; top: 100%; border: 5px solid transparent; border-top-color: #17130f; transform: translateX(-50%); }
 .token-label small { display: block; margin-top: 2px; color: #8e8376; }
 .map-legend { position: absolute; left: 27px; bottom: 38px; display: flex; gap: 18px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 4px; background: rgba(15,13,11,.72); backdrop-filter: blur(10px); color: #777067; font-size: 8px; letter-spacing: .06em; }
 .map-legend span { display: flex; align-items: center; gap: 6px; }
-.game-phase-badge { position: absolute; z-index: 13; top: 72px; left: 26px; display: flex; align-items: center; gap: 8px; min-width: 142px; padding: 7px 10px; border: 1px solid rgba(111,168,137,.3); border-radius: 6px; background: rgba(11,20,16,.88); color: #8fc0a5; box-shadow: 0 8px 24px rgba(0,0,0,.28); backdrop-filter: blur(10px); }
+.game-phase-badge { position: absolute; z-index: 13; top: 104px; left: 26px; display: flex; align-items: center; gap: 8px; min-width: 142px; padding: 7px 10px; border: 1px solid rgba(111,168,137,.3); border-radius: 6px; background: rgba(11,20,16,.88); color: #8fc0a5; box-shadow: 0 8px 24px rgba(0,0,0,.28); backdrop-filter: blur(10px); }
 .game-phase-badge.combat { border-color: rgba(190,91,73,.34); background: rgba(27,13,12,.9); color: #d58b7d; }
 .game-phase-badge span { display: grid; gap: 1px; }
 .game-phase-badge small { color: inherit; opacity: .62; font: 700 5px Manrope, sans-serif; letter-spacing: .11em; }
@@ -178,6 +178,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .zoom-control .map-drag-label { width: 96px; align-self: stretch; display: grid; place-items: center; border-right: 1px solid var(--line); color: #9b784e; font-size: 7px; font-weight: 700; letter-spacing: .08em; }
 .zoom-control button:focus-visible { position: relative; z-index: 1; outline: 2px solid #d6a160; outline-offset: -2px; }
 .turn-indicator { position: absolute; z-index: 6; left: 50%; top: 23px; display: flex; flex-direction: column; align-items: center; transform: translateX(-50%); text-shadow: 0 2px 8px #000; }
+.turn-indicator.exploration { display: none; }
 .turn-indicator span { color: #857b70; font-size: 7px; letter-spacing: .18em; }
 .turn-indicator strong { margin-top: 3px; font-family: Spectral, serif; color: #c6a16e; font-size: 11px; }
 .turn-indicator i { width: 28px; margin-top: 5px; border-bottom: 1px solid rgba(199,151,86,.45); }
@@ -484,9 +485,19 @@ body:has(.spellbook-panel) .game-area .turn-indicator { visibility: hidden; poin
 .exploration-hotbar > .tactical-command-status { position: absolute; left: 10px; bottom: calc(100% + 8px); margin: 0; padding: 6px 9px; border-radius: 4px; background: rgba(15,13,11,.92); }
 .exploration-hotbar > .tactical-command-error { position: absolute; right: 0; bottom: calc(100% + 8px); width: min(360px, 70vw); margin: 0; }
 .exploration-hotbar > .tactical-command-error button { width: 18px; margin: -3px -3px 0 0; }
+.exploration-hotbar .exploration-mode-icon,
+.exploration-hotbar .exploration-mode-copy,
+.exploration-hotbar .exploration-path-status { display: none; }
+.exploration-hotbar.tactical-control { width: auto; min-width: 0; min-height: 0; grid-template-columns: auto; gap: 0; padding: 8px; }
+.exploration-hotbar:not(:has(.exploration-start-combat, .tactical-command-status, .tactical-command-error)) { display: none; }
+.exploration-hotbar > .tactical-command-status,
+.exploration-hotbar > .tactical-command-error { position: static; width: min(360px, 70vw); margin: 0; }
 .map-legend { bottom: 142px; }
 .game-area > .chat-panel { bottom: 145px; height: min(30vh, 300px); min-height: 210px; }
 .game-area > .chat-closed { bottom: 150px; }
+.game-area:not(:has(.combat-hotbar)):not(:has(.exploration-start-combat)):not(:has(.exploration-hotbar > .tactical-command-status)):not(:has(.exploration-hotbar > .tactical-command-error)) > .chat-panel { bottom: 20px; height: min(38vh, 390px); min-height: 300px; }
+.game-area:not(:has(.combat-hotbar)):not(:has(.exploration-start-combat)) > .chat-closed { bottom: 37px; }
+.game-area:not(:has(.combat-hotbar)):not(:has(.exploration-start-combat)) > .map-stage .map-legend { bottom: 18px; }
 
 @media (max-width: 1120px) {
   .combat-hotbar.tactical-control { width: calc(100% - 32px); }
@@ -500,10 +511,10 @@ body:has(.spellbook-panel) .game-area .turn-indicator { visibility: hidden; poin
   .spellbook-tools { align-items: stretch; flex-wrap: wrap; }
   .spellbook-tools label { flex-basis: 100%; }
   .combat-hotbar.tactical-control { bottom: 8px; width: calc(100% - 16px); }
-  .exploration-hotbar.tactical-control { bottom: 8px; width: calc(100% - 16px); grid-template-columns: 40px minmax(150px, 1fr) auto; }
+  .exploration-hotbar.tactical-control { bottom: 8px; width: auto; grid-template-columns: auto; }
   .exploration-path-status { display: none; }
   .game-phase-badge.combat { display: none; }
-  .game-phase-badge.exploration { top: 68px; left: 50%; transform: translateX(-50%); }
+  .game-phase-badge.exploration { top: 96px; left: 16px; transform: none; }
   .hotbar-main { min-height: 104px; grid-template-columns: 70px minmax(190px, 1fr) 94px; }
   .hotbar-detail { display: none; }
   .combat-hotbar .action-tile { width: 76px; min-width: 76px; height: 75px; min-height: 75px; }
@@ -527,7 +538,7 @@ body:has(.spellbook-panel) .game-area .turn-indicator { visibility: hidden; poin
   .hotbar-economy > span small { display: none; }
   .game-area > .chat-panel { bottom: 142px; height: min(30vh, 220px); min-height: 170px; }
   .game-area > .dice-tray:not(.dice-tray--rolling) { bottom: 150px; }
-  .exploration-hotbar.tactical-control { min-height: 68px; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 7px; padding: 8px; }
+  .exploration-hotbar.tactical-control { min-height: 0; grid-template-columns: auto; gap: 0; padding: 8px; }
   .exploration-mode-icon { width: 32px; height: 32px; }
   .exploration-mode-copy > p { display: none; }
   .exploration-start-combat { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }

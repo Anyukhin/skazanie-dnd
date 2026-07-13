@@ -7,6 +7,7 @@ import test from 'node:test'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { SRD_5_2_1_MONSTER_ALLOWLIST } from '../server/encounter-assembler.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
+import { NpcControllerAgent, commandsForMoraleDecision } from '../server/npc-controller.mjs'
 import { planNpcTurn, runNpcTurnScheduler } from '../server/npc-turn-scheduler.mjs'
 import { RULE_IDS, RulesEngine, RulesValidationError, applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 
@@ -50,6 +51,15 @@ function fixture(overrides = {}) {
 function dice(values) {
   let id = 0
   return new DiceService({ rng: new SequenceDiceRng(values), idFactory: () => `roll-${++id}`, now: () => '2026-07-12T00:00:00.000Z' })
+}
+
+function boundedDice() {
+  let id = 0
+  return new DiceService({
+    rng: { randint: (minimum, maximum) => maximum === 20 ? 15 : Math.min(maximum, 3) },
+    idFactory: () => `bounded-roll-${++id}`,
+    now: () => '2026-07-12T00:00:00.000Z',
+  })
 }
 
 test('server-authoritative attack ignores client combat numbers and uses persisted profile', () => {
@@ -177,6 +187,99 @@ test('NPC creative controller is called once at the morale threshold and the ser
   assert.ok(result.events.some((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'surrendered'))
 })
 
+test('deterministic NPC morale keeps undead fighting and makes beasts flee', async () => {
+  const controller = new NpcControllerAgent()
+  for (const [kind, expected] of [['волк', 'flee'], ['зомби', 'fight']]) {
+    const state = fixture({ campaign_id: `NPC-MORALE-${expected}`, sessionCode: `NPC-MORALE-${expected}` })
+    state.enemies[0] = { ...state.enemies[0], name: kind, kind, hp: 5, maxHp: 20 }
+    const decision = await controller.decide({ state, enemyId: 'wolf' })
+    assert.equal(decision.disposition, expected)
+    assert.equal(decision.npc_id, 'wolf')
+    assert.equal(decision.provider, 'deterministic-morale-fallback')
+  }
+})
+
+test('NPC controller ignores forged identity and bounds creative output', async () => {
+  const state = fixture({ campaign_id: 'NPC-UNTRUSTED', sessionCode: 'NPC-UNTRUSTED' })
+  state.enemies[0] = { ...state.enemies[0], name: 'волк', kind: 'зверь', hp: 5, maxHp: 20 }
+  const controller = new NpcControllerAgent({
+    llmClient: {
+      async completeJson() {
+        return { npc_id: 'hero', disposition: 'surrender', reaction: `line one\n${'x'.repeat(400)}`, confidence: 4 }
+      },
+    },
+  })
+  const decision = await controller.decide({ state, enemyId: 'wolf' })
+  assert.equal(decision.npc_id, 'wolf')
+  assert.equal(decision.disposition, 'surrender')
+  assert.equal(decision.reaction.includes('\n'), false)
+  assert.equal(decision.reaction.length, 240)
+  assert.equal(decision.confidence, 1)
+})
+
+test('fleeing NPC remains a valid opportunity-attack target until the reaction is resolved', () => {
+  const state = fixture()
+  state.enemies[0] = { ...state.enemies[0], hp: 5, maxHp: 20, speed: 30, x: 1, y: 1 }
+  state.mechanics.positions.wolf = { x: 1, y: 1 }
+  state.mechanics.combat.active_index = 1
+  const commands = commandsForMoraleDecision(state, 'wolf', { disposition: 'flee' })
+  const result = new RulesEngine({ diceService: boundedDice() }).resolvePlan({ commands }, state, {
+    isAdmin: true,
+    isNpcScheduler: true,
+    serverAuthoritativeCombat: true,
+  })
+  const awaitingReaction = result.events.reduce(applyGameEvent, state)
+  assert.ok(awaitingReaction.mechanics.conditions.wolf.some((condition) => condition.id === 'fled'))
+  assert.equal(awaitingReaction.enemies[0].alive, true)
+  assert.equal(awaitingReaction.mechanics.combat.reaction_window?.trigger, 'enemy-left-reach')
+
+  const reaction = resolveCommand({
+    command_type: 'UseCombatAction', actor_id: 'hero', action_id: 'opportunity-attack', server_authoritative: true,
+  }, awaitingReaction, { diceService: boundedDice(), context: { serverAuthoritativeCombat: true } })
+  const afterReaction = reaction.events.reduce(applyGameEvent, awaitingReaction)
+  assert.equal(afterReaction.mechanics.combat.reaction_window, null)
+  assert.equal(afterReaction.enemies[0].alive, false)
+})
+
+test('every approved monster can plan and resolve a nearby and distant turn', () => {
+  for (const [catalogId, block] of Object.entries(SRD_5_2_1_MONSTER_ALLOWLIST)) {
+    for (const enemyX of [1, 6]) {
+      const enemyId = `catalog-${catalogId.split(':').at(-1)}`
+      const state = fixture()
+      state.enemies = [{
+        id: enemyId,
+        name: block.name,
+        hp: block.hp,
+        maxHp: block.hp,
+        armor: block.armor,
+        speed: block.speed,
+        abilities: block.abilities,
+        traits: block.traits,
+        action_profiles: block.action_profiles,
+        attack_profile: block.action_profiles[0],
+        x: enemyX,
+        y: 1,
+        alive: true,
+      }]
+      state.mechanics.positions = { hero: { x: 0, y: 1 }, [enemyId]: { x: enemyX, y: 1 } }
+      state.mechanics.encounter = { enemy_ids: [enemyId] }
+      state.mechanics.combat.initiative = [{ actor_id: enemyId, total: 20 }, { actor_id: 'hero', total: 10 }]
+      state.mechanics.combat.active_index = 0
+      state.mechanics.combat.action_economy = {
+        [enemyId]: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+        hero: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+      }
+      const commands = planNpcTurn(state, enemyId)
+      assert.equal(commands.at(-1)?.command_type, 'EndTurn', `${catalogId} at x=${enemyX}`)
+      assert.doesNotThrow(() => new RulesEngine({ diceService: boundedDice() }).resolvePlan({ commands }, state, {
+        isAdmin: true,
+        isNpcScheduler: true,
+        serverAuthoritativeCombat: true,
+      }), `${catalogId} at x=${enemyX}`)
+    }
+  }
+})
+
 test('NPC prefers a reachable target over a geometrically closer unreachable one', () => {
   const state = fixture()
   state.players.push({
@@ -288,4 +391,43 @@ test('scheduler closes combat automatically when the last enemy is defeated', as
   assert.equal(result.turns[0].kind, 'combat-end')
   assert.equal(result.turns[0].reason, 'enemies_defeated')
   assert.equal(result.events.at(-1).event_type, 'CombatEnded')
+})
+
+test('scheduler closes combat as party defeated when no living hero remains', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-party-defeated-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const state = fixture()
+  state.players[0].hp = 0
+  state.players[0].alive = false
+  const eventStore = new FileEventStore({ rootDir: root, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  await eventStore.initializeCampaign({ campaign_id: 'NPC-PARTY-DEFEATED', initial_state: state })
+  const result = await runNpcTurnScheduler({
+    campaignId: 'NPC-PARTY-DEFEATED', eventStore,
+    rulesEngine: new RulesEngine({ diceService: dice([]) }),
+  })
+  assert.equal(result.state.mechanics.combat.active, false)
+  assert.equal(result.turns[0].kind, 'combat-end')
+  assert.equal(result.turns[0].reason, 'party_defeated')
+  assert.equal(result.events.at(-1).event_type, 'CombatEnded')
+})
+
+test('scheduler pauses without committing while a player reaction is pending', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-reaction-pause-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const state = fixture()
+  state.mechanics.combat.active_index = 1
+  state.mechanics.combat.reaction_window = {
+    id: 'reaction:test', trigger: 'enemy-left-reach', actor_id: 'hero', source_actor_id: 'wolf',
+    target_id: 'wolf', action_ids: ['opportunity-attack'], action_options: [],
+  }
+  const eventStore = new FileEventStore({ rootDir: root, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  await eventStore.initializeCampaign({ campaign_id: 'NPC-REACTION-PAUSE', initial_state: state })
+  const result = await runNpcTurnScheduler({
+    campaignId: 'NPC-REACTION-PAUSE', eventStore,
+    rulesEngine: new RulesEngine({ diceService: dice([]) }),
+  })
+  assert.deepEqual(result.turns, [])
+  assert.deepEqual(result.events, [])
+  assert.equal(result.state_version, 0)
+  assert.equal(result.state.mechanics.combat.reaction_window.id, 'reaction:test')
 })

@@ -105,7 +105,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
   const viewMatchesContext = view?.merchant.id === selectedMerchant?.id
     && view.actor_id === player.id
     && Number.isInteger(quotedVersion)
-    && quotedVersion === stateVersion
+    && quotedVersion >= stateVersion
   const serverView = viewMatchesContext ? view : null
   const shownMerchant = serverView?.merchant ?? selectedMerchant
 

@@ -14,6 +14,10 @@ import type { InventoryItem, Player } from './types'
 const abilityNames: Record<keyof Player['abilities'], string> = { str: 'СИЛ', dex: 'ЛОВ', con: 'ТЕЛ', int: 'ИНТ', wis: 'МДР', cha: 'ХАР' }
 const itemTypeNames: Record<InventoryItem['type'], string> = { weapon: 'Оружие', armor: 'Доспех', consumable: 'Расходник', tool: 'Инструмент', quest: 'Задание', treasure: 'Сокровище', document: 'Документ', other: 'Прочее' }
 
+function defaultWeaponCombat(): NonNullable<InventoryItem['combat']> {
+  return { kind: 'melee', ability: 'str', damage: '1d6', damageType: 'slashing', normalRange: 5 }
+}
+
 function modifier(score: number) {
   const value = Math.floor((score - 10) / 2)
   return value >= 0 ? `+${value}` : String(value)
@@ -324,12 +328,23 @@ function ItemModal({ item, isNew, onClose, onSave, onRemove }: { item: Inventory
     <div className="item-modal-body">
       {editing ? <div className="item-form">
         <Field label="Название" value={draft.name} onChange={(value) => patch('name', value)} />
-        <label className="sheet-field"><span>Тип</span><select value={draft.type} onChange={(event) => patch('type', event.target.value as InventoryItem['type'])}>{Object.entries(itemTypeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label className="sheet-field"><span>Тип</span><select value={draft.type} onChange={(event) => {
+          const type = event.target.value as InventoryItem['type']
+          setDraft((current) => ({ ...current, type, ...(type === 'weapon' && !current.combat ? { combat: defaultWeaponCombat() } : {}) }))
+        }}>{Object.entries(itemTypeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="sheet-field"><span>Редкость</span><select value={draft.rarity} onChange={(event) => patch('rarity', event.target.value as InventoryItem['rarity'])}>{['обычный','необычный','редкий','очень редкий','легендарный','сюжетный'].map((value) => <option key={value}>{value}</option>)}</select></label>
         <Field label="Количество" type="number" min={1} value={draft.quantity} onChange={(value) => patch('quantity', Number(value))} />
         <Field label="Вес" type="number" min={0} value={draft.weight} onChange={(value) => patch('weight', Number(value))} />
         <TextField label="Описание" value={draft.description} onChange={(value) => patch('description', value)} rows={5} />
         <TextField label="Свойства" value={draft.properties} onChange={(value) => patch('properties', value)} rows={3} />
+        {draft.type === 'weapon' && <div className="sheet-section combat-grid">
+          <label className="sheet-field"><span>Тип атаки</span><select value={(draft.combat ?? defaultWeaponCombat()).kind} onChange={(event) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), kind: event.target.value as NonNullable<InventoryItem['combat']>['kind'] })}><option value="melee">Ближний бой</option><option value="ranged">Дальний бой</option><option value="thrown-area">Бросок по области</option></select></label>
+          <label className="sheet-field"><span>Характеристика</span><select value={(draft.combat ?? defaultWeaponCombat()).ability ?? 'str'} onChange={(event) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), ability: event.target.value as 'str' | 'dex' })}><option value="str">Сила</option><option value="dex">Ловкость</option></select></label>
+          <Field label="Кость урона" value={(draft.combat ?? defaultWeaponCombat()).damage} onChange={(value) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), damage: value })} />
+          <Field label="Тип урона" value={(draft.combat ?? defaultWeaponCombat()).damageType} onChange={(value) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), damageType: value })} />
+          <Field label="Обычная дальность, фт" type="number" min={5} value={(draft.combat ?? defaultWeaponCombat()).normalRange} onChange={(value) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), normalRange: Math.max(5, Number(value) || 5) })} />
+          {(draft.combat ?? defaultWeaponCombat()).kind === 'ranged' && <Field label="Макс. дальность, фт" type="number" min={5} value={(draft.combat ?? defaultWeaponCombat()).longRange ?? (draft.combat ?? defaultWeaponCombat()).normalRange} onChange={(value) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), longRange: Math.max(5, Number(value) || 5) })} />}
+        </div>}
         <TextField label="Промпт изображения" value={draft.imagePrompt ?? ''} onChange={(value) => patch('imagePrompt', value)} rows={4} />
         <label className="equipped-check"><input type="checkbox" checked={draft.equipped} onChange={(event) => patch('equipped', event.target.checked)} /><Check size={14} />Экипировано</label>
       </div> : <>
@@ -340,7 +355,7 @@ function ItemModal({ item, isNew, onClose, onSave, onRemove }: { item: Inventory
       </>}
       {error && <p className="item-error">{error}</p>}
       <div className="item-actions">
-        {editing ? <button className="primary" onClick={() => { onSave(draft); setEditing(false) }}><Save size={15} />Сохранить</button> : <button onClick={() => setEditing(true)}><Pencil size={15} />Редактировать</button>}
+        {editing ? <button className="primary" onClick={() => { const saved = draft.type === 'weapon' && !draft.combat ? { ...draft, combat: defaultWeaponCombat() } : draft; setDraft(saved); onSave(saved); setEditing(false) }}><Save size={15} />Сохранить</button> : <button onClick={() => setEditing(true)}><Pencil size={15} />Редактировать</button>}
         <button onClick={createImage} disabled={generating}><Sparkles size={15} />{generating ? 'Создаём…' : draft.image ? 'Перерисовать' : 'Создать изображение'}</button>
         {!isNew && <button className="danger" onClick={() => { onRemove(draft.id); onClose() }}><Trash2 size={15} />Удалить</button>}
       </div>

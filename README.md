@@ -91,10 +91,12 @@ Vite покажет адрес интерфейса. При первом зап�
 ROUTERAI_API_KEY=...
 ROUTERAI_BASE_URL=https://routerai.ru/api/v1
 DND_AI_MODEL=anthropic/claude-haiku-4.5
+DND_AI_FALLBACK_MODELS=z-ai/glm-5.2,deepseek/deepseek-v4-flash,google/gemini-2.5-flash-lite,openai/gpt-4.1-nano
+DND_AI_MODEL_TIMEOUT_MS=9000
 DND_IMAGE_MODEL=openai/gpt-image-1
 ```
 
-Ключ не передаётся браузеру. Детерминированная механика и безопасный fallback доступны и без ключа RouterAI.
+Ключ не передаётся браузеру. При запуске сервер посылает каждой текстовой модели короткий JSON health-check. Если основная модель возвращает ошибку, таймаут, пустой или некорректный ответ, запрос последовательно переходит к моделям из `DND_AI_FALLBACK_MODELS`; неработающая модель временно исключается из каскада. Детерминированная механика и безопасный локальный fallback доступны и без ключа RouterAI.
 
 ## Проверка проекта
 
