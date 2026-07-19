@@ -57,7 +57,7 @@ Director flow и диагностический Admin UI/API в `enforce` уме
 
 ### Resources, rest и spells
 
-Generic resource pools работают, но rest создаёт marker event без восстановления конкретных ресурсов. Основная доска получила ограниченный server-owned combat spell catalog: spell attack, save, лечение действием/бонусным действием и `summon-beast` vertical slice с ячейками, дальностью и концентрацией. Это не полный spellcasting engine: полного class spell list, upcast, components, class features и сложных эффектов пока нет.
+Generic resource pools работают, но rest создаёт marker event без восстановления конкретных ресурсов. Основная доска получила ограниченный server-owned combat spell catalog: spell attack, save, лечение действием/бонусным действием и `summon-beast` vertical slice с ячейками, дальностью и концентрацией. Это не полный spellcasting engine: полного class spell list, upcast, components, class features и сложных эффектов пока нет. Боевой журнал объединяет спасбросок заклинания с непосредственно следующим уроном по той же цели и отдельно показывает прямой магический урон/лечение; многоцелевые и многокомпонентные эффекты пока остаются отдельными карточками, без единого группового итога.
 
 ### Торговля и предметы
 

@@ -5383,6 +5383,15 @@ function appendBattleLog(state, event, entry) {
   state.battleLog = [...state.battleLog, { id, ...entry }].slice(-50)
 }
 
+function recentBattleSpellName(state, spellId) {
+  if (!spellId) return undefined
+  for (let index = state.battleLog.length - 1; index >= 0; index -= 1) {
+    const entry = state.battleLog[index]
+    if (entry.spellId === String(spellId) && entry.spellName) return entry.spellName
+  }
+  return undefined
+}
+
 function appendMapFeedback(state, event, entry) {
   const id = eventJournalId(state, event)
   if (state.mapFeedback.some((item) => String(item.id) === id)) return
@@ -5517,12 +5526,52 @@ export function applyGameEvent(rawState, event) {
       if (safeInteger(payload.temporary_hp_before, 0) > 0 && safeInteger(payload.temporary_hp_after, 0) === 0) {
         state.mechanics.conditions[target] = (state.mechanics.conditions[target] ?? []).filter((condition) => !String(condition?.id ?? condition).startsWith('armor-of-agathys:'))
       }
+      let damageJournalUpdated = false
       for (let index = state.battleLog.length - 1; index >= 0; index -= 1) {
         const item = state.battleLog[index]
         if (item.type === 'attack' && item.targetId === target && item.actorId === event.actor_id && item.damage == null) {
-          state.battleLog[index] = { ...item, damage: safeInteger(payload.applied_amount, 0), hpBefore: safeInteger(payload.hp_before, 0), hpAfter: safeInteger(payload.hp_after, 0) }
+          state.battleLog[index] = {
+            ...item,
+            damage: safeInteger(payload.applied_amount, 0),
+            damageType: payload.damage_type ? String(payload.damage_type) : undefined,
+            hpBefore: safeInteger(payload.hp_before, 0),
+            hpAfter: safeInteger(payload.hp_after, 0),
+          }
+          damageJournalUpdated = true
           break
         }
+      }
+      if (!damageJournalUpdated && payload.spell_id) {
+        for (let index = state.battleLog.length - 1; index >= 0; index -= 1) {
+          const item = state.battleLog[index]
+          if (item.type === 'spell-save' && item.targetId === target && item.spellId === String(payload.spell_id) && item.damage == null) {
+            state.battleLog[index] = {
+              ...item,
+              damage: safeInteger(payload.applied_amount, 0),
+              damageType: payload.damage_type ? String(payload.damage_type) : undefined,
+              hpBefore: safeInteger(payload.hp_before, 0),
+              hpAfter: safeInteger(payload.hp_after, 0),
+            }
+            damageJournalUpdated = true
+            break
+          }
+        }
+      }
+      if (!damageJournalUpdated && payload.spell_id) {
+        appendBattleLog(state, event, {
+          sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
+          round: state.mechanics.combat.round,
+          type: 'spell-damage',
+          actorId: event.actor_id,
+          actorKind: combatActorKind(state, event.actor_id),
+          targetId: target,
+          spellId: String(payload.spell_id),
+          spellName: recentBattleSpellName(state, payload.spell_id),
+          damage: safeInteger(payload.applied_amount, 0),
+          damageType: payload.damage_type ? String(payload.damage_type) : undefined,
+          hpBefore: safeInteger(payload.hp_before, 0),
+          hpAfter: safeInteger(payload.hp_after, 0),
+        })
       }
       {
         const position = actorPosition(state, target)
@@ -5557,6 +5606,19 @@ export function applyGameEvent(rawState, event) {
       replaceActor(state, target, (actor) => {
         const hp = Math.min(actorMaxHp(actor), Math.max(0, safeInteger(payload.hp_after, actorHp(actor))))
         return { ...actor, hp, ...(isEnemyActor(state, target) ? { alive: hp > 0 } : {}) }
+      })
+      appendBattleLog(state, event, {
+        sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
+        round: state.mechanics.combat.round,
+        type: 'healing',
+        actorId: event.actor_id,
+        actorKind: combatActorKind(state, event.actor_id),
+        targetId: target,
+        spellId: payload.spell_id ? String(payload.spell_id) : undefined,
+        spellName: recentBattleSpellName(state, payload.spell_id),
+        healing: safeInteger(payload.applied_amount, 0),
+        hpBefore: safeInteger(payload.hp_before, 0),
+        hpAfter: safeInteger(payload.hp_after, 0),
       })
       if (safeInteger(payload.hp_after, 0) > 0) {
         state.mechanics.conditions[target] = (state.mechanics.conditions[target] ?? []).filter((condition) => condition.id !== 'unconscious')
@@ -5760,6 +5822,29 @@ export function applyGameEvent(rawState, event) {
     case 'ConditionRemoved':
       state.mechanics.conditions[target] = (state.mechanics.conditions[target] ?? []).filter((condition) => condition.id !== String(payload.condition))
       break
+    case 'SpellSavingThrowResolved':
+      appendBattleLog(state, event, {
+        sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
+        round: state.mechanics.combat.round,
+        type: 'spell-save',
+        actorId: event.actor_id,
+        actorKind: combatActorKind(state, event.actor_id),
+        targetId: target,
+        spellId: payload.spell_id ? String(payload.spell_id) : undefined,
+        spellName: recentBattleSpellName(state, payload.spell_id),
+        ability: payload.ability ? String(payload.ability) : undefined,
+        roll: {
+          die: safeInteger(payload.kept, 0),
+          modifier: safeInteger(payload.modifier, 0),
+          total: safeInteger(payload.total, 0),
+          difficulty: safeInteger(payload.difficulty, 10),
+          hit: payload.saved === true,
+        },
+        result: payload.saved === true ? 'success' : 'failure',
+        automaticSuccess: payload.automatic_success === true,
+        immunity: payload.immunity ? String(payload.immunity) : null,
+      })
+      break
     case 'ConcentrationSavingThrowResolved':
       appendBattleLog(state, event, {
         type: 'concentration-save', actorId: target,
@@ -5807,6 +5892,8 @@ export function applyGameEvent(rawState, event) {
           difficulty: safeInteger(payload.armor_class, 10), hit: Boolean(payload.hit),
         },
         damage: payload.hit ? null : 0,
+        spellId: payload.spell_id ? String(payload.spell_id) : undefined,
+        spellName: payload.spell_name ? String(payload.spell_name) : undefined,
         itemId: payload.item_id ?? undefined,
         itemName: payload.item_name ?? undefined,
       })

@@ -559,7 +559,7 @@ export type BattleEvent = {
   id: string
   sceneTurn?: number
   round?: number
-  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'action' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented'
+  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented'
   actorId?: string
   actorKind?: 'player' | 'enemy' | 'summon' | 'system'
   targetId?: string
@@ -573,6 +573,8 @@ export type BattleEvent = {
   distanceFeet?: number
   roll?: { die: number; modifier: number; total: number; difficulty: number; hit: boolean }
   damage?: number
+  damageType?: string
+  healing?: number
   hpBefore?: number
   hpAfter?: number
   maximumHpBefore?: number
@@ -590,6 +592,9 @@ export type BattleEvent = {
   itemName?: string
   spellId?: string
   spellName?: string
+  ability?: string
+  automaticSuccess?: boolean
+  immunity?: string | null
   actionId?: string
   actionName?: string
   area?: { x: number; y: number; radiusFeet: number }
