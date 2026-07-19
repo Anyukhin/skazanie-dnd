@@ -232,6 +232,10 @@ test('/api/narrate returns the current room version when a pending PUT lands dur
   releaseProvider()
   const narrated = await narrationPromise
   assertStatus(narrated, 200, log)
-  assert.equal(narrated.body.room_version, pendingSave.body.version,
+  const finalRoom = await request(baseUrl, '/api/rooms/VERSION-RACE', { cookie: adminCookie })
+  assertStatus(finalRoom, 200, log)
+  assert.ok(narrated.body.room_version >= pendingSave.body.version,
     'narrate must not return the stale room version captured before the concurrent pending PUT')
+  assert.equal(narrated.body.room_version, finalRoom.body.version,
+    'narrate must return the version of its final authoritative state')
 })

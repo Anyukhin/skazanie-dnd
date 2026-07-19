@@ -169,9 +169,12 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   const winnerKey = winner.key
   const transitioned = winner.result
   assertStatus(transitioned, 200, log)
-  assert.deepEqual(transitioned.body.mechanics.map((event) => event.event_type), ['SceneAdvanced', 'MerchantCreated'])
+  assert.deepEqual(transitioned.body.mechanics.map((event) => event.event_type), [
+    'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+    'WorldFactRecorded', 'WorldFactRecorded', 'MerchantCreated',
+  ])
   const sceneEvent = transitioned.body.mechanics[0]
-  const merchantEvent = transitioned.body.mechanics[1]
+  const merchantEvent = transitioned.body.mechanics.find((event) => event.event_type === 'MerchantCreated')
   assert.equal(sceneEvent.payload.request_fingerprint, merchantEvent.payload.request_fingerprint)
   assert.deepEqual(sceneEvent.payload.party_decision, {
     interaction_id: openedVote.body.effects.interaction.id,
@@ -211,7 +214,10 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   assert.equal(replay.body.agent_trace.some((stage) => stage.agent === 'AgentCartographer'), false)
   assert.equal(replay.body.state_version, cityVersion)
   assert.equal(replay.body.authoritative_state.merchants.length, 1)
-  assert.deepEqual(replay.body.mechanics.map((event) => event.event_type), ['SceneAdvanced', 'MerchantCreated'])
+  assert.deepEqual(replay.body.mechanics.map((event) => event.event_type), [
+    'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+    'WorldFactRecorded', 'WorldFactRecorded', 'MerchantCreated',
+  ])
 
   const idempotencyConflict = await request(baseUrl, '/api/narrate', {
     method: 'POST', cookie: adminCookie, idempotencyKey: winnerKey,
@@ -255,7 +261,10 @@ test('enforce Director atomically advances scene and assembles a durable catalog
     body: { campaignId: 'DIRECTOR-SHOP', action: forestAction },
   })
   assertStatus(forest, 200, log)
-  assert.deepEqual(forest.body.mechanics.map((event) => event.event_type), ['SceneAdvanced'])
+  assert.deepEqual(forest.body.mechanics.map((event) => event.event_type), [
+    'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+    'WorldFactRecorded', 'WorldFactRecorded',
+  ])
   assert.equal(forest.body.mechanics[0].payload.scene.scene_kind, 'wilderness')
   assert.equal(forest.body.mechanics[0].payload.scene_commerce.action, 'none')
   assert.equal(forest.body.authoritative_state.merchants.length, 1)

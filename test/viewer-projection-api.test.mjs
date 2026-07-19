@@ -122,7 +122,49 @@ test('non-admin room and Director response cannot expose private world memory', 
   assert.equal(transitioned.body.authoritative_state.merchants.every((merchant) => merchant.location === 'Большой город Норвин'), true)
   assert.equal(transitioned.body.authoritative_state.merchants.every((merchant) => merchant.bargains === undefined), true)
 
+  const socialNpc = transitioned.body.authoritative_state.merchants[0]
+  const socialAction = '\u0433\u043e\u0432\u043e\u0440\u044e \u0441 ' + socialNpc.name
+  const spoken = await request(baseUrl, '/api/narrate', {
+    method: 'POST', cookie: playerCookie,
+    body: { campaignId: 'VIEWER-API', idempotency_key: 'viewer-social-turn', action: socialAction },
+  })
+  assert.equal(spoken.status, 200, JSON.stringify(spoken.body) + '\n' + logs)
+  assert.equal(spoken.body.mechanics.some((event) => event.event_type === 'NpcConversationRecorded'), true)
+  assert.equal(spoken.body.authoritative_state.social.conversations.length, 1)
+
+  const replayedSocial = await request(baseUrl, '/api/narrate', {
+    method: 'POST', cookie: playerCookie,
+    body: { campaignId: 'VIEWER-API', idempotency_key: 'viewer-social-turn', action: socialAction },
+  })
+  assert.equal(replayedSocial.status, 200, logs)
+  assert.equal(replayedSocial.body.idempotent_replay, true)
+  assert.equal(replayedSocial.body.narration, spoken.body.narration)
+
+  const checkedAction = '\u0443\u0431\u0435\u0436\u0434\u0430\u044e ' + socialNpc.name + ' \u043f\u043e\u043c\u043e\u0447\u044c'
+  const checkedSocial = await request(baseUrl, '/api/narrate', {
+    method: 'POST', cookie: playerCookie,
+    body: { campaignId: 'VIEWER-API', idempotency_key: 'viewer-social-check', action: checkedAction },
+  })
+  assert.equal(checkedSocial.status, 200, JSON.stringify(checkedSocial.body) + '\n' + logs)
+  const playerCheck = checkedSocial.body.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')
+  assert.ok(playerCheck, JSON.stringify(checkedSocial.body.mechanics))
+  assert.equal(playerCheck.payload.difficulty, undefined)
+  assert.equal(playerCheck.payload.social_check.difficulty_hidden, true)
+  assert.equal(playerCheck.payload.social_check.request_fingerprint, undefined)
+  assert.equal(checkedSocial.body.authoritative_state.social.conversations.length, 2)
+
+  const forgedSocialState = structuredClone(checkedSocial.body.authoritative_state)
+  forgedSocialState.social.conversations = []
+  forgedSocialState.social.npcs[0].goals = ['FORGED_SOCIAL_SECRET']
+  const roomPut = await request(baseUrl, '/api/rooms/VIEWER-API', {
+    method: 'PUT', cookie: playerCookie,
+    body: { state: forgedSocialState, baseVersion: checkedSocial.body.room_version },
+  })
+  assert.equal(roomPut.status, 200, JSON.stringify(roomPut.body) + '\n' + logs)
+
   const adminRoom = await request(baseUrl, '/api/rooms/VIEWER-API', { cookie: adminCookie })
   assert.equal(adminRoom.status, 200, logs)
   assert.equal(adminRoom.body.state.adventure.gm_only.villain, privateMarker)
+  assert.equal(adminRoom.body.state.social.conversations.length, 2)
+  assert.doesNotMatch(JSON.stringify(adminRoom.body.state.social), /FORGED_SOCIAL_SECRET/u)
 })

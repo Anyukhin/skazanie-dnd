@@ -249,7 +249,11 @@ test('SceneAdvanced reducer очищает старую сцену, размещ
   const result = resolveCommand(command, initial, options({ isAdmin: true }))
   const next = result.events.reduce((state, event) => applyGameEvent(state, event), initial)
 
-  assert.equal(next.state_version, 1)
+  assert.equal(next.state_version, result.events.length)
+  assert.deepEqual(result.events.map((event) => event.event_type), [
+    'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+    'WorldFactRecorded', 'WorldFactRecorded',
+  ])
   assert.equal(next.scene.location, 'Северный город')
   assert.equal(next.adventure.chapter, 3)
   assert.deepEqual(next.adventure.gm_only, initial.adventure.gm_only)
@@ -263,7 +267,7 @@ test('SceneAdvanced reducer очищает старую сцену, размещ
   assert.deepEqual(next.enemies, [])
   assert.deepEqual(next.entities, [])
   assert.deepEqual(next.mapFeedback, [])
-  assert.deepEqual(next.mechanics.combat, { active: false, round: 0, initiative: [], active_index: -1, action_economy: {} })
+  assert.deepEqual(next.mechanics.combat, { active: false, round: 0, initiative: [], active_index: -1, action_economy: {}, reaction_window: null })
   assert.equal(next.tacticalTurn, undefined)
   assert.equal(next.agentInteraction, null)
   assert.deepEqual(next.suggestions, result.events[0].payload.suggestions)

@@ -1,5 +1,7 @@
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
+import { npcSocialForViewer } from './npc-social.mjs'
 import { projectVisibleState } from './security.mjs'
+import { worldMemoryForViewer } from './world-memory.mjs'
 
 function text(value, maximum = 500) {
   return String(value ?? '').normalize('NFKC').trim().slice(0, maximum)
@@ -37,13 +39,48 @@ export function publicAdventureFor(adventure = {}) {
   }
 }
 
+export function publicWorldMapFor(worldMap = {}) {
+  const locationIds = new Set((Array.isArray(worldMap.locations) ? worldMap.locations : []).map((location) => text(location?.id, 100)).filter(Boolean))
+  return {
+    version: Math.max(1, integer(worldMap.version, 1)),
+    seed: text(worldMap.seed, 120),
+    name: text(worldMap.name, 160),
+    width: Math.max(320, Math.min(2000, integer(worldMap.width, 1000))),
+    height: Math.max(240, Math.min(1200, integer(worldMap.height, 640))),
+    currentLocationId: locationIds.has(text(worldMap.currentLocationId, 100)) ? text(worldMap.currentLocationId, 100) : '',
+    regions: (Array.isArray(worldMap.regions) ? worldMap.regions : []).slice(0, 12).map((region) => ({
+      id: text(region?.id, 100), name: text(region?.name, 120), biome: text(region?.biome, 40),
+      x: integer(region?.x, 0), y: integer(region?.y, 0), radius: integer(region?.radius, 180),
+    })),
+    locations: (Array.isArray(worldMap.locations) ? worldMap.locations : []).slice(0, 50).map((location) => ({
+      id: text(location?.id, 100), name: text(location?.name, 160), kind: text(location?.kind, 40),
+      x: integer(location?.x, 0), y: integer(location?.y, 0), regionId: text(location?.regionId, 100),
+      summary: text(location?.summary, 500), known: location?.known !== false, visited: location?.visited === true,
+    })),
+    routes: (Array.isArray(worldMap.routes) ? worldMap.routes : []).slice(0, 100)
+      .filter((route) => locationIds.has(text(route?.from, 100)) && locationIds.has(text(route?.to, 100)))
+      .map((route) => ({
+        id: text(route?.id, 100), from: text(route?.from, 100), to: text(route?.to, 100), kind: text(route?.kind, 40),
+        distance: Math.max(1, integer(route?.distance, 1)), danger: text(route?.danger, 40), discovered: route?.discovered !== false,
+      })),
+  }
+}
+
 function publicCellFor(cell = {}) {
   const revealed = cell.revealed === true
+  const material = String(cell.material ?? '')
+  const pattern = String(cell.pattern ?? '')
+  const allowedMaterials = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
+  const allowedPatterns = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
   return {
     x: integer(cell.x),
     y: integer(cell.y),
     type: ['wall', 'floor', 'water', 'door'].includes(String(cell.type)) ? String(cell.type) : 'floor',
     revealed,
+    ...(allowedMaterials.has(material) ? { material } : {}),
+    ...(allowedPatterns.has(pattern) ? { pattern } : {}),
+    ...(Number.isSafeInteger(Number(cell.variant)) ? { variant: Math.max(0, Math.min(5, Number(cell.variant))) } : {}),
+    ...(typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask) ? { edge_mask: cell.edge_mask } : {}),
     ...(revealed && cell.feature != null ? { feature: text(cell.feature, 40) } : {}),
   }
 }
@@ -95,6 +132,38 @@ export function publicEncounterFor(encounter = {}) {
   }
 }
 
+function publicReactionWindowFor(window) {
+  if (!window || typeof window !== 'object' || Array.isArray(window)) return null
+  return {
+    id: text(window.id, 160),
+    trigger: text(window.trigger, 80),
+    actor_id: text(window.actor_id, 120),
+    source_actor_id: text(window.source_actor_id, 120),
+    target_id: text(window.target_id, 120),
+    action_ids: (Array.isArray(window.action_ids) ? window.action_ids : []).map((id) => text(id, 120)).filter(Boolean).slice(0, 20),
+    action_options: (Array.isArray(window.action_options) ? window.action_options : []).slice(0, 20).map((option) => ({
+      id: text(option?.id, 120),
+      name: text(option?.name, 160),
+      description: text(option?.description, 500),
+      ...(option?.resource == null ? {} : { resource: text(option.resource, 120) }),
+      ...(option?.cost == null ? {} : { cost: Math.max(0, integer(option.cost, 0)) }),
+    })),
+    ...(window.trigger_roll && typeof window.trigger_roll === 'object' ? {
+      trigger_roll: {
+        kept: integer(window.trigger_roll.kept, 0),
+        modifier: integer(window.trigger_roll.modifier, 0),
+        total: integer(window.trigger_roll.total, 0),
+        difficulty: Math.max(0, integer(window.trigger_roll.difficulty, 0)),
+        ability: text(window.trigger_roll.ability, 20),
+        save_event_type: text(window.trigger_roll.save_event_type, 80),
+      },
+    } : {}),
+    ...(window.fighter_level == null ? {} : { fighter_level: Math.max(1, integer(window.fighter_level, 1)) }),
+    ...(window.damage && typeof window.damage === 'object' ? { damage: { ...window.damage } } : {}),
+    ...(window.pending_spell && typeof window.pending_spell === 'object' ? { pending_spell: { ...window.pending_spell } } : {}),
+  }
+}
+
 function viewerFor(state, user, actorId) {
   return {
     role: user?.role === 'admin' ? 'admin' : 'player',
@@ -119,12 +188,32 @@ export function campaignStateForViewer(state, user, actorId = '') {
     .map(publicMerchantFor)
   const enemies = (Array.isArray(visible.enemies) ? visible.enemies : []).map(publicEnemyFor)
   const mechanics = visible.mechanics && typeof visible.mechanics === 'object'
-    ? { ...visible.mechanics, encounter: publicEncounterFor(visible.mechanics.encounter) }
+    ? {
+      ...visible.mechanics,
+      encounter: publicEncounterFor(visible.mechanics.encounter),
+      ...(visible.mechanics.combat && typeof visible.mechanics.combat === 'object' ? {
+        combat: {
+          ...visible.mechanics.combat,
+          reaction_window: publicReactionWindowFor(visible.mechanics.combat.reaction_window),
+        },
+      } : {}),
+    }
     : visible.mechanics
   return {
     ...visible,
     scene,
     adventure: publicAdventureFor(visible.adventure),
+    worldMap: publicWorldMapFor(visible.worldMap ?? state.worldMap),
+    worldMemory: worldMemoryForViewer(state.worldMemory, {
+      playerId: String(actorId ?? ''),
+      isAdmin: false,
+      isPartyMember: true,
+    }),
+    social: npcSocialForViewer(state.social, {
+      playerId: String(actorId ?? ''),
+      isAdmin: false,
+      isPartyMember: true,
+    }),
     merchants,
     enemies,
     mechanics,
@@ -140,6 +229,7 @@ function eventForViewer(event, user, actorId) {
   if (visible.event_type === 'SceneAdvanced') {
     payload.scene = publicSceneFor(payload.scene)
     payload.adventure = publicAdventureFor(payload.adventure)
+    payload.worldMap = publicWorldMapFor(payload.worldMap)
   }
   if (visible.event_type === 'MerchantCreated' && payload.merchant) {
     payload.merchant = publicMerchantFor(payload.merchant)
@@ -149,6 +239,18 @@ function eventForViewer(event, user, actorId) {
       ...publicEncounterFor(payload.encounter),
       enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map(publicEnemyFor),
     }
+  }
+  if (visible.event_type === 'AbilityCheckResolved' && payload.social_check) {
+    delete payload.difficulty
+    payload.social_check = {
+      check_id: String(payload.social_check.check_id ?? ''),
+      npc_id: String(payload.social_check.npc_id ?? ''),
+      skill: String(payload.social_check.skill ?? payload.skill ?? ''),
+      difficulty_hidden: true,
+    }
+  }
+  if (visible.event_type === 'ReactionWindowOpened') {
+    return { ...visible, payload: publicReactionWindowFor(payload) }
   }
   return { ...visible, payload }
 }
@@ -163,6 +265,7 @@ export function sceneTransitionForViewer(transition) {
   return {
     scene: publicSceneFor(transition.scene),
     adventure: publicAdventureFor(transition.adventure),
+    worldMap: publicWorldMapFor(transition.worldMap),
     transition: text(transition.transition, 2_000),
     arrival: text(transition.arrival, 2_000),
     suggestions: (Array.isArray(transition.suggestions) ? transition.suggestions : []).map((entry) => text(entry, 200)).filter(Boolean).slice(0, 3),

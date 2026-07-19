@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Backpack, Check, Coins, Download, FileJson, ImagePlus, Maximize2, PackageOpen,
+  Backpack, Check, Coins, Download, FileJson, ImagePlus, LockKeyhole, Maximize2, PackageOpen,
   Pencil, Plus, Save, Search, Shield, Sparkles, Trash2, Upload, Weight, X, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { generateItemImage } from './ai-client'
+import { DND_CLASS_OPTIONS, classFeatureCatalogFor, playerClassKey, subclassOptionsFor } from './combat-actions'
+import { fallbackCombatSpells, spellSelectionRules } from './combat-spells'
+import { classSkillRulesFor, featureChoiceGroupsFor, normalizedSelectedFeatures } from './character-progression'
+import type { FeatureChoiceGroup } from './character-progression'
 import { importCharacterJson } from './lss-import'
 import type { InventoryItem, Player } from './types'
 
 const abilityNames: Record<keyof Player['abilities'], string> = { str: 'СИЛ', dex: 'ЛОВ', con: 'ТЕЛ', int: 'ИНТ', wis: 'МДР', cha: 'ХАР' }
 const itemTypeNames: Record<InventoryItem['type'], string> = { weapon: 'Оружие', armor: 'Доспех', consumable: 'Расходник', tool: 'Инструмент', quest: 'Задание', treasure: 'Сокровище', document: 'Документ', other: 'Прочее' }
+
+function defaultWeaponCombat(): NonNullable<InventoryItem['combat']> {
+  return { kind: 'melee', ability: 'str', damage: '1d6', damageType: 'slashing', normalRange: 5 }
+}
 
 function modifier(score: number) {
   const value = Math.floor((score - 10) / 2)
@@ -25,13 +33,110 @@ function TextField({ label, value, onChange, rows = 3 }: { label: string; value:
 
 export function CharacterEditor({ player, onClose, onSave }: { player: Player; onClose: () => void; onSave: (patch: Partial<Player>) => void }) {
   const [draft, setDraft] = useState<Player>(() => structuredClone(player))
-  const [tab, setTab] = useState<'sheet' | 'story'>('sheet')
+  const [tab, setTab] = useState<'sheet' | 'story' | 'advancement'>('sheet')
   const [notice, setNotice] = useState('')
+  const [developmentSearch, setDevelopmentSearch] = useState('')
+  const [spellLevelFilter, setSpellLevelFilter] = useState<number | 'all'>('all')
   const avatarInput = useRef<HTMLInputElement>(null)
   const importInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => setDraft(structuredClone(player)), [player])
   const patch = <K extends keyof Player>(key: K, value: Player[K]) => setDraft((current) => ({ ...current, [key]: value }))
+  const classKey = playerClassKey(draft)
+  const classOption = DND_CLASS_OPTIONS.find((entry) => entry.key === classKey)
+  const subclasses = subclassOptionsFor(draft)
+  const subclassUnlocked = Boolean(classOption && draft.level >= classOption.subclassLevel)
+  const spellRules = spellSelectionRules(draft)
+  const classSkillRules = classSkillRulesFor(draft)
+  const selectedClassSkills = draft.classSkillProficiencies ?? []
+  const featureChoiceGroups = featureChoiceGroupsFor(draft)
+  const selectedFeatureIds = draft.selectedFeatureIds ?? []
+  const developmentSpells = fallbackCombatSpells(draft)
+  const knownSpellIds = draft.knownSpellIds ?? []
+  const preparedSpellIds = draft.preparedSpellIds ?? []
+  const knownCantrips = developmentSpells.filter((spell) => spell.level === 0 && knownSpellIds.includes(spell.id)).length
+  const knownLeveled = developmentSpells.filter((spell) => spell.level > 0 && knownSpellIds.includes(spell.id)).length
+  const preparedLeveled = developmentSpells.filter((spell) => spell.level > 0 && preparedSpellIds.includes(spell.id)).length
+  const developmentQuery = developmentSearch.trim().toLocaleLowerCase('ru')
+  const filteredClassSkills = (classSkillRules?.options ?? []).filter((skill) => !developmentQuery || `${skill.name} ${skill.ability}`.toLocaleLowerCase('ru').includes(developmentQuery))
+  const filteredFeatureChoiceGroups = featureChoiceGroups.map((group) => ({
+    ...group,
+    options: group.options.filter((option) => !developmentQuery || `${group.name} ${option.name}`.toLocaleLowerCase('ru').includes(developmentQuery)),
+  })).filter((group) => group.options.length > 0)
+  const developmentFeatures = classFeatureCatalogFor(draft, true).filter((feature) => !developmentQuery || `${feature.name} ${feature.description} ${feature.subclass ?? ''}`.toLocaleLowerCase('ru').includes(developmentQuery))
+  const filteredDevelopmentSpells = developmentSpells.filter((spell) => (spellLevelFilter === 'all' || spell.level === spellLevelFilter) && (!developmentQuery || `${spell.name} ${spell.englishName ?? ''} ${spell.description ?? ''}`.toLocaleLowerCase('ru').includes(developmentQuery)))
+  const skillsValid = !Object.hasOwn(draft, 'classSkillProficiencies') || !classSkillRules || selectedClassSkills.length === classSkillRules.choiceCount
+  const featureChoicesRequired = Object.hasOwn(draft, 'selectedFeatureIds') || draft.level > player.level
+  const featureChoicesValid = !featureChoicesRequired || featureChoiceGroups.every((group) => group.options.filter((option) => selectedFeatureIds.includes(option.id)).length === group.choiceCount)
+  const subclassValid = !subclassUnlocked || Boolean(draft.subclass)
+  const developmentValid = subclassValid && skillsValid && featureChoicesValid && (!spellRules || (knownCantrips <= spellRules.cantrips
+    && (spellRules.mode !== 'known' || knownLeveled <= spellRules.spellsKnown)
+    && (spellRules.mode !== 'spellbook' || knownLeveled <= Math.max(spellRules.spellbookMinimum, player.knownSpellIds?.length ?? 0))
+    && preparedLeveled <= spellRules.preparedLimit))
+
+  useEffect(() => {
+    if (!subclassUnlocked && draft.subclass) setDraft((current) => ({ ...current, subclass: undefined }))
+  }, [draft.subclass, subclassUnlocked])
+
+  const toggleSpellId = (key: 'knownSpellIds' | 'preparedSpellIds', spellId: string, maximum: number, categoryIds: string[]) => {
+    const current = draft[key] ?? []
+    const selected = current.includes(spellId)
+    if (!selected && categoryIds.length >= maximum) {
+      setNotice(`Достигнут лимит по правилам класса: ${maximum}. Сначала снимите другой выбор.`)
+      return
+    }
+    patch(key, selected ? current.filter((id) => id !== spellId) : [...current, spellId])
+    setNotice('')
+  }
+
+  const toggleDevelopmentSpell = (spellId: string, prepare = false) => {
+    if (!spellRules) return
+    const spell = developmentSpells.find((entry) => entry.id === spellId)
+    if (!spell) return
+    if (spell.level === 0) {
+      toggleSpellId('knownSpellIds', spellId, spellRules.cantrips, developmentSpells.filter((entry) => entry.level === 0 && knownSpellIds.includes(entry.id)).map((entry) => entry.id))
+      return
+    }
+    if (spellRules.mode === 'known') {
+      toggleSpellId('knownSpellIds', spellId, spellRules.spellsKnown, developmentSpells.filter((entry) => entry.level > 0 && knownSpellIds.includes(entry.id)).map((entry) => entry.id))
+      return
+    }
+    if (spellRules.mode === 'spellbook' && !prepare) {
+      const maximum = Math.max(spellRules.spellbookMinimum, player.knownSpellIds?.length ?? 0)
+      toggleSpellId('knownSpellIds', spellId, maximum, developmentSpells.filter((entry) => entry.level > 0 && knownSpellIds.includes(entry.id)).map((entry) => entry.id))
+      if (knownSpellIds.includes(spellId)) patch('preparedSpellIds', preparedSpellIds.filter((id) => id !== spellId))
+      return
+    }
+    if (spellRules.mode === 'spellbook' && !knownSpellIds.includes(spellId)) {
+      setNotice('Сначала добавьте заклинание в книгу волшебника.')
+      return
+    }
+    toggleSpellId('preparedSpellIds', spellId, spellRules.preparedLimit, developmentSpells.filter((entry) => entry.level > 0 && preparedSpellIds.includes(entry.id)).map((entry) => entry.id))
+  }
+
+  const toggleClassSkill = (skillId: string) => {
+    if (!classSkillRules) return
+    const selected = selectedClassSkills.includes(skillId)
+    if (!selected && selectedClassSkills.length >= classSkillRules.choiceCount) {
+      setNotice(`Класс ${classOption?.label ?? ''} позволяет выбрать ${classSkillRules.choiceCount} навыка. Сначала снимите другой выбор.`)
+      return
+    }
+    patch('classSkillProficiencies', selected ? selectedClassSkills.filter((id) => id !== skillId) : [...selectedClassSkills, skillId])
+    setNotice('')
+  }
+
+  const toggleFeatureChoice = (group: FeatureChoiceGroup & { choiceCount: number }, optionId: string) => {
+    const current = draft.selectedFeatureIds ?? []
+    const groupIds = new Set(group.options.map((option) => option.id))
+    const chosenInGroup = current.filter((id) => groupIds.has(id))
+    const selected = chosenInGroup.includes(optionId)
+    if (!selected && chosenInGroup.length >= group.choiceCount) {
+      setNotice(`${group.name}: можно выбрать ${group.choiceCount}. Сначала снимите другой выбор.`)
+      return
+    }
+    patch('selectedFeatureIds', selected ? current.filter((id) => id !== optionId) : [...current, optionId])
+    setNotice('')
+  }
 
   const uploadAvatar = (file?: File) => {
     if (!file) return
@@ -78,13 +183,32 @@ export function CharacterEditor({ player, onClose, onSave }: { player: Player; o
             <button className="close-editor" onClick={onClose} aria-label="Закрыть лист персонажа"><X size={20} /></button>
           </div>
         </header>
-        <nav className="editor-tabs"><button className={tab === 'sheet' ? 'active' : ''} onClick={() => setTab('sheet')}>Основной лист</button><button className={tab === 'story' ? 'active' : ''} onClick={() => setTab('story')}>История и особенности</button><span><Backpack size={14} />{draft.inventory.length} предметов</span></nav>
+        <nav className="editor-tabs"><button className={tab === 'sheet' ? 'active' : ''} onClick={() => setTab('sheet')}>Основной лист</button><button className={tab === 'story' ? 'active' : ''} onClick={() => setTab('story')}>История и особенности</button><button className={tab === 'advancement' ? 'active' : ''} onClick={() => setTab('advancement')}><Sparkles size={14} />Развитие{draft.level > player.level ? ` +${draft.level - player.level}` : ''}</button><span><Backpack size={14} />{draft.inventory.length} предметов</span></nav>
         <div className="editor-content">
           {tab === 'sheet' ? <>
             <div className="sheet-section identity-grid">
               <Field label="Имя персонажа" value={draft.character} onChange={(value) => patch('character', value)} />
               <Field label="Имя игрока" value={draft.name} onChange={(value) => patch('name', value)} />
-              <Field label="Класс" value={draft.role} onChange={(value) => patch('role', value)} />
+              <label className="sheet-field"><span>Класс</span><select value={classKey ?? ''} onChange={(event) => {
+                const next = DND_CLASS_OPTIONS.find((entry) => entry.key === event.target.value)
+                setDraft((current) => ({
+                  ...current,
+                  characterClass: next?.key,
+                  role: next ? `${next.label} · ур. ${current.level}` : current.role,
+                  subclass: undefined,
+                  selectedFeatureIds: [],
+                  classSkillProficiencies: [],
+                  knownSpellIds: [],
+                  preparedSpellIds: [],
+                }))
+              }}><option value="">Выберите класс</option>{DND_CLASS_OPTIONS.map((entry) => <option key={entry.key} value={entry.key}>{entry.label}</option>)}</select></label>
+              <label className="sheet-field"><span>Подкласс{classOption ? ` · с ${classOption.subclassLevel} ур.` : ''}</span><select value={draft.subclass ?? ''} disabled={!subclassUnlocked} onChange={(event) => {
+                const nextSubclass = event.target.value || undefined
+                setDraft((current) => {
+                  const next = { ...current, subclass: nextSubclass }
+                  return { ...next, selectedFeatureIds: normalizedSelectedFeatures(next) }
+                })
+              }}><option value="">{subclassUnlocked ? 'Выберите подкласс' : 'Ещё не открыт'}</option>{subclasses.map((entry) => <option key={entry.id} value={entry.name}>{entry.name}</option>)}</select></label>
               <Field label="Раса / вид" value={draft.species} onChange={(value) => patch('species', value)} />
               <Field label="Предыстория" value={draft.background} onChange={(value) => patch('background', value)} />
               <Field label="Мировоззрение" value={draft.alignment} onChange={(value) => patch('alignment', value)} />
@@ -93,7 +217,10 @@ export function CharacterEditor({ player, onClose, onSave }: { player: Player; o
               {(Object.keys(abilityNames) as Array<keyof Player['abilities']>).map((key) => <label key={key}><span>{abilityNames[key]}</span><input type="number" min="1" max="30" value={draft.abilities[key]} onChange={(event) => patch('abilities', { ...draft.abilities, [key]: Number(event.target.value) })} /><b>{modifier(draft.abilities[key])}</b></label>)}
             </div>
             <div className="sheet-section combat-grid">
-              <Field label="Уровень" type="number" min={1} max={20} value={draft.level} onChange={(value) => patch('level', Number(value))} />
+              <Field label="Уровень" type="number" min={1} max={12} value={draft.level} onChange={(value) => {
+                const level = Math.max(1, Math.min(12, Number(value) || 1))
+                setDraft((current) => ({ ...current, level, role: classOption ? `${classOption.label} · ур. ${level}` : current.role }))
+              }} />
               <Field label="Опыт" type="number" min={0} value={draft.experience} onChange={(value) => patch('experience', Number(value))} />
               <Field label="Текущие хиты" type="number" min={0} value={draft.hp} onChange={(value) => patch('hp', Number(value))} />
               <Field label="Максимум хитов" type="number" min={1} value={draft.maxHp} onChange={(value) => patch('maxHp', Number(value))} />
@@ -102,7 +229,7 @@ export function CharacterEditor({ player, onClose, onSave }: { player: Player; o
               <Field label="Бонус мастерства" type="number" min={0} value={draft.proficiency} onChange={(value) => patch('proficiency', Number(value))} />
             </div>
             <div className="currency-editor"><span><Coins size={16} />МОНЕТЫ</span>{(['copper', 'silver', 'gold', 'platinum'] as const).map((key) => <Field key={key} label={{ copper: 'Медь', silver: 'Серебро', gold: 'Золото', platinum: 'Платина' }[key]} type="number" min={0} value={draft.currency[key]} onChange={(value) => patch('currency', { ...draft.currency, [key]: Number(value) })} />)}</div>
-          </> : <div className="story-editor-grid">
+          </> : tab === 'story' ? <div className="story-editor-grid">
             <TextField label="Предыстория" value={draft.backstory} onChange={(value) => patch('backstory', value)} rows={7} />
             <TextField label="Черты характера" value={draft.traits} onChange={(value) => patch('traits', value)} />
             <TextField label="Идеалы" value={draft.ideals} onChange={(value) => patch('ideals', value)} />
@@ -110,9 +237,58 @@ export function CharacterEditor({ player, onClose, onSave }: { player: Player; o
             <TextField label="Слабости" value={draft.flaws} onChange={(value) => patch('flaws', value)} />
             <TextField label="Умения и особенности" value={draft.features} onChange={(value) => patch('features', value)} rows={6} />
             <TextField label="Заметки" value={draft.notes} onChange={(value) => patch('notes', value)} rows={5} />
+          </div> : <div className="advancement-editor">
+            <section className="advancement-summary">
+              <div><Sparkles size={20} /><span><small>{draft.level > player.level ? 'ПОВЫШЕНИЕ УРОВНЯ' : 'КОНСТРУКТОР ПЕРСОНАЖА'}</small><strong>{classOption?.label ?? 'Сначала выберите класс'} · {draft.level} уровень</strong></span></div>
+              {classOption && <p>{subclassUnlocked ? draft.subclass ? `Подкласс: ${draft.subclass}` : 'На этом уровне нужно выбрать подкласс.' : `Подкласс откроется на ${classOption.subclassLevel}-м уровне.`}</p>}
+            </section>
+            <label className="advancement-search"><Search size={16} /><input value={developmentSearch} onChange={(event) => setDevelopmentSearch(event.target.value)} placeholder="Поиск навыка, умения или заклинания…" /></label>
+            <section className="advancement-block skill-development">
+              <header><div><Check size={17} /><span><strong>Владение навыками</strong><small>Классовый выбор первого уровня</small></span></div>{classSkillRules && <b className={selectedClassSkills.length !== classSkillRules.choiceCount ? 'invalid' : ''}>{selectedClassSkills.length}/{classSkillRules.choiceCount}</b>}</header>
+              {classSkillRules ? <div className="class-skill-list">{filteredClassSkills.map((skill) => {
+                const selected = selectedClassSkills.includes(skill.id)
+                return <button key={skill.id} className={selected ? 'selected' : ''} onClick={() => toggleClassSkill(skill.id)}><i>{selected ? <Check size={14} /> : <Plus size={14} />}</i><span><strong>{skill.name}</strong><small>{skill.ability.toUpperCase()}</small></span></button>
+              })}</div> : <p className="advancement-empty">Выберите класс, чтобы открыть допустимые навыки.</p>}
+            </section>
+            {featureChoiceGroups.length > 0 && <section className="advancement-block feature-choice-development">
+              <header><div><Sparkles size={17} /><span><strong>Выбор классовых умений</strong><small>Новые варианты появляются на нужном уровне</small></span></div><b className={!featureChoicesValid ? 'invalid' : ''}>{featureChoiceGroups.reduce((sum, group) => sum + group.options.filter((option) => selectedFeatureIds.includes(option.id)).length, 0)}/{featureChoiceGroups.reduce((sum, group) => sum + group.choiceCount, 0)}</b></header>
+              <div className="feature-choice-groups">{filteredFeatureChoiceGroups.map((group) => {
+                const chosen = group.options.filter((option) => selectedFeatureIds.includes(option.id)).length
+                return <section key={group.id}><header><span><strong>{group.name}</strong><small>Открыто на {group.unlockLevel} уровне</small></span><b className={chosen !== group.choiceCount ? 'invalid' : ''}>{chosen}/{group.choiceCount}</b></header><div>{group.options.map((option) => {
+                  const selected = selectedFeatureIds.includes(option.id)
+                  return <button key={option.id} className={selected ? 'selected' : ''} onClick={() => toggleFeatureChoice(group, option.id)}><i>{selected ? <Check size={14} /> : <Plus size={14} />}</i><span><strong>{option.name}</strong>{option.minimumLevel && <small>с {option.minimumLevel} уровня</small>}</span></button>
+                })}</div></section>
+              })}</div>
+            </section>}
+            <section className="advancement-block">
+              <header><div><Shield size={17} /><span><strong>Классовые умения</strong><small>Автоматически открываются на требуемом уровне</small></span></div><b>{developmentFeatures.filter((feature) => draft.level >= Number(feature.minimumLevel ?? 1)).length}</b></header>
+              <div className="feature-progression-list">{developmentFeatures.length ? developmentFeatures.map((feature) => {
+                const unlocked = draft.level >= Number(feature.minimumLevel ?? 1)
+                return <article key={feature.id} className={unlocked ? 'unlocked' : 'locked'}><i>{unlocked ? <Check size={14} /> : <LockKeyhole size={14} />}</i><span><strong>{feature.name}</strong><small>{feature.subclass || classOption?.label} · {feature.minimumLevel ?? 1} уровень</small><p>{feature.description}</p></span></article>
+              }) : <p className="advancement-empty">Выберите класс и подкласс, чтобы увидеть развитие умений.</p>}</div>
+            </section>
+            <section className="advancement-block spell-development">
+              <header><div><Sparkles size={17} /><span><strong>Заклинания</strong><small>{spellRules ? spellRules.mode === 'known' ? 'Известные заклинания' : spellRules.mode === 'spellbook' ? 'Книга и подготовка' : 'Подготовка после отдыха' : 'Этот класс не использует заклинания'}</small></span></div>{spellRules && <b>до {spellRules.maximumSpellLevel} круга</b>}</header>
+              {spellRules ? <>
+                <div className="spell-choice-counters">
+                  {spellRules.cantrips > 0 && <span className={knownCantrips > spellRules.cantrips ? 'invalid' : ''}>Заговоры <b>{knownCantrips}/{spellRules.cantrips}</b></span>}
+                  {spellRules.mode === 'known' && <span className={knownLeveled > spellRules.spellsKnown ? 'invalid' : ''}>Известно <b>{knownLeveled}/{spellRules.spellsKnown}</b></span>}
+                  {spellRules.mode === 'spellbook' && <span className={knownLeveled > Math.max(spellRules.spellbookMinimum, player.knownSpellIds?.length ?? 0) ? 'invalid' : ''}>В книге <b>{knownLeveled}/{Math.max(spellRules.spellbookMinimum, player.knownSpellIds?.length ?? 0)}</b></span>}
+                  {(spellRules.mode === 'prepared' || spellRules.mode === 'spellbook') && <span className={preparedLeveled > spellRules.preparedLimit ? 'invalid' : ''}>Подготовлено <b>{preparedLeveled}/{spellRules.preparedLimit}</b></span>}
+                </div>
+                <nav className="advancement-level-filter"><button className={spellLevelFilter === 'all' ? 'active' : ''} onClick={() => setSpellLevelFilter('all')}>Все</button>{[...new Set(developmentSpells.map((spell) => spell.level))].sort((a, b) => a - b).map((level) => <button key={level} className={spellLevelFilter === level ? 'active' : ''} onClick={() => setSpellLevelFilter(level)}>{level === 0 ? 'З' : level}</button>)}</nav>
+                <div className="development-spell-list">{filteredDevelopmentSpells.map((spell) => {
+                  const known = knownSpellIds.includes(spell.id)
+                  const prepared = preparedSpellIds.includes(spell.id)
+                  return <article key={spell.id} className={known || prepared ? 'selected' : ''}><span><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spell.castingTime || '1 действие'} · {spell.rangeText || `${spell.range} фт.`}</small><p>{spell.description}</p></span><div>
+                    {spell.level === 0 || spellRules.mode === 'known' ? <button className={known ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id)}>{known ? <Check size={13} /> : <Plus size={13} />}{spell.level === 0 ? 'Изучен' : 'Выбрать'}</button> : spellRules.mode === 'spellbook' ? <><button className={known ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id)}>{known ? <Check size={13} /> : <Plus size={13} />}Книга</button><button className={prepared ? 'active' : ''} disabled={!known} onClick={() => toggleDevelopmentSpell(spell.id, true)}>{prepared ? <Check size={13} /> : <Plus size={13} />}Подготовить</button></> : <button className={prepared ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id, true)}>{prepared ? <Check size={13} /> : <Plus size={13} />}Подготовить</button>}
+                  </div></article>
+                })}</div>
+              </> : <p className="advancement-empty">Заклинания появятся здесь автоматически, если выбран класс-заклинатель и достигнут нужный уровень.</p>}
+            </section>
           </div>}
         </div>
-        <footer className="editor-footer"><p>{notice || 'Изменения сохраняются в общей сессии и сразу видны отряду.'}</p><button onClick={() => { onClose(); onSave(draft) }}><Save size={16} />Сохранить персонажа</button></footer>
+        <footer className="editor-footer"><p>{notice || (developmentValid ? 'Изменения сохраняются в общей сессии и сразу видны отряду.' : 'Не завершён обязательный выбор подкласса, навыков, умений или превышен лимит заклинаний.')}</p><button onClick={() => { if (!developmentValid) { setTab('advancement'); setNotice('Завершите обязательный выбор подкласса, навыков и классовых умений; исправьте превышенные лимиты заклинаний.'); return } const sanitized = { ...draft, selectedFeatureIds: normalizedSelectedFeatures(draft) }; onClose(); onSave(sanitized) }}><Save size={16} />Сохранить персонажа</button></footer>
       </section>
     </div>
   )
@@ -152,12 +328,23 @@ function ItemModal({ item, isNew, onClose, onSave, onRemove }: { item: Inventory
     <div className="item-modal-body">
       {editing ? <div className="item-form">
         <Field label="Название" value={draft.name} onChange={(value) => patch('name', value)} />
-        <label className="sheet-field"><span>Тип</span><select value={draft.type} onChange={(event) => patch('type', event.target.value as InventoryItem['type'])}>{Object.entries(itemTypeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label className="sheet-field"><span>Тип</span><select value={draft.type} onChange={(event) => {
+          const type = event.target.value as InventoryItem['type']
+          setDraft((current) => ({ ...current, type, ...(type === 'weapon' && !current.combat ? { combat: defaultWeaponCombat() } : {}) }))
+        }}>{Object.entries(itemTypeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="sheet-field"><span>Редкость</span><select value={draft.rarity} onChange={(event) => patch('rarity', event.target.value as InventoryItem['rarity'])}>{['обычный','необычный','редкий','очень редкий','легендарный','сюжетный'].map((value) => <option key={value}>{value}</option>)}</select></label>
         <Field label="Количество" type="number" min={1} value={draft.quantity} onChange={(value) => patch('quantity', Number(value))} />
         <Field label="Вес" type="number" min={0} value={draft.weight} onChange={(value) => patch('weight', Number(value))} />
         <TextField label="Описание" value={draft.description} onChange={(value) => patch('description', value)} rows={5} />
         <TextField label="Свойства" value={draft.properties} onChange={(value) => patch('properties', value)} rows={3} />
+        {draft.type === 'weapon' && <div className="sheet-section combat-grid">
+          <label className="sheet-field"><span>Тип атаки</span><select value={(draft.combat ?? defaultWeaponCombat()).kind} onChange={(event) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), kind: event.target.value as NonNullable<InventoryItem['combat']>['kind'] })}><option value="melee">Ближний бой</option><option value="ranged">Дальний бой</option><option value="thrown-area">Бросок по области</option></select></label>
+          <label className="sheet-field"><span>Характеристика</span><select value={(draft.combat ?? defaultWeaponCombat()).ability ?? 'str'} onChange={(event) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), ability: event.target.value as 'str' | 'dex' })}><option value="str">Сила</option><option value="dex">Ловкость</option></select></label>
+          <Field label="Кость урона" value={(draft.combat ?? defaultWeaponCombat()).damage} onChange={(value) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), damage: value })} />
+          <Field label="Тип урона" value={(draft.combat ?? defaultWeaponCombat()).damageType} onChange={(value) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), damageType: value })} />
+          <Field label="Обычная дальность, фт" type="number" min={5} value={(draft.combat ?? defaultWeaponCombat()).normalRange} onChange={(value) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), normalRange: Math.max(5, Number(value) || 5) })} />
+          {(draft.combat ?? defaultWeaponCombat()).kind === 'ranged' && <Field label="Макс. дальность, фт" type="number" min={5} value={(draft.combat ?? defaultWeaponCombat()).longRange ?? (draft.combat ?? defaultWeaponCombat()).normalRange} onChange={(value) => patch('combat', { ...(draft.combat ?? defaultWeaponCombat()), longRange: Math.max(5, Number(value) || 5) })} />}
+        </div>}
         <TextField label="Промпт изображения" value={draft.imagePrompt ?? ''} onChange={(value) => patch('imagePrompt', value)} rows={4} />
         <label className="equipped-check"><input type="checkbox" checked={draft.equipped} onChange={(event) => patch('equipped', event.target.checked)} /><Check size={14} />Экипировано</label>
       </div> : <>
@@ -168,7 +355,7 @@ function ItemModal({ item, isNew, onClose, onSave, onRemove }: { item: Inventory
       </>}
       {error && <p className="item-error">{error}</p>}
       <div className="item-actions">
-        {editing ? <button className="primary" onClick={() => { onSave(draft); setEditing(false) }}><Save size={15} />Сохранить</button> : <button onClick={() => setEditing(true)}><Pencil size={15} />Редактировать</button>}
+        {editing ? <button className="primary" onClick={() => { const saved = draft.type === 'weapon' && !draft.combat ? { ...draft, combat: defaultWeaponCombat() } : draft; setDraft(saved); onSave(saved); setEditing(false) }}><Save size={15} />Сохранить</button> : <button onClick={() => setEditing(true)}><Pencil size={15} />Редактировать</button>}
         <button onClick={createImage} disabled={generating}><Sparkles size={15} />{generating ? 'Создаём…' : draft.image ? 'Перерисовать' : 'Создать изображение'}</button>
         {!isNew && <button className="danger" onClick={() => { onRemove(draft.id); onClose() }}><Trash2 size={15} />Удалить</button>}
       </div>

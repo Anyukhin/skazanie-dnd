@@ -9,12 +9,15 @@ import { DiceService } from './dice-service.mjs'
 import { EngineModeResolver } from './engine-mode.mjs'
 import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
-import { RouterAIClient } from './llm-client.mjs'
+import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { Narrator } from './narrator.mjs'
+import { CreativeDirector } from './creative-director.mjs'
+import { NpcControllerAgent } from './npc-controller.mjs'
+import { NpcSocialController } from './npc-social-controller.mjs'
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
-import { RulesEngine, applyGameEvent, normalizeCampaignState } from './rules-engine.mjs'
+import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, applyGameEvent, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
@@ -24,7 +27,9 @@ import { decideTurnConsumption, isExplicitEndTurn } from './turn-policy.mjs'
 import { answerKnownLore, proposeAgentInteraction, resolvePartyDecision, roleAllowsWorldTools, selectAgentRole } from './agent-router.mjs'
 import { applyHazardEffects, createHazardEffect, createHazardResolution } from './persistent-hazards.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
-import { MAX_CURRENCY_CP, merchantIsAtLocation, merchantViewFor, publicMerchantFor } from './merchant-economy.mjs'
+import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
+import { DirectorAgent } from './director-agent.mjs'
+import { MAX_CURRENCY_CP, merchantIsAtLocation, merchantViewFor } from './merchant-economy.mjs'
 import { assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnResultForViewer } from './viewer-projection.mjs'
@@ -43,7 +48,12 @@ const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
 const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').replace(/\/$/, '')
 const model = process.env.DND_AI_MODEL || 'qwen/qwen3.7-plus'
+const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'z-ai/glm-5.2,deepseek/deepseek-v4-flash,google/gemini-2.5-flash-lite,openai/gpt-4.1-nano')
+  .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
+const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
+const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)
+const modelFailureCooldownMs = Number(process.env.DND_AI_FAILURE_COOLDOWN_MS || 120_000)
 const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
@@ -51,7 +61,15 @@ mkdirSync(generatedDir, { recursive: true })
 const diceService = new DiceService()
 const rollRegistry = new RollRegistry({ diceService })
 const engineModeResolver = new EngineModeResolver()
-const llmClient = new RouterAIClient({ apiKey, baseUrl, model, maxTokens })
+const llmClient = new FallbackLLMClient({
+  clients: [model, ...fallbackModels].map((modelId) => new RouterAIClient({
+    apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
+    reasoning: ['z-ai/glm-5.2', 'deepseek/deepseek-v4-flash'].includes(modelId) ? { enabled: false } : null,
+  })),
+  probeTimeoutMs: modelProbeTimeoutMs,
+  failureCooldownMs: modelFailureCooldownMs,
+})
+if (apiKey) void llmClient.probe().catch(() => {})
 const sceneArchitect = new SceneArchitectAgent({ llmClient: apiKey ? llmClient : null })
 const rulePack = await loadRulePack(process.env.DND_DEFAULT_RULESET_ID || 'srd_5_2_1')
 const ruleRetriever = createRuleRetriever([rulePack])
@@ -60,10 +78,16 @@ const eventStore = new FileEventStore({
   rootDir: join(storageDir, 'engine'),
   reducer: applyGameEvent,
   normalizeState: normalizeCampaignState,
+  snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
 })
 const traceStore = new FileTraceStore({ rootDir: join(storageDir, 'turn-traces') })
 const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
+const creativeDirector = new CreativeDirector({ narrator })
+const npcController = new NpcControllerAgent({ llmClient: apiKey ? llmClient : null })
+const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmClient : null })
 const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null })
+const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine })
+const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
 
 const tools = [
   {
@@ -226,7 +250,7 @@ const tools = [
           map: {
             type: 'object', additionalProperties: false,
             properties: {
-              layout: { type: 'string', enum: ['rooms', 'streets', 'open', 'winding'] },
+              layout: { type: 'string', enum: ['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'] },
               width: { type: 'integer', minimum: 7, maximum: 25 },
               height: { type: 'integer', minimum: 7, maximum: 19 },
               openness: { type: 'number', minimum: 0.35, maximum: 0.85 },
@@ -319,7 +343,7 @@ function canUseHero(user, heroId) {
   return user?.role === 'admin' || user?.heroIds?.includes(String(heroId || ''))
 }
 
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'EndTurn'])
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem'])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
@@ -588,7 +612,7 @@ function sanitizePlayerCombatCommand(user, state, input) {
     const target = String(input?.target_id ?? input?.targetId ?? '')
     const enemy = (state.enemies ?? []).find((candidate) => String(candidate.id) === target)
     if (!enemy || enemy.alive === false || Number(enemy.hp) <= 0) throw commandPolicyError('Игрок может атаковать только живого противника', 'INVALID_ATTACK_TARGET')
-    return { ...base, target_id: target, ...(input?.item_id ? { item_id: String(input.item_id) } : {}) }
+    return { ...base, target_id: target, ...(input?.item_id ? { item_id: String(input.item_id) } : {}), ...(input?.knock_out === true ? { knock_out: true } : {}) }
   }
   if (type === 'MakeAreaAttack') return { ...base, item_id: String(input?.item_id || ''), to: { x: input?.to?.x, y: input?.to?.y } }
   if (type === 'ChangeWeapon') return { ...base, item_id: String(input?.item_id || '') }
@@ -601,6 +625,26 @@ function sanitizePlayerCombatCommand(user, state, input) {
       spell_id: spellId,
       ...(target ? { target_id: target } : {}),
       ...(input?.to ? { to: { x: input.to.x, y: input.to.y } } : {}),
+      ...(input?.knock_out === true ? { knock_out: true } : {}),
+    }
+  }
+  if (type === 'UseCombatAction') {
+    const actionId = String(input?.action_id ?? input?.actionId ?? '').slice(0, 120)
+    if (!actionId) throw commandPolicyError('Не выбрано боевое действие', 'COMBAT_ACTION_NOT_AVAILABLE')
+    const target = String(input?.target_id ?? input?.targetId ?? '').slice(0, 120)
+    return {
+      ...base,
+      action_id: actionId,
+      ...(target ? { target_id: target } : {}),
+      ...(input?.item_id ? { item_id: String(input.item_id).slice(0, 120) } : {}),
+    }
+  }
+  if (type === 'ResolveHeroDeath') {
+    const resolution = String(input?.resolution ?? '').slice(0, 20)
+    return {
+      ...base,
+      resolution,
+      ...(resolution === 'replace' ? { replacement_name: String(input?.replacement_name ?? input?.replacementName ?? '').trim().slice(0, 120) } : {}),
     }
   }
   return base
@@ -674,9 +718,60 @@ function tacticalNarration(events, state) {
     } else if (event.event_type === 'EquipmentChanged') {
       meaningful.push(`${actor} экипирует ${payload.item_name || 'оружие'}${payload.turns_spent ? ', затрачивая действие' : ' перед атакой'}.`)
     } else if (event.event_type === 'DamageApplied' && Number(payload.applied_amount) > 0) {
-      meaningful.push(`${target} получает ${Number(payload.applied_amount)} урона; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`)
+      meaningful.push(payload.death_ward_triggered
+        ? `${target} получает ${Number(payload.applied_amount)} урона, но Охрана от смерти срабатывает и оставляет 1 ОЗ.`
+        : payload.resistance_cantrip_reduction
+          ? `Сопротивление уменьшает урон по ${target} на ${Number(payload.resistance_cantrip_reduction)}; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`
+          : `${target} получает ${Number(payload.applied_amount)} урона; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`)
+    } else if (event.event_type === 'CreatureKnockedOut') {
+      meaningful.push(`${target} нокаутирован, остаётся с 1 ОЗ и начинает короткий отдых.`)
+    } else if (event.event_type === 'KnockoutEnded') {
+      meaningful.push(`${target} приходит в сознание после успешной первой помощи.`)
+    } else if (event.event_type === 'RestCompleted' && payload.reason === 'knockout') {
+      meaningful.push(`${target} приходит в сознание после завершения короткого отдыха.`)
     } else if (event.event_type === 'HitPointsReducedToZero') {
-      meaningful.push(`${target} выбывает из боя.`)
+      meaningful.push(`${target} падает без сознания и начинает делать спасброски от смерти.`)
+    } else if (event.event_type === 'DeathSavingThrowRolled') {
+      const outcome = payload.result === 'revived' ? 'натуральная 20 возвращает 1 ОЗ' : payload.result === 'stabilized' ? 'герой стабилизирован' : payload.result === 'died' ? 'третий провал' : payload.success ? 'успех' : 'провал'
+      const natural = Number(payload.natural_roll) || 0
+      const modifier = Number(payload.modifier) || 0
+      const total = Number(payload.total) || natural + modifier
+      const rollText = modifier === 0 ? `${natural}` : `${natural} ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)} = ${total}`
+      const auraText = payload.aura_of_protection_bonus ? ` Аура защиты даёт +${Number(payload.aura_of_protection_bonus)}.` : ''
+      meaningful.push(`${target} делает спасбросок от смерти: ${rollText} — ${outcome}.${auraText}`)
+    } else if (event.event_type === 'ConcentrationSavingThrowResolved') {
+      const natural = Number(payload.kept) || 0
+      const modifier = Number(payload.modifier) || 0
+      const total = Number(payload.total) || natural + modifier
+      const rollText = modifier === 0 ? `${natural}` : `${natural} ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)} = ${total}`
+      const auraText = payload.aura_of_protection_bonus ? ` Аура защиты даёт +${Number(payload.aura_of_protection_bonus)}.` : ''
+      meaningful.push(`${target} проверяет концентрацию: ${rollText} против СЛ ${Number(payload.difficulty) || 10} — ${payload.saved ? 'успех' : 'провал'}.${auraText}`)
+    } else if (event.event_type === 'ConcentrationEnded') {
+      meaningful.push(`Концентрация ${target} прекращается (${String(payload.reason ?? 'эффект завершён')}).`)
+    } else if (event.event_type === 'DeathSaveFailureRecorded') {
+      meaningful.push(`${target} получает ${Number(payload.failure_increment) === 2 ? 'два провала' : 'провал'} спасброска от смерти из-за урона.`)
+    } else if (event.event_type === 'HeroStabilized') {
+      meaningful.push(`${target} стабилизирован и остаётся без сознания.`)
+    } else if (event.event_type === 'StableRecoveryScheduled') {
+      meaningful.push(`${target} стабилен и восстановит 1 ОЗ через ${Math.max(1, Number(payload.recovery_hours) || 1)} ч.`)
+    } else if (event.event_type === 'HealingApplied' && payload.reason === 'stable-recovery-after-1d4-hours') {
+      meaningful.push(`${target} приходит в сознание с 1 ОЗ после необходимого времени покоя.`)
+    } else if (event.event_type === 'HealingApplied' && payload.spell_id === 'aura-of-life') {
+      meaningful.push(`Аура жизни возвращает ${target} 1 ОЗ в начале хода.`)
+    } else if (event.event_type === 'HitPointMaximumReductionPrevented') {
+      meaningful.push(`Аура жизни защищает максимум ОЗ ${target} от уменьшения.`)
+    } else if (event.event_type === 'HitPointMaximumReduced') {
+      meaningful.push(`Максимум ОЗ ${target} снижается: ${Number(payload.maximum_hp_before) || 0} → ${Number(payload.maximum_hp_after) || 0}.`)
+    } else if (event.event_type === 'HeroDied') {
+      meaningful.push(`${target} погибает. Его судьбу нужно разрешить: воскресить героя или заменить новым.`)
+    } else if (event.event_type === 'HeroResurrected') {
+      meaningful.push(`${target} возвращается к жизни с 1 ОЗ.`)
+    } else if (event.event_type === 'HeroReplaced') {
+      meaningful.push(`${payload.replacement_name || target} присоединяется к группе вместо погибшего героя.`)
+    } else if (event.event_type === 'ConditionAdded' && payload.condition === 'fled') {
+      meaningful.push(`${target} отступает и покидает бой.`)
+    } else if (event.event_type === 'ConditionAdded' && payload.condition === 'surrendered') {
+      meaningful.push(`${target} прекращает сопротивление и сдаётся.`)
     } else if (event.event_type === 'CombatEnded') {
       meaningful.push(`Бой завершён в раунде ${Number(payload.round) || 1}.`)
     } else if (event.event_type === 'TurnEnded') {
@@ -967,8 +1062,25 @@ function validateNarration(result, roll) {
 }
 
 async function callRouter(messages, availableTools = tools) {
-  const result = await llmClient.complete({ messages, tools: availableTools, toolChoice: 'auto', temperature: 0.75, maxTokens })
-  return { role: 'assistant', content: result.content, tool_calls: result.tool_calls.map((call) => ({ id: call.id, type: call.type, function: call.function })) }
+  const result = await llmClient.complete({
+    messages,
+    tools: availableTools,
+    toolChoice: 'auto',
+    temperature: 0.75,
+    maxTokens,
+    validateResponse: (candidate) => {
+      if (candidate.tool_calls?.length) return true
+      const text = String(candidate.content || '').trim()
+      return text.length >= 20 && !/\bi(?:'m| am) (?:claude|an ai)|system message|system prompt|injection attack|conflicting directives|should i proceed|core values/i.test(text)
+    },
+  })
+  return {
+    role: 'assistant',
+    content: result.content,
+    tool_calls: result.tool_calls.map((call) => ({ id: call.id, type: call.type, function: call.function })),
+    model: result.model,
+    fallback_used: result.fallback_used,
+  }
 }
 
 async function generateItemImage(prompt, aspectRatio = '1:1') {
@@ -1033,17 +1145,19 @@ async function narrate(body) {
   ]
   const effects = { roll: suppliedRoll, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
   const availableTools = !roleAllowsWorldTools(agentRole) ? [] : suppliedRoll ? tools.filter((tool) => tool.function.name !== 'roll_check') : tools
+  let responseModel = model
   for (let step = 0; step < 4; step += 1) {
     const assistant = await callRouter(messages, availableTools)
     if (!assistant) throw new Error('RouterAI не вернул сообщение')
-    messages.push(assistant)
+    responseModel = assistant.model || responseModel
+    messages.push({ role: assistant.role, content: assistant.content, tool_calls: assistant.tool_calls })
     if (!assistant.tool_calls?.length) {
       const final = validateNarration(parseFinal(assistant.content), suppliedRoll)
       if (effects.scene && !final.narration.toLocaleLowerCase('ru').includes(effects.scene.scene.location.toLocaleLowerCase('ru'))) {
         final.narration = `${effects.scene.transition} ${effects.scene.arrival} ${final.narration}`.trim()
       }
       if (effects.scene && !final.suggestions.length) final.suggestions = effects.scene.suggestions
-      return { ...final, effects, provider: 'RouterAI', model }
+      return { ...final, effects, provider: 'RouterAI', model: responseModel }
     }
     for (const call of assistant.tool_calls) {
       if (!suppliedRoll && call.function?.name === 'roll_check') {
@@ -1063,7 +1177,7 @@ async function narrate(body) {
         }
         return {
           narration: `Чтобы узнать, чем закончится это действие, нужна проверка «${check.label}». Брось d20.`,
-          suggestions: [], check, effects, provider: 'RouterAI', model,
+          suggestions: [], check, effects, provider: 'RouterAI', model: responseModel,
         }
       }
       const toolName = call.function?.name
@@ -1080,7 +1194,7 @@ async function narrate(body) {
           action_kind: 'free',
           effects,
           provider: 'RouterAI',
-          model,
+          model: responseModel,
         }
       }
       if (toolName === 'advance_scene' && effects.scene) {
@@ -1091,12 +1205,12 @@ async function narrate(body) {
           action_kind: 'substantive',
           effects,
           provider: 'RouterAI',
-          model,
+          model: responseModel,
         }
       }
     }
   }
-  return { narration: 'События развиваются слишком стремительно. Уточните ваше действие.', suggestions: [], effects, provider: 'RouterAI', model }
+  return { narration: 'События развиваются слишком стремительно. Уточните ваше действие.', suggestions: [], effects, provider: 'RouterAI', model: responseModel }
 }
 
 async function legacyTurnHandler(input) {
@@ -1180,6 +1294,7 @@ const gameOrchestrator = new GameOrchestrator({
   eventStore,
   traceStore,
   narrator,
+  npcSocialController,
   legacyHandler: legacyTurnHandler,
 })
 
@@ -1288,6 +1403,7 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
   const committedTransition = sceneEvent?.payload ? {
     scene: sceneEvent.payload.scene,
     adventure: sceneEvent.payload.adventure,
+    worldMap: sceneEvent.payload.worldMap,
     transition: sceneEvent.payload.transition,
     arrival: sceneEvent.payload.arrival,
     suggestions: sceneEvent.payload.suggestions ?? [],
@@ -1335,6 +1451,7 @@ async function replayDirectorSceneTransition({ campaignId, room, user, action, i
   const committedTransition = {
     scene: sceneEvent.payload.scene,
     adventure: sceneEvent.payload.adventure,
+    worldMap: sceneEvent.payload.worldMap,
     transition: sceneEvent.payload.transition,
     arrival: sceneEvent.payload.arrival,
     suggestions: sceneEvent.payload.suggestions ?? [],
@@ -1365,59 +1482,17 @@ async function replayDirectorSceneTransition({ campaignId, room, user, action, i
   }
 }
 
-function merchantClientState(state, actorId) {
-  const trusted = normalizeCampaignState(state)
-  const location = String(trusted.scene?.location ?? '')
-  const publicMerchants = trusted.merchants
-    .filter((merchant) => merchant.available !== false && merchantIsAtLocation(merchant.location, location))
-    .map(publicMerchantFor)
-  const publicPlayers = trusted.players.map((player) => String(player.id) === String(actorId)
-    ? player
-    : {
-      id: player.id,
-      name: player.name,
-      character: player.character,
-      role: player.role,
-      color: player.color,
-      initials: player.initials,
-      portrait: player.portrait,
-      portraitPosition: player.portraitPosition,
-      hp: player.hp,
-      maxHp: player.maxHp,
-      armor: player.armor,
-      online: player.online,
-      x: player.x,
-      y: player.y,
-    })
-  return {
-    sessionCode: trusted.sessionCode,
-    campaign: trusted.campaign,
-    partyName: trusted.partyName,
-    partyMemberIds: trusted.partyMemberIds,
-    state_version: trusted.state_version,
-    ruleset_id: trusted.ruleset_id,
-    ruleset_version: trusted.ruleset_version,
-    enabled_rule_packs: trusted.enabled_rule_packs,
-    enabled_house_rules: trusted.enabled_house_rules,
-    engine_mode: trusted.engine_mode,
-    activePlayerId: trusted.activePlayerId,
-    tacticalTurn: trusted.tacticalTurn,
-    players: publicPlayers,
-    merchants: publicMerchants,
-    economyLog: trusted.economyLog,
-  }
-}
-
-function persistAuthoritativeProjection(campaignId, engineState, events = [], journalMessage = null) {
+function persistAuthoritativeProjection(campaignId, engineState, events = [], journalMessage = null, { forceProjectorRefresh = false } = {}) {
   const proposedStateVersion = Number(engineState?.state_version ?? -1)
   if (!Number.isSafeInteger(proposedStateVersion)) return null
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const room = getRoom(campaignId)
     if (!room.state) return null
     const currentStateVersion = Number(room.state.state_version ?? 0)
-    if (proposedStateVersion <= currentStateVersion) return room
+    if (proposedStateVersion < currentStateVersion || (!forceProjectorRefresh && proposedStateVersion === currentStateVersion)) return room
     const eventTypes = new Set(events.map((event) => event.event_type))
     const merchantInventoryChanged = eventTypes.has('MerchantPurchaseCompleted') || eventTypes.has('MerchantSaleCompleted')
+    const refreshInventory = forceProjectorRefresh || eventTypes.has('ItemGranted') || merchantInventoryChanged
     const enginePlayers = new Map((engineState.players ?? []).map((player) => [String(player.id), player]))
     const players = (room.state.players ?? []).map((player) => {
       const authoritative = enginePlayers.get(String(player.id))
@@ -1425,18 +1500,19 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       return {
         ...player,
         hp: authoritative.hp,
-        ...(eventTypes.has('ItemGranted') || merchantInventoryChanged ? { inventory: authoritative.inventory } : {}),
-        ...(merchantInventoryChanged ? { currency: authoritative.currency } : {}),
-        ...(eventTypes.has('ActorMoved') || eventTypes.has('SceneAdvanced') ? { x: authoritative.x, y: authoritative.y } : {}),
+        ...(forceProjectorRefresh || eventTypes.has('ExperienceAwarded') ? { experience: authoritative.experience } : {}),
+        ...(refreshInventory ? { inventory: authoritative.inventory } : {}),
+        ...(forceProjectorRefresh || merchantInventoryChanged ? { currency: authoritative.currency } : {}),
+        ...(forceProjectorRefresh || eventTypes.has('ActorMoved') || eventTypes.has('SceneAdvanced') ? { x: authoritative.x, y: authoritative.y } : {}),
       }
     })
-    const sceneChanged = ['SceneAdvanced', 'AreaRevealed', 'ObjectiveUpdated', 'EntitySpawned'].some((type) => eventTypes.has(type))
+    const sceneChanged = forceProjectorRefresh || ['SceneAdvanced', 'AreaRevealed', 'ObjectiveUpdated', 'EntitySpawned'].some((type) => eventTypes.has(type))
     const messages = [...(room.state.messages ?? [])]
     if (journalMessage?.id && journalMessage?.text && !messages.some((message) => String(message.id) === String(journalMessage.id))) {
       messages.push({
         id: String(journalMessage.id),
-        speaker: 'narrator',
-        author: 'Рассказчик',
+        speaker: journalMessage.speaker === 'system' ? 'system' : 'narrator',
+        author: String(journalMessage.author || (journalMessage.speaker === 'system' ? 'Система боя' : 'Рассказчик')).slice(0, 80),
         timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
         text: String(journalMessage.text).slice(0, 2000),
         turnConsumed: Boolean(journalMessage.turnConsumed),
@@ -1447,10 +1523,13 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       messages,
       players,
       merchants: engineState.merchants ?? room.state.merchants,
+      worldMemory: engineState.worldMemory ?? room.state.worldMemory,
+      social: engineState.social ?? room.state.social,
       enemies: engineState.enemies,
       actors: engineState.actors ?? room.state.actors,
       mechanics: engineState.mechanics,
       state_version: engineState.state_version,
+      state_projector_version: GAME_STATE_PROJECTOR_VERSION,
       ruleset_id: engineState.ruleset_id,
       ruleset_version: engineState.ruleset_version,
       enabled_rule_packs: engineState.enabled_rule_packs,
@@ -1459,6 +1538,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       ...(sceneChanged || engineState.scene ? { scene: engineState.scene, entities: engineState.entities } : {}),
       ...(sceneChanged ? {
         adventure: engineState.adventure,
+        worldMap: engineState.worldMap,
         suggestions: engineState.suggestions ?? room.state.suggestions,
         agentInteraction: engineState.agentInteraction ?? null,
       } : {}),
@@ -1522,7 +1602,7 @@ const server = createServer(async (req, res) => {
   applySecurityHeaders(res)
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4173', 'Access-Control-Allow-Headers': 'Content-Type, X-Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Credentials': 'true' }); return res.end() }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || '') && !originAllowed(req)) return json(res, 403, { error: 'Запрос с другого источника отклонён' })
-  if (req.url === '/api/health') return json(res, 200, { configured: Boolean(apiKey), provider: 'RouterAI', model, imageModel, engineMode: engineModeResolver.resolve(), rulesetId: rulePack.manifest.ruleset_id, ruleCount: rulePack.rules.length, tools: tools.map((tool) => tool.function.name) })
+  if (req.url === '/api/health') return json(res, 200, { configured: Boolean(apiKey), provider: 'RouterAI', model, fallbackModels, models: llmClient.health(), imageModel, engineMode: engineModeResolver.resolve(), rulesetId: rulePack.manifest.ruleset_id, ruleCount: rulePack.rules.length, tools: tools.map((tool) => tool.function.name) })
   if (req.url === '/api/auth/me' && req.method === 'GET') {
     const user = userForToken(cookies(req).skazanie_session)
     return json(res, 200, { user, setupRequired: !hasAdmin() })
@@ -1620,12 +1700,16 @@ const server = createServer(async (req, res) => {
   }
 
   if (parsedUrl.pathname === '/api/campaigns' && req.method === 'POST') {
-    const admin = requireAdmin(req, res); if (!admin) return
+    const creator = requireUser(req, res); if (!creator) return
     try {
       const body = await readBody(req)
       const code = String(body.code || '').toUpperCase()
       if (!/^[A-Z0-9-]{3,24}$/.test(code)) return json(res, 400, { error: 'Код кампании должен содержать 3–24 латинских символа, цифры или дефис' })
       if (getRoom(code).state) return json(res, 409, { error: 'Кампания с таким кодом уже существует' })
+      if (creator.role !== 'admin' && (!body.bootstrap || !Array.isArray(body.bootstrap.players) || body.bootstrap.players.length < 4)) {
+        return json(res, 400, { error: 'Для автономной кампании обычного игрока создайте отряд минимум из четырёх героев' })
+      }
+      if (creator.role !== 'admin' && body.state) return json(res, 403, { error: 'Обычный игрок создаёт кампанию только через проверенный мастер создания' })
       const generatedState = body.bootstrap ? await campaignBootstrapper.create({
         code,
         name: body.name,
@@ -1640,13 +1724,102 @@ const server = createServer(async (req, res) => {
         scene: { title: 'Начало', location: '', mood: '', objective: '', turn: 0, cells: [] },
       })
       state.sessionCode = code
-      state.engine_mode = body.engine_mode ?? state.engine_mode ?? 'shadow'
-      const room = saveRoom(code, state, 0)
-      await eventStore.importLegacySnapshot({ campaign_id: code, legacy_state: state, idempotency_key: `legacy-import:${code}`, ruleset_id: state.ruleset_id, ruleset_version: state.ruleset_version, enabled_rule_packs: state.enabled_rule_packs })
-      return json(res, 201, room.room)
+      state.engine_mode = 'enforce'
+      const imported = await eventStore.importLegacySnapshot({ campaign_id: code, legacy_state: state, idempotency_key: `legacy-import:${code}`, ruleset_id: state.ruleset_id, ruleset_version: state.ruleset_version, enabled_rule_packs: state.enabled_rule_packs })
+      const room = saveRoom(code, { ...imported.state, engine_mode: 'enforce', state_projector_version: GAME_STATE_PROJECTOR_VERSION }, 0)
+      const ownedHeroIds = creator.role === 'admin'
+        ? creator.heroIds
+        : [...new Set([...creator.heroIds, ...state.partyMemberIds.filter((_, index) => index % 2 === 0)])]
+      const updatedCreator = ownedHeroIds.length === creator.heroIds.length ? creator : updateUserAccess(creator.id, { heroIds: ownedHeroIds })
+      return json(res, 201, { ...room.room, user: updatedCreator })
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось создать кампанию' }) }
   }
 
+  const campaignJoinMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/join$/)
+  if (campaignJoinMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    try {
+      const campaignId = campaignJoinMatch[1].toUpperCase()
+      const room = getRoom(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      const partyIds = room.state.partyMemberIds?.length ? room.state.partyMemberIds.map(String) : room.state.players.map((hero) => String(hero.id))
+      const alreadyOwned = partyIds.filter((heroId) => user.heroIds.includes(heroId))
+      if (alreadyOwned.length) return json(res, 200, { code: campaignId, hero_ids: alreadyOwned, user, duplicate: true })
+      const claimed = new Set(listUsers().flatMap((account) => account.heroIds ?? []))
+      const available = partyIds.filter((heroId) => !claimed.has(heroId))
+      if (!available.length) return json(res, 409, { error: 'В этой кампании не осталось свободных героев' })
+      const updated = updateUserAccess(user.id, { heroIds: [...user.heroIds, ...available] })
+      return json(res, 200, { code: campaignId, hero_ids: available, user: updated, duplicate: false })
+    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось присоединиться к кампании' }) }
+  }
+
+  const autonomyMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/intents$/)
+  if (autonomyMatch && req.method === 'POST') {
+    const user = requireAdmin(req, res); if (!user) return
+    try {
+      const body = await readBody(req)
+      const campaignId = autonomyMatch[1]
+      const room = getRoom(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      const key = String(body.idempotency_key ?? body.idempotencyKey ?? req.headers['x-idempotency-key'] ?? randomUUID())
+      const result = await autonomousCampaign.runIntent({ campaignId, intent: body.intent, idempotencyKey: key })
+      const events = []
+      for (const stage of result.results ?? []) events.push(...(stage.events ?? []))
+      if (body.run_combat === true && result.state.mechanics?.combat?.active) {
+        const combat = await autonomousCampaign.runCombat(campaignId, { idempotencyPrefix: `${key}:combat` })
+        if (!combat.state.mechanics?.combat?.active) await autonomousCampaign.completeEncounter({ campaignId, idempotencyKey: `${key}:completion` })
+      }
+      const authoritative = await autonomousCampaign.load(campaignId)
+      persistAuthoritativeProjection(campaignId, authoritative.state, events)
+      return json(res, 200, { intent: result.intent, state_version: authoritative.state_version, admin_commands: 0, state: campaignStateForViewer(authoritative.state, user, authoritative.state.activePlayerId) })
+    } catch (error) {
+      return json(res, error?.code === 'DIRECTOR_INTENT_NOT_ALLOWED' || error?.code === 'DIRECTOR_MECHANICS_FORBIDDEN' ? 400 : 409, { error: error instanceof Error ? error.message : 'Автономный ход не выполнен', code: error?.code })
+    }
+  }
+
+  const autonomyAdvanceMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/advance$/)
+  if (autonomyAdvanceMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    try {
+      const body = await readBody(req)
+      const campaignId = autonomyAdvanceMatch[1]
+      const room = getRoom(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      const key = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').slice(0, 120)
+      if (!key) return json(res, 400, { error: 'Нужен idempotency_key', code: 'IDEMPOTENCY_KEY_REQUIRED' })
+      const duplicate = await eventStore.getByIdempotencyKey(campaignId, `${key}:intent`)
+      if (duplicate) {
+        const current = await autonomousCampaign.load(campaignId)
+        return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: campaignStateForViewer(current.state, user, current.state.activePlayerId) })
+      }
+      let loaded = await autonomousCampaign.load(campaignId)
+      const encounter = loaded.state.mechanics?.encounter
+      const outcomeRecorded = encounter?.id && (loaded.state.autonomy?.encounter_outcomes ?? []).some((entry) => entry.encounter_id === encounter.id)
+      const events = []
+      let reward = null
+      if (encounter?.status === 'ended' && !outcomeRecorded) {
+        const completion = await autonomousCampaign.completeEncounter({ campaignId, outcome: encounter.outcome || 'enemies_defeated', idempotencyKey: `${key}:completion` })
+        events.push(...(completion.events ?? []))
+        reward = completion.reward
+        loaded = await autonomousCampaign.load(campaignId)
+      }
+      if (loaded.state.mechanics?.combat?.active) return json(res, 409, { error: 'Сначала завершите активный бой через тактический интерфейс', code: 'COMBAT_ACTIVE' })
+      const decision = await directorAgent.choose({ state: loaded.state, playerAction: body.player_action })
+      const result = await autonomousCampaign.runIntent({ campaignId, intent: decision.intent, idempotencyKey: key })
+      for (const stage of result.results ?? []) events.push(...(stage.events ?? []))
+      const authoritative = await autonomousCampaign.load(campaignId)
+      persistAuthoritativeProjection(campaignId, authoritative.state, events)
+      return json(res, 200, {
+        intent: result.intent, director_trace: decision.trace, reward,
+        state_version: authoritative.state_version, admin_commands: 0,
+        state: campaignStateForViewer(authoritative.state, user, authoritative.state.activePlayerId),
+      })
+    } catch (error) {
+      return json(res, error?.code === 'DIRECTOR_INTENT_NOT_ALLOWED' || error?.code === 'DIRECTOR_MECHANICS_FORBIDDEN' ? 400 : 409, { error: error instanceof Error ? error.message : 'Director не смог продолжить приключение', code: error?.code })
+    }
+  }
   const explanationMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/turns\/([A-Za-z0-9._-]+)\/explanation$/)
   if (explanationMatch && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
@@ -1663,13 +1836,11 @@ const server = createServer(async (req, res) => {
     try {
       const room = getRoom(engineModeMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
-      const body = await readBody(req)
-      const mode = new EngineModeResolver({ env: {}, defaultMode: body.mode }).resolve()
+      await readBody(req)
+      const mode = 'enforce'
       let nextState = { ...room.state, engine_mode: mode }
-      if (mode === 'enforce') {
-        const synchronized = await gameOrchestrator.synchronizeLegacyState(engineModeMatch[1], nextState, `enforce-${room.version}`)
-        nextState = { ...synchronized.state, engine_mode: mode }
-      }
+      const synchronized = await gameOrchestrator.synchronizeLegacyState(engineModeMatch[1], nextState, `enforce-${room.version}`)
+      nextState = { ...synchronized.state, engine_mode: mode }
       const result = saveRoom(engineModeMatch[1], nextState, room.version)
       return json(res, 200, { mode, room: result.room })
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Некорректный режим' }) }
@@ -1681,8 +1852,6 @@ const server = createServer(async (req, res) => {
     try {
       const room = getRoom(merchantLifecycleMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
-      const effectiveMode = engineModeResolver.resolve({ user: admin, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Управление жизненным циклом торговцев доступно только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       if (exceedsRate(`merchant-lifecycle:${admin.id}`, 60)) {
         return json(res, 429, { error: 'Слишком много изменений торговцев. Подождите немного и повторите попытку', code: 'MERCHANT_LIFECYCLE_RATE_LIMITED' })
       }
@@ -1714,8 +1883,6 @@ const server = createServer(async (req, res) => {
       const campaignId = merchantAssembleMatch[1]
       const room = getRoom(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
-      const effectiveMode = engineModeResolver.resolve({ user: admin, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Сборка магазина доступна только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       if (exceedsRate(`shop-assemble:${admin.id}`, 30)) {
         return json(res, 429, { error: 'Слишком много запросов сборки магазинов. Подождите немного и повторите попытку', code: 'SHOP_ASSEMBLY_RATE_LIMITED' })
       }
@@ -1770,8 +1937,6 @@ const server = createServer(async (req, res) => {
       const campaignId = encounterAssembleMatch[1]
       const room = getRoom(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
-      const effectiveMode = engineModeResolver.resolve({ user: admin, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Сборка столкновения доступна только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       if (exceedsRate(`encounter-assemble:${admin.id}`, 30)) {
         return json(res, 429, { error: 'Слишком много запросов сборки столкновений', code: 'ENCOUNTER_ASSEMBLY_RATE_LIMITED' })
       }
@@ -1829,7 +1994,7 @@ const server = createServer(async (req, res) => {
       })
       assertEncounterResultFingerprint(result, command)
       const originalVersion = Number(result.state_version ?? result.authoritative_state?.state_version ?? 0)
-      const scheduler = await runNpcTurnScheduler({ campaignId, eventStore, rulesEngine, advanceNpc: true })
+      const scheduler = await runNpcTurnScheduler({ campaignId, eventStore, rulesEngine, npcController, advanceNpc: true })
       const latest = await eventStore.load(campaignId)
       const subsequentEvents = latest.state_version > originalVersion
         ? await eventStore.getEvents(campaignId, { after_version: originalVersion, up_to_version: latest.state_version })
@@ -1886,8 +2051,6 @@ const server = createServer(async (req, res) => {
       if (exceedsRate(`merchant-command:${user.id}`, 120)) {
         return json(res, 429, { error: 'Слишком много торговых операций. Подождите немного и повторите попытку', code: 'MERCHANT_RATE_LIMITED' })
       }
-      const effectiveMode = engineModeResolver.resolve({ user, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Безопасная торговля доступна только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       const body = await readBody(req)
       if (!body.command || typeof body.command !== 'object' || Array.isArray(body.command)) return json(res, 400, { error: 'Нужна одна торговая command' })
       const authoritativeBefore = await latestCampaignState(merchantMatch[1], room.state)
@@ -1917,7 +2080,10 @@ const server = createServer(async (req, res) => {
       const responsePayload = {
         ...result,
         ...(narrationMessageId ? { narration_message_id: narrationMessageId } : {}),
-        authoritative_state: responseState ? merchantClientState(responseState, command.actor_id) : responseState,
+        // Keep the internal state whole here. turnResultForViewer performs the
+        // single public projection below; pre-projecting a partial merchant
+        // state used to erase the scene and merchant list on the client.
+        authoritative_state: responseState,
         merchant_view: view,
         room_version: projected?.version ?? room.version,
       }
@@ -1938,8 +2104,6 @@ const server = createServer(async (req, res) => {
       const room = getRoom(commandMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
-      const effectiveMode = engineModeResolver.resolve({ user, campaign: room.state })
-      if (effectiveMode !== 'enforce') return json(res, 409, { error: 'Структурированные команды доступны только в enforce-режиме', code: 'ENGINE_MODE_NOT_ENFORCE' })
       const body = await readBody(req)
       let commands = Array.isArray(body.commands) ? body.commands : body.command ? [body.command] : []
       if (!commands.length) return json(res, 400, { error: 'Нужна command или commands' })
@@ -1965,6 +2129,8 @@ const server = createServer(async (req, res) => {
         throw commandPolicyError('Создание столкновения принимается только endpoint /encounters/assemble', 'ENCOUNTER_LIFECYCLE_ENDPOINT_REQUIRED')
       }
       const merchantCommands = commands.filter((command) => PLAYER_MERCHANT_COMMANDS.has(commandType(command)))
+      const reactionActorId = String(room.state.mechanics?.combat?.reaction_window?.actor_id ?? '')
+      const resolvesReaction = commands.some((command) => commandType(command) === 'UseCombatAction' && String(command.actor_id ?? '') === reactionActorId)
       if (merchantCommands.length) {
         if (exceedsRate(`merchant-command:${user.id}`, 120)) {
           return json(res, 429, { error: 'Слишком много торговых операций. Подождите немного и повторите попытку', code: 'MERCHANT_RATE_LIMITED' })
@@ -1979,8 +2145,8 @@ const server = createServer(async (req, res) => {
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))
         const scheduler = shouldSettleCombat
           ? await runNpcTurnScheduler({
-            campaignId: commandMatch[1], eventStore, rulesEngine,
-            advanceNpc: types.has('StartCombat') || types.has('EndTurn'),
+            campaignId: commandMatch[1], eventStore, rulesEngine, npcController,
+            advanceNpc: types.has('StartCombat') || types.has('EndTurn') || resolvesReaction,
           })
           : { turns: [], events: [] }
         const latest = await eventStore.load(commandMatch[1])
@@ -1997,22 +2163,44 @@ const server = createServer(async (req, res) => {
           npc_turns: scheduler.turns,
         }
       }
-      const narration = result.authoritative_state ? tacticalNarration(result.mechanics, result.authoritative_state) : ''
+      const creativeMoment = result.authoritative_state
+        ? await creativeDirector.renderCriticalMoment({
+          events: result.mechanics,
+          state: result.authoritative_state,
+          viewer: { playerId: actor, partyIds: user.heroIds ?? [], isPartyMember: true, role: user.role },
+        })
+        : null
+      const tacticalLog = result.authoritative_state ? tacticalNarration(result.mechanics, result.authoritative_state) : ''
+      const narration = creativeMoment?.narration || tacticalLog
       const narrationMessageId = narration
         ? combatMessageId(idempotencyKey)
         : merchantCommands.length && result.narration ? merchantMessageId(idempotencyKey) : null
       const journalNarration = narration || (merchantCommands.length ? String(result.narration || '') : '')
-      if (narration) result = { ...result, narration, narration_message_id: narrationMessageId }
+      if (narration) result = {
+        ...result,
+        narration,
+        narration_message_id: narrationMessageId,
+        narration_speaker: creativeMoment ? 'narrator' : 'system',
+        narration_author: creativeMoment ? 'Рассказчик' : 'Система боя',
+        creative_trigger: creativeMoment?.trigger ?? null,
+        creative_provider: creativeMoment?.provider ?? null,
+      }
       else if (journalNarration) result = { ...result, narration_message_id: narrationMessageId }
       const projected = result.authoritative_state
-        ? persistAuthoritativeProjection(commandMatch[1], result.authoritative_state, result.mechanics, journalNarration ? { id: narrationMessageId, text: journalNarration, turnConsumed: types.has('EndTurn') } : null)
+        ? persistAuthoritativeProjection(commandMatch[1], result.authoritative_state, result.mechanics, journalNarration ? {
+          id: narrationMessageId,
+          text: journalNarration,
+          turnConsumed: types.has('EndTurn'),
+          speaker: creativeMoment ? 'narrator' : 'system',
+          author: creativeMoment ? 'Рассказчик' : 'Система боя',
+        } : null)
         : null
       const responseState = projected?.state ?? result.authoritative_state
       const merchantCommand = commands.find((command) => PLAYER_MERCHANT_COMMANDS.has(commandType(command)))
       const merchantView = merchantCommand && responseState
         ? merchantViewFor(responseState, merchantCommand.merchant_id, merchantCommand.actor_id)
         : undefined
-      const responsePayload = { ...result, authoritative_state: merchantCommand && responseState ? merchantClientState(responseState, merchantCommand.actor_id) : responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
+      const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code) ? 409 : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
@@ -2057,9 +2245,38 @@ const server = createServer(async (req, res) => {
   }
   if (roomMatch && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
-    const room = getRoom(roomMatch[1])
+    let room = getRoom(roomMatch[1])
     if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой комнате' })
     if (!room.state) return json(res, 200, room)
+    if (Number(room.state.state_projector_version ?? 1) < GAME_STATE_PROJECTOR_VERSION) {
+      try {
+        const latest = await eventStore.load(roomMatch[1])
+        persistAuthoritativeProjection(roomMatch[1], latest.state, [], null, { forceProjectorRefresh: true })
+        room = getRoom(roomMatch[1])
+      } catch {
+        // Legacy-only rooms remain readable until their first authoritative engine command imports them.
+      }
+    }
+    if (room.state.mechanics?.combat?.active) {
+      try {
+        const scheduler = await runNpcTurnScheduler({
+          campaignId: roomMatch[1], eventStore, rulesEngine, npcController,
+          advanceNpc: true,
+        })
+        if (scheduler.events.length) {
+          const latest = await eventStore.load(roomMatch[1])
+          persistAuthoritativeProjection(roomMatch[1], latest.state, scheduler.events)
+          room = getRoom(roomMatch[1])
+        }
+      } catch (error) {
+        // Two polling clients may race to resume the same durable NPC turn.
+        // The winning append is authoritative; the loser simply reloads it.
+        if (!['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code)) throw error
+        const latest = await eventStore.load(roomMatch[1])
+        persistAuthoritativeProjection(roomMatch[1], latest.state, [])
+        room = getRoom(roomMatch[1])
+      }
+    }
     const actorId = (user.heroIds ?? []).map(String).find((id) => room.state.players?.some((player) => String(player.id) === id)) ?? ''
     return json(res, 200, { ...room, state: campaignStateForViewer(normalizeCampaignState(room.state), user, actorId) })
   }
@@ -2073,7 +2290,7 @@ const server = createServer(async (req, res) => {
       if (effectiveMode === 'enforce' && user.role !== 'admin') {
         const authoritative = await eventStore.load(roomMatch[1])
         const actors = new Map((authoritative.state.players ?? []).map((player) => [String(player.id), player]))
-        const presentationFields = ['character', 'name', 'portrait', 'portraitPosition', 'color', 'notes', 'traits', 'ideals', 'bonds', 'flaws', 'backstory', 'online']
+        const presentationFields = ['character', 'name', 'portrait', 'portraitPosition', 'color', 'notes', 'traits', 'ideals', 'bonds', 'flaws', 'backstory', 'online', 'subclass', 'selectedFeatureIds', 'classSkillProficiencies', 'knownSpellIds', 'preparedSpellIds']
         nextState = normalizeCampaignState({
           ...nextState,
           players: nextState.players.map((player) => {
@@ -2087,6 +2304,9 @@ const server = createServer(async (req, res) => {
           enemies: authoritative.state.enemies,
           actors: authoritative.state.actors,
           merchants: authoritative.state.merchants,
+          worldMemory: authoritative.state.worldMemory,
+          worldMap: authoritative.state.worldMap,
+          social: authoritative.state.social,
           mechanics: authoritative.state.mechanics,
           state_version: authoritative.state_version,
           activePlayerId: authoritative.state.activePlayerId,
@@ -2102,6 +2322,15 @@ const server = createServer(async (req, res) => {
           scene: authoritative.state.scene ?? nextState.scene,
           adventure: authoritative.state.adventure ?? nextState.adventure,
         })
+      }
+      if (effectiveMode === 'enforce' && user.role === 'admin') {
+        if (Number(body.baseVersion) !== Number(existingRoom.version)) return json(res, 409, existingRoom)
+        const synchronized = await gameOrchestrator.synchronizeLegacyState(
+          roomMatch[1],
+          nextState,
+          `admin-room-${existingRoom.version + 1}`,
+        )
+        nextState = normalizeCampaignState({ ...synchronized.state, engine_mode: 'enforce' })
       }
       const result = saveRoom(roomMatch[1], nextState, body.baseVersion)
       return json(res, result.conflict ? 409 : 200, result.room)
@@ -2183,6 +2412,12 @@ const server = createServer(async (req, res) => {
       const trustedState = room.state
       const playerId = String(trustedState.activePlayerId || '')
       if (!canUseHero(user, playerId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
+      if (trustedState.mechanics?.death?.campaign_status === 'party_defeated') {
+        return json(res, 409, { error: 'Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя', code: 'WORLD_ENDED' })
+      }
+      if (trustedState.mechanics?.death?.heroes?.[playerId]?.status === 'dead') {
+        return json(res, 409, { error: 'Сначала воскресите погибшего героя или замените его новым', code: 'HERO_DEAD_UNRESOLVED' })
+      }
       if (exceedsRate(`narrate:${user.id}`, 40)) return json(res, 429, { error: 'Слишком много ходов за короткое время' })
       const mode = engineModeResolver.resolve({ user, campaign: trustedState })
       if (!apiKey && mode !== 'enforce') return json(res, 503, { error: 'AI не настроен', code: 'AI_NOT_CONFIGURED' })
@@ -2310,4 +2545,4 @@ const server = createServer(async (req, res) => {
   return serveStatic(req, res)
 })
 
-server.listen(port, host, () => console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} подключён` : 'демо-режим'}`))
+server.listen(port, host, () => console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`))

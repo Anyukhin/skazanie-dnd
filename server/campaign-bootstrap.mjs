@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url'
 
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
+import { withStarterKit } from './starter-kit.mjs'
+import { ensureSceneWorldMemory } from './scene-memory.mjs'
+import { createCampaignWorldMap } from './world-map.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v1.txt', import.meta.url)), 'utf8')
 
@@ -97,6 +100,21 @@ function fallbackTheme(world, entropy = '') {
   return automaticThemes[index]
 }
 
+const MAP_SCALES = new Set(['room', 'site', 'stronghold', 'region'])
+const MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
+const MAP_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
+
+function startingVisualSpec(theme, world) {
+  const value = `${theme.location} ${theme.theme} ${world.startingLocation} ${world.openingSituation}`.toLocaleLowerCase('ru')
+  if (/крепост|замок|цитадел/u.test(value)) return { scale: 'stronghold', pattern: 'keep', material: 'stone', width: 23, height: 17 }
+  if (/комнат|кабинет|мал.*зал|кают/u.test(value)) return { scale: 'room', pattern: 'small-room', material: /станци|косм|тех/u.test(value) ? 'metal' : /дом|таверн/u.test(value) ? 'wood' : 'stone', width: 9, height: 7 }
+  if (theme.layout === 'streets') return { scale: 'site', pattern: 'village', material: /станци|тех|кибер/u.test(value) ? 'metal' : 'stone', width: 17, height: 11 }
+  if (theme.layout === 'rooms') return { scale: 'site', pattern: 'great-hall', material: /станци|тех|косм/u.test(value) ? 'metal' : 'stone', width: 15, height: 11 }
+  if (/лес|роща|луг/u.test(value)) return { scale: 'site', pattern: 'natural', material: 'grass', width: 15, height: 11 }
+  if (/пустын|пес/u.test(value)) return { scale: 'site', pattern: 'natural', material: 'sand', width: 15, height: 11 }
+  return { scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 11 }
+}
+
 function fallbackOpening({ name, partyName, world, heroes, entropy }) {
   const theme = fallbackTheme(world, entropy)
   const location = world.startingLocation || theme.location
@@ -106,17 +124,20 @@ function fallbackOpening({ name, partyName, world, heroes, entropy }) {
   const tone = world.tone || 'Атмосфера полна тайн и обещает открытия'
   const premise = world.premise || 'Привычный порядок нарушает событие, которое может навсегда изменить этот мир.'
   const situation = world.openingSituation || premise
+  const visual = startingVisualSpec(theme, world)
   return {
     campaignName: name === 'Новая кампания' ? `Хроники: ${location}` : name,
     partyName: partyName === 'Новый отряд' ? 'Искатели нового мира' : partyName,
     worldSummary: `${name} — самостоятельный мир в ${era}, жанр: ${genre}. ${premise}`,
+    worldHistory: `Земли вокруг ${location} менялись задолго до появления героев. ${premise} Теперь старые дороги, границы и забытые места снова определяют судьбы тех, кто здесь живёт.`,
+    worldMap: {},
     openingNarration: `${location}. ${tone}. ${situation}\n\nЗдесь впервые сходятся пути героев: ${heroNames}. У каждого есть причина не пройти мимо, но решение о первом шаге остаётся за отрядом.`,
     scene: {
       title: 'Точка пересечения', location,
       mood: tone,
       objective: 'Разобраться в происходящем и решить, кому можно доверять',
       theme: theme.theme, danger: theme.danger,
-      map: { layout: theme.layout, width: 15, height: 11, openness: 0.66, water: theme.water, featureCount: 6 },
+      map: { layout: theme.layout, ...visual, openness: 0.66, water: theme.water, featureCount: 6 },
     },
     hook: situation,
     suggestions: ['Осмотреть место встречи', 'Поговорить с очевидцами', 'Сопоставить истории героев'],
@@ -127,12 +148,19 @@ function normalizeOpening(input, fallback) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const scene = source.scene && typeof source.scene === 'object' && !Array.isArray(source.scene) ? source.scene : {}
   const map = scene.map && typeof scene.map === 'object' && !Array.isArray(scene.map) ? scene.map : {}
-  const layouts = new Set(['rooms', 'streets', 'open', 'winding'])
+  const layouts = new Set(['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'])
   const danger = new Set(['низкая', 'средняя', 'высокая'])
+  const scale = MAP_SCALES.has(map.scale) ? map.scale : fallback.scene.map.scale
+  const scaleMinimum = scale === 'stronghold' ? { width: 19, height: 13 }
+    : scale === 'region' ? { width: 21, height: 15 }
+      : scale === 'site' ? { width: 11, height: 9 }
+        : { width: 7, height: 7 }
   return {
     campaignName: clean(source.campaignName, 120) || fallback.campaignName,
     partyName: clean(source.partyName, 120) || fallback.partyName,
     worldSummary: clean(source.worldSummary, 1200) || fallback.worldSummary,
+    worldHistory: prose(source.worldHistory, 5000) || fallback.worldHistory,
+    worldMap: source.worldMap && typeof source.worldMap === 'object' && !Array.isArray(source.worldMap) ? structuredClone(source.worldMap) : fallback.worldMap,
     openingNarration: prose(source.openingNarration, 4000) || fallback.openingNarration,
     scene: {
       title: clean(scene.title, 100) || fallback.scene.title,
@@ -143,8 +171,11 @@ function normalizeOpening(input, fallback) {
       danger: danger.has(scene.danger) ? scene.danger : fallback.scene.danger,
       map: {
         layout: layouts.has(map.layout) ? map.layout : fallback.scene.map.layout,
-        width: integer(map.width, fallback.scene.map.width, 7, 25),
-        height: integer(map.height, fallback.scene.map.height, 7, 19),
+        scale,
+        pattern: MAP_PATTERNS.has(map.pattern) ? map.pattern : fallback.scene.map.pattern,
+        material: MAP_MATERIALS.has(map.material) ? map.material : fallback.scene.map.material,
+        width: integer(map.width, fallback.scene.map.width, scaleMinimum.width, 25),
+        height: integer(map.height, fallback.scene.map.height, scaleMinimum.height, 19),
         openness: decimal(map.openness, fallback.scene.map.openness, 0.35, 0.85),
         water: decimal(map.water, fallback.scene.map.water, 0, 0.3),
         featureCount: integer(map.featureCount, fallback.scene.map.featureCount, 2, 12),
@@ -170,7 +201,7 @@ export class CampaignBootstrapper {
     const groupName = clean(partyName, 120) || 'Новый отряд'
     if (!/^[A-Z0-9-]{3,24}$/.test(campaignCode)) throw new Error('Некорректный код кампании')
     if (!Array.isArray(rawPlayers) || rawPlayers.length < 1 || rawPlayers.length > 12) throw new Error('Для новой кампании выберите от 1 до 12 героев')
-    const heroes = rawPlayers.map(normalizeHero)
+    const heroes = rawPlayers.map(normalizeHero).map(withStarterKit)
     if (new Set(heroes.map((hero) => hero.id)).size !== heroes.length) throw new Error('В кампании повторяются id героев')
     const world = normalizeWorld(rawWorld)
     const fallback = fallbackOpening({ name: campaignName, partyName: groupName, world, heroes, entropy: campaignCode })
@@ -184,7 +215,7 @@ export class CampaignBootstrapper {
             { role: 'user', content: JSON.stringify({ campaign: campaignName, party: groupName, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) }) },
           ],
           temperature: 0.8,
-          maxTokens: 1800,
+          maxTokens: 3200,
         })
         opening = normalizeOpening(result, fallback)
         generatedBy = 'ai-storyteller'
@@ -197,14 +228,65 @@ export class CampaignBootstrapper {
     const merchants = normalizeMerchants(Array.isArray(rawMerchants) && rawMerchants.length
       ? rawMerchants
       : [createStarterMerchant({ location: opening.scene.location })])
+    const campaignWorldMap = createCampaignWorldMap({
+      seed,
+      campaignName: campaignName === 'Новая кампания' ? opening.campaignName : campaignName,
+      concept: { ...world, worldSummary: opening.worldSummary, worldHistory: opening.worldHistory },
+      source: opening.worldMap,
+      startingLocation: opening.scene.location,
+    })
+    const starterNpcId = `guide-${seed.slice(0, 12)}`
+    const starterFactionId = `faction-${seed.slice(0, 12)}`
+    const starterQuestId = `quest-${seed.slice(0, 12)}`
+    const sceneMemory = ensureSceneWorldMemory({}, {
+      scene: { title: opening.scene.title, location: opening.scene.location, mood: opening.scene.mood, objective: opening.scene.objective },
+      adventure: {
+        chapter: 1, currentHook: opening.hook,
+        visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [],
+      },
+    })
+    const initialWorldMemory = {
+      ...sceneMemory,
+      entities: [...(sceneMemory.entities ?? []), {
+        id: starterFactionId, kind: 'faction', name: 'Хранители дороги',
+        summary: 'Небольшое объединение проводников и дозорных, защищающее пути между поселениями.',
+        aliases: [], visibility: 'party', tags: ['starter-faction'],
+      }],
+      quests: [...(sceneMemory.quests ?? []), {
+        id: starterQuestId,
+        title: opening.hook || opening.scene.objective || 'Первая зацепка',
+        summary: opening.scene.objective,
+        status: 'active', visibility: 'party', entity_ids: [starterFactionId],
+        objectives: [opening.scene.objective],
+        clock: { current: 0, max: 4, label: 'Прогресс расследования' },
+      }],
+    }
     return {
       sessionCode: campaignCode,
       campaign: campaignName === 'Новая кампания' ? opening.campaignName : campaignName,
       partyName: groupName === 'Новый отряд' ? opening.partyName : groupName,
       partyMemberIds: positionedHeroes.map((hero) => hero.id),
-      campaignConcept: { ...world, worldSummary: opening.worldSummary, generatedBy },
+      campaignConcept: { ...world, worldSummary: opening.worldSummary, worldHistory: opening.worldHistory, generatedBy },
+      worldMap: campaignWorldMap,
+      worldMemory: initialWorldMemory,
+      social: {
+        npcs: [{
+          id: starterNpcId, name: 'Мира Ветрокрыл', role: 'проводница и очевидец',
+          location: opening.scene.location, public_summary: 'Местная проводница знает дороги и следит за переменами вокруг.',
+          voice: 'Говорит коротко, внимательно и по делу.', goals: ['Защитить путников', 'Понять источник угрозы'],
+          beliefs: ['Обещания важнее красивых слов'], known_fact_ids: [], visibility: 'party', available: true,
+          tags: [`faction:${starterFactionId}`],
+        }],
+        relationships: { [starterNpcId]: Object.fromEntries(positionedHeroes.map((hero) => [hero.id, 0])) },
+        conversations: [],
+        promises: [{
+          id: `promise-${seed.slice(0, 12)}`, npc_id: starterNpcId, hero_id: positionedHeroes[0].id,
+          direction: 'npc_to_party', text: opening.scene.objective, due_hint: 'до следующего продолжительного отдыха',
+          status: 'open', visibility: 'party', source_conversation_id: null, created_at_minutes: 0, deadline_minutes: 1_440,
+        }],
+      },
       state_version: 0,
-      ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], enabled_house_rules: merchants.length ? [ECONOMY_POLICY_ID] : [], ruleset_locked_at: new Date().toISOString(), engine_mode: 'shadow',
+      ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], enabled_house_rules: merchants.length ? [ECONOMY_POLICY_ID] : [], ruleset_locked_at: new Date().toISOString(), engine_mode: 'enforce',
       players: positionedHeroes,
       merchants,
       enemies: [], entities: [], mapFeedback: [], battleLog: [], mechanics: {}, rulings: [],

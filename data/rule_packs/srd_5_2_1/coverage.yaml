@@ -1,8 +1,8 @@
 ruleset_id: srd_5_2_1
 scope: p0_plus_economy_slice
-rule_count: 21
+rule_count: 23
 glossary_term_count: 25
-ontology_edge_count: 21
+ontology_edge_count: 23
 ability_checks: covered
 saving_throws: covered
 attack_rolls: covered
@@ -24,7 +24,9 @@ swimming: covered
 suffocation: covered
 coin_values: covered
 selling_equipment: covered
-deterministic_rule_count: 14
+paladin_aura_of_protection: covered
+fighter_indomitable: covered
+deterministic_rule_count: 16
 structured_rule_count: 7
 retrieval_only_rule_count: 0
 deterministic_engine_coverage: partial_p0

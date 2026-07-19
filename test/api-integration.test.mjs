@@ -35,7 +35,7 @@ test('совместимый API создаёт кампанию, исполня
   assert.equal(health.headers.get('x-content-type-options'), 'nosniff')
   const healthBody = await health.json()
   assert.equal(healthBody.rulesetId, 'srd_5_2_1')
-  assert.equal(healthBody.ruleCount, 21)
+  assert.equal(healthBody.ruleCount, 23)
 
   const setup = await fetch(`${baseUrl}/api/auth/setup-admin`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

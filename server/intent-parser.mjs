@@ -1,3 +1,5 @@
+import { classifyNpcSocialCheck } from './npc-social-check.mjs'
+
 const INTENT_PATTERNS = [
   ['why', /^\s*\/why\b/i],
   ['attack', /(атак|удар|бью|стреля|выстрел|рублю|колю|attack|shoot|strike)/iu],
@@ -19,16 +21,44 @@ function normalizedText(value) {
 }
 
 function visibleActors(visibleState) {
-  return [...(Array.isArray(visibleState?.players) ? visibleState.players : []), ...(Array.isArray(visibleState?.actors) ? visibleState.actors : [])]
+  const candidates = [
+    ...(Array.isArray(visibleState?.players) ? visibleState.players : []),
+    ...(Array.isArray(visibleState?.actors) ? visibleState.actors : []),
+    ...(Array.isArray(visibleState?.social?.npcs) ? visibleState.social.npcs : []),
+    ...(Array.isArray(visibleState?.merchants) ? visibleState.merchants : []),
+  ]
+  return [...new Map(candidates.map((actor) => [String(actor?.id ?? ''), actor])
+    .filter(([id]) => id)).values()]
 }
 
 function namesFor(actor) {
   return [actor?.id, actor?.name, actor?.character, actor?.label].map((value) => String(value ?? '').trim()).filter(Boolean)
 }
 
+function wordTokens(value) {
+  return String(value ?? '').toLocaleLowerCase('ru').match(/\p{L}[\p{L}\p{M}-]*/gu) ?? []
+}
+
+function sameNameToken(left, right) {
+  if (left === right) return true
+  // Bounded Russian-case fallback: Мира → Миру, Марта → Марте. We only
+  // compare alphabetic words of 4+ letters and remove one ending letter;
+  // IDs and short/common fragments still require an exact match.
+  if (!/^[а-яё]{4,}$/u.test(left) || !/^[а-яё]{4,}$/u.test(right)) return false
+  return left.slice(0, -1) === right.slice(0, -1)
+}
+
+function mentionsName(message, name) {
+  const normalized = String(name ?? '').toLocaleLowerCase('ru')
+  if (normalized.length >= 2 && message.includes(normalized)) return true
+  const messageWords = wordTokens(message)
+  const nameWords = wordTokens(normalized)
+  return nameWords.length > 0 && nameWords.every((word) => messageWords.some((candidate) => sameNameToken(word, candidate)))
+}
+
 function mentionedActors(message, state) {
   const lower = message.toLocaleLowerCase('ru')
-  return visibleActors(state).filter((actor) => namesFor(actor).some((name) => name.length >= 2 && lower.includes(name.toLocaleLowerCase('ru'))))
+  return visibleActors(state).filter((actor) => namesFor(actor).some((name) => mentionsName(lower, name)))
 }
 
 function inferApproach(message) {
@@ -49,7 +79,8 @@ export class IntentParser {
       actor_id: String(playerId ?? ''), intent: 'unknown', approach: 'unspecified', targets: [],
       mentioned_entities: [], missing_information: ['message'], requires_clarification: true, confidence: 0,
     }
-    const intent = INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
+    const socialSkill = classifyNpcSocialCheck(text)
+    const intent = socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
     const mentioned = mentionedActors(text, visibleState)
     const targets = mentioned.map((actor) => String(actor.id)).filter((id) => id !== String(playerId ?? ''))
     const requiresTarget = intent === 'attack' || intent === 'damage'
@@ -58,7 +89,7 @@ export class IntentParser {
     return {
       actor_id: String(playerId ?? ''),
       intent,
-      approach: inferApproach(text),
+      approach: socialSkill ?? inferApproach(text),
       targets,
       mentioned_entities: mentioned.map((actor) => String(actor.id)),
       numeric_value: number ? Number(number) : null,

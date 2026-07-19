@@ -18,6 +18,22 @@ test('Intent Parser возвращает только структурирова
   assert.ok(buildRuleQueries(intent, state).some((query) => query.includes('armor class')))
 })
 
+test('Intent Parser узнаёт русское имя NPC в естественном падеже', async () => {
+  const visibleState = {
+    players: [{ id: 'hero', character: 'Ада' }],
+    social: { npcs: [{ id: 'mira-guide', name: 'Мира Ветрокрыл', role: 'проводница' }] },
+  }
+  const intent = await new IntentParser().parse({
+    message: 'Я убеждаю Миру Ветрокрыл рассказать всё, что она знает.',
+    playerId: 'hero',
+    visibleState,
+  })
+  assert.equal(intent.intent, 'social')
+  assert.equal(intent.approach, 'persuasion')
+  assert.deepEqual(intent.targets, ['mira-guide'])
+  assert.equal(intent.requires_clarification, false)
+})
+
 test('Adjudicator предлагает команду, но не меняет состояние', async () => {
   const intent = await new IntentParser().parse({ message: 'Атакую гоблина мечом', playerId: 'hero', visibleState: state })
   const before = structuredClone(state)

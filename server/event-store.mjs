@@ -188,6 +188,7 @@ export class FileEventStore {
     normalizeState = (state) => state,
     initialStateFactory = () => ({}),
     snapshotEvery = 25,
+    snapshotProjectorVersion = 1,
     maxEventsPerCommit = 100,
     staleLockMs = 30_000,
     clock = () => new Date(),
@@ -197,11 +198,14 @@ export class FileEventStore {
     if (typeof reducer !== 'function') throw new EventStoreError('A synchronous reducer(state, event) is required', 'INVALID_CONFIGURATION')
     if (typeof normalizeState !== 'function') throw new EventStoreError('normalizeState must be a function', 'INVALID_CONFIGURATION')
     if (typeof initialStateFactory !== 'function') throw new EventStoreError('initialStateFactory must be a function', 'INVALID_CONFIGURATION')
+    const projectorVersion = Number(snapshotProjectorVersion)
+    if (!Number.isSafeInteger(projectorVersion) || projectorVersion < 1) throw new EventStoreError('snapshotProjectorVersion must be a positive safe integer', 'INVALID_CONFIGURATION')
     this.rootDir = resolve(rootDir)
     this.reducer = reducer
     this.normalizeState = normalizeState
     this.initialStateFactory = initialStateFactory
     this.snapshotEvery = Math.max(0, Number(snapshotEvery) || 0)
+    this.snapshotProjectorVersion = projectorVersion
     this.maxEventsPerCommit = Math.max(1, Number(maxEventsPerCommit) || 100)
     this.staleLockMs = Math.max(1_000, Number(staleLockMs) || 30_000)
     this.clock = clock
@@ -366,16 +370,20 @@ export class FileEventStore {
       .filter((entry) => entry.match && Number(entry.match[1]) <= targetVersion && (useSnapshots || Number(entry.match[1]) === 0))
       .sort((left, right) => right.name.localeCompare(left.name))
     if (!candidates.length) return null
-    const file = join(layout.snapshots, candidates[0].name)
-    const snapshot = readJson(file, 'snapshot')
-    const version = Number(candidates[0].match[1])
-    if (snapshot.campaign_id !== layout.campaignId || snapshot.state_version !== version) {
-      throw new CorruptEventLogError(layout.campaignId, `invalid snapshot ${candidates[0].name}`)
+    for (const candidate of candidates) {
+      const file = join(layout.snapshots, candidate.name)
+      const snapshot = readJson(file, 'snapshot')
+      const version = Number(candidate.match[1])
+      if (snapshot.campaign_id !== layout.campaignId || snapshot.state_version !== version) {
+        throw new CorruptEventLogError(layout.campaignId, `invalid snapshot ${candidate.name}`)
+      }
+      if (snapshot.checksum !== sha256(snapshot.state)) {
+        throw new CorruptEventLogError(layout.campaignId, `snapshot checksum mismatch ${candidate.name}`)
+      }
+      const projectorVersion = Number(snapshot.projector_version ?? 1)
+      if (version === 0 || projectorVersion === this.snapshotProjectorVersion) return snapshot
     }
-    if (snapshot.checksum !== sha256(snapshot.state)) {
-      throw new CorruptEventLogError(layout.campaignId, `snapshot checksum mismatch ${candidates[0].name}`)
-    }
-    return snapshot
+    return null
   }
 
   _writeSnapshot(layout, state, stateVersion) {
@@ -383,6 +391,7 @@ export class FileEventStore {
     const normalized = this._normalizeState(state, stateVersion)
     const snapshot = {
       schema_version: STORE_SCHEMA_VERSION,
+      projector_version: this.snapshotProjectorVersion,
       campaign_id: layout.campaignId,
       state_version: stateVersion,
       created_at: nowIso(this.clock),

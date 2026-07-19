@@ -69,7 +69,8 @@ test('enforce коммитит события один раз и повторн�
   assert.equal(second.idempotent_replay, true)
   assert.equal(second.turn_id, first.turn_id)
   assert.equal(second.narration, first.narration)
-  assert.equal(narratorCalls, 1)
+  assert.equal(narratorCalls, 0)
+  assert.equal(first.provider, 'deterministic-mechanics')
   assert.equal((await eventStore.load('TEST-ROOM')).state.players[1].hp, 5)
 })
 

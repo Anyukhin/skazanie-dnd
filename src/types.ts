@@ -66,6 +66,12 @@ export type Player = {
   name: string
   character: string
   role: string
+  characterClass?: DndClassKey
+  subclass?: string
+  selectedFeatureIds?: string[]
+  classSkillProficiencies?: string[]
+  knownSpellIds?: string[]
+  preparedSpellIds?: string[]
   color: string
   initials: string
   portrait: string
@@ -88,6 +94,7 @@ export type Player = {
   currency: Currency
   inventory: InventoryItem[]
   combatSpells?: CombatSpell[]
+  combatActions?: CombatAction[]
   hp: number
   maxHp: number
   armor: number
@@ -115,20 +122,118 @@ export type Currency = {
 export type CombatSpell = {
   id: string
   name: string
-  kind: 'attack' | 'save' | 'healing' | 'summon'
+  englishName?: string
+  kind: 'attack' | 'save' | 'area-save' | 'damage' | 'area-damage' | 'healing' | 'summon' | 'buff' | 'debuff' | 'utility' | 'teleport'
+  attackKind?: 'melee' | 'ranged'
   level: number
-  target: 'enemy' | 'ally' | 'point'
+  target: 'enemy' | 'ally' | 'self' | 'point' | 'creature'
   range: number
-  actionType: 'action' | 'bonus_action' | 'reaction'
+  actionType: 'action' | 'bonus_action' | 'reaction' | 'long_cast'
   slotResource?: string
   spellcastingAbility: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
   concentration?: boolean
   description?: string
-  damage?: string
+  damage?: string | null
   damageType?: string
+  damageTypes?: string[]
+  halfOnSave?: boolean
   healing?: string
   addAbilityModifier?: boolean
   saveAbility?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
+  conditions?: string[]
+  radius?: number
+  areaShape?: 'sphere' | 'cone' | 'line' | 'cube' | 'cylinder'
+  duration?: string
+  durationRounds?: number
+  castingTime?: string
+  rangeText?: string
+  ritual?: boolean
+  prepared?: boolean
+  sourceUrl?: string
+  mechanicsAccuracy?: 'verified-dndsu' | 'heuristic'
+  requiresWeaponAttack?: boolean
+  weaponCantrip?: 'booming-blade' | 'green-flame-blade'
+  beamScaling?: boolean
+  damageIfTargetWounded?: string
+  automaticHit?: boolean
+  projectileCount?: number
+  upcastProjectilesPerLevel?: number
+  maxTargets?: number
+  upcastTargetsPerLevel?: number
+  armorClassBonus?: number
+  armorClassBase?: number
+  armorClassAbility?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
+  temporaryHp?: number
+  temporaryHpPerSlotLevel?: number
+  temporaryHpDice?: string
+  temporaryHpPerUpcastLevel?: number
+  temporaryHpAbilityModifier?: boolean
+  grantsDashOnCast?: boolean
+  meleeRetaliationDamage?: number
+  meleeRetaliationDamagePerSlotLevel?: number
+  hitPointPoolDice?: string
+  hitPointPoolUpcastDice?: string
+  areaOrigin?: 'self' | 'point'
+  createsAreaEffect?: {
+    difficultTerrain?: boolean
+    triggerOnEnter?: boolean
+    triggerOnTurnEnd?: boolean
+    saveAbility?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
+    condition?: string
+    permanent?: boolean
+  }
+  upcastHealingDicePerLevel?: number
+  upcastDicePerLevel?: number
+  pushFeet?: number
+  reactionMoveAway?: boolean
+  deafenedAutoSave?: boolean
+  repeatSaveAtTurnEnd?: boolean
+  repeatSaveOnDamage?: boolean
+  damageRepeatSaveAdvantage?: boolean
+  immuneCreatureTypes?: string[]
+  requiredCreatureTypes?: string[]
+  minimumIntelligence?: number
+  saveAdvantageIfHostile?: boolean
+  breakOnDamageFromSourceAllies?: boolean
+  requiresLanguage?: boolean
+  spellOptions?: string[]
+  onHitSaveAbility?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
+  onHitConditions?: string[]
+  onHitConditionDuration?: string
+  secondaryBurst?: {
+    radius: number
+    damage: string
+    damageType: string
+    saveAbility: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
+    halfOnSave?: boolean
+    upcastDicePerLevel?: number
+  }
+  nextWeaponHit?: {
+    meleeOnly?: boolean
+    rangedOnly?: boolean
+    advantage?: boolean
+    damage?: string
+    damageType?: string
+    upcastDicePerLevel?: number
+    saveAbility?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
+    saveAdvantageForLarge?: boolean
+    conditions?: string[]
+    pushFeet?: number
+    proneOnFailedSave?: boolean
+    burst?: {
+      radius: number
+      damage: string
+      damageType: string
+      saveAbility: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
+      halfOnSave?: boolean
+      upcastDicePerLevel?: number
+      maximumDice?: number
+    }
+    speedBonus?: number
+    endConcentrationOnHit?: boolean
+  }
+  weaponHitBonusDamage?: string
+  hitBonusDamage?: string
   summon?: {
     name: string
     hp: number
@@ -226,7 +331,7 @@ export type Merchant = {
 }
 
 export type EncounterDifficulty = 'easy' | 'medium' | 'hard'
-export type EncounterTheme = 'generic' | 'undead' | 'beasts' | 'goblinoids'
+export type EncounterTheme = 'generic' | 'undead' | 'beasts' | 'goblinoids' | 'raiders'
 
 export type EncounterProposalEnemy = {
   id: string
@@ -243,6 +348,11 @@ export type EncounterProposalEnemy = {
   x?: number
   y?: number
   alive?: boolean
+  image?: string
+  source_url?: string
+  creature_type?: string
+  traits?: MonsterTrait[]
+  action_profiles?: MonsterActionProfile[]
 }
 
 /** Server-authored encounter plan committed together with authoritative combat state. */
@@ -351,6 +461,32 @@ export type MapCell = {
   type: 'wall' | 'floor' | 'water' | 'door'
   revealed: boolean
   feature?: 'chest' | 'altar' | 'torch' | 'rune' | 'stairs' | 'enemy'
+    | 'table' | 'chair' | 'bed' | 'bookshelf' | 'fireplace' | 'barrel' | 'crate'
+    | 'tree' | 'bush' | 'rock' | 'mushroom' | 'bones' | 'grave' | 'pillar'
+    | 'statue' | 'campfire' | 'wagon' | 'well' | 'console'
+  material?: 'stone' | 'wood' | 'earth' | 'grass' | 'sand' | 'metal' | 'marble' | 'ice'
+  variant?: number
+  pattern?: 'small-room' | 'great-hall' | 'keep' | 'courtyard' | 'crypt' | 'cave-cluster' | 'village' | 'bridge' | 'natural'
+  edge_mask?: string
+}
+
+export type DndClassKey = 'barbarian' | 'bard' | 'cleric' | 'druid' | 'fighter' | 'monk' | 'paladin' | 'ranger' | 'rogue' | 'sorcerer' | 'warlock' | 'wizard'
+
+export type CombatAction = {
+  id: string
+  name: string
+  category: 'common' | 'class'
+  target: 'self' | 'ally' | 'enemy' | 'creature'
+  actionType: 'action' | 'bonus_action' | 'reaction' | 'free'
+  range: number
+  description: string
+  resource?: string
+  cost?: number
+  requiresWeapon?: boolean
+  concentration?: boolean
+  minimumLevel?: number
+  sourceUrl?: string
+  effect?: Record<string, unknown>
 }
 
 export type Enemy = {
@@ -365,6 +501,12 @@ export type Enemy = {
   damageBonus: number
   initiativeBonus?: number
   stat_block_id?: string
+  creature_type?: string
+  image?: string
+  source_url?: string
+  traits?: MonsterTrait[]
+  action_profiles?: MonsterActionProfile[]
+  attack_profile?: MonsterActionProfile
   x: number
   y: number
   alive: boolean
@@ -417,7 +559,7 @@ export type BattleEvent = {
   id: string
   sceneTurn?: number
   round?: number
-  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended'
+  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'action' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented'
   actorId?: string
   actorKind?: 'player' | 'enemy' | 'summon' | 'system'
   targetId?: string
@@ -433,10 +575,23 @@ export type BattleEvent = {
   damage?: number
   hpBefore?: number
   hpAfter?: number
+  maximumHpBefore?: number
+  maximumHpAfter?: number
+  successes?: number
+  failures?: number
+  result?: string
+  modifierSources?: string[]
+  auraSourceId?: string
+  auraBonus?: number
+  indomitableBonus?: number
+  indomitableOriginalTotal?: number
+  critical?: boolean
   itemId?: string
   itemName?: string
   spellId?: string
   spellName?: string
+  actionId?: string
+  actionName?: string
   area?: { x: number; y: number; radiusFeet: number }
 }
 
@@ -462,9 +617,53 @@ export type AdventureState = {
   history: Array<{ chapter: number; title: string; location: string; objective: string; outcome: string }>
 }
 
+export type WorldMapRegion = {
+  id: string
+  name: string
+  biome: 'plains' | 'forest' | 'mountains' | 'marsh' | 'desert' | 'tundra' | 'coast' | 'wastes'
+  x: number
+  y: number
+  radius: number
+}
+
+export type WorldMapLocation = {
+  id: string
+  name: string
+  kind: 'capital' | 'city' | 'town' | 'village' | 'port' | 'fortress' | 'ruin' | 'dungeon' | 'landmark' | 'wilds'
+  x: number
+  y: number
+  regionId: string
+  summary: string
+  known: boolean
+  visited: boolean
+}
+
+export type WorldMapRoute = {
+  id: string
+  from: string
+  to: string
+  kind: 'road' | 'trail' | 'river' | 'sea' | 'pass'
+  distance: number
+  danger: 'низкая' | 'средняя' | 'высокая'
+  discovered: boolean
+}
+
+export type WorldMapState = {
+  version: number
+  seed: string
+  name: string
+  width: number
+  height: number
+  currentLocationId: string
+  regions: WorldMapRegion[]
+  locations: WorldMapLocation[]
+  routes: WorldMapRoute[]
+}
+
 export type SceneTransition = {
   scene: Scene
   adventure: AdventureState
+  worldMap?: WorldMapState
   transition: string
   arrival: string
   suggestions: string[]
@@ -484,6 +683,7 @@ export type CampaignConcept = {
   startingLocation: string
   openingSituation: string
   worldSummary?: string
+  worldHistory?: string
   generatedBy?: string
 }
 
@@ -491,6 +691,7 @@ export type GameState = {
   sessionCode: string
   campaign: string
   campaignConcept?: CampaignConcept
+  worldMap?: WorldMapState
   partyName?: string
   partyMemberIds?: string[]
   players: Player[]
@@ -529,7 +730,40 @@ export type CombatInitiativeEntry = {
   actor_id: string
   total?: number
   modifier?: number
+  /** The kept d20 result; persisted so the initiative roll stays visible after replay. */
+  roll?: number
+  dice?: number[]
   roll_id?: string
+  shared_with?: string
+}
+
+export type MonsterTrait = {
+  id: string
+  name: string
+  damage_expression?: string
+}
+
+export type MonsterActionProfile = {
+  id: string
+  name: string
+  kind: 'melee' | 'ranged'
+  attack_modifier: number
+  damage_expression?: string
+  damage_amount?: number
+  damage_type: string
+  range_feet: number
+  normal_range_feet?: number
+  uses?: number
+  tactical_priority?: number
+  on_hit?: {
+    save_ability?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
+    save_dc?: number
+    damage_expression?: string
+    damage_type?: string
+    half_on_save?: boolean
+    condition?: string
+    duration?: string
+  }
 }
 
 export type CombatActionEconomy = {
@@ -539,6 +773,24 @@ export type CombatActionEconomy = {
   movement?: boolean
   movement_spent?: number
   movement_remaining?: number
+  movement_bonus?: number
+  extra_actions?: number
+  surged_action_only?: boolean
+}
+
+export type CombatReactionWindow = {
+  id: string
+  trigger: 'attack-hit' | 'attack-missed' | string
+  actor_id: string
+  source_actor_id: string
+  target_id: string
+  source_previous_position?: { x: number; y: number }
+  action_ids: string[]
+  action_options: Array<{ id: string; name: string; description?: string; resource?: string | null; slot_level?: number; cost?: number; requires_beneficiary?: boolean }>
+  damage?: { raw_amount?: number; applied_amount?: number; damage_type?: string; resistant?: boolean; temporary_hp_before?: number; temporary_hp_after?: number; temporary_hp_absorbed?: number; hp_before?: number; hp_after?: number } | null
+  pending_spell?: { id: string; name: string; level: number; slot_level?: number; source_url?: string }
+  trigger_roll?: { kept?: number; modifier?: number; total?: number; armor_class?: number; difficulty?: number; ability?: string; save_event_type?: string; hit?: boolean; critical?: boolean }
+  fighter_level?: number
 }
 
 export type CombatMechanics = {
@@ -547,12 +799,48 @@ export type CombatMechanics = {
   initiative?: CombatInitiativeEntry[]
   active_index?: number
   action_economy?: Record<string, CombatActionEconomy>
+  reaction_window?: CombatReactionWindow | null
 }
 
 export type GameMechanics = Record<string, unknown> & {
   combat?: CombatMechanics
+  death?: {
+    campaign_status: 'active' | 'party_defeated'
+    heroes: Record<string, {
+      status: 'dead' | 'resolved'
+      resolution?: 'resurrected' | 'replaced' | null
+      died_at?: string | null
+      resolved_at?: string | null
+      replacement_name?: string | null
+    }>
+    saving_throws: Record<string, {
+      successes: number
+      failures: number
+      stable: boolean
+      recovery_minutes_remaining?: number
+    }>
+  }
   encounter?: (EncounterProposal & { id?: string; encounter_id?: string; status?: 'staged' | 'active' | 'ended'; enemy_ids?: string[]; outcome?: string }) | null
   resources?: Record<string, Record<string, { current: number; max: number }>>
+  resting?: Record<string, { kind: 'short' | 'long'; reason?: 'knockout'; recovery_minutes_remaining?: number }>
+  conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null }>>
+  active_effects?: Array<{
+    id: string
+    effect_id?: string
+    spell_id?: string
+    source_actor?: string
+    center?: { x: number; y: number }
+    radius_feet?: number
+    area_shape?: string
+    difficult_terrain?: boolean
+    trigger_on_enter?: boolean
+    trigger_on_turn_end?: boolean
+    save_ability?: string | null
+    save_dc?: number
+    condition?: string | null
+    concentration?: boolean
+    expires_round?: number
+  }>
 }
 
 export type CampaignSummary = {
@@ -623,6 +911,15 @@ export type AiHealth = {
   configured: boolean
   provider: string
   model: string
+  fallbackModels?: string[]
+  models?: Array<{
+    model: string
+    primary: boolean
+    state: 'unknown' | 'ready' | 'cooldown' | 'retry-ready'
+    failures: number
+    last_error_code: string | null
+    retry_after_ms: number
+  }>
   imageModel?: string
   tools: string[]
   engineMode?: 'legacy' | 'shadow' | 'enforce'

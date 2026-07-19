@@ -1,0 +1,466 @@
+import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import test from 'node:test'
+
+import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { FileEventStore } from '../server/event-store.mjs'
+import { GameOrchestrator } from '../server/game-orchestrator.mjs'
+import { NpcSocialController } from '../server/npc-social-controller.mjs'
+import { npcSocialForViewer, promiseDueOffsetMinutes, relationshipTier } from '../server/npc-social.mjs'
+import { buildNpcSocialCheckPolicy, classifyNpcSocialCheck, npcSocialCheckOutcome } from '../server/npc-social-check.mjs'
+import { mechanicsForViewer } from '../server/viewer-projection.mjs'
+import {
+  RulesValidationError,
+  RulesEngine,
+  applyGameEvent,
+  normalizeCampaignState,
+  replayEvents,
+  resolveCommand,
+} from '../server/rules-engine.mjs'
+
+function dice(values = []) {
+  return new DiceService({ rng: new SequenceDiceRng(values) })
+}
+
+function campaign() {
+  return normalizeCampaignState({
+    sessionCode: 'NPC-SOCIAL',
+    activePlayerId: 'hero',
+    partyMemberIds: ['hero', 'rogue'],
+    scene: { title: 'Market', location: 'Market Square', cells: [] },
+    players: [
+      { id: 'hero', character: 'Ada', hp: 10, maxHp: 10, abilities: { cha: 14, wis: 12 }, proficiency: 2, inventory: [] },
+      { id: 'rogue', character: 'Ren', hp: 10, maxHp: 10, abilities: { cha: 8, wis: 14 }, proficiency: 2, inventory: [] },
+    ],
+    merchants: [{ id: 'marta', name: 'Marta', location: 'Market Square', available: true, stock: [] }],
+    social: {
+      npcs: [{
+        id: 'marta', name: 'Marta', role: 'merchant', location: 'Market Square',
+        public_summary: 'A careful trader.', voice: 'Brief and direct.',
+        goals: ['Find the hidden crown'], beliefs: ['The duke is a traitor'],
+        known_fact_ids: [], visibility: 'party', available: true,
+      }],
+      relationships: { marta: { hero: 3, rogue: -4 } },
+      conversations: [],
+      promises: [],
+    },
+  })
+}
+
+function socialCommand(overrides = {}) {
+  return {
+    command_type: 'RecordNpcSocialTurn',
+    actor_id: 'hero',
+    conversation: {
+      id: 'conversation:one',
+      npc_id: 'marta',
+      hero_id: 'hero',
+      player_message: 'Can you help us?',
+      npc_reply: 'Bring me the ledger and I will help.',
+      stance: 'friendly',
+      disclosed_fact_ids: [],
+      relationship_delta: 1,
+      visibility: 'party',
+      promise: {
+        id: 'promise:one', direction: 'npc_to_party',
+        text: 'Marta will provide help after receiving the ledger.',
+        due_hint: 'After the ledger is delivered.', visibility: 'party',
+      },
+      ...overrides,
+    },
+  }
+}
+
+test('social projection exposes public NPC data but hides motives, beliefs and other hero relationships', () => {
+  const visible = npcSocialForViewer(campaign().social, { playerId: 'hero', isPartyMember: true })
+
+  assert.equal(visible.npcs[0].name, 'Marta')
+  assert.equal(visible.relationships.marta.hero, 3)
+  assert.equal(visible.relationships.marta.rogue, undefined)
+  assert.doesNotMatch(JSON.stringify(visible), /hidden crown|duke is a traitor|known_fact_ids/u)
+})
+
+test('a server-confirmed social turn is event sourced and replayable with relationship and promise', () => {
+  const initial = campaign()
+  const result = resolveCommand(socialCommand(), initial, {
+    diceService: dice(), context: { isSocialController: true },
+  })
+
+  assert.deepEqual(result.events.map((event) => event.event_type), [
+    'NpcConversationRecorded', 'NpcRelationshipAdjusted', 'NpcPromiseRecorded',
+  ])
+  const replayed = replayEvents(initial, result.events)
+  assert.equal(replayed.social.relationships.marta.hero, 4)
+  assert.equal(replayed.social.conversations[0].npc_reply, 'Bring me the ledger and I will help.')
+  assert.equal(replayed.social.promises[0].status, 'open')
+})
+
+test('players cannot forge NPC turns and the social validator rejects unknown fact disclosure', () => {
+  const initial = campaign()
+  assert.throws(
+    () => resolveCommand(socialCommand(), initial, { diceService: dice(), context: {} }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_FORBIDDEN',
+  )
+  assert.throws(
+    () => resolveCommand(socialCommand({ disclosed_fact_ids: ['fact:unknown'] }), initial, {
+      diceService: dice(), context: { isSocialController: true },
+    }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_FACT_FORBIDDEN',
+  )
+})
+
+test('social turns are rejected when the NPC is elsewhere, unavailable or combat is active', () => {
+  const elsewhere = campaign()
+  elsewhere.social.npcs[0].location = 'Docks'
+  elsewhere.merchants[0].location = 'Docks'
+  assert.throws(
+    () => resolveCommand(socialCommand(), elsewhere, { diceService: dice(), context: { isSocialController: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_WRONG_LOCATION',
+  )
+
+  const unavailable = campaign()
+  unavailable.social.npcs[0].available = false
+  unavailable.merchants[0].available = false
+  assert.throws(
+    () => resolveCommand(socialCommand(), unavailable, { diceService: dice(), context: { isSocialController: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_NPC_UNAVAILABLE',
+  )
+
+  const combat = campaign()
+  combat.mechanics.combat.active = true
+  assert.throws(
+    () => resolveCommand(socialCommand(), combat, { diceService: dice(), context: { isSocialController: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_DURING_COMBAT',
+  )
+})
+
+
+test('LLM receives no private motives and cannot forge identity, facts or an excessive relationship change', async () => {
+  let request = null
+  const controller = new NpcSocialController({
+    llmClient: {
+      completeJson: async (input) => {
+        request = input
+        return {
+          npc_id: 'forged-npc', reply: 'I can discuss only what I know.', stance: 'friendly',
+          disclosed_fact_ids: ['fact:unknown'], relationship_delta: 99, confidence: 0.8,
+          promise: { direction: 'npc_to_party', text: 'I will reserve a room.', due_hint: 'Tonight.' },
+        }
+      },
+    },
+  })
+
+  const result = await controller.respond({
+    state: campaign(), playerId: 'hero', npcId: 'marta', message: 'Tell me everything.', turnId: 'turn-1',
+  })
+  const sent = request.messages.map((message) => message.content).join('\n')
+
+  assert.doesNotMatch(sent, /hidden crown|duke is a traitor|known_fact_ids/u)
+  assert.equal(result.npc_id, 'marta')
+  assert.deepEqual(result.disclosed_fact_ids, [])
+  assert.equal(result.relationship_delta, 2)
+  assert.match(result.promise.id, /^promise:/u)
+})
+
+test('orchestrator commits NPC dialogue once and replays the stored reply without calling LLM or Narrator again', async () => {
+  const initial = campaign()
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-social-'))
+  const eventStore = new FileEventStore({
+    rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+  })
+  let socialCalls = 0
+  let narratorCalls = 0
+  const fallback = new NpcSocialController()
+  const orchestrator = new GameOrchestrator({
+    modeResolver: () => 'enforce',
+    intentParser: { parse: async ({ message, playerId }) => ({
+      actor_id: playerId, intent: 'social', approach: 'conversation', targets: ['marta'],
+      mentioned_entities: ['marta'], missing_information: [], requires_clarification: false,
+      confidence: 1, raw_message: message,
+    }) },
+    adjudicator: { createPlan: async () => { throw new Error('Adjudicator must not handle a recognized NPC conversation') } },
+    npcSocialController: {
+      respond: async (input) => { socialCalls += 1; return fallback.respond(input) },
+    },
+    narrator: { render: async () => { narratorCalls += 1; throw new Error('Narrator must not rewrite committed NPC dialogue') } },
+    rulesEngine: new RulesEngine({ diceService: dice() }),
+    eventStore,
+    idFactory: () => 'social-turn',
+  })
+  const input = {
+    state: initial, campaignId: 'NPC-SOCIAL', playerId: 'hero',
+    message: 'I speak with Marta.', idempotencyKey: 'social-request-1',
+  }
+
+  const first = await orchestrator.handle(input)
+  const second = await orchestrator.handle(input)
+
+  assert.equal(first.action_kind, 'social')
+  assert.equal(first.turn_consumed, true)
+  assert.equal(second.idempotent_replay, true)
+  assert.equal(second.narration, first.narration)
+  assert.equal(socialCalls, 1)
+  assert.equal(narratorCalls, 0)
+  assert.equal((await eventStore.load('NPC-SOCIAL')).state.social.conversations.length, 1)
+})
+
+test('social check classifier and policy choose a server-owned skill, ability and DC', () => {
+  assert.equal(classifyNpcSocialCheck('\u0443\u0431\u0435\u0436\u0434\u0430\u044e \u041c\u0430\u0440\u0442\u0443 \u043f\u043e\u043c\u043e\u0447\u044c.'), 'persuasion')
+  assert.equal(classifyNpcSocialCheck('\u043e\u0431\u043c\u0430\u043d\u044b\u0432\u0430\u044e \u041c\u0430\u0440\u0442\u0443.'), 'deception')
+  assert.equal(classifyNpcSocialCheck('\u0443\u0433\u0440\u043e\u0436\u0430\u044e \u041c\u0430\u0440\u0442\u0435.'), 'intimidation')
+  assert.equal(classifyNpcSocialCheck('\u043f\u0440\u043e\u043d\u0438\u0446\u0430\u0442\u0435\u043b\u044c\u043d\u043e \u0438\u0437\u0443\u0447\u0430\u044e \u0435\u0451 \u043c\u043e\u0442\u0438\u0432\u044b.'), 'insight')
+  assert.equal(classifyNpcSocialCheck('I persuade Marta to open the gate.'), 'persuasion')
+  assert.equal(classifyNpcSocialCheck('I lie to Marta about the seal.'), 'deception')
+  assert.equal(classifyNpcSocialCheck('I threaten Marta.'), 'intimidation')
+  assert.equal(classifyNpcSocialCheck("I use insight to read Marta's motives."), 'insight')
+  assert.equal(classifyNpcSocialCheck('I ask Marta about the weather.'), null)
+
+  const policy = buildNpcSocialCheckPolicy({
+    state: campaign(), npcId: 'marta', heroId: 'hero', message: 'I persuade Marta to help.', turnId: 'turn-policy',
+  })
+  assert.equal(policy.skill, 'persuasion')
+  assert.equal(policy.ability, 'cha')
+  assert.equal(policy.difficulty, 12)
+  assert.equal(policy.visibility, 'specific_player')
+})
+
+test('social ability check ignores forged modifier and DC and hides the real DC from player mechanics', () => {
+  const state = campaign()
+  const policy = buildNpcSocialCheckPolicy({
+    state, npcId: 'marta', heroId: 'hero', message: 'I persuade Marta to help.', turnId: 'turn-check',
+  })
+  const command = {
+    command_type: 'MakeAbilityCheck', actor_id: 'hero', modifier: 99, difficulty: 1,
+    social_check: { check_id: 'forged', npc_id: 'forged', skill: 'deception' },
+  }
+  assert.throws(
+    () => resolveCommand(command, state, { diceService: dice([10]), context: { allowedActorIds: ['hero'] } }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_CHECK_FORBIDDEN',
+  )
+
+  const result = resolveCommand(command, state, {
+    diceService: dice([10]), context: { isSocialController: true, socialCheck: policy, allowedActorIds: ['hero'] },
+  })
+  const event = result.events.find((candidate) => candidate.event_type === 'AbilityCheckResolved')
+  assert.equal(event.payload.skill, 'persuasion')
+  assert.equal(event.payload.ability, 'cha')
+  assert.equal(event.payload.modifier, 4)
+  assert.equal(event.payload.difficulty, 12)
+  assert.equal(event.payload.total, 14)
+  assert.equal(event.payload.success, true)
+  assert.equal(event.payload.social_check.request_fingerprint, policy.request_fingerprint)
+  assert.equal(npcSocialCheckOutcome(event).degree, 'success')
+
+  const projected = mechanicsForViewer([event], { role: 'player', heroIds: ['hero'] }, 'hero')[0]
+  assert.equal(projected.payload.difficulty, undefined)
+  assert.equal(projected.payload.social_check.request_fingerprint, undefined)
+  assert.equal(projected.payload.social_check.difficulty_hidden, true)
+})
+
+test('LLM sees only the final outcome and cannot turn failure into a promise or positive relationship change', async () => {
+  let request = null
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => {
+      request = input
+      return {
+        reply: 'Of course, I agree.', stance: 'friendly', disclosed_fact_ids: [],
+        relationship_delta: 2, promise: { direction: 'npc_to_party', text: 'I will open the gate.' }, confidence: 1,
+      }
+    } },
+  })
+  const checkOutcome = {
+    check_id: 'social-check:failure', npc_id: 'marta', skill: 'persuasion', ability: 'cha',
+    roll_id: 'roll-failure', total: 7, modifier: 4, success: false, degree: 'failure',
+  }
+  const result = await controller.respond({
+    state: campaign(), playerId: 'hero', npcId: 'marta', message: 'I persuade Marta.', turnId: 'turn-failure', checkOutcome,
+  })
+  const sent = request.messages[1].content
+  assert.match(sent, /"resolved_check":\{"skill":"persuasion","ability":"cha","success":false,"degree":"failure"\}/u)
+  assert.doesNotMatch(sent, /"difficulty"|"total"|"modifier"|"roll_id"/u)
+  assert.equal(result.relationship_delta, 0)
+  assert.equal(result.promise, null)
+  assert.deepEqual(result.conversation.check, checkOutcome)
+})
+
+test('orchestrator commits the social roll before LLM, then replays both commits without rerolling', async () => {
+  const initial = campaign()
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-social-check-'))
+  const eventStore = new FileEventStore({
+    rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+  })
+  const fallback = new NpcSocialController()
+  let socialCalls = 0
+  let narratorCalls = 0
+  let observedOutcome = null
+  const orchestrator = new GameOrchestrator({
+    modeResolver: () => 'enforce',
+    intentParser: { parse: async ({ message, playerId }) => ({
+      actor_id: playerId, intent: 'social', approach: 'persuasion', targets: ['marta'],
+      mentioned_entities: ['marta'], missing_information: [], requires_clarification: false, confidence: 1, raw_message: message,
+    }) },
+    adjudicator: { createPlan: async () => { throw new Error('Adjudicator must not handle a recognized social check') } },
+    npcSocialController: { respond: async (input) => {
+      socialCalls += 1
+      const storedCheck = await eventStore.getByIdempotencyKey('NPC-SOCIAL-CHECK', 'checked-social:social-check')
+      assert.ok(storedCheck, 'LLM must run only after the check commit exists')
+      observedOutcome = input.checkOutcome
+      return fallback.respond(input)
+    } },
+    narrator: { render: async () => { narratorCalls += 1; throw new Error('Narrator must not rewrite committed NPC dialogue') } },
+    rulesEngine: new RulesEngine({ diceService: dice([18]) }),
+    eventStore,
+    idFactory: () => 'checked-social-turn',
+  })
+  const input = {
+    state: { ...initial, sessionCode: 'NPC-SOCIAL-CHECK' }, campaignId: 'NPC-SOCIAL-CHECK', playerId: 'hero',
+    message: 'I persuade Marta to help us.', idempotencyKey: 'checked-social',
+  }
+
+  const first = await orchestrator.handle(input)
+  const replay = await orchestrator.handle(input)
+  const checkBatch = await eventStore.getByIdempotencyKey('NPC-SOCIAL-CHECK', 'checked-social:social-check')
+  const dialogueBatch = await eventStore.getByIdempotencyKey('NPC-SOCIAL-CHECK', 'checked-social')
+  const checkEvent = first.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')
+
+  assert.ok(checkBatch)
+  assert.ok(dialogueBatch)
+  assert.deepEqual(first.mechanics.slice(0, 2).map((event) => event.event_type), ['AbilityCheckResolved', 'NpcConversationRecorded'])
+  assert.equal(checkEvent.payload.total, 22)
+  assert.equal(checkEvent.payload.success, true)
+  assert.equal(observedOutcome.success, true)
+  assert.equal(observedOutcome.degree, 'strong_success')
+  assert.equal(replay.idempotent_replay, true)
+  assert.equal(replay.narration, first.narration)
+  assert.equal(replay.mechanics.filter((event) => event.event_type === 'AbilityCheckResolved').length, 1)
+  assert.equal(socialCalls, 1)
+  assert.equal(narratorCalls, 0)
+  assert.equal((await eventStore.load('NPC-SOCIAL-CHECK')).state.social.conversations.length, 1)
+})
+test('relationship tiers are deterministic, projected per hero, and emit a crossing event', () => {
+  assert.equal(relationshipTier(-50), 'hostile')
+  assert.equal(relationshipTier(-20), 'unfriendly')
+  assert.equal(relationshipTier(0), 'neutral')
+  assert.equal(relationshipTier(20), 'friendly')
+  assert.equal(relationshipTier(50), 'trusted')
+
+  const initial = campaign()
+  initial.social.relationships.marta.hero = 19
+  const result = resolveCommand(socialCommand({ relationship_delta: 1, promise: null }), initial, {
+    diceService: dice(), context: { isSocialController: true },
+  })
+  assert.deepEqual(result.events.map((event) => event.event_type), [
+    'NpcConversationRecorded', 'NpcRelationshipAdjusted', 'NpcRelationshipTierChanged',
+  ])
+  const tierEvent = result.events[2]
+  assert.equal(tierEvent.payload.score_before, 19)
+  assert.equal(tierEvent.payload.score_after, 20)
+  assert.equal(tierEvent.payload.tier_before, 'neutral')
+  assert.equal(tierEvent.payload.tier_after, 'friendly')
+
+  const replayed = replayEvents(initial, result.events)
+  const viewer = npcSocialForViewer(replayed.social, { playerId: 'hero', isPartyMember: true })
+  assert.equal(replayed.social.relationship_tiers.marta.hero, 'friendly')
+  assert.equal(viewer.relationship_tiers.marta.hero, 'friendly')
+  assert.equal(viewer.relationship_tiers.marta.rogue, undefined)
+})
+
+test('promise hints become deterministic deadlines and AdvanceTime breaks an overdue promise once', () => {
+  assert.equal(promiseDueOffsetMinutes('\u0447\u0435\u0440\u0435\u0437 2 \u0447\u0430\u0441\u0430'), 120)
+  assert.equal(promiseDueOffsetMinutes('in 3 days'), 4_320)
+  assert.equal(promiseDueOffsetMinutes('\u0437\u0430\u0432\u0442\u0440\u0430'), 1_440)
+  assert.equal(promiseDueOffsetMinutes('after the ledger arrives'), null)
+
+  const initial = campaign()
+  initial.social.relationships.marta.hero = -10
+  const promised = resolveCommand(socialCommand({
+    relationship_delta: 0,
+    promise: {
+      id: 'promise:deadline', direction: 'party_to_npc', text: 'The hero will deliver the ledger.',
+      due_hint: '\u0447\u0435\u0440\u0435\u0437 2 \u0447\u0430\u0441\u0430', visibility: 'specific_player',
+    },
+  }), initial, { diceService: dice(), context: { isSocialController: true } })
+  let state = replayEvents(initial, promised.events)
+  assert.equal(state.social.promises[0].created_at_minutes, 0)
+  assert.equal(state.social.promises[0].deadline_minutes, 120)
+  assert.equal(state.social.promises[0].status, 'open')
+
+  const almost = resolveCommand({ command_type: 'AdvanceTime', amount: 119, unit: 'minute' }, state, {
+    diceService: dice(), context: { isDirector: true },
+  })
+  assert.deepEqual(almost.events.map((event) => event.event_type), ['TimeAdvanced'])
+  state = replayEvents(state, almost.events)
+  assert.equal(state.mechanics.world_time.elapsed_minutes, 119)
+  assert.equal(state.social.promises[0].status, 'open')
+
+  const deadline = resolveCommand({ command_type: 'AdvanceTime', amount: 1, unit: 'minute' }, state, {
+    diceService: dice(), context: { isDirector: true },
+  })
+  assert.deepEqual(deadline.events.map((event) => event.event_type), [
+    'TimeAdvanced', 'NpcPromiseResolved', 'NpcRelationshipAdjusted', 'NpcRelationshipTierChanged',
+  ])
+  state = replayEvents(state, deadline.events)
+  assert.equal(state.mechanics.world_time.elapsed_minutes, 120)
+  assert.equal(state.social.promises[0].status, 'broken')
+  assert.equal(state.social.promises[0].resolved_at_minutes, 120)
+  assert.equal(state.social.promises[0].resolution_reason, 'deadline')
+  assert.equal(state.social.promises[0].consequence_delta, -15)
+  assert.equal(state.social.relationships.marta.hero, -25)
+  assert.equal(state.social.relationship_tiers.marta.hero, 'unfriendly')
+
+  const later = resolveCommand({ command_type: 'AdvanceTime', amount: 60, unit: 'minute' }, state, {
+    diceService: dice(), context: { isDirector: true },
+  })
+  assert.deepEqual(later.events.map((event) => event.event_type), ['TimeAdvanced'])
+})
+
+test('NPC controller receives the authoritative tier and only open promise summaries', async () => {
+  const state = campaign()
+  state.social.relationships.marta.hero = 55
+  state.social.promises = [{
+    id: 'promise:brief', npc_id: 'marta', hero_id: 'hero', direction: 'npc_to_party',
+    text: 'Marta will reserve a room.', due_hint: 'tomorrow', status: 'open', visibility: 'specific_player',
+    source_conversation_id: '', created_at_minutes: 0, deadline_minutes: 1_440,
+  }]
+  let request = null
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => { request = input; return { reply: 'I remember.', relationship_delta: 0 } } },
+  })
+  await controller.respond({ state, playerId: 'hero', npcId: 'marta', message: 'Do you remember?', turnId: 'brief-turn' })
+  const sent = request.messages[1].content
+  assert.match(sent, /"relationship":\{"score":55,"tier":"trusted"\}/u)
+  assert.match(sent, /"open_promises":\[\{"id":"promise:brief","direction":"npc_to_party","text":"Marta will reserve a room\.","due_hint":"tomorrow"\}\]/u)
+  assert.doesNotMatch(sent, /deadline_minutes|consequence_delta|resolution_reason/u)
+})
+test('only the system can resolve a promise and fulfillment applies a fixed relationship consequence', () => {
+  const initial = campaign()
+  initial.social.relationships.marta.hero = 19
+  const recorded = resolveCommand(socialCommand({
+    relationship_delta: 0,
+    promise: {
+      id: 'promise:manual', direction: 'party_to_npc', text: 'The hero will return the ledger.',
+      due_hint: 'after finding it', visibility: 'specific_player',
+    },
+  }), initial, { diceService: dice(), context: { isSocialController: true } })
+  const promised = replayEvents(initial, recorded.events)
+
+  assert.throws(
+    () => resolveCommand({ command_type: 'ResolveNpcPromise', promise_id: 'promise:manual', status: 'fulfilled' }, promised, { diceService: dice(), context: {} }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_FORBIDDEN',
+  )
+
+  const resolved = resolveCommand({ command_type: 'ResolveNpcPromise', promise_id: 'promise:manual', status: 'fulfilled' }, promised, {
+    diceService: dice(), context: { isDirector: true },
+  })
+  assert.deepEqual(resolved.events.map((event) => event.event_type), [
+    'NpcPromiseResolved', 'NpcRelationshipAdjusted', 'NpcRelationshipTierChanged',
+  ])
+  const replayed = replayEvents(promised, resolved.events)
+  assert.equal(replayed.social.promises[0].status, 'fulfilled')
+  assert.equal(replayed.social.promises[0].resolution_reason, 'manual')
+  assert.equal(replayed.social.promises[0].consequence_delta, 8)
+  assert.equal(replayed.social.relationships.marta.hero, 27)
+  assert.equal(replayed.social.relationship_tiers.marta.hero, 'friendly')
+})

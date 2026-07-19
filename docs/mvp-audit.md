@@ -68,7 +68,7 @@
 | `POST /api/campaigns` | Admin-only создание кампании, default `shadow`, room save и первичный event-store import |
 | `PATCH /api/campaigns/:id/engine-mode` | Admin-only переключение `legacy \| shadow \| enforce` |
 | `POST /api/campaigns/:id/commands` | Effective `enforce`: player combat allowlist/ownership либо расширенный admin set; Rules Engine, event commit, NPC scheduling и compatibility projection |
-| `POST /api/campaigns/:id/encounters/assemble` | Admin-only в `enforce`: официальный SRD XP budget уровней 1–20, пять server-owned primary-attack profiles, safe spawn, атомарные `EncounterCreated + CombatStarted` и replay/projection |
+| `POST /api/campaigns/:id/encounters/assemble` | Admin-only в `enforce`: официальный SRD XP budget уровней 1–20, 12 server-owned monster profiles, safe spawn, атомарные `EncounterCreated + CombatStarted` и replay/projection |
 | `GET /api/campaigns/:id/turns/:turnId/explanation` | Объяснение trace; `turnId=latest` поддерживается |
 | `GET /api/rooms/:code` | Room read с проверкой доступа по назначенным hero IDs |
 | `PUT /api/rooms/:code` | Compatibility full-state sync с CAS и дополнительной серверной валидацией |
@@ -123,9 +123,9 @@
 
 ## Правила и механика
 
-Pack `data/rule_packs/srd_5_2_1` содержит 19 двуязычных оригинальных пересказов правил, glossary, ontology edges, manifest и coverage metadata. Rule IDs движка согласованы с текущим pack; прежнее утверждение об ID mismatch больше не актуально.
+Pack `data/rule_packs/srd_5_2_1` содержит 23 двуязычных оригинальных пересказа правил, glossary, 23 ontology edges, manifest и coverage metadata. Rule IDs движка согласованы с текущим pack; прежнее утверждение об ID mismatch больше не актуально.
 
-Это минимальный, а не полный SRD-корпус. Критическая атака уже удваивает только damage dice и сохраняет rule provenance, но death saves отсутствуют, generic conditions и concentration реализованы не полностью, bonus action/reaction и отдых не имеют полного жизненного цикла ресурсов. Поэтому `enforce` означает авторитетность реализованного среза, а не полноту всех правил игры.
+Это минимальный, а не полный SRD-корпус. Критическая атака удваивает только damage dice и сохраняет rule provenance; базовые death saves, stabilization, damage at 0 HP, massive damage, stable recovery через 1d4 часа и nonlethal knockout с 60-минутным Short Rest исполняются и replay-ятся сервером. Bless/Bane меняют итог death save, Beacon of Hope даёт преимущество и максимизирует кости лечения, Aura of Life позиционно даёт некротическое сопротивление, блокирует уменьшение максимума ОЗ и поднимает союзника с 0 ОЗ в начале хода, а Aura of Protection добавляет нескладывающийся позиционный бонус Харизмы ко всем saves. Воин 9–12 уровня получает одно использование «Несгибаемого»: после провала движок атомарно ставит исходную команду на паузу, предлагает обязательный переброс с бонусом уровня воина, не расходует реакцию и восстанавливает ресурс только продолжительным отдыхом; путь покрывает обычные, заклинательные, area, concentration и death saves. Общий damage pipeline автоматически исполняет Constitution save концентрации и завершает связанный эффект при провале или 0 ОЗ. Generic conditions, полный отдых, внешние причины окончания концентрации и оставшиеся особенности 1–12 уровней, влияющие на death flow, реализованы не полностью. Поэтому `enforce` означает авторитетность реализованного среза, а не полноту всех правил игры.
 
 ## Защита, добавленная в runtime
 

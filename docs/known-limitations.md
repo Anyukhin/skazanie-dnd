@@ -15,7 +15,7 @@
 
 ## Покрытие правил и механики
 
-Новый Rules Engine доступен через typed `/api/campaigns/:id/commands` при effective mode `enforce` и через orchestrated `/api/narrate` path. Обычному игроку endpoint разрешает безопасный боевой набор, включая `MakeAttack`, `MakeAreaAttack` и `ChangeWeapon`, за назначенного героя; admin имеет расширенный диагностический набор. Реализованы базовые checks/saves/attacks, damage/healing/temp HP, modifiers, generic resources/conditions, initiative, часть action/movement economy, concentration markers и zero-HP marker. Ограничения:
+Новый Rules Engine доступен через typed `/api/campaigns/:id/commands` при effective mode `enforce` и через orchestrated `/api/narrate` path. Обычному игроку endpoint разрешает безопасный боевой набор, включая `MakeAttack`, `MakeAreaAttack` и `ChangeWeapon`, за назначенного героя; admin имеет расширенный диагностический набор. Реализованы базовые checks/saves/attacks, damage/healing/temp HP, modifiers, generic resources/conditions, initiative, часть action/movement economy, автоматические проверки концентрации и базовый zero-HP lifecycle. Ограничения:
 
 ### Critical hits
 
@@ -23,7 +23,7 @@
 
 ### Action economy
 
-Action расходуется для attack/spell; combat spell с casting time `bonus_action` отдельно расходует бонусное действие. В server-authoritative combat перемещение учитывается по пройденному ортогональному пути и сбрасывается при начале следующего хода. Реакция отображается и восстанавливается вместе с экономикой хода, но trigger validation, ready action и reaction windows пока отсутствуют.
+Action расходуется для attack/spell; combat spell с casting time `bonus_action` отдельно расходует бонусное действие. В server-authoritative combat перемещение учитывается по пройденному ортогональному пути и сбрасывается при начале следующего хода. Реакция отображается и восстанавливается вместе с экономикой хода. Есть проверяемые окна для ряда защитных реакций и атаки по возможности; универсальные `Ready`, произвольные триггеры и одновременные конкурирующие окна пока отсутствуют.
 
 ### Conditions
 
@@ -31,27 +31,29 @@ Engine хранит generic condition ID/duration, но не применяет 
 
 ### Concentration
 
-`ApplyDamage` и damage от `MakeAttack` могут создать `ConcentrationCheckRequired`, но нет полного Constitution save workflow, обработки success/failure и завершения связанного эффекта. Будущие spell/effect damage paths должны пройти тот же follow-up parity gate.
+Единый post-damage pipeline обрабатывает урон от атак, заклинаний, реакций, областей и периодических эффектов. После фактически полученного урона он программно считает СЛ `max(10, floor(damage / 2))`, добавляет модификатор Телосложения, классовое владение спасброском, Bless/Bane, Mind Sliver, Silvery Fortune и Aura of Protection, затем сохраняет бросок и исход событиями. Провал очищает связанный концентрационный эффект; падение до 0 ОЗ завершает его без броска, а полностью поглощённый временными HP урон всё равно требует save. Остаточно не закрыты все внешние причины прекращения концентрации и полный каталог эффектов/состояний.
 
 ### Zero HP и смерть
 
-Есть переход к unconscious marker для поддержанного damage path. Нет death saves, stabilization, instant death, damage while dying и полного восстановления состояния после healing.
+Базовый lifecycle SRD 5.2 реализован событиями: при 0 ОЗ герой получает `unconscious`, в начале своего хода автоматически бросает серверный d20, три успеха стабилизируют, три провала убивают, натуральная 1 даёт два провала, а натуральная 20 возвращает 1 ОЗ. Урон при 0 ОЗ снимает стабильность и добавляет один либо два провала при критическом попадании; массивный урон убивает сразу. Действие «Стабилизировать» делает Wisdom (Medicine) СЛ 10, настоящее лечение снимает бессознательность и сбрасывает счётчики, а бой нельзя завершить с нестабильным героем. Стабильный герой получает event-sourced таймер `1d4` часа; `AdvanceTime` уменьшает его, а полностью бессознательный стабильный отряд автоматически проматывает время только после безопасной победы без живых врагов, до пробуждения первого героя на 1 ОЗ. При исходе `party_incapacitated` с живыми врагами сервер не предполагает, что противники будут ждать: дальнейший исход должен разрешить рассказчик. Смерть и восстановление остаются replay-safe; смерть требует выбора «воскресить» или «заменить», а гибель всей группы завершает кампанию. Nonlethal knockout реализован отдельным явным выбором: сервер допускает его только для trusted melee-профиля оружия или проверенной ближней атаки заклинанием, оставляет цели 1 ОЗ, накладывает `unconscious`, начинает короткий отдых на 60 минут и завершает состояние после отдыха, лечения или успешной Wisdom (Medicine) СЛ 10. Нокаутированная цель остаётся живой, но не получает ход и считается выбывшей при определении конца боя.
+
+Bless и Bane теперь программно добавляют/вычитают 1к4 из итогового death save, сохраняя особое значение натуральной 1/20. Beacon of Hope допускает целью героя с 0 ОЗ, даёт преимущество на death save и максимизирует кости любого получаемого лечения; броски, источники модификаторов и итог сохраняются в событиях и журнале. Death Ward один раз перехватывает любое серверное повреждение, которое опустило бы цель до 0 ОЗ, оставляет 1 ОЗ и расходует эффект; отдельного generic instant-death-without-damage пути в движке пока нет. Aura of Life действует как позиционная 30-футовая аура концентрации: для заклинателя и союзников внутри радиуса она даёт сопротивление некротическому урону, блокирует доверенное уменьшение максимума ОЗ и перед death save восстанавливает 1 ОЗ существу, начавшему ход с 0 ОЗ; перемещение, потеря сознания и завершение концентрации сразу меняют результат. Aura of Protection доступна паладину с 6-го уровня: его бонус Харизмы (минимум +1) применяется к нему и союзникам в 10 футах, отключается при недееспособности, выбирает сильнейшую из пересекающихся аур и участвует в обычных, заклинательных, death и concentration saves. Fighter Indomitable доступен на уровнях 9–12 один раз за Long Rest и атомарно перебрасывает любой проваленный save с бонусом уровня воина; внутренний dice transcript скрыт публичной проекцией. Resistance приведён к редакции 2024: игрок выбирает один из 11 типов, а общий damage pipeline уменьшает первый подходящий урон каждого хода на серверный 1к4, не расходуя концентрационный эффект. До полного набора исключений 1–12 уровней всё ещё не хватает Heroic/Bardic Inspiration и предметных эффектов.
 
 ### Initiative и turns
 
-Есть сортировка, active index/round и команда/event `EndCombat`/`CombatEnded`; собранная встреча дополнительно получает `EncounterEnded`. Bounded scheduler автоматически пропускает побеждённых и завершает базовый бой, когда не осталось живых героев либо врагов. Tie policy упрощена; отсутствуют surprise, held/delayed turns, полные reaction windows, surrender/flee/objective outcomes и reward/loot lifecycle.
+Есть сортировка, active index/round и команда/event `EndCombat`/`CombatEnded`; собранная встреча дополнительно получает `EncounterEnded`. Bounded scheduler автоматически пропускает побеждённых и завершает базовый бой, когда не осталось живых героев либо врагов. Автономный completion применяет ограниченные XP/loot и последствия ровно один раз. Tie policy упрощена; отсутствуют surprise, held/delayed turns, групповые ходы союзников с одинаковой инициативой и полноценные objective/morale outcome policies.
 
 ### Карта, дальность и NPC scheduler
 
-В `enforce` ортогональный BFS проверяет проходимые клетки, стены, occupancy, скорость и уже потраченное movement; дальняя атака использует сеточную дистанцию, проверяет прямую траекторию через стены, а метательный предмет — серверную область. Присланные клиентом distance/path/range не считаются источником истины. Ограничения: нет difficult terrain, размерности существ, forced movement, opportunity attacks, cover, высоты/трёхмерной LOS и per-player vision.
+В `enforce` ортогональный BFS проверяет проходимые клетки, стены, occupancy, скорость и уже потраченное movement; дальняя атака использует сеточную дистанцию, проверяет прямую траекторию через стены, а метательный предмет — серверную область. Присланные клиентом distance/path/range не считаются источником истины. Выход из соседней зоны досягаемости вызывает атаку по возможности, расходует реакцию, учитывает `Отход` и обездвиживающие состояния; для хода героя сервер разрешает её автоматически, для хода NPC открывает игроку окно выбора. Ограничения: нет difficult terrain, размерности существ и reach больше 5 футов, forced movement, cover, высоты/трёхмерной LOS и per-player vision.
 
-NPC scheduler представляет bounded deterministic policy: выбирает ближайшего достижимого героя, при необходимости двигается, делает одну базовую атаку и завершает ход до следующего PC. Это не `npc_controller` и не Tactical Controller agent; нет тактических целей, сложных действий, заклинаний, bonus actions/reactions, morale и координации группы.
+NPC scheduler представляет bounded deterministic policy: оценивает допустимые пары «цель + действие», дальность и ожидаемый урон, добивание, КД цели, контроль, поддержку союзников и безопасную позицию для дальнего боя. Он выбирает ближнюю или дальнюю атаку, умеет один раз применять паутину, использует ловкое отступление и агрессивный рывок, а также учитывает тактику стаи и воинское преимущество. Это не `npc_controller` и не LLM Tactical Controller: нет полноценного планирования на несколько ходов, spellcasting, multiattack, сложных реакций, cover/высоты и взаимодействия с окружением.
 
 ### EncounterAssembler и mini-compendium
 
-Admin UI/API в `enforce` умеет собрать и сразу начать встречу. Сервер принимает только allowlisted difficulty/theme, считает официальный XP Budget per Character SRD 5.2.1 для уровней 1–20 и выбирает противников из пяти server-owned profiles. Spawn ограничен раскрытыми проходимыми клетками, достижимыми от группы, без feature/occupancy и минимум в 10 футах от каждого героя; `EncounterCreated` и `CombatStarted` входят в один commit, а reducer/replay и player projection подключены к общему контуру.
+Director flow и диагностический Admin UI/API в `enforce` умеют собрать и сразу начать встречу. Обычный клиент вызывает только `/autonomy/advance`, не выбирая stat blocks или координаты. Сервер принимает allowlisted difficulty/theme, считает официальный XP Budget per Character SRD 5.2.1 и выбирает противников из 12 server-owned profiles. Spawn ограничен раскрытыми проходимыми клетками без feature/occupancy и минимум в 10 футах от каждого героя; `EncounterCreated` и `CombatStarted` входят в один commit.
 
-Это не полный encounter/monster subsystem. Пять записей — только primary-attack projections без traits, saves/skills, resistances/immunities, multiattack, spells, reactions и особых действий. Нет tactics profiles, loot/rewards, Tactical Controller, автоматического Director trigger или realtime multi-browser гарантии.
+Это не полный encounter/monster subsystem. 12 записей поддерживают несколько профилей атак и ограниченный набор исполняемых traits/особых действий, но не образуют полный monster corpus: нет полной модели saves/skills, resistances/immunities, multiattack, spellcasting, legendary/lair actions, recharge и большинства реакций. Loot/rewards ограничены небольшой server-owned таблицей; два клиента сходятся polling-ом, но realtime push/soak-гарантии нет.
 
 ### Resources, rest и spells
 
@@ -67,12 +69,12 @@ Generic resource pools работают, но rest создаёт marker event �
 
 В `enforce` resolved решение группы может вызвать server-owned `AdvanceScene`. `SceneAdvanced` атомарно заменяет карту, переносит отряд, обновляет adventure history и очищает прежний encounter; для распознанного поселения bounded `ShopAssembler` добавляет `MerchantCreated` в тот же commit. Wilderness не получает постоянную лавку по умолчанию. Решение связано с `interaction_id + resolved_option_id`, исполняется exactly once при конкурентных запросах, а retry победившего ключа воспроизводится из committed event batch без повторного вызова модели.
 
-Это не полный autonomous Director. Открытие голосования и голоса пока сохраняются в compatibility-room, а не отдельными событиями; потребление resolved decision уже фиксируется в `SceneAdvanced`. Классификация сцены эвристическая, но commerce intent больше не может превратить wilderness в settlement. Повторное использование магазина основано на нормализованной строке локации без устойчивого `location_id`, поэтому одноимённые места могут быть ошибочно объединены. EncounterAssembler пока доступен только вручную администратору и не подключён к Director flow; отдельный NPC social assembler, городской dialogue/services lifecycle и долгосрочные world entities отсутствуют.
+Это ограниченный autonomous Director vertical slice, а не бесконечный генератор кампаний. Кнопка игрока запускает последовательность bounded intent: исследование → social → quest progress → encounter → награды → переход; при недоступном LLM действует детерминированная policy. Открытие голосования и голоса пока сохраняются в compatibility-room, классификация сцены эвристическая, а повторное использование магазина основано на строке локации без устойчивого `location_id`. Не хватает online-eval качества длинного повествования, полноценного городского dialogue/services lifecycle и более широких content tables.
 
 ## Rule Pack и Retrieval
 
-- В corpus только 21 короткий оригинальный RU/EN пересказ базовой механики, включая 2 economy rules, а не полный SRD или rulebook.
-- Нет полного spell, monster, item, class, feat, encounter или economy corpus; отдельно от Rule Pack существуют лишь пять monster primary-attack projections и небольшой server catalog стартового снаряжения.
+- В corpus только 22 коротких оригинальных RU/EN пересказа базовой механики, включая 2 economy rules и Aura of Protection, а не полный SRD или rulebook.
+- Нет полного spell, monster, item, class, feat, encounter или economy corpus; отдельно от Rule Pack существуют 12 monster-профилей с ограниченным набором исполняемых действий и небольшой server catalog стартового снаряжения.
 - Local vector использует deterministic feature hashing, не обученную semantic embedding model.
 - Russian stemming и fuzzy matching эвристические; возможны false positives/negatives.
 - Ontology expansion ограничен одним bounded шагом.
@@ -183,7 +185,7 @@ Real-HTTP integration scenarios поднимают `server/index.mjs` во вр�
 - reconciliation после сбоя между event commit и room projection;
 - security penetration testing и обход quotas/visibility.
 
-Не проверены расширенный encounter corpus с полными stat blocks и loot, диагонали/difficult terrain/cover/LOS, spells/conditions/death saves, Tactical Controller agent, автоматическая Director integration и синхронный бой нескольких браузеров. Поэтому `enforce` пригоден для ограниченного контролируемого сценария, но не должен считаться завершённым production cutover или полной заменой D&D-стола.
+Не проверены расширенный encounter corpus с полными stat blocks и loot, диагонали/difficult terrain/cover/LOS, полный набор spells/conditions и исключений death-save features, Tactical Controller agent, автоматическая Director integration и синхронный бой нескольких браузеров. Поэтому `enforce` пригоден для ограниченного контролируемого сценария, но не должен считаться завершённым production cutover или полной заменой D&D-стола.
 
 ## Provenance и assets
 

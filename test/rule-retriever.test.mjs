@@ -32,6 +32,8 @@ const retrievalCases = [
   ['Сколько герой может задерживать дыхание до удушья?', 'srd_5_2_1:environment:suffocation'],
   ['Сколько серебряных монет в одной золотой?', 'srd_5_2_1:economy:coins'],
   ['За сколько торговец выкупает обычное снаряжение?', 'srd_5_2_1:economy:selling-equipment'],
+  ['Как работает Аура защиты паладина?', 'srd_5_2_1:classes:paladin-aura-of-protection'],
+  ['Как воин использует Несгибаемого после провала спасброска?', 'srd_5_2_1:classes:fighter-indomitable'],
 ]
 
 for (const [query, expectedRuleId] of retrievalCases) {

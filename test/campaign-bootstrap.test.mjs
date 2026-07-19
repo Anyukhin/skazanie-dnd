@@ -46,6 +46,32 @@ test('новая кампания создаёт чистый самостоят
   assert.doesNotMatch(JSON.stringify(state), /затоплен|архивариус|Норвин/iu)
   assert.ok(state.scene.cells.length >= 49)
   assert.equal(state.messages.length, 1)
+  assert.equal(state.players[0].currency.gold, 20)
+  assert.equal(state.players[0].inventory.length, 1)
+  assert.equal(state.players[0].inventory[0].equipped, true)
+  assert.ok(state.players[0].inventory[0].combat?.damage)
+})
+
+test('стартовый набор соответствует классу и не перезаписывает готовый лист', async () => {
+  const fighter = await new CampaignBootstrapper().create({
+    code: 'KIT-FIGHTER', world: {}, players: [{ ...hero, id: 'fighter', role: 'Воин · ур. 1', abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } }],
+  })
+  assert.equal(fighter.players[0].characterClass, 'fighter')
+  assert.equal(fighter.players[0].abilities.str, 16)
+  assert.equal(fighter.players[0].inventory[0].catalog_id, 'srd_5_2_1:longsword')
+  assert.equal(fighter.players[0].inventory[0].combat.damage, '1d8')
+
+  const importedInventory = [{ id: 'keepsake', name: 'Памятный знак', type: 'quest', quantity: 1, equipped: false }]
+  const imported = await new CampaignBootstrapper().create({
+    code: 'KIT-IMPORTED', world: {}, players: [{
+      ...hero, id: 'imported', role: 'Следопыт · ур. 1', inventory: importedInventory,
+      currency: { copper: 3, silver: 2, gold: 7, platinum: 0 },
+      abilities: { str: 9, dex: 15, con: 12, int: 11, wis: 14, cha: 10 },
+    }],
+  })
+  assert.equal(imported.players[0].inventory[0].id, 'keepsake')
+  assert.equal(imported.players[0].currency.gold, 7)
+  assert.equal(imported.players[0].abilities.dex, 15)
 })
 
 test('рассказчик получает вводные владельца и биографии героев до создания пролога', async () => {

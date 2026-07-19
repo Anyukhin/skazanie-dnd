@@ -6,6 +6,7 @@ import {
   ENCOUNTER_DIFFICULTIES,
   ENCOUNTER_PROPOSAL_VERSION,
   ENCOUNTER_THEMES,
+  DND_SU_BESTIARY_SOURCE,
   EncounterAssembler,
   SRD_5_2_1_MONSTER_ALLOWLIST,
   SRD_5_2_1_SOURCE,
@@ -38,11 +39,12 @@ function expectCode(fn, code) {
   assert.throws(fn, (error) => error?.name === 'EncounterAssemblyError' && error.code === code)
 }
 
-test('exports a versioned five-entry SRD 5.2.1 server allowlist with fixed source provenance', () => {
+test('exports an expanded dnd.su-linked SRD 5.2.1 monster catalog with fixed source provenance', () => {
   assert.equal(ENCOUNTER_PROPOSAL_VERSION, 'skazanie:encounter-proposal-v1')
   assert.deepEqual(ENCOUNTER_DIFFICULTIES, ['easy', 'medium', 'hard'])
-  assert.deepEqual(ENCOUNTER_THEMES, ['goblinoids', 'undead', 'beasts', 'generic'])
-  assert.equal(Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length, 5)
+  assert.deepEqual(ENCOUNTER_THEMES, ['goblinoids', 'undead', 'beasts', 'raiders', 'generic'])
+  assert.equal(Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length, 12)
+  assert.equal(DND_SU_BESTIARY_SOURCE.url, 'https://dnd.su/bestiary/')
   assert.equal(SRD_5_2_1_SOURCE.version, '5.2.1')
   assert.equal(SRD_5_2_1_SOURCE.encounter_budget_page, 202)
   assert.equal(SRD_5_2_1_SOURCE.sha256, '8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87')
@@ -57,6 +59,8 @@ test('exports a versioned five-entry SRD 5.2.1 server allowlist with fixed sourc
   assert.ok(Object.isFrozen(SRD_5_2_1_SOURCE))
   assert.ok(Object.isFrozen(SRD_5_2_1_MONSTER_ALLOWLIST))
   assert.ok(Object.isFrozen(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:wolf']))
+  assert.ok(Object.values(SRD_5_2_1_MONSTER_ALLOWLIST).every((monster) => monster.source_url?.startsWith('https://dnd.su/bestiary/')))
+  assert.ok(Object.values(SRD_5_2_1_MONSTER_ALLOWLIST).every((monster) => monster.action_profiles?.length >= 1))
 })
 
 test('assembly is deterministic, input-order independent, bounded by the official XP budget, and deeply immutable', () => {
@@ -77,7 +81,7 @@ test('assembly is deterministic, input-order independent, bounded by the officia
     spent_xp: 200,
     unspent_xp: 0,
     utilization_bps: 10_000,
-    quantity: 4,
+    quantity: first.enemies.length,
     quantity_cap: 8,
   })
   assert.ok(Object.isFrozen(first))
@@ -98,10 +102,10 @@ test('mixed-level party budget sums the per-character SRD values for the selecte
     theme: 'goblinoids',
   }))
   assert.equal(proposal.xp_budget, 225)
-  assert.equal(proposal.xp_spent, 200)
+  assert.equal(proposal.xp_spent, 225)
   assert.equal(proposal.threat.quantity_cap, 4)
-  assert.equal(proposal.enemies.length, 4)
-  assert.ok(proposal.enemies.every((enemy) => enemy.stat_block_id.startsWith('srd_5_2_1:goblin-')))
+  assert.equal(proposal.enemies.length, 2)
+  assert.ok(proposal.enemies.every((enemy) => ['srd_5_2_1:goblin-minion', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:kobold', 'srd_5_2_1:bugbear'].includes(enemy.stat_block_id)))
 })
 
 test('placement uses only revealed walkable feature-free cells not occupied by the party', () => {
@@ -155,19 +159,24 @@ test('available-cell and per-character caps take priority over a large XP budget
   assert.equal(proposal.xp_spent, 600)
 })
 
-test('enemy output is an exact engine-compatible projection with server provenance', () => {
-  const enemy = assembleEncounter(baseInput({ theme: 'beasts' })).enemies[0]
+test('enemy output carries engine-compatible actions, traits, image and server provenance', () => {
+  const enemy = assembleEncounter(baseInput({ theme: 'beasts', party: [{ id: 'hero', level: 1, x: 0, y: 0 }] })).enemies[0]
   assert.deepEqual(Object.keys(enemy), [
     'id', 'name', 'hp', 'maxHp', 'armor', 'speed', 'initiativeBonus', 'attackBonus', 'damageDice',
-    'damageBonus', 'x', 'y', 'alive', 'stat_block_id', 'provenance',
+    'damageBonus', 'abilities', 'creature_type', 'image', 'source_url', 'traits', 'action_profiles',
+    'attack_profile', 'x', 'y', 'alive', 'stat_block_id', 'provenance',
   ])
   assert.equal(enemy.stat_block_id, 'srd_5_2_1:wolf')
   assert.equal(enemy.hp, 11)
   assert.equal(enemy.maxHp, 11)
   assert.equal(enemy.initiativeBonus, 2)
   assert.equal(enemy.damageDice, 6)
+  assert.equal(enemy.image, '/assets/enemies/wolf.jpg')
+  assert.equal(enemy.source_url, 'https://dnd.su/bestiary/2-wolf/')
+  assert.equal(enemy.traits[0].id, 'pack-tactics')
+  assert.equal(enemy.action_profiles[0].on_hit.condition, 'prone')
   assert.deepEqual(Object.keys(enemy.provenance), [
-    'kind', 'ruleset_id', 'source_version', 'source_sha256', 'source_page', 'challenge_rating', 'xp',
+    'kind', 'ruleset_id', 'source_version', 'source_sha256', 'source_page', 'challenge_rating', 'xp', 'dndsu_url',
   ])
   assert.equal(enemy.provenance.ruleset_id, 'srd_5_2_1')
   assert.equal(enemy.provenance.kind, 'server-owned-srd-primary-attack-projection')

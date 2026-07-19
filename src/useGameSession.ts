@@ -2,23 +2,24 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { initialState } from './data'
 import { generateItemImage, narrateWithAgent, rollDice, rollSharedDie } from './ai-client'
 import { createLocalCheck, playerMessage, resolveAction } from './game-engine'
-import { attackEnemyOnMap, finishTacticalTurn, movePlayerOnMap } from './tactical-engine'
+import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
 import type { AgentInteraction, AiTurnResult, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult } from './types'
 
 const STORAGE_KEY = 'skazanie-demo-session-v1'
 const CHANNEL_NAME = 'skazanie-demo-room'
 
-type EngineMode = NonNullable<GameState['engine_mode']>
 type TacticalCommand =
   | { command_type: 'StartCombat'; actor_id: string }
   | { command_type: 'MoveActor'; actor_id: string; to: { x: number; y: number } }
-  | { command_type: 'MakeAttack'; actor_id: string; target_id: string }
-  | { command_type: 'MakeAttack'; actor_id: string; target_id: string; item_id: string }
+  | { command_type: 'MakeAttack'; actor_id: string; target_id: string; knock_out?: boolean }
+  | { command_type: 'MakeAttack'; actor_id: string; target_id: string; item_id: string; knock_out?: boolean }
   | { command_type: 'MakeAreaAttack'; actor_id: string; item_id: string; to: { x: number; y: number } }
-  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; target_id: string }
-  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; to: { x: number; y: number } }
+  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; target_id: string; spell_option?: string; knock_out?: boolean }
+  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; to: { x: number; y: number }; spell_option?: string }
+  | { command_type: 'UseCombatAction'; actor_id: string; action_id: string; target_id?: string; item_id?: string }
   | { command_type: 'ChangeWeapon'; actor_id: string; item_id: string }
   | { command_type: 'EndTurn'; actor_id: string }
+  | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
 
 type TacticalCommandResult = {
   authoritative_state?: GameState
@@ -29,6 +30,8 @@ type TacticalCommandResult = {
   state_version?: number
   turn_id?: string | null
   narration_message_id?: string | null
+  narration_speaker?: 'narrator' | 'system'
+  narration_author?: string
   error?: string
   code?: string
 }
@@ -76,7 +79,7 @@ const commandId = () => globalThis.crypto?.randomUUID?.() ?? `command-${Date.now
 const clock = () => new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date())
 
 function stateForPersistence(state: GameState): GameState {
-  return state.isNarrating ? { ...state, isNarrating: false } : state
+  return { ...state, engine_mode: 'enforce', ...(state.isNarrating ? { isNarrating: false } : {}) }
 }
 
 function latestRoomVersion(current: number, candidate: unknown): number {
@@ -110,8 +113,8 @@ function mergeTacticalCommandState(current: GameState, authoritative: GameState,
   const withNarration = result.narration?.trim() && !messages.some((message) => message.id === narrationId)
     ? [...messages, {
       id: narrationId,
-      speaker: 'narrator' as const,
-      author: 'Рассказчик',
+      speaker: result.narration_speaker ?? 'system',
+      author: result.narration_author ?? (result.narration_speaker === 'narrator' ? 'Рассказчик' : 'Система боя'),
       timestamp: clock(),
       text: result.narration.trim(),
       turnConsumed: false,
@@ -147,6 +150,7 @@ function loadState(): GameState {
     return {
       ...initialState,
       ...parsed,
+      engine_mode: 'enforce',
       // Narration progress belongs to the tab that owns the request. Restoring
       // it would turn a closed or refreshed request into an endless loader.
       isNarrating: false,
@@ -207,6 +211,7 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
     ...(sceneChanged ? {
       scene: authoritative.scene,
       adventure: authoritative.adventure,
+      worldMap: authoritative.worldMap,
       entities: authoritative.entities,
       suggestions: authoritative.suggestions ?? current.suggestions,
       agentInteraction: authoritative.agentInteraction ?? null,
@@ -249,12 +254,15 @@ export function useGameSession() {
   const [tacticalError, setTacticalError] = useState<string | null>(null)
   const [merchantBusy, setMerchantBusy] = useState(false)
   const [merchantError, setMerchantError] = useState<string | null>(null)
+  const [directorBusy, setDirectorBusy] = useState(false)
+  const [directorError, setDirectorError] = useState<string | null>(null)
   const [merchantView, setMerchantView] = useState<MerchantView | null>(null)
   const [merchantNarration, setMerchantNarration] = useState<string | null>(null)
   const stateRef = useRef(state)
   const channel = useRef<BroadcastChannel | null>(null)
   const roomVersion = useRef(0)
   const busy = useRef(false)
+  const directorBusyRef = useRef(false)
   const tacticalBusyRef = useRef(false)
   const merchantBusyRef = useRef(false)
   const freeRollBusy = useRef(false)
@@ -382,6 +390,7 @@ export function useGameSession() {
       }),
       entities: sceneTransition ? [] : base.entities,
       adventure: sceneTransition?.adventure ?? base.adventure,
+      worldMap: sceneTransition?.worldMap ?? base.worldMap,
       scene: hasAuthoritativeState ? base.scene : sceneTransition?.scene ?? {
         ...base.scene,
         turn: base.scene.turn + (consumesTurn ? 1 : 0),
@@ -618,12 +627,8 @@ export function useGameSession() {
   const executeTacticalCommand = useCallback(async (command: TacticalCommand, message: string) => {
     if (tacticalBusyRef.current) return
     const current = stateRef.current
-    if (current.engine_mode !== 'enforce') {
-      setTacticalError('Серверная команда доступна только в режиме enforce.')
-      return
-    }
     const combatActorId = currentCombatActorId(current)
-    if (current.mechanics?.combat?.active && command.command_type !== 'StartCombat' && command.actor_id !== combatActorId) {
+    if (!canIssueUiTacticalCommand(current.mechanics?.combat, command, combatActorId)) {
       setTacticalError('Сейчас ход другого участника боя.')
       return
     }
@@ -663,52 +668,54 @@ export function useGameSession() {
   const selectPlayer = useCallback((playerId: string) => commit({ ...state, activePlayerId: playerId }), [commit, state])
 
   const startCombat = useCallback((playerId: string) => {
-    if (stateRef.current.engine_mode !== 'enforce') return
     void executeTacticalCommand({ command_type: 'StartCombat', actor_id: playerId }, 'Начать бой')
   }, [executeTacticalCommand])
 
   const movePlayer = useCallback((playerId: string, x: number, y: number) => {
-    if (stateRef.current.engine_mode === 'enforce') {
-      void executeTacticalCommand({ command_type: 'MoveActor', actor_id: playerId, to: { x, y } }, `Переместить героя на клетку ${x}, ${y}`)
-      return
-    }
-    mutate((current) => movePlayerOnMap(current, playerId, x, y))
-  }, [executeTacticalCommand, mutate])
+    void executeTacticalCommand({ command_type: 'MoveActor', actor_id: playerId, to: { x, y } }, `Переместить героя на клетку ${x}, ${y}`)
+  }, [executeTacticalCommand])
 
-  const attackEnemy = useCallback((playerId: string, enemyId: string, itemId?: string) => {
-    if (stateRef.current.engine_mode === 'enforce') {
-      void executeTacticalCommand({ command_type: 'MakeAttack', actor_id: playerId, target_id: enemyId, ...(itemId ? { item_id: itemId } : {}) } as TacticalCommand, 'Атаковать выбранную цель')
-      return
-    }
-    mutate((current) => attackEnemyOnMap(current, playerId, enemyId))
-  }, [executeTacticalCommand, mutate])
+  const attackEnemy = useCallback((playerId: string, enemyId: string, itemId?: string, knockOut = false) => {
+    void executeTacticalCommand({ command_type: 'MakeAttack', actor_id: playerId, target_id: enemyId, ...(itemId ? { item_id: itemId } : {}), ...(knockOut ? { knock_out: true } : {}) } as TacticalCommand, knockOut ? 'Нокаутировать выбранную цель' : 'Атаковать выбранную цель')
+  }, [executeTacticalCommand])
 
   const throwAreaItem = useCallback((playerId: string, itemId: string, x: number, y: number) => {
-    if (stateRef.current.engine_mode !== 'enforce') { setTacticalError('Метательные области доступны в серверном режиме enforce.'); return }
     void executeTacticalCommand({ command_type: 'MakeAreaAttack', actor_id: playerId, item_id: itemId, to: { x, y } }, `Бросить предмет в клетку ${x}, ${y}`)
   }, [executeTacticalCommand])
 
-  const castSpell = useCallback((actorId: string, spellId: string, target: { targetId: string } | { x: number; y: number }) => {
-    if (stateRef.current.engine_mode !== 'enforce') { setTacticalError('Управляемая магия доступна в серверном режиме enforce.'); return }
+  const castSpell = useCallback((actorId: string, spellId: string, target: ({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean }) => {
     const command: TacticalCommand = 'targetId' in target
-      ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, target_id: target.targetId }
-      : { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, to: { x: target.x, y: target.y } }
+      ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, target_id: target.targetId, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
+      : { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, to: { x: target.x, y: target.y }, ...(target.spellOption ? { spell_option: target.spellOption } : {}) }
     void executeTacticalCommand(command, 'Сотворить выбранное заклинание')
   }, [executeTacticalCommand])
 
   const changeWeapon = useCallback((playerId: string, itemId: string) => {
-    if (stateRef.current.engine_mode !== 'enforce') { setTacticalError('Смена оружия доступна в серверном режиме enforce.'); return }
     void executeTacticalCommand({ command_type: 'ChangeWeapon', actor_id: playerId, item_id: itemId }, 'Сменить оружие')
+  }, [executeTacticalCommand])
+
+  const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string) => {
+    void executeTacticalCommand({
+      command_type: 'UseCombatAction', actor_id: actorId, action_id: actionId,
+      ...(targetId ? { target_id: targetId } : {}),
+      ...(itemId ? { item_id: itemId } : {}),
+      ...(beneficiaryId ? { beneficiary_id: beneficiaryId } : {}),
+    }, 'Использовать выбранное боевое действие')
   }, [executeTacticalCommand])
 
   const finishMapTurn = useCallback(() => {
     const current = stateRef.current
-    if (current.engine_mode === 'enforce') {
-      void executeTacticalCommand({ command_type: 'EndTurn', actor_id: currentCombatActorId(current) }, 'Завершить ход')
-      return
-    }
-    mutate((value) => finishTacticalTurn(value))
-  }, [executeTacticalCommand, mutate])
+    void executeTacticalCommand({ command_type: 'EndTurn', actor_id: currentCombatActorId(current) }, 'Завершить ход')
+  }, [executeTacticalCommand])
+
+  const resolveHeroDeath = useCallback((playerId: string, resolution: 'resurrect' | 'replace', replacementName?: string) => {
+    void executeTacticalCommand({
+      command_type: 'ResolveHeroDeath',
+      actor_id: playerId,
+      resolution,
+      ...(resolution === 'replace' ? { replacement_name: String(replacementName ?? '').trim() } : {}),
+    }, resolution === 'resurrect' ? 'Воскресить погибшего героя' : 'Заменить погибшего героя новым')
+  }, [executeTacticalCommand])
 
   const switchCampaign = useCallback(async (code: string, prefetched?: { version?: number; state?: GameState | null }) => {
     const normalized = code.toUpperCase()
@@ -732,41 +739,6 @@ export function useGameSession() {
     const url = new URL(window.location.href)
     url.searchParams.set('room', normalized)
     window.history.replaceState(null, '', url)
-  }, [applyRemote])
-
-  const setEngineMode = useCallback(async (mode: EngineMode) => {
-    if (tacticalBusyRef.current) throw new Error('Дождитесь завершения текущей серверной команды')
-    const current = stateRef.current
-    tacticalBusyRef.current = true
-    setTacticalBusy(true)
-    setTacticalError(null)
-    try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/engine-mode`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      })
-      const result = await response.json().catch(() => null) as { mode?: EngineMode; room?: { version?: number; state?: GameState | null }; error?: string } | null
-      if (!response.ok) throw new Error(result?.error || `Не удалось переключить режим (${response.status})`)
-      let room = result?.room
-      if (!room?.state) {
-        const roomResponse = await fetch(`/api/rooms/${encodeURIComponent(current.sessionCode)}`)
-        const loaded = await roomResponse.json().catch(() => null) as { version?: number; state?: GameState | null; error?: string } | null
-        if (!roomResponse.ok || !loaded?.state) throw new Error(loaded?.error || 'Сервер не вернул состояние кампании после переключения')
-        room = loaded
-      }
-      const nextState = room.state
-      if (!nextState) throw new Error('Сервер не вернул состояние кампании после переключения')
-      if (room.version != null) roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
-      applyRemote({ ...nextState, engine_mode: result?.mode ?? mode })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Не удалось переключить режим движка'
-      setTacticalError(message)
-      throw error instanceof Error ? error : new Error(message)
-    } finally {
-      tacticalBusyRef.current = false
-      setTacticalBusy(false)
-    }
   }, [applyRemote])
 
   const loadMerchant = useCallback(async (merchantId: string, actorId: string) => {
@@ -799,10 +771,6 @@ export function useGameSession() {
   const executeMerchantCommand = useCallback(async (merchantId: string, command: MerchantCommand) => {
     if (merchantBusyRef.current) return
     const current = stateRef.current
-    if (current.engine_mode !== 'enforce') {
-      setMerchantError('Безопасная торговля доступна только в режиме enforce: цены, деньги и склад должен изменять сервер.')
-      return
-    }
     const expectedStateVersion = Number(merchantView?.expected_state_version ?? merchantView?.state_version)
     if (merchantView?.merchant.id !== merchantId || merchantView.actor_id !== command.actor_id || !Number.isInteger(expectedStateVersion) || expectedStateVersion < 0) {
       setMerchantError('Сначала обновите серверные котировки для выбранного героя.')
@@ -860,7 +828,6 @@ export function useGameSession() {
 
   const executeMerchantLifecycleCommand = useCallback(async (command: MerchantLifecycleCommand) => {
     const current = stateRef.current
-    if (current.engine_mode !== 'enforce') throw new Error('Управление торговцами доступно только в режиме enforce.')
     const requestId = commandId()
     const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/commands`, {
       method: 'POST',
@@ -876,7 +843,6 @@ export function useGameSession() {
 
   const assembleMerchant = useCallback(async ({ settlementType, theme, budgetCp }: ShopAssemblyOptions) => {
     const current = stateRef.current
-    if (current.engine_mode !== 'enforce') throw new Error('ShopAssembler доступен только в режиме enforce.')
     const requestId = commandId()
     const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/assemble`, {
       method: 'POST',
@@ -899,7 +865,6 @@ export function useGameSession() {
 
   const assembleEncounter = useCallback(async ({ difficulty, theme }: EncounterAssemblyOptions) => {
     const current = stateRef.current
-    if (current.engine_mode !== 'enforce') throw new Error('EncounterAssembler доступен только в режиме enforce.')
     if (current.mechanics?.combat?.active) throw new Error('Нельзя собирать новое столкновение, пока текущий бой не завершён.')
     const requestId = commandId()
     const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/encounters/assemble`, {
@@ -927,6 +892,33 @@ export function useGameSession() {
   const setMerchantAvailability = useCallback((merchantId: string, available: boolean) => executeMerchantLifecycleCommand({
     command_type: 'SetMerchantAvailability', merchant_id: merchantId, available,
   }), [executeMerchantLifecycleCommand])
+
+  const advanceAdventure = useCallback(async () => {
+    if (directorBusyRef.current) return null
+    directorBusyRef.current = true
+    setDirectorBusy(true)
+    setDirectorError(null)
+    try {
+      const current = stateRef.current
+      const requestId = commandId()
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/autonomy/advance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
+        body: JSON.stringify({ idempotency_key: requestId, player_action: 'Продолжить приключение' }),
+      })
+      const result = await response.json().catch(() => null) as { state?: GameState; state_version?: number; intent?: { type?: string }; error?: string } | null
+      if (!response.ok || !result?.state) throw new Error(result?.error || `Director не смог продолжить приключение (${response.status})`)
+      applyRemote(result.state)
+      return result.intent ?? null
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Director временно недоступен'
+      setDirectorError(message)
+      throw error
+    } finally {
+      directorBusyRef.current = false
+      setDirectorBusy(false)
+    }
+  }, [applyRemote])
 
   const reset = useCallback(() => mutate((current) => {
     const fresh = structuredClone(initialState)
@@ -981,6 +973,8 @@ export function useGameSession() {
     tacticalError,
     merchantBusy,
     merchantError,
+    directorBusy,
+    directorError,
     merchantView,
     merchantNarration,
     clearTacticalError: () => setTacticalError(null),
@@ -997,10 +991,11 @@ export function useGameSession() {
     attackEnemy,
     throwAreaItem,
     castSpell,
+    useCombatAction,
     changeWeapon,
     finishMapTurn,
+    resolveHeroDeath,
     switchCampaign,
-    setEngineMode,
     loadMerchant,
     bargainWithMerchant,
     buyFromMerchant,
@@ -1010,6 +1005,7 @@ export function useGameSession() {
     assembleEncounter,
     moveMerchant,
     setMerchantAvailability,
+    advanceAdventure,
     reset,
     updatePlayer,
     addItem,

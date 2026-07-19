@@ -9,7 +9,7 @@
 Однако проект пока нельзя честно называть полной заменой ведущего и игрового стола. На момент первичного среза главная причина была не в отсутствии ещё одного экрана, а в разделённой архитектуре:
 
 - наиболее выразительный свободный рассказчик и многие world tools живут в `legacy/shadow`-пути, где LLM и браузер всё ещё влияют на состояние; подтверждённый переход группы между сценами уже имеет отдельный событийный путь в `enforce`;
-- детерминированный `enforce`-путь безопаснее, но пока покрывает лишь узкие вертикальные срезы — базовый тактический бой, ручную сборку встречи из mini-compendium, переход сцены с базовой лавкой и merchant/economy — и не умеет управлять сложными NPC и долгосрочной памятью мира;
+- детерминированный `enforce`-путь покрывает вертикальные срезы боя, встречи, перехода сцены, merchant/economy, долговременной памяти мира и persistent NPC с серверными социальными проверками, отношениями и обещаниями; фракции, свидетели, расписания и широкая социальная симуляция ещё не закрыты;
 - видимый бой на карте выполнялся отдельным браузерным движком, а не серверным Rules Engine.
 
 После аудита базовый видимый бой и подтверждённая смена сцены в `enforce` переведены на серверные команды и события; подробный статус приведён ниже. Разделение всё ещё существует в `legacy/shadow`, а многие подсистемы отсутствуют. Поэтому текущая точная формулировка продукта: **играбельный демонстрационный MVP кооперативной RPG с частично авторитетным серверным ядром**, но ещё не автономный D&D-compatible VTT/GM.
@@ -38,11 +38,11 @@
 - `state`, `battleLog` и `mapFeedback` формируются событиями, сохраняются в FileEventStore, проецируются в room и восстанавливаются replay. Real-HTTP тест проходит обычного игрока, вражеский ход, идемпотентный повтор и перезапуск процесса;
 - сервер составляет тактическую реплику только из committed events, сохраняет её без дублей по idempotency key, а UI показывает структурированный `battleLog` отдельной «Боевой хроникой»; дальняя цель в интерфейсе блокируется до допустимой дистанции;
 - для non-admin compatibility `PUT` в `enforce` сервер восстанавливает из event store `enemies`, `mechanics`, механические поля игроков, tactical turn, battle log/map feedback и клетки карты, принимая у игрока только ограниченные presentation-поля листа. Сам broad narrative state replacement, более широкие права admin и неатомарность event→room projection всё ещё не устранены.
-- администратор в `enforce` может через UI/API выбрать bounded сложность и тему; EncounterAssembler считает официальный XP Budget per Character SRD 5.2.1 для уровней 1–20 и выбирает roster из пяти server-owned профилей Goblin Minion, Goblin Warrior, Skeleton, Zombie и Wolf;
+- администратор в `enforce` может через UI/API выбрать bounded сложность и тему; EncounterAssembler считает официальный XP Budget per Character SRD 5.2.1 для уровней 1–20 и выбирает roster из 12 server-owned профилей с несколькими атаками и ограниченными traits;
 - статблоки, HP, КД, атаки, XP, participants и координаты не принимаются от клиента/агента. Spawn разрешён только на раскрытых проходимых клетках, достижимых от группы, без feature/occupancy и минимум в 10 футах от каждого героя;
 - `EncounterCreated` и `CombatStarted` входят в один commit; initiative ограничена героями и enemy IDs новой встречи, reducer/replay восстанавливает encounter/combat state, scheduler продолжает ходы NPC, а player projection удаляет внутренний source/provenance.
 
-Это не завершённый боевой движок D&D. Mini-compendium состоит из пяти проекций только на поддерживаемый основной удар; в нём нет traits, saves/skills, resistances/immunities, multiattack, spells, reactions и особых действий. Также отсутствуют loot/rewards, диагональное движение, difficult terrain, cover/LOS, полноценные оружие и заклинания, эффекты всех conditions, concentration/death-save lifecycle, Tactical Controller agent, автоматический запуск EncounterAssembler Директором и realtime multi-browser синхронизация.
+Это не завершённый боевой движок D&D. Mini-compendium содержит 12 server-owned профилей, но не полный monster corpus: не закрыты полная модель saves/skills/resistances, spellcasting, legendary/lair/recharge и многие особые действия. Базовый death-save/stabilization lifecycle, восстановление стабильного героя через event-sourced 1d4 часа и nonlethal knockout с trusted melee-проверкой, Short Rest и первой помощью уже исполняются сервером. Bless/Bane, Beacon of Hope, повреждающая часть Death Ward, позиционные Aura of Life и Aura of Protection, а также автоматические Constitution saves концентрации после любого `DamageApplied` разрешаются кодом, но остальные классовые/предметные исключения до 12 уровня ещё не закрыты. Также не закрыты loot/rewards, диагональное движение, cover/LOS, эффекты всех conditions, полный rest lifecycle, все внешние причины окончания концентрации, Tactical Controller agent, автоматический запуск EncounterAssembler Директором и realtime multi-browser синхронизация.
 
 ## Реализовано после аудита / merchant economy slice
 
@@ -53,7 +53,7 @@
 - `BargainWithMerchant`, `AppraiseItem`, `BuyItem` и `SellItem` проверяют campaign ACL, владение героем, `enforce`, локацию, доступность NPC, отсутствие активного боя, версию котировки, деньги обеих сторон, stock, количество и sellability;
 - покупка/продажа одним event меняет валюту героя, `merchant.purse_cp`, инвентарь и склад; недостаток кассы ограничивает `max_quantity` и отклоняет выкуп до любых изменений. Idempotency, semantic command fingerprint, optimistic conflict и replay используют тот же FileEventStore, а `economyLog` сохраняет bounded контекст для UI и будущих агентов;
 - клиент не делает optimistic mutation и при `409` требует заново получить котировку;
-- Rule Pack расширен до 21 записи двумя economy rules; обязательная CC-BY-4.0 атрибуция и hash проверенного SRD PDF зафиксированы.
+- Rule Pack расширен до 22 записей, включая две economy rules и Aura of Protection; обязательная CC-BY-4.0 атрибуция и hash проверенного SRD PDF зафиксированы.
 - resolved групповое решение в `enforce` теперь проходит server-owned цепочку Director → Scene Architect → `AdvanceScene`; `SceneAdvanced` сохраняет новую карту, adventure history и позиции отряда, очищая прежний encounter;
 - bounded `scene_commerce` распознаёт поселение и вызывает `ShopAssembler`; `SceneAdvanced` и optional `MerchantCreated` входят в один commit с общим semantic fingerprint. Wilderness не получает постоянную лавку по умолчанию;
 - клиент не может прислать `AdvanceScene` через generic command API или подделать Director capability; одно resolved party decision исполняется exactly once при конкурентных ключах, победивший retry не вызывает картографа повторно, а повтор idempotency key с другим переходом получает конфликт;
@@ -63,9 +63,21 @@
 
 Важно для cutover: переключение кампании из `shadow` в `enforce` делает дальнейшие торговые операции авторитетными, но не доказывает происхождение уже импортированных денег, инвентаря, stock и policy. До миграции эти поля могли изменяться legacy-клиентом, LLM-tools или административным broad write. Production-cutover требует отдельной сверки начального economy snapshot; event replay гарантирует воспроизводимость только после принятой точки доверия.
 
+## Реализовано после аудита / world-memory slice
+
+- добавлены канонические entities, immutable facts с supersedes, per-character knowledge ledger, quests и bounded clocks;
+- изменения проходят только через типизированные admin/director commands, канонические events, reducer и replay;
+- новая кампания сразу получает стартовую локацию и активный квест; legacy scene/adventure детерминированно мигрируют в ту же схему при нормализации;
+- подтверждённый `SceneAdvanced` атомарно записывает прежнюю и новую локации, outcome, arrival, завершает/сохраняет прежний квест и открывает квест новой главы; факты ссылаются на устойчивый source event ID;
+- игрок получает персональную проекцию: public/party данные и только факты, открытые его герою; скрытые факты и связанные с ними сущности другим героям не выдаются;
+- Worldkeeper в `enforce` отвечает из этой проекции детерминированно, без LLM, не изменяет мир и не расходует ход;
+- тесты проверяют replay, запрет player-forgery, unknown fields, superseding facts, private-knowledge isolation и обход LLM.
+
+Persistent NPC теперь имеют изолированные relationships, историю разговоров и обещания с серверными дедлайнами; ещё не закрыты beliefs/rumors как распространяемый канон, episodic summaries, semantic retrieval, фракционная репутация и автоматическая запись новых фактов из социальных сцен.
+
 ## Матрица возможностей на момент первичного среза
 
-Матрица и исходные блокеры ниже сохранены как состояние, обнаруженное аудитом. Для актуальных server-authoritative combat, scene-transition и merchant slices применяются поправки из предыдущих разделов.
+Матрица и исходные блокеры ниже сохранены как состояние, обнаруженное аудитом. Для актуальных server-authoritative combat, scene-transition, merchant и world-memory slices применяются поправки из предыдущих разделов.
 
 | Возможность | Статус | Фактическое состояние |
 |---|---|---|
@@ -78,12 +90,12 @@
 | Общий журнал | Частично готово | Сообщения, тактические записи и реплика автоматического перехода сохраняются с устойчивым message ID. Это всё ещё не структурированная память канона мира. |
 | Серверные кубики | Частично готово | Dice Service и Roll Registry существуют. Часть браузерного боя всё ещё использует `Math.random`, registry недолговечен. |
 | Rules Engine | Частичный P0 | Checks, saves, атака, урон, HP, ресурсы, initiative markers и replay реализованы. Полная семантика боя отсутствует. |
-| Соответствие D&D/SRD | Начальный корпус | 21 краткое правило, небольшой equipment-price catalog и пять monster primary-attack projections против полного официального SRD; нет corpus классов, заклинаний, полного monster stat block и способностей. |
+| Соответствие D&D/SRD | Частичный корпус | 22 кратких правила, каталог 439 spell-карточек 0–6 круга, классовая прогрессия 1–12, небольшой equipment-price catalog и 12 monster profiles против полного официального SRD; многие карточки ещё не имеют полного исполнимого эффекта, полного monster stat block и всех способностей. |
 | Рассказчик | Частично готово | Legacy умеет импровизировать и использовать world tools; enforce рассказывает только по committed events, но получает слишком бедный контекст. |
 | Набор агентов | Архитектурный прототип | Роли и prompts есть, но часть не подключена, а единого scheduler/supervisor lifecycle нет. |
 | Создание боя агентом | Частично готово для admin | EncounterAssembler создаёт исполнимых combat actors и сразу запускает бой из admin UI/API. Автоматический Director/agent trigger пока не подключён, а произвольный `spawn_entity` по-прежнему не является combat actor. |
 | Ходы NPC/врагов | Не готово на сервере | На момент среза упрощённый AI находился в браузере и ходил пакетом после игрока, вне единой initiative. После аудита добавлен ограниченный серверный scheduler; см. актуальный статус выше. |
-| Память мира | Не готово | Event store надёжен как operational log, но нет facts/entities/relationships/quests/knowledge retrieval. |
+| Память мира | Частичный vertical slice | Есть event-sourced entities/facts/knowledge/quests/clocks, персональная viewer projection и детерминированный Worldkeeper. Нет relationships, beliefs/rumors, summaries, semantic retrieval и автоматической записи Director/NPC-контроллером. |
 | NPC и диалоги | Не готово | `npc_controller` не подключён; устойчивых NPC, целей, памяти, голоса и knowledge scope нет. |
 | Города, магазины, торг | Частичный vertical slice | Есть persistent merchant schema, event-sourced lifecycle, bounded ShopAssembler, автоматическая связка Director → `SceneAdvanced` → optional `MerchantCreated`, stock/manual restock, server catalog/quotes, buy/sell/bargain/appraise, bounded merchant purse, atomic currency/item transfer и меню. Party vote ещё compatibility-room, identity локации основана на строке; нет services, устойчивого диалога, reputation и economy simulation/restock clocks. Appraisal не идентифицирует магию, каталог содержит лишь небольшой allowlist, EP не моделируется, а Persuasion proficiency/expertise не выводятся из полной модели персонажа. |
 | Production deployment | Частично готово | Docker/healthcheck/tunnel есть. Нет DB-backed multiwriter, restore rehearsal, observability, durable quotas и production E2E. |
@@ -240,7 +252,7 @@ flowchart LR
 
 Критерий завершения: 4 PC + 3 NPC проходят бой от spawn до loot; restart в середине даёт идентичный replay; каждый бросок и HP change имеет event/rule provenance.
 
-Текущий результат закрывает server command boundary, базовые map/turn checks, initiative UI, admin-created encounter, пять server-owned SRD-проекций, safe spawn, atomic `EncounterCreated + CombatStarted`, автоматические ходы NPC и restart/idempotency replay flow. Критерий этапа ещё не достигнут: нет 4 PC + 3 NPC multi-client flow, полного stat block/action набора, полного набора боевых правил, Tactical Controller и loot/rewards.
+Текущий результат закрывает server command boundary, базовые map/turn checks, initiative UI, базовый death-save/stabilization lifecycle, admin-created encounter, 12 server-owned SRD-профилей, safe spawn, atomic `EncounterCreated + CombatStarted`, автоматические ходы NPC и restart/idempotency replay flow. Критерий этапа ещё не достигнут: нет 4 PC + 3 NPC multi-client flow от spawn до loot, полного stat block/action набора, полного набора боевых правил, Tactical Controller и loot/rewards.
 
 ### Этап 3. Полный персонаж, предметы и заклинания
 
@@ -304,7 +316,7 @@ flowchart LR
 2. добавить encounter outcome, rewards/loot и безопасные расширяемые spawn templates;
 3. подключить bounded encounter request к Director/scene flow без передачи числовой механики агенту;
 4. расширить геометрию диагоналями, difficult terrain, range bands, cover и LOS;
-5. добавить spells, bonus action/reaction, opportunity attacks, конкретные conditions, concentration и death saves;
+5. расширить spells и конкретные conditions; дополнить базовые death saves и concentration lifecycle оставшимися исключениями особенностей/предметов и внешними причинами завершения;
 6. отделить Tactical Controller, который выбирает только из server-generated legal actions;
 7. закрыть полный бой real HTTP + два браузера + reconnect/restart и затем перейти с polling к realtime stream.
 
@@ -312,7 +324,7 @@ flowchart LR
 
 ## Правила и лицензирование
 
-SRD 5.2.1 является подходящим текущим открытым ориентиром и опубликован Wizards of the Coast по CC-BY-4.0. Он существенно шире локального pack из 21 записи. До расширения compendium необходимо:
+SRD 5.2.1 является подходящим текущим открытым ориентиром и опубликован Wizards of the Coast по CC-BY-4.0. Он существенно шире локального pack из 22 записей. До расширения compendium необходимо:
 
 - поддерживать зафиксированные source/version/hash для каждого расширения;
 - сохранять требуемый attribution statement в release artifact;

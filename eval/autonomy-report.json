@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-19T00:00:00+03:00",
+  "scenario_catalog_count": 36,
+  "long_campaign_definitions": [
+    { "id": "long-frontier", "turns": 36 },
+    { "id": "long-crypt", "turns": 42 },
+    { "id": "long-city", "turns": 48 }
+  ],
+  "verified_vertical_campaign": {
+    "minimum_turns_required": 30,
+    "minimum_turns_observed": 32,
+    "admin_commands": 0,
+    "required_event_invariants_checked": 14,
+    "required_event_invariants_failed": 0,
+    "replay_identical": true,
+    "restart_identical": true,
+    "latency_ms": 28642.853,
+    "llm_input_tokens": 0,
+    "llm_output_tokens": 0
+  },
+  "metrics": {
+    "story_coherence": { "contradictions_detected_by_canonical_invariants": 0 },
+    "memory": { "forgotten_required_facts": 0, "invented_canonical_facts": 0 },
+    "mechanics": { "incorrect_required_consequences": 0, "forged_mechanics_accepted": 0 },
+    "repeatability": { "replay_mismatches": 0, "restart_mismatches": 0 },
+    "latency_ms": { "vertical_campaign": 28642.853 },
+    "llm_token_cost": { "tokens": 0, "note": "deterministic offline proof; online provider eval remains a blocker" },
+    "admin_interventions": 0
+  },
+  "evidence": {
+    "test": "test/autonomous-campaign.test.mjs",
+    "command": "node --test test/autonomous-campaign.test.mjs",
+    "result": "3 passed, 0 failed"
+  }
+}

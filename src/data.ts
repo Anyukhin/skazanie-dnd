@@ -41,6 +41,7 @@ const starterItems: Record<string, InventoryItem[]> = {
     { id: 'healing-vial', catalog_id: 'srd_5_2_1:potion-of-healing', base_price_cp: 5000, name: 'Малое зелье лечения', type: 'consumable', quantity: 2, weight: .2, equipped: false, rarity: 'обычный', description: 'Густая алая жидкость пахнет можжевельником и железом. На свету внутри вспыхивают золотые искры.', properties: 'Восстанавливает 2к4 + 2 хита.', image: '/assets/items/item-atlas.png', imagePosition: '100% 0%', imageStatus: 'ready' },
   ],
   brann: [
+    { id: 'brann-longsword', catalog_id: 'srd_5_2_1:longsword', base_price_cp: 1500, name: 'Длинный меч', type: 'weapon', quantity: 1, weight: 3, equipped: true, rarity: 'обычный', description: 'Тяжёлый строевой клинок Бранна с потёртой кожаной рукоятью.', properties: '1к8 рубящего урона · универсальное (1к10).', image: '', imageStatus: 'ready', combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 } },
     { id: 'watchful-amulet', name: 'Амулет дозорного', type: 'treasure', quantity: 1, weight: .2, equipped: true, rarity: 'редкий', description: 'Холодный серебряный глаз никогда не отражает лицо владельца. Иногда в нём виден силуэт того, кто наблюдает из темноты.', properties: '+1 к Внимательности в подземельях.', image: '/assets/items/item-atlas.png', imagePosition: '0% 100%', imageStatus: 'ready' },
     { id: 'brann-journal', name: 'Полевой журнал', type: 'document', quantity: 1, weight: .5, equipped: false, rarity: 'обычный', description: 'Потрёпанная книга в кожаном переплёте. Бранн записывает сюда имена павших и долги, которые ещё предстоит вернуть.', properties: 'Содержит заметки о встреченных угрозах.', image: '/assets/items/item-atlas.png', imagePosition: '100% 100%', imageStatus: 'ready' },
   ],
@@ -51,10 +52,10 @@ const starterItems: Record<string, InventoryItem[]> = {
 const baseDetails = { level: 3, species: 'Человек', background: 'Странник', alignment: 'Нейтрально-добрый', experience: 900, speed: 30, proficiency: 2, traits: 'Сначала наблюдает, затем действует.', ideals: 'Свобода важнее удобства.', bonds: 'Отряд — её новая семья.', flaws: 'Слишком долго хранит опасные тайны.', backstory: 'Путь в Норвин начался с письма без подписи и карты, которую невозможно сжечь.', features: 'Тёмное зрение · Следопыт · Владение лёгкими доспехами', notes: '', currency: { copper: 8, silver: 14, gold: 37, platinum: 0 } }
 
 export const players: Player[] = [
-  { ...baseDetails, id: 'lira', name: 'Антон', character: 'Лира Вейл', role: 'Следопыт · ур. 3', color: '#d79b5b', initials: 'ЛВ', portrait: '/assets/party-portraits.png', portraitPosition: '0% 0%', abilities: { str: 11, dex: 17, con: 14, int: 12, wis: 15, cha: 10 }, inventory: starterItems.lira, hp: 24, maxHp: 28, armor: 15, online: true, x: 4, y: 4 },
-  { ...baseDetails, id: 'brann', name: 'Маша', character: 'Бранн', role: 'Воин · ур. 3', species: 'Человек', background: 'Солдат', color: '#758f78', initials: 'БР', portrait: '/assets/party-portraits.png', portraitPosition: '100% 0%', abilities: { str: 17, dex: 12, con: 16, int: 10, wis: 13, cha: 11 }, inventory: starterItems.brann, hp: 31, maxHp: 34, armor: 18, online: true, x: 3, y: 5 },
-  { ...baseDetails, id: 'miriel', name: 'Илья', character: 'Мириэль', role: 'Чародей · ур. 3', species: 'Высший эльф', background: 'Учёная', color: '#8b789e', initials: 'МИ', portrait: '/assets/party-portraits.png', portraitPosition: '0% 100%', abilities: { str: 8, dex: 14, con: 13, int: 16, wis: 12, cha: 17 }, inventory: starterItems.miriel, hp: 17, maxHp: 19, armor: 12, online: true, x: 4, y: 5 },
-  { ...baseDetails, id: 'torvald', name: 'Соня', character: 'Торвальд', role: 'Жрец · ур. 3', species: 'Человек', background: 'Прислужник', color: '#9a745d', initials: 'ТО', portrait: '/assets/party-portraits.png', portraitPosition: '100% 100%', abilities: { str: 12, dex: 10, con: 14, int: 13, wis: 17, cha: 15 }, inventory: starterItems.torvald, hp: 22, maxHp: 25, armor: 16, online: false, x: 3, y: 4 },
+  { ...baseDetails, id: 'lira', name: 'Антон', character: 'Лира Вейл', role: 'Следопыт · ур. 3', characterClass: 'ranger', subclass: 'Охотник', color: '#d79b5b', initials: 'ЛВ', portrait: '/assets/party-portraits.png', portraitPosition: '0% 0%', abilities: { str: 11, dex: 17, con: 14, int: 12, wis: 15, cha: 10 }, inventory: starterItems.lira, hp: 24, maxHp: 28, armor: 15, online: true, x: 4, y: 4 },
+  { ...baseDetails, id: 'brann', name: 'Маша', character: 'Бранн', role: 'Воин · ур. 3', characterClass: 'fighter', subclass: 'Мастер боевых искусств', species: 'Человек', background: 'Солдат', color: '#758f78', initials: 'БР', portrait: '/assets/party-portraits.png', portraitPosition: '100% 0%', abilities: { str: 17, dex: 12, con: 16, int: 10, wis: 13, cha: 11 }, inventory: starterItems.brann, hp: 31, maxHp: 34, armor: 18, online: true, x: 3, y: 5 },
+  { ...baseDetails, id: 'miriel', name: 'Илья', character: 'Мириэль', role: 'Чародей · ур. 3', characterClass: 'sorcerer', subclass: 'Дикая магия', species: 'Высший эльф', background: 'Учёная', color: '#8b789e', initials: 'МИ', portrait: '/assets/party-portraits.png', portraitPosition: '0% 100%', abilities: { str: 8, dex: 14, con: 13, int: 16, wis: 12, cha: 17 }, inventory: starterItems.miriel, hp: 17, maxHp: 19, armor: 12, online: true, x: 4, y: 5 },
+  { ...baseDetails, id: 'torvald', name: 'Соня', character: 'Торвальд', role: 'Жрец · ур. 3', characterClass: 'cleric', subclass: 'Домен жизни', species: 'Человек', background: 'Прислужник', color: '#9a745d', initials: 'ТО', portrait: '/assets/party-portraits.png', portraitPosition: '100% 100%', abilities: { str: 12, dex: 10, con: 14, int: 13, wis: 17, cha: 15 }, inventory: starterItems.torvald, hp: 22, maxHp: 25, armor: 16, online: false, x: 3, y: 4 },
 ]
 
 export const merchants: Merchant[] = [
@@ -96,7 +97,7 @@ export const initialState: GameState = {
   enabled_rule_packs: ['srd_5_2_1'],
   enabled_house_rules: ['skazanie:economy:merchant-policy-v1'],
   ruleset_locked_at: '2026-07-11T00:00:00.000Z',
-  engine_mode: 'shadow',
+  engine_mode: 'enforce',
   players,
   merchants,
   enemies: [{ id: 'archive-guardian', name: 'Страж архива', hp: 18, maxHp: 18, armor: 13, speed: 30, attackBonus: 4, damageDice: 6, damageBonus: 2, x: 10, y: 5, alive: true }],

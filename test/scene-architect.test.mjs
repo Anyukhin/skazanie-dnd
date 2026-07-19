@@ -31,6 +31,8 @@ test('картограф без модели строит городскую к�
 
   assert.equal(planned.trace.agent, 'AgentCartographer')
   assert.equal(planned.sceneArgs.map.layout, 'streets')
+  assert.equal(planned.sceneArgs.map.pattern, 'village')
+  assert.equal(planned.sceneArgs.map.material, 'stone')
   assert.deepEqual(planned.shopIntent, defaultSceneShopIntent(planned.sceneArgs))
   assert.equal(planned.shopIntent.action, 'create')
   assert.equal(planned.shopIntent.settlement_type, 'city')
@@ -178,4 +180,80 @@ test('параметры картографа дают детерминиров�
   assert.equal(first.length, 19 * 13)
   assert.equal(first.find((cell) => cell.x === 1 && cell.y === 6)?.type, 'floor')
   assert.equal(first.filter((cell) => cell.feature).length, 8)
+  assert.ok(first.every((cell) => cell.material === 'stone' && Number.isInteger(cell.variant) && typeof cell.edge_mask === 'string'))
+})
+
+test('семантический реквизит соответствует дому, пещере и лесу', () => {
+  const house = generateDynamicSceneMap({
+    seed: 'semantic:house', theme: 'жилой дом', layout: 'rooms', pattern: 'small-room', material: 'wood',
+    width: 9, height: 7, openness: 0.82, water: 0, featureCount: 9,
+  })
+  const cave = generateDynamicSceneMap({
+    seed: 'semantic:cave', theme: 'подземная пещера', layout: 'cavern', pattern: 'cave-cluster', material: 'earth',
+    width: 15, height: 11, openness: 0.64, water: 0.08, featureCount: 10,
+  })
+  const forest = generateDynamicSceneMap({
+    seed: 'semantic:forest', theme: 'лесная чаща', layout: 'winding', pattern: 'natural', material: 'grass',
+    width: 15, height: 11, openness: 0.64, water: 0.04, featureCount: 10,
+  })
+
+  const houseFeatures = new Set(house.map((cell) => cell.feature).filter(Boolean))
+  const caveFeatures = new Set(cave.map((cell) => cell.feature).filter(Boolean))
+  const forestFeatures = new Set(forest.map((cell) => cell.feature).filter(Boolean))
+  assert.ok(['bed', 'table', 'chair', 'fireplace'].every((feature) => houseFeatures.has(feature)))
+  assert.ok(['rock', 'mushroom', 'bones'].every((feature) => caveFeatures.has(feature)))
+  assert.ok(['tree', 'bush', 'rock'].every((feature) => forestFeatures.has(feature)))
+  assert.deepEqual(new Set(forest.filter((cell) => cell.type === 'floor').map((cell) => cell.material)), new Set(['grass', 'earth']))
+  assert.ok([...house, ...cave, ...forest].filter((cell) => cell.feature).every((cell) => cell.type === 'floor'))
+})
+
+test('масштаб крепости не может быть сжат моделью до размера маленькой комнаты', async () => {
+  const architect = new SceneArchitectAgent({ llmClient: { async completeJson() {
+    return {
+      title: 'Цитадель Бури', location: 'Цитадель Бури', theme: 'горная крепость',
+      map: { layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 7, height: 7 },
+    }
+  } } })
+  const planned = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Идём в крепость', state: archiveState,
+    decision: 'Идём в крепость', destinationHint: 'крепость',
+  })
+  assert.equal(planned.sceneArgs.map.scale, 'stronghold')
+  assert.equal(planned.sceneArgs.map.pattern, 'keep')
+  assert.equal(planned.sceneArgs.map.width, 19)
+  assert.equal(planned.sceneArgs.map.height, 13)
+  const transition = createSceneTransition(planned.sceneArgs, archiveState)
+  assert.equal(transition.scene.cells.length, 19 * 13)
+})
+
+test('органические шаблоны создают разные неровные силуэты без недостижимых проходов', () => {
+  const layouts = ['cavern', 'ruins', 'radial']
+  const maps = layouts.map((layout) => generateDynamicSceneMap({
+    seed: `shape:${layout}`, theme: layout === 'cavern' ? 'подземная пещера' : layout, layout,
+    width: 17, height: 13, openness: 0.64, featureCount: 6,
+  }))
+
+  for (const cells of maps) {
+    assert.ok(cells.length < 17 * 13, 'неровный силуэт должен содержать пустоты за границей карты')
+    const byPosition = new Map(cells.map((cell) => [`${cell.x},${cell.y}`, cell]))
+    const entrance = byPosition.get('1,6')
+    assert.equal(entrance?.type, 'floor')
+    const reached = new Set(['1,6'])
+    const queue = [entrance]
+    for (let index = 0; index < queue.length; index += 1) {
+      const cell = queue[index]
+      for (const [x, y] of [[cell.x + 1, cell.y], [cell.x - 1, cell.y], [cell.x, cell.y + 1], [cell.x, cell.y - 1]]) {
+        const key = `${x},${y}`
+        const next = byPosition.get(key)
+        if (!next || !['floor', 'door'].includes(next.type) || reached.has(key)) continue
+        reached.add(key)
+        queue.push(next)
+      }
+    }
+    const walkable = cells.filter((cell) => ['floor', 'door'].includes(cell.type))
+    assert.equal(reached.size, walkable.length)
+    assert.equal(cells.filter((cell) => cell.feature).length, 6)
+  }
+
+  assert.equal(new Set(maps.map((cells) => cells.map((cell) => `${cell.x},${cell.y}`).join('|'))).size, layouts.length)
 })

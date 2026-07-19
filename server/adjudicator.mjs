@@ -81,7 +81,20 @@ export class Adjudicator {
       case 'end_combat':
         return { ...base, rule_ids: [RULE_IDS.initiative, RULE_IDS.turns], proposed_commands: [{ command_type: 'EndCombat', actor_id: intent.actor_id, source_rule_ids: [RULE_IDS.initiative, RULE_IDS.turns] }], confidence: 0.9 }
       case 'rest':
-        return { ...base, rule_ids: [RULE_IDS.resource], proposed_commands: [{ command_type: 'StartRest', actor_id: intent.actor_id, kind: /долг|long/iu.test(intent.raw_message) ? 'long' : 'short', source_rule_ids: [RULE_IDS.resource] }], confidence: 0.7 }
+      {
+        const kind = /долг|продолж|long/iu.test(intent.raw_message) ? 'long' : 'short'
+        const minutes = kind === 'long' ? 480 : 60
+        return {
+          ...base,
+          rule_ids: [RULE_IDS.resource],
+          proposed_commands: [
+            { command_type: 'StartRest', actor_id: intent.actor_id, kind, source_rule_ids: [RULE_IDS.resource] },
+            { command_type: 'AdvanceTime', amount: minutes, unit: 'minute', source_rule_ids: [RULE_IDS.resource] },
+            { command_type: 'CompleteRest', actor_id: intent.actor_id, kind, source_rule_ids: [RULE_IDS.resource] },
+          ],
+          confidence: 0.9,
+        }
+      }
       default:
         break
     }

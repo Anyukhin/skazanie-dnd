@@ -18,9 +18,9 @@ test('loads and validates the bilingual P0 rule pack', async () => {
   assert.deepEqual(pack.summary, {
     ruleset_id: 'srd_5_2_1',
     pack_id: 'srd_5_2_1',
-    rule_count: 21,
+    rule_count: 23,
     glossary_term_count: 25,
-    ontology_edge_count: 21,
+    ontology_edge_count: 23,
   })
   assert.equal(pack.manifest.canonical_language, 'en')
   assert.deepEqual(pack.manifest.display_languages, ['ru', 'en'])

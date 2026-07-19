@@ -37,3 +37,18 @@ test('Narrator превращает ошибку провайдера после
   assert.equal(result.verification.provider_error, 'LLM_TIMEOUT')
   assert.match(result.narration, /3/u)
 })
+
+test('Narrator limits the number and size of model suggestions', async () => {
+  const safeNarration = deterministicNarration(brief).narration
+  const llmClient = {
+    completeJson: async () => ({
+      narration: safeNarration,
+      suggestions: ['a'.repeat(160), 'second', 'third', 'fourth'],
+    }),
+  }
+  const result = await new Narrator({ llmClient }).render(brief, { knownRuleIds: ['srd:test:damage'] })
+  assert.equal(result.verification.valid, true)
+  assert.equal(result.suggestions.length, 3)
+  assert.equal(result.suggestions[0].length, 120)
+  assert.deepEqual(result.suggestions.slice(1), ['second', 'third'])
+})

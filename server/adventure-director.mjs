@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
+import { reconcileWorldMap } from './world-map.mjs'
 
 const WIDTH = 13
 const HEIGHT = 9
@@ -132,8 +133,21 @@ export function createSceneTransition(input = {}, state = {}) {
     unresolvedThreads.push(text(previousAdventure.currentHook || previousScene.objective, 240))
   }
 
+  const scene = { title, location, mood, objective, turn: Math.max(0, Number(previousScene.turn) || 0) + 1, cells: generateDynamicSceneMap({ seed, theme, danger, ...(input.map ?? {}) }) }
+  const worldMap = reconcileWorldMap(state.worldMap, {
+    seed: state.worldMap?.seed || state.sessionCode,
+    campaignName: state.campaign,
+    concept: state.campaignConcept,
+    currentLocation: location,
+    previousLocation: previousScene.location || previousScene.title,
+    knownLocations: [...previousAdventure.visitedLocations, location],
+    transition,
+    scene: { ...scene, scene_kind: input.scene_kind, danger },
+  })
+
   return {
-    scene: { title, location, mood, objective, turn: Math.max(0, Number(previousScene.turn) || 0) + 1, cells: generateDynamicSceneMap({ seed, theme, danger, ...(input.map ?? {}) }) },
+    scene,
+    worldMap,
     adventure: {
       chapter,
       history,

@@ -1,0 +1,461 @@
+import { createHash } from 'node:crypto'
+
+import { normalizeDirectorIntent, serverReputationDelta, serverRewardForEncounter } from './autonomous-campaign.mjs'
+import { planNpcTurn } from './npc-turn-scheduler.mjs'
+import {
+  actorPosition,
+  attackProfileFor,
+  findActor,
+  isEnemyActor,
+  isLivingActor,
+  normalizeCampaignState,
+  shortestTacticalPath,
+} from './rules-engine.mjs'
+
+const clone = (value) => structuredClone(value)
+const clean = (value, maximum = 300) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 20)
+
+function event(commandId, type, payload = {}, targets = [], visibility = 'party') {
+  return {
+    command_id: commandId,
+    event_type: type,
+    actor_id: null,
+    target_ids: targets.map(String),
+    payload: clone(payload),
+    source_rule_ids: [],
+    house_rule_id: null,
+    ruling_id: null,
+    visibility,
+  }
+}
+
+function openQuest(state, requestedId = '') {
+  return (state.worldMemory?.quests ?? []).find((quest) => quest.id === requestedId && quest.status === 'active')
+    ?? (state.worldMemory?.quests ?? []).find((quest) => quest.status === 'active' && !quest.clock?.triggered)
+    ?? null
+}
+
+function currentSubject(state) {
+  return (state.worldMemory?.entities ?? []).find((entity) => entity.kind === 'location' && entity.name === state.scene?.location)
+    ?? state.worldMemory?.entities?.[0]
+    ?? null
+}
+
+function explorationCells(state) {
+  return (state.scene?.cells ?? []).filter((cell) => cell.revealed !== true && ['floor', 'door'].includes(String(cell.type)))
+    .sort((a, b) => Number(a.y) - Number(b.y) || Number(a.x) - Number(b.x))
+    .map((cell) => ({ x: Number(cell.x), y: Number(cell.y) }))
+}
+
+function availableNpc(state, requestedId = '') {
+  const at = clean(state.scene?.location, 180).toLocaleLowerCase('ru')
+  return (state.social?.npcs ?? []).find((npc) => (!requestedId || npc.id === requestedId) && npc.available !== false
+    && (!npc.location || !at || clean(npc.location, 180).toLocaleLowerCase('ru') === at)) ?? null
+}
+
+function nextHook(state, reason = '') {
+  const quest = openQuest(state)
+  return clean(reason, 300) || (quest ? `Продолжить квест «${quest.title}»` : `Исследовать ${state.scene?.location || 'окрестности'} и найти новую зацепку`)
+}
+
+function factionIdsForWitnesses(state, witnessIds) {
+  const wanted = new Set(witnessIds.map(String))
+  const values = []
+  for (const npc of state.social?.npcs ?? []) {
+    if (!wanted.has(String(npc.id))) continue
+    for (const tag of npc.tags ?? []) if (String(tag).startsWith('faction:')) values.push(String(tag).slice('faction:'.length))
+  }
+  return [...new Set(values.filter(Boolean))].sort()
+}
+
+function parseJsonFact(fact) {
+  try { return JSON.parse(String(fact?.object ?? '')) } catch { return null }
+}
+
+export class AutonomousCampaignOrchestrator {
+  constructor({ eventStore, rulesEngine, now = () => Date.now() } = {}) {
+    if (!eventStore || !rulesEngine) throw new TypeError('AutonomousCampaignOrchestrator requires eventStore and rulesEngine')
+    this.eventStore = eventStore
+    this.rulesEngine = rulesEngine
+    this.now = now
+  }
+
+  async load(campaignId) {
+    const loaded = await this.eventStore.load(campaignId)
+    return { ...loaded, state: normalizeCampaignState(loaded.state) }
+  }
+
+  async commitEvents(campaignId, idempotencyKey, events) {
+    const duplicate = await this.eventStore.getByIdempotencyKey?.(campaignId, idempotencyKey)
+    if (duplicate) return duplicate
+    const loaded = await this.load(campaignId)
+    return this.eventStore.commit({
+      campaign_id: campaignId,
+      expected_state_version: loaded.state_version,
+      idempotency_key: idempotencyKey,
+      command_id: idempotencyKey,
+      events: events.map((entry) => ({ ...entry, campaign_id: campaignId })),
+    })
+  }
+
+  async runCommands(campaignId, idempotencyKey, commands, context = {}) {
+    const duplicate = await this.eventStore.getByIdempotencyKey?.(campaignId, idempotencyKey)
+    if (duplicate) return { ...duplicate, duplicate: true, commands: [] }
+    const loaded = await this.load(campaignId)
+    const proposed = commands.map((command, index) => ({
+      ...command,
+      campaign_id: campaignId,
+      command_id: `${idempotencyKey}:${index + 1}`,
+    }))
+    const resolved = this.rulesEngine.resolvePlan({ proposed_commands: proposed }, loaded.state, {
+      isDirector: true,
+      serverAuthoritativeCombat: true,
+      allowedActorIds: [...loaded.state.players, ...loaded.state.enemies, ...(loaded.state.actors ?? [])].map((actor) => String(actor.id ?? actor.actor_id)),
+      ...context,
+    })
+    if (!resolved.events.length) throw new Error('Autonomous command batch produced no events')
+    const committed = await this.eventStore.commit({
+      campaign_id: campaignId,
+      expected_state_version: loaded.state_version,
+      idempotency_key: idempotencyKey,
+      command_id: idempotencyKey,
+      events: resolved.events,
+    })
+    await this.resolvePromiseConditions(campaignId, committed.events, `${idempotencyKey}:promises`)
+    return { ...committed, commands: resolved.commands, rolls: resolved.rolls }
+  }
+
+  async recordIntent(campaignId, intent, idempotencyKey) {
+    const provenance = {
+      source: 'director',
+      contract: 'skazanie:director-intent-v1',
+      intent_type: intent.type,
+      request_fingerprint: digest({ campaignId, intent }),
+      recorded_at_ms: this.now(),
+    }
+    return this.commitEvents(campaignId, `${idempotencyKey}:intent`, [
+      event(`${idempotencyKey}:intent`, 'DirectorIntentRecorded', { intent, provenance }, [], 'party'),
+    ])
+  }
+
+  async runIntent({ campaignId, intent: rawIntent, idempotencyKey }) {
+    const intent = normalizeDirectorIntent(rawIntent)
+    const key = clean(idempotencyKey, 120) || `director-${digest({ campaignId, intent })}`
+    await this.recordIntent(campaignId, intent, key)
+    let loaded = await this.load(campaignId)
+    const commands = []
+    const custom = []
+
+    if (intent.type === 'continue_exploration') {
+      const cells = explorationCells(loaded.state)
+      if (cells.length) commands.push({ command_type: 'RevealArea', cells })
+      else commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
+    }
+    if (intent.type === 'open_social_scene') {
+      const npc = availableNpc(loaded.state, intent.npc_id)
+      if (npc) {
+        custom.push(event(`${key}:social`, 'SocialSceneOpened', {
+          npc_id: npc.id,
+          server_check_required: true,
+          provenance: { source: 'director', intent_type: intent.type },
+        }, [npc.id]))
+        commands.push({ command_type: 'UpdateObjective', objective: `Поговорить с ${npc.name}` })
+      } else commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state, 'Найти доступного очевидца') })
+    }
+    if (intent.type === 'advance_quest_clock') {
+      const quest = openQuest(loaded.state, intent.quest_id)
+      if (quest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })
+      else commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state, 'Найти подтверждённую квестовую зацепку') })
+    }
+    if (intent.type === 'request_encounter') {
+      commands.push({ command_type: 'CreateEncounter', theme: intent.theme, difficulty: intent.difficulty, seed: `${campaignId}:${key}` })
+      commands.push({ command_type: 'StartCombat', server_authoritative: true })
+    }
+    if (intent.type === 'end_scene') {
+      const destination = intent.destination || `${loaded.state.scene?.location || 'Путь'} — следующая сцена`
+      commands.push({ command_type: 'AdvanceScene', scene_args: {
+        title: destination,
+        location: destination,
+        objective: nextHook(loaded.state),
+        transition: `Завершив текущую сцену, отряд направляется в ${destination}.`,
+        hook: nextHook(loaded.state),
+        seed: `${campaignId}:${key}:scene`,
+      }, party_decision: { interaction_id: `autonomy-${digest(key)}`, resolved_option_id: 'continue' } })
+    }
+    if (intent.type === 'offer_next_hook') commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state, intent.hook) })
+
+    const results = []
+    if (custom.length) results.push(await this.commitEvents(campaignId, `${key}:custom`, custom))
+    if (commands.length) results.push(await this.runCommands(campaignId, `${key}:commands`, commands))
+    loaded = await this.load(campaignId)
+    if (!clean(loaded.state.scene?.objective, 300)) {
+      results.push(await this.runCommands(campaignId, `${key}:failsafe-hook`, [{ command_type: 'UpdateObjective', objective: nextHook(loaded.state) }]))
+      loaded = await this.load(campaignId)
+    }
+    return { intent, results, state: loaded.state, state_version: loaded.state_version, admin_commands: 0 }
+  }
+
+  async handleUnknownAction({ campaignId, action, idempotencyKey }) {
+    const text = clean(action, 1_000)
+    const loaded = await this.load(campaignId)
+    const hook = nextHook(loaded.state)
+    if (text.length < 8 || /^(?:это|туда|сделать|что-то|как-нибудь)[?.!]*$/iu.test(text)) {
+      return { kind: 'clarification', narration: 'Уточните цель, способ и объект действия.', suggestions: [hook], turn_consumed: false, admin_commands: 0 }
+    }
+    const ruling = {
+      id: `ruling-${digest({ campaignId, text })}`,
+      status: 'draft',
+      scope: 'single-action',
+      question: text,
+      bounded_options: ['ability-check', 'existing-action', 'fiction-only'],
+      provenance: { source: 'fail-safe', action_fingerprint: digest(text) },
+    }
+    await this.runCommands(campaignId, `${idempotencyKey}:ruling`, [{ command_type: 'RecordRuling', ruling, ruling_id: ruling.id }])
+    await this.runCommands(campaignId, `${idempotencyKey}:hook`, [{ command_type: 'UpdateObjective', objective: hook }])
+    return { kind: 'bounded_ruling_draft', ruling, suggestions: [hook], turn_consumed: false, admin_commands: 0 }
+  }
+
+  async runCombat(campaignId, { idempotencyPrefix = 'autocombat', maxTurns = 200 } = {}) {
+    const turns = []
+    for (let iteration = 0; iteration < maxTurns; iteration += 1) {
+      const loaded = await this.load(campaignId)
+      const state = loaded.state
+      const combat = state.mechanics.combat
+      if (!combat.active) return { turns, state, state_version: loaded.state_version }
+      const actorId = String(combat.initiative[combat.active_index]?.actor_id ?? '')
+      const actor = findActor(state, actorId)
+      const livingEnemies = state.enemies.filter(isLivingActor)
+      const livingHeroes = state.players.filter(isLivingActor)
+      let commands
+      if (!livingEnemies.length || !livingHeroes.length) {
+        commands = [{ command_type: 'EndCombat', actor_id: actorId || livingHeroes[0]?.id || livingEnemies[0]?.id, reason: livingEnemies.length ? 'party_defeated' : 'enemies_defeated' }]
+      } else if (isEnemyActor(state, actorId)) {
+        commands = planNpcTurn(state, actorId)
+      } else {
+        const target = livingEnemies.sort((a, b) => Number(a.hp) - Number(b.hp) || String(a.id).localeCompare(String(b.id)))[0]
+        const profile = attackProfileFor(state, actorId)
+        const from = actorPosition(state, actorId)
+        const to = actorPosition(state, target.id)
+        let attackFrom = from
+        let distance = from && to ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 : Number.MAX_SAFE_INTEGER
+        commands = []
+        if (profile && distance > profile.range_feet) {
+          const path = shortestTacticalPath(state, actorId, to, { allowOccupiedDestination: true })
+          const rangeCells = Math.max(1, Math.floor(Number(profile.range_feet) / 5))
+          const neededSteps = Math.max(0, (path?.length ?? 0) - rangeCells)
+          const steps = Math.min(neededSteps, Math.max(1, Math.floor((Number(actor?.speed) || 30) / 5)))
+          if (steps > 0 && path?.[steps - 1]) {
+            attackFrom = path[steps - 1]
+            commands.push({ command_type: 'MoveActor', actor_id: actorId, to: attackFrom })
+          }
+          distance = attackFrom && to ? Math.max(Math.abs(attackFrom.x - to.x), Math.abs(attackFrom.y - to.y)) * 5 : Number.MAX_SAFE_INTEGER
+        }
+        if (profile && distance <= profile.range_feet) commands.push({ command_type: 'MakeAttack', actor_id: actorId, target_id: String(target.id), server_authoritative: true })
+        commands.push({ command_type: 'EndTurn', actor_id: actorId })
+      }
+      const key = `${idempotencyPrefix}:${iteration + 1}:v${loaded.state_version}`
+      const committed = await this.runCommands(campaignId, key, commands, { isNpcScheduler: isEnemyActor(state, actorId) })
+      turns.push({ actor_id: actorId, commands: commands.map((command) => command.command_type), events: committed.events.map((entry) => entry.event_type) })
+    }
+    throw new Error(`Autonomous combat exceeded ${maxTurns} turns`)
+  }
+
+  async completeEncounter({ campaignId, outcome = 'enemies_defeated', idempotencyKey = 'encounter-completion' }) {
+    let loaded = await this.load(campaignId)
+    if (loaded.state.mechanics.combat.active) {
+      const activeId = String(loaded.state.mechanics.combat.initiative[loaded.state.mechanics.combat.active_index]?.actor_id ?? loaded.state.players[0]?.id ?? '')
+      await this.runCommands(campaignId, `${idempotencyKey}:end-combat`, [{ command_type: 'EndCombat', actor_id: activeId, reason: outcome }])
+      loaded = await this.load(campaignId)
+    }
+    const reward = serverRewardForEncounter(loaded.state, outcome)
+    const duplicate = await this.eventStore.getByIdempotencyKey?.(campaignId, `${idempotencyKey}:outcome`)
+    if (duplicate) return { ...duplicate, state: (await this.load(campaignId)).state }
+    const completionEvents = [event(`${idempotencyKey}:outcome`, 'EncounterOutcomeRecorded', {
+      ...reward,
+      provenance: { source: 'server-reward-policy', policy: 'encounter-reward-v1' },
+    })]
+    if (reward.xp > 0) completionEvents.push(event(`${idempotencyKey}:xp`, 'ExperienceAwarded', {
+      encounter_id: reward.encounter_id,
+      total_xp: reward.xp,
+      recipients: loaded.state.partyMemberIds,
+      provenance: { source: 'server-reward-policy' },
+    }, loaded.state.partyMemberIds))
+    else completionEvents.push(event(`${idempotencyKey}:milestone`, 'MilestoneAwarded', { milestone: reward.milestone, encounter_id: reward.encounter_id }))
+    completionEvents.push(event(`${idempotencyKey}:loot`, 'ServerLootGenerated', {
+      encounter_id: reward.encounter_id,
+      loot: reward.loot,
+      provenance: { source: 'server-loot-table', policy: 'encounter-loot-v1' },
+    }))
+    completionEvents.push(event(`${idempotencyKey}:transition`, 'TransitionUnlocked', {
+      transition_id: `transition-${reward.encounter_id || digest(idempotencyKey)}`,
+      status: 'available',
+      hook: nextHook(loaded.state),
+    }))
+    const outcomeCommit = await this.commitEvents(campaignId, `${idempotencyKey}:outcome`, completionEvents)
+
+    loaded = await this.load(campaignId)
+    const ownerId = String(loaded.state.partyMemberIds[0] ?? loaded.state.players[0]?.id ?? '')
+    const commands = reward.loot.map((item, index) => ({ command_type: 'GrantItem', actor_id: ownerId, item: {
+      id: `loot-${reward.encounter_id}-${index + 1}`,
+      catalog_id: item.catalog_id,
+      name: item.name,
+      quantity: item.quantity,
+      type: 'consumable', rarity: 'обычный', weight: 0, equipped: false,
+    } }))
+    const quest = openQuest(loaded.state)
+    if (quest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })
+    let subject = currentSubject(loaded.state)
+    if (!subject) {
+      subject = { id: `location-${digest(loaded.state.scene?.location || campaignId)}`, kind: 'location', name: loaded.state.scene?.location || 'Текущая сцена', summary: '', aliases: [], visibility: 'party', tags: [] }
+      commands.push({ command_type: 'UpsertWorldEntity', entity: subject })
+    }
+    commands.push({ command_type: 'RecordWorldFact', fact: {
+      id: `fact-${reward.encounter_id || digest(idempotencyKey)}-outcome`,
+      subject_id: subject.id,
+      predicate: 'encounter_outcome',
+      object: outcome,
+      summary: `Встреча завершилась исходом: ${outcome}.`,
+      visibility: 'party',
+      source_event_ids: outcomeCommit.events.map((entry) => entry.event_id).filter(Boolean),
+    } })
+    commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
+    const consequences = await this.runCommands(campaignId, `${idempotencyKey}:consequences`, commands)
+    let recovery = { events: [] }
+    if (outcome === 'enemies_defeated') {
+      const afterConsequences = await this.load(campaignId)
+      const partyIds = new Set((afterConsequences.state.partyMemberIds ?? []).map(String))
+      const restingHeroes = (afterConsequences.state.players ?? []).filter((hero) => (
+        partyIds.has(String(hero.id)) && afterConsequences.state.mechanics?.death?.heroes?.[hero.id]?.status !== 'dead'
+      ))
+      if (restingHeroes.length) {
+        const recoveryCommands = [
+          ...restingHeroes.map((hero) => ({ command_type: 'StartRest', actor_id: String(hero.id), kind: 'long' })),
+          { command_type: 'AdvanceTime', amount: 480, unit: 'minute' },
+          ...restingHeroes.map((hero) => ({ command_type: 'CompleteRest', actor_id: String(hero.id), kind: 'long' })),
+        ]
+        recovery = await this.runCommands(campaignId, `${idempotencyKey}:recovery`, recoveryCommands)
+      }
+    }
+    await this.propagateWitnesses(campaignId, {
+      sourceEventId: outcomeCommit.events.find((entry) => entry.event_type === 'EncounterOutcomeRecorded')?.event_id,
+      outcome: outcome === 'enemies_defeated' ? 'helpful' : 'harmful', severity: 'major',
+      idempotencyKey: `${idempotencyKey}:witnesses`,
+    })
+    const final = await this.load(campaignId)
+    return { events: [...outcomeCommit.events, ...consequences.events, ...recovery.events], reward, state: final.state, state_version: final.state_version, admin_commands: 0 }
+  }
+
+  async propagateWitnesses(campaignId, { sourceEventId = '', outcome = 'neutral', severity = 'minor', idempotencyKey = 'witnesses' } = {}) {
+    const loaded = await this.load(campaignId)
+    const location = clean(loaded.state.scene?.location, 180).toLocaleLowerCase('ru')
+    const witnesses = (loaded.state.social?.npcs ?? []).filter((npc) => npc.available !== false && (!npc.location || clean(npc.location, 180).toLocaleLowerCase('ru') === location)).map((npc) => String(npc.id)).sort()
+    const factions = factionIdsForWitnesses(loaded.state, witnesses)
+    const delta = serverReputationDelta({ outcome, severity })
+    const events = [event(`${idempotencyKey}:graph`, 'WitnessConsequencePropagated', {
+      source_event_id: sourceEventId,
+      witness_ids: witnesses,
+      faction_ids: factions,
+      propagation_scope: 'direct-factions-only',
+      outcome, severity,
+      provenance: { source: 'server-witness-policy' },
+    }, witnesses)]
+    for (const factionId of factions) events.push(event(`${idempotencyKey}:${factionId}`, 'FactionReputationAdjusted', {
+      faction_id: factionId,
+      delta,
+      source_event_id: sourceEventId,
+      witness_ids: witnesses,
+      provenance: { source: 'server-reputation-table', policy: 'faction-reputation-v1' },
+    }))
+    return this.commitEvents(campaignId, idempotencyKey, events)
+  }
+
+  async registerNpcSchedule(campaignId, { npcId, entries, idempotencyKey = `schedule-${npcId}` } = {}) {
+    const loaded = await this.load(campaignId)
+    const npc = (loaded.state.social?.npcs ?? []).find((candidate) => candidate.id === npcId)
+    if (!npc) throw new Error('NPC schedule references an unknown NPC')
+    const normalized = (Array.isArray(entries) ? entries : []).slice(0, 64).map((entry) => ({
+      at_minutes: Math.max(1, Math.min(10_000_000, Number.isSafeInteger(Number(entry.at_minutes)) ? Number(entry.at_minutes) : 1)),
+      action: ['move', 'appear', 'depart'].includes(entry.action) ? entry.action : 'move',
+      location: clean(entry.location, 180),
+      summary: clean(entry.summary, 300),
+    })).sort((a, b) => a.at_minutes - b.at_minutes)
+    let subject = currentSubject(loaded.state)
+    const commands = []
+    if (!subject) {
+      subject = { id: `world-${digest(campaignId)}`, kind: 'concept', name: 'Расписание мира', summary: '', aliases: [], visibility: 'party', tags: [] }
+      commands.push({ command_type: 'UpsertWorldEntity', entity: subject })
+    }
+    commands.push({ command_type: 'RecordWorldFact', fact: {
+      id: `schedule-${npcId}-${digest(normalized)}`, subject_id: subject.id, predicate: 'npc_schedule',
+      object: JSON.stringify({ npc_id: npcId, entries: normalized }), summary: `Расписание NPC ${npc.name}`, visibility: 'gm_only', source_event_ids: [],
+    } })
+    const result = await this.runCommands(campaignId, `${idempotencyKey}:fact`, commands)
+    await this.commitEvents(campaignId, `${idempotencyKey}:event`, [event(`${idempotencyKey}:event`, 'NpcScheduleRegistered', { npc_id: npcId, entries: normalized, provenance: { source: 'server-schedule-policy' } }, [npcId], 'gm_only')])
+    return result
+  }
+
+  async advanceTime(campaignId, { amount, unit = 'minute', idempotencyKey = 'advance-time' } = {}) {
+    const before = await this.load(campaignId)
+    const start = Number(before.state.mechanics.world_time?.elapsed_minutes) || 0
+    const advanced = await this.runCommands(campaignId, `${idempotencyKey}:clock`, [{ command_type: 'AdvanceTime', amount, unit }])
+    const after = await this.load(campaignId)
+    const end = Number(after.state.mechanics.world_time?.elapsed_minutes) || start
+    const scheduleFacts = (after.state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active' && fact.predicate === 'npc_schedule')
+    const executed = new Set((after.state.worldMemory?.facts ?? []).filter((fact) => fact.predicate === 'npc_scheduled_action_executed').map((fact) => fact.object))
+    const actions = []
+    for (const fact of scheduleFacts) {
+      const schedule = parseJsonFact(fact)
+      const npc = (after.state.social?.npcs ?? []).find((candidate) => candidate.id === schedule?.npc_id)
+      if (!npc) continue
+      for (const entry of schedule.entries ?? []) {
+        const actionKey = `${schedule.npc_id}:${entry.at_minutes}:${entry.action}`
+        if (entry.at_minutes <= start || entry.at_minutes > end || executed.has(actionKey)) continue
+        const profile = { ...npc, location: entry.location || npc.location, available: entry.action !== 'depart' }
+        actions.push({ command_type: 'UpsertNpcSocialProfile', npc: profile })
+        actions.push({ command_type: 'RecordWorldFact', fact: {
+          id: `schedule-action-${digest(actionKey)}`, subject_id: fact.subject_id, predicate: 'npc_scheduled_action_executed',
+          object: actionKey, summary: entry.summary || `${npc.name}: ${entry.action}`, visibility: 'party', source_event_ids: advanced.events.map((event) => event.event_id).filter(Boolean),
+        } })
+      }
+    }
+    if (actions.length) await this.runCommands(campaignId, `${idempotencyKey}:scheduled-actions`, actions)
+    return { before: start, after: end, scheduled_actions: actions.length / 2, state: (await this.load(campaignId)).state, admin_commands: 0 }
+  }
+
+  async bindPromise(campaignId, { promiseId, condition, idempotencyKey = `promise-binding-${promiseId}` } = {}) {
+    const loaded = await this.load(campaignId)
+    const promise = (loaded.state.social?.promises ?? []).find((candidate) => candidate.id === promiseId && candidate.status === 'open')
+    if (!promise) throw new Error('Open promise not found')
+    const allowed = ['QuestClockAdvanced', 'EncounterOutcomeRecorded', 'WorldFactRecorded']
+    if (!allowed.includes(condition?.event_type)) throw new Error('Promise condition event is not allowed')
+    let subject = currentSubject(loaded.state)
+    const commands = []
+    if (!subject) {
+      subject = { id: `world-${digest(campaignId)}`, kind: 'concept', name: 'События мира', summary: '', aliases: [], visibility: 'party', tags: [] }
+      commands.push({ command_type: 'UpsertWorldEntity', entity: subject })
+    }
+    commands.push({ command_type: 'RecordWorldFact', fact: {
+      id: `promise-condition-${promiseId}-${digest(condition)}`, subject_id: subject.id, predicate: 'promise_condition',
+      object: JSON.stringify({ promise_id: promiseId, condition }), summary: `Условие обещания ${promiseId}`, visibility: 'gm_only', source_event_ids: [],
+    } })
+    return this.runCommands(campaignId, idempotencyKey, commands)
+  }
+
+  async resolvePromiseConditions(campaignId, triggeringEvents, idempotencyKey) {
+    if (!triggeringEvents?.length) return null
+    const loaded = await this.load(campaignId)
+    const bindings = (loaded.state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active' && fact.predicate === 'promise_condition').map(parseJsonFact).filter(Boolean)
+    const commands = []
+    for (const binding of bindings) {
+      const promise = (loaded.state.social?.promises ?? []).find((candidate) => candidate.id === binding.promise_id && candidate.status === 'open')
+      if (!promise) continue
+      const matched = triggeringEvents.some((entry) => entry.event_type === binding.condition?.event_type
+        && (!binding.condition.quest_id || binding.condition.quest_id === entry.payload?.quest_id)
+        && (!binding.condition.outcome || binding.condition.outcome === entry.payload?.outcome))
+      if (matched) commands.push({ command_type: 'ResolveNpcPromise', promise_id: promise.id, status: 'fulfilled' })
+    }
+    if (!commands.length) return null
+    return this.runCommands(campaignId, idempotencyKey, commands, { isSocialController: true })
+  }
+}

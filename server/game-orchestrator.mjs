@@ -1,14 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto'
 
 import { Adjudicator } from './adjudicator.mjs'
+import { answerKnownLore } from './agent-router.mjs'
 import { CampaignNotFoundError, IdempotencyConflictError } from './event-store.mjs'
 import { EngineModeResolver } from './engine-mode.mjs'
 import { encounterNarration, hasEncounterEvent } from './encounter-narration.mjs'
 import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import { hasMerchantEvent, merchantNarration } from './merchant-narration.mjs'
+import { ensureNpcSocialState, npcConversationNarration, npcSocialForViewer } from './npc-social.mjs'
+import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
 import { NARRATOR_PROMPT_VERSION, Narrator, deterministicNarration } from './narrator.mjs'
 import { eventSummary, normalizeCampaignState } from './rules-engine.mjs'
 import { hasSceneEvent, sceneNarration, sceneSuggestions } from './scene-narration.mjs'
+import { worldMemoryForViewer } from './world-memory.mjs'
 import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { buildTurnExplanation, compareShadowResults } from './trace-store.mjs'
 
@@ -113,6 +117,17 @@ function deterministicReplayNarration(brief, knownRuleIds) {
   }
 }
 
+function deterministicMechanicsNarration(brief, knownRuleIds) {
+  const fallback = deterministicNarration(brief)
+  return {
+    ...fallback,
+    suggestions: [],
+    verification: verifyNarration(fallback.narration, brief, { knownRuleIds }),
+    prompt_version: 'mechanics-log/v1',
+    provider: 'deterministic-mechanics',
+  }
+}
+
 function deterministicMerchantNarration(events, state, brief, knownRuleIds) {
   const narration = merchantNarration(events, state) ?? deterministicNarration(brief).narration
   return {
@@ -156,6 +171,7 @@ export class GameOrchestrator {
     eventStore,
     traceStore = null,
     narrator = new Narrator(),
+    npcSocialController = null,
     legacyHandler = null,
     idFactory = randomUUID,
     now = () => Date.now(),
@@ -170,6 +186,7 @@ export class GameOrchestrator {
     this.eventStore = eventStore
     this.traceStore = traceStore
     this.narrator = narrator
+    this.npcSocialController = npcSocialController
     this.legacyHandler = legacyHandler
     this.idFactory = idFactory
     this.now = now
@@ -237,9 +254,13 @@ export class GameOrchestrator {
     const turnId = Array.isArray(input.commands)
       ? structuredCommandTurnId(campaignId, idempotencyKey)
       : this.idFactory()
-    const mode = typeof this.modeResolver === 'function'
+    const configuredMode = typeof this.modeResolver === 'function'
       ? this.modeResolver(input)
       : this.modeResolver.resolve({ testMode: input.testMode, user: input.user, campaign: { ...originalState, ...(input.campaign ?? {}) } })
+    // Structured actions are the one canonical gameplay path. The old mode
+    // resolver remains only for importing snapshots and legacy free-form
+    // narration; buttons/API commands always commit authoritative events.
+    const mode = Array.isArray(input.commands) ? 'enforce' : configuredMode
 
     if (message === '/why' || input.why === true) {
       const explanation = this.explanation(campaignId, input.turnId ?? input.turn_id)
@@ -248,16 +269,60 @@ export class GameOrchestrator {
 
     const viewer = { playerId, partyIds: input.partyIds ?? [], isPartyMember: true, role: input.user?.role }
     const visibleState = projectVisibleState(originalState, viewer) ?? {}
+    visibleState.social = npcSocialForViewer(originalState.social, {
+      playerId,
+      isAdmin: input.user?.role === 'admin',
+      isPartyMember: true,
+    })
+    const worldkeeperState = {
+      ...visibleState,
+      worldMemory: worldMemoryForViewer(originalState.worldMemory, {
+        playerId,
+        isAdmin: input.user?.role === 'admin',
+        isPartyMember: true,
+      }),
+    }
+    const loreAnswer = input.commands ? null : answerKnownLore(message, worldkeeperState)
+    if (loreAnswer) {
+      const loreIntent = {
+        actor_id: playerId, intent: 'known_lore_query', approach: 'deterministic',
+        targets: [], mentioned_entities: [], missing_information: [],
+        requires_clarification: false, confidence: 1, raw_message: message,
+      }
+      const lorePlan = { rule_ids: [], proposed_commands: [], roll_requests: [], ruling_required: false, narration_constraints: ['known-world-facts-only'], confidence: 1 }
+      const response = { ...loreAnswer, engine_mode: mode, turn_id: turnId, state_version: originalState.state_version }
+      this.saveTrace({ turnId, campaignId, mode, intent: loreIntent, retrievalQueries: [], retrievedRules: { results: [], confidence: 1, count: 0 }, plan: lorePlan, stateBefore: originalState.state_version, stateAfter: originalState.state_version, verification: { valid: true }, latency: this.now() - started })
+      return response
+    }
     const intent = input.commands
       ? { actor_id: playerId, intent: 'structured_commands', approach: 'api', targets: [], mentioned_entities: [], missing_information: [], requires_clarification: false, confidence: 1, raw_message: message }
       : await this.intentParser.parse({ message, playerId, visibleState })
+    let socialRequest = null
+    if (!input.commands && mode === 'enforce' && intent.intent === 'social' && this.npcSocialController) {
+      const socialNpcIds = new Set((originalState.social?.npcs ?? []).map((npc) => String(npc.id)))
+      const npcId = (intent.targets ?? []).map(String).find((candidate) => socialNpcIds.has(candidate))
+      if (!npcId) {
+        intent.requires_clarification = true
+        intent.missing_information = ['npc_id']
+      } else socialRequest = { npcId }
+    }
     const retrievalQueries = buildRuleQueries(intent, originalState)
     const retrievedRules = this.ruleRetriever && retrievalQueries.length
       ? await this.ruleRetriever.search({ queries: retrievalQueries, ruleset_id: originalState.ruleset_id, enabled_packs: originalState.enabled_rule_packs, limit: 10 })
       : { results: [], confidence: 0, count: 0 }
     let plan = input.commands
       ? { rule_ids: [...new Set(input.commands.flatMap((command) => command.source_rule_ids ?? []))], proposed_commands: input.commands, roll_requests: [], ruling_required: false, ruling_draft: null, narration_constraints: [], confidence: 1 }
-      : await this.adjudicator.createPlan({ intent, state: originalState, retrievedRules })
+      : socialRequest
+        ? {
+            rule_ids: [],
+            proposed_commands: [],
+            roll_requests: [],
+            ruling_required: false,
+            ruling_draft: null,
+            narration_constraints: ['server-social-check-before-dialogue', 'npc-dialogue-from-committed-event-only'],
+            confidence: intent.confidence,
+          }
+        : await this.adjudicator.createPlan({ intent, state: originalState, retrievedRules })
     plan = { ...plan, proposed_commands: validateAllowedCommands(plan.proposed_commands ?? []).map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${idempotencyKey}:${index + 1}` })) }
 
     let legacyResult = null
@@ -292,6 +357,21 @@ export class GameOrchestrator {
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, engineResult, comparison, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, legacyResult, latency: this.now() - started })
       return response
     }
+    const duplicate = typeof this.eventStore.getByIdempotencyKey === 'function'
+      ? await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+      : null
+    if (socialRequest && !duplicate) {
+      const social = ensureNpcSocialState(authoritativeState.social, authoritativeState)
+      const profile = social.npcs.find((npc) => npc.id === socialRequest.npcId)
+      const sceneLocation = String(authoritativeState.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+      const npcLocation = String(profile?.location ?? '').trim().toLocaleLowerCase('ru')
+      const unavailable = !profile || profile.available === false || authoritativeState.mechanics?.combat?.active || (sceneLocation && npcLocation && sceneLocation !== npcLocation)
+      if (unavailable) {
+        intent.requires_clarification = true
+        intent.missing_information = ['available_npc']
+      }
+    }
+
 
     if (intent.requires_clarification || plan.clarification_required) {
       const narration = `Нужно уточнение: ${(intent.missing_information ?? plan.missing_information ?? []).join(', ')}.`
@@ -300,9 +380,70 @@ export class GameOrchestrator {
       return response
     }
 
-    const duplicate = typeof this.eventStore.getByIdempotencyKey === 'function'
-      ? await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
-      : null
+    let socialBaseState = authoritativeState
+    let precedingEvents = []
+    let precedingRolls = []
+    let precedingCommands = []
+    let socialTurn = null
+    if (socialRequest) {
+      const policy = buildNpcSocialCheckPolicy({ state: authoritativeState, npcId: socialRequest.npcId, heroId: playerId, message, turnId })
+      const checkKey = `${idempotencyKey}:social-check`
+      let checkCommit = policy && typeof this.eventStore.getByIdempotencyKey === 'function'
+        ? await this.eventStore.getByIdempotencyKey(campaignId, checkKey)
+        : null
+      let checkCommand = null
+      if (!duplicate && policy && !checkCommit) {
+        checkCommand = {
+          command_type: 'MakeAbilityCheck', actor_id: playerId, social_check: { requested: true },
+          campaign_id: campaignId, command_id: `${checkKey}:1`,
+        }
+        rulesContext.isSocialController = true
+        rulesContext.socialCheck = policy
+        const checkPlan = { rule_ids: [], proposed_commands: [checkCommand], roll_requests: [], ruling_required: false, ruling_draft: null, narration_constraints: [], confidence: 1 }
+        const checkResult = this.rulesEngine.resolvePlan(checkPlan, authoritativeState, rulesContext)
+        try {
+          checkCommit = await this.eventStore.commit({
+            campaign_id: campaignId, expected_state_version: authoritativeState.state_version,
+            idempotency_key: checkKey, command_id: checkKey, events: checkResult.events,
+          })
+        } catch (error) {
+          if (!(error instanceof IdempotencyConflictError) && error?.code !== 'IDEMPOTENCY_CONFLICT') throw error
+          checkCommit = await this.eventStore.getByIdempotencyKey(campaignId, checkKey)
+          if (!checkCommit) throw error
+        }
+        precedingCommands = checkResult.commands
+        precedingRolls = checkResult.rolls
+      }
+      let checkOutcome = null
+      if (policy && checkCommit) {
+        const checkEvent = (checkCommit.events ?? []).find((event) => event.event_type === 'AbilityCheckResolved' && event.payload?.social_check)
+        assertNpcSocialCheckFingerprint(checkEvent, policy)
+        checkOutcome = npcSocialCheckOutcome(checkEvent)
+        if (!checkOutcome) throw new Error('Committed social check has no usable outcome')
+        precedingEvents = checkCommit.events ?? []
+        if (!precedingRolls.length) precedingRolls = [checkEvent.payload]
+        const latest = await this.eventStore.load(campaignId)
+        socialBaseState = normalizeCampaignState(latest.state)
+      }
+      if (!duplicate) {
+        socialTurn = await this.npcSocialController.respond({
+          state: socialBaseState, playerId, npcId: socialRequest.npcId, message, turnId, checkOutcome,
+        })
+        if (!socialTurn) throw new Error('NPC is no longer available for this social turn')
+        rulesContext.isSocialController = true
+        rulesContext.socialCheckOutcome = checkOutcome
+        const socialCommand = {
+          command_type: 'RecordNpcSocialTurn', actor_id: playerId, conversation: socialTurn.conversation,
+          campaign_id: campaignId, command_id: `${idempotencyKey}:dialogue`,
+        }
+        plan = {
+          ...plan, proposed_commands: validateAllowedCommands([socialCommand]),
+          confidence: socialTurn.confidence,
+          social_check: policy ? { check_id: policy.check_id, skill: policy.skill } : null,
+        }
+      }
+    }
+
     let engineResult
     let committed
     if (duplicate) {
@@ -313,10 +454,11 @@ export class GameOrchestrator {
         const ruling = { id: this.idFactory(), campaign_id: campaignId, ...plan.ruling_draft }
         plan = { ...plan, ruling_draft: ruling, proposed_commands: [{ command_type: 'RecordRuling', actor_id: playerId || null, ruling, ruling_id: ruling.id, campaign_id: campaignId, command_id: `${idempotencyKey}:ruling` }] }
       }
-      engineResult = this.rulesEngine.resolvePlan(plan, authoritativeState, rulesContext)
+      const resolutionState = socialRequest ? socialBaseState : authoritativeState
+      engineResult = this.rulesEngine.resolvePlan(plan, resolutionState, rulesContext)
       if (!engineResult.events.length) throw new Error('Enforce-ход не создал ни события, ни ruling')
       try {
-        committed = await this.eventStore.commit({ campaign_id: campaignId, expected_state_version: authoritativeState.state_version, idempotency_key: idempotencyKey, command_id: idempotencyKey, events: engineResult.events })
+        committed = await this.eventStore.commit({ campaign_id: campaignId, expected_state_version: resolutionState.state_version, idempotency_key: idempotencyKey, command_id: idempotencyKey, events: engineResult.events })
       } catch (error) {
         if (!(error instanceof IdempotencyConflictError) && error?.code !== 'IDEMPOTENCY_CONFLICT') throw error
         committed = await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
@@ -324,7 +466,14 @@ export class GameOrchestrator {
       }
     }
 
-    const committedEvents = committed.events ?? engineResult.events
+    const mainEvents = committed.events ?? engineResult.events
+    const committedEvents = [...precedingEvents, ...mainEvents]
+    engineResult = {
+      ...engineResult,
+      commands: [...precedingCommands, ...(engineResult.commands ?? [])],
+      events: committedEvents,
+      rolls: [...precedingRolls, ...(engineResult.rolls ?? [])],
+    }
     const changes = visibleChanges(committedEvents)
     const brief = buildNarrationBrief({
       visible_events: committedEvents,
@@ -338,13 +487,18 @@ export class GameOrchestrator {
     const replayTrace = idempotentReplay && this.traceStore && typeof this.traceStore.get === 'function'
       ? this.traceStore.get(campaignId, turnId)
       : null
+    const storedSocialNarration = npcConversationNarration(committedEvents)
     const replayFallback = hasSceneEvent(committedEvents)
       ? deterministicSceneNarration(committedEvents, committed.state, brief, resolvedRuleIds)
       : hasMerchantEvent(committedEvents)
         ? deterministicMerchantNarration(committedEvents, committed.state, brief, resolvedRuleIds)
         : hasEncounterEvent(committedEvents)
           ? deterministicEncounterNarration(committedEvents, brief, resolvedRuleIds)
-          : deterministicReplayNarration(brief, resolvedRuleIds)
+          : storedSocialNarration ?? deterministicReplayNarration(brief, resolvedRuleIds)
+    const structuredMechanics = Array.isArray(input.commands)
+      && !hasSceneEvent(committedEvents)
+      && !hasMerchantEvent(committedEvents)
+      && !hasEncounterEvent(committedEvents)
     const narration = idempotentReplay
       ? cachedNarration(replayTrace, brief, resolvedRuleIds) ?? replayFallback
       : hasSceneEvent(committedEvents)
@@ -353,7 +507,11 @@ export class GameOrchestrator {
           ? deterministicMerchantNarration(committedEvents, committed.state, brief, resolvedRuleIds)
           : hasEncounterEvent(committedEvents)
             ? deterministicEncounterNarration(committedEvents, brief, resolvedRuleIds)
-            : await this.narrator.render(brief, { knownRuleIds: resolvedRuleIds })
+            : storedSocialNarration
+              ? storedSocialNarration
+              : structuredMechanics
+                ? deterministicMechanicsNarration(brief, resolvedRuleIds)
+                : await this.narrator.render(brief, { knownRuleIds: resolvedRuleIds })
     const response = {
       narration: narration.narration,
       suggestions: narration.suggestions,
@@ -370,6 +528,7 @@ export class GameOrchestrator {
       ruling: plan.ruling_draft ?? null,
       explanation_url: `/api/campaigns/${encodeURIComponent(campaignId)}/turns/${encodeURIComponent(turnId)}/explanation`,
       idempotent_replay: idempotentReplay,
+      ...(storedSocialNarration ? { turn_consumed: true, action_kind: 'social' } : {}),
     }
     if (!idempotentReplay) {
       this.saveTrace({ turnId, campaignId, idempotencyKey, mode, intent, retrievalQueries, retrievedRules, plan, engineResult: { ...engineResult, events: committedEvents }, stateBefore: authoritativeState.state_version, stateAfter: committed.state_version, verification: narration.verification, latency: this.now() - started, narration, ruling: plan.ruling_draft })

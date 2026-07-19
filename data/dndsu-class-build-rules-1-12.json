@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "rulesProfile": "dndsu-5e-2014-official",
+  "maximumCharacterLevel": 12,
+  "skills": [
+    { "id": "acrobatics", "name": "Акробатика", "ability": "dex" },
+    { "id": "animal_handling", "name": "Уход за животными", "ability": "wis" },
+    { "id": "arcana", "name": "Магия", "ability": "int" },
+    { "id": "athletics", "name": "Атлетика", "ability": "str" },
+    { "id": "deception", "name": "Обман", "ability": "cha" },
+    { "id": "history", "name": "История", "ability": "int" },
+    { "id": "insight", "name": "Проницательность", "ability": "wis" },
+    { "id": "intimidation", "name": "Запугивание", "ability": "cha" },
+    { "id": "investigation", "name": "Расследование", "ability": "int" },
+    { "id": "medicine", "name": "Медицина", "ability": "wis" },
+    { "id": "nature", "name": "Природа", "ability": "int" },
+    { "id": "perception", "name": "Восприятие", "ability": "wis" },
+    { "id": "performance", "name": "Выступление", "ability": "cha" },
+    { "id": "persuasion", "name": "Убеждение", "ability": "cha" },
+    { "id": "religion", "name": "Религия", "ability": "int" },
+    { "id": "sleight_of_hand", "name": "Ловкость рук", "ability": "dex" },
+    { "id": "stealth", "name": "Скрытность", "ability": "dex" },
+    { "id": "survival", "name": "Выживание", "ability": "wis" }
+  ],
+  "featureChoiceGroups": [
+    {
+      "id": "fighter-fighting-style", "classKey": "fighter", "name": "Боевой стиль", "unlockLevel": 1, "countsByLevel": { "1": 1 },
+      "options": [
+        { "id": "fighting-style-defense", "name": "Защита" }, { "id": "fighting-style-dueling", "name": "Дуэлянт" },
+        { "id": "fighting-style-great-weapon", "name": "Сражение большим оружием" }, { "id": "fighting-style-protection", "name": "Оборона" },
+        { "id": "fighting-style-two-weapon", "name": "Сражение двумя оружиями" }, { "id": "fighting-style-archery", "name": "Стрельба" },
+        { "id": "fighter-perehvat", "name": "Перехват" }, { "id": "fighting-style-superior-technique", "name": "Превосходная техника" },
+        { "id": "fighting-style-blind", "name": "Сражение вслепую" }, { "id": "fighting-style-thrown", "name": "Сражение метательным оружием" },
+        { "id": "fighting-style-unarmed", "name": "Сражение голыми руками" }
+      ]
+    },
+    {
+      "id": "fighter-maneuvers", "classKey": "fighter", "subclass": "Мастер боевых искусств", "name": "Боевые приёмы", "unlockLevel": 3, "countsByLevel": { "3": 3, "7": 5, "10": 7 },
+      "options": [
+        { "id": "trip-attack", "name": "Подсекающая атака" }, { "id": "menacing-attack", "name": "Устрашающая атака" },
+        { "id": "disarming-attack", "name": "Обезоруживающая атака" }, { "id": "distracting-strike", "name": "Отвлекающий удар" },
+        { "id": "goading-attack", "name": "Провоцирующая атака" }, { "id": "lunging-attack", "name": "Выпад" },
+        { "id": "maneuvering-attack", "name": "Маневрирующая атака" }, { "id": "pushing-attack", "name": "Толкающая атака" },
+        { "id": "sweeping-attack", "name": "Размашистая атака" }, { "id": "precision-attack", "name": "Точная атака" },
+        { "id": "feinting-attack", "name": "Финт" }, { "id": "rally", "name": "Воодушевление" },
+        { "id": "parry", "name": "Парирование" }, { "id": "riposte", "name": "Ответный удар" },
+        { "id": "brace", "name": "Удержание позиции" }, { "id": "quick-toss", "name": "Быстрый бросок" },
+        { "id": "grappling-strike", "name": "Захватывающий удар" }, { "id": "bait-and-switch", "name": "Обман и смена" },
+        { "id": "evasive-footwork", "name": "Уклонение ногами" }
+      ]
+    },
+    {
+      "id": "paladin-fighting-style", "classKey": "paladin", "name": "Боевой стиль", "unlockLevel": 2, "countsByLevel": { "2": 1 },
+      "options": [
+        { "id": "fighting-style-defense", "name": "Защита" }, { "id": "fighting-style-dueling", "name": "Дуэлянт" },
+        { "id": "fighting-style-great-weapon", "name": "Сражение большим оружием" }, { "id": "fighting-style-protection", "name": "Оборона" },
+        { "id": "fighting-style-blessed-warrior", "name": "Благословенный воин" }, { "id": "paladin-perehvat", "name": "Перехват" },
+        { "id": "fighting-style-blind", "name": "Сражение вслепую" }
+      ]
+    },
+    {
+      "id": "ranger-fighting-style", "classKey": "ranger", "name": "Боевой стиль", "unlockLevel": 2, "countsByLevel": { "2": 1 },
+      "options": [
+        { "id": "fighting-style-archery", "name": "Стрельба" }, { "id": "fighting-style-defense", "name": "Защита" },
+        { "id": "fighting-style-dueling", "name": "Дуэлянт" }, { "id": "fighting-style-two-weapon", "name": "Сражение двумя оружиями" },
+        { "id": "fighting-style-blind", "name": "Сражение вслепую" }, { "id": "fighting-style-druidic-warrior", "name": "Воин-друид" },
+        { "id": "fighting-style-thrown", "name": "Сражение метательным оружием" }
+      ]
+    },
+    {
+      "id": "sorcerer-metamagic", "classKey": "sorcerer", "name": "Метамагия", "unlockLevel": 3, "countsByLevel": { "3": 2, "10": 3 },
+      "options": [
+        { "id": "careful-spell", "name": "Аккуратное заклинание" }, { "id": "distant-spell", "name": "Далёкое заклинание" },
+        { "id": "empowered-spell", "name": "Непреодолимое заклинание" }, { "id": "extended-spell", "name": "Продлённое заклинание" },
+        { "id": "heightened-spell", "name": "Усиленное заклинание" }, { "id": "quickened-spell", "name": "Ускоренное заклинание" },
+        { "id": "subtle-spell", "name": "Неуловимое заклинание" }, { "id": "twinned-spell", "name": "Удвоенное заклинание" },
+        { "id": "seeking-spell", "name": "Ищущее заклинание" }, { "id": "transmuted-spell", "name": "Преобразованное заклинание" }
+      ]
+    },
+    {
+      "id": "warlock-pact-boon", "classKey": "warlock", "name": "Дар договора", "unlockLevel": 3, "countsByLevel": { "3": 1 },
+      "options": [
+        { "id": "pact-tome", "name": "Договор гримуара" }, { "id": "pact-blade", "name": "Договор клинка" },
+        { "id": "pact-talisman", "name": "Договор талисмана" }, { "id": "pact-chain", "name": "Договор цепи" }
+      ]
+    }
+  ],
+  "classes": [
+    { "classKey": "barbarian", "choiceCount": 2, "skills": ["athletics", "perception", "survival", "intimidation", "nature", "animal_handling"], "sourceUrl": "https://www.dnd.su/class/87-barbarian/" },
+    { "classKey": "bard", "choiceCount": 3, "skills": ["acrobatics", "animal_handling", "arcana", "athletics", "deception", "history", "insight", "intimidation", "investigation", "medicine", "nature", "perception", "performance", "persuasion", "religion", "sleight_of_hand", "stealth", "survival"], "sourceUrl": "https://www.dnd.su/class/88-bard/" },
+    { "classKey": "cleric", "choiceCount": 2, "skills": ["history", "insight", "medicine", "persuasion", "religion"], "sourceUrl": "https://www.dnd.su/class/89-cleric/" },
+    { "classKey": "druid", "choiceCount": 2, "skills": ["arcana", "animal_handling", "insight", "medicine", "nature", "perception", "religion", "survival"], "sourceUrl": "https://www.dnd.su/class/90-druid/" },
+    { "classKey": "fighter", "choiceCount": 2, "skills": ["acrobatics", "animal_handling", "athletics", "history", "insight", "intimidation", "perception", "survival"], "sourceUrl": "https://www.dnd.su/class/91-fighter/" },
+    { "classKey": "monk", "choiceCount": 2, "skills": ["acrobatics", "athletics", "history", "insight", "religion", "stealth"], "sourceUrl": "https://www.dnd.su/class/93-monk/" },
+    { "classKey": "paladin", "choiceCount": 2, "skills": ["athletics", "insight", "intimidation", "medicine", "persuasion", "religion"], "sourceUrl": "https://www.dnd.su/class/94-paladin/" },
+    { "classKey": "ranger", "choiceCount": 3, "skills": ["animal_handling", "athletics", "insight", "investigation", "nature", "perception", "stealth", "survival"], "sourceUrl": "https://www.dnd.su/class/97-ranger/" },
+    { "classKey": "rogue", "choiceCount": 4, "skills": ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "performance", "persuasion", "sleight_of_hand", "stealth"], "sourceUrl": "https://www.dnd.su/class/99-rogue/" },
+    { "classKey": "sorcerer", "choiceCount": 2, "skills": ["arcana", "deception", "insight", "intimidation", "persuasion", "religion"], "sourceUrl": "https://www.dnd.su/class/101-sorcerer/" },
+    { "classKey": "warlock", "choiceCount": 2, "skills": ["arcana", "deception", "history", "intimidation", "investigation", "nature", "religion"], "sourceUrl": "https://www.dnd.su/class/104-warlock/" },
+    { "classKey": "wizard", "choiceCount": 2, "skills": ["arcana", "history", "insight", "investigation", "medicine", "religion"], "sourceUrl": "https://www.dnd.su/class/105-wizard/" }
+  ]
+}

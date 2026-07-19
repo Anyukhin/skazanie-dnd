@@ -60,6 +60,18 @@ test('Хранитель отвечает только из подтверждё
   assert.equal(result.effects.scene, null)
 })
 
+test('вопрос о направлении честно объясняет отсутствие открытого пункта назначения', () => {
+  const result = answerKnownLore('Куда нам уходить отсюда по заданию?', {
+    scene: { location: 'Кольцевая станция «Гелиос»', objective: 'Разобраться в происходящем и решить, кому можно доверять' },
+    adventure: { currentHook: 'Привычный порядок нарушен' },
+  })
+  assert.equal(result.provider, 'AgentWorldkeeper')
+  assert.equal(result.turn_consumed, false)
+  assert.match(result.narration, /пункт назначения пока не открыт/iu)
+  assert.match(result.narration, /Разобраться в происходящем/iu)
+  assert.match(result.narration, /Гелиос/iu)
+})
+
 
 test('resolved party exit creates scene arguments', () => {
   const result = resolvePartyDecision('[\u0420\u0415\u0428\u0415\u041D\u0418\u0415 \u0413\u0420\u0423\u041F\u041F\u042B] \u041F\u043E\u043A\u0438\u043D\u0443\u0442\u044C \u043F\u043E\u0434\u0437\u0435\u043C\u0435\u043B\u044C\u0435', {
