@@ -21,11 +21,15 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # Тело ответа обязательно дочитать и выйти явно: незакрытый keep-alive сокет
+    # undici держит event loop, и проверка упирается в таймаут (6.3 с против 0.4 с),
+    # хотя /api/health отвечает 200.
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(async r=>{await r.arrayBuffer();process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   tunnel:
     build:
