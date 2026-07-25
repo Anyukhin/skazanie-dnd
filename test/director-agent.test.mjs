@@ -33,3 +33,30 @@ test('невалидный ответ модели откатывается к �
   assert.equal(result.trace.mode, 'deterministic-fallback')
   assert.equal(llm.requests.length, 1)
 })
+
+test('Director получает bounded-память незакрытых нитей и нарушенных обещаний как данные', async () => {
+  const llm = new FakeLLM({ response: { type: 'continue_exploration', reason: 'Продолжить по сохранённой причинной линии.' } })
+  const inputState = state()
+  inputState.worldMemory.threads = [{
+    id: 'thread:missing-caravan', title: 'След пропавшего каравана', summary: 'Последствия задержки ещё не разрешены.',
+    status: 'active', visibility: 'party', entity_ids: [], quest_ids: [],
+    clock: { current: 2, max: 4, triggered: false }, source_event_ids: ['event:caravan'],
+  }]
+  inputState.social = {
+    npcs: [], relationships: {}, conversations: [], promises: [{
+      id: 'promise:broken', npc_id: 'guide', hero_id: 'hero', direction: 'npc_to_party',
+      text: 'Проводник должен был вернуться до заката.', due_hint: 'сегодня', status: 'broken', visibility: 'specific_player',
+      resolution_reason: 'deadline', consequence_delta: -8,
+    }],
+  }
+
+  await new DirectorAgent({ llmClient: llm }).choose({ state: inputState, playerAction: 'Продолжить поиск каравана' })
+  const content = llm.requests[0].messages[1].content
+
+  assert.match(content, /<<<UNTRUSTED_DATA:director_brief>>>/u)
+  assert.match(content, /thread:missing-caravan/u)
+  assert.match(content, /Последствия задержки ещё не разрешены/u)
+  assert.match(content, /promise:broken/u)
+  assert.match(content, /Проводник должен был вернуться до заката/u)
+  assert.match(content, /"status":"broken"/u)
+})

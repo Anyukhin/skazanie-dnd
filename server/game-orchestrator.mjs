@@ -15,6 +15,7 @@ import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, veri
 import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer } from './viewer-projection.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
+import { retrieveWorldMemory } from './world-memory.mjs'
 
 // A JSON request cannot manufacture this identity. Only server-owned world
 // orchestration may attach it to derived AdvanceScene/merchant commands.
@@ -22,6 +23,77 @@ export const DIRECTOR_COMMAND_CAPABILITY = Symbol('skazanie:director-command-cap
 
 function emptyEffects() {
   return { roll: null, reveal: [], spawn: [], objective: null, grantItems: [] }
+}
+
+/**
+ * Narrator receives only a small supplemental memory window. The committed
+ * events already carry the current result; three ranked facts are enough to
+ * connect that result to the nearby canon without turning every narration into
+ * a full-world prompt.
+ */
+export const NARRATION_WORLD_FACT_LIMIT = 3
+const memoryText = (value, maximum = 500) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+function narrationMemoryQuery(state, message, events) {
+  return [
+    message,
+    state.scene?.title,
+    state.scene?.location,
+    state.scene?.objective,
+    ...(events ?? []).map((event) => eventSummary(event)),
+  ].filter(Boolean).join(' ').slice(0, 4_000)
+}
+
+function narrationWorldFacts(state, viewer, message, events) {
+  // A hero may legitimately have a personal gm_only fact in the canonical
+  // viewer projection. Narrator has a stricter contract: remove such facts
+  // before retrieval so they cannot consume ranking slots or leak through a
+  // wrapper record's summary.
+  const publicMemory = {
+    ...(state.worldMemory ?? {}),
+    facts: (state.worldMemory?.facts ?? []).filter((fact) => ['public', 'party'].includes(fact.visibility)),
+  }
+  const records = retrieveWorldMemory(publicMemory, {
+    playerId: viewer.playerId,
+    partyIds: viewer.partyIds,
+    isPartyMember: viewer.isPartyMember,
+  }, {
+    query: narrationMemoryQuery(state, message, events),
+    limit: NARRATION_WORLD_FACT_LIMIT,
+    asOfMinutes: state.mechanics?.world_time?.elapsed_minutes,
+  })
+  return records
+    .filter((record) => record.kind === 'fact' && ['public', 'party'].includes(record.fact?.visibility))
+    .map((record) => ({
+      id: memoryText(record.fact?.id, 120),
+      subject: memoryText(record.entity?.name || record.fact?.subject_id, 120),
+      predicate: memoryText(record.fact?.predicate, 80),
+      summary: memoryText(record.fact?.summary || record.fact?.object, 280),
+    }))
+    .filter((fact) => fact.id && fact.summary)
+    .slice(0, NARRATION_WORLD_FACT_LIMIT)
+}
+
+function narrationSocialConsequences(events, state) {
+  const promises = new Map((state.social?.promises ?? []).map((promise) => [String(promise.id), promise]))
+  return (events ?? [])
+    .filter((event) => event.event_type === 'NpcPromiseResolved')
+    .map((event) => {
+      const promiseId = memoryText(event.payload?.promise_id, 120)
+      const promise = promises.get(promiseId)
+      return {
+        promise_id: promiseId,
+        status: memoryText(event.payload?.status, 30),
+        npc_id: memoryText(promise?.npc_id, 120),
+        direction: memoryText(promise?.direction, 40),
+        text: memoryText(promise?.text, 280),
+        consequence_delta: Number.isSafeInteger(Number(event.payload?.consequence_delta))
+          ? Number(event.payload.consequence_delta)
+          : 0,
+      }
+    })
+    .filter((entry) => entry.promise_id && entry.status)
+    .slice(-6)
 }
 
 function rollForClient(roll) {
@@ -416,6 +488,10 @@ export class GameOrchestrator {
       known_environment: {
         scene: projectVisibleState(committed.state.scene ?? {}, viewer, { forNarrator: true }) ?? {},
         campaign_premise: campaignConceptForAgent(committed.state),
+        world_memory: {
+          facts: narrationWorldFacts(committed.state, viewer, message, publicCommittedEvents),
+        },
+        social_consequences: narrationSocialConsequences(publicCommittedEvents, committed.state),
       },
       permitted_npc_reactions: [],
       viewer,

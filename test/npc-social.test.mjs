@@ -311,6 +311,40 @@ test('NPC receives only its structured beliefs and rumors, keeps them separate f
   assert.deepEqual(result.disclosed_claim_ids, ['rumor:marta-key'])
 })
 
+test('NPC retrieval ranks facts by the player message deterministically without expanding the disclosure allowlist', async () => {
+  const state = campaign()
+  state.worldMemory = {
+    ...state.worldMemory,
+    entities: [
+      ...(state.worldMemory.entities ?? []),
+      { id: 'npc:marta', kind: 'npc', name: 'Marta', summary: 'Trader', visibility: 'party', aliases: [], tags: [] },
+    ],
+    facts: Array.from({ length: 10 }, (_, index) => ({
+      id: index === 0 ? 'fact:route' : `fact:irrelevant-${index}`,
+      subject_id: 'npc:marta', predicate: 'knows',
+      object: index === 0 ? 'The old aqueduct is open.' : `Market detail ${index}.`,
+      summary: index === 0 ? 'Старый акведук открыт для прохода.' : `Рыночная деталь ${index}.`,
+      visibility: 'party', source_event_ids: [`event:fact-${index}`], status: 'active', recorded_at_minutes: 0,
+    })),
+  }
+  const requests = []
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => {
+      requests.push(input)
+      return { reply: 'Об акведуке я могу рассказать.', disclosed_fact_ids: [], disclosed_claim_ids: [], relationship_delta: 0 }
+    } },
+  })
+
+  await controller.respond({ state, playerId: 'hero', npcId: 'marta', message: 'Что известно про старый акведук?', turnId: 'retrieve-1' })
+  await controller.respond({ state, playerId: 'hero', npcId: 'marta', message: 'Что известно про старый акведук?', turnId: 'retrieve-2' })
+  const first = requests[0].messages[1].content
+
+  assert.match(first, /<<<UNTRUSTED_DATA:npc_social_brief>>>/u)
+  assert.match(first, /fact:route/u)
+  assert.doesNotMatch(first, /fact:irrelevant-9|Рыночная деталь 9/u)
+  assert.equal(requests[1].messages[1].content, first)
+})
+
 test('orchestrator commits NPC dialogue once and replays the stored reply without calling LLM or Narrator again', async () => {
   const initial = campaign()
   const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-social-'))

@@ -3,9 +3,15 @@ import { fileURLToPath } from 'node:url'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
+import { buildDataOnlyContext } from './security.mjs'
+import { retrieveWorldMemory } from './world-memory.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/director/v1.txt', import.meta.url)), 'utf8')
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+export const DIRECTOR_MEMORY_RECORD_LIMIT = 6
+const DIRECTOR_THREAD_LIMIT = 6
+const DIRECTOR_PROMISE_LIMIT = 6
 
 function currentChapterHistory(state = {}) {
   const history = Array.isArray(state.autonomy?.director_history) ? state.autonomy.director_history : []
@@ -22,6 +28,64 @@ function firstAvailableNpc(state = {}) {
   const location = clean(state.scene?.location, 180).toLocaleLowerCase('ru')
   return (state.social?.npcs ?? []).find((npc) => npc.available !== false
     && (!npc.location || !location || clean(npc.location, 180).toLocaleLowerCase('ru') === location)) ?? null
+}
+
+function directorMemoryQuery(state, playerAction) {
+  return [
+    playerAction,
+    state.scene?.title,
+    state.scene?.location,
+    state.scene?.objective,
+    state.adventure?.currentHook,
+  ].filter(Boolean).join(' ').slice(0, 3_000)
+}
+
+function directorMemoryRecord(record) {
+  const result = {
+    kind: clean(record.kind, 40),
+    id: clean(record.id, 120),
+    summary: clean(record.summary, 360),
+  }
+  if (record.kind === 'fact' && record.fact) {
+    result.subject = clean(record.entity?.name || record.fact.subject_id, 120)
+    result.predicate = clean(record.fact.predicate, 100)
+  }
+  if (record.thread) {
+    result.status = clean(record.thread.status, 30)
+    result.clock = record.thread.clock
+      ? { current: Number(record.thread.clock.current) || 0, max: Number(record.thread.clock.max) || 1, triggered: record.thread.clock.triggered === true }
+      : null
+  }
+  if (record.quest) result.status = clean(record.quest.status, 30)
+  if (record.claim) {
+    result.truth_status = clean(record.claim.truth_status, 30)
+    result.claim_kind = clean(record.claim.kind, 30)
+  }
+  return result
+}
+
+function directorNarrativeMemory(state, playerAction) {
+  const records = retrieveWorldMemory(state.worldMemory, { isAdmin: true }, {
+    query: directorMemoryQuery(state, playerAction),
+    limit: DIRECTOR_MEMORY_RECORD_LIMIT,
+    asOfMinutes: state.mechanics?.world_time?.elapsed_minutes,
+  }).map(directorMemoryRecord)
+  const openThreads = (state.worldMemory?.threads ?? [])
+    .filter((thread) => thread.status === 'active')
+    .slice(0, DIRECTOR_THREAD_LIMIT)
+    .map((thread) => ({
+      id: clean(thread.id, 120), title: clean(thread.title, 160), summary: clean(thread.summary, 360),
+      clock: thread.clock ? { current: Number(thread.clock.current) || 0, max: Number(thread.clock.max) || 1, triggered: thread.clock.triggered === true } : null,
+    }))
+  const promiseConsequences = (state.social?.promises ?? [])
+    .filter((promise) => promise.status !== 'open')
+    .slice(-DIRECTOR_PROMISE_LIMIT)
+    .map((promise) => ({
+      id: clean(promise.id, 120), npc_id: clean(promise.npc_id, 120), hero_id: clean(promise.hero_id, 120),
+      direction: clean(promise.direction, 40), text: clean(promise.text, 300), status: clean(promise.status, 30),
+      resolution_reason: clean(promise.resolution_reason, 30), consequence_delta: Number(promise.consequence_delta) || 0,
+    }))
+  return { retrieved: records, open_threads: openThreads, promise_consequences: promiseConsequences }
 }
 
 /** A server-owned progression policy used whenever the model is absent or invalid. */
@@ -77,6 +141,7 @@ function publicDirectorBrief(state = {}, playerAction = '') {
         id: clean(npc.id, 120), name: clean(npc.name, 120), role: clean(npc.role, 120), location: clean(npc.location, 160),
       })),
       encounter: state.mechanics?.encounter ? { status: clean(state.mechanics.encounter.status, 40), outcome: clean(state.mechanics.encounter.outcome, 80) } : null,
+      narrative_memory: directorNarrativeMemory(state, playerAction),
     },
     RECENT_EVENTS: currentChapterHistory(state).slice(-12).map((intent) => ({ type: clean(intent.type, 40), reason: clean(intent.reason, 180) })),
     PLAYER_ACTION: clean(playerAction, 500) || 'Продолжить приключение',
@@ -94,7 +159,7 @@ export class DirectorAgent {
       const result = await this.llmClient.completeJson({
         messages: [
           { role: 'system', content: prompt },
-          { role: 'user', content: JSON.stringify(publicDirectorBrief(state, playerAction)) },
+          { role: 'user', content: buildDataOnlyContext({ director_brief: publicDirectorBrief(state, playerAction) }) },
         ],
         temperature: 0.25,
         maxTokens: 500,
