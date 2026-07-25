@@ -793,7 +793,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               <CellElement
                 key={cell.x + '-' + cell.y}
                 type={cellIsInteractive ? 'button' : undefined}
-                className={'map-cell ' + cell.type + ' material-' + (cell.material ?? 'stone') + ' feature-' + (cell.feature ?? 'none') + ' variant-' + (Math.abs(Number(cell.variant) || 0) % 6) + ' pattern-' + (cell.pattern ?? 'natural') + ' parity-' + ((cell.x + cell.y) % 2 ? 'odd' : 'even') + ' ' + (cell.revealed ? '' : 'hidden') + ' ' + (canMoveHere && !canAimHere ? 'move-target' : '') + ' ' + (moveUnavailable && !canAimHere ? 'move-unavailable' : '') + ' ' + (routeStep ? 'route-step' : '') + ' ' + (previewMoveKey === cellKey ? 'route-destination' : '') + ' ' + (opportunityRisk && !canAimHere ? 'opportunity-risk' : '') + ' ' + (commandRangeVisible ? cellInCommandRange ? 'command-range' : 'command-out-of-range' : '') + ' ' + (canAimHere ? 'aim-target' : '') + ' ' + (canSummonHere ? 'summon-target' : '') + ' ' + (inPersistentSpellArea ? 'spell-terrain' : '') + ' ' + (inBlastArea ? 'blast-area' : '') + ' ' + (pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '')}
+                className={'map-cell ' + cell.type + ' material-' + (cell.material ?? 'stone') + ' feature-' + (cell.feature ?? 'none') + ' variant-' + (Math.abs(Number(cell.variant) || 0) % 6) + ' pattern-' + (cell.pattern ?? 'natural') + ' parity-' + ((cell.x + cell.y) % 2 ? 'odd' : 'even') + ' ' + (cell.revealed ? '' : 'hidden') + ' ' + (canMoveHere && !canAimHere ? 'move-target' : '') + ' ' + (moveUnavailable && !canAimHere ? 'move-unavailable' : '') + ' ' + (routeStep ? 'route-step' : '') + ' ' + (previewMoveKey === cellKey ? 'route-destination' : '') + ' ' + (opportunityRisk && !canAimHere ? 'opportunity-risk' : '') + ' ' + (commandRangeVisible ? cellInCommandRange ? 'command-range' : 'command-out-of-range' : '') + ' ' + (canAimHere ? 'aim-target' : '') + ' ' + (canSummonHere ? 'summon-target' : '') + ' ' + (inPersistentSpellArea ? 'spell-terrain' : '') + ' ' + (inBlastArea ? 'blast-area' : '') + ' ' + (pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '') + ' ' + (occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : 'occupied-by-enemy' : '')}
                 style={{
                   gridColumn: cell.x + 1,
                   gridRow: cell.y + 1,
@@ -827,6 +827,10 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               >
                 {cell.revealed && cell.feature && cell.feature !== 'enemy' && <span className={'feature ' + cell.feature}><MapProp feature={cell.feature} /></span>}
                 {routeStep && <span className="route-step-badge" aria-hidden="true">{routeStep}</span>}
+                {/* След на клетке: лежит в плоскости доски, поэтому при любом повороте и
+                    наклоне точно совпадает с сеткой. Фигурка стоит стоймя и из-за этого
+                    перспективно смещается — позиционную правду несёт именно этот след. */}
+                {occupied && cell.revealed && <span className="cell-footprint" aria-hidden="true" />}
                 {enemy && cell.revealed && (
                   <button
                     className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}

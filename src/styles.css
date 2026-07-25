@@ -1271,18 +1271,42 @@ button.campaign-title:hover strong { color: #edc996; }
     0 12px 16px rgba(0,0,0,.38);
 }
 .map-cell.door { transform: translateZ(2px); }
+/* След занятой клетки. Единственная отметка, которая физически не может разойтись с
+   сеткой: она лежит в плоскости доски и наклоняется вместе с ней, давая правильный
+   эллипс. Цвет разделяет отряд, призывов и врагов — как в легенде карты. */
+.cell-footprint {
+  position: absolute;
+  z-index: 1;
+  inset: 14%;
+  border-radius: 50%;
+  border: 2px solid var(--footprint, rgba(214, 165, 90, .85));
+  background: radial-gradient(circle, color-mix(in srgb, var(--footprint, #d6a55a), transparent 78%) 40%, transparent 72%);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--footprint, #d6a55a), transparent 55%);
+  pointer-events: none;
+}
+.map-cell.occupied-by-hero { --footprint: #d6a55a; }
+.map-cell.occupied-by-enemy { --footprint: #c86c5d; }
+.map-cell.occupied-by-summon { --footprint: #70a78b; }
+
+/* Фишка обязана однозначно читаться как стоящая на своей клетке — это основа
+   тактической игры. Подъём translateZ(18px) над плоскостью давал перспективный
+   параллакс: точка над доской проецируется не туда, где лежит точка на доске, причём
+   уход зависит от расстояния до perspective-origin и от угла поворота. Из-за этого
+   фишки уезжали вбок при вращении карты, каждая по-своему.
+   Оставляем минимальный подъём против z-конфликта с клеткой; «стоймя» обеспечивает
+   не он, а transform-origin по нижней грани плюс контр-наклон. */
 .map-token, .enemy-token {
-  transform: translateZ(18px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt));
+  transform: translateZ(2px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt));
   transform-origin: 50% 100%;
 }
 .map-token:hover, .map-token.selected {
-  transform: translateZ(22px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt)) translateY(-4px) scale(1.08);
+  transform: translateZ(3px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt)) translateY(-4px) scale(1.08);
 }
 .map-token.label-open, .map-token.label-open:hover {
-  transform: translateZ(18px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt));
+  transform: translateZ(2px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt));
 }
 .enemy-token:hover, .enemy-token:focus-visible {
-  transform: translateZ(22px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt)) translateY(-3px) scale(1.1);
+  transform: translateZ(3px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt)) translateY(-3px) scale(1.1);
 }
 
 .feature .map-prop {
