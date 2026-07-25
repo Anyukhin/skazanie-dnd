@@ -5,7 +5,7 @@ import {
   MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RotateCcw,
   ScrollText, Send, Settings, Shield, Sparkles, Swords, Target, Users, X,
   BrainCircuit, Check, Compass, SlidersHorizontal, Wifi, WifiOff,
-  Heart,
+  Heart, HelpCircle,
   LockKeyhole, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2,
 } from 'lucide-react'
@@ -1199,134 +1199,33 @@ function AgentInteractionCard({ interaction, players, playerId, canContinue, onV
   )
 }
 
-function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, currentPlayerId, canAct, canFinishTurn, turnName, onSend, onFinishTurn, onRoll, onCancelCheck, onVote, onAbstain, onRollInteraction, onContinueInteraction, open, onToggle, suggestions, layoutStorageKey }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; pendingCheck: PendingCheck | null; interaction?: AgentInteraction | null; players: Player[]; currentPlayerId: string; canAct: boolean; canFinishTurn: boolean; turnName: string; onSend: (text: string) => void; onFinishTurn: () => void; onRoll: () => void; onCancelCheck: () => void; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; open: boolean; onToggle: () => void; suggestions: string[]; layoutStorageKey: string
+function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, currentPlayerId, canAct, turnName, onRoll, onCancelCheck, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, open, onToggle }: {
+  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; pendingCheck: PendingCheck | null; interaction?: AgentInteraction | null; players: Player[]; currentPlayerId: string; canAct: boolean; turnName: string; onRoll: () => void; onCancelCheck: () => void; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; open: boolean; onToggle: () => void
 }) {
-  const [text, setText] = useState('')
-  const [suggestionsOpen, setSuggestionsOpen] = useState(true)
-  const [layout, setLayout] = useState<ChatWindowLayout | null>(() => loadChatLayout(layoutStorageKey))
-  const [dragging, setDragging] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
-  const panelRef = useRef<HTMLElement>(null)
-  const layoutRef = useRef(layout)
-  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; x: number; y: number; width: number; height: number } | null>(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isNarrating])
-  useEffect(() => { layoutRef.current = layout }, [layout])
-  useEffect(() => { setLayout(loadChatLayout(layoutStorageKey)) }, [layoutStorageKey])
-  useEffect(() => {
-    if (layout) window.localStorage.setItem(layoutStorageKey, JSON.stringify(layout))
-  }, [layout, layoutStorageKey])
-
-  const normalizeLayout = (draft: ChatWindowLayout, parentWidth: number, parentHeight: number) => {
-    const reservedBottom = canFinishTurn ? 168 : 12
-    const minWidth = Math.min(420, Math.max(240, parentWidth - 16))
-    const minHeight = Math.min(320, Math.max(220, parentHeight - reservedBottom - 16))
-    const width = Math.min(Math.max(minWidth, draft.width), Math.max(minWidth, parentWidth - 16))
-    const height = Math.min(Math.max(minHeight, draft.height), Math.max(minHeight, parentHeight - reservedBottom - 16))
-    return {
-      x: Math.round(Math.min(Math.max(8, draft.x), Math.max(8, parentWidth - width - 8))),
-      y: Math.round(Math.min(Math.max(8, draft.y), Math.max(8, parentHeight - height - reservedBottom))),
-      width: Math.round(width),
-      height: Math.round(height),
-    }
-  }
-
-  useEffect(() => {
-    const panel = panelRef.current
-    const parent = panel?.parentElement
-    if (!open || !panel || !parent) return
-    let frame = 0
-    const observer = new ResizeObserver(() => {
-      window.cancelAnimationFrame(frame)
-      frame = window.requestAnimationFrame(() => {
-        const parentRect = parent.getBoundingClientRect()
-        const rect = panel.getBoundingClientRect()
-        const previous = layoutRef.current
-        const next = normalizeLayout({
-          x: previous?.x ?? rect.left - parentRect.left,
-          y: previous?.y ?? rect.top - parentRect.top,
-          width: rect.width,
-          height: rect.height,
-        }, parentRect.width, parentRect.height)
-        if (!previous || ['x', 'y', 'width', 'height'].some((key) => Math.abs(next[key as keyof ChatWindowLayout] - previous[key as keyof ChatWindowLayout]) > 1)) {
-          layoutRef.current = next
-          setLayout(next)
-        }
-      })
-    })
-    observer.observe(panel)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      observer.disconnect()
-    }
-  }, [open, canFinishTurn])
-
-  const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
-    const panel = panelRef.current
-    const parent = panel?.parentElement
-    if (!panel || !parent) return
-    const parentRect = parent.getBoundingClientRect()
-    const rect = panel.getBoundingClientRect()
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      x: rect.left - parentRect.left,
-      y: rect.top - parentRect.top,
-      width: rect.width,
-      height: rect.height,
-    }
-    event.currentTarget.setPointerCapture(event.pointerId)
-    setDragging(true)
-  }
-  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    const current = dragRef.current
-    const parent = panelRef.current?.parentElement
-    if (!current || !parent || current.pointerId !== event.pointerId) return
-    event.preventDefault()
-    const next = normalizeLayout({
-      x: current.x + event.clientX - current.startX,
-      y: current.y + event.clientY - current.startY,
-      width: current.width,
-      height: current.height,
-    }, parent.clientWidth, parent.clientHeight)
-    layoutRef.current = next
-    setLayout(next)
-  }
-  const stopDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current?.pointerId !== event.pointerId) return
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-    dragRef.current = null
-    setDragging(false)
-  }
-
-  const submit = () => {
-    if (!text.trim()) return
-    onSend(text)
-    setText('')
-  }
 
   if (!open) {
     return <button className="chat-closed" onClick={onToggle}><MessageSquare size={19} /><span>История</span><b>{messages.length}</b></button>
   }
 
   return (
-    <section
-      ref={panelRef}
-      className={`chat-panel ${dragging ? 'dragging' : ''}`}
-      aria-label="История приключения. Окно можно перетаскивать за заголовок и менять его размер за правый нижний угол."
-      style={layout ? { left: layout.x, top: layout.y, right: 'auto', bottom: 'auto', width: layout.width, height: layout.height } : undefined}
-    >
-      <div className="chat-head" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag} title="Перетащите окно истории">
-        <div><MessageSquare size={17} /><strong>История приключения</strong><span className="live-dot">В ЭФИРЕ</span></div>
+    <section className="chat-panel" aria-label="Что происходит: подтверждённые сервером события">
+      <div className="chat-head">
+        <div><span className="chat-head-eyebrow">ЧТО ПРОИСХОДИТ</span></div>
         <button className="icon-button" onClick={onToggle} aria-label="Свернуть историю"><ChevronDown size={20} /></button>
       </div>
+      {/* Голосование и проверка живут здесь, среди подтверждённой правды, а не в
+          композере: ключевое мультиплеерное событие не должно зависеть от геометрии
+          панели, которую можно перетащить или свернуть. */}
+      {interaction ? <AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onAbstain={onAbstain} onRoll={onRollInteraction} onContinue={onContinueInteraction} />
+        : pendingCheck ? (canAct ? <DiceCheckCard check={pendingCheck} onRoll={onRoll} onCancel={onCancelCheck} />
+          : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnName}</small></span></div>)
+        : null}
       <div className="messages">
         {messages.map((message) => (
           <article key={message.id} className={`message ${message.speaker}`}>
-            <div className="message-avatar">{message.speaker === 'narrator' ? <Sparkles size={15} /> : message.author.slice(0, 2).toUpperCase()}</div>
             <div className="message-body">
               <div className="message-meta"><strong>{message.author}</strong><time>{message.timestamp}</time></div>
               <p>{message.text}</p>
@@ -1337,33 +1236,15 @@ function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, 
                 </div>
               )}
               {message.speaker === 'narrator' && message.turnConsumed != null && <small className={`turn-resolution ${message.turnConsumed ? 'spent' : 'kept'}`}>{message.turnConsumed ? 'Ход передан следующему герою' : 'Можно продолжить ход'}</small>}
+              {/* Провенанс правила нажимается. Сырой rule_id в игровом интерфейсе не
+                  показываем — сервер отвечает разбором по запросу. */}
+              {message.roll && <button className="why-link" onClick={onWhy} disabled={isNarrating}><HelpCircle size={15} />Почему так?</button>}
             </div>
           </article>
         ))}
         {isNarrating && <div className="typing"><span /><span /><span /> Рассказчик меняет мир…</div>}
         <div ref={endRef} />
       </div>
-        {interaction ? <div className="composer"><AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onAbstain={onAbstain} onRoll={onRollInteraction} onContinue={onContinueInteraction} /></div> : pendingCheck ? (canAct ? <DiceCheckCard check={pendingCheck} onRoll={onRoll} onCancel={onCancelCheck} /> : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnName}</small></span></div>) : <div className="composer">
-        <div className="suggestions-row">
-          <button className="ideas-toggle" onClick={() => setSuggestionsOpen(value => !value)}><Sparkles size={14} />Идеи хода<ChevronRight className={suggestionsOpen ? 'rotated' : ''} size={14} /></button>
-          {suggestionsOpen && suggestions.map((action) => <button key={action} onClick={() => setText(action)}>{action}</button>)}
-        </div>
-        <div className="input-row">
-          <button className="end-turn-button" onClick={onFinishTurn} disabled={isNarrating || !canFinishTurn}><Check size={15} />Завершить ход</button>
-          <div className="input-wrap">
-            <textarea
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit() } }}
-              placeholder={canAct ? 'Что делает ваш герой? Опишите действие своими словами…' : `Сейчас ходит ${turnName}`}
-              rows={1}
-              disabled={isNarrating || !canAct}
-            />
-            <span>Enter — отправить · Shift+Enter — новая строка</span>
-          </div>
-          <button className="send-button" onClick={submit} disabled={!text.trim() || isNarrating || !canAct} aria-label="Отправить действие"><Send size={19} /></button>
-        </div>
-      </div>}
     </section>
   )
 }
@@ -2203,7 +2084,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             narrating={state.isNarrating}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} onReset={reset} />}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} canFinishTurn={canFinishTurn} turnName={turnActorName} onSend={submitAction} onFinishTurn={finishMapTurn} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} open={chatOpen} onToggle={() => setChatOpen(value => !value)} suggestions={state.suggestions} layoutStorageKey={`${CHAT_LAYOUT_KEY_PREFIX}:${state.sessionCode}`} />
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} turnName={turnActorName} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} onWhy={() => { void submitAction('/why') }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
               <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
               <DiceTray key={state.sessionCode} latestRoll={state.lastDiceRoll} onRoll={() => rollFreeDie(activePlayer.id)} />
