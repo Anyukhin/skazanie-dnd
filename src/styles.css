@@ -1233,6 +1233,23 @@ button.campaign-title:hover strong { color: #edc996; }
 /* Название локации важно при входе в сцену, но в бою занимает лучший угол экрана.
    Масштабируем ТОЛЬКО заголовок: сам .scene-header растянут во всю ширину и держит
    справа блок цели, поэтому масштабирование целиком утащило бы цель к центру. */
+/* Очередь хода — главный ориентир пошагового боя, но 43px кружки терялись под
+   заголовком режима. На широких экранах увеличиваем ленту и делаем активного
+   участника безошибочно заметным; узкие раскладки правило не трогает. */
+@media (min-width: 1280px) {
+  /* Ширина по содержимому: при пяти участниках фиксированная полоса выглядела
+     наполовину пустой, а при большом бою по-прежнему упрётся в предел и прокрутится. */
+  .initiative-ribbon { width: max-content; max-width: min(860px, calc(100% - 560px)); gap: 12px; padding: 9px 12px; }
+  .initiative-ribbon > ol { gap: 8px; }
+  .initiative-avatar-button { width: 58px; height: 58px; }
+  .initiative-avatar { width: 46px; height: 46px; }
+  .initiative-ribbon > header b { font-size: 17px; }
+  .initiative-ribbon li.active .initiative-avatar-button {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px rgba(214, 160, 92, .5), 0 0 22px rgba(184, 119, 55, .45);
+  }
+}
+
 .game-area:has(.combat-hotbar) .scene-title {
   transform: scale(.62);
   transform-origin: top left;
