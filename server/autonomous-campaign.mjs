@@ -137,8 +137,9 @@ export function normalizeAutonomyState(input = {}) {
   const reputations = Object.fromEntries(Object.entries(source.reputations ?? {}).slice(0, 200)
     .map(([id, value]) => [clean(id, 120), Math.max(-100, Math.min(100, Number.isSafeInteger(Number(value)) ? Number(value) : 0))]).filter(([id]) => id))
   return {
-    schema_version: 2,
+    schema_version: 3,
     director_history: (Array.isArray(source.director_history) ? clone(source.director_history) : []).slice(-500),
+    director_outcomes: (Array.isArray(source.director_outcomes) ? clone(source.director_outcomes) : []).slice(-500),
     hooks: (Array.isArray(source.hooks) ? clone(source.hooks) : []).slice(-100),
     transitions: (Array.isArray(source.transitions) ? clone(source.transitions) : []).slice(-100),
     encounter_outcomes: (Array.isArray(source.encounter_outcomes) ? clone(source.encounter_outcomes) : []).slice(-200),
@@ -219,6 +220,7 @@ export function applyAutonomyEvent(input, event) {
   const autonomy = normalizeAutonomyState(input)
   const payload = event.payload ?? {}
   if (event.event_type === 'DirectorIntentRecorded') autonomy.director_history.push(clone(payload))
+  if (event.event_type === 'DirectorIntentOutcomeRecorded') autonomy.director_outcomes.push(clone(payload))
   if (event.event_type === 'CampaignPacingAdvanced') autonomy.pacing = {
     beat: Math.max(0, Number(payload.beat) || autonomy.pacing.beat),
     phase: ['breather', 'development', 'escalation', 'climax'].includes(payload.phase) ? payload.phase : autonomy.pacing.phase,

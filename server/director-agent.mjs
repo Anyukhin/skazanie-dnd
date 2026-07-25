@@ -133,6 +133,11 @@ function publicDirectorBrief(state = {}, playerAction = '') {
         objective: clean(state.scene?.objective, 240), turn: Number(state.scene?.turn) || 0,
       },
       chapter: Math.max(1, Number(state.adventure?.chapter) || 1),
+      pacing: {
+        phase: clean(state.autonomy?.pacing?.phase, 30) || 'breather',
+        tension: Math.max(0, Math.min(100, Number(state.autonomy?.pacing?.tension) || 0)),
+        beat: Math.max(0, Number(state.autonomy?.pacing?.beat) || 0),
+      },
       active_quests: (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active').slice(0, 12).map((quest) => ({
         id: clean(quest.id, 120), title: clean(quest.title, 160), objectives: (quest.objectives ?? []).map((item) => clean(item, 180)).slice(0, 8),
         clock: quest.clock ? { current: Number(quest.clock.current) || 0, max: Number(quest.clock.max) || 1 } : null,
@@ -144,6 +149,10 @@ function publicDirectorBrief(state = {}, playerAction = '') {
       narrative_memory: directorNarrativeMemory(state, playerAction),
     },
     RECENT_EVENTS: currentChapterHistory(state).slice(-12).map((intent) => ({ type: clean(intent.type, 40), reason: clean(intent.reason, 180) })),
+    RECENT_OUTCOMES: (state.autonomy?.director_outcomes ?? []).slice(-12).map((outcome) => ({
+      intent_type: clean(outcome.intent_type, 40),
+      state_changed: outcome.state_changed === true,
+    })),
     PLAYER_ACTION: clean(playerAction, 500) || 'Продолжить приключение',
     UNTRUSTED_DATA: true,
   }

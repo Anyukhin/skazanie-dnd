@@ -96,6 +96,8 @@ export type Player = {
   knownSpellIds?: string[]
   preparedSpellIds?: string[]
   hitPointIncreases?: number[]
+  characterSetupRequired?: boolean
+  abilityGeneration?: CharacterAbilityGeneration
   characterSheet?: {
     schema_version: number
     level: number
@@ -1051,6 +1053,76 @@ export type AiHealth = {
   engineMode?: 'enforce'
   rulesetId?: string
   ruleCount?: number
+  characterCreation?: CharacterCreationCatalog
+}
+
+export type CharacterAbilityScores = {
+  str: number
+  dex: number
+  con: number
+  int: number
+  wis: number
+  cha: number
+}
+
+export type CharacterAbilityGeneration = {
+  policyId: string
+  policyVersion: number
+  method: 'standard_array'
+  baseScores: CharacterAbilityScores
+  originBonusProfileId: string
+  originBonuses: CharacterAbilityScores
+  speciesOptionId: string
+}
+
+export type CharacterCreationCatalog = {
+  schema_version: number
+  import_schema: 'skazanie.character'
+  import_schema_version: 1
+  ability_policy: {
+    policy_id: string
+    policy_version: number
+    method: 'standard_array'
+    standard_array: number[]
+    origin_bonus_profiles: Array<{ id: string; label: string; bonuses: number[] }>
+    species_options: Array<{ id: string; label: string; base_speed: number }>
+  }
+  classes: Array<{
+    id: DndClassKey
+    label: string
+    source_url: string
+    subclass_level: number
+    subclasses: Array<{ id: string; name: string; sourceUrl?: string }>
+    class_skills: {
+      choice_count: number
+      options: Array<{ id: string; name: string; ability: keyof CharacterAbilityScores }>
+    } | null
+    feature_choice_groups: Array<{
+      id: string
+      name: string
+      choiceCount: number
+      options: Array<{ id: string; name: string }>
+    }>
+    spell_selection: {
+      classKey: DndClassKey
+      spellcastingAbility: keyof CharacterAbilityScores | null
+      mode: 'known' | 'prepared' | 'spellbook'
+      cantrips: number
+      spellsKnown: number
+      preparedLimit: number
+      spellbookMinimum: number
+      maximumSpellLevel: number
+      spells: Array<{
+        id: string
+        name: string
+        level: number
+        description?: string
+        casting_time?: string
+        range_text?: string
+        mechanics_support?: 'verified' | 'partial' | 'heuristic' | 'ruling-only'
+      }>
+    } | null
+  }>
 }
 
 export type Account = {

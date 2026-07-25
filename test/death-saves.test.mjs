@@ -129,6 +129,24 @@ test('лечение при 0 ОЗ возвращает сознание, но �
   )
 })
 
+test('погибший участник инициативы может только завершить ход, чтобы бой не застрял', () => {
+  const state = fixture()
+  state.mechanics.combat.active_index = 1
+  state.activePlayerId = 'fallen'
+  state.players.find((hero) => hero.id === 'fallen').hp = 0
+  state.mechanics.death.heroes.fallen = { status: 'dead' }
+  state.mechanics.conditions.fallen = [{ id: 'dead' }]
+
+  const skipped = resolveCommand(
+    { command_type: 'EndTurn', actor_id: 'fallen', server_authoritative: true },
+    state,
+    { diceService: dice([]), context: { serverAuthoritativeCombat: true } },
+  )
+
+  assert.deepEqual(skipped.events.slice(0, 2).map((event) => event.event_type), ['TurnEnded', 'TurnStarted'])
+  assert.equal(applyAll(state, skipped.events).activePlayerId, 'foe')
+})
+
 test('серверное боевое заклинание лечения может поднять союзника с 0 ОЗ', () => {
   const initial = fixture({ tracker: { successes: 1, failures: 1, stable: false } })
   assert.ok(initial.players.find((hero) => hero.id === 'medic').combatSpells.some((spell) => spell.id === 'healing-word'))

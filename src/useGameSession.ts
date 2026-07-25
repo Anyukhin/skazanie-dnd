@@ -836,15 +836,16 @@ export function useGameSession() {
     void executeTacticalCommand({ command_type: 'AttuneItem', actor_id: playerId, item_id: itemId, attuned }, attuned ? 'Настроиться на предмет' : 'Разорвать настройку')
   }, [executeTacticalCommand])
 
-  const importCharacter = useCallback((playerId: string, source: string) => {
+  const importCharacter = useCallback(async (playerId: string, source: string) => {
     let document: unknown
     try {
       document = JSON.parse(source)
     } catch {
-      setTacticalError('Файл персонажа должен содержать корректный JSON.')
-      return
+      const error = new Error('Файл персонажа должен содержать корректный JSON.')
+      setTacticalError(error.message)
+      throw error
     }
-    void executeTacticalCommand({ command_type: 'ImportCharacter', actor_id: playerId, document }, 'Импортировать версионированный лист персонажа')
+    await executeTacticalCommand({ command_type: 'ImportCharacter', actor_id: playerId, document }, 'Импортировать версионированный лист персонажа')
   }, [executeTacticalCommand])
 
   const levelUpCharacter = useCallback((playerId: string, expectedLevel: number) => {

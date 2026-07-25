@@ -89,3 +89,63 @@ export function buildDeterministicEpilogue(state) {
     `В летописи мира остаются: ${heroes}.`,
   ].filter(Boolean).join(' ')
 }
+
+export function campaignCanAutoComplete(state = {}) {
+  const lifecycle = normalizeCampaignLifecycle(state?.mechanics?.campaign_lifecycle, state?.mechanics?.death?.campaign_status)
+  if (lifecycle.status !== 'active' || state?.mechanics?.combat?.active) return false
+  if (state?.autonomy?.pacing?.phase !== 'climax') return false
+  const quests = Array.isArray(state?.worldMemory?.quests) ? state.worldMemory.quests : []
+  // Bootstrap creates a scene-support quest (`quest:chapter:*`) alongside the
+  // campaign premise quest. The first non-scene quest is the main thread; old
+  // streams without that distinction fall back to their first quest.
+  const mainQuest = quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0]
+  return Boolean(mainQuest && ['completed', 'failed'].includes(mainQuest.status))
+}
+
+export function buildEpilogueNarrationBrief(state = {}) {
+  const visible = (entry) => ['public', 'party'].includes(String(entry?.visibility || 'party'))
+  const quests = (state.worldMemory?.quests ?? [])
+    .filter((quest) => visible(quest) && ['completed', 'failed'].includes(quest.status))
+    .slice(-12)
+  const facts = (state.worldMemory?.facts ?? [])
+    .filter((fact) => visible(fact) && fact.status === 'active')
+    .slice(-16)
+  const living = (state.players ?? [])
+    .filter((hero) => state.mechanics?.death?.heroes?.[String(hero.id)]?.status !== 'dead')
+    .map((hero) => String(hero.character || hero.name || hero.id).slice(0, 120))
+  return {
+    visible_events: quests.map((quest) => ({
+      event_type: 'QuestResolved',
+      payload: {
+        title: String(quest.title || '').slice(0, 180),
+        outcome: quest.status === 'completed' ? 'success' : 'failure',
+        summary: String(quest.summary || '').slice(0, 1_000),
+      },
+    })),
+    visible_state_changes: [{
+      campaign: String(state.campaign || 'Кампания').slice(0, 180),
+      chapter: Math.max(1, Number(state.adventure?.chapter) || 1),
+      final_location: String(state.scene?.location || '').slice(0, 180),
+      final_objective: String(state.scene?.objective || '').slice(0, 300),
+      living_heroes: living,
+    }],
+    known_environment: {
+      confirmed_facts: facts.map((fact) => ({
+        subject_id: String(fact.subject_id || '').slice(0, 120),
+        summary: String(fact.summary || '').slice(0, 1_000),
+      })),
+      confirmed_scene_history: (state.adventure?.history ?? []).slice(-12).map((entry) => ({
+        chapter: Math.max(1, Number(entry.chapter) || 1),
+        location: String(entry.location || '').slice(0, 180),
+        outcome: String(entry.outcome || '').slice(0, 500),
+      })),
+    },
+    permitted_npc_reactions: [],
+    narration_constraints: [
+      'epilogue',
+      'confirmed-events-only',
+      'no-unconfirmed-world-changes',
+      'do-not-decide-for-player-heroes',
+    ],
+  }
+}

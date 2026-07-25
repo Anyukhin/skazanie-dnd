@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
+
 const clean = (value, maximum = 240) => String(value ?? '')
   .normalize('NFKC')
   .replace(/\s+/gu, ' ')
@@ -22,12 +24,175 @@ const PHASE_BY_TENSION = Object.freeze([
 
 const PACING_DELTAS = Object.freeze({
   continue_exploration: 12,
-  open_social_scene: -6,
+  open_social_scene: 8,
   advance_quest_clock: 14,
   request_encounter: 24,
-  end_scene: -18,
-  offer_next_hook: -4,
+  end_scene: -30,
+  offer_next_hook: 6,
 })
+
+const PHASE_INTENT_TYPES = Object.freeze({
+  breather: Object.freeze(['continue_exploration', 'open_social_scene', 'advance_quest_clock', 'offer_next_hook']),
+  development: Object.freeze(['advance_quest_clock', 'continue_exploration', 'open_social_scene', 'request_encounter', 'offer_next_hook']),
+  escalation: Object.freeze(['advance_quest_clock', 'request_encounter', 'end_scene', 'continue_exploration']),
+  climax: Object.freeze(['advance_quest_clock', 'end_scene', 'request_encounter']),
+})
+
+function currentPhase(state = {}) {
+  const stored = clean(state.autonomy?.pacing?.phase, 30)
+  if (PHASE_INTENT_TYPES[stored]) return stored
+  const tension = clamp(state.autonomy?.pacing?.tension, 0, 100)
+  return PHASE_BY_TENSION.find(([threshold]) => tension >= threshold)?.[1] ?? 'breather'
+}
+
+function currentChapterIntents(state = {}) {
+  const history = Array.isArray(state.autonomy?.director_history) ? state.autonomy.director_history : []
+  const intents = history.map((entry) => entry?.intent ?? entry).filter((entry) => entry && typeof entry === 'object')
+  const lastSceneEnd = intents.map((intent) => intent.type).lastIndexOf('end_scene')
+  return intents.slice(lastSceneEnd + 1)
+}
+
+function firstOpenQuest(state = {}) {
+  return (state.worldMemory?.quests ?? []).find((quest) => quest.status === 'active' && !quest.clock?.triggered) ?? null
+}
+
+function availableIntentTypes(state = {}) {
+  const phase = currentPhase(state)
+  const openQuest = firstOpenQuest(state)
+  const encounter = state.mechanics?.encounter
+  const encounterOutcomes = Array.isArray(state.autonomy?.encounter_outcomes) ? state.autonomy.encounter_outcomes : []
+  const encounterResolved = encounter?.status === 'ended'
+    && encounterOutcomes.some((entry) => entry.encounter_id === encounter.id)
+  const quests = state.worldMemory?.quests ?? []
+  const chapter = Math.max(1, Number(state.adventure?.chapter) || 1)
+  const chapterQuest = quests.find((quest) => String(quest.id) === `quest:chapter:${chapter}`)
+  const chapterQuestResolved = Boolean(chapterQuest && ['completed', 'failed'].includes(chapterQuest.status))
+  const mainQuest = quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0]
+  const mainQuestOpen = Boolean(mainQuest && ['active', 'hidden'].includes(mainQuest.status))
+  const chapterHistory = currentChapterIntents(state)
+  const peacefulSecondChapterExit = chapter === 2
+    && encounterOutcomes.length > 0
+    && chapterHistory.some((intent) => intent.type === 'advance_quest_clock')
+  const endSceneAvailable = encounterResolved
+    || peacefulSecondChapterExit
+    || (chapterQuestResolved && !mainQuestOpen)
+  const phaseTypes = endSceneAvailable
+    ? [...new Set([...PHASE_INTENT_TYPES[phase], 'end_scene'])]
+    : PHASE_INTENT_TYPES[phase]
+  const types = phaseTypes.filter((type) => {
+    if (type === 'advance_quest_clock') return Boolean(openQuest)
+    if (type === 'request_encounter') {
+      return !state.mechanics?.combat?.active
+        && !encounter
+        && !(state.enemies ?? []).some((enemy) => enemy.alive !== false && Number(enemy.hp ?? 1) > 0)
+    }
+    if (type === 'end_scene') return !state.mechanics?.combat?.active && endSceneAvailable
+    return true
+  })
+  return { phase, openQuest, types }
+}
+
+function intentForType(type, state, openQuest) {
+  if (type === 'open_social_scene') {
+    const location = clean(state.scene?.location, 180).toLocaleLowerCase('ru')
+    const npc = (state.social?.npcs ?? []).find((entry) => entry.available !== false
+      && (!entry.location || !location || clean(entry.location, 180).toLocaleLowerCase('ru') === location))
+    return normalizeDirectorIntent({
+      type,
+      ...(npc?.id ? { npc_id: npc.id } : {}),
+      reason: 'Серверная политика темпа открывает содержательную социальную сцену.',
+    })
+  }
+  if (type === 'advance_quest_clock') {
+    return normalizeDirectorIntent({
+      type,
+      quest_id: openQuest.id,
+      reason: 'Серверная политика темпа продвигает подтверждённую активную цель.',
+    })
+  }
+  if (type === 'request_encounter') {
+    return normalizeDirectorIntent({
+      type,
+      theme: 'beasts',
+      difficulty: currentPhase(state) === 'climax' ? 'hard' : 'medium',
+      reason: 'Серверная политика темпа требует препятствия, разрешаемого правилами.',
+    })
+  }
+  if (type === 'end_scene') {
+    const chapter = Math.max(1, Number(state.adventure?.chapter) || 1)
+    return normalizeDirectorIntent({
+      type,
+      destination: `След главы ${chapter + 1}`,
+      reason: 'Подтверждённая развязка позволяет перейти к следующей главе.',
+    })
+  }
+  if (type === 'offer_next_hook') {
+    return normalizeDirectorIntent({
+      type,
+      hook: clean(state.scene?.objective, 300) || 'Найти следующую подтверждаемую зацепку',
+      reason: 'Сервер сохраняет доступный следующий шаг.',
+    })
+  }
+  return normalizeDirectorIntent({
+    type: 'continue_exploration',
+    reason: 'Серверная политика темпа требует нового наблюдаемого шага.',
+  })
+}
+
+/**
+ * Server-owned Director boundary. The model may propose only a bounded intent;
+ * phase compatibility and anti-stall replacement are decided here.
+ */
+export function authorizeDirectorIntent(state = {}, proposedIntent = {}) {
+  const proposed = normalizeDirectorIntent(proposedIntent)
+  const availability = availableIntentTypes(state)
+  const history = currentChapterIntents(state)
+  const lastType = clean(history.at(-1)?.type, 40)
+  const lastOutcome = (state.autonomy?.director_outcomes ?? []).at(-1) ?? null
+  const stalledType = lastOutcome?.state_changed === false ? clean(lastOutcome.intent_type, 40) : ''
+  const blocked = new Set([lastType, stalledType].filter(Boolean))
+  const allowed = availability.types.filter((type) => !blocked.has(type))
+  const candidates = allowed.length ? allowed : availability.types
+  const accepted = candidates.includes(proposed.type)
+  const replacementType = accepted ? proposed.type : candidates[0] ?? 'continue_exploration'
+  const intent = accepted ? proposed : intentForType(replacementType, state, availability.openQuest)
+  return {
+    intent,
+    proposed_intent: proposed,
+    replaced: !accepted,
+    phase: availability.phase,
+    allowed_types: availability.types,
+    reason: accepted
+      ? 'intent_allowed'
+      : blocked.has(proposed.type)
+        ? 'anti_stall_replacement'
+        : 'phase_incompatible_replacement',
+    policy: 'director-intent-policy-v1',
+  }
+}
+
+export function directorProgressFingerprint(state = {}) {
+  return createHash('sha256').update(JSON.stringify({
+    chapter: Math.max(1, Number(state.adventure?.chapter) || 1),
+    scene: {
+      location: clean(state.scene?.location, 180),
+      objective: clean(state.scene?.objective, 300),
+      revealed_cells: (state.scene?.cells ?? []).filter((cell) => cell.revealed === true).length,
+    },
+    quests: (state.worldMemory?.quests ?? []).map((quest) => ({
+      id: clean(quest.id, 120),
+      status: clean(quest.status, 30),
+      current: Number(quest.clock?.current) || 0,
+      triggered: quest.clock?.triggered === true,
+    })),
+    encounter: state.mechanics?.encounter ? {
+      id: clean(state.mechanics.encounter.id, 120),
+      status: clean(state.mechanics.encounter.status, 40),
+      outcome: clean(state.mechanics.encounter.outcome, 80),
+    } : null,
+    lifecycle: clean(state.mechanics?.campaign_lifecycle?.status, 30),
+  })).digest('hex').slice(0, 24)
+}
 
 export function pacingForDirectorIntent(state = {}, intent = {}) {
   const previous = state.autonomy?.pacing ?? {}
@@ -72,11 +237,12 @@ export function planServerTravel(state = {}, {
   const activeQuestPressure = (state.worldMemory?.quests ?? []).some((quest) => (
     quest.status === 'active' && Number(quest.clock?.current) >= Math.max(1, Number(quest.clock?.max) - 2)
   )) ? 15 : 0
-  const recoveryDiscount = recentEncounterResolved(state) ? 35 : 0
+  const afterEncounterRecovery = recentEncounterResolved(state)
+  const recoveryDiscount = afterEncounterRecovery ? 35 : 0
   const riskScore = clamp(pacingTension + (wilderness ? 20 : 5) + activeQuestPressure - recoveryDiscount, 0, 100)
   const threshold = clamp(riskScore - 35, 0, 55)
   const roll = (entropy >>> 8) % 100
-  const randomEncounter = riskScore >= 65 && roll < threshold
+  const randomEncounter = !afterEncounterRecovery && riskScore >= 65 && roll < threshold
   const themeOptions = /(кладбищ|склеп|руин|grave|crypt|ruin)/iu.test(`${from} ${to}`)
     ? ['undead', 'raiders']
     : wilderness

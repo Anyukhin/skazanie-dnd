@@ -133,6 +133,40 @@ function hero(id, name) {
   }
 }
 
+function characterDocument(character) {
+  const baseScores = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+  return {
+    schema: 'skazanie.character',
+    schema_version: 1,
+    character: {
+      character,
+      name: character,
+      role: 'Воин · ур. 1',
+      characterClass: 'fighter',
+      species: 'Человек',
+      background: 'Солдат',
+      level: 1,
+      experience: 0,
+      abilities: baseScores,
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.standard-array',
+        policyVersion: 1,
+        method: 'standard_array',
+        baseScores,
+        originBonusProfileId: 'none',
+        originBonuses: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 },
+        speciesOptionId: 'human',
+      },
+      baseSpeed: 30,
+      hitPointIncreases: [],
+      classSkillProficiencies: ['athletics', 'perception'],
+      selectedFeatureIds: ['fighting-style-defense'],
+      knownSpellIds: [],
+      preparedSpellIds: [],
+    },
+  }
+}
+
 test('этап 1: два игрока получают SSE presence, коммитят без lost update, а projection восстанавливается после restart', { timeout: 60_000 }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-stage1-'))
   let logs = ''
@@ -182,7 +216,7 @@ test('этап 1: два игрока получают SSE presence, комми�
   const invite = await request(baseUrl, '/api/campaigns/STAGE1/invites', {
     method: 'POST',
     cookie: ownerCookie,
-    body: { hero_ids: ['hero-2', 'hero-4'] },
+    body: { hero_ids: ['hero-2'] },
   })
   assert.equal(invite.status, 201, invite.text)
   assert.equal((await request(baseUrl, '/api/campaigns/STAGE1/join', {
@@ -191,11 +225,23 @@ test('этап 1: два игрока получают SSE presence, комми�
     body: { invite_token: invite.body.token },
   })).status, 200)
 
+  const importHero = (cookieValue, actorId, character) => request(baseUrl, '/api/campaigns/STAGE1/commands', {
+    method: 'POST',
+    cookie: cookieValue,
+    key: `stage1-import-${actorId}`,
+    body: {
+      idempotency_key: `stage1-import-${actorId}`,
+      command: { command_type: 'ImportCharacter', actor_id: actorId, document: characterDocument(character) },
+    },
+  })
+  assert.equal((await importHero(ownerCookie, 'hero-1', 'Первый')).status, 200)
+  assert.equal((await importHero(guestCookie, 'hero-2', 'Второй')).status, 200)
+
   const ownerStream = await openRoomStream(baseUrl, ownerCookie, ownerStreamAbort.signal)
   await nextRoomEvent(ownerStream, (event) => event.state.presence.online_hero_ids.includes('hero-1'))
   const guestStream = await openRoomStream(baseUrl, guestCookie, guestStreamAbort.signal)
-  const bothOnline = await nextRoomEvent(ownerStream, (event) => event.state.presence.online_hero_ids.length === 4)
-  assert.deepEqual(bothOnline.state.presence.online_hero_ids, ['hero-1', 'hero-2', 'hero-3', 'hero-4'])
+  const bothOnline = await nextRoomEvent(ownerStream, (event) => event.state.presence.online_hero_ids.length === 2)
+  assert.deepEqual(bothOnline.state.presence.online_hero_ids, ['hero-1', 'hero-2'])
   assert.equal((await nextRoomEvent(guestStream)).state.presence.transport, 'sse')
 
   const command = (cookie, key, actorId) => request(baseUrl, '/api/campaigns/STAGE1/commands', {
@@ -204,7 +250,7 @@ test('этап 1: два игрока получают SSE presence, комми�
     key,
     body: {
       idempotency_key: key,
-      command: { command_type: 'EquipItem', actor_id: actorId, item_id: `${actorId}-leather`, equipped: true },
+      command: { command_type: 'EquipItem', actor_id: actorId, item_id: `${actorId}-starter-longsword`, equipped: false },
     },
   })
   const [ownerEquip, guestEquip] = await Promise.all([
@@ -215,12 +261,12 @@ test('этап 1: два игрока получают SSE presence, комми�
   assert.equal(guestEquip.status, 200, guestEquip.text)
   const converged = await request(baseUrl, '/api/rooms/STAGE1', { cookie: ownerCookie })
   assert.equal(converged.status, 200, converged.text)
-  assert.equal(converged.body.state.players.find((player) => player.id === 'hero-1').inventory[0].equipped, true)
-  assert.equal(converged.body.state.players.find((player) => player.id === 'hero-2').inventory[0].equipped, true)
+  assert.equal(converged.body.state.players.find((player) => player.id === 'hero-1').inventory[0].equipped, false)
+  assert.equal(converged.body.state.players.find((player) => player.id === 'hero-2').inventory[0].equipped, false)
 
   guestStreamAbort.abort()
   const guestOffline = await nextRoomEvent(ownerStream, (event) => !event.state.presence.online_hero_ids.includes('hero-2'))
-  assert.deepEqual(guestOffline.state.presence.online_hero_ids, ['hero-1', 'hero-3'])
+  assert.deepEqual(guestOffline.state.presence.online_hero_ids, ['hero-1'])
   ownerStreamAbort.abort()
   await stopServer(child)
   child = null

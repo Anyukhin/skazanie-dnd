@@ -30,7 +30,7 @@ function TextField({ label, value, onChange, rows = 3 }: { label: string; value:
   return <label className="sheet-field textarea-field"><span>{label}</span><textarea rows={rows} value={value} onChange={(event) => onChange(event.target.value)} /></label>
 }
 
-export function CharacterEditor({ player, onClose, onSave, onImport, onLevelUp }: { player: Player; onClose: () => void; onSave: (patch: Partial<Player>) => void; onImport: (source: string) => void; onLevelUp: () => void }) {
+export function CharacterEditor({ player, onClose, onSave, onImport, onLevelUp }: { player: Player; onClose: () => void; onSave: (patch: Partial<Player>) => void; onImport: (source: string) => Promise<void>; onLevelUp: () => void }) {
   const [draft, setDraft] = useState<Player>(() => structuredClone(player))
   const [tab, setTab] = useState<'sheet' | 'story' | 'advancement'>('sheet')
   const [notice, setNotice] = useState('')
@@ -149,7 +149,7 @@ export function CharacterEditor({ player, onClose, onSave, onImport, onLevelUp }
   const importSheet = async (file?: File) => {
     if (!file) return
     try {
-      onImport(await file.text())
+      await onImport(await file.text())
       setNotice('Документ отправлен на серверную проверку и импорт.')
     } catch (error) {
       setNotice(error instanceof Error ? `Не удалось импортировать: ${error.message}` : 'Не удалось импортировать JSON.')

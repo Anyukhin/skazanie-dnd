@@ -119,7 +119,9 @@ function startingVisualSpec(theme, world) {
 function fallbackOpening({ name, partyName, world, heroes, entropy }) {
   const theme = fallbackTheme(world, entropy)
   const location = world.startingLocation || theme.location
-  const heroNames = heroes.map((hero) => hero.character).join(', ')
+  const heroNames = heroes.every((hero) => hero.characterSetupRequired)
+    ? 'четырёх героев, которым игроки ещё дадут имена и прошлое'
+    : heroes.map((hero) => hero.character).join(', ')
   const era = world.era || 'необычной авторской эпохе'
   const genre = world.genre || world.preset || 'приключенческой истории'
   const tone = world.tone || 'Атмосфера полна тайн и обещает открытия'
@@ -202,7 +204,7 @@ export class CampaignBootstrapper {
     const groupName = clean(partyName, 120) || 'Новый отряд'
     if (!/^[A-Z0-9-]{3,24}$/.test(campaignCode)) throw new Error('Некорректный код кампании')
     if (!Array.isArray(rawPlayers) || rawPlayers.length < 1 || rawPlayers.length > 12) throw new Error('Для новой кампании выберите от 1 до 12 героев')
-    const heroes = rawPlayers.map(normalizeHero).map(withStarterKit)
+    const heroes = rawPlayers.map(normalizeHero).map((hero) => hero.characterSetupRequired ? hero : withStarterKit(hero))
     if (new Set(heroes.map((hero) => hero.id)).size !== heroes.length) throw new Error('В кампании повторяются id героев')
     const world = normalizeWorld(rawWorld)
     const fallback = fallbackOpening({ name: campaignName, partyName: groupName, world, heroes, entropy: campaignCode })

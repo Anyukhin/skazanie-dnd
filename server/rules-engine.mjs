@@ -8,7 +8,8 @@ import {
   rememberCurrentSceneMap,
 } from './adventure-director.mjs'
 import { ensureCampaignWorldMap } from './world-map.mjs'
-import { normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
+import { campaignCanAutoComplete, normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
+import { authorizeDirectorIntent } from './campaign-loop-policy.mjs'
 import { normalizePartyDecision, normalizePartyDecisionPolicy } from './party-decision.mjs'
 import {
   WORLD_MEMORY_COMMAND_TYPES,
@@ -189,6 +190,8 @@ const COMMAND_RULES = Object.freeze({
   RecordWorldRelationship: [],
   UpsertQuest: [],
   AdvanceQuestClock: [],
+  ResolveQuest: [],
+  CompleteCampaign: [],
   UpsertNarrativeThread: [],
   AdvanceNarrativeThreadClock: [],
   RecordNpcBelief: [],
@@ -218,12 +221,13 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
   'AdvanceScene',
   'UpsertWorldEntity', 'RecordWorldFact', 'RevealWorldFact', 'RecordKnowledgeRevelation',
-  'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock',
+  'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock', 'ResolveQuest',
   'UpsertNarrativeThread', 'AdvanceNarrativeThreadClock',
   'RecordNpcBelief', 'RecordRumor', 'ResolveEpistemicClaim', 'RecordNarrativeSummary',
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'LevelUp', 'ImportCharacter',
+  'CompleteCampaign',
 ])
 
 const MERCHANT_LIFECYCLE_COMMAND_TYPES = new Set([
@@ -1712,12 +1716,31 @@ export function validateCommand(input, rawState, context = {}) {
       throw error
     }
   }
+  const setupActor = state.players.find((actor) => actorId(actor) === String(command.actor_id ?? ''))
+  if (setupActor?.characterSetupRequired && command.command_type !== 'ImportCharacter') {
+    throw new RulesValidationError(
+      'Сначала завершите создание этого героя',
+      'CHARACTER_SETUP_REQUIRED',
+    )
+  }
   const lifecycleStatus = state.mechanics.campaign_lifecycle.status
   if (lifecycleStatus === 'paused') {
     throw new RulesValidationError('Кампания приостановлена владельцем', 'CAMPAIGN_PAUSED')
   }
   if (['completed', 'failed', 'archived'].includes(lifecycleStatus) && command.command_type !== 'EndCombat') {
     throw new RulesValidationError('Завершённая или архивная кампания доступна только для чтения', 'CAMPAIGN_READ_ONLY')
+  }
+  if (command.command_type === 'CompleteCampaign') {
+    if (context?.isDirector !== true) {
+      throw new RulesValidationError('Автоматический финал доступен только серверному контуру кампании', 'CAMPAIGN_COMPLETION_FORBIDDEN')
+    }
+    if (!campaignCanAutoComplete(state)) {
+      throw new RulesValidationError('Условия автоматического финала ещё не достигнуты', 'CAMPAIGN_COMPLETION_NOT_READY')
+    }
+    command.epilogue = String(command.epilogue || '').normalize('NFKC').trim().slice(0, 8_000)
+    if (!command.epilogue) throw new RulesValidationError('Финал требует связного эпилога', 'CAMPAIGN_EPILOGUE_REQUIRED')
+    command.reason = String(command.reason || 'main_thread_resolved_at_climax').slice(0, 240)
+    command.occurred_at = String(command.occurred_at || '').slice(0, 40)
   }
   if (command.command_type === 'AdvanceScene') {
     if (context?.isAdmin !== true && context?.isDirector !== true) {
@@ -1790,7 +1813,7 @@ export function validateCommand(input, rawState, context = {}) {
   assertTurn(command, state, context)
 
   const actorFate = command.actor_id ? state.mechanics.death.heroes[command.actor_id] : null
-  if (actorFate?.status === 'dead' && !['ResolveHeroDeath', 'EndCombat'].includes(command.command_type)) {
+  if (actorFate?.status === 'dead' && !['ResolveHeroDeath', 'EndCombat', 'EndTurn'].includes(command.command_type)) {
     throw new RulesValidationError('Погибший герой не может действовать, пока его не заменят или не воскресят', 'HERO_DEAD_UNRESOLVED')
   }
   if (command.command_type === 'ResolveHeroDeath') {
@@ -2105,7 +2128,7 @@ export function validateCommand(input, rawState, context = {}) {
     throw new RulesValidationError('Опутанное существо не может перемещаться', 'ACTOR_RESTRAINED')
   }
 
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', 'CompleteCampaign', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -5413,6 +5436,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'RecordWorldRelationship':
     case 'UpsertQuest':
     case 'AdvanceQuestClock':
+    case 'ResolveQuest':
     case 'UpsertNarrativeThread':
     case 'AdvanceNarrativeThreadClock':
     case 'RecordNpcBelief':
@@ -5423,6 +5447,16 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       events.push(eventFrom(command, worldEvent.event_type, worldEvent.payload, worldEvent.target_ids))
       break
     }
+    case 'CompleteCampaign':
+      events.push(eventFrom(command, 'CampaignCompleted', {
+        status: 'completed',
+        reason: command.reason,
+        changed_by: null,
+        occurred_at: command.occurred_at || null,
+        epilogue: command.epilogue,
+        completion_policy: 'campaign-arc-completion-v1',
+      }, []))
+      break
     case 'UpsertNpcSocialProfile':
     case 'RecordNpcSocialTurn':
     case 'ResolveNpcPromise': {
@@ -6972,6 +7006,7 @@ export function applyGameEvent(rawState, event) {
     case 'WorldRelationshipRecorded':
     case 'QuestUpserted':
     case 'QuestClockAdvanced':
+    case 'QuestResolved':
     case 'NarrativeThreadUpserted':
     case 'NarrativeThreadClockAdvanced':
     case 'NpcBeliefRecorded':
@@ -7042,6 +7077,7 @@ export function eventSummary(event) {
     case 'WorldFactRevealed': return `Fact ${payload.fact_id} revealed to ${(event.target_ids ?? []).length} heroes`
     case 'QuestUpserted': return `Quest updated: ${payload.quest?.title || payload.quest?.id}`
     case 'QuestClockAdvanced': return `Quest clock ${payload.quest_id} advanced by ${payload.amount}`
+    case 'QuestResolved': return `Квест ${payload.quest_id} завершён: ${payload.summary || payload.outcome}`
     case 'CampaignPacingAdvanced': return `Темп кампании: ${payload.phase || 'development'}, напряжение ${payload.tension_after ?? 0}`
     case 'TravelResolved': return `Отряд завершил путь из ${payload.from || 'предыдущей локации'} в ${payload.to || 'новую локацию'} за ${payload.duration_minutes || 0} мин.`
     case 'DowntimeResolved': return `Передышка завершена: ${payload.kind || 'downtime'}, ${payload.duration_minutes || 0} мин.`
@@ -7124,5 +7160,9 @@ export class RulesEngine {
 
   resolvePlan(plan, state, context) {
     return resolveCommands(plan?.proposed_commands ?? plan?.commands ?? [], state, { diceService: this.diceService, context })
+  }
+
+  authorizeDirectorIntent(intent, state) {
+    return authorizeDirectorIntent(normalizeCampaignState(state), intent)
   }
 }

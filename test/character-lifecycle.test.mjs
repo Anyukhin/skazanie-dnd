@@ -130,12 +130,23 @@ test('resource plan delegates maxima and recovery to existing spell and class ca
 })
 
 function importDocument(character) {
+  const baseScores = { str: 8, dex: 14, con: 13, int: 15, wis: 12, cha: 10 }
   return {
     schema: CHARACTER_IMPORT_SCHEMA,
     schema_version: CHARACTER_IMPORT_SCHEMA_VERSION,
     character: {
       character: 'Мира', characterClass: 'wizard', level: 1, experience: 0,
-      abilities: { str: 8, dex: 14, con: 12, int: 16, wis: 10, cha: 10 },
+      species: 'Человек',
+      abilities: baseScores,
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.standard-array',
+        policyVersion: 1,
+        method: 'standard_array',
+        baseScores,
+        originBonusProfileId: 'none',
+        originBonuses: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 },
+        speciesOptionId: 'human',
+      },
       baseSpeed: 30, classSkillProficiencies: ['arcana', 'history'], selectedFeatureIds: [],
       knownSpellIds: ['fire-bolt', 'mage-hand', 'light'], preparedSpellIds: [],
       ...character,
@@ -169,6 +180,12 @@ test('strict v1 importer returns only safe canonical sheet fields', () => {
     () => parseCharacterImport(importDocument({ hitPointIncreases: 'not-an-array' })),
     (error) => error.code === 'IMPORT_INVALID_FIELD',
   )
+  assert.throws(
+    () => parseCharacterImport(importDocument({
+      abilities: { str: 30, dex: 30, con: 30, int: 30, wis: 30, cha: 30 },
+    })),
+    (error) => error.code === 'IMPORT_ABILITY_BUDGET_INVALID',
+  )
 })
 
 test('v0 importer migration accepts only documented aliases and rejects conflicts or unknown fields', () => {
@@ -193,6 +210,34 @@ test('v0 importer migration accepts only documented aliases and rejects conflict
     () => migrateCharacterImport({ schema: CHARACTER_IMPORT_SCHEMA, schema_version: 0, character: { ...migrated.character, gold: 999 } }),
     (error) => error.code === 'IMPORT_UNKNOWN_FIELD',
   )
+})
+
+test('legacy CharacterImported events with pre-policy ability scores remain replayable', () => {
+  const state = { players: [fighter({ level: 1, experience: 0, hitPointIncreases: [] })], mechanics: { combat: { active: false } } }
+  const legacyEvent = {
+    event_type: 'CharacterImported',
+    actor_id: 'fighter',
+    target_ids: ['fighter'],
+    payload: {
+      schema: CHARACTER_IMPORT_SCHEMA,
+      schema_version: CHARACTER_IMPORT_SCHEMA_VERSION,
+      patch: {
+        character: 'Старый герой',
+        characterClass: 'fighter',
+        level: 1,
+        experience: 0,
+        abilities: { str: 18, dex: 11, con: 15, int: 9, wis: 13, cha: 7 },
+        baseSpeed: 30,
+        classSkillProficiencies: ['athletics', 'perception'],
+        selectedFeatureIds: ['fighting-style-defense'],
+        knownSpellIds: [],
+        preparedSpellIds: [],
+      },
+    },
+  }
+  const replayed = applyCharacterLifecycleEvent(state, legacyEvent)
+  assert.equal(replayed.players[0].character, 'Старый герой')
+  assert.equal(replayed.players[0].abilities.str, 18)
 })
 
 test('resolveLevelUp combines validation, event construction, pure reduction and new derived stats', () => {

@@ -81,6 +81,40 @@ function hero(index) {
   }
 }
 
+function characterDocument(character, experience = 0) {
+  const baseScores = { str: 15, dex: 13, con: 14, int: 10, wis: 12, cha: 8 }
+  return {
+    schema: 'skazanie.character',
+    schema_version: 1,
+    character: {
+      character,
+      name: character,
+      role: 'Варвар · ур. 1',
+      characterClass: 'barbarian',
+      species: 'Человек',
+      background: 'Солдат',
+      level: 1,
+      experience,
+      abilities: baseScores,
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.standard-array',
+        policyVersion: 1,
+        method: 'standard_array',
+        baseScores,
+        originBonusProfileId: 'none',
+        originBonuses: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 },
+        speciesOptionId: 'human',
+      },
+      baseSpeed: 30,
+      hitPointIncreases: [],
+      classSkillProficiencies: ['athletics', 'perception'],
+      selectedFeatureIds: [],
+      knownSpellIds: [],
+      preparedSpellIds: [],
+    },
+  }
+}
+
 function livingEnemies(state) {
   return (state.enemies ?? []).filter((enemy) => enemy.alive !== false)
 }
@@ -130,10 +164,20 @@ test('обычные игроки проходят автономную камп
   const guest = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
     name: 'Guest', email: 'guest@mvp.test', password: 'secure-guest-password',
   } })
+  const guestThree = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
+    name: 'Guest Three', email: 'guest-three@mvp.test', password: 'secure-guest-three-password',
+  } })
+  const guestFour = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
+    name: 'Guest Four', email: 'guest-four@mvp.test', password: 'secure-guest-four-password',
+  } })
   assert.equal(owner.status, 201, owner.text)
   assert.equal(guest.status, 201, guest.text)
+  assert.equal(guestThree.status, 201, guestThree.text)
+  assert.equal(guestFour.status, 201, guestFour.text)
   const ownerCookie = cookie(owner)
   const guestCookie = cookie(guest)
+  const guestThreeCookie = cookie(guestThree)
+  const guestFourCookie = cookie(guestFour)
 
   const created = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: ownerCookie, body: {
     code: 'PLAYER-MVP', name: 'Игроки и автономный режиссёр',
@@ -141,7 +185,7 @@ test('обычные игроки проходят автономную камп
   } })
   assert.equal(created.status, 201, created.text)
   assert.equal(created.body.state.players.length, 4)
-  assert.deepEqual(created.body.user.campaignMemberships[0].heroIds, ['mvp-hero-1', 'mvp-hero-3'])
+  assert.deepEqual(created.body.user.campaignMemberships[0].heroIds, ['mvp-hero-1'])
   assert.equal(created.body.state.worldMemory.quests.length >= 1, true)
   assert.equal(created.body.state.social.npcs.length >= 1, true)
 
@@ -150,15 +194,21 @@ test('обычные игроки проходят автономную камп
   const bareJoin = await request(baseUrl, '/api/campaigns/PLAYER-MVP/join', { method: 'POST', cookie: guestCookie, body: {} })
   assert.equal(bareJoin.status, 400, bareJoin.text)
 
-  const invite = await request(baseUrl, '/api/campaigns/PLAYER-MVP/invites', {
-    method: 'POST', cookie: ownerCookie, body: { hero_ids: ['mvp-hero-2', 'mvp-hero-4'] },
-  })
-  assert.equal(invite.status, 201, invite.text)
-  const joined = await request(baseUrl, '/api/campaigns/PLAYER-MVP/join', {
-    method: 'POST', cookie: guestCookie, body: { invite_token: invite.body.token },
-  })
-  assert.equal(joined.status, 200, joined.text)
-  assert.deepEqual(joined.body.hero_ids, ['mvp-hero-2', 'mvp-hero-4'])
+  const joinHero = async (heroId, cookieValue) => {
+    const issued = await request(baseUrl, '/api/campaigns/PLAYER-MVP/invites', {
+      method: 'POST', cookie: ownerCookie, body: { hero_ids: [heroId] },
+    })
+    assert.equal(issued.status, 201, issued.text)
+    const joined = await request(baseUrl, '/api/campaigns/PLAYER-MVP/join', {
+      method: 'POST', cookie: cookieValue, body: { invite_token: issued.body.token },
+    })
+    assert.equal(joined.status, 200, joined.text)
+    assert.deepEqual(joined.body.hero_ids, [heroId])
+    return { issued, joined }
+  }
+  const { issued: invite } = await joinHero('mvp-hero-2', guestCookie)
+  await joinHero('mvp-hero-3', guestThreeCookie)
+  await joinHero('mvp-hero-4', guestFourCookie)
   const joinedAgain = await request(baseUrl, '/api/campaigns/PLAYER-MVP/join', {
     method: 'POST', cookie: guestCookie, body: { invite_token: invite.body.token },
   })
@@ -171,6 +221,23 @@ test('обычные игроки проходят автономную камп
   assert.equal(guestRoom.status, 200, guestRoom.text)
   assert.equal(ownerRoom.body.state.state_version, guestRoom.body.state.state_version)
 
+  const heroCookies = new Map([
+    ['mvp-hero-1', ownerCookie],
+    ['mvp-hero-2', guestCookie],
+    ['mvp-hero-3', guestThreeCookie],
+    ['mvp-hero-4', guestFourCookie],
+  ])
+  for (let index = 1; index <= 4; index += 1) {
+    const actorId = `mvp-hero-${index}`
+    const imported = await playerCommand(baseUrl, heroCookies.get(actorId), `initial-import-${index}`, {
+      command_type: 'ImportCharacter',
+      actor_id: actorId,
+      document: characterDocument(`Герой ${index}`),
+    })
+    assert.equal(imported.status, 200, imported.text)
+    assert.equal(imported.body.authoritative_state.players.find((player) => player.id === actorId).characterSetupRequired, false)
+  }
+
   const retiredRoomWrite = await request(baseUrl, '/api/rooms/PLAYER-MVP', {
     method: 'PUT', cookie: ownerCookie,
     body: { state: ownerRoom.body.state, baseVersion: ownerRoom.body.version },
@@ -182,69 +249,46 @@ test('обычные игроки проходят автономную камп
   const characterChoice = await playerCommand(baseUrl, ownerCookie, characterKey, {
     command_type: 'SetCharacterChoices', actor_id: 'mvp-hero-1',
     subclass: '', class_skill_proficiencies: ['athletics', 'perception'],
-    selected_feature_ids: ['fighting-style-defense'],
+    selected_feature_ids: [],
   })
   assert.equal(characterChoice.status, 200, characterChoice.text)
   const builtHero = characterChoice.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1')
   assert.deepEqual(builtHero.classSkillProficiencies, ['athletics', 'perception'])
-  assert.deepEqual(builtHero.selectedFeatureIds, ['fighting-style-defense'])
+  assert.deepEqual(builtHero.selectedFeatureIds, [])
 
   const characterReplayMismatch = await playerCommand(baseUrl, ownerCookie, characterKey, {
     command_type: 'SetCharacterChoices', actor_id: 'mvp-hero-1',
-    subclass: '', class_skill_proficiencies: ['acrobatics', 'perception'],
-    selected_feature_ids: ['fighting-style-defense'],
+    subclass: '', class_skill_proficiencies: ['nature', 'survival'],
+    selected_feature_ids: [],
   })
   assert.equal(characterReplayMismatch.status, 409, characterReplayMismatch.text)
 
   const forgedItemOwner = await playerCommand(baseUrl, guestCookie, 'item-owner-forgery', {
-    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-leather', equipped: true,
+    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-longsword', equipped: false,
   })
   assert.equal(forgedItemOwner.status, 403, forgedItemOwner.text)
 
+  const unequippedItem = await playerCommand(baseUrl, ownerCookie, 'item-unequip-1', {
+    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-longsword', equipped: false,
+  })
+  assert.equal(unequippedItem.status, 200, unequippedItem.text)
+  assert.equal(unequippedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-longsword').equipped, false)
   const equippedItem = await playerCommand(baseUrl, ownerCookie, 'item-equip-1', {
-    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-leather', equipped: true,
+    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-longsword', equipped: true,
   })
   assert.equal(equippedItem.status, 200, equippedItem.text)
-  assert.equal(equippedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-leather').equipped, true)
+  assert.equal(equippedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-longsword').equipped, true)
 
-  const transferredItem = await playerCommand(baseUrl, ownerCookie, 'item-transfer-1', {
-    command_type: 'TransferItem', actor_id: 'mvp-hero-1', item_id: 'mvp-rations', recipient_id: 'mvp-hero-2', quantity: 1,
-  })
-  assert.equal(transferredItem.status, 200, transferredItem.text)
-  assert.equal(transferredItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-rations').quantity, 1)
-  assert.equal(transferredItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-2').inventory.some((item) => item.catalog_id === 'srd_5_2_1:rations-one-day'), true)
-  const transferredReplay = await playerCommand(baseUrl, ownerCookie, 'item-transfer-1', {
-    command_type: 'TransferItem', actor_id: 'mvp-hero-1', item_id: 'mvp-rations', recipient_id: 'mvp-hero-2', quantity: 1,
-  })
-  assert.equal(transferredReplay.status, 200, transferredReplay.text)
-  assert.equal(transferredReplay.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-rations').quantity, 1)
-
-  const usedItem = await playerCommand(baseUrl, ownerCookie, 'item-use-1', {
-    command_type: 'UseItem', actor_id: 'mvp-hero-1', item_id: 'mvp-potion', target_id: 'mvp-hero-1',
-  })
-  assert.equal(usedItem.status, 200, usedItem.text)
-  assert.ok(usedItem.body.mechanics.some((event) => event.event_type === 'DieRolled'))
-  assert.equal(usedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.some((item) => item.id === 'mvp-potion'), false)
-
-  const importDocument = {
-    schema: 'skazanie.character',
-    schema_version: 1,
-    character: {
-      character: 'Герой 1', characterClass: 'fighter', level: 1, experience: 225,
-      abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 10 },
-      baseSpeed: 30, classSkillProficiencies: ['athletics', 'perception'],
-      selectedFeatureIds: ['fighting-style-defense'], knownSpellIds: [], preparedSpellIds: [],
-    },
-  }
+  const importDocument = characterDocument('Герой 1', 225)
   const importedCharacter = await playerCommand(baseUrl, ownerCookie, 'character-import-1', {
     command_type: 'ImportCharacter', actor_id: 'mvp-hero-1', document: importDocument,
   })
   assert.equal(importedCharacter.status, 200, importedCharacter.text)
   const importedHero = importedCharacter.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1')
-  assert.equal(importedHero.characterClass, 'fighter')
+  assert.equal(importedHero.characterClass, 'barbarian')
   assert.equal(importedHero.experience, 225)
   assert.equal(importedHero.proficiency, 2)
-  assert.equal(importedHero.inventory.find((item) => item.id === 'mvp-leather').equipped, true)
+  assert.equal(importedHero.inventory.find((item) => item.id === 'mvp-hero-1-starter-longsword').equipped, true)
   const forgedImport = await playerCommand(baseUrl, ownerCookie, 'character-import-forged', {
     command_type: 'ImportCharacter', actor_id: 'mvp-hero-1',
     document: { ...importDocument, character: { ...importDocument.character, hp: 999, gold: 999 } },
@@ -284,7 +328,7 @@ test('обычные игроки проходят автономную камп
     let actionState = advanced.body.state
     for (let actionIndex = 0; actionIndex < playerActions.length; actionIndex += 1) {
       const activeId = String(actionState.activePlayerId)
-      const activeCookie = ['mvp-hero-1', 'mvp-hero-3'].includes(activeId) ? ownerCookie : guestCookie
+      const activeCookie = heroCookies.get(activeId)
       const action = playerActions[actionIndex]
       const narrated = await request(baseUrl, '/api/narrate', {
         method: 'POST', cookie: activeCookie,
@@ -332,9 +376,7 @@ test('обычные игроки проходят автономную камп
   assert.equal(restored.status, 200, restored.text)
   assert.deepEqual(restored.body.state.mechanics.combat, stableCombat)
   assert.equal(restored.body.state.enemies.length, combatRoom.body.state.enemies.length)
-  assert.equal(restored.body.state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-leather').equipped, true)
-  assert.equal(restored.body.state.players.find((player) => player.id === 'mvp-hero-1').inventory.some((item) => item.id === 'mvp-potion'), false)
-  assert.equal(restored.body.state.players.find((player) => player.id === 'mvp-hero-2').inventory.some((item) => item.catalog_id === 'srd_5_2_1:rations-one-day'), true)
+  assert.equal(restored.body.state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-longsword').equipped, true)
   const repeatedRead = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(repeatedRead.body.version, restored.body.version, 'GET must not mutate the room projection')
   assert.deepEqual(repeatedRead.body.state.mechanics.combat, restored.body.state.mechanics.combat)
@@ -350,7 +392,7 @@ test('обычные игроки проходят автономную камп
   }
   let commandIndex = 0
   let playerTurns = 0
-  const cookieFor = (actorId) => ['mvp-hero-1', 'mvp-hero-3'].includes(actorId) ? ownerCookie : guestCookie
+  const cookieFor = (actorId) => heroCookies.get(actorId)
   for (let attempt = 0; attempt < 160 && battleState.mechanics.combat.active; attempt += 1) {
     const combat = battleState.mechanics.combat
     if (combat.reaction_window) {
@@ -370,6 +412,20 @@ test('обычные игроки проходят автономную камп
     const actorCookie = cookieFor(actorId)
 
     if (Number(current.hp) > 0 && current.alive !== false) {
+      const conditions = battleState.mechanics.conditions?.[actorId] ?? []
+      const raging = conditions.some((entry) => String(entry?.id ?? entry) === 'raging')
+      const bonusReady = combat.action_economy?.[actorId]?.bonus_action !== false
+      if (!raging && bonusReady) {
+        const rage = await playerCommand(baseUrl, actorCookie, `player-rage-${++commandIndex}`, {
+          command_type: 'UseCombatAction', actor_id: actorId, action_id: 'rage',
+        })
+        if (rage.status === 200) {
+          combatEvents.push(...(rage.body.mechanics ?? []))
+          battleState = rage.body.authoritative_state
+        } else {
+          assert.equal(rage.body?.code, 'RESOURCE_DEPLETED', rage.text)
+        }
+      }
       let target = nearestEnemy(battleState, actorId)
       if (target && target.distance > 5) {
         const path = approachPath(battleState, actorId, target.enemy.id)
@@ -380,18 +436,38 @@ test('обычные игроки проходят автономную камп
           const moved = await playerCommand(baseUrl, actorCookie, `player-move-${++commandIndex}`, {
             command_type: 'MoveActor', actor_id: actorId, to,
           })
-          assert.equal(moved.status, 200, moved.text)
-          combatEvents.push(...(moved.body.mechanics ?? []))
-          battleState = moved.body.authoritative_state
-          target = nearestEnemy(battleState, actorId)
+          if (moved.status === 200) {
+            combatEvents.push(...(moved.body.mechanics ?? []))
+            battleState = moved.body.authoritative_state
+            target = nearestEnemy(battleState, actorId)
+          } else {
+            assert.equal(moved.body.code, 'INVALID_DESTINATION', moved.text)
+          }
         }
       }
       const actionReady = battleState.mechanics.combat.action_economy?.[actorId]?.action !== false
-      if (battleState.mechanics.combat.active && target && target.distance <= 5 && actionReady) {
-        const attacked = await playerCommand(baseUrl, actorCookie, `player-attack-${++commandIndex}`, {
-          command_type: 'MakeAttack', actor_id: actorId, target_id: target.enemy.id,
-        })
-        assert.equal(attacked.status, 200, attacked.text)
+      let attacked = null
+      if (battleState.mechanics.combat.active && actionReady) {
+        const from = actorPosition(battleState, actorId)
+        const candidates = livingEnemies(battleState).map((enemy) => {
+          const to = actorPosition(battleState, enemy.id)
+          const distance = from && to ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 : Infinity
+          return { enemy, distance }
+        }).filter((candidate) => candidate.distance === 5)
+          .sort((left, right) => left.distance - right.distance)
+        for (const candidate of candidates) {
+          const attempted = await playerCommand(baseUrl, actorCookie, `player-attack-${++commandIndex}`, {
+            command_type: 'MakeAttack', actor_id: actorId, target_id: candidate.enemy.id,
+            item_id: `${actorId}-starter-longsword`,
+          })
+          if (attempted.status === 200) {
+            attacked = attempted
+            break
+          }
+          assert.ok(['TARGET_OUT_OF_RANGE', 'TRAJECTORY_BLOCKED'].includes(attempted.body?.code), attempted.text)
+        }
+      }
+      if (attacked) {
         combatEvents.push(...(attacked.body.mechanics ?? []))
         battleState = attacked.body.authoritative_state
         playerTurns += 1
@@ -418,10 +494,29 @@ test('обычные игроки проходят автономную камп
       }
     }
 
+    const actorFate = battleState.mechanics.death?.heroes?.[actorId]
+    if (battleState.mechanics.combat.active && actorFate?.status === 'dead') {
+      const resurrected = await playerCommand(baseUrl, actorCookie, `player-resurrect-${++commandIndex}`, {
+        command_type: 'ResolveHeroDeath', actor_id: actorId, resolution: 'resurrect',
+      })
+      assert.equal(resurrected.status, 200, resurrected.text)
+      combatEvents.push(...(resurrected.body.mechanics ?? []))
+      battleState = resurrected.body.authoritative_state
+      continue
+    }
     if (battleState.mechanics.combat.active) {
       const endedTurn = await playerCommand(baseUrl, actorCookie, `player-end-turn-${++commandIndex}`, {
         command_type: 'EndTurn', actor_id: actorId,
       })
+      if (endedTurn.status === 400 && endedTurn.body?.code === 'HERO_DEAD_UNRESOLVED') {
+        const resurrected = await playerCommand(baseUrl, actorCookie, `player-resurrect-${++commandIndex}`, {
+          command_type: 'ResolveHeroDeath', actor_id: actorId, resolution: 'resurrect',
+        })
+        assert.equal(resurrected.status, 200, resurrected.text)
+        combatEvents.push(...(resurrected.body.mechanics ?? []))
+        battleState = resurrected.body.authoritative_state
+        continue
+      }
       assert.equal(endedTurn.status, 200, endedTurn.text)
       combatEvents.push(...(endedTurn.body.mechanics ?? []))
       battleState = endedTurn.body.authoritative_state

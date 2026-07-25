@@ -4,6 +4,7 @@ import { normalizeDirectorIntent, serverReputationDelta, serverRewardForEncounte
 import {
   assembleSocialNpc,
   completedDowntime,
+  directorProgressFingerprint,
   pacingForDirectorIntent,
   planServerTravel,
 } from './campaign-loop-policy.mjs'
@@ -19,6 +20,11 @@ import {
   shortestTacticalPath,
 } from './rules-engine.mjs'
 import { classifyFreeActionKind } from './intent-parser.mjs'
+import {
+  buildDeterministicEpilogue,
+  buildEpilogueNarrationBrief,
+  campaignCanAutoComplete,
+} from './campaign-lifecycle.mjs'
 
 const clone = (value) => structuredClone(value)
 const clean = (value, maximum = 300) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -66,6 +72,22 @@ function nextHook(state, reason = '') {
   return clean(reason, 300) || (quest ? `Продолжить квест «${quest.title}»` : `Исследовать ${state.scene?.location || 'окрестности'} и найти новую зацепку`)
 }
 
+function questResolutionFor(quest = {}) {
+  const label = clean(quest.clock?.label, 160)
+  const failureClock = /(угроз|опасност|провал|разыск|подозрен|deadline|danger|failure)/iu.test(label)
+  const outcome = failureClock ? 'failure' : 'success'
+  const summary = outcome === 'success'
+    ? `Цель «${clean(quest.title, 180)}» достигнута: заполненные часы подтвердили успех отряда.`
+    : `Угроза в квесте «${clean(quest.title, 180)}» осуществилась: заполненные часы подтвердили неудачу, но история продолжается с последствиями.`
+  return {
+    outcome,
+    summary,
+    nextObjective: outcome === 'success'
+      ? `Развить последствия победы в квесте «${clean(quest.title, 180)}» и приблизить развязку`
+      : `Ответить на последствия провала квеста «${clean(quest.title, 180)}» и найти новый путь`,
+  }
+}
+
 function boundedObjective(state, text) {
   const lower = text.toLocaleLowerCase('ru')
   if (/двер\w*|подпира\w*|баррикад\w*/iu.test(lower)) return 'Проверить, удерживает ли баррикада дверь, и выбрать следующий способ пройти.'
@@ -97,10 +119,11 @@ function parseJsonFact(fact) {
 }
 
 export class AutonomousCampaignOrchestrator {
-  constructor({ eventStore, rulesEngine, now = () => Date.now() } = {}) {
+  constructor({ eventStore, rulesEngine, narrator = null, now = () => Date.now() } = {}) {
     if (!eventStore || !rulesEngine) throw new TypeError('AutonomousCampaignOrchestrator requires eventStore and rulesEngine')
     this.eventStore = eventStore
     this.rulesEngine = rulesEngine
+    this.narrator = narrator
     this.now = now
   }
 
@@ -149,7 +172,79 @@ export class AutonomousCampaignOrchestrator {
     return { ...committed, commands: resolved.commands, rolls: resolved.rolls }
   }
 
-  async recordIntent(campaignId, intent, idempotencyKey) {
+  async resolveTriggeredQuests(campaignId, idempotencyKey, sourceEvents = []) {
+    const loaded = await this.load(campaignId)
+    const triggered = (loaded.state.worldMemory?.quests ?? [])
+      .filter((quest) => quest.status === 'active' && quest.clock?.triggered === true)
+    if (!triggered.length) return null
+    const sourceEventIds = sourceEvents
+      .filter((entry) => entry.event_type === 'QuestClockAdvanced')
+      .map((entry) => entry.event_id)
+      .filter(Boolean)
+    const commands = []
+    for (const quest of triggered) {
+      const resolution = questResolutionFor(quest)
+      let subject = (loaded.state.worldMemory?.entities ?? []).find((entity) => quest.entity_ids?.includes(entity.id))
+        ?? currentSubject(loaded.state)
+      if (!subject) {
+        subject = {
+          id: `quest-resolution-${digest(quest.id)}`,
+          kind: 'event',
+          name: `Развязка: ${clean(quest.title, 160)}`,
+          summary: resolution.summary,
+          aliases: [],
+          visibility: quest.visibility === 'gm_only' ? 'gm_only' : 'party',
+          tags: ['quest-resolution'],
+        }
+        commands.push({ command_type: 'UpsertWorldEntity', entity: subject })
+      }
+      commands.push({
+        command_type: 'ResolveQuest',
+        quest_id: quest.id,
+        outcome: resolution.outcome,
+        summary: resolution.summary,
+        next_objective: resolution.nextObjective,
+        source_event_ids: sourceEventIds,
+      })
+      commands.push({ command_type: 'RecordWorldFact', fact: {
+        id: `fact-quest-resolution-${digest({ quest: quest.id, clock: quest.clock })}`,
+        subject_id: subject.id,
+        predicate: 'quest_outcome',
+        object: resolution.outcome,
+        summary: resolution.summary,
+        visibility: quest.visibility === 'gm_only' ? 'gm_only' : 'party',
+        source_event_ids: sourceEventIds,
+      } })
+      commands.push({ command_type: 'UpdateObjective', objective: resolution.nextObjective })
+    }
+    return this.runCommands(campaignId, `${idempotencyKey}:quest-resolution`, commands)
+  }
+
+  async completeCampaignIfReady(campaignId, idempotencyKey) {
+    const loaded = await this.load(campaignId)
+    if (!campaignCanAutoComplete(loaded.state)) return null
+    const fallback = buildDeterministicEpilogue(loaded.state)
+    let epilogue = fallback
+    let provider = 'deterministic'
+    if (this.narrator) {
+      const rendered = await this.narrator.render(buildEpilogueNarrationBrief(loaded.state), {
+        style: 'Связный русский эпилог в 3–5 предложениях: эмоциональная развязка без новых фактов и решений за героев.',
+      })
+      if (rendered.provider && !String(rendered.provider).startsWith('deterministic') && rendered.narration) {
+        epilogue = rendered.narration
+        provider = rendered.provider
+      } else provider = rendered.provider ?? provider
+    }
+    const committed = await this.runCommands(campaignId, `${idempotencyKey}:campaign-completion`, [{
+      command_type: 'CompleteCampaign',
+      reason: 'main_thread_resolved_at_climax',
+      occurred_at: new Date(this.now()).toISOString(),
+      epilogue,
+    }])
+    return { ...committed, epilogue_provider: provider }
+  }
+
+  async recordIntent(campaignId, intent, idempotencyKey, authorization = null) {
     const loaded = await this.load(campaignId)
     const provenance = {
       source: 'director',
@@ -159,7 +254,17 @@ export class AutonomousCampaignOrchestrator {
       recorded_at_ms: this.now(),
     }
     return this.commitEvents(campaignId, `${idempotencyKey}:intent`, [
-      event(`${idempotencyKey}:intent`, 'DirectorIntentRecorded', { intent, provenance }, [], 'party'),
+      event(`${idempotencyKey}:intent`, 'DirectorIntentRecorded', {
+        intent,
+        provenance,
+        policy: authorization ? {
+          policy: authorization.policy,
+          phase: authorization.phase,
+          replaced: authorization.replaced,
+          reason: authorization.reason,
+          proposed_type: authorization.proposed_intent?.type,
+        } : null,
+      }, [], 'party'),
       event(`${idempotencyKey}:pacing`, 'CampaignPacingAdvanced', {
         ...pacingForDirectorIntent(loaded.state, intent),
         provenance: { source: 'server-pacing-policy' },
@@ -168,10 +273,33 @@ export class AutonomousCampaignOrchestrator {
   }
 
   async runIntent({ campaignId, intent: rawIntent, idempotencyKey }) {
-    const intent = normalizeDirectorIntent(rawIntent)
-    const key = clean(idempotencyKey, 120) || `director-${digest({ campaignId, intent })}`
-    await this.recordIntent(campaignId, intent, key)
+    const proposed = normalizeDirectorIntent(rawIntent)
+    const key = clean(idempotencyKey, 120) || `director-${digest({ campaignId, intent: proposed })}`
+    const existingCompletion = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:campaign-completion`)
+    if (existingCompletion) {
+      const current = await this.load(campaignId)
+      const intentCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:intent`)
+      const recorded = intentCommit?.events?.find((entry) => entry.event_type === 'DirectorIntentRecorded')?.payload?.intent
+      return {
+        intent: recorded ? normalizeDirectorIntent(recorded) : proposed,
+        authorization: { policy: 'director-intent-policy-v1', reason: 'idempotent_replay', replaced: false },
+        results: [existingCompletion],
+        state: current.state,
+        state_version: current.state_version,
+        admin_commands: 0,
+        duplicate: true,
+      }
+    }
+    const existingIntentCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:intent`)
     let loaded = await this.load(campaignId)
+    const existingIntent = existingIntentCommit?.events?.find((entry) => entry.event_type === 'DirectorIntentRecorded')?.payload?.intent
+    const authorization = existingIntent
+      ? { intent: normalizeDirectorIntent(existingIntent), proposed_intent: proposed, replaced: false, phase: loaded.state.autonomy?.pacing?.phase, policy: 'director-intent-policy-v1', reason: 'idempotent_replay' }
+      : this.rulesEngine.authorizeDirectorIntent(proposed, loaded.state)
+    const intent = authorization.intent
+    const progressBefore = directorProgressFingerprint(loaded.state)
+    await this.recordIntent(campaignId, intent, key, authorization)
+    loaded = await this.load(campaignId)
     const commands = []
     const custom = []
     const setupCommands = []
@@ -263,6 +391,12 @@ export class AutonomousCampaignOrchestrator {
     if (setupCommands.length) results.push(await this.runCommands(campaignId, `${key}:setup`, setupCommands))
     if (custom.length) results.push(await this.commitEvents(campaignId, `${key}:custom`, custom))
     if (commands.length) results.push(await this.runCommands(campaignId, `${key}:commands`, commands))
+    const questResolution = await this.resolveTriggeredQuests(
+      campaignId,
+      key,
+      results.flatMap((result) => result.events ?? []),
+    )
+    if (questResolution) results.push(questResolution)
     if (travel) {
       const afterTravel = await this.load(campaignId)
       const scheduled = await this.executeNpcSchedules(campaignId, {
@@ -290,7 +424,21 @@ export class AutonomousCampaignOrchestrator {
       results.push(await this.runCommands(campaignId, `${key}:failsafe-hook`, [{ command_type: 'UpdateObjective', objective: nextHook(loaded.state) }]))
       loaded = await this.load(campaignId)
     }
-    return { intent, results, state: loaded.state, state_version: loaded.state_version, admin_commands: 0 }
+    const progressAfter = directorProgressFingerprint(loaded.state)
+    const outcome = await this.commitEvents(campaignId, `${key}:director-outcome`, [
+      event(`${key}:director-outcome`, 'DirectorIntentOutcomeRecorded', {
+        intent_type: intent.type,
+        state_changed: progressBefore !== progressAfter,
+        progress_before: progressBefore,
+        progress_after: progressAfter,
+        policy: 'director-anti-stall-v1',
+      }, [], 'party'),
+    ])
+    results.push(outcome)
+    const completion = await this.completeCampaignIfReady(campaignId, key)
+    if (completion) results.push(completion)
+    loaded = await this.load(campaignId)
+    return { intent, authorization, results, state: loaded.state, state_version: loaded.state_version, admin_commands: 0 }
   }
 
   async handleUnknownAction({ campaignId, action, idempotencyKey, playerId = '', intent = null }) {
@@ -427,6 +575,8 @@ export class AutonomousCampaignOrchestrator {
       let commands
       if (!livingEnemies.length || !livingHeroes.length) {
         commands = [{ command_type: 'EndCombat', actor_id: actorId || livingHeroes[0]?.id || livingEnemies[0]?.id, reason: livingEnemies.length ? 'party_defeated' : 'enemies_defeated' }]
+      } else if (!isLivingActor(actor)) {
+        commands = [{ command_type: 'EndTurn', actor_id: actorId }]
       } else if (isEnemyActor(state, actorId)) {
         commands = planNpcTurn(state, actorId)
       } else {

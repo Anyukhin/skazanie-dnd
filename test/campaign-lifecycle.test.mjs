@@ -3,7 +3,9 @@ import test from 'node:test'
 
 import {
   assertCampaignPlayable,
+  buildEpilogueNarrationBrief,
   buildDeterministicEpilogue,
+  campaignCanAutoComplete,
   lifecycleEventForAction,
   normalizeCampaignLifecycle,
 } from '../server/campaign-lifecycle.mjs'
@@ -67,4 +69,34 @@ test('deterministic epilogue uses committed campaign facts', () => {
     buildDeterministicEpilogue(campaign()),
     'История «Предел зимы» завершена. Последняя цель: Остановить бурю. Финальная глава развернулась в месте «Северная башня». В летописи мира остаются: Ада.',
   )
+})
+
+test('automatic completion requires climax and a fully resolved main thread', () => {
+  const state = campaign()
+  state.autonomy.pacing = { beat: 8, phase: 'climax', tension: 84 }
+  state.worldMemory.quests = [{
+    id: 'quest:storm', title: 'Остановить бурю', summary: 'Буря остановлена.',
+    status: 'completed', visibility: 'party', entity_ids: [], objectives: [],
+    clock: { current: 4, max: 4, label: 'Прогресс', triggered: true },
+  }]
+  assert.equal(campaignCanAutoComplete(state), true)
+  state.worldMemory.quests.push({
+    id: 'quest:chapter:1', title: 'Незавершённая сцена', summary: '',
+    status: 'active', visibility: 'party', entity_ids: [], objectives: [],
+    clock: { current: 1, max: 4, label: 'Прогресс', triggered: false },
+  })
+  assert.equal(campaignCanAutoComplete(state), true)
+  state.worldMemory.quests[0].status = 'active'
+  assert.equal(campaignCanAutoComplete(state), false)
+})
+
+test('epilogue brief contains only party-visible confirmed facts', () => {
+  const state = campaign()
+  state.worldMemory.facts = [
+    { id: 'party-fact', subject_id: 'tower', summary: 'Башня устояла.', status: 'active', visibility: 'party' },
+    { id: 'secret-fact', subject_id: 'storm', summary: 'Скрытый повелитель ещё жив.', status: 'active', visibility: 'gm_only' },
+  ]
+  const brief = buildEpilogueNarrationBrief(state)
+  assert.match(JSON.stringify(brief), /Башня устояла/u)
+  assert.doesNotMatch(JSON.stringify(brief), /Скрытый повелитель|secret-fact/u)
 })

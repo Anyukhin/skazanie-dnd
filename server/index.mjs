@@ -77,6 +77,7 @@ import {
   resolvePartyVote,
 } from './party-decision.mjs'
 import { compareProjection } from './projection-integrity.mjs'
+import { characterCreationCatalog, createCharacterSlot } from './character-lifecycle.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -135,7 +136,7 @@ const creativeDirector = new CreativeDirector({ narrator })
 const npcController = new NpcControllerAgent({ llmClient: apiKey ? llmClient : null })
 const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmClient : null })
 const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null })
-const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine })
+const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
 
 function json(res, status, body) {
@@ -1214,6 +1215,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     const merchantInventoryChanged = eventTypes.has('MerchantPurchaseCompleted')
       || eventTypes.has('MerchantSaleCompleted')
       || eventTypes.has('MerchantServicePurchased')
+    const characterImported = eventTypes.has('CharacterImported')
     const refreshInventory = forceProjectorRefresh || merchantInventoryChanged || [
       'ItemGranted',
       'ItemEquipped',
@@ -1222,7 +1224,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       'ItemConsumed',
       'ItemTransferred',
       'ItemAttunementChanged',
-    ].some((type) => eventTypes.has(type))
+    ].some((type) => eventTypes.has(type)) || characterImported
     const characterBuildChanged = eventTypes.has('CharacterChoicesUpdated') || eventTypes.has('SpellSelectionsUpdated')
       || eventTypes.has('CharacterLeveledUp') || eventTypes.has('CharacterImported')
     const enginePlayers = new Map((engineState.players ?? []).map((player) => [String(player.id), player]))
@@ -1234,7 +1236,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
         hp: authoritative.hp,
         ...(forceProjectorRefresh || eventTypes.has('ExperienceAwarded') ? { experience: authoritative.experience } : {}),
         ...(refreshInventory ? { inventory: authoritative.inventory } : {}),
-        ...(forceProjectorRefresh || merchantInventoryChanged ? { currency: authoritative.currency } : {}),
+        ...(forceProjectorRefresh || merchantInventoryChanged || characterImported ? { currency: authoritative.currency } : {}),
         ...(forceProjectorRefresh || characterBuildChanged ? {
           level: authoritative.level,
           experience: authoritative.experience,
@@ -1251,6 +1253,24 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
           selectedFeatureIds: authoritative.selectedFeatureIds,
           knownSpellIds: authoritative.knownSpellIds,
           preparedSpellIds: authoritative.preparedSpellIds,
+          ...(characterImported ? {
+            character: authoritative.character,
+            name: authoritative.name,
+            role: authoritative.role,
+            species: authoritative.species,
+            background: authoritative.background,
+            alignment: authoritative.alignment,
+            traits: authoritative.traits,
+            ideals: authoritative.ideals,
+            bonds: authoritative.bonds,
+            flaws: authoritative.flaws,
+            backstory: authoritative.backstory,
+            notes: authoritative.notes,
+            baseSpeed: authoritative.baseSpeed,
+            abilityGeneration: authoritative.abilityGeneration,
+            characterSetupRequired: authoritative.characterSetupRequired,
+            initials: authoritative.initials,
+          } : {}),
         } : {}),
         ...(forceProjectorRefresh || eventTypes.has('ActorMoved') || eventTypes.has('SceneAdvanced') ? { x: authoritative.x, y: authoritative.y } : {}),
       }
@@ -1535,7 +1555,19 @@ const server = createServer(async (req, res) => {
   applySecurityHeaders(res)
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4173', 'Access-Control-Allow-Headers': 'Content-Type, X-Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Credentials': 'true' }); return res.end() }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || '') && !originAllowed(req)) return json(res, 403, { error: 'Запрос с другого источника отклонён' })
-  if (req.url === '/api/health') return json(res, 200, { configured: Boolean(apiKey), provider: 'RouterAI', model, fallbackModels, models: llmClient.health(), imageModel, engineMode: 'enforce', rulesetId: rulePack.manifest.ruleset_id, ruleCount: rulePack.rules.length, tools: [] })
+  if (req.url === '/api/health') return json(res, 200, {
+    configured: Boolean(apiKey),
+    provider: 'RouterAI',
+    model,
+    fallbackModels,
+    models: llmClient.health(),
+    imageModel,
+    engineMode: 'enforce',
+    rulesetId: rulePack.manifest.ruleset_id,
+    ruleCount: rulePack.rules.length,
+    characterCreation: characterCreationCatalog(),
+    tools: [],
+  })
   if (req.url === '/api/admin/usage' && req.method === 'GET') {
     const user = requireAdmin(req, res); if (!user) return
     return json(res, 200, { usage: usageLedger.report(), models: llmClient.health() })
@@ -1797,16 +1829,24 @@ const server = createServer(async (req, res) => {
       const code = String(body.code || '').toUpperCase()
       if (!/^[A-Z0-9-]{3,24}$/.test(code)) return json(res, 400, { error: 'Код кампании должен содержать 3–24 латинских символа, цифры или дефис' })
       if (getRoom(code).state) return json(res, 409, { error: 'Кампания с таким кодом уже существует' })
-      if (creator.role !== 'admin' && (!body.bootstrap || !Array.isArray(body.bootstrap.players) || body.bootstrap.players.length < 4)) {
-        return json(res, 400, { error: 'Для автономной кампании обычного игрока создайте отряд минимум из четырёх героев' })
+      const requestedSlotCount = Number(body.bootstrap?.slotCount ?? body.bootstrap?.players?.length ?? 0)
+      if (creator.role !== 'admin' && (!body.bootstrap || requestedSlotCount < 4)) {
+        return json(res, 400, { error: 'Для автономной кампании нужны четыре заполняемых места героев' })
       }
       if (creator.role !== 'admin' && body.state) return json(res, 403, { error: 'Обычный игрок создаёт кампанию только через проверенный мастер создания' })
+      const usesServerSlots = creator.role !== 'admin' || !Array.isArray(body.bootstrap?.players) || body.bootstrap.players.length === 0
+      const bootstrapPlayers = usesServerSlots
+        ? Array.from({ length: 4 }, (_, index) => createCharacterSlot({
+            id: body.bootstrap?.players?.[index]?.id ?? `hero-slot-${index + 1}`,
+            index,
+          }))
+        : body.bootstrap.players
       const generatedState = body.bootstrap ? await campaignBootstrapper.create({
         code,
         name: body.name,
         partyName: body.bootstrap.partyName,
         world: body.bootstrap.world,
-        players: body.bootstrap.players,
+        players: bootstrapPlayers,
       }) : null
       const state = normalizeCampaignState(generatedState ?? body.state ?? {
         sessionCode: code,
@@ -1827,7 +1867,7 @@ const server = createServer(async (req, res) => {
       const room = saveRoom(code, { ...initialized.state, engine_mode: 'enforce', state_projector_version: GAME_STATE_PROJECTOR_VERSION }, 0)
       const ownerHeroIds = creator.role === 'admin'
         ? []
-        : state.partyMemberIds.filter((_, index) => index % 2 === 0)
+        : state.partyMemberIds.slice(0, 1)
       if (creator.role !== 'admin') {
         upsertCampaignMembership({ campaignId: code, userId: creator.id, role: 'owner', heroIds: ownerHeroIds })
       }
@@ -1851,6 +1891,7 @@ const server = createServer(async (req, res) => {
         : room.state.players.map((hero) => String(hero.id))
       const assigned = new Set(listCampaignMemberships(campaignId).flatMap((item) => item.heroIds ?? []).map(String))
       const requested = Array.isArray(body.hero_ids) ? [...new Set(body.hero_ids.map(String))] : []
+      if (requested.length > 1) return json(res, 400, { error: 'Одна ссылка закрепляет ровно одно место героя' })
       const heroIds = requested.length ? requested : partyIds.filter((heroId) => !assigned.has(heroId)).slice(0, 1)
       if (!heroIds.length) return json(res, 409, { error: 'В кампании не осталось свободных героев' })
       if (heroIds.some((heroId) => !partyIds.includes(heroId) || assigned.has(heroId))) {
@@ -2009,6 +2050,7 @@ const server = createServer(async (req, res) => {
         return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: campaignStateForViewer(current.state, user, current.state.activePlayerId) })
       }
       let loaded = await autonomousCampaign.load(campaignId)
+      assertCampaignPlayable(loaded.state)
       const encounter = loaded.state.mechanics?.encounter
       const outcomeRecorded = encounter?.id && (loaded.state.autonomy?.encounter_outcomes ?? []).some((entry) => entry.encounter_id === encounter.id)
       const events = []

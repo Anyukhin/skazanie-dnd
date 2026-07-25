@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  authorizeDirectorIntent,
   assembleSocialNpc,
   completedDowntime,
   pacingForDirectorIntent,
@@ -34,6 +35,26 @@ test('server pacing derives bounded tension from a narrative-only intent', () =>
     intent_type: 'advance_quest_clock',
     policy: 'campaign-pacing-v1',
   })
+})
+
+test('Rules policy replaces repeated and phase-incompatible Director intents', () => {
+  const state = structuredClone(baseState)
+  state.autonomy.director_history = [{ intent: { type: 'open_social_scene' } }]
+  state.autonomy.director_outcomes = [{ intent_type: 'open_social_scene', state_changed: false }]
+  state.autonomy.pacing = { beat: 7, phase: 'escalation', tension: 68 }
+
+  const authorized = authorizeDirectorIntent(state, { type: 'open_social_scene' })
+
+  assert.equal(authorized.replaced, true)
+  assert.equal(authorized.reason, 'anti_stall_replacement')
+  assert.equal(authorized.intent.type, 'advance_quest_clock')
+  assert.equal(authorized.intent.quest_id, 'quest-1')
+  assert.ok(!authorized.allowed_types.includes('open_social_scene'))
+})
+
+test('pacing grows on social and hook beats instead of rewarding stagnation', () => {
+  assert.equal(pacingForDirectorIntent({ autonomy: { pacing: { tension: 10 } } }, { type: 'open_social_scene' }).tension_after, 18)
+  assert.equal(pacingForDirectorIntent({ autonomy: { pacing: { tension: 18 } } }, { type: 'offer_next_hook' }).tension_after, 24)
 })
 
 test('travel policy is deterministic and owns time, risk and random encounter mechanics', () => {

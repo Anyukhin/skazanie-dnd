@@ -206,6 +206,8 @@ export function combatClassCatalogInfo() {
       classKey: entry.classKey,
       label: entry.label,
       sourceUrl: entry.sourceUrl,
+      subclassLevel: entry.subclassLevel,
+      subclassOptions: entry.subclasses.map((subclass) => clone(subclass)),
       subclasses: entry.subclasses.length,
       actions: entry.actions.length,
       coverage: clone(entry.coverage),

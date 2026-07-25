@@ -67,14 +67,14 @@ function campaign() {
   })
 }
 
-async function fixture(t) {
+async function fixture(t, initialState = campaign(), narrator = null) {
   const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-autonomy-'))
   t.after(() => rmSync(rootDir, { recursive: true, force: true }))
   const eventStore = new FileEventStore({ rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState, snapshotEvery: 7 })
-  await eventStore.initializeCampaign({ campaign_id: 'AUTONOMY-30', initial_state: campaign() })
+  await eventStore.initializeCampaign({ campaign_id: 'AUTONOMY-30', initial_state: initialState })
   const diceService = new DiceService({ rng: new SequenceDiceRng(Array.from({ length: 4_000 }, (_, index) => index % 4 === 0 ? 18 : 6)) })
   const rulesEngine = new RulesEngine({ diceService })
-  return { rootDir, eventStore, rulesEngine, autonomy: new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, now: () => 1_784_466_000_000 }) }
+  return { rootDir, eventStore, rulesEngine, autonomy: new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, now: () => 1_784_466_000_000 }) }
 }
 
 test('Director contract accepts only six narrative intentions and rejects forged mechanics', () => {
@@ -95,6 +95,68 @@ test('Director contract accepts only six narrative intentions and rejects forged
     { type: 'advance_quest_clock', quest_id: 'ledger-quest', amount: 20 },
     { type: 'request_encounter', theme: 'dragon', difficulty: 'impossible' },
   ]) assert.throws(() => normalizeDirectorIntent(forged), DirectorIntentError)
+})
+
+test('climax resolves a triggered quest and completes the campaign replay-identically', async (t) => {
+  const initial = campaign()
+  initial.worldMemory.quests[0].clock = { current: 7, max: 8, label: 'Evidence', triggered: false }
+  initial.autonomy = { pacing: { beat: 7, phase: 'escalation', tension: 70 } }
+  const { eventStore, autonomy } = await fixture(t, initial)
+
+  const result = await autonomy.runIntent({
+    campaignId: 'AUTONOMY-30',
+    intent: { type: 'advance_quest_clock', quest_id: 'ledger-quest' },
+    idempotencyKey: 'final-turn',
+  })
+
+  assert.equal(result.state.worldMemory.quests[0].status, 'completed')
+  assert.equal(result.state.mechanics.campaign_lifecycle.status, 'completed', JSON.stringify({
+    pacing: result.state.autonomy.pacing,
+    quests: result.state.worldMemory.quests.map((quest) => ({ id: quest.id, status: quest.status, clock: quest.clock })),
+  }))
+  assert.match(result.state.mechanics.campaign_lifecycle.epilogue, /Autonomous test campaign/u)
+  const events = await eventStore.getEvents('AUTONOMY-30')
+  for (const required of ['QuestClockAdvanced', 'QuestResolved', 'WorldFactRecorded', 'DirectorIntentOutcomeRecorded', 'CampaignCompleted']) {
+    assert.ok(events.some((entry) => entry.event_type === required), `missing ${required}`)
+  }
+  const replayed = await eventStore.replay('AUTONOMY-30', { use_snapshots: false })
+  assert.deepEqual(replayed.state, result.state)
+
+  const beforeCount = events.length
+  const duplicate = await autonomy.runIntent({
+    campaignId: 'AUTONOMY-30',
+    intent: { type: 'advance_quest_clock', quest_id: 'ledger-quest' },
+    idempotencyKey: 'final-turn',
+  })
+  assert.equal(duplicate.duplicate, true)
+  assert.deepEqual(duplicate.state, result.state)
+  assert.equal(await autonomy.completeCampaignIfReady('AUTONOMY-30', 'final-turn'), null)
+  assert.equal((await eventStore.getEvents('AUTONOMY-30')).length, beforeCount)
+})
+
+test('epilogue narrator receives only visible facts and its prose is committed', async (t) => {
+  const initial = campaign()
+  initial.autonomy = { pacing: { beat: 9, phase: 'climax', tension: 90 } }
+  initial.worldMemory.quests[0].status = 'completed'
+  initial.worldMemory.quests[0].summary = 'The ledger was recovered.'
+  initial.worldMemory.facts.push(
+    { id: 'fact:visible', subject_id: 'old-road', predicate: 'outcome', object: 'recovered', summary: 'The road wardens recovered the ledger.', visibility: 'party' },
+    { id: 'fact:secret', subject_id: 'old-road', predicate: 'secret', object: 'hidden', summary: 'A secret patron escaped.', visibility: 'gm_only' },
+  )
+  let receivedBrief = null
+  const narrator = {
+    async render(brief) {
+      receivedBrief = brief
+      return { narration: 'Летопись дороги завершилась возвращением реестра. Стражи сохранили память о поступке героев.', provider: 'test-llm' }
+    },
+  }
+  const { autonomy } = await fixture(t, initial, narrator)
+
+  const completion = await autonomy.completeCampaignIfReady('AUTONOMY-30', 'epilogue-turn')
+  assert.equal(completion.epilogue_provider, 'test-llm')
+  assert.match(completion.state.mechanics.campaign_lifecycle.epilogue, /Летопись дороги/u)
+  assert.match(JSON.stringify(receivedBrief), /recovered the ledger/u)
+  assert.doesNotMatch(JSON.stringify(receivedBrief), /secret patron|fact:secret/u)
 })
 
 test('30+ turn campaign completes the autonomous vertical slice and survives replay/restart', { timeout: 60_000 }, async (t) => {
@@ -156,7 +218,9 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   assert.ok(loaded.state.autonomy.pacing.beat >= 7)
   assert.equal(loaded.state.autonomy.travel_history.length, 1)
   assert.equal(loaded.state.autonomy.downtime_history.length, 1)
-  assert.equal(loaded.state.social.npcs.find((npc) => npc.id === 'generated-witness')?.available, true)
+  const authorizedTypes = loaded.state.autonomy.director_history.map((entry) => entry.intent.type)
+  assert.ok(authorizedTypes.every((type, index) => index === 0 || type !== authorizedTypes[index - 1]))
+  assert.equal(loaded.state.social.npcs.some((npc) => npc.id === 'generated-witness'), false)
 
   const replayed = await eventStore.replay('AUTONOMY-30', { use_snapshots: false })
   assert.deepEqual(replayed.state, loaded.state)

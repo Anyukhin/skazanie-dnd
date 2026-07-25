@@ -11,7 +11,7 @@ const VISIBILITIES = new Set(['public', 'party', 'gm_only'])
 
 export const WORLD_MEMORY_COMMAND_TYPES = new Set([
   'UpsertWorldEntity', 'RecordWorldFact', 'RevealWorldFact', 'RecordKnowledgeRevelation',
-  'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock',
+  'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock', 'ResolveQuest',
   'UpsertNarrativeThread', 'AdvanceNarrativeThreadClock',
   'RecordNpcBelief', 'RecordRumor', 'ResolveEpistemicClaim', 'RecordNarrativeSummary',
 ])
@@ -404,6 +404,21 @@ export function validateWorldMemoryCommand(command, state, context = {}) {
     if (result.amount < 1 || result.amount > 20) throw new WorldMemoryValidationError('Шаг часов должен быть от 1 до 20', 'WORLD_QUEST_CLOCK_INVALID')
     result.visibility = quest.visibility
   }
+  if (command.command_type === 'ResolveQuest') {
+    result.quest_id = id(command.quest_id, 'quest_id')
+    const quest = memory.quests.find((item) => item.id === result.quest_id)
+    if (!quest) throw new WorldMemoryValidationError('Квест не найден', 'WORLD_QUEST_NOT_FOUND')
+    if (quest.status !== 'active') throw new WorldMemoryValidationError('Разрешить можно только активный квест', 'WORLD_QUEST_CLOSED')
+    if (quest.clock?.triggered !== true) throw new WorldMemoryValidationError('Квест нельзя разрешить до заполнения его часов', 'WORLD_QUEST_CLOCK_NOT_TRIGGERED')
+    result.outcome = text(command.outcome, 20)
+    if (!['success', 'failure'].includes(result.outcome)) throw new WorldMemoryValidationError('Исход квеста должен быть success или failure', 'WORLD_QUEST_OUTCOME_INVALID')
+    result.summary = text(command.summary, 1_000)
+    if (!result.summary) throw new WorldMemoryValidationError('Развязка квеста требует подтверждённого итога', 'WORLD_QUEST_RESOLUTION_REQUIRED')
+    result.next_objective = text(command.next_objective, 300)
+    if (!result.next_objective) throw new WorldMemoryValidationError('Развязка квеста требует следующей цели', 'WORLD_QUEST_NEXT_OBJECTIVE_REQUIRED')
+    result.source_event_ids = strings(command.source_event_ids, 120, 30)
+    result.visibility = quest.visibility
+  }
   if (command.command_type === 'UpsertNarrativeThread') {
     result.thread = normalizeThreadInput(command.thread, memory, command.command_id, state)
     result.visibility = result.thread.visibility
@@ -448,6 +463,14 @@ export function worldMemoryEvent(command) {
   if (command.command_type === 'RecordWorldRelationship') return { event_type: 'WorldRelationshipRecorded', payload: { relationship: clone(command.relationship) }, target_ids: [] }
   if (command.command_type === 'UpsertQuest') return { event_type: 'QuestUpserted', payload: { quest: clone(command.quest) }, target_ids: [] }
   if (command.command_type === 'AdvanceQuestClock') return { event_type: 'QuestClockAdvanced', payload: { quest_id: command.quest_id, amount: command.amount }, target_ids: [] }
+  if (command.command_type === 'ResolveQuest') return { event_type: 'QuestResolved', payload: {
+    quest_id: command.quest_id,
+    outcome: command.outcome,
+    status: command.outcome === 'success' ? 'completed' : 'failed',
+    summary: command.summary,
+    next_objective: command.next_objective,
+    source_event_ids: clone(command.source_event_ids ?? []),
+  }, target_ids: [] }
   if (command.command_type === 'UpsertNarrativeThread') return { event_type: 'NarrativeThreadUpserted', payload: { thread: clone(command.thread) }, target_ids: [] }
   if (command.command_type === 'AdvanceNarrativeThreadClock') return { event_type: 'NarrativeThreadClockAdvanced', payload: { thread_id: command.thread_id, amount: command.amount }, target_ids: [] }
   if (command.command_type === 'RecordNpcBelief') return { event_type: 'NpcBeliefRecorded', payload: { claim: clone(command.claim) }, target_ids: [] }
@@ -509,6 +532,13 @@ export function applyWorldMemoryEvent(input, event) {
       const current = Math.min(quest.clock.max, quest.clock.current + Math.max(1, integer(payload.amount, 1)))
       return { ...quest, clock: { ...quest.clock, current, triggered: current >= quest.clock.max } }
     })
+  }
+  if (event.event_type === 'QuestResolved') {
+    memory.quests = memory.quests.map((quest) => quest.id === payload.quest_id ? {
+      ...quest,
+      status: payload.outcome === 'success' ? 'completed' : 'failed',
+      summary: text(payload.summary, 1_000) || quest.summary,
+    } : quest)
   }
   if (event.event_type === 'NarrativeThreadUpserted') {
     const thread = safeThread(payload.thread)

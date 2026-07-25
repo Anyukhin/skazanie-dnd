@@ -86,6 +86,13 @@ export function classBuildCatalogInfo() {
     maximumCharacterLevel: payload.maximumCharacterLevel,
     skillCount: SKILLS.size,
     featureChoiceGroupCount: FEATURE_GROUPS.length,
-    classes: payload.classes.map((entry) => ({ classKey: entry.classKey, choiceCount: entry.choiceCount, optionCount: entry.skills.length, sourceUrl: entry.sourceUrl })),
+    skills: payload.skills.map((entry) => structuredClone(entry)),
+    classes: payload.classes.map((entry) => ({
+      classKey: entry.classKey,
+      choiceCount: entry.choiceCount,
+      optionCount: entry.skills.length,
+      skillIds: [...entry.skills],
+      sourceUrl: entry.sourceUrl,
+    })),
   }
 }

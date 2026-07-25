@@ -1,15 +1,27 @@
+import { readFileSync } from 'node:fs'
+
 import {
+  classBuildCatalogInfo,
+  classSkillRuleFor,
   characterClassKey,
+  featureChoiceGroupsFor,
   normalizedClassSkillProficiencies,
   normalizedSelectedFeatureIds,
   skillAbility,
 } from './character-progression.mjs'
 import {
+  combatClassCatalogInfo,
   combatResourceMaximumsFor,
   combatResourceRecoveryFor,
   normalizedCombatSubclassFor,
 } from './combat-actions.mjs'
-import { normalizedSpellSelectionsFor, spellSlotMaximumsFor } from './combat-spells.mjs'
+import {
+  combatSpellsFor,
+  normalizedSpellSelectionsFor,
+  spellSelectionRulesFor,
+  spellSlotMaximumsFor,
+} from './combat-spells.mjs'
+import { withStarterKit } from './starter-kit.mjs'
 
 /**
  * Standalone character domain contract.
@@ -31,6 +43,13 @@ export const SKILL_IDS = Object.freeze([
   'insight', 'intimidation', 'investigation', 'medicine', 'nature', 'perception',
   'performance', 'persuasion', 'religion', 'sleight_of_hand', 'stealth', 'survival',
 ])
+
+const characterCreationPolicy = JSON.parse(readFileSync(
+  new URL('../data/character-creation-policy-v1.json', import.meta.url),
+  'utf8',
+))
+const originBonusProfiles = new Map(characterCreationPolicy.origin_bonus_profiles.map((profile) => [profile.id, profile]))
+const speciesOptions = new Map(characterCreationPolicy.species_options.map((option) => [option.id, option]))
 
 /** Official 2014/SRD experience thresholds, intentionally capped to the
  * level-12 range that the bundled class catalog can execute. */
@@ -183,9 +202,179 @@ export function savingThrowProficienciesFor(actor) {
 
 export function normalizedAbilityScores(input) {
   if (input != null && !isRecord(input)) throw new CharacterLifecycleValidationError('abilities должен быть объектом', 'INVALID_ABILITIES')
+  if (input != null) exactKeys(input, ABILITY_IDS, 'abilities')
   return Object.fromEntries(ABILITY_IDS.map((ability) => [ability, integer(input?.[ability], `abilities.${ability}`, {
     minimum: 1, maximum: 30, fallback: 10,
   })]))
+}
+
+const ABILITY_GENERATION_FIELDS = Object.freeze([
+  'policyId', 'policyVersion', 'method', 'baseScores', 'originBonusProfileId', 'originBonuses', 'speciesOptionId',
+])
+
+function abilityScoreMap(input, field, { minimum, maximum }) {
+  if (!isRecord(input)) {
+    throw new CharacterLifecycleValidationError(`${field} должен быть объектом`, 'IMPORT_ABILITY_BUDGET_INVALID')
+  }
+  exactKeys(input, ABILITY_IDS, field)
+  return Object.fromEntries(ABILITY_IDS.map((ability) => [ability, integer(input[ability], `${field}.${ability}`, {
+    minimum,
+    maximum,
+  })]))
+}
+
+function validateAbilityGeneration(source, abilities, { allowLegacyAbilityPolicy = false } = {}) {
+  if (!isRecord(source)) {
+    if (allowLegacyAbilityPolicy) return null
+    throw new CharacterLifecycleValidationError(
+      'Импорт должен явно указывать versioned policy генерации характеристик',
+      'IMPORT_ABILITY_POLICY_REQUIRED',
+    )
+  }
+  exactKeys(source, ABILITY_GENERATION_FIELDS, 'character.abilityGeneration')
+  if (source.policyId !== characterCreationPolicy.policy_id
+    || Number(source.policyVersion) !== characterCreationPolicy.policy_version
+    || source.method !== characterCreationPolicy.method) {
+    throw new CharacterLifecycleValidationError(
+      'Импорт использует неподдерживаемую policy генерации характеристик',
+      'IMPORT_ABILITY_POLICY_UNSUPPORTED',
+    )
+  }
+  const baseScores = abilityScoreMap(source.baseScores, 'character.abilityGeneration.baseScores', { minimum: 1, maximum: 30 })
+  const expectedArray = [...characterCreationPolicy.standard_array].sort((left, right) => left - right)
+  const actualArray = Object.values(baseScores).sort((left, right) => left - right)
+  if (JSON.stringify(actualArray) !== JSON.stringify(expectedArray)) {
+    throw new CharacterLifecycleValidationError(
+      `Базовые характеристики должны быть распределением стандартного массива ${characterCreationPolicy.standard_array.join(', ')}`,
+      'IMPORT_ABILITY_BUDGET_INVALID',
+    )
+  }
+  const bonusProfile = originBonusProfiles.get(String(source.originBonusProfileId ?? ''))
+  if (!bonusProfile) {
+    throw new CharacterLifecycleValidationError(
+      'Неизвестный профиль бонусов происхождения',
+      'IMPORT_ABILITY_POLICY_UNSUPPORTED',
+    )
+  }
+  const originBonuses = abilityScoreMap(source.originBonuses, 'character.abilityGeneration.originBonuses', { minimum: 0, maximum: 10 })
+  const expectedBonuses = [...bonusProfile.bonuses].sort((left, right) => left - right)
+  const actualBonuses = Object.values(originBonuses).filter((value) => value !== 0).sort((left, right) => left - right)
+  if (JSON.stringify(actualBonuses) !== JSON.stringify(expectedBonuses)) {
+    throw new CharacterLifecycleValidationError(
+      'Бонусы происхождения не соответствуют выбранному серверному профилю',
+      'IMPORT_ABILITY_BUDGET_INVALID',
+    )
+  }
+  const speciesOption = speciesOptions.get(String(source.speciesOptionId ?? ''))
+  if (!speciesOption) {
+    throw new CharacterLifecycleValidationError('Выбран неподдерживаемый вид персонажа', 'IMPORT_SPECIES_UNSUPPORTED')
+  }
+  const expectedScores = Object.fromEntries(ABILITY_IDS.map((ability) => [ability, baseScores[ability] + originBonuses[ability]]))
+  if (ABILITY_IDS.some((ability) => abilities[ability] !== expectedScores[ability])) {
+    throw new CharacterLifecycleValidationError(
+      'Итоговые характеристики не совпадают с базовым массивом и явными бонусами происхождения',
+      'IMPORT_ABILITY_BUDGET_INVALID',
+    )
+  }
+  return {
+    policyId: characterCreationPolicy.policy_id,
+    policyVersion: characterCreationPolicy.policy_version,
+    method: characterCreationPolicy.method,
+    baseScores,
+    originBonusProfileId: bonusProfile.id,
+    originBonuses,
+    speciesOptionId: speciesOption.id,
+  }
+}
+
+export function characterCreationCatalog() {
+  const classBuild = classBuildCatalogInfo()
+  const classCombat = combatClassCatalogInfo()
+  const skillsById = new Map(classBuild.skills.map((skill) => [skill.id, skill]))
+  return {
+    schema_version: 1,
+    import_schema: CHARACTER_IMPORT_SCHEMA,
+    import_schema_version: CHARACTER_IMPORT_SCHEMA_VERSION,
+    ability_policy: clone(characterCreationPolicy),
+    classes: classCombat.classes.map((classOption) => {
+      const actor = {
+        characterClass: classOption.classKey,
+        level: 1,
+        abilities: Object.fromEntries(ABILITY_IDS.map((ability, index) => [ability, characterCreationPolicy.standard_array[index]])),
+      }
+      const skillRule = classSkillRuleFor(actor)
+      const spellRules = spellSelectionRulesFor(actor)
+      const availableSpells = spellRules ? combatSpellsFor(actor).filter((spell) => spell.level <= 1) : []
+      return {
+        id: classOption.classKey,
+        label: classOption.label,
+        source_url: classOption.sourceUrl,
+        subclass_level: classOption.subclassLevel,
+        subclasses: classOption.subclassOptions,
+        class_skills: skillRule ? {
+          choice_count: skillRule.choiceCount,
+          options: skillRule.skills.map((id) => clone(skillsById.get(id))).filter(Boolean),
+        } : null,
+        feature_choice_groups: featureChoiceGroupsFor(actor),
+        spell_selection: spellRules ? {
+          ...spellRules,
+          spellcastingAbility: availableSpells[0]?.spellcastingAbility ?? null,
+          spells: availableSpells
+            .map((spell) => ({
+              id: spell.id,
+              name: spell.name,
+              level: spell.level,
+              description: spell.description,
+              casting_time: spell.castingTime,
+              range_text: spell.rangeText,
+              mechanics_support: spell.mechanicsSupport,
+            })),
+        } : null,
+      }
+    }),
+  }
+}
+
+export function createCharacterSlot({ id, index = 0 } = {}) {
+  const slotId = cleanIdentifier(id ?? `hero-slot-${index + 1}`, 'character slot id')
+  const baseScores = Object.fromEntries(ABILITY_IDS.map((ability, abilityIndex) => [
+    ability,
+    characterCreationPolicy.standard_array[abilityIndex],
+  ]))
+  return {
+    id: slotId,
+    name: 'Ожидает игрока',
+    character: `Место героя ${index + 1}`,
+    role: 'Герой ещё не создан · ур. 1',
+    characterClass: 'fighter',
+    level: 1,
+    experience: 0,
+    abilities: baseScores,
+    baseSpeed: 30,
+    classSkillProficiencies: [],
+    selectedFeatureIds: [],
+    knownSpellIds: [],
+    preparedSpellIds: [],
+    hitPointIncreases: [],
+    species: 'Не выбран',
+    background: 'Не выбрано',
+    alignment: 'Не определено',
+    traits: '',
+    ideals: '',
+    bonds: '',
+    flaws: '',
+    backstory: '',
+    features: '',
+    notes: '',
+    inventory: [],
+    currency: { copper: 0, silver: 0, gold: 0, platinum: 0 },
+    color: ['#d79b5b', '#758f78', '#8b789e', '#9a745d'][index % 4],
+    initials: String(index + 1),
+    portrait: '/assets/party-portraits.png',
+    portraitPosition: ['0% 0%', '100% 0%', '0% 100%', '100% 100%'][index % 4],
+    online: false,
+    characterSetupRequired: true,
+  }
 }
 
 function normalizedBaseSpeed(actor) {
@@ -565,11 +754,23 @@ export function applyCharacterLifecycleEvent(state, event) {
       schema: payload.schema,
       schema_version: payload.schema_version,
       character: payload.patch,
-    })
-    const updated = { ...actor, ...parsed.patch, id: actor.id, inventory: clone(actor.inventory ?? []), currency: clone(actor.currency ?? {}) }
+    }, { allowLegacyAbilityPolicy: true })
+    const wasCharacterSlot = actor.characterSetupRequired === true
+    let updated = { ...actor, ...parsed.patch, id: actor.id, inventory: clone(actor.inventory ?? []), currency: clone(actor.currency ?? {}) }
+    if (wasCharacterSlot) {
+      updated = withStarterKit({
+        ...updated,
+        inventory: [],
+        currency: { copper: 0, silver: 0, gold: 0, platinum: 0 },
+      })
+      updated.initials = updated.character.slice(0, 2).toLocaleUpperCase('ru')
+    }
     const sheet = deriveCharacterSheet(updated)
     updated.maxHp = sheet.hit_points.value
-    updated.hp = Math.min(Math.max(0, Number(actor.hp) || sheet.hit_points.value), sheet.hit_points.value)
+    updated.hp = wasCharacterSlot
+      ? sheet.hit_points.value
+      : Math.min(Math.max(0, Number(actor.hp) || sheet.hit_points.value), sheet.hit_points.value)
+    updated.characterSetupRequired = false
     next.players[index] = updated
     return next
   }
@@ -595,10 +796,11 @@ const IMPORT_TOP_LEVEL_V1 = Object.freeze(['schema', 'schema_version', 'characte
 const IMPORT_CHARACTER_V1 = Object.freeze([
   'character', 'name', 'role', 'characterClass', 'subclass', 'species', 'background', 'alignment',
   'traits', 'ideals', 'bonds', 'flaws', 'backstory', 'notes', 'level', 'experience', 'abilities',
-  'baseSpeed', 'hitPointIncreases', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds',
+  'abilityGeneration', 'baseSpeed', 'hitPointIncreases', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds',
 ])
 const IMPORT_V0_ALIASES = Object.freeze({
   character_class: 'characterClass',
+  ability_generation: 'abilityGeneration',
   base_speed: 'baseSpeed',
   hit_point_increases: 'hitPointIncreases',
   class_skill_proficiencies: 'classSkillProficiencies',
@@ -658,7 +860,7 @@ function optionalText(value, field, maximum) {
  * Parses a v1 document into a safe character patch.  Deliberately absent from
  * the result: id, HP, AC, proficiency, speed, inventory, money and resources.
  */
-export function parseCharacterImport(raw) {
+export function parseCharacterImport(raw, options = {}) {
   const document = migrateCharacterImport(raw)
   const source = document.character
   exactKeys(source, IMPORT_CHARACTER_V1, 'character')
@@ -674,13 +876,31 @@ export function parseCharacterImport(raw) {
     throw new CharacterLifecycleValidationError('Уровень должен соответствовать порогу XP текущего ruleset', 'IMPORT_LEVEL_EXPERIENCE_MISMATCH')
   }
   const abilities = normalizedAbilityScores(source.abilities)
+  const abilityGeneration = validateAbilityGeneration(source.abilityGeneration, abilities, options)
   const baseSpeed = integer(source.baseSpeed, 'character.baseSpeed', { minimum: 5, maximum: 120 })
+  if (abilityGeneration) {
+    const speciesOption = speciesOptions.get(abilityGeneration.speciesOptionId)
+    const requestedSpecies = optionalText(source.species, 'character.species', 120)
+    if (!requestedSpecies || (speciesOption.id !== 'custom' && requestedSpecies !== speciesOption.label)) {
+      throw new CharacterLifecycleValidationError(
+        'Вид персонажа не соответствует выбранному серверному варианту',
+        'IMPORT_SPECIES_UNSUPPORTED',
+      )
+    }
+    if (baseSpeed !== speciesOption.base_speed) {
+      throw new CharacterLifecycleValidationError(
+        'Базовая скорость не соответствует выбранному серверному виду',
+        'IMPORT_SPECIES_SPEED_INVALID',
+      )
+    }
+  }
   const provisional = {
     character,
     characterClass: classId,
     level,
     experience,
     abilities,
+    ...(abilityGeneration ? { abilityGeneration } : {}),
     baseSpeed,
     ...(source.subclass == null ? {} : { subclass: optionalText(source.subclass, 'character.subclass', 160) }),
     classSkillProficiencies: uniqueIdentifiers(source.classSkillProficiencies ?? [], 'character.classSkillProficiencies'),

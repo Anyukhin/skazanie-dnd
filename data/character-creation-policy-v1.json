@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "policy_id": "skazanie.character-abilities.standard-array",
+  "policy_version": 1,
+  "method": "standard_array",
+  "standard_array": [15, 14, 13, 12, 10, 8],
+  "origin_bonus_profiles": [
+    {
+      "id": "none",
+      "label": "Без числовых бонусов происхождения",
+      "bonuses": []
+    }
+  ],
+  "species_options": [
+    { "id": "human", "label": "Человек", "base_speed": 30 },
+    { "id": "elf", "label": "Эльф", "base_speed": 30 },
+    { "id": "dwarf", "label": "Дварф", "base_speed": 25 },
+    { "id": "halfling", "label": "Полурослик", "base_speed": 25 },
+    { "id": "gnome", "label": "Гном", "base_speed": 25 },
+    { "id": "half-orc", "label": "Полуорк", "base_speed": 30 },
+    { "id": "half-elf", "label": "Полуэльф", "base_speed": 30 },
+    { "id": "tiefling", "label": "Тифлинг", "base_speed": 30 },
+    { "id": "dragonborn", "label": "Драконорождённый", "base_speed": 30 },
+    { "id": "custom", "label": "Авторский вид", "base_speed": 30 }
+  ]
+}

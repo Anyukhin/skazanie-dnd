@@ -91,6 +91,37 @@ test('world entities, facts, knowledge, quests and clocks are event sourced and 
   assert.deepEqual(replayEvents(initialState, result.events), result.state)
 })
 
+test('triggered quest clock resolves through a typed event and rejects premature resolution', () => {
+  const initialState = campaign()
+  assert.throws(
+    () => runWorldMemoryCommands(initialState, [{
+      command_type: 'UpsertQuest',
+      quest: { id: 'quest:early', title: 'Too early', status: 'active', visibility: 'party', clock: { current: 0, max: 2, label: 'Progress' } },
+    }, {
+      command_type: 'ResolveQuest',
+      quest_id: 'quest:early',
+      outcome: 'success',
+      summary: 'Not yet.',
+      next_objective: 'Wait.',
+    }]),
+    (error) => error.code === 'WORLD_QUEST_CLOCK_NOT_TRIGGERED',
+  )
+
+  const prepared = buildMemory(initialState)
+  const resolved = runWorldMemoryCommands(prepared.state, [{
+    command_type: 'ResolveQuest',
+    quest_id: 'quest:find-seal',
+    outcome: 'failure',
+    summary: 'The rivals reached the seal first.',
+    next_objective: 'Recover the seal from the rivals.',
+    source_event_ids: [prepared.events.at(-1).event_id],
+  }])
+
+  assert.equal(resolved.events[0].event_type, 'QuestResolved')
+  assert.equal(resolved.state.worldMemory.quests[0].status, 'failed')
+  assert.match(resolved.state.worldMemory.quests[0].summary, /rivals reached/u)
+})
+
 test('a private fact is visible only to the hero who learned it', () => {
   const state = buildMemory().state
   const hero = worldMemoryForViewer(state.worldMemory, { playerId: 'hero', isPartyMember: true })
