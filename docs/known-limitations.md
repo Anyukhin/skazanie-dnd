@@ -73,6 +73,15 @@ equip/use/consume/transfer/weight/attunement теперь event-sourced и пр�
 
 Canonical entities/facts/quests и quest clocks дополняются персональным `knowledge_ledger`. Подтверждённое раскрытие факта NPC создаёт `KnowledgeRevealed` только для героя-собеседника; старые массивы `knowledge` мигрируют при нормализации. Worldkeeper фильтрует видимость и время действия факта до поиска, а `/explanation` проецирует private events для запрашивающего героя.
 
+В горячем пути Narrator получает не весь канон, а максимум три релевантных
+public/party-факта через deterministic retrieval; личные `gm_only` факты не
+попадают в его brief даже если герой их знает. Director получает bounded
+выборку незакрытых нитей и завершённых обещаний, а NPC social controller —
+релевантную выборку из отдельного server-owned allowlist. Входы всех трёх
+контуров передаются модели как `UNTRUSTED_DATA`; измеренный рост среднего
+размера Narrator-подсказки для трёх фактов — 1,43× на фиксированном наборе из 10
+репрезентативных brief.
+
 Canonical narrative threads, entity relationships, beliefs/rumors с
 truth/provenance и scene/session summaries реализованы. Retrieval использует
 visibility/time-first deterministic semantic-like ranking, но не внешнюю
