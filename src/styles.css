@@ -195,8 +195,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-token { position: absolute; z-index: 4; width: clamp(22px, 4.5cqw, 36px); height: clamp(22px, 4.5cqw, 36px); border-radius: 50%; border: 2px solid color-mix(in srgb, var(--token), white 27%); background-color: color-mix(in srgb, var(--token), #18130f 45%); background-size: 200% 200%; background-repeat: no-repeat; color: #f2e7d9; box-shadow: 0 4px 9px #000, 0 0 0 3px rgba(0,0,0,.5); font: 700 9px Spectral, serif; cursor: pointer; transition: .18s; transform: rotateZ(var(--counter-rotation)); }
 .map-token:hover, .map-token.selected { transform: rotateZ(var(--counter-rotation)) translateY(-4px) scale(1.08); box-shadow: 0 7px 12px #000, 0 0 0 3px color-mix(in srgb, var(--token), transparent 45%); }
 .map-token.label-open, .map-token.label-open:hover { transform: rotateZ(var(--counter-rotation)); }
-.map-token-hp { position: absolute; left: 1px; right: 1px; bottom: -7px; height: 4px; overflow: hidden; border-radius: 4px; background: #16110e; box-shadow: 0 1px 2px #000; }
-.map-token-hp > i { display: block; height: 100%; background: #65a875; }
+/* Полоска рисуется внутри доски, поэтому её съедает масштаб сцены: заявленные 4px
+   доходили до экрана как 2px и не читались. Делаем толще, добавляем тёмную обводку
+   для контраста поверх светлых тайлов и меняем цвет по тяжести ранения — состояние
+   отряда должно считываться взглядом, без открытия панелей. */
+.map-token-hp { position: absolute; left: -1px; right: -1px; bottom: -9px; height: 7px; overflow: hidden; border-radius: 4px; background: #16110e; box-shadow: 0 0 0 1.5px rgba(0,0,0,.85), 0 1px 3px #000; }
+.map-token-hp > i { display: block; height: 100%; background: linear-gradient(180deg, #7cc08c, #4f8f60); transition: width .25s ease; }
+/* Раненый и тяжелораненый различимы без чтения чисел. */
+.map-token.wounded .map-token-hp > i { background: linear-gradient(180deg, #d8b166, #a8823c); }
+.map-token.critical .map-token-hp > i { background: linear-gradient(180deg, #d9705e, #a4402f); }
 .map-token-hp-value { position: absolute; top: -8px; right: -8px; min-width: 16px; padding: 2px 3px; border-radius: 8px; background: #17271b; color: #b9dec0; font-size: 7px; line-height: 1; }
 .token-label { position: absolute; left: 50%; bottom: calc(100% + 10px); min-width: 100px; transform: translateX(-50%); padding: 6px 8px; border: 1px solid rgba(220,183,132,.25); border-radius: 4px; background: #17130f; color: #d8cec1; font: 10px Manrope, sans-serif; white-space: nowrap; pointer-events: none; }
 .token-label::after { content: ''; position: absolute; left: 50%; top: 100%; border: 5px solid transparent; border-top-color: #17130f; transform: translateX(-50%); }
