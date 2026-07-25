@@ -1222,6 +1222,23 @@ button.campaign-title:hover strong { color: #edc996; }
   box-shadow: inset 0 0 0 100vmax rgba(6, 5, 4, .58);
 }
 
+/* В бою доску обступают лента инициативы сверху, панель состояния слева, панель героя
+   справа и хотбар снизу. Отступы отдают сцене только свободный прямоугольник: place-items
+   центрирует её именно там, а container-type: size пересчитывает cqh по уменьшенной
+   высоте, поэтому клетка сама ужимается вместо того, чтобы уезжать под хотбар. */
+.game-area:has(.combat-hotbar) .map-stage {
+  padding: 88px 272px 176px 312px;
+}
+
+/* Название локации важно при входе в сцену, но в бою занимает лучший угол экрана.
+   Масштабируем ТОЛЬКО заголовок: сам .scene-header растянут во всю ширину и держит
+   справа блок цели, поэтому масштабирование целиком утащило бы цель к центру. */
+.game-area:has(.combat-hotbar) .scene-title {
+  transform: scale(.62);
+  transform-origin: top left;
+  opacity: .74;
+}
+
 .map-scroll {
   transform-style: preserve-3d;
   will-change: transform;
