@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import { Adjudicator } from './adjudicator.mjs'
 import { answerKnownLore } from './agent-router.mjs'
+import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { IdempotencyConflictError } from './event-store.mjs'
 import { encounterNarration, hasEncounterEvent } from './encounter-narration.mjs'
 import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
@@ -232,6 +233,22 @@ function deterministicSceneNarration(events, state, brief, knownRuleIds) {
   }
 }
 
+function humanMissingInformation(values) {
+  const labels = {
+    message: 'само действие',
+    target_id: 'цель действия',
+    npc_id: 'имя собеседника',
+    available_npc: 'доступного собеседника',
+  }
+  const missing = [...new Set((Array.isArray(values) ? values : []).map(String).filter(Boolean))]
+  return missing.length ? `Уточните ${missing.map((value) => labels[value] ?? 'деталь действия').join(' и ')}.` : 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
+}
+
+function noWorldChangeConstraint(plan) {
+  return plan?.ruling_draft?.world_change === false
+    || (Array.isArray(plan?.narration_constraints) && plan.narration_constraints.includes('no-unconfirmed-world-changes'))
+}
+
 export class GameOrchestrator {
   constructor({
     intentParser = new IntentParser(),
@@ -242,6 +259,7 @@ export class GameOrchestrator {
     traceStore = null,
     narrator = new Narrator(),
     npcSocialController = null,
+    unknownActionHandler = null,
     idFactory = randomUUID,
     now = () => Date.now(),
   } = {}) {
@@ -255,6 +273,7 @@ export class GameOrchestrator {
     this.traceStore = traceStore
     this.narrator = narrator
     this.npcSocialController = npcSocialController
+    this.unknownActionHandler = unknownActionHandler ?? new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, now })
     this.idFactory = idFactory
     this.now = now
   }
@@ -263,6 +282,107 @@ export class GameOrchestrator {
     if (!this.traceStore) return null
     const trace = turnId ? this.traceStore.get(campaignId, turnId) : this.traceStore.latest(campaignId)
     return buildTurnExplanation(trace, viewer)
+  }
+
+  freeActionResponse({
+    freeAction,
+    campaignId,
+    playerId,
+    viewer,
+    message,
+    intent,
+    retrievalQueries,
+    retrievedRules,
+    plan,
+    authoritativeState,
+    idempotencyKey,
+    turnId,
+    started,
+    mode,
+  }) {
+    const state = freeAction.state ?? authoritativeState
+    const committedEvents = Array.isArray(freeAction.events) ? freeAction.events : []
+    const publicCommittedEvents = mechanicsForViewer(committedEvents, { isPartyMember: true }, playerId, state)
+    const constraints = [
+      ...(Array.isArray(plan?.narration_constraints) ? plan.narration_constraints : []),
+      ...(noWorldChangeConstraint(plan) ? ['no-unconfirmed-world-changes'] : []),
+      ...(Array.isArray(freeAction.narration_constraints) ? freeAction.narration_constraints : []),
+    ]
+    const brief = buildNarrationBrief({
+      visible_events: publicCommittedEvents,
+      visible_state_changes: visibleChanges(publicCommittedEvents),
+      known_environment: {
+        scene: projectVisibleState(state.scene ?? {}, viewer, { forNarrator: true }) ?? {},
+        campaign_premise: campaignConceptForAgent(state),
+        world_memory: { facts: narrationWorldFacts(state, viewer, message, publicCommittedEvents) },
+        social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
+      },
+      permitted_npc_reactions: [],
+      narration_constraints: constraints,
+      viewer,
+    })
+    const candidateNarration = String(freeAction.narration ?? '').trim()
+    const candidateVerification = verifyNarration(candidateNarration, brief, { knownRuleIds: [] })
+    const narration = candidateVerification.valid && candidateNarration
+      ? candidateNarration
+      : freeAction.kind === 'clarification'
+        ? 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
+        : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
+    const verification = verifyNarration(narration, brief, { knownRuleIds: [] })
+    const idempotentReplay = Boolean(freeAction.duplicate)
+    const response = {
+      narration,
+      suggestions: Array.isArray(freeAction.suggestions) ? freeAction.suggestions : [],
+      effects: eventsToClientEffects(committedEvents, freeAction.rolls ?? []),
+      provider: 'deterministic-free-action',
+      model: 'server-policy',
+      turn_id: turnId,
+      engine_mode: mode,
+      state_version: state.state_version,
+      mechanics: committedEvents,
+      visible_state_changes: projectVisibleState(visibleChanges(publicCommittedEvents), viewer) ?? [],
+      authoritative_state: state,
+      verification,
+      ruling: freeAction.ruling ?? null,
+      explanation_url: `/api/campaigns/${encodeURIComponent(campaignId)}/turns/${encodeURIComponent(turnId)}/explanation`,
+      idempotent_replay: idempotentReplay,
+      turn_consumed: false,
+      action_kind: 'free',
+      free_action_outcome: freeAction.kind,
+      ...(freeAction.rejected ? { rejected: true } : {}),
+    }
+    if (!idempotentReplay) {
+      this.saveTrace({
+        turnId,
+        campaignId,
+        idempotencyKey,
+        mode,
+        intent,
+        retrievalQueries,
+        retrievedRules,
+        plan: {
+          ...plan,
+          proposed_commands: freeAction.commands ?? [],
+          ruling_required: Boolean(freeAction.ruling),
+          ruling_draft: freeAction.ruling ?? null,
+          narration_constraints: constraints,
+        },
+        engineResult: { commands: freeAction.commands ?? [], events: committedEvents, rolls: freeAction.rolls ?? [] },
+        stateBefore: authoritativeState.state_version,
+        stateAfter: state.state_version,
+        verification,
+        latency: this.now() - started,
+        narration: {
+          narration,
+          suggestions: response.suggestions,
+          verification,
+          prompt_version: 'free-action/v1',
+          provider: response.provider,
+        },
+        ruling: freeAction.ruling ?? null,
+      })
+    }
+    return response
   }
 
   async handle(input) {
@@ -278,7 +398,7 @@ export class GameOrchestrator {
       isAdmin: input.user?.role === 'admin',
       isDirector: directorCapability,
     }
-    const turnId = Array.isArray(input.commands)
+    let turnId = Array.isArray(input.commands)
       ? structuredCommandTurnId(campaignId, idempotencyKey)
       : this.idFactory()
     const mode = 'enforce'
@@ -336,6 +456,7 @@ export class GameOrchestrator {
     const retrievedRules = this.ruleRetriever && retrievalQueries.length
       ? await this.ruleRetriever.search({ queries: retrievalQueries, ruleset_id: originalState.ruleset_id, enabled_packs: originalState.enabled_rule_packs, limit: 10 })
       : { results: [], confidence: 0, count: 0 }
+    const freeActionRequest = !input.commands && ['improvised_action', 'unknown'].includes(intent.intent)
     let plan = input.commands
       ? { rule_ids: [...new Set(input.commands.flatMap((command) => command.source_rule_ids ?? []))], proposed_commands: input.commands, roll_requests: [], ruling_required: false, ruling_draft: null, narration_constraints: [], confidence: 1 }
       : socialRequest
@@ -348,6 +469,16 @@ export class GameOrchestrator {
             narration_constraints: ['server-social-check-before-dialogue', 'npc-dialogue-from-committed-event-only'],
             confidence: intent.confidence,
           }
+        : freeActionRequest
+          ? {
+              rule_ids: [],
+              proposed_commands: [],
+              roll_requests: [],
+              ruling_required: false,
+              ruling_draft: null,
+              narration_constraints: ['free-action-committed-consequences-only'],
+              confidence: intent.confidence,
+            }
         : await this.adjudicator.createPlan({ intent, state: originalState, retrievedRules })
     plan = { ...plan, proposed_commands: validateAllowedCommands(plan.proposed_commands ?? []).map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${idempotencyKey}:${index + 1}` })) }
 
@@ -356,6 +487,32 @@ export class GameOrchestrator {
     const duplicate = typeof this.eventStore.getByIdempotencyKey === 'function'
       ? await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
       : null
+    if (freeActionRequest) {
+      turnId = structuredCommandTurnId(campaignId, idempotencyKey)
+      const freeAction = await this.unknownActionHandler.handleUnknownAction({
+        campaignId,
+        action: message,
+        idempotencyKey,
+        playerId,
+        intent,
+      })
+      return this.freeActionResponse({
+        freeAction,
+        campaignId,
+        playerId,
+        viewer,
+        message,
+        intent,
+        retrievalQueries,
+        retrievedRules,
+        plan,
+        authoritativeState,
+        idempotencyKey,
+        turnId,
+        started,
+        mode,
+      })
+    }
     if (socialRequest && !duplicate) {
       const social = ensureNpcSocialState(authoritativeState.social, authoritativeState)
       const persistedProfile = social.npcs.find((npc) => npc.id === socialRequest.npcId)
@@ -371,8 +528,8 @@ export class GameOrchestrator {
 
 
     if (intent.requires_clarification || plan.clarification_required) {
-      const narration = `Нужно уточнение: ${(intent.missing_information ?? plan.missing_information ?? []).join(', ')}.`
-      const response = { narration, suggestions: [], effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], turn_consumed: false }
+      const narration = humanMissingInformation(intent.missing_information ?? plan.missing_information)
+      const response = { narration, suggestions: [], effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], authoritative_state: authoritativeState, turn_consumed: false }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })
       return response
     }

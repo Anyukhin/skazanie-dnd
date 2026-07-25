@@ -18,6 +18,7 @@ import {
   normalizeCampaignState,
   shortestTacticalPath,
 } from './rules-engine.mjs'
+import { classifyFreeActionKind } from './intent-parser.mjs'
 
 const clone = (value) => structuredClone(value)
 const clean = (value, maximum = 300) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -63,6 +64,22 @@ function availableNpc(state, requestedId = '') {
 function nextHook(state, reason = '') {
   const quest = openQuest(state)
   return clean(reason, 300) || (quest ? `Продолжить квест «${quest.title}»` : `Исследовать ${state.scene?.location || 'окрестности'} и найти новую зацепку`)
+}
+
+function boundedObjective(state, text) {
+  const lower = text.toLocaleLowerCase('ru')
+  if (/двер\w*|подпира\w*|баррикад\w*/iu.test(lower)) return 'Проверить, удерживает ли баррикада дверь, и выбрать следующий способ пройти.'
+  if (/страж\w*|вор\w*|крич\w*|зову\w*/iu.test(lower)) return 'Дождаться ответа стражи на сообщение о воре.'
+  if (/поджиг\w*|зажиг\w*|огон\w*|дым\w*/iu.test(lower)) return 'Проверить последствия использования огня и выбрать безопасный путь.'
+  return nextHook(state, 'Проверить последствия нестандартного действия героя')
+}
+
+function declaredActionCommand(playerId, text) {
+  return playerId ? { command_type: 'DeclareAction', actor_id: playerId, action: text } : null
+}
+
+function isNoise(text) {
+  return /^[a-z]{8,}$/iu.test(text) && !/\s/u.test(text)
 }
 
 function factionIdsForWitnesses(state, witnessIds) {
@@ -276,24 +293,124 @@ export class AutonomousCampaignOrchestrator {
     return { intent, results, state: loaded.state, state_version: loaded.state_version, admin_commands: 0 }
   }
 
-  async handleUnknownAction({ campaignId, action, idempotencyKey }) {
+  async handleUnknownAction({ campaignId, action, idempotencyKey, playerId = '', intent = null }) {
     const text = clean(action, 1_000)
     const loaded = await this.load(campaignId)
-    const hook = nextHook(loaded.state)
-    if (text.length < 8 || /^(?:это|туда|сделать|что-то|как-нибудь)[?.!]*$/iu.test(text)) {
-      return { kind: 'clarification', narration: 'Уточните цель, способ и объект действия.', suggestions: [hook], turn_consumed: false, admin_commands: 0 }
+    const actorId = clean(playerId, 120)
+    const declaration = declaredActionCommand(actorId, text)
+    const run = async (commands) => {
+      const actualCommands = commands.filter(Boolean)
+      if (!actualCommands.length) return { state: loaded.state, state_version: loaded.state_version, events: [], commands: [], rolls: [], duplicate: false }
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await this.runCommands(campaignId, idempotencyKey, actualCommands)
+        } catch (error) {
+          if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
+        }
+      }
+      throw new Error('Свободное действие не удалось сохранить')
     }
+    const verifyDuplicate = (commit, { requiresRuling = false } = {}) => {
+      if (!commit?.duplicate) return
+      const declared = (commit.events ?? []).find((event) => event.event_type === 'ActionDeclared')
+      if (declared && String(declared.payload?.action ?? '') !== text) {
+        const error = new Error('Этот ключ идемпотентности уже использован для другого свободного действия')
+        error.code = 'IDEMPOTENCY_CONFLICT'
+        throw error
+      }
+      const rulingEvent = (commit.events ?? []).find((event) => event.event_type === 'RulingRecorded')
+      if (requiresRuling && (!rulingEvent || String(rulingEvent.payload?.ruling?.provenance?.action_fingerprint ?? '') !== digest(text))) {
+        const error = new Error('Этот ключ идемпотентности уже использован для другого свободного действия')
+        error.code = 'IDEMPOTENCY_CONFLICT'
+        throw error
+      }
+    }
+    const currentActorId = String(loaded.state.mechanics?.combat?.initiative?.[loaded.state.mechanics?.combat?.active_index]?.actor_id ?? '')
+    if (loaded.state.mechanics?.combat?.active && currentActorId && currentActorId !== actorId) {
+      const commit = await run([declaration])
+      verifyDuplicate(commit)
+      return {
+        kind: 'rejected',
+        narration: 'Сейчас действует другой участник. Действие не выполнено, и ваш ход не потрачен.',
+        suggestions: [],
+        turn_consumed: false,
+        rejected: true,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+    const freeActionKind = intent?.free_action_kind ?? classifyFreeActionKind(text)
+    if (text.length < 8 || isNoise(text) || /^(?:это|туда|сделать|что-то|как-нибудь)[?.!]*$/iu.test(text)) {
+      const commit = await run([declaration])
+      verifyDuplicate(commit)
+      return {
+        kind: 'clarification',
+        narration: 'Опишите действие подробнее: что делает герой, с чем или с кем и какого результата хочет добиться.',
+        suggestions: [nextHook(loaded.state)],
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+    if (freeActionKind === 'physically_impossible') {
+      const commit = await run([declaration])
+      verifyDuplicate(commit)
+      return {
+        kind: 'clarification',
+        narration: 'Для такого действия нужен подтверждённый способ — конкретное заклинание, предмет или способность героя. Укажите его, и я проверю допустимый вариант.',
+        suggestions: [nextHook(loaded.state)],
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+    const objective = boundedObjective(loaded.state, text)
     const ruling = {
       id: `ruling-${digest({ campaignId, text })}`,
-      status: 'draft',
+      status: 'applied',
       scope: 'single-action',
       question: text,
       bounded_options: ['ability-check', 'existing-action', 'fiction-only'],
-      provenance: { source: 'fail-safe', action_fingerprint: digest(text) },
+      selected_option: 'objective-update',
+      consequence: objective,
+      world_change: true,
+      provenance: { source: 'free-action-fallback', action_fingerprint: digest(text) },
     }
-    await this.runCommands(campaignId, `${idempotencyKey}:ruling`, [{ command_type: 'RecordRuling', ruling, ruling_id: ruling.id }])
-    await this.runCommands(campaignId, `${idempotencyKey}:hook`, [{ command_type: 'UpdateObjective', objective: hook }])
-    return { kind: 'bounded_ruling_draft', ruling, suggestions: [hook], turn_consumed: false, admin_commands: 0 }
+    const commit = await run([
+      declaration,
+      { command_type: 'RecordRuling', ruling, ruling_id: ruling.id },
+      { command_type: 'UpdateObjective', objective },
+    ])
+    verifyDuplicate(commit, { requiresRuling: true })
+    return {
+      kind: 'bounded_ruling',
+      ruling,
+      narration: `Действие принято. Следующая цель отряда: «${objective}»`,
+      suggestions: [objective],
+      turn_consumed: false,
+      admin_commands: 0,
+      state: commit.state ?? loaded.state,
+      state_version: commit.state_version ?? loaded.state_version,
+      events: commit.events ?? [],
+      commands: commit.commands ?? [],
+      rolls: commit.rolls ?? [],
+      duplicate: Boolean(commit.duplicate),
+    }
   }
 
   async runCombat(campaignId, { idempotencyPrefix = 'autocombat', maxTurns = 200 } = {}) {

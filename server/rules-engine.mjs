@@ -7099,6 +7099,9 @@ export function eventSummary(event) {
     case 'HeroReplaced': return `${payload.replacement_name || 'Новый герой'} присоединяется к группе`
     case 'RestStarted': return `${event.actor_id || 'Герой'} начинает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых`
     case 'RestCompleted': return `${event.actor_id || 'Герой'} завершает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых`
+    case 'RulingRecorded': return 'Для действия сохранён ограниченный следующий шаг.'
+    case 'ObjectiveUpdated': return `Цель отряда: ${payload.objective || 'следующий шаг не задан'}`
+    case 'ActionDeclared': return 'Намерение героя принято к рассмотрению.'
     case 'TimeAdvanced': return `Проходит ${payload.amount || 0} ${payload.unit || 'мин.'}`
     case 'CombatEnded': return `Бой завершён в раунде ${payload.round}`
     default: return event.event_type

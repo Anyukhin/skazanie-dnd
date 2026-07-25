@@ -1,9 +1,16 @@
 import { classifyNpcSocialCheck } from './npc-social-check.mjs'
 
+const FREE_ACTION_PATTERNS = Object.freeze([
+  ['physically_impossible', /(взлет\w*|взлета\w*|парю\w*|телепорт\w*|останавлива\w*\s+время|дыш\w*\s+под\s+водой|становлюсь\s+невидим\w*|путешеств\w*\s+во\s+времени|fly\b|teleport\w*|stop\s+time|breathe\s+underwater)/iu],
+  ['bounded_scene_action', /(подпира\w*|баррикад\w*|поджига\w*|зажига\w*|зову\w*\s+страж|крич\w*\s+страж|связыва\w*|прячу\w*\s+след\w*|заслоня\w*)/iu],
+])
+
 const INTENT_PATTERNS = [
   ['why', /^\s*\/why\b/i],
   ['attack', /(атак|удар|бью|стреля|выстрел|рублю|колю|attack|shoot|strike)/iu],
   ['saving_throw', /(спасброс|saving\s*throw|save)/iu],
+  ['improvised_action', FREE_ACTION_PATTERNS[0][1]],
+  ['improvised_action', FREE_ACTION_PATTERNS[1][1]],
   ['ability_check', /(провер|пытаюсь|исслед|осматр|крадусь|взлом|убежд|выбираюсь|выплыв|плыву|тон\w*|check|swim|drown)/iu],
   ['healing', /(леч|исцел|восстанов.*хит|heal)/iu],
   ['damage', /(получает?\s+урон|нанести\s+урон|damage)/iu],
@@ -15,6 +22,11 @@ const INTENT_PATTERNS = [
   ['social', /(говор|убежд|обман|запуг|спраш|переговор)/iu],
   ['explore', /(осматр|исслед|иду|двига|открыва|ищу|слуша)/iu],
 ]
+
+export function classifyFreeActionKind(value) {
+  const text = normalizedText(value)
+  return FREE_ACTION_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? null
+}
 
 function normalizedText(value) {
   return String(value ?? '').normalize('NFKC').trim().slice(0, 2000)
@@ -78,8 +90,10 @@ export class IntentParser {
     if (!text) return {
       actor_id: String(playerId ?? ''), intent: 'unknown', approach: 'unspecified', targets: [],
       mentioned_entities: [], missing_information: ['message'], requires_clarification: true, confidence: 0,
+      free_action_kind: null,
     }
     const socialSkill = classifyNpcSocialCheck(text)
+    const freeActionKind = classifyFreeActionKind(text)
     const intent = socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
     const mentioned = mentionedActors(text, visibleState)
     const targets = mentioned.map((actor) => String(actor.id)).filter((id) => id !== String(playerId ?? ''))
@@ -97,6 +111,7 @@ export class IntentParser {
       missing_information: missing,
       requires_clarification: missing.length > 0,
       confidence: intent === 'improvised_action' ? 0.45 : missing.length ? 0.55 : 0.86,
+      free_action_kind: intent === 'improvised_action' ? freeActionKind : null,
     }
   }
 }

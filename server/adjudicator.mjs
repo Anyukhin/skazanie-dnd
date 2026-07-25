@@ -1,5 +1,8 @@
 import { RULE_IDS, abilityModifier, findActor } from './rules-engine.mjs'
 
+export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
+export const DIFFICULTY_CATEGORIES = Object.freeze(Object.keys(DIFFICULTY_CLASSES))
+
 function retrievedIds(retrievedRules, fallbacks = []) {
   const ids = Array.isArray(retrievedRules?.results)
     ? retrievedRules.results.map((result) => result.rule_id).filter(Boolean)
@@ -20,6 +23,27 @@ function attackProfile(actor) {
 
 function abilityForApproach(approach) {
   return ({ strength: 'str', stealth: 'dex', arcana: 'int', perception: 'wis', persuasion: 'cha', intimidation: 'cha' })[approach] ?? 'wis'
+}
+
+function difficultyCategoryFromValue(value) {
+  const difficulty = Number(value)
+  if (!Number.isFinite(difficulty)) return null
+  if (difficulty <= DIFFICULTY_CLASSES.easy) return 'easy'
+  if (difficulty <= DIFFICULTY_CLASSES.medium) return 'medium'
+  return 'hard'
+}
+
+export function difficultyCategoryFor(intent, state = {}) {
+  const requested = String(intent?.difficulty_category ?? intent?.difficultyCategory ?? '').trim().toLowerCase()
+  if (DIFFICULTY_CATEGORIES.includes(requested)) return requested
+  const activeHazard = state.mechanics?.hazards?.[intent?.actor_id]?.[0]
+  const hazardCategory = difficultyCategoryFromValue(activeHazard?.escapeDifficulty)
+  if (hazardCategory) return hazardCategory
+  return /(бурн|шторм|rough water|тон\w*|удуш|suffocat|drown)/iu.test(intent?.raw_message ?? '') ? 'hard' : 'medium'
+}
+
+export function difficultyClassFor(category) {
+  return DIFFICULTY_CLASSES[DIFFICULTY_CATEGORIES.includes(category) ? category : 'medium']
 }
 
 export class Adjudicator {
@@ -48,26 +72,27 @@ export class Adjudicator {
         }
       }
       case 'ability_check': {
-        const activeHazard = state.mechanics?.hazards?.[intent.actor_id]?.[0]
-        const hazardDifficulty = Number(activeHazard?.escapeDifficulty)
-        const difficulty = Number.isFinite(hazardDifficulty) ? hazardDifficulty : /бурн|шторм|rough water|тон\w*/iu.test(intent.raw_message ?? '') ? 15 : 12
+        const difficulty_category = difficultyCategoryFor(intent, state)
+        const difficulty = difficultyClassFor(difficulty_category)
         const ability = abilityForApproach(intent.approach)
         return {
           ...base,
           rule_ids: retrievedIds(retrievedRules, [RULE_IDS.abilityCheck]),
-          proposed_commands: [{ command_type: 'MakeAbilityCheck', actor_id: intent.actor_id, ability, proficient: false, difficulty, source_rule_ids: retrievedIds(retrievedRules, [RULE_IDS.abilityCheck]) }],
+          proposed_commands: [{ command_type: 'MakeAbilityCheck', actor_id: intent.actor_id, ability, proficient: false, difficulty, difficulty_category, source_rule_ids: retrievedIds(retrievedRules, [RULE_IDS.abilityCheck]) }],
           roll_requests: [{ expression: '1d20', purpose: `ability_check:${ability}`, actor_id: intent.actor_id }],
           confidence: 0.74,
         }
       }
-      case 'saving_throw':
+      case 'saving_throw': {
+        const difficulty_category = difficultyCategoryFor(intent, state)
         return {
           ...base,
           rule_ids: retrievedIds(retrievedRules, [RULE_IDS.savingThrow]),
-          proposed_commands: [{ command_type: 'MakeSavingThrow', actor_id: intent.actor_id, ability: abilityForApproach(intent.approach), difficulty: 12, source_rule_ids: retrievedIds(retrievedRules, [RULE_IDS.savingThrow]) }],
+          proposed_commands: [{ command_type: 'MakeSavingThrow', actor_id: intent.actor_id, ability: abilityForApproach(intent.approach), difficulty: difficultyClassFor(difficulty_category), difficulty_category, source_rule_ids: retrievedIds(retrievedRules, [RULE_IDS.savingThrow]) }],
           roll_requests: [{ expression: '1d20', purpose: 'saving_throw', actor_id: intent.actor_id }],
           confidence: 0.72,
         }
+      }
       case 'healing':
         // Свободный текст не доказывает источник лечения или расход ресурса.
         // До появления подтверждённого предмета/заклинания это остаётся ruling.
@@ -108,8 +133,10 @@ export class Adjudicator {
         supporting_rule_ids: ruleIds,
         scope: 'single_event',
         approved_by_owner: false,
+        world_change: false,
         overrides_rule_ids: [],
       },
+      narration_constraints: [...base.narration_constraints, 'no-unconfirmed-world-changes'],
       confidence: Math.min(base.confidence, 0.5),
     }
   }

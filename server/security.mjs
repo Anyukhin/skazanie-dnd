@@ -175,6 +175,9 @@ export function assertNarrationBrief(brief) {
   for (const key of ['visible_events', 'visible_state_changes', 'permitted_npc_reactions']) {
     if (!Array.isArray(brief[key])) throw new SecurityValidationError(`NarrationBrief.${key} должен быть массивом`, 'INVALID_NARRATION_BRIEF')
   }
+  if (brief.narration_constraints != null && !Array.isArray(brief.narration_constraints)) {
+    throw new SecurityValidationError('NarrationBrief.narration_constraints должен быть массивом', 'INVALID_NARRATION_BRIEF')
+  }
   if (!brief.known_environment || typeof brief.known_environment !== 'object' || Array.isArray(brief.known_environment)) {
     throw new SecurityValidationError('NarrationBrief.known_environment должен быть объектом', 'INVALID_NARRATION_BRIEF')
   }
@@ -193,6 +196,7 @@ export function buildNarrationBrief(input = {}) {
     visible_state_changes: projectVisibleState(input.visible_state_changes ?? input.visibleStateChanges ?? input.state_changes ?? input.stateChanges ?? [], viewer, { forNarrator: true }) ?? [],
     known_environment: projectVisibleState(input.known_environment ?? input.knownEnvironment ?? {}, viewer, { forNarrator: true }) ?? {},
     permitted_npc_reactions: projectVisibleState(input.permitted_npc_reactions ?? input.permittedNpcReactions ?? input.npc_reactions ?? input.npcReactions ?? [], viewer, { forNarrator: true }) ?? [],
+    narration_constraints: projectVisibleState(input.narration_constraints ?? input.narrationConstraints ?? [], viewer, { forNarrator: true }) ?? [],
   }
   return assertNarrationBrief(brief)
 }
@@ -388,6 +392,8 @@ function addViolation(violations, code, message, match = null) {
   if (!violations.some((item) => item.code === code && item.match === match)) violations.push({ code, message, match })
 }
 
+const WORLD_CHANGE_ASSERTION_PATTERN = /(?:\b(?:вспых\w*|загор\w*|сгор\w*|разруш\w*|рухнул\w*|телепорт\w*|взлет\w*|исчез\w*|появил\w*)\b|(?:двер\w*|занавес\w*|окн\w*|ворот\w*)[^.!?]{0,50}(?:откры\w*|закры\w*|запер\w*|слом\w*|вспых\w*|загор\w*|дым)|(?:мир|сцен\w*|мест\w*)[^.!?]{0,40}(?:измен\w*|стал\w*|теперь))/iu
+
 export function verifyNarration(narration, brief, {
   hiddenValues = [],
   forbiddenHiddenTerms = [],
@@ -400,6 +406,11 @@ export function verifyNarration(narration, brief, {
     addViolation(violations, 'BRIEF_CONTAINS_HIDDEN_INFORMATION', error.message)
   }
   const evidence = evidenceFromBrief(brief ?? {}, knownRuleIds)
+
+  const narrationConstraints = new Set((brief?.narration_constraints ?? []).map((constraint) => String(constraint).trim()))
+  if (narrationConstraints.has('no-unconfirmed-world-changes') && WORLD_CHANGE_ASSERTION_PATTERN.test(text)) {
+    addViolation(violations, 'WORLD_CHANGE_NOT_IN_BRIEF', 'Narrator утверждает изменение мира, запрещённое контрактом этого решения')
+  }
 
   const hpMarker = /\b(?:hp|хп|оз)\b|\bхит(?:ы|ов|а)?\b|очк\w*\s+здоровья|(?:здоровье|хиты)\s+(?:сниз|уменьш|восстанов|остал|стало)/iu.test(text)
   if (hpMarker && !evidence.hasHp && evidence.hpNumbers.size === 0) {
