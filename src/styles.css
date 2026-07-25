@@ -448,32 +448,32 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 /* Data-driven D&D combat hotbar. The layout follows the deck/filter model of
    modern party CRPGs while keeping every icon and surface native to Skazanie. */
-.spellbook-panel { position: absolute; z-index: 60; inset: 56px max(24px, 7vw) 154px; display: grid; grid-template-rows: auto auto 1fr; overflow: hidden; border: 1px solid rgba(191,145,89,.38); border-radius: 10px; background: linear-gradient(145deg, rgba(23,20,17,.985), rgba(9,12,11,.99)); box-shadow: 0 25px 90px rgba(0,0,0,.8), inset 0 1px rgba(255,255,255,.04); backdrop-filter: blur(22px); }
+.spellbook-panel { position: fixed; z-index: 60; inset: 50% auto auto 50%; width: min(1720px, calc(100vw - 96px)); height: min(1000px, calc(100vh - 96px)); transform: translate(-50%, -50%); display: grid; grid-template-rows: auto auto 1fr; overflow: hidden; border: 1px solid rgba(191,145,89,.38); border-radius: 10px; background: linear-gradient(145deg, rgba(23,20,17,.985), rgba(9,12,11,.99)); box-shadow: 0 25px 90px rgba(0,0,0,.8), inset 0 1px rgba(255,255,255,.04); backdrop-filter: blur(22px); }
 .spellbook-panel > header { min-height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,.065); background: linear-gradient(90deg, rgba(124,78,39,.14), transparent); }
 body:has(.spellbook-panel) .game-area .server-column,
 body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointer-events: none; }
 .spellbook-panel > header > div, .spellbook-panel > header span { display: flex; align-items: center; gap: 9px; }
 .spellbook-panel > header span { align-items: flex-start; flex-direction: column; gap: 1px; }
 .spellbook-panel > header small { color: #7d705f; font: 700 13px Manrope, sans-serif; letter-spacing: .12em; }
-.spellbook-panel > header strong { color: #d5b489; font: 600 14px Spectral, serif; }
+.spellbook-panel > header strong { color: #e0c6a1; font: 600 22px Spectral, serif; }
 .spellbook-panel button { border: 0; background: transparent; color: inherit; cursor: pointer; }
 .spellbook-panel > header > button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; color: #897c6e; }
 .spellbook-tools { min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,.055); }
-.spellbook-tools label { min-width: 180px; flex: 1; height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid rgba(177,143,101,.17); border-radius: 5px; background: rgba(0,0,0,.22); color: #756b60; }
+.spellbook-tools label { min-width: 180px; flex: 1; height: 46px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid rgba(177,143,101,.17); border-radius: 5px; background: rgba(0,0,0,.22); color: #756b60; }
 .spellbook-tools input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: #c7b8a4; font: 14px Manrope, sans-serif; }
 .spellbook-tools nav { display: flex; gap: 3px; }
-.spellbook-tools nav button { min-width: 28px; height: 28px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; color: #766c61; font: 700 13px Manrope, sans-serif; }
+.spellbook-tools nav button { min-width: 44px; height: 40px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; color: #766c61; font: 700 13px Manrope, sans-serif; }
 .spellbook-tools nav button.active { border-color: rgba(113,170,139,.44); background: rgba(55,121,89,.2); color: #a6d2bc; }
 .spellbook-tools > span { color: #70675e; font-size: 13px; white-space: nowrap; }
-.spellbook-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); align-content: start; gap: 6px; overflow: auto; padding: 10px; scrollbar-color: #66503a transparent; }
-.spellbook-grid article { position: relative; min-height: 70px; display: grid; grid-template-columns: 1fr 30px; border: 1px solid rgba(255,255,255,.07); border-radius: 6px; background: rgba(255,255,255,.018); color: #8e8377; }
+.spellbook-grid { display: grid; grid-template-columns: repeat(4, 1fr); align-content: start; gap: 10px; overflow: auto; padding: 14px; scrollbar-color: #66503a transparent; }
+.spellbook-grid article { position: relative; min-height: 104px; display: grid; grid-template-columns: 1fr 52px; border: 1px solid rgba(255,255,255,.07); border-radius: 6px; background: rgba(255,255,255,.018); color: #8e8377; }
 .spellbook-grid article.pinned { border-color: rgba(89,155,122,.36); background: rgba(47,105,78,.09); }
 .spellbook-grid article.unprepared { filter: saturate(.45); opacity: .68; }
 .spellbook-spell { min-width: 0; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; padding: 8px; text-align: left; }
 .spellbook-spell > span { min-width: 0; display: grid; gap: 2px; }
-.spellbook-spell strong { overflow: hidden; color: #c1ac91; font: 600 14px Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
-.spellbook-spell small { overflow: hidden; color: #6f675e; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.spellbook-spell em { display: -webkit-box; overflow: hidden; color: #867b6e; font: normal 13px/1.25 Spectral, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.spellbook-spell strong { overflow: hidden; color: #d8c6ab; font: 600 17px Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.spellbook-spell small { overflow: hidden; color: #8d857b; font: 13px Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.spellbook-spell em { display: -webkit-box; overflow: hidden; color: #a89e92; font: normal 13px/1.35 Spectral, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .spellbook-spell:disabled { opacity: .42; cursor: not-allowed; }
 .pin-spell { align-self: stretch; border-left: 1px solid rgba(255,255,255,.055) !important; color: #719d87 !important; }
 .spellbook-tag { position: absolute; top: 4px; left: 4px; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; background: #263b32; color: #9cc4af; font: normal 700 12px Manrope, sans-serif; }
@@ -634,7 +634,8 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 }
 
 @media (max-width: 820px) {
-  .spellbook-panel { inset: 48px 10px 145px; }
+  .spellbook-panel { width: calc(100vw - 20px); height: calc(100vh - 80px); }
+  .spellbook-grid { grid-template-columns: repeat(2, 1fr); }
   .spellbook-tools { align-items: stretch; flex-wrap: wrap; }
   .spellbook-tools label { flex-basis: 100%; }
   .combat-hotbar.tactical-control { bottom: 8px; width: calc(100% - 16px); }
@@ -647,7 +648,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 }
 
 @media (max-width: 560px) {
-  .spellbook-panel { bottom: 126px; }
   .spellbook-grid { grid-template-columns: 1fr; }
   .spellbook-tools > span { display: none; }
   .hotbar-main { grid-template-columns: minmax(0, 1fr) 84px; }
@@ -1168,7 +1168,7 @@ button.campaign-title:hover strong { color: #edc996; }
   .shop-admin-list article { grid-template-columns: 1fr; }
   .shop-admin-actions { grid-column: auto; flex-wrap: wrap; }
 }
-.reaction-backdrop{position:fixed;inset:0;z-index:140;display:grid;place-items:center;padding:20px;background:rgba(4,3,3,.72);backdrop-filter:blur(5px)}.reaction-prompt{width:min(560px,100%);overflow:hidden;border:1px solid rgba(206,145,73,.42);border-radius:8px;background:linear-gradient(145deg,#171412,#0d0d0c 72%);box-shadow:0 24px 80px rgba(0,0,0,.72),0 0 36px rgba(155,93,39,.12)}.reaction-prompt>header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid rgba(206,145,73,.2);background:linear-gradient(90deg,rgba(130,76,33,.2),transparent)}.reaction-prompt>header>div{display:flex;align-items:center;gap:11px;color:#c68c4e}.reaction-prompt>header span{display:grid;gap:2px}.reaction-prompt>header small{color:#8f673f;font-size: 13px;letter-spacing:.14em}.reaction-prompt>header strong{color:#e0c6a1;font:600 18px Spectral,serif}.reaction-prompt>header>em{padding:5px 7px;border:1px solid rgba(184,91,63,.32);border-radius:3px;color:#c9836d;font-size: 13px;font-style:normal;letter-spacing:.1em}.reaction-prompt>p{margin:0;padding:14px 18px 6px;color:#968a7d;font:12px/1.55 Spectral,serif}.reaction-options{display:grid;gap:7px;padding:10px 18px 16px}.reaction-options>button{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:10px;padding:11px;border:1px solid rgba(255,255,255,.07);border-radius:5px;background:rgba(255,255,255,.018);color:#9b8b79;text-align:left;cursor:pointer}.reaction-options>button:hover{border-color:rgba(201,139,70,.38);background:rgba(132,81,35,.12)}.reaction-options>button:disabled{opacity:.5;cursor:wait}.reaction-options>button>i{width:36px;height:36px;display:grid;place-items:center;border-radius:6px;background:transparent;color:#c1884c}.reaction-options>button>span{min-width:0;display:grid;gap:2px}.reaction-options strong{color:#d0b48f;font:600 13px Spectral,serif}.reaction-options small{color:#746d65;font-size: 13px;line-height:1.35}.reaction-options>button>em{min-width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:rgba(105,78,49,.2);color:#b18b5e;font-size: 13px;font-style:normal}.reaction-prompt>footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 18px;border-top:1px solid rgba(255,255,255,.055);background:rgba(0,0,0,.16)}.reaction-prompt>footer button{height:31px;padding:0 13px;border:1px solid rgba(255,255,255,.1);border-radius:4px;background:transparent;color:#9c8f80;font-size: 14px;cursor:pointer}.reaction-prompt>footer span{color:#665f57;font-size: 13px;text-align:right}@media(max-width:600px){.reaction-prompt>header{align-items:flex-start}.reaction-prompt>footer{align-items:stretch;flex-direction:column}.reaction-prompt>footer span{text-align:left}}
+.reaction-backdrop{position:fixed;inset:0;z-index:140;display:grid;place-items:center;padding:20px;background:rgba(4,3,3,.72);backdrop-filter:blur(5px)}.reaction-prompt{width:min(820px,100%);overflow:hidden;border:1px solid rgba(206,145,73,.5);border-radius:14px;background:linear-gradient(145deg,#171412,#0d0d0c 72%);box-shadow:0 24px 80px rgba(0,0,0,.72),0 0 36px rgba(155,93,39,.12)}.reaction-prompt>header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid rgba(206,145,73,.2);background:linear-gradient(90deg,rgba(130,76,33,.2),transparent)}.reaction-prompt>header>div{display:flex;align-items:center;gap:11px;color:#c68c4e}.reaction-prompt>header span{display:grid;gap:2px}.reaction-prompt>header small{color:#8f673f;font-size: 13px;letter-spacing:.14em}.reaction-prompt>header strong{color:#e0c6a1;font:600 26px Spectral,serif}.reaction-prompt>header>em{padding:5px 7px;border:1px solid rgba(184,91,63,.32);border-radius:3px;color:#c9836d;font-size: 13px;font-style:normal;letter-spacing:.1em}.reaction-prompt>p{margin:0;padding:16px 22px 8px;color:#c6bcae;font:16px/1.5 Spectral,serif}.reaction-options{display:grid;gap:7px;padding:10px 18px 16px}.reaction-options>button{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(255,255,255,.018);color:#9b8b79;text-align:left;cursor:pointer}.reaction-options>button:hover{border-color:rgba(201,139,70,.38);background:rgba(132,81,35,.12)}.reaction-options>button:disabled{opacity:.5;cursor:wait}.reaction-options>button>i{width:52px;height:52px;display:grid;place-items:center;border-radius:6px;background:transparent;color:#c1884c}.reaction-options>button>span{min-width:0;display:grid;gap:2px}.reaction-options strong{color:#e0d0b8;font:600 19px Spectral,serif}.reaction-options small{color:#a89e92;font:14px/1.4 Manrope,sans-serif}.reaction-options>button>em{min-width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:rgba(105,78,49,.2);color:#b18b5e;font-size: 13px;font-style:normal}.reaction-prompt>footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 18px;border-top:1px solid rgba(255,255,255,.055);background:rgba(0,0,0,.16)}.reaction-prompt>footer button{height:31px;padding:0 13px;border:1px solid rgba(255,255,255,.1);border-radius:4px;background:transparent;color:#9c8f80;font-size: 14px;cursor:pointer}.reaction-prompt>footer span{color:#665f57;font-size: 13px;text-align:right}@media(max-width:600px){.reaction-prompt>header{align-items:flex-start}.reaction-prompt>footer{align-items:stretch;flex-direction:column}.reaction-prompt>footer span{text-align:left}}
 .reaction-beneficiary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:9px 18px 0;padding:9px 11px;border:1px solid rgba(197,143,78,.18);border-radius:5px;background:rgba(132,81,35,.07);color:#8e7f6f;font-size: 13px}.reaction-beneficiary select{min-width:180px;height:28px;padding:0 8px;border:1px solid rgba(211,166,107,.22);border-radius:4px;background:#17130f;color:#c5a77f;font-size: 14px}
 
 /* Persisted hero-death and campaign-ending state. */
