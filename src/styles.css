@@ -1213,6 +1213,15 @@ button.campaign-title:hover strong { color: #edc996; }
 }
 .map-stage.monotone-backdrop::before { opacity: .08; }
 
+/* Иллюстрация локации нарисована с одной точки зрения, а тактические тайлы лежат под
+   наклоном — вместе они читаются как настолка поверх картины. В бою фон уводится в тень,
+   чтобы доска стала главной; вне боя атмосфера места сохраняется полностью.
+   Внутренняя тень красится поверх фона, но под содержимым, поэтому фигуры и клетки
+   не тускнеют, и одного правила хватает на все темы. */
+.game-area:has(.combat-hotbar) .map-stage.scenic-backdrop {
+  box-shadow: inset 0 0 0 100vmax rgba(6, 5, 4, .58);
+}
+
 .map-scroll {
   transform-style: preserve-3d;
   will-change: transform;
