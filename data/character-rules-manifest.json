@@ -1,0 +1,13 @@
+{
+  "catalog_id": "character-build-1-12",
+  "catalog_version": "1.0.0",
+  "engine_ruleset_id": "srd_5_2_1",
+  "compatibility_profile": "dndsu-5e-2014-official",
+  "maximum_character_level": 12,
+  "source_file": "dndsu-class-build-rules-1-12.json",
+  "source_sha256": "444cd3d790c81a687d9fd65b7fc7a479ef4e3007966c152e6413b0ecc2c195ff",
+  "source_size_bytes": 9920,
+  "license_id": "PROJECT-COMPATIBILITY-DATA",
+  "content_origin": "bounded compatibility catalog; the authoritative mechanical ruleset remains srd_5_2_1",
+  "verified_at": "2026-07-24"
+}

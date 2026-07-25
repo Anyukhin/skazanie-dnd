@@ -4,6 +4,7 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
+RUN test -s package.json && test -s server/index.mjs && node --check server/index.mjs
 RUN pnpm build
 RUN pnpm prune --prod
 
@@ -16,7 +17,9 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY --from=build /app/data ./data
 COPY --from=build /app/prompts ./prompts
-RUN mkdir -p storage/generated/items storage/rooms && chown -R node:node /app
+RUN test -s package.json && test -s server/index.mjs \
+    && mkdir -p storage/generated/items storage/rooms \
+    && chown -R node:node /app
 USER node
 EXPOSE 8787
 CMD ["node", "server/index.mjs"]

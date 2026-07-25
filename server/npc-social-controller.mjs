@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { ensureNpcSocialState, relationshipTier } from './npc-social.mjs'
+import { ensureNpcSocialState, npcProfileAtWorldTime, relationshipTier } from './npc-social.mjs'
+import { campaignConceptForAgent } from './agent-context.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v1.txt', import.meta.url)), 'utf8')
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
@@ -26,9 +27,22 @@ function npcFacts(state, profile) {
   })).slice(0, 30)
 }
 
+function npcClaims(state, profile) {
+  return (state.worldMemory?.epistemic_claims ?? [])
+    .filter((claim) => String(claim.holder_entity_id) === String(profile.id))
+    .map((claim) => ({
+      id: String(claim.id),
+      kind: claim.kind === 'rumor' ? 'rumor' : 'belief',
+      summary: clean(claim.summary || claim.claim, 500),
+      truth_status: ['confirmed', 'refuted'].includes(claim.truth_status) ? claim.truth_status : 'unknown',
+    }))
+    .slice(0, 30)
+}
+
 function briefFor(state, profile, playerId, message, checkOutcome = null) {
   const social = ensureNpcSocialState(state.social, state)
   return {
+    campaign_premise: campaignConceptForAgent(state),
     npc: {
       id: profile.id, name: profile.name, role: profile.role,
       public_summary: profile.public_summary, voice: profile.voice,
@@ -46,6 +60,7 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
       .slice(-6)
       .map((entry) => ({ player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance, ...(entry.check ? { check: { skill: entry.check.skill, success: entry.check.success, degree: entry.check.degree } } : {}) })),
     speakable_facts: npcFacts(state, profile),
+    speakable_claims: npcClaims(state, profile),
     player_message: clean(message, 1_000),
     resolved_check: checkOutcome ? { skill: checkOutcome.skill, ability: checkOutcome.ability, success: checkOutcome.success, degree: checkOutcome.degree } : null,
   }
@@ -63,6 +78,10 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
   const allowedFactIds = new Set(facts.map((fact) => fact.id))
   const disclosedFactIds = [...new Set((Array.isArray(raw?.disclosed_fact_ids) ? raw.disclosed_fact_ids : [])
     .map(String).filter((factId) => allowedFactIds.has(factId)))].slice(0, 20)
+  const claims = npcClaims(state, profile)
+  const allowedClaimIds = new Set(claims.map((claim) => claim.id))
+  const disclosedClaimIds = [...new Set((Array.isArray(raw?.disclosed_claim_ids) ? raw.disclosed_claim_ids : [])
+    .map(String).filter((claimId) => allowedClaimIds.has(claimId)))].slice(0, 20)
   const reply = clean(raw?.reply, 1_000) || fallbackReply(profile, facts, checkOutcome)
   const stance = STANCES.has(raw?.stance) ? raw.stance : 'neutral'
   let relationshipDelta = Math.max(-2, Math.min(2, Number.isSafeInteger(Number(raw?.relationship_delta)) ? Number(raw.relationship_delta) : 0))
@@ -89,6 +108,7 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
     reply,
     stance,
     disclosed_fact_ids: disclosedFactIds,
+    disclosed_claim_ids: disclosedClaimIds,
     relationship_delta: relationshipDelta,
     promise,
     confidence: Math.max(0, Math.min(1, Number(raw?.confidence) || 0)),
@@ -100,6 +120,7 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
       npc_reply: reply,
       stance,
       disclosed_fact_ids: disclosedFactIds,
+      disclosed_claim_ids: disclosedClaimIds,
       relationship_delta: relationshipDelta,
       visibility: 'party',
       ...(promise ? { promise } : {}),
@@ -115,7 +136,8 @@ export class NpcSocialController {
 
   async respond({ state = {}, playerId = '', npcId = '', message = '', turnId = '', checkOutcome = null } = {}) {
     const social = ensureNpcSocialState(state.social, state)
-    const profile = social.npcs.find((npc) => npc.id === String(npcId))
+    const persistedProfile = social.npcs.find((npc) => npc.id === String(npcId))
+    const profile = persistedProfile ? npcProfileAtWorldTime(persistedProfile, state) : null
     if (!profile || profile.available === false) return null
     const facts = npcFacts(state, profile)
     if (!this.llmClient) return { ...normalizedResult({}, profile, state, String(playerId), message, turnId, checkOutcome), provider: 'deterministic-social-fallback' }

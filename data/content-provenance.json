@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "srd_5_2_1",
+  "verified_at": "2026-07-24",
+  "external_sources": [
+    {
+      "id": "srd-5.2.1",
+      "title": "System Reference Document 5.2.1",
+      "publisher": "Wizards of the Coast LLC",
+      "url": "https://www.dndbeyond.com/srd",
+      "download_url": "https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf",
+      "license_id": "CC-BY-4.0",
+      "sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+      "size_bytes": 6031375,
+      "bundled": false,
+      "rights_status": "verified"
+    },
+    {
+      "id": "dndsu-compatibility-index",
+      "title": "dnd.su structured compatibility indexes",
+      "publisher": "UNKNOWN",
+      "url": "https://www.dnd.su/",
+      "license_id": "UNKNOWN",
+      "bundled": false,
+      "rights_status": "review_required"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "data/rule_packs/srd_5_2_1/manifest.yaml",
+      "sha256": "e301dd11eb74a247a1d658ed9414bec93f86cf1002af26b8e608f687549662b4",
+      "size_bytes": 526,
+      "source_id": "srd-5.2.1",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/srd_5_2_1/coverage.yaml",
+      "sha256": "6fb5fdfc6bd3ee6f31ec77ee8482a7017bc3b28184ca7a98ee1b31d022c74c87",
+      "size_bytes": 818,
+      "source_id": "srd-5.2.1",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/srd_5_2_1/glossary.csv",
+      "sha256": "a1a9ed1acdc85b23171464dc6373ff938c23be4d52eadd797d96665957320cdb",
+      "size_bytes": 3403,
+      "source_id": "srd-5.2.1",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/srd_5_2_1/rules.jsonl",
+      "sha256": "ad7b8d6b825e048113cbc6d8574e082ed87c21bb0002258ee191de4c46e7f236",
+      "size_bytes": 29535,
+      "source_id": "srd-5.2.1",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/srd_5_2_1/ontology_edges.jsonl",
+      "sha256": "6cc83537a549360ed87235b7071a4bf0cbb014f211bb307e0165100b2b83ddc4",
+      "size_bytes": 4002,
+      "source_id": "srd-5.2.1",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/dndsu-spells-0-6.json",
+      "sha256": "1c9ac9a3292ff9e906fac97202156d5d03164b8ccc2354920c6f072338464918",
+      "size_bytes": 448356,
+      "source_id": "dndsu-compatibility-index",
+      "rights_status": "review_required"
+    },
+    {
+      "path": "data/dndsu-class-actions-1-12.json",
+      "sha256": "14a039225c411029d56808d810559eb0312863194e2b65f2ad08aea101638f92",
+      "size_bytes": 259457,
+      "source_id": "dndsu-compatibility-index",
+      "rights_status": "review_required"
+    },
+    {
+      "path": "data/dndsu-class-build-rules-1-12.json",
+      "sha256": "444cd3d790c81a687d9fd65b7fc7a479ef4e3007966c152e6413b0ecc2c195ff",
+      "size_bytes": 9920,
+      "source_id": "dndsu-compatibility-index",
+      "rights_status": "review_required"
+    },
+    {
+      "path": "data/dndsu-spell-mechanics-overrides.json",
+      "sha256": "f5638b5a334f1bac1d2f15b47c680709ef7b804ccde366831d1f7e4fff9a1bbb",
+      "size_bytes": 41441,
+      "source_id": "dndsu-compatibility-index",
+      "rights_status": "review_required"
+    }
+  ],
+  "release_blockers": [
+    "PROJECT_LICENSE_MISSING",
+    "DNDSU_RIGHTS_UNVERIFIED",
+    "PUBLIC_ASSET_RIGHTS_UNVERIFIED",
+    "FONT_PROVENANCE_UNVERIFIED",
+    "CONTAINER_DIGESTS_UNPINNED"
+  ]
+}

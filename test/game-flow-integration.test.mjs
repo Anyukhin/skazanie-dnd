@@ -36,6 +36,14 @@ test('полный enforce-flow воспроизводит исследован�
     snapshotEvery: 3,
     idFactory: sequenceFactory('commit'),
   })
+  await eventStore.initializeCampaign({
+    campaign_id: initial.sessionCode,
+    initial_state: initial,
+    ruleset_id: initial.ruleset_id,
+    ruleset_version: initial.ruleset_version,
+    enabled_rule_packs: initial.enabled_rule_packs,
+    enabled_house_rules: initial.enabled_house_rules,
+  })
   const traceStore = new FileTraceStore({ rootDir: traceRoot })
   const diceService = new DiceService({
     rng: new SequenceDiceRng([12, 11, 18, 5, 15, 4]),

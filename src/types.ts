@@ -19,7 +19,7 @@ export type RollResult = NonNullable<Message['roll']>
  */
 export type DiceRollEvent = {
   id: string
-  kind: 'free'
+  kind: 'free' | 'party'
   sides: 20
   value: number
   playerId: string
@@ -55,6 +55,9 @@ export type AgentInteraction = {
   votes: Record<string, string>
   status: 'open' | 'resolved'
   resolvedOptionId?: string
+  eligibleActorIds?: string[]
+  requiredVotes?: number
+  policyVersion?: string
   difficulty?: number
   roll?: DiceRollEvent
   resolutionPrompt: string
@@ -72,6 +75,18 @@ export type Player = {
   classSkillProficiencies?: string[]
   knownSpellIds?: string[]
   preparedSpellIds?: string[]
+  hitPointIncreases?: number[]
+  characterSheet?: {
+    schema_version: number
+    level: number
+    experience: number
+    experience_for_next_level: number | null
+    proficiency_bonus: number
+    passive_perception: number
+    armor_class: { value: number }
+    speed: { value: number }
+    hit_points: { value: number; hitDie: number }
+  } | null
   color: string
   initials: string
   portrait: string
@@ -93,6 +108,14 @@ export type Player = {
   notes: string
   currency: Currency
   inventory: InventoryItem[]
+  inventoryLoad?: {
+    weight: number
+    capacity: number
+    encumbered: boolean
+    remaining: number
+    attuned: number
+    attunement_limit: number
+  }
   combatSpells?: CombatSpell[]
   combatActions?: CombatAction[]
   hp: number
@@ -118,6 +141,8 @@ export type Currency = {
   gold: number
   platinum: number
 }
+
+export type MechanicsSupport = 'verified' | 'partial' | 'heuristic' | 'ruling-only'
 
 export type CombatSpell = {
   id: string
@@ -151,6 +176,8 @@ export type CombatSpell = {
   prepared?: boolean
   sourceUrl?: string
   mechanicsAccuracy?: 'verified-dndsu' | 'heuristic'
+  mechanicsSupport?: MechanicsSupport
+  supportNote?: string
   requiresWeaponAttack?: boolean
   weaponCantrip?: 'booming-blade' | 'green-flame-blade'
   beamScaling?: boolean
@@ -266,6 +293,8 @@ export type InventoryItem = {
   quantity: number
   weight: number
   equipped: boolean
+  requires_attunement?: boolean
+  attuned_to?: string | null
   rarity: 'обычный' | 'необычный' | 'редкий' | 'очень редкий' | 'легендарный' | 'сюжетный'
   description: string
   properties: string
@@ -314,6 +343,18 @@ export type MerchantStockItem = {
   imagePosition?: string
 }
 
+export type MerchantService = {
+  service_id: string
+  name: string
+  description?: string
+  kind: 'appraisal' | 'lodging' | 'repair' | 'transport' | 'training' | 'other'
+  base_price_cp: number
+  duration_minutes: number
+  available: boolean
+  requires_presence: boolean
+  tags?: string[]
+}
+
 export type Merchant = {
   id: string
   name: string
@@ -324,9 +365,12 @@ export type Merchant = {
   initials?: string
   portrait?: string
   location: string
+  location_id?: string
   available: boolean
   purse_cp?: number
   stock: MerchantStockItem[]
+  services?: MerchantService[]
+  restock?: { enabled: boolean; interval_minutes: number; last_restock_world_minute: number | null }
   pricing: MerchantPricingPolicy
 }
 
@@ -409,6 +453,20 @@ export type MerchantBargainResult = {
   message?: string
 }
 
+export type MerchantServiceQuote = {
+  quote_id?: string
+  direction: 'service'
+  actor_id: string
+  merchant_id: string
+  service_id: string
+  service: MerchantService
+  price_cp: number
+  can_afford: boolean
+  available: boolean
+  state_version: number
+  expected_state_version: number
+}
+
 export type MerchantView = {
   merchant: Merchant
   actor_id: string
@@ -417,6 +475,7 @@ export type MerchantView = {
   merchant_purse_cp: number
   buy_quotes: MerchantQuote[]
   sell_quotes: MerchantQuote[]
+  service_quotes?: MerchantServiceQuote[]
   bargain?: MerchantBargainResult | null
   pricing_explanation?: string
   state_version: number
@@ -425,7 +484,7 @@ export type MerchantView = {
 
 export type EconomyLogEntry = {
   id: string
-  type: 'bargain' | 'purchase' | 'sale' | 'appraisal' | 'merchant-created' | 'merchant-configured' | 'merchant-restocked' | 'merchant-moved' | 'merchant-availability'
+  type: 'bargain' | 'purchase' | 'sale' | 'service' | 'appraisal' | 'merchant-created' | 'merchant-configured' | 'merchant-restocked' | 'merchant-economy-clock' | 'merchant-moved' | 'merchant-availability'
   actorId?: string
   merchantId?: string
   stockId?: string
@@ -486,19 +545,24 @@ export type CombatAction = {
   concentration?: boolean
   minimumLevel?: number
   sourceUrl?: string
+  mechanicsSupport?: MechanicsSupport
+  supportNote?: string
   effect?: Record<string, unknown>
 }
 
 export type Enemy = {
   id: string
   name: string
-  hp: number
-  maxHp: number
-  armor: number
-  speed: number
-  attackBonus: number
-  damageDice: number
-  damageBonus: number
+  /** Exact combat statistics are present only when server-side knowledge reveals them. */
+  hp?: number
+  maxHp?: number
+  armor?: number
+  speed?: number
+  attackBonus?: number
+  damageDice?: number
+  damageBonus?: number
+  healthStatus?: 'unharmed' | 'wounded' | 'bloodied' | 'critical' | 'defeated'
+  healthKnown?: 'banded' | 'exact'
   initiativeBonus?: number
   stat_block_id?: string
   creature_type?: string
@@ -571,7 +635,7 @@ export type BattleEvent = {
   from?: { x: number; y: number }
   to?: { x: number; y: number }
   distanceFeet?: number
-  roll?: { die: number; modifier: number; total: number; difficulty: number; hit: boolean }
+  roll?: { die?: number; modifier?: number; total: number; difficulty?: number; hit: boolean }
   damage?: number
   damageType?: string
   healing?: number
@@ -603,6 +667,7 @@ export type BattleEvent = {
 export type Scene = {
   title: string
   location: string
+  location_id?: string
   mood: string
   objective: string
   turn: number
@@ -724,11 +789,35 @@ export type GameState = {
   enabled_rule_packs?: string[]
   enabled_house_rules?: string[]
   ruleset_locked_at?: string | null
-  engine_mode?: 'legacy' | 'shadow' | 'enforce'
+  engine_mode?: 'enforce'
   mechanics?: GameMechanics
   rulings?: Array<Record<string, unknown>>
   entities?: Array<Record<string, unknown>>
   adventure?: AdventureState
+  autonomy?: {
+    schema_version?: number
+    pacing?: {
+      beat: number
+      phase: 'breather' | 'development' | 'escalation' | 'climax'
+      tension: number
+      last_intent_type?: string
+    }
+    travel_history?: Array<{
+      travel_id: string
+      from: string
+      to: string
+      distance_band: 'near' | 'regional' | 'far'
+      duration_minutes: number
+      risk_score: number
+      random_encounter: boolean
+    }>
+    downtime_history?: Array<{
+      downtime_id: string
+      kind: string
+      duration_minutes: number
+      participant_ids: string[]
+    }>
+  }
 }
 
 export type CombatInitiativeEntry = {
@@ -809,6 +898,16 @@ export type CombatMechanics = {
 
 export type GameMechanics = Record<string, unknown> & {
   combat?: CombatMechanics
+  campaign_lifecycle?: {
+    schema_version: 1
+    status: 'setup' | 'active' | 'paused' | 'completed' | 'failed' | 'archived'
+    reason?: string | null
+    paused_at?: string | null
+    concluded_at?: string | null
+    archived_at?: string | null
+    epilogue?: string | null
+    changed_by?: string | null
+  }
   death?: {
     campaign_status: 'active' | 'party_defeated'
     heroes: Record<string, {
@@ -855,6 +954,8 @@ export type CampaignSummary = {
   memberCount: number
   playerCount: number
   setting?: string
+  lifecycleStatus?: 'setup' | 'active' | 'paused' | 'completed' | 'failed' | 'archived'
+  membershipRole?: 'admin' | 'owner' | 'player' | 'legacy'
   updatedAt: string | null
 }
 
@@ -880,7 +981,7 @@ export type AiTurnResult = {
     interaction?: AgentInteraction | null
   }
   turn_id?: string | null
-  engine_mode?: 'legacy' | 'shadow' | 'enforce'
+  engine_mode?: 'enforce'
   state_version?: number
   mechanics?: GameEvent[]
   visible_state_changes?: Array<Record<string, unknown>>
@@ -889,7 +990,6 @@ export type AiTurnResult = {
   ruling?: Record<string, unknown> | null
   explanation?: Record<string, unknown> | null
   explanation_url?: string
-  shadow_comparison?: Record<string, unknown>
   idempotent_replay?: boolean
   narration_message_id?: string | null
   turn_consumed?: boolean
@@ -927,7 +1027,7 @@ export type AiHealth = {
   }>
   imageModel?: string
   tools: string[]
-  engineMode?: 'legacy' | 'shadow' | 'enforce'
+  engineMode?: 'enforce'
   rulesetId?: string
   ruleCount?: number
 }
@@ -937,7 +1037,13 @@ export type Account = {
   email: string
   name: string
   heroIds: string[]
+  campaignMemberships?: Array<{
+    campaignId: string
+    role: 'owner' | 'player'
+    heroIds: string[]
+    joinedAt?: number
+  }>
   role: 'admin' | 'player'
-  engineMode?: 'legacy' | 'shadow' | 'enforce' | null
+  engineMode?: 'enforce' | null
   createdAt?: number
 }

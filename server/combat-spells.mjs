@@ -3,11 +3,20 @@ import { readFileSync } from 'node:fs'
 const payload = JSON.parse(readFileSync(new URL('../data/dndsu-spells-0-6.json', import.meta.url), 'utf8'))
 const overridePayload = JSON.parse(readFileSync(new URL('../data/dndsu-spell-mechanics-overrides.json', import.meta.url), 'utf8'))
 const SPELL_OVERRIDES = overridePayload.spells ?? {}
-const SPELLS = Object.freeze(payload.spells.map((spell) => Object.freeze({
-  ...spell,
-  ...(SPELL_OVERRIDES[spell.id] ?? {}),
-  mechanicsAccuracy: SPELL_OVERRIDES[spell.id] ? 'verified-dndsu' : 'heuristic',
-})))
+const DEFAULT_PARTIAL_NOTE = 'Сервер исполняет формализованную часть карточки; полный набор исключений и взаимодействий ещё не подтверждён.'
+const DEFAULT_RULING_NOTE = 'Карточка известна каталогу, но для её эффекта ещё нет исполняемого серверного решения.'
+const SPELLS = Object.freeze(payload.spells.map((spell) => {
+  const mechanicsOverride = SPELL_OVERRIDES[spell.id]
+  const mechanicsSupport = mechanicsOverride?.mechanicsSupport
+    ?? (mechanicsOverride ? 'partial' : 'heuristic')
+  return Object.freeze({
+    ...spell,
+    ...(mechanicsOverride ?? {}),
+    mechanicsAccuracy: mechanicsOverride?.mechanicsAccuracy ?? (mechanicsOverride ? 'verified-dndsu' : 'heuristic'),
+    mechanicsSupport,
+    ...((mechanicsOverride?.supportNote || mechanicsSupport === 'partial' || mechanicsSupport === 'ruling-only') ? { supportNote: mechanicsOverride?.supportNote ?? (mechanicsSupport === 'partial' ? DEFAULT_PARTIAL_NOTE : DEFAULT_RULING_NOTE) } : {}),
+  })
+}))
 const SPELLS_BY_ID = new Map(SPELLS.map((spell) => [spell.id, spell]))
 
 const clone = (value) => structuredClone(value)
@@ -202,7 +211,13 @@ export function spellSlotMaximumsFor(actor) {
 }
 
 export function spellCatalogInfo() {
-  return { count: SPELLS.length, source: payload.source, generatedAt: payload.generatedAt, maximumSpellLevel: 6, verifiedMechanics: Object.keys(SPELL_OVERRIDES).length }
+  return {
+    count: SPELLS.length, source: payload.source, generatedAt: payload.generatedAt, maximumSpellLevel: 6,
+    verifiedMechanics: SPELLS.filter((spell) => spell.mechanicsSupport === 'verified').length,
+    partialMechanics: SPELLS.filter((spell) => spell.mechanicsSupport === 'partial').length,
+    heuristicMechanics: SPELLS.filter((spell) => spell.mechanicsSupport === 'heuristic').length,
+    rulingOnlyMechanics: SPELLS.filter((spell) => spell.mechanicsSupport === 'ruling-only').length,
+  }
 }
 
 export function isPartySummon(actor) {

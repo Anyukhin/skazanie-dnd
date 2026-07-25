@@ -22,6 +22,15 @@ export const MAX_STOCK_QUANTITY = 999_999
 export const MAX_UNIT_PRICE_CP = 100_000_000
 export const ITEM_APPRAISAL_CONTRACT_VERSION = 'skazanie:item-appraisal:v1'
 export const ITEM_APPRAISAL_POLICY_ID = 'skazanie:item-appraisal:category-rarity-condition:v1'
+// Services and replenishment are explicit campaign policies. They deliberately
+// use campaign minutes rather than wall-clock time so replay and a future job
+// runner are deterministic.
+export const MERCHANT_SERVICES_POLICY_ID = 'skazanie:economy:merchant-services-v1'
+export const MERCHANT_RESTOCK_POLICY_ID = 'skazanie:economy:merchant-restock-v1'
+export const MERCHANT_ECONOMY_CLOCK_EVENT_TYPE = 'MerchantEconomyClockAdvanced'
+export const MIN_RESTOCK_INTERVAL_MINUTES = 60
+export const MAX_RESTOCK_INTERVAL_MINUTES = 525_600
+export const MAX_WORLD_MINUTE = 1_000_000_000
 const ITEM_APPRAISAL_FINGERPRINT = /^[a-f0-9]{64}$/u
 
 /**
@@ -38,14 +47,29 @@ export function canonicalLocationKey(value) {
     .toLocaleLowerCase('ru')
 }
 
+export function canonicalLocationId(value) {
+  return String(value ?? '').trim().slice(0, 120)
+}
+
+function locationReference(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : null
+  return {
+    id: canonicalLocationId(source?.location_id ?? source?.locationId),
+    key: canonicalLocationKey(source ? (source.location ?? source.name) : value),
+  }
+}
+
 export function locationsMatch(left, right) {
-  return canonicalLocationKey(left) === canonicalLocationKey(right)
+  const leftReference = locationReference(left)
+  const rightReference = locationReference(right)
+  if (leftReference.id && rightReference.id) return leftReference.id === rightReference.id
+  return leftReference.key === rightReference.key
 }
 
 /** An empty merchant location preserves the legacy "available everywhere" rule. */
 export function merchantIsAtLocation(merchantLocation, sceneLocation) {
-  const merchantKey = canonicalLocationKey(merchantLocation)
-  return !merchantKey || merchantKey === canonicalLocationKey(sceneLocation)
+  const merchant = locationReference(merchantLocation)
+  return (!merchant.id && !merchant.key) || locationsMatch(merchantLocation, sceneLocation)
 }
 
 /**
@@ -101,6 +125,7 @@ function cleanText(value, maximum, fallback = '') {
 }
 
 const INVENTORY_ITEM_TYPES = new Set(['weapon', 'armor', 'consumable', 'tool', 'quest', 'treasure', 'document', 'other'])
+const MERCHANT_SERVICE_KINDS = new Set(['appraisal', 'lodging', 'repair', 'transport', 'training', 'other'])
 const INVENTORY_ITEM_RARITIES = new Set(['обычный', 'необычный', 'редкий', 'очень редкий', 'легендарный', 'сюжетный'])
 
 function normalizeItemType(value) {
@@ -140,6 +165,8 @@ export function inventoryStackKey(input = {}) {
     properties: cleanText(source.properties, 500),
     combat: source.combat && typeof source.combat === 'object' ? source.combat : null,
     charges: source.charges && typeof source.charges === 'object' ? source.charges : null,
+    requires_attunement: source.requires_attunement === true ? true : null,
+    attuned_to: source.attuned_to == null ? null : cleanId(source.attuned_to),
     sellable: source.sellable === false ? false : null,
     quest_item: source.quest_item === true ? true : null,
     price_provenance: source.price_provenance == null ? null : cleanText(source.price_provenance, 60),
@@ -175,6 +202,8 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     ...(source.charges && typeof source.charges === 'object' ? {
       charges: { current: clampInteger(source.charges.current, 0, maxCharges, 0), max: maxCharges },
     } : {}),
+    ...(source.requires_attunement === true ? { requires_attunement: true } : {}),
+    ...(source.attuned_to == null ? {} : { attuned_to: cleanId(source.attuned_to) }),
     ...(source.sellable === false ? { sellable: false } : {}),
     ...(source.quest_item === true ? { quest_item: true } : {}),
     ...(source.price_provenance == null ? {} : { price_provenance: cleanText(source.price_provenance, 60) }),
@@ -335,6 +364,80 @@ function normalizeBargains(input = {}) {
   return Object.fromEntries(entries)
 }
 
+function normalizeMerchantService(input = {}, index = 0) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  const serviceId = cleanId(source.service_id ?? source.serviceId ?? source.id, `service-${index + 1}`)
+  const kind = cleanText(source.kind, 40, 'other').toLowerCase()
+  return {
+    service_id: serviceId,
+    name: cleanText(source.name, 120, 'Услуга торговца'),
+    description: cleanText(source.description, 1_000),
+    kind: MERCHANT_SERVICE_KINDS.has(kind) ? kind : 'other',
+    base_price_cp: clampInteger(source.base_price_cp ?? source.basePriceCp, 0, MAX_UNIT_PRICE_CP, 0),
+    duration_minutes: clampInteger(source.duration_minutes ?? source.durationMinutes, 0, 10_080, 0),
+    available: source.available !== false,
+    requires_presence: source.requires_presence !== false && source.requiresPresence !== false,
+    tags: [...new Set((Array.isArray(source.tags) ? source.tags : [])
+      .map((tag) => cleanText(tag, 40))
+      .filter(Boolean))].slice(0, 12),
+    price_provenance: 'merchant_service_policy',
+    policy_id: MERCHANT_SERVICES_POLICY_ID,
+  }
+}
+
+export function normalizeMerchantServices(input) {
+  const seen = new Set()
+  return (Array.isArray(input) ? input : []).slice(0, 100).flatMap((service, index) => {
+    const normalized = normalizeMerchantService(service, index)
+    if (seen.has(normalized.service_id)) return []
+    seen.add(normalized.service_id)
+    return [normalized]
+  })
+}
+
+/**
+ * A restock policy only targets existing, catalog-attested stock entries. It
+ * cannot introduce a new SKU or change its catalog identity; that remains the
+ * explicit merchant lifecycle command's responsibility.
+ */
+export function normalizeMerchantRestockPolicy(input = {}, stock = []) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  const stockById = new Map((Array.isArray(stock) ? stock : []).map((entry) => [String(entry?.stock_id ?? ''), entry]))
+  const seen = new Set()
+  const targets = (Array.isArray(source.targets) ? source.targets : []).slice(0, 500).flatMap((target) => {
+    if (!target || typeof target !== 'object' || Array.isArray(target)) return []
+    const stockId = cleanId(target.stock_id ?? target.stockId)
+    if (!stockId || seen.has(stockId) || !stockById.has(stockId)) return []
+    seen.add(stockId)
+    const targetQuantity = clampInteger(
+      target.target_quantity ?? target.targetQuantity ?? target.quantity,
+      0,
+      MAX_STOCK_QUANTITY,
+      0,
+    )
+    if (targetQuantity < 1) return []
+    return [{ stock_id: stockId, target_quantity: targetQuantity }]
+  })
+  const rawLastRestock = source.last_restock_world_minute ?? source.lastRestockWorldMinute
+  const lastRestock = rawLastRestock == null
+    ? null
+    : clampInteger(rawLastRestock, 0, MAX_WORLD_MINUTE, 0)
+  const enabled = source.enabled === true && targets.length > 0
+  return {
+    schema_version: 1,
+    policy_id: MERCHANT_RESTOCK_POLICY_ID,
+    enabled,
+    interval_minutes: clampInteger(
+      source.interval_minutes ?? source.intervalMinutes,
+      MIN_RESTOCK_INTERVAL_MINUTES,
+      MAX_RESTOCK_INTERVAL_MINUTES,
+      1_440,
+    ),
+    last_restock_world_minute: lastRestock,
+    targets,
+  }
+}
+
 export function normalizeMerchant(input = {}, index = 0) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const merchantId = cleanId(source.id ?? source.merchant_id, `merchant-${index + 1}`)
@@ -374,11 +477,14 @@ export function normalizeMerchant(input = {}, index = 0) {
     greeting: cleanText(source.greeting, 500),
     voice: cleanText(source.voice, 500),
     location: cleanText(source.location, 180),
+    location_id: canonicalLocationId(source.location_id ?? source.locationId),
     available: source.available !== false,
     purse_cp: normalizeMerchantPurseCp(source.purse_cp ?? source.purseCp),
     pricing: normalizeMerchantPricing(source.pricing),
     stock,
     bargains: normalizeBargains(source.bargains),
+    services: normalizeMerchantServices(source.services),
+    restock_policy: normalizeMerchantRestockPolicy(source.restock_policy ?? source.restockPolicy ?? source.restock, stock),
   }
 }
 
@@ -392,7 +498,7 @@ export function normalizeMerchants(input) {
   })
 }
 
-export function createStarterMerchant({ location = '' } = {}) {
+export function createStarterMerchant({ location = '', location_id = '', locationId = '' } = {}) {
   return normalizeMerchant({
     id: 'starter-provisioner',
     name: 'Мартен Рыжий',
@@ -401,6 +507,7 @@ export function createStarterMerchant({ location = '' } = {}) {
     greeting: 'Подходите ближе. Базовая цена известна заранее, а об условиях ещё можно поговорить.',
     voice: 'Говорит живо и дружелюбно, но внимательно считает каждую монету.',
     location,
+    location_id: location_id || locationId,
     available: true,
     pricing: {
       mode: 'catalog_with_agent_adjustment',
@@ -422,6 +529,25 @@ export function createStarterMerchant({ location = '' } = {}) {
       { stock_id: 'starter-torch', catalog_id: 'srd_5_2_1:torch', name: 'Факел', type: 'tool', quantity: 10, base_price_cp: 1 },
       { stock_id: 'starter-arrows', catalog_id: 'srd_5_2_1:arrows-20', name: 'Стрелы, 20 штук', type: 'other', quantity: 5, base_price_cp: 100, properties: 'Боеприпасы для лука; не являются самостоятельным оружием.' },
     ],
+    services: [{
+      service_id: 'starter-courier',
+      name: 'Доставка письма',
+      description: 'Торговец передаст обычное письмо по ближайшему безопасному торговому маршруту.',
+      kind: 'other',
+      base_price_cp: 50,
+      duration_minutes: 10,
+    }],
+    restock_policy: {
+      enabled: true,
+      interval_minutes: 1_440,
+      targets: [
+        { stock_id: 'starter-healing-potion', target_quantity: 3 },
+        { stock_id: 'starter-hempen-rope', target_quantity: 4 },
+        { stock_id: 'starter-rations', target_quantity: 12 },
+        { stock_id: 'starter-torch', target_quantity: 10 },
+        { stock_id: 'starter-arrows', target_quantity: 5 },
+      ],
+    },
   })
 }
 
@@ -449,6 +575,179 @@ function pricingMultipliers(merchant, actorId) {
     buyBeforeBargain,
     sellBeforeBargain,
   }
+}
+
+export function findMerchantService(merchant, serviceId) {
+  const expected = cleanId(serviceId)
+  return (Array.isArray(merchant?.services) ? merchant.services : [])
+    .find((service) => String(service?.service_id ?? '') === expected) ?? null
+}
+
+/** Price a configured service with the same bounded merchant/bargain policy as goods. */
+export function quoteMerchantService(merchant, actorId, service) {
+  if (!service || typeof service !== 'object' || Array.isArray(service)) return null
+  const normalized = normalizeMerchantServices([service])[0]
+  if (!normalized || !normalized.available) return null
+  const multipliers = pricingMultipliers(merchant, actorId)
+  return {
+    service_id: normalized.service_id,
+    base_price_cp: normalized.base_price_cp,
+    price_cp: Math.ceil(normalized.base_price_cp * multipliers.buy / 10_000),
+    merchant_adjustment_bps: multipliers.buyBeforeBargain - 10_000,
+    bargain_adjustment_bps: multipliers.bargainAdjustment,
+    multiplier_bps: multipliers.buy,
+    price_provenance: normalized.price_provenance,
+    policy_id: MERCHANT_SERVICES_POLICY_ID,
+  }
+}
+
+/**
+ * Produces a deterministic, non-authoritative settlement proposal. The Rules
+ * Engine must later validate and commit a dedicated service command because a
+ * service effect (repair, travel, lodging, etc.) is domain-specific.
+ */
+export function merchantServiceProposal(state, merchantId, actorId, serviceId) {
+  const merchant = findMerchant(state, merchantId)
+  const actor = (Array.isArray(state?.players) ? state.players : [])
+    .find((player) => String(player?.id ?? '') === String(actorId ?? ''))
+  const service = findMerchantService(merchant, serviceId)
+  if (!merchant || !actor || !service || !merchant.available || !service.available) return null
+  if (service.requires_presence && !merchantIsAtLocation(merchant, state?.scene)) return null
+  const quote = quoteMerchantService(merchant, actor.id, service)
+  if (!quote) return null
+  const balance = normalizeCurrency(actor.currency)
+  const balanceCp = currencyToCopper(balance)
+  return {
+    proposal_version: 1,
+    command_type: 'PurchaseMerchantService',
+    merchant_id: merchant.id,
+    actor_id: String(actor.id),
+    service_id: service.service_id,
+    expected_state_version: Math.max(0, safeInteger(state?.state_version, 0)),
+    price_cp: quote.price_cp,
+    can_afford: balanceCp >= quote.price_cp,
+    requires_presence: service.requires_presence,
+    duration_minutes: service.duration_minutes,
+    policy_id: MERCHANT_SERVICES_POLICY_ID,
+  }
+}
+
+function normalizedWorldMinute(value) {
+  return clampInteger(value, 0, MAX_WORLD_MINUTE, 0)
+}
+
+/**
+ * Computes one due restock checkpoint. A large jump in campaign time restores
+ * stock to target once, then writes the current minute as the checkpoint. This
+ * prevents a server restart from multiplying stock for every missed interval.
+ */
+export function planMerchantRestock(merchant, worldMinute) {
+  const normalized = normalizeMerchant(merchant)
+  const policy = normalized.restock_policy
+  const processedAt = normalizedWorldMinute(worldMinute)
+  if (!policy.enabled) return null
+  const baseline = policy.last_restock_world_minute ?? 0
+  const scheduledFor = baseline + policy.interval_minutes
+  if (processedAt < scheduledFor) return null
+  const stockById = new Map(normalized.stock.map((entry) => [entry.stock_id, entry]))
+  const entries = policy.targets.flatMap((target) => {
+    const stock = stockById.get(target.stock_id)
+    if (!stock) return []
+    const before = clampInteger(stock.quantity, 0, MAX_STOCK_QUANTITY, 0)
+    const after = Math.max(before, target.target_quantity)
+    if (after === before) return []
+    return [{
+      stock_id: stock.stock_id,
+      catalog_id: stock.catalog_id,
+      quantity_before: before,
+      quantity_added: after - before,
+      quantity_after: after,
+      stock: clone(stock),
+    }]
+  })
+  return {
+    schema_version: 1,
+    policy_id: MERCHANT_RESTOCK_POLICY_ID,
+    merchant_id: normalized.id,
+    scheduled_for_world_minute: scheduledFor,
+    processed_at_world_minute: processedAt,
+    overdue_intervals: Math.max(1, Math.floor((processedAt - baseline) / policy.interval_minutes)),
+    entries,
+    total_quantity_added: entries.reduce((total, entry) => total + entry.quantity_added, 0),
+  }
+}
+
+/** Returns every due merchant plan for a single authoritative campaign-time tick. */
+export function planMerchantEconomyClock(state, { worldMinute } = {}) {
+  const minute = normalizedWorldMinute(worldMinute ?? state?.mechanics?.world_time?.elapsed_minutes)
+  return (Array.isArray(state?.merchants) ? state.merchants : [])
+    .map((merchant) => planMerchantRestock(merchant, minute))
+    .filter(Boolean)
+}
+
+/**
+ * Creates the existing RestockMerchant payload when stock actually changes.
+ * A no-op due plan still needs a separate clock checkpoint event to persist its
+ * processed minute; `merchantEconomyClockEventFromPlan` supplies that contract.
+ */
+export function merchantRestockCommandFromPlan(merchant, plan) {
+  const expected = planMerchantRestock(merchant, plan?.processed_at_world_minute)
+  if (!expected || expected.merchant_id !== String(plan?.merchant_id ?? '') || !expected.entries.length) return null
+  return {
+    command_type: 'RestockMerchant',
+    merchant_id: expected.merchant_id,
+    items: expected.entries.map((entry) => ({
+      stock_id: entry.stock_id,
+      catalog_id: entry.catalog_id,
+      quantity: entry.quantity_added,
+      name: entry.stock.name,
+      type: entry.stock.type,
+      weight: entry.stock.weight,
+      rarity: entry.stock.rarity,
+      description: entry.stock.description,
+      properties: entry.stock.properties,
+    })),
+  }
+}
+
+/** Event contract for the future reducer; it advances a due no-op checkpoint safely. */
+export function merchantEconomyClockEventFromPlan(merchant, plan) {
+  const expected = planMerchantRestock(merchant, plan?.processed_at_world_minute)
+  if (!expected || expected.merchant_id !== String(plan?.merchant_id ?? '')) return null
+  return {
+    event_type: MERCHANT_ECONOMY_CLOCK_EVENT_TYPE,
+    visibility: 'admin',
+    payload: {
+      policy_id: MERCHANT_RESTOCK_POLICY_ID,
+      merchant_id: expected.merchant_id,
+      scheduled_for_world_minute: expected.scheduled_for_world_minute,
+      processed_at_world_minute: expected.processed_at_world_minute,
+      overdue_intervals: expected.overdue_intervals,
+    },
+  }
+}
+
+/**
+ * Pure replay helper for the future clock event. It intentionally recomputes
+ * the plan instead of trusting caller-supplied quantities or stock data.
+ */
+export function applyMerchantRestockPlan(merchant, plan) {
+  const normalized = normalizeMerchant(merchant)
+  const expected = planMerchantRestock(normalized, plan?.processed_at_world_minute)
+  if (!expected || expected.merchant_id !== String(plan?.merchant_id ?? '')) return normalized
+  const byId = new Map(expected.entries.map((entry) => [entry.stock_id, entry]))
+  const stock = normalized.stock.map((entry) => {
+    const planned = byId.get(entry.stock_id)
+    return planned ? { ...entry, quantity: planned.quantity_after } : entry
+  })
+  return normalizeMerchant({
+    ...normalized,
+    stock,
+    restock_policy: {
+      ...normalized.restock_policy,
+      last_restock_world_minute: expected.processed_at_world_minute,
+    },
+  })
 }
 
 export function quoteMerchantBuyUnit(merchant, actorId, stockEntry) {
@@ -506,6 +805,8 @@ export function sellability(item, appraisal = null) {
 
 function publicMerchant(merchant) {
   const pricing = normalizeMerchantPricing(merchant.pricing)
+  const services = normalizeMerchantServices(merchant.services)
+  const restockPolicy = normalizeMerchantRestockPolicy(merchant.restock_policy, merchant.stock)
   return {
     id: merchant.id,
     name: merchant.name,
@@ -516,6 +817,7 @@ function publicMerchant(merchant) {
     initials: merchant.initials,
     portrait: merchant.portrait,
     location: merchant.location,
+    location_id: merchant.location_id,
     available: merchant.available,
     purse_cp: normalizeMerchantPurseCp(merchant.purse_cp),
     stock: merchant.stock.map((stock) => ({
@@ -533,6 +835,24 @@ function publicMerchant(merchant) {
       image: stock.image,
       imagePosition: stock.imagePosition,
     })),
+    services: services.map((service) => ({
+      service_id: service.service_id,
+      name: service.name,
+      description: service.description,
+      kind: service.kind,
+      base_price_cp: service.base_price_cp,
+      duration_minutes: service.duration_minutes,
+      available: service.available,
+      requires_presence: service.requires_presence,
+      tags: service.tags,
+      price_provenance: service.price_provenance,
+      policy_id: service.policy_id,
+    })),
+    restock: {
+      enabled: restockPolicy.enabled,
+      interval_minutes: restockPolicy.interval_minutes,
+      last_restock_world_minute: restockPolicy.last_restock_world_minute,
+    },
     pricing: {
       mode: pricing.mode,
       catalog_id: pricing.catalog_id,
@@ -624,6 +944,31 @@ export function merchantViewFor(state, merchantId, actorId) {
       } : undefined,
     }]
   })
+  const serviceQuotes = (Array.isArray(merchant.services) ? merchant.services : []).flatMap((service) => {
+    const quote = quoteMerchantService(merchant, actor.id, service)
+    if (!quote) return []
+    return [{
+      quote_id: `service:${merchant.id}:${actor.id}:${quote.service_id}`,
+      state_version: Math.max(0, safeInteger(state?.state_version, 0)),
+      expected_state_version: Math.max(0, safeInteger(state?.state_version, 0)),
+      direction: 'service',
+      actor_id: String(actor.id),
+      merchant_id: merchant.id,
+      service_id: quote.service_id,
+      service: normalizeMerchantServices([service])[0],
+      price_cp: quote.price_cp,
+      can_afford: balanceCp >= quote.price_cp,
+      available: merchant.available && service.available !== false,
+      price_provenance: quote.price_provenance,
+      breakdown: {
+        base_price_cp: quote.base_price_cp,
+        merchant_adjustment_percent: quote.merchant_adjustment_bps / 100,
+        bargain_adjustment_percent: quote.bargain_adjustment_bps / 100,
+        final_price_cp: quote.price_cp,
+      },
+      policy_id: MERCHANT_SERVICES_POLICY_ID,
+    }]
+  })
   const pricing = normalizeMerchantPricing(merchant.pricing)
   return {
     state_version: Math.max(0, safeInteger(state?.state_version, 0)),
@@ -635,6 +980,7 @@ export function merchantViewFor(state, merchantId, actorId) {
     merchant_purse_cp: merchantPurseCp,
     buy_quotes: buyQuotes,
     sell_quotes: sellQuotes,
+    service_quotes: serviceQuotes,
     bargain: bargain ? {
       attempted: true,
       success: bargain.success,

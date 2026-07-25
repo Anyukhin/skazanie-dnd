@@ -305,7 +305,7 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
 })
 
 test('all role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
-  const promptIds = ['legacy', 'intent_parser', 'adjudicator', 'npc_controller', 'narrator', 'verifier', 'worldkeeper', 'director', 'game_master']
+  const promptIds = ['intent_parser', 'adjudicator', 'npc_controller', 'narrator', 'verifier', 'worldkeeper', 'director', 'game_master']
   for (const id of promptIds) {
     const prompt = await readFile(new URL(`../prompts/${id}/v1.txt`, import.meta.url), 'utf8')
     assert.match(prompt, new RegExp(`PROMPT_ID: ${id}/v1`))

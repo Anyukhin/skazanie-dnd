@@ -1,4 +1,5 @@
 import { buildNarrationBrief } from './security.mjs'
+import { campaignConceptForAgent } from './agent-context.mjs'
 
 const CRITICAL_CONDITIONS = new Map([
   ['fled', 'enemy_fled'],
@@ -43,6 +44,7 @@ export function criticalMomentFor(events = [], state = {}) {
 function publicEnvironment(state, trigger) {
   const scene = state.scene ?? {}
   return {
+    campaign_premise: campaignConceptForAgent(state),
     scene: {
       title: String(scene.title ?? ''),
       location: String(scene.location ?? ''),

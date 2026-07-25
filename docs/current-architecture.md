@@ -1,18 +1,14 @@
 # Текущая архитектура
 
-Дата среза: 13 июля 2026 года.
+Дата среза: 25 июля 2026 года.
 
 ## Краткий вывод
 
-Приложение работает как **гибридный strangler**. Существующий React UI, legacy narration/tools и JSON room contract сохранены как слой совместимости, но новый доменный контур уже не изолирован: `server/index.mjs` загружает Rule Pack, создаёт Retriever, Dice Service, Roll Registry, Rules Engine, FileEventStore, trace store, Narrator и `GameOrchestrator`, а HTTP-маршруты реально их вызывают.
+Приложение работает в единственном режиме **`enforce`**. Авторитетная механика выполняется Rules Engine на сервере и фиксируется в `FileEventStore`; JSON room сохранён только как server-owned read-модель для текущего React UI.
 
-Граница авторитета задаётся режимом кампании:
+Исполняемые ветки `legacy` и `shadow`, legacy narrator/tools, browser gameplay fallback и broad room `PUT` удалены. Старые значения режима при чтении нормализуются в `enforce`, но не могут включить иной runtime. Любая новая кампания создаётся непосредственно в Event Store.
 
-- `legacy` — ответ legacy handler остаётся авторитетным;
-- `shadow` — legacy ответ авторитетен, новый движок только рассчитывает сравнение и trace;
-- `enforce` — авторитетны валидированные события и состояние `FileEventStore`, после чего часть состояния проецируется в legacy room для старого UI.
-
-Это уже работающая интеграция. Базовый тактический UI и подтверждённый переход группы между сценами в `enforce` переведены на server-authoritative команды и события; переход в распознанное поселение может в том же commit создать каталожного торговца через `ShopAssembler`. Администратор также может собрать исполнимую встречу через `EncounterAssembler`: сервер сам выбирает разрешённые профили, считает XP budget и размещение, а затем атомарно фиксирует создание встречи и старт боя. Но это ещё не полный cutover: `legacy/shadow` browser fallback, compatibility PUT и party vote, неполное покрытие правил и неатомарная room projection сохраняют обходные пути вокруг event stream.
+Cutover кода завершён, но перенос существующих данных отделён от него: перед подтверждением проекции сервер сравнивает канонический SHA-256, а `cutover:verify` останавливает миграцию при расхождении room, snapshot и replay. Текущее локальное хранилище имеет такие расхождения, поэтому оно намеренно не переписано.
 
 ## Runtime-схема
 
@@ -20,10 +16,8 @@
 flowchart TD
     UI["React UI / useGameSession"]
     API["server/index.mjs HTTP API"]
-    Room["Legacy room JSON + CAS"]
+    Room["Compatibility room JSON (read model)"]
     Orch["GameOrchestrator"]
-    Mode["EngineModeResolver"]
-    Legacy["Legacy handler + RouterAIClient + tools"]
     Parse["Intent Parser"]
     Retrieve["Rule Retriever + srd_5_2_1"]
     Judge["Adjudicator"]
@@ -41,14 +35,11 @@ flowchart TD
     UI --> API
     API --> Room
     API --> Orch
-    Orch --> Mode
     Orch --> Parse
     Parse --> Retrieve
     Retrieve --> Judge
-    Mode -->|legacy / shadow| Legacy
-    Judge -->|shadow calculation| Engine
-    Judge -->|enforce| Engine
-    Engine -->|enforce commit| Events
+    Judge --> Engine
+    Engine -->|commit| Events
     API -->|StartCombat / EndTurn| Npc
     Npc --> Engine
     API -->|admin difficulty + theme| Encounter
@@ -60,7 +51,6 @@ flowchart TD
     Engine -->|NPC commits| Events
     Events --> Narrator
     Orch --> Trace
-    Legacy --> Orch
     Narrator --> Orch
     Orch --> API
     Events --> Projection
@@ -68,7 +58,7 @@ flowchart TD
     API --> UI
 ```
 
-В `shadow` Rules Engine не коммитит рассчитанные события. Event store при этом может быть создан ленивым импортом исходного room state. В `legacy` event store не требуется для обработки хода.
+Event Store обязателен для любого игрового хода. Compatibility room обновляется только серверной проекцией после commit и не является источником механики.
 
 ## Точки входа
 
@@ -76,11 +66,11 @@ flowchart TD
 
 - `src/main.tsx` создаёт React root.
 - `src/App.tsx` содержит основной экран, карту, чат, персонажей, торговца и admin UI. В `enforce` карта показывает initiative ribbon, merchant screen — серверные buy/sell quotes, кассу NPC и действие оценки нестандартного предмета без локальной механической мутации, а admin-раздел — ограниченные difficulty/theme controls EncounterAssembler и результат собранного roster.
-- `src/useGameSession.ts` загружает комнату, вызывает narration/roll API, применяет совместимые effects и синхронизирует room state. Для боевых и торговых команд, включая `AppraiseItem`, в `enforce` он ждёт авторитетный ответ без локальной оптимистической механики; `SceneAdvanced` также заменяет scene/adventure/позиции/merchants из server state.
-- `src/game-engine.ts` остаётся локальным fallback при ошибке AI.
+- `src/useGameSession.ts` загружает read-модель, вызывает narration/roll/command API и принимает только авторитетный результат сервера. Ошибка API показывается пользователю и не запускает локальную механику.
+- `src/game-engine.ts` содержит только presentation helper для сообщения игрока; механики и RNG в нём нет.
 - `src/auth-client.ts` и `src/ai-client.ts` адаптируют browser calls к существующим contracts.
 
-Frontend пока выполняет две роли: UI/read-model adapter и, в `legacy/shadow`/fallback-сценариях, автор части механических изменений. В `enforce` базовый бой, переход сцены и торговля получают authoritative state/events с сервера, но прочие старые сценарии и room contract сохраняются через слой совместимости.
+Frontend является UI/read-model adapter. Он не отправляет полный state и не рассчитывает результат боя, проверки, NPC-хода или броска.
 
 ### HTTP-сервер
 
@@ -88,19 +78,20 @@ Frontend пока выполняет две роли: UI/read-model adapter и, 
 
 | Маршрут | Подключённый контур |
 |---|---|
-| `GET /api/health` | RouterAI configuration, текущий engine mode, ruleset и число правил |
+| `GET /api/health` | RouterAI configuration, фиксированный `enforce`, ruleset и число правил |
 | auth/admin routes | `server/store.mjs`: пользователи, scrypt, sessions, hero access |
 | `GET /api/rules/search` | Rule Retriever; auth и строгая фильтрация ruleset/enabled packs |
-| `POST /api/campaigns` | Admin-only room creation, default `shadow`, немедленный `LegacyStateImported` |
-| `PATCH /api/campaigns/:id/engine-mode` | Admin-only campaign override режима |
-| `POST /api/campaigns/:id/commands` | Effective `enforce`: игрок — только `StartCombat/MoveActor/MakeAttack/EndTurn` за назначенного героя; admin — расширенный typed набор. Затем Rules Engine → event commit → при необходимости NPC scheduler → room projection |
-| `POST /api/campaigns/:id/encounters/assemble` | Admin-only в `enforce`: bounded `difficulty/theme` → server-owned EncounterAssembler → атомарные `EncounterCreated + CombatStarted` → NPC scheduler/replay → viewer projection |
+| `POST /api/campaigns` | Admin-only создание кампании непосредственно в Event Store |
+| `PATCH /api/campaigns/:id/engine-mode` | Retired endpoint: всегда `410 ENGINE_MODE_RETIRED` |
+| `POST /api/campaigns/:id/commands` | Игрок — разрешённый typed набор за назначенного героя; admin — расширенный typed набор. Затем Rules Engine → event commit → при необходимости NPC scheduler → room projection |
+| `POST /api/campaigns/:id/encounters/assemble` | Admin-only: bounded `difficulty/theme` → server-owned EncounterAssembler → атомарные `EncounterCreated + CombatStarted` → NPC scheduler/replay → viewer projection |
 | `GET /api/campaigns/:id/turns/:turnId/explanation` | Trace lookup и `buildTurnExplanation`; `latest` разрешён |
-| `GET/PUT /api/rooms/:code` | ACL-protected legacy read/full-state compatibility sync с CAS/validation |
-| `POST /api/rooms/:code/dice` | `DiceService`, затем legacy `lastDiceRoll` room write |
+| `GET /api/rooms/:code` | ACL-protected compatibility read model; при необходимости reconciliation по hash |
+| `PUT /api/rooms/:code` | Retired endpoint: всегда `410 ROOM_MUTATION_RETIRED` для доступной кампании |
+| `POST /api/rooms/:code/dice` | `DiceService` → `PublicDieRolled` → Event Store → projection |
 | `POST /api/roll` | `RollRegistry.issue` для серверного `roll_id` |
-| `POST /api/narrate` | Trusted room state, mode resolver, verified roll consume и `GameOrchestrator`; в `enforce` resolved party decision проходит отдельный server-owned Director flow и может одним commit создать сцену и лавку |
-| merchant routes | Публичная витрина/quotes/касса, player bargain/appraise/buy/sell, admin lifecycle и ручной `ShopAssembler`; все изменения в `enforce` проходят Rules Engine и FileEventStore |
+| `POST /api/narrate` | Campaign ID, action и optional `roll_id`; trusted Event Store state, verified roll consume и `GameOrchestrator` |
+| merchant routes | Публичная витрина/quotes/касса, player bargain/appraise/buy/sell, admin lifecycle и ручной `ShopAssembler`; все изменения проходят Rules Engine и FileEventStore |
 | image routes | Authenticated generation/read; per-user generation rate limit |
 
 Любой неизвестный `/api/*` получает JSON 404. Остальные пути обслуживаются из `dist` как SPA.
@@ -108,24 +99,21 @@ Frontend пока выполняет две роли: UI/read-model adapter и, 
 ## Обработка `/api/narrate`
 
 1. Сервер проверяет сессию, доступ к кампании и владение активным героем.
-2. State из body не считается доверенным: сервер загружает `room.state` по campaign ID.
+2. Поля `state`, `player` и engine mode в body отклоняются как retired payload; сервер загружает кампанию сам.
 3. Per-user rate limit проверяется до дорогой работы.
-4. `EngineModeResolver` выбирает `test → user → campaign → global → legacy`.
-5. Переданный `roll_id` потребляется через `RollRegistry` с проверкой campaign, actor и idempotency. В `enforce` произвольный клиентский roll запрещён.
-6. В `enforce` сервер проверяет, завершено ли сохранённое групповое решение. Если оно требует перехода, server-owned Director flow строит `AdvanceScene` и при необходимости `CreateMerchant`; присланные клиентом `commands` и попытка передать capability игнорируются.
-7. Для остальных действий `GameOrchestrator` строит видимую проекцию, intent, retrieval queries и adjudication plan. Далее действует ветвление по режиму:
-   - `legacy`: вызывается legacy handler, сохраняется trace, event commit отсутствует;
-   - `shadow`: legacy handler даёт ответ, Rules Engine рассчитывает альтернативу, сохраняется comparison, commit отсутствует;
-   - `enforce`: команды валидируются, события коммитятся идемпотентно, Narrator получает ограниченный brief, verifier проверяет narration.
-8. В `enforce` authoritative state проецируется в room JSON для совместимости с UI.
+4. Переданный `roll_id` потребляется через `RollRegistry` с проверкой campaign, actor и idempotency; произвольный клиентский roll запрещён.
+5. Сервер проверяет, завершено ли сохранённое групповое решение. Если оно требует перехода, server-owned Director flow строит `AdvanceScene` и при необходимости `CreateMerchant`.
+6. Для остальных действий `GameOrchestrator` строит видимую проекцию, intent, retrieval queries и adjudication plan.
+7. Команды валидируются, события коммитятся идемпотентно, Narrator получает ограниченный brief, verifier проверяет narration.
+8. Authoritative state проецируется в room JSON; outbox подтверждается только после совпадения канонического hash.
 
 Команда `/why` возвращает объяснение последнего или указанного trace, не выполняет новый ход и устанавливает `turn_consumed: false`.
 
-Если RouterAI key отсутствует, `legacy` и `shadow` narration возвращают `AI_NOT_CONFIGURED`. `enforce` и structured command path способны использовать deterministic Narrator без внешней модели.
+Если RouterAI key отсутствует, deterministic Narrator сохраняет работоспособность structured command path без внешней модели.
 
 ## Обработка перехода сцены в `enforce`
 
-1. Источником запуска служит resolved `agentInteraction` и выбранная опция группы. Пока само голосование хранится в compatibility-room, а не отдельными событиями — это остаточная граница доверия.
+1. Источником запуска служит resolved `agentInteraction`; открытие, голоса/общий d20, итог и consumption сохраняются отдельными событиями FileEventStore.
 2. `SceneArchitect` выдаёт ограниченные параметры назначения и карты. `director-scene-transition.mjs` нормализует их, строит semantic fingerprint от campaign/action и канонический `AdvanceScene`.
 3. `scene-commerce.mjs` сводит предложение Директора к versioned плану: `create|none`, allowlisted settlement/theme, bounded budget и причина. Локацию, seed, merchant ID, persona, stock и цены агент не задаёт.
 4. Для поселения `ShopAssembler` создаёт каталожный proposal; если торговец с той же нормализованной строкой локации уже существует, он повторно используется без сброса stock. Для wilderness постоянная лавка по умолчанию не создаётся.
@@ -170,33 +158,34 @@ Frontend пока выполняет две роли: UI/read-model adapter и, 
 5. `MerchantItemAppraised` записывает fingerprinted аттестацию в `mechanics.item_appraisals`. Один `MerchantPurchaseCompleted` либо `MerchantSaleCompleted` атомарно меняет кошелёк героя, кассу торговца, инвентарь и stock; bargain хранится отдельно для пары герой–торговец. Reducer добавляет соответствующую запись в bounded `economyLog`.
 6. FileEventStore обеспечивает optimistic locking, semantic request fingerprint, durable idempotency и replay. Compatibility projector переносит currency/inventory/merchants/mechanics/economy log в room, после чего UI заменяет состояние authoritative response.
 
-Автоматическая базовая лавка в поселении уже работает, включая bounded стартовую кассу, а нестандартный предмет можно оценить через server policy. Но это не автономная городская экономика: нет услуг, устойчивого диалога, репутации, supply/demand и автоматических restock clocks. Ручной `RestockMerchant` существует, долгосрочного расписания пополнения нет; appraisal пока не идентифицирует магические свойства и считает состояние предмета `serviceable`.
+Автоматическая базовая лавка в поселении работает со стартовой кассой, услугой и расписанием пополнения; нестандартный предмет можно оценить через server policy. NPC dialogue, relationships и расписания persistent, а economy clock использует время кампании. Это всё ещё не полная городская экономика: нет theft, supply/demand и механических эффектов специализированных услуг; appraisal пока не идентифицирует магические свойства и считает состояние предмета `serviceable`.
 
 ## Модули и их фактический статус
 
 | Модуль | Реализовано и подключено | Остаточное ограничение |
 |---|---|---|
-| `contracts.mjs` | Общие LLM, rule, campaign, event и snapshot contracts | Не все legacy boundaries выражены интерфейсами |
-| `engine-mode.mjs` | Строгие `legacy/shadow/enforce` и precedence; вызывается HTTP runtime | Нет готовой автоматической rollout/rollback policy по метрикам |
+| `contracts.mjs` | Общие LLM, rule, campaign, event и snapshot contracts | Не все доменные границы выражены отдельными интерфейсами |
+| `engine-mode.mjs` | Единственный исполняемый `enforce`; старые значения только нормализуются при чтении | Модуль сохранён для обратного чтения старых metadata |
 | `llm-client.mjs` | Timeout, error taxonomy, JSON/tool validation, allowlist; используется text paths | Image generation остаётся отдельным provider call |
 | `rule-pack.mjs` | Строгая загрузка, schema и numeric integrity | Один минимальный pack; нет подписанного registry packs |
 | `rule-retriever.mjs` | RU/EN lexical, aliases, typo tolerance, local vector/ontology и filters | Нет внешних embeddings, production metrics и полного корпуса |
 | `intent-parser.mjs` | Реально вызывается orchestrator | Ограниченный rule-based набор intents |
 | `adjudicator.mjs` | Формирует plans/rulings для orchestrator | Неполное P0/P1 покрытие и workflow утверждения ruling |
-| `dice-service.mjs` | Все серверные d20-пути используют единый crypto/default RNG | Browser fallback всё ещё использует `Math.random` |
-| `roll-registry.mjs` | Issue/register/consume и повтор consume по idempotency | In-memory: теряется при рестарте, не multi-process |
+| `dice-service.mjs` | Все игровые броски выполняются сервером через crypto/default RNG | Не обеспечивает распределённую координацию нескольких процессов |
+| `roll-registry.mjs` | Durable issue/register/consume и повтор consume по idempotency | File adapter рассчитан на single-writer, не multi-process |
 | `rules-engine.mjs` | Command validation, общий lookup героев/actors/enemies, trusted combat profile, `CreateEncounter`, path/range/turn/action checks, базовый death-save/stabilization lifecycle с 1d4-hour stable recovery, Bless/Bane, Beacon of Hope, Death Ward, позиционные Aura of Life и Aura of Protection, Fighter Indomitable 9–12 с атомарной паузой/перебросом любого failed save, Resistance 2024, автоматический Constitution save концентрации из общего damage pipeline, trusted-melee nonlethal knockout с Short Rest/лечением/первой помощью, `AdvanceScene`, appraisal/торговые события, атомарная касса и reducer/replay; авторитетен в `enforce` | Нет диагоналей, cover/LOS, полной weapon/spell semantics, всех condition effects, полного rest recovery, всех внешних причин окончания концентрации и оставшегося корпуса save/death features до 12 уровня |
-| `encounter-assembler.mjs` | Официальный SRD 5.2.1 XP budget уровней 1–20, 12 server-owned monster profiles с изображениями, несколькими атаками и ограниченными traits, bounded difficulty/theme, deterministic selection и безопасные revealed/reachable spawn cells не ближе 10 футов | Mini-compendium не содержит полного corpus, полной модели saves/resistances, multiattack, spellcasting, legendary/lair/recharge, loot/rewards; нет автоматического Director integration |
+| `campaign-loop-policy.mjs` / `autonomous-orchestrator.mjs` | Server-owned pacing, travel time/risk, random encounter trigger, bounded social NPC assembly, downtime, rewards и исполнение расписаний NPC при автономном переходе; Director передаёт только narrative intent | Таблицы тем, NPC и loot намеренно ограничены текущим вертикальным срезом |
+| `encounter-assembler.mjs` | Официальный SRD 5.2.1 XP budget уровней 1–20, 12 server-owned monster profiles с изображениями, несколькими атаками и ограниченными traits, bounded difficulty/theme, deterministic selection, автоматический Director/random-travel trigger и безопасные revealed/reachable spawn cells не ближе 10 футов | Mini-compendium не содержит полного corpus, полной модели saves/resistances, multiattack, spellcasting и legendary/lair/recharge |
 | `encounter-narration.mjs` | Детерминированная реплика только по committed `EncounterCreated`/`CombatStarted` | Не создаёт механические факты и не заменяет полноценное описание существ/тактики |
-| `merchant-economy.mjs` | Versioned price allowlist, currency conversion, bounded merchant policy/purse, catalog/appraisal quotes, sellability и public projection | Малый catalog; нет EP, services, reputation, supply/demand и автоматических restock clocks |
+| `merchant-economy.mjs` | Versioned price allowlist, currency conversion, services, restock clock, canonical location identity, bounded purse/quotes/sellability и public projection | Малый catalog; нет EP, theft, supply/demand и механических эффектов специализированных услуг |
 | `item-appraisal.mjs` | Строгий allowlist descriptor, category/rarity/condition formula, bounded CP, provenance и SHA-256 fingerprint | Это price policy, а не идентификация магии; merchant path пока фиксирует `serviceable` |
-| `scene-commerce.mjs` / `director-scene-transition.mjs` | Bounded commerce intent, semantic fingerprint, atomic `SceneAdvanced` + optional `MerchantCreated`, защита server-only capability | Party vote ещё compatibility-room; повторное использование торговца основано на строке, а не `location_id` |
-| `shop-assembler.mjs` | Детерминированные persona/stock/policy/стартовая касса из server-owned catalog, settlement/theme/budget limits | Только базовая лавка; нет services, диалога и economy simulation |
+| `scene-commerce.mjs` / `director-scene-transition.mjs` | Bounded commerce intent, semantic fingerprint, event-sourced party decision, atomic `SceneAdvanced` + optional `MerchantCreated`, canonical `location_id`, защита server-only capability | Полная географическая маршрутизация между далёкими регионами остаётся server-policy approximation |
+| `shop-assembler.mjs` | Детерминированные persona/stock/service/restock policy/стартовая касса из server-owned catalog, settlement/theme/budget limits | Базовая лавка; нет supply/demand и специализированной городской симуляции |
 | `scene-narration.mjs` | Детерминированно объединяет committed transition, arrival и созданного торговца | Не является полноценным автономным рассказчиком сцены или NPC dialogue engine |
-| `npc-social.mjs` / `npc-social-check.mjs` / `npc-social-controller.mjs` | Persistent NPC, приватные профили, двухфазные server-owned проверки, отношения с порогами, обещания с дедлайнами/последствиями, replay и player projection | Нет фракционной репутации, графа свидетелей, расписаний NPC и автоматического разрешения условных обещаний по мировым событиям |
+| `npc-social.mjs` / `npc-social-check.mjs` / `npc-social-controller.mjs` | Persistent NPC, bounded social assembly, приватные профили, server-owned проверки, отношения, обещания, faction witnesses/reputation, расписания и replay/player projection | Ограничены разнообразие social templates и влияние репутации на полный набор политик мира |
 | `npc-turn-scheduler.mjs` | Bounded deterministic enemy policy с оценкой цели/действия, дистанции, урона, контроля и поддержки союзников; отдельные идемпотентные commits, skip defeated и auto-end до следующего PC | Нет LLM Tactical Controller, долгосрочных целей, spellcasting, multiattack, полной модели reactions/cover/height/environment, loot/rewards |
-| `event-store.mjs` | Активные immutable commits, optimistic version, durable idempotency, snapshots/checksums, replay, lazy legacy import | File adapter ориентирован на один процесс; room projection не в одной транзакции |
-| `game-orchestrator.mjs` | Активная точка сборки режимов, intent, retrieval, adjudication, engine, narration и trace; принимает Director capability только как серверный `Symbol` | Shadow может сравнивать независимо полученные броски; intent coverage ограничен |
+| `event-store.mjs` | Immutable commits, optimistic version, durable idempotency, snapshots/checksums, replay и явный offline import | File adapter ориентирован на один процесс; room projection не в одной транзакции |
+| `game-orchestrator.mjs` | Enforce-only точка сборки intent, retrieval, adjudication, engine, narration и trace; принимает Director capability только как серверный `Symbol` | Intent coverage ограничен |
 | `security.mjs` / `viewer-projection.mjs` | Command allowlist, visible-state projection, player projection room/commands/narrate, публичные enemy/encounter поля без внутреннего source/provenance, narration brief, delimiters и verifier | Explanation endpoint не перепроецирует каждое событие по visibility |
 | `narrator.mjs` | LLM или deterministic narration после commit; verifier подключён | Не является полнофункциональным NPC/scene simulator |
 | `trace-store.mjs` | Активная запись trace, redaction, `/why` и explanation | File storage; campaign ACL есть, тонкая event visibility выдачи отсутствует |
@@ -206,7 +195,7 @@ Frontend пока выполняет две роли: UI/read-model adapter и, 
 
 ## Состояние и persistence
 
-### Legacy room/read model
+### Compatibility room/read model
 
 ```text
 storage/rooms/<code>.json
@@ -215,7 +204,7 @@ storage/rooms/<code>.json
   updatedAt
 ```
 
-`version` обеспечивает optimistic conflict detection. `validateRoomUpdate` проверяет campaign membership через hero IDs, неизменность roster, право менять своих героев, append-only природу новых сообщений, размер карты, campaign/mode permissions и неубывание `state_version`. В `enforce` non-admin PUT дополнительно восстанавливает из event store механические поля игроков, currency/inventory, enemies, merchants, mechanics, tactical turn, battle/economy log, ruleset lock и клетки карты; от игрока сохраняется только allowlist presentation-полей персонажа. При этом широкий narrative state и более широкие права admin сохраняются, поэтому PUT всё ещё не равен command-only модели.
+`version` используется для optimistic conflict detection проектора. Клиент может только читать эту модель: `PUT /api/rooms/:code` retired и возвращает `410`. Единственный writer — серверная проекция авторитетного event state; transient presence не входит в канонический hash.
 
 ### Event state
 
@@ -226,16 +215,16 @@ storage/rooms/<code>.json
   checksummed snapshots
 ```
 
-`normalizeCampaignState` добавляет ruleset lock, `state_version` и разделы `mechanics`. Новые кампании импортируются при создании; существующие — лениво при первом `shadow/enforce` ходе. `enforce` коммитит события с expected state version и idempotency key, затем reducer формирует authoritative state.
+`normalizeCampaignState` добавляет ruleset lock, `state_version` и разделы `mechanics`. Новые кампании инициализируются непосредственно в Event Store. Старые данные разрешено импортировать только явно и offline после backup и успешной replay/hash-сверки.
 
-`persistAuthoritativeProjection` переносит в room выбранные HP, enemies, mechanics, inventory/currency, merchants, movement, active/tactical turn, battle/economy log, map feedback, scene/entities/adventure/suggestions/закрытие interaction и rulings. Это compatibility adapter, а не транзакционная проекция: если последующий `saveRoom` конфликтует, event commit уже состоялся, а HTTP response может вернуть прежнюю room version.
+`persistAuthoritativeProjection` строит полную server-owned read-модель. Event commit и room-файл не являются одной физической транзакцией, поэтому используется durable projection outbox/checkpoint; acknowledgement выполняется только после совпадения канонического SHA-256. Startup и room GET выполняют reconciliation.
 
 ### Остальные данные
 
 - `<DND_STORAGE_DIR>/auth.json` — пользователи, password/session hashes и hero IDs;
 - `<DND_STORAGE_DIR>/turn-traces/<campaign>` — redacted turn traces;
 - `<DND_STORAGE_DIR>/generated/items` — generated images;
-- browser `localStorage` — резервная совместимая копия UI-state.
+- browser `localStorage` — только локальные UI-настройки, не источник механики.
 
 Путь generated images теперь следует `DND_STORAGE_DIR`; прежнее ограничение о жёстко заданном project storage устранено.
 
@@ -249,14 +238,12 @@ Pack `data/rule_packs/srd_5_2_1` содержит 23 двуязычных ори
 
 | Путь | RNG/registry | Статус |
 |---|---|---|
-| `/api/rooms/:code/dice` | `DiceService` default crypto | Активен, результат дополнительно пишется в room |
+| `/api/rooms/:code/dice` | `DiceService` default crypto | `PublicDieRolled` коммитится в Event Store |
 | `/api/roll` | `RollRegistry` → `DiceService` | Активен; выдаёт проверяемый `roll_id` |
-| Legacy `roll_check` | `DiceService` | Активен в legacy/shadow handler |
-| Rules Engine | Инъецированный `DiceService` | Активен в shadow/enforce calculations |
-| Enforce tactical UI | Typed command → Rules Engine `DiceService` | Сервер авторитетен для initiative/attack/damage |
-| Legacy/shadow browser fallback | `Math.random` | Всё ещё активен в `src/game-engine.ts` и прежнем tactical path |
+| Rules Engine | Инъецированный `DiceService` | Авторитетен для всех поддержанных механик |
+| Tactical UI | Typed command → Rules Engine `DiceService` | Сервер авторитетен для initiative/attack/damage |
 
-Единый серверный RNG подключён, но полного единственного roll authority пока нет: browser fallback остаётся, Roll Registry не durable, а shadow legacy/engine расчёты могут выполнить разные броски.
+Browser gameplay RNG удалён. Остаточный риск — отсутствие распределённой блокировки Roll Registry между несколькими процессами и общей транзакции consume + event commit.
 
 ## Auth и runtime security
 
@@ -278,19 +265,19 @@ Pack `data/rule_packs/srd_5_2_1` содержит 23 двуязычных ори
 
 - self-registration открыта;
 - Origin-less requests разрешены, отдельного CSRF token нет;
-- rate-limit maps и Roll Registry находятся в памяти;
+- rate-limit maps находятся в памяти; файловый Roll Registry не координирует несколько процессов;
 - hero assignment служит membership model, отдельной сущности campaign membership нет;
-- non-admin compatibility PUT в `enforce` не может заменить сохранённую боевую механику, но broad narrative state и admin divergence остаются;
+- compatibility PUT удалён; для сохраняемых presentation-изменений нужны отдельные типизированные команды;
 - explanation route применяет campaign ACL, но не отдельную visibility projection к каждому trace event;
 - CSP разрешает только self styles, поэтому внешний Google Fonts import может не загрузиться;
 - нет durable token/cost quota RouterAI, только request-count limits.
 
 ## Проверенная область
 
-Актуальный suite включает unit tests доменных модулей, event-store reopen/replay, migration dry-run/backup/idempotency, orchestrator modes, security, viewer projection, narrator и trace.
+Актуальный suite включает unit tests доменных модулей, event-store reopen/replay, migration dry-run/backup/idempotency, enforce-only orchestrator, security, viewer projection, narrator, trace и cutover audit.
 
 Дополнительно `test/game-flow-integration.test.mjs` проверяет связанный domain flow от legacy import через исследование, ruling, check/save, spell, бой, лечение, condition и rest до reopen/replay и `/why`.
 
-Real-HTTP integration scenarios запускают настоящий `server/index.mjs` на временном storage. Совместимый API-flow проверяет создание shadow-кампании, admin switch в `enforce`, rule search, damage, idempotent retry, explanation, `/api/narrate /why` с игнорированием forged client state и API 404. Отдельные flows проверяют обычного игрока в бою и торговле (`AppraiseItem`, отказ от forged price/policy, ограниченную кассу, buy/sell/replay), административный EncounterAssembler с отказом от forged профилей/координат/participants, атомарным start, NPC scheduler, player projection и replay, а также Director → `SceneAdvanced` → `ShopAssembler`: атомарный городской переход, отсутствие лавки в wilderness, защиту от forged system command, concurrent exactly-once consumption решения, replay без повторного картографа, private-memory containment, долговечный journal и replay после перезапуска HTTP-процесса.
+Real-HTTP integration scenarios запускают настоящий `server/index.mjs` на временном storage. Они проверяют создание enforce-кампании, retired endpoints, строгий `/api/narrate` payload, rule search, damage, idempotent retry, explanation и API 404. Отдельные flows проверяют бой, торговлю, EncounterAssembler, NPC scheduler, player projection/replay и Director → `SceneAdvanced` → `ShopAssembler`.
 
-Не заявлено автоматизированное multi-browser E2E, Docker/Compose, RouterAI с реальным ключом, миграция рабочего storage, rollback/cutover, публичный tunnel, multi-process или нагрузочный сценарий. Поэтому текущую архитектуру корректно считать подключённым вертикальным срезом strangler-перехода, а не завершённой заменой baseline.
+Не заявлено автоматизированное multi-browser E2E, RouterAI с реальным ключом, успешная миграция рабочего storage, rollback rehearsal, публичный tunnel, multi-process или нагрузочный сценарий. Кодовый cutover завершён, но data cutover не считается завершённым до зелёного `cutover:verify`.

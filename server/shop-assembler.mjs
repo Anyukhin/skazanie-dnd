@@ -7,12 +7,13 @@ import {
   normalizeMerchant,
 } from './merchant-economy.mjs'
 
-export const SHOP_PROPOSAL_VERSION = 'skazanie:shop-proposal-v1'
+export const SHOP_PROPOSAL_VERSION = 'skazanie:shop-proposal-v2'
 
 export const SHOP_ASSEMBLER_LIMITS = Object.freeze({
   minimum_budget_cp: 100,
   maximum_budget_cp: 1_000_000,
   maximum_location_length: 180,
+  maximum_location_id_length: 120,
   maximum_seed_length: 120,
   minimum_agent_adjustment_bps: -2_000,
   maximum_agent_adjustment_bps: 2_000,
@@ -116,7 +117,7 @@ const PERSONAS = deepFreeze([
   },
 ])
 
-const TOP_LEVEL_KEYS = new Set(['location', 'settlement_type', 'theme', 'seed', 'budget_cp', 'director_intent'])
+const TOP_LEVEL_KEYS = new Set(['location', 'location_id', 'settlement_type', 'theme', 'seed', 'budget_cp', 'director_intent'])
 const DIRECTOR_KEYS = new Set(['stock', 'agent_adjustment_bps'])
 const DIRECTOR_STOCK_KEYS = new Set(['catalog_id', 'quantity'])
 
@@ -212,6 +213,9 @@ function validateInput(input) {
   rejectUnexpectedKeys(input, TOP_LEVEL_KEYS, 'UNEXPECTED_SHOP_FIELD')
 
   const location = boundedText(input.location, SHOP_ASSEMBLER_LIMITS.maximum_location_length, 'INVALID_LOCATION', 'location')
+  const locationId = input.location_id === undefined
+    ? ''
+    : boundedText(input.location_id, SHOP_ASSEMBLER_LIMITS.maximum_location_id_length, 'INVALID_LOCATION_ID', 'location_id')
   const seed = boundedText(input.seed, SHOP_ASSEMBLER_LIMITS.maximum_seed_length, 'INVALID_SEED', 'seed')
   const settlementType = input.settlement_type
   const theme = input.theme
@@ -229,6 +233,7 @@ function validateInput(input) {
   const settlement = SETTLEMENTS[settlementType]
   return {
     location,
+    location_id: locationId,
     seed,
     settlement_type: settlementType,
     settlement,
@@ -312,6 +317,7 @@ export class ShopAssembler {
     const validated = validateInput(input)
     const canonical = JSON.stringify({
       location: validated.location,
+      location_id: validated.location_id,
       settlement_type: validated.settlement_type,
       theme: validated.theme,
       seed: validated.seed,
@@ -329,6 +335,7 @@ export class ShopAssembler {
     const merchantId = `shop-${assemblySeed.slice(0, 16)}`
     const persona = PERSONAS[deterministicInteger(assemblySeed, 'persona', PERSONAS.length)]
     const adjustment = validated.director_intent?.agent_adjustment_bps ?? 0
+    const stock = allocation.entries.map((entry) => stockEntry(entry.catalog_id, entry.quantity, merchantId))
     const merchant = normalizeMerchant({
       id: merchantId,
       name: persona.name,
@@ -338,6 +345,7 @@ export class ShopAssembler {
       voice: persona.voice,
       initials: persona.initials,
       location: validated.location,
+      location_id: validated.location_id,
       available: true,
       // Liquidity is server-owned and deterministic. It scales with the shop
       // budget but remains bounded independently from catalog stock value.
@@ -356,7 +364,20 @@ export class ShopAssembler {
         agent_adjustment_limit_percent: 20,
         description: 'Каталожная SRD-цена с ограниченной политикой конкретного торговца.',
       },
-      stock: allocation.entries.map((entry) => stockEntry(entry.catalog_id, entry.quantity, merchantId)),
+      stock,
+      services: [{
+        service_id: `${merchantId}-delivery`,
+        name: 'Доставка покупки',
+        description: 'Лавка подготовит и передаст обычный товар в пределах текущего поселения.',
+        kind: 'transport',
+        base_price_cp: Math.max(10, Math.min(500, Math.floor(validated.budget_cp / 1_000))),
+        duration_minutes: 30,
+      }],
+      restock_policy: {
+        enabled: true,
+        interval_minutes: 1_440,
+        targets: stock.map((entry) => ({ stock_id: entry.stock_id, target_quantity: entry.quantity })),
+      },
     })
 
     return deepFreeze({

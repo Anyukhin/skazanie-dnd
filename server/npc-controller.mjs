@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { actorPosition, findActor, isEnemyActor, isLivingActor, shortestTacticalPath } from './rules-engine.mjs'
+import { campaignConceptForAgent } from './agent-context.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/v1.txt', import.meta.url)), 'utf8')
 const DISPOSITIONS = new Set(['fight', 'flee', 'surrender'])
@@ -67,11 +68,7 @@ function publicBrief(state, enemy) {
       mood: String(state.scene?.mood ?? ''),
       objective: String(state.scene?.objective ?? ''),
     },
-    campaign_premise: {
-      genre: String(state.campaignConcept?.genre ?? state.campaign_concept?.genre ?? ''),
-      tone: String(state.campaignConcept?.tone ?? state.campaign_concept?.tone ?? ''),
-      theme: String(state.campaignConcept?.theme ?? state.campaign_concept?.theme ?? ''),
-    },
+    campaign_premise: campaignConceptForAgent(state),
     visible_heroes: (state.players ?? []).filter(isLivingActor).map((hero) => ({ id: actorId(hero), name: actorName(hero) })).slice(0, 8),
     allowed_dispositions: [...DISPOSITIONS],
   }

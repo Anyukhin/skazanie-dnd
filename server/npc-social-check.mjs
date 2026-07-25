@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import { ensureNpcSocialState } from './npc-social.mjs'
+import { ensureNpcSocialState, npcProfileAtWorldTime } from './npc-social.mjs'
 
 export const NPC_SOCIAL_CHECK_SKILLS = new Set(['persuasion', 'deception', 'intimidation', 'insight'])
 
@@ -51,8 +51,9 @@ export function buildNpcSocialCheckPolicy({ state = {}, npcId = '', heroId = '',
   const skill = classifyNpcSocialCheck(message)
   if (!skill) return null
   const social = ensureNpcSocialState(state.social, state)
-  const profile = social.npcs.find((npc) => npc.id === String(npcId))
-  if (!profile) return null
+  const persistedProfile = social.npcs.find((npc) => npc.id === String(npcId))
+  const profile = persistedProfile ? npcProfileAtWorldTime(persistedProfile, state) : null
+  if (!profile || profile.available === false) return null
   const normalizedNpcId = String(profile.id)
   const normalizedHeroId = String(heroId)
   const attitude = attitudeFor(social, normalizedNpcId, normalizedHeroId)

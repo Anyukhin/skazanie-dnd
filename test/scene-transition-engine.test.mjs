@@ -172,8 +172,8 @@ test('AdvanceScene разрешён только admin/director context и не 
   for (const context of [{ isAdmin: true }, { isDirector: true }]) {
     const result = resolveCommand(advanceCommand({ actor_id: 'old-wolf' }), state, options(context))
     assert.equal(result.command.actor_id, null)
-    assert.equal(result.events[0].event_type, 'SceneAdvanced')
-    assert.deepEqual(result.events[0].target_ids, state.partyMemberIds)
+    assert.equal(result.events[0].event_type, 'PartyDecisionConsumed')
+    assert.deepEqual(result.events[1].target_ids, state.partyMemberIds)
   }
 
   assert.throws(
@@ -205,7 +205,7 @@ test('AdvanceScene детерминированно коммитит канон�
   assert.deepEqual(first.events, second.events)
 
   const canonical = createSceneTransition(sceneArgs(), initial)
-  const event = first.events[0]
+  const event = first.events.find((candidate) => candidate.event_type === 'SceneAdvanced')
   assert.equal(event.event_type, 'SceneAdvanced')
   assert.equal(event.actor_id, null)
   assert.equal(event.payload.request_fingerprint, 'scene-request-fingerprint')
@@ -251,8 +251,12 @@ test('SceneAdvanced reducer очищает старую сцену, размещ
 
   assert.equal(next.state_version, result.events.length)
   assert.deepEqual(result.events.map((event) => event.event_type), [
-    'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
-    'WorldFactRecorded', 'WorldFactRecorded',
+    'PartyDecisionConsumed', 'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+    'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded',
+  ])
+  assert.equal(next.worldMemory.summaries.at(-1).kind, 'scene')
+  assert.deepEqual(next.worldMemory.summaries.at(-1).source_event_ids, [
+    result.events.find((event) => event.event_type === 'SceneAdvanced').event_id,
   ])
   assert.equal(next.scene.location, 'Северный город')
   assert.equal(next.adventure.chapter, 3)
@@ -270,9 +274,10 @@ test('SceneAdvanced reducer очищает старую сцену, размещ
   assert.deepEqual(next.mechanics.combat, { active: false, round: 0, initiative: [], active_index: -1, action_economy: {}, reaction_window: null })
   assert.equal(next.tacticalTurn, undefined)
   assert.equal(next.agentInteraction, null)
-  assert.deepEqual(next.suggestions, result.events[0].payload.suggestions)
+  const sceneAdvanced = result.events.find((event) => event.event_type === 'SceneAdvanced')
+  assert.deepEqual(next.suggestions, sceneAdvanced.payload.suggestions)
 
-  const expectedPositions = new Map(result.events[0].payload.party_positions.map((position) => [position.actor_id, { x: position.x, y: position.y }]))
+  const expectedPositions = new Map(sceneAdvanced.payload.party_positions.map((position) => [position.actor_id, { x: position.x, y: position.y }]))
   assert.deepEqual(next.mechanics.positions, Object.fromEntries(expectedPositions))
   for (const player of next.players) {
     assert.deepEqual({ x: player.x, y: player.y }, expectedPositions.get(player.id))

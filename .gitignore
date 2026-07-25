@@ -9,7 +9,4 @@ PUBLIC_LINK.txt
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
-.agents/
-.codex-publish/
-.codex-*.patch
-*.orig
+.agent-tasks/

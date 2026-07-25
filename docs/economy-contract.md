@@ -98,7 +98,7 @@ POST /api/campaigns/:campaignId/merchants/commands
 POST /api/campaigns/:campaignId/merchants/assemble
 ```
 
-GET возвращает только публичную карточку торговца, `merchant_purse_cp`, серверные buy/sell quotes, кошелёк выбранного героя и `expected_state_version`. Для неоценённого допустимого предмета sell quote содержит `appraisal_required: true`/`can_appraise: true`; после события он получает цену с `price_provenance: server_appraisal_policy`. POST принимает одну команду и `idempotency_key`. Клиент обязан передать версию просмотренной котировки; при изменившемся состоянии получает `409` и должен запросить витрину заново, не повторяя операцию автоматически.
+GET возвращает только публичную карточку торговца, `merchant_purse_cp`, серверные buy/sell/service quotes, кошелёк выбранного героя и `expected_state_version`. Для неоценённого допустимого предмета sell quote содержит `appraisal_required: true`/`can_appraise: true`; после события он получает цену с `price_provenance: server_appraisal_policy`. `PurchaseMerchantService` принимает только `service_id`: сервер повторно проверяет доступность/присутствие, рассчитывает цену и атомарно создаёт `MerchantServicePurchased`. POST принимает одну команду и `idempotency_key`. Клиент обязан передать версию просмотренной котировки; при изменившемся состоянии получает `409` и должен запросить витрину заново.
 
 Минимальная форма оценки через merchant command endpoint:
 
@@ -124,7 +124,13 @@ Lifecycle endpoint доступен только администратору/с
 
 `scene_commerce` имеет фиксированный контракт `skazanie:scene-commerce-plan-v1`: action `create|none`, settlement type `village|town|city|outpost|traveling`, theme `general|provisions|arms|healing`, ограниченный бюджет, краткую причину, outcome `created|reused|not-requested` и nullable `merchant_id`. Локацию, seed, merchant ID, persona, stock и цены Директор не задаёт: они выводятся сервером из канонического перехода, устойчивой ссылки на resolved party decision и каталога. Произвольный suffix клиентского action не меняет seed лавки.
 
-Для распознанного поселения default policy создаёт одну базовую лавку. Для wilderness постоянная лавка по умолчанию не создаётся. Если в целевой локации уже есть торговец, переход помечается `reused`, а его stock и история сделок сохраняются. Текущая проверка повторного входа сравнивает нормализованные строки `merchant.location` и `scene.location`; отдельного устойчивого `location_id` пока нет, поэтому одноимённые разные места могут ошибочно считаться одной локацией.
+Для распознанного поселения default policy создаёт одну базовую лавку. Для wilderness постоянная лавка по умолчанию не создаётся. Если в целевой локации уже есть торговец, переход помечается `reused`, а его stock и история сделок сохраняются. `scene.location_id` и `merchant.location_id` выводятся из канонической глобальной карты и имеют приоритет над отображаемым названием; если один из ID отсутствует в старом snapshot, применяется нормализованный строковый fallback.
+
+## Услуги и часы пополнения
+
+`merchant.services` — bounded список публичных услуг с серверной базовой ценой, длительностью, доступностью и признаком обязательного присутствия. Покупка услуги фиксирует коммерческое исполнение и перевод монет; специализированный механический эффект (например, реальный ремонт предмета или перемещение транспортом) должен выполняться отдельной доменной командой и пока не выводится из текста услуги.
+
+`merchant.restock_policy` использует только время кампании `mechanics.world_time.elapsed_minutes`. Она может довести существующие catalog-attested позиции до заданного target, но не создаёт новый SKU и не меняет `catalog_id`. `POST /api/campaigns/:id/system-tick` коммитит `MerchantRestocked` и `MerchantEconomyClockAdvanced` атомарно; checkpoint делает повторный тик и restart идемпотентными.
 
 ## Интерфейс
 
@@ -144,7 +150,7 @@ Lifecycle endpoint доступен только администратору/с
 
 ## Что ещё не реализовано
 
-- автоматический Director → `SceneAdvanced` → `ShopAssembler` готов для подтверждённого перехода в распознанное поселение, но само party vote/resolution ещё хранится в compatibility-room, а не в event stream;
+- автоматический Director → event-sourced party decision → `SceneAdvanced` → `ShopAssembler` готов для подтверждённого перехода в распознанное поселение;
 - нет устойчивого `location_id`: повторное использование торговца пока основано на строке локации;
 - касса ограничивает ликвидность, но не моделирует спрос: нет лимита потребности в конкретном товаре, репутации, налогов, кражи, долгов, услуг, устойчивого диалога и автоматических restock/economy clocks;
 - нет durable signed quote с временем истечения; вместо него действует optimistic `state_version`;

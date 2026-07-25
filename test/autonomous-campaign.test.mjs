@@ -20,7 +20,6 @@ function cells(width = 13, height = 9) {
     revealed: index % width < 5,
   }))
 }
-
 function campaign() {
   return normalizeCampaignState({
     sessionCode: 'AUTONOMY-30',
@@ -113,6 +112,7 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   turns.push({ key: 'turn-exploration-check', intent: 'server-exploration-check', version: explorationCheck.state_version })
 
   await run({ type: 'open_social_scene', npc_id: 'marta' })
+  await run({ type: 'open_social_scene', npc_id: 'generated-witness' })
   const check = await autonomy.runCommands('AUTONOMY-30', 'turn-social-check', [{ command_type: 'MakeAbilityCheck', actor_id: 'hero', ability: 'cha', skill: 'persuasion', difficulty: 12 }])
   turns.push({ key: 'turn-social-check', intent: 'server-social-check', version: check.state_version })
   const secondSocialCheck = await autonomy.runCommands('AUTONOMY-30', 'turn-social-check-2', [{ command_type: 'MakeAbilityCheck', actor_id: 'hero', ability: 'wis', skill: 'insight', difficulty: 11 }])
@@ -143,7 +143,7 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   const loaded = await eventStore.load('AUTONOMY-30')
   const eventTypes = (await eventStore.getEvents('AUTONOMY-30')).map((event) => event.event_type)
   assert.ok(turns.length >= 30)
-  for (const required of ['SceneAdvanced', 'AbilityCheckResolved', 'NpcPromiseResolved', 'EncounterCreated', 'CombatStarted', 'AttackResolved', 'EncounterEnded', 'EncounterOutcomeRecorded', 'ServerLootGenerated', 'ItemGranted', 'QuestClockAdvanced', 'WorldFactRecorded', 'TransitionUnlocked', 'NpcScheduleRegistered']) {
+  for (const required of ['SceneAdvanced', 'AbilityCheckResolved', 'NpcPromiseResolved', 'EncounterCreated', 'CombatStarted', 'AttackResolved', 'EncounterEnded', 'EncounterOutcomeRecorded', 'ServerLootGenerated', 'ItemGranted', 'QuestClockAdvanced', 'WorldFactRecorded', 'TransitionUnlocked', 'NpcScheduleRegistered', 'CampaignPacingAdvanced', 'TravelResolved', 'DowntimeResolved']) {
     assert.ok(eventTypes.includes(required), `missing event ${required}`)
   }
   assert.ok(eventTypes.filter((type) => type === 'AbilityCheckResolved').length >= 3)
@@ -153,6 +153,10 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   assert.ok(loaded.state.worldMemory.quests.find((quest) => quest.id === 'ledger-quest').clock.current >= 2)
   assert.ok(cleanObjective(loaded.state.scene.objective))
   assert.equal(advanced.scheduled_actions, 1)
+  assert.ok(loaded.state.autonomy.pacing.beat >= 7)
+  assert.equal(loaded.state.autonomy.travel_history.length, 1)
+  assert.equal(loaded.state.autonomy.downtime_history.length, 1)
+  assert.equal(loaded.state.social.npcs.find((npc) => npc.id === 'generated-witness')?.available, true)
 
   const replayed = await eventStore.replay('AUTONOMY-30', { use_snapshots: false })
   assert.deepEqual(replayed.state, loaded.state)

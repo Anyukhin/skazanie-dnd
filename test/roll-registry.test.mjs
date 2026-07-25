@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
@@ -35,4 +38,25 @@ test('параметры проверки закрепляются сервер�
   assert.equal(result.ability, 'dex')
   assert.equal(result.success, true)
   assert.throws(() => registry.issue({ checkId: 'check-1', campaignId: 'ROOM', actorId: 'hero' }), (error) => error.code === 'CHECK_NOT_FOUND')
+})
+
+test('выданный и уже использованный roll_id переживает перезапуск процесса', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'skazanie-roll-registry-'))
+  const storageFile = join(directory, 'rolls.json')
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const options = {
+    diceService: new DiceService({ rng: new SequenceDiceRng([17]), idFactory: () => 'durable-roll' }),
+    storageFile,
+    now: () => 1_000,
+  }
+  const first = new RollRegistry(options)
+  first.issue({ campaignId: 'ROOM', actorId: 'hero', label: 'История', modifier: 2, difficulty: 15 })
+  first.consume('durable-roll', { campaignId: 'ROOM', actorId: 'hero', idempotencyKey: 'turn-1' })
+
+  const reopened = new RollRegistry(options)
+  assert.equal(reopened.consume('durable-roll', { campaignId: 'ROOM', actorId: 'hero', idempotencyKey: 'turn-1' }).total, 19)
+  assert.throws(
+    () => reopened.consume('durable-roll', { campaignId: 'ROOM', actorId: 'hero', idempotencyKey: 'turn-2' }),
+    (error) => error.code === 'ROLL_ALREADY_USED',
+  )
 })

@@ -19,6 +19,7 @@ type MerchantScreenProps = {
   onBuy: (merchantId: string, actorId: string, stockId: string, quantity: number) => void
   onSell: (merchantId: string, actorId: string, itemId: string, quantity: number) => void
   onAppraise: (merchantId: string, actorId: string, itemId: string) => void
+  onService: (merchantId: string, actorId: string, serviceId: string) => void
 }
 
 const coinLabels = [
@@ -89,7 +90,7 @@ function QuantityPicker({ value, max, disabled, onChange }: { value: number; max
   </label>
 }
 
-export function MerchantScreen({ merchants, player, sceneLocation, stateVersion, view, narration, busy, error, onLoad, onBargain, onBuy, onSell, onAppraise }: MerchantScreenProps) {
+export function MerchantScreen({ merchants, player, sceneLocation, stateVersion, view, narration, busy, error, onLoad, onBargain, onBuy, onSell, onAppraise, onService }: MerchantScreenProps) {
   const [tab, setTab] = useState<'buy' | 'sell'>('buy')
   const [selectedMerchantId, setSelectedMerchantId] = useState(merchants[0]?.id ?? '')
   const [buyQuantities, setBuyQuantities] = useState<Record<string, number>>({})
@@ -176,6 +177,30 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
           <button role="tab" aria-selected={tab === 'buy'} className={tab === 'buy' ? 'active' : ''} onClick={() => setTab('buy')}><ShoppingBag size={15} />Купить <b>{stock.length}</b></button>
           <button role="tab" aria-selected={tab === 'sell'} className={tab === 'sell' ? 'active' : ''} onClick={() => setTab('sell')}><HandCoins size={15} />Продать <b>{player.inventory.length}</b></button>
         </div>
+
+        {tab === 'buy' && (serverView?.service_quotes?.length ?? 0) > 0 && <div className="merchant-items">
+          {serverView?.service_quotes?.map((quote) => <article className="merchant-item" key={`service:${quote.service_id}`}>
+            <div className="merchant-item-title">
+              <ScrollText size={20} />
+              <span>
+                <small>УСЛУГА · {quote.service.kind}</small>
+                <h3>{quote.service.name}</h3>
+                <p>{quote.service.description || `Продолжительность: ${quote.service.duration_minutes} мин.`}</p>
+              </span>
+              <em>{quote.service.duration_minutes} мин.</em>
+            </div>
+            <div className="merchant-quote">
+              <div className="merchant-server-badge"><ShieldCheck size={12} />Расчёт сервера</div>
+              <div className="merchant-transaction-total"><span>К СПИСАНИЮ</span><b><strong>{formatCopper(quote.price_cp)}</strong></b></div>
+            </div>
+            <div className="merchant-item-actions">
+              <span />
+              <button onClick={() => onService(shownMerchant.id, player.id, quote.service_id)} disabled={controlsDisabled || !quote.available || !quote.can_afford}>
+                <ScrollText size={15} />{!quote.available ? 'Недоступно' : !quote.can_afford ? 'Недостаточно монет' : `Заказать · ${formatCopper(quote.price_cp)}`}
+              </button>
+            </div>
+          </article>)}
+        </div>}
 
         {busy && !serverView ? <div className="merchant-loading"><LoaderCircle className="spinning" size={24} /><b>Торговец пересчитывает цены…</b><span>Получаем серверные котировки для {player.character}.</span></div> : tab === 'buy' ? (
           stock.length ? <div className="merchant-items">{stock.map((item) => {

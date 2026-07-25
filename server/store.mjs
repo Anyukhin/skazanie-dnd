@@ -10,7 +10,7 @@ const authFile = join(storageDir, 'auth.json')
 const roomsDir = join(storageDir, 'rooms')
 mkdirSync(roomsDir, { recursive: true })
 
-const emptyAuth = { users: [], sessions: [] }
+const emptyAuth = { users: [], sessions: [], memberships: [], invites: [] }
 
 export class StorageCorruptionError extends Error {
   constructor(file, cause) {
@@ -35,12 +35,28 @@ export function atomicWrite(file, value) {
 
 function readAuth() {
   const db = existsSync(authFile) ? readJson(authFile, emptyAuth) : structuredClone(emptyAuth)
+  db.users = Array.isArray(db.users) ? db.users : []
+  db.sessions = Array.isArray(db.sessions) ? db.sessions : []
+  db.memberships = Array.isArray(db.memberships) ? db.memberships : []
+  db.invites = Array.isArray(db.invites) ? db.invites : []
   db.sessions = db.sessions.filter((session) => session.expiresAt > Date.now())
   return db
 }
 
-function publicUser(user) {
-  return { id: user.id, email: user.email, name: user.name, heroIds: user.heroIds ?? [], role: user.role ?? 'player', engineMode: user.engineMode ?? null, createdAt: user.createdAt }
+function publicUser(user, db = null) {
+  const memberships = (db?.memberships ?? [])
+    .filter((membership) => membership.userId === user.id && membership.status !== 'revoked')
+    .map(({ campaignId, role, heroIds, joinedAt }) => ({ campaignId, role, heroIds: heroIds ?? [], joinedAt }))
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    heroIds: user.heroIds ?? [],
+    campaignMemberships: memberships,
+    role: user.role ?? 'player',
+    engineMode: user.engineMode === 'enforce' ? 'enforce' : null,
+    createdAt: user.createdAt,
+  }
 }
 
 function tokenHash(token) {
@@ -61,7 +77,7 @@ async function buildUser({ email, password, name, role = 'player', heroIds = [] 
   }
   db.users.push(user)
   atomicWrite(authFile, db)
-  return publicUser(user)
+  return publicUser(user, db)
 }
 
 export async function registerUser(input) {
@@ -85,7 +101,7 @@ export async function verifyUser(email, password) {
   if (!user) return null
   const actual = Buffer.from(await scrypt(String(password || ''), user.passwordSalt, 64))
   const expected = Buffer.from(user.passwordHash, 'hex')
-  return actual.length === expected.length && timingSafeEqual(actual, expected) ? publicUser(user) : null
+  return actual.length === expected.length && timingSafeEqual(actual, expected) ? publicUser(user, db) : null
 }
 
 export function createSession(userId) {
@@ -101,7 +117,7 @@ export function userForToken(token) {
   const db = readAuth()
   const session = db.sessions.find((item) => item.tokenHash === tokenHash(token))
   const user = session && db.users.find((item) => item.id === session.userId)
-  return user ? publicUser(user) : null
+  return user ? publicUser(user, db) : null
 }
 
 export function deleteSession(token) {
@@ -112,7 +128,8 @@ export function deleteSession(token) {
 }
 
 export function listUsers() {
-  return readAuth().users.map(publicUser)
+  const db = readAuth()
+  return db.users.map((user) => publicUser(user, db))
 }
 
 export function updateUserAccess(userId, patch) {
@@ -122,15 +139,130 @@ export function updateUserAccess(userId, patch) {
   if (Array.isArray(patch.heroIds)) user.heroIds = [...new Set(patch.heroIds.map(String).filter((id) => /^[a-z0-9-]{1,40}$/i.test(id)))]
   if (typeof patch.name === 'string' && patch.name.trim()) user.name = patch.name.trim().slice(0, 60)
   if (patch.role === 'admin' || patch.role === 'player') user.role = patch.role
-  if (patch.engineMode === null || ['legacy', 'shadow', 'enforce'].includes(patch.engineMode)) user.engineMode = patch.engineMode
+  if (patch.engineMode === null || patch.engineMode === 'enforce') user.engineMode = patch.engineMode
   atomicWrite(authFile, db)
-  return publicUser(user)
+  return publicUser(user, db)
+}
+
+function normalizeCampaignId(campaignId) {
+  const normalized = String(campaignId || '').toUpperCase()
+  if (!/^[A-Z0-9-]{3,24}$/.test(normalized)) throw new Error('Некорректный код кампании')
+  return normalized
+}
+
+function normalizeHeroIds(heroIds) {
+  return [...new Set((Array.isArray(heroIds) ? heroIds : []).map(String).filter((id) => /^[a-z0-9-]{1,40}$/i.test(id)))]
+}
+
+export function campaignMembershipFor(userId, campaignId) {
+  const normalized = normalizeCampaignId(campaignId)
+  const db = readAuth()
+  const membership = db.memberships.find((item) => item.userId === userId && item.campaignId === normalized && item.status !== 'revoked')
+  return membership ? structuredClone(membership) : null
+}
+
+export function campaignHasMemberships(campaignId) {
+  const normalized = normalizeCampaignId(campaignId)
+  return readAuth().memberships.some((item) => item.campaignId === normalized && item.status !== 'revoked')
+}
+
+export function listCampaignMemberships(campaignId) {
+  const normalized = normalizeCampaignId(campaignId)
+  return readAuth().memberships
+    .filter((item) => item.campaignId === normalized && item.status !== 'revoked')
+    .map((item) => structuredClone(item))
+}
+
+export function upsertCampaignMembership({ campaignId, userId, role = 'player', heroIds = [] }) {
+  const normalized = normalizeCampaignId(campaignId)
+  const db = readAuth()
+  if (!db.users.some((user) => user.id === userId)) throw new Error('Пользователь не найден')
+  const cleanHeroIds = normalizeHeroIds(heroIds)
+  const existing = db.memberships.find((item) => item.campaignId === normalized && item.userId === userId)
+  if (existing) {
+    existing.role = role === 'owner' ? 'owner' : 'player'
+    existing.heroIds = cleanHeroIds
+    existing.status = 'active'
+  } else {
+    db.memberships.push({
+      campaignId: normalized,
+      userId,
+      role: role === 'owner' ? 'owner' : 'player',
+      heroIds: cleanHeroIds,
+      status: 'active',
+      joinedAt: Date.now(),
+    })
+  }
+  atomicWrite(authFile, db)
+  return structuredClone(db.memberships.find((item) => item.campaignId === normalized && item.userId === userId))
+}
+
+export function createCampaignInvite({ campaignId, createdBy, heroIds = [], expiresInMs = 7 * 24 * 60 * 60 * 1000 }) {
+  const normalized = normalizeCampaignId(campaignId)
+  const db = readAuth()
+  const creator = db.memberships.find((item) => item.campaignId === normalized && item.userId === createdBy && item.status !== 'revoked')
+  const account = db.users.find((user) => user.id === createdBy)
+  if (account?.role !== 'admin' && creator?.role !== 'owner') throw new Error('Создавать приглашения может только владелец кампании')
+  const token = randomBytes(32).toString('base64url')
+  const invite = {
+    id: randomUUID(),
+    campaignId: normalized,
+    tokenHash: tokenHash(token),
+    role: 'player',
+    heroIds: normalizeHeroIds(heroIds),
+    createdBy,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + Math.max(60_000, Math.min(Number(expiresInMs) || 0, 30 * 24 * 60 * 60 * 1000)),
+    usedAt: null,
+    usedBy: null,
+    revokedAt: null,
+  }
+  db.invites.push(invite)
+  atomicWrite(authFile, db)
+  return { token, invite: structuredClone(invite) }
+}
+
+export function redeemCampaignInvite({ campaignId, token, userId }) {
+  const normalized = normalizeCampaignId(campaignId)
+  const db = readAuth()
+  const invite = db.invites.find((item) => item.campaignId === normalized && item.tokenHash === tokenHash(String(token || '')))
+  if (!invite || invite.revokedAt) throw new Error('Приглашение недействительно')
+  if (invite.expiresAt <= Date.now()) throw new Error('Срок действия приглашения истёк')
+  if (invite.usedAt && invite.usedBy !== userId) throw new Error('Приглашение уже использовано')
+  const existing = db.memberships.find((item) => item.campaignId === normalized && item.userId === userId)
+  if (invite.usedAt && invite.usedBy === userId && existing) return { membership: structuredClone(existing), duplicate: true }
+  if (existing) throw new Error('Вы уже состоите в этой кампании')
+  const assignedElsewhere = new Set(db.memberships
+    .filter((item) => item.campaignId === normalized && item.status !== 'revoked')
+    .flatMap((item) => item.heroIds ?? []))
+  if (invite.heroIds.some((heroId) => assignedElsewhere.has(heroId))) throw new Error('Герой из приглашения уже назначен другому игроку')
+  const membership = {
+    campaignId: normalized,
+    userId,
+    role: invite.role,
+    heroIds: normalizeHeroIds(invite.heroIds),
+    status: 'active',
+    joinedAt: Date.now(),
+  }
+  db.memberships.push(membership)
+  invite.usedAt = Date.now()
+  invite.usedBy = userId
+  atomicWrite(authFile, db)
+  return { membership: structuredClone(membership), duplicate: false }
 }
 
 function roomFile(code) {
   const safeCode = String(code || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 24)
   if (!safeCode) throw new Error('Некорректный код комнаты')
   return join(roomsDir, `${safeCode}.json`)
+}
+
+const roomSaveListeners = new Set()
+
+export function onRoomSaved(listener) {
+  if (typeof listener !== 'function') throw new TypeError('Room save listener must be a function')
+  roomSaveListeners.add(listener)
+  return () => roomSaveListeners.delete(listener)
 }
 
 export function getRoom(code) {
@@ -151,6 +283,10 @@ export function saveRoom(code, state, baseVersion) {
   const persistentState = { ...state, isNarrating: false }
   const room = { version: current.version + 1, state: structuredClone(persistentState), updatedAt: new Date().toISOString() }
   atomicWrite(file, room)
+  for (const listener of roomSaveListeners) {
+    try { listener(String(code || '').toUpperCase(), structuredClone(room)) }
+    catch { /* realtime delivery is best effort; persisted room remains valid */ }
+  }
   return { conflict: false, room }
 }
 

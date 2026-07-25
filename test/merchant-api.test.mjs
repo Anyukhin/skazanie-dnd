@@ -23,7 +23,7 @@ function startServer({ port, storage, setupToken, appendLog }) {
     env: {
       ...process.env,
       AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: setupToken, GAME_ENGINE_MODE: 'shadow',
+      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: setupToken, GAME_ENGINE_MODE: 'enforce',
       COOKIE_SECURE: 'false', NODE_ENV: 'test',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -72,10 +72,6 @@ function assertStatus(result, status, log) {
   assert.ok(result.body && typeof result.body === 'object')
 }
 
-function totalCp(currency = {}) {
-  return Number(currency.copper || 0) + Number(currency.silver || 0) * 10 + Number(currency.gold || 0) * 100 + Number(currency.platinum || 0) * 1_000
-}
-
 function businessEvent(result, type) {
   return (result?.mechanics ?? []).find((event) => event.event_type === type)
 }
@@ -119,14 +115,14 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
 
   const initialState = {
     sessionCode: 'SHOP-HTTP', campaign: 'Merchant integration', partyName: 'Customers', partyMemberIds: ['hero', 'foreign'],
-    activePlayerId: 'hero', engine_mode: 'shadow', isNarrating: false, pendingCheck: null, suggestions: [], messages: [],
+    activePlayerId: 'hero', engine_mode: 'enforce', isNarrating: false, pendingCheck: null, suggestions: [], messages: [],
     players: [
       {
         id: 'hero', name: 'Player', character: 'Aster', hp: 10, maxHp: 10, armor: 12, proficiency: 2,
-        abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 16 }, skills: { persuasion_bonus: 2 },
-        currency: { copper: 0, silver: 0, gold: 100, platinum: 0 },
+        abilities: { str: 16, dex: 10, con: 10, int: 10, wis: 10, cha: 16 }, skills: { persuasion_bonus: 2 },
+        currency: { copper: 0, silver: 0, gold: 101, platinum: 0 },
         inventory: [
-          { id: 'hero-dagger', catalog_id: 'srd_5_2_1:dagger', name: 'Кинжал', type: 'weapon', quantity: 2, equipped: false, base_price_cp: 99_999 },
+          { id: 'hero-dagger', catalog_id: 'srd_5_2_1:dagger', name: 'Кинжал', type: 'weapon', quantity: 2, equipped: false, base_price_cp: 99_999, combat: { kind: 'melee', ability: 'dex', damage: '1d4', damageType: 'piercing', normalRange: 5 } },
           { id: 'quest-letter', name: 'Письмо короля', type: 'document', rarity: 'сюжетный', quantity: 1, equipped: false, base_price_cp: 10_000 },
           {
             id: 'moon-shard', name: 'Осколок лунного клинка', type: 'treasure', rarity: 'редкий', quantity: 1, equipped: false,
@@ -143,16 +139,24 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
         purse_cp: 20_000,
         secret_inventory_note: 'GM_ONLY_MERCHANT_SECRET',
         pricing: { buy_markup_bps: 11_000, sell_rate_bps: 5_000, bargain_dc: 15, success_discount_bps: 1_000, failure_markup_bps: 500, agent_adjustment_bps: 0 },
+        services: [{ service_id: 'repair', name: 'Repair armor', kind: 'repair', base_price_cp: 100, duration_minutes: 30 }],
         stock: [
           { stock_id: 'potion', catalog_id: 'srd_5_2_1:potion-of-healing', name: 'Зелье лечения', type: 'consumable', quantity: 3, base_price_cp: 1, secret_supplier: 'GM_ONLY_STOCK_SECRET' },
           { stock_id: 'rope', catalog_id: 'srd_5_2_1:rope-hempen-50-feet', name: 'Верёвка', type: 'tool', quantity: 4, base_price_cp: 99_999 },
           { stock_id: 'rations', catalog_id: 'srd_5_2_1:rations-one-day', name: 'Паёк', type: 'consumable', quantity: 12, base_price_cp: 99_999 },
           { stock_id: 'torch', catalog_id: 'srd_5_2_1:torch', name: 'Факел', type: 'other', quantity: 10, base_price_cp: 99_999 },
         ],
+        restock_policy: {
+          enabled: true,
+          interval_minutes: 60,
+          last_restock_world_minute: 0,
+          targets: [{ stock_id: 'potion', target_quantity: 3 }],
+        },
       },
       { id: 'far-merchant', name: 'Дальний торговец', location: 'Другой город', available: true, pricing: {}, stock: [] },
     ],
     scene: { title: 'Market', location: 'рыночная площадь', mood: 'Busy', objective: 'Trade', turn: 1, cells: [] },
+    mechanics: { world_time: { elapsed_minutes: 60 } },
     adventure: { chapter: 1, history: [], visitedLocations: ['Рыночная площадь'] },
   }
 
@@ -162,14 +166,6 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   const user = users.body.users.find((candidate) => candidate.email === 'player@merchant.test')
   const assigned = await request(baseUrl, `/api/admin/users/${user.id}`, { method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero'] } })
   assertStatus(assigned, 200, log)
-  const adminRoom = await request(baseUrl, '/api/rooms/SHOP-HTTP', { cookie: adminCookie })
-  assertStatus(adminRoom, 200, log)
-  const adminEditedState = structuredClone(adminRoom.body.state)
-  adminEditedState.players[0].currency.gold = 101
-  adminEditedState.players[0].abilities.str = 16
-  adminEditedState.players[0].inventory[0].combat = { kind: 'melee', ability: 'dex', damage: '1d4', damageType: 'piercing', normalRange: 5 }
-  const adminEdited = await request(baseUrl, '/api/rooms/SHOP-HTTP', { method: 'PUT', cookie: adminCookie, body: { state: adminEditedState, baseVersion: adminRoom.body.version } })
-  assertStatus(adminEdited, 200, log)
   const initialView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
   assertStatus(initialView, 200, log)
   const foreignView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'foreign', playerCookie)
@@ -201,13 +197,8 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   tampered.merchants[0].stock[0].quantity = 999_999
   tampered.economyLog = [{ id: 'forged-log', totalPriceCp: 0 }]
   const tamperResult = await request(baseUrl, '/api/rooms/SHOP-HTTP', { method: 'PUT', cookie: playerCookie, body: { state: tampered, baseVersion: roomBeforeTamper.body.version } })
-  assertStatus(tamperResult, 200, log)
-  assert.equal(totalCp(tamperResult.body.state.players[0].currency), 10_100)
-  assert.equal(tamperResult.body.state.players[0].inventory[0].id, 'hero-dagger')
-  assert.equal(tamperResult.body.state.players[0].abilities.cha, 16)
-  assert.equal(tamperResult.body.state.players[0].skills.persuasion_bonus, 2)
-  assert.equal(tamperResult.body.state.merchants[0].stock.find((stock) => stock.stock_id === 'potion').quantity, 3)
-  assert.equal(tamperResult.body.state.economyLog.some((entry) => entry.id === 'forged-log'), false)
+  assertStatus(tamperResult, 410, log)
+  assert.equal(tamperResult.body.code, 'ROOM_MUTATION_RETIRED')
 
   // Same fresh key, two different operations in parallel: exactly one may commit.
   const viewedVersion = initialView.body.merchant_view.expected_state_version
@@ -278,6 +269,18 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   assertStatus(reusedKey, 409, log)
   assert.equal(reusedKey.body.code, 'IDEMPOTENCY_CONFLICT')
 
+  const spoken = await request(baseUrl, '/api/narrate', {
+    method: 'POST', cookie: playerCookie,
+    body: {
+      campaignId: 'SHOP-HTTP',
+      idempotency_key: 'merchant-conversation-before-bargain',
+      action: '\u0433\u043e\u0432\u043e\u0440\u044e \u0441 marten.shop \u043e \u0446\u0435\u043d\u0430\u0445',
+    },
+  })
+  assertStatus(spoken, 200, log)
+  assert.equal(spoken.body.mechanics.some((event) => event.event_type === 'NpcConversationRecorded'), true)
+  assert.equal(spoken.body.authoritative_state.social.conversations.some((conversation) => conversation.npc_id === 'marten.shop'), true)
+
   const staleView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
   assertStatus(staleView, 200, log)
   const staleVersion = staleView.body.merchant_view.expected_state_version
@@ -302,6 +305,19 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   assertStatus(fresh, 200, log)
   assert.equal(fresh.body.merchant_view.balance_cp, stateAfterBargain.balance_cp)
   assert.equal(fresh.body.merchant_view.merchant.stock.find((stock) => stock.stock_id === 'rope').quantity, stateAfterBargain.merchant.stock.find((stock) => stock.stock_id === 'rope').quantity)
+  const ropeBeforePurchase = fresh.body.merchant_view.merchant.stock.find((stock) => stock.stock_id === 'rope').quantity
+  const bargainedRopeQuote = fresh.body.merchant_view.buy_quotes.find((quote) => quote.stock_id === 'rope')
+  const boughtAfterBargain = await merchantCommand(baseUrl, 'SHOP-HTTP', 'marten.shop', playerCookie, 'buy-after-bargain', {
+    command_type: 'BuyItem', actor_id: 'hero', stock_id: 'rope', quantity: 1,
+    expected_state_version: fresh.body.merchant_view.expected_state_version,
+  })
+  assertStatus(boughtAfterBargain, 200, log)
+  const postBargainPurchase = businessEvent(boughtAfterBargain.body, 'MerchantPurchaseCompleted')
+  assert.equal(postBargainPurchase.payload.unit_price_cp, bargainedRopeQuote.unit_price_cp)
+  assert.ok(Math.abs(bargainedRopeQuote.breakdown.bargain_adjustment_percent) <= 10)
+  assert.equal(boughtAfterBargain.body.merchant_view.merchant.stock.find((stock) => stock.stock_id === 'rope').quantity, ropeBeforePurchase - 1)
+  fresh = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
+  assertStatus(fresh, 200, log)
 
   const staleAppraisal = await merchantCommand(baseUrl, 'SHOP-HTTP', 'marten.shop', playerCookie, 'stale-appraisal-must-fail', {
     command_type: 'AppraiseItem', actor_id: 'hero', item_id: 'moon-shard', expected_state_version: staleVersion,
@@ -406,7 +422,12 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   assert.equal(afterRestart.body.merchant_view.merchant_purse_cp, stableMerchantPurse)
   assert.equal(afterRestart.body.merchant_view.state_version, stableVersion)
   assert.equal(afterRestart.body.merchant_view.merchant.stock.find((stock) => stock.stock_id === 'potion').quantity, 2)
+  assert.equal(afterRestart.body.merchant_view.merchant.stock.find((stock) => stock.stock_id === 'rope').quantity, ropeBeforePurchase - 1)
   assert.equal(afterRestart.body.merchant_view.bargain.attempted, true)
+  const roomAfterRestart = await request(baseUrl, '/api/rooms/SHOP-HTTP', { cookie: playerCookie })
+  assertStatus(roomAfterRestart, 200, log)
+  assert.equal(roomAfterRestart.body.state.social.conversations.some((conversation) => conversation.npc_id === 'marten.shop'), true)
+  assert.equal(roomAfterRestart.body.state.players.find((candidate) => candidate.id === 'hero').inventory.some((item) => item.catalog_id === 'srd_5_2_1:rope-hempen-50-feet'), true)
   const durableAppraisalQuote = afterRestart.body.merchant_view.sell_quotes.find((quote) => quote.item_id === 'moon-shard')
   assert.equal(durableAppraisalQuote.breakdown.catalog_base_unit_cp, 6_250)
   assert.equal(durableAppraisalQuote.price_provenance, 'server_appraisal_policy')
@@ -427,4 +448,28 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   assert.equal(replayedSale.body.authoritative_state.economyLog.length, stableLogLength)
   assert.ok(replayedSale.body.authoritative_state.economyLog.some((entry) => entry.type === 'bargain'))
   assert.ok(replayedSale.body.authoritative_state.economyLog.some((entry) => entry.type === 'sale'))
+
+  const serviceView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
+  assertStatus(serviceView, 200, log)
+  const service = await merchantCommand(baseUrl, 'SHOP-HTTP', 'marten.shop', playerCookie, 'purchase-repair-once', {
+    command_type: 'PurchaseMerchantService',
+    actor_id: 'hero',
+    service_id: 'repair',
+    expected_state_version: serviceView.body.merchant_view.expected_state_version,
+  })
+  assertStatus(service, 200, log)
+  const repairQuote = serviceView.body.merchant_view.service_quotes.find((quote) => quote.service_id === 'repair')
+  assert.equal(businessEvent(service.body, 'MerchantServicePurchased').payload.total_price_cp, repairQuote.price_cp)
+  assert.equal(service.body.merchant_view.balance_cp, stableBalance - repairQuote.price_cp)
+  assert.equal(service.body.authoritative_state.economyLog.at(-1).type, 'service')
+
+  const clock = await request(baseUrl, '/api/campaigns/SHOP-HTTP/system-tick', { method: 'POST', cookie: playerCookie })
+  assertStatus(clock, 200, log)
+  assert.equal(clock.body.economy_clock_events, 2)
+  const afterClock = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
+  assertStatus(afterClock, 200, log)
+  assert.equal(afterClock.body.merchant_view.merchant.stock.find((stock) => stock.stock_id === 'potion').quantity, 3)
+  const repeatedClock = await request(baseUrl, '/api/campaigns/SHOP-HTTP/system-tick', { method: 'POST', cookie: playerCookie })
+  assertStatus(repeatedClock, 200, log)
+  assert.equal(repeatedClock.body.economy_clock_events, 0)
 })

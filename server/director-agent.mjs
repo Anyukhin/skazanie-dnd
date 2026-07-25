@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
+import { campaignConceptForAgent } from './agent-context.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/director/v1.txt', import.meta.url)), 'utf8')
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -62,6 +63,7 @@ export function fallbackDirectorIntent(state = {}) {
 function publicDirectorBrief(state = {}, playerAction = '') {
   return {
     WORLD_STATE: {
+      campaign_premise: campaignConceptForAgent(state),
       scene: {
         title: clean(state.scene?.title, 100), location: clean(state.scene?.location, 160),
         objective: clean(state.scene?.objective, 240), turn: Number(state.scene?.turn) || 0,

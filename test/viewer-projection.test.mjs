@@ -23,6 +23,20 @@ function privateState() {
       history: [{ chapter: 1, title: 'Склеп', location: 'Склеп', objective: 'Выйти', outcome: 'Герои вышли', gm_only: 'предательство' }],
       gm_only: { villain: 'канцлер' }, hidden_information: { trueDoor: 'север' }, private_notes: 'не показывать',
     },
+    worldMap: {
+      version: 1, seed: 'visible-map', name: 'Известные земли', width: 1000, height: 640, currentLocationId: 'norvin',
+      regions: [
+        { id: 'north', name: 'Север', biome: 'forest', x: 100, y: 100, radius: 80 },
+        { id: 'hidden-region', name: 'Тайная область', biome: 'void', x: 800, y: 500, radius: 80 },
+      ],
+      locations: [
+        { id: 'norvin', name: 'Норвин', kind: 'city', x: 100, y: 100, regionId: 'north', summary: 'Текущий город', known: true, visited: true },
+        { id: 'secret-vault', name: 'Тайное хранилище', kind: 'dungeon', x: 220, y: 140, regionId: 'north', summary: 'Скрытая база канцлера', known: false, visited: false },
+      ],
+      routes: [
+        { id: 'secret-road', from: 'norvin', to: 'secret-vault', kind: 'trail', distance: 2, danger: 'high', discovered: false },
+      ],
+    },
     merchants: [
       {
         id: 'here', name: 'Марта', title: 'Торговец', location: '  НОРВИН ', available: true,
@@ -31,6 +45,28 @@ function privateState() {
       },
       { id: 'far', name: 'Дальний', location: 'Лес', available: true, stock: [], pricing: {} },
     ],
+    enemies: [{
+      id: 'goblin-secret', name: 'Гоблин-воин', hp: 7, maxHp: 11, armor: 15, speed: 30,
+      stat_block_id: 'srd:secret-goblin', attack_bonus: 4, x: 3, y: 2, alive: true,
+    }],
+    mechanics: {
+      combat: {
+        active: true, round: 1, active_index: 1,
+        initiative: [
+          { actor_id: 'hero', roll: 12, modifier: 2, total: 14 },
+          { actor_id: 'goblin-secret', roll: 18, modifier: 4, total: 22 },
+        ],
+      },
+    },
+    battleLog: [{
+      id: 'battle-secret', type: 'attack', actorId: 'hero', actorKind: 'player',
+      targetId: 'goblin-secret', damage: 4, hpBefore: 11, hpAfter: 7,
+      roll: { die: 12, modifier: 5, total: 17, difficulty: 15, hit: true },
+    }],
+    messages: [{
+      id: 'combat-secret', speaker: 'system', author: 'Система боя',
+      text: 'Лира атакует Гоблин-воин: 17 против КД 15 — попадание. Гоблин-воин получает 4 урона; ОЗ 11 → 7.',
+    }],
   }
 }
 
@@ -43,6 +79,71 @@ test('player campaign projection hides private memory, fog features and remote m
   assert.deepEqual(projected.merchants.map((merchant) => merchant.id), ['here'])
   assert.equal(projected.adventure.currentHook, 'Публичный след печати')
   assert.equal(projected.adventure.history[0].outcome, 'Герои вышли')
+  assert.deepEqual(projected.worldMap.locations.map((location) => location.id), ['norvin'])
+  assert.deepEqual(projected.worldMap.routes, [])
+  assert.equal(projected.worldMap.seed, undefined)
+  assert.deepEqual(projected.worldMap.regions.map((region) => region.id), ['north'])
+  assert.doesNotMatch(encoded, /Тайное хранилище|Скрытая база канцлера|secret-vault|secret-road|hidden-region|Тайная область|visible-map/u)
+  assert.deepEqual(projected.enemies[0], {
+    id: 'goblin-secret', name: 'Гоблин-воин', x: 3, y: 2, alive: true, healthStatus: 'wounded', healthKnown: 'banded',
+  })
+  assert.deepEqual(projected.mechanics.combat.initiative[1], { actor_id: 'goblin-secret' })
+  assert.equal(projected.battleLog[0].hpBefore, undefined)
+  assert.equal(projected.battleLog[0].hpAfter, undefined)
+  assert.equal(projected.battleLog[0].roll.difficulty, undefined)
+  assert.doesNotMatch(projected.messages[0].text, /КД 15|ОЗ 11|→ 7/u)
+})
+
+test('enemy facts remain qualitative until an explicit server-side knowledge record reveals them', () => {
+  const state = privateState()
+  const hidden = campaignStateForViewer(state, user, 'hero').enemies[0]
+  assert.equal(hidden.hp, undefined)
+  assert.equal(hidden.maxHp, undefined)
+  assert.equal(hidden.armor, undefined)
+  assert.equal(hidden.speed, undefined)
+  assert.equal(hidden.stat_block_id, undefined)
+
+  state.mechanics.enemy_knowledge = {
+    version: 1,
+    party: {
+      'goblin-secret': {
+        health: 'exact',
+        armor_class: 'exact',
+        speed: 'exact',
+        stat_block: 'exact',
+        source_event_ids: ['fact-revealed'],
+      },
+    },
+  }
+  const revealed = campaignStateForViewer(state, user, 'hero').enemies[0]
+  assert.equal(revealed.hp, 7)
+  assert.equal(revealed.healthKnown, 'exact')
+  assert.equal(revealed.maxHp, 11)
+  assert.equal(revealed.armor, 15)
+  assert.equal(revealed.speed, 30)
+  assert.equal(revealed.stat_block_id, 'srd:secret-goblin')
+  assert.equal(campaignStateForViewer(state, user, 'hero').mechanics.enemy_knowledge, undefined)
+})
+
+test('combat event projection removes enemy HP, armor class and initiative modifiers', () => {
+  const state = privateState()
+  const events = mechanicsForViewer([
+    {
+      event_type: 'DamageApplied', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public',
+      payload: { target_id: 'goblin-secret', applied_amount: 4, hp_before: 11, hp_after: 7, temporary_hp_before: 0, temporary_hp_after: 0 },
+    },
+    {
+      event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public',
+      payload: { target_id: 'goblin-secret', kept: 12, modifier: 5, total: 17, armor_class: 15, hit: true },
+    },
+    {
+      event_type: 'CombatStarted', actor_id: 'hero', target_ids: ['hero', 'goblin-secret'], visibility: 'public',
+      payload: { initiative: state.mechanics.combat.initiative, round: 1, active_index: 1 },
+    },
+  ], user, 'hero', state)
+  assert.deepEqual(events[0].payload, { target_id: 'goblin-secret', applied_amount: 4 })
+  assert.equal(events[1].payload.armor_class, undefined)
+  assert.deepEqual(events[2].payload.initiative[1], { actor_id: 'goblin-secret' })
 })
 
 test('player event projection sanitizes SceneAdvanced and MerchantCreated payloads', () => {

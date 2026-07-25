@@ -63,7 +63,7 @@
 
 Критерий завершения: измеренные quality/latency thresholds на representative queries.
 
-## Этап 4. Events, state version и persistence — подключено, частично
+## Этап 4. Events, state version и persistence — подключено, критерий recovery выполнен
 
 **Что было.** Клиент или legacy tools формировали новый state, а room JSON заменялся почти целиком; доменного event journal не было.
 
@@ -71,9 +71,16 @@
 
 **Почему.** Механические изменения становятся воспроизводимыми и объяснимыми.
 
-**Совместимость.** Legacy room остаётся compatibility projection и по-прежнему имеет свой CAS `version`. Metadata migration и import — разные операции; `legacy_import_required` не очищается автоматически. Event commit и последующий `saveRoom` не образуют одну транзакцию: при конфликте projection event уже может быть сохранён.
+**Совместимость.** Legacy room остаётся compatibility projection и по-прежнему
+имеет свой CAS `version`. Commit содержит projection-outbox marker, metadata —
+monotonic checkpoint; startup и room GET восстанавливают отставшую projection.
+Metadata migration и import остаются разными операциями.
 
-**Тесты.** Unit-тесты проверяют append, idempotency/conflicts, snapshots, replay/reopen, backup и migration repeat. HTTP-тесты подтверждают commit, NPC follow-up commits, идемпотентный retry и идентичный combat replay после перезапуска процесса. Нет migration/cutover E2E на рабочем storage, multi-process competition и систематической crash injection.
+**Тесты.** Unit-тесты проверяют append, idempotency/conflicts, snapshots,
+replay/reopen, pending/acknowledged projection и migration repeat. HTTP-тест
+искусственно оставляет commit без room projection, перезапускает сервер и
+проверяет автоматическое восстановление. Нет production migration/cutover E2E
+на рабочем storage и multi-process competition.
 
 Критерий завершения: атомарная либо надёжно восстанавливаемая outbox/projection схема, migration runner для import/reconciliation и production-like recovery tests.
 
@@ -85,33 +92,44 @@
 
 **Почему.** Механические вычисления должны выполняться кодом, а narration — описывать уже принятый результат.
 
-**Совместимость.** Старый UI и legacy mode сохранены; browser fallback всё ещё имеет отдельный `Math.random` path. `/api/roll` использует новый registry, но registry пока in-memory.
+**Совместимость.** Старый UI и legacy mode сохранены; browser fallback всё ещё имеет отдельный `Math.random` path. `/api/roll` использует durable файловый registry с одноразовым consume; для multi-process deployment его нужно перенести в общую БД.
 
 **Тесты.** Есть unit-покрытие перечисленных механик, включая critical damage dice, attack follow-ups, death saves/stabilization, Bless/Bane, преимущество и максимальное лечение Beacon of Hope, Death Ward, позиционные эффекты Aura of Life и Aura of Protection, автоматический concentration save с временными HP/иммунитетом/классовым владением и очисткой эффекта, nonlethal knockout оружием и ближним заклинанием, Short Rest/лечение/первую помощь и явный `EndCombat`; domain integration проходит исследование, social ruling, check/save, spell/resource/concentration, инициативу, атаку, лечение, condition, завершение боя, отдых и restart/replay. Отдельный scheduler/reopen flow проверяет три спасброска, стабилизацию, постбоевые 1d4 часа и пробуждение на 1 ОЗ; scheduler также завершает бой при живой нокаутированной цели на 1 ОЗ. HTTP-проверки охватывают прямой `ApplyDamage` и server-derived player attack. Не закрыты эффекты всех conditions, оставшиеся death-flow features до 12 уровня, все внешние причины окончания концентрации, полный rest recovery и полная weapon/spell derivation.
 
 Критерий завершения: закрытая P0 matrix и отсутствие независимых механических путей вне engine.
 
-### Server-authoritative combat slice — подключён, частично
+### Server-authoritative combat slice — завершён для bounded vertical slice
 
 **Что изменено.** Обычный игрок в `enforce` использует server-authoritative combat commands за назначенного героя, включая перемещение, атаки, заклинания, классовые действия, реакции и `EndTurn`. UI показывает инициативу/раунд/текущего участника, предлагает nonlethal toggle только для ближней атаки и ждёт авторитетный ответ. Сервер повторно проверяет trusted melee-профиль, оставляет нокаутированной цели 1 ОЗ, запускает Short Rest и поддерживает пробуждение от времени, лечения или Medicine СЛ 10. Admin UI/API EncounterAssembler принимает bounded difficulty/theme, считает официальный XP budget SRD 5.2.1 уровней 1–20, выбирает roster из 12 server-owned monster profiles, безопасно размещает его на revealed/reachable клетках не ближе 10 футов и коммитит `EncounterCreated + CombatStarted` атомарно. Bounded deterministic NPC scheduler делает ходы enemies и автоматические death saves до следующего управляемого PC, закрывает бой только после разрешения нестабильных героев и после безопасной победы выводит полностью стабильный бессознательный отряд из тупика через event-sourced 1d4-hour recovery; при живых врагах outcome остаётся решением рассказчика. Non-admin room `PUT` восстанавливает event-store combat state и оставляет только presentation allowlist листа.
 
-**Ограничение.** `legacy/shadow` tactical fallback с `Math.random` сохранён. Monster mini-compendium содержит 12 server-owned profiles, но не полный corpus: отсутствуют полная модель saves/resistances, spellcasting, legendary/lair/recharge и множество особых действий. Также нет Director auto-trigger, loot/rewards, диагоналей, cover/LOS, полного condition/rest lifecycle, всех внешних причин окончания концентрации, всех исключений death saves, Tactical Controller agent и multi-browser realtime.
+**Ограничение.** `legacy/shadow` tactical fallback с `Math.random` сохранён.
+Monster mini-compendium содержит 12 server-owned profiles, но не полный corpus:
+отсутствуют legendary/lair actions, широкий spellcasting и множество редких
+особых действий. Bounded Director trigger, Tactical Controller, loot/rewards и
+SSE multiplayer работают; высоты, cover и сложная местность остаются вне
+vertical slice.
 
-**Тесты.** Domain/Real-HTTP flows проверяют derived encounter, отказ от forged stat blocks/coordinates/participants, safe spawn, atomic start, normal-player ACL, path/speed/occupancy, NPC scheduling, player projection, persistent journal, idempotency и replay/restart. Полный бой 4 PC + 3 NPC от spawn до loot и два одновременно подключённых браузера не проверены.
+**Тесты.** Domain/Real-HTTP flows проверяют derived encounter, отказ от forged
+stat blocks/coordinates/participants, safe spawn, atomic start, normal-player
+ACL, path/speed/occupancy, Tactical Controller, player projection, persistent
+journal и idempotency. Сквозной сценарий проводит 4 PC против минимум 3 NPC от
+spawn до loot, перезапускает сервер после committed атаки и проверяет
+roll/command/rule/HP provenance. Отдельный multiplayer test держит два
+authenticated SSE-соединения и выполняет concurrent commands.
 
-## Этап 6. Новый игровой цикл — подключено, частично
+## Этап 6. Новый игровой цикл — выполнено для автономного vertical slice
 
 **Что было.** Один legacy prompt интерпретировал намерение, выбирал tool и писал narration; клиент применял effects.
 
-**Что изменено.** `GameOrchestrator` объединяет Intent Parser, Adjudicator, retrieval, Rules Engine, Event Store, Narrator, visibility projection, deterministic Verifier и trace store. `/api/narrate` использует доверенное server state, проверяет membership/hero и verified roll, а `/api/campaigns/:id/turns/:turnId/explanation` и `/why` дают объяснение. Базовый тактический UI в `enforce` теперь идёт напрямую через typed command path; `legacy/shadow` narration effects остаются совместимым параллельным путём.
+**Что изменено.** `GameOrchestrator` объединяет Intent Parser, Adjudicator, retrieval, Rules Engine, Event Store, Narrator, visibility projection, deterministic Verifier и trace store. Отдельный автономный контур принимает шесть narrative-only intents и серверно исполняет `pacing → exploration/social/quest → EncounterAssembler → combat → rewards/downtime → travel → next scene`. Travel time/risk, random encounter, NPC social profile, XP/loot и расписания вычисляются без механических полей от LLM. `/api/narrate` использует доверенное server state, а `/autonomy/advance` доступен обычному участнику кампании. В UI видны текущая фаза и напряжение.
 
 **Почему.** LLM не должен незаметно становиться источником механического state.
 
 **Совместимость.** Сохранена форма существующего `/api/narrate`; выбранные авторитетные изменения проецируются обратно в room для старого frontend.
 
-**Тесты.** Unit-тесты покрывают роли, verifier и orchestrator. Реальный HTTP-тест проходит совместимый `/why` и доказывает, что подделанный клиентом HP не принимается. Это не полный E2E всей цепочки: UI, настоящий LLM, все intents, visibility cases и restart между commit/explanation не проверены.
+**Тесты.** Unit-тесты покрывают intents, pacing, travel/random encounter, social assembler, downtime, rewards, роли, verifier и orchestrator. Real-HTTP сценарий проводит обычных игроков через четыре Director intent, полный серверный бой, restart, reward/rest/travel и три сцены; автономная 30+ turn campaign сравнивает replay без snapshot и повторное открытие EventStore.
 
-Критерий завершения: расширенный contract/E2E suite и покрытие всех P0 intents/visibility levels.
+**Оставшееся ограничение.** Качество художественной импровизации с реальным LLM требует отдельного online-eval; механический автономный цикл от этого не зависит.
 
 ## Этап 7. Shadow и последовательное переключение — подключено, частично
 
@@ -127,25 +145,25 @@
 
 Критерий завершения: один общий зарегистрированный roll для обоих сравнений, стабильные divergence metrics и проверенный canary/rollback.
 
-## Этап 8. Удаление legacy — не готово
+## Этап 8. Удаление legacy — runtime удалён, data cutover заблокирован аудитом
 
 **Что было.** Legacy был единственным рабочим runtime.
 
-**Что изменено.** Новый путь интегрирован, но legacy намеренно сохранён как режим и compatibility layer.
+**Что изменено.** `enforce` стал единственным исполняемым runtime. Удалены legacy/shadow ветки оркестратора, shadow comparison, live lazy import, `LegacyStateSynchronized`, browser gameplay fallback и broad room PUT. Новые кампании и общий публичный d20 записываются событиями. Compatibility room остался только server-owned read-моделью. Добавлены канонический projection SHA-256, hash-verified acknowledgement outbox и fail-closed `cutover:verify`.
 
-**Почему.** Не закрыты P0 coverage, атомарность projection, массовая миграция, длительный shadow период, browser regression и recovery rehearsal.
+**Почему этап ещё нельзя объявить завершённым для данных.** Read-only аудит семи существующих кампаний обнаружил projection drift во всех семи и snapshot/replay drift в одной. Автоматическое перезаписывание пользовательских сохранений запрещено без выбора канонической стороны и проверенной резервной копии.
 
-**Совместимость.** Старый UI/API продолжают работать; удаление сейчас было бы несовместимым изменением.
+**Совместимость.** Старый UI продолжает читать room projection, но не может записать её целиком. Старые snapshot импортируются только явным offline workflow.
 
-**Тесты.** Перед удалением нужны UI/API regression, migrated-campaign replay/restart, public deployment, concurrency/load, security и rollback tests.
+**Тесты.** Enforce-only resolver/orchestrator, отсутствие browser RNG/mutators, strict payload, retired endpoints, replay без snapshots, projection hash и cutover fail-closed покрыты локально. До физического удаления `storage/rooms` нужны reconciliation на копии, restore rehearsal, public deployment, concurrency/load и rollback window.
 
-Удаление разрешено только после миграции всех активных кампаний, истечения rollback window и доказательства, что production requests не используют legacy mutation path.
+Физическое удаление compatibility read-модели разрешено только после `cutover:verify = ready`, миграции всех активных кампаний и истечения rollback window. Live legacy mutation path уже закрыт.
 
 ## Ближайшие приоритеты
 
-1. Сделать event commit и legacy projection атомарными либо гарантированно восстанавливаемыми.
-2. Убрать второй независимый roll в shadow и собирать измеримые divergence reports.
-3. Расширить EncounterAssembler от пяти primary-attack projections до полных разрешённых stat blocks, Director trigger и loot/rewards; довести геометрию, spells/conditions/death flow и Tactical Controller, затем убрать tactical browser fallback.
-4. Добавить контролируемый bulk import/reconciliation runner с backup, dry-run и rollback rehearsal.
-5. Расширить HTTP/UI/RouterAI/security tests до multi-browser/realtime и production-like набора; restart/replay базового combat slice уже покрыт.
-6. Только затем начинать canary migration реальных кампаний и обсуждать удаление legacy.
+1. Определить канонический источник для семи расходящихся кампаний и исправить snapshot/replay drift на копии storage.
+2. Добавить контролируемый reconciliation/import runner с manifest, backup, dry-run и rollback rehearsal.
+3. Довести presentation edits до отдельных типизированных persistent-команд.
+4. Перенести event/outbox/roll coordination в транзакционное хранилище для multi-process deployment.
+5. Расширить HTTP/UI/RouterAI/security tests до multi-browser/realtime и production-like набора.
+6. После зелёного `cutover:verify` и rollback window удалить compatibility room read-модель.

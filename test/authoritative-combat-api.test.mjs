@@ -30,7 +30,7 @@ function startServer({ port, storage, setupToken, appendLog }) {
       DND_STORAGE_DIR: storage,
       ROUTERAI_API_KEY: '',
       ADMIN_SETUP_TOKEN: setupToken,
-      GAME_ENGINE_MODE: 'shadow',
+      GAME_ENGINE_MODE: 'enforce',
       COOKIE_SECURE: 'false',
       NODE_ENV: 'test',
     },
@@ -258,7 +258,7 @@ test('player combat API is server-authoritative, bounded, and durable across res
     },
     tacticalTurn: { sceneTurn: 1, actorId: 'hero', movementSpent: 0, actionUsed: false },
     adventure: { chapter: 1, history: [], visitedLocations: ['Isolated arena'] },
-    engine_mode: 'shadow',
+    engine_mode: 'enforce',
   }
 
   const created = await request(baseUrl, '/api/campaigns', {
@@ -280,13 +280,13 @@ test('player combat API is server-authoritative, bounded, and durable across res
   assertStatus(assigned, 200, log)
   assert.deepEqual(assigned.body.user.heroIds, ['hero'])
 
-  const enforced = await request(baseUrl, '/api/campaigns/AUTH-COMBAT/engine-mode', {
+  const retiredMode = await request(baseUrl, '/api/campaigns/AUTH-COMBAT/engine-mode', {
     method: 'PATCH',
     cookie: adminCookie,
-    body: { mode: 'enforce' },
+    body: { mode: 'legacy' },
   })
-  assertStatus(enforced, 200, log)
-  assert.equal(enforced.body.mode, 'enforce')
+  assertStatus(retiredMode, 410, log)
+  assert.equal(retiredMode.body.code, 'ENGINE_MODE_RETIRED')
 
   const roomBeforeTamper = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
   assertStatus(roomBeforeTamper, 200, log)
@@ -296,17 +296,13 @@ test('player combat API is server-authoritative, bounded, and durable across res
   tamperedState.enemies[0].hp = 0
   tamperedState.enemies[0].alive = false
   tamperedState.mechanics = { combat: { active: true, round: 99, active_index: 0, initiative: [{ actor_id: 'hero', total: 999 }] } }
-  const rejectedProjectionTamper = await request(baseUrl, '/api/rooms/AUTH-COMBAT', {
+  const retiredProjectionMutation = await request(baseUrl, '/api/rooms/AUTH-COMBAT', {
     method: 'PUT',
     cookie: playerCookie,
     body: { state: tamperedState, baseVersion: roomBeforeTamper.body.version },
   })
-  assertStatus(rejectedProjectionTamper, 200, log)
-  assert.equal(actor(rejectedProjectionTamper.body.state, 'hero').attackBonus, 7)
-  assert.equal(actor(rejectedProjectionTamper.body.state, 'hero').armor, 18)
-  assert.equal(actor(rejectedProjectionTamper.body.state, 'sentinel').hp, 60)
-  assert.equal(actor(rejectedProjectionTamper.body.state, 'sentinel').alive, true)
-  assert.equal(rejectedProjectionTamper.body.state.mechanics.combat.active, false)
+  assertStatus(retiredProjectionMutation, 410, log)
+  assert.equal(retiredProjectionMutation.body.code, 'ROOM_MUTATION_RETIRED')
 
   const attackBeforeInitiative = await command(baseUrl, playerCookie, 'attack-before-combat-1', {
     command_type: 'MakeAttack',
@@ -339,7 +335,10 @@ test('player combat API is server-authoritative, bounded, and durable across res
   const beforeRejected = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
   assertStatus(beforeRejected, 200, log)
   const rejectedVersion = beforeRejected.body.state.state_version
-  const rejectedEnemyHp = actor(beforeRejected.body.state, 'sentinel').hp
+  const rejectedEnemyStatus = actor(beforeRejected.body.state, 'sentinel').healthStatus
+  assert.equal(actor(beforeRejected.body.state, 'sentinel').hp, undefined)
+  assert.equal(actor(beforeRejected.body.state, 'sentinel').maxHp, undefined)
+  assert.equal(actor(beforeRejected.body.state, 'sentinel').armor, undefined)
   const rejectedHeroPosition = { x: actor(beforeRejected.body.state, 'hero').x, y: actor(beforeRejected.body.state, 'hero').y }
 
   const rawDamage = await command(baseUrl, playerCookie, 'forbidden-damage-1', {
@@ -383,7 +382,7 @@ test('player combat API is server-authoritative, bounded, and durable across res
   const afterRejected = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
   assertStatus(afterRejected, 200, log)
   assert.equal(afterRejected.body.state.state_version, rejectedVersion)
-  assert.equal(actor(afterRejected.body.state, 'sentinel').hp, rejectedEnemyHp)
+  assert.equal(actor(afterRejected.body.state, 'sentinel').healthStatus, rejectedEnemyStatus)
   assert.deepEqual(
     { x: actor(afterRejected.body.state, 'hero').x, y: actor(afterRejected.body.state, 'hero').y },
     rejectedHeroPosition,
@@ -429,13 +428,10 @@ test('player combat API is server-authoritative, bounded, and durable across res
   assert.ok(attackResolved)
   assert.equal(attackResolved.payload.target_id, 'sentinel')
   assert.equal(attackResolved.payload.modifier, 7)
-  assert.equal(attackResolved.payload.armor_class, 11)
+  assert.equal(attackResolved.payload.armor_class, undefined)
   assert.ok(Number.isInteger(attackResolved.payload.kept) && attackResolved.payload.kept >= 1 && attackResolved.payload.kept <= 20)
   assert.equal(attackResolved.payload.total, attackResolved.payload.kept + 7)
-  assert.equal(
-    attackResolved.payload.hit,
-    attackResolved.payload.kept === 20 || (attackResolved.payload.kept !== 1 && attackResolved.payload.total >= 11),
-  )
+  assert.equal(typeof attackResolved.payload.hit, 'boolean')
 
   const attackExplanation = await request(baseUrl, attacked.body.explanation_url, { cookie: playerCookie })
   assertStatus(attackExplanation, 200, log)
@@ -450,7 +446,6 @@ test('player combat API is server-authoritative, bounded, and durable across res
   assert.equal(serverAttackRoll.expression, '1d20+7')
   assert.equal(serverAttackRoll.total, serverAttackRoll.kept + 7)
 
-  const enemyBeforeAttack = rejectedEnemyHp
   const attackDamage = event(attacked.body, 'DamageApplied', 'hero')
   const damageRoll = attackExplanation.body.rolls.find((roll) => roll.purpose === 'damage' && roll.actor_id === 'hero')
   if (attackResolved.payload.hit) {
@@ -460,13 +455,13 @@ test('player combat API is server-authoritative, bounded, and durable across res
     assert.equal(damageRoll.total, damageRoll.dice.reduce((sum, die) => sum + die, 2))
     assert.ok(damageRoll.dice.every((die) => Number.isInteger(die) && die >= 1 && die <= 6))
     assert.equal(attackDamage.payload.raw_amount, damageRoll.total)
-    assert.equal(attackDamage.payload.hp_before, enemyBeforeAttack)
-    assert.equal(attackDamage.payload.hp_after, Math.max(0, enemyBeforeAttack - attackDamage.payload.applied_amount))
-    assert.equal(actor(attackState, 'sentinel').hp, attackDamage.payload.hp_after)
+    assert.equal(attackDamage.payload.hp_before, undefined)
+    assert.equal(attackDamage.payload.hp_after, undefined)
+    assert.equal(actor(attackState, 'sentinel').hp, undefined)
   } else {
     assert.equal(attackDamage, undefined)
     assert.equal(damageRoll, undefined)
-    assert.equal(actor(attackState, 'sentinel').hp, enemyBeforeAttack)
+    assert.equal(actor(attackState, 'sentinel').hp, undefined)
   }
   assert.equal(actor(attackState, 'sentinel').alive, true, 'the durable enemy fixture must survive one attack')
 
@@ -487,9 +482,10 @@ test('player combat API is server-authoritative, bounded, and durable across res
   const npcAttack = event(ended.body, 'AttackResolved', 'sentinel')
   assert.ok(npcAttack, 'an adjacent living NPC must take its legal attack')
   assert.equal(npcAttack.payload.target_id, 'hero')
-  assert.equal(npcAttack.payload.modifier, 4)
+  assert.equal(npcAttack.payload.modifier, undefined)
+  assert.equal(npcAttack.payload.kept, undefined)
   assert.equal(npcAttack.payload.armor_class, 18)
-  assert.equal(npcAttack.payload.total, npcAttack.payload.kept + 4)
+  assert.ok(Number.isInteger(npcAttack.payload.total))
 
   const finalState = ended.body.authoritative_state
   assert.equal(finalState.messages.filter((message) => message.id === ended.body.narration_message_id).length, 1)

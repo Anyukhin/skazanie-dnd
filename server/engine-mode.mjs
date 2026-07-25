@@ -1,6 +1,8 @@
-export const ENGINE_MODES = Object.freeze(['legacy', 'shadow', 'enforce'])
+export const ENGINE_MODES = Object.freeze(['enforce'])
+export const RETIRED_ENGINE_MODES = Object.freeze(['legacy', 'shadow'])
 
 const ENGINE_MODE_SET = new Set(ENGINE_MODES)
+const RETIRED_ENGINE_MODE_SET = new Set(RETIRED_ENGINE_MODES)
 
 export class EngineModeError extends Error {
   constructor(message, { source = null, value = null } = {}) {
@@ -16,12 +18,13 @@ export function isEngineMode(value) {
   return ENGINE_MODE_SET.has(String(value ?? '').trim().toLowerCase())
 }
 
-export function normalizeEngineMode(value, { source = null, allowEmpty = false } = {}) {
+export function normalizeEngineMode(value, { source = null, allowEmpty = false, acceptRetired = true } = {}) {
   if (value == null || String(value).trim() === '') {
     if (allowEmpty) return null
     throw new EngineModeError('Режим движка не задан', { source, value })
   }
   const normalized = String(value).trim().toLowerCase()
+  if (acceptRetired && RETIRED_ENGINE_MODE_SET.has(normalized)) return 'enforce'
   if (!ENGINE_MODE_SET.has(normalized)) throw new EngineModeError(`Неизвестный режим движка: ${normalized}`, { source, value })
   return normalized
 }
@@ -37,13 +40,17 @@ function modeCandidates(context, environment) {
   ]
 }
 
-/** Kept for importing old snapshots and legacy narration tests. Structured
- * gameplay commands no longer use this switch: they always use Rules Engine. */
-export function explainEngineMode(context = {}, { env = process.env, defaultMode = 'legacy' } = {}) {
+/** Runtime is enforce-only. Retired values are read solely so old environment
+ * files and snapshots cannot reactivate the removed mutation paths. */
+export function explainEngineMode(context = {}, { env = process.env, defaultMode = 'enforce' } = {}) {
   const environment = env && typeof env === 'object' ? env : {}
   for (const [source, value] of modeCandidates(context ?? {}, environment)) {
     if (value == null || String(value).trim() === '') continue
-    return { mode: normalizeEngineMode(value, { source }), source }
+    const raw = String(value).trim().toLowerCase()
+    const mode = normalizeEngineMode(raw, { source })
+    return RETIRED_ENGINE_MODE_SET.has(raw)
+      ? { mode, source, retired_value: raw }
+      : { mode, source }
   }
   return { mode: normalizeEngineMode(defaultMode, { source: 'default' }), source: 'default' }
 }
@@ -53,7 +60,7 @@ export function resolveEngineMode(context = {}, options = {}) {
 }
 
 export class EngineModeResolver {
-  constructor({ env = process.env, defaultMode = 'legacy' } = {}) {
+  constructor({ env = process.env, defaultMode = 'enforce' } = {}) {
     this.env = env
     this.defaultMode = normalizeEngineMode(defaultMode, { source: 'default' })
   }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { combatActionsFor } from '../server/combat-actions.mjs'
 import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 
 function dice(values = []) {
@@ -30,12 +31,33 @@ function applyAll(state, events) {
 test('нормализация выдаёт воину классовые действия и их серверные ресурсы', () => {
   const state = combatState()
   const ids = state.players[0].combatActions.map((action) => action.id)
+  const actions = state.players[0].combatActions
+  assert.ok(actions.every((action) => ['verified', 'partial', 'heuristic', 'ruling-only'].includes(action.mechanicsSupport)))
+  assert.equal(actions.find((action) => action.id === 'dash')?.mechanicsSupport, 'verified')
+  assert.equal(actions.find((action) => action.id === 'ready')?.mechanicsSupport, 'partial')
+  assert.equal(actions.find((action) => action.id === 'use-object')?.mechanicsSupport, 'ruling-only')
+  const countercharm = combatActionsFor({ characterClass: 'bard', level: 6 }).find((action) => action.id === 'countercharm')
+  assert.equal(countercharm?.mechanicsSupport, 'partial')
   assert.ok(ids.includes('dash'))
   assert.ok(ids.includes('second-wind'))
   assert.ok(ids.includes('action-surge'))
   assert.ok(ids.includes('trip-attack'))
   assert.deepEqual(state.mechanics.resources.fighter.second_wind, { current: 1, max: 1 })
   assert.deepEqual(state.mechanics.resources.fighter.superiority_dice, { current: 4, max: 4 })
+})
+
+test('эвристические и ruling-only действия отклоняются без изменения состояния', () => {
+  const initial = combatState()
+  const before = structuredClone(initial)
+  assert.throws(
+    () => resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'use-object', server_authoritative: true }, initial, { diceService: dice(), context: { serverAuthoritativeCombat: true } }),
+    (error) => error.code === 'RULING_REQUIRED',
+  )
+  assert.throws(
+    () => resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'fighter-varianty-priemov', server_authoritative: true }, initial, { diceService: dice(), context: { serverAuthoritativeCombat: true } }),
+    (error) => error.code === 'MECHANICS_NOT_VERIFIED',
+  )
+  assert.deepEqual(initial, before)
 })
 
 test('Рывок тратит действие и реально увеличивает серверный лимит перемещения', () => {

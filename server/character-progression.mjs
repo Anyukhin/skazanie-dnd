@@ -1,6 +1,17 @@
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 
-const payload = JSON.parse(readFileSync(new URL('../data/dndsu-class-build-rules-1-12.json', import.meta.url), 'utf8'))
+const catalogSource = readFileSync(new URL('../data/dndsu-class-build-rules-1-12.json', import.meta.url))
+const manifest = JSON.parse(readFileSync(new URL('../data/character-rules-manifest.json', import.meta.url), 'utf8'))
+const catalogHash = createHash('sha256').update(catalogSource).digest('hex')
+if (catalogHash !== manifest.source_sha256 || catalogSource.byteLength !== manifest.source_size_bytes) {
+  throw new Error('Character rules catalog does not match its versioned provenance manifest')
+}
+const payload = JSON.parse(catalogSource.toString('utf8'))
+if (manifest.maximum_character_level !== payload.maximumCharacterLevel) {
+  throw new Error('Character rules manifest level cap does not match the catalog')
+}
+export const CHARACTER_RULES_PROVENANCE = Object.freeze(structuredClone(manifest))
 const SKILLS = new Map(payload.skills.map((entry) => [entry.id, Object.freeze(entry)]))
 const CLASS_RULES = new Map(payload.classes.map((entry) => [entry.classKey, Object.freeze(entry)]))
 const FEATURE_GROUPS = Object.freeze(payload.featureChoiceGroups ?? [])
@@ -70,6 +81,7 @@ export function isOptionalFeatureSelected(actor, featureId) {
 
 export function classBuildCatalogInfo() {
   return {
+    provenance: structuredClone(CHARACTER_RULES_PROVENANCE),
     rulesProfile: payload.rulesProfile,
     maximumCharacterLevel: payload.maximumCharacterLevel,
     skillCount: SKILLS.size,

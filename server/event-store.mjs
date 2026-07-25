@@ -334,6 +334,7 @@ export class FileEventStore {
         campaign_id: layout.campaignId,
         state_version: stateVersion,
         current_version: stateVersion,
+        projection_checkpoint_version: 0,
       }
     }
     const metadata = readJson(layout.metadata, 'campaign metadata')
@@ -357,6 +358,10 @@ export class FileEventStore {
       campaign_id: layout.campaignId,
       state_version: stateVersion,
       current_version: stateVersion,
+      projection_checkpoint_version: Math.max(
+        0,
+        Math.min(stateVersion, Number(patch?.projection_checkpoint_version ?? current?.projection_checkpoint_version) || 0),
+      ),
       updated_at: timestamp,
     }
     atomicWrite(layout.metadata, metadata)
@@ -566,6 +571,11 @@ export class FileEventStore {
         state_version_after: 1,
         created_at: timestamp,
         events: [event],
+        projection_outbox: {
+          schema_version: 1,
+          target: 'compatibility-room',
+          state_version_after: 1,
+        },
       }
       this._commitFile(layout, commit)
       this._writeSnapshot(layout, imported, 1)
@@ -664,6 +674,11 @@ export class FileEventStore {
         state_version_after: nextVersion,
         created_at: timestamp,
         events: normalizedEvents,
+        projection_outbox: {
+          schema_version: 1,
+          target: 'compatibility-room',
+          state_version_after: nextVersion,
+        },
       }
       this._commitFile(layout, commit)
       if ((force_snapshot ?? forceSnapshot) || (this.snapshotEvery > 0 && nextVersion % this.snapshotEvery === 0)) {
@@ -741,6 +756,44 @@ export class FileEventStore {
     const commits = this._readCommits(layout)
     const stateVersion = commits.at(-1)?.state_version_after ?? 0
     return jsonClone(this._readMetadata(layout, stateVersion))
+  }
+
+  async pendingProjection(campaignId) {
+    const layout = this._layout(campaignId)
+    if (!this._exists(layout)) throw new CampaignNotFoundError(layout.campaignId)
+    const commits = this._readCommits(layout)
+    const currentVersion = commits.at(-1)?.state_version_after ?? 0
+    const metadata = this._readMetadata(layout, currentVersion)
+    const checkpoint = Math.max(0, Math.min(currentVersion, Number(metadata.projection_checkpoint_version) || 0))
+    if (checkpoint >= currentVersion) return null
+    const loaded = this._load(layout)
+    const events = commits
+      .filter((commit) => commit.state_version_after > checkpoint)
+      .flatMap((commit) => commit.events)
+    return {
+      campaign_id: layout.campaignId,
+      checkpoint_version: checkpoint,
+      state_version: currentVersion,
+      state: loaded.state,
+      events: jsonClone(events),
+    }
+  }
+
+  async acknowledgeProjection(campaignId, projectedVersion, { projectionHash = null, projection_hash } = {}) {
+    const layout = this._layout(campaignId)
+    const requested = safeVersion(projectedVersion, 'projected_version')
+    return this._withLock(layout, () => {
+      const commits = this._readCommits(layout)
+      const currentVersion = commits.at(-1)?.state_version_after ?? 0
+      if (requested > currentVersion) throw new VersionConflictError(layout.campaignId, requested, currentVersion)
+      const metadata = this._readMetadata(layout, currentVersion)
+      const checkpoint = Math.max(Number(metadata.projection_checkpoint_version) || 0, requested)
+      return jsonClone(this._writeMetadata(layout, metadata, {
+        projection_checkpoint_version: checkpoint,
+        projection_checkpoint_at: nowIso(this.clock),
+        projection_checkpoint_hash: projection_hash ?? projectionHash ?? metadata.projection_checkpoint_hash ?? null,
+      }, currentVersion))
+    })
   }
 }
 

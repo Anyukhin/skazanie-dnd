@@ -1,5 +1,6 @@
 import { interpretResolvedPartyDecision } from './scene-architect.mjs'
-import { knownWorldLore } from './world-memory.mjs'
+import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
+import { campaignConceptForAgent } from './agent-context.mjs'
 
 export const AGENT_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', prompt_id: 'worldkeeper/v1', purpose: 'Лор, память мира и знания героя' },
@@ -60,13 +61,23 @@ export function proposeAgentInteraction(action, state = {}) {
   return null
 }
 
-export function answerKnownLore(action, state = {}) {
+export function answerKnownLore(action, state = {}, options = {}) {
   const asksDirection = DIRECTION_REQUEST.test(String(action || '').normalize('NFKC'))
   if (!asksDirection && selectAgentRole(action) !== 'worldkeeper') return null
   const adventure = state.adventure ?? {}
+  const campaignPremise = campaignConceptForAgent(state)
   const scene = state.scene ?? {}
-  const worldFacts = knownWorldLore(state.worldMemory, action)
-  const activeQuest = (state.worldMemory?.quests ?? []).find((quest) => quest?.status === 'active')
+  const visibleMemory = options.viewer
+    ? worldMemoryForViewer(state.worldMemory, options.viewer)
+    : state.worldMemory
+  const worldFacts = options.viewer
+    ? retrieveKnownWorldMemory(state.worldMemory, {
+        viewer: options.viewer,
+        query: action,
+        atMinutes: state.mechanics?.world_time?.elapsed_minutes,
+      })
+    : knownWorldLore(visibleMemory, action)
+  const activeQuest = (visibleMemory?.quests ?? []).find((quest) => quest?.status === 'active')
   const questObjective = activeQuest?.objectives?.[0] || activeQuest?.summary || ''
   if (asksDirection) {
     const location = String(scene.location || scene.title || 'текущая локация')
@@ -80,6 +91,7 @@ export function answerKnownLore(action, state = {}) {
       suggestions: hasNamedDestination ? [`Следовать задаче: ${objective}`.slice(0, 120), 'Уточнить безопасный маршрут'] : ['Осмотреть место в поисках зацепки', 'Расспросить свидетеля о маршруте'],
       effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
       provider: 'AgentWorldkeeper',
+      agent_context: { campaign_premise: campaignPremise },
       model: 'campaign-memory',
       turn_consumed: false,
       action_kind: 'free',
@@ -107,6 +119,7 @@ export function answerKnownLore(action, state = {}) {
     suggestions: ['Уточнить, откуда это известно', 'Поискать записи или свидетеля'],
     effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
     provider: 'AgentWorldkeeper',
+    agent_context: { campaign_premise: campaignPremise },
     model: 'campaign-memory',
     turn_consumed: false,
     action_kind: 'free',

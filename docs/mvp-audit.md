@@ -2,6 +2,11 @@
 
 Дата среза: 12 июля 2026 года.
 
+> **Исторический документ:** после этапа 8 runtime работает только в
+> `enforce`; legacy/shadow branches, browser gameplay fallback и broad room
+> `PUT` удалены. Текущий статус см. в `docs/current-architecture.md` и
+> `docs/legacy-retirement.md`.
+
 ## Как читать этот документ
 
 Аудит намеренно разделяет три состояния:

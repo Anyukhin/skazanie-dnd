@@ -7,7 +7,6 @@ function percentile(values, ratio) {
   const sorted = [...values].sort((a, b) => a - b)
   return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * ratio))]
 }
-
 /** Machine-readable evaluator: every score is derived from counters or canonical event comparisons. */
 export function createAutonomyEvalReport({ runs = [], longCampaigns = [], tokenUsage = [] } = {}) {
   const latencies = runs.map((run) => Number(run.latency_ms) || 0)

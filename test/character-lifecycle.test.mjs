@@ -1,0 +1,204 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import {
+  CHARACTER_IMPORT_SCHEMA,
+  CHARACTER_IMPORT_SCHEMA_VERSION,
+  CharacterLifecycleValidationError,
+  abilityModifier,
+  applyCharacterLifecycleEvent,
+  classResourcePlan,
+  deriveCharacterSheet,
+  experienceForLevel,
+  levelForExperience,
+  levelUpEvent,
+  migrateCharacterImport,
+  parseCharacterImport,
+  proficiencyBonusForLevel,
+  resourcesAfterRest,
+  resolveLevelUp,
+  validateLevelUpCommand,
+} from '../server/character-lifecycle.mjs'
+
+function fighter(overrides = {}) {
+  return {
+    id: 'fighter', character: 'Бранн', characterClass: 'fighter', level: 4, experience: 6_500,
+    abilities: { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 8 },
+    baseSpeed: 30, hp: 22, maxHp: 32,
+    hitPointIncreases: [6, 6, 6],
+    classSkillProficiencies: ['athletics', 'perception'],
+    selectedFeatureIds: ['fighting-style-defense'], inventory: [],
+    ...overrides,
+  }
+}
+
+test('derived sheet computes ability modifiers, class saves, skill proficiency, AC, speed and HP without trusting flat fields', () => {
+  const actor = fighter({
+    armor: 99, speed: 99, proficiency: 99,
+    inventory: [
+      { id: 'leather', catalog_id: 'srd_5_2_1:leather-armor', type: 'armor', equipped: true },
+      { id: 'shield', catalog_id: 'srd_5_2_1:shield', type: 'armor', equipped: true },
+    ],
+  })
+  const sheet = deriveCharacterSheet(actor)
+  assert.equal(abilityModifier(16), 3)
+  assert.equal(sheet.proficiency_bonus, 2)
+  assert.deepEqual(sheet.saving_throw_proficiencies, ['str', 'con'])
+  assert.equal(sheet.saving_throws.str.total, 5)
+  assert.equal(sheet.skills.athletics.total, 5)
+  assert.equal(sheet.skills.stealth.total, 2)
+  assert.equal(sheet.armor_class.value, 15, '11 + DEX + shield, not client armor=99')
+  assert.equal(sheet.speed.value, 30, 'not client speed=99')
+  assert.equal(sheet.hit_points.value, 36)
+})
+
+test('barbarian and monk use their class unarmored AC formulas', () => {
+  const barbarian = deriveCharacterSheet(fighter({ characterClass: 'barbarian', abilities: { str: 16, dex: 14, con: 16, int: 8, wis: 10, cha: 8 }, inventory: [] }))
+  const monk = deriveCharacterSheet(fighter({ characterClass: 'monk', abilities: { str: 10, dex: 16, con: 12, int: 10, wis: 16, cha: 8 }, inventory: [] }))
+  assert.equal(barbarian.armor_class.value, 15)
+  assert.equal(monk.armor_class.value, 16)
+})
+
+test('experience thresholds and proficiency progression are deterministic through level 12', () => {
+  assert.equal(experienceForLevel(1), 0)
+  assert.equal(experienceForLevel(5), 6_500)
+  assert.equal(experienceForLevel(12), 100_000)
+  assert.equal(levelForExperience(84_999), 10)
+  assert.equal(levelForExperience(85_000), 11)
+  assert.equal(levelForExperience(999_999), 12)
+  assert.equal(proficiencyBonusForLevel(1), 2)
+  assert.equal(proficiencyBonusForLevel(5), 3)
+  assert.equal(proficiencyBonusForLevel(12), 4)
+})
+
+test('LevelUp is one server-authoritative level with XP, ownership and hit-die validation', () => {
+  const state = { players: [fighter()], mechanics: { combat: { active: false } } }
+  const command = validateLevelUpCommand({ command_type: 'LevelUp', actor_id: 'fighter', hit_point_roll: 9 }, state, { allowedActorIds: ['fighter'] })
+  assert.equal(command.level_before, 4)
+  assert.equal(command.level_after, 5)
+  assert.equal(command.max_hp_before, 36)
+  assert.equal(command.max_hp_after, 47)
+  const event = levelUpEvent(command)
+  const after = applyCharacterLifecycleEvent(state, event)
+  assert.equal(after.players[0].level, 5)
+  assert.equal(after.players[0].maxHp, 47)
+  assert.deepEqual(after.players[0].hitPointIncreases, [6, 6, 6, 9])
+  assert.deepEqual(applyCharacterLifecycleEvent(state, event), after, 'pure reducer replay is stable')
+  assert.throws(
+    () => validateLevelUpCommand({ command_type: 'LevelUp', actor_id: 'fighter' }, state, { allowedActorIds: [] }),
+    (error) => error instanceof CharacterLifecycleValidationError && error.code === 'ACTOR_FORBIDDEN',
+  )
+  assert.throws(
+    () => validateLevelUpCommand({ command_type: 'LevelUp', actor_id: 'fighter', hit_point_roll: 11 }, state, { allowedActorIds: ['fighter'] }),
+    (error) => error.code === 'INVALID_CHARACTER_VALUE',
+  )
+})
+
+test('LevelUp rejects insufficient XP, combat and attempts to skip a level', () => {
+  const noXp = { players: [fighter({ experience: 6_499 })], mechanics: { combat: { active: false } } }
+  assert.throws(
+    () => validateLevelUpCommand({ command_type: 'LevelUp', actor_id: 'fighter' }, noXp, { allowedActorIds: ['fighter'] }),
+    (error) => error.code === 'LEVEL_UP_EXPERIENCE_REQUIRED',
+  )
+  const combat = { players: [fighter()], mechanics: { combat: { active: true } } }
+  assert.throws(
+    () => validateLevelUpCommand({ command_type: 'LevelUp', actor_id: 'fighter' }, combat, { allowedActorIds: ['fighter'] }),
+    (error) => error.code === 'LEVEL_UP_DURING_COMBAT',
+  )
+  assert.throws(
+    () => validateLevelUpCommand({ command_type: 'LevelUp', actor_id: 'fighter', next_level: 6 }, noXp, { allowedActorIds: ['fighter'] }),
+    (error) => error.code === 'LEVEL_UP_STEP_INVALID',
+  )
+})
+
+test('resource plan delegates maxima and recovery to existing spell and class catalogs', () => {
+  const wizard = { id: 'wizard', characterClass: 'wizard', level: 5, abilities: { int: 16, dex: 14, con: 12, str: 8, wis: 10, cha: 10 } }
+  const warlock = { id: 'warlock', characterClass: 'warlock', level: 5, abilities: { cha: 16, dex: 14, con: 12, str: 8, int: 10, wis: 10 } }
+  const wizardPlan = classResourcePlan(wizard)
+  assert.equal(wizardPlan.maximums.spell_slots_1, 4)
+  assert.equal(wizardPlan.maximums.spell_slots_2, 3)
+  assert.equal(wizardPlan.maximums.spell_slots_3, 2)
+  assert.equal(wizardPlan.maximums.arcane_recovery, 1)
+  assert.equal(wizardPlan.maximums['feature_wizard-magicheskoe-vosstanovlenie'], 1)
+  assert.equal(wizardPlan.recovery.spell_slots_1, 'long')
+  assert.equal(wizardPlan.recovery.arcane_recovery, 'long')
+  const warlockPlan = classResourcePlan(warlock)
+  assert.equal(warlockPlan.maximums.pact_slots, 2)
+  assert.ok(Object.keys(warlockPlan.maximums).some((resource) => resource.startsWith('feature_warlock-')))
+  assert.equal(warlockPlan.recovery.pact_slots, 'short_or_long')
+  assert.equal(resourcesAfterRest(warlock, { pact_slots: { current: 0 } }, 'short').pact_slots.current, 2)
+})
+
+function importDocument(character) {
+  return {
+    schema: CHARACTER_IMPORT_SCHEMA,
+    schema_version: CHARACTER_IMPORT_SCHEMA_VERSION,
+    character: {
+      character: 'Мира', characterClass: 'wizard', level: 1, experience: 0,
+      abilities: { str: 8, dex: 14, con: 12, int: 16, wis: 10, cha: 10 },
+      baseSpeed: 30, classSkillProficiencies: ['arcana', 'history'], selectedFeatureIds: [],
+      knownSpellIds: ['fire-bolt', 'mage-hand', 'light'], preparedSpellIds: [],
+      ...character,
+    },
+  }
+}
+
+test('strict v1 importer returns only safe canonical sheet fields', () => {
+  const result = parseCharacterImport(importDocument({
+    name: 'Игрок', species: 'Человек',
+  }))
+  assert.equal(result.patch.characterClass, 'wizard')
+  assert.equal(result.patch.baseSpeed, 30)
+  assert.equal(result.patch.hp, undefined)
+  assert.equal(result.patch.maxHp, undefined)
+  assert.equal(result.patch.inventory, undefined)
+  assert.equal(result.sheet.proficiency_bonus, 2)
+  assert.throws(
+    () => parseCharacterImport(importDocument({ hp: 999 })),
+    (error) => error.code === 'IMPORT_UNKNOWN_FIELD',
+  )
+  assert.throws(
+    () => parseCharacterImport(importDocument({ level: 2, experience: 0 })),
+    (error) => error.code === 'IMPORT_LEVEL_EXPERIENCE_MISMATCH',
+  )
+  assert.throws(
+    () => parseCharacterImport(importDocument({ knownSpellIds: ['fireball'] })),
+    (error) => error.code === 'IMPORT_CHARACTER_CHOICE_INVALID',
+  )
+  assert.throws(
+    () => parseCharacterImport(importDocument({ hitPointIncreases: 'not-an-array' })),
+    (error) => error.code === 'IMPORT_INVALID_FIELD',
+  )
+})
+
+test('v0 importer migration accepts only documented aliases and rejects conflicts or unknown fields', () => {
+  const migrated = migrateCharacterImport({
+    schema: CHARACTER_IMPORT_SCHEMA,
+    schema_version: 0,
+    character: {
+      character: 'Мира', character_class: 'wizard', level: 1, experience: 0,
+      abilities: { str: 8, dex: 14, con: 12, int: 16, wis: 10, cha: 10 },
+      base_speed: 30, class_skill_proficiencies: ['arcana', 'history'],
+      selected_feature_ids: [], known_spell_ids: ['fire-bolt', 'mage-hand', 'light'], prepared_spell_ids: [],
+    },
+  })
+  assert.equal(migrated.schema_version, 1)
+  assert.equal(migrated.character.characterClass, 'wizard')
+  assert.equal(migrated.character.baseSpeed, 30)
+  assert.throws(
+    () => migrateCharacterImport({ schema: CHARACTER_IMPORT_SCHEMA, schema_version: 0, character: { ...migrated.character, character_class: 'fighter' } }),
+    (error) => error.code === 'IMPORT_MIGRATION_CONFLICT',
+  )
+  assert.throws(
+    () => migrateCharacterImport({ schema: CHARACTER_IMPORT_SCHEMA, schema_version: 0, character: { ...migrated.character, gold: 999 } }),
+    (error) => error.code === 'IMPORT_UNKNOWN_FIELD',
+  )
+})
+
+test('resolveLevelUp combines validation, event construction, pure reduction and new derived stats', () => {
+  const state = { players: [fighter()], mechanics: { combat: { active: false } } }
+  const result = resolveLevelUp({ command_type: 'LevelUp', actor_id: 'fighter' }, state, { allowedActorIds: ['fighter'] })
+  assert.equal(result.event.event_type, 'CharacterLeveledUp')
+  assert.equal(result.state.players[0].level, 5)
+  assert.equal(result.sheet.proficiency_bonus, 3)
+})

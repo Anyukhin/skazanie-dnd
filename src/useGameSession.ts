@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { initialState } from './data'
 import { generateItemImage, narrateWithAgent, rollDice, rollSharedDie } from './ai-client'
-import { createLocalCheck, playerMessage, resolveAction } from './game-engine'
+import { playerMessage } from './game-engine'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
 import type { AgentInteraction, AiTurnResult, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult } from './types'
 
-const STORAGE_KEY = 'skazanie-demo-session-v1'
-const CHANNEL_NAME = 'skazanie-demo-room'
+const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
+const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
 
 type TacticalCommand =
   | { command_type: 'StartCombat'; actor_id: string }
@@ -20,6 +20,27 @@ type TacticalCommand =
   | { command_type: 'ChangeWeapon'; actor_id: string; item_id: string }
   | { command_type: 'EndTurn'; actor_id: string }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
+  | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
+  | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string }
+  | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
+  | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
+  | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
+  | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
+
+type CharacterBuildCommand =
+  | {
+      command_type: 'SetCharacterChoices'
+      actor_id: string
+      subclass: string
+      class_skill_proficiencies: string[]
+      selected_feature_ids: string[]
+    }
+  | {
+      command_type: 'SetSpellSelections'
+      actor_id: string
+      known_spell_ids: string[]
+      prepared_spell_ids: string[]
+    }
 
 type TacticalCommandResult = {
   authoritative_state?: GameState
@@ -41,6 +62,7 @@ type MerchantCommand =
   | { command_type: 'BuyItem'; actor_id: string; stock_id: string; quantity: number }
   | { command_type: 'SellItem'; actor_id: string; item_id: string; quantity: number }
   | { command_type: 'AppraiseItem'; actor_id: string; item_id: string }
+  | { command_type: 'PurchaseMerchantService'; actor_id: string; service_id: string }
 
 type MerchantCommandResult = {
   authoritative_state?: GameState
@@ -63,7 +85,7 @@ export type EncounterAssemblyOptions = {
 }
 
 type MerchantLifecycleCommand =
-  | { command_type: 'MoveMerchant'; merchant_id: string; location: string }
+  | { command_type: 'MoveMerchant'; merchant_id: string; location: string; location_id?: string }
   | { command_type: 'SetMerchantAvailability'; merchant_id: string; available: boolean }
 
 type MerchantLifecycleResult = TacticalCommandResult & {
@@ -138,44 +160,11 @@ function mergeTacticalCommandState(current: GameState, authoritative: GameState,
 
 function loadState(): GameState {
   const requested = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (!saved) return requested && requested !== initialState.sessionCode
-      ? { ...structuredClone(initialState), sessionCode: requested, campaign: 'Загрузка кампании…' }
-      : structuredClone(initialState)
-    const parsed = JSON.parse(saved) as GameState
-    if (requested && parsed.sessionCode !== requested) {
-      return { ...structuredClone(initialState), sessionCode: requested, campaign: 'Загрузка кампании…' }
-    }
-    return {
-      ...initialState,
-      ...parsed,
-      engine_mode: 'enforce',
-      // Narration progress belongs to the tab that owns the request. Restoring
-      // it would turn a closed or refreshed request into an endless loader.
-      isNarrating: false,
-      pendingCheck: parsed.pendingCheck ?? null,
-      agentInteraction: parsed.agentInteraction ?? null,
-      partyMemberIds: parsed.partyMemberIds?.length ? parsed.partyMemberIds : parsed.players.map((player) => player.id),
-      enemies: parsed.enemies ?? initialState.enemies,
-      tacticalTurn: parsed.tacticalTurn,
-      mapFeedback: parsed.mapFeedback ?? [],
-      players: parsed.players.map((player) => {
-        const fallback = initialState.players.find((initial) => initial.id === player.id) ?? initialState.players[0]
-        return {
-          ...fallback,
-          ...player,
-          portrait: player.portrait || fallback.portrait,
-          portraitPosition: player.portraitPosition || fallback.portraitPosition,
-          abilities: { ...fallback.abilities, ...player.abilities },
-          currency: { ...fallback.currency, ...player.currency },
-          inventory: player.inventory ?? fallback.inventory,
-        }
-      }),
-    }
-  } catch {
-    return structuredClone(initialState)
-  }
+  const selected = requested || localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
+  if (!selected || selected === initialState.sessionCode) return structuredClone(initialState)
+  // Never restore a viewer-specific campaign projection from a cross-account
+  // local cache. The authenticated room/SSE endpoints repopulate it.
+  return { ...structuredClone(initialState), sessionCode: selected, campaign: 'Загрузка кампании…' }
 }
 
 function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null): GameState {
@@ -223,31 +212,6 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
   }
 }
 
-function applyLegacyHazards(mechanics: GameState['mechanics'], effects: NonNullable<AiTurnResult['effects']['hazards']>) {
-  const next = structuredClone(mechanics ?? {}) as Record<string, unknown> & { hazards?: Record<string, Array<Record<string, unknown> & { id: string }>> }
-  next.hazards = structuredClone(next.hazards ?? {})
-  for (const effect of effects) {
-    const current = next.hazards[effect.targetId] ?? []
-    next.hazards[effect.targetId] = effect.operation === 'remove'
-      ? current.filter((hazard) => hazard.id !== effect.hazard.id)
-      : [...current.filter((hazard) => hazard.id !== effect.hazard.id), structuredClone(effect.hazard)]
-  }
-  return next
-}
-
-function nextTurnPlayerId(state: GameState, authoritative: boolean) {
-  const combat = (state.mechanics as { combat?: { active?: boolean; active_index?: number; initiative?: Array<{ actor_id?: string }> } } | undefined)?.combat
-  if (combat?.active && combat.initiative?.length) {
-    if (authoritative) return combat.initiative[Math.max(0, Number(combat.active_index) || 0)]?.actor_id
-    const currentIndex = combat.initiative.findIndex((entry) => entry.actor_id === state.activePlayerId)
-    return combat.initiative[(currentIndex + 1 + combat.initiative.length) % combat.initiative.length]?.actor_id
-  }
-  const members = new Set(state.partyMemberIds?.length ? state.partyMemberIds : state.players.map((item) => item.id))
-  const onlinePlayers = state.players.filter((item) => item.online && members.has(item.id) && item.hp > 0)
-  const activeIndex = onlinePlayers.findIndex((item) => item.id === state.activePlayerId)
-  return (onlinePlayers[(activeIndex + 1) % onlinePlayers.length] ?? state.players[0])?.id
-}
-
 export function useGameSession() {
   const [state, setState] = useState<GameState>(loadState)
   const [tacticalBusy, setTacticalBusy] = useState(false)
@@ -266,46 +230,61 @@ export function useGameSession() {
   const tacticalBusyRef = useRef(false)
   const merchantBusyRef = useRef(false)
   const freeRollBusy = useRef(false)
+  const systemTickBusy = useRef(false)
   const actionEpoch = useRef(0)
-  const writeQueue = useRef(Promise.resolve())
+  const persistLocal = useCallback((next: GameState) => {
+    localStorage.setItem(ACTIVE_CAMPAIGN_KEY, next.sessionCode)
+  }, [])
 
   const applyRemote = useCallback((next: GameState) => {
     const recovered = stateForPersistence(next)
     stateRef.current = recovered
     setState(recovered)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(recovered))
+    persistLocal(recovered)
     channel.current?.postMessage(recovered)
-  }, [])
+  }, [persistLocal])
 
-  const persistRemote = useCallback((next: GameState) => {
-    writeQueue.current = writeQueue.current.then(async () => {
-      const response = await fetch(`/api/rooms/${encodeURIComponent(next.sessionCode)}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: stateForPersistence(next), baseVersion: roomVersion.current }),
-      })
-      const room = await response.json().catch(() => null) as { version?: number; state?: GameState } | null
-      if (response.status === 409 && room?.state) {
-        roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
-        if (!busy.current) applyRemote(room.state)
-        return
-      }
-      if (response.ok && room?.version) roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
-      if (response.ok && room?.state && stateRef.current === next && !busy.current && !tacticalBusyRef.current) {
-        applyRemote(room.state)
-      }
-    }).catch((error) => console.warn('Синхронизация комнаты:', error))
-  }, [applyRemote])
+  const persistRemote = useCallback((_next: GameState) => {
+    // Room JSON is a server-owned read model. Gameplay and shared state are
+    // persisted only by typed campaign endpoints and their event commits.
+  }, [])
 
   useEffect(() => {
     if (!('BroadcastChannel' in window)) return
-    channel.current = new BroadcastChannel(CHANNEL_NAME)
+    channel.current?.close()
+    channel.current = new BroadcastChannel(channelNameFor(state.sessionCode))
     channel.current.onmessage = (event: MessageEvent<GameState>) => {
+      if (event.data.sessionCode !== state.sessionCode) return
       const recovered = stateForPersistence(event.data)
       stateRef.current = recovered
       setState(recovered)
     }
     return () => channel.current?.close()
-  }, [])
+  }, [state.sessionCode])
+
+  useEffect(() => {
+    if (!('EventSource' in window) || !state.sessionCode) return
+    const source = new EventSource(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/stream`)
+    const receive = (event: MessageEvent<string>) => {
+      try {
+        const room = JSON.parse(event.data) as { version?: number; state?: GameState | null }
+        if (!room.state || busy.current || tacticalBusyRef.current || merchantBusyRef.current) return
+        roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
+        applyRemote(room.state)
+      } catch (error) {
+        console.warn('Realtime-событие комнаты отклонено:', error)
+      }
+    }
+    source.addEventListener('room', receive as EventListener)
+    source.onerror = () => {
+      // EventSource reconnects automatically; the slower HTTP sync below is
+      // retained as a recovery path for proxies that buffer SSE.
+    }
+    return () => {
+      source.removeEventListener('room', receive as EventListener)
+      source.close()
+    }
+  }, [applyRemote, state.sessionCode])
 
   useEffect(() => {
     let active = true
@@ -313,8 +292,20 @@ export function useGameSession() {
       try {
         const response = await fetch(`/api/rooms/${encodeURIComponent(state.sessionCode)}`)
         if (!response.ok) return
-        const room = await response.json() as { version: number; state: GameState | null }
+        let room = await response.json() as { version: number; state: GameState | null }
         if (!active) return
+        const combat = room.state?.mechanics?.combat
+        const activeActorId = combat?.initiative?.[combat.active_index ?? 0]?.actor_id ?? room.state?.activePlayerId
+        const partyControlsTurn = room.state?.players?.some((player) => player.id === activeActorId)
+        if (combat?.active && activeActorId && !partyControlsTurn && !systemTickBusy.current) {
+          systemTickBusy.current = true
+          try {
+            const tickResponse = await fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/system-tick`, { method: 'POST' })
+            if (tickResponse.ok) room = await tickResponse.json() as { version: number; state: GameState | null }
+          } finally {
+            systemTickBusy.current = false
+          }
+        }
         if (!room.state && state.sessionCode === initialState.sessionCode) {
           roomVersion.current = room.version
           applyRemote(structuredClone(initialState))
@@ -326,7 +317,7 @@ export function useGameSession() {
       } catch (error) { console.warn('Комната временно недоступна:', error) }
     }
     void sync()
-    const timer = window.setInterval(sync, 1500)
+    const timer = window.setInterval(sync, 15_000)
     return () => { active = false; window.clearInterval(timer) }
   }, [applyRemote, persistRemote, state.sessionCode])
 
@@ -334,10 +325,10 @@ export function useGameSession() {
     stateRef.current = next
     setState(next)
     const shared = stateForPersistence(next)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(shared))
+    persistLocal(shared)
     channel.current?.postMessage(shared)
     persistRemote(next)
-  }, [persistRemote])
+  }, [persistLocal, persistRemote])
 
   const mutate = useCallback((recipe: (current: GameState) => GameState) => {
     const current = stateRef.current
@@ -346,57 +337,29 @@ export function useGameSession() {
     stateRef.current = next
     setState(next)
     const shared = stateForPersistence(next)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(shared))
+    persistLocal(shared)
     channel.current?.postMessage(shared)
     persistRemote(next)
-  }, [persistRemote])
+  }, [persistLocal, persistRemote])
 
-  const finishTurn = useCallback((current: GameState, action: string, aiResult: AiTurnResult | null, roll?: RollResult): GameState => {
+  const finishTurn = useCallback((current: GameState, _action: string, aiResult: AiTurnResult, roll?: RollResult): GameState => {
     const base = mergeAuthoritativeState(current, aiResult)
-    const hasAuthoritativeState = Boolean(aiResult?.authoritative_state)
-    const sceneTransition = !hasAuthoritativeState ? aiResult?.effects.scene : null
-    const fallback = aiResult ? null : resolveAction(base, action, roll)
-    const aiCells = aiResult && !hasAuthoritativeState ? base.scene.cells.map((cell) => {
-      const revealed = aiResult.effects.reveal.some((item) => item.x === cell.x && item.y === cell.y)
-      const spawned = aiResult.effects.spawn.find((item) => item.x === cell.x && item.y === cell.y)
-      return { ...cell, revealed: revealed || cell.revealed, feature: spawned?.kind ?? cell.feature }
-    }) : null
-    const consumesTurn = aiResult ? aiResult.turn_consumed !== false : fallback?.turnConsumed ?? true
-    const narratorMessage: Message = aiResult ? {
+    const consumesTurn = aiResult.turn_consumed !== false
+    const narratorMessage: Message = {
       id: `${Date.now()}-agent`, speaker: 'narrator', author: 'Рассказчик',
       timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
       text: aiResult.narration, roll: aiResult.effects.roll ?? roll, turnConsumed: consumesTurn,
-    } : { ...fallback!.message, turnConsumed: consumesTurn }
-    const nextInteraction = aiResult?.effects.interaction
-      ?? (action.startsWith('[РЕШЕНИЕ ГРУППЫ]') ? null : base.agentInteraction)
+    }
     const narrationPersisted = Boolean(aiResult?.narration_message_id)
       && base.messages.some((message) => message.id === aiResult?.narration_message_id)
     return {
       ...base,
       state_version: aiResult?.state_version ?? base.state_version,
-      mechanics: !hasAuthoritativeState && aiResult?.effects.hazards?.length ? applyLegacyHazards(base.mechanics, aiResult.effects.hazards) : base.mechanics,
       isNarrating: false,
       pendingCheck: null,
-      agentInteraction: nextInteraction,
-      // An authoritative response already contains the canonical turn owner.
-      // Advancing it again on the client causes a different state after reload.
-      activePlayerId: consumesTurn && !hasAuthoritativeState ? nextTurnPlayerId(base, false) ?? base.activePlayerId : base.activePlayerId,
+      activePlayerId: base.activePlayerId,
       messages: narrationPersisted ? base.messages : [...base.messages, narratorMessage],
-      suggestions: aiResult?.suggestions?.length ? aiResult.suggestions : sceneTransition?.suggestions?.length ? sceneTransition.suggestions : base.suggestions,
-      players: base.players.map((existing) => {
-        const additions = hasAuthoritativeState ? [] : aiResult?.effects.grantItems?.filter((item) => item.ownerId === existing.id) ?? []
-        const withItems = additions.length ? { ...existing, inventory: [...existing.inventory, ...additions] } : existing
-        return sceneTransition ? { ...withItems, x: sceneTransition.entrance.x, y: sceneTransition.entrance.y } : withItems
-      }),
-      entities: sceneTransition ? [] : base.entities,
-      adventure: sceneTransition?.adventure ?? base.adventure,
-      worldMap: sceneTransition?.worldMap ?? base.worldMap,
-      scene: hasAuthoritativeState ? base.scene : sceneTransition?.scene ?? {
-        ...base.scene,
-        turn: base.scene.turn + (consumesTurn ? 1 : 0),
-        cells: aiCells ?? fallback?.cells ?? base.scene.cells,
-        objective: hasAuthoritativeState ? base.scene.objective : aiResult?.effects.objective ?? fallback?.objective ?? base.scene.objective,
-      },
+      suggestions: aiResult?.suggestions?.length ? aiResult.suggestions : base.suggestions,
     }
   }, [])
 
@@ -418,8 +381,7 @@ export function useGameSession() {
       aiResult = await narrateWithAgent(pending, text.trim(), player.character)
     } catch (error) {
       console.warn('AI fallback:', error instanceof Error ? error.message : error)
-      if (pending.engine_mode === 'enforce') authoritativeError = error instanceof Error ? error.message : 'Сервер отклонил действие'
-      else await new Promise((resolve) => window.setTimeout(resolve, 700))
+      authoritativeError = error instanceof Error ? error.message : 'Сервер отклонил действие'
     }
     if (epoch !== actionEpoch.current) { busy.current = false; return }
     if (authoritativeError) {
@@ -438,7 +400,7 @@ export function useGameSession() {
     }
     if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
 
-    const check = aiResult?.check ?? (!aiResult ? createLocalCheck(pending, text) : null)
+    const check = aiResult?.check ?? null
     if (check) {
       mutate((current) => ({
         ...current,
@@ -454,7 +416,7 @@ export function useGameSession() {
       return
     }
 
-    mutate((current) => finishTurn(current, text, aiResult))
+    mutate((current) => finishTurn(current, text, aiResult!))
     busy.current = false
 
     for (const item of aiResult?.effects.grantItems ?? []) {
@@ -494,15 +456,20 @@ export function useGameSession() {
         new Promise((resolve) => window.setTimeout(resolve, 1250)),
       ])
       result = rolled
-    } catch {
-      if (check.check_id) {
-        mutate((current) => current.pendingCheck ? { ...current, pendingCheck: { ...current.pendingCheck, status: 'ready' }, isNarrating: false } : current)
-        busy.current = false
-        return
-      }
-      const value = Math.floor(Math.random() * 20) + 1
-      result = { value, modifier: check.modifier, total: value + check.modifier, label: check.label, success: value + check.modifier >= check.difficulty }
-      await new Promise((resolve) => window.setTimeout(resolve, 900))
+    } catch (error) {
+      mutate((current) => current.pendingCheck ? {
+        ...current,
+        pendingCheck: { ...current.pendingCheck, status: 'ready' },
+        isNarrating: false,
+        messages: [...current.messages, {
+          id: `${Date.now()}-roll-error`, speaker: 'system', author: 'Сервер кубиков',
+          timestamp: clock(),
+          text: error instanceof Error ? error.message : 'Серверный бросок временно недоступен.',
+          turnConsumed: false,
+        }],
+      } : current)
+      busy.current = false
+      return
     }
     if (epoch !== actionEpoch.current) { busy.current = false; return }
 
@@ -517,12 +484,23 @@ export function useGameSession() {
     try {
       aiResult = await narrateWithAgent(state, check.action, player.character, result)
     } catch (error) {
-      console.warn('AI resolution fallback:', error instanceof Error ? error.message : error)
-      await new Promise((resolve) => window.setTimeout(resolve, 500))
+      mutate((current) => ({
+        ...current,
+        isNarrating: false,
+        pendingCheck: current.pendingCheck ? { ...current.pendingCheck, status: 'ready' } : null,
+        messages: [...current.messages, {
+          id: `${Date.now()}-resolution-error`, speaker: 'system', author: 'Правила игры',
+          timestamp: clock(),
+          text: error instanceof Error ? error.message : 'Сервер не смог разрешить проверку.',
+          turnConsumed: false,
+        }],
+      }))
+      busy.current = false
+      return
     }
     if (epoch !== actionEpoch.current) { busy.current = false; return }
     if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
-    mutate((current) => finishTurn(current, check.action, aiResult, result))
+    mutate((current) => finishTurn(current, check.action, aiResult!, result))
     busy.current = false
 
     for (const item of aiResult?.effects.grantItems ?? []) {
@@ -568,53 +546,46 @@ export function useGameSession() {
     }
   }, [applyRemote, state.sessionCode])
 
-  const voteAgentInteraction = useCallback((playerId: string, optionId: string) => mutate((current) => {
+  const voteAgentInteraction = useCallback(async (playerId: string, optionId: string) => {
+    const current = stateRef.current
     const interaction = current.agentInteraction
-    if (!interaction || interaction.status !== 'open' || interaction.type === 'roll' || !interaction.options.some((option) => option.id === optionId)) return current
-    const votes = { ...interaction.votes, [playerId]: optionId }
-    const eligible = current.players.filter((player) => player.online).map((player) => player.id)
-    const required = interaction.type === 'choice' ? 1 : Math.floor(Math.max(1, eligible.length) / 2) + 1
-    const winner = interaction.options.find((option) => Object.values(votes).filter((vote) => vote === option.id).length >= required)
-    const resolved = Boolean(winner)
-    const nextInteraction: AgentInteraction = {
-      ...interaction,
-      votes,
-      status: resolved ? 'resolved' : 'open',
-      resolvedOptionId: winner?.id,
+    if (!interaction || interaction.status !== 'open' || interaction.type === 'roll'
+      || !interaction.options.some((option) => option.id === optionId)) return
+    setDirectorError(null)
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/party-decisions/${encodeURIComponent(interaction.id)}/votes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actor_id: playerId,
+          option_id: optionId,
+          idempotency_key: commandId(),
+        }),
+      })
+      const result = await response.json() as { version?: number; state?: GameState; error?: string }
+      if (!response.ok || !result.state) throw new Error(result.error || 'Не удалось записать голос')
+      roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
+      applyRemote(result.state)
+    } catch (error) {
+      setDirectorError(error instanceof Error ? error.message : 'Не удалось записать голос')
     }
-    return {
-      ...current,
-      agentInteraction: nextInteraction,
-      messages: resolved ? [...current.messages, {
-        id: `${Date.now()}-decision`, speaker: 'system', author: 'Решение отряда',
-        timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
-        text: `Выбран вариант: «${winner?.label}». Рассказчик готов продолжить историю.`,
-        turnConsumed: false,
-      }] : current.messages,
-    }
-  }), [mutate])
+  }, [applyRemote])
 
   const rollAgentInteraction = useCallback(async (playerId: string): Promise<DiceRollEvent> => {
-    const interaction = state.agentInteraction
+    const current = stateRef.current
+    const interaction = current.agentInteraction
     if (!interaction || interaction.type !== 'roll' || interaction.status !== 'open') throw new Error('Общий бросок сейчас не требуется')
-    const room = await rollSharedDie(state.sessionCode, playerId)
-    roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
-    const latest = room.state.agentInteraction ?? interaction
-    const success = room.roll.value >= (latest.difficulty ?? 12)
-    const winner = latest.options[success ? 0 : 1] ?? latest.options[0]
-    const next: GameState = {
-      ...room.state,
-      agentInteraction: { ...latest, status: 'resolved', resolvedOptionId: winner.id, roll: room.roll },
-      messages: [...room.state.messages, {
-        id: `${Date.now()}-party-roll`, speaker: 'system', author: 'Кубик судьбы',
-        timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
-        text: `Общий бросок: ${room.roll.value} против сложности ${latest.difficulty ?? 12}. Решение: «${winner.label}».`,
-        turnConsumed: false,
-      }],
-    }
-    commit(next)
-    return room.roll
-  }, [commit, state.agentInteraction, state.sessionCode])
+    const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/party-decisions/${encodeURIComponent(interaction.id)}/roll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor_id: playerId, idempotency_key: commandId() }),
+    })
+    const result = await response.json() as { version?: number; state?: GameState; roll?: DiceRollEvent; error?: string }
+    if (!response.ok || !result.state || !result.roll) throw new Error(result.error || 'Не удалось выполнить общий бросок')
+    roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
+    applyRemote(result.state)
+    return result.roll
+  }, [applyRemote])
 
   const continueAgentInteraction = useCallback(() => {
     const interaction = state.agentInteraction
@@ -662,6 +633,34 @@ export function useGameSession() {
     } finally {
       tacticalBusyRef.current = false
       setTacticalBusy(false)
+    }
+  }, [applyRemote])
+
+  const executeCharacterBuild = useCallback(async (commands: CharacterBuildCommand[]) => {
+    const current = stateRef.current
+    const requestId = commandId()
+    setTacticalError(null)
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
+        body: JSON.stringify({
+          commands: commands.map((command) => ({
+            ...command,
+            expected_state_version: current.state_version ?? 0,
+          })),
+          message: 'Обновление развития персонажа',
+        }),
+      })
+      const result = await response.json().catch(() => null) as TacticalCommandResult | null
+      if (!response.ok || !result?.authoritative_state) {
+        throw new Error(result?.error || `Сервер отклонил изменение персонажа (${response.status})`)
+      }
+      if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
+      applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, result, requestId))
+    } catch (error) {
+      setTacticalError(error instanceof Error ? error.message : 'Не удалось сохранить развитие персонажа')
+      throw error
     }
   }, [applyRemote])
 
@@ -715,6 +714,37 @@ export function useGameSession() {
       resolution,
       ...(resolution === 'replace' ? { replacement_name: String(replacementName ?? '').trim() } : {}),
     }, resolution === 'resurrect' ? 'Воскресить погибшего героя' : 'Заменить погибшего героя новым')
+  }, [executeTacticalCommand])
+
+  const equipItem = useCallback((playerId: string, itemId: string, equipped: boolean) => {
+    void executeTacticalCommand({ command_type: 'EquipItem', actor_id: playerId, item_id: itemId, equipped }, equipped ? 'Экипировать предмет' : 'Снять предмет')
+  }, [executeTacticalCommand])
+
+  const useItem = useCallback((playerId: string, itemId: string, targetId?: string) => {
+    void executeTacticalCommand({ command_type: 'UseItem', actor_id: playerId, item_id: itemId, ...(targetId ? { target_id: targetId } : {}) }, 'Использовать предмет')
+  }, [executeTacticalCommand])
+
+  const transferItem = useCallback((playerId: string, itemId: string, recipientId: string, quantity = 1) => {
+    void executeTacticalCommand({ command_type: 'TransferItem', actor_id: playerId, item_id: itemId, recipient_id: recipientId, quantity }, 'Передать предмет союзнику')
+  }, [executeTacticalCommand])
+
+  const attuneItem = useCallback((playerId: string, itemId: string, attuned: boolean) => {
+    void executeTacticalCommand({ command_type: 'AttuneItem', actor_id: playerId, item_id: itemId, attuned }, attuned ? 'Настроиться на предмет' : 'Разорвать настройку')
+  }, [executeTacticalCommand])
+
+  const importCharacter = useCallback((playerId: string, source: string) => {
+    let document: unknown
+    try {
+      document = JSON.parse(source)
+    } catch {
+      setTacticalError('Файл персонажа должен содержать корректный JSON.')
+      return
+    }
+    void executeTacticalCommand({ command_type: 'ImportCharacter', actor_id: playerId, document }, 'Импортировать версионированный лист персонажа')
+  }, [executeTacticalCommand])
+
+  const levelUpCharacter = useCallback((playerId: string, expectedLevel: number) => {
+    void executeTacticalCommand({ command_type: 'LevelUp', actor_id: playerId, expected_level: expectedLevel } as TacticalCommand, 'Повысить уровень персонажа')
   }, [executeTacticalCommand])
 
   const switchCampaign = useCallback(async (code: string, prefetched?: { version?: number; state?: GameState | null }) => {
@@ -826,6 +856,10 @@ export function useGameSession() {
     command_type: 'AppraiseItem', actor_id: actorId, item_id: itemId,
   }), [executeMerchantCommand])
 
+  const purchaseMerchantService = useCallback((merchantId: string, actorId: string, serviceId: string) => executeMerchantCommand(merchantId, {
+    command_type: 'PurchaseMerchantService', actor_id: actorId, service_id: serviceId,
+  }), [executeMerchantCommand])
+
   const executeMerchantLifecycleCommand = useCallback(async (command: MerchantLifecycleCommand) => {
     const current = stateRef.current
     const requestId = commandId()
@@ -885,8 +919,8 @@ export function useGameSession() {
     return result.encounter_proposal
   }, [applyRemote])
 
-  const moveMerchant = useCallback((merchantId: string, location: string) => executeMerchantLifecycleCommand({
-    command_type: 'MoveMerchant', merchant_id: merchantId, location,
+  const moveMerchant = useCallback((merchantId: string, location: string, locationId?: string) => executeMerchantLifecycleCommand({
+    command_type: 'MoveMerchant', merchant_id: merchantId, location, ...(locationId ? { location_id: locationId } : {}),
   }), [executeMerchantLifecycleCommand])
 
   const setMerchantAvailability = useCallback((merchantId: string, available: boolean) => executeMerchantLifecycleCommand({
@@ -934,25 +968,45 @@ export function useGameSession() {
     }
   }), [mutate])
 
-  const updatePlayer = useCallback((playerId: string, patch: Partial<Player>) => mutate((current) => ({
-    ...current,
-    players: current.players.map((player) => player.id === playerId ? { ...player, ...patch } : player),
-  })), [mutate])
-
-  const addItem = useCallback((playerId: string, item: InventoryItem) => mutate((current) => ({
-    ...current,
-    players: current.players.map((player) => player.id === playerId ? { ...player, inventory: [...player.inventory, item] } : player),
-  })), [mutate])
-
-  const updateItem = useCallback((playerId: string, itemId: string, patch: Partial<InventoryItem>) => mutate((current) => ({
-    ...current,
-    players: current.players.map((player) => player.id === playerId ? { ...player, inventory: player.inventory.map((item) => item.id === itemId ? { ...item, ...patch } : item) } : player),
-  })), [mutate])
-
-  const removeItem = useCallback((playerId: string, itemId: string) => mutate((current) => ({
-    ...current,
-    players: current.players.map((player) => player.id === playerId ? { ...player, inventory: player.inventory.filter((item) => item.id !== itemId) } : player),
-  })), [mutate])
+  const updatePlayer = useCallback(async (playerId: string, patch: Partial<Player>) => {
+    const current = stateRef.current
+    const player = current.players.find((candidate) => candidate.id === playerId)
+    if (!player) return
+    const commands: CharacterBuildCommand[] = []
+    if (patch.subclass !== undefined || patch.classSkillProficiencies !== undefined || patch.selectedFeatureIds !== undefined) {
+      commands.push({
+        command_type: 'SetCharacterChoices',
+        actor_id: playerId,
+        subclass: String(patch.subclass ?? player.subclass ?? ''),
+        class_skill_proficiencies: patch.classSkillProficiencies ?? player.classSkillProficiencies ?? [],
+        selected_feature_ids: patch.selectedFeatureIds ?? player.selectedFeatureIds ?? [],
+      })
+    }
+    if (patch.knownSpellIds !== undefined || patch.preparedSpellIds !== undefined) {
+      commands.push({
+        command_type: 'SetSpellSelections',
+        actor_id: playerId,
+        known_spell_ids: patch.knownSpellIds ?? player.knownSpellIds ?? [],
+        prepared_spell_ids: patch.preparedSpellIds ?? player.preparedSpellIds ?? [],
+      })
+    }
+    if (commands.length) await executeCharacterBuild(commands)
+    const mechanical = new Set<keyof Player>([
+      'subclass', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds',
+      'role', 'characterClass', 'level', 'experience', 'hp', 'maxHp', 'armor', 'speed', 'proficiency', 'abilities', 'currency',
+      'inventory', 'combatActions', 'combatSpells',
+      'x', 'y',
+    ])
+    const presentation = Object.fromEntries(
+      Object.entries(patch).filter(([key]) => !mechanical.has(key as keyof Player)),
+    ) as Partial<Player>
+    if (Object.keys(presentation).length) {
+      mutate((latest) => ({
+        ...latest,
+        players: latest.players.map((candidate) => candidate.id === playerId ? { ...candidate, ...presentation } : candidate),
+      }))
+    }
+  }, [executeCharacterBuild, mutate])
 
   const updateWorld = useCallback((patch: { campaign?: string; partyName?: string; partyMemberIds?: string[]; scene?: Partial<GameState['scene']> }) => mutate((current) => {
     const partyMemberIds = patch.partyMemberIds?.length ? [...new Set(patch.partyMemberIds)] : current.partyMemberIds ?? current.players.map((player) => player.id)
@@ -995,12 +1049,19 @@ export function useGameSession() {
     changeWeapon,
     finishMapTurn,
     resolveHeroDeath,
+    equipItem,
+    useItem,
+    transferItem,
+    attuneItem,
+    importCharacter,
+    levelUpCharacter,
     switchCampaign,
     loadMerchant,
     bargainWithMerchant,
     buyFromMerchant,
     sellToMerchant,
     appraiseWithMerchant,
+    purchaseMerchantService,
     assembleMerchant,
     assembleEncounter,
     moveMerchant,
@@ -1008,9 +1069,6 @@ export function useGameSession() {
     advanceAdventure,
     reset,
     updatePlayer,
-    addItem,
-    updateItem,
-    removeItem,
     updateWorld,
   }
 }

@@ -58,6 +58,20 @@ test('детерминированный fallback не создаёт стаци
   assert.equal(planned.shopIntent.theme, 'provisions')
 })
 
+test('явный лес назначения важнее упоминания исходного города в решении', async () => {
+  const architect = new SceneArchitectAgent()
+  const planned = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Уходим из «Большой город Норвин» и идём в Серую чащу',
+    state: { ...archiveState, scene: { ...archiveState.scene, location: 'Большой город Норвин' } },
+    decision: 'Уходим из «Большой город Норвин» и идём в Серую чащу',
+    destinationHint: 'Серую чащу',
+  })
+
+  assert.equal(planned.sceneArgs.location, 'Серую чащу')
+  assert.equal(planned.sceneArgs.map.layout, 'winding')
+  assert.equal(planned.shopIntent.action, 'none')
+})
+
 test('модель может предложить только ограниченный commerce intent для нормализованной сцены', async () => {
   const llmClient = {
     model: 'fake-cartographer',
@@ -162,7 +176,7 @@ test('Scene Architect получает только public planning brief без
   assert.equal(Object.hasOwn(context.current_scene, 'gm_only'), false)
   assert.equal(Object.hasOwn(context.adventure_memory, 'gm_only'), false)
   assert.deepEqual(Object.keys(context.adventure_memory).sort(), [
-    'chapter', 'currentHook', 'history', 'unresolvedThreads', 'visitedLocations',
+    'chapter', 'currentHook', 'history', 'unresolvedThreads', 'visitedLocationIds', 'visitedLocations',
   ])
   const externalPayload = JSON.stringify(context)
   for (const secret of [
@@ -227,9 +241,15 @@ test('масштаб крепости не может быть сжат моде
 })
 
 test('органические шаблоны создают разные неровные силуэты без недостижимых проходов', () => {
-  const layouts = ['cavern', 'ruins', 'radial']
-  const maps = layouts.map((layout) => generateDynamicSceneMap({
-    seed: `shape:${layout}`, theme: layout === 'cavern' ? 'подземная пещера' : layout, layout,
+  const formats = [
+    { layout: 'cavern', pattern: 'cave-cluster' },
+    { layout: 'ruins', pattern: 'courtyard' },
+    { layout: 'radial', pattern: 'great-hall' },
+    { layout: 'winding', pattern: 'natural' },
+    { layout: 'winding', pattern: 'bridge' },
+  ]
+  const maps = formats.map(({ layout, pattern }) => generateDynamicSceneMap({
+    seed: `shape:${layout}:${pattern}`, theme: layout === 'cavern' ? 'подземная пещера' : layout, layout, pattern,
     width: 17, height: 13, openness: 0.64, featureCount: 6,
   }))
 
@@ -255,5 +275,5 @@ test('органические шаблоны создают разные нер
     assert.equal(cells.filter((cell) => cell.feature).length, 6)
   }
 
-  assert.equal(new Set(maps.map((cells) => cells.map((cell) => `${cell.x},${cell.y}`).join('|'))).size, layouts.length)
+  assert.equal(new Set(maps.map((cells) => cells.map((cell) => `${cell.x},${cell.y}`).join('|'))).size, formats.length)
 })

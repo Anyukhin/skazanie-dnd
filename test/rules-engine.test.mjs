@@ -4,7 +4,7 @@ import test from 'node:test'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
   RULE_IDS, RulesEngine, RulesValidationError, abilityModifier, applyGameEvent,
-  normalizeCampaignState, replayEvents, resolveCommand, resolveCommands, validateCommand,
+  hasClearTrajectory, normalizeCampaignState, replayEvents, resolveCommand, resolveCommands, validateCommand,
 } from '../server/rules-engine.mjs'
 import { loadRulePack } from '../server/rule-pack.mjs'
 
@@ -128,6 +128,23 @@ test('лечение ограничено максимумом, а времен�
   assert.equal(temporary.events[0].payload.temporary_hp_after, 3)
 })
 
+test('пустота за неровной границей карты блокирует линию атаки', () => {
+  const state = normalizeCampaignState({
+    players: [{
+      id: 'hero', hp: 12, maxHp: 12, armor: 14, proficiency: 2, abilities: { dex: 16 }, x: 0, y: 0,
+      inventory: [{ id: 'bow', name: 'Лук', type: 'weapon', quantity: 1, equipped: true, combat: { kind: 'ranged', ability: 'dex', damage: '1d8', damageType: 'piercing', normalRange: 30, longRange: 60 } }],
+    }],
+    enemies: [{ id: 'goblin', hp: 10, maxHp: 10, armor: 12, alive: true, x: 2, y: 0 }],
+    scene: { cells: [{ x: 0, y: 0, type: 'floor', revealed: true }, { x: 2, y: 0, type: 'floor', revealed: true }], turn: 1 },
+    mechanics: { combat: { active: true, round: 1, initiative: [{ actor_id: 'hero' }, { actor_id: 'goblin' }], active_index: 0, action_economy: { hero: { action: true } } } },
+  })
+  assert.equal(hasClearTrajectory(state, state.players[0], state.enemies[0]), false)
+  assert.throws(
+    () => resolveCommand({ command_type: 'MakeAttack', actor_id: 'hero', target_id: 'goblin', item_id: 'bow', server_authoritative: true }, state, { diceService: dice([15]), context: { serverAuthoritativeCombat: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'TRAJECTORY_BLOCKED',
+  )
+})
+
 test('смерть героя сохраняется и требует воскрешения или замены', () => {
   const mourning = normalizeCampaignState({
     partyMemberIds: ['fallen', 'survivor'],
@@ -181,7 +198,7 @@ test('новый герой заменяет погибшего, а гибель
   assert.equal(endedWorld.mechanics.death.campaign_status, 'party_defeated')
   assert.throws(
     () => resolveCommand({ command_type: 'ResolveHeroDeath', actor_id: 'last', resolution: 'resurrect' }, endedWorld, { diceService: dice([]) }),
-    (error) => error instanceof RulesValidationError && error.code === 'WORLD_ENDED',
+    (error) => error instanceof RulesValidationError && error.code === 'CAMPAIGN_READ_ONLY',
   )
 })
 

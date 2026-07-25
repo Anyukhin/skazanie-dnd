@@ -74,7 +74,7 @@ test('публичный переход не переносит private memory �
   }, state)
 
   assert.deepEqual(Object.keys(result.adventure).sort(), [
-    'chapter', 'currentHook', 'history', 'lastTransition', 'unresolvedThreads', 'visitedLocations',
+    'chapter', 'currentHook', 'history', 'lastTransition', 'unresolvedThreads', 'visitedLocationIds', 'visitedLocations',
   ])
   assert.equal(result.adventure.history[0].status, 'unresolved')
   const publicPayload = JSON.stringify(result)

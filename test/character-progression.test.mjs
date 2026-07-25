@@ -4,13 +4,15 @@ import test from 'node:test'
 import { classBuildCatalogInfo, featureChoiceGroupsFor, isSkillProficient, normalizedClassSkillProficiencies, normalizedSelectedFeatureIds } from '../server/character-progression.mjs'
 import { combatActionsFor } from '../server/combat-actions.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
+import { RulesValidationError, normalizeCampaignState, replayEvents, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
 
 const dice = (values) => new DiceService({ rng: new SequenceDiceRng(values), idFactory: (() => { let id = 0; return () => `skill-roll-${++id}` })(), now: () => '2026-07-13T12:00:00.000Z' })
 
 test('классовый конструктор содержит 18 навыков и лимиты всех 12 классов', () => {
   const info = classBuildCatalogInfo()
   assert.equal(info.rulesProfile, 'dndsu-5e-2014-official')
+  assert.equal(info.provenance.engine_ruleset_id, 'srd_5_2_1')
+  assert.match(info.provenance.source_sha256, /^[a-f0-9]{64}$/u)
   assert.equal(info.skillCount, 18)
   assert.equal(info.classes.length, 12)
   assert.equal(info.classes.find((entry) => entry.classKey === 'fighter').choiceCount, 2)
@@ -74,4 +76,57 @@ test('нормализация состояния отсекает поддел�
   assert.deepEqual(state.players[0].selectedFeatureIds, ['fighting-style-defense'])
   assert.deepEqual(state.players[0].knownSpellIds, [])
   assert.deepEqual(state.players[0].preparedSpellIds, [])
+})
+
+test('выбор развития и заклинаний сохраняется только через серверные события', () => {
+  const initial = normalizeCampaignState({ players: [{
+    id: 'hero', character: 'Элвин', characterClass: 'wizard', role: 'Волшебник', level: 3,
+    hp: 14, maxHp: 14, abilities: { int: 16 }, inventory: [],
+  }] })
+  const result = resolveCommands([
+    {
+      command_type: 'SetCharacterChoices', actor_id: 'hero',
+      subclass: 'Школа Воплощения', class_skill_proficiencies: ['arcana', 'investigation'],
+      selected_feature_ids: [],
+    },
+    {
+      command_type: 'SetSpellSelections', actor_id: 'hero',
+      known_spell_ids: ['fire-bolt', 'magic-missile'], prepared_spell_ids: ['magic-missile'],
+    },
+  ], initial, { diceService: dice([]), context: { allowedActorIds: ['hero'] } })
+
+  assert.deepEqual(result.events.map((event) => event.event_type), ['CharacterChoicesUpdated', 'SpellSelectionsUpdated'])
+  assert.equal(result.state.players[0].subclass, 'Школа Воплощения')
+  assert.deepEqual(result.state.players[0].knownSpellIds, ['fire-bolt', 'magic-missile'])
+  assert.ok(result.state.players[0].combatSpells.some((spell) => spell.id === 'magic-missile' && spell.prepared))
+  assert.deepEqual(replayEvents(initial, result.events), result.state)
+})
+
+test('сервер отклоняет чужой, недоступный и боевой выбор заклинаний', () => {
+  const initial = normalizeCampaignState({ players: [{
+    id: 'hero', character: 'Элвин', characterClass: 'wizard', role: 'Волшебник', level: 3,
+    hp: 14, maxHp: 14, abilities: { int: 16 }, inventory: [],
+  }] })
+  assert.throws(
+    () => resolveCommand({
+      command_type: 'SetSpellSelections', actor_id: 'hero',
+      known_spell_ids: ['fire-bolt'], prepared_spell_ids: [],
+    }, initial, { diceService: dice([]), context: { allowedActorIds: ['rogue'] } }),
+    (error) => error instanceof RulesValidationError && error.code === 'ACTOR_FORBIDDEN',
+  )
+  assert.throws(
+    () => resolveCommand({
+      command_type: 'SetSpellSelections', actor_id: 'hero',
+      known_spell_ids: ['sacred-flame'], prepared_spell_ids: [],
+    }, initial, { diceService: dice([]), context: { allowedActorIds: ['hero'] } }),
+    (error) => error instanceof RulesValidationError && error.code === 'SPELL_SELECTION_NOT_ALLOWED',
+  )
+  const combat = normalizeCampaignState({ ...initial, mechanics: { ...initial.mechanics, combat: { ...initial.mechanics.combat, active: true } } })
+  assert.throws(
+    () => resolveCommand({
+      command_type: 'SetSpellSelections', actor_id: 'hero',
+      known_spell_ids: ['fire-bolt'], prepared_spell_ids: [],
+    }, combat, { diceService: dice([]), context: { allowedActorIds: ['hero'] } }),
+    (error) => error instanceof RulesValidationError && error.code === 'CHARACTER_BUILD_DURING_COMBAT',
+  )
 })

@@ -89,6 +89,21 @@ test('состояния честно помечаются как работаю
   assert.equal(tacticalUi.conditionPresentation('disengaged').label, 'Отход')
 })
 
+test('поддержка механики честно блокирует эвристику и ruling-only карточки', () => {
+  assert.deepEqual(tacticalUi.mechanicsSupportPresentation('verified'), {
+    status: 'verified',
+    label: 'Проверенная механика',
+    shortLabel: 'ПРОВЕРЕНО',
+    explanation: 'Эффект сверён с источником, исполняется сервером и покрыт проверками.',
+    blocked: false,
+  })
+  assert.equal(tacticalUi.mechanicsSupportPresentation('partial').blocked, false)
+  assert.equal(tacticalUi.mechanicsSupportPresentation('heuristic').blocked, true)
+  assert.equal(tacticalUi.mechanicsSupportPresentation('ruling-only').blocked, true)
+  assert.equal(tacticalUi.mechanicsSupportPresentation(undefined).status, 'ruling-only')
+  assert.equal(tacticalUi.mechanicsSupportPresentation('partial', 'Работает только базовый эффект.').explanation, 'Работает только базовый эффект.')
+})
+
 test('карточка броска показывает натуральный d20, модификатор и порог D&D', () => {
   assert.deepEqual(tacticalUi.battleRollPresentation({
     id: 'attack', type: 'attack', roll: { die: 14, modifier: 5, total: 19, difficulty: 16, hit: true },

@@ -8,10 +8,14 @@
 `исследование → социальная сцена/проверка → quest progress → EncounterAssembler → бой → outcome/reward → world fact → доступный переход`.
 
 - Director принимает только шесть намерений контракта `skazanie:director-intent-v1`.
+- Каждый intent продвигает server-owned pacing (`beat`, `phase`, `tension`), не позволяя модели задавать числовую механику.
+- Переход сцены рассчитывает длительность и риск пути на сервере, двигает мировые часы, исполняет пересечённые расписания NPC и может детерминированно запросить случайную встречу.
+- Если Director открывает социальную сцену без доступного NPC, bounded social assembler создаёт replay-stable профиль только из текущей локации, публичных фактов и разрешённых faction tags.
 - Поля механики (`hp`, `dc`, броски, цены, количества, XP, координаты, урон, инициатива и reputation delta) отклоняются до исполнения.
 - Встреча собирается существующим `EncounterAssembler` через `CreateEncounter`, затем сервер автоматически выполняет `StartCombat`; admin endpoint не используется.
 - Автономная тактика героев и NPC проходит через обычные typed combat commands и `RulesEngine`.
 - Завершение создаёт `EncounterOutcomeRecorded`, `ExperienceAwarded` либо `MilestoneAwarded`, `ServerLootGenerated`, `ItemGranted`, `QuestClockAdvanced`, `WorldFactRecorded` и `TransitionUnlocked`.
+- После победы безопасная передышка записывается как `DowntimeResolved`; время и участники выводятся серверной политикой.
 - Репутационная дельта выбирается таблицей сервера; `WitnessConsequencePropagated` ограничен непосредственными фракциями свидетелей (membership хранится безопасным тегом `faction:<id>`).
 - Условия promises хранятся каноническими world facts и разрешаются `ResolveNpcPromise`; статус `open` обеспечивает однократное применение. Дедлайны продолжают обрабатываться существующим `AdvanceTime`.
 - Расписания NPC хранятся event-sourced world facts. `AdvanceTime` исполняет только пересечённые, ещё не отмеченные schedule entries и фиксирует факт исполнения.
@@ -20,9 +24,9 @@
 
 ## Автоматическое доказательство
 
-`test/autonomous-campaign.test.mjs` проводит более 30 ходов без admin-команд и проверяет наличие событий сцены, социальной проверки, promises, встречи, боя, loot, quest progress, schedule action и перехода. Затем он сравнивает итог с полным replay без snapshot и с состоянием после нового экземпляра `FileEventStore`.
+`test/autonomous-campaign.test.mjs` проводит более 30 ходов без admin-команд и проверяет наличие событий сцены, pacing, travel, downtime, социальной проверки, автоматически собранного NPC, promises, встречи, боя, loot, quest progress, schedule action и перехода. Затем он сравнивает итог с полным replay без snapshot и с состоянием после нового экземпляра `FileEventStore`. `test/campaign-loop-policy.test.mjs` отдельно проверяет детерминизм pacing/travel/random encounter/social assembler/downtime.
 
-Последний целевой прогон: 3/3 теста успешно, интеграционная кампания — 28.643 с, replay identical, restart identical, admin commands — 0.
+Последний полный прогон: 497/497 тестов успешно; автономная кампания — 30+ ходов, replay identical, restart identical, admin commands — 0.
 
 ## Действительно оставшиеся блокеры полной замены ведущего
 

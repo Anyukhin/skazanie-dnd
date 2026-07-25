@@ -40,25 +40,31 @@ export function publicAdventureFor(adventure = {}) {
 }
 
 export function publicWorldMapFor(worldMap = {}) {
-  const locationIds = new Set((Array.isArray(worldMap.locations) ? worldMap.locations : []).map((location) => text(location?.id, 100)).filter(Boolean))
+  const currentLocationId = text(worldMap.currentLocationId, 100)
+  const locations = (Array.isArray(worldMap.locations) ? worldMap.locations : [])
+    .filter((location) => location?.known !== false || location?.visited === true || text(location?.id, 100) === currentLocationId)
+    .slice(0, 50)
+  const locationIds = new Set(locations.map((location) => text(location?.id, 100)).filter(Boolean))
+  const regionIds = new Set(locations.map((location) => text(location?.regionId, 100)).filter(Boolean))
   return {
     version: Math.max(1, integer(worldMap.version, 1)),
-    seed: text(worldMap.seed, 120),
     name: text(worldMap.name, 160),
     width: Math.max(320, Math.min(2000, integer(worldMap.width, 1000))),
     height: Math.max(240, Math.min(1200, integer(worldMap.height, 640))),
-    currentLocationId: locationIds.has(text(worldMap.currentLocationId, 100)) ? text(worldMap.currentLocationId, 100) : '',
-    regions: (Array.isArray(worldMap.regions) ? worldMap.regions : []).slice(0, 12).map((region) => ({
+    currentLocationId: locationIds.has(currentLocationId) ? currentLocationId : '',
+    regions: (Array.isArray(worldMap.regions) ? worldMap.regions : [])
+      .filter((region) => regionIds.has(text(region?.id, 100)))
+      .slice(0, 12).map((region) => ({
       id: text(region?.id, 100), name: text(region?.name, 120), biome: text(region?.biome, 40),
       x: integer(region?.x, 0), y: integer(region?.y, 0), radius: integer(region?.radius, 180),
     })),
-    locations: (Array.isArray(worldMap.locations) ? worldMap.locations : []).slice(0, 50).map((location) => ({
+    locations: locations.map((location) => ({
       id: text(location?.id, 100), name: text(location?.name, 160), kind: text(location?.kind, 40),
       x: integer(location?.x, 0), y: integer(location?.y, 0), regionId: text(location?.regionId, 100),
       summary: text(location?.summary, 500), known: location?.known !== false, visited: location?.visited === true,
     })),
     routes: (Array.isArray(worldMap.routes) ? worldMap.routes : []).slice(0, 100)
-      .filter((route) => locationIds.has(text(route?.from, 100)) && locationIds.has(text(route?.to, 100)))
+      .filter((route) => route?.discovered !== false && locationIds.has(text(route?.from, 100)) && locationIds.has(text(route?.to, 100)))
       .map((route) => ({
         id: text(route?.id, 100), from: text(route?.from, 100), to: text(route?.to, 100), kind: text(route?.kind, 40),
         distance: Math.max(1, integer(route?.distance, 1)), danger: text(route?.danger, 40), discovered: route?.discovered !== false,
@@ -100,18 +106,106 @@ export function publicSceneFor(scene = {}) {
   }
 }
 
-export function publicEnemyFor(enemy = {}) {
+function enemyKnowledgeFor(state, enemyId, actorId = '') {
+  const registry = state?.mechanics?.enemy_knowledge
+  const entry = registry?.party?.[enemyId] ?? registry?.[enemyId] ?? {}
+  const knownBy = Array.isArray(entry?.known_by) ? entry.known_by.map(String) : null
+  return knownBy && actorId && !knownBy.includes(String(actorId)) ? {} : entry
+}
+
+function enemyHealthStatus(enemy = {}) {
+  if (enemy.hp == null && enemy.maxHp == null) return enemy.alive === false ? 'defeated' : text(enemy.healthStatus, 20) || 'unharmed'
+  const hp = Math.max(0, integer(enemy.hp, 0))
+  const maximum = Math.max(1, integer(enemy.maxHp ?? enemy.max_hp, 1))
+  if (enemy.alive === false || hp <= 0) return 'defeated'
+  const ratio = hp / maximum
+  if (ratio >= 1) return 'unharmed'
+  if (ratio > .5) return 'wounded'
+  if (ratio > .25) return 'bloodied'
+  return 'critical'
+}
+
+function exactEnemyFact(knowledge, key) {
+  return knowledge?.[key] === 'exact' || knowledge?.[key] === true
+}
+
+function exactEnemyHealthKnown(state, enemyId, actorId = '') {
+  const knowledge = enemyKnowledgeFor(state, enemyId, actorId)
+  return knowledge?.health === 'exact' || exactEnemyFact(knowledge, 'hp') || knowledge?.exact_hp === true
+}
+
+export function publicEnemyFor(enemy = {}, state = {}, actorId = '') {
+  const id = text(enemy.id ?? enemy.actor_id, 120)
+  const knowledge = enemyKnowledgeFor(state, id, actorId)
+  const exactHealth = exactEnemyHealthKnown(state, id, actorId)
   return {
-    id: text(enemy.id ?? enemy.actor_id, 120),
+    id,
     name: text(enemy.name, 120),
-    hp: Math.max(0, integer(enemy.hp, 0)),
-    maxHp: Math.max(1, integer(enemy.maxHp ?? enemy.max_hp, 1)),
-    armor: Math.max(0, integer(enemy.armor ?? enemy.armor_class, 10)),
-    speed: Math.max(0, integer(enemy.speed, 0)),
     x: integer(enemy.x, 0),
     y: integer(enemy.y, 0),
-    alive: enemy.alive !== false && integer(enemy.hp, 0) > 0,
-    ...(enemy.stat_block_id == null ? {} : { stat_block_id: text(enemy.stat_block_id, 120) }),
+    alive: enemy.alive !== false && (enemy.hp == null || integer(enemy.hp, 0) > 0),
+    healthStatus: enemyHealthStatus(enemy),
+    healthKnown: exactHealth ? 'exact' : 'banded',
+    ...(exactHealth ? {
+      hp: Math.max(0, integer(enemy.hp, 0)),
+      maxHp: Math.max(1, integer(enemy.maxHp ?? enemy.max_hp, 1)),
+    } : {}),
+    ...(exactEnemyFact(knowledge, 'armor_class') || exactEnemyFact(knowledge, 'armor') ? {
+      armor: Math.max(0, integer(enemy.armor ?? enemy.armor_class, 10)),
+    } : {}),
+    ...(exactEnemyFact(knowledge, 'speed') ? { speed: Math.max(0, integer(enemy.speed, 0)) } : {}),
+    ...(exactEnemyFact(knowledge, 'stat_block') && enemy.stat_block_id != null ? { stat_block_id: text(enemy.stat_block_id, 120) } : {}),
+  }
+}
+
+function publicInitiativeFor(initiative, state, actorId = '') {
+  const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  return (Array.isArray(initiative) ? initiative : []).map((entry) => {
+    const entryId = text(entry?.actor_id, 120)
+    if (!enemyIds.has(entryId)) return entry
+    return {
+      actor_id: entryId,
+      ...(entry?.shared_with == null ? {} : { shared_with: text(entry.shared_with, 120) }),
+    }
+  })
+}
+
+function publicBattleEventFor(entry, state, actorId = '') {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry
+  const result = { ...entry }
+  const targetId = text(entry.targetId ?? entry.target_id, 120)
+  const actingId = text(entry.actorId ?? entry.actor_id, 120)
+  const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  if (enemyIds.has(targetId) && !exactEnemyHealthKnown(state, targetId, actorId)) {
+    delete result.hpBefore
+    delete result.hpAfter
+    delete result.maximumHpBefore
+    delete result.maximumHpAfter
+    if (result.roll && typeof result.roll === 'object') {
+      result.roll = { ...result.roll }
+      delete result.roll.difficulty
+    }
+  }
+  if (enemyIds.has(actingId) && result.roll && typeof result.roll === 'object') {
+    result.roll = {
+      total: integer(result.roll.total, 0),
+      hit: result.roll.hit === true,
+    }
+  }
+  return result
+}
+
+function publicCombatMessageFor(message) {
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return message
+  const isCombatMessage = String(message.id ?? '').startsWith('combat-') || String(message.author ?? '').toLocaleLowerCase('ru').includes('система боя')
+  if (!isCombatMessage || typeof message.text !== 'string') return message
+  return {
+    ...message,
+    text: message.text
+      .replace(/\s+против КД\s+\d+\s+—/gu, ' —')
+      .replace(/;\s*ОЗ\s+\d+\s*→\s*\d+/gu, '')
+      .replace(/,\s*но Охрана от смерти срабатывает и оставляет 1 ОЗ/gu, ', но Охрана от смерти удерживает цель на ногах')
+      .replace(/Максимум ОЗ ([^.]+?) снижается:\s*\d+\s*→\s*\d+/gu, 'Максимум ОЗ $1 снижается'),
   }
 }
 
@@ -132,8 +226,31 @@ export function publicEncounterFor(encounter = {}) {
   }
 }
 
-function publicReactionWindowFor(window) {
+function publicReactionWindowFor(window, state = {}, actorId = '') {
   if (!window || typeof window !== 'object' || Array.isArray(window)) return null
+  const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  const targetId = text(window.target_id, 120)
+  const enemyTarget = enemyIds.has(targetId)
+  const enemySource = enemyIds.has(text(window.source_actor_id, 120))
+  const triggerRoll = window.trigger_roll && typeof window.trigger_roll === 'object'
+    ? {
+      kept: integer(window.trigger_roll.kept, 0),
+      modifier: integer(window.trigger_roll.modifier, 0),
+      total: integer(window.trigger_roll.total, 0),
+      difficulty: Math.max(0, integer(window.trigger_roll.difficulty, 0)),
+      ability: text(window.trigger_roll.ability, 20),
+      save_event_type: text(window.trigger_roll.save_event_type, 80),
+    }
+    : null
+  if (triggerRoll && enemyTarget) delete triggerRoll.difficulty
+  if (triggerRoll && enemySource) {
+    delete triggerRoll.kept
+    delete triggerRoll.modifier
+  }
+  const damage = window.damage && typeof window.damage === 'object' ? { ...window.damage } : null
+  if (damage && enemyTarget && !exactEnemyHealthKnown(state, targetId, actorId)) {
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after']) delete damage[key]
+  }
   return {
     id: text(window.id, 160),
     trigger: text(window.trigger, 80),
@@ -148,18 +265,9 @@ function publicReactionWindowFor(window) {
       ...(option?.resource == null ? {} : { resource: text(option.resource, 120) }),
       ...(option?.cost == null ? {} : { cost: Math.max(0, integer(option.cost, 0)) }),
     })),
-    ...(window.trigger_roll && typeof window.trigger_roll === 'object' ? {
-      trigger_roll: {
-        kept: integer(window.trigger_roll.kept, 0),
-        modifier: integer(window.trigger_roll.modifier, 0),
-        total: integer(window.trigger_roll.total, 0),
-        difficulty: Math.max(0, integer(window.trigger_roll.difficulty, 0)),
-        ability: text(window.trigger_roll.ability, 20),
-        save_event_type: text(window.trigger_roll.save_event_type, 80),
-      },
-    } : {}),
+    ...(triggerRoll ? { trigger_roll: triggerRoll } : {}),
     ...(window.fighter_level == null ? {} : { fighter_level: Math.max(1, integer(window.fighter_level, 1)) }),
-    ...(window.damage && typeof window.damage === 'object' ? { damage: { ...window.damage } } : {}),
+    ...(damage ? { damage } : {}),
     ...(window.pending_spell && typeof window.pending_spell === 'object' ? { pending_spell: { ...window.pending_spell } } : {}),
   }
 }
@@ -184,20 +292,23 @@ export function campaignStateForViewer(state, user, actorId = '') {
   const scene = publicSceneFor(visible.scene ?? state.scene)
   const location = scene.location
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
-    .filter((merchant) => merchant.available !== false && merchantIsAtLocation(merchant.location, location))
+    .filter((merchant) => merchant.available !== false && merchantIsAtLocation(merchant, state?.scene ?? location))
     .map(publicMerchantFor)
-  const enemies = (Array.isArray(visible.enemies) ? visible.enemies : []).map(publicEnemyFor)
+  const enemies = (Array.isArray(visible.enemies) ? visible.enemies : []).map((enemy) => publicEnemyFor(enemy, state, actorId))
   const mechanics = visible.mechanics && typeof visible.mechanics === 'object'
-    ? {
-      ...visible.mechanics,
+    ? (() => {
+      const { enemy_knowledge: _enemyKnowledge, ...publicMechanics } = visible.mechanics
+      return {
+      ...publicMechanics,
       encounter: publicEncounterFor(visible.mechanics.encounter),
       ...(visible.mechanics.combat && typeof visible.mechanics.combat === 'object' ? {
         combat: {
           ...visible.mechanics.combat,
-          reaction_window: publicReactionWindowFor(visible.mechanics.combat.reaction_window),
+          initiative: publicInitiativeFor(visible.mechanics.combat.initiative, state, actorId),
+          reaction_window: publicReactionWindowFor(visible.mechanics.combat.reaction_window, state, actorId),
         },
       } : {}),
-    }
+    }})()
     : visible.mechanics
   return {
     ...visible,
@@ -213,15 +324,18 @@ export function campaignStateForViewer(state, user, actorId = '') {
       playerId: String(actorId ?? ''),
       isAdmin: false,
       isPartyMember: true,
+      state,
     }),
     merchants,
     enemies,
     mechanics,
+    battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((entry) => publicBattleEventFor(entry, state, actorId)),
+    messages: (Array.isArray(visible.messages) ? visible.messages : []).map(publicCombatMessageFor),
   }
 }
 
-function eventForViewer(event, user, actorId) {
-  const visible = projectVisibleState(event, viewerFor({}, user, actorId), { forNarrator: true })
+function eventForViewer(event, user, actorId, state = {}) {
+  const visible = projectVisibleState(event, viewerFor(state, user, actorId), { forNarrator: true })
   if (!visible) return null
   const payload = visible.payload && typeof visible.payload === 'object' && !Array.isArray(visible.payload)
     ? { ...visible.payload }
@@ -237,8 +351,24 @@ function eventForViewer(event, user, actorId) {
   if (visible.event_type === 'EncounterCreated' && payload.encounter) {
     payload.encounter = {
       ...publicEncounterFor(payload.encounter),
-      enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map(publicEnemyFor),
+      enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map((enemy) => publicEnemyFor(enemy, state, actorId)),
     }
+  }
+  const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
+  const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  const enemyTargetId = targetIds.find((id) => enemyIds.has(id)) ?? (enemyIds.has(String(payload.target_id ?? '')) ? String(payload.target_id) : '')
+  const enemyActor = enemyIds.has(String(visible.actor_id ?? ''))
+  if (enemyTargetId && !exactEnemyHealthKnown(state, enemyTargetId, actorId)) {
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'armor_class']) delete payload[key]
+  }
+  if (visible.event_type === 'CombatStarted') {
+    payload.initiative = publicInitiativeFor(payload.initiative, state, actorId)
+  }
+  if (enemyActor) {
+    for (const key of ['modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression']) delete payload[key]
+  }
+  if (enemyTargetId && ['SavingThrowResolved', 'AbilityCheckResolved'].includes(String(visible.event_type))) {
+    for (const key of ['modifier', 'kept', 'dice', 'roll_id']) delete payload[key]
   }
   if (visible.event_type === 'AbilityCheckResolved' && payload.social_check) {
     delete payload.difficulty
@@ -250,14 +380,40 @@ function eventForViewer(event, user, actorId) {
     }
   }
   if (visible.event_type === 'ReactionWindowOpened') {
-    return { ...visible, payload: publicReactionWindowFor(payload) }
+    return { ...visible, payload: publicReactionWindowFor(payload, state, actorId) }
   }
   return { ...visible, payload }
 }
 
-export function mechanicsForViewer(events, user, actorId = '') {
+export function mechanicsForViewer(events, user, actorId = '', state = {}) {
   if (!Array.isArray(events) || user?.role === 'admin') return events
-  return events.map((event) => eventForViewer(event, user, actorId)).filter(Boolean)
+  return events.map((event) => eventForViewer(event, user, actorId, state)).filter(Boolean)
+}
+
+export function turnExplanationForViewer(explanation, user, actorId = '', state = {}) {
+  if (!explanation || typeof explanation !== 'object' || user?.role === 'admin') return explanation
+  const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  return {
+    ...explanation,
+    commands: (Array.isArray(explanation.commands) ? explanation.commands : []).map((command) => {
+      if (!enemyIds.has(String(command?.actor_id ?? ''))) return command
+      return {
+        type: text(command?.type ?? command?.command_type, 80),
+        actor_id: text(command?.actor_id, 120),
+        ...(command?.target_id == null ? {} : { target_id: text(command.target_id, 120) }),
+      }
+    }),
+    rolls: (Array.isArray(explanation.rolls) ? explanation.rolls : []).map((roll) => {
+      if (!enemyIds.has(String(roll?.actor_id ?? roll?.actorId ?? ''))) return roll
+      return {
+        roll_id: text(roll?.roll_id ?? roll?.id, 160),
+        purpose: text(roll?.purpose, 80),
+        total: integer(roll?.total, 0),
+        visibility: text(roll?.visibility, 40),
+      }
+    }),
+    events: mechanicsForViewer(explanation.events, user, actorId, state),
+  }
 }
 
 export function sceneTransitionForViewer(transition) {
@@ -284,10 +440,23 @@ export function turnResultForViewer(result, user, actorId = '') {
     ? { ...visible.effects }
     : visible.effects
   if (effects?.scene) effects.scene = sceneTransitionForViewer(effects.scene)
+  const enemyIds = new Set((result.authoritative_state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  if (effects?.roll && enemyIds.has(String(effects.roll.actor_id ?? ''))) {
+    effects.roll = {
+      roll_id: text(effects.roll.roll_id, 160),
+      actor_id: text(effects.roll.actor_id, 120),
+      total: integer(effects.roll.total, 0),
+      label: text(effects.roll.label, 120),
+      ...(typeof effects.roll.success === 'boolean' ? { success: effects.roll.success } : {}),
+    }
+  }
   return {
     ...visible,
     effects,
-    mechanics: mechanicsForViewer(result.mechanics, user, actorId),
+    mechanics: mechanicsForViewer(result.mechanics, user, actorId, result.authoritative_state),
+    ...(Array.isArray(visible.visible_state_changes) ? {
+      visible_state_changes: mechanicsForViewer(visible.visible_state_changes, user, actorId, result.authoritative_state),
+    } : {}),
     ...(result.authoritative_state ? { authoritative_state: campaignStateForViewer(result.authoritative_state, user, actorId) } : {}),
   }
 }

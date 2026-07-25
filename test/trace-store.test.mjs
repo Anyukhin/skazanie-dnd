@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { FileTraceStore, buildTurnExplanation, compareShadowResults, redactTrace } from '../server/trace-store.mjs'
+import { FileTraceStore, buildTurnExplanation, redactTrace } from '../server/trace-store.mjs'
 
 test('turn trace сохраняется, восстанавливается и объясняется через /why', () => {
   const store = new FileTraceStore({ rootDir: mkdtempSync(join(tmpdir(), 'skazanie-trace-')) })
@@ -25,8 +25,22 @@ test('секреты редактируются до записи трассир
   assert.equal(redacted.nested.text, 'ok')
 })
 
-test('shadow comparison делает расхождения видимыми, но не объявляет их ошибкой', () => {
-  const comparison = compareShadowResults({ effects: { roll: { total: 10 }, reveal: [], grantItems: [] } }, { rolls: [{ total: 12 }], events: [] })
-  assert.equal(comparison.severity, 'warning')
-  assert.equal(comparison.differences[0].field, 'roll.total')
+test('объяснение хода проецирует private knowledge для конкретного героя', () => {
+  const trace = {
+    turn_id: 'private-turn',
+    engine_mode: 'enforce',
+    retrieved_rule_ids: [],
+    validated_commands: [],
+    rolls: [],
+    events: [
+      { event_type: 'KnowledgeRevealed', visibility: 'specific_player', target_ids: ['hero'], payload: { fact_id: 'fact:secret', summary: 'hidden route' } },
+      { event_type: 'QuestClockAdvanced', visibility: 'party', payload: { quest_id: 'quest:open' } },
+    ],
+  }
+  const hero = buildTurnExplanation(trace, { playerId: 'hero', isPartyMember: true, role: 'player' })
+  const rogue = buildTurnExplanation(trace, { playerId: 'rogue', isPartyMember: true, role: 'player' })
+
+  assert.match(JSON.stringify(hero), /hidden route/u)
+  assert.doesNotMatch(JSON.stringify(rogue), /hidden route|fact:secret/u)
+  assert.match(JSON.stringify(rogue), /quest:open/u)
 })

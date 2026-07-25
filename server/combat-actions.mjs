@@ -15,7 +15,18 @@ const CLASS_URL = Object.freeze({
   sorcerer: 'https://www.dnd.su/class/101-sorcerer/', warlock: 'https://www.dnd.su/class/104-warlock/', wizard: 'https://www.dnd.su/class/105-wizard/',
 })
 
-const action = (id, name, options = {}) => Object.freeze({ id, name, category: 'class', target: 'self', actionType: 'action', range: 0, minimumLevel: 1, ...options })
+const VERIFIED_ACTION_EFFECTS = new Set(['stand_up', 'break_free', 'steady_nerves', 'extinguish_flames', 'dash', 'check', 'contest', 'heal', 'weapon_attack', 'cleanse', 'restore_action', 'stabilize', 'first_aid'])
+const DEFAULT_PARTIAL_ACTION_NOTE = 'Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.'
+const action = (id, name, options = {}) => {
+  const effectKind = options.effect?.kind
+  const mechanicsSupport = options.mechanicsSupport
+    ?? (effectKind === 'special' ? 'ruling-only' : VERIFIED_ACTION_EFFECTS.has(effectKind) ? 'verified' : 'partial')
+  return Object.freeze({
+    id, name, category: 'class', target: 'self', actionType: 'action', range: 0, minimumLevel: 1,
+    ...options, mechanicsSupport,
+    ...((options.supportNote || mechanicsSupport === 'partial') ? { supportNote: options.supportNote ?? DEFAULT_PARTIAL_ACTION_NOTE } : {}),
+  })
+}
 
 const COMMON_ACTIONS = Object.freeze([
   action('stand-up', 'Встать', { category: 'common', actionType: 'free', description: 'Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».', effect: { kind: 'stand_up' } }),
@@ -33,7 +44,7 @@ const COMMON_ACTIONS = Object.freeze([
     action('first-aid', 'Первая помощь', { category: 'common', target: 'creature', range: 5, description: 'Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.', effect: { kind: 'first_aid', ability: 'wis', skill: 'medicine', difficulty: 10 } }),
   action('grapple', 'Захват', { category: 'common', target: 'enemy', range: 5, description: 'Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.', effect: { kind: 'contest', condition: 'grappled' } }),
   action('shove', 'Толчок', { category: 'common', target: 'enemy', range: 5, description: 'Состязание Силы; при успехе цель сбита с ног.', effect: { kind: 'contest', condition: 'prone' } }),
-  action('ready', 'Подготовка', { category: 'common', description: 'Подготовить действие и сохранить реакцию для указанного условия.', effect: { kind: 'condition', condition: 'readied', duration: 'until-next-turn' } }),
+  action('ready', 'Подготовка', { category: 'common', description: 'Подготовить действие и сохранить реакцию для указанного условия.', mechanicsSupport: 'partial', supportNote: 'Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.', effect: { kind: 'condition', condition: 'readied', duration: 'until-next-turn' } }),
   action('search', 'Поиск', { category: 'common', description: 'Проверка Мудрости (Восприятие) для обнаружения скрытых целей и деталей.', effect: { kind: 'check', ability: 'wis', skill: 'perception' } }),
   action('use-object', 'Использовать предмет', { category: 'common', description: 'Взаимодействовать с немагическим предметом в бою.', effect: { kind: 'special' } }),
 ])
@@ -167,6 +178,7 @@ function generatedActionsFor(actor, classKey) {
     .filter((entry) => !entry.subclass || normalizedName(entry.subclass) === normalizedName(subclass))
     .map((entry) => ({
       ...clone(entry),
+      mechanicsSupport: entry.effect?.kind === 'special' ? 'ruling-only' : 'heuristic',
       resource: entry.uses ? `feature_${entry.id}` : undefined,
       cost: entry.uses ? 1 : undefined,
     }))

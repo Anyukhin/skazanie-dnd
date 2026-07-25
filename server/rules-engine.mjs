@@ -3,6 +3,8 @@ import { parseDiceExpression } from './dice-service.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
 import { createSceneTransition, publicAdventureMemory } from './adventure-director.mjs'
 import { ensureCampaignWorldMap } from './world-map.mjs'
+import { normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
+import { normalizePartyDecision } from './party-decision.mjs'
 import {
   WORLD_MEMORY_COMMAND_TYPES,
   WorldMemoryValidationError,
@@ -32,10 +34,15 @@ import {
   MAX_CURRENCY_CP,
   MAX_STOCK_QUANTITY,
   MAX_TRANSACTION_QUANTITY,
+  MERCHANT_ECONOMY_CLOCK_EVENT_TYPE,
+  MERCHANT_RESTOCK_POLICY_ID,
+  MERCHANT_SERVICES_POLICY_ID,
+  applyMerchantRestockPlan,
   bargainFor,
   copperToCurrency,
   currencyToCopper,
   findMerchant,
+  findMerchantService,
   inventoryItemFromStock,
   inventoryStackKey,
   merchantIsAtLocation,
@@ -44,8 +51,11 @@ import {
   normalizeMerchant,
   normalizeMerchantPurseCp,
   normalizeMerchantPricing,
+  normalizeMerchantRestockPolicy,
+  normalizeMerchantServices,
   normalizeMerchants,
   quoteMerchantBuyUnit,
+  quoteMerchantService,
   quoteMerchantSellUnit,
   resolveCatalogPrice,
   sellability,
@@ -71,6 +81,35 @@ import {
   normalizedCombatSubclassFor,
 } from './combat-actions.mjs'
 import { characterClassKey, isSkillProficient, normalizedClassSkillProficiencies, normalizedSelectedFeatureIds, skillAbility } from './character-progression.mjs'
+import {
+  CHARACTER_BUILD_COMMAND_TYPES,
+  CharacterBuildValidationError,
+  characterBuildEvent,
+  validateCharacterBuildCommand,
+} from './character-build.mjs'
+import {
+  ITEM_LIFECYCLE_COMMAND_TYPES,
+  ItemLifecycleValidationError,
+  applyItemLifecycleEventToPlayers,
+  carryingCapacity,
+  derivedEquipmentArmorClass,
+  inventoryLoadFor,
+  inventoryWeight,
+  itemLifecycleEvents,
+  validateItemLifecycleCommand,
+} from './item-lifecycle.mjs'
+import {
+  CHARACTER_LIFECYCLE_COMMAND_TYPES,
+  CharacterLifecycleValidationError,
+  applyCharacterLifecycleEvent,
+  characterImportEvent,
+  classResourcePlan,
+  deriveCharacterSheet,
+  levelUpEvent,
+  proficiencyBonusForLevel,
+  validateCharacterImportCommand,
+  validateLevelUpCommand,
+} from './character-lifecycle.mjs'
 
 export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 export const GAME_STATE_PROJECTOR_VERSION = 2
@@ -131,6 +170,7 @@ const COMMAND_RULES = Object.freeze({
   AppraiseItem: [],
   BuyItem: [RULE_IDS.economyCoins],
   SellItem: [RULE_IDS.economyCoins, RULE_IDS.sellingEquipment],
+  PurchaseMerchantService: [RULE_IDS.economyCoins],
   CreateMerchant: [],
   ConfigureMerchant: [],
   RestockMerchant: [],
@@ -140,11 +180,27 @@ const COMMAND_RULES = Object.freeze({
   UpsertWorldEntity: [],
   RecordWorldFact: [],
   RevealWorldFact: [],
+  RecordKnowledgeRevelation: [],
+  RecordWorldRelationship: [],
   UpsertQuest: [],
   AdvanceQuestClock: [],
+  UpsertNarrativeThread: [],
+  AdvanceNarrativeThreadClock: [],
+  RecordNpcBelief: [],
+  RecordRumor: [],
+  ResolveEpistemicClaim: [],
+  RecordNarrativeSummary: [],
   UpsertNpcSocialProfile: [],
   RecordNpcSocialTurn: [],
   ResolveNpcPromise: [],
+  SetCharacterChoices: [],
+  SetSpellSelections: [],
+  EquipItem: [RULE_IDS.actions],
+  UseItem: [RULE_IDS.actions],
+  TransferItem: [],
+  AttuneItem: [],
+  LevelUp: [RULE_IDS.resource],
+  ImportCharacter: [RULE_IDS.resource],
 })
 
 export const ALLOWED_COMMAND_TYPES = new Set([
@@ -153,12 +209,16 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
   'CastSpell', 'UseCombatAction', 'MoveActor', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
-  'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem',
+  'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
   'AdvanceScene',
-  'UpsertWorldEntity', 'RecordWorldFact', 'RevealWorldFact', 'UpsertQuest',
-  'AdvanceQuestClock',
+  'UpsertWorldEntity', 'RecordWorldFact', 'RevealWorldFact', 'RecordKnowledgeRevelation',
+  'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock',
+  'UpsertNarrativeThread', 'AdvanceNarrativeThreadClock',
+  'RecordNpcBelief', 'RecordRumor', 'ResolveEpistemicClaim', 'RecordNarrativeSummary',
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
+  'SetCharacterChoices', 'SetSpellSelections',
+  'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'LevelUp', 'ImportCharacter',
 ])
 
 const MERCHANT_LIFECYCLE_COMMAND_TYPES = new Set([
@@ -167,12 +227,16 @@ const MERCHANT_LIFECYCLE_COMMAND_TYPES = new Set([
 const ENCOUNTER_LIFECYCLE_COMMAND_TYPES = new Set(['CreateEncounter'])
 
 const SCENE_ADVANCE_FIELDS = new Set([
-  'title', 'location', 'mood', 'objective', 'transition', 'arrival', 'hook', 'theme', 'danger', 'seed',
+  'title', 'location', 'location_id', 'mood', 'objective', 'transition', 'arrival', 'hook', 'theme', 'danger', 'seed',
   'completed_objective', 'objective_status', 'outcome', 'carry_unresolved', 'suggestions', 'map',
   'scene_kind', 'settlement_type',
 ])
 
-const SCENE_MAP_FIELDS = new Set(['layout', 'width', 'height', 'openness', 'water', 'featureCount'])
+const SCENE_MAP_FIELDS = new Set(['layout', 'scale', 'pattern', 'material', 'width', 'height', 'openness', 'water', 'featureCount'])
+const SCENE_MAP_LAYOUTS = new Set(['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'])
+const SCENE_MAP_SCALES = new Set(['room', 'site', 'stronghold', 'region'])
+const SCENE_MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
+const SCENE_MAP_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
 const SCENE_KINDS = new Set(['settlement', 'wilderness', 'dungeon', 'road', 'other'])
 const SCENE_SETTLEMENT_TYPES = new Set(['village', 'town', 'city', 'outpost', 'traveling'])
 const SCENE_DANGER_LEVELS = new Set(['низкая', 'средняя', 'высокая'])
@@ -184,7 +248,9 @@ const SCENE_COMMERCE_PLAN_VERSION = 'skazanie:scene-commerce-plan-v1'
 const PARTY_DECISION_REFERENCE_FIELDS = new Set(['interaction_id', 'resolved_option_id'])
 
 const MERCHANT_CONFIGURATION_FIELDS = new Set(['name', 'title', 'description', 'greeting', 'voice', 'pricing', 'purse_cp'])
-const MERCHANT_CREATE_FIELDS = new Set([...MERCHANT_CONFIGURATION_FIELDS, 'id', 'merchant_id', 'location', 'available', 'stock'])
+const MERCHANT_CREATE_FIELDS = new Set([
+  ...MERCHANT_CONFIGURATION_FIELDS, 'id', 'merchant_id', 'location', 'location_id', 'available', 'stock', 'services', 'restock_policy',
+])
 const MERCHANT_PRICING_FIELDS = new Set([
   'mode', 'buy_markup_bps', 'sell_rate_bps', 'bargain_dc', 'success_discount_bps',
   'failure_markup_bps', 'agent_adjustment_bps', 'agent_adjustment_limit_percent', 'description',
@@ -203,6 +269,14 @@ export class RulesValidationError extends Error {
 
 function clone(value) {
   return structuredClone(value)
+}
+
+function assertMechanicsSupported(subject, label) {
+  if (subject?.mechanicsSupport === 'verified' || subject?.mechanicsSupport === 'partial') return
+  if (subject?.mechanicsSupport === 'heuristic') {
+    throw new RulesValidationError(`Механика ${label} ещё не проверена для авторитетного боя`, 'MECHANICS_NOT_VERIFIED')
+  }
+  throw new RulesValidationError(`Для ${label} требуется серверное решение правил`, 'RULING_REQUIRED')
 }
 
 function safeInteger(value, fallback = 0) {
@@ -241,9 +315,16 @@ function normalizeSceneAdvanceArgs(value) {
   if (Object.hasOwn(args, 'map')) {
     if (!plainObject(args.map)) throw new RulesValidationError('Параметры карты новой сцены должны быть объектом', 'INVALID_SCENE_MAP_ARGS')
     args.map = Object.fromEntries(Object.entries(args.map).filter(([key]) => SCENE_MAP_FIELDS.has(key)))
+    if (args.map.layout != null && !SCENE_MAP_LAYOUTS.has(args.map.layout)) throw new RulesValidationError('Неизвестная планировка карты', 'INVALID_SCENE_MAP_LAYOUT')
+    if (args.map.scale != null && !SCENE_MAP_SCALES.has(args.map.scale)) throw new RulesValidationError('Неизвестный масштаб карты', 'INVALID_SCENE_MAP_SCALE')
+    if (args.map.pattern != null && !SCENE_MAP_PATTERNS.has(args.map.pattern)) throw new RulesValidationError('Неизвестный формат карты', 'INVALID_SCENE_MAP_PATTERN')
+    if (args.map.material != null && !SCENE_MAP_MATERIALS.has(args.map.material)) throw new RulesValidationError('Неизвестный материал карты', 'INVALID_SCENE_MAP_MATERIAL')
   }
   if (Object.hasOwn(args, 'theme') && typeof args.theme !== 'string') {
     throw new RulesValidationError('Тема новой сцены должна быть строкой', 'INVALID_SCENE_THEME')
+  }
+  if (Object.hasOwn(args, 'location_id') && (typeof args.location_id !== 'string' || !args.location_id.trim() || args.location_id.length > 120)) {
+    throw new RulesValidationError('location_id новой сцены должен быть непустой строкой длиной до 120 символов', 'INVALID_SCENE_LOCATION_ID')
   }
   if (Object.hasOwn(args, 'danger') && !SCENE_DANGER_LEVELS.has(args.danger)) {
     throw new RulesValidationError('Неизвестный уровень опасности новой сцены', 'INVALID_SCENE_DANGER')
@@ -508,6 +589,9 @@ function normalizeLifecycleMerchant(input) {
     throw new RulesValidationError('Доступность торговца должна быть логическим значением', 'INVALID_MERCHANT_AVAILABILITY')
   }
   const location = lifecycleText(source.location, 180, { required: true, code: 'INVALID_MERCHANT_LOCATION', label: 'Локация торговца' })
+  const locationId = source.location_id
+    ? lifecycleText(source.location_id, 120, { required: true, code: 'INVALID_MERCHANT_LOCATION_ID', label: 'location_id торговца' })
+    : ''
   const purseCp = lifecyclePurseCp(source.purse_cp)
   const pricing = normalizeLifecyclePricing(source.pricing)
   const normalized = normalizeMerchant({
@@ -518,10 +602,13 @@ function normalizeLifecycleMerchant(input) {
     greeting: lifecycleText(source.greeting, 500, { code: 'INVALID_MERCHANT_DATA', label: 'Приветствие торговца' }),
     voice: lifecycleText(source.voice, 500, { code: 'INVALID_MERCHANT_DATA', label: 'Манера речи торговца' }),
     location,
+    location_id: locationId,
     available: source.available !== false,
     purse_cp: purseCp,
     pricing,
     stock,
+    services: source.services,
+    restock_policy: source.restock_policy,
     bargains: {},
   })
   return {
@@ -532,10 +619,13 @@ function normalizeLifecycleMerchant(input) {
     greeting: normalized.greeting,
     voice: normalized.voice,
     location: normalized.location,
+    location_id: normalized.location_id,
     available: normalized.available,
     purse_cp: normalized.purse_cp,
     pricing,
     stock: normalized.stock.map((entry, index) => lifecycleStockFromCanonical(entry, id, index)),
+    services: normalizeMerchantServices(normalized.services),
+    restock_policy: normalizeMerchantRestockPolicy(normalized.restock_policy, normalized.stock),
     bargains: {},
   }
 }
@@ -563,8 +653,11 @@ function lifecycleMerchantFromCanonical(input) {
     greeting: input?.greeting,
     voice: input?.voice,
     location: input?.location,
+    location_id: input?.location_id,
     available: input?.available,
     purse_cp: input?.purse_cp,
+    services: input?.services,
+    restock_policy: input?.restock_policy,
     pricing: {
       mode: input?.pricing?.mode,
       buy_markup_bps: input?.pricing?.buy_markup_bps,
@@ -722,6 +815,16 @@ function defaultMechanics() {
       heroes: {},
       saving_throws: {},
     },
+    campaign_lifecycle: {
+      schema_version: 1,
+      status: 'active',
+      reason: null,
+      paused_at: null,
+      concluded_at: null,
+      archived_at: null,
+      epilogue: null,
+      changed_by: null,
+    },
     combat: {
       active: false,
       round: 0,
@@ -785,6 +888,10 @@ export function normalizeCampaignState(input = {}) {
         }]
       })),
   }
+  mechanics.campaign_lifecycle = normalizeCampaignLifecycle(
+    state.mechanics?.campaign_lifecycle,
+    mechanics.death.campaign_status,
+  )
   mechanics.combat = { ...defaultMechanics().combat, ...(state.mechanics?.combat ?? {}) }
   mechanics.combat.initiative = Array.isArray(mechanics.combat.initiative) ? clone(mechanics.combat.initiative) : []
   mechanics.combat.reaction_window = mechanics.combat.reaction_window && typeof mechanics.combat.reaction_window === 'object' ? clone(mechanics.combat.reaction_window) : null
@@ -816,8 +923,11 @@ export function normalizeCampaignState(input = {}) {
     const spellSelections = normalizedSpellSelectionsFor(normalizedPlayer)
     if (Object.hasOwn(player, 'knownSpellIds')) normalizedPlayer.knownSpellIds = spellSelections.knownSpellIds ?? []
     if (Object.hasOwn(player, 'preparedSpellIds')) normalizedPlayer.preparedSpellIds = spellSelections.preparedSpellIds ?? []
-    return {
+    const normalizedActor = {
       ...normalizedPlayer,
+      level: Math.max(1, Math.min(12, safeInteger(player.level, 1))),
+      experience: Math.max(0, safeInteger(player.experience, 0)),
+      proficiency: proficiencyBonusForLevel(Math.max(1, Math.min(12, safeInteger(player.level, 1)))),
       hp: Math.max(0, safeInteger(player.hp, 0)),
       maxHp: Math.max(1, safeInteger(player.maxHp ?? player.max_hp, 1)),
       currency: normalizeCurrency(player.currency),
@@ -825,6 +935,14 @@ export function normalizeCampaignState(input = {}) {
       combatSpells: combatSpellsFor(normalizedPlayer),
       combatActions: combatActionsFor(normalizedPlayer),
     }
+    let characterSheet = null
+    try {
+      characterSheet = deriveCharacterSheet(normalizedActor)
+    } catch {
+      // Old snapshots without a supported class remain replayable; the
+      // normalized sheet becomes available once the build is migrated.
+    }
+    return { ...normalizedActor, inventoryLoad: inventoryLoadFor(normalizedActor), characterSheet }
   }) : []
   state.actors = Array.isArray(state.actors) ? state.actors.map((actor) => ({
     ...actor,
@@ -1150,8 +1268,11 @@ function lineCells(from, to) {
 function assertClearTrajectory(state, from, to) {
   const cells = tacticalCellMap(state)
   const trajectory = lineCells(from, to)
-  if (trajectory.slice(0, -1).some((point) => String(cells.get(positionKey(point))?.type) === 'wall')) {
-    throw new RulesValidationError('Траекторию перекрывает стена', 'TRAJECTORY_BLOCKED')
+  if (trajectory.slice(0, -1).some((point) => {
+    const cell = cells.get(positionKey(point))
+    return !cell || String(cell.type) === 'wall'
+  })) {
+    throw new RulesValidationError('Траекторию перекрывает стена или граница карты', 'TRAJECTORY_BLOCKED')
   }
   return trajectory
 }
@@ -1227,10 +1348,13 @@ function normalizeCommand(input, state) {
   command.merchant_id = command.merchant_id == null && command.merchantId == null ? null : String(command.merchant_id ?? command.merchantId).slice(0, 120)
   command.stock_id = command.stock_id == null && command.stockId == null ? null : String(command.stock_id ?? command.stockId).slice(0, 120)
   command.item_id = command.item_id == null && command.itemId == null ? null : String(command.item_id ?? command.itemId).slice(0, 120)
+  if (command.command_type === 'PurchaseMerchantService') {
+    command.service_id = command.service_id == null && command.serviceId == null ? null : String(command.service_id ?? command.serviceId).slice(0, 120)
+  }
   command.action_id = command.action_id == null && command.actionId == null ? null : String(command.action_id ?? command.actionId).slice(0, 120)
   command.quantity = safeInteger(command.quantity, 1)
   command.request_fingerprint = command.request_fingerprint == null ? null : String(command.request_fingerprint).slice(0, 128)
-  if (['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem'].includes(command.command_type) || MERCHANT_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
+  if (['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'].includes(command.command_type) || MERCHANT_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
     if (!command.house_rule_id) command.house_rule_id = ECONOMY_POLICY_ID
   }
   if (MERCHANT_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
@@ -1268,7 +1392,8 @@ function needsActor(type) {
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'EndCombat', 'EndTurn', 'StartRest', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
-    'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem']).has(type)
+    'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
+    'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
 
 function skillProficiencyBonus(actor, skill) {
@@ -1396,7 +1521,7 @@ function assertActorPermission(command, context, state) {
 
 function assertTurn(command, state, context = {}) {
   const combat = state.mechanics.combat
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'MoveActor', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'MoveActor', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   if (context.spellMovement && command.command_type === 'MoveActor' && command.reaction_movement === true) return
   const current = combat.initiative[combat.active_index]
@@ -1452,7 +1577,7 @@ function assertTurn(command, state, context = {}) {
       const label = resource === 'bonus_action' ? 'Бонусное действие' : resource === 'reaction' ? 'Реакция' : 'Действие'
       throw new RulesValidationError(`${label} на этом ходу уже потрачено`, resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : resource === 'reaction' ? 'REACTION_SPENT' : 'ACTION_SPENT')
     }
-  } else if (['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon'].includes(command.command_type)) {
+  } else if (['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'UseItem'].includes(command.command_type)) {
     const economy = combat.action_economy[command.actor_id]
     if (economy && economy.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   }
@@ -1536,8 +1661,50 @@ export function validateCommand(input, rawState, context = {}) {
       throw error
     }
   }
-  if (state.mechanics.death.campaign_status === 'party_defeated' && command.command_type !== 'EndCombat') {
-    throw new RulesValidationError('Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя', 'WORLD_ENDED')
+  if (CHARACTER_BUILD_COMMAND_TYPES.has(command.command_type)) {
+    try {
+      Object.assign(command, validateCharacterBuildCommand(command, state, context))
+    } catch (error) {
+      if (error instanceof CharacterBuildValidationError) {
+        throw new RulesValidationError(error.message, error.code)
+      }
+      throw error
+    }
+  }
+  if (ITEM_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
+    try {
+      Object.assign(command, validateItemLifecycleCommand(command, state, context))
+    } catch (error) {
+      if (error instanceof ItemLifecycleValidationError) {
+        throw new RulesValidationError(error.message, error.code)
+      }
+      throw error
+    }
+    if (command.command_type === 'UseItem' && state.mechanics.combat.active && command.target_id !== command.actor_id) {
+      const distance = distanceBetweenActors(state, command.actor_id, command.target_id)
+      if (distance == null || distance > Math.max(0, safeInteger(command.use_profile?.range_feet, 0))) {
+        throw new RulesValidationError('Цель находится слишком далеко для использования предмета', 'ITEM_TARGET_OUT_OF_RANGE')
+      }
+    }
+  }
+  if (CHARACTER_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
+    try {
+      Object.assign(command, command.command_type === 'LevelUp'
+        ? validateLevelUpCommand(command, state, context)
+        : validateCharacterImportCommand(command, state, context))
+    } catch (error) {
+      if (error instanceof CharacterLifecycleValidationError) {
+        throw new RulesValidationError(error.message, error.code)
+      }
+      throw error
+    }
+  }
+  const lifecycleStatus = state.mechanics.campaign_lifecycle.status
+  if (lifecycleStatus === 'paused') {
+    throw new RulesValidationError('Кампания приостановлена владельцем', 'CAMPAIGN_PAUSED')
+  }
+  if (['completed', 'failed', 'archived'].includes(lifecycleStatus) && command.command_type !== 'EndCombat') {
+    throw new RulesValidationError('Завершённая или архивная кампания доступна только для чтения', 'CAMPAIGN_READ_ONLY')
   }
   if (command.command_type === 'AdvanceScene') {
     if (context?.isAdmin !== true && context?.isDirector !== true) {
@@ -1588,6 +1755,9 @@ export function validateCommand(input, rawState, context = {}) {
       }
       if (command.command_type === 'MoveMerchant') {
         command.location = lifecycleText(command.location, 180, { required: true, code: 'INVALID_MERCHANT_LOCATION', label: 'Локация торговца' })
+        command.location_id = command.location_id
+          ? lifecycleText(command.location_id, 120, { required: true, code: 'INVALID_MERCHANT_LOCATION_ID', label: 'location_id торговца' })
+          : ''
       }
       if (command.command_type === 'SetMerchantAvailability') {
         if (typeof command.available !== 'boolean') {
@@ -1654,13 +1824,15 @@ export function validateCommand(input, rawState, context = {}) {
   if (command.command_type === 'ReduceHitPointMaximum' && !context.isAdmin && !context.serverAuthoritativeCombat) {
     throw new RulesValidationError('Уменьшать максимум ОЗ может только доверенный серверный эффект', 'MAX_HP_REDUCTION_FORBIDDEN')
   }
-  if (['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem'].includes(command.command_type)) {
+  if (['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'].includes(command.command_type)) {
     const actor = playerActor(state, command.actor_id)
     const merchant = findMerchant(state, command.merchant_id)
     if (!actor) throw new RulesValidationError('Торговать может только герой кампании', 'ACTOR_FORBIDDEN')
     if (!merchant) throw new RulesValidationError('Торговец не найден', 'MERCHANT_NOT_FOUND')
     if (merchant.available === false) throw new RulesValidationError('Торговец сейчас недоступен', 'MERCHANT_UNAVAILABLE')
-    if (!merchantIsAtLocation(merchant.location, state.scene?.location)) {
+    const serviceAllowsRemotePurchase = command.command_type === 'PurchaseMerchantService'
+      && findMerchantService(merchant, command.service_id)?.requires_presence === false
+    if (!serviceAllowsRemotePurchase && !merchantIsAtLocation(merchant, state.scene)) {
       throw new RulesValidationError('Торговец находится в другой локации', 'MERCHANT_NOT_PRESENT')
     }
     if (state.mechanics.combat.active) throw new RulesValidationError('Во время боя торговля недоступна', 'COMBAT_ACTIVE')
@@ -1688,10 +1860,25 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('Кошелёк торговца не может вместить столько монет', 'MERCHANT_PURSE_LIMIT_EXCEEDED')
       }
       const purchased = inventoryItemFromStock(stock)
+      if (inventoryWeight(actor) + Math.max(0, Number(purchased.weight) || 0) * command.quantity > carryingCapacity(actor)) {
+        throw new RulesValidationError('Покупка превысит грузоподъёмность героя', 'CARRYING_CAPACITY_EXCEEDED')
+      }
       const existingIndex = inventoryStackIndex(actor.inventory, purchased)
       const existing = existingIndex >= 0 ? actor.inventory[existingIndex] : null
       if (!existing && actor.inventory.length >= 200) throw new RulesValidationError('Инвентарь героя заполнен', 'INVENTORY_FULL')
       if (existing && safeInteger(existing.quantity, 1) + command.quantity > MAX_STOCK_QUANTITY) throw new RulesValidationError('Превышен предел количества предметов', 'INVENTORY_QUANTITY_EXCEEDED')
+    }
+    if (command.command_type === 'PurchaseMerchantService') {
+      const service = findMerchantService(merchant, command.service_id)
+      if (!service) throw new RulesValidationError('Услуга торговца не найдена', 'SERVICE_NOT_FOUND')
+      if (service.available === false) throw new RulesValidationError('Услуга торговца сейчас недоступна', 'SERVICE_UNAVAILABLE')
+      const quote = quoteMerchantService(merchant, actor.id, service)
+      if (!quote) throw new RulesValidationError('Для услуги не удалось рассчитать серверную цену', 'PRICE_UNAVAILABLE')
+      const total = checkedTransactionTotal(quote.price_cp, 1)
+      if (currencyToCopper(actor.currency) < total) throw new RulesValidationError('У героя недостаточно монет', 'INSUFFICIENT_FUNDS')
+      if (normalizeMerchantPurseCp(merchant.purse_cp) + total > MAX_CURRENCY_CP) {
+        throw new RulesValidationError('Кошелёк торговца не может вместить столько монет', 'MERCHANT_PURSE_LIMIT_EXCEEDED')
+      }
     }
     if (command.command_type === 'SellItem') {
       const item = inventoryItem(actor, command.item_id)
@@ -1712,6 +1899,14 @@ export function validateCommand(input, rawState, context = {}) {
       if (matchingStock && safeInteger(matchingStock.quantity, 0) + command.quantity > MAX_STOCK_QUANTITY) throw new RulesValidationError('Склад торговца заполнен', 'STOCK_LIMIT_EXCEEDED')
       if (!matchingStock && merchant.stock.length >= 500) throw new RulesValidationError('Склад торговца заполнен', 'MERCHANT_STOCK_FULL')
     }
+  }
+  if (command.command_type === 'GrantItem') {
+    const actor = findActor(state, command.actor_id)
+    const item = normalizeInventoryItem(command.item ?? {}, { idFallback: `grant:${command.command_id}`, preserveUnknown: true })
+    if (inventoryWeight(actor) + Math.max(0, Number(item.weight) || 0) * Math.max(1, safeInteger(item.quantity, 1)) > carryingCapacity(actor)) {
+      throw new RulesValidationError('Награда превысит грузоподъёмность героя', 'CARRYING_CAPACITY_EXCEEDED')
+    }
+    command.item = item
   }
   if (command.command_type === 'MakeAttack') {
     const actor = findActor(state, command.actor_id)
@@ -1763,6 +1958,7 @@ export function validateCommand(input, rawState, context = {}) {
     if (!state.mechanics.combat.active) throw new RulesValidationError('Сначала нужно начать бой и определить инициативу', 'COMBAT_NOT_ACTIVE')
     if (!isLivingActor(actor)) throw new RulesValidationError('Побеждённый участник не может творить заклинания', 'ACTOR_DEFEATED')
     if (!spell) throw new RulesValidationError('Заклинание не найдено среди доступных герою', 'SPELL_NOT_AVAILABLE')
+    assertMechanicsSupported(spell, 'заклинания')
     if (command.knock_out === true && !(spell.kind === 'attack' && spell.attackKind === 'melee')) {
       throw new RulesValidationError('Нокаутировать можно только ближней атакой заклинанием', 'KNOCKOUT_REQUIRES_MELEE_ATTACK')
     }
@@ -1825,9 +2021,11 @@ export function validateCommand(input, rawState, context = {}) {
     const reactionOption = reactionWindow?.action_options?.find((candidate) => candidate.id === command.action_id)
     const action = command.action_id === 'indomitable' ? {
       id: 'indomitable', name: 'Несгибаемый', category: 'class', target: 'self', actionType: 'free', range: 0,
+      mechanicsSupport: 'verified',
       resource: 'indomitable', cost: 1, description: 'Перебросить проваленный спасбросок с бонусом, равным уровню воина.',
     } : command.action_id === 'opportunity-attack' ? {
       id: 'opportunity-attack', name: 'Атака по возможности', category: 'common', target: 'self', actionType: 'reaction', range: 5,
+      mechanicsSupport: 'verified',
       description: 'Атаковать оружием противника, покидающего вашу досягаемость.',
     } : reactionSpell && reactionSpell.actionType === 'reaction' ? {
       id: `cast:${reactionSpell.id}`,
@@ -1837,10 +2035,12 @@ export function validateCommand(input, rawState, context = {}) {
       actionType: 'reaction',
       range: reactionSpell.range,
       resource: reactionOption?.resource ?? reactionSpell.slotResource,
+      mechanicsSupport: reactionSpell.mechanicsSupport,
       cost: 1,
       spell: { ...reactionSpell, reactionSlotLevel: reactionOption?.slot_level ?? reactionSpell.level },
     } : combatActionFor(actor, command.action_id)
     if (!action) throw new RulesValidationError('Это действие недоступно активному герою', 'COMBAT_ACTION_NOT_AVAILABLE')
+    assertMechanicsSupported(action, 'действия')
     if (!state.mechanics.combat.active && action.id !== 'indomitable') throw new RulesValidationError('Сначала нужно начать бой и определить инициативу', 'COMBAT_NOT_ACTIVE')
     if (!isLivingActor(actor) && !(action.id === 'indomitable' && actor && state.mechanics.death.saving_throws[command.actor_id])) throw new RulesValidationError('Побеждённый участник не может действовать', 'ACTOR_DEFEATED')
     if (action.id === 'indomitable') {
@@ -1892,7 +2092,7 @@ export function validateCommand(input, rawState, context = {}) {
     throw new RulesValidationError('Опутанное существо не может перемещаться', 'ACTOR_RESTRAINED')
   }
 
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES].includes(command.command_type)) {
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -1951,7 +2151,8 @@ function effectiveArmorClass(state, actor, id) {
   const conditions = conditionIdsFor(state, id)
   const listedArmor = Math.max(0, safeInteger(actor?.armor ?? actor?.armorClass, 10))
   const mageArmor = conditions.has('mage-armor') ? 13 + abilityModifier(actor?.abilities?.dex) : 0
-  return Math.max(listedArmor, mageArmor)
+  const equipmentArmor = derivedEquipmentArmorClass(actor) ?? 0
+  return Math.max(listedArmor, mageArmor, equipmentArmor)
     + (conditions.has('shielded') ? 5 : 0)
     + (conditions.has('shield-of-faith') ? 2 : 0)
 }
@@ -3319,6 +3520,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         break
       }
       const action = command.combat_action ?? combatActionFor(actor, command.action_id)
+      assertMechanicsSupported(action, 'действия')
       const actionTargetId = action.target === 'self' ? command.actor_id : targetId
       const actionEvent = (extra = {}) => eventFrom(command, 'CombatActionUsed', {
         action_id: action.id,
@@ -3789,7 +3991,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         rolls.push(check)
         events.push(eventFrom(command, 'DieRolled', check, []), actionEvent({ success: check.total <= Math.max(1, safeInteger(actor?.level, 1)), roll: check.total }))
       } else if (action.effect?.kind === 'special') {
-        events.push(actionEvent())
+        throw new RulesValidationError('Для действия требуется серверное решение правил', 'RULING_REQUIRED')
       } else {
         throw new RulesValidationError('Для действия нет серверного обработчика', 'COMBAT_ACTION_NOT_IMPLEMENTED')
       }
@@ -3806,6 +4008,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (authoritative) {
         const actor = findActor(state, command.actor_id)
         const spell = combatSpellFor(actor, command.spell_id)
+        assertMechanicsSupported(spell, 'заклинания')
         if (!command.counterspell_bypassed) {
           const reaction = counterspellReactionFor(state, command.actor_id)
           if (reaction) {
@@ -4925,6 +5128,37 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, [command.actor_id]))
       break
     }
+    case 'PurchaseMerchantService': {
+      const actor = playerActor(state, command.actor_id)
+      const merchant = findMerchant(state, command.merchant_id)
+      const service = findMerchantService(merchant, command.service_id)
+      const quote = quoteMerchantService(merchant, actor.id, service)
+      const total = checkedTransactionTotal(quote.price_cp, 1)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const merchantPurseBeforeCp = normalizeMerchantPurseCp(merchant.purse_cp)
+      events.push(eventFrom(command, 'MerchantServicePurchased', {
+        merchant_id: merchant.id,
+        service_id: service.service_id,
+        service_name: service.name,
+        service_kind: service.kind,
+        duration_minutes: service.duration_minutes,
+        requires_presence: service.requires_presence,
+        base_price_cp: quote.base_price_cp,
+        total_price_cp: total,
+        price_multiplier_bps: quote.multiplier_bps,
+        price_provenance: quote.price_provenance,
+        currency_before: normalizeCurrency(actor.currency),
+        currency_after: copperToCurrency(balanceBeforeCp - total),
+        balance_before_cp: balanceBeforeCp,
+        balance_after_cp: balanceBeforeCp - total,
+        merchant_purse_before_cp: merchantPurseBeforeCp,
+        merchant_purse_after_cp: merchantPurseBeforeCp + total,
+        policy_id: MERCHANT_SERVICES_POLICY_ID,
+        economy_policy_id: ECONOMY_POLICY_ID,
+        request_fingerprint: command.request_fingerprint ?? null,
+      }, [command.actor_id]))
+      break
+    }
     case 'SellItem': {
       const actor = playerActor(state, command.actor_id)
       const merchant = findMerchant(state, command.merchant_id)
@@ -4998,6 +5232,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         merchant_id: command.merchant_id,
         location_before: merchant.location,
         location_after: command.location,
+        location_id_before: merchant.location_id ?? '',
+        location_id_after: command.location_id ?? '',
         policy_id: ECONOMY_POLICY_ID,
         request_fingerprint: command.request_fingerprint,
       }, []))
@@ -5015,6 +5251,18 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       break
     }
     case 'AdvanceScene': {
+      if (command.party_decision) {
+        const currentDecision = state.agentInteraction
+        if (!currentDecision || currentDecision.status !== 'resolved'
+          || String(currentDecision.id) !== String(command.party_decision.interaction_id)
+          || String(currentDecision.resolvedOptionId) !== String(command.party_decision.resolved_option_id)) {
+          throw new RulesValidationError('Переход сцены не связан с текущим подтверждённым решением группы', 'PARTY_DECISION_REQUIRED')
+        }
+        events.push(eventFrom(command, 'PartyDecisionConsumed', {
+          interaction_id: currentDecision.id,
+          resolved_option_id: currentDecision.resolvedOptionId,
+        }, currentDecision.eligibleActorIds ?? []))
+      }
       const transition = createSceneTransition(command.scene_args, state)
       const metadata = canonicalSceneMetadata(command.scene_args, transition)
       const canonicalTransition = { ...transition, scene: { ...transition.scene, ...metadata } }
@@ -5034,6 +5282,27 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId })) {
         events.push(eventFrom({ ...command, visibility: memoryEvent.visibility }, memoryEvent.event_type, memoryEvent.payload, memoryEvent.target_ids))
       }
+      const priorTitle = String(state.scene?.title || state.scene?.location || 'Предыдущая сцена').slice(0, 180)
+      const priorSummary = String(
+        command.scene_args?.outcome
+          || command.scene_args?.completed_objective
+          || state.scene?.objective
+          || `Отряд покинул ${state.scene?.location || 'предыдущую локацию'}.`,
+      ).slice(0, 2_000)
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'NarrativeSummaryRecorded', {
+        summary: {
+          id: `scene-summary:${String(command.command_id).slice(0, 100)}`,
+          kind: 'scene',
+          title: priorTitle,
+          summary: priorSummary,
+          visibility: 'party',
+          entity_ids: [],
+          thread_ids: [],
+          source_event_ids: [sceneEventId],
+          source_command_id: command.command_id,
+          recorded_at_minutes: Math.max(0, safeInteger(state.mechanics?.world_time?.elapsed_minutes, 0)),
+        },
+      }, []))
       break
     }
     case 'AdvanceTime': {
@@ -5127,8 +5396,16 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'UpsertWorldEntity':
     case 'RecordWorldFact':
     case 'RevealWorldFact':
+    case 'RecordKnowledgeRevelation':
+    case 'RecordWorldRelationship':
     case 'UpsertQuest':
-    case 'AdvanceQuestClock': {
+    case 'AdvanceQuestClock':
+    case 'UpsertNarrativeThread':
+    case 'AdvanceNarrativeThreadClock':
+    case 'RecordNpcBelief':
+    case 'RecordRumor':
+    case 'ResolveEpistemicClaim':
+    case 'RecordNarrativeSummary': {
       const worldEvent = worldMemoryEvent(command)
       events.push(eventFrom(command, worldEvent.event_type, worldEvent.payload, worldEvent.target_ids))
       break
@@ -5137,7 +5414,69 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'RecordNpcSocialTurn':
     case 'ResolveNpcPromise': {
       for (const socialEvent of npcSocialEvents(command, state)) {
-        events.push(eventFrom({ ...command, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+        const resolvedSocialEvent = eventFrom({ ...command, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids)
+        if (socialEvent.event_id) resolvedSocialEvent.event_id = socialEvent.event_id
+        events.push(resolvedSocialEvent)
+      }
+      break
+    }
+    case 'SetCharacterChoices':
+    case 'SetSpellSelections': {
+      const buildEvent = characterBuildEvent(command)
+      events.push(eventFrom(command, buildEvent.event_type, buildEvent.payload, buildEvent.target_ids))
+      break
+    }
+    case 'LevelUp': {
+      const lifecycleEvent = levelUpEvent(command)
+      events.push(eventFrom(command, lifecycleEvent.event_type, lifecycleEvent.payload, lifecycleEvent.target_ids))
+      break
+    }
+    case 'ImportCharacter': {
+      const lifecycleEvent = characterImportEvent(command)
+      events.push(eventFrom(command, lifecycleEvent.event_type, lifecycleEvent.payload, lifecycleEvent.target_ids))
+      break
+    }
+    case 'EquipItem':
+    case 'TransferItem':
+    case 'AttuneItem': {
+      for (const itemEvent of itemLifecycleEvents(command)) {
+        events.push(eventFrom(command, itemEvent.event_type, itemEvent.payload, itemEvent.target_ids))
+      }
+      break
+    }
+    case 'UseItem': {
+      const actor = findActor(state, command.actor_id)
+      const item = inventoryItem(actor, command.item_id)
+      const use = command.use_profile
+      events.push(eventFrom(command, 'ItemUsed', {
+        item_id: item.id,
+        item_name: item.name,
+        kind: use.kind,
+        target_id: command.target_id,
+        combat_action: use.combat_action,
+      }, [command.target_id]))
+      if (use.kind === 'healing') {
+        const roll = diceService.roll(use.expression, `item:${item.id}:healing`, command.actor_id, command.visibility ?? 'party')
+        rolls.push(roll)
+        events.push(eventFrom(command, 'DieRolled', roll, []))
+        const target = findActor(state, command.target_id)
+        const before = actorHp(target)
+        const after = Math.min(actorMaxHp(target), before + Math.max(0, safeInteger(roll.total, 0)))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', {
+          requested_amount: Math.max(0, safeInteger(roll.total, 0)),
+          applied_amount: after - before,
+          hp_before: before,
+          hp_after: after,
+          item_id: item.id,
+          item_name: item.name,
+        }, [command.target_id]))
+      }
+      if (safeInteger(use.consumes, 0) > 0) {
+        events.push(eventFrom(command, 'ItemConsumed', {
+          item_id: item.id,
+          item_name: item.name,
+          quantity: safeInteger(use.consumes, 1),
+        }, [command.actor_id]))
       }
       break
     }
@@ -5324,6 +5663,27 @@ function replaceActor(state, id, updater) {
   if (Array.isArray(state.enemies)) state.enemies = state.enemies.map((actor) => actorId(actor) === id ? updater(actor) : actor)
 }
 
+function refreshPlayerDerivedState(state, actorIds) {
+  const requested = new Set((actorIds ?? []).map(String))
+  state.players = (state.players ?? []).map((actor) => {
+    if (requested.size && !requested.has(actorId(actor))) return actor
+    let characterSheet = actor.characterSheet ?? null
+    try {
+      characterSheet = deriveCharacterSheet(actor)
+    } catch {}
+    return {
+      ...actor,
+      ...(characterSheet ? {
+        armor: characterSheet.armor_class.value,
+        speed: characterSheet.speed.value,
+        proficiency: characterSheet.proficiency_bonus,
+      } : {}),
+      characterSheet,
+      inventoryLoad: inventoryLoadFor(actor),
+    }
+  })
+}
+
 function spendCombatEconomy(state, id, resource, { magic = false } = {}) {
   if (!state.mechanics.combat.active || !id) return
   const current = state.mechanics.combat.action_economy[id] ?? actionEconomy()
@@ -5445,7 +5805,7 @@ function synchronizeTacticalTurn(state) {
 }
 
 export function applyGameEvent(rawState, event) {
-  if (['LegacyStateImported', 'LegacyStateSynchronized'].includes(event?.event_type) && event.payload?.state && typeof event.payload.state === 'object') {
+  if (event?.event_type === 'LegacyStateImported' && event.payload?.state && typeof event.payload.state === 'object') {
     const imported = normalizeCampaignState(event.payload.state)
     imported.state_version = Number.isSafeInteger(event.state_version_after) ? event.state_version_after : 1
     return imported
@@ -5455,6 +5815,85 @@ export function applyGameEvent(rawState, event) {
   const target = targets[0] ?? event.actor_id
   const payload = event.payload ?? {}
   switch (event.event_type) {
+    case 'PublicDieRolled':
+      state.lastDiceRoll = payload.roll && typeof payload.roll === 'object'
+        ? clone(payload.roll)
+        : state.lastDiceRoll
+      break
+    case 'CampaignActivated':
+    case 'CampaignResumed':
+      state.mechanics.campaign_lifecycle = {
+        ...state.mechanics.campaign_lifecycle,
+        status: 'active',
+        reason: null,
+        paused_at: null,
+        changed_by: payload.changed_by ?? event.actor_id ?? null,
+      }
+      break
+    case 'CampaignPaused':
+      state.mechanics.campaign_lifecycle = {
+        ...state.mechanics.campaign_lifecycle,
+        status: 'paused',
+        reason: String(payload.reason || 'manual').slice(0, 240),
+        paused_at: payload.occurred_at ?? event.occurred_at ?? null,
+        changed_by: payload.changed_by ?? event.actor_id ?? null,
+      }
+      break
+    case 'CampaignCompleted':
+    case 'CampaignFailed':
+      state.mechanics.campaign_lifecycle = {
+        ...state.mechanics.campaign_lifecycle,
+        status: event.event_type === 'CampaignCompleted' ? 'completed' : 'failed',
+        reason: String(payload.reason || (event.event_type === 'CampaignCompleted' ? 'completed' : 'failed')).slice(0, 240),
+        concluded_at: payload.occurred_at ?? event.occurred_at ?? null,
+        epilogue: payload.epilogue == null ? state.mechanics.campaign_lifecycle.epilogue : String(payload.epilogue).slice(0, 8_000),
+        changed_by: payload.changed_by ?? event.actor_id ?? null,
+      }
+      break
+    case 'CampaignArchived':
+      state.mechanics.campaign_lifecycle = {
+        ...state.mechanics.campaign_lifecycle,
+        status: 'archived',
+        reason: String(payload.reason || 'archived').slice(0, 240),
+        archived_at: payload.occurred_at ?? event.occurred_at ?? null,
+        changed_by: payload.changed_by ?? event.actor_id ?? null,
+      }
+      break
+    case 'PartyDecisionOpened':
+      state.agentInteraction = normalizePartyDecision(payload.interaction)
+      break
+    case 'PartyVoteCast': {
+      if (state.agentInteraction?.id !== String(payload.interaction_id) || state.agentInteraction.status !== 'open') break
+      const optionIds = new Set(state.agentInteraction.options.map((option) => String(option.id)))
+      const heroId = String(payload.hero_id ?? '')
+      const optionId = String(payload.option_id ?? '')
+      if (heroId && optionIds.has(optionId)) {
+        state.agentInteraction = {
+          ...state.agentInteraction,
+          votes: { ...state.agentInteraction.votes, [heroId]: optionId },
+        }
+      }
+      break
+    }
+    case 'PartyDecisionResolved': {
+      if (state.agentInteraction?.id !== String(payload.interaction_id)) break
+      const optionId = String(payload.resolved_option_id ?? '')
+      if (!state.agentInteraction.options.some((option) => String(option.id) === optionId)) break
+      state.agentInteraction = {
+        ...state.agentInteraction,
+        votes: clone(plainObject(payload.votes) ? payload.votes : state.agentInteraction.votes),
+        status: 'resolved',
+        resolvedOptionId: optionId,
+        ...(plainObject(payload.roll) ? { roll: clone(payload.roll) } : {}),
+      }
+      break
+    }
+    case 'PartyDecisionConsumed':
+      if (state.agentInteraction?.id === String(payload.interaction_id)
+        && state.agentInteraction?.resolvedOptionId === String(payload.resolved_option_id)) {
+        state.agentInteraction = null
+      }
+      break
     case 'SceneAdvanced': {
       state.scene = clone(plainObject(payload.scene) ? payload.scene : {})
       state.worldMap = clone(plainObject(payload.worldMap) ? payload.worldMap : ensureCampaignWorldMap({ ...state, scene: payload.scene }))
@@ -5724,6 +6163,13 @@ export function applyGameEvent(rawState, event) {
       const memberIds = state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId)
       if (memberIds.length && memberIds.every((id) => state.mechanics.death.heroes[id]?.status === 'dead')) {
         state.mechanics.death.campaign_status = 'party_defeated'
+        state.mechanics.campaign_lifecycle = {
+          ...state.mechanics.campaign_lifecycle,
+          status: 'failed',
+          reason: 'party_final_death',
+          concluded_at: event.occurred_at ?? event.created_at ?? null,
+          changed_by: 'system',
+        }
       }
       break
     }
@@ -5914,8 +6360,19 @@ export function applyGameEvent(rawState, event) {
       appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'equipment', actorId: event.actor_id, actorKind: 'player', itemId: payload.item_id, itemName: payload.item_name })
       break
     }
+    case 'ItemEquipped':
+    case 'ItemUnequipped':
+    case 'ItemTransferred':
+    case 'ItemAttunementChanged':
+      state.players = applyItemLifecycleEventToPlayers(state.players, event)
+      refreshPlayerDerivedState(state, targets)
+      break
+    case 'ItemUsed':
+      if (payload.combat_action) spendCombatEconomy(state, event.actor_id, payload.combat_action)
+      break
     case 'ItemConsumed':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: (actor.inventory ?? []).map((item) => String(item.id) === String(payload.item_id) ? { ...item, quantity: Math.max(0, safeInteger(item.quantity, 1) - safeInteger(payload.quantity, 1)) } : item).filter((item) => item.quantity > 0) }))
+      refreshPlayerDerivedState(state, [target])
       break
     case 'MerchantCreated': {
       const merchant = lifecycleMerchantFromCanonical(payload.merchant)
@@ -5966,10 +6423,21 @@ export function applyGameEvent(rawState, event) {
         policyId: payload.policy_id ?? ECONOMY_POLICY_ID, requestFingerprint: payload.request_fingerprint ?? null,
       })
       break
+    case MERCHANT_ECONOMY_CLOCK_EVENT_TYPE:
+      replaceMerchant(state, payload.merchant_id, (merchant) => applyMerchantRestockPlan(merchant, payload))
+      appendEconomyLog(state, event, {
+        type: 'merchant-economy-clock', merchantId: payload.merchant_id,
+        scheduledForWorldMinute: safeInteger(payload.scheduled_for_world_minute, 0),
+        processedAtWorldMinute: safeInteger(payload.processed_at_world_minute, 0),
+        overdueIntervals: Math.max(1, safeInteger(payload.overdue_intervals, 1)),
+        policyId: payload.policy_id ?? MERCHANT_RESTOCK_POLICY_ID,
+      })
+      break
     case 'MerchantMoved':
       replaceMerchant(state, payload.merchant_id, (merchant) => ({
         ...merchant,
         location: lifecycleText(payload.location_after, 180, { required: true, code: 'INVALID_MERCHANT_LOCATION', label: 'Локация торговца' }),
+        location_id: payload.location_id_after == null ? '' : lifecycleText(payload.location_id_after, 120, { code: 'INVALID_MERCHANT_LOCATION_ID', label: 'location_id торговца' }),
       }))
       appendEconomyLog(state, event, {
         type: 'merchant-moved', merchantId: payload.merchant_id,
@@ -6036,12 +6504,35 @@ export function applyGameEvent(rawState, event) {
           : stock),
       }))
       if (payload.item_appraisal) setItemAppraisal(state, target, payload.item?.id, payload.item_appraisal)
+      refreshPlayerDerivedState(state, [target])
       appendEconomyLog(state, event, {
         type: 'purchase', actorId: target, merchantId: payload.merchant_id, stockId: payload.stock_id,
         catalogId: payload.catalog_id ?? null, itemId: payload.item?.id ?? null, itemName: payload.item?.name ?? null,
         quantity: safeInteger(payload.quantity, 0), unitPriceCp: safeInteger(payload.unit_price_cp, 0), totalPriceCp: safeInteger(payload.total_price_cp, 0),
         merchantPurseBeforeCp: safeInteger(payload.merchant_purse_before_cp, 0), merchantPurseAfterCp: safeInteger(payload.merchant_purse_after_cp, 0),
         priceProvenance: payload.price_provenance ?? 'custom', policyId: payload.policy_id ?? ECONOMY_POLICY_ID,
+      })
+      break
+    case 'MerchantServicePurchased':
+      replaceActor(state, target, (actor) => ({
+        ...actor,
+        currency: normalizeCurrency(payload.currency_after),
+      }))
+      replaceMerchant(state, payload.merchant_id, (merchant) => ({
+        ...merchant,
+        purse_cp: Object.hasOwn(payload, 'merchant_purse_after_cp')
+          ? normalizeMerchantPurseCp(payload.merchant_purse_after_cp)
+          : normalizeMerchantPurseCp(merchant.purse_cp),
+      }))
+      appendEconomyLog(state, event, {
+        type: 'service', actorId: target, merchantId: payload.merchant_id,
+        serviceId: payload.service_id, serviceName: payload.service_name,
+        serviceKind: payload.service_kind, durationMinutes: safeInteger(payload.duration_minutes, 0),
+        totalPriceCp: safeInteger(payload.total_price_cp, 0),
+        merchantPurseBeforeCp: safeInteger(payload.merchant_purse_before_cp, 0),
+        merchantPurseAfterCp: safeInteger(payload.merchant_purse_after_cp, 0),
+        policyId: payload.policy_id ?? MERCHANT_SERVICES_POLICY_ID,
+        requestFingerprint: payload.request_fingerprint ?? null,
       })
       break
     case 'MerchantSaleCompleted':
@@ -6053,6 +6544,7 @@ export function applyGameEvent(rawState, event) {
           : item).filter((item) => safeInteger(item.quantity, 1) > 0),
       }))
       if (!inventoryItem(playerActor(state, target), payload.item?.id)) removeItemAppraisal(state, target, payload.item?.id)
+      refreshPlayerDerivedState(state, [target])
       replaceMerchant(state, payload.merchant_id, (merchant) => {
         const purseCp = Object.hasOwn(payload, 'merchant_purse_after_cp')
           ? normalizeMerchantPurseCp(payload.merchant_purse_after_cp)
@@ -6354,6 +6846,50 @@ export function applyGameEvent(rawState, event) {
     case 'ItemGranted':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: [...(Array.isArray(actor.inventory) ? actor.inventory : []), clone(payload.item)] }))
       break
+    case 'SpellSelectionsUpdated':
+      replaceActor(state, target, (actor) => ({
+        ...actor,
+        knownSpellIds: uniqueStrings(payload.known_spell_ids),
+        preparedSpellIds: uniqueStrings(payload.prepared_spell_ids),
+      }))
+      break
+    case 'CharacterChoicesUpdated':
+      replaceActor(state, target, (actor) => ({
+        ...actor,
+        subclass: String(payload.subclass ?? ''),
+        classSkillProficiencies: uniqueStrings(payload.class_skill_proficiencies),
+        selectedFeatureIds: uniqueStrings(payload.selected_feature_ids),
+      }))
+      break
+    case 'CharacterLeveledUp':
+    case 'CharacterImported': {
+      const next = applyCharacterLifecycleEvent(state, event)
+      state.players = next.players
+      let leveledActor = state.players.find((actor) => actorId(actor) === String(target))
+      if (leveledActor) {
+        const sheet = deriveCharacterSheet(leveledActor)
+        state.players = state.players.map((actor) => actorId(actor) === String(target) ? {
+          ...actor,
+          proficiency: sheet.proficiency_bonus,
+          armor: sheet.armor_class.value,
+          speed: sheet.speed.value,
+          characterSheet: sheet,
+          combatSpells: combatSpellsFor(actor),
+          combatActions: combatActionsFor(actor),
+        } : actor)
+        leveledActor = state.players.find((actor) => actorId(actor) === String(target))
+        const plan = classResourcePlan(leveledActor)
+        const resources = state.mechanics.resources[target] ?? {}
+        state.mechanics.resources[target] = Object.fromEntries(Object.entries(plan.maximums).map(([resource, maximum]) => [
+          resource,
+          {
+            current: Math.max(0, Math.min(maximum, safeInteger(resources[resource]?.current, maximum))),
+            max: maximum,
+          },
+        ]))
+      }
+      break
+    }
     case 'ExperienceAwarded': {
       const recipientIds = uniqueStrings(Array.isArray(payload.recipients) ? payload.recipients : targets)
       const playerIds = new Set(state.players.map(actorId))
@@ -6372,8 +6908,16 @@ export function applyGameEvent(rawState, event) {
     case 'WorldEntityUpserted':
     case 'WorldFactRecorded':
     case 'WorldFactRevealed':
+    case 'KnowledgeRevealed':
+    case 'WorldRelationshipRecorded':
     case 'QuestUpserted':
     case 'QuestClockAdvanced':
+    case 'NarrativeThreadUpserted':
+    case 'NarrativeThreadClockAdvanced':
+    case 'NpcBeliefRecorded':
+    case 'RumorRecorded':
+    case 'EpistemicClaimTruthResolved':
+    case 'NarrativeSummaryRecorded':
       state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
       break
     case 'RulingRecorded':
@@ -6420,6 +6964,10 @@ export function resolveCommands(commands, initialState, options) {
 export function eventSummary(event) {
   const payload = event.payload ?? {}
   switch (event.event_type) {
+    case 'PartyDecisionOpened': return `Party decision opened: ${payload.interaction?.title || payload.interaction?.id}`
+    case 'PartyVoteCast': return `${payload.hero_id || event.actor_id} voted for ${payload.option_id}`
+    case 'PartyDecisionResolved': return `Party decision resolved: ${payload.resolved_option_id}`
+    case 'PartyDecisionConsumed': return `Party decision consumed: ${payload.resolved_option_id}`
     case 'NpcSocialProfileUpserted': return `NPC profile updated: ${payload.npc?.name || payload.npc?.id}`
     case 'NpcConversationRecorded': return `Conversation recorded with ${payload.conversation?.npc_id}`
     case 'NpcRelationshipAdjusted': return `NPC relationship changed by ${payload.delta}: ${payload.tier_before || 'neutral'} -> ${payload.tier_after || 'neutral'}`
@@ -6431,6 +6979,10 @@ export function eventSummary(event) {
     case 'WorldFactRevealed': return `Fact ${payload.fact_id} revealed to ${(event.target_ids ?? []).length} heroes`
     case 'QuestUpserted': return `Quest updated: ${payload.quest?.title || payload.quest?.id}`
     case 'QuestClockAdvanced': return `Quest clock ${payload.quest_id} advanced by ${payload.amount}`
+    case 'CampaignPacingAdvanced': return `Темп кампании: ${payload.phase || 'development'}, напряжение ${payload.tension_after ?? 0}`
+    case 'TravelResolved': return `Отряд завершил путь из ${payload.from || 'предыдущей локации'} в ${payload.to || 'новую локацию'} за ${payload.duration_minutes || 0} мин.`
+    case 'DowntimeResolved': return `Передышка завершена: ${payload.kind || 'downtime'}, ${payload.duration_minutes || 0} мин.`
+    case 'RandomEncounterTriggered': return `В пути возникла случайная встреча: ${payload.theme || 'unknown'} (${payload.difficulty || 'medium'})`
     case 'SceneAdvanced': return `Сцена перемещена из ${payload.location_before || 'прежней локации'} в ${payload.location_after || payload.scene?.location || 'новую локацию'}`
     case 'EncounterCreated': return `Создано столкновение: ${(payload.encounter?.enemies ?? []).map((enemy) => enemy.name).join(', ')}`
     case 'EncounterEnded': return `Столкновение завершено: ${payload.reason || payload.outcome || 'resolved'}`
@@ -6454,10 +7006,12 @@ export function eventSummary(event) {
     case 'MerchantBargainResolved': return payload.success ? 'Торговец согласился изменить условия сделки' : 'Торговец отказался уступать в цене'
     case 'MerchantItemAppraised': return `Торговец оценил предмет «${payload.item_name ?? payload.item_id}» в ${payload.base_unit_price_cp ?? 0} мм`
     case 'MerchantPurchaseCompleted': return `Покупка: ${payload.item?.name || payload.catalog_id || 'предмет'}, ${payload.quantity} шт. за ${payload.total_price_cp} мм.`
+    case 'MerchantServicePurchased': return `Услуга: ${payload.service_name || payload.service_id || 'услуга'} за ${payload.total_price_cp} мм.`
     case 'MerchantSaleCompleted': return `Продажа: ${payload.item?.name || payload.catalog_id || 'предмет'}, ${payload.quantity} шт. за ${payload.total_price_cp} мм.`
     case 'MerchantCreated': return `Создан торговец ${payload.merchant?.name || payload.merchant_id}`
     case 'MerchantConfigured': return `Обновлены настройки торговца ${payload.merchant_id}`
     case 'MerchantRestocked': return `Склад торговца ${payload.merchant_id} пополнен на ${safeInteger(payload.total_quantity_added, 0)} ед.`
+    case MERCHANT_ECONOMY_CLOCK_EVENT_TYPE: return `Экономические часы торговца ${payload.merchant_id} переведены на ${safeInteger(payload.processed_at_world_minute, 0)} минуту`
     case 'MerchantMoved': return `Торговец ${payload.merchant_id} перемещён в ${payload.location_after}`
     case 'MerchantAvailabilityChanged': return `Торговец ${payload.merchant_id} ${payload.available_after ? 'доступен' : 'недоступен'}`
     case 'AbilityCheckResolved': return `Проверка ${payload.ability}: ${payload.total} против СЛ ${payload.difficulty}`

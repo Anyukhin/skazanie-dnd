@@ -13,9 +13,9 @@
 5. Состояние меняется только применением сохранённых событий.
 6. Команда с повторным `idempotency_key` не создаёт события повторно.
 7. Narrator получает только разрешённую visible projection.
-8. Новый путь можно включать постепенно и откатывать без потери legacy room.
+8. Compatibility read-модель можно восстановить из event stream без потери авторитетного состояния.
 
-Часть этой схемы уже подключена: runtime собирает Rule Pack/Retriever, Dice Service/Roll Registry, Rules Engine, FileEventStore, Game Orchestrator, Narrator/Verifier и trace store, а режимы переключаются по кампании. Этот документ описывает **конечные инварианты**, а не заявляет, что они уже полностью достигнуты. Сейчас остаются legacy full-room compatibility writes, частичная event→room projection, in-memory roll registry, неполное P0-покрытие и ограниченные integration tests.
+Runtime уже переведён на enforce-only: Rule Pack/Retriever, durable Dice Service/Roll Registry, Rules Engine, FileEventStore с hash-verified projection outbox/checkpoint, Game Orchestrator, Narrator/Verifier и trace store работают без legacy/shadow веток. Этот документ описывает **конечные инварианты**. Сейчас остаются data cutover старых сохранений, single-writer файловое хранение, неполное покрытие правил и ограниченные production-like integration/soak tests.
 
 ## Целевой игровой цикл
 
@@ -142,7 +142,12 @@ normalize query
 
 Append должен быть атомарным относительно stream version и idempotency key. Snapshot — производная оптимизация; event log остаётся источником аудита. Legacy JSON сохраняется отдельно до завершения миграции.
 
-Текущий `FileEventStore` уже реализует этот контракт для одного файлового deployment и подключён к runtime: immutable commit files, lock, idempotency, optimistic version, checksummed snapshots и replay. В целевой архитектуре он остаётся concrete adapter, а не частью Rules Engine. До production-grade cutover нужны failure/concurrency tests и единая transaction boundary либо восстанавливаемый protocol для event commit, roll consume, legacy projection и trace.
+Текущий `FileEventStore` реализует этот контракт для одного файлового
+deployment: immutable commits, lock, idempotency, optimistic version,
+checksummed snapshots, replay и durable projection-outbox/checkpoint protocol.
+Crash-between-commit/projection покрыт HTTP recovery test. До production-grade
+cutover остаются multi-process database coordination и единая граница для
+внешнего roll consume/trace.
 
 ### Narrator
 
@@ -181,7 +186,9 @@ ruleset_locked_at
 
 Rules Engine, Retriever и event append должны получить один и тот же lock. Command с другим ruleset отклоняется до roll. Обновление pack создаёт новый version/pack ID; оно не меняет активные кампании автоматически.
 
-## Режимы миграции
+## Исторические режимы миграции
+
+`legacy` и `shadow` ниже описывают завершённую стратегию перехода. Они больше не являются исполняемыми режимами.
 
 ### `legacy`
 
@@ -196,7 +203,7 @@ Rules Engine, Retriever и event append должны получить один �
 - Shadow не append-ит production events и не расходует второй независимый случайный roll. Для сравнения используются записанные legacy roll values либо отдельный deterministic shadow seed.
 - Расхождения записываются в обезличенный comparison report.
 
-Текущая реализация сохраняет legacy outcome авторитетным и формирует comparison trace, но может независимо получить случайность в legacy и новом engine. Это известное отклонение от целевого single-roll invariant; его необходимо устранить до использования divergence как статистически корректного сигнала.
+Этот режим удалён вместе с comparison trace и вторым независимым броском.
 
 ### `enforce`
 
@@ -204,9 +211,7 @@ Rules Engine, Retriever и event append должны получить один �
 - Legacy adapter формирует совместимый ответ для UI.
 - При внутренней ошибке выполняется явный fail-closed/rollback path; нельзя незаметно применить legacy мутацию поверх частично append-нутых событий.
 
-Resolver должен поддерживать precedence `test > user > campaign > global > default`, но любое включение `enforce` требует durable persistence, migrations и integration tests.
-
-Resolver и admin per-campaign switch уже работают. Наличие одного временного HTTP integration-сценария достаточно для smoke-проверки, но не заменяет migration rehearsal, browser/RouterAI/restart tests и эксплуатационный gate для реальной кампании.
+`enforce` является единственным runtime. Retired значения старых metadata нормализуются при чтении, а admin switch возвращает `410`.
 
 ## Visibility
 
@@ -224,7 +229,7 @@ Projection строится на сервере до обращения к LLM �
 
 Каждый ход сохраняет:
 
-- engine mode и versions;
+- фиксированный runtime и versions;
 - intent и retrieval queries;
 - retrieved rule IDs и scores;
 - ruling/house rule;
@@ -233,16 +238,16 @@ Projection строится на сервере до обращения к LLM �
 - events;
 - state versions;
 - verifier result;
-- divergence report в shadow.
 
 `/why` должен читать эту запись через visibility filter. Он объясняет уже принятое решение и никогда не запускает ход повторно. Сейчас endpoint проверяет доступ пользователя к кампании, но не выполняет полную event-level projection содержимого explanation; это незакрытая часть целевого контракта.
 
 ## Persistence evolution
 
 1. **Выполнено:** подключить FileEventStore adapter за orchestrator без изменения формы основного UI/API.
-2. **Частично:** создавать `LegacyStateImported` для новых и лениво открываемых кампаний; metadata runner остаётся отдельным и не reconciles `legacy_import_required`.
-3. **Частично:** хранить event state отдельно и проецировать совместимые поля в legacy room; commit и projection пока не атомарны.
-4. **Частично:** unit-тестировать replay/snapshot и сравнение shadow; добавить restart/concurrency и реальные migration datasets.
-5. **Доступно только как canary-механизм:** переключать отдельную тестовую кампанию на enforce после backup/rehearsal.
+2. **Выполнено для новых кампаний:** создавать initial state непосредственно в Event Store; live lazy import удалён.
+3. **Выполнено для single-writer:** event state проецируется в compatibility room через recoverable hash-verified outbox/checkpoint protocol.
+4. **Частично:** replay/snapshot, restart, concurrent players и crash recovery
+   покрыты; остаются реальные migration datasets и multiprocess/load.
+5. **Заблокировано аудитом данных:** старые кампании импортируются только после backup и зелёного replay/projection hash audit.
 6. Перенести event/snapshot storage в транзакционную БД или эквивалентный durable protocol при необходимости нескольких процессов.
-7. Удалять legacy path только после миграции всех кампаний и проверенного rollback window.
+7. После миграции всех кампаний и rollback window удалить compatibility room read-модель.

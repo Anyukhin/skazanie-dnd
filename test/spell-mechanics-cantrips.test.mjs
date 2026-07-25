@@ -26,10 +26,11 @@ function stateFor(characterClass = 'wizard', level = 1) {
 
 const applyAll = (state, events) => events.reduce((current, event) => applyGameEvent(current, event), state)
 
-test('проверенный слой исправляет ошибочные эвристические карточки dnd.su', () => {
+test('проверенные параметры каталога исполняются как честно ограниченная partial-механика', () => {
   const state = stateFor('wizard')
   const caster = state.players[0]
-  assert.ok(spellCatalogInfo().verifiedMechanics >= 35)
+  assert.equal(spellCatalogInfo().verifiedMechanics, 0)
+  assert.ok(spellCatalogInfo().partialMechanics >= 35)
   const classForSpell = { 'acid-splash': 'wizard', 'chill-touch': 'wizard', 'thorn-whip': 'druid', shield: 'wizard' }
   assert.deepEqual(Object.fromEntries(['acid-splash', 'chill-touch', 'thorn-whip', 'shield'].map((id) => {
     const spell = combatSpellFor(stateFor(classForSpell[id]).players[0], id)

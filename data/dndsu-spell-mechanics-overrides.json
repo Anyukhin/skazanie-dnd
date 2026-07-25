@@ -1,10 +1,14 @@
 {
   "schemaVersion": 1,
   "source": "https://www.dnd.su/piece/spells/index-list/",
-  "scope": "Проверенные боевые механики заклинаний, исправляющие эвристическую классификацию каталога",
+  "scope": "Проверенные и явно ограниченные частичные боевые механики заклинаний",
   "spells": {
     "acid-splash": { "kind": "save", "target": "enemy", "saveAbility": "dex", "damage": "1d6", "damageType": "acid", "damageTypes": ["acid"], "halfOnSave": false, "conditions": [], "description": "Спасбросок Ловкости; 1к6 урона кислотой. Заговор усиливается на 5-м и 11-м уровнях." },
     "blade-ward": { "kind": "buff", "target": "self", "conditions": ["blade-ward"], "durationRounds": 1, "description": "До конца следующего хода даёт сопротивление дробящему, колющему и рубящему урону от атак оружием." },
+    "blight": { "mechanicsAccuracy": "heuristic", "mechanicsSupport": "partial", "supportNote": "Сервер исполняет базовый спасбросок Телосложения и некротический урон; особые взаимодействия с растениями пока не реализованы." },
+    "fireball": { "mechanicsAccuracy": "heuristic", "mechanicsSupport": "partial", "supportNote": "Сервер исполняет область, спасброски, урон и дружественный огонь; укрытия и воспламенение объектов пока не реализованы." },
+    "summon-beast": { "mechanicsAccuracy": "heuristic", "mechanicsSupport": "partial", "supportNote": "Сервер создаёт управляемого призванного зверя, ход и концентрацию; полный выбор форм и все свойства блока существа пока не реализованы." },
+    "hellish-rebuke": { "mechanicsAccuracy": "heuristic", "mechanicsSupport": "partial", "supportNote": "Сервер открывает реакцию после полученного урона и исполняет спасбросок с огненным уроном; полный набор ограничений видимости пока не реализован." },
     "booming-blade": { "kind": "attack", "attackKind": "melee", "target": "enemy", "range": 5, "damage": null, "damageType": "thunder", "damageTypes": ["thunder"], "conditions": [], "requiresWeaponAttack": true, "weaponCantrip": "booming-blade", "description": "Рукопашная атака оружием; цель получает громовой урон, если добровольно переместится до начала следующего хода заклинателя." },
     "chill-touch": { "kind": "attack", "target": "enemy", "damage": "1d8", "healing": null, "damageType": "necrotic", "damageTypes": ["necrotic"], "conditions": ["healing-blocked"], "durationRounds": 1, "description": "Дальнобойная атака заклинанием; некротический урон и запрет восстановления хитов до следующего хода заклинателя." },
     "create-bonfire": { "kind": "area-save", "target": "point", "saveAbility": "dex", "damage": "1d8", "damageType": "fire", "damageTypes": ["fire"], "halfOnSave": false, "radius": 5, "areaShape": "cube", "conditions": [], "description": "Создаёт костёр в 5-футовом кубе; спасбросок Ловкости или урон огнём. Требует концентрации." },
@@ -83,9 +87,9 @@
     "absorb-elements": { "kind": "utility", "target": "self", "conditions": [], "description": "Реакция на кислотный, холодный, огненный, электрический или звуковой урон: сопротивление этому урону и дополнительный стихийный урон следующей рукопашной атаки." },
     "shield": { "kind": "buff", "target": "self", "conditions": [], "description": "+5 к КД до начала следующего хода, включая против спровоцировавшей атаки; Волшебная стрела не наносит урон." },
     "silvery-barbs": { "kind": "utility", "target": "enemy", "conditions": [], "description": "Заставляет успешно бросившее существо перебросить к20 и использовать меньший результат; выбранный союзник получает преимущество на следующий бросок к20." },
-    "feather-fall": { "kind": "utility", "target": "creature", "conditions": [], "description": "До пяти падающих существ снижают скорость падения до 60 футов за раунд и не получают урон при приземлении." },
+    "feather-fall": { "kind": "utility", "target": "creature", "conditions": [], "mechanicsSupport": "ruling-only", "description": "До пяти падающих существ снижают скорость падения до 60 футов за раунд и не получают урон при приземлении." },
     "counterspell": { "kind": "utility", "target": "enemy", "conditions": [], "description": "Прерывает видимое заклинание в пределах 60 футов; заклинания выше уровня ячейки требуют проверки базовой характеристики." },
-    "gift-of-gab": { "kind": "utility", "target": "self", "conditions": [], "description": "Существа по выбору в пределах 5 футов забывают сказанное заклинателем за последние 6 секунд и помнят заменяющую фразу." },
-    "soul-cage": { "kind": "utility", "target": "enemy", "conditions": [], "description": "Реакцией захватывает душу умирающего гуманоида на 8 часов и даёт шесть применений особых возможностей." }
+    "gift-of-gab": { "kind": "utility", "target": "self", "conditions": [], "mechanicsSupport": "ruling-only", "description": "Существа по выбору в пределах 5 футов забывают сказанное заклинателем за последние 6 секунд и помнят заменяющую фразу." },
+    "soul-cage": { "kind": "utility", "target": "enemy", "conditions": [], "mechanicsSupport": "ruling-only", "description": "Реакцией захватывает душу умирающего гуманоида на 8 часов и даёт шесть применений особых возможностей." }
   }
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { combatSpellFor, spellCatalogInfo } from '../server/combat-spells.mjs'
+import { combatSpellFor, combatSpellsFor, spellCatalogInfo } from '../server/combat-spells.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 
@@ -30,9 +30,19 @@ function stateFor(characterClass = 'wizard', level = 3) {
 
 const applyAll = (state, events) => events.reduce((current, event) => applyGameEvent(current, event), state)
 
-test('проверенный слой содержит точные карточки основных заклинаний 1-го круга', () => {
+test('каталог консервативно разделяет partial, heuristic и ruling-only заклинания', () => {
   const wizard = stateFor('wizard').players[0]
-  assert.equal(spellCatalogInfo().verifiedMechanics, 82)
+  const info = spellCatalogInfo()
+  assert.equal(info.verifiedMechanics, 0)
+  assert.equal(info.partialMechanics, 83)
+  assert.equal(info.heuristicMechanics, 353)
+  assert.equal(info.rulingOnlyMechanics, 3)
+  const classifiedSpells = combatSpellsFor(wizard)
+  assert.ok(classifiedSpells.length > 0)
+  assert.ok(classifiedSpells.every((spell) => ['verified', 'partial', 'heuristic', 'ruling-only'].includes(spell.mechanicsSupport)))
+  assert.equal(combatSpellFor(wizard, 'magic-missile')?.mechanicsSupport, 'partial')
+  assert.equal(combatSpellFor(wizard, 'mage-hand')?.mechanicsSupport, 'heuristic')
+  assert.equal(combatSpellFor(wizard, 'feather-fall')?.mechanicsSupport, 'ruling-only')
   assert.deepEqual(
     ['magic-missile', 'armor-of-agathys', 'sleep', 'false-life'].map((id) => {
       const ownerClass = id === 'armor-of-agathys' ? 'warlock' : 'wizard'
@@ -57,6 +67,16 @@ test('Волшебная стрела автоматически наносит 
   assert.equal(damage.payload.projectile_count, 4)
   assert.equal(damage.payload.raw_amount, 16)
   assert.equal(applyAll(initial, result.events).enemies.find((enemy) => enemy.id === 'strong').hp, 14)
+})
+
+test('непроверенное заклинание отклоняется до серверного разрешения хода', () => {
+  const initial = stateFor('wizard', 3)
+  const before = structuredClone(initial)
+  assert.throws(
+    () => resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'mage-hand', server_authoritative: true }, initial, { diceService: dice(), context: { serverAuthoritativeCombat: true } }),
+    (error) => error.code === 'MECHANICS_NOT_VERIFIED',
+  )
+  assert.deepEqual(initial, before)
 })
 
 test('Щит открывается реакцией на Волшебную стрелу и отменяет весь её урон', () => {
@@ -426,7 +446,7 @@ test('Опутывающий удар удерживает цель, нанос�
   const armed = applyAll(initial, cast.events)
   const attack = resolveCommand({ command_type: 'MakeAttack', actor_id: 'caster', target_id: 'weak', item_id: 'sword', server_authoritative: true }, armed, { diceService: dice([15, 2, 1]), context: { serverAuthoritativeCombat: true } })
   const restrained = applyAll(armed, attack.events)
-  assert.ok(restrained.mechanics.conditions.weak.some((condition) => condition.id === 'restrained' && condition.save_dc === 13))
+  assert.ok(restrained.mechanics.conditions.weak.some((condition) => condition.id === 'restrained' && condition.save_dc === 14))
   assert.ok(restrained.mechanics.conditions.weak.some((condition) => condition.id === 'ensnaring-strike' && condition.recurring_damage === '2d6'))
   const end = resolveCommand({ command_type: 'EndTurn', actor_id: 'caster', server_authoritative: true }, restrained, { diceService: dice([4, 4]), context: { serverAuthoritativeCombat: true } })
   const damaged = applyAll(restrained, end.events)

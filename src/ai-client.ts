@@ -13,17 +13,23 @@ export async function getAiHealth(): Promise<AiHealth> {
 }
 
 function newIdempotencyKey() {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  if (!globalThis.crypto?.randomUUID) throw new Error('Браузер не поддерживает безопасные ключи запросов')
+  return globalThis.crypto.randomUUID()
 }
 
-export async function narrateWithAgent(state: GameState, action: string, player: string, roll?: RollResult, idempotencyKey = newIdempotencyKey()): Promise<AiTurnResult> {
+export async function narrateWithAgent(state: GameState, action: string, _player: string, roll?: RollResult, idempotencyKey = newIdempotencyKey()): Promise<AiTurnResult> {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 48_000)
   try {
     const response = await fetch('/api/narrate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state, action, player, roll, campaignId: state.sessionCode, idempotency_key: idempotencyKey }),
+      body: JSON.stringify({
+        action,
+        campaign_id: state.sessionCode,
+        idempotency_key: idempotencyKey,
+        ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
+      }),
       signal: controller.signal,
     })
     if (!response.ok) {

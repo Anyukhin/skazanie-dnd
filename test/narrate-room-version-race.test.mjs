@@ -44,7 +44,6 @@ function startGameServer({ port, storage, routerBaseUrl, setupToken, appendLog }
       ROUTERAI_API_KEY: 'room-version-race-test-key',
       ROUTERAI_BASE_URL: routerBaseUrl,
       ADMIN_SETUP_TOKEN: setupToken,
-      GAME_ENGINE_MODE: 'shadow',
       COOKIE_SECURE: 'false',
       NODE_ENV: 'test',
     },
@@ -97,7 +96,7 @@ function assertStatus(result, status, log) {
   assert.ok(result.body && typeof result.body === 'object')
 }
 
-test('/api/narrate returns the current room version when a pending PUT lands during narration', { timeout: 20_000 }, async (t) => {
+test('/api/narrate keeps its event projection authoritative while broad room PUT is retired', { timeout: 20_000 }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-narrate-version-race-'))
   const setupToken = 'narrate-version-race-setup-token'
   let logs = ''
@@ -186,7 +185,6 @@ test('/api/narrate returns the current room version when a pending PUT lands dur
     ruleset_id: 'srd_5_2_1',
     ruleset_version: '5.2.1',
     enabled_rule_packs: ['srd_5_2_1'],
-    engine_mode: 'shadow',
     state_version: 0,
   }
   const created = await request(baseUrl, '/api/campaigns', {
@@ -200,7 +198,6 @@ test('/api/narrate returns the current room version when a pending PUT lands dur
     body: {
       campaignId: 'VERSION-RACE',
       action: 'Осмотреть место встречи',
-      player: 'Бранн',
       idempotency_key: 'narrate-room-version-race-1',
     },
   })
@@ -209,33 +206,23 @@ test('/api/narrate returns the current room version when a pending PUT lands dur
 
   const roomBeforePending = await request(baseUrl, '/api/rooms/VERSION-RACE', { cookie: adminCookie })
   assertStatus(roomBeforePending, 200, log)
-  assert.equal(roomBeforePending.body.version, initialVersion)
+  assert.ok(roomBeforePending.body.version >= initialVersion,
+    'recovery projection may advance the compatibility-room version while narration is pending')
 
-  const pendingState = {
-    ...roomBeforePending.body.state,
-    isNarrating: true,
-    messages: [...roomBeforePending.body.state.messages, {
-      id: 'pending-player-action',
-      speaker: 'player',
-      author: 'Бранн',
-      timestamp: '21:22',
-      text: 'Осмотреть место встречи',
-    }],
-  }
-  const pendingSave = await request(baseUrl, '/api/rooms/VERSION-RACE', {
+  const retiredWrite = await request(baseUrl, '/api/rooms/VERSION-RACE', {
     method: 'PUT', cookie: adminCookie,
-    body: { state: pendingState, baseVersion: roomBeforePending.body.version },
+    body: { state: roomBeforePending.body.state, baseVersion: roomBeforePending.body.version },
   })
-  assertStatus(pendingSave, 200, log)
-  assert.equal(pendingSave.body.version, initialVersion + 1)
+  assertStatus(retiredWrite, 410, log)
+  assert.equal(retiredWrite.body.code, 'ROOM_MUTATION_RETIRED')
 
   releaseProvider()
   const narrated = await narrationPromise
   assertStatus(narrated, 200, log)
   const finalRoom = await request(baseUrl, '/api/rooms/VERSION-RACE', { cookie: adminCookie })
   assertStatus(finalRoom, 200, log)
-  assert.ok(narrated.body.room_version >= pendingSave.body.version,
-    'narrate must not return the stale room version captured before the concurrent pending PUT')
+  assert.ok(narrated.body.room_version >= roomBeforePending.body.version,
+    'narrate must return an authoritative projection at least as recent as the read before it committed')
   assert.equal(narrated.body.room_version, finalRoom.body.version,
     'narrate must return the version of its final authoritative state')
 })

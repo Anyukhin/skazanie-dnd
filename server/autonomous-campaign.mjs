@@ -26,7 +26,6 @@ export class DirectorIntentError extends Error {
     this.code = code
   }
 }
-
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const clone = (value) => structuredClone(value)
 const safeId = (value, label) => {
@@ -138,7 +137,7 @@ export function normalizeAutonomyState(input = {}) {
   const reputations = Object.fromEntries(Object.entries(source.reputations ?? {}).slice(0, 200)
     .map(([id, value]) => [clean(id, 120), Math.max(-100, Math.min(100, Number.isSafeInteger(Number(value)) ? Number(value) : 0))]).filter(([id]) => id))
   return {
-    schema_version: 1,
+    schema_version: 2,
     director_history: (Array.isArray(source.director_history) ? clone(source.director_history) : []).slice(-500),
     hooks: (Array.isArray(source.hooks) ? clone(source.hooks) : []).slice(-100),
     transitions: (Array.isArray(source.transitions) ? clone(source.transitions) : []).slice(-100),
@@ -147,6 +146,17 @@ export function normalizeAutonomyState(input = {}) {
     witness_graph: (Array.isArray(source.witness_graph) ? clone(source.witness_graph) : []).slice(-500),
     npc_schedules: source.npc_schedules && typeof source.npc_schedules === 'object' && !Array.isArray(source.npc_schedules) ? clone(source.npc_schedules) : {},
     npc_actions: (Array.isArray(source.npc_actions) ? clone(source.npc_actions) : []).slice(-500),
+    pacing: source.pacing && typeof source.pacing === 'object' && !Array.isArray(source.pacing)
+      ? {
+          beat: Math.max(0, Number(source.pacing.beat) || 0),
+          phase: ['breather', 'development', 'escalation', 'climax'].includes(source.pacing.phase) ? source.pacing.phase : 'breather',
+          tension: Math.max(0, Math.min(100, Number(source.pacing.tension) || 0)),
+          last_intent_type: clean(source.pacing.last_intent_type, 40),
+        }
+      : { beat: 0, phase: 'breather', tension: 0, last_intent_type: '' },
+    travel_history: (Array.isArray(source.travel_history) ? clone(source.travel_history) : []).slice(-200),
+    downtime_history: (Array.isArray(source.downtime_history) ? clone(source.downtime_history) : []).slice(-200),
+    random_encounters: (Array.isArray(source.random_encounters) ? clone(source.random_encounters) : []).slice(-200),
     applied_consequences: [...new Set((Array.isArray(source.applied_consequences) ? source.applied_consequences : []).map((item) => clean(item, 160)).filter(Boolean))].slice(-2_000),
     admin_interventions: Math.max(0, Number.isSafeInteger(Number(source.admin_interventions)) ? Number(source.admin_interventions) : 0),
   }
@@ -209,6 +219,15 @@ export function applyAutonomyEvent(input, event) {
   const autonomy = normalizeAutonomyState(input)
   const payload = event.payload ?? {}
   if (event.event_type === 'DirectorIntentRecorded') autonomy.director_history.push(clone(payload))
+  if (event.event_type === 'CampaignPacingAdvanced') autonomy.pacing = {
+    beat: Math.max(0, Number(payload.beat) || autonomy.pacing.beat),
+    phase: ['breather', 'development', 'escalation', 'climax'].includes(payload.phase) ? payload.phase : autonomy.pacing.phase,
+    tension: Math.max(0, Math.min(100, Number(payload.tension_after) || 0)),
+    last_intent_type: clean(payload.intent_type, 40),
+  }
+  if (event.event_type === 'TravelResolved') autonomy.travel_history.push(clone(payload))
+  if (event.event_type === 'DowntimeResolved') autonomy.downtime_history.push(clone(payload))
+  if (event.event_type === 'RandomEncounterTriggered') autonomy.random_encounters.push(clone(payload))
   if (event.event_type === 'NextHookOffered') autonomy.hooks = [...autonomy.hooks.filter((hook) => hook.id !== payload.hook?.id), clone(payload.hook)]
   if (event.event_type === 'TransitionUnlocked') autonomy.transitions.push(clone(payload.transition))
   if (event.event_type === 'EncounterOutcomeRecorded') autonomy.encounter_outcomes.push(clone(payload))

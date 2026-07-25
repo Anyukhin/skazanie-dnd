@@ -47,7 +47,7 @@ test('non-admin room and Director response cannot expose private world memory', 
     cwd: process.cwd(),
     env: {
       ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'viewer-api-token', GAME_ENGINE_MODE: 'enforce', COOKIE_SECURE: 'false', NODE_ENV: 'test',
+      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'viewer-api-token', COOKIE_SECURE: 'false', NODE_ENV: 'test',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -75,7 +75,7 @@ test('non-admin room and Director response cannot expose private world memory', 
 
   const privateMarker = 'GM_PRIVATE_DRAGON_COUNCIL'
   const initialState = {
-    sessionCode: 'VIEWER-API', campaign: 'Visibility', partyMemberIds: ['hero'], activePlayerId: 'hero', engine_mode: 'enforce',
+    sessionCode: 'VIEWER-API', campaign: 'Visibility', partyMemberIds: ['hero'], activePlayerId: 'hero',
     isNarrating: false, pendingCheck: null, suggestions: [], messages: [], enemies: [], entities: [], economyLog: [],
     players: [{ id: 'hero', character: 'Лира', hp: 18, maxHp: 18, armor: 14, abilities: { cha: 14 }, inventory: [], currency: { gold: 20 }, online: true }],
     scene: {
@@ -160,7 +160,8 @@ test('non-admin room and Director response cannot expose private world memory', 
     method: 'PUT', cookie: playerCookie,
     body: { state: forgedSocialState, baseVersion: checkedSocial.body.room_version },
   })
-  assert.equal(roomPut.status, 200, JSON.stringify(roomPut.body) + '\n' + logs)
+  assert.equal(roomPut.status, 410, JSON.stringify(roomPut.body) + '\n' + logs)
+  assert.equal(roomPut.body.code, 'ROOM_MUTATION_RETIRED')
 
   const adminRoom = await request(baseUrl, '/api/rooms/VIEWER-API', { cookie: adminCookie })
   assert.equal(adminRoom.status, 200, logs)

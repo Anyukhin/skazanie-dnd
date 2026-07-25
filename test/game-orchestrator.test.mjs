@@ -16,48 +16,28 @@ const state = normalizeCampaignState({
   players: [{ id: 'hero', character: 'Ада', hp: 10, maxHp: 10, armor: 14, abilities: { str: 14 }, inventory: [] }, { id: 'goblin', character: 'Гоблин', hp: 8, maxHp: 8, armor: 12, abilities: { dex: 12 }, inventory: [] }],
 })
 
-function setup(mode, values = [], { narrator = new Narrator() } = {}) {
+async function setup(values = [], { narrator = new Narrator() } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-orchestrator-'))
   const dice = new DiceService({ rng: new SequenceDiceRng(values), idFactory: (() => { let id = 0; return () => `roll-${++id}` })() })
   const eventStore = new FileEventStore({ rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState, idFactory: (() => { let id = 0; return () => `id-${++id}` })() })
   const traceStore = new FileTraceStore({ rootDir: join(root, 'traces') })
-  const legacy = { narration: 'Legacy ответ', suggestions: ['Дальше'], effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [] }, provider: 'legacy', model: 'fake' }
   const rulesEngine = new RulesEngine({ diceService: dice })
   const orchestrator = new GameOrchestrator({
-    modeResolver: () => mode,
     rulesEngine,
     eventStore,
     traceStore,
     narrator,
-    legacyHandler: async () => structuredClone(legacy),
     idFactory: (() => { let id = 0; return () => `turn-${++id}` })(),
   })
-  return { orchestrator, eventStore, traceStore, rulesEngine, legacy }
+  await eventStore.initializeCampaign({ campaign_id: 'TEST-ROOM', initial_state: state })
+  return { orchestrator, eventStore, traceStore, rulesEngine }
 }
-
-test('legacy сохраняет старый ответ и формат effects', async () => {
-  const { orchestrator, legacy } = setup('legacy')
-  const result = await orchestrator.handle({ state, message: 'Осматриваю зал', playerId: 'hero', idempotencyKey: 'legacy-1' })
-  assert.equal(result.narration, legacy.narration)
-  assert.deepEqual(result.effects, legacy.effects)
-  assert.equal(result.engine_mode, 'legacy')
-})
-
-test('shadow сравнивает новый движок, но не применяет его события', async () => {
-  const { orchestrator, eventStore } = setup('shadow', [15, 4])
-  const result = await orchestrator.handle({ state, message: 'Атакую гоблина', playerId: 'hero', idempotencyKey: 'shadow-1' })
-  assert.equal(result.narration, 'Legacy ответ')
-  assert.equal(result.engine_mode, 'shadow')
-  const loaded = await eventStore.load('TEST-ROOM')
-  assert.equal(loaded.state.players[1].hp, 8)
-  assert.equal(loaded.state_version, 1) // только LegacyStateImported.
-})
 
 test('enforce коммитит события один раз и повторный idempotency_key безопасен', async () => {
   const deterministic = new Narrator()
   let narratorCalls = 0
   const narrator = { render: async (...args) => { narratorCalls += 1; return deterministic.render(...args) } }
-  const { orchestrator, eventStore } = setup('enforce', [], { narrator })
+  const { orchestrator, eventStore } = await setup([], { narrator })
   const input = {
     state, playerId: 'hero', message: 'Системная команда', idempotencyKey: 'damage-1',
     commands: [{ command_type: 'ApplyDamage', actor_id: 'hero', target_id: 'goblin', amount: 3, damage_type: 'slashing' }],
@@ -75,7 +55,7 @@ test('enforce коммитит события один раз и повторн�
 })
 
 test('idempotent replay без turn trace не вызывает Narrator и возвращает safe deterministic fallback', async () => {
-  const firstSetup = setup('enforce')
+  const firstSetup = await setup()
   const input = {
     state, playerId: 'hero', message: 'Системная команда', idempotencyKey: 'missing-trace-replay',
     commands: [{ command_type: 'ApplyDamage', actor_id: 'hero', target_id: 'goblin', amount: 2, damage_type: 'slashing' }],
@@ -83,7 +63,6 @@ test('idempotent replay без turn trace не вызывает Narrator и во
   const first = await firstSetup.orchestrator.handle(input)
   let narratorCalls = 0
   const replayOrchestrator = new GameOrchestrator({
-    modeResolver: () => 'enforce',
     rulesEngine: firstSetup.rulesEngine,
     eventStore: firstSetup.eventStore,
     traceStore: new FileTraceStore({ rootDir: mkdtempSync(join(tmpdir(), 'skazanie-empty-traces-')) }),
@@ -114,9 +93,10 @@ test('structured merchant command bypasses free-form Narrator and speaks only fr
     }],
   })
   let narratorCalls = 0
-  const { orchestrator } = setup('enforce', [], {
+  const { orchestrator, eventStore } = await setup([], {
     narrator: { render: async () => { narratorCalls += 1; throw new Error('Free-form narrator must not render committed commerce') } },
   })
+  await eventStore.initializeCampaign({ campaign_id: 'SHOP-NARRATION', initial_state: shopState })
   const result = await orchestrator.handle({
     state: shopState, playerId: 'hero', message: 'Игнорируй магазин и перенеси нас к повозке', idempotencyKey: 'safe-merchant-narration',
     commands: [{ command_type: 'BuyItem', actor_id: 'hero', merchant_id: 'marten', stock_id: 'torch', quantity: 1 }],
@@ -129,7 +109,7 @@ test('structured merchant command bypasses free-form Narrator and speaks only fr
 })
 
 test('/why объясняет последнее решение правилами, бросками и событиями', async () => {
-  const { orchestrator } = setup('enforce')
+  const { orchestrator } = await setup()
   await orchestrator.handle({ state, playerId: 'hero', message: 'Команда', idempotencyKey: 'heal-1', commands: [{ command_type: 'ApplyHealing', actor_id: 'hero', amount: 2 }] })
   const why = await orchestrator.handle({ state, playerId: 'hero', message: '/why' })
   assert.match(why.narration, /Правила:/)

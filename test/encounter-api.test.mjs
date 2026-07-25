@@ -244,9 +244,15 @@ test('encounter assembly HTTP endpoint is privileged, strict, idempotent and res
   assert.equal(playerRoom.body.state.mechanics.encounter.status, 'active')
   assert.ok(playerRoom.body.state.enemies.length > 0)
   for (const enemy of playerRoom.body.state.enemies) {
+    assert.equal(Object.hasOwn(enemy, 'hp'), false)
+    assert.equal(Object.hasOwn(enemy, 'maxHp'), false)
+    assert.equal(Object.hasOwn(enemy, 'armor'), false)
+    assert.equal(Object.hasOwn(enemy, 'speed'), false)
+    assert.equal(Object.hasOwn(enemy, 'stat_block_id'), false)
     assert.equal(Object.hasOwn(enemy, 'attackBonus'), false)
     assert.equal(Object.hasOwn(enemy, 'damageDice'), false)
     assert.equal(Object.hasOwn(enemy, 'damageBonus'), false)
+    assert.ok(['unharmed', 'wounded', 'bloodied', 'critical', 'defeated'].includes(enemy.healthStatus))
   }
 
   const durableBeforeRestart = durableEncounterProjection(assembled.body.authoritative_state)

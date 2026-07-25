@@ -144,3 +144,25 @@ test('does not append an event when the injected reducer rejects it', async (t) 
   assert.equal(loaded.state.hp, 4)
   assert.deepEqual(await store.getEvents('reducer-failure'), [])
 })
+
+test('projection outbox survives restart until the compatibility projection acknowledges it', async (t) => {
+  const { rootDir, reducer, store } = temporaryStore(t)
+  await store.initializeCampaign({ campaign_id: 'projection-recovery', initial_state: { hp: 12 } })
+  await store.commit({
+    campaign_id: 'projection-recovery',
+    expected_state_version: 0,
+    idempotency_key: 'projection-turn-1',
+    events: [{ event_type: 'DamageApplied', payload: { amount: 3 } }],
+  })
+
+  const reopened = new FileEventStore({ rootDir, reducer })
+  const pending = await reopened.pendingProjection('projection-recovery')
+  assert.equal(pending.checkpoint_version, 0)
+  assert.equal(pending.state_version, 1)
+  assert.equal(pending.state.hp, 9)
+  assert.deepEqual(pending.events.map((event) => event.event_type), ['DamageApplied'])
+
+  await reopened.acknowledgeProjection('projection-recovery', 1)
+  assert.equal(await reopened.pendingProjection('projection-recovery'), null)
+  assert.equal((await reopened.getMetadata('projection-recovery')).projection_checkpoint_version, 1)
+})

@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "srd_5_2_1",
+  "ruleset_version": "5.2.1",
+  "maximum_supported_character_level": 12,
+  "categories": [
+    {
+      "id": "classes",
+      "mandatory_for_release": true,
+      "coverage": "partial",
+      "expected_count": 12,
+      "runtime_count_source": "combatClassCatalogInfo.classes",
+      "notes": "Все 12 базовых классов достижимы до 12 уровня, но не все особенности имеют deterministic engine semantics."
+    },
+    {
+      "id": "subclasses",
+      "mandatory_for_release": true,
+      "coverage": "partial",
+      "expected_count": 114,
+      "runtime_count_source": "dndsu-class-actions-1-12.classes.subclasses",
+      "notes": "Каталог совместимости шире SRD и требует отдельной проверки прав и edition mapping."
+    },
+    {
+      "id": "spells",
+      "mandatory_for_release": true,
+      "coverage": "partial",
+      "expected_count": 439,
+      "maximum_spell_level": 6,
+      "runtime_count_source": "spellCatalogInfo.count",
+      "notes": "Карточки 0–6 уровня; verified mechanics отсутствуют, остальные явно partial/heuristic/ruling-only."
+    },
+    {
+      "id": "monsters",
+      "mandatory_for_release": true,
+      "coverage": "partial",
+      "expected_count": 12,
+      "runtime_count_source": "SRD_5_2_1_MONSTER_ALLOWLIST",
+      "notes": "Server-owned vertical slice без полного SRD corpus, legendary/lair и широкой spellcasting semantics."
+    },
+    {
+      "id": "equipment",
+      "mandatory_for_release": true,
+      "coverage": "partial",
+      "expected_count": 12,
+      "runtime_count_source": "SRD_EQUIPMENT_CATALOG",
+      "notes": "Минимальный торговый каталог, не полный список снаряжения SRD."
+    },
+    {
+      "id": "feats",
+      "mandatory_for_release": true,
+      "coverage": "missing",
+      "expected_count": 0,
+      "runtime_count_source": "none",
+      "notes": "Отдельного versioned feat corpus и referentially linked engine registry пока нет."
+    },
+    {
+      "id": "glossary",
+      "mandatory_for_release": true,
+      "coverage": "partial",
+      "expected_count": 25,
+      "runtime_count_source": "rule-pack.glossary",
+      "notes": "P0 glossary текущего вертикального среза."
+    }
+  ]
+}

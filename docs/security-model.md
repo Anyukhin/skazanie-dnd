@@ -4,7 +4,7 @@
 
 Сервис рассчитан на небольшую частную кампанию, но может быть опубликован через внешний tunnel. Публичная ссылка считается интернет-доступной: знание URL не является средством защиты.
 
-Runtime уже использует гибридную архитектуру с режимами `legacy`, `shadow` и `enforce`. Авторитетные команды в новом контуре проходят через Rules Engine и FileEventStore, а `/api/narrate` — через Game Orchestrator. При этом compatibility API комнаты и legacy-обработчик сохранены. Поэтому перечисленные ниже активные меры нельзя трактовать как завершённое production hardening.
+Runtime исполняется только в режиме `enforce`. Авторитетные команды проходят через Rules Engine и FileEventStore, а `/api/narrate` — через Game Orchestrator. Compatibility room сохранён только как server-owned read-модель; legacy handler, shadow execution и broad room write удалены. Это сужает границу доверия, но не означает завершённое production hardening.
 
 Защищаемые свойства:
 
@@ -22,8 +22,8 @@ Runtime уже использует гибридную архитектуру с
 |---|---|---|
 | Неаутентифицированный посетитель | недоверенный | setup/login/register и static content |
 | Игрок | частично доверенный | доступ к кампании определяется назначением hero; не источник авторитетного state |
-| Admin/ведущий | привилегированный | пользователи, герои, кампании, engine mode и rulings |
-| Browser | недоверенный для механики | UI, команды и compatibility state updates |
+| Admin/ведущий | привилегированный | пользователи, герои, кампании и rulings |
+| Browser | недоверенный для механики | UI и типизированные команды |
 | Node server | доверенная execution boundary | auth, ACL, validation, rules, events, projection и narration orchestration |
 | LLM/RouterAI | недоверенный генератор | разбор/повествование; не получает прямой доступ к repository writes |
 | Proxy/tunnel | внешняя transport boundary | передача трафика; не источник identity или authorization |
@@ -47,9 +47,10 @@ ACL кампании сейчас основан на роли admin либо н
 - email и display name;
 - character sheets, inventories и campaign messages;
 - скрытые клетки, NPC plans и GM-only state;
-- private rolls, скрытые DC и внутренние traces.
+- private rolls, скрытые DC, точные нераскрытые параметры врагов и внутренние traces.
 
-Для LLM используется ограниченный `NarrationBrief`, а события и state проходят visibility projection. Известное исключение: endpoint объяснения проверяет доступ к кампании, но выдаваемый trace не проходит отдельную event-level visibility projection.
+Для LLM используется ограниченный `NarrationBrief`, а события, state и объяснение
+хода проходят viewer-specific visibility projection.
 
 ### Публичные и аутентифицированные данные
 
@@ -64,9 +65,9 @@ ACL кампании сейчас основан на роли admin либо н
 - Passwords хешируются `scrypt` с уникальной salt; сравнение выполняется через `timingSafeEqual`.
 - Session token генерируется случайно, в cookie используется `HttpOnly`/`SameSite=Lax`, на диске хранится только hash.
 - Admin routes проверяют роль.
-- Room read/write, narration и turn explanation требуют доступа по admin/hero-assignment ACL.
-- Механические команды проверяют command allowlist, actor ownership/GM override, ожидаемую версию state и provenance. Для non-admin в `enforce` разрешён узкий боевой набор и отдельные `BargainWithMerchant`, `AppraiseItem`, `BuyItem`, `SellItem` от имени назначенного героя.
-- Создание кампании и переключение engine mode доступны admin.
+- Room read, narration и turn explanation требуют доступа по admin/hero-assignment ACL; broad room write retired.
+- Механические команды проверяют command allowlist, actor ownership/GM override, ожидаемую версию state и provenance. Для non-admin разрешён узкий боевой набор и отдельные `BargainWithMerchant`, `AppraiseItem`, `BuyItem`, `SellItem` от имени назначенного героя.
+- Создание кампании доступно admin; endpoint переключения engine mode retired и возвращает `410`.
 - Generated items требуют аутентификации.
 
 ### Целостность правил, бросков и событий
@@ -75,15 +76,16 @@ ACL кампании сейчас основан на роли admin либо н
 - Dice Service использует ограниченную grammar выражений и server-side RNG.
 - Roll Registry связывает выданный бросок с владельцем и поддерживает one-time consume.
 - FileEventStore активен в новом контуре: immutable commits, stream version, durable idempotency, snapshots/checksums, replay и process lock.
-- `/api/campaigns/:id/commands` доступен участнику кампании только при effective mode `enforce`. Обычный игрок получает узкий combat allowlist и не может передать авторитетные participants, attack modifier, AC, damage/range или управлять чужим актёром; администратор сохраняет расширенный диагностический typed-command контур.
+- `/api/campaigns/:id/commands` доступен участнику кампании. Обычный игрок получает узкий combat allowlist и не может передать авторитетные participants, attack modifier, AC, damage/range или управлять чужим актёром; администратор сохраняет расширенный диагностический typed-command контур.
 - Merchant endpoints дополнительно проверяют присутствие NPC в текущей локации, отсутствие активного боя и `expected_state_version` просмотренной котировки. Запрос игрока не переносит цену, appraisal policy/descriptor, валютную дельту, шаблон предмета, stock, модификатор проверки или d20; сервер заново выводит их из каталога, allowlisted appraisal policy и event state. `AppraiseItem` записывает отдельную fingerprinted аттестацию, а покупка/продажа одним событием меняет валюту героя, кассу NPC, предмет и stock. Semantic request fingerprint вместе с idempotency key не допускает повторного результата или переиспользования ключа для другого предмета.
 - В боевом пути Rules Engine выводит профиль атаки и цель из сохранённого state, проверяет очередь, action/movement, карту, стены, occupancy, path, speed и range. Враги входят в actor lookup, а их ходы выполняет bounded deterministic scheduler отдельными идемпотентными commit-ами.
-- `POST /api/campaigns/:id/encounters/assemble` доступен только администратору в `enforce` и принимает bounded `difficulty/theme`, viewed version, seed/idempotency metadata. Stat blocks, HP, КД, атаки, XP, participants и spawn coordinates не входят в контракт: Rules Engine повторно собирает proposal из авторитетной карты, уровней и позиций. `CreateEncounter` через общий command endpoint отклоняется.
-- EncounterAssembler выбирает только пять server-owned SRD 5.2.1 primary-attack profiles и официальный XP budget уровней 1–20. Spawn возможен только на revealed/walkable клетке, достижимой от группы, без feature/occupancy и минимум в двух клетках (10 футах) от каждого героя; `EncounterCreated + CombatStarted` фиксируются одним commit. Player projection удаляет внутренний source/provenance из encounter events/state, сохраняя публичные combat-поля.
-- Переход сцены в `enforce` доступен только server-owned Director capability. `/api/narrate` отбрасывает клиентские `commands`/`commandCapability`, generic typed-command route отклоняет `AdvanceScene`, а Rules Engine требует director/admin context и отсутствие активного боя.
+- `POST /api/campaigns/:id/encounters/assemble` доступен только администратору и принимает bounded `difficulty/theme`, viewed version, seed/idempotency metadata. Stat blocks, HP, КД, атаки, XP, participants и spawn coordinates не входят в контракт: Rules Engine повторно собирает proposal из авторитетной карты, уровней и позиций. `CreateEncounter` через общий command endpoint отклоняется.
+- EncounterAssembler выбирает только server-owned SRD 5.2.1 primary-attack profiles и официальный XP budget уровней 1–20. Spawn возможен только на revealed/walkable клетке, достижимой от группы, без feature/occupancy и минимум в двух клетках (10 футах) от каждого героя; `EncounterCreated + CombatStarted` фиксируются одним commit. Player projection оставляет идентичность, позицию, `alive` и качественное состояние здоровья врага, но удаляет точные HP/максимум, КД, скорость, stat block и скрытые модификаторы до server-side раскрытия в `mechanics.enemy_knowledge`.
+- Переход сцены доступен только server-owned Director capability. `/api/narrate` отбрасывает клиентские `commands`/`commandCapability`, generic typed-command route отклоняет `AdvanceScene`, а Rules Engine требует director/admin context и отсутствие активного боя.
 - Director может передать только bounded scene/shop intent. Сервер канонизирует карту, выводит location/decision-derived seed/merchant/catalog/price и коммитит `SceneAdvanced` + optional `MerchantCreated` одним batch. `interaction_id + resolved_option_id` обеспечивает exactly-once consumption при конкурентных ключах, а победивший retry читается из событий без нового model call.
-- `/api/narrate` не принимает присланный клиентом state как источник истины: состояние загружается сервером, а подтверждённые изменения проходят через orchestrator. Исключение совместимости — resolved party vote пока читается из проверенного room state, а не из event stream.
-- Campaign engine mode выбирается явно; новые кампании создаются в `shadow`, если не указано иначе.
+- `/api/narrate` отклоняет присланные клиентом `state`, `player`, raw roll и engine mode. Состояние загружается сервером, а подтверждённые изменения проходят через orchestrator.
+- Групповые решения и голоса сохраняются событиями.
+- Новые кампании сразу создаются в единственном режиме `enforce`.
 
 ### LLM boundary и visibility
 
@@ -104,35 +106,33 @@ ACL кампании сейчас основан на роли admin либо н
 
 ## Остаточные угрозы и ограничения мер
 
-### Подмена состояния через compatibility PUT
+### Compatibility read model и presentation writes
 
-Legacy room `PUT` проверяет ACL, `baseVersion`, состав игроков, ownership и ряд инвариантов. В `enforce` для non-admin сервер дополнительно загружает FileEventStore и восстанавливает mechanics, enemies, merchants, economy log, механические поля players вместе с валютой/инвентарём, tactical turn, battle log/map feedback, ruleset metadata и клетки карты; из листа героя принимается только allowlist presentation-полей. Это закрывает прямую подмену реализованных боевого и торгового срезов обычным игроком через PUT.
+`PUT /api/rooms/:id` retired, поэтому браузер не может заменить механическое или повествовательное состояние целиком. Room JSON пишет только серверный projector, а checkpoint подтверждается после совпадения канонического SHA-256.
 
-Тем не менее endpoint остаётся broad state replacement для повествовательных и иных compatibility-полей, а admin имеет более широкую поверхность изменений. Новый `/commands` и `/api/narrate` не доверяют forged client state, но compatibility write всё ещё может создавать narrative divergence и не является общей command-only границей. В частности, открытие и голоса группового решения ещё живут в room JSON; потреблённая ссылка resolved decision фиксируется в `SceneAdvanced` и становится авторитетной после запуска перехода.
+Оставшееся ограничение: для редактируемых presentation-полей персонажа и кампании ещё нужны отдельные типизированные команды. До их появления такие локальные UI-изменения не должны считаться сохранёнными.
 
-Cutover `shadow` → `enforce` импортирует существующий snapshot как принятую начальную точку. Последующие события защищают новые операции, но не доказывают происхождение ранее накопленных HP, денег, предметов, stock или merchant policy. Перед production-cutover требуется отдельная сверка snapshot и audit-запись его принятия.
-
-Требуемое усиление: в `enforce` перейти на command-only writes для всех доменов, оставить отдельный узкий endpoint presentation-полей и формализовать административные override/audit events.
+Старые snapshots не считаются доверенными автоматически. `cutover:verify` сравнивает room, snapshot и replay и завершает работу с ошибкой при расхождении; импорт разрешён только offline после backup и явного принятия канонического состояния.
 
 ### Неполная модель membership и visibility
 
 Hero assignment предотвращает чтение комнаты произвольным аутентифицированным пользователем, но не заменяет explicit campaign membership repository с ролями и отзывом доступа. Room representation остаётся широкой для допущенного участника.
 
-`GET /api/campaigns/:id/turns/:turnId/explanation` проверяет доступ к комнате, однако не фильтрует содержимое trace по уровню видимости конкретного события. Участник кампании потенциально может увидеть скрытые детали trace.
+`GET /api/campaigns/:id/turns/:turnId/explanation` проверяет доступ к комнате и
+повторно фильтрует команды, броски и события под конкретного участника. Остаточный
+риск — новые типы trace payload должны добавляться в тот же allowlist-проектор.
 
-### Неатомарность нового и legacy представлений
+### Неатомарность event state и read model
 
-В `enforce` событие сначала фиксируется в FileEventStore, затем authoritative projection сохраняется в legacy room. Эти операции, consume Roll Registry и запись trace не объединены одной транзакцией. Ошибка или version conflict после event commit может оставить event stream и compatibility projection временно расходящимися.
+Событие сначала фиксируется в FileEventStore, затем authoritative projection сохраняется в compatibility room. Эти операции, consume Roll Registry и запись trace не объединены одной транзакцией. Durable outbox, reconciliation и hash checkpoint восстанавливают проекцию, но временное расхождение возможно.
 
-Требуемое усиление: единая транзакционная outbox/projection модель, повторяемый projector и явная reconciliation procedure.
+Требуемое усиление: общая транзакционная база либо проверенная crash-recovery процедура для event, roll consume и trace.
 
 ### Повтор команды и жизненный цикл броска
 
-FileEventStore обеспечивает durable idempotency механической команды по campaign/idempotency key. Roll Registry хранится только в памяти: после рестарта выданные/потреблённые roll tokens теряются и не координируются между несколькими процессами. Event commit и roll consume не атомарны.
+FileEventStore обеспечивает durable idempotency механической команды по campaign/idempotency key. Roll Registry переживает restart одного процесса, но не координируется между несколькими instances. Event commit и roll consume не атомарны.
 
-В `shadow` новый engine и legacy handler могут выполнить независимые броски для одного намерения. Такой comparison полезен для диагностики, но нарушает целевое требование «один физический бросок — две интерпретации» и может создавать ложные расхождения.
-
-Browser fallback в `src/game-engine.ts` и прежний tactical path `legacy/shadow` всё ещё используют `Math.random`; их результат не следует считать авторитетным. Базовый tactical path в `enforce` бросает инициативу/атаку/урон на сервере.
+Browser gameplay RNG и второй shadow-roll удалены. Initiative, attack, damage и поддержанные проверки выполняются сервером.
 
 ### Остаточные риски экономики
 
@@ -140,11 +140,14 @@ SRD catalog entries неизменяемы, и известный `catalog_id` �
 
 `merchant.purse_cp` ограничен тем же безопасным CP-диапазоном, проходит lifecycle validator и виден в quote projection. Покупка пополняет кассу, продажа списывает её; недостаток средств и переполнение проверяются до события, а before/after значения входят в purchase/sale payload для replay. Legacy merchant без кассы получает детерминированный compatibility reserve, но его происхождение, как и остального импортированного snapshot, нужно отдельно подтвердить при cutover.
 
-Текущий catalog покрывает малый набор предметов, EP отсутствует, а Persuasion proficiency/expertise не выводятся из полной модели персонажа. Equip/use effects не выведены из versioned item templates. Event-sourced `Create/Configure/Restock/Move/SetAvailability` доступны только admin/director контуру, а ShopAssembler принимает лишь allowlisted catalog stock, bounded adjustment и выводит bounded стартовую кассу; автоматический Director flow использует тот же validator и event batch. Всё ещё нет services/устойчивого диалога, signed quote expiry, reputation, supply/demand, автоматических restock clocks и защиты экономики нескольких кампаний общей БД. Наценки, appraisal formula, минимум выкупа 1 CP и результат торга являются версионированной policy кампании, а не утверждением о правиле SRD.
+Текущий catalog покрывает малый набор предметов, EP отсутствует, а Persuasion proficiency/expertise не выводятся из полной модели персонажа. Equip/use effects не выведены из versioned item templates. Event-sourced merchant lifecycle доступен только admin/director контуру, а ShopAssembler принимает лишь allowlisted catalog stock, bounded adjustment и выводит кассу, услугу и restock policy; автоматический Director flow использует тот же validator и event batch. Persistent social conversation, отношения, серверный торг, услуги и economy clock сохраняются и воспроизводятся после restart. Всё ещё нет signed quote expiry, theft, supply/demand, механических эффектов специализированных услуг и защиты экономики нескольких кампаний общей БД. Наценки, appraisal formula, минимум выкупа 1 CP и результат торга являются версионированной policy кампании, а не утверждением о правиле SRD.
 
 ### Остаточные риски перехода сцены
 
-`SceneAdvanced` и автоматически созданный `MerchantCreated` атомарны внутри FileEventStore commit, но последующая compatibility-room projection остаётся отдельной записью. При сбое event state авторитетен, а room может временно показывать прежнюю сцену до reconciliation/retry.
+`SceneAdvanced` и автоматически созданный `MerchantCreated` атомарны внутри
+FileEventStore commit. Compatibility-room projection остаётся отдельной
+записью, но durable outbox marker, monotonic checkpoint и startup/GET
+reconciliation автоматически восстанавливают её после сбоя.
 
 Текущая политика повторного входа ищет торговца по нормализованной строке локации. Устойчивого `location_id` нет: два разных одноимённых места могут переиспользовать одного NPC, а переименование той же локации — создать второго. До появления canonical world entities это допустимое ограничение MVP, а не надёжная identity model.
 
@@ -152,7 +155,11 @@ SRD catalog entries неизменяемы, и известный `catalog_id` �
 
 Mini-compendium содержит только пять профилей и переносит из SRD лишь HP, КД, скорость, initiative bonus и один основной удар вместе с CR/XP provenance. Это не полные stat blocks: traits, saves/skills, resistances/immunities, multiattack, spells, reactions и особые действия не исполняются. Поэтому метка сложности отражает официальный XP budget и локальную bounded allocation policy, но не доказывает фактический баланс встречи с учётом недоступной механики или состава ресурсов группы.
 
-Сборку пока вручную запускает администратор; Director/SceneArchitect не имеют автоматического encounter lifecycle. Deterministic NPC scheduler использует небольшую ближайшая-цель/move/attack policy, а не Tactical Controller поверх полного набора legal actions. Отсутствуют loot/rewards и realtime multi-browser гарантия. Event commit и последующая compatibility-room projection всё ещё не образуют одну транзакцию, как и для остальных enforce-срезов.
+Автономный Director умеет запросить bounded encounter. Tactical Controller
+выбирает server-owned action profile, цель и путь, после чего Rules Engine
+повторно валидирует команды. XP/loot/recovery и authenticated SSE multiplayer
+работают. За пределами vertical slice остаются полный monster corpus,
+legendary/lair actions, высоты, cover и multiprocess realtime coordination.
 
 ### CSRF, Origin и proxy trust
 
@@ -189,26 +196,33 @@ Dependency specs в `package.json` используют `latest`, хотя lockf
 9. resource/turn/action, path/walls/occupancy/speed/range constraints;
 10. только затем — roll, event commit и projection.
 
-Оставшаяся граница: пункты roll consume, event commit, legacy projection и trace write пока не атомарны.
+Event commit и legacy projection связаны recoverable outbox/checkpoint
+protocol. Оставшаяся граница — внешний roll consume и trace write не атомарны с
+event commit.
 
 ## Logging и trace
 
 Допустимо логировать request/turn/campaign IDs, обезличенный user ID, engine mode, rule/event IDs, versions, latency и error code. Не следует логировать `.env`, raw cookies, passwords, полный state/prompt, private narration, hidden state, base64 images и необработанные provider responses.
 
-Trace Store выполняет redaction известных секретных ключей. Это не заменяет visibility filtering ответа: explanation endpoint должен дополнительно строить проекцию под конкретного viewer.
+Trace Store выполняет redaction известных секретных ключей, а explanation endpoint
+дополнительно строит проекцию под конкретного viewer.
 
 ## Проверенность
 
 Актуальный suite включает unit tests основных доменных модулей. Real-HTTP scenarios на реальном `server/index.mjs` проверяют совместимый admin flow, player combat flow, merchant flow, EncounterAssembler и Director scene/shop flow: allowlist/ownership, серверный профиль атаки вместо поддельных полей, отказ от forged encounter stat blocks/coordinates/participants, safe spawn, атомарные `EncounterCreated + CombatStarted`, NPC turn, forged price/appraisal policy/state/system command, stale quote, appraisal registry/fingerprint, ограниченную кассу, bargain/buy/sell, атомарные `SceneAdvanced + MerchantCreated`, concurrent exactly-once consumption, event replay без нового model call, durable narration journal, player visibility projection и private-memory containment.
 
-Это не доказывает безопасность multi-browser/realtime flow, real RouterAI, Docker/Pinggy, production migration/restore, multi-process concurrency, shadow divergence, rate-limit bypass или penetration testing.
+Это не доказывает безопасность real RouterAI, Docker/Pinggy, production
+migration/restore, multi-process concurrency, shadow divergence, rate-limit
+bypass или penetration testing. SSE/concurrent two-user и crash recovery
+проверяются real-HTTP тестом, но не полноценной автоматизацией браузерных окон.
 
 ## Gates для production-использования `enforce`
 
 - explicit campaign membership и event-level visibility для reads/traces;
 - отказ от оставшихся broad narrative/admin state writes;
-- атомарная либо восстанавливаемая связка event, roll, projection и trace;
-- durable Roll Registry и quotas с token/cost budget;
+- транзакционная либо восстанавливаемая связка внешнего roll consume и trace с
+  уже восстанавливаемыми event/projection;
+- database-coordinated Roll Registry и quotas с token/cost budget;
 - CSRF/trusted-proxy/production-origin policy;
 - backup/restore и reconciliation rehearsal;
 - UI, RouterAI, migration, concurrency и security integration tests;

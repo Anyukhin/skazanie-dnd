@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { publicAdventureMemory } from './adventure-director.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
+import { campaignConceptForAgent } from './agent-context.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v1.txt', import.meta.url)), 'utf8')
 
@@ -44,16 +45,7 @@ export function buildDirectorPlanningBrief(state = {}) {
   return {
     current_scene: currentScene,
     adventure_memory: publicAdventureMemory(source.adventure),
-    campaign_premise: {
-      preset: clean(source.campaignConcept?.preset, 160),
-      era: clean(source.campaignConcept?.era, 80),
-      genre: clean(source.campaignConcept?.genre, 100),
-      tone: clean(source.campaignConcept?.tone, 160),
-      premise: clean(source.campaignConcept?.premise, 400),
-      themes: clean(source.campaignConcept?.themes, 240),
-      magic_level: clean(source.campaignConcept?.magicLevel, 80),
-      technology_level: clean(source.campaignConcept?.technologyLevel, 80),
-    },
+    campaign_premise: campaignConceptForAgent(source),
     heroes: (source.players ?? []).map((hero) => ({
       id: clean(hero?.id, 40),
       name: clean(hero?.character ?? hero?.name, 80),
@@ -101,7 +93,13 @@ export function interpretResolvedPartyDecision(action, state = {}) {
 }
 
 function themeFor(destination, action) {
-  const value = `${destination} ${action}`.toLocaleLowerCase('ru')
+  const destinationValue = String(destination ?? '').toLocaleLowerCase('ru')
+  const hasExplicitDestinationKind = /крепост|замок|цитадел|дом|хижин|комнат|кабинет|зал|камор|спальн|таверн|город|деревн|порт|рынок|улиц|лес|чащ|болот|роща|мост|тракт|дорог|путь|перевал|руин|развал|храм|пещер|подзем|склеп|архив|шахт|арен|круг|кольц|башн/u.test(destinationValue)
+  // The explicit destination must win over the source location mentioned in
+  // a resolved vote (for example, "leave the city and go to the forest").
+  const value = hasExplicitDestinationKind
+    ? destinationValue
+    : `${destinationValue} ${String(action ?? '').toLocaleLowerCase('ru')}`
   if (/крепост|замок|цитадел/u.test(value)) return { theme: 'крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 23, height: 17, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
   if (/дом|хижин|комнат|кабинет|небольш.*зал|камор|спальн|таверн/u.test(value)) return { theme: /таверн/u.test(value) ? 'уютная таверна' : 'жилой дом', layout: 'rooms', scale: 'room', pattern: 'small-room', material: 'wood', width: 9, height: 7, openness: 0.82, water: 0, featureCount: 9, danger: 'низкая' }
   if (/город|деревн|порт|рынок|таверн|улиц/u.test(value)) return { theme: 'городские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 17, height: 11, openness: 0.68, water: /порт|канал/u.test(value) ? 0.12 : 0.02, featureCount: 7, danger: 'низкая' }

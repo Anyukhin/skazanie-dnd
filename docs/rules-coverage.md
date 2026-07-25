@@ -1,5 +1,9 @@
 # Покрытие правил
 
+> **Обновление этапа 8:** runtime теперь enforce-only. Упоминания
+> `legacy/shadow` в старых строках таблиц описывают прежний срез и не означают
+> доступный путь исполнения.
+
 ## Как читать таблицы
 
 - **Корпус** — правило присутствует в `rules.jsonl` и доступно Retriever.
@@ -24,6 +28,12 @@
 | Числовая целостность RU/EN | Проверяется loader-ом и unit-тестом |
 
 Это минимальный P0 corpus с небольшим economy slice: уровни formalization отражают текущую связь с engine, но не означают полноту редакции. Loader, Retriever и Rules Engine подключены к runtime; strict ruleset filter применяется до ранжирования. `GET /api/rules/search` даёт отдельный read-only доступ к поиску.
+
+Machine-readable release coverage хранится в
+`data/rules-coverage-matrix.json`. Команда `pnpm content:verify` сверяет её
+с фактическими runtime-каталогами и проверяет ссылочную целостность; строгий
+`pnpm release:verify` остаётся красным для любой обязательной категории со
+статусом `partial|missing`.
 
 ## P0
 
@@ -64,7 +74,7 @@
 | Отдых | нет | частично | да, structured command | частично | Start/complete events применяют class-specific resource recovery policy; нет полного SRD lifecycle сна, прерываний, Hit Dice и истощения |
 | Заклинания | нет | частично | да, enforce UI/API | unit + browser audit | Ограниченный server-owned catalog: attack/save/healing/summon; нет полного compendium, upcast, components и сложных эффектов |
 | Предметы | частично | частично | да, structured command + merchant API | unit + HTTP | Небольшой server catalog и transfer/stock есть; полного item/effect corpus, use/equip/attunement/crafting нет |
-| Монеты и торговля | да, 2 правила | да, economy slice | да, enforce UI/API | unit + real HTTP | CP/SP/GP/PP, buy/sell/bargain, server appraisal, merchant purse и optimistic quote; нет EP, услуг, reputation, supply/demand, auto-restock и полной экономики |
+| Монеты и торговля | да, 2 правила | да, economy slice | да, enforce UI/API | unit + real HTTP | CP/SP/GP/PP, buy/sell/bargain/service, server appraisal, merchant purse, canonical location и auto-restock; нет EP, theft, supply/demand, механических эффектов специализированных услуг и полной экономики |
 | Плавание в бурной воде | да | частично | да, legacy/shadow | unit + retrieval | SRD СЛ 15 извлекается и используется для hazard; полной геометрии скорости плавания нет |
 | Удушье | да | частично | частично | unit + retrieval | Hazard и условие снятия сохраняются; автоматический счёт минут и уровней Истощения по ходам ещё не реализован |
 | Длительные эффекты | частично | частично | да для hazards | unit | Условие окончания и обязательная проверка исполняются; общего scheduler длительностей пока нет |

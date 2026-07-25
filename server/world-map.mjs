@@ -153,7 +153,7 @@ function nearestRegionId(regions, x, y) {
   return [...regions].sort((left, right) => Math.hypot(x - left.x, y - left.y) - Math.hypot(x - right.x, y - right.y))[0]?.id ?? ''
 }
 
-function normalizeLocations(rawLocations, fallback, regions, currentLocation) {
+function normalizeLocations(rawLocations, fallback, regions, currentLocation, currentLocationId = '') {
   const used = new Set()
   const regionByName = new Map(regions.map((region) => [key(region.name), region.id]))
   const source = Array.isArray(rawLocations) && rawLocations.length ? rawLocations : fallback
@@ -172,10 +172,19 @@ function normalizeLocations(rawLocations, fallback, regions, currentLocation) {
       x, y, regionId,
       summary: text(raw.summary || raw.description, 320),
       known: raw.known !== false,
-      visited: raw.visited === true || key(name) === key(currentLocation),
+      visited: raw.visited === true || id === text(currentLocationId, 120) || key(name) === key(currentLocation),
     }]
   })
   return locations
+}
+
+function locationById(locations, locationId) {
+  const expected = text(locationId, 120)
+  return expected ? locations.find((location) => location.id === expected) ?? null : null
+}
+
+export function worldLocationById(map, locationId) {
+  return locationById(Array.isArray(map?.locations) ? map.locations : [], locationId)
 }
 
 function endpointId(value, locations) {
@@ -206,15 +215,17 @@ function normalizeRoutes(rawRoutes, fallback, locations) {
   })
 }
 
-export function createCampaignWorldMap({ seed, campaignName, concept = {}, source = {}, startingLocation = '' } = {}) {
+export function createCampaignWorldMap({ seed, campaignName, concept = {}, source = {}, startingLocation = '', startingLocationId = '' } = {}) {
   const safeSeed = text(seed, 120) || hash(`${campaignName}:${startingLocation}`).slice(0, 24)
   const regionFallback = fallbackRegions(safeSeed, concept)
   const regions = normalizeRegions(source.regions, regionFallback)
   const locationFallback = fallbackLocations(safeSeed, startingLocation, regions)
-  const locations = normalizeLocations(source.locations, locationFallback, regions, startingLocation)
+  const locations = normalizeLocations(source.locations, locationFallback, regions, startingLocation, startingLocationId)
   const routeFallback = fallbackRoutes(locations)
   const routes = normalizeRoutes([...(Array.isArray(source.routes) ? source.routes : []), ...routeFallback], routeFallback, locations)
-  const current = locations.find((location) => key(location.name) === key(startingLocation)) ?? locations[0]
+  const current = locationById(locations, startingLocationId)
+    ?? locations.find((location) => key(location.name) === key(startingLocation))
+    ?? locations[0]
   if (current) current.visited = true
   return {
     version: 1,
@@ -241,19 +252,32 @@ function freePosition(map, name, anchor) {
   return { x: number(anchor.x + 110, WIDTH / 2, 55, WIDTH - 55), y: number(anchor.y + 70, HEIGHT / 2, 55, HEIGHT - 55) }
 }
 
-export function reconcileWorldMap(rawMap, { seed, campaignName, concept = {}, currentLocation = '', previousLocation = '', knownLocations = [], transition = '', scene = {} } = {}) {
+export function reconcileWorldMap(rawMap, {
+  seed,
+  campaignName,
+  concept = {},
+  currentLocation = '',
+  currentLocationId = '',
+  previousLocation = '',
+  previousLocationId = '',
+  knownLocations = [],
+  transition = '',
+  scene = {},
+} = {}) {
   const map = createCampaignWorldMap({
     seed: rawMap?.seed || seed,
     campaignName,
     concept,
     source: rawMap && typeof rawMap === 'object' ? rawMap : {},
     startingLocation: currentLocation,
+    startingLocationId: currentLocationId,
   })
   const allNames = [...new Set([...knownLocations, previousLocation, currentLocation].map((name) => text(name, 120)).filter(Boolean))]
   for (const name of allNames) {
     let node = map.locations.find((location) => key(location.name) === key(name))
     if (!node) {
-      const anchor = map.locations.find((location) => key(location.name) === key(previousLocation))
+      const anchor = locationById(map.locations, previousLocationId)
+        ?? map.locations.find((location) => key(location.name) === key(previousLocation))
         ?? map.locations.find((location) => location.id === map.currentLocationId)
         ?? map.locations[0]
         ?? { x: WIDTH / 2, y: HEIGHT / 2, id: '' }
@@ -272,8 +296,10 @@ export function reconcileWorldMap(rawMap, { seed, campaignName, concept = {}, cu
     }
     if (knownLocations.some((known) => key(known) === key(name)) || key(name) === key(currentLocation)) node.visited = true
   }
-  const previous = map.locations.find((location) => key(location.name) === key(previousLocation))
-  const current = map.locations.find((location) => key(location.name) === key(currentLocation))
+  const previous = locationById(map.locations, previousLocationId)
+    ?? map.locations.find((location) => key(location.name) === key(previousLocation))
+  const current = locationById(map.locations, currentLocationId)
+    ?? map.locations.find((location) => key(location.name) === key(currentLocation))
   if (current) {
     current.visited = true
     current.known = true
@@ -310,7 +336,9 @@ export function ensureCampaignWorldMap(state = {}) {
     campaignName: state.campaign,
     concept: state.campaignConcept,
     currentLocation: state.scene?.location,
+    currentLocationId: state.scene?.location_id ?? state.scene?.locationId,
     previousLocation: adventure.history?.at?.(-1)?.location,
+    previousLocationId: adventure.history?.at?.(-1)?.location_id ?? adventure.history?.at?.(-1)?.locationId,
     knownLocations,
     transition: adventure.lastTransition,
     scene: state.scene,

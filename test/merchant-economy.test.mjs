@@ -350,3 +350,32 @@ test('merchant с location недоступен, если у сцены отсу
   assert.throws(() => resolveCommand({ command_type: 'BuyItem', actor_id: 'hero', merchant_id: 'marten', stock_id: 'potion-stock', quantity: 1 }, state, { diceService: dice([]) }), (error) => error.code === 'MERCHANT_NOT_PRESENT')
   assert.equal(currencyToCopper(state.players[0].currency), currencyToCopper(base.players[0].currency))
 })
+
+test('PurchaseMerchantService server-prices and atomically settles a configured service', () => {
+  const base = merchantState()
+  const state = merchantState({
+    merchants: [{
+      ...base.merchants[0],
+      services: [{
+        service_id: 'repair',
+        name: 'Repair armor',
+        kind: 'repair',
+        base_price_cp: 100,
+        duration_minutes: 30,
+      }],
+    }],
+  })
+  const result = resolveCommand({
+    command_type: 'PurchaseMerchantService',
+    actor_id: 'hero',
+    merchant_id: 'marten',
+    service_id: 'repair',
+  }, state, { diceService: dice([]) })
+  assert.deepEqual(result.events.map((event) => event.event_type), ['MerchantServicePurchased'])
+  assert.equal(result.events[0].payload.total_price_cp, 110)
+  const next = reduce(state, result.events)
+  assert.equal(currencyToCopper(next.players[0].currency), 9_890)
+  assert.equal(next.merchants[0].purse_cp, DEFAULT_MERCHANT_PURSE_CP + 110)
+  assert.equal(next.economyLog.at(-1).type, 'service')
+  assert.deepEqual(replayEvents(state, result.events), next)
+})

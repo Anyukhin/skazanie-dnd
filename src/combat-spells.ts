@@ -2,6 +2,9 @@ import catalogPayload from '../data/dndsu-spells-0-6.json'
 import mechanicsOverrides from '../data/dndsu-spell-mechanics-overrides.json'
 import type { CombatSpell, Player } from './types'
 
+const defaultPartialNote = 'Сервер исполняет формализованную часть карточки; полный набор исключений и взаимодействий ещё не подтверждён.'
+const defaultRulingNote = 'Карточка известна каталогу, но для её эффекта ещё нет исполняемого серверного решения.'
+
 const fullSlots = [[], [2], [3], [4, 2], [4, 3], [4, 3, 2], [4, 3, 3], [4, 3, 3, 1], [4, 3, 3, 2], [4, 3, 3, 3, 1], [4, 3, 3, 3, 2], [4, 3, 3, 3, 2, 1], [4, 3, 3, 3, 2, 1]]
 const halfSlots = [[], [], [2], [3], [3], [4, 2], [4, 2], [4, 3], [4, 3], [4, 3, 2], [4, 3, 2], [4, 3, 3], [4, 3, 3]]
 const pactSlots = [null, [1, 1], [2, 1], [2, 2], [2, 2], [2, 3], [2, 3], [2, 4], [2, 4], [2, 5], [2, 5], [3, 5], [3, 5]] as const
@@ -84,7 +87,18 @@ export function fallbackCombatSpells(player?: Player): CombatSpell[] {
         : rules?.mode === 'known' ? (known ? known.has(spell.id) : true)
           : rules?.mode === 'spellbook' ? (known ? known.has(spell.id) : true) && (prepared ? prepared.has(spell.id) : true)
             : prepared ? prepared.has(spell.id) : true
-      return { ...spell, ...(overrides[spell.id] ?? {}), prepared: isPrepared, spellcastingAbility: profile.ability, slotResource: spell.level === 0 ? undefined : profile.progression === 'pact' ? spell.level === 6 ? 'mystic_arcanum_6' : 'pact_slots' : `spell_slots_${spell.level}` }
+      const mechanicsOverride = overrides[spell.id]
+      const mechanicsSupport = mechanicsOverride?.mechanicsSupport
+        ?? (mechanicsOverride ? 'partial' : 'heuristic')
+      return {
+        ...spell,
+        ...(mechanicsOverride ?? {}),
+        mechanicsAccuracy: mechanicsOverride?.mechanicsAccuracy ?? (mechanicsOverride ? 'verified-dndsu' : 'heuristic'),
+        mechanicsSupport,
+        ...((mechanicsOverride?.supportNote || mechanicsSupport === 'partial' || mechanicsSupport === 'ruling-only') ? { supportNote: mechanicsOverride?.supportNote ?? (mechanicsSupport === 'partial' ? defaultPartialNote : defaultRulingNote) } : {}),
+        prepared: isPrepared, spellcastingAbility: profile.ability,
+        slotResource: spell.level === 0 ? undefined : profile.progression === 'pact' ? spell.level === 6 ? 'mystic_arcanum_6' : 'pact_slots' : `spell_slots_${spell.level}`,
+      }
     })
 }
 

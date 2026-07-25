@@ -58,3 +58,25 @@ test('transient narration progress is never persisted as campaign state', async 
   assert.equal(saved.room.state.isNarrating, false)
   assert.equal(store.getRoom('LOADING-1').state.isNarrating, false)
 })
+
+test('campaign invites are scoped, single-use and idempotent for the same account', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-membership-'))
+  process.env.DND_STORAGE_DIR = root
+  const store = await import(`../server/store.mjs?membership=${Date.now()}`)
+  const owner = await store.registerUser({ name: 'Owner', email: 'owner@membership.test', password: 'secure-owner-password' })
+  const guest = await store.registerUser({ name: 'Guest', email: 'guest@membership.test', password: 'secure-guest-password' })
+  const intruder = await store.registerUser({ name: 'Intruder', email: 'intruder@membership.test', password: 'secure-intruder-password' })
+
+  store.upsertCampaignMembership({ campaignId: 'CAMP-A', userId: owner.id, role: 'owner', heroIds: ['hero'] })
+  store.upsertCampaignMembership({ campaignId: 'CAMP-B', userId: intruder.id, role: 'owner', heroIds: ['hero'] })
+  const issued = store.createCampaignInvite({ campaignId: 'CAMP-A', createdBy: owner.id, heroIds: ['guest-hero'] })
+  const redeemed = store.redeemCampaignInvite({ campaignId: 'CAMP-A', token: issued.token, userId: guest.id })
+  assert.deepEqual(redeemed.membership.heroIds, ['guest-hero'])
+  assert.equal(store.redeemCampaignInvite({ campaignId: 'CAMP-A', token: issued.token, userId: guest.id }).duplicate, true)
+  assert.throws(
+    () => store.redeemCampaignInvite({ campaignId: 'CAMP-A', token: issued.token, userId: intruder.id }),
+    /уже использовано/u,
+  )
+  assert.deepEqual(store.campaignMembershipFor(owner.id, 'CAMP-A').heroIds, ['hero'])
+  assert.deepEqual(store.campaignMembershipFor(intruder.id, 'CAMP-B').heroIds, ['hero'])
+})

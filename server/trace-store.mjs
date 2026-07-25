@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { redactTrace as redactSecurityTrace } from './security.mjs'
+import { projectVisibleState, redactTrace as redactSecurityTrace } from './security.mjs'
 
 const SECRET_KEY = /(api[_-]?key|authorization|cookie|password|passwd|secret|session|token|environment|env)/i
 const SAFE_ID = /^[A-Za-z0-9._-]{1,120}$/
@@ -59,7 +59,7 @@ export class FileTraceStore {
       turn_id: input.turn_id || randomUUID(),
       campaign_id: input.campaign_id,
       idempotency_key: input.idempotency_key ?? null,
-      engine_mode: input.engine_mode || 'legacy',
+      engine_mode: 'enforce',
       prompt_versions: input.prompt_versions ?? {},
       model_identifiers: input.model_identifiers ?? {},
       intent: input.intent ?? {},
@@ -69,7 +69,6 @@ export class FileTraceStore {
       validated_commands: input.validated_commands ?? [],
       rolls: input.rolls ?? [],
       events: input.events ?? [],
-      shadow_comparison: input.shadow_comparison ?? null,
       state_version_before: Number(input.state_version_before ?? 0),
       state_version_after: Number(input.state_version_after ?? input.state_version_before ?? 0),
       verification_result: input.verification_result ?? {},
@@ -101,31 +100,21 @@ export class FileTraceStore {
   }
 }
 
-export function buildTurnExplanation(trace) {
+export function buildTurnExplanation(trace, viewer = null) {
   if (!trace) return null
+  const visible = (value, fallback) => viewer
+    ? projectVisibleState(value, viewer) ?? fallback
+    : value
   return {
     turn_id: trace.turn_id,
     engine_mode: trace.engine_mode,
     rules_used: trace.retrieved_rule_ids ?? [],
-    commands: trace.validated_commands ?? [],
-    rolls: trace.rolls ?? [],
-    events: trace.events ?? [],
-    ruling: trace.ruling ?? null,
+    commands: visible(trace.validated_commands ?? [], []),
+    rolls: visible(trace.rolls ?? [], []),
+    events: visible(trace.events ?? [], []),
+    ruling: visible(trace.ruling ?? null, null),
     state_version_before: trace.state_version_before,
     state_version_after: trace.state_version_after,
     verification: trace.verification_result ?? {},
-    shadow_comparison: trace.shadow_comparison ?? null,
   }
-}
-
-export function compareShadowResults(legacyResult, engineResult) {
-  const differences = []
-  const legacyRoll = legacyResult?.effects?.roll
-  const engineRoll = engineResult?.rolls?.[0]
-  if (legacyRoll && engineRoll && Number(legacyRoll.total) !== Number(engineRoll.total)) differences.push({ field: 'roll.total', legacy: legacyRoll.total, engine: engineRoll.total })
-  const legacyEffects = legacyResult?.effects ?? {}
-  const engineEvents = engineResult?.events ?? []
-  if ((legacyEffects.grantItems?.length ?? 0) !== engineEvents.filter((event) => event.event_type === 'ItemGranted').length) differences.push({ field: 'items' })
-  if ((legacyEffects.reveal?.length ?? 0) !== engineEvents.filter((event) => event.event_type === 'AreaRevealed').reduce((sum, event) => sum + (event.payload?.cells?.length ?? 0), 0)) differences.push({ field: 'visibility' })
-  return { differences, severity: differences.length ? 'warning' : 'info' }
 }

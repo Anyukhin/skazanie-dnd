@@ -10,7 +10,7 @@
 
 ## Rule Pack
 
-`data/rule_packs/srd_5_2_1` содержит 21 короткую двуязычную запись, созданную как самостоятельные пересказы общей игровой механики для этого проекта. Серверный каталог в `server/merchant-economy.mjs` дополнительно фиксирует базовые цены небольшого набора снаряжения. `server/encounter-assembler.mjs` содержит таблицу официального XP budget per character для уровней 1–20 и 12 server-owned проекций существ на поля, действия и особенности, которые поддерживает текущий Rules Engine.
+`data/rule_packs/srd_5_2_1` содержит 23 короткие двуязычные записи, созданные как самостоятельные пересказы общей игровой механики для этого проекта. Серверный каталог в `server/merchant-economy.mjs` дополнительно фиксирует базовые цены небольшого набора снаряжения. `server/encounter-assembler.mjs` содержит таблицу официального XP budget per character для уровней 1–20 и 12 server-owned проекций существ на поля, действия и особенности, которые поддерживает текущий Rules Engine.
 
 Внешний ориентир совместимости — **System Reference Document 5.2.1** от Wizards of the Coast LLC:
 
@@ -33,7 +33,7 @@
 - `license_id: CC-BY-4.0` в manifest описывает лицензию указанного внешнего источника, а не автоматически выбранную лицензию всего проекта.
 - `license_id: ORIGINAL-PARAPHRASE` описывает происхождение записи, но сам по себе не является стандартной публичной лицензией.
 - `content_license_id: ORIGINAL-PARAPHRASE` в manifest описывает происхождение corpus; отдельные записи используют `license_id: ORIGINAL-PARAPHRASE`. Ни одно из этих внутренних значений само по себе не является стандартной публичной лицензией.
-- Значения `source_hash` записей вида `orig-v1-*` являются revision labels, а не проверенными криптографическими hashes внешнего источника. Manifest честно использует `external_source_not_bundled`: PDF не vendored, и его криптографический hash в release metadata не зафиксирован.
+- Значения `source_hash` записей вида `orig-v1-*` являются revision labels, а не проверенными криптографическими hashes внешнего источника. Manifest честно использует `external_source_not_bundled`: PDF не vendored. Проверенные размер и SHA-256 внешнего PDF, а также hashes локальных content artifacts фиксируются отдельно в `data/content-provenance.json`.
 
 Перед внешним распространением владелец должен выбрать лицензию для проектного кода и самостоятельных пересказов, проверить, какие конкретные записи являются производными от SRD, и применить требуемую CC-BY-4.0 атрибуцию ко всем таким материалам. Наличие ссылки здесь не снимает это обязательство.
 
@@ -79,6 +79,34 @@
 
 Отсутствие такой записи является release blocker, а не подразумеваемым разрешением.
 
+### Карты Dyson Logos / Scarlet Heroes
+
+Пять карт в `public/assets/maps/library/dyson-logos` взяты из набора
+**South-East Asian-inspired maps by Dyson Logos [Scarlet Heroes]**:
+
+- автор: Dyson Logos;
+- издатель исходного art pack: Sine Nomine Publishing / Kevin Crawford;
+- источник: https://lpc.opengameart.org/content/south-east-asian-inspired-maps-by-dyson-logos-scarlet-heroes;
+- исходный архив: https://lpc.opengameart.org/sites/default/files/Dyson%20Logos.zip;
+- статус: public domain / CC0;
+- получено и преобразовано из TIFF в WebP: 25 июля 2026 года.
+
+Издатель сообщает, что приобрёл полные права на работы и выпустил art pack в
+общественное достояние для личного и коммерческого использования. Атрибуция не
+обязательна, но по просьбе издателя имя художника сохранено в путях и именах
+файлов.
+
+### Атлас иконок действий
+
+`public/assets/ui/action-icons/action-atlas-v1.webp` создан 25 июля 2026 года
+встроенным ImageGen по пользовательскому примеру, использованному только как
+ориентир читаемости и сетки. Финальное задание требовало оригинальный атлас 5×5
+из 25 тактических символов, живописные рамки из дерева и состаренной бронзы,
+приглушённую средневековую палитру, отсутствие текста, логотипов, неона,
+водяных знаков и копирования символов из референса. Перед публичным
+распространением применимые права на generated output всё равно проверяются
+общим release gate.
+
 ## Structured dnd.su mechanics overrides
 
 `data/dndsu-spell-mechanics-overrides.json` contains only original short structured summaries of verified mechanics from the linked dnd.su cards. It does not copy full page text and exists to correct ambiguities in the automatic parser.
@@ -122,3 +150,9 @@ asset/rule id
 ```
 
 Если поле неизвестно, указывается `UNKNOWN — DO NOT DISTRIBUTE`, а не предполагаемое значение.
+
+`pnpm content:verify` проверяет идентичность зарегистрированных файлов и
+ссылочную целостность каталогов. `pnpm release:verify` дополнительно закрывает
+release, пока `UNKNOWN`, `review_required`, `project_license_required` либо
+неполная обязательная coverage остаются в manifest. Успешный hash-check
+подтверждает идентичность файла, но не авторство и не лицензию.

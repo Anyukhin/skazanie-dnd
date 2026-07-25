@@ -1,15 +1,36 @@
 import 'dotenv/config'
 import { createServer } from 'node:http'
-import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { createAdmin, createSession, deleteSession, getRoom, hasAdmin, listRoomCodes, listUsers, registerUser, saveRoom, storageDir, updateUserAccess, userForToken, verifyUser } from './store.mjs'
+import {
+  campaignHasMemberships,
+  campaignMembershipFor,
+  createAdmin,
+  createCampaignInvite,
+  createSession,
+  deleteSession,
+  getRoom,
+  hasAdmin,
+  listCampaignMemberships,
+  listRoomCodes,
+  listUsers,
+  onRoomSaved,
+  redeemCampaignInvite,
+  registerUser,
+  saveRoom,
+  storageDir,
+  updateUserAccess,
+  upsertCampaignMembership,
+  userForToken,
+  verifyUser,
+} from './store.mjs'
 import { DiceService } from './dice-service.mjs'
-import { EngineModeResolver } from './engine-mode.mjs'
 import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
+import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { Narrator } from './narrator.mjs'
 import { CreativeDirector } from './creative-director.mjs'
 import { NpcControllerAgent } from './npc-controller.mjs'
@@ -19,27 +40,35 @@ import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, applyGameEvent, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
-import { buildDataOnlyContext } from './security.mjs'
 import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
 import { SceneArchitectAgent } from './scene-architect.mjs'
-import { decideTurnConsumption, isExplicitEndTurn } from './turn-policy.mjs'
-import { answerKnownLore, proposeAgentInteraction, resolvePartyDecision, roleAllowsWorldTools, selectAgentRole } from './agent-router.mjs'
-import { applyHazardEffects, createHazardEffect, createHazardResolution } from './persistent-hazards.mjs'
+import { proposeAgentInteraction, resolvePartyDecision } from './agent-router.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { DirectorAgent } from './director-agent.mjs'
-import { MAX_CURRENCY_CP, merchantIsAtLocation, merchantViewFor } from './merchant-economy.mjs'
+import {
+  MAX_CURRENCY_CP,
+  findMerchant,
+  merchantEconomyClockEventFromPlan,
+  merchantIsAtLocation,
+  merchantRestockCommandFromPlan,
+  merchantViewFor,
+  planMerchantEconomyClock,
+} from './merchant-economy.mjs'
 import { assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
-import { campaignStateForViewer, turnResultForViewer } from './viewer-projection.mjs'
+import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
 import { isPartySummon } from './combat-spells.mjs'
+import { assertCampaignPlayable, lifecycleEventForAction } from './campaign-lifecycle.mjs'
 import {
   assertDirectorTransitionResult,
   buildDirectorTransitionCommands,
   directorTransitionFingerprint,
   resolvedPartyDecisionReference,
 } from './director-scene-transition.mjs'
+import { partyDecisionOpenedEvent, resolvePartyRoll, resolvePartyVote } from './party-decision.mjs'
+import { compareProjection } from './projection-integrity.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -54,17 +83,29 @@ const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
 const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
 const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)
 const modelFailureCooldownMs = Number(process.env.DND_AI_FAILURE_COOLDOWN_MS || 120_000)
+const dailyTokenLimit = Number(process.env.DND_AI_DAILY_TOKEN_LIMIT || 2_000_000)
 const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
+const campaignStreams = new Map()
+let campaignStreamSequence = 0
 
 const diceService = new DiceService()
-const rollRegistry = new RollRegistry({ diceService })
-const engineModeResolver = new EngineModeResolver()
+const rollRegistry = new RollRegistry({
+  diceService,
+  storageFile: join(storageDir, 'engine', 'roll-registry.json'),
+})
+const usageLedger = new DurableUsageLedger({
+  storageFile: join(storageDir, 'engine', 'llm-usage.json'),
+  dailyTokenLimit,
+})
 const llmClient = new FallbackLLMClient({
-  clients: [model, ...fallbackModels].map((modelId) => new RouterAIClient({
-    apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
-    reasoning: ['z-ai/glm-5.2', 'deepseek/deepseek-v4-flash'].includes(modelId) ? { enabled: false } : null,
+  clients: [model, ...fallbackModels].map((modelId) => new MeteredLLMClient({
+    client: new RouterAIClient({
+      apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
+      reasoning: ['z-ai/glm-5.2', 'deepseek/deepseek-v4-flash'].includes(modelId) ? { enabled: false } : null,
+    }),
+    ledger: usageLedger,
   })),
   probeTimeoutMs: modelProbeTimeoutMs,
   failureCooldownMs: modelFailureCooldownMs,
@@ -88,215 +129,6 @@ const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmCli
 const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null })
 const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
-
-const tools = [
-  {
-    type: 'function',
-    function: {
-      name: 'roll_check',
-      description: 'Совершить честную проверку d20, когда исход действия не очевиден.',
-      parameters: {
-        type: 'object', additionalProperties: false, required: ['label', 'difficulty', 'ability'],
-        properties: {
-          label: { type: 'string', description: 'Название проверки по-русски' },
-          actorId: { type: 'string', description: 'id персонажа; по умолчанию активный герой' },
-          ability: { type: 'string', enum: ['str', 'dex', 'con', 'int', 'wis', 'cha'], description: 'Характеристика проверки' },
-          proficient: { type: 'boolean', description: 'Добавить бонус мастерства, только если герой владеет подходящим навыком' },
-          modifier: { type: 'integer', minimum: -5, maximum: 12, description: 'Запасной модификатор; игнорируется, если характеристика доступна в листе героя' },
-          difficulty: { type: 'integer', minimum: 5, maximum: 30 },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'reveal_area',
-      description: 'Открыть область карты после обнаружения нового прохода или помещения.',
-      parameters: {
-        type: 'object', additionalProperties: false, required: ['x1', 'y1', 'x2', 'y2'],
-        properties: { x1: { type: 'integer' }, y1: { type: 'integer' }, x2: { type: 'integer' }, y2: { type: 'integer' } },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'update_objective',
-      description: 'Изменить текущую цель группы после сюжетного открытия.',
-      parameters: {
-        type: 'object', additionalProperties: false, required: ['objective'],
-        properties: { objective: { type: 'string', minLength: 3, maxLength: 120 } },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'spawn_entity',
-      description: 'Добавить на открытую клетку объект или угрозу, возникшую в сцене.',
-      parameters: {
-        type: 'object', additionalProperties: false, required: ['x', 'y', 'kind', 'label'],
-        properties: {
-          x: { type: 'integer' }, y: { type: 'integer' },
-          kind: { type: 'string', enum: ['enemy', 'chest', 'altar', 'rune', 'torch', 'stairs'] },
-          label: { type: 'string', minLength: 2, maxLength: 80 },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'grant_item',
-      description: 'Выдать конкретному герою новый предмет. Всегда придумай предмету самостоятельное атмосферное описание и полный промпт изображения.',
-      parameters: {
-        type: 'object', additionalProperties: false,
-        required: ['ownerId', 'name', 'type', 'quantity', 'rarity', 'description', 'properties', 'imagePrompt'],
-        properties: {
-          ownerId: { type: 'string', description: 'id персонажа из состояния мира' },
-          name: { type: 'string', minLength: 2, maxLength: 80 },
-          type: { type: 'string', enum: ['weapon', 'armor', 'consumable', 'tool', 'quest', 'treasure', 'document', 'other'] },
-          quantity: { type: 'integer', minimum: 1, maximum: 99 },
-          rarity: { type: 'string', enum: ['обычный', 'необычный', 'редкий', 'очень редкий', 'легендарный', 'сюжетный'] },
-          description: { type: 'string', minLength: 20, maxLength: 700 },
-          properties: { type: 'string', minLength: 3, maxLength: 400 },
-          imagePrompt: { type: 'string', minLength: 30, maxLength: 1200, description: 'Полный визуальный промпт без текста и водяных знаков' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'apply_hazard',
-      description: 'Записать длительное опасное состояние среды, которое должно сохраняться между ходами: персонаж тонет, горит, зажат, отравлен средой или удерживается препятствием. Вызывай до того, как описать такую опасность.',
-      parameters: {
-        type: 'object', additionalProperties: false,
-        required: ['targetId', 'id', 'label', 'source', 'description', 'severity', 'escapeAbility', 'escapeDifficulty', 'endCondition'],
-        properties: {
-          targetId: { type: 'string', minLength: 1, maxLength: 80 },
-          id: { type: 'string', minLength: 2, maxLength: 60 },
-          label: { type: 'string', minLength: 2, maxLength: 100 },
-          source: { type: 'string', minLength: 2, maxLength: 160 },
-          description: { type: 'string', minLength: 3, maxLength: 360 },
-          severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-          requiresCheck: { type: 'boolean' },
-          escapeAbility: { type: 'string', enum: ['str', 'dex', 'con', 'int', 'wis', 'cha'] },
-          escapeDifficulty: { type: 'integer', minimum: 5, maximum: 30 },
-          endCondition: { type: 'string', minLength: 3, maxLength: 240 },
-          ruleId: { type: 'string', maxLength: 120 },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'resolve_hazard',
-      description: 'Снять активное опасное состояние только после выполнения его условия окончания. Если состояние требует проверку, сервер разрешит снятие лишь при подходящей успешной проверке с закреплённой характеристикой и достаточной СЛ.',
-      parameters: {
-        type: 'object', additionalProperties: false,
-        required: ['targetId', 'id', 'resolution'],
-        properties: {
-          targetId: { type: 'string', minLength: 1, maxLength: 80 },
-          id: { type: 'string', minLength: 2, maxLength: 60 },
-          resolution: { type: 'string', minLength: 3, maxLength: 240 },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'request_party_decision',
-      description: 'Открыть для игроков интерактивное решение: голосование, общий бросок судьбы или выбор из вариантов. Используй перед необратимым групповым решением, когда одного ответа активного героя недостаточно.',
-      parameters: {
-        type: 'object', additionalProperties: false,
-        required: ['type', 'title', 'description', 'options', 'resolutionPrompt'],
-        properties: {
-          type: { type: 'string', enum: ['vote', 'roll', 'choice'] },
-          title: { type: 'string', minLength: 3, maxLength: 100 },
-          description: { type: 'string', minLength: 10, maxLength: 360 },
-          options: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'string', minLength: 2, maxLength: 100 } },
-          difficulty: { type: 'integer', minimum: 5, maximum: 25, description: 'Только для type=roll: сложность общего броска d20' },
-          resolutionPrompt: { type: 'string', minLength: 10, maxLength: 360, description: 'Как рассказчик должен продолжить историю после решения' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'advance_scene',
-      description: 'Бесшовно завершить текущую сцену и сразу открыть следующую локацию. Используй, когда цель сцены достигнута, конфликт исчерпан или герои явно уходят дальше. Не объявляй конец локации без этого инструмента.',
-      parameters: {
-        type: 'object', additionalProperties: false,
-        required: ['title', 'location', 'mood', 'objective', 'transition', 'arrival', 'hook', 'theme', 'danger', 'outcome', 'suggestions'],
-        properties: {
-          title: { type: 'string', minLength: 2, maxLength: 80 },
-          location: { type: 'string', minLength: 2, maxLength: 120 },
-          mood: { type: 'string', minLength: 3, maxLength: 160 },
-          objective: { type: 'string', minLength: 3, maxLength: 160 },
-          transition: { type: 'string', minLength: 10, maxLength: 500, description: 'Как герои физически добираются из текущей сцены в новую' },
-          arrival: { type: 'string', minLength: 10, maxLength: 500, description: 'Первое чувственное описание новой локации' },
-          hook: { type: 'string', minLength: 3, maxLength: 240, description: 'Связь новой сцены с незавершёнными нитями кампании' },
-          theme: { type: 'string', minLength: 2, maxLength: 80 },
-          danger: { type: 'string', enum: ['низкая', 'средняя', 'высокая'] },
-          outcome: { type: 'string', minLength: 3, maxLength: 240, description: 'Что именно завершилось в прежней сцене' },
-          completed_objective: { type: 'string', maxLength: 160 },
-          objective_status: { type: 'string', enum: ['completed', 'unresolved', 'abandoned'] },
-          carry_unresolved: { type: 'boolean' },
-          map: {
-            type: 'object', additionalProperties: false,
-            properties: {
-              layout: { type: 'string', enum: ['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'] },
-              width: { type: 'integer', minimum: 7, maximum: 25 },
-              height: { type: 'integer', minimum: 7, maximum: 19 },
-              openness: { type: 'number', minimum: 0.35, maximum: 0.85 },
-              water: { type: 'number', minimum: 0, maximum: 0.3 },
-              featureCount: { type: 'integer', minimum: 2, maximum: 12 },
-            },
-          },
-          seed: { type: 'string', maxLength: 120 },
-          suggestions: { type: 'array', minItems: 2, maxItems: 3, items: { type: 'string', minLength: 2, maxLength: 100 } },
-        },
-      },
-    },
-  },
-]
-
-const legacyRolePrompt = readFileSync(fileURLToPath(new URL('../prompts/legacy/v1.txt', import.meta.url)), 'utf8')
-const worldkeeperRolePrompt = readFileSync(fileURLToPath(new URL('../prompts/worldkeeper/v1.txt', import.meta.url)), 'utf8')
-const directorRolePrompt = readFileSync(fileURLToPath(new URL('../prompts/director/v1.txt', import.meta.url)), 'utf8')
-const gameMasterRolePrompt = readFileSync(fileURLToPath(new URL('../prompts/game_master/v1.txt', import.meta.url)), 'utf8')
-const systemPrompt = `${legacyRolePrompt}
-
-Ты — Рассказчик русскоязычной кооперативной фэнтези-RPG «Сказание».
-Правдоподобно отыгрывай ЛЮБОЕ разумное действие игрока в контексте мира. Не ограничивай игрока вариантами интерфейса.
-
-Правила:
-- Продолжай установленную сцену и не отменяй прошлые последствия.
-- Не решай рискованный исход сам: вызови roll_check, затем опиши известный результат.
-- Остальные инструменты используй только при реальном изменении состояния мира.
-- Если в описании появляется новое физическое существо или объект на карте, сначала обязательно вызови spawn_entity. Не описывай появившуюся угрозу без этого инструмента.
-- Если герой получает, находит или подбирает предмет, обязательно вызови grant_item. Описание должно раскрывать вид, материал, историю и заметные детали. imagePrompt должен точно показывать только этот предмет; для карты проси вид сверху и читаемые маршруты без современного текста.
-- Координаты карты: x 0–12, y 0–8. Не раскрывай карту без сюжетной причины.
-- ACTIVE_HAZARDS в состоянии — обязательные длительные факты. Не игнорируй их и не объявляй снятыми обычной репликой игрока.
-- Если герой пытается устранить hazard с requiresCheck=true, сначала вызови roll_check с указанными escapeAbility и escapeDifficulty. После подтверждённого успеха вызови resolve_hazard; при провале состояние остаётся.
-- Не управляй персонажем игрока и не приписывай ему решения.
-- Пиши выразительно и конкретно, 2–5 предложений.
-- После инструментов верни ТОЛЬКО JSON: {"narration":"...","suggestions":["...","..."],"action_kind":"free|minor|substantive|end_turn","turn_consumed":false}.
-- Suggestions — идеи, а не ограничения.`
-
-const checkPrompt = `${systemPrompt}
-
-Сейчас ты оцениваешь намерение ДО броска. Если исход рискованный или неопределённый, вызови roll_check и не описывай результат действия. Не меняй мир другими инструментами до броска. Если проверка не нужна, сразу опиши естественное последствие.`
-
-function roleSystemPrompt(role, suppliedRoll) {
-  const specialized = role === 'worldkeeper' ? worldkeeperRolePrompt : role === 'game_master' ? gameMasterRolePrompt : directorRolePrompt
-  return `${suppliedRoll ? systemPrompt : checkPrompt}\n\n${specialized}`
-}
 
 function json(res, status, body) {
   const data = JSON.stringify(body)
@@ -339,12 +171,27 @@ function requireAdmin(req, res) {
   return user
 }
 
-function canUseHero(user, heroId) {
-  return user?.role === 'admin' || user?.heroIds?.includes(String(heroId || ''))
+function campaignMembership(user, campaignId) {
+  return user?.campaignMemberships?.find((membership) => String(membership.campaignId) === String(campaignId || '').toUpperCase()) ?? null
+}
+
+function campaignHeroIds(user, campaignId) {
+  if (user?.role === 'admin') return user?.heroIds ?? []
+  if (!String(campaignId || '').trim()) return user?.heroIds ?? []
+  const membership = campaignMembership(user, campaignId)
+  if (membership) return membership.heroIds ?? []
+  return campaignHasMemberships(campaignId) ? [] : user?.heroIds ?? []
+}
+
+function canUseHero(user, heroId, campaignId) {
+  return user?.role === 'admin' || campaignHeroIds(user, campaignId).includes(String(heroId || ''))
 }
 
 const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'EndTurn', 'ResolveHeroDeath'])
-const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem'])
+const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
+const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
+const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
+const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -368,8 +215,37 @@ function merchantCommandFingerprint(command) {
     ...(type === 'BuyItem' ? { stock_id: String(command?.stock_id ?? ''), quantity: Number(command?.quantity) } : {}),
     ...(type === 'SellItem' ? { item_id: String(command?.item_id ?? ''), quantity: Number(command?.quantity) } : {}),
     ...(type === 'AppraiseItem' ? { item_id: String(command?.item_id ?? '') } : {}),
+    ...(type === 'PurchaseMerchantService' ? { service_id: String(command?.service_id ?? '') } : {}),
   }
   return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+function characterBuildFingerprint(command) {
+  const semantic = commandType(command) === 'SetCharacterChoices'
+    ? {
+        command_type: 'SetCharacterChoices',
+        actor_id: String(command.actor_id ?? ''),
+        subclass: String(command.subclass ?? ''),
+        class_skill_proficiencies: [...new Set(command.class_skill_proficiencies ?? [])].map(String).sort(),
+        selected_feature_ids: [...new Set(command.selected_feature_ids ?? [])].map(String).sort(),
+      }
+    : {
+        command_type: 'SetSpellSelections',
+        actor_id: String(command.actor_id ?? ''),
+        known_spell_ids: [...new Set(command.known_spell_ids ?? [])].map(String).sort(),
+        prepared_spell_ids: [...new Set(command.prepared_spell_ids ?? [])].map(String).sort(),
+      }
+  return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+function assertCharacterBuildResultFingerprint(result, commands) {
+  const expected = new Set(commands.map(characterBuildFingerprint))
+  const actual = new Set((result?.mechanics ?? [])
+    .filter((event) => ['CharacterChoicesUpdated', 'SpellSelectionsUpdated'].includes(event.event_type))
+    .map((event) => String(event.payload?.request_fingerprint ?? '')))
+  if (actual.size !== expected.size || [...expected].some((fingerprint) => !actual.has(fingerprint))) {
+    throw commandPolicyError('Этот ключ идемпотентности уже использован для другого изменения персонажа', 'IDEMPOTENCY_CONFLICT')
+  }
 }
 
 function encounterCommandFingerprint(command) {
@@ -478,6 +354,7 @@ function lifecycleMerchant(input) {
   for (const [key, maximum] of [['title', 180], ['description', 1_000], ['greeting', 500], ['voice', 500], ['location', 180]]) {
     if (input[key] != null) merchant[key] = lifecycleText(input[key], maximum)
   }
+  if (input.location_id != null || input.locationId != null) merchant.location_id = lifecycleText(input.location_id ?? input.locationId, 120)
   if (!merchant.location) throw commandPolicyError('У торговца должна быть локация', 'INVALID_MERCHANT_LIFECYCLE_COMMAND')
   if (input.available != null) {
     if (typeof input.available !== 'boolean') throw commandPolicyError('merchant.available должен быть boolean', 'INVALID_MERCHANT_LIFECYCLE_COMMAND')
@@ -489,6 +366,38 @@ function lifecycleMerchant(input) {
   if (input.stock != null) {
     if (!Array.isArray(input.stock) || input.stock.length > 500) throw commandPolicyError('merchant.stock должен содержать не более 500 позиций', 'INVALID_MERCHANT_LIFECYCLE_COMMAND')
     merchant.stock = input.stock.map(lifecycleStockItem)
+  }
+  if (input.services != null) {
+    if (!Array.isArray(input.services) || input.services.length > 100) throw commandPolicyError('merchant.services должен содержать не более 100 услуг', 'INVALID_MERCHANT_LIFECYCLE_COMMAND')
+    merchant.services = input.services.map((service, index) => {
+      if (!service || typeof service !== 'object' || Array.isArray(service)) throw commandPolicyError(`Некорректная услуга ${index}`, 'INVALID_MERCHANT_LIFECYCLE_COMMAND')
+      return {
+        service_id: lifecycleId(service.service_id ?? service.id, `merchant.services[${index}].service_id`),
+        name: lifecycleText(service.name, 120),
+        description: lifecycleText(service.description, 1_000),
+        kind: lifecycleText(service.kind, 40),
+        base_price_cp: lifecycleInteger(service.base_price_cp, `merchant.services[${index}].base_price_cp`, { minimum: 0, maximum: 100_000_000 }),
+        duration_minutes: lifecycleInteger(service.duration_minutes ?? 0, `merchant.services[${index}].duration_minutes`, { minimum: 0, maximum: 10_080 }),
+        available: service.available !== false,
+        requires_presence: service.requires_presence !== false,
+        tags: (Array.isArray(service.tags) ? service.tags : []).slice(0, 12).map((tag) => lifecycleText(tag, 40)).filter(Boolean),
+      }
+    })
+  }
+  if (input.restock_policy != null) {
+    const policy = input.restock_policy
+    if (!policy || typeof policy !== 'object' || Array.isArray(policy)) throw commandPolicyError('merchant.restock_policy должен быть объектом', 'INVALID_MERCHANT_LIFECYCLE_COMMAND')
+    merchant.restock_policy = {
+      enabled: policy.enabled === true,
+      interval_minutes: lifecycleInteger(policy.interval_minutes ?? 1_440, 'merchant.restock_policy.interval_minutes', { minimum: 60, maximum: 525_600 }),
+      ...(policy.last_restock_world_minute == null ? {} : {
+        last_restock_world_minute: lifecycleInteger(policy.last_restock_world_minute, 'merchant.restock_policy.last_restock_world_minute', { minimum: 0, maximum: 1_000_000_000 }),
+      }),
+      targets: (Array.isArray(policy.targets) ? policy.targets : []).slice(0, 500).map((target, index) => ({
+        stock_id: lifecycleId(target?.stock_id, `merchant.restock_policy.targets[${index}].stock_id`),
+        target_quantity: lifecycleInteger(target?.target_quantity, `merchant.restock_policy.targets[${index}].target_quantity`, { minimum: 1, maximum: 999_999 }),
+      })),
+    }
   }
   return merchant
 }
@@ -533,6 +442,7 @@ function sanitizeMerchantLifecycleCommand(input) {
   if (type === 'MoveMerchant') {
     command.merchant_id = lifecycleId(input.merchant_id ?? input.merchantId)
     command.location = lifecycleText(input.location, 180)
+    command.location_id = lifecycleText(input.location_id ?? input.locationId, 120)
     if (!command.location) throw commandPolicyError('Не указана новая локация торговца', 'INVALID_MERCHANT_LIFECYCLE_COMMAND')
   }
   if (type === 'SetMerchantAvailability') {
@@ -571,7 +481,7 @@ async function executeMerchantLifecycleCommand({ campaignId, room, admin, comman
     commands: [command],
     idempotencyKey,
     user: admin,
-    allowedActorIds: admin.heroIds,
+    allowedActorIds: campaignHeroIds(admin, campaignId),
   })
   assertMerchantLifecycleResultFingerprint(result, command)
   const projected = result.authoritative_state
@@ -597,7 +507,7 @@ function sanitizePlayerCombatCommand(user, state, input) {
   const actor = String(input?.actor_id ?? input?.actorId ?? '')
   const combatActor = [...(state.players ?? []), ...(state.actors ?? [])].find((candidate) => String(candidate.id ?? candidate.actor_id) === actor)
   const controller = String(combatActor?.controllerId ?? combatActor?.controller_id ?? combatActor?.ownerId ?? combatActor?.owner_id ?? '')
-  const controlsActor = canUseHero(user, actor) || (isPartySummon(combatActor) && canUseHero(user, controller))
+  const controlsActor = canUseHero(user, actor, state.sessionCode) || (isPartySummon(combatActor) && canUseHero(user, controller, state.sessionCode))
   if (!actor || !controlsActor) throw commandPolicyError('Команда доступна только владельцу героя или его призванного существа', 'ACTOR_FORBIDDEN')
   if (!combatActor) throw commandPolicyError('Боевой актёр не найден в кампании', 'ACTOR_FORBIDDEN')
   const expected = input?.expected_state_version ?? input?.expectedStateVersion
@@ -650,11 +560,99 @@ function sanitizePlayerCombatCommand(user, state, input) {
   return base
 }
 
+function sanitizePlayerCharacterCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_CHARACTER_COMMANDS.has(type) && !PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к развитию персонажа', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Изменять развитие можно только у своего героя', 'ACTOR_FORBIDDEN')
+  }
+  if (!(state.players ?? []).some((candidate) => String(candidate.id) === actor)) {
+    throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const base = {
+    command_type: type,
+    actor_id: actor,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+  if (type === 'LevelUp') {
+    return {
+      ...base,
+      ...(input?.expected_level == null && input?.expectedLevel == null
+        ? {}
+        : { expected_level: input.expected_level ?? input.expectedLevel }),
+    }
+  }
+  if (type === 'ImportCharacter') {
+    return { ...base, document: input?.document }
+  }
+  const command = type === 'SetCharacterChoices'
+    ? {
+        ...base,
+        subclass: String(input?.subclass ?? '').trim().slice(0, 160),
+        class_skill_proficiencies: Array.isArray(input?.class_skill_proficiencies ?? input?.classSkillProficiencies)
+          ? (input.class_skill_proficiencies ?? input.classSkillProficiencies).map(String)
+          : [],
+        selected_feature_ids: Array.isArray(input?.selected_feature_ids ?? input?.selectedFeatureIds)
+          ? (input.selected_feature_ids ?? input.selectedFeatureIds).map(String)
+          : [],
+      }
+    : {
+        ...base,
+        known_spell_ids: Array.isArray(input?.known_spell_ids ?? input?.knownSpellIds)
+          ? (input.known_spell_ids ?? input.knownSpellIds).map(String)
+          : [],
+        prepared_spell_ids: Array.isArray(input?.prepared_spell_ids ?? input?.preparedSpellIds)
+          ? (input.prepared_spell_ids ?? input.preparedSpellIds).map(String)
+          : [],
+      }
+  return { ...command, request_fingerprint: characterBuildFingerprint(command) }
+}
+
+function sanitizePlayerItemCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_ITEM_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к действиям с предметами', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Действовать с предметами можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  }
+  const owner = (state.players ?? []).find((candidate) => String(candidate.id) === actor)
+  if (!owner) throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
+  const itemId = String(input?.item_id ?? input?.itemId ?? '').trim().slice(0, 120)
+  if (!itemId || !(owner.inventory ?? []).some((item) => String(item.id) === itemId)) {
+    throw commandPolicyError('Предмет не найден у героя', 'ITEM_NOT_FOUND')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const base = {
+    command_type: type,
+    actor_id: actor,
+    item_id: itemId,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+  if (type === 'EquipItem') return { ...base, equipped: input?.equipped !== false }
+  if (type === 'AttuneItem') return { ...base, attuned: input?.attuned !== false }
+  if (type === 'UseItem') {
+    const targetId = String(input?.target_id ?? input?.targetId ?? actor).trim().slice(0, 120)
+    return { ...base, target_id: targetId || actor, server_authoritative: true }
+  }
+  const recipientId = String(input?.recipient_id ?? input?.recipientId ?? input?.target_id ?? input?.targetId ?? '').trim().slice(0, 120)
+  return {
+    ...base,
+    recipient_id: recipientId,
+    quantity: Number(input?.quantity ?? 1),
+  }
+}
+
 function sanitizeMerchantCommand(user, state, input, routeMerchantId = null) {
   const type = commandType(input)
   if (!PLAYER_MERCHANT_COMMANDS.has(type)) throw commandPolicyError('Для торговца доступна только оценка, покупка, продажа или попытка договориться о цене', 'PLAYER_COMMAND_FORBIDDEN')
   const actor = String(input?.actor_id ?? input?.actorId ?? '')
-  if (!actor || !canUseHero(user, actor)) throw commandPolicyError('Торговать можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) throw commandPolicyError('Торговать можно только от имени своего героя', 'ACTOR_FORBIDDEN')
   if (!(state.players ?? []).some((candidate) => String(candidate.id) === actor)) throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
   const merchantId = String(routeMerchantId ?? input?.merchant_id ?? input?.merchantId ?? '').slice(0, 120)
   if (!merchantId) throw commandPolicyError('Не указан торговец', 'MERCHANT_NOT_FOUND')
@@ -678,6 +676,10 @@ function sanitizeMerchantCommand(user, state, input, routeMerchantId = null) {
     const result = { ...base, item_id: String(input?.item_id ?? input?.itemId ?? '').slice(0, 120) }
     return { ...result, request_fingerprint: merchantCommandFingerprint(result) }
   }
+  if (type === 'PurchaseMerchantService') {
+    const result = { ...base, service_id: String(input?.service_id ?? input?.serviceId ?? '').slice(0, 120) }
+    return { ...result, request_fingerprint: merchantCommandFingerprint(result) }
+  }
   return { ...base, request_fingerprint: merchantCommandFingerprint(base) }
 }
 
@@ -688,6 +690,11 @@ function tacticalActorName(state, id) {
   return String(actor?.character || actor?.name || expected || 'Участник')
 }
 
+function tacticalActorIsEnemy(state, id) {
+  const expected = String(id || '')
+  return (state?.enemies ?? []).some((candidate) => String(candidate.id ?? candidate.actor_id ?? '') === expected)
+}
+
 function tacticalNarration(events, state) {
   const meaningful = []
   const turns = []
@@ -696,6 +703,7 @@ function tacticalNarration(events, state) {
     const actor = tacticalActorName(state, event.actor_id)
     const targetId = event.target_ids?.[0] ?? payload.target_id
     const target = tacticalActorName(state, targetId)
+    const targetIsEnemy = tacticalActorIsEnemy(state, targetId)
     if (event.event_type === 'EncounterCreated') {
       const names = (payload.encounter?.enemies ?? []).map((enemy) => String(enemy?.name ?? '')).filter(Boolean).slice(0, 12)
       meaningful.push(`На поле появляются противники: ${names.join(', ')}.`)
@@ -706,7 +714,9 @@ function tacticalNarration(events, state) {
     } else if (event.event_type === 'ActorMoved') {
       meaningful.push(`${actor} перемещается на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
     } else if (event.event_type === 'AttackResolved') {
-      meaningful.push(`${actor} атакует ${target}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${payload.hit ? 'попадание' : 'промах'}.`)
+      meaningful.push(targetIsEnemy
+        ? `${actor} атакует ${target}: ${payload.hit ? 'попадание' : 'промах'}.`
+        : `${actor} атакует ${target}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${payload.hit ? 'попадание' : 'промах'}.`)
     } else if (event.event_type === 'AreaAttackResolved') {
       meaningful.push(`${actor} бросает ${payload.item_name || 'снаряд'} в область радиусом ${Number(payload.radius_feet) || 0} фт.`)
     } else if (event.event_type === 'SpellCast') {
@@ -718,13 +728,17 @@ function tacticalNarration(events, state) {
     } else if (event.event_type === 'EquipmentChanged') {
       meaningful.push(`${actor} экипирует ${payload.item_name || 'оружие'}${payload.turns_spent ? ', затрачивая действие' : ' перед атакой'}.`)
     } else if (event.event_type === 'DamageApplied' && Number(payload.applied_amount) > 0) {
-      meaningful.push(payload.death_ward_triggered
-        ? `${target} получает ${Number(payload.applied_amount)} урона, но Охрана от смерти срабатывает и оставляет 1 ОЗ.`
-        : payload.resistance_cantrip_reduction
-          ? `Сопротивление уменьшает урон по ${target} на ${Number(payload.resistance_cantrip_reduction)}; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`
-          : `${target} получает ${Number(payload.applied_amount)} урона; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`)
+      meaningful.push(targetIsEnemy
+        ? payload.death_ward_triggered
+          ? `${target} получает ${Number(payload.applied_amount)} урона, но Охрана от смерти удерживает цель на ногах.`
+          : `${target} получает ${Number(payload.applied_amount)} урона.`
+        : payload.death_ward_triggered
+          ? `${target} получает ${Number(payload.applied_amount)} урона, но Охрана от смерти срабатывает и оставляет 1 ОЗ.`
+          : payload.resistance_cantrip_reduction
+            ? `Сопротивление уменьшает урон по ${target} на ${Number(payload.resistance_cantrip_reduction)}; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`
+            : `${target} получает ${Number(payload.applied_amount)} урона; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`)
     } else if (event.event_type === 'CreatureKnockedOut') {
-      meaningful.push(`${target} нокаутирован, остаётся с 1 ОЗ и начинает короткий отдых.`)
+      meaningful.push(targetIsEnemy ? `${target} нокаутирован и больше не сопротивляется.` : `${target} нокаутирован, остаётся с 1 ОЗ и начинает короткий отдых.`)
     } else if (event.event_type === 'KnockoutEnded') {
       meaningful.push(`${target} приходит в сознание после успешной первой помощи.`)
     } else if (event.event_type === 'RestCompleted' && payload.reason === 'knockout') {
@@ -761,7 +775,7 @@ function tacticalNarration(events, state) {
     } else if (event.event_type === 'HitPointMaximumReductionPrevented') {
       meaningful.push(`Аура жизни защищает максимум ОЗ ${target} от уменьшения.`)
     } else if (event.event_type === 'HitPointMaximumReduced') {
-      meaningful.push(`Максимум ОЗ ${target} снижается: ${Number(payload.maximum_hp_before) || 0} → ${Number(payload.maximum_hp_after) || 0}.`)
+      meaningful.push(targetIsEnemy ? `Жизненные силы ${target} ослаблены.` : `Максимум ОЗ ${target} снижается: ${Number(payload.maximum_hp_before) || 0} → ${Number(payload.maximum_hp_after) || 0}.`)
     } else if (event.event_type === 'HeroDied') {
       meaningful.push(`${target} погибает. Его судьбу нужно разрешить: воскресить героя или заменить новым.`)
     } else if (event.event_type === 'HeroResurrected') {
@@ -815,6 +829,10 @@ function originAllowed(req) {
 function canAccessRoom(user, room) {
   if (!user) return false
   if (user.role === 'admin') return true
+  const campaignId = String(room?.state?.sessionCode || '')
+  const membership = campaignMembership(user, campaignId)
+  if (membership) return true
+  if (campaignId && campaignHasMemberships(campaignId)) return false
   const playerIds = Array.isArray(room?.state?.players) ? room.state.players.map((player) => String(player.id)) : []
   const memberIds = Array.isArray(room?.state?.partyMemberIds) && room.state.partyMemberIds.length
     ? room.state.partyMemberIds.map(String)
@@ -822,91 +840,61 @@ function canAccessRoom(user, room) {
   return (user.heroIds ?? []).some((id) => memberIds.includes(String(id)))
 }
 
-function sameJson(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right)
+function streamConnections(campaignId) {
+  const normalized = String(campaignId || '').toUpperCase()
+  if (!campaignStreams.has(normalized)) campaignStreams.set(normalized, new Map())
+  return campaignStreams.get(normalized)
 }
 
-function mergePartyDecisionVotes(user, currentState, proposedState) {
-  const current = currentState.agentInteraction
-  if (!current || current.status !== 'open') return current ?? null
-  const proposed = proposedState.agentInteraction
-  if (!proposed || String(proposed.id) !== String(current.id)) return current
-  const optionIds = new Set((current.options ?? []).map((option) => String(option.id)))
-  const owned = new Set((user.heroIds ?? []).map(String))
-  const votes = { ...(current.votes ?? {}) }
-  for (const [heroId, optionId] of Object.entries(proposed.votes ?? {})) {
-    if (owned.has(String(heroId)) && optionIds.has(String(optionId))) votes[String(heroId)] = String(optionId)
-  }
-  const partyMembers = new Set((currentState.partyMemberIds?.length ? currentState.partyMemberIds : (currentState.players ?? []).map((player) => player.id)).map(String))
-  const eligible = (currentState.players ?? []).filter((player) => player.online && partyMembers.has(String(player.id))).map((player) => String(player.id))
-  const required = current.type === 'choice' ? 1 : Math.floor(Math.max(1, eligible.length) / 2) + 1
-  const winner = (current.options ?? []).find((option) => Object.values(votes).filter((vote) => vote === String(option.id)).length >= required)
+function connectedHeroIdsForCampaign(campaignId) {
+  return new Set([...streamConnections(campaignId).values()].flatMap((connection) => connection.heroIds))
+}
+
+function stateWithLivePresence(state, campaignId) {
+  if (!state || typeof state !== 'object') return state
+  const connections = streamConnections(campaignId)
+  const onlineHeroIds = connectedHeroIdsForCampaign(campaignId)
   return {
-    ...current,
-    votes,
-    status: winner ? 'resolved' : 'open',
-    ...(winner ? { resolvedOptionId: winner.id } : {}),
+    ...state,
+    players: (state.players ?? []).map((player) => ({
+      ...player,
+      online: onlineHeroIds.has(String(player.id)),
+    })),
+    presence: {
+      transport: 'sse',
+      connected_users: new Set([...connections.values()].map((connection) => connection.userId)).size,
+      connected_heroes: onlineHeroIds.size,
+      online_hero_ids: [...onlineHeroIds].sort(),
+    },
   }
 }
 
-function validateRoomUpdate(user, currentRoom, proposed, roomCode) {
-  if (!proposed || typeof proposed !== 'object' || Array.isArray(proposed)) throw new Error('Некорректное состояние комнаты')
-  if (!Array.isArray(proposed.players) || !Array.isArray(proposed.messages) || !proposed.scene || typeof proposed.scene !== 'object') throw new Error('Неполное состояние комнаты')
-  if (String(proposed.sessionCode || '').toUpperCase() !== String(roomCode).toUpperCase()) throw new Error('Код комнаты в состоянии не совпадает с адресом')
-  if (!currentRoom.state) {
-    if (user.role !== 'admin') throw new Error('Только администратор может создать комнату')
-    return normalizeCampaignState(proposed)
-  }
-  if (!canAccessRoom(user, currentRoom)) throw new Error('Нет доступа к этой комнате')
-
-  const current = currentRoom.state
-  const currentIds = Array.isArray(current.players) ? current.players.map((player) => String(player.id)) : []
-  const proposedIds = proposed.players.map((player) => String(player.id))
-  if (new Set(proposedIds).size !== proposedIds.length || !sameJson([...proposedIds].sort(), [...currentIds].sort())) throw new Error('Состав героев нельзя менять через синхронизацию комнаты')
-  if (String(proposed.campaign || '') !== String(current.campaign || '') && user.role !== 'admin') throw new Error('Название кампании меняет только администратор')
-  if (proposed.engine_mode !== current.engine_mode && user.role !== 'admin') throw new Error('Режим движка меняет только администратор')
-
-  const players = proposed.players.map((player) => {
-    const existing = current.players.find((candidate) => String(candidate.id) === String(player.id))
-    if (!canUseHero(user, player.id)) return existing
-    if (user.role !== 'admin' && current.engine_mode === 'enforce') {
-      return {
-        ...player,
-        hp: existing.hp,
-        maxHp: existing.maxHp,
-        armor: existing.armor,
-        abilities: existing.abilities,
-        skills: existing.skills,
-        skillModifiers: existing.skillModifiers,
-        skillBonuses: existing.skillBonuses,
-        persuasionModifier: existing.persuasionModifier,
-        persuasionBonus: existing.persuasionBonus,
-        proficiency: existing.proficiency,
-        inventory: existing.inventory,
-        currency: existing.currency,
-      }
-    }
-    return player
-  })
-  if (user.role === 'admin') return normalizeCampaignState({ ...proposed, players })
-
-  const ownsTurn = canUseHero(user, current.activePlayerId)
-  const agentInteraction = mergePartyDecisionVotes(user, current, proposed)
-  if (!ownsTurn) return normalizeCampaignState({ ...current, players, agentInteraction })
-  proposed.partyName = current.partyName
-  proposed.partyMemberIds = current.partyMemberIds
-  if (!proposedIds.includes(String(proposed.activePlayerId || ''))) throw new Error('Активный герой не найден')
-  const oldMessages = Array.isArray(current.messages) ? current.messages : []
-  if (proposed.messages.length < oldMessages.length || proposed.messages.length - oldMessages.length > 3 || !oldMessages.every((message, index) => sameJson(message, proposed.messages[index]))) {
-    throw new Error('Журнал можно только дополнять текущим ходом')
-  }
-  if (!Array.isArray(proposed.scene.cells) || proposed.scene.cells.length > 500) throw new Error('Некорректная карта сцены')
-  const currentStateVersion = Number(current.state_version ?? 0)
-  const proposedStateVersion = Number(proposed.state_version ?? currentStateVersion)
-  if (!Number.isSafeInteger(proposedStateVersion) || proposedStateVersion < currentStateVersion) throw new Error('Версия механического состояния устарела')
-  const mechanics = { ...(proposed.mechanics ?? {}), hazards: structuredClone(current.mechanics?.hazards ?? {}) }
-  return normalizeCampaignState({ ...proposed, players, merchants: current.merchants, economyLog: current.economyLog, agentInteraction, mechanics })
+function writeCampaignStream(connection, event, payload) {
+  if (connection.closed || connection.res.destroyed) return
+  connection.res.write(`id: ${++campaignStreamSequence}\n`)
+  connection.res.write(`event: ${event}\n`)
+  connection.res.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
+
+function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
+  const normalized = String(campaignId || '').toUpperCase()
+  const connections = streamConnections(normalized)
+  if (!connections.size) return
+  const room = suppliedRoom ?? getRoom(normalized)
+  if (!room.state) return
+  const state = stateWithLivePresence(normalizeCampaignState(room.state), normalized)
+  for (const connection of connections.values()) {
+    writeCampaignStream(connection, 'room', {
+      version: room.version,
+      updatedAt: room.updatedAt,
+      state: campaignStateForViewer(state, connection.user, connection.actorId),
+    })
+  }
+}
+
+onRoomSaved((campaignId, room) => {
+  queueMicrotask(() => broadcastCampaignRoom(campaignId, room))
+})
 
 const costlyRequests = new Map()
 function exceedsRate(key, limit, windowMs = 10 * 60 * 1000) {
@@ -936,72 +924,7 @@ async function readBody(req) {
   return JSON.parse(raw || '{}')
 }
 
-function safeArgs(call) {
-  try { return JSON.parse(call.function?.arguments || '{}') } catch { return {} }
-}
-
 function executeTool(name, args, effects, state = {}) {
-  if (name === 'roll_check') {
-    const ability = ['str', 'dex', 'con', 'int', 'wis', 'cha'].includes(args.ability) ? args.ability : null
-    const actorId = String(args.actorId || state.activePlayerId || '')
-    const actor = [...(state.players ?? []), ...(state.actors ?? [])].find((candidate) => String(candidate.id) === actorId)
-    const score = ability ? Number(actor?.abilities?.[ability]) : NaN
-    const abilityModifier = Number.isFinite(score) ? Math.floor((score - 10) / 2) : Math.max(-5, Math.min(12, Number(args.modifier) || 0))
-    const proficiency = args.proficient && actor ? Math.max(0, Number(actor.proficiency) || 0) : 0
-    const modifier = Math.max(-5, Math.min(12, abilityModifier + proficiency))
-    const difficulty = Math.max(5, Math.min(30, Number(args.difficulty) || 10))
-    const result = diceService.rollCheck({ modifier, difficulty, purpose: String(args.label || 'Проверка') })
-    effects.roll = { roll_id: result.roll_id, value: result.kept, modifier, total: result.total, difficulty, label: String(args.label || 'Проверка'), success: result.success, ability, actor_id: actorId }
-    return effects.roll
-  }
-  if (name === 'reveal_area') {
-    const x1 = Math.max(0, Math.min(12, Math.min(Number(args.x1), Number(args.x2))))
-    const x2 = Math.max(0, Math.min(12, Math.max(Number(args.x1), Number(args.x2))))
-    const y1 = Math.max(0, Math.min(8, Math.min(Number(args.y1), Number(args.y2))))
-    const y2 = Math.max(0, Math.min(8, Math.max(Number(args.y1), Number(args.y2))))
-    const cells = []
-    for (let y = y1; y <= y2; y += 1) for (let x = x1; x <= x2; x += 1) cells.push({ x, y })
-    effects.reveal.push(...cells.slice(0, 40))
-    return { revealed: cells.length }
-  }
-  if (name === 'update_objective') {
-    effects.objective = String(args.objective || '').slice(0, 120)
-    return { objective: effects.objective }
-  }
-  if (name === 'spawn_entity') {
-    const entity = {
-      x: Math.max(0, Math.min(12, Number(args.x) || 0)),
-      y: Math.max(0, Math.min(8, Number(args.y) || 0)),
-      kind: ['enemy', 'chest', 'altar', 'rune', 'torch', 'stairs'].includes(args.kind) ? args.kind : 'enemy',
-      label: String(args.label || 'Неизвестная сущность').slice(0, 80),
-    }
-    effects.spawn.push(entity)
-    return entity
-  }
-  if (name === 'grant_item') {
-    const item = {
-      id: randomUUID(), ownerId: String(args.ownerId || ''), name: String(args.name || 'Неизвестный предмет').slice(0, 80),
-      type: ['weapon', 'armor', 'consumable', 'tool', 'quest', 'treasure', 'document', 'other'].includes(args.type) ? args.type : 'other',
-      quantity: Math.max(1, Math.min(99, Number(args.quantity) || 1)), weight: 0, equipped: false,
-      rarity: ['обычный', 'необычный', 'редкий', 'очень редкий', 'легендарный', 'сюжетный'].includes(args.rarity) ? args.rarity : 'обычный',
-      description: String(args.description || '').slice(0, 700), properties: String(args.properties || '').slice(0, 400),
-      image: '', imagePrompt: String(args.imagePrompt || '').slice(0, 1200), imageStatus: 'queued',
-    }
-    effects.grantItems.push(item)
-    return { granted: true, itemId: item.id, ownerId: item.ownerId, imageStatus: 'queued' }
-  }
-  if (name === 'apply_hazard') {
-    const effect = createHazardEffect(args, state)
-    if (effect.error) return effect
-    ;(effects.hazards ??= []).push(effect)
-    return { applied: true, targetId: effect.targetId, hazard: effect.hazard }
-  }
-  if (name === 'resolve_hazard') {
-    const effect = createHazardResolution(args, state, effects.roll)
-    if (effect.error) return effect
-    ;(effects.hazards ??= []).push(effect)
-    return { resolved: true, targetId: effect.targetId, hazardId: effect.hazard.id, roll_id: effect.roll_id }
-  }
   if (name === 'request_party_decision') {
     if (effects.interaction) return { error: 'Одновременно разрешено только одно активное решение группы' }
     const options = (Array.isArray(args.options) ? args.options : []).map((option, index) => ({
@@ -1031,58 +954,6 @@ function executeTool(name, args, effects, state = {}) {
   return { error: 'Инструмент не разрешён' }
 }
 
-function parseFinal(content) {
-  const clean = String(content || '').replace(/```json|```/gi, '').trim()
-  try {
-    const start = clean.indexOf('{')
-    const end = clean.lastIndexOf('}')
-    const parsed = JSON.parse(start >= 0 && end > start ? clean.slice(start, end + 1) : clean)
-    return {
-      narration: String(parsed.narration || ''),
-      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 3).map(String) : [],
-      turn_consumed: typeof parsed.turn_consumed === 'boolean' ? parsed.turn_consumed : undefined,
-      action_kind: ['free', 'minor', 'substantive', 'end_turn'].includes(parsed.action_kind) ? parsed.action_kind : undefined,
-    }
-  } catch {
-    return { narration: clean || 'Мир на мгновение замирает, ожидая вашего решения.', suggestions: [] }
-  }
-}
-
-function validateNarration(result, roll) {
-  const text = String(result.narration || '').trim()
-  const looksLikeModelLeak = /\bi(?:'m| am) (?:claude|an ai)|system message|system prompt|injection attack|conflicting directives|should i proceed|core values/i.test(text)
-  if (text.length >= 20 && !looksLikeModelLeak) return result
-  if (!roll) return { ...result, narration: 'Рассказчик на миг умолкает. Мир остаётся прежним, и вы можете действовать дальше.' }
-  return {
-    ...result,
-    narration: roll.success
-      ? `Замысел удаётся. Проверка «${roll.label}» открывает безопасный путь вперёд, и герой успевает воспользоваться преимуществом.`
-      : `В последний момент что-то идёт не так. Проверка «${roll.label}» оборачивается осложнением: действие не достигает цели, а обстановка становится опаснее.`,
-  }
-}
-
-async function callRouter(messages, availableTools = tools) {
-  const result = await llmClient.complete({
-    messages,
-    tools: availableTools,
-    toolChoice: 'auto',
-    temperature: 0.75,
-    maxTokens,
-    validateResponse: (candidate) => {
-      if (candidate.tool_calls?.length) return true
-      const text = String(candidate.content || '').trim()
-      return text.length >= 20 && !/\bi(?:'m| am) (?:claude|an ai)|system message|system prompt|injection attack|conflicting directives|should i proceed|core values/i.test(text)
-    },
-  })
-  return {
-    role: 'assistant',
-    content: result.content,
-    tool_calls: result.tool_calls.map((call) => ({ id: call.id, type: call.type, function: call.function })),
-    model: result.model,
-    fallback_used: result.fallback_used,
-  }
-}
-
 async function generateItemImage(prompt, aspectRatio = '1:1') {
   const response = await fetch(`${baseUrl}/images`, {
     method: 'POST',
@@ -1103,199 +974,13 @@ async function generateItemImage(prompt, aspectRatio = '1:1') {
   return { url: `/generated/items/${filename}`, model: imageModel, cost: result.usage?.cost }
 }
 
-async function narrate(body) {
-  const state = body.state || {}
-  const recent = Array.isArray(state.messages) ? state.messages.slice(-10).map((message) => `${message.author}: ${message.text}`).join('\n') : ''
-  const world = {
-    scene: state.scene?.title, location: state.scene?.location, objective: state.scene?.objective, turn: state.scene?.turn,
-    mood: state.scene?.mood,
-    adventure: state.adventure ? { chapter: state.adventure.chapter, currentHook: state.adventure.currentHook, visitedLocations: state.adventure.visitedLocations, recentHistory: state.adventure.history?.slice(-5) } : null,
-    agentInteraction: state.agentInteraction ?? null,
-    merchants: Array.isArray(state.merchants) ? state.merchants.filter((merchant) => merchant.available !== false).map((merchant) => ({ id: merchant.id, name: merchant.name, location: merchant.location })).slice(0, 30) : [],
-    recentEconomy: Array.isArray(state.economyLog) ? state.economyLog.slice(-10) : [],
-    activePlayer: body.player,
-    party: Array.isArray(state.players) ? state.players.map((player) => ({ id: player.id, character: player.character, role: player.role, hp: `${player.hp}/${player.maxHp}`, x: player.x, y: player.y, inventory: Array.isArray(player.inventory) ? player.inventory.map((item) => item.name).slice(0, 20) : [], conditions: state.mechanics?.conditions?.[player.id] ?? [], activeHazards: state.mechanics?.hazards?.[player.id] ?? [] })) : [],
-    revealedSpecials: Array.isArray(state.scene?.cells) ? state.scene.cells.filter((cell) => cell.revealed && cell.feature).map((cell) => ({ x: cell.x, y: cell.y, feature: cell.feature })) : [],
-  }
-  const rawRoll = body.verifiedRoll ?? body.roll
-  const rawValue = rawRoll?.kept ?? rawRoll?.dice?.[0] ?? rawRoll?.value
-  const suppliedRoll = rawRoll && Number.isFinite(Number(rawValue)) ? (() => {
-    const value = Math.max(1, Math.min(20, Number(rawValue)))
-    const modifier = Math.max(-5, Math.min(12, Number(rawRoll.modifier) || 0))
-    const difficulty = Math.max(5, Math.min(30, Number(rawRoll.difficulty) || 10))
-    return {
-      roll_id: rawRoll.roll_id ?? null,
-      value,
-      modifier,
-      difficulty,
-      total: value + modifier,
-      label: String(rawRoll.label || rawRoll.purpose || 'Проверка'),
-      ability: rawRoll.ability ?? null,
-      success: value + modifier >= difficulty,
-    }
-  })() : null
-  const phaseInstruction = suppliedRoll
-    ? `\n\nБРОСОК УЖЕ СОВЕРШЁН И НЕ МОЖЕТ БЫТЬ ИЗМЕНЁН:\n${JSON.stringify(suppliedRoll)}\nОпиши конкретное последствие с учётом успеха или неудачи. Не запрашивай новый бросок.`
-    : ''
-  const agentRole = selectAgentRole(body.action)
-  const retrievedRules = (body.retrievedRules?.results ?? []).slice(0, 8).map((rule) => ({ rule_id: rule.rule_id, title: rule.title, summary: rule.summary ?? rule.text }))
-  const messages = [
-    { role: 'system', content: roleSystemPrompt(agentRole, suppliedRoll) },
-    { role: 'user', content: `${buildDataOnlyContext({ agent_role: agentRole, world_state: world, recent_events: recent, player_action: String(body.action || '').slice(0, 2000), retrieved_rules: retrievedRules, verified_roll: suppliedRoll })}${phaseInstruction}` },
-  ]
-  const effects = { roll: suppliedRoll, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
-  const availableTools = !roleAllowsWorldTools(agentRole) ? [] : suppliedRoll ? tools.filter((tool) => tool.function.name !== 'roll_check') : tools
-  let responseModel = model
-  for (let step = 0; step < 4; step += 1) {
-    const assistant = await callRouter(messages, availableTools)
-    if (!assistant) throw new Error('RouterAI не вернул сообщение')
-    responseModel = assistant.model || responseModel
-    messages.push({ role: assistant.role, content: assistant.content, tool_calls: assistant.tool_calls })
-    if (!assistant.tool_calls?.length) {
-      const final = validateNarration(parseFinal(assistant.content), suppliedRoll)
-      if (effects.scene && !final.narration.toLocaleLowerCase('ru').includes(effects.scene.scene.location.toLocaleLowerCase('ru'))) {
-        final.narration = `${effects.scene.transition} ${effects.scene.arrival} ${final.narration}`.trim()
-      }
-      if (effects.scene && !final.suggestions.length) final.suggestions = effects.scene.suggestions
-      return { ...final, effects, provider: 'RouterAI', model: responseModel }
-    }
-    for (const call of assistant.tool_calls) {
-      if (!suppliedRoll && call.function?.name === 'roll_check') {
-        const args = safeArgs(call)
-        const ability = ['str', 'dex', 'con', 'int', 'wis', 'cha'].includes(args.ability) ? args.ability : null
-        const actorId = String(args.actorId || state.activePlayerId || '')
-        const actor = [...(state.players ?? []), ...(state.actors ?? [])].find((candidate) => String(candidate.id) === actorId)
-        const score = ability ? Number(actor?.abilities?.[ability]) : NaN
-        const abilityModifier = Number.isFinite(score) ? Math.floor((score - 10) / 2) : Math.max(-5, Math.min(12, Number(args.modifier) || 0))
-        const proficiency = args.proficient && actor ? Math.max(0, Number(actor.proficiency) || 0) : 0
-        const check = {
-          label: String(args.label || 'Проверка навыка').slice(0, 80),
-          modifier: Math.max(-5, Math.min(12, abilityModifier + proficiency)),
-          difficulty: Math.max(5, Math.min(30, Number(args.difficulty) || 10)),
-          ability, actorId,
-          sides: 20,
-        }
-        return {
-          narration: `Чтобы узнать, чем закончится это действие, нужна проверка «${check.label}». Брось d20.`,
-          suggestions: [], check, effects, provider: 'RouterAI', model: responseModel,
-        }
-      }
-      const toolName = call.function?.name
-      const result = executeTool(toolName, safeArgs(call), effects, state)
-      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) })
-      // These tools already contain all player-facing copy needed for the next
-      // UI state. Returning immediately avoids a second provider round-trip and
-      // keeps a vote or location transition comfortably inside the browser timeout.
-      if (toolName === 'request_party_decision' && effects.interaction) {
-        return {
-          narration: effects.interaction.description,
-          suggestions: [],
-          turn_consumed: false,
-          action_kind: 'free',
-          effects,
-          provider: 'RouterAI',
-          model: responseModel,
-        }
-      }
-      if (toolName === 'advance_scene' && effects.scene) {
-        return {
-          narration: `${effects.scene.transition} ${effects.scene.arrival}`.trim(),
-          suggestions: effects.scene.suggestions,
-          turn_consumed: true,
-          action_kind: 'substantive',
-          effects,
-          provider: 'RouterAI',
-          model: responseModel,
-        }
-      }
-    }
-  }
-  return { narration: 'События развиваются слишком стремительно. Уточните ваше действие.', suggestions: [], effects, provider: 'RouterAI', model: responseModel }
-}
-
-async function legacyTurnHandler(input) {
-  const partyResolution = resolvePartyDecision(input.message, input.state)
-  if (partyResolution) {
-    const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
-    if (partyResolution.type === 'scene_request') {
-      const planned = await sceneArchitect.plan({ action: input.message, state: input.state, decision: partyResolution.decision, destinationHint: partyResolution.destinationHint })
-      executeTool('advance_scene', planned.sceneArgs, effects, input.state)
-      return {
-        narration: effects.scene.transition + '\n\n' + effects.scene.arrival,
-        suggestions: effects.scene.suggestions, effects, provider: 'AgentDirector', model: planned.trace.mode,
-        agent_trace: [{ agent: 'AgentDirector', output: partyResolution }, planned.trace, { agent: 'WorldEngine', output: { cells: effects.scene.scene.cells.length, entrance: effects.scene.entrance } }],
-        turn_consumed: true, action_kind: 'world',
-      }
-    }
-    return { narration: partyResolution.narration, suggestions: partyResolution.suggestions, effects, provider: 'AgentDirector', model: 'deterministic-policy', turn_consumed: false, action_kind: 'free' }
-  }
-
-  const loreAnswer = answerKnownLore(input.message, input.state)
-  if (loreAnswer) return loreAnswer
-
-  const interactionProposal = proposeAgentInteraction(input.message, input.state)
-  if (interactionProposal) {
-    const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
-    executeTool('request_party_decision', interactionProposal, effects, input.state)
-    return {
-      narration: effects.interaction.description,
-      suggestions: [],
-      effects,
-      provider: 'AgentDirector',
-      model: 'deterministic-policy',
-      turn_consumed: false,
-      action_kind: 'free',
-    }
-  }
-  if (isExplicitEndTurn(input.message)) {
-    const hero = String(input.playerName ?? input.player ?? 'Герой').slice(0, 80)
-    return {
-      narration: `${hero} завершает свои действия и передаёт инициативу следующему герою.`,
-      suggestions: [],
-      effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null },
-      provider: 'RulesEngine',
-      model: 'deterministic',
-      turn_consumed: true,
-      action_kind: 'end_turn',
-    }
-  }
-  const result = await narrate({
-    ...input,
-    state: input.state,
-    action: input.message,
-    player: input.playerName ?? input.player,
-    verifiedRoll: input.verifiedRoll,
-    roll: input.verifiedRoll ?? input.roll,
-  })
-  if (result.check) {
-    const registered = rollRegistry.registerCheck({
-      campaignId: input.campaignId ?? input.state?.sessionCode,
-      actorId: input.playerId ?? input.state?.activePlayerId,
-      label: result.check.label,
-      modifier: result.check.modifier,
-      difficulty: result.check.difficulty,
-      ability: result.check.ability,
-    })
-    result.check = { ...result.check, check_id: registered.check_id }
-  }
-  result.turn_consumed = decideTurnConsumption({
-    state: input.state,
-    action: input.message,
-    result,
-    rollResolved: Boolean(input.verifiedRoll ?? input.roll),
-  })
-  return result
-}
-
 const gameOrchestrator = new GameOrchestrator({
-  modeResolver: engineModeResolver,
   ruleRetriever,
   rulesEngine,
   eventStore,
   traceStore,
   narrator,
   npcSocialController,
-  legacyHandler: legacyTurnHandler,
 })
 
 async function latestCampaignState(campaignId, fallbackState) {
@@ -1366,12 +1051,7 @@ async function executeDirectorSceneTransition(input) {
 
 async function executeDirectorSceneTransitionOnce({ campaignId, room, user, action, idempotencyKey, resolution, partyDecision }) {
   const authoritative = await latestCampaignState(campaignId, room.state)
-  const planningState = normalizeCampaignState({
-    ...authoritative,
-    // Voting is still a compatibility-room concern. Only the resolved choice
-    // is exposed to the planner; scene mechanics continue from event state.
-    agentInteraction: room.state.agentInteraction ?? authoritative.agentInteraction ?? null,
-  })
+  const planningState = normalizeCampaignState(authoritative)
   const canonicalDecisionAction = `[РЕШЕНИЕ ГРУППЫ] ${String(resolution.decision ?? '').replace(/\s+/gu, ' ').trim().slice(0, 500)}`
   const planned = await sceneArchitect.plan({
     action: canonicalDecisionAction,
@@ -1396,7 +1076,7 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
     commandCapability: DIRECTOR_COMMAND_CAPABILITY,
     idempotencyKey,
     user,
-    allowedActorIds: user.heroIds,
+    allowedActorIds: campaignHeroIds(user, campaignId),
   })
   assertDirectorTransitionResult(result, directorPlan.fingerprint)
   const sceneEvent = (result.mechanics ?? []).find((event) => event.event_type === 'SceneAdvanced')
@@ -1444,7 +1124,7 @@ async function replayDirectorSceneTransition({ campaignId, room, user, action, i
     commandCapability: DIRECTOR_COMMAND_CAPABILITY,
     idempotencyKey,
     user,
-    allowedActorIds: user.heroIds,
+    allowedActorIds: campaignHeroIds(user, campaignId),
   })
   const sceneEvent = (result.mechanics ?? []).find((event) => event.event_type === 'SceneAdvanced')
   if (!sceneEvent?.payload) throw commandPolicyError('Повтор перехода не содержит SceneAdvanced', 'IDEMPOTENCY_CONFLICT')
@@ -1489,10 +1169,26 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     const room = getRoom(campaignId)
     if (!room.state) return null
     const currentStateVersion = Number(room.state.state_version ?? 0)
-    if (proposedStateVersion < currentStateVersion || (!forceProjectorRefresh && proposedStateVersion === currentStateVersion)) return room
+    if (proposedStateVersion < currentStateVersion) return room
+    if (!forceProjectorRefresh && proposedStateVersion === currentStateVersion) {
+      void eventStore.acknowledgeProjection(campaignId, proposedStateVersion).catch(() => {})
+      return room
+    }
     const eventTypes = new Set(events.map((event) => event.event_type))
-    const merchantInventoryChanged = eventTypes.has('MerchantPurchaseCompleted') || eventTypes.has('MerchantSaleCompleted')
-    const refreshInventory = forceProjectorRefresh || eventTypes.has('ItemGranted') || merchantInventoryChanged
+    const merchantInventoryChanged = eventTypes.has('MerchantPurchaseCompleted')
+      || eventTypes.has('MerchantSaleCompleted')
+      || eventTypes.has('MerchantServicePurchased')
+    const refreshInventory = forceProjectorRefresh || merchantInventoryChanged || [
+      'ItemGranted',
+      'ItemEquipped',
+      'ItemUnequipped',
+      'ItemUsed',
+      'ItemConsumed',
+      'ItemTransferred',
+      'ItemAttunementChanged',
+    ].some((type) => eventTypes.has(type))
+    const characterBuildChanged = eventTypes.has('CharacterChoicesUpdated') || eventTypes.has('SpellSelectionsUpdated')
+      || eventTypes.has('CharacterLeveledUp') || eventTypes.has('CharacterImported')
     const enginePlayers = new Map((engineState.players ?? []).map((player) => [String(player.id), player]))
     const players = (room.state.players ?? []).map((player) => {
       const authoritative = enginePlayers.get(String(player.id))
@@ -1503,10 +1199,28 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
         ...(forceProjectorRefresh || eventTypes.has('ExperienceAwarded') ? { experience: authoritative.experience } : {}),
         ...(refreshInventory ? { inventory: authoritative.inventory } : {}),
         ...(forceProjectorRefresh || merchantInventoryChanged ? { currency: authoritative.currency } : {}),
+        ...(forceProjectorRefresh || characterBuildChanged ? {
+          level: authoritative.level,
+          experience: authoritative.experience,
+          maxHp: authoritative.maxHp,
+          armor: authoritative.armor,
+          speed: authoritative.speed,
+          proficiency: authoritative.proficiency,
+          abilities: authoritative.abilities,
+          characterClass: authoritative.characterClass,
+          hitPointIncreases: authoritative.hitPointIncreases,
+          characterSheet: authoritative.characterSheet,
+          subclass: authoritative.subclass,
+          classSkillProficiencies: authoritative.classSkillProficiencies,
+          selectedFeatureIds: authoritative.selectedFeatureIds,
+          knownSpellIds: authoritative.knownSpellIds,
+          preparedSpellIds: authoritative.preparedSpellIds,
+        } : {}),
         ...(forceProjectorRefresh || eventTypes.has('ActorMoved') || eventTypes.has('SceneAdvanced') ? { x: authoritative.x, y: authoritative.y } : {}),
       }
     })
     const sceneChanged = forceProjectorRefresh || ['SceneAdvanced', 'AreaRevealed', 'ObjectiveUpdated', 'EntitySpawned'].some((type) => eventTypes.has(type))
+    const partyDecisionChanged = ['PartyDecisionOpened', 'PartyVoteCast', 'PartyDecisionResolved', 'PartyDecisionConsumed'].some((type) => eventTypes.has(type))
     const messages = [...(room.state.messages ?? [])]
     if (journalMessage?.id && journalMessage?.text && !messages.some((message) => String(message.id) === String(journalMessage.id))) {
       messages.push({
@@ -1518,7 +1232,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
         turnConsumed: Boolean(journalMessage.turnConsumed),
       })
     }
-    const next = normalizeCampaignState({
+    let next = normalizeCampaignState({
       ...room.state,
       messages,
       players,
@@ -1540,41 +1254,167 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
         adventure: engineState.adventure,
         worldMap: engineState.worldMap,
         suggestions: engineState.suggestions ?? room.state.suggestions,
-        agentInteraction: engineState.agentInteraction ?? null,
       } : {}),
+      ...(sceneChanged || partyDecisionChanged ? { agentInteraction: engineState.agentInteraction ?? null } : {}),
       activePlayerId: engineState.activePlayerId ?? room.state.activePlayerId,
       tacticalTurn: engineState.tacticalTurn ?? room.state.tacticalTurn,
       battleLog: engineState.battleLog ?? room.state.battleLog,
       economyLog: engineState.economyLog ?? room.state.economyLog,
       mapFeedback: engineState.mapFeedback ?? room.state.mapFeedback,
+      ...((forceProjectorRefresh || eventTypes.has('PublicDieRolled')) ? { lastDiceRoll: engineState.lastDiceRoll ?? null } : {}),
       ...(eventTypes.has('RulingRecorded') ? { rulings: engineState.rulings } : {}),
     })
+    if (forceProjectorRefresh) {
+      const onlineById = new Map((room.state.players ?? []).map((player) => [String(player.id), Boolean(player.online)]))
+      next = normalizeCampaignState({
+        ...room.state,
+        ...engineState,
+        agentInteraction: engineState.agentInteraction ?? null,
+        players: (engineState.players ?? []).map((player) => ({
+          ...player,
+          ...(onlineById.has(String(player.id)) ? { online: onlineById.get(String(player.id)) } : {}),
+        })),
+        messages,
+        state_projector_version: GAME_STATE_PROJECTOR_VERSION,
+        engine_mode: 'enforce',
+      })
+    }
     const saved = saveRoom(campaignId, next, room.version)
-    if (!saved.conflict) return saved.room
+    if (!saved.conflict) {
+      if (compareProjection(engineState, saved.room.state).matched) {
+        void eventStore.acknowledgeProjection(campaignId, proposedStateVersion, {
+          projectionHash: compareProjection(engineState, saved.room.state).projected_hash,
+        }).catch(() => {})
+      }
+      return saved.room
+    }
   }
   const reconciled = getRoom(campaignId)
-  return Number(reconciled.state?.state_version ?? -1) >= proposedStateVersion ? reconciled : null
-}
-
-function persistHazardProjection(campaignId, effects = []) {
-  if (!Array.isArray(effects) || !effects.length) return null
-  const room = getRoom(campaignId)
-  if (!room.state) return null
-  const next = normalizeCampaignState({ ...room.state, mechanics: applyHazardEffects(room.state.mechanics, effects) })
-  const saved = saveRoom(campaignId, next, room.version)
-  return saved.conflict ? null : saved.room
-}
-
-function persistInteractionProjection(campaignId, interaction) {
-  if (!interaction || typeof interaction !== 'object' || Array.isArray(interaction)) return null
-  const room = getRoom(campaignId)
-  if (!room.state) return null
-  if (room.state.agentInteraction) {
-    return String(room.state.agentInteraction.id) === String(interaction.id) ? room : null
+  if (Number(reconciled.state?.state_version ?? -1) >= proposedStateVersion
+    && compareProjection(engineState, reconciled.state).matched) {
+    void eventStore.acknowledgeProjection(campaignId, proposedStateVersion, {
+      projectionHash: compareProjection(engineState, reconciled.state).projected_hash,
+    }).catch(() => {})
+    return reconciled
   }
-  const next = normalizeCampaignState({ ...room.state, agentInteraction: interaction })
-  const saved = saveRoom(campaignId, next, room.version)
-  return saved.conflict ? null : saved.room
+  return null
+}
+
+async function reconcileCampaignProjection(campaignId) {
+  try {
+    const authoritative = await eventStore.load(campaignId)
+    const pending = await eventStore.pendingProjection(campaignId)
+    const room = getRoom(campaignId)
+    const projectedVersion = Number(room.state?.state_version ?? -1)
+    const comparison = compareProjection(authoritative.state, room.state)
+    if (projectedVersion >= authoritative.state_version && comparison.matched) {
+      if (pending) await eventStore.acknowledgeProjection(campaignId, authoritative.state_version, {
+        projectionHash: comparison.projected_hash,
+      })
+      return room
+    }
+    return persistAuthoritativeProjection(
+      campaignId,
+      authoritative.state,
+      pending?.events ?? [],
+      null,
+      { forceProjectorRefresh: true },
+    )
+  } catch (error) {
+    if (error?.code === 'CAMPAIGN_NOT_FOUND') return getRoom(campaignId)
+    throw error
+  }
+}
+
+async function reconcileAllCampaignProjections() {
+  for (const campaignId of listRoomCodes()) {
+    try {
+      await reconcileCampaignProjection(campaignId)
+    } catch (error) {
+      console.error(`[Сказание] Не удалось восстановить projection ${campaignId}:`, error)
+    }
+  }
+}
+
+async function persistInteractionProjection(campaignId, interaction) {
+  if (!interaction || typeof interaction !== 'object' || Array.isArray(interaction)) return null
+  const idempotencyKey = `party-decision-open:${String(interaction.id ?? '').slice(0, 120)}`
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const loaded = await eventStore.load(campaignId)
+    if (loaded.state.agentInteraction) {
+      if (String(loaded.state.agentInteraction.id) !== String(interaction.id)) return null
+      return persistAuthoritativeProjection(campaignId, loaded.state, [], null, { forceProjectorRefresh: true })
+    }
+    const partyMembers = new Set((loaded.state.partyMemberIds?.length
+      ? loaded.state.partyMemberIds
+      : loaded.state.players?.map((player) => player.id) ?? []).map(String))
+    const connected = connectedHeroIdsForCampaign(campaignId)
+    const eligibleHeroIds = (connected.size
+      ? [...connected]
+      : (loaded.state.players ?? []).filter((player) => player.online).map((player) => String(player.id)))
+      .filter((candidate) => partyMembers.has(String(candidate)))
+    if (!eligibleHeroIds.length) eligibleHeroIds.push(...partyMembers)
+    try {
+      const committed = await eventStore.commit({
+        campaign_id: campaignId,
+        expected_state_version: loaded.state_version,
+        idempotency_key: idempotencyKey,
+        command_id: idempotencyKey,
+        events: [partyDecisionOpenedEvent(interaction, null, { eligibleHeroIds })],
+      })
+      return persistAuthoritativeProjection(campaignId, committed.state, committed.events)
+    } catch (error) {
+      if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
+    }
+  }
+  return null
+}
+
+async function runMerchantEconomyClock(campaignId) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const loaded = await eventStore.load(campaignId)
+    const plans = planMerchantEconomyClock(loaded.state)
+    if (!plans.length) return { state: loaded.state, events: [], plans: [] }
+    let projectedState = loaded.state
+    const events = []
+    for (const plan of plans) {
+      const merchant = findMerchant(projectedState, plan.merchant_id)
+      if (!merchant) continue
+      const restockCommand = merchantRestockCommandFromPlan(merchant, plan)
+      if (restockCommand) {
+        const resolved = rulesEngine.resolve({
+          ...restockCommand,
+          command_id: `economy-restock:${plan.merchant_id}:${plan.processed_at_world_minute}`,
+          expected_state_version: projectedState.state_version,
+          request_fingerprint: `clock:${plan.scheduled_for_world_minute}:${plan.processed_at_world_minute}`,
+        }, projectedState, { isAdmin: true, system: true })
+        for (const event of resolved.events) {
+          events.push(event)
+          projectedState = applyGameEvent(projectedState, event)
+        }
+      }
+      const clockEvent = merchantEconomyClockEventFromPlan(merchant, plan)
+      if (clockEvent) {
+        events.push(clockEvent)
+        projectedState = applyGameEvent(projectedState, clockEvent)
+      }
+    }
+    if (!events.length) return { state: loaded.state, events: [], plans: [] }
+    try {
+      const worldMinute = Number(loaded.state.mechanics?.world_time?.elapsed_minutes ?? 0)
+      const committed = await eventStore.commit({
+        campaign_id: campaignId,
+        expected_state_version: loaded.state_version,
+        idempotency_key: `merchant-economy-clock:${worldMinute}:${loaded.state_version}`,
+        command_id: `merchant-economy-clock:${worldMinute}`,
+        events,
+      })
+      return { state: committed.state, events: committed.events, plans }
+    } catch (error) {
+      if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
+    }
+  }
+  throw new Error('Не удалось синхронизировать экономические часы')
 }
 
 function serveStatic(req, res) {
@@ -1602,7 +1442,11 @@ const server = createServer(async (req, res) => {
   applySecurityHeaders(res)
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4173', 'Access-Control-Allow-Headers': 'Content-Type, X-Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Credentials': 'true' }); return res.end() }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || '') && !originAllowed(req)) return json(res, 403, { error: 'Запрос с другого источника отклонён' })
-  if (req.url === '/api/health') return json(res, 200, { configured: Boolean(apiKey), provider: 'RouterAI', model, fallbackModels, models: llmClient.health(), imageModel, engineMode: engineModeResolver.resolve(), rulesetId: rulePack.manifest.ruleset_id, ruleCount: rulePack.rules.length, tools: tools.map((tool) => tool.function.name) })
+  if (req.url === '/api/health') return json(res, 200, { configured: Boolean(apiKey), provider: 'RouterAI', model, fallbackModels, models: llmClient.health(), imageModel, engineMode: 'enforce', rulesetId: rulePack.manifest.ruleset_id, ruleCount: rulePack.rules.length, tools: [] })
+  if (req.url === '/api/admin/usage' && req.method === 'GET') {
+    const user = requireAdmin(req, res); if (!user) return
+    return json(res, 200, { usage: usageLedger.report(), models: llmClient.health() })
+  }
   if (req.url === '/api/auth/me' && req.method === 'GET') {
     const user = userForToken(cookies(req).skazanie_session)
     return json(res, 200, { user, setupRequired: !hasAdmin() })
@@ -1652,6 +1496,149 @@ const server = createServer(async (req, res) => {
   }
 
   const parsedUrl = new URL(req.url || '/', 'http://skazanie.local')
+  const campaignStreamMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/stream$/)
+  if (campaignStreamMatch && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignStreamMatch[1].toUpperCase()
+    const room = await reconcileCampaignProjection(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    })
+    res.write('retry: 2000\n\n')
+    const connectionId = `stream-${process.pid}-${++campaignStreamSequence}`
+    const heroIds = campaignHeroIds(user, campaignId).map(String)
+    const actorId = heroIds.find((id) => room.state.players?.some((player) => String(player.id) === id)) ?? ''
+    const connection = { id: connectionId, userId: String(user.id), user, heroIds, actorId, res, closed: false }
+    streamConnections(campaignId).set(connectionId, connection)
+    const heartbeat = setInterval(() => {
+      if (!connection.closed && !res.destroyed) res.write(`: heartbeat ${Date.now()}\n\n`)
+    }, 20_000)
+    const close = () => {
+      if (connection.closed) return
+      connection.closed = true
+      clearInterval(heartbeat)
+      streamConnections(campaignId).delete(connectionId)
+      queueMicrotask(() => broadcastCampaignRoom(campaignId))
+    }
+    req.once('close', close)
+    req.once('aborted', close)
+    broadcastCampaignRoom(campaignId)
+    return
+  }
+  const partyVoteMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/party-decisions\/([A-Za-z0-9._:-]+)\/votes$/)
+  if (partyVoteMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = partyVoteMatch[1].toUpperCase()
+    try {
+      const room = await reconcileCampaignProjection(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      const body = await readBody(req)
+      const heroId = String(body.actor_id ?? '')
+      if (!canUseHero(user, heroId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту', code: 'ACTOR_FORBIDDEN' })
+      const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
+      let committed = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+      for (let attempt = 0; !committed && attempt < 3; attempt += 1) {
+        const loaded = await eventStore.load(campaignId)
+        const partyMembers = new Set((loaded.state.partyMemberIds?.length
+          ? loaded.state.partyMemberIds
+          : loaded.state.players?.map((player) => player.id) ?? []).map(String))
+        const connected = connectedHeroIdsForCampaign(campaignId)
+        const eligible = (connected.size
+          ? [...connected]
+          : (loaded.state.players ?? []).filter((player) => player.online).map((player) => String(player.id)))
+          .filter((candidate) => partyMembers.has(String(candidate)))
+        const vote = resolvePartyVote(loaded.state, {
+          interactionId: partyVoteMatch[2],
+          heroId,
+          optionId: body.option_id,
+          eligibleHeroIds: eligible,
+        })
+        try {
+          committed = await eventStore.commit({
+            campaign_id: campaignId,
+            expected_state_version: loaded.state_version,
+            idempotency_key: idempotencyKey,
+            command_id: idempotencyKey,
+            events: vote.events,
+          })
+          break
+        } catch (error) {
+          if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
+        }
+      }
+      const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events)
+      const latestRoom = projected ?? getRoom(campaignId)
+      return json(res, 200, {
+        version: latestRoom.version,
+        updatedAt: latestRoom.updatedAt,
+        state: campaignStateForViewer(stateWithLivePresence(latestRoom.state, campaignId), user, heroId),
+        mechanics: committed.events,
+        state_version: committed.state_version,
+      })
+    } catch (error) {
+      const status = ['STATE_VERSION_CONFLICT', 'PARTY_DECISION_CONFLICT', 'PARTY_DECISION_CLOSED'].includes(error?.code) ? 409
+        : error?.code === 'ACTOR_FORBIDDEN' ? 403 : 400
+      return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось записать голос', code: error?.code })
+    }
+  }
+  const partyRollMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/party-decisions\/([A-Za-z0-9._:-]+)\/roll$/)
+  if (partyRollMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = partyRollMatch[1].toUpperCase()
+    try {
+      const room = await reconcileCampaignProjection(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      const body = await readBody(req)
+      const heroId = String(body.actor_id ?? '')
+      if (!canUseHero(user, heroId, campaignId)) {
+        return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту', code: 'ACTOR_FORBIDDEN' })
+      }
+      const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
+      let committed = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+      for (let attempt = 0; !committed && attempt < 3; attempt += 1) {
+        const loaded = await eventStore.load(campaignId)
+        const rolled = diceService.roll('1d20', 'party_decision', heroId, 'party')
+        const resolution = resolvePartyRoll(loaded.state, {
+          interactionId: partyRollMatch[2],
+          heroId,
+          roll: rolled,
+        })
+        try {
+          committed = await eventStore.commit({
+            campaign_id: campaignId,
+            expected_state_version: loaded.state_version,
+            idempotency_key: idempotencyKey,
+            command_id: idempotencyKey,
+            events: resolution.events,
+          })
+        } catch (error) {
+          if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
+        }
+      }
+      const resolutionEvent = committed.events.find((event) => event.event_type === 'PartyDecisionResolved')
+      const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events)
+      const latestRoom = projected ?? getRoom(campaignId)
+      return json(res, 200, {
+        version: latestRoom.version,
+        updatedAt: latestRoom.updatedAt,
+        state: campaignStateForViewer(stateWithLivePresence(latestRoom.state, campaignId), user, heroId),
+        mechanics: committed.events,
+        state_version: committed.state_version,
+        roll: resolutionEvent?.payload?.roll,
+      })
+    } catch (error) {
+      const status = ['STATE_VERSION_CONFLICT', 'PARTY_DECISION_CONFLICT', 'PARTY_DECISION_CLOSED'].includes(error?.code) ? 409
+        : error?.code === 'ACTOR_FORBIDDEN' ? 403 : 400
+      return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось выполнить общий бросок', code: error?.code })
+    }
+  }
   if (parsedUrl.pathname === '/api/rules/search' && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
     try {
@@ -1679,6 +1666,8 @@ const server = createServer(async (req, res) => {
             memberCount: members.length,
             playerCount: state.players?.length ?? 0,
             setting: [state.campaignConcept?.era, state.campaignConcept?.genre].filter(Boolean).join(' · '),
+            lifecycleStatus: state.mechanics?.campaign_lifecycle?.status ?? (state.mechanics?.death?.campaign_status === 'party_defeated' ? 'failed' : 'active'),
+            membershipRole: user.role === 'admin' ? 'admin' : campaignMembership(user, code)?.role ?? 'legacy',
             updatedAt: room.updatedAt,
           }
         })
@@ -1725,14 +1714,61 @@ const server = createServer(async (req, res) => {
       })
       state.sessionCode = code
       state.engine_mode = 'enforce'
-      const imported = await eventStore.importLegacySnapshot({ campaign_id: code, legacy_state: state, idempotency_key: `legacy-import:${code}`, ruleset_id: state.ruleset_id, ruleset_version: state.ruleset_version, enabled_rule_packs: state.enabled_rule_packs })
-      const room = saveRoom(code, { ...imported.state, engine_mode: 'enforce', state_projector_version: GAME_STATE_PROJECTOR_VERSION }, 0)
-      const ownedHeroIds = creator.role === 'admin'
-        ? creator.heroIds
-        : [...new Set([...creator.heroIds, ...state.partyMemberIds.filter((_, index) => index % 2 === 0)])]
-      const updatedCreator = ownedHeroIds.length === creator.heroIds.length ? creator : updateUserAccess(creator.id, { heroIds: ownedHeroIds })
+      const initialized = await eventStore.initializeCampaign({
+        campaign_id: code,
+        initial_state: state,
+        ruleset_id: state.ruleset_id,
+        ruleset_version: state.ruleset_version,
+        enabled_rule_packs: state.enabled_rule_packs,
+        enabled_house_rules: state.enabled_house_rules,
+      })
+      const room = saveRoom(code, { ...initialized.state, engine_mode: 'enforce', state_projector_version: GAME_STATE_PROJECTOR_VERSION }, 0)
+      const ownerHeroIds = creator.role === 'admin'
+        ? []
+        : state.partyMemberIds.filter((_, index) => index % 2 === 0)
+      if (creator.role !== 'admin') {
+        upsertCampaignMembership({ campaignId: code, userId: creator.id, role: 'owner', heroIds: ownerHeroIds })
+      }
+      const updatedCreator = userForToken(cookies(req).skazanie_session) ?? creator
       return json(res, 201, { ...room.room, user: updatedCreator })
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось создать кампанию' }) }
+  }
+
+  const campaignInviteMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/invites$/)
+  if (campaignInviteMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    try {
+      const campaignId = campaignInviteMatch[1].toUpperCase()
+      const room = getRoom(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      const membership = campaignMembershipFor(user.id, campaignId)
+      if (user.role !== 'admin' && membership?.role !== 'owner') return json(res, 403, { error: 'Создавать приглашения может только владелец кампании' })
+      const body = await readBody(req)
+      const partyIds = room.state.partyMemberIds?.length
+        ? room.state.partyMemberIds.map(String)
+        : room.state.players.map((hero) => String(hero.id))
+      const assigned = new Set(listCampaignMemberships(campaignId).flatMap((item) => item.heroIds ?? []).map(String))
+      const requested = Array.isArray(body.hero_ids) ? [...new Set(body.hero_ids.map(String))] : []
+      const heroIds = requested.length ? requested : partyIds.filter((heroId) => !assigned.has(heroId)).slice(0, 1)
+      if (!heroIds.length) return json(res, 409, { error: 'В кампании не осталось свободных героев' })
+      if (heroIds.some((heroId) => !partyIds.includes(heroId) || assigned.has(heroId))) {
+        return json(res, 409, { error: 'Приглашение содержит недоступного или уже назначенного героя' })
+      }
+      const issued = createCampaignInvite({
+        campaignId,
+        createdBy: user.id,
+        heroIds,
+        expiresInMs: body.expires_in_ms,
+      })
+      return json(res, 201, {
+        campaign_id: campaignId,
+        token: issued.token,
+        hero_ids: issued.invite.heroIds,
+        expires_at: issued.invite.expiresAt,
+      })
+    } catch (error) {
+      return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось создать приглашение' })
+    }
   }
 
   const campaignJoinMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/join$/)
@@ -1742,15 +1778,90 @@ const server = createServer(async (req, res) => {
       const campaignId = campaignJoinMatch[1].toUpperCase()
       const room = getRoom(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
-      const partyIds = room.state.partyMemberIds?.length ? room.state.partyMemberIds.map(String) : room.state.players.map((hero) => String(hero.id))
-      const alreadyOwned = partyIds.filter((heroId) => user.heroIds.includes(heroId))
-      if (alreadyOwned.length) return json(res, 200, { code: campaignId, hero_ids: alreadyOwned, user, duplicate: true })
-      const claimed = new Set(listUsers().flatMap((account) => account.heroIds ?? []))
-      const available = partyIds.filter((heroId) => !claimed.has(heroId))
-      if (!available.length) return json(res, 409, { error: 'В этой кампании не осталось свободных героев' })
-      const updated = updateUserAccess(user.id, { heroIds: [...user.heroIds, ...available] })
-      return json(res, 200, { code: campaignId, hero_ids: available, user: updated, duplicate: false })
+      const body = await readBody(req)
+      const token = String(body.invite_token ?? body.inviteToken ?? '')
+      if (!token) return json(res, 400, { error: 'Для входа нужна действующая ссылка-приглашение' })
+      const redeemed = redeemCampaignInvite({ campaignId, token, userId: user.id })
+      const partyIds = new Set((room.state.partyMemberIds?.length ? room.state.partyMemberIds : room.state.players.map((hero) => hero.id)).map(String))
+      if (redeemed.membership.heroIds.some((heroId) => !partyIds.has(String(heroId)))) {
+        return json(res, 409, { error: 'Приглашение ссылается на героя, которого нет в кампании' })
+      }
+      const updated = userForToken(cookies(req).skazanie_session) ?? user
+      return json(res, 200, { code: campaignId, hero_ids: redeemed.membership.heroIds, user: updated, duplicate: redeemed.duplicate })
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось присоединиться к кампании' }) }
+  }
+
+  const campaignLifecycleMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/lifecycle$/)
+  if (campaignLifecycleMatch && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignLifecycleMatch[1].toUpperCase()
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    return json(res, 200, { campaign_id: campaignId, lifecycle: normalizeCampaignState(room.state).mechanics.campaign_lifecycle })
+  }
+  if (campaignLifecycleMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignLifecycleMatch[1].toUpperCase()
+    try {
+      const room = getRoom(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      const membership = campaignMembershipFor(user.id, campaignId)
+      if (user.role !== 'admin' && membership?.role !== 'owner') return json(res, 403, { error: 'Управлять жизненным циклом может только владелец кампании' })
+      const body = await readBody(req)
+      const loaded = await eventStore.load(campaignId)
+      const idempotencyKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? randomUUID())
+      const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+      const lifecycleEvent = duplicate ? null : lifecycleEventForAction(body.action, loaded.state, {
+        actorId: user.id,
+        reason: body.reason,
+      })
+      const lifecycleEventId = `campaign-lifecycle:${createHash('sha256').update(`${campaignId}\0${idempotencyKey}`).digest('hex').slice(0, 24)}`
+      if (lifecycleEvent) lifecycleEvent.event_id = lifecycleEventId
+      const lifecycleEvents = lifecycleEvent ? [lifecycleEvent] : []
+      if (lifecycleEvent?.event_type === 'CampaignCompleted') {
+        lifecycleEvents.push({
+          event_id: `session-summary:${createHash('sha256').update(`${campaignId}\0${idempotencyKey}\0summary`).digest('hex').slice(0, 24)}`,
+          event_type: 'NarrativeSummaryRecorded',
+          actor_id: user.id,
+          target_ids: [],
+          visibility: 'party',
+          source_rule_ids: [],
+          payload: {
+            summary: {
+              id: `campaign-summary:${createHash('sha256').update(`${campaignId}\0${idempotencyKey}`).digest('hex').slice(0, 24)}`,
+              kind: 'session',
+              title: String(loaded.state.campaign || 'Финал кампании').slice(0, 180),
+              summary: String(lifecycleEvent.payload.epilogue || lifecycleEvent.payload.reason).slice(0, 2_000),
+              visibility: 'party',
+              entity_ids: [],
+              thread_ids: (loaded.state.worldMemory?.threads ?? []).filter((thread) => thread.status === 'active').map((thread) => thread.id).slice(0, 30),
+              source_event_ids: [lifecycleEventId],
+              source_command_id: `campaign-lifecycle:${idempotencyKey}`,
+              recorded_at_minutes: Math.max(0, Number(loaded.state.mechanics?.world_time?.elapsed_minutes) || 0),
+            },
+          },
+        })
+      }
+      const committed = duplicate ?? await eventStore.commit({
+          campaignId,
+          expectedStateVersion: loaded.state_version,
+          idempotencyKey,
+          commandId: `campaign-lifecycle:${idempotencyKey}`,
+          events: lifecycleEvents,
+        })
+      const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events)
+      const actorId = campaignHeroIds(user, campaignId).find((id) => committed.state.players?.some((player) => String(player.id) === String(id))) ?? ''
+      return json(res, 200, {
+        campaign_id: campaignId,
+        lifecycle: committed.state.mechanics.campaign_lifecycle,
+        version: projected.version,
+        state: campaignStateForViewer(committed.state, user, actorId),
+      })
+    } catch (error) {
+      const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'INVALID_CAMPAIGN_TRANSITION', 'CAMPAIGN_COMBAT_ACTIVE'].includes(error?.code) ? 409 : 400
+      return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось изменить состояние кампании', code: error?.code })
+    }
   }
 
   const autonomyMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/intents$/)
@@ -1762,6 +1873,7 @@ const server = createServer(async (req, res) => {
       const room = getRoom(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      assertCampaignPlayable(room.state)
       const key = String(body.idempotency_key ?? body.idempotencyKey ?? req.headers['x-idempotency-key'] ?? randomUUID())
       const result = await autonomousCampaign.runIntent({ campaignId, intent: body.intent, idempotencyKey: key })
       const events = []
@@ -1826,24 +1938,20 @@ const server = createServer(async (req, res) => {
     const room = getRoom(explanationMatch[1])
     if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
     const trace = explanationMatch[2] === 'latest' ? traceStore.latest(explanationMatch[1]) : traceStore.get(explanationMatch[1], explanationMatch[2])
-    const explanation = buildTurnExplanation(trace)
-    return explanation ? json(res, 200, explanation) : json(res, 404, { error: 'Трассировка хода не найдена' })
+    const playerId = campaignHeroIds(user, explanationMatch[1]).map(String)
+      .find((id) => room.state?.players?.some((player) => String(player.id) === id)) ?? ''
+    const explanation = buildTurnExplanation(trace, {
+      playerId,
+      isPartyMember: true,
+      role: user.role,
+    })
+    return explanation ? json(res, 200, turnExplanationForViewer(explanation, user, playerId, room.state)) : json(res, 404, { error: 'Трассировка хода не найдена' })
   }
 
   const engineModeMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/engine-mode$/)
   if (engineModeMatch && req.method === 'PATCH') {
     const admin = requireAdmin(req, res); if (!admin) return
-    try {
-      const room = getRoom(engineModeMatch[1])
-      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
-      await readBody(req)
-      const mode = 'enforce'
-      let nextState = { ...room.state, engine_mode: mode }
-      const synchronized = await gameOrchestrator.synchronizeLegacyState(engineModeMatch[1], nextState, `enforce-${room.version}`)
-      nextState = { ...synchronized.state, engine_mode: mode }
-      const result = saveRoom(engineModeMatch[1], nextState, room.version)
-      return json(res, 200, { mode, room: result.room })
-    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Некорректный режим' }) }
+    return json(res, 410, { error: 'Переключение движка удалено: enforce является единственным runtime', code: 'ENGINE_MODE_RETIRED' })
   }
 
   const merchantLifecycleMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/merchants\/commands$/)
@@ -1990,7 +2098,7 @@ const server = createServer(async (req, res) => {
         commands: [command, { command_type: 'StartCombat', actor_id: actorId, server_authoritative: true }],
         idempotencyKey,
         user: admin,
-        allowedActorIds: admin.heroIds,
+        allowedActorIds: campaignHeroIds(admin, campaignId),
       })
       assertEncounterResultFingerprint(result, command)
       const originalVersion = Number(result.state_version ?? result.authoritative_state?.state_version ?? 0)
@@ -2032,12 +2140,12 @@ const server = createServer(async (req, res) => {
     if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
     if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
     const actor = String(parsedUrl.searchParams.get('actor_id') || '')
-    if (!actor || !canUseHero(user, actor)) return json(res, 403, { error: 'Торговать можно только от имени своего героя', code: 'ACTOR_FORBIDDEN' })
+    if (!actor || !canUseHero(user, actor, merchantMatch[1])) return json(res, 403, { error: 'Торговать можно только от имени своего героя', code: 'ACTOR_FORBIDDEN' })
     const state = await latestCampaignState(merchantMatch[1], room.state)
     const view = merchantViewFor(state, routeMerchantId, actor)
     if (!view) return json(res, 404, { error: 'Торговец или герой не найден', code: 'MERCHANT_NOT_FOUND' })
     if (view.merchant.available === false) return json(res, 409, { error: 'Торговец сейчас недоступен', code: 'MERCHANT_UNAVAILABLE' })
-    if (!merchantIsAtLocation(view.merchant.location, state.scene?.location)) {
+    if (!merchantIsAtLocation(view.merchant, state.scene)) {
       return json(res, 409, { error: 'Торговец находится в другой локации', code: 'MERCHANT_NOT_PRESENT' })
     }
     return json(res, 200, { merchant_view: view, room_version: room.version })
@@ -2065,7 +2173,7 @@ const server = createServer(async (req, res) => {
         commands: [command],
         idempotencyKey,
         user,
-        allowedActorIds: user.heroIds,
+        allowedActorIds: campaignHeroIds(user, merchantMatch[1]),
       })
       assertMerchantResultFingerprint(result, command)
       const narrationMessageId = result.narration ? merchantMessageId(idempotencyKey) : null
@@ -2107,16 +2215,19 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req)
       let commands = Array.isArray(body.commands) ? body.commands : body.command ? [body.command] : []
       if (!commands.length) return json(res, 400, { error: 'Нужна command или commands' })
+      const authoritativeBefore = await latestCampaignState(commandMatch[1], room.state)
       commands = commands.map((command) => {
         const type = commandType(command)
-        if (PLAYER_MERCHANT_COMMANDS.has(type)) return sanitizeMerchantCommand(user, room.state, command)
-        if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, room.state, command)
+        if (PLAYER_MERCHANT_COMMANDS.has(type)) return sanitizeMerchantCommand(user, authoritativeBefore, command)
+        if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
+        if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
+        if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, authoritativeBefore, command)
         return PLAYER_COMBAT_COMMANDS.has(type) ? { ...command, server_authoritative: true } : command
       })
       const actor = String(commands[0]?.actor_id || room.state.activePlayerId || '')
       const commandActor = [...(room.state.players ?? []), ...(room.state.actors ?? [])].find((candidate) => String(candidate.id ?? candidate.actor_id) === actor)
       const controller = String(commandActor?.controllerId ?? commandActor?.controller_id ?? commandActor?.ownerId ?? commandActor?.owner_id ?? '')
-      if (!canUseHero(user, actor) && !(isPartySummon(commandActor) && canUseHero(user, controller))) return json(res, 403, { error: 'Команда доступна только владельцу героя или его призванного существа', code: 'ACTOR_FORBIDDEN' })
+      if (!canUseHero(user, actor, commandMatch[1]) && !(isPartySummon(commandActor) && canUseHero(user, controller, commandMatch[1]))) return json(res, 403, { error: 'Команда доступна только владельцу героя или его призванного существа', code: 'ACTOR_FORBIDDEN' })
       const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
       const types = new Set(commands.map(commandType))
       if ([...types].some((type) => SERVER_WORLD_COMMANDS.has(type))) {
@@ -2129,6 +2240,9 @@ const server = createServer(async (req, res) => {
         throw commandPolicyError('Создание столкновения принимается только endpoint /encounters/assemble', 'ENCOUNTER_LIFECYCLE_ENDPOINT_REQUIRED')
       }
       const merchantCommands = commands.filter((command) => PLAYER_MERCHANT_COMMANDS.has(commandType(command)))
+      const characterCommands = commands.filter((command) => PLAYER_CHARACTER_COMMANDS.has(commandType(command)))
+      const characterLifecycleCommands = commands.filter((command) => PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(commandType(command)))
+      const itemCommands = commands.filter((command) => PLAYER_ITEM_COMMANDS.has(commandType(command)))
       const reactionActorId = String(room.state.mechanics?.combat?.reaction_window?.actor_id ?? '')
       const resolvesReaction = commands.some((command) => commandType(command) === 'UseCombatAction' && String(command.actor_id ?? '') === reactionActorId)
       if (merchantCommands.length) {
@@ -2138,11 +2252,22 @@ const server = createServer(async (req, res) => {
         if (commands.length !== 1) throw commandPolicyError('Торговая операция должна быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
         await assertMerchantIdempotency(commandMatch[1], idempotencyKey, merchantCommands[0])
       }
-      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: user.heroIds })
+      if (characterCommands.length && characterCommands.length !== commands.length) {
+        throw commandPolicyError('Изменения развития персонажа нельзя смешивать с игровым ходом', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      if (characterLifecycleCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Повышение уровня или импорт листа выполняются отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      if (itemCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Действие с предметом должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]) })
       if (merchantCommands.length) assertMerchantResultFingerprint(result, merchantCommands[0])
+      if (characterCommands.length) assertCharacterBuildResultFingerprint(result, characterCommands)
       if (result.authoritative_state) {
         const originalVersion = Number(result.state_version ?? result.authoritative_state.state_version ?? 0)
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))
+          || (types.has('UseItem') && Boolean(result.authoritative_state.mechanics?.combat?.active))
         const scheduler = shouldSettleCombat
           ? await runNpcTurnScheduler({
             campaignId: commandMatch[1], eventStore, rulesEngine, npcController,
@@ -2167,7 +2292,7 @@ const server = createServer(async (req, res) => {
         ? await creativeDirector.renderCriticalMoment({
           events: result.mechanics,
           state: result.authoritative_state,
-          viewer: { playerId: actor, partyIds: user.heroIds ?? [], isPartyMember: true, role: user.role },
+          viewer: { playerId: actor, partyIds: campaignHeroIds(user, commandMatch[1]), isPartyMember: true, role: user.role },
         })
         : null
       const tacticalLog = result.authoritative_state ? tacticalNarration(result.mechanics, result.authoritative_state) : ''
@@ -2208,6 +2333,55 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  const systemTickMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/system-tick$/)
+  if (systemTickMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = systemTickMatch[1].toUpperCase()
+    try {
+      let room = getRoom(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      assertCampaignPlayable(room.state)
+      const latest = await eventStore.load(campaignId)
+      if (Number(room.state.state_projector_version ?? 1) < GAME_STATE_PROJECTOR_VERSION || Number(room.state.state_version ?? 0) < latest.state_version) {
+        persistAuthoritativeProjection(campaignId, latest.state, [], null, { forceProjectorRefresh: true })
+        room = getRoom(campaignId)
+      }
+      if (latest.state.mechanics?.combat?.active) {
+        const scheduler = await runNpcTurnScheduler({
+          campaignId,
+          eventStore,
+          rulesEngine,
+          npcController,
+          advanceNpc: true,
+        })
+        if (scheduler.events.length) {
+          const advanced = await eventStore.load(campaignId)
+          persistAuthoritativeProjection(campaignId, advanced.state, scheduler.events)
+          room = getRoom(campaignId)
+        }
+      }
+      const economyClock = await runMerchantEconomyClock(campaignId)
+      if (economyClock.events.length) {
+        persistAuthoritativeProjection(campaignId, economyClock.state, economyClock.events)
+        room = getRoom(campaignId)
+      }
+      const actorId = campaignHeroIds(user, campaignId).find((id) => room.state.players?.some((player) => String(player.id) === String(id))) ?? ''
+      return json(res, 200, {
+        ...room,
+        state: campaignStateForViewer(normalizeCampaignState(room.state), user, actorId),
+        economy_clock_events: economyClock.events.length,
+      })
+    } catch (error) {
+      if (['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code)) {
+        const room = getRoom(campaignId)
+        const actorId = campaignHeroIds(user, campaignId).find((id) => room.state?.players?.some((player) => String(player.id) === String(id))) ?? ''
+        return json(res, 200, { ...room, state: campaignStateForViewer(normalizeCampaignState(room.state), user, actorId) })
+      }
+      return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось продолжить системный ход' })
+    }
+  }
+
   const roomMatch = req.url?.match(/^\/api\/rooms\/([A-Za-z0-9-]+)$/)
   const roomDiceMatch = req.url?.match(/^\/api\/rooms\/([A-Za-z0-9-]+)\/dice$/)
   if (roomDiceMatch && req.method === 'POST') {
@@ -2215,12 +2389,13 @@ const server = createServer(async (req, res) => {
     try {
       const body = await readBody(req)
       const playerId = String(body.playerId || '')
-      if (!canUseHero(user, playerId)) return json(res, 403, { error: 'Бросок доступен только владельцу героя' })
+      if (!canUseHero(user, playerId, roomDiceMatch[1])) return json(res, 403, { error: 'Бросок доступен только владельцу героя' })
       if (Number(body.sides ?? 20) !== 20) return json(res, 400, { error: 'Сейчас доступен только d20' })
 
       const current = getRoom(roomDiceMatch[1])
       if (!current.state) return json(res, 409, { error: 'Комната ещё не готова — повторите бросок через секунду' })
       if (!canAccessRoom(user, current)) return json(res, 403, { error: 'Нет доступа к этой комнате' })
+      assertCampaignPlayable(current.state)
       const player = Array.isArray(current.state.players)
         ? current.state.players.find((item) => item.id === playerId)
         : null
@@ -2236,114 +2411,64 @@ const server = createServer(async (req, res) => {
         playerName: String(player.character || player.name || 'Игрок').slice(0, 80),
         rolledAt: Date.now(),
       }
-      const result = saveRoom(roomDiceMatch[1], { ...current.state, lastDiceRoll: roll }, current.version)
-      if (result.conflict) return json(res, 409, { error: 'Кто-то бросил кость одновременно — попробуйте ещё раз' })
-      return json(res, 200, { roll, ...result.room })
+      const loaded = await eventStore.load(roomDiceMatch[1])
+      const committed = await eventStore.commit({
+        campaign_id: roomDiceMatch[1],
+        expected_state_version: loaded.state_version,
+        idempotency_key: `public-die:${roll.id}`,
+        command_id: `public-die-${roll.id}`,
+        events: [{
+          event_type: 'PublicDieRolled',
+          actor_id: playerId,
+          target_ids: [],
+          payload: { roll },
+          source_rule_ids: [],
+          ruling_id: null,
+          visibility: 'public',
+        }],
+      })
+      const projected = persistAuthoritativeProjection(roomDiceMatch[1], committed.state, committed.events, null, { forceProjectorRefresh: true })
+      if (!projected) return json(res, 409, { error: 'Не удалось обновить публичную проекцию броска' })
+      return json(res, 200, {
+        roll,
+        ...projected,
+        state: campaignStateForViewer(normalizeCampaignState(projected.state), user, playerId),
+      })
     } catch (error) {
       return json(res, 400, { error: error instanceof Error ? error.message : 'Некорректный бросок' })
     }
   }
   if (roomMatch && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
-    let room = getRoom(roomMatch[1])
+    const room = await reconcileCampaignProjection(roomMatch[1])
     if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой комнате' })
     if (!room.state) return json(res, 200, room)
-    if (Number(room.state.state_projector_version ?? 1) < GAME_STATE_PROJECTOR_VERSION) {
-      try {
-        const latest = await eventStore.load(roomMatch[1])
-        persistAuthoritativeProjection(roomMatch[1], latest.state, [], null, { forceProjectorRefresh: true })
-        room = getRoom(roomMatch[1])
-      } catch {
-        // Legacy-only rooms remain readable until their first authoritative engine command imports them.
-      }
-    }
-    if (room.state.mechanics?.combat?.active) {
-      try {
-        const scheduler = await runNpcTurnScheduler({
-          campaignId: roomMatch[1], eventStore, rulesEngine, npcController,
-          advanceNpc: true,
-        })
-        if (scheduler.events.length) {
-          const latest = await eventStore.load(roomMatch[1])
-          persistAuthoritativeProjection(roomMatch[1], latest.state, scheduler.events)
-          room = getRoom(roomMatch[1])
-        }
-      } catch (error) {
-        // Two polling clients may race to resume the same durable NPC turn.
-        // The winning append is authoritative; the loser simply reloads it.
-        if (!['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code)) throw error
-        const latest = await eventStore.load(roomMatch[1])
-        persistAuthoritativeProjection(roomMatch[1], latest.state, [])
-        room = getRoom(roomMatch[1])
-      }
-    }
-    const actorId = (user.heroIds ?? []).map(String).find((id) => room.state.players?.some((player) => String(player.id) === id)) ?? ''
-    return json(res, 200, { ...room, state: campaignStateForViewer(normalizeCampaignState(room.state), user, actorId) })
+    const actorId = campaignHeroIds(user, roomMatch[1]).map(String).find((id) => room.state.players?.some((player) => String(player.id) === id)) ?? ''
+    const presentState = stateWithLivePresence(normalizeCampaignState(room.state), roomMatch[1])
+    return json(res, 200, { ...room, state: campaignStateForViewer(presentState, user, actorId) })
   }
   if (roomMatch && req.method === 'PUT') {
     const user = requireUser(req, res); if (!user) return
-    try {
-      const body = await readBody(req)
-      const existingRoom = getRoom(roomMatch[1])
-      let nextState = validateRoomUpdate(user, existingRoom, body.state, roomMatch[1])
-      const effectiveMode = engineModeResolver.resolve({ user, campaign: existingRoom.state ?? nextState })
-      if (effectiveMode === 'enforce' && user.role !== 'admin') {
-        const authoritative = await eventStore.load(roomMatch[1])
-        const actors = new Map((authoritative.state.players ?? []).map((player) => [String(player.id), player]))
-        const presentationFields = ['character', 'name', 'portrait', 'portraitPosition', 'color', 'notes', 'traits', 'ideals', 'bonds', 'flaws', 'backstory', 'online', 'subclass', 'selectedFeatureIds', 'classSkillProficiencies', 'knownSpellIds', 'preparedSpellIds']
-        nextState = normalizeCampaignState({
-          ...nextState,
-          players: nextState.players.map((player) => {
-            const actor = actors.get(String(player.id))
-            if (!actor) return player
-            const presentation = Object.fromEntries(presentationFields
-              .filter((field) => Object.hasOwn(player, field))
-              .map((field) => [field, player[field]]))
-            return { ...actor, ...presentation }
-          }),
-          enemies: authoritative.state.enemies,
-          actors: authoritative.state.actors,
-          merchants: authoritative.state.merchants,
-          worldMemory: authoritative.state.worldMemory,
-          worldMap: authoritative.state.worldMap,
-          social: authoritative.state.social,
-          mechanics: authoritative.state.mechanics,
-          state_version: authoritative.state_version,
-          activePlayerId: authoritative.state.activePlayerId,
-          tacticalTurn: authoritative.state.tacticalTurn,
-          battleLog: authoritative.state.battleLog,
-          economyLog: authoritative.state.economyLog,
-          mapFeedback: authoritative.state.mapFeedback,
-          ruleset_id: authoritative.state.ruleset_id,
-          ruleset_version: authoritative.state.ruleset_version,
-          enabled_rule_packs: authoritative.state.enabled_rule_packs,
-          enabled_house_rules: authoritative.state.enabled_house_rules,
-          ruleset_locked_at: authoritative.state.ruleset_locked_at,
-          scene: authoritative.state.scene ?? nextState.scene,
-          adventure: authoritative.state.adventure ?? nextState.adventure,
-        })
-      }
-      if (effectiveMode === 'enforce' && user.role === 'admin') {
-        if (Number(body.baseVersion) !== Number(existingRoom.version)) return json(res, 409, existingRoom)
-        const synchronized = await gameOrchestrator.synchronizeLegacyState(
-          roomMatch[1],
-          nextState,
-          `admin-room-${existingRoom.version + 1}`,
-        )
-        nextState = normalizeCampaignState({ ...synchronized.state, engine_mode: 'enforce' })
-      }
-      const result = saveRoom(roomMatch[1], nextState, body.baseVersion)
-      return json(res, result.conflict ? 409 : 200, result.room)
-    } catch (error) { return json(res, /доступ|администратор|героя|ход/i.test(error?.message || '') ? 403 : 400, { error: error instanceof Error ? error.message : 'Не удалось сохранить комнату' }) }
+    const existingRoom = getRoom(roomMatch[1])
+    if (!existingRoom.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
+    if (!canAccessRoom(user, existingRoom)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    return json(res, 410, {
+      error: 'Полная запись room state удалена. Используйте типизированные campaign commands',
+      code: 'ROOM_MUTATION_RETIRED',
+    })
   }
   if (req.url === '/api/roll' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
     try {
       const body = await readBody(req)
-      if (!canUseHero(user, body.playerId)) return json(res, 403, { error: 'Бросок доступен только владельцу героя' })
+      const campaignId = String(body.campaignId ?? body.campaign_id ?? '')
+      if (!campaignId || !canUseHero(user, body.playerId, campaignId)) return json(res, 403, { error: 'Бросок доступен только владельцу героя' })
+      const room = getRoom(campaignId)
+      if (!room.state || !canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      assertCampaignPlayable(room.state)
       const issued = rollRegistry.issue({
         checkId: body.checkId ?? body.check_id,
-        campaignId: body.campaignId ?? body.campaign_id ?? '',
+        campaignId,
         actorId: body.playerId,
         label: body.label,
         modifier: Math.max(-5, Math.min(12, Number(body.modifier) || 0)),
@@ -2405,13 +2530,29 @@ const server = createServer(async (req, res) => {
     const user = requireUser(req, res); if (!user) return
     try {
       const body = await readBody(req)
-      const campaignId = String(body.campaignId || body.campaign_id || body.state?.sessionCode || '')
+      if (Object.hasOwn(body, 'state') || Object.hasOwn(body, 'player')
+        || Object.hasOwn(body, 'engine_mode') || Object.hasOwn(body, 'engineMode')
+        || Object.hasOwn(body, 'mode')) {
+        return json(res, 400, {
+          error: 'Legacy payload удалён: состояние, игрок и режим определяются сервером',
+          code: 'LEGACY_PAYLOAD_RETIRED',
+        })
+      }
+      if (body.roll && (typeof body.roll !== 'object' || Array.isArray(body.roll)
+        || Object.keys(body.roll).some((key) => key !== 'roll_id'))) {
+        return json(res, 400, {
+          error: 'Разрешена только ссылка на серверный roll_id',
+          code: 'UNVERIFIED_ROLL',
+        })
+      }
+      const campaignId = String(body.campaignId || body.campaign_id || '')
       const room = getRoom(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      assertCampaignPlayable(room.state)
       const trustedState = room.state
       const playerId = String(trustedState.activePlayerId || '')
-      if (!canUseHero(user, playerId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
+      if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
       if (trustedState.mechanics?.death?.campaign_status === 'party_defeated') {
         return json(res, 409, { error: 'Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя', code: 'WORLD_ENDED' })
       }
@@ -2419,8 +2560,7 @@ const server = createServer(async (req, res) => {
         return json(res, 409, { error: 'Сначала воскресите погибшего героя или замените его новым', code: 'HERO_DEAD_UNRESOLVED' })
       }
       if (exceedsRate(`narrate:${user.id}`, 40)) return json(res, 429, { error: 'Слишком много ходов за короткое время' })
-      const mode = engineModeResolver.resolve({ user, campaign: trustedState })
-      if (!apiKey && mode !== 'enforce') return json(res, 503, { error: 'AI не настроен', code: 'AI_NOT_CONFIGURED' })
+      const mode = 'enforce'
       const idempotencyKey = String(body.idempotencyKey || body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
       let verifiedRoll = null
       if (body.roll?.roll_id) {
@@ -2511,11 +2651,10 @@ const server = createServer(async (req, res) => {
           idempotencyKey,
           verifiedRoll,
           user,
-          allowedActorIds: user.heroIds,
+          allowedActorIds: campaignHeroIds(user, campaignId),
         })
       }
-      const interactionProjection = persistInteractionProjection(campaignId, result.effects?.interaction)
-      const hazardProjection = persistHazardProjection(campaignId, result.effects?.hazards)
+      const interactionProjection = await persistInteractionProjection(campaignId, result.effects?.interaction)
       const journalNarrationId = result.authoritative_state && String(result.narration ?? '').trim()
         ? narrationMessageId(idempotencyKey)
         : null
@@ -2545,4 +2684,5 @@ const server = createServer(async (req, res) => {
   return serveStatic(req, res)
 })
 
+await reconcileAllCampaignProjections()
 server.listen(port, host, () => console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`))

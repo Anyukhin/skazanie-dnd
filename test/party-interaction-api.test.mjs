@@ -27,7 +27,7 @@ test('агент открывает общее голосование, а неа
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-party-'))
   const child = spawn(process.execPath, ['server/index.mjs'], {
     cwd: process.cwd(),
-    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: 'deterministic-policy-test', ADMIN_SETUP_TOKEN: 'party-setup-token', GAME_ENGINE_MODE: 'shadow', COOKIE_SECURE: 'false' },
+    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: 'deterministic-policy-test', ADMIN_SETUP_TOKEN: 'party-setup-token', COOKIE_SECURE: 'false' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   t.after(() => { if (child.exitCode == null) child.kill() })
@@ -63,7 +63,6 @@ test('агент открывает общее голосование, а неа
     ],
     scene: { title: 'Подземелье', location: 'Нижний зал', mood: '', objective: 'Найти выход', turn: 4, cells: [] },
     adventure: { chapter: 1, visitedLocations: ['Нижний зал'], history: [] },
-    engine_mode: 'shadow',
   }
   const createdResponse = await fetch(baseUrl + '/api/campaigns', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
@@ -87,21 +86,24 @@ test('агент открывает общее голосование, а неа
   assert.equal(persistedVoteResponse.status, 200)
   assert.equal(room.state.agentInteraction.id, result.effects.interaction.id)
 
-  room.state.agentInteraction.votes.lira = 'option-1'
-  let saved = await fetch(baseUrl + '/api/rooms/PARTY-VOTE', {
-    method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+  const forgedSave = await fetch(baseUrl + '/api/rooms/PARTY-VOTE', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
     body: JSON.stringify({ state: room.state, baseVersion: room.version }),
+  })
+  const afterForgery = await forgedSave.json()
+  assert.equal(forgedSave.status, 410)
+  assert.equal(afterForgery.code, 'ROOM_MUTATION_RETIRED')
+
+  let saved = await fetch(baseUrl + `/api/campaigns/PARTY-VOTE/party-decisions/${encodeURIComponent(room.state.agentInteraction.id)}/votes`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ actor_id: 'lira', option_id: 'option-1', idempotency_key: 'party-vote-lira' }),
   })
   room = await saved.json()
   assert.equal(room.state.agentInteraction.status, 'open')
 
-  const playerRoomResponse = await fetch(baseUrl + '/api/rooms/PARTY-VOTE', { headers: { Cookie: playerCookie } })
-  let playerRoom = await playerRoomResponse.json()
-  playerRoom.state.agentInteraction.votes.brann = 'option-1'
-  playerRoom.state.agentInteraction.status = 'resolved'
-  saved = await fetch(baseUrl + '/api/rooms/PARTY-VOTE', {
-    method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
-    body: JSON.stringify({ state: playerRoom.state, baseVersion: playerRoom.version }),
+  saved = await fetch(baseUrl + `/api/campaigns/PARTY-VOTE/party-decisions/${encodeURIComponent(room.state.agentInteraction.id)}/votes`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
+    body: JSON.stringify({ actor_id: 'brann', option_id: 'option-1', idempotency_key: 'party-vote-brann' }),
   })
   const resolved = await saved.json()
   assert.equal(saved.status, 200)

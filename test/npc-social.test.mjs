@@ -8,7 +8,7 @@ import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
-import { npcSocialForViewer, promiseDueOffsetMinutes, relationshipTier } from '../server/npc-social.mjs'
+import { npcProfileAtWorldTime, npcSocialForViewer, promiseDueOffsetMinutes, relationshipTier } from '../server/npc-social.mjs'
 import { buildNpcSocialCheckPolicy, classifyNpcSocialCheck, npcSocialCheckOutcome } from '../server/npc-social-check.mjs'
 import { mechanicsForViewer } from '../server/viewer-projection.mjs'
 import {
@@ -82,6 +82,79 @@ test('social projection exposes public NPC data but hides motives, beliefs and o
   assert.doesNotMatch(JSON.stringify(visible), /hidden crown|duke is a traitor|known_fact_ids/u)
 })
 
+test('persistent NPC schedules and inventories are normalized, replayed, and projected without private leaks', () => {
+  const initial = campaign()
+  const npc = {
+    ...initial.social.npcs[0],
+    schedule: [
+      { id: 'market-hours', days: [0, 1, 2, 3, 4], start_minute: 540, end_minute: 1_020, location: 'Market Square', available: true, summary: 'Open market hours.', visibility: 'party' },
+      { id: 'private-errand', days: [0], start_minute: 1_020, end_minute: 1_140, location: 'Duke Archive', available: false, summary: 'PRIVATE_ARCHIVE_ROUTE', visibility: 'gm_only' },
+    ],
+    inventory: [
+      { id: 'map', name: 'Town map', quantity: 2, description: 'A public route map.', visibility: 'party' },
+      { id: 'ledger', name: 'SECRET_LEDGER', quantity: 1, description: 'PRIVATE_DEBT_LIST', visibility: 'gm_only' },
+    ],
+  }
+  const result = resolveCommand({ command_type: 'UpsertNpcSocialProfile', npc }, initial, {
+    diceService: dice(), context: { isAdmin: true },
+  })
+  assert.deepEqual(result.events.map((event) => event.event_type), ['NpcSocialProfileUpserted'])
+  const replayed = replayEvents(initial, result.events)
+  const stored = replayed.social.npcs.find((entry) => entry.id === 'marta')
+  assert.equal(stored.schedule.length, 2)
+  assert.equal(stored.inventory.length, 2)
+
+  const marketTime = { mechanics: { world_time: { elapsed_minutes: 600 } } }
+  const errandTime = { mechanics: { world_time: { elapsed_minutes: 1_050 } } }
+  assert.equal(npcProfileAtWorldTime(stored, marketTime).location, 'Market Square')
+  assert.equal(npcProfileAtWorldTime(stored, marketTime).available, true)
+  assert.equal(npcProfileAtWorldTime(stored, errandTime).location, 'Duke Archive')
+  assert.equal(npcProfileAtWorldTime(stored, errandTime).available, false)
+
+  const visibleMarket = npcSocialForViewer(replayed.social, { playerId: 'hero', isPartyMember: true, state: marketTime })
+  assert.deepEqual(visibleMarket.npcs[0].inventory, [{ id: 'map', name: 'Town map', quantity: 2, description: 'A public route map.' }])
+  assert.equal(visibleMarket.npcs[0].schedule, undefined)
+  const visibleErrand = npcSocialForViewer(replayed.social, { playerId: 'hero', isPartyMember: true, state: errandTime })
+  assert.equal(visibleErrand.npcs[0].available, false)
+  assert.equal(visibleErrand.npcs[0].location, '')
+  assert.doesNotMatch(JSON.stringify(visibleErrand), /SECRET_LEDGER|PRIVATE_DEBT_LIST|PRIVATE_ARCHIVE_ROUTE|Duke Archive/u)
+})
+
+test('NPC profile management rejects overlapping schedules and invalid inventory before an event is produced', () => {
+  const initial = campaign()
+  const overlapping = {
+    ...initial.social.npcs[0],
+    schedule: [
+      { id: 'morning', days: [], start_minute: 480, end_minute: 720, location: 'Market Square', available: true },
+      { id: 'overlap', days: [0], start_minute: 700, end_minute: 800, location: 'Market Square', available: true },
+    ],
+  }
+  assert.throws(
+    () => resolveCommand({ command_type: 'UpsertNpcSocialProfile', npc: overlapping }, initial, { diceService: dice(), context: { isAdmin: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_SCHEDULE_CONFLICT',
+  )
+  const invalidInventory = {
+    ...initial.social.npcs[0],
+    inventory: [{ id: 'coin', name: 'Coin', quantity: -1, visibility: 'party' }],
+  }
+  assert.throws(
+    () => resolveCommand({ command_type: 'UpsertNpcSocialProfile', npc: invalidInventory }, initial, { diceService: dice(), context: { isAdmin: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_INVENTORY_INVALID',
+  )
+})
+
+test('a scheduled unavailable NPC cannot be addressed even when their private destination is hidden', () => {
+  const initial = campaign()
+  initial.mechanics.world_time = { elapsed_minutes: 1_050 }
+  initial.social.npcs[0].schedule = [
+    { id: 'private-errand', days: [0], start_minute: 1_020, end_minute: 1_140, location: 'Duke Archive', available: false, visibility: 'gm_only' },
+  ]
+  assert.throws(
+    () => resolveCommand(socialCommand(), initial, { diceService: dice(), context: { isSocialController: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_NPC_UNAVAILABLE',
+  )
+})
+
 test('a server-confirmed social turn is event sourced and replayable with relationship and promise', () => {
   const initial = campaign()
   const result = resolveCommand(socialCommand(), initial, {
@@ -109,6 +182,33 @@ test('players cannot forge NPC turns and the social validator rejects unknown fa
     }),
     (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_FACT_FORBIDDEN',
   )
+})
+
+test('раскрытый NPC факт становится персональным знанием героя и переживает replay', () => {
+  const initial = campaign()
+  initial.worldMemory = {
+    schema_version: 2,
+    entities: [{ id: 'npc:marta', kind: 'npc', name: 'Marta', summary: '', aliases: [], visibility: 'party', tags: [] }],
+    facts: [{
+      id: 'fact:route', subject_id: 'npc:marta', predicate: 'knows_route',
+      object: 'The old aqueduct is safe.', summary: 'The old aqueduct is safe.',
+      visibility: 'gm_only', source_event_ids: [], source_command_id: '', supersedes_fact_id: '', status: 'active',
+    }],
+    quests: [], knowledge: {}, knowledge_ledger: [],
+  }
+  initial.social.npcs[0].known_fact_ids = ['fact:route']
+  const result = resolveCommand(socialCommand({ disclosed_fact_ids: ['fact:route'] }), initial, {
+    diceService: dice(), context: { isSocialController: true },
+  })
+
+  assert.deepEqual(result.events.map((event) => event.event_type), [
+    'NpcConversationRecorded', 'KnowledgeRevealed', 'NpcRelationshipAdjusted', 'NpcPromiseRecorded',
+  ])
+  const replayed = replayEvents(initial, result.events)
+  assert.deepEqual(replayed.worldMemory.knowledge.hero, ['fact:route'])
+  assert.equal(replayed.worldMemory.knowledge_ledger[0].source_kind, 'npc')
+  assert.deepEqual(replayed.worldMemory.knowledge_ledger[0].source_event_ids, [result.events[0].event_id])
+  assert.deepEqual(replayed.worldMemory.knowledge.rogue, undefined)
 })
 
 test('social turns are rejected when the NPC is elsewhere, unavailable or combat is active', () => {
@@ -164,11 +264,66 @@ test('LLM receives no private motives and cannot forge identity, facts or an exc
   assert.match(result.promise.id, /^promise:/u)
 })
 
+test('NPC receives only its structured beliefs and rumors, keeps them separate from canonical facts, and cannot disclose another holder claim', async () => {
+  let request = null
+  const state = campaign()
+  state.worldMemory = {
+    ...state.worldMemory,
+    entities: [
+      ...(state.worldMemory.entities ?? []),
+      { id: 'marta', kind: 'npc', name: 'Marta', summary: 'Trader', visibility: 'party', aliases: [], tags: [] },
+      { id: 'npc:other', kind: 'npc', name: 'Other', summary: 'Other NPC', visibility: 'party', aliases: [], tags: [] },
+    ],
+    epistemic_claims: [
+      {
+        id: 'rumor:marta-key', kind: 'rumor', holder_entity_id: 'marta', subject_entity_id: '',
+        predicate: 'heard', claim: 'The key is in the market.', summary: 'A market rumor.',
+        visibility: 'gm_only', truth_status: 'unknown', source_event_ids: ['event:gossip'],
+      },
+      {
+        id: 'belief:other', kind: 'belief', holder_entity_id: 'npc:other', subject_entity_id: '',
+        predicate: 'believes', claim: 'Another private belief.', summary: 'Not Marta knowledge.',
+        visibility: 'gm_only', truth_status: 'unknown', source_event_ids: ['event:thought'],
+      },
+    ],
+  }
+  const controller = new NpcSocialController({
+    llmClient: {
+      completeJson: async (input) => {
+        request = input
+        return {
+          reply: 'I heard the key is in the market.',
+          disclosed_fact_ids: [],
+          disclosed_claim_ids: ['rumor:marta-key', 'belief:other'],
+          relationship_delta: 0,
+        }
+      },
+    },
+  })
+  const result = await controller.respond({
+    state, playerId: 'hero', npcId: 'marta', message: 'What have you heard?', turnId: 'turn-claim',
+  })
+  const sent = request.messages.map((message) => message.content).join('\n')
+
+  assert.match(sent, /rumor:marta-key/u)
+  assert.doesNotMatch(sent, /belief:other|Another private belief/u)
+  assert.deepEqual(result.disclosed_fact_ids, [])
+  assert.deepEqual(result.disclosed_claim_ids, ['rumor:marta-key'])
+})
+
 test('orchestrator commits NPC dialogue once and replays the stored reply without calling LLM or Narrator again', async () => {
   const initial = campaign()
   const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-social-'))
   const eventStore = new FileEventStore({
     rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+  })
+  await eventStore.initializeCampaign({
+    campaign_id: 'NPC-SOCIAL',
+    initial_state: initial,
+    ruleset_id: initial.ruleset_id,
+    ruleset_version: initial.ruleset_version,
+    enabled_rule_packs: initial.enabled_rule_packs,
+    enabled_house_rules: initial.enabled_house_rules,
   })
   let socialCalls = 0
   let narratorCalls = 0
@@ -291,6 +446,15 @@ test('orchestrator commits the social roll before LLM, then replays both commits
   const eventStore = new FileEventStore({
     rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState,
   })
+  const checkedInitial = { ...initial, sessionCode: 'NPC-SOCIAL-CHECK' }
+  await eventStore.initializeCampaign({
+    campaign_id: 'NPC-SOCIAL-CHECK',
+    initial_state: checkedInitial,
+    ruleset_id: checkedInitial.ruleset_id,
+    ruleset_version: checkedInitial.ruleset_version,
+    enabled_rule_packs: checkedInitial.enabled_rule_packs,
+    enabled_house_rules: checkedInitial.enabled_house_rules,
+  })
   const fallback = new NpcSocialController()
   let socialCalls = 0
   let narratorCalls = 0
@@ -315,7 +479,7 @@ test('orchestrator commits the social roll before LLM, then replays both commits
     idFactory: () => 'checked-social-turn',
   })
   const input = {
-    state: { ...initial, sessionCode: 'NPC-SOCIAL-CHECK' }, campaignId: 'NPC-SOCIAL-CHECK', playerId: 'hero',
+    state: checkedInitial, campaignId: 'NPC-SOCIAL-CHECK', playerId: 'hero',
     message: 'I persuade Marta to help us.', idempotencyKey: 'checked-social',
   }
 

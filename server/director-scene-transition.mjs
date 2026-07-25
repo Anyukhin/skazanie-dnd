@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { createSceneTransition } from './adventure-director.mjs'
-import { locationsMatch } from './merchant-economy.mjs'
+import { merchantIsAtLocation } from './merchant-economy.mjs'
 import { normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 
@@ -114,6 +114,7 @@ function lifecycleMerchantFromProposal(merchant) {
     greeting: merchant.greeting,
     voice: merchant.voice,
     location: merchant.location,
+    location_id: merchant.location_id,
     available: merchant.available !== false,
     purse_cp: merchant.purse_cp,
     pricing: {
@@ -194,6 +195,8 @@ export function buildDirectorTransitionCommands({
   const normalizedShopIntent = commerceForScene(normalizeSceneShopIntent(shopIntent, sceneArgs), kind)
   const canonicalSceneArgs = {
     ...(sceneArgs && typeof sceneArgs === 'object' && !Array.isArray(sceneArgs) ? sceneArgs : {}),
+    location: provisionalTransition.scene.location,
+    location_id: provisionalTransition.scene.location_id,
     scene_kind: kind,
     settlement_type: kind === 'settlement' ? normalizedShopIntent.settlement_type : null,
   }
@@ -201,7 +204,7 @@ export function buildDirectorTransitionCommands({
   const shopRequested = kind === 'settlement' && normalizedShopIntent.action === 'create'
   const existingMerchant = shopRequested
     ? (Array.isArray(state.merchants) ? state.merchants : [])
-      .find((merchant) => locationsMatch(merchant?.location, transition.scene.location)) ?? null
+      .find((merchant) => merchantIsAtLocation(merchant, transition.scene)) ?? null
     : null
 
   const commands = [{
@@ -223,6 +226,7 @@ export function buildDirectorTransitionCommands({
   if (shopRequested && !existingMerchant) {
     shopProposal = assembleShop({
       location: transition.scene.location,
+      location_id: transition.scene.location_id,
       settlement_type: normalizedShopIntent.settlement_type,
       theme: normalizedShopIntent.theme,
       seed: `decision-${decisionFingerprint.slice(0, 48)}`,

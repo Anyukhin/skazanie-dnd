@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
-import { reconcileWorldMap } from './world-map.mjs'
+import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
 
 const WIDTH = 13
 const HEIGHT = 9
@@ -33,6 +33,7 @@ function publicHistoryEntry(value) {
     chapter: integer(value.chapter, 1, 1, 999),
     title: publicText(value.title, 80, 'Предыдущая сцена'),
     location: publicText(value.location, 120),
+    ...(publicText(value.location_id ?? value.locationId, 120) ? { location_id: publicText(value.location_id ?? value.locationId, 120) } : {}),
     objective: publicText(value.objective, 160),
     outcome: publicText(value.outcome, 240),
     ...(status ? { status } : {}),
@@ -54,6 +55,7 @@ export function publicAdventureMemory(value = {}) {
     ...(lastTransition ? { lastTransition } : {}),
     unresolvedThreads: publicTextList(source.unresolvedThreads, 240, 20),
     visitedLocations: publicTextList(source.visitedLocations, 120, 50),
+    visitedLocationIds: publicTextList(source.visitedLocationIds, 120, 50),
     history: (Array.isArray(source.history) ? source.history : [])
       .map(publicHistoryEntry)
       .filter(Boolean)
@@ -106,7 +108,9 @@ export function createSceneTransition(input = {}, state = {}) {
   const previousAdventure = publicAdventureMemory(state.adventure)
   const chapter = integer(previousAdventure.chapter, 1, 1, 999) + 1
   const title = text(input.title, 80, `Глава ${chapter}`)
-  const location = text(input.location, 120, title)
+  const requestedLocationId = publicText(input.location_id ?? input.locationId, 120)
+  const requestedLocation = worldLocationById(state.worldMap, requestedLocationId)
+  const location = requestedLocation?.name || text(input.location, 120, title)
   const mood = text(input.mood, 160, 'Неизведанное место, полное новых возможностей')
   const objective = text(input.objective, 160, 'Исследовать новую локацию и найти путь дальше')
   const transition = text(input.transition, 500, `Путь из «${text(previousScene.location || previousScene.title, 100, 'прежнего места')}» приводит героев в «${location}».`)
@@ -121,6 +125,7 @@ export function createSceneTransition(input = {}, state = {}) {
     chapter: Math.max(1, chapter - 1),
     title: text(previousScene.title, 80, 'Предыдущая сцена'),
     location: text(previousScene.location, 120),
+    ...(publicText(previousScene.location_id ?? previousScene.locationId, 120) ? { location_id: publicText(previousScene.location_id ?? previousScene.locationId, 120) } : {}),
     objective: completedObjective,
     outcome: text(input.outcome, 240, completedObjective ? `Цель «${completedObjective}» завершена.` : 'Герои покинули эту локацию.'),
     status: objectiveStatus,
@@ -139,11 +144,15 @@ export function createSceneTransition(input = {}, state = {}) {
     campaignName: state.campaign,
     concept: state.campaignConcept,
     currentLocation: location,
+    currentLocationId: requestedLocationId,
     previousLocation: previousScene.location || previousScene.title,
+    previousLocationId: previousScene.location_id ?? previousScene.locationId,
     knownLocations: [...previousAdventure.visitedLocations, location],
     transition,
     scene: { ...scene, scene_kind: input.scene_kind, danger },
   })
+
+  scene.location_id = worldMap.currentLocationId
 
   return {
     scene,
@@ -155,6 +164,10 @@ export function createSceneTransition(input = {}, state = {}) {
       lastTransition: transition,
       unresolvedThreads: [...new Set(unresolvedThreads.filter(Boolean))].slice(-20),
       visitedLocations: [...new Set([...(Array.isArray(previousAdventure.visitedLocations) ? previousAdventure.visitedLocations : []), location])].slice(-50),
+      visitedLocationIds: [...new Set([
+        ...(Array.isArray(previousAdventure.visitedLocationIds) ? previousAdventure.visitedLocationIds : []),
+        worldMap.currentLocationId,
+      ].filter(Boolean))].slice(-50),
     },
     transition,
     arrival,

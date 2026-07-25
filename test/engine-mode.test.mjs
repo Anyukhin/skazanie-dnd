@@ -1,53 +1,39 @@
-import test from 'node:test'
 import assert from 'node:assert/strict'
+import test from 'node:test'
 
 import {
   ENGINE_MODES,
+  RETIRED_ENGINE_MODES,
   EngineModeError,
   EngineModeResolver,
   explainEngineMode,
   isEngineMode,
-  resolveEngineMode,
+  normalizeEngineMode,
 } from '../server/engine-mode.mjs'
 
-test('engine mode defaults to legacy and only accepts declared modes', () => {
-  assert.deepEqual(ENGINE_MODES, ['legacy', 'shadow', 'enforce'])
-  assert.equal(resolveEngineMode({}, { env: {} }), 'legacy')
-  assert.equal(isEngineMode(' SHADOW '), true)
-  assert.equal(isEngineMode('experimental'), false)
+test('enforce is the only executable engine mode', () => {
+  assert.deepEqual(ENGINE_MODES, ['enforce'])
+  assert.deepEqual(RETIRED_ENGINE_MODES, ['legacy', 'shadow'])
+  assert.equal(isEngineMode('enforce'), true)
+  assert.equal(isEngineMode('legacy'), false)
+  assert.equal(isEngineMode('shadow'), false)
 })
 
-test('engine mode precedence is test > user > campaign > global', () => {
-  const context = {
-    testMode: 'enforce',
-    userMode: 'shadow',
-    campaignMode: 'enforce',
-    globalMode: 'legacy',
-  }
-  assert.deepEqual(explainEngineMode(context, { env: {} }), { mode: 'enforce', source: 'test' })
-  delete context.testMode
-  assert.deepEqual(explainEngineMode(context, { env: {} }), { mode: 'shadow', source: 'user' })
-  delete context.userMode
-  assert.deepEqual(explainEngineMode(context, { env: {} }), { mode: 'enforce', source: 'campaign' })
-  delete context.campaignMode
-  assert.deepEqual(explainEngineMode(context, { env: {} }), { mode: 'legacy', source: 'global' })
-})
-
-test('resolver reads global and test environment flags but scoped values win', () => {
-  const resolver = new EngineModeResolver({
-    env: { GAME_ENGINE_MODE: 'shadow', GAME_ENGINE_TEST_MODE: 'enforce' },
+test('retired configuration values normalize to enforce without reactivating runtime branches', () => {
+  assert.equal(normalizeEngineMode('legacy'), 'enforce')
+  assert.equal(normalizeEngineMode('shadow'), 'enforce')
+  assert.deepEqual(explainEngineMode({ campaignMode: 'shadow' }, { env: {} }), {
+    mode: 'enforce',
+    source: 'campaign',
+    retired_value: 'shadow',
   })
-  assert.equal(resolver.resolve({ campaign: { engine_mode: 'legacy' } }), 'enforce')
-  const withoutTest = new EngineModeResolver({ env: { GAME_ENGINE_MODE: 'shadow' } })
-  assert.deepEqual(withoutTest.explain({ user: { game_engine_mode: 'enforce' }, campaign: { engine_mode: 'legacy' } }), {
-    mode: 'enforce', source: 'user',
-  })
-  assert.equal(withoutTest.resolve({ test: 'legacy', user: 'enforce', campaign: 'shadow', global: 'enforce' }), 'legacy')
+  const resolver = new EngineModeResolver({ env: { GAME_ENGINE_MODE: 'legacy' } })
+  assert.equal(resolver.resolve(), 'enforce')
 })
 
-test('invalid high-priority override fails closed instead of falling through', () => {
+test('unknown engine mode still fails closed', () => {
   assert.throws(
-    () => resolveEngineMode({ userMode: 'typo', campaignMode: 'legacy' }, { env: {} }),
-    (error) => error instanceof EngineModeError && error.code === 'INVALID_ENGINE_MODE' && error.source === 'user',
+    () => normalizeEngineMode('experimental'),
+    (error) => error instanceof EngineModeError && error.code === 'INVALID_ENGINE_MODE',
   )
 })

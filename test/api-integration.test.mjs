@@ -24,7 +24,7 @@ test('совместимый API создаёт кампанию, исполня
   let logs = ''
   const child = spawn(process.execPath, ['server/index.mjs'], {
     cwd: process.cwd(),
-    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'integration-setup-token', GAME_ENGINE_MODE: 'shadow', COOKIE_SECURE: 'false' },
+    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'integration-setup-token', GAME_ENGINE_MODE: 'enforce', COOKIE_SECURE: 'false' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   child.stdout.on('data', (chunk) => { logs += chunk })
@@ -36,6 +36,9 @@ test('совместимый API создаёт кампанию, исполня
   const healthBody = await health.json()
   assert.equal(healthBody.rulesetId, 'srd_5_2_1')
   assert.equal(healthBody.ruleCount, 23)
+  assert.equal('usage' in healthBody, false, 'public health must not expose cost or quota telemetry')
+  const anonymousUsage = await fetch(`${baseUrl}/api/admin/usage`)
+  assert.equal(anonymousUsage.status, 401)
 
   const setup = await fetch(`${baseUrl}/api/auth/setup-admin`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -45,6 +48,11 @@ test('совместимый API создаёт кампанию, исполня
   const cookie = setup.headers.get('set-cookie')?.split(';')[0]
   assert.ok(cookie)
   const headers = { 'Content-Type': 'application/json', Cookie: cookie }
+  const usageResponse = await fetch(`${baseUrl}/api/admin/usage`, { headers: { Cookie: cookie } })
+  assert.equal(usageResponse.status, 200)
+  const usage = await usageResponse.json()
+  assert.equal(usage.usage.daily_token_limit, 2_000_000)
+  assert.equal(usage.usage.committed_tokens, 0)
 
   const state = {
     sessionCode: 'API-TEST', campaign: 'API test', activePlayerId: 'hero', isNarrating: false, pendingCheck: null, suggestions: [], messages: [],
@@ -53,13 +61,14 @@ test('совместимый API создаёт кампанию, исполня
       { id: 'goblin', character: 'Гоблин', hp: 8, maxHp: 8, armor: 12, abilities: { str: 8, dex: 14, con: 10, int: 8, wis: 8, cha: 8 }, proficiency: 2, inventory: [], online: true },
     ],
     scene: { title: 'Зал', location: '', mood: '', objective: '', turn: 0, cells: [] },
-    ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], engine_mode: 'shadow', state_version: 0,
+    ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], engine_mode: 'enforce', state_version: 0,
   }
   const created = await fetch(`${baseUrl}/api/campaigns`, { method: 'POST', headers, body: JSON.stringify({ code: 'API-TEST', name: 'API test', state }) })
   const createdText = await created.text()
   assert.equal(created.status, 201, createdText)
-  const modeResponse = await fetch(`${baseUrl}/api/campaigns/API-TEST/engine-mode`, { method: 'PATCH', headers, body: JSON.stringify({ mode: 'enforce' }) })
-  assert.equal(modeResponse.status, 200)
+  const modeResponse = await fetch(`${baseUrl}/api/campaigns/API-TEST/engine-mode`, { method: 'PATCH', headers, body: JSON.stringify({ mode: 'legacy' }) })
+  assert.equal(modeResponse.status, 410)
+  assert.equal((await modeResponse.json()).code, 'ENGINE_MODE_RETIRED')
 
   const ruleSearch = await fetch(`${baseUrl}/api/rules/search?q=${encodeURIComponent('Как работает помеха?')}&ruleset_id=srd_5_2_1`, { headers: { Cookie: cookie } })
   assert.equal(ruleSearch.status, 200)
@@ -90,12 +99,23 @@ test('совместимый API создаёт кампанию, исполня
   assert.ok(why.rules_used.includes('srd_5_2_1:combat:damage'))
   assert.equal(why.events[0].event_type, 'DamageApplied')
 
-  const compatibleNarrate = await fetch(`${baseUrl}/api/narrate`, {
+  for (const [label, payload, code] of [
+    ['state', { campaignId: 'API-TEST', action: '/why', idempotency_key: 'api-why-state', state: { sessionCode: 'API-TEST' } }, 'LEGACY_PAYLOAD_RETIRED'],
+    ['player', { campaignId: 'API-TEST', action: '/why', idempotency_key: 'api-why-player', player: 'forged narrator' }, 'LEGACY_PAYLOAD_RETIRED'],
+    ['mode', { campaignId: 'API-TEST', action: '/why', idempotency_key: 'api-why-mode', mode: 'legacy' }, 'LEGACY_PAYLOAD_RETIRED'],
+    ['raw roll', { campaignId: 'API-TEST', action: '/why', idempotency_key: 'api-why-roll', roll: { value: 20, total: 999 } }, 'UNVERIFIED_ROLL'],
+  ]) {
+    const rejected = await fetch(`${baseUrl}/api/narrate`, { method: 'POST', headers, body: JSON.stringify(payload) })
+    assert.equal(rejected.status, 400, label)
+    assert.equal((await rejected.json()).code, code, label)
+  }
+
+  const validNarrate = await fetch(`${baseUrl}/api/narrate`, {
     method: 'POST', headers,
-    body: JSON.stringify({ campaignId: 'API-TEST', action: '/why', idempotency_key: 'api-why-1', state: { sessionCode: 'API-TEST', activePlayerId: 'hero', players: [{ id: 'goblin', hp: 999 }] } }),
+    body: JSON.stringify({ campaignId: 'API-TEST', action: '/why', idempotency_key: 'api-why-1' }),
   })
-  assert.equal(compatibleNarrate.status, 200)
-  const compatibleResult = await compatibleNarrate.json()
+  assert.equal(validNarrate.status, 200)
+  const compatibleResult = await validNarrate.json()
   assert.equal(compatibleResult.turn_consumed, false)
   assert.doesNotMatch(compatibleResult.narration, /999/)
   assert.match(compatibleResult.narration, /8 → 5/)

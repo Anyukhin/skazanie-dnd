@@ -4,6 +4,7 @@ const PROMISE_STATUSES = new Set(['open', 'fulfilled', 'broken', 'cancelled'])
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const SOCIAL_CHECK_SKILLS = new Set(['persuasion', 'deception', 'intimidation', 'insight'])
 const SOCIAL_CHECK_DEGREES = new Set(['strong_success', 'success', 'failure', 'severe_failure'])
+const WEEK_DAYS = new Set([0, 1, 2, 3, 4, 5, 6])
 
 export const NPC_SOCIAL_COMMAND_TYPES = new Set([
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
@@ -22,6 +23,80 @@ const clean = (value, maximum = 500) => String(value ?? '').normalize('NFKC').re
 const strings = (value, maximum = 160, limit = 30) => [...new Set((Array.isArray(value) ? value : [])
   .map((item) => clean(item, maximum)).filter(Boolean))].slice(0, limit)
 const integer = (value, fallback = 0) => Number.isSafeInteger(Number(value)) ? Number(value) : fallback
+const validIdentifier = (value) => /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u.test(clean(value, 120))
+
+function safeScheduleEntry(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const id = clean(value.id, 120)
+  const location = clean(value.location, 180)
+  const start = Number(value.start_minute)
+  const end = Number(value.end_minute)
+  if (!validIdentifier(id) || !location || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+    || start < 0 || start >= 1_440 || end <= start || end > 1_440) return null
+  const days = [...new Set((Array.isArray(value.days) ? value.days : [])
+    .filter((day) => Number.isSafeInteger(Number(day)) && WEEK_DAYS.has(Number(day)))
+    .map(Number))].sort((left, right) => left - right)
+  return {
+    id,
+    days,
+    start_minute: start,
+    end_minute: end,
+    location,
+    available: value.available !== false,
+    summary: clean(value.summary, 300),
+    visibility: PROFILE_VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
+  }
+}
+
+function scheduleDaysOverlap(left, right) {
+  if (!left.days.length || !right.days.length) return true
+  return left.days.some((day) => right.days.includes(day))
+}
+
+function safeSchedule(value) {
+  const candidates = (Array.isArray(value) ? value : []).map(safeScheduleEntry).filter(Boolean)
+    .sort((left, right) => left.start_minute - right.start_minute || left.end_minute - right.end_minute || left.id.localeCompare(right.id))
+  const accepted = []
+  const ids = new Set()
+  for (const entry of candidates) {
+    if (ids.has(entry.id)) continue
+    const overlaps = accepted.some((other) => scheduleDaysOverlap(entry, other)
+      && entry.start_minute < other.end_minute && other.start_minute < entry.end_minute)
+    if (overlaps) continue
+    ids.add(entry.id)
+    accepted.push(entry)
+    if (accepted.length >= 64) break
+  }
+  return accepted
+}
+
+function safeInventoryEntry(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const id = clean(value.id, 120)
+  const name = clean(value.name, 160)
+  const quantity = Number(value.quantity)
+  if (!validIdentifier(id) || !name || !Number.isSafeInteger(quantity) || quantity < 0 || quantity > 9_999) return null
+  return {
+    id,
+    name,
+    quantity,
+    description: clean(value.description, 500),
+    visibility: PROFILE_VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
+  }
+}
+
+function safeInventory(value) {
+  const inventory = []
+  const ids = new Set()
+  for (const item of Array.isArray(value) ? value : []) {
+    const safe = safeInventoryEntry(item)
+    if (!safe || ids.has(safe.id)) continue
+    ids.add(safe.id)
+    inventory.push(safe)
+    if (inventory.length >= 100) break
+  }
+  return inventory
+}
 
 export function relationshipTier(value) {
   const score = Math.max(-100, Math.min(100, integer(value, 0)))
@@ -90,6 +165,8 @@ function safeProfile(value = {}) {
     visibility: PROFILE_VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
     available: value.available !== false,
     tags: strings(value.tags, 60, 20),
+    schedule: safeSchedule(value.schedule),
+    inventory: safeInventory(value.inventory),
   }
 }
 
@@ -140,6 +217,7 @@ function safeConversation(value = {}) {
     npc_reply: clean(value.npc_reply, 1_000),
     stance: STANCES.has(value.stance) ? value.stance : 'neutral',
     disclosed_fact_ids: strings(value.disclosed_fact_ids, 120, 20),
+    disclosed_claim_ids: strings(value.disclosed_claim_ids, 120, 20),
     visibility: value.visibility === 'specific_player' ? 'specific_player' : 'party',
     ...(safeSocialCheck(value.check) ? { check: safeSocialCheck(value.check) } : {}),
   }
@@ -161,7 +239,7 @@ export function normalizeNpcSocialState(input = {}) {
     .filter((item) => item.id && npcIds.has(item.npc_id) && item.text && (!item.source_conversation_id || conversationIds.has(item.source_conversation_id))).slice(-500)
   const relationship_tiers = Object.fromEntries(Object.entries(relationships).map(([npcId, heroes]) => [npcId,
     Object.fromEntries(Object.entries(heroes).map(([heroId, score]) => [heroId, relationshipTier(score)]))]))
-  return { schema_version: 2, npcs, relationships, relationship_tiers, conversations, promises }
+  return { schema_version: 3, npcs, relationships, relationship_tiers, conversations, promises }
 }
 
 function profileFromMerchant(merchant = {}) {
@@ -174,7 +252,7 @@ function profileFromMerchant(merchant = {}) {
     voice: merchant.voice || merchant.greeting,
     goals: [], beliefs: [], known_fact_ids: [], visibility: 'party',
     available: merchant.available !== false,
-    tags: ['merchant'],
+    tags: ['merchant'], schedule: [], inventory: [],
   })
 }
 
@@ -200,10 +278,124 @@ export function ensureNpcSocialState(input, state = {}) {
   return normalizeNpcSocialState({ ...social, npcs: [...profiles.values()] })
 }
 
+function elapsedMinutesFor(value = {}) {
+  return typeof value === 'number' && Number.isSafeInteger(value)
+    ? Math.max(0, value)
+    : campaignElapsedMinutes(value)
+}
+
+function viewerMaySee(visibility, viewer = {}) {
+  return viewer.isAdmin === true || visibility === 'public' || (visibility === 'party' && viewer.isPartyMember !== false)
+}
+
+/** Returns the active daily schedule entry without mutating persisted NPC data. */
+export function npcScheduleEntryAt(profile = {}, stateOrElapsedMinutes = {}) {
+  const elapsed = elapsedMinutesFor(stateOrElapsedMinutes)
+  const day = Math.floor(elapsed / 1_440) % 7
+  const minute = elapsed % 1_440
+  return (safeSchedule(profile.schedule) ?? []).find((entry) => (
+    (!entry.days.length || entry.days.includes(day))
+    && entry.start_minute <= minute && minute < entry.end_minute
+  )) ?? null
+}
+
+/**
+ * Projects a persistent profile into its deterministic current state. This is
+ * deliberately derived, so crossing a schedule boundary never rewrites the
+ * base location or availability saved in the event stream.
+ */
+export function npcProfileAtWorldTime(profile = {}, stateOrElapsedMinutes = {}) {
+  const normalized = safeProfile(profile)
+  const activeSchedule = npcScheduleEntryAt(normalized, stateOrElapsedMinutes)
+  if (!activeSchedule) return normalized
+  return { ...normalized, location: activeSchedule.location, available: activeSchedule.available }
+}
+
+function npcProfileForViewerAt(profile, viewer = {}) {
+  const normalized = safeProfile(profile)
+  const activeSchedule = npcScheduleEntryAt(normalized, viewer.state ?? viewer.elapsed_minutes ?? {})
+  // An undisclosed schedule may affect play but must not reveal a private
+  // location. The player sees only that this NPC cannot presently be engaged.
+  const current = activeSchedule && !viewerMaySee(activeSchedule.visibility, viewer)
+    ? { ...normalized, location: '', available: false }
+    : npcProfileAtWorldTime(normalized, viewer.state ?? viewer.elapsed_minutes ?? {})
+  return {
+    id: current.id,
+    name: current.name,
+    role: current.role,
+    location: current.location,
+    public_summary: current.public_summary,
+    voice: current.voice,
+    available: current.available,
+    tags: clone(current.tags),
+    inventory: current.inventory
+      .filter((item) => item.quantity > 0 && viewerMaySee(item.visibility, viewer))
+      .map((item) => ({ id: item.id, name: item.name, quantity: item.quantity, description: item.description })),
+  }
+}
+
+function strictScheduleInput(value) {
+  if (value == null) return []
+  if (!Array.isArray(value) || value.length > 64) {
+    throw new NpcSocialValidationError('NPC schedule must contain at most 64 entries', 'NPC_SOCIAL_SCHEDULE_INVALID')
+  }
+  for (const entry of value) {
+    const item = object(entry, 'npc.schedule entry')
+    fields(item, new Set(['id', 'days', 'start_minute', 'end_minute', 'location', 'available', 'summary', 'visibility']), 'npc.schedule entry')
+    identifier(item.id, 'npc.schedule.id')
+    if (!Array.isArray(item.days) || item.days.length > 7 || item.days.some((day) => !Number.isSafeInteger(Number(day)) || !WEEK_DAYS.has(Number(day)))) {
+      throw new NpcSocialValidationError('NPC schedule days must be weekdays 0 through 6', 'NPC_SOCIAL_SCHEDULE_INVALID')
+    }
+    const start = Number(item.start_minute)
+    const end = Number(item.end_minute)
+    if (!clean(item.location, 180) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+      || start < 0 || start >= 1_440 || end <= start || end > 1_440) {
+      throw new NpcSocialValidationError('NPC schedule interval is invalid', 'NPC_SOCIAL_SCHEDULE_INVALID')
+    }
+    if (item.visibility != null && !PROFILE_VISIBILITIES.has(item.visibility)) {
+      throw new NpcSocialValidationError('NPC schedule visibility is invalid', 'NPC_SOCIAL_SCHEDULE_INVALID')
+    }
+  }
+  const normalized = safeSchedule(value)
+  if (normalized.length !== value.length) {
+    throw new NpcSocialValidationError('NPC schedule has duplicate ids or overlapping intervals', 'NPC_SOCIAL_SCHEDULE_CONFLICT')
+  }
+  return normalized
+}
+
+function strictInventoryInput(value) {
+  if (value == null) return []
+  if (!Array.isArray(value) || value.length > 100) {
+    throw new NpcSocialValidationError('NPC inventory must contain at most 100 entries', 'NPC_SOCIAL_INVENTORY_INVALID')
+  }
+  for (const entry of value) {
+    const item = object(entry, 'npc.inventory entry')
+    fields(item, new Set(['id', 'name', 'quantity', 'description', 'visibility']), 'npc.inventory entry')
+    identifier(item.id, 'npc.inventory.id')
+    const quantity = Number(item.quantity)
+    if (!clean(item.name, 160) || !Number.isSafeInteger(quantity) || quantity < 0 || quantity > 9_999) {
+      throw new NpcSocialValidationError('NPC inventory item is invalid', 'NPC_SOCIAL_INVENTORY_INVALID')
+    }
+    if (item.visibility != null && !PROFILE_VISIBILITIES.has(item.visibility)) {
+      throw new NpcSocialValidationError('NPC inventory visibility is invalid', 'NPC_SOCIAL_INVENTORY_INVALID')
+    }
+  }
+  const normalized = safeInventory(value)
+  if (normalized.length !== value.length) {
+    throw new NpcSocialValidationError('NPC inventory has duplicate item ids', 'NPC_SOCIAL_INVENTORY_CONFLICT')
+  }
+  return normalized
+}
+
 function normalizeProfileInput(input) {
   const value = object(input, 'npc')
-  fields(value, new Set(['id', 'name', 'role', 'location', 'public_summary', 'voice', 'goals', 'beliefs', 'known_fact_ids', 'visibility', 'available', 'tags']), 'npc')
-  const result = safeProfile({ ...value, id: identifier(value.id, 'npc.id') })
+  fields(value, new Set(['id', 'name', 'role', 'location', 'public_summary', 'voice', 'goals', 'beliefs', 'known_fact_ids', 'visibility', 'available', 'tags', 'schedule', 'inventory']), 'npc')
+  const result = safeProfile({
+    ...value,
+    id: identifier(value.id, 'npc.id'),
+    schedule: strictScheduleInput(value.schedule),
+    inventory: strictInventoryInput(value.inventory),
+  })
   if (!result.name) throw new NpcSocialValidationError('У NPC должно быть имя', 'NPC_SOCIAL_NAME_REQUIRED')
   if (!PROFILE_VISIBILITIES.has(value.visibility ?? 'party')) throw new NpcSocialValidationError('Некорректная видимость NPC', 'NPC_SOCIAL_VISIBILITY_INVALID')
   return result
@@ -211,11 +403,12 @@ function normalizeProfileInput(input) {
 
 function normalizeConversationInput(input, state, command, context = {}) {
   const value = object(input, 'conversation')
-  fields(value, new Set(['id', 'npc_id', 'hero_id', 'player_message', 'npc_reply', 'stance', 'disclosed_fact_ids', 'relationship_delta', 'visibility', 'promise', 'check']), 'conversation')
+  fields(value, new Set(['id', 'npc_id', 'hero_id', 'player_message', 'npc_reply', 'stance', 'disclosed_fact_ids', 'disclosed_claim_ids', 'relationship_delta', 'visibility', 'promise', 'check']), 'conversation')
   const social = ensureNpcSocialState(state.social, state)
   const npcId = identifier(value.npc_id, 'conversation.npc_id')
   const heroId = identifier(value.hero_id || command.actor_id, 'conversation.hero_id')
-  const npc = social.npcs.find((candidate) => candidate.id === npcId)
+  const persistedNpc = social.npcs.find((candidate) => candidate.id === npcId)
+  const npc = persistedNpc ? npcProfileAtWorldTime(persistedNpc, state) : null
   if (!npc || npc.available === false) throw new NpcSocialValidationError('NPC недоступен для разговора', 'NPC_SOCIAL_NPC_UNAVAILABLE')
   if (!(state.partyMemberIds ?? []).map(String).includes(heroId)) throw new NpcSocialValidationError('Герой разговора не входит в отряд', 'NPC_SOCIAL_HERO_INVALID')
   if (state.mechanics?.combat?.active) throw new NpcSocialValidationError('Развёрнутый разговор недоступен во время боя', 'NPC_SOCIAL_DURING_COMBAT')
@@ -236,11 +429,21 @@ function normalizeConversationInput(input, state, command, context = {}) {
   const known = new Set(npc.known_fact_ids)
   for (const fact of state.worldMemory?.facts ?? []) if (['public', 'party'].includes(fact.visibility)) known.add(String(fact.id))
   const disclosed = strings(value.disclosed_fact_ids, 120, 20)
-  if (disclosed.some((factId) => !known.has(factId))) throw new NpcSocialValidationError('NPC попытался раскрыть неизвестный ему факт', 'NPC_SOCIAL_FACT_FORBIDDEN')
+  const activeFacts = new Set((state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active').map((fact) => String(fact.id)))
+  if (disclosed.some((factId) => !known.has(factId) || !activeFacts.has(factId))) {
+    throw new NpcSocialValidationError('NPC попытался раскрыть неизвестный или неактуальный факт', 'NPC_SOCIAL_FACT_FORBIDDEN')
+  }
+  const disclosedClaims = strings(value.disclosed_claim_ids, 120, 20)
+  const speakableClaims = new Set((state.worldMemory?.epistemic_claims ?? [])
+    .filter((claim) => String(claim.holder_entity_id) === npcId)
+    .map((claim) => String(claim.id)))
+  if (disclosedClaims.some((claimId) => !speakableClaims.has(claimId))) {
+    throw new NpcSocialValidationError('NPC попытался раскрыть чужое убеждение или слух', 'NPC_SOCIAL_CLAIM_FORBIDDEN')
+  }
   const conversation = safeConversation({
     id: identifier(value.id, 'conversation.id'), npc_id: npcId, hero_id: heroId,
     player_message: value.player_message, npc_reply: value.npc_reply, stance,
-    disclosed_fact_ids: disclosed, visibility: value.visibility,
+    disclosed_fact_ids: disclosed, disclosed_claim_ids: disclosedClaims, visibility: value.visibility,
     ...(canonicalCheck ? { check: canonicalCheck } : {}),
   })
   if (!conversation.player_message || !conversation.npc_reply) throw new NpcSocialValidationError('Разговор должен содержать реплику героя и ответ NPC', 'NPC_SOCIAL_CONTENT_REQUIRED')
@@ -322,7 +525,30 @@ function relationshipEvents(state, npcId, heroId, delta, reason, promiseId = '',
 export function npcSocialEvents(command, state = {}) {
   if (command.command_type === 'UpsertNpcSocialProfile') return [{ event_type: 'NpcSocialProfileUpserted', payload: { npc: clone(command.npc) }, target_ids: [], visibility: command.visibility }]
   if (command.command_type === 'RecordNpcSocialTurn') {
-    const events = [{ event_type: 'NpcConversationRecorded', payload: { conversation: clone(command.conversation) }, target_ids: [command.conversation.npc_id], visibility: command.visibility }]
+    const conversationEventId = `${command.command_id}:conversation`
+    const events = [{
+      event_id: conversationEventId,
+      event_type: 'NpcConversationRecorded',
+      payload: { conversation: clone(command.conversation) },
+      target_ids: [command.conversation.npc_id, command.conversation.hero_id],
+      visibility: command.visibility,
+    }]
+    for (const [index, factId] of command.conversation.disclosed_fact_ids.entries()) {
+      events.push({
+        event_id: `${command.command_id}:knowledge:${index + 1}`,
+        event_type: 'KnowledgeRevealed',
+        payload: {
+          knowledge_id: `${command.conversation.id}:knowledge:${index + 1}`,
+          hero_id: command.conversation.hero_id,
+          fact_id: factId,
+          source_event_ids: [conversationEventId],
+          source_kind: 'npc',
+          revealed_at_minutes: campaignElapsedMinutes(state),
+        },
+        target_ids: [command.conversation.hero_id],
+        visibility: 'specific_player',
+      })
+    }
     events.push(...relationshipEvents(state, command.conversation.npc_id, command.conversation.hero_id, command.relationship_delta, 'conversation').events)
     if (command.promise) events.push({ event_type: 'NpcPromiseRecorded', payload: { promise: clone(command.promise) }, target_ids: [command.conversation.hero_id], visibility: command.promise.visibility })
     return events
@@ -397,16 +623,15 @@ export function npcSocialForViewer(input, viewer = {}) {
   const social = normalizeNpcSocialState(input)
   if (viewer.isAdmin) return social
   const playerId = clean(viewer.playerId, 120)
-  const npcs = social.npcs.filter((npc) => npc.visibility === 'public' || (npc.visibility === 'party' && viewer.isPartyMember !== false)).map((npc) => ({
-    id: npc.id, name: npc.name, role: npc.role, location: npc.location,
-    public_summary: npc.public_summary, voice: npc.voice, available: npc.available, tags: clone(npc.tags),
-  }))
+  const npcs = social.npcs
+    .filter((npc) => viewerMaySee(npc.visibility, viewer))
+    .map((npc) => npcProfileForViewerAt(npc, viewer))
   const visibleNpcIds = new Set(npcs.map((npc) => npc.id))
   const conversations = social.conversations.filter((entry) => visibleNpcIds.has(entry.npc_id) && (entry.visibility === 'party' || entry.hero_id === playerId))
   const promises = social.promises.filter((entry) => visibleNpcIds.has(entry.npc_id) && (entry.visibility === 'party' || entry.hero_id === playerId))
   const relationships = Object.fromEntries([...visibleNpcIds].map((npcId) => [npcId, { [playerId]: social.relationships[npcId]?.[playerId] ?? 0 }]))
   const relationship_tiers = Object.fromEntries([...visibleNpcIds].map((npcId) => [npcId, { [playerId]: relationshipTier(relationships[npcId][playerId]) }]))
-  return { schema_version: 2, npcs: clone(npcs), relationships, relationship_tiers, conversations: clone(conversations), promises: clone(promises) }
+  return { schema_version: 3, npcs: clone(npcs), relationships, relationship_tiers, conversations: clone(conversations), promises: clone(promises) }
 }
 
 export function npcConversationNarration(events = []) {

@@ -1,4 +1,4 @@
-import type { BattleEvent, GameState, MapCell } from './types'
+import type { BattleEvent, GameState, MapCell, MechanicsSupport } from './types'
 
 export const boardPositionKey = (x: number, y: number) => `${x},${y}`
 
@@ -103,7 +103,7 @@ export function evaluateCombatTarget(check: CombatTargetCheck) {
 }
 
 export function battleRollPresentation(event: BattleEvent) {
-  if (!event.roll) return null
+  if (!event.roll || event.roll.die == null) return null
   const modifier = Number(event.roll.modifier) || 0
   const isSave = event.type === 'spell-save' || event.type === 'concentration-save' || event.type === 'death-save'
   const success = isSave ? event.result === 'success' || event.result === 'stabilized' || event.result === 'revived' : event.roll.hit
@@ -115,6 +115,48 @@ export function battleRollPresentation(event: BattleEvent) {
     difficulty: event.roll.difficulty,
     difficultyLabel: event.type === 'attack' ? 'КД' : 'СЛ',
     success,
+  }
+}
+
+const MECHANICS_SUPPORT: Record<MechanicsSupport, {
+  label: string
+  shortLabel: string
+  explanation: string
+  blocked: boolean
+}> = {
+  verified: {
+    label: 'Проверенная механика',
+    shortLabel: 'ПРОВЕРЕНО',
+    explanation: 'Эффект сверён с источником, исполняется сервером и покрыт проверками.',
+    blocked: false,
+  },
+  partial: {
+    label: 'Частичная механика',
+    shortLabel: 'ЧАСТИЧНО',
+    explanation: 'Сервер исполняет только безопасную часть эффекта; отдельные исключения ещё не поддерживаются.',
+    blocked: false,
+  },
+  heuristic: {
+    label: 'Непроверенная механика',
+    shortLabel: 'НЕ ПРОВЕРЕНО',
+    explanation: 'Карточка получена автоматически и пока не допускается к авторитетному бою.',
+    blocked: true,
+  },
+  'ruling-only': {
+    label: 'Требуется решение',
+    shortLabel: 'НУЖНО РЕШЕНИЕ',
+    explanation: 'Для способности ещё нет серверного механического обработчика.',
+    blocked: true,
+  },
+}
+
+export function mechanicsSupportPresentation(support?: MechanicsSupport, supportNote?: string) {
+  const status = support && support in MECHANICS_SUPPORT ? support : 'ruling-only'
+  const presentation = MECHANICS_SUPPORT[status]
+  return {
+    status,
+    ...presentation,
+    explanation: supportNote || presentation.explanation,
   }
 }
 

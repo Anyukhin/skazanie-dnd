@@ -76,13 +76,6 @@ function assertStatus(result, expected, log) {
   assert.ok(result.body && typeof result.body === 'object')
 }
 
-function resolvedDecision(id, label) {
-  return {
-    id, type: 'vote', status: 'resolved', resolvedOptionId: 'go',
-    options: [{ id: 'go', label }], votes: { hero: 'go' },
-  }
-}
-
 test('enforce Director atomically advances scene and assembles a durable catalog shop', { timeout: 50_000 }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-director-shop-api-'))
   const setupToken = 'director-shop-setup-token'
@@ -137,20 +130,15 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   assert.equal(openedVote.body.effects.interaction.status, 'open')
   assert.match(openedVote.body.effects.interaction.options[0].label, /большой город Норвин/iu)
 
-  let room = await request(baseUrl, '/api/rooms/DIRECTOR-SHOP', { cookie: adminCookie })
-  assertStatus(room, 200, log)
-  assert.equal(room.body.state.agentInteraction.id, openedVote.body.effects.interaction.id)
-  const cityOption = room.body.state.agentInteraction.options[0]
-  room.body.state.agentInteraction = {
-    ...room.body.state.agentInteraction,
-    votes: { hero: cityOption.id, ally: cityOption.id },
-    status: 'resolved',
-    resolvedOptionId: cityOption.id,
+  const cityInteraction = openedVote.body.effects.interaction
+  const cityOption = cityInteraction.options[0]
+  for (const heroId of ['hero', 'ally']) {
+    const vote = await request(baseUrl, `/api/campaigns/DIRECTOR-SHOP/party-decisions/${encodeURIComponent(cityInteraction.id)}/votes`, {
+      method: 'POST', cookie: adminCookie, idempotencyKey: `director-city-vote-${heroId}`,
+      body: { actor_id: heroId, option_id: cityOption.id },
+    })
+    assertStatus(vote, 200, log)
   }
-  const resolvedVote = await request(baseUrl, '/api/rooms/DIRECTOR-SHOP', {
-    method: 'PUT', cookie: adminCookie, body: { state: room.body.state, baseVersion: room.body.version },
-  })
-  assertStatus(resolvedVote, 200, log)
 
   const cityAction = `[РЕШЕНИЕ ГРУППЫ] ${cityOption.label}`
   const cityRace = await Promise.all(['director-city-1', 'director-city-race-2'].map(async (key) => ({
@@ -170,10 +158,10 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   const transitioned = winner.result
   assertStatus(transitioned, 200, log)
   assert.deepEqual(transitioned.body.mechanics.map((event) => event.event_type), [
-    'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
-    'WorldFactRecorded', 'WorldFactRecorded', 'MerchantCreated',
+    'PartyDecisionConsumed', 'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+    'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded', 'MerchantCreated',
   ])
-  const sceneEvent = transitioned.body.mechanics[0]
+  const sceneEvent = transitioned.body.mechanics.find((event) => event.event_type === 'SceneAdvanced')
   const merchantEvent = transitioned.body.mechanics.find((event) => event.event_type === 'MerchantCreated')
   assert.equal(sceneEvent.payload.request_fingerprint, merchantEvent.payload.request_fingerprint)
   assert.deepEqual(sceneEvent.payload.party_decision, {
@@ -215,8 +203,8 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   assert.equal(replay.body.state_version, cityVersion)
   assert.equal(replay.body.authoritative_state.merchants.length, 1)
   assert.deepEqual(replay.body.mechanics.map((event) => event.event_type), [
-    'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
-    'WorldFactRecorded', 'WorldFactRecorded', 'MerchantCreated',
+    'PartyDecisionConsumed', 'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+    'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded', 'MerchantCreated',
   ])
 
   const idempotencyConflict = await request(baseUrl, '/api/narrate', {
@@ -243,30 +231,40 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   assertStatus(forgedNarrate, 200, log)
   assert.equal((forgedNarrate.body.mechanics ?? []).some((event) => event.event_type === 'SceneAdvanced'), false)
 
-  room = await request(baseUrl, '/api/rooms/DIRECTOR-SHOP', { cookie: adminCookie })
-  assertStatus(room, 200, log)
-  assert.equal(room.body.state.scene.location, 'Большой город Норвин')
-  assert.equal(room.body.state.adventure.chapter, 2)
-  assert.equal(room.body.state.merchants.length, 1)
-  assert.equal(room.body.state.agentInteraction, null)
+  const postTransitionRoom = await request(baseUrl, '/api/rooms/DIRECTOR-SHOP', { cookie: adminCookie })
+  assertStatus(postTransitionRoom, 200, log)
+  assert.equal(postTransitionRoom.body.state.scene.location, 'Большой город Норвин')
+  assert.equal(postTransitionRoom.body.state.adventure.chapter, 2)
+  assert.equal(postTransitionRoom.body.state.merchants.length, 1)
+  assert.equal(postTransitionRoom.body.state.agentInteraction, null)
 
-  room.body.state.agentInteraction = resolvedDecision('vote-forest', 'Идём в Серую чащу')
-  const stagedForest = await request(baseUrl, '/api/rooms/DIRECTOR-SHOP', {
-    method: 'PUT', cookie: adminCookie, body: { state: room.body.state, baseVersion: room.body.version },
+  const openedForestVote = await request(baseUrl, '/api/narrate', {
+    method: 'POST', cookie: adminCookie, idempotencyKey: 'director-open-forest-vote',
+    body: { campaignId: 'DIRECTOR-SHOP', action: 'Предлагаю покинуть место и отправиться в Серую чащу' },
   })
-  assertStatus(stagedForest, 200, log)
-  const forestAction = '[РЕШЕНИЕ ГРУППЫ] Идём в Серую чащу'
+  assertStatus(openedForestVote, 200, log)
+  assert.equal(openedForestVote.body.effects?.interaction?.status, 'open', JSON.stringify(openedForestVote.body))
+  const forestInteraction = openedForestVote.body.effects.interaction
+  const forestOption = forestInteraction.options[0]
+  for (const heroId of ['hero', 'ally']) {
+    const vote = await request(baseUrl, `/api/campaigns/DIRECTOR-SHOP/party-decisions/${encodeURIComponent(forestInteraction.id)}/votes`, {
+      method: 'POST', cookie: adminCookie, idempotencyKey: `director-forest-vote-${heroId}`,
+      body: { actor_id: heroId, option_id: forestOption.id },
+    })
+    assertStatus(vote, 200, log)
+  }
+  const forestAction = `[РЕШЕНИЕ ГРУППЫ] ${forestOption.label}`
   const forest = await request(baseUrl, '/api/narrate', {
     method: 'POST', cookie: adminCookie, idempotencyKey: 'director-forest-1',
     body: { campaignId: 'DIRECTOR-SHOP', action: forestAction },
   })
   assertStatus(forest, 200, log)
   assert.deepEqual(forest.body.mechanics.map((event) => event.event_type), [
-    'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
-    'WorldFactRecorded', 'WorldFactRecorded',
+    'PartyDecisionConsumed', 'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+    'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded',
   ])
-  assert.equal(forest.body.mechanics[0].payload.scene.scene_kind, 'wilderness')
-  assert.equal(forest.body.mechanics[0].payload.scene_commerce.action, 'none')
+  assert.equal(forest.body.mechanics.find((event) => event.event_type === 'SceneAdvanced').payload.scene.scene_kind, 'wilderness')
+  assert.equal(forest.body.mechanics.find((event) => event.event_type === 'SceneAdvanced').payload.scene_commerce.action, 'none')
   assert.equal(forest.body.authoritative_state.merchants.length, 1)
 
   await stopServer(child)

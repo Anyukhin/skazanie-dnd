@@ -12,7 +12,15 @@ import {
   resolveCommands,
 } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
-import { worldMemoryForViewer } from '../server/world-memory.mjs'
+import {
+  applyWorldMemoryEvent,
+  normalizeWorldMemory,
+  retrieveKnownWorldMemory,
+  retrieveWorldMemory,
+  validateWorldMemoryCommand,
+  worldMemoryEvent,
+  worldMemoryForViewer,
+} from '../server/world-memory.mjs'
 
 function dice() {
   return new DiceService({ rng: new SequenceDiceRng([]) })
@@ -56,6 +64,20 @@ function buildMemory(initialState = campaign()) {
   ], initialState, { diceService: dice(), context: { isAdmin: true } })
 }
 
+function runWorldMemoryCommands(initialState, commands) {
+  let state = { ...initialState, worldMemory: normalizeWorldMemory(initialState.worldMemory) }
+  const events = []
+  for (const [index, raw] of commands.entries()) {
+    const command = validateWorldMemoryCommand({ ...raw, command_id: raw.command_id ?? `memory-command:${index + 1}` }, state, { isDirector: true })
+    const emitted = worldMemoryEvent(command)
+    assert.ok(emitted, `world-memory command ${command.command_type} must emit an event`)
+    const event = { ...emitted, event_id: `memory-event:${index + 1}`, command_id: command.command_id }
+    events.push(event)
+    state = { ...state, worldMemory: applyWorldMemoryEvent(state.worldMemory, event) }
+  }
+  return { state, events }
+}
+
 test('world entities, facts, knowledge, quests and clocks are event sourced and replayable', () => {
   const initialState = campaign()
   const result = buildMemory(initialState)
@@ -83,6 +105,123 @@ test('a private fact is visible only to the hero who learned it', () => {
 
   const projected = campaignStateForViewer(state, { role: 'player', heroIds: ['rogue'] }, 'rogue')
   assert.doesNotMatch(JSON.stringify(projected), /old aqueduct|Ashen Fox/u)
+  assert.equal(hero.knowledge_ledger[0].fact_id, 'fact:fox-route')
+  assert.equal(hero.knowledge_ledger[0].hero_id, 'hero')
+  assert.equal(rogue.knowledge_ledger.length, 0)
+})
+
+test('legacy knowledge migrates to a versioned ledger and retrieval filters before ranking', () => {
+  const state = buildMemory().state
+  const migrated = normalizeCampaignState({
+    ...state,
+    worldMemory: {
+      ...state.worldMemory,
+      knowledge_ledger: undefined,
+      knowledge: { hero: ['fact:fox-route'] },
+    },
+  })
+  assert.equal(migrated.worldMemory.schema_version, 2)
+  assert.equal(migrated.worldMemory.knowledge_ledger[0].source_kind, 'legacy')
+
+  const hero = retrieveKnownWorldMemory(state.worldMemory, {
+    viewer: { playerId: 'hero', isPartyMember: true },
+    query: 'aqueduct',
+  })
+  const rogue = retrieveKnownWorldMemory(state.worldMemory, {
+    viewer: { playerId: 'rogue', isPartyMember: true },
+    query: 'aqueduct',
+  })
+  assert.deepEqual(hero.map((fact) => fact.id), ['fact:fox-route'])
+  assert.deepEqual(rogue, [])
+  assert.deepEqual(hero[0].citation.knowledge_entry_ids.length, 1)
+
+  const learnedLater = structuredClone(state.worldMemory)
+  learnedLater.knowledge_ledger[0].recorded_at_minutes = 60
+  learnedLater.knowledge_revealed[0].recorded_at_minutes = 60
+  assert.deepEqual(retrieveKnownWorldMemory(learnedLater, {
+    viewer: { playerId: 'hero', isPartyMember: true }, query: 'aqueduct', atMinutes: 0,
+  }), [])
+})
+
+test('canonical relationships, threads, epistemic claims and summaries replay without becoming facts', () => {
+  const initial = campaign()
+  const result = runWorldMemoryCommands(initial, [
+    { command_type: 'UpsertWorldEntity', entity: { id: 'npc:vela', kind: 'npc', name: 'Vela', visibility: 'party' } },
+    { command_type: 'UpsertWorldEntity', entity: { id: 'faction:wardens', kind: 'faction', name: 'Road Wardens', visibility: 'party' } },
+    { command_type: 'UpsertWorldEntity', entity: { id: 'location:ford', kind: 'location', name: 'Ash Ford', aliases: ['old trail'], visibility: 'party' } },
+    { command_type: 'RecordWorldFact', fact: {
+      id: 'fact:ford-closed', subject_id: 'location:ford', predicate: 'is_closed', object: 'The old trail is flooded.',
+      summary: 'Ash Ford is closed after the flood.', visibility: 'party', source_event_ids: ['event:flood'],
+    } },
+    { command_type: 'RecordWorldRelationship', relationship: {
+      id: 'relationship:vela-wardens', from_entity_id: 'npc:vela', relation: 'serves', to_entity_id: 'faction:wardens',
+      summary: 'Vela serves the Road Wardens.', visibility: 'party', source_event_ids: ['event:oath'],
+    } },
+    { command_type: 'UpsertQuest', quest: { id: 'quest:ford', title: 'Cross Ash Ford', visibility: 'party', entity_ids: ['location:ford'], clock: { current: 0, max: 3, label: 'Flood rises' } } },
+    { command_type: 'UpsertNarrativeThread', thread: {
+      id: 'thread:warden-oath', title: 'The warden oath', summary: 'Vela needs proof before guiding the party.', status: 'active', visibility: 'party',
+      entity_ids: ['npc:vela', 'faction:wardens'], quest_ids: ['quest:ford'], clock: { current: 1, max: 3, label: 'Trust' }, source_event_ids: ['event:oath'],
+    } },
+    { command_type: 'AdvanceNarrativeThreadClock', thread_id: 'thread:warden-oath', amount: 1 },
+    { command_type: 'RecordNpcBelief', claim: {
+      id: 'belief:vela-river', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford', predicate: 'caused_flood',
+      claim: 'Vela believes the Wardens opened the sluice gate.', summary: 'Vela suspects the Wardens.', visibility: 'gm_only', source_event_ids: ['event:vela-told'],
+    } },
+    { command_type: 'RecordRumor', claim: {
+      id: 'rumor:vela-smugglers', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford', predicate: 'smugglers_arrived',
+      claim: 'Travellers say smugglers use the old trail.', summary: 'A rumour ties smugglers to Ash Ford.', visibility: 'party', source_event_ids: ['event:travellers'],
+    } },
+    { command_type: 'ResolveEpistemicClaim', claim_id: 'rumor:vela-smugglers', truth_status: 'refuted', source_event_ids: ['event:search'] },
+    { command_type: 'RecordNarrativeSummary', summary: {
+      id: 'summary:scene-ford', kind: 'scene', title: 'At Ash Ford', summary: 'The party learned that Vela serves the Wardens and the ford is closed.',
+      visibility: 'party', entity_ids: ['npc:vela', 'location:ford'], thread_ids: ['thread:warden-oath'], source_event_ids: ['event:oath', 'event:flood'],
+    } },
+  ])
+
+  assert.deepEqual(result.events.map((event) => event.event_type), [
+    'WorldEntityUpserted', 'WorldEntityUpserted', 'WorldEntityUpserted', 'WorldFactRecorded', 'WorldRelationshipRecorded',
+    'QuestUpserted', 'NarrativeThreadUpserted', 'NarrativeThreadClockAdvanced', 'NpcBeliefRecorded', 'RumorRecorded',
+    'EpistemicClaimTruthResolved', 'NarrativeSummaryRecorded',
+  ])
+  assert.equal(result.state.worldMemory.relationships[0].status, 'active')
+  assert.equal(result.state.worldMemory.threads[0].clock.current, 2)
+  assert.equal(result.state.worldMemory.epistemic_claims.find((claim) => claim.id === 'belief:vela-river').truth_status, 'unknown')
+  assert.equal(result.state.worldMemory.epistemic_claims.find((claim) => claim.id === 'rumor:vela-smugglers').truth_status, 'refuted')
+  assert.equal(result.state.worldMemory.summaries[0].source_event_ids.length, 2)
+  assert.equal(result.state.worldMemory.facts.some((fact) => fact.id === 'rumor:vela-smugglers'), false)
+
+  const replayed = result.events.reduce((memory, event) => applyWorldMemoryEvent(memory, event), normalizeWorldMemory(initial.worldMemory))
+  assert.deepEqual(replayed, result.state.worldMemory)
+})
+
+test('epistemic and summary validation require provenance, while viewer retrieval filters before semantic ranking and time', () => {
+  const initial = campaign()
+  const seeded = runWorldMemoryCommands(initial, [
+    { command_type: 'UpsertWorldEntity', entity: { id: 'npc:vela', kind: 'npc', name: 'Vela', visibility: 'party' } },
+    { command_type: 'UpsertWorldEntity', entity: { id: 'location:ford', kind: 'location', name: 'Ash Ford', aliases: ['old trail'], visibility: 'party' } },
+    { command_type: 'RecordWorldFact', fact: { id: 'fact:ford-route', subject_id: 'location:ford', predicate: 'blocks_route', object: 'The old trail is flooded.', summary: 'The old trail cannot be used.', visibility: 'party', source_event_ids: ['event:flood'] } },
+    { command_type: 'RecordRumor', claim: { id: 'rumor:party', holder_entity_id: 'npc:vela', claim: 'Smugglers crossed the ford.', summary: 'A visible rumour.', visibility: 'party', source_event_ids: ['event:talk'] } },
+    { command_type: 'RecordNpcBelief', claim: { id: 'belief:hidden', holder_entity_id: 'npc:vela', claim: 'Vela thinks the party is being watched.', summary: 'A hidden belief.', visibility: 'gm_only', source_event_ids: ['event:thought'] } },
+  ])
+  const laterState = { ...seeded.state, mechanics: { ...seeded.state.mechanics, world_time: { elapsed_minutes: 120 } } }
+  const withSummary = runWorldMemoryCommands(laterState, [{ command_type: 'RecordNarrativeSummary', summary: {
+    id: 'summary:later', kind: 'session', title: 'Later session', summary: 'The party considers a route through the ford.', visibility: 'party', source_event_ids: ['event:later'],
+  } }]).state
+
+  const playerMemory = worldMemoryForViewer(withSummary.worldMemory, { playerId: 'hero', isPartyMember: true })
+  assert.equal(playerMemory.epistemic_claims.some((claim) => claim.id === 'belief:hidden'), false)
+  assert.equal(playerMemory.epistemic_claims.some((claim) => claim.id === 'rumor:party'), true)
+  assert.ok(retrieveWorldMemory(withSummary.worldMemory, { playerId: 'hero', isPartyMember: true }, { query: 'маршрут', limit: 5 }).some((entry) => entry.id === 'fact:ford-route'))
+  assert.equal(retrieveWorldMemory(withSummary.worldMemory, { playerId: 'hero', isPartyMember: true }, { query: 'later', asOfMinutes: 0 }).some((entry) => entry.id === 'summary:later'), false)
+
+  assert.throws(
+    () => validateWorldMemoryCommand({ command_type: 'RecordNpcBelief', command_id: 'invalid-holder', claim: { id: 'belief:invalid', holder_entity_id: 'location:ford', claim: 'Not an NPC.' } }, withSummary, { isDirector: true }),
+    (error) => error.code === 'WORLD_NPC_BELIEF_HOLDER_INVALID',
+  )
+  assert.throws(
+    () => validateWorldMemoryCommand({ command_type: 'RecordNarrativeSummary', command_id: 'missing-provenance', summary: { id: 'summary:invalid', kind: 'scene', title: 'Invalid', summary: 'No evidence.' } }, withSummary, { isDirector: true }),
+    (error) => error.code === 'WORLD_SUMMARY_PROVENANCE_REQUIRED',
+  )
 })
 
 test('players cannot forge world memory and unknown nested fields are rejected', () => {

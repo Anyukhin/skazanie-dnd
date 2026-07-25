@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto'
 
 import { normalizeDirectorIntent, serverReputationDelta, serverRewardForEncounter } from './autonomous-campaign.mjs'
+import {
+  assembleSocialNpc,
+  completedDowntime,
+  pacingForDirectorIntent,
+  planServerTravel,
+} from './campaign-loop-policy.mjs'
+import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
 import {
   actorPosition,
@@ -29,7 +36,6 @@ function event(commandId, type, payload = {}, targets = [], visibility = 'party'
     visibility,
   }
 }
-
 function openQuest(state, requestedId = '') {
   return (state.worldMemory?.quests ?? []).find((quest) => quest.id === requestedId && quest.status === 'active')
     ?? (state.worldMemory?.quests ?? []).find((quest) => quest.status === 'active' && !quest.clock?.triggered)
@@ -127,6 +133,7 @@ export class AutonomousCampaignOrchestrator {
   }
 
   async recordIntent(campaignId, intent, idempotencyKey) {
+    const loaded = await this.load(campaignId)
     const provenance = {
       source: 'director',
       contract: 'skazanie:director-intent-v1',
@@ -136,6 +143,10 @@ export class AutonomousCampaignOrchestrator {
     }
     return this.commitEvents(campaignId, `${idempotencyKey}:intent`, [
       event(`${idempotencyKey}:intent`, 'DirectorIntentRecorded', { intent, provenance }, [], 'party'),
+      event(`${idempotencyKey}:pacing`, 'CampaignPacingAdvanced', {
+        ...pacingForDirectorIntent(loaded.state, intent),
+        provenance: { source: 'server-pacing-policy' },
+      }, [], 'party'),
     ])
   }
 
@@ -146,6 +157,9 @@ export class AutonomousCampaignOrchestrator {
     let loaded = await this.load(campaignId)
     const commands = []
     const custom = []
+    const setupCommands = []
+    let travel = null
+    let travelStartedAt = null
 
     if (intent.type === 'continue_exploration') {
       const cells = explorationCells(loaded.state)
@@ -153,7 +167,15 @@ export class AutonomousCampaignOrchestrator {
       else commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
     }
     if (intent.type === 'open_social_scene') {
-      const npc = availableNpc(loaded.state, intent.npc_id)
+      let npc = availableNpc(loaded.state, intent.npc_id)
+      if (!npc) {
+        npc = assembleSocialNpc(loaded.state, {
+          campaignId,
+          requestedId: intent.npc_id,
+          idempotencyKey: key,
+        })
+        setupCommands.push({ command_type: 'UpsertNpcSocialProfile', npc })
+      }
       if (npc) {
         custom.push(event(`${key}:social`, 'SocialSceneOpened', {
           npc_id: npc.id,
@@ -174,6 +196,31 @@ export class AutonomousCampaignOrchestrator {
     }
     if (intent.type === 'end_scene') {
       const destination = intent.destination || `${loaded.state.scene?.location || 'Путь'} — следующая сцена`
+      travel = planServerTravel(loaded.state, { campaignId, destination, idempotencyKey: key })
+      travelStartedAt = Number(loaded.state.mechanics?.world_time?.elapsed_minutes) || 0
+      const decisionId = `autonomy-${digest(key)}`
+      const partyIds = (loaded.state.partyMemberIds?.length
+        ? loaded.state.partyMemberIds
+        : loaded.state.players?.map((player) => player.id) ?? []).map(String)
+      const actorId = String(loaded.state.activePlayerId ?? partyIds[0] ?? '')
+      custom.push(partyDecisionOpenedEvent({
+        id: decisionId,
+        type: 'choice',
+        title: 'Продолжить путь',
+        description: `Отряд подтверждает переход в ${destination}.`,
+        options: [{ id: 'continue', label: `Перейти в ${destination}` }],
+        resolutionPrompt: 'Продолжить подтверждённый переход.',
+      }, actorId || null, { eligibleHeroIds: partyIds }))
+      custom.push({
+        ...event(`${key}:decision-resolved`, 'PartyDecisionResolved', {
+          interaction_id: decisionId,
+          resolved_option_id: 'continue',
+          votes: actorId ? { [actorId]: 'continue' } : {},
+          eligible_hero_ids: partyIds,
+          required_votes: 1,
+        }, partyIds),
+        actor_id: actorId || null,
+      })
       commands.push({ command_type: 'AdvanceScene', scene_args: {
         title: destination,
         location: destination,
@@ -181,13 +228,46 @@ export class AutonomousCampaignOrchestrator {
         transition: `Завершив текущую сцену, отряд направляется в ${destination}.`,
         hook: nextHook(loaded.state),
         seed: `${campaignId}:${key}:scene`,
-      }, party_decision: { interaction_id: `autonomy-${digest(key)}`, resolved_option_id: 'continue' } })
+      }, party_decision: { interaction_id: decisionId, resolved_option_id: 'continue' } })
+      commands.unshift({ command_type: 'AdvanceTime', amount: travel.duration_minutes, unit: 'minute' })
+      if (travel.random_encounter) {
+        commands.push({
+          command_type: 'CreateEncounter',
+          theme: travel.encounter.theme,
+          difficulty: travel.encounter.difficulty,
+          seed: `${campaignId}:${travel.travel_id}:random-encounter`,
+        })
+        commands.push({ command_type: 'StartCombat', server_authoritative: true })
+      }
     }
     if (intent.type === 'offer_next_hook') commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state, intent.hook) })
 
     const results = []
+    if (setupCommands.length) results.push(await this.runCommands(campaignId, `${key}:setup`, setupCommands))
     if (custom.length) results.push(await this.commitEvents(campaignId, `${key}:custom`, custom))
     if (commands.length) results.push(await this.runCommands(campaignId, `${key}:commands`, commands))
+    if (travel) {
+      const afterTravel = await this.load(campaignId)
+      const scheduled = await this.executeNpcSchedules(campaignId, {
+        start: travelStartedAt,
+        end: Number(afterTravel.state.mechanics?.world_time?.elapsed_minutes) || travelStartedAt,
+        idempotencyKey: `${key}:travel-schedules`,
+        sourceEventIds: results.flatMap((result) => result.events ?? []).map((entry) => entry.event_id).filter(Boolean),
+      })
+      if (scheduled.result) results.push(scheduled.result)
+      const travelEvents = [event(`${key}:travel`, 'TravelResolved', {
+        ...travel,
+        provenance: { source: 'server-travel-policy' },
+      }, loaded.state.partyMemberIds ?? [])]
+      if (travel.random_encounter) travelEvents.push(event(`${key}:random-encounter`, 'RandomEncounterTriggered', {
+        travel_id: travel.travel_id,
+        theme: travel.encounter.theme,
+        difficulty: travel.encounter.difficulty,
+        risk_score: travel.risk_score,
+        provenance: { source: 'server-travel-policy' },
+      }, loaded.state.partyMemberIds ?? []))
+      results.push(await this.commitEvents(campaignId, `${key}:travel`, travelEvents))
+    }
     loaded = await this.load(campaignId)
     if (!clean(loaded.state.scene?.objective, 300)) {
       results.push(await this.runCommands(campaignId, `${key}:failsafe-hook`, [{ command_type: 'UpdateObjective', objective: nextHook(loaded.state) }]))
@@ -329,12 +409,24 @@ export class AutonomousCampaignOrchestrator {
         partyIds.has(String(hero.id)) && afterConsequences.state.mechanics?.death?.heroes?.[hero.id]?.status !== 'dead'
       ))
       if (restingHeroes.length) {
+        const downtime = completedDowntime(afterConsequences.state, {
+          kind: 'long_rest',
+          durationMinutes: 480,
+          reason: 'post_encounter_recovery',
+        })
         const recoveryCommands = [
           ...restingHeroes.map((hero) => ({ command_type: 'StartRest', actor_id: String(hero.id), kind: 'long' })),
           { command_type: 'AdvanceTime', amount: 480, unit: 'minute' },
           ...restingHeroes.map((hero) => ({ command_type: 'CompleteRest', actor_id: String(hero.id), kind: 'long' })),
         ]
         recovery = await this.runCommands(campaignId, `${idempotencyKey}:recovery`, recoveryCommands)
+        const downtimeCommit = await this.commitEvents(campaignId, `${idempotencyKey}:downtime`, [
+          event(`${idempotencyKey}:downtime`, 'DowntimeResolved', {
+            ...downtime,
+            provenance: { source: 'server-downtime-policy' },
+          }, downtime.participant_ids),
+        ])
+        recovery = { ...recovery, events: [...recovery.events, ...downtimeCommit.events] }
       }
     }
     await this.propagateWitnesses(campaignId, {
@@ -395,18 +487,19 @@ export class AutonomousCampaignOrchestrator {
     return result
   }
 
-  async advanceTime(campaignId, { amount, unit = 'minute', idempotencyKey = 'advance-time' } = {}) {
-    const before = await this.load(campaignId)
-    const start = Number(before.state.mechanics.world_time?.elapsed_minutes) || 0
-    const advanced = await this.runCommands(campaignId, `${idempotencyKey}:clock`, [{ command_type: 'AdvanceTime', amount, unit }])
-    const after = await this.load(campaignId)
-    const end = Number(after.state.mechanics.world_time?.elapsed_minutes) || start
-    const scheduleFacts = (after.state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active' && fact.predicate === 'npc_schedule')
-    const executed = new Set((after.state.worldMemory?.facts ?? []).filter((fact) => fact.predicate === 'npc_scheduled_action_executed').map((fact) => fact.object))
+  async executeNpcSchedules(campaignId, {
+    start = 0,
+    end = 0,
+    idempotencyKey = 'scheduled-actions',
+    sourceEventIds = [],
+  } = {}) {
+    const loaded = await this.load(campaignId)
+    const scheduleFacts = (loaded.state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active' && fact.predicate === 'npc_schedule')
+    const executed = new Set((loaded.state.worldMemory?.facts ?? []).filter((fact) => fact.predicate === 'npc_scheduled_action_executed').map((fact) => fact.object))
     const actions = []
     for (const fact of scheduleFacts) {
       const schedule = parseJsonFact(fact)
-      const npc = (after.state.social?.npcs ?? []).find((candidate) => candidate.id === schedule?.npc_id)
+      const npc = (loaded.state.social?.npcs ?? []).find((candidate) => candidate.id === schedule?.npc_id)
       if (!npc) continue
       for (const entry of schedule.entries ?? []) {
         const actionKey = `${schedule.npc_id}:${entry.at_minutes}:${entry.action}`
@@ -415,12 +508,28 @@ export class AutonomousCampaignOrchestrator {
         actions.push({ command_type: 'UpsertNpcSocialProfile', npc: profile })
         actions.push({ command_type: 'RecordWorldFact', fact: {
           id: `schedule-action-${digest(actionKey)}`, subject_id: fact.subject_id, predicate: 'npc_scheduled_action_executed',
-          object: actionKey, summary: entry.summary || `${npc.name}: ${entry.action}`, visibility: 'party', source_event_ids: advanced.events.map((event) => event.event_id).filter(Boolean),
+          object: actionKey, summary: entry.summary || `${npc.name}: ${entry.action}`, visibility: 'party', source_event_ids: sourceEventIds,
         } })
       }
     }
-    if (actions.length) await this.runCommands(campaignId, `${idempotencyKey}:scheduled-actions`, actions)
-    return { before: start, after: end, scheduled_actions: actions.length / 2, state: (await this.load(campaignId)).state, admin_commands: 0 }
+    if (!actions.length) return { scheduled_actions: 0, result: null }
+    const result = await this.runCommands(campaignId, idempotencyKey, actions)
+    return { scheduled_actions: actions.length / 2, result }
+  }
+
+  async advanceTime(campaignId, { amount, unit = 'minute', idempotencyKey = 'advance-time' } = {}) {
+    const before = await this.load(campaignId)
+    const start = Number(before.state.mechanics.world_time?.elapsed_minutes) || 0
+    const advanced = await this.runCommands(campaignId, `${idempotencyKey}:clock`, [{ command_type: 'AdvanceTime', amount, unit }])
+    const after = await this.load(campaignId)
+    const end = Number(after.state.mechanics.world_time?.elapsed_minutes) || start
+    const scheduled = await this.executeNpcSchedules(campaignId, {
+      start,
+      end,
+      idempotencyKey: `${idempotencyKey}:scheduled-actions`,
+      sourceEventIds: advanced.events.map((entry) => entry.event_id).filter(Boolean),
+    })
+    return { before: start, after: end, scheduled_actions: scheduled.scheduled_actions, state: (await this.load(campaignId)).state, admin_commands: 0 }
   }
 
   async bindPromise(campaignId, { promiseId, condition, idempotencyKey = `promise-binding-${promiseId}` } = {}) {

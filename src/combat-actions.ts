@@ -2,6 +2,8 @@ import catalogPayload from '../data/dndsu-class-actions-1-12.json'
 import buildRules from '../data/dndsu-class-build-rules-1-12.json'
 import type { CombatAction, Player } from './types'
 
+const defaultPartialActionNote = 'Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.'
+
 type CatalogUsage = { maximum: number | 'proficiency' | `ability:${string}`; recovery: string }
 type CatalogAction = CombatAction & { classKey: string; subclass?: string | null; uses?: CatalogUsage | null }
 type CatalogClass = { classKey: string; label: string; subclassLevel: number; sourceUrl: string; subclasses: Array<{ id: string; name: string; sourceUrl: string }>; actions: CatalogAction[] }
@@ -53,7 +55,9 @@ export function classFeatureCatalogFor(player?: Player, includeLocked = false): 
   const catalog = classKey ? generatedClasses.get(classKey) : undefined
   const level = Math.max(1, Math.min(12, Number(player?.level) || 1))
   const selectedSubclass = normalizedName(player?.subclass)
-  const entries = [...(catalog?.actions ?? []), ...(classKey ? curatedPassiveFeatures[classKey] ?? [] : [])]
+  const generatedEntries = (catalog?.actions ?? []).map((entry): CatalogAction => ({ ...entry, mechanicsSupport: entry.effect?.kind === 'special' ? 'ruling-only' : 'heuristic' }))
+  const passiveEntries = (classKey ? curatedPassiveFeatures[classKey] ?? [] : []).map((entry): CatalogAction => ({ ...entry, mechanicsSupport: 'partial', supportNote: entry.supportNote ?? defaultPartialActionNote }))
+  const entries = [...generatedEntries, ...passiveEntries]
   return [...new Map(entries.map((entry) => [entry.id, entry])).values()]
     .filter((entry) => (!entry.subclass || normalizedName(entry.subclass) === selectedSubclass) && (includeLocked || level >= Number(entry.minimumLevel ?? 1)))
     .map((entry) => structuredClone(entry))
@@ -73,7 +77,7 @@ const common: CombatAction[] = [
   { id: 'help', name: 'Помощь', category: 'common', target: 'ally', actionType: 'action', range: 5, description: 'Дать союзнику преимущество на следующую атаку.' },
   { id: 'grapple', name: 'Захват', category: 'common', target: 'enemy', actionType: 'action', range: 5, description: 'Состязание Атлетики; при успехе цель схвачена.' },
   { id: 'shove', name: 'Толчок', category: 'common', target: 'enemy', actionType: 'action', range: 5, description: 'Состязание Силы: при успехе цель сбита с ног.' },
-  { id: 'ready', name: 'Подготовка', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Подготовить действие и условие для реакции.' },
+  { id: 'ready', name: 'Подготовка', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Подготовить действие и условие для реакции.', mechanicsSupport: 'partial', supportNote: 'Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.' },
   { id: 'search', name: 'Поиск', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Проверка Мудрости (Восприятие).' },
 ]
 
@@ -134,12 +138,17 @@ export function fallbackCombatActions(player: Player): CombatAction[] {
     if (existingNames.has(normalizedName(entry.name))) continue
     result.push({
       ...entry,
+      mechanicsSupport: entry.effect?.kind === 'special' ? 'ruling-only' : 'heuristic',
       target: entry.target === 'ally' || entry.target === 'enemy' ? entry.target : 'self',
       resource: entry.uses ? `feature_${entry.id}` : entry.resource,
       cost: entry.uses ? 1 : entry.cost,
     })
   }
-  return result
+  return result.map((entry) => ({
+    ...entry,
+    mechanicsSupport: entry.mechanicsSupport ?? 'partial',
+    ...((entry.supportNote || (entry.mechanicsSupport ?? 'partial') === 'partial') ? { supportNote: entry.supportNote ?? defaultPartialActionNote } : {}),
+  }))
 }
 
 export function fallbackCombatResources(player?: Player): Record<string, { current: number; max: number }> {
