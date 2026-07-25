@@ -118,7 +118,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-scroll { position: relative; margin-top: -76px; transition: transform .15s ease-out; transform-origin: center; filter: drop-shadow(0 18px 30px rgba(0,0,0,.48)); cursor: grab; touch-action: none; user-select: none; }
 .map-scroll.dragging { transition: none; cursor: grabbing; }
 .map-scroll button { cursor: pointer; }
-.map-grid { --cell: clamp(20px, min(5.7cqw, 7.5cqh), 64px); position: relative; display: grid; grid-auto-rows: var(--cell); transform: rotateZ(-1deg); border: 5px solid #2a2118; outline: 1px solid color-mix(in srgb, var(--map-grid-line), white 18%); background: #30271d; box-shadow: 0 10px 0 #17120d, 0 28px 42px rgba(0,0,0,.58), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 62%); }
+/* Потолок клетки 64px срезал доску на широких экранах: формула отдаёт ~89px, а кламп
+   резал до 64, и сцена занимала меньше половины кадра. Множители не трогаем — 7.5cqh
+   подобран так, чтобы карта максимальных 19 рядов с наклоном влезала по высоте. */
+.map-grid { --cell: clamp(20px, min(5.7cqw, 7.5cqh), 104px); position: relative; display: grid; grid-auto-rows: var(--cell); transform: rotateZ(-1deg); border: 5px solid #2a2118; outline: 1px solid color-mix(in srgb, var(--map-grid-line), white 18%); background: #30271d; box-shadow: 0 10px 0 #17120d, 0 28px 42px rgba(0,0,0,.58), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 62%); }
 .map-grid.irregular { border-color: transparent; outline: 0; background: transparent; box-shadow: 0 28px 45px rgba(0,0,0,.68), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 68%); }
 .map-grid.irregular .map-cell { filter: drop-shadow(0 2px 2px rgba(0,0,0,.5)); }
 .map-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 1px solid var(--map-grid-line); background-color: var(--map-floor); background-image: radial-gradient(circle at 35% 27%, rgba(255,255,255,.055) 0 2%, transparent 3%), linear-gradient(135deg, transparent 48%, rgba(0,0,0,.11) 50%); box-shadow: inset 1px 1px rgba(255,255,255,.025), inset -1px -1px rgba(0,0,0,.22); color: inherit; font: inherit; }
@@ -1302,6 +1305,21 @@ button.campaign-title:hover strong { color: #edc996; }
   background: repeating-linear-gradient(135deg, transparent 0 3px, rgba(218,170,109,.6) 4px 5px);
   clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
+/* В бою главное — тактическая сцена. Журнал сжимается до компактного боевого лога
+   и уходит вправо, освобождая доску и не споря с хотбаром по центру; вне боя он
+   остаётся крупной панелью повествования. Игрок по-прежнему может растянуть его
+   вручную — resize и сохранённая раскладка не трогаются. */
+.game-area:has(.combat-hotbar) > .chat-panel {
+  left: auto;
+  right: 18px;
+  bottom: 152px;
+  width: min(380px, calc(100% - 36px));
+  min-width: 300px;
+  height: min(32vh, 330px);
+  min-height: 180px;
+  max-height: calc(100% - 320px);
+}
+
 .game-area:not(:has(.combat-hotbar)):not(:has(.exploration-start-combat)):not(:has(.exploration-hotbar > .tactical-command-status)):not(:has(.exploration-hotbar > .tactical-command-error)) > .chat-panel {
   bottom: 20px;
   height: min(68vh, 720px);
