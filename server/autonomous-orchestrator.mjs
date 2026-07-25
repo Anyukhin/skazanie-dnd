@@ -25,6 +25,17 @@ import {
   buildEpilogueNarrationBrief,
   campaignCanAutoComplete,
 } from './campaign-lifecycle.mjs'
+import { questTitleFromObjective } from './scene-memory.mjs'
+import {
+  attemptFingerprint,
+  failForwardFor,
+  interpretFreeAction,
+  previousFailedAttempt,
+  resolutionModeFor,
+  situationFingerprint,
+  stakesFor,
+  verifyMeans,
+} from './free-action-adjudication.mjs'
 
 const clone = (value) => structuredClone(value)
 const clean = (value, maximum = 300) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -67,24 +78,29 @@ function availableNpc(state, requestedId = '') {
     && (!npc.location || !at || clean(npc.location, 180).toLocaleLowerCase('ru') === at)) ?? null
 }
 
+// Заголовок разворачивается перед подстановкой: в кампаниях, созданных до этой правки,
+// он уже мог накопить обёртки «Продолжить квест «…».
+const questGoal = (quest) => clean(questTitleFromObjective(quest?.title), 180)
+
 function nextHook(state, reason = '') {
   const quest = openQuest(state)
-  return clean(reason, 300) || (quest ? `Продолжить квест «${quest.title}»` : `Исследовать ${state.scene?.location || 'окрестности'} и найти новую зацепку`)
+  return clean(reason, 300) || (quest ? `Продолжить квест «${questGoal(quest)}»` : `Исследовать ${state.scene?.location || 'окрестности'} и найти новую зацепку`)
 }
 
 function questResolutionFor(quest = {}) {
   const label = clean(quest.clock?.label, 160)
   const failureClock = /(угроз|опасност|провал|разыск|подозрен|deadline|danger|failure)/iu.test(label)
   const outcome = failureClock ? 'failure' : 'success'
+  const goal = questGoal(quest)
   const summary = outcome === 'success'
-    ? `Цель «${clean(quest.title, 180)}» достигнута: заполненные часы подтвердили успех отряда.`
-    : `Угроза в квесте «${clean(quest.title, 180)}» осуществилась: заполненные часы подтвердили неудачу, но история продолжается с последствиями.`
+    ? `Цель «${goal}» достигнута: заполненные часы подтвердили успех отряда.`
+    : `Угроза в квесте «${goal}» осуществилась: заполненные часы подтвердили неудачу, но история продолжается с последствиями.`
   return {
     outcome,
     summary,
     nextObjective: outcome === 'success'
-      ? `Развить последствия победы в квесте «${clean(quest.title, 180)}» и приблизить развязку`
-      : `Ответить на последствия провала квеста «${clean(quest.title, 180)}» и найти новый путь`,
+      ? `Развить последствия победы в квесте «${goal}» и приблизить развязку`
+      : `Ответить на последствия провала квеста «${goal}» и найти новый путь`,
   }
 }
 
@@ -527,37 +543,151 @@ export class AutonomousCampaignOrchestrator {
         duplicate: Boolean(commit.duplicate),
       }
     }
+    // Судейство как у живого ведущего: понять намерение, сверить средства, выбрать режим
+    // разрешения, объявить ставки и дать непустое последствие даже при провале.
+    const reading = interpretFreeAction(text)
+    const means = verifyMeans(loaded.state, actorId, reading.required_means)
+    const resolution = means.satisfied
+      ? resolutionModeFor(reading)
+      : resolutionModeFor({ ...reading, plausibility: 'impossible_without_means' })
+    const attempt = attemptFingerprint({ actorId, approach: reading.approach_summary, obstacle: reading.obstacle })
+    const repeated = previousFailedAttempt(loaded.state, attempt)
     const objective = boundedObjective(loaded.state, text)
+
+    // Тот же подход к тому же препятствию в неизменившейся обстановке нового броска не даёт.
+    if (repeated) {
+      const commit = await run([declaration])
+      verifyDuplicate(commit)
+      return {
+        kind: 'clarification',
+        narration: `Этот способ уже не сработал, и обстановка с тех пор не изменилась. Нужен другой подход к препятствию «${reading.obstacle}».`,
+        suggestions: [objective],
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+
+    // Встречное предложение вместо отказа: «нет, но» — принцип «никаких невидимых стен».
+    if (resolution.mode === 'counter_offer') {
+      const commit = await run([declaration])
+      verifyDuplicate(commit)
+      return {
+        kind: 'counter_offer',
+        narration: `Без подтверждённого средства так не выйдет: не хватает ${means.missing.join(', ')}. Но препятствие «${reading.obstacle}» можно взять проверкой — опишите, как герой к нему подступится.`,
+        suggestions: [objective],
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+
+    const stakes = stakesFor({ ability: reading.ability, skill: reading.skill, resolution, risk: reading.risk })
     const ruling = {
       id: `ruling-${digest({ campaignId, text })}`,
       status: 'applied',
       scope: 'single-action',
       question: text,
-      bounded_options: ['ability-check', 'existing-action', 'fiction-only'],
-      selected_option: 'objective-update',
+      bounded_options: ['auto-success', 'ability-check', 'counter-offer'],
+      selected_option: resolution.mode === 'auto_success' ? 'auto-success' : 'ability-check',
       consequence: objective,
       world_change: true,
-      provenance: { source: 'free-action-fallback', action_fingerprint: digest(text) },
+      stakes,
+      provenance: {
+        source: 'free-action-adjudication',
+        action_fingerprint: digest(text),
+        attempt_fingerprint: attempt,
+        situation_fingerprint: situationFingerprint(loaded.state),
+        policy: 'free-action-adjudication-v1',
+      },
     }
-    const commit = await run([
+
+    // Автоуспех — тоже событие: replay обязан его воспроизводить.
+    if (resolution.mode === 'auto_success') {
+      const commit = await run([
+        declaration,
+        { command_type: 'RecordRuling', ruling: { ...ruling, outcome: 'success' }, ruling_id: ruling.id },
+        { command_type: 'UpdateObjective', objective },
+      ])
+      verifyDuplicate(commit, { requiresRuling: true })
+      return {
+        kind: 'auto_success',
+        ruling,
+        narration: `Это удаётся без броска — на кону ничего нет. Следующая цель отряда: «${objective}»`,
+        suggestions: [objective],
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+
+    // Проверка: бросок делает движок своим Dice Service, число СЛ выбрал сервер.
+    const checkCommit = await run([
       declaration,
-      { command_type: 'RecordRuling', ruling, ruling_id: ruling.id },
-      { command_type: 'UpdateObjective', objective },
+      {
+        command_type: 'MakeAbilityCheck',
+        actor_id: actorId,
+        ability: reading.ability,
+        proficient: false,
+        difficulty: resolution.difficulty,
+        difficulty_category: resolution.difficulty_category,
+      },
     ])
-    verifyDuplicate(commit, { requiresRuling: true })
+    verifyDuplicate(checkCommit)
+    const checkEvent = (checkCommit.events ?? []).find((entry) => entry.event_type === 'AbilityCheckResolved')
+    const succeeded = checkEvent?.payload?.success === true
+    const consequence = failForwardFor(reading.risk)
+    const outcomeRuling = { ...ruling, outcome: succeeded ? 'success' : 'failure' }
+    const followUp = [
+      { command_type: 'RecordRuling', ruling: outcomeRuling, ruling_id: ruling.id },
+      { command_type: 'AdvanceTime', amount: succeeded ? 5 : consequence.minutes, unit: 'minute' },
+      { command_type: 'UpdateObjective', objective },
+    ]
+    if (!succeeded && consequence.advances_quest_clock) {
+      const quest = openQuest(loaded.state)
+      if (quest) followUp.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })
+    }
+    let consequenceCommit = null
+    for (let attemptIndex = 0; attemptIndex < 3; attemptIndex += 1) {
+      try {
+        consequenceCommit = await this.runCommands(campaignId, `${idempotencyKey}:consequence`, followUp)
+        break
+      } catch (error) {
+        if (error?.code !== 'STATE_VERSION_CONFLICT' || attemptIndex === 2) throw error
+      }
+    }
+    const events = [...(checkCommit.events ?? []), ...(consequenceCommit?.events ?? [])]
     return {
-      kind: 'bounded_ruling',
-      ruling,
-      narration: `Действие принято. Следующая цель отряда: «${objective}»`,
+      kind: succeeded ? 'check_success' : 'check_failure',
+      ruling: outcomeRuling,
+      stakes,
+      narration: succeeded
+        ? `Проверка пройдена. Следующая цель отряда: «${objective}»`
+        : `Не вышло. ${consequence.summary} Следующая цель отряда: «${objective}»`,
       suggestions: [objective],
       turn_consumed: false,
       admin_commands: 0,
-      state: commit.state ?? loaded.state,
-      state_version: commit.state_version ?? loaded.state_version,
-      events: commit.events ?? [],
-      commands: commit.commands ?? [],
-      rolls: commit.rolls ?? [],
-      duplicate: Boolean(commit.duplicate),
+      state: consequenceCommit?.state ?? checkCommit.state ?? loaded.state,
+      state_version: consequenceCommit?.state_version ?? checkCommit.state_version ?? loaded.state_version,
+      events,
+      commands: [...(checkCommit.commands ?? []), ...(consequenceCommit?.commands ?? [])],
+      rolls: [...(checkCommit.rolls ?? []), ...(consequenceCommit?.rolls ?? [])],
+      duplicate: Boolean(checkCommit.duplicate),
     }
   }
 

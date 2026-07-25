@@ -32,12 +32,32 @@ function canonicalLocation(memory, name, summary = '') {
   }
 }
 
+// Цель сцены — призыв к действию («Продолжить квест «X»»), а заголовок квеста — сама
+// цель X. Без снятия обёртки заголовок выводился из уже обёрнутой цели, а следующий
+// призыв оборачивал его снова: каждая глава добавляла слой «Продолжить квест «…».
+const OBJECTIVE_WRAPPERS = Object.freeze([
+  /^Продолжить квест «(.+)»$/u,
+  /^Развить последствия победы в квесте «(.+)» и приблизить развязку$/u,
+  /^Ответить на последствия провала квеста «(.+)» и найти новый путь$/u,
+])
+
+/** Восстанавливает исходную цель из призыва к действию любой вложенности. */
+export function questTitleFromObjective(value) {
+  let title = clean(value, 300)
+  for (let depth = 0; depth < 8; depth += 1) {
+    const inner = OBJECTIVE_WRAPPERS.reduce((found, pattern) => found ?? pattern.exec(title), null)
+    if (!inner) break
+    title = clean(inner[1], 300)
+  }
+  return title
+}
+
 function sceneQuest({ chapter, scene, adventure, locationId }) {
   const objective = clean(scene?.objective, 300)
   const hook = clean(adventure?.currentHook, 1_000)
   return {
     id: `quest:chapter:${chapterNumber(chapter)}`,
-    title: clean(objective || scene?.title || `Chapter ${chapterNumber(chapter)}`, 180),
+    title: clean(questTitleFromObjective(objective) || scene?.title || `Chapter ${chapterNumber(chapter)}`, 180),
     summary: hook || objective,
     status: 'active',
     visibility: 'party',

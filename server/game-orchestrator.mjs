@@ -344,6 +344,8 @@ export class GameOrchestrator {
       authoritative_state: state,
       verification,
       ruling: freeAction.ruling ?? null,
+      // Ставки объявляются игроку вместе с исходом: характеристика, СЛ и цена провала.
+      ...(freeAction.stakes ? { stakes: freeAction.stakes } : {}),
       explanation_url: `/api/campaigns/${encodeURIComponent(campaignId)}/turns/${encodeURIComponent(turnId)}/explanation`,
       idempotent_replay: idempotentReplay,
       turn_consumed: false,

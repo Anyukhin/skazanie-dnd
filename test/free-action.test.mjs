@@ -31,7 +31,7 @@ function campaign(overrides = {}) {
 
 async function setup(initialState = campaign()) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-free-action-'))
-  const dice = new DiceService({ rng: new SequenceDiceRng([]), idFactory: (() => { let id = 0; return () => `free-roll-${++id}` })() })
+  const dice = new DiceService({ rng: new SequenceDiceRng([18, 3, 18, 3, 18, 3, 18, 3]), idFactory: (() => { let id = 0; return () => `free-roll-${++id}` })() })
   const eventStore = new FileEventStore({
     rootDir: join(root, 'events'),
     reducer: applyGameEvent,
@@ -99,10 +99,15 @@ test('разумное импровизированное действие по�
   const { orchestrator } = await setup()
   const result = await orchestrator.handle(actionInput('Подпираю дверь тяжёлой скамьёй, чтобы её не открыли снаружи', 'free-door', campaign()))
 
-  assert.equal(result.free_action_outcome, 'bounded_ruling')
-  assert.deepEqual(result.mechanics.map((event) => event.event_type), ['ActionDeclared', 'RulingRecorded', 'ObjectiveUpdated'])
+  // Судейство: подпереть дверь — это проверка Силы с серверной СЛ, а не молчаливый ruling.
+  assert.equal(result.free_action_outcome, 'check_success')
+  assert.deepEqual(result.mechanics.map((event) => event.event_type),
+    ['ActionDeclared', 'AbilityCheckResolved', 'RulingRecorded', 'TimeAdvanced', 'ObjectiveUpdated'])
   assert.equal(result.ruling.status, 'applied')
   assert.equal(result.ruling.world_change, true)
+  assert.equal(result.stakes.difficulty, 15)
+  assert.equal(result.stakes.ability, 'str')
+  assert.ok(result.stakes.on_failure.length > 0)
   assert.match(result.authoritative_state.scene.objective, /баррикад|дверь/u)
   assert.match(result.narration, /Следующая цель отряда/u)
   assert.doesNotMatch(result.narration, /RulingRecorded|решени[ея]\s+ведущего/u)

@@ -878,15 +878,26 @@ export function parseCharacterImport(raw, options = {}) {
   const abilities = normalizedAbilityScores(source.abilities)
   const abilityGeneration = validateAbilityGeneration(source.abilityGeneration, abilities, options)
   const baseSpeed = integer(source.baseSpeed, 'character.baseSpeed', { minimum: 5, maximum: 120 })
+  let derivedSpecies = ''
   if (abilityGeneration) {
     const speciesOption = speciesOptions.get(abilityGeneration.speciesOptionId)
     const requestedSpecies = optionalText(source.species, 'character.species', 120)
-    if (!requestedSpecies || (speciesOption.id !== 'custom' && requestedSpecies !== speciesOption.label)) {
+    // Источник истины — `speciesOptionId`. Метку выводит сервер, поэтому клиенту не нужно
+    // её дублировать и она может меняться в policy без ломки контракта. Присланную метку
+    // всё ещё сверяем: так воспроизводятся события, записанные до этой правки.
+    if (requestedSpecies && speciesOption.id !== 'custom' && requestedSpecies !== speciesOption.label) {
       throw new CharacterLifecycleValidationError(
         'Вид персонажа не соответствует выбранному серверному варианту',
         'IMPORT_SPECIES_UNSUPPORTED',
       )
     }
+    if (speciesOption.id === 'custom' && !requestedSpecies) {
+      throw new CharacterLifecycleValidationError(
+        'Авторский вид требует явного названия в character.species',
+        'IMPORT_SPECIES_UNSUPPORTED',
+      )
+    }
+    derivedSpecies = requestedSpecies || speciesOption.label
     if (baseSpeed !== speciesOption.base_speed) {
       throw new CharacterLifecycleValidationError(
         'Базовая скорость не соответствует выбранному серверному виду',
@@ -932,6 +943,7 @@ export function parseCharacterImport(raw, options = {}) {
     const value = optionalText(source[field], `character.${field}`, maximum)
     if (value !== undefined) canonical[field] = value
   }
+  if (derivedSpecies) canonical.species = derivedSpecies
   return {
     document,
     patch: canonical,

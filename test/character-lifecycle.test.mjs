@@ -247,3 +247,32 @@ test('resolveLevelUp combines validation, event construction, pure reduction and
   assert.equal(result.state.players[0].level, 5)
   assert.equal(result.sheet.proficiency_bonus, 3)
 })
+
+test('вид персонажа выводится сервером из speciesOptionId, метка клиенту не обязательна', () => {
+  // Источник истины — идентификатор вида. Раньше клиент был обязан прислать ещё и точную
+  // метку («Человек»), и любая правка policy ломала бы контракт.
+  const withoutLabel = importDocument({})
+  delete withoutLabel.character.species
+  assert.equal(parseCharacterImport(withoutLabel).patch.species, 'Человек')
+
+  // Метка, записанная в уже существующие события, по-прежнему принимается.
+  assert.equal(parseCharacterImport(importDocument({ species: 'Человек' })).patch.species, 'Человек')
+
+  // Но подменить вид меткой нельзя.
+  assert.throws(
+    () => parseCharacterImport(importDocument({ species: 'Эльф' })),
+    (error) => error.code === 'IMPORT_SPECIES_UNSUPPORTED',
+  )
+})
+
+test('авторский вид требует явного названия', () => {
+  const custom = (species) => {
+    const document = importDocument(species === undefined ? {} : { species })
+    document.character.abilityGeneration.speciesOptionId = 'custom'
+    if (species === undefined) delete document.character.species
+    return document
+  }
+
+  assert.throws(() => parseCharacterImport(custom()), (error) => error.code === 'IMPORT_SPECIES_UNSUPPORTED')
+  assert.equal(parseCharacterImport(custom('Полудракон')).patch.species, 'Полудракон')
+})
