@@ -31,7 +31,6 @@ type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'mer
 
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
-const CHAT_LAYOUT_KEY_PREFIX = 'skazanie-chat-layout-v1'
 const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 150
 const UI_SCALE_PRESETS = [80, 90, 100, 110, 115, 125, 150]
@@ -220,23 +219,6 @@ const clampUiScale = (value: number) => Math.min(UI_SCALE_MAX, Math.max(UI_SCALE
 
 function loadScenicBackdrop() {
   return window.localStorage.getItem(SCENIC_BACKDROP_KEY) !== 'false'
-}
-
-type ChatWindowLayout = { x: number; y: number; width: number; height: number }
-
-function loadChatLayout(storageKey: string): ChatWindowLayout | null {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null') as Partial<ChatWindowLayout> | null
-    if (!value || !['x', 'y', 'width', 'height'].every((key) => Number.isFinite(value[key as keyof ChatWindowLayout]))) return null
-    return {
-      x: Number(value.x),
-      y: Number(value.y),
-      width: Math.max(240, Number(value.width)),
-      height: Math.max(220, Number(value.height)),
-    }
-  } catch {
-    return null
-  }
 }
 
 function Logo() {
