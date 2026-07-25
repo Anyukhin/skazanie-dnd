@@ -179,7 +179,7 @@ FileEventStore имеет lock и checksummed snapshots, однако file persi
 
 ### Supply chain и provenance
 
-Dependency specs в `package.json` используют `latest`, хотя lockfile присутствует. Base image tags не закреплены digest-ами. Происхождение части PNG assets не подтверждено. Нужны pinned inputs, dependency audit/SBOM и документированные права на assets.
+Dependency specs в `package.json` закреплены диапазонами `^X.Y.Z` под существующий lockfile (2026-07-26), поэтому мажорная версия не приезжает молча; минорные и патч-версии остаются подвижными при регенерации лока. Base image tags не закреплены digest-ами. Происхождение части PNG assets не подтверждено. Нужны digest-pinned образы, dependency audit/SBOM и документированные права на assets.
 
 ## Авторизация механической команды
 

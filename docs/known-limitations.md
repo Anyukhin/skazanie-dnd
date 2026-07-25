@@ -231,7 +231,7 @@ Compatibility room `PUT` возвращает `410`. Механика и RNG в 
 - Compose может публиковать порт 8787 на всех host interfaces; безопасная binding policy зависит от deployment.
 - Tunnel URL и доступность зависят от внешнего сервиса.
 - Docker daemon, public tunnel path и real HTTPS/proxy headers не покрыты end-to-end test.
-- Base images не закреплены digest-ами; dependency specs используют `latest` при наличии lockfile.
+- Base images не закреплены digest-ами. Dependency specs закреплены диапазонами `^X.Y.Z` (2026-07-26); мажорное обновление больше не приходит молча, но минорные и патч-версии по-прежнему подвижны при регенерации лока.
 - Frontend запрашивает Google Fonts, тогда как активная CSP может блокировать внешний stylesheet/fonts. Offline и deployed presentation могут отличаться.
 
 ## Тестирование
