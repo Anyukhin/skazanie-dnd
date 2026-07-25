@@ -45,3 +45,16 @@ test('места из хроники старой кампании автома�
   assert.ok(names.has('Рыночная площадь'))
   assert.ok(names.has('Серебряный монастырь'))
 })
+
+test('повторный визит обновляет summary канонической локации', () => {
+  const initial = createCampaignWorldMap({ seed: 'SUMMARY-1', campaignName: 'Хроника', startingLocation: 'Норвин' })
+  const locationId = initial.currentLocationId
+  const updated = reconcileWorldMap(initial, {
+    seed: initial.seed,
+    campaignName: 'Хроника',
+    currentLocationId: locationId,
+    currentLocation: 'Норвин',
+    scene: { objective: 'После пожара площадь стала непроходимой.' },
+  })
+  assert.equal(updated.locations.find((location) => location.id === locationId)?.summary, 'После пожара площадь стала непроходимой.')
+})

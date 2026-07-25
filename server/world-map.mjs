@@ -303,7 +303,7 @@ export function reconcileWorldMap(rawMap, {
   if (current) {
     current.visited = true
     current.known = true
-    if (text(scene.objective)) current.summary ||= text(scene.objective, 320)
+    if (text(scene.objective)) current.summary = text(scene.objective, 320)
     map.currentLocationId = current.id
   }
   if (previous && current && previous.id !== current.id) {

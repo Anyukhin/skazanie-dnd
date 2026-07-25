@@ -18,6 +18,12 @@ function privateState() {
         { x: 1, y: 0, type: 'floor', revealed: true, feature: 'torch' },
       ],
     },
+    locationMaps: {
+      norvin: {
+        version: 1,
+        cells: [{ x: 0, y: 0, type: 'floor', revealed: false, feature: 'hidden-map-secret' }],
+      },
+    },
     adventure: {
       chapter: 2, currentHook: 'Публичный след печати', visitedLocations: ['Норвин'], unresolvedThreads: ['Открыть печать'],
       history: [{ chapter: 1, title: 'Склеп', location: 'Склеп', objective: 'Выйти', outcome: 'Герои вышли', gm_only: 'предательство' }],
@@ -74,6 +80,7 @@ test('player campaign projection hides private memory, fog features and remote m
   const projected = campaignStateForViewer(privateState(), user, 'hero')
   const encoded = JSON.stringify(projected)
   assert.doesNotMatch(encoded, /дракон|засада|предательство|канцлер|trueDoor|контрабанда|secret_supplier|bargains|agent_adjustment_bps/u)
+  assert.equal(projected.locationMaps, undefined)
   assert.equal(projected.scene.cells[0].feature, undefined)
   assert.equal(projected.scene.cells[1].feature, 'torch')
   assert.deepEqual(projected.merchants.map((merchant) => merchant.id), ['here'])

@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { parseDiceExpression } from './dice-service.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
-import { createSceneTransition, publicAdventureMemory } from './adventure-director.mjs'
+import {
+  createSceneTransition,
+  normalizeLocationMaps,
+  publicAdventureMemory,
+  rememberCurrentSceneMap,
+} from './adventure-director.mjs'
 import { ensureCampaignWorldMap } from './world-map.mjs'
 import { normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
 import { normalizePartyDecision } from './party-decision.mjs'
@@ -112,7 +117,7 @@ import {
 } from './character-lifecycle.mjs'
 
 export const DEFAULT_RULESET_ID = 'srd_5_2_1'
-export const GAME_STATE_PROJECTOR_VERSION = 2
+export const GAME_STATE_PROJECTOR_VERSION = 3
 
 export const RULE_IDS = Object.freeze({
   abilityCheck: `${DEFAULT_RULESET_ID}:checks:ability-check`,
@@ -988,7 +993,9 @@ export function normalizeCampaignState(input = {}) {
     history: Array.isArray(adventure.history) ? clone(adventure.history).slice(-20) : [],
     visitedLocations: uniqueStrings(adventure.visitedLocations ?? (state.scene?.location ? [state.scene.location] : [])).slice(-50),
   }
+  state.locationMaps = normalizeLocationMaps(state.locationMaps)
   state.worldMap = ensureCampaignWorldMap(state)
+  rememberCurrentSceneMap(state)
   state.worldMemory = ensureSceneWorldMemory(state.worldMemory, state)
   state.social = ensureNpcSocialState(state.social, state)
   state.autonomy = normalizeAutonomyState(state.autonomy)
@@ -6926,6 +6933,7 @@ export function applyGameEvent(rawState, event) {
     default:
       break
   }
+  rememberCurrentSceneMap(state)
   state.autonomy = applyAutonomyEvent(state.autonomy, event)
   state.state_version = Number.isSafeInteger(event.state_version_after)
     ? event.state_version_after

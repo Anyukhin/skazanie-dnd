@@ -289,6 +289,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return state
   const visible = projectVisibleState(state, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}
+  const { locationMaps: _locationMaps, ...publicState } = visible
   const scene = publicSceneFor(visible.scene ?? state.scene)
   const location = scene.location
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
@@ -311,7 +312,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     }})()
     : visible.mechanics
   return {
-    ...visible,
+    ...publicState,
     scene,
     adventure: publicAdventureFor(visible.adventure),
     worldMap: publicWorldMapFor(visible.worldMap ?? state.worldMap),
@@ -436,6 +437,7 @@ export function sceneTransitionForViewer(transition) {
 export function turnResultForViewer(result, user, actorId = '') {
   if (!result || typeof result !== 'object' || user?.role === 'admin') return result
   const visible = projectVisibleState(result, viewerFor(result.authoritative_state, user, actorId), { forNarrator: true }) ?? {}
+  const { locationMaps: _locationMaps, ...publicResult } = visible
   const effects = visible.effects && typeof visible.effects === 'object' && !Array.isArray(visible.effects)
     ? { ...visible.effects }
     : visible.effects
@@ -451,7 +453,7 @@ export function turnResultForViewer(result, user, actorId = '') {
     }
   }
   return {
-    ...visible,
+    ...publicResult,
     effects,
     mechanics: mechanicsForViewer(result.mechanics, user, actorId, result.authoritative_state),
     ...(Array.isArray(visible.visible_state_changes) ? {
