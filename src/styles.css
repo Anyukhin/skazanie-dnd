@@ -117,7 +117,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .server-column > .chat-panel { grid-row: 2; min-width: 0; min-height: 0; }
 .server-column > .chat-closed { grid-row: 2; position: static; right: auto; bottom: auto; justify-self: end; align-self: end; }
 .server-column > .player-hud-stack { grid-row: 3; }
-.map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; perspective: 1200px; perspective-origin: 50% 42%; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
+.map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
 .map-stage::before { content: ''; position: absolute; inset: 0; opacity: .12; background-image: repeating-linear-gradient(35deg, transparent 0 15px, rgba(255,255,255,.025) 16px 17px), repeating-linear-gradient(125deg, transparent 0 22px, rgba(0,0,0,.3) 23px 24px); }
 .map-stage.map-theme-tech { --map-floor: #53646a; --map-floor-alt: #5c6e73; --map-wall: #26373c; --map-grid-line: rgba(121,207,207,.2); background: radial-gradient(ellipse at 54% 43%, #3f6269 0%, #192a2f 58%, #080b0d 88%); }
 .map-stage.map-theme-wild { --map-floor: #71834a; --map-floor-alt: #7b8d52; --map-wall: #354129; --map-grid-line: rgba(70,86,40,.24); background: radial-gradient(ellipse at 54% 43%, #66764a 0%, #2c3824 58%, #0b1008 88%); }
@@ -134,7 +134,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* Потолок клетки 64px срезал доску на широких экранах: формула отдаёт ~89px, а кламп
    резал до 64, и сцена занимала меньше половины кадра. Множители не трогаем — 7.5cqh
    подобран так, чтобы карта максимальных 19 рядов с наклоном влезала по высоте. */
-.map-grid { --cell: clamp(20px, min(5.7cqw, 7.5cqh), 104px); position: relative; display: grid; grid-auto-rows: var(--cell); transform: rotateZ(-1deg); border: 5px solid #2a2118; outline: 1px solid color-mix(in srgb, var(--map-grid-line), white 18%); background: #30271d; box-shadow: 0 10px 0 #17120d, 0 28px 42px rgba(0,0,0,.58), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 62%); }
+.map-grid { --cell: clamp(20px, min(5.7cqw, 7.5cqh), 104px); position: relative; display: grid; grid-auto-rows: var(--cell); border: 5px solid #2a2118; outline: 1px solid color-mix(in srgb, var(--map-grid-line), white 18%); background: #30271d; box-shadow: 0 10px 0 #17120d, 0 28px 42px rgba(0,0,0,.58), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 62%); }
 .map-grid.irregular { border-color: transparent; outline: 0; background: transparent; box-shadow: 0 28px 45px rgba(0,0,0,.68), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 68%); }
 .map-grid.irregular .map-cell { filter: drop-shadow(0 2px 2px rgba(0,0,0,.5)); }
 .map-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 1px solid var(--map-grid-line); background-color: var(--map-floor); background-image: radial-gradient(circle at 35% 27%, rgba(255,255,255,.055) 0 2%, transparent 3%), linear-gradient(135deg, transparent 48%, rgba(0,0,0,.11) 50%); box-shadow: inset 1px 1px rgba(255,255,255,.025), inset -1px -1px rgba(0,0,0,.22); color: inherit; font: inherit; }
@@ -205,9 +205,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .feature.rune { width: 72%; height: 72%; color: #6b9c80; animation: runeGlow 2.4s ease-in-out infinite; }
 .feature.stairs { --prop-base: #8a806f; --prop-light: #b6aa94; --prop-line: #403a31; }
 .feature.enemy { color: #a5534b; }
-.map-token { position: absolute; z-index: 4; width: clamp(22px, 4.5cqw, 36px); height: clamp(22px, 4.5cqw, 36px); border-radius: 50%; border: 2px solid color-mix(in srgb, var(--token), white 27%); background-color: color-mix(in srgb, var(--token), #18130f 45%); background-size: 200% 200%; background-repeat: no-repeat; color: #f2e7d9; box-shadow: 0 4px 9px #000, 0 0 0 3px rgba(0,0,0,.5); font: 700 9px Spectral, serif; cursor: pointer; transition: .18s; transform: rotateZ(var(--counter-rotation)); }
-.map-token:hover, .map-token.selected { transform: rotateZ(var(--counter-rotation)) translateY(-4px) scale(1.08); box-shadow: 0 7px 12px #000, 0 0 0 3px color-mix(in srgb, var(--token), transparent 45%); }
-.map-token.label-open, .map-token.label-open:hover { transform: rotateZ(var(--counter-rotation)); }
+.map-token { position: absolute; z-index: 4; width: clamp(22px, 4.5cqw, 36px); height: clamp(22px, 4.5cqw, 36px); border-radius: 50%; border: 2px solid color-mix(in srgb, var(--token), white 27%); background-color: color-mix(in srgb, var(--token), #18130f 45%); background-size: 200% 200%; background-repeat: no-repeat; color: #f2e7d9; box-shadow: 0 4px 9px #000, 0 0 0 3px rgba(0,0,0,.5); font: 700 9px Spectral, serif; cursor: pointer; transition: .18s; }
+.map-token:hover, .map-token.selected { transform: translateY(-4px) scale(1.08); box-shadow: 0 7px 12px #000, 0 0 0 3px color-mix(in srgb, var(--token), transparent 45%); }
+.map-token.label-open, .map-token.label-open:hover { transform: none; }
 /* Полоска рисуется внутри доски, поэтому её съедает масштаб сцены: заявленные 4px
    доходили до экрана как 2px и не читались. Делаем толще, добавляем тёмную обводку
    для контраста поверх светлых тайлов и меняем цвет по тяжести ранения — состояние
@@ -221,9 +221,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .token-label { position: absolute; left: 50%; bottom: calc(100% + 10px); min-width: 100px; transform: translateX(-50%); padding: 6px 8px; border: 1px solid rgba(220,183,132,.25); border-radius: 4px; background: #17130f; color: #d8cec1; font: 10px Manrope, sans-serif; white-space: nowrap; pointer-events: none; }
 .token-label::after { content: ''; position: absolute; left: 50%; top: 100%; border: 5px solid transparent; border-top-color: #17130f; transform: translateX(-50%); }
 .token-label small { display: block; margin-top: 2px; color: #8e8376; }
-.map-legend { position: absolute; left: 27px; bottom: 38px; display: flex; gap: 18px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 4px; background: rgba(15,13,11,.72); backdrop-filter: blur(10px); color: #777067; font-size: 8px; letter-spacing: .06em; }
-.map-legend span { display: flex; align-items: center; gap: 6px; }
-.legend-dot { width: 5px; height: 5px; border-radius: 50%; }
+/* Атрибуты печатной карты живут в поле стола, а не поверх полотна: масштаб сверху
+   слева, легенда и подсказки управления по нижнему краю. Над самой картой не лежит
+   ничего, что можно принять за часть местности. */
+.map-scale-plate { position: absolute; z-index: 8; left: 22px; top: 20px; padding: 7px 12px; border: 1px solid rgba(222,201,171,.16); border-radius: 6px; background: rgba(15,13,11,.86); color: #c6b9a6; font: 700 12px Manrope, sans-serif; }
+.map-controls-hint { position: absolute; z-index: 8; right: 24px; bottom: 22px; display: flex; align-items: center; gap: 10px; padding: 9px 13px; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.78); color: #8d857b; font: 12px Manrope, sans-serif; }
+.map-controls-hint i { color: #4f4a44; font-style: normal; }
+.map-legend { position: absolute; z-index: 8; left: 24px; bottom: 22px; display: flex; gap: 16px; padding: 9px 13px; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.78); color: #8d857b; font: 12px Manrope, sans-serif; }
+.map-legend span { display: flex; align-items: center; gap: 7px; }
+.legend-dot { width: 9px; height: 9px; border-radius: 50%; }
 .legend-dot.party { background: #c9985b; }.legend-dot.summon { background: #70a78b; }.legend-dot.danger { background: #994a45; }.legend-dot.interest { background: #5f8f78; }
 .zoom-control { position: absolute; z-index: 9; right: 27px; top: 88px; display: flex; align-items: center; height: 36px; border: 1px solid var(--line); border-radius: 4px; background: rgba(15,13,11,.78); backdrop-filter: blur(10px); }
 .zoom-control button { width: 36px; min-width: 36px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: #817970; cursor: pointer; }
@@ -680,7 +686,8 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .account-chip small { font-size: calc(7px * var(--ui-readable-scale, 1)); }
 .scene-title > span, .objective small { font-size: calc(8px * var(--ui-readable-scale, 1)); }
 .scene-title p, .objective strong { font-size: calc(11px * var(--ui-readable-scale, 1)); }
-.map-legend, .zoom-control span { font-size: calc(8px * var(--ui-readable-scale, 1)); }
+.map-legend, .map-scale-plate, .map-controls-hint { font-size: calc(12px * var(--ui-readable-scale, 1)); }
+.zoom-control span { font-size: calc(8px * var(--ui-readable-scale, 1)); }
 .zoom-control .map-drag-label { font-size: calc(7px * var(--ui-readable-scale, 1)); }
 .hud-identity strong { font-size: calc(14px * var(--ui-readable-scale, 1)); }
 .hud-identity small, .hud-identity em, .hud-actions button { font-size: calc(7px * var(--ui-readable-scale, 1)); }
@@ -792,12 +799,12 @@ button.campaign-title:hover strong { color: #edc996; }
 .map-token.targetable { cursor: crosshair; box-shadow: 0 4px 9px #000, 0 0 0 3px rgba(92,174,126,.65), 0 0 15px rgba(67,155,105,.45); }
 .summon-token { border-style: dashed; background-image: radial-gradient(circle, #315b46, #17251d) !important; background-size: 100% 100%; color: #c3ead4; }
 .summon-token > svg { filter: drop-shadow(0 0 4px rgba(132,221,174,.6)); }
-.enemy-token { --enemy-accent: #c86c5d; --enemy-surface: #4b2420; position: absolute; z-index: 5; width: clamp(31px, 5.4cqw, 44px); height: clamp(34px, 5.9cqw, 48px); display: grid; place-items: center; padding: 0; border: 2px solid var(--enemy-accent); border-radius: 10px 10px 14px 14px; clip-path: polygon(50% 0, 91% 17%, 100% 68%, 50% 100%, 0 68%, 9% 17%); background: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--enemy-accent), white 9%), var(--enemy-surface) 45%, #15100f 100%); color: color-mix(in srgb, var(--enemy-accent), white 42%); box-shadow: 0 6px 12px #000, 0 0 0 3px rgba(0,0,0,.48), 0 0 18px color-mix(in srgb, var(--enemy-accent), transparent 62%); cursor: crosshair; transform: rotateZ(var(--counter-rotation)); transition: transform .18s ease, filter .18s ease, box-shadow .18s ease; }
+.enemy-token { --enemy-accent: #c86c5d; --enemy-surface: #4b2420; position: absolute; z-index: 5; width: clamp(31px, 5.4cqw, 44px); height: clamp(34px, 5.9cqw, 48px); display: grid; place-items: center; padding: 0; border: 2px solid var(--enemy-accent); border-radius: 10px 10px 14px 14px; clip-path: polygon(50% 0, 91% 17%, 100% 68%, 50% 100%, 0 68%, 9% 17%); background: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--enemy-accent), white 9%), var(--enemy-surface) 45%, #15100f 100%); color: color-mix(in srgb, var(--enemy-accent), white 42%); box-shadow: 0 6px 12px #000, 0 0 0 3px rgba(0,0,0,.48), 0 0 18px color-mix(in srgb, var(--enemy-accent), transparent 62%); cursor: crosshair; transition: transform .18s ease, filter .18s ease, box-shadow .18s ease; }
 .enemy-token[data-enemy-kind="construct"] { --enemy-accent: #78c8c5; --enemy-surface: #214449; }
 .enemy-token[data-enemy-kind="undead"] { --enemy-accent: #a69acc; --enemy-surface: #332b48; }
 .enemy-token[data-enemy-kind="beast"] { --enemy-accent: #d5965f; --enemy-surface: #52341f; }
 .enemy-token[data-enemy-kind="mystic"] { --enemy-accent: #c482d2; --enemy-surface: #45264f; }
-.enemy-token:hover, .enemy-token:focus-visible { filter: brightness(1.16); transform: rotateZ(var(--counter-rotation)) translateY(-3px) scale(1.1); box-shadow: 0 9px 15px #000, 0 0 0 3px rgba(0,0,0,.5), 0 0 24px color-mix(in srgb, var(--enemy-accent), transparent 42%); }
+.enemy-token:hover, .enemy-token:focus-visible { filter: brightness(1.16); transform: translateY(-3px) scale(1.1); box-shadow: 0 9px 15px #000, 0 0 0 3px rgba(0,0,0,.5), 0 0 24px color-mix(in srgb, var(--enemy-accent), transparent 42%); }
 .enemy-emblem { position: absolute; inset: 2px; display: grid; place-items: center; overflow: hidden; filter: drop-shadow(0 2px 4px #000); clip-path: inherit; }
 .enemy-emblem img { width: 100%; height: 100%; object-fit: cover; object-position: center 28%; filter: saturate(.78) contrast(1.08) brightness(.86); }
 .enemy-nameplate { position: absolute; left: 50%; bottom: calc(100% + 8px); max-width: 116px; overflow: hidden; padding: 4px 7px; border: 1px solid color-mix(in srgb, var(--enemy-accent), transparent 62%); border-radius: 4px; background: rgba(13,11,10,.94); color: #e5dbce; font: 600 8px Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; opacity: 0; pointer-events: none; transform: translate(-50%, 3px); transition: opacity .16s ease, transform .16s ease; }
@@ -970,7 +977,6 @@ button.campaign-title:hover strong { color: #edc996; }
 .session-code,
 .scene-title > span,
 .objective small,
-.map-legend,
 .zoom-control span,
 .live-dot,
 .message-avatar,
@@ -1162,7 +1168,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .enemy-token.initiative-focus,.map-token.initiative-focus{filter:brightness(1.18);box-shadow:0 0 0 4px rgba(236,187,118,.96),0 0 34px rgba(218,137,53,.92);animation:initiative-focus-pulse 1.2s ease-in-out infinite}
 .map-cell.command-center{box-shadow:inset 0 0 0 3px rgba(238,176,91,.96),inset 0 0 28px rgba(205,118,39,.5)}.map-cell.command-center::after{content:'◎';position:absolute;z-index:4;display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(248,203,139,.88);border-radius:50%;background:rgba(117,63,26,.72);color:#ffe0b1;font:700 13px Manrope,sans-serif;box-shadow:0 0 16px rgba(226,135,54,.82)}
 .enemy-token[aria-disabled="true"],.map-token[aria-disabled="true"]{cursor:help}
-.token-conditions{position:absolute;z-index:8;left:50%;top:calc(100% + 8px);display:flex;gap:2px;transform:translateX(-50%) rotateZ(var(--counter-rotation));pointer-events:auto}
+.token-conditions{position:absolute;z-index:8;left:50%;top:calc(100% + 8px);display:flex;gap:2px;transform:translateX(-50%);pointer-events:auto}
 .token-conditions i{width:13px;height:13px;display:grid;place-items:center;border:1px solid rgba(117,155,121,.5);border-radius:50%;background:#203126;color:#b9d6bc;font:700 6px Manrope,sans-serif;font-style:normal;box-shadow:0 2px 4px #000}
 .token-conditions i.partial{border-color:rgba(190,141,72,.58);background:#3b2c1d;color:#dbc08d}.token-conditions i.marker{border-style:dashed;border-color:rgba(145,127,109,.62);background:#2b2824;color:#b5a99a}
 .combat-context-panel{position:static;z-index:auto;min-width:0;min-height:0;width:auto;max-height:none;overflow:auto;padding:10px;border:1px solid rgba(203,151,88,.2);border-radius:7px;background:rgba(14,12,10,.9);box-shadow:0 12px 35px rgba(0,0,0,.38);backdrop-filter:blur(12px);scrollbar-width:thin}
@@ -1250,23 +1256,17 @@ button.campaign-title:hover strong { color: #edc996; }
 }
 
 .map-scroll {
-  transform-style: preserve-3d;
   will-change: transform;
 }
-.map-grid, .map-cell { transform-style: preserve-3d; }
-.map-grid { transform: rotateZ(-1deg) translateZ(0); }
+/* Стена больше не поднимается над плоскостью: при ортографическом виде сверху высота
+   читается кладкой на арте карты, а не подъёмом плитки. Остаётся плоская подкраска. */
 .map-cell.wall {
-  transform: translateZ(8px);
   box-shadow:
     inset 0 0 0 4px rgba(0,0,0,.18),
-    inset 2px 2px 7px color-mix(in srgb, var(--map-grid-line), transparent 60%),
-    0 8px 0 color-mix(in srgb, var(--map-wall), black 32%),
-    0 12px 16px rgba(0,0,0,.38);
+    inset 2px 2px 7px color-mix(in srgb, var(--map-grid-line), transparent 60%);
 }
-.map-cell.door { transform: translateZ(2px); }
-/* След занятой клетки. Единственная отметка, которая физически не может разойтись с
-   сеткой: она лежит в плоскости доски и наклоняется вместе с ней, давая правильный
-   эллипс. Цвет разделяет отряд, призывов и врагов — как в легенде карты. */
+/* След занятой клетки. Отметка лежит в плоскости доски — при виде сверху это ровный
+   круг. Цвет разделяет отряд, призывов и врагов — как в легенде карты. */
 .cell-footprint {
   position: absolute;
   z-index: 1;
@@ -1281,25 +1281,21 @@ button.campaign-title:hover strong { color: #edc996; }
 .map-cell.occupied-by-enemy { --footprint: #c86c5d; }
 .map-cell.occupied-by-summon { --footprint: #70a78b; }
 
-/* Фишка обязана однозначно читаться как стоящая на своей клетке — это основа
-   тактической игры. Подъём translateZ(18px) над плоскостью давал перспективный
-   параллакс: точка над доской проецируется не туда, где лежит точка на доске, причём
-   уход зависит от расстояния до perspective-origin и от угла поворота. Из-за этого
-   фишки уезжали вбок при вращении карты, каждая по-своему.
-   Оставляем минимальный подъём против z-конфликта с клеткой; «стоймя» обеспечивает
-   не он, а transform-origin по нижней грани плюс контр-наклон. */
+/* Фишка стоит на своей клетке без всякой проекции: доска ортографическая, поэтому
+   фишке не нужен ни подъём над плоскостью, ни контр-вращение, чтобы не уезжать вбок.
+   Раньше их требовал перспективный параллакс — теперь его нет. */
 .map-token, .enemy-token {
-  transform: translateZ(2px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt));
-  transform-origin: 50% 100%;
+  transform: none;
+  transform-origin: 50% 50%;
 }
 .map-token:hover, .map-token.selected {
-  transform: translateZ(3px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt)) translateY(-4px) scale(1.08);
+  transform: translateY(-4px) scale(1.08);
 }
 .map-token.label-open, .map-token.label-open:hover {
-  transform: translateZ(2px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt));
+  transform: none;
 }
 .enemy-token:hover, .enemy-token:focus-visible {
-  transform: translateZ(3px) rotateZ(var(--counter-rotation)) rotateX(var(--counter-tilt)) translateY(-3px) scale(1.1);
+  transform: translateY(-3px) scale(1.1);
 }
 
 .feature .map-prop {
@@ -1430,21 +1426,13 @@ button.campaign-title:hover strong { color: #edc996; }
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
   backface-visibility: hidden;
-  transform:
-    translate3d(-50%, -80%, 28px)
-    rotateZ(var(--counter-rotation))
-    rotateX(var(--counter-tilt))
-    scale(var(--counter-scale));
+  transform: translate(-50%, -80%) scale(var(--counter-scale));
   transform-origin: center;
   animation: crispFeedbackPop .45s ease-out;
 }
 @keyframes crispFeedbackPop {
   from {
     opacity: 0;
-    transform:
-      translate3d(-50%, 15%, 28px)
-      rotateZ(var(--counter-rotation))
-      rotateX(var(--counter-tilt))
-      scale(var(--counter-scale));
+    transform: translate(-50%, 15%) scale(var(--counter-scale));
   }
 }

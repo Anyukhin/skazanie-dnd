@@ -403,8 +403,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   children?: React.ReactNode
 }) {
   const [zoom, setZoom] = useState(1)
-  const [rotation, setRotation] = useState(0)
-  const [tilt, setTilt] = useState(48)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
   const [focusedParticipantId, setFocusedParticipantId] = useState<string | null>(null)
@@ -424,12 +423,10 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const [hoveredMoveKey, setHoveredMoveKey] = useState<string | null>(null)
   const [pendingMoveKey, setPendingMoveKey] = useState<string | null>(null)
   const [inspectedTarget, setInspectedTarget] = useState<{ id: string; name: string; team: 'ally' | 'enemy'; hp?: number; maxHp?: number; healthLabel?: string; distanceFeet: number; allowed: boolean; reason: string | null } | null>(null)
-  const drag = useRef<{ pointerId: number; startX: number; startY: number; startRotation: number; startTilt: number; moved: boolean } | null>(null)
+  const drag = useRef<{ pointerId: number; startX: number; startY: number; startPanX: number; startPanY: number; moved: boolean } | null>(null)
   const suppressMapClick = useRef(false)
   const { columns, rows } = mapGridDimensions(state.scene.cells)
   const irregularMap = state.scene.cells.length < columns * rows
-  const rotationFit = 1 - .22 * Math.abs(Math.sin(rotation * Math.PI / 180))
-  const viewFit = rotationFit * (1 - Math.max(0, tilt - 35) * .003)
   const combat = combatState(state)
   const combatActive = Boolean(combat.active && combat.initiative?.length)
   const activeHero = players.find((player) => player.id === turnActorId)
@@ -651,22 +648,21 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     setPendingCommand(null)
   }
 
-  const startRotation = (event: React.PointerEvent<HTMLDivElement>) => {
+  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest('button, .map-cell.move-target')) return
-    drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startRotation: rotation, startTilt: tilt, moved: false }
+    drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startPanX: pan.x, startPanY: pan.y, moved: false }
     event.currentTarget.setPointerCapture(event.pointerId)
     setDragging(true)
   }
-  const moveRotation = (event: React.PointerEvent<HTMLDivElement>) => {
+  const movePan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!drag.current || drag.current.pointerId !== event.pointerId) return
     event.preventDefault()
     const deltaX = event.clientX - drag.current.startX
     const deltaY = event.clientY - drag.current.startY
     if (Math.hypot(deltaX, deltaY) > 3) drag.current.moved = true
-    setRotation(drag.current.startRotation + deltaX * .45)
-    setTilt(Math.max(24, Math.min(68, drag.current.startTilt - deltaY * .22)))
+    setPan({ x: drag.current.startPanX + deltaX, y: drag.current.startPanY + deltaY })
   }
-  const stopRotation = (event: React.PointerEvent<HTMLDivElement>) => {
+  const stopPan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!drag.current || drag.current.pointerId !== event.pointerId) return
     suppressMapClick.current = drag.current.moved
     if (drag.current.moved) window.setTimeout(() => { suppressMapClick.current = false }, 0)
@@ -748,20 +744,18 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       <div
         className={'map-scroll ' + (dragging ? 'dragging' : '')}
         style={{
-          transform: `scale(${zoom * viewFit}) rotateX(${tilt}deg) rotateZ(${rotation}deg)`,
-          '--board-tilt': `${tilt}deg`,
-          '--counter-scale': 1 / (zoom * viewFit),
-          '--counter-rotation': `${-rotation}deg`,
-          '--counter-tilt': `${-tilt}deg`,
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          '--counter-scale': 1 / zoom,
         } as React.CSSProperties}
-        onPointerDown={startRotation}
-        onPointerMove={moveRotation}
-        onPointerUp={stopRotation}
-        onPointerCancel={stopRotation}
+        onPointerDown={startPan}
+        onPointerMove={movePan}
+        onPointerUp={stopPan}
+        onPointerCancel={stopPan}
         onWheel={zoomWithWheel}
+        onDoubleClick={() => { setPan({ x: 0, y: 0 }); setZoom(1) }}
         onClickCapture={closeTokenLabelFromMap}
         role="group"
-        aria-label={`Тактическая 3D-карта. Колесо меняет масштаб, перетаскивание меняет угол обзора. Активный участник: ${activeName}`}
+        aria-label={`Тактическая карта, вид сверху. Колесо меняет масштаб, перетаскивание двигает полотно, двойной клик центрирует. Активный участник: ${activeName}`}
       >
         <div className={`map-grid ${irregularMap ? 'irregular' : ''}`} style={{ gridTemplateColumns: 'repeat(' + columns + ', var(--cell))', gridTemplateRows: 'repeat(' + rows + ', var(--cell))' }}>
           {trajectory && <svg className="projectile-trajectory" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} /></svg>}
@@ -887,7 +881,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                   <button
                     className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
                     data-enemy-kind={enemyKind}
-                    style={{ '--counter-rotation': -rotation + 'deg', '--counter-tilt': -tilt + 'deg' } as React.CSSProperties}
                     onPointerDown={(event) => event.stopPropagation()}
                     onPointerUp={(event) => event.stopPropagation()}
                     onMouseEnter={() => { setAimCell({ x: enemy.x, y: enemy.y }); setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason }) }}
@@ -928,7 +921,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                   const playerConditions = (state.mechanics?.conditions?.[player.id] ?? []).map(conditionPresentation)
                   return <button
                     className={'map-token hero-token ' + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
-                    style={{ '--token': player.color, '--counter-rotation': -rotation + 'deg', '--counter-tilt': -tilt + 'deg', backgroundImage: 'url(' + player.portrait + ')', backgroundPosition: player.portraitPosition } as React.CSSProperties}
+                    style={{ '--token': player.color, backgroundImage: 'url(' + player.portrait + ')', backgroundPosition: player.portraitPosition } as React.CSSProperties}
                     onPointerDown={(event) => event.stopPropagation()}
                     onPointerUp={(event) => event.stopPropagation()}
                     onMouseEnter={() => { if (canHeal) setAimCell({ x: player.x, y: player.y }); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
@@ -964,7 +957,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                   const summonConditions = (state.mechanics?.conditions?.[summon.id] ?? []).map(conditionPresentation)
                   return <button
                     className={'map-token summon-token ' + (focusedParticipantId === summon.id ? 'initiative-focus ' : '') + (selected === summon.id ? 'selected active-turn' : '') + ' ' + (openTokenLabelId === summon.id ? 'label-open' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected ? 'unavailable-target' : '') + ' ' + (pendingTargetId === summon.id ? 'command-selected' : '')}
-                    style={{ '--token': '#70a78b', '--counter-rotation': -rotation + 'deg', '--counter-tilt': -tilt + 'deg' } as React.CSSProperties}
+                    style={{ '--token': '#70a78b' } as React.CSSProperties}
                     onPointerDown={(event) => event.stopPropagation()}
                     onPointerUp={(event) => event.stopPropagation()}
                     onMouseEnter={() => { if (canHeal) setAimCell({ x: summon.x, y: summon.y }); setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason }) }}
@@ -989,9 +982,11 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           })}
         </div>
       </div>
+      <div className="map-scale-plate">1 клетка = 5 футов</div>
       <div className="map-legend">
-        <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг</span><span><i className="legend-dot interest" />Интерес</span>
+        <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг · параметры скрыты</span><span><i className="legend-dot interest" />Интерес</span>
       </div>
+      <div className="map-controls-hint"><span>Тяните — панорама</span><i>·</i><span>Колесо — масштаб</span><i>·</i><span>Двойной клик — центрировать</span></div>
       {combatActive && spellbookOpen && <section className="spellbook-panel" role="dialog" aria-modal="true" aria-label={`Книга заклинаний: ${activeName}`} onPointerDown={(event) => event.stopPropagation()}>
         <header><div><BookOpen size={21} /><span><small>КНИГА ЗАКЛИНАНИЙ</small><strong>{activeName}</strong></span></div><button onClick={() => setSpellbookOpen(false)} aria-label="Закрыть книгу заклинаний"><X size={18} /></button></header>
         <div className="spellbook-tools">
@@ -1021,7 +1016,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
           <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>
           {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}`}>
-            <span><small>{inspectedTarget.team === 'enemy' ? 'ПРОТИВНИК' : 'СОЮЗНИК'} · {inspectedTarget.distanceFeet} ФТ</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ?? `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em></span><p>{inspectedTarget.reason}</p>
+            <span><small>{inspectedTarget.team === 'enemy' ? 'ПРОТИВНИК' : 'СОЮЗНИК'} · {inspectedTarget.distanceFeet} ФТ</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ? `${inspectedTarget.healthLabel} · параметры скрыты` : `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em></span><p>{inspectedTarget.reason}</p>
           </div>}
           {pendingCommand && <div className="combat-command-confirmation">
             <header><Target size={14} /><span><small>ЦЕЛЬ ЗАФИКСИРОВАНА</small><strong>{pendingCommandLabel}</strong></span></header>
