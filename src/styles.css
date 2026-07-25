@@ -77,9 +77,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .game-main { min-width: 0; height: 100vh; display: flex; flex-direction: column; }
 .topbar { position: relative; z-index: 15; flex: 0 0 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; background: rgba(18,16,14,.96); border-bottom: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
-.campaign-title { display: grid; grid-template-columns: auto 17px; column-gap: 8px; align-items: center; }
-.campaign-title span { grid-column: 1 / -1; color: #716a62; font-size: 13px; font-weight: 700; letter-spacing: .17em; }
-.campaign-title strong { margin-top: 3px; font-family: Spectral, serif; font-size: 15px; font-weight: 600; color: #d8cfc3; }
+.campaign-title { min-width: 0; max-width: 300px; display: grid; grid-template-columns: minmax(0, auto) 17px; column-gap: 8px; align-items: center; }
+.campaign-title span { grid-column: 1 / -1; overflow: hidden; color: #716a62; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; letter-spacing: .17em; }
+.campaign-title strong { min-width: 0; overflow: hidden; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; font-family: Spectral, serif; font-size: 15px; font-weight: 600; color: #d8cfc3; }
 .campaign-title svg { color: #777068; }
 .top-actions { display: flex; align-items: center; gap: 12px; }
 .account-chip { height: 36px; display: flex; align-items: center; gap: 8px; padding-left: 11px; border-left: 1px solid var(--line); }.account-chip > span { display: grid; text-align: right; }.account-chip > span { color: #aaa095; font: 14px Spectral, serif; }.account-chip small { color: #68615a; font: 13px Manrope, sans-serif; }.account-chip button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: rgba(255,255,255,.025); color: #786f67; cursor: pointer; }.account-chip button:hover { color: #c98273; background: rgba(147,72,62,.09); }
@@ -100,22 +100,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    вычитается из полотна: на 1440×900 те же 420/320 px оставили бы доске 744×436 и
    клетку 33 px — ровно ту, из-за которой бой и был тесным. Компактные значения по
    умолчанию, просторные — только когда ширины действительно хватает. */
-.game-area { --status: 60px; --server-column: 320px; --rail: 246px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--rail); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
+.game-area { --status: 60px; --server-column: 320px; --rail: 268px; --tile-h: 112px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--rail); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
 @media (min-width: 1920px) {
-  .game-area { --status: 72px; --server-column: 420px; --rail: 320px; }
+  .game-area { --status: 72px; --server-column: 420px; --rail: 320px; --tile-h: 148px; }
 }
 .status-bar { grid-area: status; min-width: 0; display: flex; align-items: center; gap: 18px; padding: 0 26px; border-bottom: 1px solid var(--line); background: rgba(18,16,14,.97); overflow: hidden; }
-.scene-header { position: relative; z-index: auto; flex: 1 1 0; min-width: 0; display: flex; align-items: center; pointer-events: none; }
-.scene-title > span, .objective small { color: #b1814a; font-size: 13px; font-weight: 700; letter-spacing: .18em; }
-.scene-title h1 { margin: 3px 0 0; font-family: Spectral, Georgia, serif; font-size: clamp(24px, 2.3vw, 34px); line-height: 1.05; font-weight: 600; color: #ede4d7; text-shadow: 0 2px 14px #000; }
-.scene-title p { display: flex; align-items: center; gap: 6px; margin: 7px 0 0; color: #92887d; font-family: Spectral, serif; font-size: 15px; }
-.objective { display: flex; flex-direction: column; margin: 6px 48px 0 auto; padding: 7px 12px 8px; border-left: 1px solid rgba(211,153,86,.38); background: linear-gradient(90deg, rgba(10,9,8,.7), transparent); text-align: right; }
-.objective strong { margin-top: 4px; color: #bfb4a6; font-family: Spectral, serif; font-size: 15px; font-weight: 500; }
+.scene-header { position: relative; z-index: auto; flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 18px; pointer-events: none; }
+.scene-title { flex: 0 1 auto; min-width: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
+.scene-title > span { color: #9b7448; font-size: 12px; font-weight: 700; letter-spacing: .16em; white-space: nowrap; }
+.objective small { display: none; }
+.scene-title h1 { margin: 1px 0 0; overflow: hidden; font-family: Spectral, Georgia, serif; font-size: 20px; line-height: 1.15; font-weight: 600; color: #e7ddd0; text-overflow: ellipsis; white-space: nowrap; }
+.scene-title p { display: none; }
+.objective { flex: 0 1 auto; margin-left: auto; min-width: 0; max-width: 340px; height: 38px; display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 14px; border: 1px solid rgba(211,153,86,.32); border-radius: 19px; background: none; text-align: left; }
+.objective strong { min-width: 0; overflow: hidden; margin: 0; color: #c9a06a; font: 600 15px Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .reset-button { position: absolute; top: 2px; right: 0; pointer-events: auto; background: rgba(20,18,15,.65); border: 1px solid var(--line); }
 .server-column { grid-area: server; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow: hidden; }
-.server-column > .combat-context-panel { grid-row: 1; min-width: 0; min-height: 0; }
+.server-column > .combat-context-panel { grid-row: 1; min-width: 0; min-height: 0; max-height: 34vh; overflow: auto; }
 .server-column > .chat-panel { grid-row: 2; min-width: 0; min-height: 0; }
-.server-column > .chat-closed { grid-row: 2; position: static; right: auto; bottom: auto; justify-self: end; align-self: end; }
+.server-column > .chat-closed { grid-row: 2; position: static; inset: auto; width: 100%; justify-self: stretch; align-self: start; }
 .server-column > .player-hud-stack { grid-row: 3; }
 .map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
 .map-stage::before { content: ''; position: absolute; inset: 0; opacity: .12; background-image: repeating-linear-gradient(35deg, transparent 0 15px, rgba(255,255,255,.025) 16px 17px), repeating-linear-gradient(125deg, transparent 0 22px, rgba(0,0,0,.3) 23px 24px); }
@@ -257,7 +259,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .hud-vitals span { display: grid; grid-template-columns: 17px 1fr; align-items: center; color: #9d695f; }
 .hud-vitals span:nth-child(2), .hud-vitals span:nth-child(3) { color: #8a7a67; }
 .hud-vitals b { color: #c5b8aa; font: 600 15px Spectral, serif; }
-.hud-vitals small { grid-column: 1 / -1; margin-top: 2px; color: #8d857b; font-size: 12px; letter-spacing: .08em; }
+.hud-vitals span { min-width: 0; }
+.hud-vitals small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; grid-column: 1 / -1; margin-top: 2px; color: #8d857b; font-size: 12px; letter-spacing: .08em; }
 .hud-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .hud-actions button { height: 29px; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.025); color: #8f867c; font-size: 13px; cursor: pointer; }
 .hud-actions button:hover { border-color: rgba(201,149,85,.3); color: #c69a65; }.hud-actions svg { width: 13px; height: 13px; }.hud-actions b { color: #bc8b52; }
@@ -524,7 +527,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .hotbar-economy b { color: #e6bd83; font: 700 15px Manrope, sans-serif; white-space: nowrap; }
 .hotbar-economy > span.spent b { color: #8d857b; text-decoration: line-through; }
 
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 520px) 132px; gap: 18px; }
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px) minmax(0, 140px); gap: 16px; }
 /* min-width: 0 обязателен: без него grid-элемент раздувается под содержимое
    и горизонтальная прокрутка колоды не включается. */
 .hotbar-actions { min-width: 0; min-height: 0; display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; overflow-y: hidden; padding: 0; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
@@ -532,7 +535,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Плитка: иконка, название, подпись и — отдельной строкой сетки — стоимость словом.
    overflow: hidden и min-height: 0 нужны потому, что flex-элемент по умолчанию
    имеет min-height: auto и растягивается под содержимое. */
-.combat-hotbar .action-tile { position: relative; flex: 0 0 auto; box-sizing: border-box; width: 162px; min-width: 162px; height: 148px; min-height: 0; display: grid; grid-template-rows: 44px 22px 18px 20px; justify-items: center; align-content: center; gap: 6px; margin: 0; padding: 12px 8px; overflow: hidden; border: 1px solid rgba(202,176,143,.15); border-radius: 10px; background: radial-gradient(circle at 50% 18%, rgba(128,91,53,.15), rgba(22,18,14,.92) 70%); color: #a68e74; cursor: pointer; }
+.combat-hotbar .action-tile { position: relative; flex: 0 0 auto; box-sizing: border-box; width: 162px; min-width: 162px; height: var(--tile-h, 112px); min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 22px 18px 20px; justify-items: center; align-content: center; gap: 6px; margin: 0; padding: 10px 8px; overflow: hidden; border: 1px solid rgba(202,176,143,.15); border-radius: 10px; background: radial-gradient(circle at 50% 18%, rgba(128,91,53,.15), rgba(22,18,14,.92) 70%); color: #a68e74; cursor: pointer; }
 .combat-hotbar .action-tile::before { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.38); }
 .combat-hotbar .action-tile:hover:not(:disabled) { border-color: rgba(221,165,96,.45); color: #e0bc8b; box-shadow: 0 8px 16px rgba(0,0,0,.34); }
 .combat-hotbar .action-tile.selected { border-color: #e0b47a; color: #f2d3a4; background: linear-gradient(180deg, rgba(177,111,47,.34), rgba(32,23,15,.96)); }
@@ -555,7 +558,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 
 /* Колонка шага: бейдж, заголовок, полное описание, строка ресурса. Вертикальных
    отступов нет намеренно — они дают переполнение фиксированной сетки строк. */
-.hotbar-detail { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: 17px 26px 63px 21px; align-content: center; gap: 6px; padding: 0 0 0 22px; border-left: 1px solid rgba(255,255,255,.07); background: none; }
+.hotbar-detail { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-auto-rows: min-content; align-content: center; gap: 5px; padding: 0 0 0 18px; border-left: 1px solid rgba(255,255,255,.07); background: none; }
 .hotbar-detail strong { overflow: hidden; color: #e2d6c6; font: 600 19px Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #a89e92; font: 15px/21px Spectral, Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .hotbar-detail span { overflow: hidden; color: #c8a06a; font: 15px Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
@@ -588,8 +591,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .spell-option-picker { display: flex; flex-wrap: wrap; gap: 3px; }
 .spell-option-picker button { min-height: 20px; padding: 2px 6px; border: 1px solid rgba(202,164,105,.2); border-radius: 4px; background: rgba(29,22,18,.88); color: #9f8c75; font: 600 calc(12px * var(--ui-readable-scale, 1)) Spectral, serif; cursor: pointer; }
 .spell-option-picker button:hover, .spell-option-picker button.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
-.hotbar-turn-controls { display: grid; align-content: stretch; gap: 4px; padding: 7px; border-left: 1px solid rgba(255,255,255,.055); }
-.combat-hotbar .hotbar-turn-controls button { width: 100%; min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 5px; margin: 0; padding: 5px; border: 1px solid rgba(211,160,97,.2); border-radius: 5px; background: rgba(127,81,36,.08); color: #a9845d; font-size: calc(13px * var(--ui-readable-scale, 1)); cursor: pointer; }
+.combat-hotbar .hotbar-turn-controls button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hotbar-turn-controls { min-width: 0; display: grid; align-content: center; gap: 6px; padding: 0 0 0 12px; border-left: 1px solid rgba(255,255,255,.07); }
+.combat-hotbar .hotbar-turn-controls button { width: 100%; min-width: 0; overflow: hidden; font-size: 13px; min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 5px; margin: 0; padding: 5px; border: 1px solid rgba(211,160,97,.2); border-radius: 5px; background: rgba(127,81,36,.08); color: #a9845d; font-size: calc(13px * var(--ui-readable-scale, 1)); cursor: pointer; }
 .combat-hotbar .hotbar-turn-controls .end-turn-hotbar { border-color: rgba(146,177,113,.3); background: rgba(71,105,52,.12); color: #abc48e; }
 .combat-hotbar .hotbar-turn-controls .start-combat-button { border-color: rgba(188,79,63,.36); background: rgba(126,48,39,.16); color: #cf8174; }
 .combat-hotbar .hotbar-turn-controls button:disabled { opacity: .35; cursor: default; }
@@ -889,9 +893,9 @@ button.campaign-title:hover strong { color: #edc996; }
 .tactical-command-error span { flex: 1; }
 .tactical-control .tactical-command-error button { width: 18px; min-height: 18px; flex: 0 0 18px; margin: -3px -3px 0 0; padding: 0; border: 0; background: transparent; color: #a97068; }
 
-.initiative-ribbon { position: relative; z-index: auto; flex: 0 1 620px; min-width: 0; width: min(620px, 100%); display: flex; align-items: center; gap: 9px; padding: 6px 8px; border: 1px solid rgba(206,165,109,.16); border-radius: 6px; background: rgba(14,12,10,.88); box-shadow: 0 8px 24px rgba(0,0,0,.3); backdrop-filter: blur(10px); }
+.initiative-ribbon { position: relative; z-index: auto; flex: 0 1 620px; min-width: 0; width: min(620px, 100%); height: 52px; display: flex; flex-wrap: nowrap; align-items: center; gap: 9px; overflow: hidden; padding: 2px 8px; border: 1px solid rgba(206,165,109,.16); border-radius: 6px; background: rgba(14,12,10,.88); box-shadow: 0 8px 24px rgba(0,0,0,.3); backdrop-filter: blur(10px); }
 .initiative-ribbon.exploration { flex: 0 0 auto; width: auto; border-color: rgba(112,185,148,.3); background: rgba(24,46,34,.32); }
-.initiative-active-chip { min-width: 0; height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 11px 0 4px; border: 1px solid rgba(210,157,91,.55); border-radius: 23px; background: rgba(157,99,43,.18); }
+.initiative-active-chip { flex: 0 1 auto; min-width: 0; height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 11px 0 4px; border: 1px solid rgba(210,157,91,.55); border-radius: 23px; background: rgba(157,99,43,.18); }
 .initiative-active-chip.enemy { border-color: rgba(200,108,93,.62); background: rgba(120,48,40,.24); }
 .initiative-active-chip.summon { border-color: rgba(112,185,148,.55); background: rgba(50,96,72,.24); }
 .initiative-active-chip > span:last-child { min-width: 0; display: grid; gap: 1px; }
@@ -908,17 +912,17 @@ button.campaign-title:hover strong { color: #edc996; }
 .initiative-active-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .initiative-exploration-lead { display: flex; align-items: center; gap: 10px; }
 .initiative-ribbon-label { color: #7fae95; font: 700 13px Manrope, sans-serif; letter-spacing: .14em; white-space: nowrap; }
-.initiative-ribbon > header { display: grid; place-items: center; min-width: 45px; color: #786d62; font-size: 12px; letter-spacing: .1em; }
+.initiative-ribbon > header { flex: 0 0 auto; display: grid; place-items: center; min-width: 45px; color: #786d62; font-size: 12px; letter-spacing: .1em; }
 .initiative-ribbon > header b { color: #c89a61; font: 600 14px Spectral, serif; }
 .initiative-ribbon > ol { min-width: 0; display: flex; gap: 5px; margin: 0; padding: 0; overflow-x: auto; list-style: none; scrollbar-width: thin; }
 .initiative-ribbon li { flex: 0 0 auto; display: block; padding: 0; }
-.initiative-avatar-button { position: relative; width: 43px; height: 43px; display: grid; place-items: center; padding: 3px; border: 1px solid rgba(255,255,255,.08); border-radius: 50%; background: rgba(255,255,255,.025); color: #8c8176; cursor: pointer; }
+.initiative-avatar-button { position: relative; width: 36px; height: 36px; display: grid; place-items: center; padding: 3px; border: 1px solid rgba(255,255,255,.08); border-radius: 50%; background: rgba(255,255,255,.025); color: #8c8176; cursor: pointer; }
 .initiative-avatar-button:hover, .initiative-avatar-button:focus-visible { border-color: rgba(210,157,91,.58); color: #e2bf91; outline: none; transform: translateY(-1px); }
 .initiative-avatar-button.focused { border-color: rgba(233,178,106,.82); box-shadow: 0 0 0 2px rgba(205,137,65,.22), 0 0 18px rgba(184,119,55,.28); }
 .initiative-ribbon li.active .initiative-avatar-button { border-color: rgba(210,157,91,.72); background: rgba(157,99,43,.18); box-shadow: 0 0 15px rgba(184,119,55,.22); }
 .initiative-ribbon li.enemy .initiative-avatar-button { border-bottom-color: rgba(177,78,68,.62); }.initiative-ribbon li.summon .initiative-avatar-button { border-bottom-color: rgba(94,169,128,.68); }
 .initiative-ribbon li.defeated { opacity: .36; filter: grayscale(.7); }
-.initiative-avatar { width: 33px; height: 33px; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: #241d17 center / cover no-repeat; }
+.initiative-avatar { width: 28px; height: 28px; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: #241d17 center / cover no-repeat; }
 .initiative-avatar.portrait { background-size: 200% 200%; }.initiative-avatar.enemy { color: #d48677; background: #351d1b; }.initiative-avatar.summon { color: #8fc6a6; background: #173126; }
 .initiative-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .initiative-order { position: absolute; z-index: 2; left: -3px; top: -3px; min-width: 14px; height: 14px; display: grid; place-items: center; border: 1px solid rgba(211,160,97,.3); border-radius: 50%; background: #17120e; color: #b89568; font: 700 12px Manrope, sans-serif; }
