@@ -488,34 +488,79 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .spellbook-panel article.support-heuristic, .spellbook-panel article.support-ruling-only { border-color: rgba(197,116,96,.28); }
 
 .combat-hotbar .action-tile.spellbook-tile { color: #d0a96f; background: radial-gradient(circle at 50% 18%, rgba(145,99,48,.22), rgba(28,22,16,.94) 70%); }
-.combat-hotbar.tactical-control { grid-area: rail; width: auto; max-height: none; overflow: visible; padding: 12px 18px 14px; border-color: rgba(211,160,97,.28); border-radius: 9px; background: linear-gradient(180deg, rgba(28,23,18,.97), rgba(12,11,9,.98)); box-shadow: 0 18px 55px rgba(0,0,0,.72), inset 0 1px rgba(255,255,255,.035); backdrop-filter: blur(16px); }
-.combat-hotbar::before { content: ''; position: absolute; inset: -1px 18% auto; height: 1px; background: linear-gradient(90deg, transparent, rgba(221,167,99,.72), transparent); }
-.hotbar-economy { position: absolute; left: 50%; bottom: calc(100% + 7px); display: flex; align-items: stretch; gap: 4px; transform: translateX(-50%); padding: 4px; border: 1px solid rgba(211,160,97,.18); border-radius: 7px; background: rgba(13,11,9,.94); box-shadow: 0 7px 22px rgba(0,0,0,.45); }
-.hotbar-economy > span { min-width: 66px; height: 27px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 7px; border-radius: 4px; color: #80756a; }
-.hotbar-economy > span.ready { color: #d2ad76; background: rgba(174,113,52,.13); }
-.hotbar-economy > span.spent { color: #554e47; text-decoration: line-through; }
-.hotbar-economy b { color: inherit; font: 700 10px Manrope, sans-serif; }
-.hotbar-economy small { color: inherit; font: 700 6px Manrope, sans-serif; letter-spacing: .08em; }
-.hotbar-main { min-height: 112px; display: grid; grid-template-columns: 150px minmax(280px, 1fr) minmax(160px, 200px) 112px; }
-.hotbar-decks { display: grid; grid-template-columns: repeat(2, 1fr); align-content: center; gap: 3px; padding: 6px; border-right: 1px solid rgba(255,255,255,.055); background: rgba(0,0,0,.16); }
-.combat-hotbar .hotbar-decks button { width: auto; min-width: 0; min-height: 43px; display: grid; place-items: center; align-content: center; gap: 2px; margin: 0; padding: 3px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #6d645b; cursor: pointer; }
-.combat-hotbar .hotbar-decks button:last-child { grid-column: 1 / -1; min-height: 31px; display: flex; }
-.combat-hotbar .hotbar-decks button span { font-size: calc(8px * var(--ui-readable-scale, 1)); }
-.combat-hotbar .hotbar-decks button:hover:not(:disabled) { color: #baa17f; background: rgba(255,255,255,.035); }
-.combat-hotbar .hotbar-decks button.active { border-color: rgba(206,151,84,.3); background: radial-gradient(circle at 50% 10%, rgba(188,124,57,.2), rgba(89,55,27,.08)); color: #d4a66f; }
-.hotbar-actions { min-width: 0; display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 9px 8px; scrollbar-width: thin; scrollbar-color: #6b4c2f transparent; }
-.combat-hotbar .action-tile { position: relative; width: 84px; min-width: 84px; height: 82px; min-height: 82px; display: grid; grid-template-rows: 35px 1fr auto; justify-items: center; align-content: center; gap: 1px; margin: 0; padding: 5px 5px 5px; overflow: hidden; border: 1px solid rgba(202,176,143,.15); border-radius: 5px; background: radial-gradient(circle at 50% 18%, rgba(128,91,53,.15), rgba(22,18,14,.92) 70%); color: #a68e74; cursor: pointer; }
+/* Тракт хода: свободный ввод, затем колоды с экономией, затем плитки и колонка шага.
+   Каркас между состояниями не переставляется — меняется только содержимое. */
+.turn-rail { grid-area: rail; min-width: 0; min-height: 0; display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
+.rail-free-input { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.rail-free-tab { flex: 0 0 auto; height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 16px; border: 1px solid rgba(214,161,96,.5); border-radius: 9px; background: rgba(192,132,66,.16); color: #e2b87c; font: 600 15px Manrope, sans-serif; }
+.rail-free-input input { flex: 1 1 0; min-width: 0; height: 52px; padding: 0 16px; border: 1px solid rgba(222,201,171,.16); border-radius: 9px; background: rgba(9,8,7,.72); color: #e7ddd0; font: 16px Spectral, Georgia, serif; }
+.rail-free-input input::placeholder { color: #6f675f; }
+.rail-free-input input:focus-visible { border-color: rgba(214,161,96,.6); outline: none; }
+.rail-free-input > button { flex: 0 0 auto; height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 20px; border: 1px solid rgba(217,166,101,.5); border-radius: 9px; background: linear-gradient(145deg, #7e5732, #533a25); color: #e9c48f; font: 600 16px Manrope, sans-serif; cursor: pointer; }
+.rail-free-input > button:disabled { opacity: .42; cursor: not-allowed; }
+.rail-free-input > small { flex: 0 0 auto; color: #6b635b; font: 13px Manrope, sans-serif; white-space: nowrap; }
+
+.combat-hotbar.tactical-control, .exploration-hotbar.tactical-control { position: relative; grid-row: 2; width: auto; min-width: 0; min-height: 0; max-height: none; overflow: visible; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; }
+.combat-hotbar.tactical-control { display: grid; grid-template-rows: 44px minmax(0, 1fr); gap: 12px; }
+.combat-hotbar::before { content: none; }
+
+/* Колоды — равные по весу чипы одной строки. Раньше сетка 2×N делала пятую вкладку
+   вдвое шире остальных, и самая широкая кнопка вела в самую редкую колоду. */
+.hotbar-controls-row { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.hotbar-decks { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; }
+.combat-hotbar .hotbar-decks button { width: auto; min-width: 0; min-height: 40px; height: 40px; display: flex; align-items: center; gap: 7px; margin: 0; padding: 0 14px; border: 1px solid rgba(222,201,171,.14); border-radius: 20px; background: rgba(255,255,255,.03); color: #8d857b; cursor: pointer; }
+.combat-hotbar .hotbar-decks button:last-child { grid-column: auto; min-height: 40px; }
+.combat-hotbar .hotbar-decks button span { font: 600 14px Manrope, sans-serif; white-space: nowrap; }
+.combat-hotbar .hotbar-decks button:hover:not(:disabled) { color: #baa17f; background: rgba(255,255,255,.06); }
+.combat-hotbar .hotbar-decks button.active { border-color: rgba(214,161,96,.5); background: rgba(192,132,66,.16); color: #e2b87c; }
+.combat-hotbar .hotbar-decks button:disabled { opacity: .38; cursor: not-allowed; }
+
+/* Четыре пилюли со словесными значениями: без букв Д/Б/Р/С. */
+.hotbar-economy { position: static; margin-left: auto; display: flex; align-items: center; gap: 8px; transform: none; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.hotbar-economy > span { min-width: 0; height: 44px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 0 14px; border: 1px solid rgba(222,201,171,.14); border-radius: 22px; background: rgba(255,255,255,.03); color: #8d857b; }
+.hotbar-economy > span.ready { border-color: rgba(214,161,96,.32); background: rgba(174,113,52,.13); }
+.hotbar-economy > span.spent { color: #8d857b; }
+.hotbar-economy small { color: #8d857b; font: 600 13px Manrope, sans-serif; letter-spacing: 0; }
+.hotbar-economy b { color: #e6bd83; font: 700 15px Manrope, sans-serif; white-space: nowrap; }
+.hotbar-economy > span.spent b { color: #8d857b; text-decoration: line-through; }
+
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 520px) 132px; gap: 18px; }
+/* min-width: 0 обязателен: без него grid-элемент раздувается под содержимое
+   и горизонтальная прокрутка колоды не включается. */
+.hotbar-actions { min-width: 0; min-height: 0; display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; overflow-y: hidden; padding: 0; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
+
+/* Плитка: иконка, название, подпись и — отдельной строкой сетки — стоимость словом.
+   overflow: hidden и min-height: 0 нужны потому, что flex-элемент по умолчанию
+   имеет min-height: auto и растягивается под содержимое. */
+.combat-hotbar .action-tile { position: relative; flex: 0 0 auto; box-sizing: border-box; width: 162px; min-width: 162px; height: 148px; min-height: 0; display: grid; grid-template-rows: 44px 22px 18px 20px; justify-items: center; align-content: center; gap: 6px; margin: 0; padding: 12px 8px; overflow: hidden; border: 1px solid rgba(202,176,143,.15); border-radius: 10px; background: radial-gradient(circle at 50% 18%, rgba(128,91,53,.15), rgba(22,18,14,.92) 70%); color: #a68e74; cursor: pointer; }
 .combat-hotbar .action-tile::before { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.38); }
-.combat-hotbar .action-tile:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(221,165,96,.45); color: #e0bc8b; box-shadow: 0 8px 16px rgba(0,0,0,.34); }
-.combat-hotbar .action-tile.selected { border-color: #d2a263; color: #f0c98f; background: radial-gradient(circle at 50% 20%, rgba(177,111,47,.34), rgba(32,23,15,.96) 72%); box-shadow: 0 0 0 1px rgba(220,165,95,.2), 0 0 18px rgba(184,109,45,.16); }
+.combat-hotbar .action-tile:hover:not(:disabled) { border-color: rgba(221,165,96,.45); color: #e0bc8b; box-shadow: 0 8px 16px rgba(0,0,0,.34); }
+.combat-hotbar .action-tile.selected { border-color: #e0b47a; color: #f2d3a4; background: linear-gradient(180deg, rgba(177,111,47,.34), rgba(32,23,15,.96)); }
 .combat-hotbar .action-tile.spell { color: #8fbca7; background: radial-gradient(circle at 50% 18%, rgba(57,130,99,.22), rgba(18,28,23,.94) 70%); }
 .combat-hotbar .action-tile.feature-action { color: #b7a0c5; background: radial-gradient(circle at 50% 18%, rgba(111,74,137,.2), rgba(24,19,29,.94) 70%); }
 .combat-hotbar .action-tile.item { color: #c49167; }
-.combat-hotbar .action-tile:disabled { opacity: .34; filter: grayscale(.7); cursor: not-allowed; }
-.combat-hotbar .action-tile.support-heuristic:disabled, .combat-hotbar .action-tile.support-ruling-only:disabled { opacity: .58; }
-.combat-hotbar .action-tile strong { width: 100%; overflow: hidden; color: inherit; font: 600 calc(8px * var(--ui-readable-scale, 1))/1.1 Spectral, serif; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.combat-hotbar .action-tile small { max-width: 100%; overflow: hidden; color: #6e655c; font: calc(6px * var(--ui-readable-scale, 1))/1.1 Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
-.combat-hotbar .action-tile em { position: absolute; left: 4px; top: 4px; min-width: 21px; padding: 2px 3px; border-radius: 8px; background: rgba(10,9,8,.82); color: #c4b08e; font: normal 700 6px Manrope, sans-serif; }
+.combat-hotbar .action-tile:disabled { opacity: .32; cursor: not-allowed; }
+.combat-hotbar .action-tile.support-heuristic:disabled, .combat-hotbar .action-tile.support-ruling-only:disabled { opacity: .5; }
+.combat-hotbar .action-tile strong { display: -webkit-box; width: 100%; overflow: hidden; color: inherit; font: 600 15px/22px Spectral, serif; text-align: center; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+.combat-hotbar .action-tile small { width: 100%; overflow: hidden; color: #8d857b; font: 13px/18px Manrope, sans-serif; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.combat-hotbar .action-tile em { position: absolute; left: 8px; top: 8px; min-width: 22px; padding: 2px 5px; border-radius: 8px; background: rgba(10,9,8,.82); color: #c4b08e; font: normal 700 12px Manrope, sans-serif; }
+
+/* Стоимость — слово, а не буква в кружке: «хватит ли» должно читаться без расшифровки. */
+.action-cost { position: static; width: max-content; height: 20px; display: flex; align-items: center; padding: 0 9px; border: 0; border-radius: 10px; background: rgba(209,152,83,.22); color: #e0b47a; font: normal 600 12px Manrope, sans-serif; }
+.action-cost.bonus_action { background: rgba(130,103,183,.24); color: #bba0db; }
+.action-cost.reaction { background: rgba(80,145,154,.24); color: #8abdc1; }
+.action-cost.free { background: rgba(110,165,120,.24); color: #a2ccab; }
+.action-cost.movement { background: rgba(110,165,120,.24); color: #a2ccab; }
+.action-cost.long_cast { background: rgba(140,130,120,.24); color: #b6ada2; }
+
+/* Колонка шага: бейдж, заголовок, полное описание, строка ресурса. Вертикальных
+   отступов нет намеренно — они дают переполнение фиксированной сетки строк. */
+.hotbar-detail { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: 17px 26px 63px 21px; align-content: center; gap: 6px; padding: 0 0 0 22px; border-left: 1px solid rgba(255,255,255,.07); background: none; }
+.hotbar-detail strong { overflow: hidden; color: #e2d6c6; font: 600 19px Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #a89e92; font: 15px/21px Spectral, Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.hotbar-detail span { overflow: hidden; color: #c8a06a; font: 15px Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.hotbar-detail .mechanics-support-detail { width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid currentColor; border-radius: 4px; font: normal 700 11px/1 Manrope, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.hotbar-detail .mechanics-support-note { display: -webkit-box; overflow: hidden; color: #8d8174; font: 13px/1.3 Manrope, sans-serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
 .combat-icon { position: relative; z-index: 0; display: inline-grid; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid hsl(var(--combat-icon-hue) 58% 55% / .3); border-radius: 6px; background-image: radial-gradient(circle at 50% 42%, hsl(var(--combat-icon-hue) 52% 24% / .4), transparent 58%), linear-gradient(145deg, rgba(42,36,31,.7), rgba(12,11,10,.84)), url('/assets/ui/combat-icon-texture.png'); background-position: center, center, var(--combat-icon-bg-x) var(--combat-icon-bg-y); background-size: auto, auto, 112px 112px; background-blend-mode: screen, normal, soft-light; box-shadow: inset 0 1px rgba(255,245,220,.08), inset 0 -2px 4px rgba(0,0,0,.7), 0 2px 5px rgba(0,0,0,.4); color: hsl(var(--combat-icon-hue) 92% 70%); isolation: isolate; }
 .combat-icon::before { content: ''; position: absolute; inset: 2px; z-index: -1; border: 1px solid rgba(226,199,155,.07); border-radius: 4px; background: linear-gradient(118deg, transparent 0 26%, rgba(255,255,255,.035) 27%, transparent 29% 63%, rgba(0,0,0,.2) 64%, transparent 66%), repeating-linear-gradient(173deg, transparent 0 7px, rgba(232,203,160,.025) 8px, transparent 9px 13px); }
@@ -532,17 +577,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .spellbook-grid article.spell-kind-healing .combat-icon { --combat-icon-hue: 155 !important; }
 .spellbook-grid article.spell-kind-debuff .combat-icon { --combat-icon-hue: 302 !important; }
 
-.action-cost { position: absolute; right: 4px; top: 4px; width: 15px; height: 15px; display: grid; place-items: center; border: 1px solid rgba(209,152,83,.42); border-radius: 50%; background: #21170f; color: #d9a565; font: normal 700 7px Manrope, sans-serif; }
-.action-cost.bonus_action { border-color: rgba(130,103,183,.5); background: #1c1729; color: #bba0db; }
-.action-cost.reaction { border-color: rgba(80,145,154,.5); background: #142326; color: #8abdc1; }
-.action-cost.free { border-color: rgba(113,157,105,.5); background: #172218; color: #9fc395; }
-.hotbar-empty { flex: 1; min-width: 210px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #665e56; font: calc(8px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.hotbar-detail { min-width: 0; display: grid; align-content: center; gap: 4px; padding: 10px 12px; border-left: 1px solid rgba(255,255,255,.055); background: rgba(255,255,255,.012); }
-.hotbar-detail strong { overflow: hidden; color: #ccb18e; font: 600 calc(11px * var(--ui-readable-scale, 1)) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
-.hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #776d63; font: calc(7px * var(--ui-readable-scale, 1))/1.35 Spectral, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.hotbar-detail span { color: #987348; font-size: calc(6px * var(--ui-readable-scale, 1)); }
-.hotbar-detail .mechanics-support-detail { width: max-content; max-width: 100%; padding: 2px 5px; border: 1px solid currentColor; border-radius: 3px; font: normal 700 calc(5px * var(--ui-readable-scale, 1))/1 Manrope, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
-.hotbar-detail .mechanics-support-note { display: -webkit-box; overflow: hidden; color: #8d8174; font: calc(6px * var(--ui-readable-scale, 1))/1.25 Manrope, sans-serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.hotbar-empty { flex: 1; min-width: 210px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #8d857b; font: 15px Spectral, serif; }
 
 .knockout-toggle { width: fit-content; display: inline-grid; grid-template-columns: auto auto; align-items: center; gap: 1px 6px; margin-top: 2px; padding: 4px 7px; border: 1px solid rgba(176,125,72,.28); border-radius: 5px; background: rgba(68,42,24,.28); color: #a58665; cursor: pointer; }
 .knockout-toggle input { grid-row: 1 / span 2; margin: 0; accent-color: #b77b3d; }
@@ -594,7 +629,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .director-status { display: none; }
   .combat-hotbar.tactical-control { width: calc(100% - 32px); }
   .exploration-hotbar.tactical-control { width: calc(100% - 32px); }
-  .hotbar-main { grid-template-columns: 74px minmax(220px, 1fr) 150px 100px; }
+  .hotbar-main { grid-template-columns: minmax(0, 1fr) minmax(220px, 360px) 112px; gap: 12px; }
   .player-hud-stack, .player-hud { display: none; }
 }
 
@@ -605,28 +640,25 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .combat-hotbar.tactical-control { bottom: 8px; width: calc(100% - 16px); }
   .exploration-hotbar.tactical-control { bottom: 8px; width: auto; grid-template-columns: auto; }
   .exploration-path-status { display: none; }
-  .hotbar-main { min-height: 104px; grid-template-columns: 70px minmax(190px, 1fr) 94px; }
+  .hotbar-main { grid-template-columns: minmax(0, 1fr) 94px; gap: 10px; }
   .hotbar-detail { display: none; }
-  .combat-hotbar .action-tile { width: 76px; min-width: 76px; height: 75px; min-height: 75px; }
+  .combat-hotbar .action-tile { width: 138px; min-width: 138px; height: 140px; }
   .map-legend { display: none; }
-  .game-area > .chat-panel { bottom: 170px; height: min(32vh, 260px); min-height: 190px; }
 }
 
 @media (max-width: 560px) {
   .spellbook-panel { bottom: 126px; }
   .spellbook-grid { grid-template-columns: 1fr; }
   .spellbook-tools > span { display: none; }
-  .hotbar-main { grid-template-columns: 1fr 84px; grid-template-rows: 34px 78px; }
-  .hotbar-decks { grid-column: 1 / -1; grid-row: 1; grid-template-columns: repeat(5, 1fr); padding: 3px; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.055); }
-  .combat-hotbar .hotbar-decks button, .combat-hotbar .hotbar-decks button:last-child { grid-column: auto; min-height: 27px; display: flex; }
+  .hotbar-main { grid-template-columns: minmax(0, 1fr) 84px; }
+  .hotbar-decks { overflow-x: auto; scrollbar-width: none; }
+  .combat-hotbar .hotbar-decks button, .combat-hotbar .hotbar-decks button:last-child { min-height: 36px; height: 36px; padding: 0 10px; }
   .combat-hotbar .hotbar-decks button span { display: none; }
-  .hotbar-actions { grid-column: 1; grid-row: 2; padding: 4px 5px; }
-  .hotbar-turn-controls { grid-column: 2; grid-row: 2; padding: 4px; }
+  .hotbar-actions { grid-column: 1; }
+  .hotbar-turn-controls { grid-column: 2; padding: 4px; }
   .hotbar-turn-controls button span { display: none; }
-  .combat-hotbar .action-tile { width: 66px; min-width: 66px; height: 68px; min-height: 68px; padding: 5px 3px; }
-  .hotbar-economy > span { min-width: 47px; padding: 0 4px; }
-  .hotbar-economy > span small { display: none; }
-  .game-area > .chat-panel { bottom: 142px; height: min(30vh, 220px); min-height: 170px; }
+  .combat-hotbar .action-tile { width: 128px; min-width: 128px; height: 134px; padding: 10px 6px; }
+  .hotbar-economy > span { padding: 0 9px; }
   .game-area > .dice-tray:not(.dice-tray--rolling) { bottom: 150px; }
   .exploration-hotbar.tactical-control { min-height: 0; grid-template-columns: auto; gap: 0; padding: 8px; }
   .exploration-mode-icon { width: 32px; height: 32px; }

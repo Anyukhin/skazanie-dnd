@@ -381,7 +381,7 @@ function boardMapArt(state: GameState, visualTheme: string) {
   return BOARD_MAP_LIBRARY.dungeon
 }
 
-function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onFinishTurn, statusContent, children }: {
+function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onFinishTurn, onFreeAction, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -399,10 +399,13 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string) => void
   onChangeWeapon: (actorId: string, itemId: string) => void
   onFinishTurn: () => void
+  onFreeAction: (text: string) => void
+  narrating: boolean
   statusContent: React.ReactNode
   children?: React.ReactNode
 }) {
   const [zoom, setZoom] = useState(1)
+  const [freeText, setFreeText] = useState('')
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
@@ -493,7 +496,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const selected = canAct && !tacticalBusy && active ? turnActorId : null
   const tactical = currentTacticalTurn(tacticalState)
   const movementBonus = Math.max(0, Number(economy?.movement_bonus) || 0)
-  const remainingFeet = Math.max(0, (active?.speed ?? 0) + movementBonus - tactical.movementSpent)
+  const speedFeet = (active?.speed ?? 0) + movementBonus
+  const remainingFeet = Math.max(0, speedFeet - tactical.movementSpent)
   const movementAvailable = !combatActive || economy?.movement !== false
   const movementPaths = active ? buildMovementPaths(state, active, CELL_FEET) : new Map<string, MovementPath>()
   const movementLimit = combatActive ? remainingFeet : Number.POSITIVE_INFINITY
@@ -1031,14 +1035,28 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         </section>}
         {children}
       </aside>
+      <section className="turn-rail">
+      {/* Свободный ввод присутствует во ВСЕХ состояниях, включая бой. Продуктовые
+          принципы 2 и 3 требуют, чтобы предложения интерфейса не были границами;
+          раньше в бою на месте этого поля стоял только хотбар, и у принципа не было
+          носителя в UI. Ход не расходуется до подтверждённого сервером броска. */}
+      <form
+        className="rail-free-input"
+        onSubmit={(event) => { event.preventDefault(); const text = freeText.trim(); if (!text || narrating) return; onFreeAction(text); setFreeText('') }}
+      >
+        <span className="rail-free-tab"><MessageSquare size={17} />Своими словами</span>
+        <input
+          value={freeText}
+          onChange={(event) => setFreeText(event.target.value)}
+          placeholder={`Опишите действие ${activeName} так, как сказали бы за столом — Арбитр найдёт правило`}
+          aria-label="Действие своими словами"
+          disabled={narrating}
+        />
+        <button type="submit" disabled={narrating || !freeText.trim()}><Send size={17} />Отправить</button>
+        <small>не расходует ход до подтверждённого броска</small>
+      </form>
       {combatActive ? <section className="tactical-control combat-hotbar" aria-label={`Панель боевых действий: ${activeName}`}>
-        <div className="hotbar-economy" aria-label="Экономика текущего хода">
-          <span className={remainingFeet > 0 && movementAvailable ? 'ready' : 'spent'} title={`Осталось движения: ${remainingFeet} футов`}><Footprints size={14} /><b>{remainingFeet}</b><small>ФТ</small></span>
-          <span className={actionReady ? 'ready' : 'spent'} title={actionReady ? 'Действие доступно' : 'Действие потрачено'}><Swords size={14} /><small>ДЕЙСТВИЕ</small></span>
-          <span className={bonusReady ? 'ready' : 'spent'} title={bonusReady ? 'Бонусное действие доступно' : 'Бонусное действие потрачено'}><Sparkles size={14} /><small>БОНУС</small></span>
-          <span className={reactionReady ? 'ready' : 'spent'} title={reactionReady ? 'Реакция доступна' : 'Реакция потрачена'}><RefreshCw size={14} /><small>РЕАКЦИЯ</small></span>
-        </div>
-        <div className="hotbar-main">
+        <div className="hotbar-controls-row">
           <nav className="hotbar-decks" role="tablist" aria-label="Категории действий">
             {([
               ['common', 'Основные', <CombatIcon id="deck-common" kind="deck" hint="перемещение основные действия" size={23} compact />],
@@ -1048,14 +1066,24 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               ['items', 'Предметы', <CombatIcon id="deck-items" kind="deck" hint="предметы зелья" size={23} compact />],
             ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy || (deck === 'magic' && !spells.length)}>{icon}<span>{label}</span></button>)}
           </nav>
+          {/* Остаток хода читается словами и целиком: «хватит ли» больше не нужно
+              собирать из буквы в кружке на плитке и отдельной плашки над хотбаром. */}
+          <div className="hotbar-economy" aria-label="Экономика текущего хода">
+            <span className={remainingFeet > 0 && movementAvailable ? 'ready' : 'spent'}><small>Движение</small><b>{movementAvailable ? `${remainingFeet} из ${speedFeet} фт` : 'потрачено'}</b></span>
+            <span className={actionReady ? 'ready' : 'spent'}><small>Действие</small><b>{actionReady ? 'свободно' : 'потрачено'}</b></span>
+            <span className={bonusReady ? 'ready' : 'spent'}><small>Бонус</small><b>{bonusReady ? 'свободен' : 'потрачен'}</b></span>
+            <span className={reactionReady ? 'ready' : 'spent'}><small>Реакция</small><b>{reactionReady ? 'свободна' : 'потрачена'}</b></span>
+          </div>
+        </div>
+        <div className="hotbar-main">
           <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия">
-            {activeDeck === 'common' && <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || tacticalBusy} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small></button>}
-            {activeDeck === 'weapon' && <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !actionReady || tacticalBusy} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">Д</i></button>}
-            {activeDeck === 'weapon' && combatItems.filter((item) => item.type === 'weapon').map((item) => <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || tacticalBusy} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт</small><i className="action-cost action">Д</i></button>)}
+            {activeDeck === 'common' && <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || tacticalBusy} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button>}
+            {activeDeck === 'weapon' && <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !actionReady || tacticalBusy} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button>}
+            {activeDeck === 'weapon' && combatItems.filter((item) => item.type === 'weapon').map((item) => <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || tacticalBusy} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт</small><i className="action-cost action">действие</i></button>)}
             {activeDeck === 'magic' && <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={!spells.length || tacticalBusy} title={`Открыть полный каталог: ${spells.length} заклинаний доступно герою`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{spells.length} доступно</small></button>}
-            {activeDeck === 'magic' && hotbarSpells.map((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); return <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || tacticalBusy} onClick={() => selectSpell(spell)} title={support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'Б' : actionType === 'reaction' ? 'Р' : actionType === 'long_cast' ? 'В' : 'Д'}</i></button> })}
-            {(activeDeck === 'common' || activeDeck === 'class') && combatActions.filter((action) => action.category === activeDeck && action.actionType !== 'reaction').map((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); return <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || tacticalBusy} onClick={() => selectCombatAction(action)} title={support.blocked ? `${support.label}. ${support.explanation}` : action.description}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'Б' : action.actionType === 'free' ? 'С' : 'Д'}</i></button> })}
-            {activeDeck === 'items' && combatItems.filter((item) => item.type !== 'weapon').map((item) => <button key={item.id} className={`action-tile item ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || tacticalBusy} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={item.description}><CombatIcon id={item.id} kind="item" hint={`${item.name} ${item.type} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.quantity} шт. · {item.combat?.radius ? `радиус ${item.combat.radius} фт` : 'предмет'}</small><i className="action-cost action">Д</i></button>)}
+            {activeDeck === 'magic' && hotbarSpells.map((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); return <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || tacticalBusy} onClick={() => selectSpell(spell)} title={support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'бонус' : actionType === 'reaction' ? 'реакция' : actionType === 'long_cast' ? 'вне боя' : 'действие'}</i></button> })}
+            {(activeDeck === 'common' || activeDeck === 'class') && combatActions.filter((action) => action.category === activeDeck && action.actionType !== 'reaction').map((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); return <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || tacticalBusy} onClick={() => selectCombatAction(action)} title={support.blocked ? `${support.label}. ${support.explanation}` : action.description}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button> })}
+            {activeDeck === 'items' && combatItems.filter((item) => item.type !== 'weapon').map((item) => <button key={item.id} className={`action-tile item ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || tacticalBusy} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={item.description}><CombatIcon id={item.id} kind="item" hint={`${item.name} ${item.type} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.quantity} шт. · {item.combat?.radius ? `радиус ${item.combat.radius} фт` : 'предмет'}</small><i className="action-cost action">действие</i></button>)}
             {((activeDeck === 'magic' && !spells.length) || (activeDeck === 'class' && !combatActions.some((action) => action.category === 'class')) || (activeDeck === 'items' && !combatItems.some((item) => item.type !== 'weapon'))) && <div className="hotbar-empty"><LockKeyhole size={18} /><span>У героя нет доступных действий этой категории</span></div>}
           </div>
           <aside className="hotbar-detail" aria-live="polite">
@@ -1091,6 +1119,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер проверяет путь…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
       </section>}
+      </section>
     </>
   )
 }
@@ -2170,6 +2199,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onUseCombatAction={useCombatAction}
             onChangeWeapon={changeWeapon}
             onFinishTurn={finishMapTurn}
+            onFreeAction={submitAction}
+            narrating={state.isNarrating}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} canFinishTurn={canFinishTurn} turnName={turnActorName} onSend={submitAction} onFinishTurn={finishMapTurn} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} open={chatOpen} onToggle={() => setChatOpen(value => !value)} suggestions={state.suggestions} layoutStorageKey={`${CHAT_LAYOUT_KEY_PREFIX}:${state.sessionCode}`} />
