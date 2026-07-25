@@ -73,6 +73,13 @@ type MerchantCommandResult = {
   code?: string
 }
 
+export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'offline'
+
+type RoomSnapshot = {
+  version?: number
+  state?: GameState | null
+}
+
 export type ShopAssemblyOptions = {
   settlementType: 'village' | 'town' | 'city' | 'outpost' | 'traveling'
   theme: 'general' | 'provisions' | 'arms' | 'healing'
@@ -214,6 +221,7 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
 
 export function useGameSession() {
   const [state, setState] = useState<GameState>(loadState)
+  const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
   const [tacticalBusy, setTacticalBusy] = useState(false)
   const [tacticalError, setTacticalError] = useState<string | null>(null)
   const [merchantBusy, setMerchantBusy] = useState(false)
@@ -232,6 +240,7 @@ export function useGameSession() {
   const freeRollBusy = useRef(false)
   const systemTickBusy = useRef(false)
   const actionEpoch = useRef(0)
+  const queuedRooms = useRef<Array<{ version: number; state: GameState }>>([])
   const persistLocal = useCallback((next: GameState) => {
     localStorage.setItem(ACTIVE_CAMPAIGN_KEY, next.sessionCode)
   }, [])
@@ -243,6 +252,31 @@ export function useGameSession() {
     persistLocal(recovered)
     channel.current?.postMessage(recovered)
   }, [persistLocal])
+
+  const applyRoomSnapshot = useCallback((room: RoomSnapshot) => {
+    if (!room.state) return
+    roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
+    applyRemote(room.state)
+  }, [applyRemote])
+
+  const queueRoomSnapshot = useCallback((room: RoomSnapshot) => {
+    if (!room.state) return
+    const version = Number(room.version)
+    if (!Number.isSafeInteger(version) || version < 0) return
+    queuedRooms.current.push({ version, state: room.state })
+    if (queuedRooms.current.length > 50) queuedRooms.current.splice(0, queuedRooms.current.length - 50)
+  }, [])
+
+  const flushQueuedRooms = useCallback(() => {
+    if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current || systemTickBusy.current) return
+    const latest = queuedRooms.current
+      .filter((candidate) => candidate.version > roomVersion.current)
+      .reduce<{ version: number; state: GameState } | null>((current, candidate) => (
+        !current || candidate.version >= current.version ? candidate : current
+      ), null)
+    queuedRooms.current = []
+    if (latest) applyRoomSnapshot(latest)
+  }, [applyRoomSnapshot])
 
   const persistRemote = useCallback((_next: GameState) => {
     // Room JSON is a server-owned read model. Gameplay and shared state are
@@ -263,28 +297,74 @@ export function useGameSession() {
   }, [state.sessionCode])
 
   useEffect(() => {
-    if (!('EventSource' in window) || !state.sessionCode) return
-    const source = new EventSource(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/stream`)
+    if (!state.sessionCode) {
+      setConnectionState('offline')
+      return
+    }
+    if (!('EventSource' in window)) {
+      setConnectionState('offline')
+      return
+    }
+    let active = true
+    let source: EventSource | null = null
+    let retryTimer: number | null = null
+    let retryDelay = 1_000
+    let retryScheduled = false
     const receive = (event: MessageEvent<string>) => {
       try {
-        const room = JSON.parse(event.data) as { version?: number; state?: GameState | null }
-        if (!room.state || busy.current || tacticalBusyRef.current || merchantBusyRef.current) return
-        roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
-        applyRemote(room.state)
+        const room = JSON.parse(event.data) as RoomSnapshot
+        if (!room.state) return
+        if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current || systemTickBusy.current) {
+          queueRoomSnapshot(room)
+          return
+        }
+        applyRoomSnapshot(room)
       } catch (error) {
         console.warn('Realtime-событие комнаты отклонено:', error)
       }
     }
-    source.addEventListener('room', receive as EventListener)
-    source.onerror = () => {
-      // EventSource reconnects automatically; the slower HTTP sync below is
-      // retained as a recovery path for proxies that buffer SSE.
-    }
-    return () => {
+    const closeSource = () => {
+      if (!source) return
       source.removeEventListener('room', receive as EventListener)
       source.close()
+      source = null
     }
-  }, [applyRemote, state.sessionCode])
+    const scheduleReconnect = () => {
+      if (!active || retryScheduled) return
+      retryScheduled = true
+      setConnectionState('reconnecting')
+      closeSource()
+      retryTimer = window.setTimeout(() => {
+        retryScheduled = false
+        retryTimer = null
+        connect()
+      }, retryDelay)
+      retryDelay = Math.min(30_000, retryDelay * 2)
+    }
+    function connect() {
+      if (!active) return
+      setConnectionState('connecting')
+      const nextSource = new EventSource(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/stream`)
+      source = nextSource
+      nextSource.addEventListener('room', receive as EventListener)
+      nextSource.onopen = () => {
+        retryDelay = 1_000
+        setConnectionState('connected')
+        flushQueuedRooms()
+      }
+      nextSource.onerror = scheduleReconnect
+    }
+    connect()
+    return () => {
+      active = false
+      if (retryTimer !== null) window.clearTimeout(retryTimer)
+      closeSource()
+    }
+  }, [applyRoomSnapshot, flushQueuedRooms, queueRoomSnapshot, state.sessionCode])
+
+  useEffect(() => {
+    if (!busy.current && !tacticalBusy && !merchantBusy && !directorBusy) flushQueuedRooms()
+  }, [directorBusy, flushQueuedRooms, merchantBusy, state.isNarrating, tacticalBusy])
 
   useEffect(() => {
     let active = true
@@ -292,7 +372,7 @@ export function useGameSession() {
       try {
         const response = await fetch(`/api/rooms/${encodeURIComponent(state.sessionCode)}`)
         if (!response.ok) return
-        let room = await response.json() as { version: number; state: GameState | null }
+        let room = await response.json() as RoomSnapshot & { version: number }
         if (!active) return
         const combat = room.state?.mechanics?.combat
         const activeActorId = combat?.initiative?.[combat.active_index ?? 0]?.actor_id ?? room.state?.activePlayerId
@@ -301,25 +381,29 @@ export function useGameSession() {
           systemTickBusy.current = true
           try {
             const tickResponse = await fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/system-tick`, { method: 'POST' })
-            if (tickResponse.ok) room = await tickResponse.json() as { version: number; state: GameState | null }
+            if (tickResponse.ok) room = await tickResponse.json() as RoomSnapshot & { version: number }
           } finally {
             systemTickBusy.current = false
+            flushQueuedRooms()
           }
         }
         if (!room.state && state.sessionCode === initialState.sessionCode) {
           roomVersion.current = room.version
           applyRemote(structuredClone(initialState))
           persistRemote(structuredClone(initialState))
-      } else if (room.state && room.version > roomVersion.current && !busy.current && !tacticalBusyRef.current && !merchantBusyRef.current) {
-          roomVersion.current = room.version
-          applyRemote(room.state)
+        } else if (room.state && room.version > roomVersion.current) {
+          if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current || systemTickBusy.current) {
+            queueRoomSnapshot(room)
+          } else {
+            applyRoomSnapshot(room)
+          }
         }
       } catch (error) { console.warn('Комната временно недоступна:', error) }
     }
     void sync()
     const timer = window.setInterval(sync, 15_000)
     return () => { active = false; window.clearInterval(timer) }
-  }, [applyRemote, persistRemote, state.sessionCode])
+  }, [applyRemote, applyRoomSnapshot, flushQueuedRooms, persistRemote, queueRoomSnapshot, state.sessionCode])
 
   const commit = useCallback((next: GameState) => {
     stateRef.current = next
@@ -568,6 +652,26 @@ export function useGameSession() {
       applyRemote(result.state)
     } catch (error) {
       setDirectorError(error instanceof Error ? error.message : 'Не удалось записать голос')
+    }
+  }, [applyRemote])
+
+  const abstainAgentInteraction = useCallback(async (playerId: string) => {
+    const current = stateRef.current
+    const interaction = current.agentInteraction
+    if (!interaction || interaction.status !== 'open' || interaction.type === 'roll') return
+    setDirectorError(null)
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/party-decisions/${encodeURIComponent(interaction.id)}/votes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor_id: playerId, abstain: true, idempotency_key: commandId() }),
+      })
+      const result = await response.json() as { version?: number; state?: GameState; error?: string }
+      if (!response.ok || !result.state) throw new Error(result.error || 'Не удалось воздержаться')
+      roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
+      applyRemote(result.state)
+    } catch (error) {
+      setDirectorError(error instanceof Error ? error.message : 'Не удалось воздержаться')
     }
   }, [applyRemote])
 
@@ -1023,6 +1127,7 @@ export function useGameSession() {
 
   return {
     state,
+    connectionState,
     tacticalBusy,
     tacticalError,
     merchantBusy,
@@ -1037,6 +1142,7 @@ export function useGameSession() {
     cancelPendingCheck,
     rollFreeDie,
     voteAgentInteraction,
+    abstainAgentInteraction,
     rollAgentInteraction,
     continueAgentInteraction,
     selectPlayer,

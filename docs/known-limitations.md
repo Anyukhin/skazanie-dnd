@@ -127,11 +127,22 @@ Lifecycle кампании (`active`, `paused`, `completed`, `failed`, `archived
 `GET /api/rooms/:id` не запускает NPC, но восстанавливает отставшую compatibility
 projection по durable checkpoint. Ходы NPC выполняет явный
 `POST /api/campaigns/:id/system-tick`; основной UI использует authenticated SSE,
-а редкий polling остаётся fallback для восстановления через proxy.
+а редкий polling остаётся fallback для восстановления через proxy. SSE-клиент
+показывает состояние соединения, переподключается с экспоненциальной задержкой и
+дожидается накопленных room-обновлений после занятого интерфейса.
+
+Решение группы имеет campaign-visible `partyDecisionPolicy`: по умолчанию это
+один голос на аккаунт, отключение фиксируется как `abstain`, кворум пересчитывается
+по активным аккаунтам, а через 120 секунд создаётся durable `PartyDecisionExpired`
+с выбором самого популярного варианта и разрешением ничьей в пользу первого.
+Истечение проверяется на запросах и при восстановлении после перезапуска, а не
+таймером в памяти. Старые кампании без membership сохраняют fallback «один герой —
+один голос». `auth.json` защищён файловым lock вокруг всех read-modify-write
+операций; это не превращает JSON-хранилище в транзакционную базу данных.
 
 ## Client state и presentation writes
 
-`/api/narrate` отклоняет клиентские `state`, `player`, engine mode и raw roll. `/commands` принимает typed allowlisted commands и проверяет actor ownership/version; `AdvanceScene` через generic endpoint запрещён. В player combat path сервер самостоятельно выводит participants, attack profile, AC, damage, advantage/disadvantage и range, а также валидирует turn/path/walls/occupancy/speed/action economy. Party decision открывается, голосуется, разрешается и потребляется через FileEventStore.
+`/api/narrate` отклоняет клиентские `state`, `player`, engine mode и raw roll. `/commands` принимает typed allowlisted commands и проверяет actor ownership/version; `AdvanceScene` через generic endpoint запрещён. В player combat path сервер самостоятельно выводит participants, attack profile, AC, damage, advantage/disadvantage и range, а также валидирует turn/path/walls/occupancy/speed/action economy. Party decision открывается, голосуется, разрешается и потребляется через FileEventStore; политика решения выбирает account-level voting, потому что один игрок может владеть несколькими героями и не должен получать несколько голосов. Для старого snapshot без campaign membership применяется детерминированный hero fallback.
 
 Compatibility room `PUT` возвращает `410`. Механика и RNG в browser fallback удалены. Остаточное функциональное ограничение: редактируемые presentation-поля листа и кампании пока не имеют полного набора отдельных persistent-команд, поэтому часть таких изменений остаётся локальной.
 
@@ -153,7 +164,7 @@ Compatibility room `PUT` возвращает `410`. Механика и RNG в 
 - Старый metadata migrator не является cutover tool. Перед offline import обязательны backup, replay/hash audit и явное решение о каноническом источнике.
 - Event stream и room read-модель связаны hash-verified outbox/checkpoint protocol; roll consume и turn trace всё ещё не входят в ту же транзакцию.
 - Текущий рабочий storage не проходит `cutover:verify`; автоматическая перезапись намеренно запрещена.
-- File locking рассчитан на single-process use; OneDrive sync может создавать внешние конфликты.
+- FileEventStore и compatibility room рассчитаны на single-writer deployment; auth.json отдельно защищён межпроцессным lock вокруг read-modify-write. OneDrive sync может создавать внешние конфликты.
 - Нет PostgreSQL adapter, multi-process coordination, scheduled backup/retention и production restore verification.
 
 ## Security

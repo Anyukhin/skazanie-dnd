@@ -1,14 +1,18 @@
 import 'dotenv/config'
 import { createHash, randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { dirname, join, resolve } from 'node:path'
 
 const scrypt = promisify(scryptCallback)
 export const storageDir = process.env.DND_STORAGE_DIR ? resolve(process.env.DND_STORAGE_DIR) : join(process.cwd(), 'storage')
 const authFile = join(storageDir, 'auth.json')
+const authLockFile = join(storageDir, 'auth.json.lock')
 const roomsDir = join(storageDir, 'rooms')
 mkdirSync(roomsDir, { recursive: true })
+
+const AUTH_LOCK_STALE_MS = 30_000
+const AUTH_LOCK_WAIT_MS = 30_000
 
 const emptyAuth = { users: [], sessions: [], memberships: [], invites: [] }
 
@@ -43,6 +47,43 @@ function readAuth() {
   return db
 }
 
+function withAuthLock(operation) {
+  mkdirSync(storageDir, { recursive: true })
+  const waitStartedAt = Date.now()
+  let descriptor
+  while (descriptor === undefined) {
+    try {
+      const candidate = openSync(authLockFile, 'wx', 0o600)
+      try {
+        writeFileSync(candidate, JSON.stringify({ pid: process.pid, acquired_at: new Date().toISOString() }), 'utf8')
+        fsyncSync(candidate)
+        descriptor = candidate
+      } catch (error) {
+        try { closeSync(candidate) } catch { /* лучшее усилие */ }
+        try { if (existsSync(authLockFile)) unlinkSync(authLockFile) } catch { /* лучшее усилие */ }
+        throw error
+      }
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error
+      try {
+        if (Date.now() - statSync(authLockFile).mtimeMs > AUTH_LOCK_STALE_MS) unlinkSync(authLockFile)
+      } catch (retryError) {
+        if (retryError?.code !== 'ENOENT') throw retryError
+      }
+      if (Date.now() - waitStartedAt >= AUTH_LOCK_WAIT_MS) {
+        throw new Error('Хранилище авторизации занято слишком долго')
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10)
+    }
+  }
+  try {
+    return operation()
+  } finally {
+    try { closeSync(descriptor) } catch { /* лучшее усилие */ }
+    try { if (existsSync(authLockFile)) unlinkSync(authLockFile) } catch { /* лучшее усилие */ }
+  }
+}
+
 function publicUser(user, db = null) {
   const memberships = (db?.memberships ?? [])
     .filter((membership) => membership.userId === user.id && membership.status !== 'revoked')
@@ -69,15 +110,18 @@ async function buildUser({ email, password, name, role = 'player', heroIds = [] 
   if (String(password || '').length < 10) throw new Error('Пароль должен содержать не менее 10 символов')
   const salt = randomBytes(16).toString('hex')
   const hash = await scrypt(String(password), salt, 64)
-  const db = readAuth()
-  if (db.users.some((user) => user.email === normalizedEmail)) throw new Error('Аккаунт с такой почтой уже существует')
-  const user = {
-    id: randomUUID(), email: normalizedEmail, name: String(name || '').trim().slice(0, 60) || normalizedEmail.split('@')[0],
-    passwordSalt: salt, passwordHash: Buffer.from(hash).toString('hex'), heroIds, role, createdAt: Date.now(),
-  }
-  db.users.push(user)
-  atomicWrite(authFile, db)
-  return publicUser(user, db)
+  return withAuthLock(() => {
+    const db = readAuth()
+    if (db.users.some((user) => user.email === normalizedEmail)) throw new Error('Аккаунт с такой почтой уже существует')
+    if (role === 'admin' && db.users.some((user) => user.role === 'admin')) throw new Error('Учётная запись администратора уже создана')
+    const user = {
+      id: randomUUID(), email: normalizedEmail, name: String(name || '').trim().slice(0, 60) || normalizedEmail.split('@')[0],
+      passwordSalt: salt, passwordHash: Buffer.from(hash).toString('hex'), heroIds, role, createdAt: Date.now(),
+    }
+    db.users.push(user)
+    atomicWrite(authFile, db)
+    return publicUser(user, db)
+  })
 }
 
 export async function registerUser(input) {
@@ -105,11 +149,13 @@ export async function verifyUser(email, password) {
 }
 
 export function createSession(userId) {
-  const db = readAuth()
-  const token = randomBytes(32).toString('base64url')
-  db.sessions.push({ tokenHash: tokenHash(token), userId, expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000 })
-  atomicWrite(authFile, db)
-  return token
+  return withAuthLock(() => {
+    const db = readAuth()
+    const token = randomBytes(32).toString('base64url')
+    db.sessions.push({ tokenHash: tokenHash(token), userId, expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000 })
+    atomicWrite(authFile, db)
+    return token
+  })
 }
 
 export function userForToken(token) {
@@ -122,9 +168,11 @@ export function userForToken(token) {
 
 export function deleteSession(token) {
   if (!token) return
-  const db = readAuth()
-  db.sessions = db.sessions.filter((item) => item.tokenHash !== tokenHash(token))
-  atomicWrite(authFile, db)
+  withAuthLock(() => {
+    const db = readAuth()
+    db.sessions = db.sessions.filter((item) => item.tokenHash !== tokenHash(token))
+    atomicWrite(authFile, db)
+  })
 }
 
 export function listUsers() {
@@ -133,15 +181,17 @@ export function listUsers() {
 }
 
 export function updateUserAccess(userId, patch) {
-  const db = readAuth()
-  const user = db.users.find((item) => item.id === userId)
-  if (!user) throw new Error('Пользователь не найден')
-  if (Array.isArray(patch.heroIds)) user.heroIds = [...new Set(patch.heroIds.map(String).filter((id) => /^[a-z0-9-]{1,40}$/i.test(id)))]
-  if (typeof patch.name === 'string' && patch.name.trim()) user.name = patch.name.trim().slice(0, 60)
-  if (patch.role === 'admin' || patch.role === 'player') user.role = patch.role
-  if (patch.engineMode === null || patch.engineMode === 'enforce') user.engineMode = patch.engineMode
-  atomicWrite(authFile, db)
-  return publicUser(user, db)
+  return withAuthLock(() => {
+    const db = readAuth()
+    const user = db.users.find((item) => item.id === userId)
+    if (!user) throw new Error('Пользователь не найден')
+    if (Array.isArray(patch.heroIds)) user.heroIds = [...new Set(patch.heroIds.map(String).filter((id) => /^[a-z0-9-]{1,40}$/i.test(id)))]
+    if (typeof patch.name === 'string' && patch.name.trim()) user.name = patch.name.trim().slice(0, 60)
+    if (patch.role === 'admin' || patch.role === 'player') user.role = patch.role
+    if (patch.engineMode === null || patch.engineMode === 'enforce') user.engineMode = patch.engineMode
+    atomicWrite(authFile, db)
+    return publicUser(user, db)
+  })
 }
 
 function normalizeCampaignId(campaignId) {
@@ -175,80 +225,86 @@ export function listCampaignMemberships(campaignId) {
 
 export function upsertCampaignMembership({ campaignId, userId, role = 'player', heroIds = [] }) {
   const normalized = normalizeCampaignId(campaignId)
-  const db = readAuth()
-  if (!db.users.some((user) => user.id === userId)) throw new Error('Пользователь не найден')
-  const cleanHeroIds = normalizeHeroIds(heroIds)
-  const existing = db.memberships.find((item) => item.campaignId === normalized && item.userId === userId)
-  if (existing) {
-    existing.role = role === 'owner' ? 'owner' : 'player'
-    existing.heroIds = cleanHeroIds
-    existing.status = 'active'
-  } else {
-    db.memberships.push({
-      campaignId: normalized,
-      userId,
-      role: role === 'owner' ? 'owner' : 'player',
-      heroIds: cleanHeroIds,
-      status: 'active',
-      joinedAt: Date.now(),
-    })
-  }
-  atomicWrite(authFile, db)
-  return structuredClone(db.memberships.find((item) => item.campaignId === normalized && item.userId === userId))
+  return withAuthLock(() => {
+    const db = readAuth()
+    if (!db.users.some((user) => user.id === userId)) throw new Error('Пользователь не найден')
+    const cleanHeroIds = normalizeHeroIds(heroIds)
+    const existing = db.memberships.find((item) => item.campaignId === normalized && item.userId === userId)
+    if (existing) {
+      existing.role = role === 'owner' ? 'owner' : 'player'
+      existing.heroIds = cleanHeroIds
+      existing.status = 'active'
+    } else {
+      db.memberships.push({
+        campaignId: normalized,
+        userId,
+        role: role === 'owner' ? 'owner' : 'player',
+        heroIds: cleanHeroIds,
+        status: 'active',
+        joinedAt: Date.now(),
+      })
+    }
+    atomicWrite(authFile, db)
+    return structuredClone(db.memberships.find((item) => item.campaignId === normalized && item.userId === userId))
+  })
 }
 
 export function createCampaignInvite({ campaignId, createdBy, heroIds = [], expiresInMs = 7 * 24 * 60 * 60 * 1000 }) {
   const normalized = normalizeCampaignId(campaignId)
-  const db = readAuth()
-  const creator = db.memberships.find((item) => item.campaignId === normalized && item.userId === createdBy && item.status !== 'revoked')
-  const account = db.users.find((user) => user.id === createdBy)
-  if (account?.role !== 'admin' && creator?.role !== 'owner') throw new Error('Создавать приглашения может только владелец кампании')
-  const token = randomBytes(32).toString('base64url')
-  const invite = {
-    id: randomUUID(),
-    campaignId: normalized,
-    tokenHash: tokenHash(token),
-    role: 'player',
-    heroIds: normalizeHeroIds(heroIds),
-    createdBy,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + Math.max(60_000, Math.min(Number(expiresInMs) || 0, 30 * 24 * 60 * 60 * 1000)),
-    usedAt: null,
-    usedBy: null,
-    revokedAt: null,
-  }
-  db.invites.push(invite)
-  atomicWrite(authFile, db)
-  return { token, invite: structuredClone(invite) }
+  return withAuthLock(() => {
+    const db = readAuth()
+    const creator = db.memberships.find((item) => item.campaignId === normalized && item.userId === createdBy && item.status !== 'revoked')
+    const account = db.users.find((user) => user.id === createdBy)
+    if (account?.role !== 'admin' && creator?.role !== 'owner') throw new Error('Создавать приглашения может только владелец кампании')
+    const token = randomBytes(32).toString('base64url')
+    const invite = {
+      id: randomUUID(),
+      campaignId: normalized,
+      tokenHash: tokenHash(token),
+      role: 'player',
+      heroIds: normalizeHeroIds(heroIds),
+      createdBy,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + Math.max(60_000, Math.min(Number(expiresInMs) || 0, 30 * 24 * 60 * 60 * 1000)),
+      usedAt: null,
+      usedBy: null,
+      revokedAt: null,
+    }
+    db.invites.push(invite)
+    atomicWrite(authFile, db)
+    return { token, invite: structuredClone(invite) }
+  })
 }
 
 export function redeemCampaignInvite({ campaignId, token, userId }) {
   const normalized = normalizeCampaignId(campaignId)
-  const db = readAuth()
-  const invite = db.invites.find((item) => item.campaignId === normalized && item.tokenHash === tokenHash(String(token || '')))
-  if (!invite || invite.revokedAt) throw new Error('Приглашение недействительно')
-  if (invite.expiresAt <= Date.now()) throw new Error('Срок действия приглашения истёк')
-  if (invite.usedAt && invite.usedBy !== userId) throw new Error('Приглашение уже использовано')
-  const existing = db.memberships.find((item) => item.campaignId === normalized && item.userId === userId)
-  if (invite.usedAt && invite.usedBy === userId && existing) return { membership: structuredClone(existing), duplicate: true }
-  if (existing) throw new Error('Вы уже состоите в этой кампании')
-  const assignedElsewhere = new Set(db.memberships
-    .filter((item) => item.campaignId === normalized && item.status !== 'revoked')
-    .flatMap((item) => item.heroIds ?? []))
-  if (invite.heroIds.some((heroId) => assignedElsewhere.has(heroId))) throw new Error('Герой из приглашения уже назначен другому игроку')
-  const membership = {
-    campaignId: normalized,
-    userId,
-    role: invite.role,
-    heroIds: normalizeHeroIds(invite.heroIds),
-    status: 'active',
-    joinedAt: Date.now(),
-  }
-  db.memberships.push(membership)
-  invite.usedAt = Date.now()
-  invite.usedBy = userId
-  atomicWrite(authFile, db)
-  return { membership: structuredClone(membership), duplicate: false }
+  return withAuthLock(() => {
+    const db = readAuth()
+    const invite = db.invites.find((item) => item.campaignId === normalized && item.tokenHash === tokenHash(String(token || '')))
+    if (!invite || invite.revokedAt) throw new Error('Приглашение недействительно')
+    if (invite.expiresAt <= Date.now()) throw new Error('Срок действия приглашения истёк')
+    if (invite.usedAt && invite.usedBy !== userId) throw new Error('Приглашение уже использовано')
+    const existing = db.memberships.find((item) => item.campaignId === normalized && item.userId === userId)
+    if (invite.usedAt && invite.usedBy === userId && existing) return { membership: structuredClone(existing), duplicate: true }
+    if (existing) throw new Error('Вы уже состоите в этой кампании')
+    const assignedElsewhere = new Set(db.memberships
+      .filter((item) => item.campaignId === normalized && item.status !== 'revoked')
+      .flatMap((item) => item.heroIds ?? []))
+    if (invite.heroIds.some((heroId) => assignedElsewhere.has(heroId))) throw new Error('Герой из приглашения уже назначен другому игроку')
+    const membership = {
+      campaignId: normalized,
+      userId,
+      role: invite.role,
+      heroIds: normalizeHeroIds(invite.heroIds),
+      status: 'active',
+      joinedAt: Date.now(),
+    }
+    db.memberships.push(membership)
+    invite.usedAt = Date.now()
+    invite.usedBy = userId
+    atomicWrite(authFile, db)
+    return { membership: structuredClone(membership), duplicate: false }
+  })
 }
 
 function roomFile(code) {

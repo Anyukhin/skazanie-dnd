@@ -150,7 +150,7 @@ pnpm migrate
 - `POST /api/campaigns/:id/join` — идемпотентное присоединение по `invite_token`; права и герои хранятся в campaign-scoped membership, а не выводятся из глобального ID героя;
 - `GET|POST /api/campaigns/:id/lifecycle` — чтение и event-sourced переходы `active ↔ paused → completed|failed → archived`; terminal/archive блокируют игровую запись, завершение создаёт детерминированный эпилог;
 - `POST /api/campaigns/:id/system-tick` — продолжение durable NPC-хода и идемпотентное пополнение магазинов по авторитетному времени кампании; обычный `GET /api/rooms/:id` остаётся чистым чтением;
-- `POST /api/campaigns/:id/party-decisions/:decisionId/votes` — event-sourced голос героя с зафиксированным кворумом;
+- `POST /api/campaigns/:id/party-decisions/:decisionId/votes` — event-sourced решение с одним голосом на аккаунт, явным воздержанием, пересчётом кворума при отключении и детерминированным исходом по TTL; legacy-кампании без membership используют голос героя;
 - `POST /api/campaigns/:id/party-decisions/:decisionId/roll` — один серверный общий d20 и event-sourced исход решения;
 - `POST /api/campaigns/:id/autonomy/advance` — обычный игровой запрос «продолжить»; Director Agent выбирает bounded intent, сервер исполняет правила и возвращает только viewer projection; raw `/autonomy/intents` остаётся admin-only диагностикой;
 - `PATCH /api/campaigns/:id/engine-mode` — retired endpoint, возвращает `410 ENGINE_MODE_RETIRED`;

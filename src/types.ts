@@ -46,6 +46,17 @@ export type AgentInteractionOption = {
   description?: string
 }
 
+export type PartyDecisionPolicy = {
+  schemaVersion: number
+  policyVersion: string
+  voterScope: 'account' | 'hero'
+  decisionTtlMs: number
+  quorumMode: 'majority_of_active_voters'
+  disconnectAction: 'abstain'
+  expiryResolution: 'plurality_first_option'
+  visibility: 'party'
+}
+
 export type AgentInteraction = {
   id: string
   type: 'vote' | 'roll' | 'choice'
@@ -56,12 +67,21 @@ export type AgentInteraction = {
   status: 'open' | 'resolved'
   resolvedOptionId?: string
   eligibleActorIds?: string[]
+  eligibleVoterIds?: string[]
+  voterByActorId?: Record<string, string>
+  activeVoterIds?: string[]
+  abstainedVoterIds?: string[]
+  abstentions?: Record<string, string>
   requiredVotes?: number
+  voterScope?: 'account' | 'hero'
+  policy?: PartyDecisionPolicy
   policyVersion?: string
   difficulty?: number
   roll?: DiceRollEvent
   resolutionPrompt: string
   createdAt: number
+  expiresAt?: number
+  resolutionReason?: string
 }
 
 export type Player = {
@@ -764,6 +784,7 @@ export type GameState = {
   worldMap?: WorldMapState
   partyName?: string
   partyMemberIds?: string[]
+  partyDecisionPolicy?: PartyDecisionPolicy
   players: Player[]
   enemies?: Enemy[]
   actors?: SummonedCreature[]

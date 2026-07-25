@@ -5,6 +5,7 @@ const CANONICAL_FIELDS = Object.freeze([
   'campaign',
   'partyName',
   'partyMemberIds',
+  'partyDecisionPolicy',
   'players',
   'enemies',
   'actors',

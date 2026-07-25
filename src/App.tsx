@@ -15,7 +15,7 @@ import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
 import { DiceTray } from './DiceTray'
-import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
+import { useGameSession, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
 import { battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
@@ -1098,24 +1098,30 @@ function DiceCheckCard({ check, onRoll, onCancel }: { check: PendingCheck; onRol
   )
 }
 
-function AgentInteractionCard({ interaction, players, playerId, canContinue, onVote, onRoll, onContinue }: {
+function AgentInteractionCard({ interaction, players, playerId, canContinue, onVote, onAbstain, onRoll, onContinue }: {
   interaction: AgentInteraction
   players: Player[]
   playerId: string
   canContinue: boolean
   onVote: (optionId: string) => void
+  onAbstain: () => void
   onRoll: () => void
   onContinue: () => void
 }) {
-  const selected = interaction.votes[playerId]
+  const voterId = interaction.voterByActorId?.[playerId]
+  const selected = Object.entries(interaction.votes).find(([actorId]) => (interaction.voterByActorId?.[actorId] ?? actorId) === (voterId ?? playerId))?.[1]
   const resolved = interaction.status === 'resolved'
   const winner = interaction.options.find((option) => option.id === interaction.resolvedOptionId)
+  const quorum = interaction.requiredVotes ?? interaction.eligibleVoterIds?.length ?? interaction.eligibleActorIds?.length ?? players.filter((player) => player.online).length
+  const activeVoters = interaction.activeVoterIds?.length ?? interaction.eligibleVoterIds?.length ?? interaction.eligibleActorIds?.length ?? players.filter((player) => player.online).length
+  const ttlSeconds = Math.max(1, Math.round((interaction.policy?.decisionTtlMs ?? 120_000) / 1_000))
   return (
     <section className={['agent-interaction', 'agent-interaction--' + interaction.type, resolved ? 'resolved' : ''].join(' ')} aria-label="Групповое решение">
       <div className="agent-interaction__head">
         <span><BrainCircuit size={15} />Решение отряда</span>
         <strong>{interaction.title}</strong>
         <p>{interaction.description}</p>
+        <small className="agent-interaction__policy">Один голос на аккаунт · активны {activeVoters} · отключение = воздержание · автоисход через {ttlSeconds} с</small>
       </div>
       {interaction.type === 'roll' ? (
         <button className="agent-roll" onClick={onRoll} disabled={resolved}>
@@ -1126,18 +1132,19 @@ function AgentInteractionCard({ interaction, players, playerId, canContinue, onV
           {interaction.options.map((option) => {
             const votes = Object.values(interaction.votes).filter((vote) => vote === option.id).length
             return <button key={option.id} className={[selected === option.id ? 'selected' : '', winner?.id === option.id ? 'winner' : ''].join(' ')} onClick={() => onVote(option.id)} disabled={resolved}>
-              <span>{option.label}</span><small>{votes} / {interaction.eligibleActorIds?.length || players.filter((player) => player.online).length}</small>
+              <span>{option.label}</span><small>{votes} / {quorum} голосов</small>
             </button>
           })}
         </div>
       )}
+      {!resolved && interaction.type !== 'roll' && <button className="agent-abstain" onClick={onAbstain}>Воздержаться</button>}
       {resolved && <button className="agent-continue" onClick={onContinue} disabled={!canContinue}><Sparkles size={14} />Продолжить историю: {winner?.label}</button>}
     </section>
   )
 }
 
-function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, currentPlayerId, canAct, canFinishTurn, turnName, onSend, onFinishTurn, onRoll, onCancelCheck, onVote, onRollInteraction, onContinueInteraction, open, onToggle, suggestions, layoutStorageKey }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; pendingCheck: PendingCheck | null; interaction?: AgentInteraction | null; players: Player[]; currentPlayerId: string; canAct: boolean; canFinishTurn: boolean; turnName: string; onSend: (text: string) => void; onFinishTurn: () => void; onRoll: () => void; onCancelCheck: () => void; onVote: (optionId: string) => void; onRollInteraction: () => void; onContinueInteraction: () => void; open: boolean; onToggle: () => void; suggestions: string[]; layoutStorageKey: string
+function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, currentPlayerId, canAct, canFinishTurn, turnName, onSend, onFinishTurn, onRoll, onCancelCheck, onVote, onAbstain, onRollInteraction, onContinueInteraction, open, onToggle, suggestions, layoutStorageKey }: {
+  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; pendingCheck: PendingCheck | null; interaction?: AgentInteraction | null; players: Player[]; currentPlayerId: string; canAct: boolean; canFinishTurn: boolean; turnName: string; onSend: (text: string) => void; onFinishTurn: () => void; onRoll: () => void; onCancelCheck: () => void; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; open: boolean; onToggle: () => void; suggestions: string[]; layoutStorageKey: string
 }) {
   const [text, setText] = useState('')
   const [suggestionsOpen, setSuggestionsOpen] = useState(true)
@@ -1280,7 +1287,7 @@ function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, 
         {isNarrating && <div className="typing"><span /><span /><span /> Рассказчик меняет мир…</div>}
         <div ref={endRef} />
       </div>
-      {interaction ? <div className="composer"><AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onRoll={onRollInteraction} onContinue={onContinueInteraction} /></div> : pendingCheck ? (canAct ? <DiceCheckCard check={pendingCheck} onRoll={onRoll} onCancel={onCancelCheck} /> : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnName}</small></span></div>) : <div className="composer">
+        {interaction ? <div className="composer"><AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onAbstain={onAbstain} onRoll={onRollInteraction} onContinue={onContinueInteraction} /></div> : pendingCheck ? (canAct ? <DiceCheckCard check={pendingCheck} onRoll={onRoll} onCancel={onCancelCheck} /> : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnName}</small></span></div>) : <div className="composer">
         <div className="suggestions-row">
           <button className="ideas-toggle" onClick={() => setSuggestionsOpen(value => !value)}><Sparkles size={14} />Идеи хода<ChevronRight className={suggestionsOpen ? 'rotated' : ''} size={14} /></button>
           {suggestionsOpen && suggestions.map((action) => <button key={action} onClick={() => setText(action)}>{action}</button>)}
@@ -1972,8 +1979,23 @@ function CampaignConclusionScreen({ status, epilogue, busy, canManage, onArchive
   </div>
 }
 
+function ConnectionIndicator({ status }: { status: ConnectionState }) {
+  const labels: Record<ConnectionState, string> = {
+    connecting: 'Подключение…',
+    connected: 'Синхронизация включена',
+    reconnecting: 'Связь восстанавливается…',
+    offline: 'Нет связи с сервером',
+  }
+  const Icon = status === 'connected' ? Wifi : WifiOff
+  return <div className={`connection-status ${status}`} role="status" aria-live="polite" title={labels[status]}>
+    <Icon size={14} />
+    <span>{labels[status]}</span>
+    {status === 'reconnecting' && <RefreshCw className="spinning" size={12} />}
+  </div>
+}
+
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, tacticalBusy, tacticalError, merchantBusy, merchantError, directorBusy, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, advanceAdventure, reset, updatePlayer, updateWorld } = useGameSession()
+  const { state, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorBusy, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, advanceAdventure, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -2117,6 +2139,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           <button className="campaign-title" onClick={() => setCampaignsOpen(true)} title="Переключить кампанию или группу"><span>КАМПАНИЯ · {state.partyName}</span><strong>{state.campaign}</strong><ChevronDown size={15} /></button>
           <div className="top-actions">
             <div className="session-code"><i />КОМНАТА <b>{state.sessionCode}</b></div>
+            <ConnectionIndicator status={connectionState} />
             {pacing && pacing.beat > 0 && <div className={`director-status ${pacing.phase}`} title={lastTravel ? `Последний путь: ${lastTravel.from} → ${lastTravel.to}, ${lastTravel.duration_minutes} мин., риск ${lastTravel.risk_score}` : 'Серверный темп автономной кампании'}><Sparkles size={13} /><span>{pacingLabels[pacing.phase]}</span><b>{pacing.tension}</b></div>}
             {lifecycleStatus === 'active' && !combatActive && accessibleHeroIds.length > 0 && <button className="invite-button director-button" onClick={() => { void advanceAdventure().catch(() => {}) }} disabled={directorBusy} title="Director выберет следующий допустимый этап по подтверждённому состоянию"><Sparkles size={17} />{directorBusy ? 'Режиссёр думает…' : 'Продолжить сюжет'}</button>}
             {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => { void changeLifecycle('pause') }} disabled={lifecycleBusy}>Пауза</button>}
@@ -2135,7 +2158,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
             <DiceTray key={state.sessionCode} latestRoll={state.lastDiceRoll} onRoll={() => rollFreeDie(activePlayer.id)} />
           </div>
-          <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} canFinishTurn={canFinishTurn} turnName={turnActorName} onSend={submitAction} onFinishTurn={finishMapTurn} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} open={chatOpen} onToggle={() => setChatOpen(value => !value)} suggestions={state.suggestions} layoutStorageKey={`${CHAT_LAYOUT_KEY_PREFIX}:${state.sessionCode}`} />
+          <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} canFinishTurn={canFinishTurn} turnName={turnActorName} onSend={submitAction} onFinishTurn={finishMapTurn} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} open={chatOpen} onToggle={() => setChatOpen(value => !value)} suggestions={state.suggestions} layoutStorageKey={`${CHAT_LAYOUT_KEY_PREFIX}:${state.sessionCode}`} />
         </div>}
         {view === 'world-map' && <WorldMapView state={state} busy={state.isNarrating} onTravel={(action) => { void submitAction(action); navigate('room') }} />}
         {view === 'journal' && <JournalView state={state} />}

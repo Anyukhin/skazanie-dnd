@@ -67,7 +67,15 @@ import {
   directorTransitionFingerprint,
   resolvedPartyDecisionReference,
 } from './director-scene-transition.mjs'
-import { partyDecisionOpenedEvent, resolvePartyRoll, resolvePartyVote } from './party-decision.mjs'
+import {
+  partyDecisionActiveVoterIds,
+  partyDecisionExpiryEvents,
+  partyDecisionOpenedEvent,
+  partyDecisionPresenceEvents,
+  resolvePartyAbstain,
+  resolvePartyRoll,
+  resolvePartyVote,
+} from './party-decision.mjs'
 import { compareProjection } from './projection-integrity.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -850,6 +858,33 @@ function connectedHeroIdsForCampaign(campaignId) {
   return new Set([...streamConnections(campaignId).values()].flatMap((connection) => connection.heroIds))
 }
 
+function partyVoterIdForAccount(campaignId, userId) {
+  return `account:${createHash('sha256').update(String(campaignId).toUpperCase()).update('\0').update(String(userId)).digest('hex').slice(0, 24)}`
+}
+
+function partyVoterSnapshot(campaignId, state, eligibleHeroIds) {
+  const policy = state?.partyDecisionPolicy ?? {}
+  const memberships = listCampaignMemberships(campaignId)
+  const ownerByHeroId = new Map()
+  for (const membership of memberships) {
+    for (const heroId of membership.heroIds ?? []) {
+      if (!ownerByHeroId.has(String(heroId))) ownerByHeroId.set(String(heroId), String(membership.userId))
+    }
+  }
+  const voterByHeroId = Object.fromEntries([...new Set(eligibleHeroIds.map(String))].map((heroId) => [
+    heroId,
+    policy.voterScope === 'hero'
+      ? `hero:${heroId}`
+      : ownerByHeroId.has(heroId)
+        ? partyVoterIdForAccount(campaignId, ownerByHeroId.get(heroId))
+        : `hero:${heroId}`,
+  ]))
+  return {
+    voterByHeroId,
+    eligibleVoterIds: [...new Set(Object.values(voterByHeroId))],
+  }
+}
+
 function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
   const connections = streamConnections(campaignId)
@@ -943,6 +978,7 @@ function executeTool(name, args, effects, state = {}) {
       difficulty: args.type === 'roll' ? Math.max(5, Math.min(25, Number(args.difficulty) || 12)) : undefined,
       resolutionPrompt: String(args.resolutionPrompt || '').replace(/\s+/g, ' ').trim().slice(0, 360),
       createdAt: Date.now(),
+      policy: state.partyDecisionPolicy,
     }
     return { opened: true, interaction: effects.interaction }
   }
@@ -1220,7 +1256,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       }
     })
     const sceneChanged = forceProjectorRefresh || ['SceneAdvanced', 'AreaRevealed', 'ObjectiveUpdated', 'EntitySpawned'].some((type) => eventTypes.has(type))
-    const partyDecisionChanged = ['PartyDecisionOpened', 'PartyVoteCast', 'PartyDecisionResolved', 'PartyDecisionConsumed'].some((type) => eventTypes.has(type))
+    const partyDecisionChanged = ['PartyDecisionOpened', 'PartyVoteCast', 'PartyDecisionAbstained', 'PartyDecisionResolved', 'PartyDecisionExpired', 'PartyDecisionConsumed'].some((type) => eventTypes.has(type))
     const messages = [...(room.state.messages ?? [])]
     if (journalMessage?.id && journalMessage?.text && !messages.some((message) => String(message.id) === String(journalMessage.id))) {
       messages.push({
@@ -1302,6 +1338,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
 
 async function reconcileCampaignProjection(campaignId) {
   try {
+    await expirePartyDecisionIfNeeded(campaignId)
     const authoritative = await eventStore.load(campaignId)
     const pending = await eventStore.pendingProjection(campaignId)
     const room = getRoom(campaignId)
@@ -1354,15 +1391,71 @@ async function persistInteractionProjection(campaignId, interaction) {
       : (loaded.state.players ?? []).filter((player) => player.online).map((player) => String(player.id)))
       .filter((candidate) => partyMembers.has(String(candidate)))
     if (!eligibleHeroIds.length) eligibleHeroIds.push(...partyMembers)
+    const voterSnapshot = partyVoterSnapshot(campaignId, loaded.state, eligibleHeroIds)
     try {
       const committed = await eventStore.commit({
         campaign_id: campaignId,
         expected_state_version: loaded.state_version,
         idempotency_key: idempotencyKey,
         command_id: idempotencyKey,
-        events: [partyDecisionOpenedEvent(interaction, null, { eligibleHeroIds })],
+        events: [partyDecisionOpenedEvent(interaction, null, {
+          eligibleHeroIds,
+          eligibleVoterIds: voterSnapshot.eligibleVoterIds,
+          voterByHeroId: voterSnapshot.voterByHeroId,
+          policy: loaded.state.partyDecisionPolicy,
+        })],
       })
       return persistAuthoritativeProjection(campaignId, committed.state, committed.events)
+    } catch (error) {
+      if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
+    }
+  }
+  return null
+}
+
+async function expirePartyDecisionIfNeeded(campaignId, now = Date.now()) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const loaded = await eventStore.load(campaignId)
+    const expiration = partyDecisionExpiryEvents(loaded.state, { now })
+    if (!expiration.events.length) return null
+    const interactionId = String(loaded.state.agentInteraction?.id ?? '')
+    const expiresAt = String(loaded.state.agentInteraction?.expiresAt ?? '')
+    try {
+      return await eventStore.commit({
+        campaign_id: campaignId,
+        expected_state_version: loaded.state_version,
+        idempotency_key: `party-decision-expire:${interactionId}:${expiresAt}`,
+        command_id: `party-decision-expire:${interactionId}:${expiresAt}`,
+        events: expiration.events,
+      })
+    } catch (error) {
+      if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
+    }
+  }
+  return null
+}
+
+async function reconcilePartyDecisionPresence(campaignId) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const loaded = await eventStore.load(campaignId)
+    const interaction = loaded.state.agentInteraction
+    if (!interaction || interaction.status !== 'open' || loaded.state.partyDecisionPolicy?.disconnectAction !== 'abstain') return null
+    const connectedHeroIds = connectedHeroIdsForCampaign(campaignId)
+    const activeVoterIds = partyDecisionActiveVoterIds(interaction, [...connectedHeroIds])
+    const presence = partyDecisionPresenceEvents(loaded.state, { activeVoterIds })
+    if (!presence.events.length) return null
+    const id = String(interaction.id)
+    const activeKey = activeVoterIds.slice().sort().join(',') || 'none'
+    try {
+      const committed = await eventStore.commit({
+        campaign_id: campaignId,
+        expected_state_version: loaded.state_version,
+        idempotency_key: `party-decision-presence:${id}:${activeKey}`,
+        command_id: `party-decision-presence:${id}:${activeKey}`,
+        events: presence.events,
+      })
+      persistAuthoritativeProjection(campaignId, committed.state, committed.events)
+      return committed
     } catch (error) {
       if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
     }
@@ -1523,7 +1616,11 @@ const server = createServer(async (req, res) => {
       connection.closed = true
       clearInterval(heartbeat)
       streamConnections(campaignId).delete(connectionId)
-      queueMicrotask(() => broadcastCampaignRoom(campaignId))
+      queueMicrotask(() => {
+        void reconcilePartyDecisionPresence(campaignId)
+          .catch((error) => console.error('[Сказание] Не удалось зафиксировать отключение участника:', error?.message || error))
+          .finally(() => broadcastCampaignRoom(campaignId))
+      })
     }
     req.once('close', close)
     req.once('aborted', close)
@@ -1553,12 +1650,17 @@ const server = createServer(async (req, res) => {
           ? [...connected]
           : (loaded.state.players ?? []).filter((player) => player.online).map((player) => String(player.id)))
           .filter((candidate) => partyMembers.has(String(candidate)))
-        const vote = resolvePartyVote(loaded.state, {
-          interactionId: partyVoteMatch[2],
-          heroId,
-          optionId: body.option_id,
-          eligibleHeroIds: eligible,
-        })
+        const vote = body.abstain === true
+          ? resolvePartyAbstain(loaded.state, {
+            interactionId: partyVoteMatch[2],
+            heroId,
+          })
+          : resolvePartyVote(loaded.state, {
+            interactionId: partyVoteMatch[2],
+            heroId,
+            optionId: body.option_id,
+            eligibleHeroIds: eligible,
+          })
         try {
           committed = await eventStore.commit({
             campaign_id: campaignId,
@@ -1582,7 +1684,7 @@ const server = createServer(async (req, res) => {
         state_version: committed.state_version,
       })
     } catch (error) {
-      const status = ['STATE_VERSION_CONFLICT', 'PARTY_DECISION_CONFLICT', 'PARTY_DECISION_CLOSED'].includes(error?.code) ? 409
+      const status = ['STATE_VERSION_CONFLICT', 'PARTY_DECISION_CONFLICT', 'PARTY_DECISION_CLOSED', 'PARTY_DECISION_ABSTAINED'].includes(error?.code) ? 409
         : error?.code === 'ACTOR_FORBIDDEN' ? 403 : 400
       return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось записать голос', code: error?.code })
     }
@@ -1634,7 +1736,7 @@ const server = createServer(async (req, res) => {
         roll: resolutionEvent?.payload?.roll,
       })
     } catch (error) {
-      const status = ['STATE_VERSION_CONFLICT', 'PARTY_DECISION_CONFLICT', 'PARTY_DECISION_CLOSED'].includes(error?.code) ? 409
+      const status = ['STATE_VERSION_CONFLICT', 'PARTY_DECISION_CONFLICT', 'PARTY_DECISION_CLOSED', 'PARTY_DECISION_ABSTAINED'].includes(error?.code) ? 409
         : error?.code === 'ACTOR_FORBIDDEN' ? 403 : 400
       return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось выполнить общий бросок', code: error?.code })
     }
@@ -2546,7 +2648,7 @@ const server = createServer(async (req, res) => {
         })
       }
       const campaignId = String(body.campaignId || body.campaign_id || '')
-      const room = getRoom(campaignId)
+      const room = await reconcileCampaignProjection(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       assertCampaignPlayable(room.state)

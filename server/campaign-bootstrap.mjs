@@ -7,6 +7,7 @@ import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './
 import { withStarterKit } from './starter-kit.mjs'
 import { ensureSceneWorldMemory } from './scene-memory.mjs'
 import { createCampaignWorldMap } from './world-map.mjs'
+import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v1.txt', import.meta.url)), 'utf8')
 
@@ -266,6 +267,7 @@ export class CampaignBootstrapper {
       campaign: campaignName === 'Новая кампания' ? opening.campaignName : campaignName,
       partyName: groupName === 'Новый отряд' ? opening.partyName : groupName,
       partyMemberIds: positionedHeroes.map((hero) => hero.id),
+      partyDecisionPolicy: structuredClone(DEFAULT_PARTY_DECISION_POLICY),
       campaignConcept: { ...world, worldSummary: opening.worldSummary, worldHistory: opening.worldHistory, generatedBy },
       worldMap: campaignWorldMap,
       worldMemory: initialWorldMemory,

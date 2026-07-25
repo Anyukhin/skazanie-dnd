@@ -4,7 +4,7 @@ import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaig
 import { createSceneTransition, publicAdventureMemory } from './adventure-director.mjs'
 import { ensureCampaignWorldMap } from './world-map.mjs'
 import { normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
-import { normalizePartyDecision } from './party-decision.mjs'
+import { normalizePartyDecision, normalizePartyDecisionPolicy } from './party-decision.mjs'
 import {
   WORLD_MEMORY_COMMAND_TYPES,
   WorldMemoryValidationError,
@@ -992,6 +992,12 @@ export function normalizeCampaignState(input = {}) {
   state.worldMemory = ensureSceneWorldMemory(state.worldMemory, state)
   state.social = ensureNpcSocialState(state.social, state)
   state.autonomy = normalizeAutonomyState(state.autonomy)
+  state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
+  if (state.agentInteraction && typeof state.agentInteraction === 'object' && !Array.isArray(state.agentInteraction)) {
+    try {
+      state.agentInteraction = normalizePartyDecision(state.agentInteraction, { policy: state.partyDecisionPolicy })
+    } catch { /* Сохраняем legacy-метаданные решения для scene-команд. */ }
+  }
   return state
 }
 
@@ -5860,7 +5866,7 @@ export function applyGameEvent(rawState, event) {
       }
       break
     case 'PartyDecisionOpened':
-      state.agentInteraction = normalizePartyDecision(payload.interaction)
+      state.agentInteraction = normalizePartyDecision(payload.interaction, { policy: state.partyDecisionPolicy })
       break
     case 'PartyVoteCast': {
       if (state.agentInteraction?.id !== String(payload.interaction_id) || state.agentInteraction.status !== 'open') break
@@ -5868,10 +5874,35 @@ export function applyGameEvent(rawState, event) {
       const heroId = String(payload.hero_id ?? '')
       const optionId = String(payload.option_id ?? '')
       if (heroId && optionIds.has(optionId)) {
+        const votes = plainObject(payload.votes)
+          ? clone(payload.votes)
+          : { ...state.agentInteraction.votes, [heroId]: optionId }
         state.agentInteraction = {
           ...state.agentInteraction,
-          votes: { ...state.agentInteraction.votes, [heroId]: optionId },
+          votes,
+          ...(Array.isArray(payload.active_voter_ids) ? { activeVoterIds: payload.active_voter_ids.map(String) } : {}),
+          ...(Array.isArray(payload.eligible_voter_ids) ? { eligibleVoterIds: payload.eligible_voter_ids.map(String) } : {}),
+          ...(Number.isSafeInteger(payload.required_votes) ? { requiredVotes: payload.required_votes } : {}),
         }
+      }
+      break
+    }
+    case 'PartyDecisionAbstained': {
+      if (state.agentInteraction?.id !== String(payload.interaction_id) || state.agentInteraction.status !== 'open') break
+      const abstainedVoterIds = Array.isArray(payload.abstained_voter_ids)
+        ? [...new Set(payload.abstained_voter_ids.map(String))]
+        : state.agentInteraction.abstainedVoterIds
+      const abstentions = plainObject(payload.abstentions)
+        ? { ...state.agentInteraction.abstentions, ...clone(payload.abstentions) }
+        : state.agentInteraction.abstentions
+      state.agentInteraction = {
+        ...state.agentInteraction,
+        votes: plainObject(payload.votes) ? clone(payload.votes) : state.agentInteraction.votes,
+        ...(Array.isArray(payload.active_voter_ids) ? { activeVoterIds: payload.active_voter_ids.map(String) } : {}),
+        ...(Array.isArray(payload.eligible_voter_ids) ? { eligibleVoterIds: payload.eligible_voter_ids.map(String) } : {}),
+        abstainedVoterIds,
+        abstentions,
+        ...(Number.isSafeInteger(payload.required_votes) ? { requiredVotes: payload.required_votes } : {}),
       }
       break
     }
@@ -5884,7 +5915,29 @@ export function applyGameEvent(rawState, event) {
         votes: clone(plainObject(payload.votes) ? payload.votes : state.agentInteraction.votes),
         status: 'resolved',
         resolvedOptionId: optionId,
+        ...(Array.isArray(payload.active_voter_ids) ? { activeVoterIds: payload.active_voter_ids.map(String) } : {}),
+        ...(Array.isArray(payload.eligible_voter_ids) ? { eligibleVoterIds: payload.eligible_voter_ids.map(String) } : {}),
+        ...(Array.isArray(payload.abstained_voter_ids) ? { abstainedVoterIds: payload.abstained_voter_ids.map(String) } : {}),
+        ...(Number.isSafeInteger(payload.required_votes) ? { requiredVotes: payload.required_votes } : {}),
+        ...(payload.resolution_reason ? { resolutionReason: String(payload.resolution_reason).slice(0, 80) } : {}),
         ...(plainObject(payload.roll) ? { roll: clone(payload.roll) } : {}),
+      }
+      break
+    }
+    case 'PartyDecisionExpired': {
+      if (state.agentInteraction?.id !== String(payload.interaction_id) || state.agentInteraction.status !== 'open') break
+      const optionId = String(payload.resolved_option_id ?? '')
+      if (!state.agentInteraction.options.some((option) => String(option.id) === optionId)) break
+      state.agentInteraction = {
+        ...state.agentInteraction,
+        votes: clone(plainObject(payload.votes) ? payload.votes : state.agentInteraction.votes),
+        status: 'resolved',
+        resolvedOptionId: optionId,
+        ...(Array.isArray(payload.active_voter_ids) ? { activeVoterIds: payload.active_voter_ids.map(String) } : {}),
+        ...(Array.isArray(payload.eligible_voter_ids) ? { eligibleVoterIds: payload.eligible_voter_ids.map(String) } : {}),
+        ...(Array.isArray(payload.abstained_voter_ids) ? { abstainedVoterIds: payload.abstained_voter_ids.map(String) } : {}),
+        ...(Number.isSafeInteger(payload.required_votes) ? { requiredVotes: payload.required_votes } : {}),
+        resolutionReason: 'expired',
       }
       break
     }
@@ -6966,7 +7019,9 @@ export function eventSummary(event) {
   switch (event.event_type) {
     case 'PartyDecisionOpened': return `Party decision opened: ${payload.interaction?.title || payload.interaction?.id}`
     case 'PartyVoteCast': return `${payload.hero_id || event.actor_id} voted for ${payload.option_id}`
+    case 'PartyDecisionAbstained': return `${payload.hero_id || payload.voter_id || event.actor_id || 'Участник'} abstained (${payload.reason || 'abstain'})`
     case 'PartyDecisionResolved': return `Party decision resolved: ${payload.resolved_option_id}`
+    case 'PartyDecisionExpired': return `Party decision expired: ${payload.resolved_option_id}`
     case 'PartyDecisionConsumed': return `Party decision consumed: ${payload.resolved_option_id}`
     case 'NpcSocialProfileUpserted': return `NPC profile updated: ${payload.npc?.name || payload.npc?.id}`
     case 'NpcConversationRecorded': return `Conversation recorded with ${payload.conversation?.npc_id}`

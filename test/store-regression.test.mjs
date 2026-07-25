@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -57,6 +58,27 @@ test('transient narration progress is never persisted as campaign state', async 
   assert.equal(saved.conflict, false)
   assert.equal(saved.room.state.isNarrating, false)
   assert.equal(store.getRoom('LOADING-1').state.isNarrating, false)
+})
+
+test('два параллельных createSession не теряют сессии в auth.json', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-auth-race-'))
+  writeFileSync(join(root, 'auth.json'), JSON.stringify({
+    users: [{ id: 'user-1', email: 'race@example.test', name: 'Race', role: 'player', heroIds: [] }],
+    sessions: [], memberships: [], invites: [],
+  }), 'utf8')
+  const childCode = "const { createSession } = await import('./server/store.mjs'); createSession('user-1')"
+  const runChild = () => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', childCode], {
+      cwd: process.cwd(),
+      env: { ...process.env, DND_STORAGE_DIR: root },
+      stdio: 'ignore',
+    })
+    child.once('error', reject)
+    child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`child exited with ${code}`)))
+  })
+  await Promise.all([runChild(), runChild()])
+  const auth = JSON.parse(readFileSync(join(root, 'auth.json'), 'utf8'))
+  assert.equal(auth.sessions.length, 2)
 })
 
 test('campaign invites are scoped, single-use and idempotent for the same account', async () => {
