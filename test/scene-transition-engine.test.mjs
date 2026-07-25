@@ -160,6 +160,20 @@ function advanceCommand(overrides = {}) {
   }
 }
 
+function structuralCells(cells) {
+  return (Array.isArray(cells) ? cells : [])
+    .map(({ revealed, ...cell }) => cell)
+    .sort((left, right) => left.y - right.y || left.x - right.x)
+}
+
+function playableCells() {
+  return Array.from({ length: 13 * 9 }, (_, index) => {
+    const x = index % 13
+    const y = Math.floor(index / 13)
+    return { x, y, type: 'floor', revealed: x <= 2, material: 'stone', variant: 0, pattern: 'small-room', edge_mask: '' }
+  })
+}
+
 test('AdvanceScene разрешён только admin/director context и не требует actor_id', () => {
   const state = baseState()
   for (const context of [{}, { isAdmin: false }, { isDirector: false }]) {
@@ -289,4 +303,55 @@ test('SceneAdvanced reducer очищает старую сцену, размещ
   const batch = resolveCommands([command], initial, options({ isDirector: true }))
   assert.deepEqual(batch.state, next)
   assert.deepEqual(replayEvents(initial, batch.events), batch.state)
+})
+
+test('повторный вход использует карту location_id, сохраняет изменение и replay-ит её', () => {
+  const initial = baseState({
+    scene: {
+      title: 'Старый склеп', location: 'Склеп Норвин', mood: 'Холод', objective: 'Найти печать', turn: 7,
+      cells: playableCells(),
+    },
+  })
+  const locationId = initial.worldMap.currentLocationId
+  const changedCell = initial.scene.cells.find((cell) => cell.x === 4 && cell.y === 4)
+
+  const mutation = resolveCommand({
+    command_type: 'SpawnEntity',
+    entity: { id: 'opened-chest', kind: 'chest', x: changedCell.x, y: changedCell.y },
+  }, initial, options({ isAdmin: true }))
+  const changed = mutation.events.reduce((state, event) => applyGameEvent(state, event), initial)
+  assert.equal(changed.locationMaps[locationId].cells.find((cell) => cell.x === changedCell.x && cell.y === changedCell.y)?.feature, 'chest')
+
+  const leave = resolveCommand(advanceCommand({
+    expected_state_version: changed.state_version,
+    party_decision: undefined,
+    scene_args: { ...sceneArgs(), location: 'Северный город' },
+  }), changed, options({ isAdmin: true }))
+  const away = leave.events.reduce((state, event) => applyGameEvent(state, event), changed)
+
+  const returned = resolveCommand(advanceCommand({
+    expected_state_version: away.state_version,
+    party_decision: undefined,
+    scene_args: {
+      ...sceneArgs(),
+      title: 'Возвращение в склеп',
+      location: 'Другая подпись не должна менять ID',
+      location_id: locationId,
+      theme: 'совсем другая геометрия',
+      seed: 'chapter-999-random-seed',
+      map: { layout: 'open', width: 25, height: 19 },
+    },
+  }), away, options({ isAdmin: true }))
+  const returnEvent = returned.events.find((event) => event.event_type === 'SceneAdvanced')
+  assert.equal(returnEvent.payload.scene.location_id, locationId)
+  assert.deepEqual(structuralCells(returnEvent.payload.scene.cells), structuralCells(changed.locationMaps[locationId].cells))
+  assert.equal(returnEvent.payload.scene.cells.find((cell) => cell.x === changedCell.x && cell.y === changedCell.y)?.feature, 'chest')
+
+  const sequential = returned.events.reduce(
+    (state, event) => applyGameEvent(state, event),
+    leave.events.reduce((state, event) => applyGameEvent(state, event), changed),
+  )
+  const replayed = replayEvents(initial, [...mutation.events, ...leave.events, ...returned.events])
+  assert.deepEqual(replayed, sequential)
+  assert.equal(replayed.locationMaps[locationId].cells.find((cell) => cell.x === changedCell.x && cell.y === changedCell.y)?.feature, 'chest')
 })

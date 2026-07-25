@@ -4,6 +4,13 @@ import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
 
 const WIDTH = 13
 const HEIGHT = 9
+const MAP_CELL_TYPES = new Set(['wall', 'floor', 'water', 'door'])
+const MAP_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
+const MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
+
+function clone(value) {
+  return structuredClone(value)
+}
 
 function text(value, maxLength, fallback = '') {
   const normalized = String(value ?? '').replace(/\s+/g, ' ').trim()
@@ -24,6 +31,98 @@ function publicTextList(value, maximum, limit) {
     .filter((item) => typeof item === 'string')
     .map((item) => text(item, maximum))
     .filter(Boolean))].slice(-limit)
+}
+
+function normalizedSceneCells(value) {
+  const source = Array.isArray(value)
+    ? value
+    : value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.cells)
+      ? value.cells
+      : []
+  const seen = new Set()
+  return source.slice(0, 500).flatMap((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+    const x = Number(raw.x)
+    const y = Number(raw.y)
+    if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return []
+    const position = `${x},${y}`
+    if (seen.has(position)) return []
+    seen.add(position)
+    const cell = {
+      x,
+      y,
+      type: MAP_CELL_TYPES.has(String(raw.type)) ? String(raw.type) : 'floor',
+      revealed: raw.revealed === true,
+    }
+    if (typeof raw.feature === 'string' && raw.feature.trim()) cell.feature = raw.feature.trim().slice(0, 40)
+    if (MAP_MATERIALS.has(String(raw.material))) cell.material = String(raw.material)
+    if (Number.isSafeInteger(Number(raw.variant))) cell.variant = Math.max(0, Math.min(5, Number(raw.variant)))
+    if (MAP_PATTERNS.has(String(raw.pattern))) cell.pattern = String(raw.pattern)
+    if (typeof raw.edge_mask === 'string' && /^[nesw]{0,4}$/u.test(raw.edge_mask)) cell.edge_mask = raw.edge_mask
+    return [cell]
+  })
+}
+
+function sceneMapRecord(value) {
+  const cells = normalizedSceneCells(value)
+  return cells.length ? { version: 1, cells } : null
+}
+
+/**
+ * Тактические карты хранятся отдельно от публичных узлов мировой карты.
+ * Само состояние карты меняется только при применении событий; индекс делает
+ * поиск локации независимым от главы, в которой она была посещена.
+ */
+export function normalizeLocationMaps(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).slice(0, 100).flatMap(([locationId, raw]) => {
+    const id = text(locationId, 120)
+    const record = sceneMapRecord(raw)
+    return id && record ? [[id, record]] : []
+  }))
+}
+
+export function sceneMapForLocation(locationMaps, locationId) {
+  const id = text(locationId, 120)
+  const record = id ? sceneMapRecord(locationMaps?.[id]) : null
+  return record ? clone(record.cells) : null
+}
+
+export function sceneLocationId(state = {}) {
+  const direct = publicText(state.scene?.location_id ?? state.scene?.locationId, 120)
+  if (direct) return direct
+  const current = publicText(state.worldMap?.currentLocationId, 120)
+  if (current) return current
+  const expected = publicText(state.scene?.location, 120).toLocaleLowerCase('ru')
+  if (!expected) return ''
+  return publicText(
+    (Array.isArray(state.worldMap?.locations) ? state.worldMap.locations : [])
+      .find((location) => publicText(location?.name, 120).toLocaleLowerCase('ru') === expected)?.id,
+    120,
+  )
+}
+
+export function rememberSceneMap(state, locationId, cells) {
+  const id = publicText(locationId, 120)
+  const record = sceneMapRecord(cells)
+  if (!id || !record) return state
+  state.locationMaps = {
+    ...normalizeLocationMaps(state.locationMaps),
+    [id]: record,
+  }
+  return state
+}
+
+export function rememberCurrentSceneMap(state) {
+  const cells = state?.scene?.cells
+  if (!Array.isArray(cells) || !cells.length) return state
+  return rememberSceneMap(state, sceneLocationId(state), cells)
+}
+
+function stableLocationMapSeed(worldMap, locationId, location) {
+  const campaignSeed = publicText(worldMap?.seed, 120, 'campaign')
+  const stableId = publicText(locationId, 120, publicText(location, 120, 'location'))
+  return `location-map:v1:${campaignSeed}:${stableId}`
 }
 
 function publicHistoryEntry(value) {
@@ -118,7 +217,6 @@ export function createSceneTransition(input = {}, state = {}) {
   const hook = text(input.hook, 240, objective)
   const theme = text(input.theme, 80, location)
   const danger = ['низкая', 'средняя', 'высокая'].includes(input.danger) ? input.danger : 'средняя'
-  const seed = text(input.seed, 120, `${state.sessionCode ?? 'campaign'}:${chapter}:${location}`)
   const completedObjective = text(input.completed_objective, 160, previousScene.objective)
   const objectiveStatus = ['completed', 'unresolved', 'abandoned'].includes(input.objective_status) ? input.objective_status : 'completed'
   const historyEntry = {
@@ -138,7 +236,6 @@ export function createSceneTransition(input = {}, state = {}) {
     unresolvedThreads.push(text(previousAdventure.currentHook || previousScene.objective, 240))
   }
 
-  const scene = { title, location, mood, objective, turn: Math.max(0, Number(previousScene.turn) || 0) + 1, cells: generateDynamicSceneMap({ seed, theme, danger, ...(input.map ?? {}) }) }
   const worldMap = reconcileWorldMap(state.worldMap, {
     seed: state.worldMap?.seed || state.sessionCode,
     campaignName: state.campaign,
@@ -146,13 +243,30 @@ export function createSceneTransition(input = {}, state = {}) {
     currentLocation: location,
     currentLocationId: requestedLocationId,
     previousLocation: previousScene.location || previousScene.title,
-    previousLocationId: previousScene.location_id ?? previousScene.locationId,
+    previousLocationId: previousScene.location_id ?? previousScene.locationId ?? sceneLocationId(state),
     knownLocations: [...previousAdventure.visitedLocations, location],
     transition,
-    scene: { ...scene, scene_kind: input.scene_kind, danger },
+    scene: { objective, scene_kind: input.scene_kind, danger },
   })
 
-  scene.location_id = worldMap.currentLocationId
+  const locationId = worldMap.currentLocationId
+  const rememberedMap = sceneMapForLocation(state.locationMaps, locationId)
+    ?? (sceneLocationId(state) === locationId ? normalizedSceneCells(previousScene.cells) : null)
+  const cells = rememberedMap ?? generateDynamicSceneMap({
+    ...(input.map && typeof input.map === 'object' && !Array.isArray(input.map) ? input.map : {}),
+    seed: stableLocationMapSeed(worldMap, locationId, location),
+    theme,
+    danger,
+  })
+  const scene = {
+    title,
+    location,
+    location_id: locationId,
+    mood,
+    objective,
+    turn: Math.max(0, Number(previousScene.turn) || 0) + 1,
+    cells,
+  }
 
   return {
     scene,
