@@ -96,15 +96,28 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .invite-button { height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid rgba(214,161,96,.35); border-radius: 5px; color: #dfb477; background: rgba(192,132,66,.09); font-size: 11px; cursor: pointer; }
 .invite-button:hover { background: rgba(192,132,66,.16); }
 .mobile-menu { display: none; }
-.game-area { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #090908; }
-.scene-header { position: absolute; z-index: 8; top: 22px; left: 27px; right: 27px; display: flex; align-items: flex-start; pointer-events: none; }
+/* Панели забирают место в сетке, а не плавают над доской, поэтому их размер прямо
+   вычитается из полотна: на 1440×900 те же 420/320 px оставили бы доске 744×436 и
+   клетку 33 px — ровно ту, из-за которой бой и был тесным. Компактные значения по
+   умолчанию, просторные — только когда ширины действительно хватает. */
+.game-area { --status: 60px; --server-column: 320px; --rail: 246px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--rail); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
+@media (min-width: 1920px) {
+  .game-area { --status: 72px; --server-column: 420px; --rail: 320px; }
+}
+.status-bar { grid-area: status; min-width: 0; display: flex; align-items: center; gap: 18px; padding: 0 26px; border-bottom: 1px solid var(--line); background: rgba(18,16,14,.97); overflow: hidden; }
+.scene-header { position: relative; z-index: auto; flex: 1 1 0; min-width: 0; display: flex; align-items: center; pointer-events: none; }
 .scene-title > span, .objective small { color: #b1814a; font-size: 8px; font-weight: 700; letter-spacing: .18em; }
 .scene-title h1 { margin: 3px 0 0; font-family: Spectral, Georgia, serif; font-size: clamp(24px, 2.3vw, 34px); line-height: 1.05; font-weight: 600; color: #ede4d7; text-shadow: 0 2px 14px #000; }
 .scene-title p { display: flex; align-items: center; gap: 6px; margin: 7px 0 0; color: #92887d; font-family: Spectral, serif; font-size: 11px; }
 .objective { display: flex; flex-direction: column; margin: 6px 48px 0 auto; padding: 7px 12px 8px; border-left: 1px solid rgba(211,153,86,.38); background: linear-gradient(90deg, rgba(10,9,8,.7), transparent); text-align: right; }
 .objective strong { margin-top: 4px; color: #bfb4a6; font-family: Spectral, serif; font-size: 11px; font-weight: 500; }
 .reset-button { position: absolute; top: 2px; right: 0; pointer-events: auto; background: rgba(20,18,15,.65); border: 1px solid var(--line); }
-.map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; perspective: 1200px; perspective-origin: 50% 42%; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
+.server-column { grid-area: server; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow: hidden; }
+.server-column > .combat-context-panel { grid-row: 1; min-width: 0; min-height: 0; }
+.server-column > .chat-panel { grid-row: 2; min-width: 0; min-height: 0; }
+.server-column > .chat-closed { grid-row: 2; position: static; right: auto; bottom: auto; justify-self: end; align-self: end; }
+.server-column > .player-hud-stack { grid-row: 3; }
+.map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; perspective: 1200px; perspective-origin: 50% 42%; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
 .map-stage::before { content: ''; position: absolute; inset: 0; opacity: .12; background-image: repeating-linear-gradient(35deg, transparent 0 15px, rgba(255,255,255,.025) 16px 17px), repeating-linear-gradient(125deg, transparent 0 22px, rgba(0,0,0,.3) 23px 24px); }
 .map-stage.map-theme-tech { --map-floor: #53646a; --map-floor-alt: #5c6e73; --map-wall: #26373c; --map-grid-line: rgba(121,207,207,.2); background: radial-gradient(ellipse at 54% 43%, #3f6269 0%, #192a2f 58%, #080b0d 88%); }
 .map-stage.map-theme-wild { --map-floor: #71834a; --map-floor-alt: #7b8d52; --map-wall: #354129; --map-grid-line: rgba(70,86,40,.24); background: radial-gradient(ellipse at 54% 43%, #66764a 0%, #2c3824 58%, #0b1008 88%); }
@@ -220,15 +233,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .zoom-control span { width: 41px; color: #766e66; font-size: 8px; text-align: center; }
 .zoom-control .map-drag-label { width: 96px; align-self: stretch; display: grid; place-items: center; border-right: 1px solid var(--line); color: #9b784e; font-size: 7px; font-weight: 700; letter-spacing: .08em; }
 .zoom-control button:focus-visible { position: relative; z-index: 1; outline: 2px solid #d6a160; outline-offset: -2px; }
-.turn-indicator { position: absolute; z-index: 6; left: 50%; top: 23px; display: flex; flex-direction: column; align-items: center; transform: translateX(-50%); text-shadow: 0 2px 8px #000; }
-.turn-indicator.exploration { display: none; }
-.turn-indicator > small { margin-bottom: 4px; color: #9b6f49; font: 700 6px Manrope, sans-serif; letter-spacing: .16em; }
-.turn-indicator span { color: #857b70; font-size: 7px; letter-spacing: .18em; }
-.turn-indicator strong { margin-top: 3px; font-family: Spectral, serif; color: #c6a16e; font-size: 11px; }
-.turn-indicator i { width: 28px; margin-top: 5px; border-bottom: 1px solid rgba(199,151,86,.45); }
-
-.player-hud { position: absolute; z-index: 7; top: 132px; right: 27px; width: 246px; padding: 11px; border: 1px solid rgba(211,184,149,.14); border-radius: 7px; background: rgba(17,15,13,.84); box-shadow: 0 15px 40px rgba(0,0,0,.38); backdrop-filter: blur(13px); }
-.player-hud-stack { position: absolute; z-index: 7; top: 132px; right: 27px; width: 246px; display: grid; gap: 8px; }
+.player-hud { position: relative; z-index: auto; top: auto; right: auto; width: 100%; padding: 11px; border: 1px solid rgba(211,184,149,.14); border-radius: 7px; background: rgba(17,15,13,.84); box-shadow: 0 15px 40px rgba(0,0,0,.38); backdrop-filter: blur(13px); }
+.player-hud-stack { position: static; z-index: auto; grid-row: 3; min-width: 0; width: auto; display: grid; gap: 8px; }
 .player-hud-stack > .player-hud { position: relative; inset: auto; width: 100%; }
 .player-hud-stack > .dice-tray:not(.dice-tray--rolling) { position: relative; inset: auto; width: 100%; }
 .player-hud-stack > .dice-tray:not(.dice-tray--rolling) .dice-tray__button { min-height: 62px; grid-template-columns: 55px minmax(0, 1fr); padding: 4px 8px 4px 4px; }
@@ -252,7 +258,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .hud-hazards { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; padding: 7px 8px; border: 1px solid rgba(190,76,55,.28); border-radius: 4px; background: rgba(139,45,34,.13); color: #c36b59; }
 .hud-hazards span { min-width: 0; display: grid; }.hud-hazards small { color: #8d5147; font-size: 5px; font-weight: 800; letter-spacing: .1em; }.hud-hazards b { overflow: hidden; color: #d39a8e; font: 600 9px Spectral,serif; text-overflow: ellipsis; white-space: nowrap; }
 
-.chat-panel { position: absolute; z-index: 10; left: 24px; right: 24px; bottom: 20px; height: min(38vh, 390px); min-height: 300px; display: grid; grid-template-rows: 41px 1fr auto; border: 1px solid rgba(211,184,149,.15); border-radius: 7px; background: rgba(20,18,15,.95); box-shadow: 0 20px 60px rgba(0,0,0,.75); backdrop-filter: blur(18px); overflow: hidden; animation: chatIn .22s ease-out; }
+.chat-panel { position: static; z-index: auto; left: auto; right: auto; top: auto; bottom: auto; width: auto; height: auto; min-width: 0; min-height: 0; display: grid; grid-template-rows: 41px minmax(0, 1fr) auto; border: 1px solid rgba(211,184,149,.15); border-radius: 7px; background: rgba(20,18,15,.95); box-shadow: 0 20px 60px rgba(0,0,0,.75); backdrop-filter: blur(18px); overflow: hidden; animation: chatIn .22s ease-out; }
 .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 15px; border-bottom: 1px solid var(--line); }
 .chat-head > div { display: flex; align-items: center; gap: 9px; }
 .chat-head svg { color: #a77c4b; }
@@ -422,8 +428,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .campaign-title { margin-right: auto; margin-left: 5px; }.campaign-title strong { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }.campaign-title span { display: none; }
   .session-code, .top-actions > .icon-button { display: none; }.connection-status { padding: 0 8px; }.connection-status span { display: none; }.invite-button { width: 35px; padding: 0; justify-content: center; }.invite-button { font-size: 0; }
   .account-chip > span { display: none; }.account-chip { padding-left: 5px; }
-  .scene-header { top: 15px; left: 16px; right: 16px; }.scene-title h1 { font-size: 23px; }.reset-button { right: 0; }
-  .turn-indicator { display: none; }
+  .scene-header { top: auto; left: auto; right: auto; }.scene-title h1 { font-size: 23px; }.reset-button { right: 0; }
   .map-scroll { margin-top: -135px; }
   .map-legend { left: 12px; bottom: 18px; gap: 10px; }.zoom-control { right: 12px; top: 82px; height: 40px; }.zoom-control button { width: 40px; min-width: 40px; }.zoom-control .map-drag-label { width: 104px; }
   .chat-panel { left: 7px; right: 7px; bottom: 7px; height: min(52vh, 430px); min-height: 335px; }
@@ -439,12 +444,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    modern party CRPGs while keeping every icon and surface native to Skazanie. */
 .spellbook-panel { position: absolute; z-index: 60; inset: 56px max(24px, 7vw) 154px; display: grid; grid-template-rows: auto auto 1fr; overflow: hidden; border: 1px solid rgba(191,145,89,.38); border-radius: 10px; background: linear-gradient(145deg, rgba(23,20,17,.985), rgba(9,12,11,.99)); box-shadow: 0 25px 90px rgba(0,0,0,.8), inset 0 1px rgba(255,255,255,.04); backdrop-filter: blur(22px); }
 .spellbook-panel > header { min-height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,.065); background: linear-gradient(90deg, rgba(124,78,39,.14), transparent); }
-body:has(.spellbook-panel) .game-area > .chat-panel,
-body:has(.spellbook-panel) .game-area > .chat-closed,
-body:has(.spellbook-panel) .game-area > .dice-tray,
-body:has(.spellbook-panel) .game-area > .player-hud-stack,
-body:has(.spellbook-panel) .game-area .scene-header,
-body:has(.spellbook-panel) .game-area .turn-indicator { visibility: hidden; pointer-events: none; }
+body:has(.spellbook-panel) .game-area .server-column,
+body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointer-events: none; }
 .spellbook-panel > header > div, .spellbook-panel > header span { display: flex; align-items: center; gap: 9px; }
 .spellbook-panel > header span { align-items: flex-start; flex-direction: column; gap: 1px; }
 .spellbook-panel > header small { color: #7d705f; font: 700 7px Manrope, sans-serif; letter-spacing: .12em; }
@@ -481,7 +482,7 @@ body:has(.spellbook-panel) .game-area .turn-indicator { visibility: hidden; poin
 .spellbook-panel article.support-heuristic, .spellbook-panel article.support-ruling-only { border-color: rgba(197,116,96,.28); }
 
 .combat-hotbar .action-tile.spellbook-tile { color: #d0a96f; background: radial-gradient(circle at 50% 18%, rgba(145,99,48,.22), rgba(28,22,16,.94) 70%); }
-.combat-hotbar.tactical-control { top: auto; left: 50%; right: auto; bottom: 14px; width: min(1240px, calc(100% - 300px)); max-height: none; overflow: visible; padding: 0; transform: translateX(-50%); border-color: rgba(211,160,97,.28); border-radius: 9px; background: linear-gradient(180deg, rgba(28,23,18,.97), rgba(12,11,9,.98)); box-shadow: 0 18px 55px rgba(0,0,0,.72), inset 0 1px rgba(255,255,255,.035); backdrop-filter: blur(16px); }
+.combat-hotbar.tactical-control { grid-area: rail; width: auto; max-height: none; overflow: visible; padding: 12px 18px 14px; border-color: rgba(211,160,97,.28); border-radius: 9px; background: linear-gradient(180deg, rgba(28,23,18,.97), rgba(12,11,9,.98)); box-shadow: 0 18px 55px rgba(0,0,0,.72), inset 0 1px rgba(255,255,255,.035); backdrop-filter: blur(16px); }
 .combat-hotbar::before { content: ''; position: absolute; inset: -1px 18% auto; height: 1px; background: linear-gradient(90deg, transparent, rgba(221,167,99,.72), transparent); }
 .hotbar-economy { position: absolute; left: 50%; bottom: calc(100% + 7px); display: flex; align-items: stretch; gap: 4px; transform: translateX(-50%); padding: 4px; border: 1px solid rgba(211,160,97,.18); border-radius: 7px; background: rgba(13,11,9,.94); box-shadow: 0 7px 22px rgba(0,0,0,.45); }
 .hotbar-economy > span { min-width: 66px; height: 27px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 7px; border-radius: 4px; color: #80756a; }
@@ -554,7 +555,7 @@ body:has(.spellbook-panel) .game-area .turn-indicator { visibility: hidden; poin
 .combat-hotbar > .tactical-command-status { position: absolute; left: 10px; bottom: calc(100% + 45px); margin: 0; padding: 6px 9px; border-radius: 4px; background: rgba(15,13,11,.92); }
 .combat-hotbar > .tactical-command-error { position: absolute; right: 0; bottom: calc(100% + 44px); width: min(360px, 70vw); margin: 0; }
 .combat-hotbar > .tactical-command-error button { width: 18px; margin: -3px -3px 0 0; }
-.exploration-hotbar.tactical-control { top: auto; left: 50%; right: auto; bottom: 17px; width: min(850px, calc(100% - 420px)); min-height: 76px; display: grid; grid-template-columns: 46px minmax(210px, 1fr) auto auto; align-items: center; gap: 11px; padding: 10px 12px; transform: translateX(-50%); border-color: rgba(104,170,137,.28); border-radius: 9px; background: linear-gradient(180deg, rgba(18,29,23,.97), rgba(10,15,12,.98)); box-shadow: 0 18px 55px rgba(0,0,0,.68), inset 0 1px rgba(255,255,255,.035); backdrop-filter: blur(16px); }
+.exploration-hotbar.tactical-control { grid-area: rail; width: auto; min-height: 76px; display: grid; grid-template-columns: 46px minmax(210px, 1fr) auto auto; align-items: center; gap: 11px; padding: 10px 12px; border-color: rgba(104,170,137,.28); border-radius: 9px; background: linear-gradient(180deg, rgba(18,29,23,.97), rgba(10,15,12,.98)); box-shadow: 0 18px 55px rgba(0,0,0,.68), inset 0 1px rgba(255,255,255,.035); backdrop-filter: blur(16px); }
 .exploration-hotbar::before { content: ''; position: absolute; inset: -1px 18% auto; height: 1px; background: linear-gradient(90deg, transparent, rgba(113,190,151,.7), transparent); }
 .exploration-mode-icon { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid rgba(112,185,148,.25); border-radius: 50%; color: #8fc4a8; background: radial-gradient(circle, rgba(74,141,107,.22), rgba(14,25,19,.9)); }
 .exploration-mode-copy { min-width: 0; display: grid; gap: 2px; }
@@ -581,12 +582,7 @@ body:has(.spellbook-panel) .game-area .turn-indicator { visibility: hidden; poin
 .exploration-hotbar:not(:has(.exploration-start-combat, .tactical-command-status, .tactical-command-error)) { display: none; }
 .exploration-hotbar > .tactical-command-status,
 .exploration-hotbar > .tactical-command-error { position: static; width: min(360px, 70vw); margin: 0; }
-.map-legend { bottom: 142px; }
-.game-area > .chat-panel { bottom: 145px; height: min(30vh, 300px); min-height: 210px; }
-.game-area > .chat-closed { bottom: 150px; }
-.game-area:not(:has(.combat-hotbar)):not(:has(.exploration-start-combat)):not(:has(.exploration-hotbar > .tactical-command-status)):not(:has(.exploration-hotbar > .tactical-command-error)) > .chat-panel { bottom: 20px; height: min(38vh, 390px); min-height: 300px; }
-.game-area:not(:has(.combat-hotbar)):not(:has(.exploration-start-combat)) > .chat-closed { bottom: 37px; }
-.game-area:not(:has(.combat-hotbar)):not(:has(.exploration-start-combat)) > .map-stage .map-legend { bottom: 18px; }
+.map-legend { bottom: 18px; }
 
 @media (max-width: 1120px) {
   .director-status { display: none; }
@@ -685,8 +681,7 @@ body:has(.spellbook-panel) .game-area .turn-indicator { visibility: hidden; poin
 .scene-title > span, .objective small { font-size: calc(8px * var(--ui-readable-scale, 1)); }
 .scene-title p, .objective strong { font-size: calc(11px * var(--ui-readable-scale, 1)); }
 .map-legend, .zoom-control span { font-size: calc(8px * var(--ui-readable-scale, 1)); }
-.zoom-control .map-drag-label, .turn-indicator span { font-size: calc(7px * var(--ui-readable-scale, 1)); }
-.turn-indicator strong { font-size: calc(11px * var(--ui-readable-scale, 1)); }
+.zoom-control .map-drag-label { font-size: calc(7px * var(--ui-readable-scale, 1)); }
 .hud-identity strong { font-size: calc(14px * var(--ui-readable-scale, 1)); }
 .hud-identity small, .hud-identity em, .hud-actions button { font-size: calc(7px * var(--ui-readable-scale, 1)); }
 .hud-vitals b { font-size: calc(11px * var(--ui-readable-scale, 1)); }
@@ -820,7 +815,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .map-feedback.miss { color: #d2c6b8; }
 .map-feedback.defeat { color: #ffd0c8; border: 1px solid rgba(210,91,77,.4); }
 @keyframes damagePop { from { opacity: 0; transform: translateY(8px) scale(.75); } }
-.tactical-control { position: absolute; z-index: 13; top: 150px; left: 12px; width: 270px; max-height: calc(100% - 185px); overflow-y: auto; padding: 10px; border: 1px solid rgba(211,160,97,.2); border-radius: 7px; background: rgba(19,16,13,.94); box-shadow: 0 10px 30px rgba(0,0,0,.35); backdrop-filter: blur(8px); scrollbar-width: thin; }
+.tactical-control { position: relative; z-index: auto; min-width: 0; min-height: 0; overflow-y: auto; padding: 10px; border: 1px solid rgba(211,160,97,.2); border-radius: 7px; background: rgba(19,16,13,.94); box-shadow: 0 10px 30px rgba(0,0,0,.35); backdrop-filter: blur(8px); scrollbar-width: thin; }
 .tactical-control > span { display: grid; grid-template-columns: 21px 1fr; align-items: center; color: #b98b57; }
 .tactical-control > span svg { grid-row: 1/3; }
 .tactical-control b { color: #d6c4ad; font: 600 13px Spectral, serif; }
@@ -855,7 +850,25 @@ button.campaign-title:hover strong { color: #edc996; }
 .tactical-command-error span { flex: 1; }
 .tactical-control .tactical-command-error button { width: 18px; min-height: 18px; flex: 0 0 18px; margin: -3px -3px 0 0; padding: 0; border: 0; background: transparent; color: #a97068; }
 
-.initiative-ribbon { position: absolute; z-index: 12; top: 72px; left: 50%; width: min(620px, calc(100% - 520px)); display: flex; align-items: center; gap: 9px; transform: translateX(-50%); padding: 6px 8px; border: 1px solid rgba(206,165,109,.16); border-radius: 6px; background: rgba(14,12,10,.88); box-shadow: 0 8px 24px rgba(0,0,0,.3); backdrop-filter: blur(10px); }
+.initiative-ribbon { position: relative; z-index: auto; flex: 0 1 620px; min-width: 0; width: min(620px, 100%); display: flex; align-items: center; gap: 9px; padding: 6px 8px; border: 1px solid rgba(206,165,109,.16); border-radius: 6px; background: rgba(14,12,10,.88); box-shadow: 0 8px 24px rgba(0,0,0,.3); backdrop-filter: blur(10px); }
+.initiative-ribbon.exploration { flex: 0 0 auto; width: auto; border-color: rgba(112,185,148,.3); background: rgba(24,46,34,.32); }
+.initiative-active-chip { min-width: 0; height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 11px 0 4px; border: 1px solid rgba(210,157,91,.55); border-radius: 23px; background: rgba(157,99,43,.18); }
+.initiative-active-chip.enemy { border-color: rgba(200,108,93,.62); background: rgba(120,48,40,.24); }
+.initiative-active-chip.summon { border-color: rgba(112,185,148,.55); background: rgba(50,96,72,.24); }
+.initiative-active-chip > span:last-child { min-width: 0; display: grid; gap: 1px; }
+.initiative-active-chip strong { overflow: hidden; color: #f0d2a4; font: 600 13px Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.initiative-active-chip.enemy strong { color: #e5b0a5; }
+.initiative-active-chip.summon strong { color: #cfe6d8; }
+.initiative-active-chip small { overflow: hidden; color: #c39a68; font: 700 7px Manrope, sans-serif; letter-spacing: .1em; text-overflow: ellipsis; white-space: nowrap; }
+.initiative-active-chip.enemy small { color: #c98676; }
+.initiative-active-chip.summon small { color: #7fae95; }
+.initiative-active-avatar { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(222,201,171,.35); border-radius: 50%; background: #241d17 center / cover no-repeat; }
+.initiative-active-avatar.portrait { background-size: 200% 200%; }
+.initiative-active-avatar.enemy { color: #d48677; background: #351d1b; }
+.initiative-active-avatar.summon { color: #8fc6a6; background: #173126; }
+.initiative-active-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.initiative-exploration-lead { display: flex; align-items: center; gap: 10px; }
+.initiative-ribbon-label { color: #7fae95; font: 700 8px Manrope, sans-serif; letter-spacing: .14em; white-space: nowrap; }
 .initiative-ribbon > header { display: grid; place-items: center; min-width: 45px; color: #786d62; font-size: 6px; letter-spacing: .1em; }
 .initiative-ribbon > header b { color: #c89a61; font: 600 14px Spectral, serif; }
 .initiative-ribbon > ol { min-width: 0; display: flex; gap: 5px; margin: 0; padding: 0; overflow-x: auto; list-style: none; scrollbar-width: thin; }
@@ -1022,7 +1035,6 @@ button.campaign-title:hover strong { color: #edc996; }
 }
 
 .zoom-control .map-drag-label,
-.turn-indicator span,
 .hud-identity small,
 .hud-identity em,
 .hud-vitals small,
@@ -1153,7 +1165,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .token-conditions{position:absolute;z-index:8;left:50%;top:calc(100% + 8px);display:flex;gap:2px;transform:translateX(-50%) rotateZ(var(--counter-rotation));pointer-events:auto}
 .token-conditions i{width:13px;height:13px;display:grid;place-items:center;border:1px solid rgba(117,155,121,.5);border-radius:50%;background:#203126;color:#b9d6bc;font:700 6px Manrope,sans-serif;font-style:normal;box-shadow:0 2px 4px #000}
 .token-conditions i.partial{border-color:rgba(190,141,72,.58);background:#3b2c1d;color:#dbc08d}.token-conditions i.marker{border-style:dashed;border-color:rgba(145,127,109,.62);background:#2b2824;color:#b5a99a}
-.combat-context-panel{position:absolute;z-index:12;top:145px;left:26px;width:min(290px,calc(100% - 52px));max-height:calc(100% - 300px);overflow:auto;padding:10px;border:1px solid rgba(203,151,88,.2);border-radius:7px;background:rgba(14,12,10,.9);box-shadow:0 12px 35px rgba(0,0,0,.38);backdrop-filter:blur(12px);scrollbar-width:thin}
+.combat-context-panel{position:static;z-index:auto;min-width:0;min-height:0;width:auto;max-height:none;overflow:auto;padding:10px;border:1px solid rgba(203,151,88,.2);border-radius:7px;background:rgba(14,12,10,.9);box-shadow:0 12px 35px rgba(0,0,0,.38);backdrop-filter:blur(12px);scrollbar-width:thin}
 .combat-context-panel>header{display:flex;align-items:center;justify-content:space-between;gap:9px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06)}
 .combat-context-panel>header>div{display:grid}.combat-context-panel>header small{color:#84684c;font-size:6px;letter-spacing:.1em}.combat-context-panel>header strong{color:#e0c6a2;font:600 15px Spectral,serif}.combat-context-panel>header>span{display:flex;align-items:center;gap:4px;color:#c98676;font-size:8px}
 .combat-context-conditions{display:flex;flex-wrap:wrap;gap:4px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)}
@@ -1220,26 +1232,6 @@ button.campaign-title:hover strong { color: #edc996; }
 }
 .map-stage.monotone-backdrop::before { opacity: .08; }
 
-/* Иллюстрация локации нарисована с одной точки зрения, а тактические тайлы лежат под
-   наклоном — вместе они читаются как настолка поверх картины. В бою фон уводится в тень,
-   чтобы доска стала главной; вне боя атмосфера места сохраняется полностью.
-   Внутренняя тень красится поверх фона, но под содержимым, поэтому фигуры и клетки
-   не тускнеют, и одного правила хватает на все темы. */
-.game-area:has(.combat-hotbar) .map-stage.scenic-backdrop {
-  box-shadow: inset 0 0 0 100vmax rgba(6, 5, 4, .58);
-}
-
-/* В бою доску обступают лента инициативы сверху, панель состояния слева, панель героя
-   справа и хотбар снизу. Отступы отдают сцене только свободный прямоугольник: place-items
-   центрирует её именно там, а container-type: size пересчитывает cqh по уменьшенной
-   высоте, поэтому клетка сама ужимается вместо того, чтобы уезжать под хотбар. */
-.game-area:has(.combat-hotbar) .map-stage {
-  padding: 88px 272px 176px 312px;
-}
-
-/* Название локации важно при входе в сцену, но в бою занимает лучший угол экрана.
-   Масштабируем ТОЛЬКО заголовок: сам .scene-header растянут во всю ширину и держит
-   справа блок цели, поэтому масштабирование целиком утащило бы цель к центру. */
 /* Очередь хода — главный ориентир пошагового боя, но 43px кружки терялись под
    заголовком режима. На широких экранах увеличиваем ленту и делаем активного
    участника безошибочно заметным; узкие раскладки правило не трогает. */
@@ -1255,12 +1247,6 @@ button.campaign-title:hover strong { color: #edc996; }
     transform: scale(1.1);
     box-shadow: 0 0 0 2px rgba(214, 160, 92, .5), 0 0 22px rgba(184, 119, 55, .45);
   }
-}
-
-.game-area:has(.combat-hotbar) .scene-title {
-  transform: scale(.62);
-  transform-origin: top left;
-  opacity: .74;
 }
 
 .map-scroll {
@@ -1351,70 +1337,6 @@ button.campaign-title:hover strong { color: #edc996; }
 .map-theme-cave .feature.stairs .map-prop,
 .map-theme-temple .feature.stairs .map-prop {
   display: none;
-}
-
-/* The history window grows upward above the hotbar and remains user-resizable. */
-.game-area > .chat-panel {
-  left: 24px;
-  right: auto;
-  bottom: 168px;
-  width: min(760px, calc(100% - 48px));
-  min-width: 420px;
-  max-width: calc(100% - 48px);
-  height: min(68vh, 720px);
-  min-height: 320px;
-  max-height: calc(100% - 205px);
-  resize: both;
-}
-.game-area > .chat-panel::after {
-  content: '';
-  position: absolute;
-  z-index: 20;
-  right: 4px;
-  bottom: 4px;
-  width: 14px;
-  height: 14px;
-  opacity: .52;
-  pointer-events: none;
-  background: repeating-linear-gradient(135deg, transparent 0 3px, rgba(218,170,109,.6) 4px 5px);
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
-}
-/* В бою главное — тактическая сцена. Журнал сжимается до компактного боевого лога
-   и уходит вправо, освобождая доску и не споря с хотбаром по центру; вне боя он
-   остаётся крупной панелью повествования. Игрок по-прежнему может растянуть его
-   вручную — resize и сохранённая раскладка не трогаются. */
-.game-area:has(.combat-hotbar) > .chat-panel {
-  left: auto;
-  right: 18px;
-  bottom: 152px;
-  width: min(380px, calc(100% - 36px));
-  min-width: 300px;
-  height: min(32vh, 330px);
-  min-height: 180px;
-  max-height: calc(100% - 320px);
-}
-
-.game-area:not(:has(.combat-hotbar)):not(:has(.exploration-start-combat)):not(:has(.exploration-hotbar > .tactical-command-status)):not(:has(.exploration-hotbar > .tactical-command-error)) > .chat-panel {
-  bottom: 20px;
-  height: min(68vh, 720px);
-  max-height: calc(100% - 44px);
-}
-
-.turn-indicator > small { font-size: calc(9px * var(--ui-readable-scale, 1)); }
-.turn-indicator span { font-size: calc(10px * var(--ui-readable-scale, 1)); }
-.turn-indicator strong { font-size: calc(15px * var(--ui-readable-scale, 1)); }
-
-@media (max-width: 820px) {
-  .game-area > .chat-panel {
-    left: 8px;
-    right: 8px;
-    width: auto;
-    min-width: 0;
-    height: min(55vh, 480px);
-    min-height: 220px;
-    max-height: calc(100% - 190px);
-    resize: vertical;
-  }
 }
 
 /* A single licensed map illustration is sliced across the structured cells. */

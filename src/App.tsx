@@ -14,6 +14,7 @@ import { getAiHealth } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
+import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { useGameSession, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
@@ -380,7 +381,7 @@ function boardMapArt(state: GameState, visualTheme: string) {
   return BOARD_MAP_LIBRARY.dungeon
 }
 
-function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onFinishTurn }: {
+function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onFinishTurn, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -398,6 +399,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string) => void
   onChangeWeapon: (actorId: string, itemId: string) => void
   onFinishTurn: () => void
+  statusContent: React.ReactNode
+  children?: React.ReactNode
 }) {
   const [zoom, setZoom] = useState(1)
   const [rotation, setRotation] = useState(0)
@@ -432,6 +435,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const activeHero = players.find((player) => player.id === turnActorId)
   const activeSummon = state.actors?.find((actor) => actor.id === turnActorId && actor.alive)
   const activeEnemy = state.enemies?.find((enemy) => enemy.id === turnActorId && enemy.alive)
+  const activeTurnLabel = !combatActive ? 'ИДЁТ СВОБОДНО' : activeEnemy ? 'ХОД ПРОТИВНИКА' : activeSummon ? 'ХОД ПРИЗЫВА' : 'ХОД ИГРОКА'
   const active: BoardCombatant | undefined = activeHero ?? activeSummon
   const activeName = activeHero?.character ?? activeSummon?.name ?? activeEnemy?.name ?? 'участник боя'
   const combatItems = (activeHero?.inventory ?? []).map(inferredCombatItem).filter((item): item is NonNullable<typeof item> => Boolean(item && item.quantity > 0))
@@ -686,11 +690,59 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   }
 
   return (
-    <div
-      className={`map-stage ${visualTheme} ${scenicBackdrop ? 'scenic-backdrop' : 'monotone-backdrop'}`}
-      data-map-source={mapArt.id}
-      style={{ '--board-art': `url("${mapArt.url}")` } as React.CSSProperties}
-    >
+    <>
+      <div className="status-bar">
+        {statusContent}
+        <section className={`initiative-ribbon ${combatActive ? 'combat' : 'exploration'}`} aria-label={combatActive ? `Раунд ${combat.round ?? 1}, порядок инициативы` : 'Кто ведёт отряд'} aria-live="polite">
+          {combatActive ? <>
+            <div className={`initiative-active-chip ${activeEnemy ? 'enemy' : activeSummon ? 'summon' : 'hero'}`}>
+              {activeHero
+                ? <span className="initiative-active-avatar portrait" style={{ backgroundImage: `url(${activeHero.portrait})`, backgroundPosition: activeHero.portraitPosition }} />
+                : activeEnemy
+                  ? <span className="initiative-active-avatar enemy">{activeEnemy.image ? <img src={activeEnemy.image} alt="" /> : <EnemyGlyph kind={enemyVisualKind(activeEnemy)} />}</span>
+                  : <span className="initiative-active-avatar summon"><Sparkles size={18} /></span>}
+              <span><strong>{activeName}</strong><small>{activeTurnLabel}</small></span>
+            </div>
+            <header>РАУНД <b>{combat.round ?? 1}</b></header>
+            <ol>{combat.initiative?.map((entry, index) => {
+              const hero = state.players.find((player) => player.id === entry.actor_id)
+              const enemy = state.enemies?.find((item) => item.id === entry.actor_id)
+              const summon = state.actors?.find((item) => item.id === entry.actor_id)
+              const kind = summon ? 'summon' : enemy ? 'enemy' : 'hero'
+              const name = hero?.character ?? summon?.name ?? enemy?.name ?? entry.actor_id
+              const defeated = hero ? hero.hp <= 0 : summon ? !summon.alive || summon.hp <= 0 : enemy ? !enemy.alive : false
+              const enemyKind = enemy ? enemyVisualKind(enemy) : null
+              return <li key={entry.actor_id} className={`${kind} ${index === combat.active_index ? 'active' : ''} ${defeated ? 'defeated' : ''}`} aria-current={index === combat.active_index ? 'step' : undefined}>
+                <button
+                  className={`initiative-avatar-button ${focusedParticipantId === entry.actor_id ? 'focused' : ''}`}
+                  aria-label={`Выделить на карте: ${name}${index === combat.active_index ? ', сейчас ходит' : ''}`}
+                  aria-pressed={focusedParticipantId === entry.actor_id}
+                  onClick={() => setFocusedParticipantId((current) => current === entry.actor_id ? null : entry.actor_id)}
+                >
+                  <span className="initiative-order" aria-hidden="true">{index + 1}</span>
+                  {hero
+                    ? <span className="initiative-avatar portrait" style={{ backgroundImage: `url(${hero.portrait})`, backgroundPosition: hero.portraitPosition }} />
+                    : enemy
+                      ? <span className="initiative-avatar enemy">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
+                      : <span className="initiative-avatar summon"><Sparkles size={18} /></span>}
+                  {index === combat.active_index && <span className="initiative-turn-dot" aria-hidden="true" />}
+                </button>
+              </li>
+            })}</ol>
+          </> : <div className="initiative-exploration-lead">
+            <span className="initiative-ribbon-label">ВЕДЁТ ОТРЯД</span>
+            <div className="initiative-active-chip exploration">
+              <span className="initiative-active-avatar portrait" style={{ backgroundImage: `url(${activeHero?.portrait ?? ''})`, backgroundPosition: activeHero?.portraitPosition }} />
+              <span><strong>{activeName}</strong><small>{activeTurnLabel}</small></span>
+            </div>
+          </div>}
+        </section>
+      </div>
+      <div
+        className={`map-stage ${visualTheme} ${scenicBackdrop ? 'scenic-backdrop' : 'monotone-backdrop'}`}
+        data-map-source={mapArt.id}
+        style={{ '--board-art': `url("${mapArt.url}")` } as React.CSSProperties}
+      >
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
       <div
@@ -937,52 +989,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           })}
         </div>
       </div>
-      {combatActive && <section className="combat-context-panel" aria-label="Текущее состояние боя" aria-live="polite">
-        <header><div><small>СЕЙЧАС ХОДИТ · {activeTeam}</small><strong>{activeName}</strong></div><span><Heart size={13} />{activeHealth}</span></header>
-        <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
-        <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>
-        {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}`}>
-          <span><small>{inspectedTarget.team === 'enemy' ? 'ПРОТИВНИК' : 'СОЮЗНИК'} · {inspectedTarget.distanceFeet} ФТ</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ?? `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em></span><p>{inspectedTarget.reason}</p>
-        </div>}
-        {pendingCommand && <div className="combat-command-confirmation">
-          <header><Target size={14} /><span><small>ЦЕЛЬ ЗАФИКСИРОВАНА</small><strong>{pendingCommandLabel}</strong></span></header>
-          <p>Команда ещё не отправлена. Проверьте цель и подтвердите действие.</p>
-          <div><button disabled={tacticalBusy} onClick={confirmPreparedCommand}><Check size={13} />{pendingCommand.kind === 'target' || pendingCommand.kind === 'area' ? 'Бросить' : 'Подтвердить'}</button><button onClick={() => { setPendingCommand(null); setAimCell(null); setInspectedTarget(null) }} aria-label="Отменить выбранную команду"><X size={13} /></button></div>
-        </div>}
-        {previewRoute && <div className={`movement-preview ${pendingMoveKey ? 'selected' : ''}`}>
-          <span><Footprints size={14} /><b>{previewRoute.costFeet} фт</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
-          {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); onMove(selected, x, y); setPendingMoveKey(null) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
-        </div>}
-        {latestBattleEvent && <BattleResultCard state={state} event={latestBattleEvent} />}
-      </section>}
-      {combatActive && <section className="initiative-ribbon" aria-label={`Раунд ${combat.round ?? 1}, порядок инициативы`} aria-live="polite">
-        <header>РАУНД <b>{combat.round ?? 1}</b></header>
-        <ol>{combat.initiative?.map((entry, index) => {
-          const hero = state.players.find((player) => player.id === entry.actor_id)
-          const enemy = state.enemies?.find((item) => item.id === entry.actor_id)
-          const summon = state.actors?.find((item) => item.id === entry.actor_id)
-          const kind = summon ? 'summon' : enemy ? 'enemy' : 'hero'
-          const name = hero?.character ?? summon?.name ?? enemy?.name ?? entry.actor_id
-          const defeated = hero ? hero.hp <= 0 : summon ? !summon.alive || summon.hp <= 0 : enemy ? !enemy.alive : false
-          const enemyKind = enemy ? enemyVisualKind(enemy) : null
-          return <li key={entry.actor_id} className={`${kind} ${index === combat.active_index ? 'active' : ''} ${defeated ? 'defeated' : ''}`} aria-current={index === combat.active_index ? 'step' : undefined}>
-            <button
-              className={`initiative-avatar-button ${focusedParticipantId === entry.actor_id ? 'focused' : ''}`}
-              aria-label={`Выделить на карте: ${name}${index === combat.active_index ? ', сейчас ходит' : ''}`}
-              aria-pressed={focusedParticipantId === entry.actor_id}
-              onClick={() => setFocusedParticipantId((current) => current === entry.actor_id ? null : entry.actor_id)}
-            >
-              <span className="initiative-order" aria-hidden="true">{index + 1}</span>
-              {hero
-                ? <span className="initiative-avatar portrait" style={{ backgroundImage: `url(${hero.portrait})`, backgroundPosition: hero.portraitPosition }} />
-                : enemy
-                  ? <span className="initiative-avatar enemy">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
-                  : <span className="initiative-avatar summon"><Sparkles size={18} /></span>}
-              {index === combat.active_index && <span className="initiative-turn-dot" aria-hidden="true" />}
-            </button>
-          </li>
-        })}</ol>
-      </section>}
       <div className="map-legend">
         <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг</span><span><i className="legend-dot interest" />Интерес</span>
       </div>
@@ -1008,6 +1014,28 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           </article>
         })}</div>
       </section>}
+      </div>
+      <aside className="server-column" aria-label="Серверное состояние сцены">
+        {combatActive && <section className="combat-context-panel" aria-label="Текущее состояние боя" aria-live="polite">
+          <header><div><small>СЕЙЧАС ХОДИТ · {activeTeam}</small><strong>{activeName}</strong></div><span><Heart size={13} />{activeHealth}</span></header>
+          <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
+          <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>
+          {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}`}>
+            <span><small>{inspectedTarget.team === 'enemy' ? 'ПРОТИВНИК' : 'СОЮЗНИК'} · {inspectedTarget.distanceFeet} ФТ</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ?? `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em></span><p>{inspectedTarget.reason}</p>
+          </div>}
+          {pendingCommand && <div className="combat-command-confirmation">
+            <header><Target size={14} /><span><small>ЦЕЛЬ ЗАФИКСИРОВАНА</small><strong>{pendingCommandLabel}</strong></span></header>
+            <p>Команда ещё не отправлена. Проверьте цель и подтвердите действие.</p>
+            <div><button disabled={tacticalBusy} onClick={confirmPreparedCommand}><Check size={13} />{pendingCommand.kind === 'target' || pendingCommand.kind === 'area' ? 'Бросить' : 'Подтвердить'}</button><button onClick={() => { setPendingCommand(null); setAimCell(null); setInspectedTarget(null) }} aria-label="Отменить выбранную команду"><X size={13} /></button></div>
+          </div>}
+          {previewRoute && <div className={`movement-preview ${pendingMoveKey ? 'selected' : ''}`}>
+            <span><Footprints size={14} /><b>{previewRoute.costFeet} фт</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
+            {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); onMove(selected, x, y); setPendingMoveKey(null) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
+          </div>}
+          {latestBattleEvent && <BattleResultCard state={state} event={latestBattleEvent} />}
+        </section>}
+        {children}
+      </aside>
       {combatActive ? <section className="tactical-control combat-hotbar" aria-label={`Панель боевых действий: ${activeName}`}>
         <div className="hotbar-economy" aria-label="Экономика текущего хода">
           <span className={remainingFeet > 0 && movementAvailable ? 'ready' : 'spent'} title={`Осталось движения: ${remainingFeet} футов`}><Footprints size={14} /><b>{remainingFeet}</b><small>ФТ</small></span>
@@ -1068,13 +1096,13 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер проверяет путь…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
       </section>}
-    </div>
+    </>
   )
 }
-function SceneHeader({ title, location, objective, turn, chapter, onReset }: { title: string; location: string; objective: string; turn: number; chapter: number; onReset: () => void }) {
+function SceneHeader({ title, location, objective, turn, chapter, round, onReset }: { title: string; location: string; objective: string; turn: number; chapter: number; round?: number; onReset: () => void }) {
   return (
     <div className="scene-header">
-      <div className="scene-title"><span>ГЛАВА {chapter} · ХОД {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
+      <div className="scene-title"><span>ГЛАВА {chapter}{round != null ? ` · РАУНД ${round}` : ''} · ХОД {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
       <div className="objective"><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></div>
       <button className="icon-button reset-button" onClick={onReset} title="Начать демо заново"><RotateCcw size={17} /></button>
     </div>
@@ -1377,18 +1405,14 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
   )
 }
 
-function CampaignModal({ state, isAdmin, onSwitch, onAccountRefresh, onClose }: { state: GameState; isAdmin: boolean; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onClose: () => void }) {
+function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onClose }: { state: GameState; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onCreateHero: (heroId: string) => void; onClose: () => void }) {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
-  const [heroLibrary, setHeroLibrary] = useState<Player[]>(state.players)
   const [wizard, setWizard] = useState(false)
   const [step, setStep] = useState(1)
   const [name, setName] = useState('')
   const [partyName, setPartyName] = useState('')
   const [code, setCode] = useState('')
   const [world, setWorld] = useState({ preset: '', era: '', genre: '', tone: '', premise: '', themes: '', boundaries: '', magicLevel: '', technologyLevel: '', startingLocation: '', openingSituation: '' })
-  const [selectedHeroIds, setSelectedHeroIds] = useState<string[]>([])
-  const [newHeroes, setNewHeroes] = useState<Player[]>([])
-  const [heroDraft, setHeroDraft] = useState({ name: '', character: '', role: 'Искатель приключений', species: 'Человек', background: 'Странник', backstory: '', speed: '30', maxHp: '10', armor: '12' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -1397,59 +1421,33 @@ function CampaignModal({ state, isAdmin, onSwitch, onAccountRefresh, onClose }: 
     const campaignsBody = await campaignsResponse.json() as { campaigns?: CampaignSummary[]; error?: string }
     if (!campaignsResponse.ok) throw new Error(campaignsBody.error || 'Не удалось загрузить кампании')
     setCampaigns(campaignsBody.campaigns ?? [])
-    if (isAdmin) {
-      const heroesResponse = await fetch('/api/heroes')
-      const heroesBody = await heroesResponse.json() as { heroes?: Player[] }
-      if (heroesResponse.ok && heroesBody.heroes?.length) setHeroLibrary(heroesBody.heroes)
-    }
   }
   useEffect(() => { load().catch((reason) => setError(reason instanceof Error ? reason.message : 'Ошибка загрузки')) }, [])
-
-  const toggleHero = (heroId: string) => setSelectedHeroIds((current) => current.includes(heroId) ? current.filter((id) => id !== heroId) : [...current, heroId])
-  const addHero = () => {
-    if (!heroDraft.name.trim() || !heroDraft.character.trim() || !heroDraft.role.trim()) { setError('Укажите игрока, имя героя и его роль или класс.'); return }
-    const character = heroDraft.character.trim()
-    const index = newHeroes.length
-    const hero: Player = {
-      id: 'hero-' + (globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)).replace(/-/g, '').slice(0, 20),
-      name: heroDraft.name.trim(), character, role: heroDraft.role.trim() + ' · ур. 1', species: heroDraft.species.trim() || 'Человек', background: heroDraft.background.trim() || 'Странник',
-      alignment: 'Не определено', level: 1, experience: 0, speed: Math.max(5, Math.min(120, Number(heroDraft.speed) || 30)), proficiency: 2,
-      abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, traits: '', ideals: '', bonds: '', flaws: '', backstory: heroDraft.backstory.trim(), features: '', notes: '',
-      currency: { copper: 0, silver: 0, gold: 0, platinum: 0 }, inventory: [], hp: Math.max(1, Number(heroDraft.maxHp) || 10), maxHp: Math.max(1, Number(heroDraft.maxHp) || 10), armor: Math.max(1, Math.min(30, Number(heroDraft.armor) || 12)), online: true, x: 0, y: 0,
-      color: ['#d79b5b', '#758f78', '#8b789e', '#9a745d'][index % 4], initials: character.slice(0, 2).toLocaleUpperCase('ru'), portrait: '/assets/party-portraits.png', portraitPosition: ['0% 0%', '100% 0%', '0% 100%', '100% 100%'][index % 4],
-    }
-    setNewHeroes((current) => [...current, hero])
-    setSelectedHeroIds((current) => [...current, hero.id])
-    setHeroDraft({ name: '', character: '', role: 'Искатель приключений', species: 'Человек', background: 'Странник', backstory: '', speed: '30', maxHp: '10', armor: '12' })
-    setError('')
-  }
 
   const validateStep = () => {
     setError('')
     if (step === 1 && code && !/^[A-Z0-9-]{3,24}$/.test(code)) { setError('Код комнаты должен содержать 3–24 латинских буквы, цифры или дефисы — либо оставьте его пустым для автогенерации.'); return false }
-    if (step === 2 && selectedHeroIds.length < 4) { setError('Для автономного MVP нужен отряд минимум из четырёх героев.'); return false }
     return true
   }
 
   const create = async () => {
     if (!validateStep()) return
-    const allHeroes = [...heroLibrary, ...newHeroes]
-    const players = selectedHeroIds.map((id) => allHeroes.find((hero) => hero.id === id)).filter((hero): hero is Player => Boolean(hero))
     setBusy(true)
     setError('')
     try {
       const resolvedCode = code || `WORLD-${(globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)).replace(/-/g, '').slice(0, 8).toUpperCase()}`
-      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, players } }) })
+      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, slotCount: 4 } }) })
       const body = await response.json() as { version?: number; state?: GameState | null; error?: string }
       if (!response.ok) throw new Error(body.error || 'Не удалось создать кампанию')
       await onAccountRefresh()
       await onSwitch(resolvedCode, body)
       onClose()
+      const ownerSlotId = body.state?.players.find((hero) => hero.characterSetupRequired)?.id
+      if (ownerSlotId) onCreateHero(ownerSlotId)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось создать кампанию') }
     finally { setBusy(false) }
   }
 
-  const chosenHeroes = [...heroLibrary, ...newHeroes].filter((hero) => selectedHeroIds.includes(hero.id))
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className={'modal campaign-modal ' + (wizard ? 'campaign-wizard' : '')} role="dialog" aria-modal="true" aria-labelledby="campaign-modal-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -1476,13 +1474,11 @@ function CampaignModal({ state, isAdmin, onSwitch, onAccountRefresh, onClose }: 
             <label><span>С чего начинается первая сцена</span><textarea value={world.openingSituation} onChange={(event) => setWorld({ ...world, openingSituation: event.target.value })} placeholder="Например: герои прибывают на станцию в момент исчезновения дипломатического корабля" /></label>
             <div className="field-grid"><label><span>Темы и мотивы</span><input value={world.themes} onChange={(event) => setWorld({ ...world, themes: event.target.value })} placeholder="Исследование, политика, выживание…" /></label><label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /></label></div>
           </div>}
-          {step === 2 && <div className="hero-creator">
-            <p>Выберите героев из библиотеки или создайте новых. Рассказчик получит их роли, прошлое и личные мотивы до написания пролога.</p>
-            <div className="hero-library">{heroLibrary.map((hero) => <button key={hero.id} className={selectedHeroIds.includes(hero.id) ? 'selected' : ''} onClick={() => toggleHero(hero.id)}><span style={{ '--hero-color': hero.color } as React.CSSProperties}>{hero.initials}</span><div><b>{hero.character}</b><small>{hero.name} · {hero.role}</small><em>{hero.backstory || hero.background}</em></div>{selectedHeroIds.includes(hero.id) && <Check size={15} />}</button>)}</div>
-            {newHeroes.length > 0 && <div className="new-hero-list">{newHeroes.map((hero) => <span key={hero.id}><Check size={13} />{hero.character}<button onClick={() => { setNewHeroes((current) => current.filter((item) => item.id !== hero.id)); setSelectedHeroIds((current) => current.filter((id) => id !== hero.id)) }}><X size={12} /></button></span>)}</div>}
-            <div className="new-hero-form"><strong><Plus size={14} />Новый герой</strong><div className="field-grid three"><label><span>Игрок</span><input value={heroDraft.name} onChange={(event) => setHeroDraft({ ...heroDraft, name: event.target.value })} /></label><label><span>Имя героя</span><input value={heroDraft.character} onChange={(event) => setHeroDraft({ ...heroDraft, character: event.target.value })} /></label><label><span>Класс или роль</span><input value={heroDraft.role} onChange={(event) => setHeroDraft({ ...heroDraft, role: event.target.value })} /></label><label><span>Вид</span><input value={heroDraft.species} onChange={(event) => setHeroDraft({ ...heroDraft, species: event.target.value })} /></label><label><span>Происхождение</span><input value={heroDraft.background} onChange={(event) => setHeroDraft({ ...heroDraft, background: event.target.value })} /></label><label><span>Скорость, футы</span><input type="number" value={heroDraft.speed} onChange={(event) => setHeroDraft({ ...heroDraft, speed: event.target.value })} /></label><label><span>Макс. ОЗ</span><input type="number" value={heroDraft.maxHp} onChange={(event) => setHeroDraft({ ...heroDraft, maxHp: event.target.value })} /></label><label><span>Класс брони</span><input type="number" value={heroDraft.armor} onChange={(event) => setHeroDraft({ ...heroDraft, armor: event.target.value })} /></label></div><label><span>Предыстория и личный мотив</span><textarea value={heroDraft.backstory} onChange={(event) => setHeroDraft({ ...heroDraft, backstory: event.target.value })} /></label><button onClick={addHero}><Plus size={13} />Добавить героя в кампанию</button></div>
+          {step === 2 && <div className="hero-creator slot-creator">
+            <div className="world-auto-note"><Users size={17} /><span><b>В кампании будет четыре места героев.</b> Вы заполните первое после создания мира, а каждый приглашённый друг — своё при входе по ссылке.</span></div>
+            <div className="hero-library">{[1, 2, 3, 4].map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
           </div>}
-          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать историю</h3><p>Он получит только ваши необязательные пожелания и выбранные листы героев. Всё, что осталось пустым, он придумает сам.</p><dl><div><dt>Мир</dt><dd>{[world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div><div><dt>Начало</dt><dd>{world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{chosenHeroes.map((hero) => hero.character).join(', ')}</dd></div></dl><small>После создания откроется первая уникальная сцена с новой историей мира, прологом, целью и картой.</small></div>}
+          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и четыре безопасных места. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Мир</dt><dd>{[world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div><div><dt>Начало</dt><dd>{world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>4 заполняемых места · первый герой ваш</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
           <div className="campaign-wizard-actions"><button onClick={() => step === 1 ? setWizard(false) : setStep((current) => current - 1)}>{step === 1 ? 'К списку кампаний' : 'Назад'}</button>{step < 3 ? <button className="primary" onClick={() => { if (validateStep()) setStep((current) => current + 1) }}>Продолжить<ChevronRight size={14} /></button> : <button className="primary" onClick={() => { void create() }} disabled={busy}><Sparkles size={14} />{busy ? 'Рассказчик создаёт мир…' : 'Создать мир и написать пролог'}</button>}</div>
         </>}
         {error && <div className="admin-error">{error}</div>}
@@ -2008,6 +2004,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
   const [aiHealth, setAiHealth] = useState<AiHealth | null>(null)
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null)
+  const [creatingPlayerId, setCreatingPlayerId] = useState<string | null>(null)
   const [replacementEditorId, setReplacementEditorId] = useState<string | null>(null)
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
@@ -2068,17 +2065,22 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ invite_token: inviteToken }),
         })
-        const body = await response.json().catch(() => null) as { error?: string } | null
+        const body = await response.json().catch(() => null) as { error?: string; hero_ids?: string[] } | null
         if (!response.ok) throw new Error(body?.error || 'Не удалось присоединиться к кампании')
         history.replaceState(null, '', `${location.pathname}?room=${encodeURIComponent(requestedRoom)}`)
         await onAccountRefresh()
         await switchCampaign(requestedRoom)
         setCampaignsOpen(false)
+        if (body?.hero_ids?.[0]) setCreatingPlayerId(body.hero_ids[0])
       } catch (error) {
         setJoinError(error instanceof Error ? error.message : 'Не удалось присоединиться к кампании')
       }
     })()
   }, [isAdmin, onAccountRefresh, switchCampaign])
+  useEffect(() => {
+    const pendingHero = partyPlayers.find((hero) => accessibleHeroIds.includes(hero.id) && hero.characterSetupRequired)
+    if (pendingHero && creatingPlayerId == null) setCreatingPlayerId(pendingHero.id)
+  }, [accessibleHeroIds, creatingPlayerId, partyPlayers])
   useEffect(() => {
     window.localStorage.setItem(UI_SCALE_KEY, String(uiScale))
   }, [uiScale])
@@ -2153,16 +2155,34 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <div className="account-chip"><span>{account.name}<small>{activePlayer.character}</small></span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
           </div>
         </header>
-        {view === 'room' && <div className="game-area">
-          <SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} onReset={reset} />
+        {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'}`}>
           {(directorError || joinError || lifecycleError) && <div className="admin-error director-error">{directorError || joinError || lifecycleError}</div>}
-          <DungeonMap state={state} players={partyPlayers} turnActorId={mapActorId} canAct={canAct} tacticalBusy={tacticalBusy} tacticalError={tacticalError} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} onClearTacticalError={clearTacticalError} onStartCombat={() => startCombat(activePlayer.id)} onMove={movePlayer} onAttack={attackEnemy} onAreaAttack={throwAreaItem} onCastSpell={castSpell} onUseCombatAction={useCombatAction} onChangeWeapon={changeWeapon} onFinishTurn={finishMapTurn} />
-          <div className={`turn-indicator ${combatActive ? 'combat' : 'exploration'}`}><small>{combatActive ? 'ПОШАГОВЫЙ РЕЖИМ · БОЙ' : 'СВОБОДНЫЙ РЕЖИМ · ИССЛЕДОВАНИЕ'}</small><span>{combatActive ? turnEnemy ? 'ХОД ПРОТИВНИКА' : turnSummon ? 'ХОД ПРИЗЫВА' : 'ХОД ИГРОКА' : 'ТЕКУЩИЙ ГЕРОЙ'}</span><strong>{combatActive ? turnActorName : activePlayer.character}</strong><i /></div>
-          <div className="player-hud-stack">
-            <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
-            <DiceTray key={state.sessionCode} latestRoll={state.lastDiceRoll} onRoll={() => rollFreeDie(activePlayer.id)} />
-          </div>
-          <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} canFinishTurn={canFinishTurn} turnName={turnActorName} onSend={submitAction} onFinishTurn={finishMapTurn} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} open={chatOpen} onToggle={() => setChatOpen(value => !value)} suggestions={state.suggestions} layoutStorageKey={`${CHAT_LAYOUT_KEY_PREFIX}:${state.sessionCode}`} />
+          <DungeonMap
+            state={state}
+            players={partyPlayers}
+            turnActorId={mapActorId}
+            canAct={canAct}
+            tacticalBusy={tacticalBusy}
+            tacticalError={tacticalError}
+            autoAttackRoll={autoAttackRoll}
+            scenicBackdrop={scenicBackdrop}
+            onClearTacticalError={clearTacticalError}
+            onStartCombat={() => startCombat(activePlayer.id)}
+            onMove={movePlayer}
+            onAttack={attackEnemy}
+            onAreaAttack={throwAreaItem}
+            onCastSpell={castSpell}
+            onUseCombatAction={useCombatAction}
+            onChangeWeapon={changeWeapon}
+            onFinishTurn={finishMapTurn}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} onReset={reset} />}
+          >
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} canFinishTurn={canFinishTurn} turnName={turnActorName} onSend={submitAction} onFinishTurn={finishMapTurn} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} open={chatOpen} onToggle={() => setChatOpen(value => !value)} suggestions={state.suggestions} layoutStorageKey={`${CHAT_LAYOUT_KEY_PREFIX}:${state.sessionCode}`} />
+            <div className="player-hud-stack">
+              <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
+              <DiceTray key={state.sessionCode} latestRoll={state.lastDiceRoll} onRoll={() => rollFreeDie(activePlayer.id)} />
+            </div>
+          </DungeonMap>
         </div>}
         {view === 'world-map' && <WorldMapView state={state} busy={state.isNarrating} onTravel={(action) => { void submitAction(action); navigate('room') }} />}
         {view === 'journal' && <JournalView state={state} />}
@@ -2183,7 +2203,15 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
-      {campaignsOpen && <CampaignModal state={state} isAdmin={isAdmin} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onClose={() => setCampaignsOpen(false)} />}
+      {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onClose={() => setCampaignsOpen(false)} />}
+      {creatingPlayerId && aiHealth?.characterCreation && <CharacterCreationWizard
+        player={state.players.find((player) => player.id === creatingPlayerId) ?? activePlayer}
+        accountName={account.name}
+        catalog={aiHealth.characterCreation}
+        required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
+        onClose={() => setCreatingPlayerId(null)}
+        onImport={(source) => importCharacter(creatingPlayerId, source)}
+      />}
       {editingPlayerId && <CharacterEditor
         player={state.players.find((player) => player.id === editingPlayerId) ?? activePlayer}
         onClose={() => setEditingPlayerId(null)}
