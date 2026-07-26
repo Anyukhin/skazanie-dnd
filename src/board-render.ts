@@ -298,10 +298,61 @@ export type BoardScene = {
   cellSize: number
   /** Материал → текстура. Пустая карта означает путь без арта. */
   textures?: Map<string, BoardTexture>
+  /** Фактуры пола, поверхностей и стен. Их отсутствие — штатный путь Р6. */
+  terrain?: TerrainTiles | null
   /** Иллюстрация локации, нарезаемая по клеткам поверх заливки. */
   art?: BoardTexture | null
   /** Ключ иллюстрации: входит в ключ тайла, иначе смена арта не перерисует кэш. */
   artKey?: string
+  /** Растровые штампы предметов. Их отсутствие — штатный путь Р6: рисуется вектор. */
+  propAtlas?: PropAtlas | null
+}
+
+/**
+ * Тайлсет местности. Каждая фактура — бесшовная плитка на `cellsPerTile`
+ * клеток по стороне, поэтому она раскладывается по карте **непрерывно**:
+ * клетка берёт своё окно фактуры по собственным координатам, а не случайное.
+ * Так кладка и доски идут через всё помещение единым полотном, а не
+ * рассыпаются на самостоятельные квадраты.
+ */
+export type TerrainTiles = {
+  cellsPerTile: number
+  /** Материал клетки → фактура пола. */
+  floors: Map<string, BoardTexture>
+  /** Поверхность поверх пола → фактура. */
+  surfaces: Map<string, BoardTexture>
+  /** Вид кладки → фактура стены; ключ даёт `wallTextureKeyFor`. */
+  walls: Map<string, BoardTexture>
+  /** Входит в ключ тайла: подгрузка фактуры обязана обесценить кэш. */
+  key: string
+}
+
+/**
+ * Из чего сложена стена при таком материале клетки. Отдельных материалов
+ * стены в контракте карты нет, поэтому вид кладки выводится из материала: у
+ * мрамора стена оштукатурена, у металла — та же тёсаная кладка, а земля,
+ * трава и песок означают, что это не постройка, а порода.
+ */
+export function wallTextureKeyFor(material: TacticalMaterial): string {
+  if (material === 'wood') return 'wood'
+  if (material === 'marble') return 'plaster'
+  if (material === 'stone' || material === 'metal') return 'stone'
+  return 'cave'
+}
+
+/** Кадр спрайта в атласе: окно в пикселях исходного изображения. */
+export type PropFrame = { x: number; y: number; w: number; h: number }
+
+/**
+ * Атлас штампов: одна картинка и таблица кадров по `assetId`. Реестр ассетов
+ * знает про растр то же самое (`server/asset-registry.mjs`), но доска берёт
+ * кадры напрямую из манифеста — по сети идёт карта, а не библиотека рисунков.
+ */
+export type PropAtlas = {
+  texture: BoardTexture
+  frames: Record<string, PropFrame>
+  /** Входит в ключ тайла: без него подгрузка атласа не перерисует кэш. */
+  key: string
 }
 
 export type BoardTile = { tileX: number; tileY: number }
@@ -309,8 +360,38 @@ export type BoardTile = { tileX: number; tileY: number }
 /** Окно просмотра в координатах клеток. */
 export type BoardViewport = { x: number; y: number; width: number; height: number }
 
+/**
+ * Какие фактуры карте вообще нужны. Набор весит несколько мегабайт, и грузить
+ * его целиком ради таверны из дерева и камня незачем: во дворе нет ни льда, ни
+ * металла, ни мрамора.
+ */
+export function terrainKeysFor(map: TacticalMap): { floors: string[]; surfaces: string[]; walls: string[] } {
+  const floors = new Set<string>()
+  const surfaces = new Set<string>()
+  const walls = new Set<string>()
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (!cell) continue
+      if (cell.passable) floors.add(cell.material)
+      else walls.add(wallTextureKeyFor(cell.material))
+      if (cell.surface !== 'none') surfaces.add(cell.surface)
+    }
+  }
+  // Стена живёт на ребре (Р2), и её кладка берётся с той стороны, где
+  // постройка. Такой клетки может не быть среди непроходимых вовсе.
+  for (const edge of edgeList(map)) {
+    if (edge.kind === 'none') continue
+    const cell = cellAt(map, edge.x, edge.y)
+    if (cell) walls.add(wallTextureKeyFor(cell.material))
+  }
+  // Лёд как поверхность рисуется ледяным полом — фактуру надо запросить.
+  if (surfaces.has('ice')) floors.add('ice')
+  return { floors: [...floors].sort(), surfaces: [...surfaces].sort(), walls: [...walls].sort() }
+}
+
 export function texturesAvailableIn(scene: BoardScene) {
-  return Boolean(scene.textures && scene.textures.size > 0)
+  return Boolean((scene.textures && scene.textures.size > 0) || (scene.terrain && scene.terrain.floors.size > 0))
 }
 
 /**
@@ -367,7 +448,9 @@ export function tileRevealSignature(map: TacticalMap, tile: BoardTile) {
 export function tileKey(scene: BoardScene, tile: BoardTile) {
   const art = scene.art ? (scene.artKey ?? 'art') : ''
   const textures = texturesAvailableIn(scene) ? 't' : 'f'
-  return `${scene.map.terrainHash}:${scene.cellSize}:${textures}:${art}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
+  const stamps = scene.propAtlas?.key ?? ''
+  const tiles = scene.terrain?.key ?? ''
+  return `${scene.map.terrainHash}:${scene.cellSize}:${textures}:${art}:${stamps}:${tiles}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
 }
 
 /**
@@ -395,6 +478,69 @@ export function propsInTile(map: TacticalMap, tile: BoardTile, cellSize: number)
 
 /** Окна текстуры по варианту тайла: повторяют смещения правил `.map-cell.variant-*`. */
 const VARIANT_WINDOWS: Array<[number, number]> = [[0, 0], [0.13, 0.07], [0.41, 0.29], [0.71, 0.63], [0.91, 0.17], [0.28, 0.87]]
+
+/**
+ * Кусок фактуры под прямоугольник, заданный **в клетках карты**. Окно фактуры
+ * выбирается по координате клетки по модулю размера плитки, поэтому соседние
+ * клетки продолжают друг друга, а не повторяют один и тот же квадрат.
+ *
+ * Узкая полоса стены на ребре берётся тем же способом: у неё просто дробная
+ * ширина в клетках.
+ */
+function drawTerrainRect(
+  context: BoardContext2D, texture: BoardTexture, cellsPerTile: number,
+  cellX: number, cellY: number, cellWidth: number, cellHeight: number,
+  left: number, top: number, width: number, height: number,
+) {
+  const perCellX = texture.width / cellsPerTile
+  const perCellY = texture.height / cellsPerTile
+  const wrap = (value: number) => ((value % cellsPerTile) + cellsPerTile) % cellsPerTile
+  const sourceWidth = Math.max(1, cellWidth * perCellX)
+  const sourceHeight = Math.max(1, cellHeight * perCellY)
+  // Окно, вылезшее за край плитки, сдвигается внутрь. Для клетки это никогда
+  // не случается (ровно одна восьмая плитки), а у полосы стены сдвиг меньше её
+  // толщины и на глаз не читается.
+  const sx = Math.min(wrap(cellX) * perCellX, texture.width - sourceWidth)
+  const sy = Math.min(wrap(cellY) * perCellY, texture.height - sourceHeight)
+  context.drawImage(texture.image, sx, sy, sourceWidth, sourceHeight, left, top, width, height)
+}
+
+/**
+ * Прозрачность поверхности поверх пола. Вода и грязь скрывают пол почти
+ * целиком, лёд остаётся полупрозрачным — под ним обязано читаться, что там
+ * было.
+ */
+const SURFACE_TEXTURE_ALPHA: Record<TacticalSurface, number> = {
+  none: 0, water: 0.92, ice: 0.72, oil: 0.85, mud: 0.94, rubble: 0.94,
+}
+
+/** Фактура поверхности. У льда своей нет — берётся ледяной пол. */
+function surfaceTextureFor(terrain: TerrainTiles, surface: TacticalSurface): BoardTexture | undefined {
+  if (surface === 'none') return undefined
+  return terrain.surfaces.get(surface) ?? (surface === 'ice' ? terrain.floors.get('ice') : undefined)
+}
+
+function drawSurfaceTexture(
+  context: BoardContext2D, scene: BoardScene, cell: TacticalCell,
+  left: number, top: number, size: number, x: number, y: number,
+) {
+  const terrain = scene.terrain
+  if (!terrain || cell.surface === 'none') return
+  const texture = surfaceTextureFor(terrain, cell.surface)
+  if (!texture) return
+  context.save()
+  context.globalAlpha = SURFACE_TEXTURE_ALPHA[cell.surface]
+  drawTerrainRect(context, texture, terrain.cellsPerTile, x, y, 1, 1, left, top, size, size)
+  context.restore()
+}
+
+/** Фактура пола или породы для клетки: у непроходимой клетки это кладка. */
+function terrainTextureFor(scene: BoardScene, cell: TacticalCell): BoardTexture | undefined {
+  const terrain = scene.terrain
+  if (!terrain) return undefined
+  if (!cell.passable) return terrain.walls.get(wallTextureKeyFor(cell.material)) ?? terrain.floors.get(cell.material)
+  return terrain.floors.get(cell.material)
+}
 
 function drawTexture(context: BoardContext2D, texture: BoardTexture, variant: number, alpha: number, left: number, top: number, size: number) {
   const window = VARIANT_WINDOWS[Math.abs(variant) % VARIANT_WINDOWS.length]
@@ -460,8 +606,23 @@ export function drawFloorTiles(context: BoardContext2D, scene: BoardScene, tile:
       const top = (y - frame.minY) * frame.size
       context.fillStyle = boardFillColor({ kind: 'floor', cell }, scene.palette, available)
       context.fillRect(left, top, frame.size, frame.size)
-      const texture = textures?.get(cell.material)
-      if (texture) drawTexture(context, texture, cell.variant, cell.passable ? 0.55 : 0.72, left, top, frame.size)
+      const tile = terrainTextureFor(scene, cell)
+      if (tile && scene.terrain) {
+        drawTerrainRect(context, tile, scene.terrain.cellsPerTile, x, y, 1, 1, left, top, frame.size, frame.size)
+        // Непроходимая клетка — это массив породы или кладка. Фактура у неё
+        // своя, но без притемнения она на светлом полу читается как пол.
+        if (!cell.passable) {
+          context.save()
+          context.globalAlpha = 0.28
+          context.fillStyle = shade(scene.palette.wall, -0.3)
+          context.fillRect(left, top, frame.size, frame.size)
+          context.restore()
+        }
+        drawSurfaceTexture(context, scene, cell, left, top, frame.size, x, y)
+      } else {
+        const texture = textures?.get(cell.material)
+        if (texture) drawTexture(context, texture, cell.variant, cell.passable ? 0.55 : 0.72, left, top, frame.size)
+      }
       drawSceneArt(context, scene, cell, left, top)
     }
   }
@@ -476,6 +637,9 @@ export function drawDecals(context: BoardContext2D, scene: BoardScene, tile: Boa
     for (let x = frame.minX; x <= frame.maxX; x += 1) {
       const cell = cellAt(scene.map, x, y)
       if (!cell || cell.surface === 'none') continue
+      // Поверхность, нарисованная фактурой, в штриховке не нуждается: поверх
+      // настоящей воды эти штрихи читаются грязью, а не рябью.
+      if (scene.terrain && surfaceTextureFor(scene.terrain, cell.surface)) continue
       const left = (x - frame.minX) * frame.size
       const top = (y - frame.minY) * frame.size
       context.strokeStyle = shade(SURFACE_COLORS[cell.surface] ?? scene.palette.floor, 0.35)
@@ -561,6 +725,36 @@ function drawDoorLeaf(context: BoardContext2D, scene: BoardScene, geometry: Edge
  * (скала, вода) заливается текстурой на слое пола, но стену по своему периметру
  * не получает.
  */
+/**
+ * Штамп двери по состоянию. Запертая дверь показывается окованной: состояние
+ * обязано читаться с карты, а не только из подсказки, и «дверь покрепче» —
+ * привычный для боевых карт способ это показать.
+ */
+const DOOR_STAMPS: Record<string, string> = {
+  closed: 'door_closed', open: 'door_open', locked: 'door_iron', broken: 'door_broken',
+}
+
+/**
+ * Штамп на ребре: рисунок кладётся вдоль ребра во всю его длину, толщину
+ * задаёт пропорция рисунка. Толщина при этом выходит больше полосы стены — так
+ * и надо: косяк и наличник на боевой карте выступают из стены.
+ *
+ * Возвращает `false`, если кадра нет: тогда рисуется прежняя сборка из
+ * заливок, и карта остаётся читаемой без атласа (решение Р6).
+ */
+function drawEdgeStamp(context: BoardContext2D, scene: BoardScene, geometry: EdgeGeometry, assetId: string) {
+  const atlas = scene.propAtlas
+  const stamp = atlas?.frames[assetId]
+  if (!atlas || !stamp) return false
+  const across = geometry.length * (stamp.h / stamp.w)
+  context.save()
+  context.translate(geometry.left + geometry.width / 2, geometry.top + geometry.height / 2)
+  if (geometry.vertical) context.rotate(Math.PI / 2)
+  context.drawImage(atlas.texture.image, stamp.x, stamp.y, stamp.w, stamp.h, -geometry.length / 2, -across / 2, geometry.length, across)
+  context.restore()
+  return true
+}
+
 export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
   const states = doorStates(scene.map)
@@ -582,6 +776,14 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
     if (edge.kind === 'wall') {
       context.fillStyle = boardFillColor({ kind: 'wall', cell: side }, scene.palette, available)
       context.fillRect(geometry.left, geometry.top, geometry.width, geometry.height)
+      const masonry = scene.terrain?.walls.get(wallTextureKeyFor(side?.material ?? 'stone'))
+      if (masonry && scene.terrain) {
+        drawTerrainRect(
+          context, masonry, scene.terrain.cellsPerTile,
+          edge.x, edge.y, geometry.width / frame.size, geometry.height / frame.size,
+          geometry.left, geometry.top, geometry.width, geometry.height,
+        )
+      }
       // Тонкая тёмная обводка: без неё сегмент в одну шестую клетки теряется на
       // светлом полу и стена перестаёт читаться как граница.
       context.fillStyle = shade(scene.palette.wall, -0.45)
@@ -595,11 +797,13 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
       continue
     }
     if (edge.kind === 'rail') {
+      if (drawEdgeStamp(context, scene, geometry, 'rail_fence')) continue
       context.fillStyle = boardFillColor({ kind: 'rail' }, scene.palette, available)
       fillAlongEdge(context, geometry, 0, geometry.length, Math.max(1, geometry.thickness * 0.28))
       continue
     }
     if (edge.kind === 'ledge') {
+      if (drawEdgeStamp(context, scene, geometry, 'ledge_step')) continue
       context.fillStyle = boardFillColor({ kind: 'ledge' }, scene.palette, available)
       fillAlongEdge(context, geometry, 0, geometry.length, Math.max(1, geometry.thickness * 0.4))
       // Отбивка смотрит в сторону понижения высоты.
@@ -616,7 +820,10 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
       }
       continue
     }
-    // Дверь и окно — это разрыв в стене с косяками по краям.
+    // Дверь и окно — это разрыв в стене с косяками по краям. У штампа косяки
+    // нарисованы внутри самого рисунка, поэтому он заменяет всю сборку целиком.
+    const doorState = (edge.doorId ? states.get(edge.doorId) : undefined) ?? 'closed'
+    if (drawEdgeStamp(context, scene, geometry, edge.kind === 'window' ? 'window_glazed' : DOOR_STAMPS[doorState])) continue
     context.fillStyle = boardFillColor({ kind: 'wall', cell: side }, scene.palette, available)
     fillAlongEdge(context, geometry, 0, geometry.length * 0.22, geometry.thickness)
     fillAlongEdge(context, geometry, geometry.length * 0.78, geometry.length, geometry.thickness)
@@ -628,7 +835,7 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
       fillAlongEdge(context, geometry, geometry.length * 0.24, geometry.length * 0.76, Math.max(1, geometry.thickness * 0.45))
       continue
     }
-    drawDoorLeaf(context, scene, geometry, (edge.doorId ? states.get(edge.doorId) : undefined) ?? 'closed')
+    drawDoorLeaf(context, scene, geometry, doorState)
   }
 }
 
@@ -2686,6 +2893,19 @@ function drawSilhouette(context: BoardContext2D, box: PropBox, palette: BoardPal
   ellipseShape(context, 0, 0, box.hw * 0.86, box.hh * 0.86)
 }
 
+/**
+ * Растровый штамп в габарит предмета. Пропорция рисунка сохраняется: спрайт
+ * вписывается в габарит, а не растягивается по нему. Растянуть — значит
+ * сплющить круглый стол в овал на клетке 2×1, а габарит приходит из футпринта
+ * и совпадает с пропорцией рисунка не всегда.
+ */
+function drawStamp(context: BoardContext2D, box: PropBox, atlas: PropAtlas, frame: PropFrame) {
+  const fit = Math.min((box.hw * 2) / frame.w, (box.hh * 2) / frame.h)
+  const width = frame.w * fit
+  const height = frame.h * fit
+  context.drawImage(atlas.texture.image, frame.x, frame.y, frame.w, frame.h, -width / 2, -height / 2, width, height)
+}
+
 /** Слой 5: предметы по `zOrder`, с поворотом, масштабом и футпринтом. */
 export function drawProps(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const level = propDetailLevel(scene.cellSize)
@@ -2693,13 +2913,17 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
   for (const prop of propsInTile(scene.map, tile, scene.cellSize)) {
     const drawing = propDrawingFor(prop.assetId)
     const placement = propPlacement(prop, drawing, frame.size)
+    // Штамп берётся только на полной детализации: ниже её предмет занимает
+    // считаные пиксели, и силуэт заливкой там и дешевле, и разборчивее.
+    const stamp = level === 'full' ? scene.propAtlas?.frames[prop.assetId] : undefined
     context.save()
     context.translate((placement.x - frame.minX) * frame.size, (placement.y - frame.minY) * frame.size)
     if (prop.rotation) context.rotate((prop.rotation * Math.PI) / 180)
     // Декаль лежит на полу: прозрачность возвращается руками, а не `restore`, —
     // поддельный контекст тестов не обязан хранить стек состояний.
     if (drawing.flat) context.globalAlpha = PROP_DECAL_ALPHA
-    if (level === 'full') drawing.paint(context, placement.box, scene.palette)
+    if (stamp && scene.propAtlas) drawStamp(context, placement.box, scene.propAtlas, stamp)
+    else if (level === 'full') drawing.paint(context, placement.box, scene.palette)
     else if (level === 'simple') drawSilhouette(context, placement.box, scene.palette, drawing)
     else drawMark(context, placement.box, scene.palette, drawing)
     if (drawing.flat) context.globalAlpha = 1
@@ -2711,7 +2935,15 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
 export function drawGrid(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
   context.save()
-  context.strokeStyle = scene.palette.gridLine
+  // На плоской заливке хватает бледной линии темы. На фактуре — нет: доска,
+  // трава и кладка сами по себе пёстрые, и сетка в них растворяется, а на
+  // боевой карте она нужнее рисунка — по ней считают ходы и дальности.
+  if (texturesAvailableIn(scene)) {
+    context.strokeStyle = shade(scene.palette.wall, -0.2)
+    context.globalAlpha = 0.38
+  } else {
+    context.strokeStyle = scene.palette.gridLine
+  }
   context.lineWidth = Math.max(1, frame.size / 32)
   for (let y = frame.minY; y <= frame.maxY; y += 1) {
     for (let x = frame.minX; x <= frame.maxX; x += 1) {
@@ -2719,6 +2951,9 @@ export function drawGrid(context: BoardContext2D, scene: BoardScene, tile: Board
       context.strokeRect((x - frame.minX) * frame.size, (y - frame.minY) * frame.size, frame.size, frame.size)
     }
   }
+  // Прозрачность возвращается руками: поддельный контекст тестов не обязан
+  // хранить стек состояний.
+  context.globalAlpha = 1
   context.restore()
 }
 

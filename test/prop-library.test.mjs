@@ -198,7 +198,11 @@ function grassColor(texturesAvailable) {
 }
 
 test('каждый идентификатор реестра ассетов имеет собственный рисунок', () => {
-  const assets = listAssets()
+  // Записи проёмов сюда не входят: они живут на ребре, а не на клетке, и
+  // запасным путём без атласа им служит не библиотека рисунков предметов, а
+  // сборка ребра из заливок в `drawEdgeSegments` (её проверяет
+  // `test/board-render.test.mjs`).
+  const assets = listAssets().filter((asset) => asset.kind !== 'door_leaf' && asset.kind !== 'wall_segment')
   assert.ok(assets.length >= 60, `в реестре ${assets.length} записей`)
   const missing = assets.filter((asset) => !render.hasPropDrawing(asset.id)).map((asset) => asset.id)
   assert.deepEqual(missing, [], 'записи реестра без собственного рисунка')
