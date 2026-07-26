@@ -51,7 +51,10 @@ pnpm rules:verify     # rule-pack + rule-retriever
 pnpm content:verify   # целостность контента и лицензий
 pnpm cutover:audit    # расхождения room/snapshot/replay (не меняет данные)
 pnpm migrate:dry-run  # прогон миграций без записи
-pnpm backup           # резервная копия storage/
+pnpm backup           # СЛОМАН: запускает CLI без аргументов, печатает usage и выходит с 1.
+                      # Рабочий вызов: node tools/storage-backup.mjs create ./storage <файл>,
+                      # плюс DND_BACKUP_KEY от 32 байт — этой переменной в проекте нет.
+                      # Подробности и обходной путь — docs/pre-m0-baseline.md.
 ```
 
 Порт и хост задаются `AGENT_PORT` / `AGENT_HOST` (по умолчанию `8787` / `0.0.0.0`).

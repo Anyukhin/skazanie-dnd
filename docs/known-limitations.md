@@ -238,6 +238,9 @@ Compatibility room `PUT` возвращает `410`. Механика и RNG в 
 
 ## Тестирование
 
+- **`test/mvp-player-cycle-api.test.mjs` нестабилен.** Сценарий «обычные игроки проходят автономную кампанию…» падает примерно в половине прогонов — `PATH_BLOCKED`, `SPEED_EXCEEDED` или `REST_ACTOR_INCAPACITATED`, каждый раз по-разному. Тест поднимает настоящий сервер по HTTP без внедрённого Dice Service, поэтому броски в бою недетерминированы, а вместе с ними позиции и остаток хитов. Карта при этом детерминирована. Одиночное падение этого файла регрессией не считать; проверено на неизменённом коде 2026-07-26 — база даёт ту же частоту. Замер и сравнение — в `docs/pre-m0-baseline.md`.
+- **`pnpm backup` не выполняет резервное копирование** (см. `docs/pre-m0-baseline.md`): скрипт вызывает `tools/storage-backup.mjs` без обязательных аргументов, а сам инструмент требует `DND_BACKUP_KEY` от 32 байт, которого нет ни в `.env`, ни в `.env.example`.
+
 Актуальный suite включает unit tests доменных компонентов. Отдельный domain integration test проходит Orchestrator→Rules Engine→FileEventStore→reopen/replay для исследования, social ruling, check/save, spell/resource/concentration, боя, лечения, condition, явного `EndCombat`, rest и `/why`.
 
 Real-HTTP integration scenarios поднимают `server/index.mjs` во временном storage и проверяют:
