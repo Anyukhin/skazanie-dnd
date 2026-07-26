@@ -1,0 +1,44 @@
+name: verify
+
+# Гейт из AGENTS.md §2: `pnpm verify` — это test + typecheck:server + build.
+# До появления этого файла проверок не было вовсе, тесты гонялись руками, и
+# поэтому красное доезжало до main.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          # В package.json нет packageManager, поэтому версия задаётся здесь явно.
+          version: 10
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          # Нижняя граница из AGENTS.md §1 — Node >= 20.19.0.
+          node-version: 22
+          cache: pnpm
+
+      - name: Установить зависимости
+        # Без --frozen-lockfile лок молча обновится, и проверка перестанет
+        # отвечать на вопрос «работает ли то, что лежит в репозитории».
+        run: pnpm install --frozen-lockfile
+
+      - name: Тесты
+        run: pnpm test
+
+      - name: Типы сервера
+        run: pnpm typecheck:server
+
+      - name: Сборка
+        run: pnpm build
