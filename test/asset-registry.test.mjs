@@ -18,9 +18,11 @@ test('реестр проходит собственную проверку', ()
 })
 
 test('набор под тему «здание с участком» покрывает сцену-эталон', () => {
-  const assets = listAssets()
-  assert.ok(assets.length >= 60 && assets.length <= 80,
-    `в реестре ${assets.length} записей, ориентир плана — 60–75`)
+  // Ориентир 60–75 из раздела 12 плана относится к теме «здание с участком», а
+  // не ко всему реестру: после подключения остальных тем он вырос.
+  const building = new Set([...assetsForTheme('interior'), ...assetsForTheme('yard')].map((record) => record.id))
+  assert.ok(building.size >= 60 && building.size <= 80,
+    `в теме «здание» ${building.size} записей, ориентир плана — 60–75`)
 
   // Раздел 1 плана: стулья у столов, бочки вдоль стен, очаг у стены, деревья и
   // тропа снаружи. Без этих записей сцену-эталон собрать нечем.
@@ -121,4 +123,34 @@ test('крупная мебель занимает больше одной кл�
 test('ни одна запись пока не заявляет растр — набор не нарисован', () => {
   const withRaster = listAssets().filter((record) => record.raster)
   assert.deepEqual(withRaster, [], 'заявлять нарисованный набор нельзя, пока его нет')
+})
+
+test('каждая тема этапа M6 имеет собственный набор предметов', () => {
+  // Раздел 12 плана: каждая тема — это набор тайлов, набор предметов и правила
+  // расстановки. Пустая тема означала бы карту из одного пола.
+  for (const theme of ['temple', 'crypt', 'cave', 'forest', 'road', 'settlement']) {
+    const assets = assetsForTheme(theme)
+    assert.ok(assets.length >= 5, `у темы ${theme} всего ${assets.length} предметов`)
+    assert.ok(assets.some((record) => record.cover !== 'none'),
+      `у темы ${theme} нет ни одного предмета с укрытием — бой на ней будет пустым`)
+  }
+})
+
+test('предметы одной темы не протекают в чужую', () => {
+  const tavern = new Set(assetsForTheme('interior').map((record) => record.id))
+  for (const id of ['sarcophagus', 'stalagmite', 'pillar', 'market_stall']) {
+    assert.equal(tavern.has(id), false, `${id} не место в наборе таверны`)
+  }
+  const cave = new Set(assetsForTheme('cave').map((record) => record.id))
+  for (const id of ['bar_counter', 'bed', 'sarcophagus']) {
+    assert.equal(cave.has(id), false, `${id} не место в пещере`)
+  }
+})
+
+test('общая растительность делится между двором, лесом и дорогой', () => {
+  // Деревья одни и те же намеренно: рисовать их дважды незачем.
+  for (const theme of ['yard', 'forest', 'road']) {
+    const ids = new Set(assetsForTheme(theme).map((record) => record.id))
+    assert.ok(ids.has('path_stone'), `у темы ${theme} нет плитняка тропы`)
+  }
 })

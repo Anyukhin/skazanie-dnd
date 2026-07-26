@@ -11,6 +11,7 @@ import {
   serializeTacticalMap,
   setCell,
   setEdge,
+  tacticalMapHash,
 } from './tactical-map.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
@@ -120,9 +121,18 @@ export function publicWorldMapFor(worldMap = {}) {
 }
 
 /**
- * Сужает клетку до публичной формы. `feature` отдаётся **только** с раскрытой
- * клетки — это часть модели видимости, а не косметика; сторож —
- * `test/viewer-projection.test.mjs`.
+ * Сужает клетку до публичной формы. `feature`, материал и вариант тайла
+ * отдаются **только** с раскрытой клетки — это часть модели видимости, а не
+ * косметика; сторож — `test/viewer-projection.test.mjs`.
+ *
+ * Правила обязаны совпадать с `publicTacticalMapFor`: массив клеток и карта —
+ * две проекции одного состояния, и если они расходятся, у видимости появляется
+ * второй набор правил, а игрок видит через более щедрый из них.
+ *
+ * Остаточное ограничение, которое здесь **не** закрывается: `type` отдаётся
+ * всегда, поэтому очертания стен нераскрытой части клиенту известны. Туман
+ * скрывает обстановку, но не планировку. Сделать его настоящим — продуктовое
+ * изменение, а не правка проекции.
  *
  * @param {Loose} [cell]
  * @returns {SceneCell}
@@ -138,9 +148,9 @@ function publicCellFor(cell = {}) {
     y: integer(cell.y),
     type: /** @type {SceneCellType} */ (['wall', 'floor', 'water', 'door'].includes(String(cell.type)) ? String(cell.type) : 'floor'),
     revealed,
-    ...(allowedMaterials.has(material) ? { material: /** @type {SceneCellMaterial} */ (material) } : {}),
+    ...(revealed && allowedMaterials.has(material) ? { material: /** @type {SceneCellMaterial} */ (material) } : {}),
     ...(allowedPatterns.has(pattern) ? { pattern: /** @type {SceneCellPattern} */ (pattern) } : {}),
-    ...(Number.isSafeInteger(Number(cell.variant)) ? { variant: Math.max(0, Math.min(5, Number(cell.variant))) } : {}),
+    ...(revealed && Number.isSafeInteger(Number(cell.variant)) ? { variant: Math.max(0, Math.min(5, Number(cell.variant))) } : {}),
     ...(typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask) ? { edge_mask: cell.edge_mask } : {}),
     ...(revealed && cell.feature != null ? { feature: text(cell.feature, 40) } : {}),
   }
@@ -153,10 +163,14 @@ function publicCellFor(cell = {}) {
  * Предметы, рёбра между двумя нераскрытыми клетками и двери на таких рёбрах не
  * передаются вовсе.
  *
+ * Хеш считается **от проекции**, а не от исходной карты: игроку уходит
+ * обезличенная сетка, и кэшировать по хешу он может только её. Хеш исходной
+ * карты совпал бы у двух игроков с разным раскрытием.
+ *
  * @param {unknown} value сериализованная карта из `scene.map`
- * @returns {Record<string, unknown> | null}
+ * @returns {{map: Record<string, unknown>, hash: string} | null}
  */
-export function publicTacticalMapFor(value) {
+export function publicTacticalMapWithHashFor(value) {
   if (!value || typeof value !== 'object') return null
   let map
   try {
@@ -182,7 +196,15 @@ export function publicTacticalMapFor(value) {
   }
   const visibleEdges = new Set(edgeList(map).map((edge) => `${edge.x},${edge.y},${edge.dir}`))
   map.doors = map.doors.filter((door) => visibleEdges.has(`${door.x},${door.y},${door.dir}`))
-  return serializeTacticalMap(map)
+  return { map: serializeTacticalMap(map), hash: tacticalMapHash(map) }
+}
+
+/**
+ * @param {unknown} value сериализованная карта из `scene.map`
+ * @returns {Record<string, unknown> | null}
+ */
+export function publicTacticalMapFor(value) {
+  return publicTacticalMapWithHashFor(value)?.map ?? null
 }
 
 /**
@@ -190,15 +212,15 @@ export function publicTacticalMapFor(value) {
  * @returns {Loose & { cells: SceneCell[] }}
  */
 export function publicSceneFor(scene = {}) {
-  const map = publicTacticalMapFor(scene.map)
+  const projected = publicTacticalMapWithHashFor(scene.map)
   return {
     title: text(scene.title, 120),
     location: text(scene.location, 180),
     mood: text(scene.mood, 500),
     objective: text(scene.objective, 500),
     turn: Math.max(0, integer(scene.turn, 0)),
-    cells: (Array.isArray(scene.cells) ? scene.cells : []).map(publicCellFor).slice(0, SIZE_CLASSES.area.maxCells),
-    ...(map ? { map } : {}),
+    cells: (Array.isArray(scene.cells) ? scene.cells : []).map(publicCellFor).slice(0, SIZE_CLASSES.region.maxCells),
+    ...(projected ? { map: projected.map, map_hash: projected.hash } : {}),
     ...(scene.theme == null ? {} : { theme: text(scene.theme, 120) }),
     ...(scene.danger == null ? {} : { danger: text(scene.danger, 40) }),
     ...(scene.scene_kind == null ? {} : { scene_kind: text(scene.scene_kind, 40) }),

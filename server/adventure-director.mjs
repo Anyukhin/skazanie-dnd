@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
 import { SIZE_CLASSES, legacyCellsFromTacticalMap } from './tactical-map.mjs'
-import { REFERENCE_SIZE, buildBuildingScene } from './building-generator.mjs'
+import { REFERENCE_SIZE } from './building-generator.mjs'
+import { buildThemedScene, matchTheme } from './scene-themes.mjs'
 
 const WIDTH = 13
 const HEIGHT = 9
@@ -42,7 +43,7 @@ function normalizedSceneCells(value) {
       ? value.cells
       : []
   const seen = new Set()
-  return source.slice(0, SIZE_CLASSES.area.maxCells).flatMap((raw) => {
+  return source.slice(0, SIZE_CLASSES.region.maxCells).flatMap((raw) => {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
     const x = Number(raw.x)
     const y = Number(raw.y)
@@ -129,18 +130,22 @@ export function rememberCurrentSceneMap(state) {
  * Опознание намеренно узкое: пока доведена одна тема, лучше отдать привычную
  * карту, чем поставить таверну там, где её не ждут.
  */
-// `\b` в JavaScript опирается на латиницу и с кириллицей не работает: `дом\b`
-// не совпадает с «Дом травницы». Границу приходится задавать явно.
-const BUILDING_SCENE = /таверн|трактир|постоял|корчм|харчевн|гостиниц|(?<![а-яё])дом(?![а-яё])|(?<![а-яё])изб[аеуы](?![а-яё])|хижин|усадьб|поместь|лавк/iu
-
 function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap }) {
-  const looksLikeBuilding = BUILDING_SCENE.test(`${location} ${theme}`)
-    && String(sceneKind ?? '') !== 'wilderness'
-  if (looksLikeBuilding) {
-    const built = buildBuildingScene({
+  // Явная просьба картографа сильнее догадки по названию: если он назвал
+  // планировку или узор, это осознанное решение агента сцены, и подменять его
+  // опознанной темой нельзя.
+  const explicitLayout = Boolean(requestedMap.layout || requestedMap.pattern)
+  // Опознание темы живёт в одном месте — `server/scene-themes.mjs`. Если тема
+  // не узнана, сцена достаётся прежнему процедурному генератору: выдавать
+  // таверну за всё подряд хуже, чем отдать привычную карту.
+  const matched = explicitLayout ? null : matchTheme({ location, theme, sceneKind })
+  if (matched) {
+    const built = buildThemedScene({
+      location,
+      theme: text(theme, 60, matched.id),
+      sceneKind,
       seed,
       locationId,
-      theme: text(theme, 60, 'tavern'),
       width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
       height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
     })

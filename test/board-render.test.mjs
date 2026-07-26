@@ -289,6 +289,27 @@ test('без арта каждая клетка получает непрозр�
   assert.equal(new Set(states).size >= 3, true)
 })
 
+test('палитра темы не отменяет собственных тонов листвы', () => {
+  // Тема задаёт пол, стены и сетку; тон листвы из них не выводится — цвет
+  // земли и цвет кроны лежат в одном оливковом диапазоне, и выведенная крона
+  // тонула в газоне. Поэтому листва обязана пережить чтение темы как есть.
+  const themed = render.boardPaletteFrom((name) => ({
+    '--map-floor': '#c9b48a',
+    '--map-floor-alt': '#d2bd93',
+    '--map-wall': '#2f2a24',
+    '--map-grid-line': 'rgba(0,0,0,.2)',
+  }[name] ?? ''))
+  assert.equal(themed.floor, '#c9b48a', 'тема задаёт пол')
+  assert.equal(themed.foliage, render.DEFAULT_BOARD_PALETTE.foliage, 'тон кроны потерян')
+  assert.equal(themed.foliageLight, render.DEFAULT_BOARD_PALETTE.foliageLight, 'тон просвета потерян')
+
+  // И без единой переменной темы палитра всё равно полная.
+  const bare = render.boardPaletteFrom(() => '')
+  for (const key of Object.keys(render.DEFAULT_BOARD_PALETTE)) {
+    assert.ok(bare[key], `в палитре без темы нет поля ${key}`)
+  }
+})
+
 test('доска без поля map собирается из старых клеток', () => {
   const cells = []
   for (let y = 0; y < 3; y += 1) {

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { combatBoundsContain, combatBoundsUseful, computeCombatBounds } from './combat-bounds.mjs'
 import { SIZE_CLASSES } from './tactical-map.mjs'
 
 export const ENCOUNTER_PROPOSAL_VERSION = 'skazanie:encounter-proposal-v1'
@@ -8,7 +9,7 @@ export const ENCOUNTER_ASSEMBLER_LIMITS = Object.freeze({
   // Предел клеток един для всей системы и живёт в классах размеров карты
   // (`server/tactical-map.mjs`). Раньше число 500 было продублировано в четырёх
   // местах и расходилось бы при первом же изменении.
-  maximum_scene_cells: SIZE_CLASSES.area.maxCells,
+  maximum_scene_cells: SIZE_CLASSES.region.maxCells,
   maximum_creatures_per_character: 2,
   maximum_creatures: 12,
   minimum_spawn_distance_cells: 2,
@@ -361,7 +362,49 @@ function validateInput(input) {
   return { cells, party, difficulty: input.difficulty, theme: input.theme, seed }
 }
 
-function safePlacementCells(cells, party) {
+/**
+ * Габарит сетки по списку клеток. Сборщик получает клетки, а не `TacticalMap`,
+ * поэтому размер поля он выводит из них: подрайон боя считается от него.
+ * Сетка со сдвинутым началом (отрицательные координаты) не поддерживается —
+ * тогда подрайон не считается вовсе и расстановка остаётся прежней.
+ */
+function gridExtent(cells) {
+  let width = 0
+  let height = 0
+  for (const cell of cells) {
+    if (cell.x < 0 || cell.y < 0) return null
+    width = Math.max(width, cell.x + 1)
+    height = Math.max(height, cell.y + 1)
+  }
+  return width && height ? { width, height } : null
+}
+
+/**
+ * Подрайон боя вокруг отряда (`docs/tactical-map-plan.md`, раздел 11.4).
+ *
+ * Противник обязан появиться внутри него. На карте 100×100 клетка «где-нибудь»
+ * — это до двадцати ходов ходьбы: половина отряда несколько ходов идёт к
+ * противнику, и боя не происходит. Запас вокруг отряда берётся общий, из
+ * `server/combat-bounds.mjs`, чтобы расстановка и подрайон, который поставит
+ * `CombatStarted`, считались по одному правилу.
+ *
+ * Это **не** невидимая стена: подрайон ограничивает только точку появления.
+ * Уже начавшийся бой выпускает участников за границу и раздвигает её.
+ *
+ * `combat-bounds.mjs` читает у карты только размеры, поэтому габарита сетки ему
+ * достаточно.
+ *
+ * @returns {{minX: number, minY: number, maxX: number, maxY: number}|null}
+ *   null — карта слишком мала, чтобы подрайон что-то значил; расстановка идёт
+ *   по всей сцене, как раньше
+ */
+function spawnBounds(cells, party) {
+  const extent = gridExtent(cells)
+  if (!extent || !combatBoundsUseful(extent)) return null
+  return computeCombatBounds(extent, party)
+}
+
+function safePlacementCells(cells, party, bounds = null) {
   const occupied = new Set(party.map(positionKey))
   const walkable = new Map(cells
     .filter((cell) => cell.revealed && WALKABLE_TYPES.has(cell.type))
@@ -379,7 +422,8 @@ function safePlacementCells(cells, party) {
     }
   }
   return cells.filter((cell) => (
-    cell.revealed
+    combatBoundsContain(bounds, cell.x, cell.y)
+    && cell.revealed
     && WALKABLE_TYPES.has(cell.type)
     && reachable.has(positionKey(cell))
     && cell.feature == null
@@ -476,7 +520,10 @@ export class EncounterAssembler {
     const validated = validateInput(input)
     const canonical = JSON.stringify(validated)
     const proposalHash = digest(`${ENCOUNTER_PROPOSAL_VERSION}\u0000${canonical}`)
-    const availableCells = safePlacementCells(validated.cells, validated.party)
+    // Подрайон боя выводится из уже проверенного входа, а не принимается извне:
+    // иначе клетку появления можно было бы подсказать запросом.
+    const bounds = spawnBounds(validated.cells, validated.party)
+    const availableCells = safePlacementCells(validated.cells, validated.party, bounds)
     if (!availableCells.length) {
       throw new EncounterAssemblyError('Нет безопасных клеток для размещения противников', 'NO_SAFE_PLACEMENT_CELLS')
     }

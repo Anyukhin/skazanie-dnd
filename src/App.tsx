@@ -10,7 +10,7 @@ import {
   Bot, PawPrint, Skull, WandSparkles, Globe2,
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, EncounterProposal, Enemy, GameState, MapCell, Merchant, PendingCheck, Player, SummonedCreature } from './types'
-import { getAiHealth } from './ai-client'
+import { fetchWithTimeout, getAiHealth } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
@@ -1070,7 +1070,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>
           </div>
         </div>
-        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер рассчитывает ход…</p>}
+        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер обрабатывает действие и его последствия…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
       </section> : <section className="tactical-control exploration-hotbar" aria-label={`Панель исследования: ${activeName}`}>
         <div className="exploration-mode-icon"><Compass size={24} /></div>
@@ -1081,7 +1081,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         </div>
         <div className="exploration-path-status"><Footprints size={17} /><span><b>Без лимита футов</b><small>путь проверяет сервер</small></span></div>
         {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={31} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
-        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер проверяет путь…</p>}
+        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер обрабатывает действие и его последствия…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
       </section>}
       </section>
@@ -1277,6 +1277,7 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
 
 function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onClose }: { state: GameState; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onCreateHero: (heroId: string) => void; onClose: () => void }) {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
+  const [campaignsLoading, setCampaignsLoading] = useState(true)
   const [wizard, setWizard] = useState(false)
   const [step, setStep] = useState(1)
   const [name, setName] = useState('')
@@ -1287,12 +1288,25 @@ function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onClos
   const [busy, setBusy] = useState(false)
 
   const load = async () => {
-    const campaignsResponse = await fetch('/api/campaigns')
-    const campaignsBody = await campaignsResponse.json() as { campaigns?: CampaignSummary[]; error?: string }
-    if (!campaignsResponse.ok) throw new Error(campaignsBody.error || 'Не удалось загрузить кампании')
-    setCampaigns(campaignsBody.campaigns ?? [])
+    setCampaignsLoading(true)
+    setError('')
+    try {
+      const campaignsResponse = await fetchWithTimeout(
+        '/api/campaigns',
+        {},
+        15_000,
+        'Список кампаний не загрузился вовремя. Сохранённые кампании не удалены.',
+      )
+      const campaignsBody = await campaignsResponse.json() as { campaigns?: CampaignSummary[]; error?: string }
+      if (!campaignsResponse.ok) throw new Error(campaignsBody.error || 'Не удалось загрузить кампании')
+      setCampaigns(campaignsBody.campaigns ?? [])
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Ошибка загрузки кампаний')
+    } finally {
+      setCampaignsLoading(false)
+    }
   }
-  useEffect(() => { load().catch((reason) => setError(reason instanceof Error ? reason.message : 'Ошибка загрузки')) }, [])
+  useEffect(() => { void load() }, [])
 
   const validateStep = () => {
     setError('')
@@ -1327,10 +1341,12 @@ function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onClos
         <h2 id="campaign-modal-title">{wizard ? 'Создание нового мира' : 'Выберите приключение'}</h2>
         {!wizard ? <>
           <div className="campaign-list">
+            {campaignsLoading && <p className="campaign-empty campaign-loading" role="status"><RefreshCw className="spinning" size={14} />Загружаем кампании…</p>}
             {campaigns.map((campaign) => <button key={campaign.code} className={campaign.code === state.sessionCode ? 'active' : ''} onClick={async () => { setBusy(true); setError(''); try { await onSwitch(campaign.code); onClose() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Ошибка переключения') } finally { setBusy(false) } }} disabled={busy}>
               <span><b>{campaign.name}</b><small>{campaign.partyName} · {campaign.memberCount} участников{campaign.setting ? ' · ' + campaign.setting : ''}</small></span><em>{campaign.code}</em>
             </button>)}
-            {!campaigns.length && !error && <p className="campaign-empty">Доступных кампаний пока нет.</p>}
+            {!campaignsLoading && !campaigns.length && !error && <p className="campaign-empty">Доступных кампаний пока нет.</p>}
+            {!campaignsLoading && !!error && <button type="button" className="campaign-retry" onClick={() => void load()} disabled={busy}><RefreshCw size={14} />Повторить загрузку кампаний</button>}
           </div>
           <button className="campaign-start-wizard" onClick={() => setWizard(true)}><Plus size={15} />Создать полностью новую кампанию</button>
         </> : <>

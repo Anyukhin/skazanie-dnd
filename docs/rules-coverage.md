@@ -80,7 +80,7 @@ Machine-readable release coverage хранится в
 | Удушье | да | частично | частично | unit + retrieval | Hazard и условие снятия сохраняются; автоматический счёт минут и уровней Истощения по ходам ещё не реализован |
 | Длительные эффекты | частично | частично | да для hazards | unit | Условие окончания и обязательная проверка исполняются; общего scheduler длительностей пока нет |
 | Блоки существ | частично | частично | да, admin enforce UI/API | unit + domain integration + HTTP | EncounterAssembler имеет 12 server-owned SRD 5.2.1 profiles с несколькими действиями и ограниченными traits; нет полного stat block corpus, полной модели saves/resistances, spellcasting, legendary/lair/recharge и особых действий |
-| Сборка встречи | нет | частично | да, admin enforce UI/API | unit + domain integration + HTTP | Официальный XP budget уровней 1–20, bounded difficulty/theme, quantity cap и revealed/reachable spawn не ближе 10 футов; нет Director auto-trigger, tactics profiles, loot/rewards |
+| Сборка встречи | нет | частично | да, admin enforce UI/API | unit + domain integration + HTTP | Официальный XP budget уровней 1–20, bounded difficulty/theme, quantity cap и revealed/reachable spawn не ближе 10 футов и — на карте шире 28 клеток — только внутри подрайона боя вокруг отряда (`docs/tactical-map-plan.md`, 11.4); нет Director auto-trigger, tactics profiles, loot/rewards |
 | Способности классов | частично | частично | частично, enforce UI/API | unit + replay | Реализованы отдельные server-owned способности, включая Aura of Protection и Fighter Indomitable; полного корпуса уровней 1–12 нет |
 
 ## P2 и rulings

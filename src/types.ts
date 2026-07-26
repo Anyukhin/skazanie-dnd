@@ -693,6 +693,19 @@ export type TacticalMap = {
  */
 export type SerializedTacticalMap = Record<string, unknown>
 
+/**
+ * Дельта раскрытия из `server/reveal-delta.mjs`: интервалы индексов `[начало,
+ * длина]`, а не список координат. `baseHash` называет карту, к которой дельта
+ * применима, — наложить её на другую нельзя.
+ */
+export type SerializedRevealDelta = {
+  version?: string
+  baseHash?: string
+  width?: number
+  revealed?: Array<[number, number]>
+  hidden?: Array<[number, number]>
+}
+
 export type DndClassKey = 'barbarian' | 'bard' | 'cleric' | 'druid' | 'fighter' | 'monk' | 'paladin' | 'ranger' | 'rogue' | 'sorcerer' | 'warlock' | 'wizard'
 
 export type CombatAction = {
@@ -839,8 +852,19 @@ export type Scene = {
   /**
    * Каноническая карта сцены. Отсутствует у старой проекции — тогда доска
    * работает по `cells`.
+   *
+   * Отсутствует и тогда, когда сервер уже знает, что эта карта у клиента есть:
+   * вместо неё приходит `map_delta` или `map_unchanged`, а `map_hash` называет
+   * карту. Разбирает это `src/scene-map-cache.ts`, и до доски сцена доходит
+   * всегда с полем `map`.
    */
   map?: SerializedTacticalMap
+  /** Хеш карты, которая ушла игроку, — ключ клиентского кэша. */
+  map_hash?: string
+  /** Интервалы раскрытия поверх карты `map_delta.baseHash`. */
+  map_delta?: SerializedRevealDelta
+  /** Карта не менялась: она уже есть у клиента под `map_hash`. */
+  map_unchanged?: boolean
   theme?: string
   danger?: 'низкая' | 'средняя' | 'высокая'
   scene_kind?: 'settlement' | 'wilderness' | 'dungeon' | 'road' | 'other'

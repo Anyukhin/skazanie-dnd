@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { CreativeDirector, criticalMomentFor } from '../server/creative-director.mjs'
+import { CRITICAL_NARRATION_TIMEOUT_MS, CreativeDirector, criticalMomentFor } from '../server/creative-director.mjs'
 
 const state = {
   scene: { title: 'Зал', location: 'Крепость', mood: 'Гулкий камень', objective: 'Выстоять' },
@@ -24,9 +24,10 @@ test('creative director is completely bypassed for movement and ordinary attacks
 
 test('enemy death invokes creative narration only after the mechanical event is committed', async () => {
   let calls = 0
-  const director = new CreativeDirector({ narrator: { render: async (brief) => {
+  const director = new CreativeDirector({ narrator: { render: async (brief, options) => {
     calls += 1
     assert.equal(brief.known_environment.critical_moment.kind, 'enemy_defeated')
+    assert.equal(options.timeoutMs, CRITICAL_NARRATION_TIMEOUT_MS)
     return { narration: 'Страж оседает у расколотой колонны.', provider: 'fake-agent', verification: { valid: true }, suggestions: [] }
   } } })
   const events = [{ event_type: 'HitPointsReducedToZero', actor_id: 'hero', target_ids: ['guard'], payload: { hp_after: 0 }, visibility: 'public' }]

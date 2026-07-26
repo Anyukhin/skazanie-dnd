@@ -27,7 +27,8 @@
     "preview": "node server/index.mjs",
     "start": "node server/index.mjs",
     "docker:up": "docker compose up -d --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "icons:manifest": "node tools/build-icon-manifest.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.3",

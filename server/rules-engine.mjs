@@ -9,6 +9,12 @@ import {
 } from './adventure-director.mjs'
 import { ensureCampaignWorldMap } from './world-map.mjs'
 import {
+  applyCombatBounds,
+  combatBoundsContain,
+  combatBoundsUseful,
+  expandCombatBounds,
+} from './combat-bounds.mjs'
+import {
   addProp as addTacticalProp,
   deserializeTacticalMap,
   legacyCellsFromTacticalMap,
@@ -1114,11 +1120,27 @@ function positionKey(position) {
  * сериализованным, чтобы переживать clone и снимок состояния без отдельного
  * кода.
  */
+/**
+ * Разобранные карты по объекту сериализованной карты.
+ *
+ * Без кэша reducer разбирал карту заново на каждом событии: replay кампании из
+ * 52 событий занимал 261 мс, то есть около 5 мс на событие, и это чувствовалось
+ * при открытии кампании. Ключ — сам объект `scene.map`; запись карты создаёт
+ * новый объект, поэтому устаревшее значение из кэша прийти не может.
+ *
+ * @type {WeakMap<object, import('./tactical-map.mjs').TacticalMap>}
+ */
+const sceneTacticalMapCache = new WeakMap()
+
 function sceneTacticalMap(state) {
   const raw = state?.scene?.map
   if (!raw || typeof raw !== 'object') return null
+  const cached = sceneTacticalMapCache.get(raw)
+  if (cached) return cached
   try {
-    return deserializeTacticalMap(raw)
+    const map = deserializeTacticalMap(raw)
+    sceneTacticalMapCache.set(raw, map)
+    return map
   } catch {
     // Повреждённая карта не должна останавливать игру: сцена продолжит жить на
     // старых клетках, а следующая нормализация соберёт карту заново.
@@ -1142,7 +1164,13 @@ function syncSceneCells(state, map) {
 /** Записывает изменённую карту обратно в состояние и обновляет производную. */
 function writeSceneTacticalMap(state, map) {
   if (!state?.scene) return state
+  // Прежний ключ выселяется обязательно: мутирующие пути правят сам
+  // закэшированный экземпляр, и без выселения чужой держатель старого объекта
+  // получил бы из кэша уже изменённую карту вместо своей.
+  const previous = state.scene.map
+  if (previous && typeof previous === 'object') sceneTacticalMapCache.delete(previous)
   state.scene.map = serializeTacticalMap(map)
+  sceneTacticalMapCache.set(state.scene.map, map)
   return syncSceneCells(state, map)
 }
 
@@ -1237,6 +1265,37 @@ function setScenePropAt(state, x, y, assetId) {
     footprint: [{ x: safeX, y: safeY }],
     zOrder: 0,
   })
+  return writeSceneTacticalMap(state, map)
+}
+
+/**
+ * Ставит подрайон боя вокруг участников (`docs/tactical-map-plan.md`, 11.4).
+ * На маленькой карте подрайон бессмыслен и не ставится: он совпал бы с картой и
+ * только запутал.
+ */
+function syncCombatBounds(state, actorIds) {
+  const map = ensureSceneTacticalMap(state)
+  if (!map || !combatBoundsUseful(map)) return state
+  const points = (Array.isArray(actorIds) ? actorIds : [])
+    .map((id) => actorPosition(state, String(id)))
+    .filter(Boolean)
+  if (!points.length) return state
+  applyCombatBounds(map, points)
+  return writeSceneTacticalMap(state, map)
+}
+
+/**
+ * Раздвигает подрайон, если участник вышел за границу. Ничего не запрещает —
+ * запрет означал бы невидимую стену.
+ */
+function growCombatBounds(state, position) {
+  const x = Number(position?.x)
+  const y = Number(position?.y)
+  if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return state
+  if (!state?.mechanics?.combat?.active) return state
+  const map = sceneTacticalMap(state)
+  if (!map?.combatBounds || combatBoundsContain(map.combatBounds, x, y)) return state
+  map.combatBounds = expandCombatBounds(map, map.combatBounds, x, y)
   return writeSceneTacticalMap(state, map)
 }
 
@@ -8496,6 +8555,7 @@ export function applyGameEvent(rawState, event) {
         group_initiative: payload.group_initiative === true,
         turn_completed: [],
       }
+      syncCombatBounds(state, (payload.initiative ?? []).map((entry) => entry.actor_id))
       if (state.mechanics.encounter && state.mechanics.encounter.status === 'staged') {
         state.mechanics.encounter = { ...state.mechanics.encounter, status: 'active', started_at: event.occurred_at ?? event.created_at ?? null }
       }
@@ -8586,6 +8646,9 @@ export function applyGameEvent(rawState, event) {
       break
     case 'ActorMoved':
       state.mechanics.positions[target] = clone(payload.to)
+      // Выход за подрайон боя раздвигает его, а не запрещается: невидимых стен
+      // принципы не допускают (`docs/tactical-map-plan.md`, 11.4).
+      growCombatBounds(state, payload.to)
       replaceActor(state, target, (actor) => payload.to && Number.isFinite(Number(payload.to.x)) && Number.isFinite(Number(payload.to.y))
         ? { ...actor, x: Number(payload.to.x), y: Number(payload.to.y) }
         : actor)

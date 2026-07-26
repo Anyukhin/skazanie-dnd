@@ -19,9 +19,15 @@
   "include": [
     "server/asset-registry.mjs",
     "server/building-generator.mjs",
+    "server/combat-bounds.mjs",
     "server/contracts.mjs",
     "server/dynamic-map.mjs",
+    "server/graph-layout.mjs",
+    "server/map-store.mjs",
     "server/prop-placement.mjs",
+    "server/reveal-delta.mjs",
+    "server/scene-graph.mjs",
+    "server/scene-themes.mjs",
     "server/tactical-map.mjs",
     "server/viewer-projection.mjs"
   ]

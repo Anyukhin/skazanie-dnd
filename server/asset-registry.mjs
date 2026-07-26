@@ -59,6 +59,20 @@ export class AssetRegistryError extends Error {
 
 const BUILDING = Object.freeze(['building', 'tavern', 'house', 'interior'])
 const YARD = Object.freeze(['building', 'tavern', 'house', 'yard', 'exterior'])
+/**
+ * Темы этапа M6.
+ *
+ * Метка `interior` принадлежит теме здания и общим видом помещения **не
+ * является**: иначе саркофаг и сталагмит попадали бы в набор таверны. У храма,
+ * склепа и пещеры метка своя.
+ *
+ * Растительность двора переиспользуется лесом и дорогой осознанно: это одни и
+ * те же деревья, и рисовать их дважды незачем.
+ */
+const TEMPLE = Object.freeze(['temple'])
+const CRYPT = Object.freeze(['crypt'])
+const CAVE = Object.freeze(['cave'])
+const WILD = Object.freeze(['forest', 'road', 'settlement', 'exterior'])
 
 /**
  * Короткая запись: всё, что не указано, берёт значения по умолчанию.
@@ -162,28 +176,63 @@ const ENTRIES = Object.freeze([
   entry('trapdoor', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, interactive: true }),
 
   // --- Внешняя территория ---------------------------------------------
-  entry('tree_oak', { themes: [...YARD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 40, scaleRange: { min: 0.8, max: 1.4 } }),
-  entry('tree_pine', { themes: [...YARD], baseFootprint: { w: 1, h: 1 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 30, scaleRange: { min: 0.8, max: 1.5 } }),
-  entry('tree_birch', { themes: [...YARD], blocksMove: true, blocksSight: true, cover: 'half', destructible: true, hp: 22, scaleRange: { min: 0.85, max: 1.35 } }),
-  entry('tree_dead', { themes: [...YARD], blocksMove: true, cover: 'half', destructible: true, hp: 18, scaleRange: { min: 0.8, max: 1.3 } }),
-  entry('tree_stump', { themes: [...YARD], cover: 'half', scaleRange: { min: 0.8, max: 1.2 } }),
-  entry('bush', { themes: [...YARD], blocksSight: true, cover: 'half', scaleRange: { min: 0.75, max: 1.35 } }),
-  entry('shrub', { themes: [...YARD], cover: 'half', scaleRange: { min: 0.75, max: 1.3 } }),
-  entry('grass_tuft', { themes: [...YARD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.4 } }),
-  entry('flowers', { themes: [...YARD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
-  entry('rock_small', { themes: [...YARD], cover: 'half', scaleRange: { min: 0.7, max: 1.3 } }),
-  entry('boulder', { themes: [...YARD], blocksMove: true, blocksSight: true, cover: 'three_quarters', scaleRange: { min: 0.85, max: 1.4 } }),
-  entry('woodpile', { themes: [...YARD], anchor: 'wall', baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 12 }),
-  entry('cart', { themes: [...YARD], baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 20 }),
-  entry('wagon_wheel', { themes: [...YARD], anchor: 'wall', cover: 'half', destructible: true, hp: 6 }),
-  entry('hitching_post', { themes: [...YARD], interactive: true }),
-  entry('water_trough', { themes: [...YARD], baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half' }),
-  entry('well', { themes: [...YARD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', interactive: true }),
-  entry('lamp_post', { themes: [...YARD], interactive: true }),
-  entry('signpost', { themes: [...YARD], interactive: true }),
-  entry('haystack', { themes: [...YARD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 10, scaleRange: { min: 0.85, max: 1.25 } }),
-  entry('path_stone', { themes: [...YARD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
-  entry('campfire', { themes: [...YARD], interactive: true }),
+  entry('tree_oak', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 40, scaleRange: { min: 0.8, max: 1.4 } }),
+  entry('tree_pine', { themes: [...YARD, ...WILD], baseFootprint: { w: 1, h: 1 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 30, scaleRange: { min: 0.8, max: 1.5 } }),
+  entry('tree_birch', { themes: [...YARD, ...WILD], blocksMove: true, blocksSight: true, cover: 'half', destructible: true, hp: 22, scaleRange: { min: 0.85, max: 1.35 } }),
+  entry('tree_dead', { themes: [...YARD, ...WILD], blocksMove: true, cover: 'half', destructible: true, hp: 18, scaleRange: { min: 0.8, max: 1.3 } }),
+  entry('tree_stump', { themes: [...YARD, ...WILD], cover: 'half', scaleRange: { min: 0.8, max: 1.2 } }),
+  entry('bush', { themes: [...YARD, ...WILD], blocksSight: true, cover: 'half', scaleRange: { min: 0.75, max: 1.35 } }),
+  entry('shrub', { themes: [...YARD, ...WILD], cover: 'half', scaleRange: { min: 0.75, max: 1.3 } }),
+  entry('grass_tuft', { themes: [...YARD, ...WILD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.4 } }),
+  entry('flowers', { themes: [...YARD, ...WILD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
+  entry('rock_small', { themes: [...YARD, ...WILD], cover: 'half', scaleRange: { min: 0.7, max: 1.3 } }),
+  entry('boulder', { themes: [...YARD, ...WILD], blocksMove: true, blocksSight: true, cover: 'three_quarters', scaleRange: { min: 0.85, max: 1.4 } }),
+  entry('woodpile', { themes: [...YARD, ...WILD], anchor: 'wall', baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 12 }),
+  entry('cart', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 20 }),
+  entry('wagon_wheel', { themes: [...YARD, ...WILD], anchor: 'wall', cover: 'half', destructible: true, hp: 6 }),
+  entry('hitching_post', { themes: [...YARD, ...WILD], interactive: true }),
+  entry('water_trough', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half' }),
+  entry('well', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', interactive: true }),
+  entry('lamp_post', { themes: [...YARD, ...WILD], interactive: true }),
+  entry('signpost', { themes: [...YARD, ...WILD], interactive: true }),
+  entry('haystack', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 10, scaleRange: { min: 0.85, max: 1.25 } }),
+  entry('path_stone', { themes: [...YARD, ...WILD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
+  entry('campfire', { themes: [...YARD, ...WILD], interactive: true }),
+
+  // --- Храм --------------------------------------------------------------
+  entry('pillar', { themes: [...TEMPLE], blocksMove: true, blocksSight: true, cover: 'three_quarters' }),
+  entry('altar', { themes: [...TEMPLE, ...CRYPT], baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, cover: 'half', interactive: true }),
+  entry('statue', { themes: [...TEMPLE, ...CRYPT], blocksMove: true, blocksSight: true, cover: 'three_quarters' }),
+  entry('brazier', { themes: [...TEMPLE, ...CRYPT], interactive: true, destructible: true, hp: 6 }),
+  entry('offering_bowl', { themes: [...TEMPLE], baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.8, max: 1.1 } }),
+  entry('prayer_bench', { themes: [...TEMPLE], baseFootprint: { w: 2, h: 1 }, anchor: 'wall', destructible: true, hp: 8 }),
+  entry('temple_banner', { themes: [...TEMPLE], kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall' }),
+  entry('reliquary', { themes: [...TEMPLE], anchor: 'wall', blocksMove: true, cover: 'half', interactive: true }),
+  entry('mosaic', { themes: [...TEMPLE], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.9, max: 1.4 } }),
+
+  // --- Склеп -------------------------------------------------------------
+  entry('sarcophagus', { themes: [...CRYPT], baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', interactive: true, destructible: true, hp: 25 }),
+  entry('grave', { themes: [...CRYPT], anchor: 'wall', cover: 'half' }),
+  entry('bone_pile', { themes: [...CRYPT, ...CAVE], baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
+  entry('urn', { themes: [...CRYPT], anchor: 'wall', destructible: true, hp: 4 }),
+  entry('crypt_niche', { themes: [...CRYPT], anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' }),
+  entry('cobweb', { themes: [...CRYPT, ...CAVE], kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'corner' }),
+
+  // --- Пещера ------------------------------------------------------------
+  entry('stalagmite', { themes: [...CAVE], blocksMove: true, cover: 'half', scaleRange: { min: 0.7, max: 1.5 } }),
+  entry('cave_pool', { themes: [...CAVE], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'none' }),
+  entry('mushroom_cluster', { themes: [...CAVE], baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.4 } }),
+  entry('ore_vein', { themes: [...CAVE], kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall', interactive: true }),
+  entry('rubble_heap', { themes: [...CAVE], cover: 'half', scaleRange: { min: 0.8, max: 1.3 } }),
+
+  // --- Лес, дорога, поселение --------------------------------------------
+  entry('tree_spruce', { themes: [...WILD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 35, scaleRange: { min: 0.8, max: 1.4 } }),
+  entry('fallen_log', { themes: [...WILD], baseFootprint: { w: 2, h: 1 }, cover: 'half' }),
+  entry('fern', { themes: [...WILD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
+  entry('milestone', { themes: [...WILD], anchor: 'wall', cover: 'half' }),
+  entry('roadside_shrine', { themes: [...WILD], anchor: 'wall', blocksMove: true, cover: 'half', interactive: true }),
+  entry('market_stall', { themes: ['settlement', 'exterior'], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half' }),
+  entry('village_fence', { themes: ['settlement', 'exterior'], baseFootprint: { w: 2, h: 1 }, anchor: 'wall', cover: 'half' }),
 ])
 
 /** @type {Map<string, AssetEntry>} */

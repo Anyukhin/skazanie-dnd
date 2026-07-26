@@ -124,7 +124,9 @@ function Wait-ForServer([int]$TimeoutSeconds = 150) {
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
   while ([DateTime]::UtcNow -lt $deadline) {
     try {
-      $response = Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8787/api/health' -TimeoutSec 3
+      # Для готовности достаточно статуса: GET скачивает крупный каталог создания
+      # персонажа из /api/health и на медленном Docker Desktop даёт ложный таймаут.
+      $response = Invoke-WebRequest -UseBasicParsing -Method Head 'http://127.0.0.1:8787/api/health' -TimeoutSec 3
       if ($response.StatusCode -eq 200) { return $true }
     } catch {}
     Start-Sleep -Seconds 2

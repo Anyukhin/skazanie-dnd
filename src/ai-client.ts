@@ -6,8 +6,42 @@ type SharedDiceRollResponse = {
   state: GameState
 }
 
+export class RequestTimeoutError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RequestTimeoutError'
+  }
+}
+
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = 15_000,
+  timeoutMessage = 'Сервер слишком долго не отвечает.',
+): Promise<Response> {
+  const controller = new AbortController()
+  const externalSignal = init.signal
+  let timedOut = false
+  const relayAbort = () => controller.abort(externalSignal?.reason)
+  if (externalSignal?.aborted) relayAbort()
+  else externalSignal?.addEventListener('abort', relayAbort, { once: true })
+  const timeout = globalThis.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, Math.max(1, timeoutMs))
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } catch (error) {
+    if (timedOut) throw new RequestTimeoutError(timeoutMessage)
+    throw error
+  } finally {
+    globalThis.clearTimeout(timeout)
+    externalSignal?.removeEventListener('abort', relayAbort)
+  }
+}
+
 export async function getAiHealth(): Promise<AiHealth> {
-  const response = await fetch('/api/health')
+  const response = await fetchWithTimeout('/api/health', {}, 10_000, 'Сервер рассказчика не ответил вовремя')
   if (!response.ok) throw new Error('Сервер рассказчика недоступен')
   return response.json() as Promise<AiHealth>
 }
@@ -18,28 +52,21 @@ function newIdempotencyKey() {
 }
 
 export async function narrateWithAgent(state: GameState, action: string, _player: string, roll?: RollResult, idempotencyKey = newIdempotencyKey()): Promise<AiTurnResult> {
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 48_000)
-  try {
-    const response = await fetch('/api/narrate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action,
-        campaign_id: state.sessionCode,
-        idempotency_key: idempotencyKey,
-        ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
-      }),
-      signal: controller.signal,
-    })
-    if (!response.ok) {
-      const details = await response.json().catch(() => ({})) as { error?: string }
-      throw new Error(details.error || `Ошибка рассказчика: ${response.status}`)
-    }
-    return response.json() as Promise<AiTurnResult>
-  } finally {
-    window.clearTimeout(timeout)
+  const response = await fetchWithTimeout('/api/narrate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action,
+      campaign_id: state.sessionCode,
+      idempotency_key: idempotencyKey,
+      ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
+    }),
+  }, 48_000, 'Рассказчик не ответил вовремя. Попробуйте обновить состояние кампании.')
+  if (!response.ok) {
+    const details = await response.json().catch(() => ({})) as { error?: string }
+    throw new Error(details.error || `Ошибка рассказчика: ${response.status}`)
   }
+  return response.json() as Promise<AiTurnResult>
 }
 
 export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'label' | 'modifier' | 'difficulty' | 'playerId'>, campaignId: string): Promise<RollResult> {

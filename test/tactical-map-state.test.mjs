@@ -167,9 +167,10 @@ test('сборщик встреч отвергает нелогичное зна
   }), (error) => error.code === 'INVALID_SCENE_CELL_OCCUPANCY')
 })
 
-test('предел клеток поднят до 3600 и действует одинаково во всех границах', () => {
+test('предел клеток поднят до 10 000 и действует одинаково во всех границах', () => {
   assert.equal(SIZE_CLASSES.arena.maxCells, 900)
   assert.equal(SIZE_CLASSES.area.maxCells, 3_600)
+  assert.equal(SIZE_CLASSES.region.maxCells, 10_000)
 
   // Старый процедурный генератор намеренно остался на классе arena: его
   // планировки не рассчитаны на доску больше 30×30.
@@ -179,10 +180,10 @@ test('предел клеток поднят до 3600 и действует о�
   assert.ok(large.length <= SIZE_CLASSES.arena.maxCells)
 
   const dense = []
-  for (let y = 0; y < 60; y += 1) for (let x = 0; x < 60; x += 1) dense.push({ x, y, type: 'floor', revealed: true })
-  assert.equal(publicSceneFor({ cells: dense }).cells.length, 3_600, 'проекция не должна резать карту класса area')
+  for (let y = 0; y < 100; y += 1) for (let x = 0; x < 100; x += 1) dense.push({ x, y, type: 'floor', revealed: true })
+  assert.equal(publicSceneFor({ cells: dense }).cells.length, 10_000, 'проекция не должна резать карту класса region')
 
-  const tooMany = [...dense, { x: 0, y: 60, type: 'floor', revealed: true }]
+  const tooMany = [...dense, { x: 0, y: 100, type: 'floor', revealed: true }]
   assert.throws(() => assembleEncounter({
     scene: { cells: tooMany }, party: [{ id: 'hero-a', level: 1, x: 1, y: 1 }],
     difficulty: 'easy', theme: 'beasts', seed: 'too-many',

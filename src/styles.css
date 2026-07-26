@@ -926,6 +926,8 @@ button.campaign-title:hover strong { color: #edc996; }
 .campaign-list > button.active { border-color: rgba(202,151,88,.42); background: rgba(161,104,48,.09); }
 .campaign-list span { display: grid; gap: 3px; }.campaign-list b { color: #cbbfb1; font: 600 12px Spectral, serif; }.campaign-list small { color: #71685f; font-size: 13px; }.campaign-list em { color: #a87a48; font-size: 13px; font-style: normal; }
 .campaign-empty { margin: 0; padding: 14px; border: 1px dashed var(--line); border-radius: 5px; text-align: center; }
+.campaign-loading { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.campaign-list > .campaign-retry { min-height: 42px; justify-content: center; color: #c89a63; }
 .campaign-create { display: grid; grid-template-columns: 1.3fr 1fr .8fr; gap: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
 .campaign-create > strong { grid-column: 1/-1; display: flex; align-items: center; gap: 6px; color: #b58a5b; font: 600 12px Spectral, serif; }
 .campaign-create input { min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; outline: 0; background: rgba(0,0,0,.16); color: #c8bcaf; font-size: 14px; }
@@ -1388,6 +1390,14 @@ button.campaign-title:hover strong { color: #edc996; }
   background-size: 500% 500%;
   background-repeat: no-repeat;
   filter: saturate(.82) contrast(1.04) brightness(.94);
+}
+/* Собственный рисунок действия: вписывается целиком, без обрезки по клетке
+   атласа. Прозрачный фон картинки пропускает тайл под ней. */
+.combat-icon-art.own {
+  background-image: var(--combat-icon-src);
+  background-position: center;
+  background-size: contain;
+  filter: none;
 }
 .combat-icon.compact .combat-icon-art { inset: 1px; }
 .action-tile:hover:not(:disabled) .combat-icon,

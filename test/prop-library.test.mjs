@@ -149,6 +149,54 @@ function footprint(x, y, width, height) {
   return cells
 }
 
+/** Запись реестра по идентификатору: нужен её футпринт. */
+function assetById(id) {
+  const asset = listAssets().find((item) => item.id === id)
+  assert.ok(asset, `в реестре нет записи ${id}`)
+  return asset
+}
+
+/** Тот же предмет, но на газоне: цвет двора и проверяется против травы. */
+function drawOnGrass(assetId, cellSize = 48) {
+  const asset = assetById(assetId)
+  const cells = asset.baseFootprint.w
+    ? footprint(2, 2, asset.baseFootprint.w, asset.baseFootprint.h)
+    : []
+  const map = createTacticalMap({
+    width: 12, height: 12, fill: { passable: true, revealed: true, material: 'grass' },
+  })
+  addProp(map, {
+    id: 'prop-1',
+    assetId,
+    x: 2 + (asset.baseFootprint.w || 1) / 2,
+    y: 2 + (asset.baseFootprint.h || 1) / 2,
+    footprint: cells,
+  })
+  const context = tracingContext()
+  render.drawProps(context, { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize }, { tileX: 0, tileY: 0 })
+  return { context, asset }
+}
+
+const channels = (color) => {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(color))
+  return match ? [1, 2, 3].map((index) => parseInt(match[index], 16)) : null
+}
+
+/** Разница цветов по сумме каналов: грубо, зато не зависит от цветовой модели. */
+function colorDistance(left, right) {
+  const a = channels(left)
+  const b = channels(right)
+  if (!a || !b) return 0
+  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
+}
+
+/** Цвет клетки газона — то, на фоне чего двор и обязан читаться. */
+function grassColor(texturesAvailable) {
+  const map = createTacticalMap({ width: 2, height: 2, fill: { passable: true, revealed: true, material: 'grass' } })
+  const cell = client.cellAt(decoded(map), 0, 0)
+  return render.boardFillColor({ kind: 'floor', cell }, render.DEFAULT_BOARD_PALETTE, texturesAvailable)
+}
+
 test('каждый идентификатор реестра ассетов имеет собственный рисунок', () => {
   const assets = listAssets()
   assert.ok(assets.length >= 60, `в реестре ${assets.length} записей`)
@@ -278,6 +326,110 @@ test('поворот и масштаб дают разную картинку', 
   const pine = drawSingleProp({ assetId: 'tree_pine', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
   const birch = drawSingleProp({ assetId: 'tree_birch', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
   assert.notEqual(geometry(pine), geometry(birch), 'сосна и берёза нарисованы одинаково')
+})
+
+test('зелень двора не сливается с газоном', () => {
+  // Крона выводилась смешением с цветом внешней зоны, а зона — это цвет земли:
+  // дерево получалось оливково-серым и на газоне читалось камнем. Отдельные
+  // тона листвы в палитре и стерегутся здесь.
+  assert.ok(render.DEFAULT_BOARD_PALETTE.foliage, 'в палитре нет тона листвы')
+  assert.ok(render.DEFAULT_BOARD_PALETTE.foliageLight, 'в палитре нет тона просвета')
+  for (const textures of [true, false]) {
+    const lawn = grassColor(textures)
+    assert.ok(
+      colorDistance(render.DEFAULT_BOARD_PALETTE.foliage, lawn) > 100,
+      `крона ${render.DEFAULT_BOARD_PALETTE.foliage} и газон ${lawn} слишком близки`,
+    )
+  }
+
+  // И сам рисунок обязан этим тоном пользоваться: запись в палитре, до которой
+  // не доходит ни одна заливка, ничего не чинит.
+  const lawn = grassColor(true)
+  for (const id of ['tree_oak', 'tree_pine', 'tree_birch', 'bush', 'shrub']) {
+    const { context } = drawOnGrass(id)
+    const far = context.ops
+      .map((item) => colorDistance(item.value, lawn))
+      .reduce((best, value) => Math.max(best, value), 0)
+    assert.ok(far > 100, `${id} нарисован в тон газона: лучшая разница ${far}`)
+  }
+})
+
+test('рисунок двора занимает свой габарит, а не пятнышко посреди клетки', () => {
+  // Кроны и сиденья рисовались вдвое мельче своих клеток, и на общем плане от
+  // предмета оставалась точка. `PROP_FOOTPRINT_FILL` оставляет 0.84 футпринта
+  // под рисунок — значит, занять он обязан почти всё это поле.
+  const share = 0.7
+  const filling = [
+    'tree_oak', 'tree_pine', 'tree_birch', 'tree_dead', 'tree_stump', 'bush', 'shrub',
+    'boulder', 'haystack', 'woodpile', 'cart', 'wagon_wheel', 'well', 'hitching_post',
+    'chair', 'stool', 'bench',
+  ]
+  const cellSize = 48
+  for (const id of filling) {
+    const { context, asset } = drawOnGrass(id, cellSize)
+    const width = context.box.maxX - context.box.minX
+    const height = context.box.maxY - context.box.minY
+    assert.ok(
+      width >= asset.baseFootprint.w * cellSize * share,
+      `${id} занял по ширине ${width.toFixed(1)} из ${asset.baseFootprint.w * cellSize}`,
+    )
+    assert.ok(
+      height >= asset.baseFootprint.h * cellSize * share,
+      `${id} занял по высоте ${height.toFixed(1)} из ${asset.baseFootprint.h * cellSize}`,
+    )
+  }
+})
+
+test('сиденья различаются между собой и с ящиком', () => {
+  // Стул, табурет и скамья рисовались одним блоком с полоской и на общем плане
+  // не отличались ни друг от друга, ни от ящика.
+  const shape = (id) => {
+    const { context } = drawOnGrass(id)
+    return JSON.stringify(context.ops.map((item) => [item.op, item.value, item.width, item.height]))
+  }
+  const seats = ['chair', 'stool', 'bench', 'crate']
+  assert.equal(new Set(seats.map(shape)).size, seats.length, 'сиденья и ящик нарисованы одинаково')
+
+  // У скамьи ножки торчат за сиденье, у табурета — за круг: по ним сиденье и
+  // отличается от глухого ящика.
+  for (const id of ['stool', 'bench']) {
+    const { context, asset } = drawOnGrass(id)
+    const height = context.box.maxY - context.box.minY
+    assert.ok(height > asset.baseFootprint.h * 48 * 0.75, `${id} потерял ножки: высота ${height.toFixed(1)}`)
+  }
+})
+
+test('на отдалении зелень остаётся зеленью, а камень камнем', () => {
+  // Силуэт и метка красились одним `palette.prop`, и при отдалении двор
+  // превращался в бурую сыпь: лес переставал отличаться от бочек и от камней.
+  const lawn = grassColor(true)
+  // «Зеленее» — перевес зелёного канала над средним из красного и синего:
+  // разница в тоне, а не в яркости, и есть то, чем крона держится на газоне.
+  const greenness = (color) => {
+    const rgb = channels(color)
+    return rgb ? rgb[1] - (rgb[0] + rgb[2]) / 2 : 0
+  }
+  for (const level of [render.PROP_FULL_DETAIL_CELL_PIXELS - 1, render.PROP_MIN_CELL_PIXELS - 1]) {
+    for (const id of ['tree_oak', 'bush']) {
+      const { context } = drawOnGrass(id, level)
+      assert.equal(context.ops.length, 1, `${id} на уровне ${level} рисуется не одной заливкой`)
+      assert.equal(
+        context.ops[0].value, render.DEFAULT_BOARD_PALETTE.foliage,
+        `${id} на уровне ${level} красится не тоном листвы`,
+      )
+    }
+    // Камень отличается от газона не яркостью, а тем, что он не зелёный.
+    const { context } = drawOnGrass('boulder', level)
+    assert.equal(context.ops.length, 1, `валун на уровне ${level} рисуется не одной заливкой`)
+    assert.notEqual(
+      context.ops[0].value, render.DEFAULT_BOARD_PALETTE.prop,
+      `валун на уровне ${level} остался цветом мебели`,
+    )
+    assert.ok(
+      greenness(lawn) - greenness(context.ops[0].value) > 12,
+      `валун на уровне ${level} вышел таким же зелёным, как газон (${context.ops[0].value})`,
+    )
+  }
 })
 
 test('декали рисуются плоско, без объёма', () => {

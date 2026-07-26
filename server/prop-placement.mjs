@@ -287,9 +287,13 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     // крупные предметы: до стульев очередь не доходила бы никогда.
     /** @type {import('./asset-registry.mjs').AssetEntry[]} */
     const wanted = []
+    // Список темы — единственный источник допустимого. Раньше `require` брал
+    // предмет по идентификатору мимо фильтра, и в пещеру могла попасть барная
+    // стойка: обязательность не отменяет принадлежность теме.
+    const allowed = new Set(catalogue.map((record) => record.id))
     /** @param {import('./asset-registry.mjs').AssetEntry|null} asset */
     const enqueue = (asset) => {
-      if (!asset || wanted.length >= budget) return
+      if (!asset || !allowed.has(asset.id) || wanted.length >= budget) return
       wanted.push(asset)
       for (const [companionId, count] of COMPANIONS[asset.id] ?? []) {
         for (let index = 0; index < count && wanted.length < budget; index += 1) {

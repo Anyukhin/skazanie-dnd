@@ -28,53 +28,69 @@ export class Narrator {
     this.maxAttempts = Math.max(1, Math.min(3, Number(maxAttempts) || 2))
   }
 
-  async render(brief, { knownRuleIds = [], style = 'Кратко и конкретно' } = {}) {
+  async render(brief, { knownRuleIds = [], style = 'Кратко и конкретно', timeoutMs = null } = {}) {
     assertNarrationBrief(brief)
     if (!this.llmClient) {
       const fallback = deterministicNarration(brief)
       return { ...fallback, verification: this.verifier.verify(fallback.narration, brief, { knownRuleIds }), prompt_version: NARRATOR_PROMPT_VERSION, provider: 'deterministic' }
     }
 
-    let lastVerification = null
-    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
-      const repair = lastVerification?.violations?.length
-        ? `\nИсправь нарушения предыдущего варианта: ${JSON.stringify(lastVerification.violations)}`
-        : ''
-      let output
-      try {
-        output = await this.llmClient.completeJson({
-          messages: [
-            { role: 'system', content: narratorPrompt },
-            { role: 'user', content: `${buildDataOnlyContext({ narration_brief: brief, style })}${repair}` },
-          ],
-          temperature: 0.55,
-          jsonExpected: 'object',
-        })
-      } catch (error) {
-        const fallback = deterministicNarration(brief)
-        return {
-          ...fallback,
-          verification: {
-            ...this.verifier.verify(fallback.narration, brief, { knownRuleIds }),
-            provider_error: String(error?.code ?? error?.name ?? 'LLM_PROVIDER_ERROR').slice(0, 80),
-          },
-          prompt_version: NARRATOR_PROMPT_VERSION,
-          provider: 'deterministic-provider-fallback',
+    const requestedTimeout = Number(timeoutMs)
+    const deadlineController = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+      ? new AbortController()
+      : null
+    const deadline = deadlineController
+      ? setTimeout(() => {
+          const error = new Error('Истекло время на необязательное повествование')
+          error.code = 'NARRATION_DEADLINE'
+          deadlineController.abort(error)
+        }, requestedTimeout)
+      : null
+    try {
+      let lastVerification = null
+      for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+        const repair = lastVerification?.violations?.length
+          ? `\nИсправь нарушения предыдущего варианта: ${JSON.stringify(lastVerification.violations)}`
+          : ''
+        let output
+        try {
+          output = await this.llmClient.completeJson({
+            messages: [
+              { role: 'system', content: narratorPrompt },
+              { role: 'user', content: `${buildDataOnlyContext({ narration_brief: brief, style })}${repair}` },
+            ],
+            temperature: 0.55,
+            jsonExpected: 'object',
+            signal: deadlineController?.signal,
+          })
+        } catch (error) {
+          const fallback = deterministicNarration(brief)
+          return {
+            ...fallback,
+            verification: {
+              ...this.verifier.verify(fallback.narration, brief, { knownRuleIds }),
+              provider_error: String(error?.code ?? error?.name ?? 'LLM_PROVIDER_ERROR').slice(0, 80),
+            },
+            prompt_version: NARRATOR_PROMPT_VERSION,
+            provider: 'deterministic-provider-fallback',
+          }
+        }
+        const result = { narration: String(output?.narration || '').trim(), suggestions: safeSuggestions(output?.suggestions) }
+        lastVerification = this.verifier.verify(result.narration, brief, { knownRuleIds })
+        if (lastVerification.valid && result.narration) {
+          return { ...result, verification: lastVerification, prompt_version: NARRATOR_PROMPT_VERSION, provider: this.llmClient.constructor?.name ?? 'llm' }
         }
       }
-      const result = { narration: String(output?.narration || '').trim(), suggestions: safeSuggestions(output?.suggestions) }
-      lastVerification = this.verifier.verify(result.narration, brief, { knownRuleIds })
-      if (lastVerification.valid && result.narration) {
-        return { ...result, verification: lastVerification, prompt_version: NARRATOR_PROMPT_VERSION, provider: this.llmClient.constructor?.name ?? 'llm' }
-      }
-    }
 
-    const fallback = deterministicNarration(brief)
-    return {
-      ...fallback,
-      verification: { ...this.verifier.verify(fallback.narration, brief, { knownRuleIds }), repaired_from: lastVerification?.violations ?? [] },
-      prompt_version: NARRATOR_PROMPT_VERSION,
-      provider: 'deterministic-fallback',
+      const fallback = deterministicNarration(brief)
+      return {
+        ...fallback,
+        verification: { ...this.verifier.verify(fallback.narration, brief, { knownRuleIds }), repaired_from: lastVerification?.violations ?? [] },
+        prompt_version: NARRATOR_PROMPT_VERSION,
+        provider: 'deterministic-fallback',
+      }
+    } finally {
+      if (deadline) clearTimeout(deadline)
     }
   }
 }

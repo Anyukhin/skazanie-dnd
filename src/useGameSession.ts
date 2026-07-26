@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { initialState } from './data'
-import { generateItemImage, narrateWithAgent, rollDice, rollSharedDie } from './ai-client'
+import { fetchWithTimeout, generateItemImage, narrateWithAgent, rollDice, rollSharedDie } from './ai-client'
 import { playerMessage } from './game-engine'
+import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
 import type { AgentInteraction, AiTurnResult, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult } from './types'
 
@@ -114,6 +115,24 @@ function stateForPersistence(state: GameState): GameState {
 function latestRoomVersion(current: number, candidate: unknown): number {
   const version = Number(candidate)
   return Number.isSafeInteger(version) && version >= 0 ? Math.max(current, version) : current
+}
+
+/**
+ * Достраивает карту сцены из клиентского кэша. `null` означает, что дельта
+ * пришла от карты, которой у нас нет: обновление потеряно и нужен полный
+ * запрос. Разбор идёт на **каждом** сообщении, даже если само состояние потом
+ * отложится в очередь, — иначе цепочка дельт рвётся на первом же пропуске.
+ */
+function roomWithSceneMap(room: RoomSnapshot): RoomSnapshot | null {
+  if (!room.state?.scene) return room
+  const scene = resolveSceneMap(room.state.scene)
+  if (!scene) return null
+  return scene === room.state.scene ? room : { ...room, state: { ...room.state, scene } }
+}
+
+function roomUrl(sessionCode: string, mapHash = '') {
+  const base = `/api/rooms/${encodeURIComponent(sessionCode)}`
+  return mapHash ? `${base}?map_hash=${encodeURIComponent(mapHash)}` : base
 }
 
 function currentCombatActorId(state: GameState) {
@@ -239,6 +258,7 @@ export function useGameSession() {
   const merchantBusyRef = useRef(false)
   const freeRollBusy = useRef(false)
   const systemTickBusy = useRef(false)
+  const fullRoomBusy = useRef(false)
   const actionEpoch = useRef(0)
   const queuedRooms = useRef<Array<{ version: number; state: GameState }>>([])
   const persistLocal = useCallback((next: GameState) => {
@@ -246,7 +266,10 @@ export function useGameSession() {
   }, [])
 
   const applyRemote = useCallback((next: GameState) => {
-    const recovered = stateForPersistence(next)
+    // Ответы команд и бросков приходят с картой целиком: разбор здесь только
+    // запоминает её в кэше, чтобы следующая дельта было к чему приложить.
+    const scene = next.scene ? resolveSceneMap(next.scene) : null
+    const recovered = stateForPersistence(scene && scene !== next.scene ? { ...next, scene } : next)
     stateRef.current = recovered
     setState(recovered)
     persistLocal(recovered)
@@ -258,6 +281,26 @@ export function useGameSession() {
     roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
     applyRemote(room.state)
   }, [applyRemote])
+
+  /**
+   * Карта сцены не собралась из кэша — значит обновление потеряно. Единственный
+   * правильный ответ: запросить комнату целиком и получить карту без дельты.
+   */
+  const refreshFullRoom = useCallback(async () => {
+    if (fullRoomBusy.current) return
+    fullRoomBusy.current = true
+    try {
+      const response = await fetch(roomUrl(stateRef.current.sessionCode))
+      if (!response.ok) return
+      const room = roomWithSceneMap(await response.json() as RoomSnapshot & { version?: number })
+      if (!room?.state) return
+      if (Number(room.version) > roomVersion.current) applyRoomSnapshot(room)
+    } catch (error) {
+      console.warn('Не удалось перезапросить карту сцены целиком:', error)
+    } finally {
+      fullRoomBusy.current = false
+    }
+  }, [applyRoomSnapshot])
 
   const queueRoomSnapshot = useCallback((room: RoomSnapshot) => {
     if (!room.state) return
@@ -312,8 +355,13 @@ export function useGameSession() {
     let retryScheduled = false
     const receive = (event: MessageEvent<string>) => {
       try {
-        const room = JSON.parse(event.data) as RoomSnapshot
-        if (!room.state) return
+        const received = JSON.parse(event.data) as RoomSnapshot
+        if (!received.state) return
+        const room = roomWithSceneMap(received)
+        if (!room) {
+          void refreshFullRoom()
+          return
+        }
         if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current || systemTickBusy.current) {
           queueRoomSnapshot(room)
           return
@@ -360,7 +408,7 @@ export function useGameSession() {
       if (retryTimer !== null) window.clearTimeout(retryTimer)
       closeSource()
     }
-  }, [applyRoomSnapshot, flushQueuedRooms, queueRoomSnapshot, state.sessionCode])
+  }, [applyRoomSnapshot, flushQueuedRooms, queueRoomSnapshot, refreshFullRoom, state.sessionCode])
 
   useEffect(() => {
     if (!busy.current && !tacticalBusy && !merchantBusy && !directorBusy) flushQueuedRooms()
@@ -370,10 +418,15 @@ export function useGameSession() {
     let active = true
     const sync = async () => {
       try {
-        const response = await fetch(`/api/rooms/${encodeURIComponent(state.sessionCode)}`)
+        // Сервер узнаёт, какая карта уже есть, и молчит о ней, если она не
+        // менялась. Хеш недоверенный и на сервере — только ключ кэша.
+        const response = await fetch(roomUrl(state.sessionCode, latestSceneMapHash()))
         if (!response.ok) return
-        let room = await response.json() as RoomSnapshot & { version: number }
+        const received = await response.json() as RoomSnapshot & { version: number }
         if (!active) return
+        const resolved = roomWithSceneMap(received)
+        if (!resolved) { void refreshFullRoom(); return }
+        let room = resolved as RoomSnapshot & { version: number }
         const combat = room.state?.mechanics?.combat
         const activeActorId = combat?.initiative?.[combat.active_index ?? 0]?.actor_id ?? room.state?.activePlayerId
         const partyControlsTurn = room.state?.players?.some((player) => player.id === activeActorId)
@@ -403,7 +456,7 @@ export function useGameSession() {
     void sync()
     const timer = window.setInterval(sync, 15_000)
     return () => { active = false; window.clearInterval(timer) }
-  }, [applyRemote, applyRoomSnapshot, flushQueuedRooms, persistRemote, queueRoomSnapshot, state.sessionCode])
+  }, [applyRemote, applyRoomSnapshot, flushQueuedRooms, persistRemote, queueRoomSnapshot, refreshFullRoom, state.sessionCode])
 
   const commit = useCallback((next: GameState) => {
     stateRef.current = next
@@ -713,18 +766,23 @@ export function useGameSession() {
     setTacticalBusy(true)
     setTacticalError(null)
     try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
+      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, idempotency_key: requestId, message }),
-      })
+      }, 25_000, 'Сервер слишком долго обрабатывает действие. Не повторяйте его сразу: результат мог сохраниться и появиться после синхронизации.')
       const result = await response.json().catch(() => null) as TacticalCommandResult | null
       if (!response.ok) throw new Error(result?.error || `Сервер отклонил команду (${response.status})`)
 
       let authoritative = result?.authoritative_state
       let version = result?.room_version
       if (!authoritative) {
-        const roomResponse = await fetch(`/api/rooms/${encodeURIComponent(current.sessionCode)}`)
+        const roomResponse = await fetchWithTimeout(
+          `/api/rooms/${encodeURIComponent(current.sessionCode)}`,
+          {},
+          15_000,
+          'Сервер не успел вернуть итоговое состояние кампании. Оно обновится при следующей синхронизации.',
+        )
         const room = await roomResponse.json().catch(() => null) as { version?: number; state?: GameState | null; error?: string } | null
         if (!roomResponse.ok || !room?.state) throw new Error(room?.error || 'Сервер не вернул итоговое состояние боя')
         authoritative = room.state
@@ -858,6 +916,9 @@ export function useGameSession() {
     setMerchantError(null)
     setMerchantView(null)
     setMerchantNarration(null)
+    // Карты прежней кампании к новой сцене отношения не имеют: дельта от них не
+    // применима, и хранить их значит рисковать наложением чужой карты.
+    forgetSceneMaps()
     if (prefetched?.state) {
       roomVersion.current = prefetched.version ?? 0
       applyRemote(prefetched.state)
@@ -866,7 +927,12 @@ export function useGameSession() {
       window.history.replaceState(null, '', url)
       return
     }
-    const response = await fetch('/api/rooms/' + encodeURIComponent(normalized))
+    const response = await fetchWithTimeout(
+      '/api/rooms/' + encodeURIComponent(normalized),
+      {},
+      20_000,
+      'Кампания не загрузилась вовремя. Попробуйте ещё раз.',
+    )
     const room = await response.json() as { version?: number; state?: GameState | null; error?: string }
     if (!response.ok || !room.state) throw new Error(room.error || 'Кампания не найдена')
     roomVersion.current = room.version ?? 0

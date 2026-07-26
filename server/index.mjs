@@ -27,6 +27,7 @@ import {
   verifyUser,
 } from './store.mjs'
 import { DiceService } from './dice-service.mjs'
+import { MapStore } from './map-store.mjs'
 import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
@@ -59,6 +60,7 @@ import {
 import { assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
+import { compactStateForTransport } from './reveal-transport.mjs'
 import { isPartySummon } from './combat-spells.mjs'
 import { assertCampaignPlayable, lifecycleEventForAction } from './campaign-lifecycle.mjs'
 import {
@@ -124,11 +126,15 @@ const sceneArchitect = new SceneArchitectAgent({ llmClient: apiKey ? llmClient :
 const rulePack = await loadRulePack(process.env.DND_DEFAULT_RULESET_ID || 'srd_5_2_1')
 const ruleRetriever = createRuleRetriever([rulePack])
 const rulesEngine = new RulesEngine({ diceService })
+// Карты живут отдельно от снимков и адресуются хешем содержимого: снимок
+// пишется каждые 25 событий, и карта в нём стоила бы больше самого состояния.
+const mapStore = new MapStore({ rootDir: join(storageDir, 'engine') })
 const eventStore = new FileEventStore({
   rootDir: join(storageDir, 'engine'),
   reducer: applyGameEvent,
   normalizeState: normalizeCampaignState,
   snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
+  mapStore,
 })
 const traceStore = new FileTraceStore({ rootDir: join(storageDir, 'turn-traces') })
 const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
@@ -962,10 +968,11 @@ function stateWithLivePresence(state, campaignId) {
 }
 
 function writeCampaignStream(connection, event, payload) {
-  if (connection.closed || connection.res.destroyed) return
+  if (connection.closed || connection.res.destroyed) return false
   connection.res.write(`id: ${++campaignStreamSequence}\n`)
   connection.res.write(`event: ${event}\n`)
   connection.res.write(`data: ${JSON.stringify(payload)}\n\n`)
+  return true
 }
 
 function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
@@ -976,11 +983,17 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
   if (!room.state) return
   const state = stateWithLivePresence(normalizeCampaignState(room.state), normalized)
   for (const connection of connections.values()) {
-    writeCampaignStream(connection, 'room', {
+    // Что закэшировано у клиента, соединение знает точно: оно само это и
+    // отправило. Пока соединение живо, порядок сообщений сохраняется, а на
+    // переподключении объект соединения новый и карта уходит целиком.
+    const projected = campaignStateForViewer(state, connection.user, connection.actorId)
+    const compacted = compactStateForTransport(projected, connection.mapHash)
+    const written = writeCampaignStream(connection, 'room', {
       version: room.version,
       updatedAt: room.updatedAt,
-      state: campaignStateForViewer(state, connection.user, connection.actorId),
+      state: compacted.state,
     })
+    if (written) connection.mapHash = compacted.hash
   }
 }
 
@@ -1694,7 +1707,7 @@ const server = createServer(async (req, res) => {
     const connectionId = `stream-${process.pid}-${++campaignStreamSequence}`
     const heroIds = campaignHeroIds(user, campaignId).map(String)
     const actorId = heroIds.find((id) => room.state.players?.some((player) => String(player.id) === id)) ?? ''
-    const connection = { id: connectionId, userId: String(user.id), user, heroIds, actorId, res, closed: false }
+    const connection = { id: connectionId, userId: String(user.id), user, heroIds, actorId, res, closed: false, mapHash: '' }
     streamConnections(campaignId).set(connectionId, connection)
     const heartbeat = setInterval(() => {
       if (!connection.closed && !res.destroyed) res.write(`: heartbeat ${Date.now()}\n\n`)
@@ -2596,7 +2609,9 @@ const server = createServer(async (req, res) => {
     }
   }
 
-  const roomMatch = req.url?.match(/^\/api\/rooms\/([A-Za-z0-9-]+)$/)
+  // Комната читается с параметром `map_hash`, поэтому маршрут сверяется с
+  // путём, а не с сырым URL: со строкой запроса регулярка бы не совпала.
+  const roomMatch = parsedUrl.pathname.match(/^\/api\/rooms\/([A-Za-z0-9-]+)$/)
   const roomDiceMatch = req.url?.match(/^\/api\/rooms\/([A-Za-z0-9-]+)\/dice$/)
   if (roomDiceMatch && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
@@ -2659,7 +2674,11 @@ const server = createServer(async (req, res) => {
     if (!room.state) return json(res, 200, room)
     const actorId = campaignHeroIds(user, roomMatch[1]).map(String).find((id) => room.state.players?.some((player) => String(player.id) === id)) ?? ''
     const presentState = stateWithLivePresence(normalizeCampaignState(room.state), roomMatch[1])
-    return json(res, 200, { ...room, state: campaignStateForViewer(presentState, user, actorId) })
+    // Поле недоверенное: это лишь ключ поиска в кэше проекций. Неизвестный или
+    // чужой хеш означает «карты у клиента нет» и карта уходит целиком.
+    const clientMapHash = String(parsedUrl.searchParams.get('map_hash') ?? '').slice(0, 128)
+    const projected = campaignStateForViewer(presentState, user, actorId)
+    return json(res, 200, { ...room, state: compactStateForTransport(projected, clientMapHash).state })
   }
   if (roomMatch && req.method === 'PUT') {
     const user = requireUser(req, res); if (!user) return

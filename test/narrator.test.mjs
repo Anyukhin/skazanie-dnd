@@ -38,6 +38,25 @@ test('Narrator превращает ошибку провайдера после
   assert.match(result.narration, /3/u)
 })
 
+test('Narrator прерывает необязательное повествование по общему дедлайну', async () => {
+  const llmClient = {
+    completeJson: ({ signal }) => new Promise((_resolve, reject) => {
+      const rejectOnAbort = () => reject(signal.reason)
+      if (signal.aborted) rejectOnAbort()
+      else signal.addEventListener('abort', rejectOnAbort, { once: true })
+    }),
+  }
+  const startedAt = Date.now()
+  const result = await new Narrator({ llmClient }).render(brief, {
+    knownRuleIds: ['srd:test:damage'],
+    timeoutMs: 20,
+  })
+  assert.equal(result.provider, 'deterministic-provider-fallback')
+  assert.equal(result.verification.valid, true)
+  assert.equal(result.verification.provider_error, 'NARRATION_DEADLINE')
+  assert.ok(Date.now() - startedAt < 500)
+})
+
 test('Narrator limits the number and size of model suggestions', async () => {
   const safeNarration = deterministicNarration(brief).narration
   const llmClient = {

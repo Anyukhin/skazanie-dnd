@@ -227,3 +227,30 @@ test('сцена без карты проецируется как прежде'
   assert.equal('map' in projected, false)
   assert.equal(projected.cells.length, 1)
 })
+
+test('массив клеток и карта скрывают одно и то же', async () => {
+  const { publicSceneFor } = await import('../server/viewer-projection.mjs')
+  const { cellAt, deserializeTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } =
+    await import('../server/tactical-map.mjs')
+
+  const cells = [
+    { x: 0, y: 0, type: 'floor', revealed: true, material: 'wood', variant: 4, pattern: 'small-room' },
+    { x: 1, y: 0, type: 'floor', revealed: false, material: 'marble', variant: 5, pattern: 'small-room' },
+  ]
+  const projected = publicSceneFor({ cells, map: serializeTacticalMap(tacticalMapFromLegacyCells(cells)) })
+  const visible = deserializeTacticalMap(projected.map)
+
+  const openCell = projected.cells.find((cell) => cell.x === 0)
+  const hiddenCell = projected.cells.find((cell) => cell.x === 1)
+  assert.equal(openCell.material, 'wood')
+  assert.equal(openCell.variant, 4)
+  assert.equal('material' in hiddenCell, false, 'нераскрытая клетка не должна отдавать материал')
+  assert.equal('variant' in hiddenCell, false, 'нераскрытая клетка не должна отдавать вариант тайла')
+
+  // Обе проекции обязаны сходиться: расхождение означало бы второй набор
+  // правил видимости, и игрок увидел бы через более щедрый из них.
+  assert.equal(cellAt(visible, 0, 0)?.material, openCell.material)
+  assert.equal(cellAt(visible, 0, 0)?.variant, openCell.variant)
+  assert.equal(cellAt(visible, 1, 0)?.material, 'stone', 'карта обнуляет материал нераскрытой клетки')
+  assert.equal(cellAt(visible, 1, 0)?.variant, 0)
+})

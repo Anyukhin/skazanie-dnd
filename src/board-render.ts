@@ -102,6 +102,8 @@ export type BoardPalette = {
   lock: string
   prop: string
   propAccent: string
+  foliage: string
+  foliageLight: string
   fog: string
   zoneInterior: string
   zoneExterior: string
@@ -125,6 +127,14 @@ export const DEFAULT_BOARD_PALETTE: BoardPalette = {
   lock: '#e0b070',
   prop: '#8c6540',
   propAccent: '#c59a62',
+  // Листва — собственный цвет, а не производная зоны. Цвет внешней зоны и цвет
+  // материала «трава» — это оба цвета земли, они лежат в одном оливковом
+  // диапазоне; крона, выведенная смешением с ними, получала тон в нескольких
+  // единицах от газона и на нём просто исчезала — дерево читалось камнем.
+  // Крона обязана быть заметно темнее и зеленее газона, просвет — заметно
+  // светлее и тоже зеленее, поэтому оба тона задаются здесь напрямую.
+  foliage: '#3d6b2b',
+  foliageLight: '#7ba63e',
   fog: 'rgba(13,11,9,.62)',
   zoneInterior: '#5b4a35',
   zoneExterior: '#4a5738',
@@ -659,6 +669,22 @@ type PropDrawing = {
   visual?: { w: number; h: number }
   /** Декаль: плоский рисунок без объёма и тени. */
   flat?: boolean
+  /**
+   * Тон силуэта и метки. По умолчанию — цвет предмета из палитры. Зелень,
+   * камень и вода названы отдельно: иначе при отдалении лес во дворе
+   * превращается в бурую сыпь, неотличимую от бочек, — ровно та же беда,
+   * которой болел и полный рисунок, только на два уровня детализации ниже.
+   * Подземное озеро 2×2 без своего тона тонуло там же.
+   */
+  tint?: 'prop' | 'foliage' | 'stone' | 'water'
+}
+
+/** Цвет силуэта и метки по тону записи библиотеки. */
+function silhouetteColor(palette: BoardPalette, drawing: PropDrawing) {
+  if (drawing.tint === 'foliage') return palette.foliage
+  if (drawing.tint === 'stone') return tones(palette).stone
+  if (drawing.tint === 'water') return tones(palette).water
+  return palette.prop
 }
 
 // --- примитивы -----------------------------------------------------------
@@ -714,10 +740,15 @@ function lines(context: BoardContext2D, color: string, width: number, segments: 
  */
 type PropTones = {
   base: string; light: string; dark: string; deep: string
-  accent: string; glow: string; cool: string; stone: string; leaf: string
+  accent: string; glow: string; cool: string; stone: string; stoneLight: string
+  water: string; waterDeep: string
+  leaf: string; leafDeep: string; leafLight: string; bark: string; shadow: string
 }
 
 function tones(palette: BoardPalette): PropTones {
+  // Камень: одного цвета стены мало — кладка в палитре бурая, и валун на газоне
+  // читался деревяшкой. Подмешивается холодный серый, иначе камень не камень.
+  const stone = mixColors(mixColors(palette.prop, palette.wall, 0.62), '#8f8d88', 0.54)
   return {
     base: palette.prop,
     light: shade(palette.prop, 0.24),
@@ -725,12 +756,90 @@ function tones(palette: BoardPalette): PropTones {
     deep: shade(palette.prop, -0.55),
     accent: palette.propAccent,
     glow: shade(palette.propAccent, 0.4),
-    // Стекло, вода и металл — холодная часть палитры; камень — от цвета стен;
-    // листва — от цвета внешней зоны, иначе крона на доске выходит бурой.
+    // Стекло, вода и металл — холодная часть палитры.
     cool: mixColors(palette.prop, palette.window, 0.62),
-    stone: mixColors(palette.prop, palette.wall, 0.55),
-    leaf: mixColors(palette.prop, palette.zoneExterior, 0.72),
+    stone,
+    stoneLight: shade(stone, 0.26),
+    // Открытая вода — тон окна, а не холодная смесь `cool`: подземное озеро
+    // занимает четыре клетки, и подмес древесины уводил его в серо-зелёный, в
+    // котором вода уже не читается водой.
+    water: shade(palette.window, -0.18),
+    waterDeep: shade(palette.window, -0.46),
+    leaf: palette.foliage,
+    leafDeep: shade(palette.foliage, -0.34),
+    leafLight: palette.foliageLight,
+    // Кора и сучья: дерево палитры, уведённое почти в чёрный, — ствол обязан
+    // быть темнее любой кроны, иначе он теряется в её же тени.
+    bark: shade(palette.prop, -0.58),
+    // Тень у основания. Цвет от стены, а не от зоны: один и тот же предмет
+    // стоит и на газоне, и на дощатом полу, и тень обязана читаться на обоих.
+    shadow: shade(palette.wall, -0.45),
   }
+}
+
+/**
+ * Кромка долями: радиус гуляет между `1` и `1 - depth`, поэтому силуэт выходит
+ * не кругом, а лиственным пятном. Ровный круг на газоне читается как окатыш —
+ * именно этим кроны и терялись среди камней.
+ */
+function lobedShape(
+  context: BoardContext2D, cx: number, cy: number,
+  rx: number, ry: number, lobes: number, depth: number, phase = 0,
+) {
+  const steps = Math.max(24, lobes * 7)
+  context.beginPath()
+  for (let step = 0; step < steps; step += 1) {
+    const angle = (step / steps) * Math.PI * 2
+    const wave = 1 - depth * (0.5 + 0.5 * Math.cos(angle * lobes + phase))
+    const x = cx + Math.cos(angle) * Math.max(0.5, rx * wave)
+    const y = cy + Math.sin(angle) * Math.max(0.5, ry * wave)
+    if (step === 0) context.moveTo(x, y)
+    else context.lineTo(x, y)
+  }
+  context.closePath()
+  context.fill()
+}
+
+/**
+ * Звезда-розетка: `reach` задаёт длинный и короткий лучи. Так рисуется хвойная
+ * лапа сверху и так же — трещины на пне.
+ */
+function starShape(
+  context: BoardContext2D, cx: number, cy: number,
+  rx: number, ry: number, rays: number, inner: number, phase = 0,
+) {
+  const points: Array<[number, number]> = []
+  for (let index = 0; index < rays * 2; index += 1) {
+    const angle = (index / (rays * 2)) * Math.PI * 2 + phase
+    const reach = index % 2 === 0 ? 1 : inner
+    points.push([cx + Math.cos(angle) * rx * reach, cy + Math.sin(angle) * ry * reach])
+  }
+  polygon(context, points)
+}
+
+/**
+ * Тёмный контур под силуэтом — подложка, а не отброшенная тень.
+ *
+ * Смещённая тень была бы физичнее, но предмет рисуется с произвольным
+ * поворотом, и смещение поворачивается вместе с ним: тень оказывалась то снизу,
+ * то сверху, и свет по двору шёл вразнобой. Ровный контур поворота не боится и
+ * делает главное — отрывает крону от газона, на котором она иначе тонет.
+ */
+function propContour(context: BoardContext2D, palette: BoardPalette, cx: number, cy: number, rx: number, ry: number) {
+  context.fillStyle = tones(palette).shadow
+  ellipseShape(context, cx, cy, rx, ry)
+}
+
+/** Доли с контуром: контур повторяет ту же форму, поэтому обводка ровная. */
+function outlinedLobes(
+  context: BoardContext2D, palette: BoardPalette, fill: string,
+  cx: number, cy: number, rx: number, ry: number,
+  lobes: number, depth: number, phase = 0, edge = 0.12,
+) {
+  context.fillStyle = tones(palette).shadow
+  lobedShape(context, cx, cy, rx * (1 + edge), ry * (1 + edge), lobes, depth, phase)
+  context.fillStyle = fill
+  lobedShape(context, cx, cy, rx, ry, lobes, depth, phase)
 }
 
 function flame(context: BoardContext2D, radius: number, palette: BoardPalette) {
@@ -784,31 +893,72 @@ function tablePainter(kind: 'round' | 'long' | 'small'): PropPainter {
  * Сиденья. Спинка смотрит вверх, поэтому поворот показывает, к какому столу
  * придвинут стул — ровно то, ради чего у предмета вообще есть поворот.
  */
-function seatPainter(kind: 'chair' | 'stool' | 'bench'): PropPainter {
+function seatPainter(kind: 'chair' | 'stool' | 'bench' | 'prayer'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
     const thin = Math.min(hw, hh)
-    if (kind === 'stool') {
+    if (kind === 'prayer') {
+      // Молитвенная скамья — та же скамья, но с приступкой для колен: две доски
+      // разной ширины с просветом между ними. Одна доска повторяла бы обычную
+      // скамью, а именно по паре досок ряд в храме и опознаётся.
+      context.fillStyle = t.deep
+      for (const end of [-0.84, 0.84]) {
+        context.fillRect(hw * end - thin * 0.13, -hh * 0.92, thin * 0.26, hh * 1.84)
+      }
       context.fillStyle = t.dark
-      circle(context, 0, 0, thin * 0.78)
+      context.fillRect(-hw * 0.92, hh * 0.34, hw * 1.84, hh * 0.5)
+      context.fillStyle = t.deep
+      context.fillRect(-hw * 0.94, -hh * 0.78, hw * 1.88, hh * 0.86)
+      context.fillStyle = t.base
+      context.fillRect(-hw * 0.94, -hh * 0.78, hw * 1.88, hh * 0.7)
       context.fillStyle = t.light
-      circle(context, 0, 0, thin * 0.5)
-      lines(context, t.deep, thin * 0.1, [[-thin * 0.5, 0, thin * 0.5, 0]])
+      context.fillRect(-hw * 0.94, -hh * 0.78, hw * 1.88, hh * 0.24)
       return
     }
-    context.fillStyle = t.base
-    context.fillRect(-hw * 0.76, -hh * 0.42, hw * 1.52, hh * 1.16)
-    context.fillStyle = t.dark
-    context.fillRect(-hw * 0.88, -hh * 0.82, hw * 1.76, hh * 0.3)
+    if (kind === 'stool') {
+      // Три ножки торчат из-под круглого сиденья. Без них табурет — это круг, а
+      // круг на полу трактира читается бочкой или тарелкой.
+      for (let index = 0; index < 3; index += 1) {
+        const angle = (index / 3) * Math.PI * 2 - Math.PI / 2
+        context.fillStyle = t.deep
+        circle(context, Math.cos(angle) * thin * 0.82, Math.sin(angle) * thin * 0.82, thin * 0.2)
+      }
+      context.fillStyle = t.deep
+      circle(context, 0, 0, thin * 0.78)
+      context.fillStyle = t.base
+      circle(context, 0, 0, thin * 0.68)
+      context.fillStyle = t.light
+      circle(context, -thin * 0.08, -thin * 0.08, thin * 0.36)
+      return
+    }
     if (kind === 'bench') {
-      lines(context, t.deep, thin * 0.08, [
-        [-hw * 0.28, -hh * 0.42, -hw * 0.28, hh * 0.74],
-        [hw * 0.28, -hh * 0.42, hw * 0.28, hh * 0.74],
+      // Скамья — длинная доска без спинки, с ножками по торцам. Спинка была
+      // ошибкой: с ней скамья повторяла стул, только шире.
+      context.fillStyle = t.deep
+      for (const end of [-0.78, 0.78]) {
+        context.fillRect(hw * end - thin * 0.14, -hh * 0.92, thin * 0.28, hh * 1.84)
+      }
+      context.fillStyle = t.dark
+      context.fillRect(-hw * 0.96, -hh * 0.54, hw * 1.92, hh * 1.1)
+      context.fillStyle = t.base
+      context.fillRect(-hw * 0.96, -hh * 0.54, hw * 1.92, hh * 0.94)
+      lines(context, t.deep, thin * 0.09, [
+        [-hw * 0.96, hh * 0.06, hw * 0.96, hh * 0.06],
       ])
       return
     }
+    // Стул: спинка шире сиденья и отделена просветом, поэтому силуэт читается
+    // буквой «⊓» с бруском под ней, а не сплошным квадратом-ящиком.
+    context.fillStyle = t.deep
+    context.fillRect(-hw * 0.98, -hh * 0.96, hw * 1.96, hh * 0.4)
+    context.fillStyle = t.dark
+    context.fillRect(-hw * 0.92, -hh * 0.9, hw * 1.84, hh * 0.28)
+    context.fillStyle = t.deep
+    context.fillRect(-hw * 0.8, -hh * 0.4, hw * 1.6, hh * 1.3)
+    context.fillStyle = t.base
+    context.fillRect(-hw * 0.74, -hh * 0.34, hw * 1.48, hh * 1.16)
     context.fillStyle = t.light
-    context.fillRect(-hw * 0.48, -hh * 0.22, hw * 0.96, hh * 0.68)
+    context.fillRect(-hw * 0.5, -hh * 0.16, hw * 1.0, hh * 0.78)
   }
 }
 
@@ -921,11 +1071,46 @@ function cratePainter(kind: 'single' | 'stack' | 'chest'): PropPainter {
   }
 }
 
-/** Открытые ёмкости: ведро, корзина, котёл, таз и горшок. */
-function basinPainter(kind: 'bucket' | 'basket' | 'cauldron' | 'washbasin' | 'pot'): PropPainter {
+/** Открытые ёмкости: ведро, корзина, котёл, таз, горшок, урна и чаша. */
+function basinPainter(kind: 'bucket' | 'basket' | 'cauldron' | 'washbasin' | 'pot' | 'urn' | 'offering'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
-    const radius = Math.min(hw, hh) * (kind === 'pot' ? 0.8 : 0.92)
+    const thin = Math.min(hw, hh)
+    if (kind === 'urn') {
+      // Погребальная урна — та же ёмкость, только каменная и закрытая: тулово
+      // шире плечиков, поверх лежит крышка с шишечкой. Без сужения кверху урна
+      // повторяла бы горшок, а он в склепе не стоит.
+      propContour(context, palette, 0, hh * 0.06, hw * 0.78, hh * 0.96)
+      context.fillStyle = shade(t.stone, -0.32)
+      ellipseShape(context, 0, hh * 0.08, hw * 0.72, hh * 0.88)
+      // Ушки по бокам: без них закрытая ёмкость повторяет горшок под крышкой.
+      context.fillStyle = shade(t.stone, -0.46)
+      ellipseShape(context, -hw * 0.7, -hh * 0.04, hw * 0.18, hh * 0.24)
+      ellipseShape(context, hw * 0.7, -hh * 0.04, hw * 0.18, hh * 0.24)
+      context.fillStyle = t.stone
+      ellipseShape(context, 0, hh * 0.1, hw * 0.6, hh * 0.74)
+      context.fillStyle = shade(t.stone, -0.44)
+      ellipseShape(context, 0, -hh * 0.2, hw * 0.46, hh * 0.42)
+      context.fillStyle = t.stoneLight
+      ellipseShape(context, 0, -hh * 0.22, hw * 0.34, hh * 0.3)
+      context.fillStyle = shade(t.stone, -0.5)
+      circle(context, 0, -hh * 0.24, thin * 0.13)
+      return
+    }
+    if (kind === 'offering') {
+      // Чаша подношений — та же форма, но мелкая и с приношением внутри: по
+      // светлому ободу и тёплой сердцевине она и отличается от миски похлёбки.
+      context.fillStyle = shade(t.stone, -0.26)
+      circle(context, 0, 0, thin * 0.96)
+      context.fillStyle = t.stoneLight
+      circle(context, 0, 0, thin * 0.78)
+      context.fillStyle = t.accent
+      circle(context, 0, 0, thin * 0.5)
+      context.fillStyle = t.glow
+      circle(context, -thin * 0.14, -thin * 0.16, thin * 0.18)
+      return
+    }
+    const radius = thin * (kind === 'pot' ? 0.8 : 0.92)
     context.fillStyle = kind === 'cauldron' ? t.deep : t.base
     circle(context, 0, 0, radius)
     context.fillStyle = kind === 'basket' ? t.light : kind === 'washbasin' ? t.cool : t.dark
@@ -943,24 +1128,46 @@ function basinPainter(kind: 'bucket' | 'basket' | 'cauldron' | 'washbasin' | 'po
   }
 }
 
-/** Мягкая куча: мешок и стог. Три пятна разного тона вместо ровного круга. */
+/**
+ * Мягкая куча: мешок и стог. Стог сверху — это купол соломы, поэтому солома
+ * расходится лучами от вершины: пара косых штрихов, как было, читалась
+ * перечёркнутым пятном, а не укладкой.
+ */
 function heapPainter(kind: 'sack' | 'hay'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
-    const hay = kind === 'hay'
-    context.fillStyle = hay ? t.accent : t.base
-    ellipseShape(context, 0, hh * 0.14, hw * 0.94, hh * 0.82)
-    context.fillStyle = hay ? shade(palette.propAccent, 0.22) : t.light
-    ellipseShape(context, -hw * 0.2, -hh * 0.22, hw * 0.6, hh * 0.54)
-    if (!hay) {
+    const thin = Math.min(hw, hh)
+    if (kind !== 'hay') {
+      propContour(context, palette, 0, hh * 0.14, hw * 1.0, hh * 0.9)
+      context.fillStyle = t.base
+      ellipseShape(context, 0, hh * 0.14, hw * 0.92, hh * 0.8)
+      context.fillStyle = t.light
+      ellipseShape(context, -hw * 0.2, -hh * 0.18, hw * 0.58, hh * 0.5)
+      // Перехват горловины: по нему мешок и отличается от валуна.
       context.fillStyle = t.dark
-      ellipseShape(context, 0, -hh * 0.62, hw * 0.3, hh * 0.26)
+      ellipseShape(context, 0, -hh * 0.6, hw * 0.34, hh * 0.28)
+      context.fillStyle = t.deep
+      ellipseShape(context, 0, -hh * 0.44, hw * 0.44, hh * 0.12)
       return
     }
-    lines(context, shade(palette.propAccent, -0.38), Math.min(hw, hh) * 0.07, [
-      [-hw * 0.7, -hh * 0.1, hw * 0.5, hh * 0.5],
-      [-hw * 0.4, -hh * 0.5, hw * 0.72, hh * 0.18],
-    ])
+    outlinedLobes(context, palette, shade(palette.propAccent, -0.3), 0, 0, hw * 0.96, hh * 0.94, 7, 0.12, 0, 0.06)
+    context.fillStyle = t.accent
+    lobedShape(context, -hw * 0.05, -hh * 0.06, hw * 0.84, hh * 0.82, 6, 0.14, 0.6)
+    // Солома идёт от вершины к краю. Длина и начало у каждой пряди свои, иначе
+    // ровные лучи от центра превращают стог в колесо со спицами.
+    const straw: Array<[number, number, number, number]> = []
+    for (let index = 0; index < 8; index += 1) {
+      const angle = (index / 8) * Math.PI * 2 + 0.35
+      const from = 0.16 + (index % 3) * 0.12
+      const to = 0.72 + (index % 4) * 0.07
+      straw.push([
+        -hw * 0.06 + Math.cos(angle) * hw * from, -hh * 0.08 + Math.sin(angle) * hh * from,
+        -hw * 0.06 + Math.cos(angle) * hw * to, -hh * 0.08 + Math.sin(angle) * hh * to,
+      ])
+    }
+    lines(context, shade(palette.propAccent, -0.34), thin * 0.07, straw)
+    context.fillStyle = shade(palette.propAccent, 0.3)
+    lobedShape(context, -hw * 0.06, -hh * 0.08, hw * 0.22, hh * 0.22, 4, 0.3)
   }
 }
 
@@ -969,100 +1176,253 @@ function heapPainter(kind: 'sack' | 'hay'): PropPainter {
  * пять записей реестра — тот самый приём, которым референс рисует два десятка
  * деревьев пятью спрайтами разного масштаба и поворота (раздел 2 плана).
  */
-function treePainter(kind: 'oak' | 'pine' | 'birch' | 'dead' | 'stump'): PropPainter {
+function treePainter(kind: 'oak' | 'pine' | 'birch' | 'dead' | 'spruce' | 'stump'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
     const thin = Math.min(hw, hh)
     if (kind === 'stump') {
-      context.fillStyle = t.dark
-      circle(context, 0, 0, thin * 0.84)
-      context.fillStyle = t.light
-      circle(context, 0, 0, thin * 0.52)
-      context.fillStyle = t.dark
-      circle(context, 0, 0, thin * 0.2)
+      // Пень — это спил: тёмное кольцо коры, светлая древесина, годичное кольцо
+      // и трещина от сердцевины. Без колец он неотличим от окатыша.
+      propContour(context, palette, 0, 0, thin * 1.02, thin * 1.02)
+      context.fillStyle = t.bark
+      circle(context, 0, 0, thin * 0.94)
+      context.fillStyle = shade(palette.prop, 0.3)
+      circle(context, 0, 0, thin * 0.72)
+      context.fillStyle = shade(palette.prop, -0.06)
+      starShape(context, 0, 0, thin * 0.5, thin * 0.5, 3, 0.86, 0.4)
+      context.fillStyle = shade(palette.prop, 0.34)
+      circle(context, 0, 0, thin * 0.26)
+      lines(context, t.bark, thin * 0.12, [[0, 0, hw * 0.68, -hh * 0.5]])
       return
     }
     if (kind === 'dead') {
-      context.fillStyle = t.dark
-      circle(context, 0, 0, thin * 0.3)
-      lines(context, t.deep, thin * 0.15, [
-        [0, 0, -hw * 0.86, -hh * 0.7], [0, 0, hw * 0.9, -hh * 0.4],
-        [0, 0, -hw * 0.5, hh * 0.88], [0, 0, hw * 0.62, hh * 0.78],
+      // Сухое дерево: голые сучья с развилками и тёмный ствол в центре. Сучья
+      // длинные и тонкие, ствол мелкий: толстая ступица с короткими отростками
+      // читалась насекомым, а не деревом.
+      propContour(context, palette, 0, 0, hw * 0.34, hh * 0.34)
+      lines(context, t.bark, thin * 0.2, [
+        [0, 0, -hw * 0.94, -hh * 0.68], [0, 0, hw * 0.88, -hh * 0.54],
+        [0, 0, -hw * 0.6, hh * 0.94], [0, 0, hw * 0.72, hh * 0.86],
+        [0, 0, hw * 0.1, -hh * 0.98],
       ])
+      lines(context, t.bark, thin * 0.1, [
+        [-hw * 0.52, -hh * 0.38, -hw * 0.78, hh * 0.16],
+        [hw * 0.48, -hh * 0.3, hw * 0.98, hh * 0.1],
+        [hw * 0.05, -hh * 0.5, -hw * 0.4, -hh * 0.96],
+        [-hw * 0.32, hh * 0.5, hw * 0.2, hh * 0.94],
+        [hw * 0.4, hh * 0.48, hw * 0.02, hh * 0.9],
+      ])
+      context.fillStyle = t.bark
+      circle(context, 0, 0, thin * 0.17)
+      return
+    }
+    if (kind === 'spruce') {
+      // Ель — та же хвойная розетка, что и сосна, но лап вдвое больше и они
+      // короче: крона получается плотной и почти сплошной. На своих 2×2 это
+      // единственное, чем ель отличима от сосны, — порода читается густотой.
+      context.fillStyle = t.shadow
+      starShape(context, 0, 0, hw * 1.06, hh * 1.06, 13, 0.56)
+      context.fillStyle = t.leafDeep
+      starShape(context, 0, 0, hw * 0.98, hh * 0.98, 13, 0.56)
+      context.fillStyle = t.leaf
+      starShape(context, 0, 0, hw * 0.74, hh * 0.74, 13, 0.54, Math.PI / 13)
+      context.fillStyle = mixColors(t.leaf, t.leafLight, 0.45)
+      starShape(context, -hw * 0.12, -hh * 0.14, hw * 0.36, hh * 0.36, 11, 0.52)
+      context.fillStyle = t.leafDeep
+      circle(context, 0, 0, thin * 0.13)
       return
     }
     if (kind === 'pine') {
       // Сверху хвойное дерево читается розеткой из лап. Треугольник — вид
       // сбоку, а на плане вида сбоку нет, и при повороте он ложится набок.
-      const rays = 7
-      const points: Array<[number, number]> = []
-      for (let index = 0; index < rays * 2; index += 1) {
-        const angle = (index / (rays * 2)) * Math.PI * 2
-        const reach = index % 2 === 0 ? 0.98 : 0.5
-        points.push([Math.cos(angle) * hw * reach, Math.sin(angle) * hh * reach])
-      }
-      context.fillStyle = shade(t.leaf, -0.26)
-      polygon(context, points)
+      context.fillStyle = t.shadow
+      starShape(context, 0, 0, hw * 1.08, hh * 1.08, 8, 0.66)
+      context.fillStyle = t.leafDeep
+      starShape(context, 0, 0, hw * 0.99, hh * 0.99, 8, 0.66)
       context.fillStyle = t.leaf
-      circle(context, 0, 0, thin * 0.42)
-      context.fillStyle = t.deep
-      circle(context, 0, 0, thin * 0.15)
+      starShape(context, 0, 0, hw * 0.84, hh * 0.84, 8, 0.6, Math.PI / 8)
+      // Просвет смещён от центра: ровное светлое ядро посреди розетки читалось
+      // огоньком, а не верхушкой хвои.
+      context.fillStyle = mixColors(t.leaf, t.leafLight, 0.4)
+      starShape(context, -hw * 0.16, -hh * 0.18, hw * 0.44, hh * 0.44, 7, 0.56)
+      context.fillStyle = t.leafDeep
+      circle(context, 0, 0, thin * 0.17)
       return
     }
-    // Дуб и берёза: крона из трёх пятен, у берёзы реже и светлее.
-    const dense = kind === 'oak'
-    context.fillStyle = dense ? shade(t.leaf, -0.26) : t.leaf
-    circle(context, -hw * 0.3, hh * 0.24, thin * (dense ? 0.64 : 0.5))
-    circle(context, hw * 0.34, hh * 0.3, thin * (dense ? 0.58 : 0.44))
-    context.fillStyle = dense ? t.leaf : shade(t.leaf, 0.24)
-    circle(context, 0, -hh * 0.24, thin * (dense ? 0.82 : 0.64))
-    context.fillStyle = dense ? t.deep : t.light
-    circle(context, hw * 0.06, hh * 0.06, thin * 0.18)
+    // Лиственные: доли по краю кроны, тёмный испод, светлая освещённая сторона
+    // и намёк на ствол в просвете. Дуб плотнее и темнее, берёза реже и светлее,
+    // а ствол у берёзы белый — по нему породы и различаются на общем плане.
+    const oak = kind === 'oak'
+    outlinedLobes(context, palette, t.leafDeep, 0, 0, hw * 0.96, hh * 0.96, oak ? 6 : 5, oak ? 0.24 : 0.34)
+    context.fillStyle = t.leaf
+    lobedShape(context, -hw * 0.05, -hh * 0.06, hw * 0.82, hh * 0.82, oak ? 5 : 4, oak ? 0.26 : 0.36, 0.8)
+    // Просветы в кроне — несколько мелких пятен, а не одна светлая доля: единая
+    // заливка поверх кроны превращала дерево в цветок с ровными лепестками.
+    context.fillStyle = oak ? mixColors(t.leaf, t.leafLight, 0.72) : t.leafLight
+    const gaps: Array<[number, number, number]> = [[-0.34, -0.3, 0.34], [0.22, -0.36, 0.26], [-0.12, 0.3, 0.24], [0.4, 0.16, 0.2]]
+    for (const [cx, cy, size] of gaps) {
+      lobedShape(context, hw * cx, hh * cy, hw * size, hh * size, 3, 0.3, cx * 7 + cy)
+    }
+    // Ствол в просвете кроны. У берёзы он белый, у дуба тёмный — на общем плане
+    // это единственное, чем породы одного силуэта и различаются.
+    context.fillStyle = oak ? t.bark : shade(palette.prop, 0.66)
+    circle(context, hw * 0.04, hh * 0.06, thin * (oak ? 0.15 : 0.14))
   }
 }
 
-/** Кустарник: куст гуще подлеска, но крона у них одна. */
+/**
+ * Кустарник: куст гуще подлеска, но крона у них одна. От дерева отличается тем,
+ * что ствола нет вовсе, а силуэт — низкая приплюснутая куртина из нескольких
+ * долей, а не одна крона: именно по этому куст и не путается с берёзой.
+ */
 function shrubPainter(kind: 'bush' | 'shrub'): PropPainter {
   return (context, { hw, hh }, palette) => {
-    const leaf = mixColors(palette.prop, palette.zoneExterior, kind === 'bush' ? 0.82 : 0.62)
-    const thin = Math.min(hw, hh)
-    context.fillStyle = shade(leaf, -0.22)
-    circle(context, -hw * 0.4, hh * 0.2, thin * 0.5)
-    circle(context, hw * 0.38, hh * 0.26, thin * 0.46)
-    context.fillStyle = leaf
-    circle(context, 0, -hh * 0.24, thin * 0.56)
-    context.fillStyle = shade(leaf, 0.24)
-    circle(context, hw * 0.18, hh * 0.02, thin * (kind === 'bush' ? 0.3 : 0.22))
+    const t = tones(palette)
+    if (kind === 'shrub') {
+      // Подлесок — не одна куртина, а несколько отдельных кустиков с просветами
+      // травы между ними: сплошное пятно повторяло куст, только светлее.
+      const leaf = mixColors(t.leaf, t.leafLight, 0.45)
+      const clumps: Array<[number, number, number]> = [[-0.46, 0.3, 0.5], [0.44, 0.4, 0.44], [0.1, -0.44, 0.52]]
+      for (const [cx, cy, size] of clumps) {
+        outlinedLobes(context, palette, shade(leaf, -0.3), hw * cx, hh * cy, hw * size, hh * size * 0.88, 4, 0.34, cx * 6, 0.16)
+        context.fillStyle = leaf
+        lobedShape(context, hw * (cx - 0.1), hh * (cy - 0.12), hw * size * 0.6, hh * size * 0.54, 3, 0.32, cy * 5)
+      }
+      context.fillStyle = t.leafLight
+      lobedShape(context, hw * 0.02, hh * -0.52, hw * 0.24, hh * 0.2, 3, 0.3)
+      return
+    }
+    // Куст — плотная низкая куртина без ствола: этим он и не путается с берёзой.
+    outlinedLobes(context, palette, shade(t.leaf, -0.3), 0, hh * 0.04, hw * 0.96, hh * 0.86, 5, 0.24)
+    context.fillStyle = t.leaf
+    lobedShape(context, -hw * 0.34, -hh * 0.12, hw * 0.58, hh * 0.52, 4, 0.3, 1.1)
+    lobedShape(context, hw * 0.36, hh * 0.16, hw * 0.52, hh * 0.46, 4, 0.32, 2.3)
+    context.fillStyle = t.leafLight
+    lobedShape(context, -hw * 0.24, -hh * 0.3, hw * 0.36, hh * 0.32, 3, 0.3)
   }
 }
 
-/** Камни: валун с гранями и пара окатышей. */
-function rockPainter(kind: 'small' | 'boulder'): PropPainter {
+/**
+ * Камни: валун с гранями и пара окатышей. Камень узнаётся не формой — сверху он
+ * почти круглый, — а серым тоном и резкой границей света и тени по одной грани.
+ * Поэтому валун собран из тёмного низа, серого тела и светлой верхней грани.
+ */
+function rockPainter(kind: 'small' | 'boulder' | 'stalagmite' | 'rubble'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
-    if (kind === 'small') {
-      context.fillStyle = shade(t.stone, -0.18)
-      ellipseShape(context, -hw * 0.24, hh * 0.16, hw * 0.6, hh * 0.5)
-      context.fillStyle = shade(t.stone, 0.16)
-      ellipseShape(context, hw * 0.34, -hh * 0.14, hw * 0.46, hh * 0.4)
+    const thin = Math.min(hw, hh)
+    if (kind === 'stalagmite') {
+      // Сталагмит — тот же камень, только конус. Сверху конус читается кольцами,
+      // сходящимися к светлому острию: гранёный силуэт валуна тут не годится —
+      // натёк округлый, а сужение к вершине бывает только у него.
+      propContour(context, palette, 0, 0, hw * 0.98, hh * 0.98)
+      context.fillStyle = shade(t.stone, -0.36)
+      starShape(context, 0, 0, hw * 0.92, hh * 0.92, 7, 0.74, 0.3)
+      context.fillStyle = t.stone
+      starShape(context, 0, 0, hw * 0.64, hh * 0.64, 7, 0.74, 0.5)
+      context.fillStyle = t.stoneLight
+      starShape(context, 0, 0, hw * 0.38, hh * 0.38, 7, 0.72, 0.7)
+      const cracks: Array<[number, number, number, number]> = []
+      for (let index = 0; index < 4; index += 1) {
+        const angle = (index / 4) * Math.PI * 2 + 0.6
+        cracks.push([
+          Math.cos(angle) * hw * 0.22, Math.sin(angle) * hh * 0.22,
+          Math.cos(angle) * hw * 0.86, Math.sin(angle) * hh * 0.86,
+        ])
+      }
+      lines(context, shade(t.stone, -0.5), thin * 0.08, cracks)
+      context.fillStyle = shade(t.stone, 0.5)
+      circle(context, 0, 0, thin * 0.14)
       return
     }
-    context.fillStyle = shade(t.stone, -0.3)
-    polygon(context, [[-hw * 0.96, hh * 0.5], [-hw * 0.52, -hh * 0.66], [hw * 0.36, -hh * 0.96], [hw * 0.96, hh * 0.16], [hw * 0.4, hh * 0.9]])
+    if (kind === 'rubble') {
+      // Осыпь — тот же камень, но битый: россыпь угловатых обломков. Каждый
+      // обводится отдельно, иначе куча слипается в одно пятно и перестаёт
+      // отличаться от валуна, у которого грань всего одна.
+      const chip = (cx: number, cy: number, radius: number, seed: number) => {
+        const points: Array<[number, number]> = []
+        for (let index = 0; index < 5; index += 1) {
+          const angle = (index / 5) * Math.PI * 2 + seed
+          const reach = 0.68 + 0.32 * Math.abs(Math.sin(seed * 3 + index * 1.7))
+          points.push([cx + Math.cos(angle) * radius * reach, cy + Math.sin(angle) * radius * reach * 0.92])
+        }
+        polygon(context, points)
+      }
+      const chips: Array<[number, number, number, number]> = [
+        [-0.44, 0.36, 0.5, 0.3], [0.46, 0.44, 0.42, 1.2], [0.5, -0.32, 0.48, 2.1],
+        [-0.5, -0.38, 0.42, 0.9], [0.0, 0.0, 0.54, 1.7],
+      ]
+      for (const [cx, cy, size, seed] of chips) {
+        context.fillStyle = t.shadow
+        chip(hw * cx, hh * cy, thin * size * 1.2, seed)
+      }
+      for (const [cx, cy, size, seed] of chips) {
+        context.fillStyle = seed > 1.5 ? t.stoneLight : shade(t.stone, seed > 0.8 ? -0.24 : 0)
+        chip(hw * cx, hh * cy, thin * size, seed)
+      }
+      return
+    }
+    if (kind === 'small') {
+      // Контур обводит каждый окатыш отдельно, иначе пара камней слипается в
+      // одно пятно и перестаёт читаться как россыпь.
+      propContour(context, palette, -hw * 0.34, hh * 0.1, hw * 0.62, hh * 0.62)
+      propContour(context, palette, hw * 0.54, hh * 0.14, hw * 0.5, hh * 0.6)
+      context.fillStyle = shade(t.stone, -0.2)
+      polygon(context, [[-hw * 0.86, hh * 0.5], [-hw * 0.6, -hh * 0.28], [-hw * 0.02, -hh * 0.44], [hw * 0.16, hh * 0.24], [-hw * 0.32, hh * 0.64]])
+      context.fillStyle = t.stoneLight
+      polygon(context, [[-hw * 0.7, hh * 0.1], [-hw * 0.48, -hh * 0.24], [-hw * 0.08, -hh * 0.34], [-hw * 0.16, hh * 0.14]])
+      context.fillStyle = t.stone
+      polygon(context, [[hw * 0.12, hh * 0.6], [hw * 0.2, -hh * 0.2], [hw * 0.72, -hh * 0.42], [hw * 0.94, hh * 0.26], [hw * 0.56, hh * 0.72]])
+      context.fillStyle = t.stoneLight
+      polygon(context, [[hw * 0.28, hh * 0.06], [hw * 0.36, -hh * 0.22], [hw * 0.72, -hh * 0.32], [hw * 0.62, hh * 0.04]])
+      return
+    }
+    context.fillStyle = t.shadow
+    polygon(context, [[-hw * 1.0, hh * 0.5], [-hw * 0.8, -hh * 0.52], [-hw * 0.1, -hh * 1.0], [hw * 0.74, -hh * 0.78], [hw * 1.0, hh * 0.2], [hw * 0.52, hh * 1.0], [-hw * 0.5, hh * 0.98]])
+    context.fillStyle = shade(t.stone, -0.34)
+    polygon(context, [[-hw * 0.9, hh * 0.4], [-hw * 0.7, -hh * 0.44], [-hw * 0.1, -hh * 0.9], [hw * 0.64, -hh * 0.68], [hw * 0.9, hh * 0.14], [hw * 0.44, hh * 0.88], [-hw * 0.42, hh * 0.86]])
     context.fillStyle = t.stone
-    polygon(context, [[-hw * 0.7, hh * 0.34], [-hw * 0.36, -hh * 0.5], [hw * 0.3, -hh * 0.7], [hw * 0.7, hh * 0.1], [hw * 0.26, hh * 0.66]])
-    lines(context, t.deep, Math.min(hw, hh) * 0.08, [
-      [-hw * 0.36, -hh * 0.5, hw * 0.1, hh * 0.1],
-      [hw * 0.1, hh * 0.1, hw * 0.7, -hh * 0.2],
+    polygon(context, [[-hw * 0.8, hh * 0.24], [-hw * 0.56, -hh * 0.42], [-hw * 0.04, -hh * 0.82], [hw * 0.58, -hh * 0.56], [hw * 0.8, hh * 0.1], [hw * 0.34, hh * 0.72], [-hw * 0.34, hh * 0.68]])
+    // Освещённая грань: одна на камень, всегда сверху слева — тот же свет, что
+    // и у тени. Без неё валун остаётся плоским пятном.
+    context.fillStyle = t.stoneLight
+    polygon(context, [[-hw * 0.62, -hh * 0.06], [-hw * 0.4, -hh * 0.56], [hw * 0.06, -hh * 0.76], [hw * 0.3, -hh * 0.3], [-hw * 0.16, hh * 0.06]])
+    lines(context, shade(t.stone, -0.42), thin * 0.1, [
+      [-hw * 0.18, -hh * 0.72, hw * 0.06, -hh * 0.1],
+      [hw * 0.06, -hh * 0.1, hw * 0.66, hh * 0.16],
+      [hw * 0.06, -hh * 0.1, -hw * 0.2, hh * 0.62],
     ])
   }
 }
 
-/** Огонь: очаг у стены, открытый очаг и костёр. */
-function firePainter(kind: 'fireplace' | 'hearth' | 'camp'): PropPainter {
+/** Огонь: очаг у стены, открытый очаг, костёр и жаровня. */
+function firePainter(kind: 'fireplace' | 'hearth' | 'camp' | 'brazier'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
     const thin = Math.min(hw, hh)
+    if (kind === 'brazier') {
+      // Жаровня — тот же открытый огонь, но на треноге. Ноги, торчащие из-под
+      // чаши, и есть то, чем она отличается от очага: у очага опор нет, и без
+      // них жаровня повторяла бы его кружок в кружке.
+      const legs: Array<[number, number, number, number]> = []
+      for (let index = 0; index < 3; index += 1) {
+        const angle = (index / 3) * Math.PI * 2 - Math.PI / 2
+        legs.push([
+          Math.cos(angle) * hw * 0.3, Math.sin(angle) * hh * 0.3,
+          Math.cos(angle) * hw * 1.0, Math.sin(angle) * hh * 1.0,
+        ])
+      }
+      lines(context, t.shadow, thin * 0.26, legs)
+      lines(context, t.deep, thin * 0.17, legs)
+      context.fillStyle = shade(t.stone, -0.34)
+      starShape(context, 0, 0, hw * 0.84, hh * 0.84, 8, 0.9)
+      context.fillStyle = t.stone
+      starShape(context, 0, 0, hw * 0.72, hh * 0.72, 8, 0.9, Math.PI / 8)
+      context.fillStyle = shade(palette.wall, -0.42)
+      circle(context, 0, 0, thin * 0.5)
+      flame(context, thin * 0.56, palette)
+      return
+    }
     if (kind === 'fireplace') {
       context.fillStyle = t.stone
       context.fillRect(-hw * 0.96, -hh * 0.86, hw * 1.92, hh * 1.72)
@@ -1072,11 +1432,20 @@ function firePainter(kind: 'fireplace' | 'hearth' | 'camp'): PropPainter {
       return
     }
     if (kind === 'camp') {
-      lines(context, t.dark, thin * 0.17, [
-        [-hw * 0.9, -hh * 0.5, hw * 0.9, hh * 0.5],
-        [-hw * 0.9, hh * 0.5, hw * 0.9, -hh * 0.5],
+      // Кольцо камней вокруг кострища. Костёр узнаётся именно по обкладке:
+      // одно светлое пятнышко пламени на газоне читается цветком.
+      for (let index = 0; index < 7; index += 1) {
+        const angle = (index / 7) * Math.PI * 2 + 0.4
+        context.fillStyle = index % 2 ? t.stone : shade(t.stone, -0.24)
+        circle(context, Math.cos(angle) * hw * 0.84, Math.sin(angle) * hh * 0.84, thin * 0.24)
+      }
+      context.fillStyle = shade(palette.wall, -0.4)
+      circle(context, 0, 0, thin * 0.66)
+      lines(context, t.dark, thin * 0.16, [
+        [-hw * 0.56, -hh * 0.34, hw * 0.56, hh * 0.34],
+        [-hw * 0.56, hh * 0.34, hw * 0.56, -hh * 0.34],
       ])
-      flame(context, thin * 0.82, palette)
+      flame(context, thin * 0.62, palette)
       return
     }
     context.fillStyle = t.stone
@@ -1087,20 +1456,61 @@ function firePainter(kind: 'fireplace' | 'hearth' | 'camp'): PropPainter {
   }
 }
 
-/** Поленница: торцы брёвен рядами. Дрова у очага и штабель во дворе. */
-function logsPainter(kind: 'indoor' | 'outdoor'): PropPainter {
+/**
+ * Поленница: торцы брёвен рядами. Дрова у очага и штабель во дворе.
+ *
+ * Под торцами лежит тёмный короб во весь габарит: без него редкие кружки на
+ * траве читались рассыпанной крупой, а не сложенной кучей — масса штабеля и
+ * есть то, по чему поленница узнаётся с общего плана.
+ */
+function logsPainter(kind: 'indoor' | 'outdoor' | 'fallen'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
-    const columns = kind === 'outdoor' ? 5 : 3
-    const radius = Math.min((hw * 1.84) / (columns * 2), (hh * 1.7) / 4)
+    if (kind === 'fallen') {
+      // Валежник — то же бревно, но одно и лежащее: длинное тулово в коре и
+      // светлый спил на торце. Спил и есть примета, по которой ствол не путается
+      // с бортиком или скамьёй — у тех торцов нет.
+      const thin = Math.min(hw, hh)
+      context.fillStyle = t.shadow
+      context.fillRect(-hw * 0.98, -hh * 0.7, hw * 1.96, hh * 1.4)
+      context.fillStyle = t.bark
+      context.fillRect(-hw * 0.96, -hh * 0.64, hw * 1.92, hh * 1.28)
+      context.fillStyle = shade(palette.prop, -0.34)
+      context.fillRect(-hw * 0.96, -hh * 0.64, hw * 1.92, hh * 0.5)
+      lines(context, shade(palette.prop, -0.66), thin * 0.09, [
+        [-hw * 0.9, -hh * 0.16, hw * 0.82, -hh * 0.1],
+        [-hw * 0.84, hh * 0.3, hw * 0.9, hh * 0.24],
+        // Обломанный сук: без него ствол — просто брус.
+        [-hw * 0.2, -hh * 0.6, -hw * 0.42, -hh * 1.0],
+      ])
+      context.fillStyle = shade(palette.prop, 0.12)
+      ellipseShape(context, hw * 0.88, 0, hw * 0.11, hh * 0.62)
+      context.fillStyle = shade(palette.prop, 0.4)
+      ellipseShape(context, hw * 0.88, 0, hw * 0.07, hh * 0.4)
+      context.fillStyle = t.bark
+      ellipseShape(context, hw * 0.88, 0, hw * 0.025, hh * 0.14)
+      return
+    }
+    // Полено у очага крупнее и их меньше: на клетке 1×1 шесть торцов дают
+    // кружки в три-четыре точки, которые сливаются в крапину.
+    const columns = kind === 'outdoor' ? 4 : 2
+    context.fillStyle = t.shadow
+    context.fillRect(-hw * 0.94, -hh * 0.9, hw * 1.88, hh * 1.86)
+    context.fillStyle = t.deep
+    context.fillRect(-hw * 0.88, -hh * 0.84, hw * 1.76, hh * 1.68)
+    const radius = Math.min((hw * 1.76) / (columns * 2), (hh * 1.68) / 4)
+    const left = -radius * columns
+    const top = -radius * 2
     for (let row = 0; row < 2; row += 1) {
       for (let column = 0; column < columns; column += 1) {
-        const x = -hw * 0.92 + radius + column * radius * 2
-        const y = -hh * 0.85 + radius + row * radius * 2
+        const x = left + radius + column * radius * 2
+        const y = top + radius + row * radius * 2
         context.fillStyle = (row + column) % 2 ? t.base : t.dark
-        circle(context, x, y, radius * 0.92)
-        context.fillStyle = t.light
-        circle(context, x, y, radius * 0.36)
+        circle(context, x, y, radius * 0.94)
+        context.fillStyle = shade(palette.prop, (row + column) % 2 ? 0.34 : 0.12)
+        circle(context, x, y, radius * 0.5)
+        context.fillStyle = t.deep
+        circle(context, x, y, radius * 0.16)
       }
     }
   }
@@ -1137,11 +1547,70 @@ function stairsPainter(kind: 'up' | 'down'): PropPainter {
   }
 }
 
-/** Настенные декали: факел, фонарь, знамя и вывеска. Плоско, без тени. */
-function wallDecalPainter(kind: 'torch' | 'lantern' | 'banner' | 'sign'): PropPainter {
+/**
+ * Настенные декали: факел, фонарь, знамя, вывеска, храмовая хоругвь, паутина и
+ * рудная жила. Плоско, без тени и объёма: всё это лежит на стене, а не стоит.
+ */
+function wallDecalPainter(kind: 'torch' | 'lantern' | 'banner' | 'sign' | 'temple' | 'cobweb' | 'ore'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
     const thin = Math.min(hw, hh)
+    if (kind === 'temple') {
+      // Хоругвь — то же полотнище, что и знамя, но со светлой полосой и звездой
+      // вместо круглой нашивки: по знаку храмовое полотно и отличается от
+      // трактирного, силуэт у них один.
+      context.fillStyle = shade(palette.propAccent, -0.24)
+      polygon(context, [[-hw * 0.78, -hh], [hw * 0.78, -hh], [hw * 0.78, hh * 0.56], [0, hh], [-hw * 0.78, hh * 0.56]])
+      context.fillStyle = t.glow
+      context.fillRect(-hw * 0.24, -hh, hw * 0.48, hh * 1.62)
+      context.fillStyle = shade(palette.propAccent, -0.5)
+      starShape(context, 0, -hh * 0.24, thin * 0.62, thin * 0.62, 6, 0.42)
+      return
+    }
+    if (kind === 'cobweb') {
+      // Паутина затягивает угол, поэтому нити идут от одного угла габарита, а не
+      // из центра: круглая сеть посреди клетки читалась бы мишенью.
+      const pale = shade(palette.propAccent, 0.52)
+      const originX = -hw * 0.92
+      const originY = -hh * 0.92
+      const rays = 5
+      const radials: Array<[number, number, number, number]> = []
+      for (let index = 0; index < rays; index += 1) {
+        const angle = (index / (rays - 1)) * (Math.PI / 2)
+        radials.push([originX, originY, originX + Math.cos(angle) * hw * 1.86, originY + Math.sin(angle) * hh * 1.86])
+      }
+      lines(context, pale, thin * 0.1, radials)
+      const webs: Array<[number, number, number, number]> = []
+      for (const reach of [0.42, 0.72, 1.0]) {
+        for (let index = 0; index < rays - 1; index += 1) {
+          const from = (index / (rays - 1)) * (Math.PI / 2)
+          const to = ((index + 1) / (rays - 1)) * (Math.PI / 2)
+          webs.push([
+            originX + Math.cos(from) * hw * 1.86 * reach, originY + Math.sin(from) * hh * 1.86 * reach,
+            originX + Math.cos(to) * hw * 1.86 * reach, originY + Math.sin(to) * hh * 1.86 * reach,
+          ])
+        }
+      }
+      lines(context, pale, thin * 0.08, webs)
+      return
+    }
+    if (kind === 'ore') {
+      // Жила: тёмный вывал породы и светлая прожилка металла поперёк него.
+      // Металл берётся тоном замка — единственным «блестящим» в палитре.
+      context.fillStyle = shade(t.stone, -0.44)
+      lobedShape(context, 0, 0, hw * 0.9, hh * 0.94, 5, 0.28)
+      context.fillStyle = shade(t.stone, -0.2)
+      lobedShape(context, -hw * 0.08, -hh * 0.06, hw * 0.6, hh * 0.62, 4, 0.3, 1.2)
+      lines(context, palette.lock, thin * 0.15, [
+        [-hw * 0.72, hh * 0.5, -hw * 0.16, -hh * 0.06],
+        [-hw * 0.16, -hh * 0.06, hw * 0.3, hh * 0.2],
+        [hw * 0.3, hh * 0.2, hw * 0.74, -hh * 0.52],
+      ])
+      context.fillStyle = shade(palette.lock, 0.32)
+      circle(context, -hw * 0.16, -hh * 0.06, thin * 0.15)
+      circle(context, hw * 0.34, hh * 0.22, thin * 0.12)
+      return
+    }
     if (kind === 'banner') {
       context.fillStyle = t.accent
       polygon(context, [[-hw * 0.8, -hh], [hw * 0.8, -hh], [hw * 0.8, hh * 0.6], [0, hh], [-hw * 0.8, hh * 0.6]])
@@ -1171,11 +1640,67 @@ function wallDecalPainter(kind: 'torch' | 'lantern' | 'banner' | 'sign'): PropPa
   }
 }
 
-/** Наземные декали: ковёр, пятно, камень тропы, трава, цветы и люк. */
-function groundDecalPainter(kind: 'rug' | 'stain' | 'path' | 'grass' | 'flowers' | 'trapdoor'): PropPainter {
+/** Наземные декали: ковёр, пятно, камень тропы, трава, цветы, мозаика, папоротник и люк. */
+function groundDecalPainter(kind: 'rug' | 'stain' | 'path' | 'grass' | 'flowers' | 'mosaic' | 'fern' | 'trapdoor'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
     const thin = Math.min(hw, hh)
+    if (kind === 'mosaic') {
+      // Мозаика — тот же настил, что и ковёр, но круглый и каменный: розетка из
+      // колец. Прямоугольник повторял бы ковёр, а храмовый пол набирают кругом.
+      context.fillStyle = shade(t.stone, 0.16)
+      ellipseShape(context, 0, 0, hw * 0.96, hh * 0.96)
+      context.fillStyle = shade(t.stone, -0.24)
+      ellipseShape(context, 0, 0, hw * 0.88, hh * 0.88)
+      context.fillStyle = t.cool
+      starShape(context, 0, 0, hw * 0.82, hh * 0.82, 8, 0.62)
+      context.fillStyle = shade(t.stone, 0.3)
+      ellipseShape(context, 0, 0, hw * 0.46, hh * 0.46)
+      context.fillStyle = t.accent
+      starShape(context, 0, 0, hw * 0.42, hh * 0.42, 6, 0.52, Math.PI / 6)
+      context.fillStyle = shade(palette.propAccent, -0.4)
+      ellipseShape(context, 0, 0, hw * 0.16, hh * 0.16)
+      // Расшивка: без швов заливка читается лужей, а не набором.
+      const seams: Array<[number, number, number, number]> = []
+      for (let index = 0; index < 8; index += 1) {
+        const angle = (index / 8) * Math.PI * 2
+        seams.push([Math.cos(angle) * hw * 0.2, Math.sin(angle) * hh * 0.2, Math.cos(angle) * hw * 0.92, Math.sin(angle) * hh * 0.92])
+      }
+      lines(context, shade(t.stone, -0.4), thin * 0.05, seams)
+      return
+    }
+    if (kind === 'fern') {
+      // Папоротник — веер вай из одного основания, а не розетка по кругу:
+      // симметричная розетка уже занята хвойной кроной, и на опушке папоротник
+      // от неё было не отличить. Вайя рисуется залитым пером с зубчатым краем —
+      // волоски при клетке в 22 px не видны вовсе.
+      const frond = (angle: number, length: number, width: number, color: string) => {
+        const cos = Math.cos(angle)
+        const sin = Math.sin(angle)
+        const at = (along: number, out: number): [number, number] => [
+          hw * (cos * length * along - sin * out),
+          hh * (0.78 + sin * length * along + cos * out),
+        ]
+        const steps = 6
+        const points: Array<[number, number]> = []
+        for (let index = 0; index <= steps; index += 1) {
+          points.push(at(index / steps, width * (1 - index / steps) * (index % 2 ? 1 : 0.44)))
+        }
+        for (let index = steps; index >= 0; index -= 1) {
+          points.push(at(index / steps, -width * (1 - index / steps) * (index % 2 ? 1 : 0.44)))
+        }
+        context.fillStyle = color
+        polygon(context, points)
+      }
+      const deep = shade(palette.foliage, -0.3)
+      const fan: Array<[number, number]> = [[-0.95, 1.1], [-0.72, 1.45], [-0.5, 1.66], [-0.28, 1.45], [-0.05, 1.1]]
+      fan.forEach(([share, length], index) => {
+        frond(Math.PI * share, length, 0.22, index % 2 ? deep : palette.foliage)
+      })
+      frond(-Math.PI * 0.62, 0.95, 0.15, palette.foliageLight)
+      frond(-Math.PI * 0.38, 0.95, 0.15, palette.foliageLight)
+      return
+    }
     if (kind === 'rug') {
       context.fillStyle = t.accent
       context.fillRect(-hw, -hh, hw * 2, hh * 2)
@@ -1209,11 +1734,16 @@ function groundDecalPainter(kind: 'rug' | 'stain' | 'path' | 'grass' | 'flowers'
       ellipseShape(context, hw * 0.52, hh * 0.4, hw * 0.34, hh * 0.3)
       return
     }
-    const leaf = mixColors(palette.prop, palette.zoneExterior, 0.86)
-    lines(context, leaf, thin * 0.13, [
-      [-hw * 0.6, hh * 0.7, -hw * 0.3, -hh * 0.7],
-      [0, hh * 0.7, hw * 0.1, -hh * 0.8],
-      [hw * 0.6, hh * 0.7, hw * 0.4, -hh * 0.5],
+    // Былинки берут тот же тон листвы: выведенный из зоны цвет ложился в тон
+    // газона, и пучок травы на газоне было не разглядеть.
+    lines(context, shade(palette.foliage, -0.12), thin * 0.15, [
+      [-hw * 0.6, hh * 0.8, -hw * 0.3, -hh * 0.7],
+      [0, hh * 0.8, hw * 0.1, -hh * 0.85],
+      [hw * 0.6, hh * 0.8, hw * 0.4, -hh * 0.5],
+    ])
+    lines(context, palette.foliageLight, thin * 0.1, [
+      [-hw * 0.3, hh * 0.8, -hw * 0.62, -hh * 0.4],
+      [hw * 0.3, hh * 0.8, hw * 0.66, -hh * 0.3],
     ])
     if (kind !== 'flowers') return
     context.fillStyle = palette.propAccent
@@ -1308,13 +1838,25 @@ function postPainter(kind: 'hitching' | 'lamp' | 'sign' | 'broom'): PropPainter 
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
     const thin = Math.min(hw, hh)
-    context.fillStyle = t.dark
-    context.fillRect(-thin * 0.15, -hh * 0.8, thin * 0.3, hh * 1.7)
     if (kind === 'hitching') {
+      // Коновязь — это перекладина на двух столбах. Один столб с поперечиной
+      // давал знак «Т», который на газоне читался обломком доски.
+      context.fillStyle = t.shadow
+      context.fillRect(-hw * 0.94, -hh * 0.68, hw * 1.88, thin * 0.4)
+      context.fillStyle = t.deep
+      for (const side of [-0.74, 0.74]) {
+        context.fillRect(hw * side - thin * 0.2, -hh * 0.9, thin * 0.4, hh * 1.84)
+      }
       context.fillStyle = t.base
-      context.fillRect(-hw * 0.9, -hh * 0.62, hw * 1.8, thin * 0.26)
+      context.fillRect(-hw * 0.94, -hh * 0.8, hw * 1.88, thin * 0.34)
+      context.fillStyle = t.light
+      for (const side of [-0.74, 0.74]) {
+        context.fillRect(hw * side - thin * 0.13, -hh * 0.84, thin * 0.26, hh * 0.6)
+      }
       return
     }
+    context.fillStyle = t.dark
+    context.fillRect(-thin * 0.15, -hh * 0.8, thin * 0.3, hh * 1.7)
     if (kind === 'lamp') {
       context.fillStyle = t.accent
       circle(context, 0, -hh * 0.76, thin * 0.44)
@@ -1333,46 +1875,99 @@ function postPainter(kind: 'hitching' | 'lamp' | 'sign' | 'broom'): PropPainter 
   }
 }
 
-/** Телега: кузов с досками и два колеса по бортам. */
+/**
+ * Телега: кузов с досками, четыре колеса по углам и дышло. Двух колёс мало —
+ * сверху они читаются как случайные пятна под ящиком; четыре по углам и оглобля
+ * впереди дают ту самую пару осей, по которой повозка узнаётся сразу.
+ */
 function cartPainter(): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
+    const thin = Math.min(hw, hh)
+    const wheel = thin * 0.34
+    // Контур обводит кузов, а не весь габарит: колёса торчат из-под него сами.
+    context.fillStyle = t.shadow
+    context.fillRect(-hw * 0.86, -hh * 0.78, hw * 1.72, hh * 1.56)
+    // Дышло: только оно показывает, каким концом телега стоит.
     context.fillStyle = t.dark
-    context.fillRect(-hw * 0.92, -hh * 0.64, hw * 1.84, hh * 1.28)
-    context.fillStyle = t.base
-    context.fillRect(-hw * 0.84, -hh * 0.54, hw * 1.68, hh * 1.08)
-    lines(context, t.deep, Math.min(hw, hh) * 0.09, [
-      [-hw * 0.3, -hh * 0.54, -hw * 0.3, hh * 0.54],
-      [hw * 0.3, -hh * 0.54, hw * 0.3, hh * 0.54],
-    ])
+    context.fillRect(-hw * 1.0, -thin * 0.09, hw * 0.34, thin * 0.18)
+    for (const side of [-1, 1]) {
+      for (const end of [-0.52, 0.52]) {
+        context.fillStyle = t.deep
+        circle(context, hw * end, hh * side * 0.82, wheel)
+        context.fillStyle = shade(palette.prop, -0.12)
+        circle(context, hw * end, hh * side * 0.82, wheel * 0.52)
+      }
+    }
     context.fillStyle = t.deep
-    circle(context, -hw * 0.5, hh * 0.8, Math.min(hw, hh) * 0.3)
-    circle(context, hw * 0.5, hh * 0.8, Math.min(hw, hh) * 0.3)
+    context.fillRect(-hw * 0.78, -hh * 0.68, hw * 1.6, hh * 1.36)
+    context.fillStyle = t.base
+    context.fillRect(-hw * 0.72, -hh * 0.6, hw * 1.48, hh * 1.2)
+    lines(context, t.deep, thin * 0.1, [
+      [-hw * 0.28, -hh * 0.6, -hw * 0.28, hh * 0.6],
+      [hw * 0.26, -hh * 0.6, hw * 0.26, hh * 0.6],
+    ])
   }
 }
 
-/** Колесо от телеги: обод, ступица и спицы. */
+/**
+ * Колесо от телеги: обод, ступица и шесть спиц. Спиц именно шесть, а не крест:
+ * крестом рисуется ворот колодца, и с четырьмя спицами колесо и колодец на
+ * общем плане сливались в один значок.
+ */
 function wheelPainter(): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
-    const radius = Math.min(hw, hh) * 0.92
-    context.fillStyle = t.dark
+    const radius = Math.min(hw, hh) * 0.96
+    propContour(context, palette, 0, 0, radius * 1.1, radius * 1.1)
+    context.fillStyle = t.deep
     circle(context, 0, 0, radius)
     context.fillStyle = t.base
-    circle(context, 0, 0, radius * 0.76)
-    lines(context, t.deep, radius * 0.12, [
-      [-radius * 0.76, 0, radius * 0.76, 0],
-      [0, -radius * 0.76, 0, radius * 0.76],
-    ])
+    circle(context, 0, 0, radius * 0.84)
+    context.fillStyle = t.dark
+    circle(context, 0, 0, radius * 0.66)
+    const spokes: Array<[number, number, number, number]> = []
+    for (let index = 0; index < 3; index += 1) {
+      const angle = (index / 3) * Math.PI
+      spokes.push([
+        -Math.cos(angle) * radius * 0.8, -Math.sin(angle) * radius * 0.8,
+        Math.cos(angle) * radius * 0.8, Math.sin(angle) * radius * 0.8,
+      ])
+    }
+    lines(context, t.light, radius * 0.11, spokes)
     context.fillStyle = t.deep
-    circle(context, 0, 0, radius * 0.2)
+    circle(context, 0, 0, radius * 0.22)
   }
 }
 
-/** Поилка: длинный короб с водой. */
-function troughPainter(): PropPainter {
+/**
+ * Стоячая вода: поилка во дворе и подземное озеро. Одна и та же вода в разной
+ * оправе — у поилки короб из досок, у озера каменный окаём. Дно и блик берут
+ * тон окна: он и есть вода в палитре доски.
+ */
+function waterPainter(kind: 'trough' | 'pool'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
+    if (kind === 'pool') {
+      // Берег неровный: ровный овал посреди пещеры читается плитой, а не водой.
+      context.fillStyle = t.shadow
+      lobedShape(context, 0, 0, hw * 0.99, hh * 0.99, 5, 0.14)
+      context.fillStyle = shade(t.stone, -0.3)
+      lobedShape(context, 0, 0, hw * 0.94, hh * 0.94, 5, 0.14, 0.3)
+      context.fillStyle = t.stone
+      lobedShape(context, -hw * 0.02, hh * 0.02, hw * 0.86, hh * 0.86, 6, 0.16, 1.1)
+      context.fillStyle = t.waterDeep
+      lobedShape(context, 0, 0, hw * 0.74, hh * 0.74, 6, 0.18, 2.0)
+      context.fillStyle = t.water
+      lobedShape(context, -hw * 0.05, -hh * 0.04, hw * 0.6, hh * 0.6, 5, 0.2, 0.7)
+      // Блики: без них вода — просто тёмное пятно, а тёмное пятно в пещере
+      // читается провалом, и по нему пойдут пешком.
+      context.fillStyle = shade(palette.window, 0.3)
+      ellipseShape(context, -hw * 0.3, -hh * 0.3, hw * 0.2, hh * 0.09)
+      ellipseShape(context, hw * 0.18, hh * 0.22, hw * 0.15, hh * 0.07)
+      ellipseShape(context, hw * 0.02, -hh * 0.06, hw * 0.1, hh * 0.05)
+      return
+    }
     context.fillStyle = t.dark
     context.fillRect(-hw * 0.96, -hh * 0.8, hw * 1.92, hh * 1.6)
     context.fillStyle = t.cool
@@ -1382,19 +1977,36 @@ function troughPainter(): PropPainter {
   }
 }
 
-/** Колодец: кладка, вода и перекладина ворота. */
+/**
+ * Колодец: кладка, вода, два столба и ворот с ведром. Столбы и ведро добавлены
+ * ради того же различения, что и спицы у колеса: круг с перекладиной сам по
+ * себе — это и колесо, и жёрнов, а два столба поперёк сруба бывают только тут.
+ */
 function wellPainter(): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
     const thin = Math.min(hw, hh)
+    propContour(context, palette, 0, 0, thin * 1.06, thin * 1.06)
+    context.fillStyle = shade(t.stone, -0.3)
+    circle(context, 0, 0, thin * 0.96)
     context.fillStyle = t.stone
-    circle(context, 0, 0, thin * 0.94)
-    context.fillStyle = shade(t.stone, -0.25)
-    circle(context, 0, 0, thin * 0.74)
-    context.fillStyle = mixColors(palette.window, '#000000', 0.45)
-    circle(context, 0, 0, thin * 0.56)
+    circle(context, 0, 0, thin * 0.84)
+    context.fillStyle = t.stoneLight
+    starShape(context, 0, 0, thin * 0.84, thin * 0.84, 7, 0.86, 0.3)
+    context.fillStyle = shade(t.stone, -0.42)
+    circle(context, 0, 0, thin * 0.62)
+    context.fillStyle = mixColors(palette.window, '#000000', 0.5)
+    circle(context, 0, 0, thin * 0.54)
+    context.fillStyle = shade(palette.window, 0.2)
+    ellipseShape(context, -thin * 0.2, -thin * 0.18, thin * 0.16, thin * 0.12)
+    // Столбы по краю сруба и перекладина ворота между ними.
+    context.fillStyle = t.dark
+    context.fillRect(-thin * 0.98, -thin * 0.2, thin * 0.3, thin * 0.4)
+    context.fillRect(thin * 0.68, -thin * 0.2, thin * 0.3, thin * 0.4)
     context.fillStyle = t.base
-    context.fillRect(-thin * 0.9, -thin * 0.11, thin * 1.8, thin * 0.22)
+    context.fillRect(-thin * 0.9, -thin * 0.1, thin * 1.8, thin * 0.2)
+    context.fillStyle = t.deep
+    context.fillRect(-thin * 0.18, -thin * 0.18, thin * 0.36, thin * 0.36)
   }
 }
 
@@ -1412,41 +2024,269 @@ function lutePainter(): PropPainter {
   }
 }
 
-// --- рисунки старых значений feature без записи в реестре -----------------
+// --- храм, склеп, пещера, дорога и поселение ------------------------------
 
-/** Колонна: круглое основание с уступом. */
+/**
+ * Колонна: барабан с каннелюрами. Цвет каменный, а не мебельный: колонна из
+ * дерева трактира сливалась с бочками и на плане храма читалась пнём.
+ */
 function pillarPainter(): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
-    context.fillStyle = t.dark
-    ellipseShape(context, 0, 0, hw * 0.98, hh * 0.98)
-    context.fillStyle = t.light
-    ellipseShape(context, 0, 0, hw * 0.55, hh * 0.55)
+    const thin = Math.min(hw, hh)
+    propContour(context, palette, 0, 0, hw * 0.99, hh * 0.99)
+    context.fillStyle = shade(t.stone, -0.4)
+    ellipseShape(context, 0, 0, hw * 0.96, hh * 0.96)
+    context.fillStyle = t.stone
+    ellipseShape(context, 0, 0, hw * 0.86, hh * 0.86)
+    // Каннелюры — светлые рёбра от края к сердцевине. Тёмными по тёмному ободу
+    // их не видно вовсе, а без них барабан колонны — просто окатыш.
+    const flutes: Array<[number, number, number, number]> = []
+    for (let index = 0; index < 8; index += 1) {
+      const angle = (index / 8) * Math.PI * 2 + 0.2
+      flutes.push([
+        Math.cos(angle) * hw * 0.3, Math.sin(angle) * hh * 0.3,
+        Math.cos(angle) * hw * 0.84, Math.sin(angle) * hh * 0.84,
+      ])
+    }
+    lines(context, t.stoneLight, thin * 0.12, flutes)
+    context.fillStyle = t.stoneLight
+    ellipseShape(context, 0, 0, hw * 0.4, hh * 0.4)
+    context.fillStyle = shade(t.stone, -0.18)
+    ellipseShape(context, 0, 0, hw * 0.22, hh * 0.22)
   }
 }
 
-/** Статуя: постамент, фигура и голова. */
+/** Статуя: постамент, фигура, разведённые руки и голова. */
 function statuePainter(): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
-    context.fillStyle = shade(t.stone, -0.2)
-    context.fillRect(-hw * 0.85, hh * 0.45, hw * 1.7, hh * 0.55)
+    const thin = Math.min(hw, hh)
+    // Постамент светлый: тёмным он превращался в глухой ящик, и на плане храма
+    // изваяние было не отличить от сундука у стены.
+    context.fillStyle = t.shadow
+    context.fillRect(-hw * 0.9, -hh * 0.94, hw * 1.8, hh * 1.88)
+    context.fillStyle = shade(t.stone, -0.24)
+    context.fillRect(-hw * 0.84, -hh * 0.88, hw * 1.68, hh * 1.76)
     context.fillStyle = t.stone
-    polygon(context, [[-hw * 0.42, hh * 0.45], [-hw * 0.2, -hh * 0.35], [hw * 0.2, -hh * 0.35], [hw * 0.42, hh * 0.45]])
-    circle(context, 0, -hh * 0.62, Math.min(hw, hh) * 0.28)
+    context.fillRect(-hw * 0.72, -hh * 0.76, hw * 1.44, hh * 1.52)
+    // Изваяние: плечи шире бёдер, руки разведены — этим фигура и отличается от
+    // глухого столба, который иначе получается из любого камня в клетке.
+    context.fillStyle = shade(t.stone, -0.34)
+    polygon(context, [[-hw * 0.46, hh * 0.62], [-hw * 0.3, -hh * 0.22], [hw * 0.3, -hh * 0.22], [hw * 0.46, hh * 0.62]])
+    context.fillRect(-hw * 0.62, -hh * 0.3, hw * 1.24, thin * 0.26)
+    context.fillStyle = shade(t.stone, -0.44)
+    circle(context, 0, -hh * 0.5, thin * 0.28)
+    context.fillStyle = t.stoneLight
+    circle(context, -thin * 0.06, -hh * 0.52, thin * 0.17)
+    lines(context, shade(t.stone, -0.5), thin * 0.08, [[0, -hh * 0.22, 0, hh * 0.6]])
   }
 }
 
-/** Алтарь: трапеция с накладкой. */
+/** Алтарь: каменный стол с покровом, знаком и свечами по краям. */
 function altarPainter(): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
-    context.fillStyle = t.base
-    polygon(context, [[-hw * 0.6, -hh * 0.85], [hw * 0.6, -hh * 0.85], [hw * 0.9, hh * 0.85], [-hw * 0.9, hh * 0.85]])
+    const thin = Math.min(hw, hh)
+    context.fillStyle = t.shadow
+    context.fillRect(-hw * 0.96, -hh * 0.9, hw * 1.92, hh * 1.8)
+    context.fillStyle = shade(t.stone, -0.3)
+    polygon(context, [[-hw * 0.8, -hh * 0.84], [hw * 0.8, -hh * 0.84], [hw * 0.92, hh * 0.84], [-hw * 0.92, hh * 0.84]])
+    context.fillStyle = t.stone
+    polygon(context, [[-hw * 0.74, -hh * 0.76], [hw * 0.74, -hh * 0.76], [hw * 0.84, hh * 0.66], [-hw * 0.84, hh * 0.66]])
+    // Покров и знак поверх него: голый камень 2×1 неотличим от саркофага.
     context.fillStyle = t.accent
-    circle(context, 0, 0, Math.min(hw, hh) * 0.3)
+    context.fillRect(-hw * 0.5, -hh * 0.66, hw * 1.0, hh * 1.4)
+    context.fillStyle = shade(palette.propAccent, -0.38)
+    starShape(context, 0, -hh * 0.02, thin * 0.5, thin * 0.5, 6, 0.44)
+    context.fillStyle = t.glow
+    for (const side of [-0.8, 0.8]) circle(context, hw * side, -hh * 0.1, thin * 0.16)
   }
 }
+
+/**
+ * Пристенные святыни и ниши: ковчег, придорожная часовня и погребальная ниша.
+ * Всё это ящик у стены со святыней внутри — меняется только оправа.
+ */
+function shrinePainter(kind: 'reliquary' | 'roadside' | 'niche'): PropPainter {
+  return (context, { hw, hh }, palette) => {
+    const t = tones(palette)
+    const thin = Math.min(hw, hh)
+    if (kind === 'niche') {
+      // Ниша — это провал в кладке: тёмный арочный проём в каменной рамке, с
+      // костями в глубине. Светлого верха у неё нет, и по темноте она читается.
+      context.fillStyle = t.shadow
+      context.fillRect(-hw * 0.96, -hh * 0.96, hw * 1.92, hh * 1.92)
+      context.fillStyle = shade(t.stone, -0.24)
+      context.fillRect(-hw * 0.9, -hh * 0.9, hw * 1.8, hh * 1.8)
+      context.fillStyle = t.stoneLight
+      context.fillRect(-hw * 0.9, -hh * 0.9, hw * 1.8, hh * 0.22)
+      context.fillStyle = shade(palette.wall, -0.55)
+      ellipseShape(context, 0, -hh * 0.12, hw * 0.6, hh * 0.6)
+      context.fillRect(-hw * 0.6, -hh * 0.12, hw * 1.2, hh * 0.86)
+      const pale = shade(palette.propAccent, 0.5)
+      context.fillStyle = pale
+      ellipseShape(context, 0, hh * 0.24, hw * 0.26, hh * 0.22)
+      context.fillStyle = shade(palette.wall, -0.62)
+      circle(context, -hw * 0.1, hh * 0.2, thin * 0.07)
+      circle(context, hw * 0.1, hh * 0.2, thin * 0.07)
+      return
+    }
+    if (kind === 'roadside') {
+      // Часовенка: каменное основание, деревянный киот и двускатная кровелька.
+      // Кровелька — единственное, что отличает её от верстового камня.
+      context.fillStyle = t.shadow
+      context.fillRect(-hw * 0.72, hh * 0.36, hw * 1.44, hh * 0.6)
+      context.fillStyle = t.stone
+      context.fillRect(-hw * 0.66, hh * 0.32, hw * 1.32, hh * 0.5)
+      context.fillStyle = t.deep
+      context.fillRect(-hw * 0.46, -hh * 0.32, hw * 0.92, hh * 0.76)
+      context.fillStyle = t.base
+      context.fillRect(-hw * 0.38, -hh * 0.26, hw * 0.76, hh * 0.64)
+      context.fillStyle = t.deep
+      polygon(context, [[-hw * 0.68, -hh * 0.26], [0, -hh * 0.9], [hw * 0.68, -hh * 0.26]])
+      context.fillStyle = t.dark
+      polygon(context, [[-hw * 0.54, -hh * 0.3], [0, -hh * 0.76], [hw * 0.54, -hh * 0.3]])
+      context.fillStyle = t.accent
+      circle(context, 0, hh * 0.06, thin * 0.2)
+      context.fillStyle = t.glow
+      circle(context, 0, hh * 0.06, thin * 0.1)
+      return
+    }
+    // Ковчег: каменный ларец с двускатной крышкой. Скаты — два трапециевидных
+    // ската от конька к краям: плоские полосы поперёк давали не ларец, а полку.
+    // Замка, как у сундука, нет — вместо него самоцвет на коньке.
+    context.fillStyle = t.shadow
+    context.fillRect(-hw * 0.88, -hh * 0.76, hw * 1.76, hh * 1.52)
+    context.fillStyle = shade(t.stone, -0.44)
+    context.fillRect(-hw * 0.82, -hh * 0.7, hw * 1.64, hh * 1.4)
+    context.fillStyle = shade(t.stone, -0.14)
+    polygon(context, [[-hw * 0.82, -hh * 0.7], [hw * 0.82, -hh * 0.7], [hw * 0.58, 0], [-hw * 0.58, 0]])
+    context.fillStyle = t.stoneLight
+    polygon(context, [[-hw * 0.58, 0], [hw * 0.58, 0], [hw * 0.82, hh * 0.7], [-hw * 0.82, hh * 0.7]])
+    context.fillStyle = palette.lock
+    context.fillRect(-hw * 0.6, -thin * 0.1, hw * 1.2, thin * 0.2)
+    context.fillStyle = shade(t.stone, -0.5)
+    for (const x of [-0.78, 0.78]) for (const y of [-0.66, 0.5]) {
+      context.fillRect(hw * x - thin * 0.09, hh * y, thin * 0.18, thin * 0.18)
+    }
+    context.fillStyle = t.accent
+    circle(context, 0, 0, thin * 0.23)
+    context.fillStyle = t.glow
+    circle(context, -thin * 0.05, -thin * 0.06, thin * 0.11)
+  }
+}
+
+/**
+ * Каменные плиты: надгробие, верстовой камень и саркофаг. Одна порода, три
+ * огранки — этим семейство и держится вместе.
+ */
+function slabPainter(kind: 'grave' | 'milestone' | 'sarcophagus'): PropPainter {
+  return (context, { hw, hh }, palette) => {
+    const t = tones(palette)
+    const thin = Math.min(hw, hh)
+    if (kind === 'milestone') {
+      // Верстовой камень: приземистый столбик с побелённой верхушкой и парой
+      // насечек. Креста нет — крест бывает только на могиле.
+      propContour(context, palette, 0, hh * 0.08, hw * 0.56, hh * 0.86)
+      context.fillStyle = shade(t.stone, -0.3)
+      ellipseShape(context, 0, -hh * 0.26, hw * 0.5, hh * 0.44)
+      context.fillRect(-hw * 0.5, -hh * 0.26, hw * 1.0, hh * 1.12)
+      context.fillStyle = t.stone
+      ellipseShape(context, 0, -hh * 0.3, hw * 0.42, hh * 0.36)
+      context.fillRect(-hw * 0.42, -hh * 0.3, hw * 0.84, hh * 1.06)
+      context.fillStyle = t.stoneLight
+      ellipseShape(context, 0, -hh * 0.32, hw * 0.34, hh * 0.28)
+      context.fillRect(-hw * 0.34, -hh * 0.32, hw * 0.68, hh * 0.4)
+      lines(context, shade(t.stone, -0.5), thin * 0.09, [
+        [-hw * 0.24, hh * 0.24, hw * 0.24, hh * 0.24],
+        [-hw * 0.24, hh * 0.52, hw * 0.1, hh * 0.52],
+      ])
+      return
+    }
+    if (kind === 'sarcophagus') {
+      // Саркофаг: короб с уступом и крышка поменьше поверх него. Уступ по краю
+      // и есть то, чем каменный гроб отличается от алтаря того же габарита.
+      context.fillStyle = t.shadow
+      context.fillRect(-hw * 0.98, -hh * 0.94, hw * 1.96, hh * 1.88)
+      context.fillStyle = shade(t.stone, -0.34)
+      context.fillRect(-hw * 0.94, -hh * 0.9, hw * 1.88, hh * 1.8)
+      context.fillStyle = shade(t.stone, -0.12)
+      context.fillRect(-hw * 0.84, -hh * 0.74, hw * 1.68, hh * 1.48)
+      context.fillStyle = t.stone
+      context.fillRect(-hw * 0.8, -hh * 0.7, hw * 1.6, hh * 1.4)
+      context.fillStyle = t.stoneLight
+      context.fillRect(-hw * 0.8, -hh * 0.7, hw * 1.6, hh * 0.4)
+      // Изваяние на крышке: голова у изголовья и меч вдоль тела.
+      context.fillStyle = shade(t.stone, -0.42)
+      circle(context, -hw * 0.58, 0, thin * 0.3)
+      lines(context, shade(t.stone, -0.46), thin * 0.11, [
+        [-hw * 0.36, 0, hw * 0.66, 0],
+        [hw * 0.2, -hh * 0.36, hw * 0.2, hh * 0.36],
+      ])
+      return
+    }
+    // Надгробие: плита с закруглённым верхом и крестом.
+    context.fillStyle = shade(t.stone, -0.2)
+    ellipseShape(context, 0, -hh * 0.1, hw * 0.72, hh * 0.72)
+    context.fillStyle = t.stone
+    context.fillRect(-hw * 0.7, -hh * 0.1, hw * 1.4, hh * 1.0)
+    lines(context, t.deep, thin * 0.1, [
+      [0, -hh * 0.5, 0, hh * 0.6], [-hw * 0.36, -hh * 0.1, hw * 0.36, -hh * 0.1],
+    ])
+  }
+}
+
+/**
+ * Поселение: торговый навес и плетень. Оба — каркас из жердей, только у навеса
+ * поверх него полотнище, а у плетня оно ни к чему.
+ */
+function settlementPainter(kind: 'stall' | 'fence'): PropPainter {
+  return (context, { hw, hh }, palette) => {
+    const t = tones(palette)
+    const thin = Math.min(hw, hh)
+    if (kind === 'fence') {
+      // Изгородь: столбики поперёк и две жерди вдоль. Сплошная доска читалась бы
+      // бортиком, а редкие столбы — тем, что через плетень видно.
+      context.fillStyle = t.dark
+      context.fillRect(-hw * 0.98, -hh * 0.36, hw * 1.96, thin * 0.24)
+      context.fillRect(-hw * 0.98, hh * 0.14, hw * 1.96, thin * 0.24)
+      context.fillStyle = t.deep
+      for (const share of [-0.88, -0.3, 0.28, 0.86]) {
+        context.fillRect(hw * share - thin * 0.14, -hh * 0.78, thin * 0.28, hh * 1.56)
+      }
+      context.fillStyle = t.base
+      for (const share of [-0.88, -0.3, 0.28, 0.86]) {
+        context.fillRect(hw * share - thin * 0.09, -hh * 0.74, thin * 0.18, hh * 1.2)
+      }
+      context.fillStyle = t.light
+      context.fillRect(-hw * 0.98, -hh * 0.36, hw * 1.96, thin * 0.12)
+      return
+    }
+    // Прилавок: полосатый навес во всю клетку и стойка с товаром под передним
+    // краем. Полосы — самая заметная примета торга на общем плане.
+    context.fillStyle = t.shadow
+    context.fillRect(-hw * 0.96, -hh * 0.94, hw * 1.92, hh * 1.86)
+    const stripes = 6
+    for (let index = 0; index < stripes; index += 1) {
+      const width = (hw * 1.84) / stripes
+      context.fillStyle = index % 2 ? t.accent : shade(palette.propAccent, -0.54)
+      context.fillRect(-hw * 0.92 + width * index, -hh * 0.9, width, hh * 1.32)
+    }
+    context.fillStyle = t.deep
+    for (const share of [-0.9, 0.9]) {
+      context.fillRect(hw * share - thin * 0.12, -hh * 0.9, thin * 0.24, hh * 1.8)
+    }
+    context.fillStyle = t.deep
+    context.fillRect(-hw * 0.96, hh * 0.34, hw * 1.92, hh * 0.6)
+    context.fillStyle = t.base
+    context.fillRect(-hw * 0.96, hh * 0.34, hw * 1.92, hh * 0.44)
+    context.fillStyle = t.light
+    for (const share of [-0.58, -0.16, 0.28, 0.68]) circle(context, hw * share, hh * 0.54, thin * 0.16)
+  }
+}
+
+// --- рисунки старых значений feature без записи в реестре -----------------
 
 /** Руна: восьмиконечный знак. */
 function runePainter(): PropPainter {
@@ -1462,11 +2302,33 @@ function runePainter(): PropPainter {
   }
 }
 
-/** Кости: перекрестье с шаровидными концами. */
-function bonesPainter(): PropPainter {
+/** Кости: перекрестье двух и груда с черепом. */
+function bonesPainter(kind: 'crossed' | 'pile'): PropPainter {
   return (context, { hw, hh }, palette) => {
+    const t = tones(palette)
     const thin = Math.min(hw, hh)
     const pale = shade(palette.propAccent, 0.5)
+    if (kind === 'pile') {
+      // Груда: подсыпка, кости вразнобой и череп поверх. Ровное перекрестье уже
+      // занято, а по черепу куча узнаётся даже когда от неё осталось три пятна.
+      context.fillStyle = shade(palette.propAccent, -0.24)
+      ellipseShape(context, 0, hh * 0.2, hw * 0.94, hh * 0.7)
+      lines(context, pale, thin * 0.15, [
+        [-hw * 0.82, hh * 0.56, hw * 0.76, -hh * 0.12],
+        [-hw * 0.64, -hh * 0.16, hw * 0.86, hh * 0.44],
+        [-hw * 0.5, hh * 0.7, hw * 0.5, hh * 0.72],
+      ])
+      context.fillStyle = pale
+      for (const [x, y] of [[-0.82, 0.56], [0.76, -0.12], [-0.64, -0.16], [0.86, 0.44]]) {
+        circle(context, hw * x, hh * y, thin * 0.15)
+      }
+      context.fillStyle = shade(palette.propAccent, 0.64)
+      ellipseShape(context, -hw * 0.16, -hh * 0.42, hw * 0.4, hh * 0.36)
+      context.fillStyle = t.deep
+      circle(context, -hw * 0.3, -hh * 0.44, thin * 0.1)
+      circle(context, -hw * 0.02, -hh * 0.44, thin * 0.1)
+      return
+    }
     lines(context, pale, thin * 0.14, [
       [-hw * 0.8, -hh * 0.7, hw * 0.8, hh * 0.7],
       [hw * 0.8, -hh * 0.7, -hw * 0.8, hh * 0.7],
@@ -1475,20 +2337,6 @@ function bonesPainter(): PropPainter {
     for (const [x, y] of [[-0.8, -0.7], [0.8, 0.7], [0.8, -0.7], [-0.8, 0.7]]) {
       circle(context, hw * x, hh * y, thin * 0.18)
     }
-  }
-}
-
-/** Могила: надгробие с закруглённым верхом. */
-function gravePainter(): PropPainter {
-  return (context, { hw, hh }, palette) => {
-    const t = tones(palette)
-    context.fillStyle = shade(t.stone, -0.2)
-    ellipseShape(context, 0, -hh * 0.1, hw * 0.72, hh * 0.72)
-    context.fillStyle = t.stone
-    context.fillRect(-hw * 0.7, -hh * 0.1, hw * 1.4, hh * 1.0)
-    lines(context, t.deep, Math.min(hw, hh) * 0.1, [
-      [0, -hh * 0.5, 0, hh * 0.6], [-hw * 0.36, -hh * 0.1, hw * 0.36, -hh * 0.1],
-    ])
   }
 }
 
@@ -1505,11 +2353,26 @@ function consolePainter(): PropPainter {
   }
 }
 
-/** Гриб: шляпка с крапинами и ножка. */
-function mushroomPainter(): PropPainter {
+/** Грибы: одиночный в крапинах и подземная семейка. */
+function mushroomPainter(kind: 'single' | 'cluster'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
     const thin = Math.min(hw, hh)
+    if (kind === 'cluster') {
+      // Семейка: три шляпки разного роста. Цвет холодный — подземный гриб светит
+      // сам, и по этому свету он и отличается от боровика на опушке.
+      for (const [cx, cy, size] of [[-0.42, 0.24, 0.52], [0.4, 0.36, 0.44], [0.06, -0.3, 0.6]]) {
+        context.fillStyle = shade(palette.window, -0.5)
+        context.fillRect(hw * cx - thin * 0.09, hh * cy, thin * 0.18, hh * 0.5)
+        context.fillStyle = t.waterDeep
+        ellipseShape(context, hw * cx, hh * cy, hw * size * 0.62, hh * size * 0.5)
+        context.fillStyle = t.water
+        ellipseShape(context, hw * cx, hh * cy - hh * size * 0.08, hw * size * 0.5, hh * size * 0.38)
+        context.fillStyle = shade(palette.window, 0.34)
+        circle(context, hw * cx - hw * size * 0.14, hh * cy - hh * size * 0.14, thin * size * 0.2)
+      }
+      return
+    }
     context.fillStyle = t.light
     context.fillRect(-hw * 0.22, -hh * 0.1, hw * 0.44, hh * 0.94)
     context.fillStyle = t.accent
@@ -1595,38 +2458,69 @@ const PROP_LIBRARY: Record<string, PropDrawing> = {
   trapdoor: { paint: groundDecalPainter('trapdoor'), simple: 'block', visual: { w: 1, h: 1 }, flat: true },
 
   // --- внешняя территория -------------------------------------------------
-  tree_oak: { paint: treePainter('oak'), simple: 'round' },
-  tree_pine: { paint: treePainter('pine'), simple: 'round' },
-  tree_birch: { paint: treePainter('birch'), simple: 'round' },
+  tree_oak: { paint: treePainter('oak'), simple: 'round', tint: 'foliage' },
+  tree_pine: { paint: treePainter('pine'), simple: 'round', tint: 'foliage' },
+  tree_birch: { paint: treePainter('birch'), simple: 'round', tint: 'foliage' },
   tree_dead: { paint: treePainter('dead'), simple: 'round' },
   tree_stump: { paint: treePainter('stump'), simple: 'round' },
-  bush: { paint: shrubPainter('bush'), simple: 'round' },
-  shrub: { paint: shrubPainter('shrub'), simple: 'round' },
-  grass_tuft: { paint: groundDecalPainter('grass'), simple: 'round', visual: { w: 0.8, h: 0.7 }, flat: true },
-  flowers: { paint: groundDecalPainter('flowers'), simple: 'round', visual: { w: 0.8, h: 0.7 }, flat: true },
-  rock_small: { paint: rockPainter('small'), simple: 'round' },
-  boulder: { paint: rockPainter('boulder'), simple: 'round' },
+  bush: { paint: shrubPainter('bush'), simple: 'round', tint: 'foliage' },
+  shrub: { paint: shrubPainter('shrub'), simple: 'round', tint: 'foliage' },
+  grass_tuft: { paint: groundDecalPainter('grass'), simple: 'round', visual: { w: 0.8, h: 0.7 }, flat: true, tint: 'foliage' },
+  flowers: { paint: groundDecalPainter('flowers'), simple: 'round', visual: { w: 0.8, h: 0.7 }, flat: true, tint: 'foliage' },
+  rock_small: { paint: rockPainter('small'), simple: 'round', tint: 'stone' },
+  boulder: { paint: rockPainter('boulder'), simple: 'round', tint: 'stone' },
   woodpile: { paint: logsPainter('outdoor'), simple: 'block' },
   cart: { paint: cartPainter(), simple: 'block' },
   wagon_wheel: { paint: wheelPainter(), simple: 'round' },
   hitching_post: { paint: postPainter('hitching'), simple: 'block' },
-  water_trough: { paint: troughPainter(), simple: 'block' },
-  well: { paint: wellPainter(), simple: 'round' },
+  water_trough: { paint: waterPainter('trough'), simple: 'block' },
+  well: { paint: wellPainter(), simple: 'round', tint: 'stone' },
   lamp_post: { paint: postPainter('lamp'), simple: 'round' },
   signpost: { paint: postPainter('sign'), simple: 'block' },
   haystack: { paint: heapPainter('hay'), simple: 'round' },
-  path_stone: { paint: groundDecalPainter('path'), simple: 'round', visual: { w: 0.9, h: 0.9 }, flat: true },
+  path_stone: { paint: groundDecalPainter('path'), simple: 'round', visual: { w: 0.9, h: 0.9 }, flat: true, tint: 'stone' },
   campfire: { paint: firePainter('camp'), simple: 'round' },
 
+  // --- храм ----------------------------------------------------------------
+  pillar: { paint: pillarPainter(), simple: 'round', tint: 'stone' },
+  altar: { paint: altarPainter(), simple: 'block', tint: 'stone' },
+  statue: { paint: statuePainter(), simple: 'block', tint: 'stone' },
+  brazier: { paint: firePainter('brazier'), simple: 'round' },
+  offering_bowl: { paint: basinPainter('offering'), simple: 'round', visual: { w: 0.68, h: 0.68 }, tint: 'stone' },
+  prayer_bench: { paint: seatPainter('prayer'), simple: 'block' },
+  temple_banner: { paint: wallDecalPainter('temple'), simple: 'block', visual: { w: 0.7, h: 1.3 }, flat: true },
+  reliquary: { paint: shrinePainter('reliquary'), simple: 'block', tint: 'stone' },
+  mosaic: { paint: groundDecalPainter('mosaic'), simple: 'round', visual: { w: 2, h: 2 }, flat: true, tint: 'stone' },
+
+  // --- склеп ---------------------------------------------------------------
+  sarcophagus: { paint: slabPainter('sarcophagus'), simple: 'block', tint: 'stone' },
+  grave: { paint: slabPainter('grave'), simple: 'block', tint: 'stone' },
+  bone_pile: { paint: bonesPainter('pile'), simple: 'round', visual: { w: 0.9, h: 0.76 } },
+  urn: { paint: basinPainter('urn'), simple: 'round', tint: 'stone' },
+  crypt_niche: { paint: shrinePainter('niche'), simple: 'block', tint: 'stone' },
+  cobweb: { paint: wallDecalPainter('cobweb'), simple: 'round', visual: { w: 0.95, h: 0.95 }, flat: true },
+
+  // --- пещера --------------------------------------------------------------
+  stalagmite: { paint: rockPainter('stalagmite'), simple: 'round', tint: 'stone' },
+  cave_pool: { paint: waterPainter('pool'), simple: 'round', tint: 'water' },
+  mushroom_cluster: { paint: mushroomPainter('cluster'), simple: 'round', visual: { w: 0.9, h: 0.76 } },
+  ore_vein: { paint: wallDecalPainter('ore'), simple: 'round', visual: { w: 0.85, h: 0.9 }, flat: true, tint: 'stone' },
+  rubble_heap: { paint: rockPainter('rubble'), simple: 'round', tint: 'stone' },
+
+  // --- лес, дорога, поселение ----------------------------------------------
+  tree_spruce: { paint: treePainter('spruce'), simple: 'round', tint: 'foliage' },
+  fallen_log: { paint: logsPainter('fallen'), simple: 'block' },
+  fern: { paint: groundDecalPainter('fern'), simple: 'round', visual: { w: 0.9, h: 0.85 }, flat: true, tint: 'foliage' },
+  milestone: { paint: slabPainter('milestone'), simple: 'round', tint: 'stone' },
+  roadside_shrine: { paint: shrinePainter('roadside'), simple: 'block' },
+  market_stall: { paint: settlementPainter('stall'), simple: 'block' },
+  village_fence: { paint: settlementPainter('fence'), simple: 'block' },
+
   // --- старые значения feature, которым записи в реестре нет ---------------
-  altar: { paint: altarPainter(), simple: 'block' },
   rune: { paint: runePainter(), simple: 'round', flat: true },
-  bones: { paint: bonesPainter(), simple: 'round' },
-  grave: { paint: gravePainter(), simple: 'block' },
-  pillar: { paint: pillarPainter(), simple: 'round' },
-  statue: { paint: statuePainter(), simple: 'block' },
+  bones: { paint: bonesPainter('crossed'), simple: 'round' },
   console: { paint: consolePainter(), simple: 'block' },
-  mushroom: { paint: mushroomPainter(), simple: 'round' },
+  mushroom: { paint: mushroomPainter('single'), simple: 'round' },
 }
 
 /**
@@ -1773,7 +2667,8 @@ export function propDetailLevel(cellSize: number): PropDetailLevel {
  * теряется на фоне текстуры пола.
  */
 function drawMark(context: BoardContext2D, box: PropBox, palette: BoardPalette, drawing: PropDrawing) {
-  context.fillStyle = drawing.flat ? shade(palette.prop, 0.24) : palette.prop
+  const tint = silhouetteColor(palette, drawing)
+  context.fillStyle = drawing.flat ? shade(tint, 0.24) : tint
   const hw = Math.max(1, box.hw * 0.8)
   const hh = Math.max(1, box.hh * 0.8)
   if (drawing.simple === 'block') context.fillRect(-hw, -hh, hw * 2, hh * 2)
@@ -1782,7 +2677,8 @@ function drawMark(context: BoardContext2D, box: PropBox, palette: BoardPalette, 
 
 /** Средний уровень: одна заливка характерной формы, без единой детали. */
 function drawSilhouette(context: BoardContext2D, box: PropBox, palette: BoardPalette, drawing: PropDrawing) {
-  context.fillStyle = drawing.flat ? shade(palette.prop, 0.18) : palette.prop
+  const tint = silhouetteColor(palette, drawing)
+  context.fillStyle = drawing.flat ? shade(tint, 0.18) : tint
   if (drawing.simple === 'block') {
     context.fillRect(-box.hw * 0.86, -box.hh * 0.86, box.hw * 1.72, box.hh * 1.72)
     return

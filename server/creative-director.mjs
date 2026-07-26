@@ -1,6 +1,8 @@
 import { buildNarrationBrief } from './security.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 
+export const CRITICAL_NARRATION_TIMEOUT_MS = 4_000
+
 const CRITICAL_CONDITIONS = new Map([
   ['fled', 'enemy_fled'],
   ['surrendered', 'enemy_surrendered'],
@@ -92,6 +94,7 @@ export class CreativeDirector {
     const knownRuleIds = [...new Set(events.flatMap((event) => event.source_rule_ids ?? []))]
     const narration = await this.narrator.render(brief, {
       knownRuleIds,
+      timeoutMs: CRITICAL_NARRATION_TIMEOUT_MS,
       style: trigger.kind === 'hero_fallen'
         ? 'Один выразительный абзац о падении героя без сознания. Герой ещё не объявлен мёртвым: не описывай смерть, предсмертные слова, похороны или окончательный исход. Не добавляй новых бросков, урона, наград или решений правил.'
         : trigger.kind === 'hero_died'

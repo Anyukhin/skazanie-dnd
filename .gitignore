@@ -10,3 +10,7 @@ PUBLIC_LINK.txt
 vite.config.js
 vite.config.d.ts
 .agent-tasks/
+
+# Рабочие каталоги генерации ассетов
+tmp/
+assets-src/

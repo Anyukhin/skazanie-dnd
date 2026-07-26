@@ -1,6 +1,6 @@
 import type {
-  MapCell, SerializedTacticalMap, TacticalCell, TacticalCover, TacticalDoor, TacticalDoorState,
-  TacticalEdge, TacticalEdgeDirection, TacticalEdgeKind, TacticalLayers, TacticalMap,
+  MapCell, SerializedRevealDelta, SerializedTacticalMap, TacticalCell, TacticalCover, TacticalDoor,
+  TacticalDoorState, TacticalEdge, TacticalEdgeDirection, TacticalEdgeKind, TacticalLayers, TacticalMap,
   TacticalMaterial, TacticalProp, TacticalSpawnRole, TacticalSurface, TacticalZone, TacticalZoneKind,
 } from './types'
 
@@ -41,6 +41,16 @@ function base64ToBytes(value: string) {
   const bytes = new Uint8Array(binary.length)
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
   return bytes
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = ''
+  // По частям: `String.fromCharCode(...bytes)` на карте 100×100 разворачивает
+  // 1250 аргументов и на больших слоях упирается в предел стека.
+  for (let index = 0; index < bytes.length; index += 4096) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 4096))
+  }
+  return btoa(binary)
 }
 
 function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number) {
@@ -576,6 +586,56 @@ export function tacticalMapFromCells(cells: readonly MapCell[]): TacticalMap | n
   map.terrainHash = fnv1a(signature.join('|'))
   recomputeBounds(map)
   return map
+}
+
+export const REVEAL_DELTA_VERSION = 'skazanie:reveal-delta-v1'
+
+/**
+ * Накладывает дельту раскрытия на **сериализованную** карту, не разбирая её
+ * целиком: меняется единственный слой, а остальные поля переезжают как есть.
+ * Так закэшированная карта остаётся ровно тем, что прислал сервер.
+ *
+ * `null` означает «наложить нельзя» — другая ширина, испорченная дельта, чужая
+ * версия формата. Вызывающий обязан в этом случае запросить карту целиком, а не
+ * рисовать расхождение.
+ */
+export function applySerializedRevealDelta(
+  map: SerializedTacticalMap | null | undefined,
+  delta: SerializedRevealDelta | null | undefined,
+): SerializedTacticalMap | null {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return null
+  if (!delta || delta.version !== REVEAL_DELTA_VERSION) return null
+  const raw = map as Record<string, unknown>
+  const width = boundedInteger(raw.width, 0, 1, MAX_WIDTH)
+  const height = boundedInteger(raw.height, 0, 1, MAX_HEIGHT)
+  const layers = raw.layers as Record<string, unknown> | undefined
+  if (!width || !height || !layers || typeof layers !== 'object') return null
+  if (Number(delta.width) !== width) return null
+  const length = width * height
+  const bitsetLength = Math.ceil(length / 8)
+  let present: Uint8Array
+  let revealed: Uint8Array
+  try {
+    present = decodeUnsignedLayer(layers.present, bitsetLength, 'present')
+    revealed = decodeUnsignedLayer(layers.revealed, bitsetLength, 'revealed')
+  } catch {
+    return null
+  }
+  const flip = (runs: Array<[number, number]> | undefined, value: boolean) => {
+    for (const run of runs ?? []) {
+      const start = Number(run?.[0])
+      const count = Number(run?.[1])
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(count)) return false
+      if (start < 0 || count < 0 || start + count > length) return false
+      // Как и на сервере: отсутствующая клетка не раскрывается.
+      for (let index = start; index < start + count; index += 1) {
+        if (bitAt(present, index)) setBitAt(revealed, index, value)
+      }
+    }
+    return true
+  }
+  if (!flip(delta.revealed, true) || !flip(delta.hidden, false)) return null
+  return { ...raw, layers: { ...layers, revealed: bytesToBase64(revealed) } }
 }
 
 /**

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { externalizeMaps, internalizeMaps } from './map-store.mjs'
 import {
   closeSync,
   existsSync,
@@ -193,6 +194,7 @@ export class FileEventStore {
     staleLockMs = 30_000,
     clock = () => new Date(),
     idFactory = () => randomUUID(),
+    mapStore = null,
   } = {}) {
     if (!rootDir) throw new EventStoreError('rootDir is required', 'INVALID_CONFIGURATION')
     if (typeof reducer !== 'function') throw new EventStoreError('A synchronous reducer(state, event) is required', 'INVALID_CONFIGURATION')
@@ -210,6 +212,9 @@ export class FileEventStore {
     this.staleLockMs = Math.max(1_000, Number(staleLockMs) || 30_000)
     this.clock = clock
     this.idFactory = idFactory
+    // Хранилище карт, адресуемое по содержимому. Необязательно: без него
+    // снимок пишется как раньше, целиком.
+    this.mapStore = mapStore ?? null
   }
 
   _layout(campaignId) {
@@ -386,14 +391,25 @@ export class FileEventStore {
         throw new CorruptEventLogError(layout.campaignId, `snapshot checksum mismatch ${candidate.name}`)
       }
       const projectorVersion = Number(snapshot.projector_version ?? 1)
-      if (version === 0 || projectorVersion === this.snapshotProjectorVersion) return snapshot
+      if (version !== 0 && projectorVersion !== this.snapshotProjectorVersion) continue
+      if (!this.mapStore) return snapshot
+      // Контрольная сумма уже сверена с тем, что лежит на диске; карты
+      // возвращаются в состояние после проверки. Если файл карты потерян,
+      // снимок непригоден — берём предыдущий, а в пределе переигрываем поток.
+      const restored = internalizeMaps(snapshot.state, this.mapStore)
+      if (restored.missing.length) continue
+      return { ...snapshot, state: restored.state }
     }
     return null
   }
 
   _writeSnapshot(layout, state, stateVersion) {
     const file = join(layout.snapshots, `${padVersion(stateVersion)}.json`)
-    const normalized = this._normalizeState(state, stateVersion)
+    const projected = this._normalizeState(state, stateVersion)
+    // Если задано хранилище карт, снимок хранит ссылку вместо карты и не
+    // хранит производные клетки: замер 2026-07-26 дал 125.8 КБ против 0.4 КБ
+    // на сцене 30×30 (`docs/tactical-map-plan.md`, 11.2).
+    const normalized = this.mapStore ? externalizeMaps(projected, this.mapStore) : projected
     const snapshot = {
       schema_version: STORE_SCHEMA_VERSION,
       projector_version: this.snapshotProjectorVersion,
