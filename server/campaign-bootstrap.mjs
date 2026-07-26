@@ -143,8 +143,38 @@ function fallbackOpening({ name, partyName, world, heroes, entropy }) {
       map: { layout: theme.layout, ...visual, openness: 0.66, water: theme.water, featureCount: 6 },
     },
     hook: situation,
+    npcs: [{
+      name: 'Мира Ветрокрыл', role: 'проводница и очевидец',
+      summary: 'Местная проводница знает дороги и следит за переменами вокруг.',
+      voice: 'Говорит коротко, внимательно и по делу.',
+      goals: ['Защитить путников', 'Понять источник угрозы'],
+      beliefs: ['Обещания важнее красивых слов'],
+    }],
     suggestions: ['Осмотреть место встречи', 'Поговорить с очевидцами', 'Сопоставить истории героев'],
   }
+}
+
+/**
+ * Собеседники первой сцены. Раньше в кампанию всегда попадала одна и та же
+ * захардкоженная «Мира Ветрокрыл», которой не было в прологе, а названные в
+ * прологе трактирщик и рыбак не существовали как NPC — заговорить с ними было
+ * нельзя, парсер отвечал «Уточните имя собеседника».
+ */
+function normalizeOpeningNpcs(value, fallback) {
+  const source = Array.isArray(value) ? value : []
+  const normalized = source
+    .map((entry) => (entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}))
+    .map((entry) => ({
+      name: clean(entry.name, 80),
+      role: clean(entry.role, 120),
+      summary: clean(entry.summary, 400),
+      voice: clean(entry.voice, 240),
+      goals: (Array.isArray(entry.goals) ? entry.goals : []).map((goal) => clean(goal, 160)).filter(Boolean).slice(0, 4),
+      beliefs: (Array.isArray(entry.beliefs) ? entry.beliefs : []).map((belief) => clean(belief, 160)).filter(Boolean).slice(0, 4),
+    }))
+    .filter((entry) => entry.name)
+    .slice(0, 3)
+  return normalized.length ? normalized : fallback
 }
 
 function normalizeOpening(input, fallback) {
@@ -185,6 +215,7 @@ function normalizeOpening(input, fallback) {
       },
     },
     hook: clean(source.hook, 500) || fallback.hook,
+    npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs),
     suggestions: (Array.isArray(source.suggestions) ? source.suggestions : fallback.suggestions).map((item) => clean(item, 120)).filter(Boolean).slice(0, 3),
   }
 }
@@ -238,9 +269,21 @@ export class CampaignBootstrapper {
       source: opening.worldMap,
       startingLocation: opening.scene.location,
     })
-    const starterNpcId = `guide-${seed.slice(0, 12)}`
     const starterFactionId = `faction-${seed.slice(0, 12)}`
     const starterQuestId = `quest-${seed.slice(0, 12)}`
+    const openingNpcs = opening.npcs.map((npc, index) => ({
+      id: `npc-${seed.slice(0, 12)}-${index + 1}`,
+      name: npc.name,
+      role: npc.role || 'житель этих мест',
+      location: opening.scene.location,
+      public_summary: npc.summary || `${npc.name} — часть первой сцены.`,
+      voice: npc.voice || 'Говорит спокойно и по делу.',
+      goals: npc.goals.length ? npc.goals : ['Пережить происходящее'],
+      beliefs: npc.beliefs.length ? npc.beliefs : ['Слухам верить нельзя'],
+      known_fact_ids: [], visibility: 'party', available: true,
+      tags: [`faction:${starterFactionId}`],
+    }))
+    const starterNpcId = openingNpcs[0].id
     const sceneMemory = ensureSceneWorldMemory({}, {
       scene: { title: opening.scene.title, location: opening.scene.location, mood: opening.scene.mood, objective: opening.scene.objective },
       adventure: {
@@ -274,14 +317,8 @@ export class CampaignBootstrapper {
       worldMap: campaignWorldMap,
       worldMemory: initialWorldMemory,
       social: {
-        npcs: [{
-          id: starterNpcId, name: 'Мира Ветрокрыл', role: 'проводница и очевидец',
-          location: opening.scene.location, public_summary: 'Местная проводница знает дороги и следит за переменами вокруг.',
-          voice: 'Говорит коротко, внимательно и по делу.', goals: ['Защитить путников', 'Понять источник угрозы'],
-          beliefs: ['Обещания важнее красивых слов'], known_fact_ids: [], visibility: 'party', available: true,
-          tags: [`faction:${starterFactionId}`],
-        }],
-        relationships: { [starterNpcId]: Object.fromEntries(positionedHeroes.map((hero) => [hero.id, 0])) },
+        npcs: openingNpcs,
+        relationships: Object.fromEntries(openingNpcs.map((npc) => [npc.id, Object.fromEntries(positionedHeroes.map((hero) => [hero.id, 0]))])),
         conversations: [],
         promises: [{
           id: `promise-${seed.slice(0, 12)}`, npc_id: starterNpcId, hero_id: positionedHeroes[0].id,

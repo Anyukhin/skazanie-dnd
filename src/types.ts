@@ -7,6 +7,8 @@ export type Message = {
   text: string
   timestamp: string
   roll?: { roll_id?: string; value: number; modifier: number; total: number; difficulty?: number; label: string; success: boolean; ability?: string | null; actor_id?: string }
+  /** Ставки хода: что проверялось, против какой СЛ и чем грозил провал. */
+  stakes?: { skill?: string; ability?: string; difficulty?: number; difficulty_category?: string; on_failure?: string }
   turnConsumed?: boolean
 }
 
@@ -985,6 +987,14 @@ export type GameState = {
   ruleset_locked_at?: string | null
   engine_mode?: 'enforce'
   mechanics?: GameMechanics
+  /**
+   * Серверный прогноз удара для того, кто сейчас ходит. Только чтение: цифры
+   * считает Rules Engine тем же кодом, что и сам бросок, клиент их не выводит.
+   */
+  combatForecast?: {
+    actor_id: string
+    targets: Record<string, AttackForecast[]>
+  }
   rulings?: Array<Record<string, unknown>>
   entities?: Array<Record<string, unknown>>
   adventure?: AdventureState
@@ -1091,6 +1101,28 @@ export type CombatReactionWindow = {
   fighter_level?: number
 }
 
+/** Прогноз одного варианта удара по одной цели. Все значения серверные. */
+export type AttackForecast = {
+  action_id: string
+  label: string
+  item_id: string | null
+  attack_modifier: number
+  armor_class: number | null
+  cover_bonus: number
+  cover_label: string | null
+  distance_feet: number | null
+  range_feet: number
+  in_range: boolean
+  unreachable_reason: string | null
+  advantage: boolean
+  disadvantage: boolean
+  advantage_sources: string[]
+  disadvantage_sources: string[]
+  hit_chance: number | null
+  critical_chance: number | null
+  average_damage: number
+}
+
 export type CombatMechanics = {
   active?: boolean
   round?: number
@@ -1192,6 +1224,15 @@ export type AiTurnResult = {
   authoritative_state?: GameState
   verification?: { valid: boolean; violations?: Array<Record<string, unknown>> }
   ruling?: Record<string, unknown> | null
+  /** Ставки свободного действия: характеристика, СЛ и цена провала. */
+  stakes?: {
+    ability?: string
+    skill?: string
+    difficulty?: number
+    difficulty_category?: string
+    on_failure?: string
+    policy?: string
+  } | null
   explanation?: Record<string, unknown> | null
   explanation_url?: string
   idempotent_replay?: boolean

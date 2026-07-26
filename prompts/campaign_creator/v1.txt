@@ -42,6 +42,13 @@
     "danger": "низкая|средняя|высокая",
     "map": { "layout": "rooms|streets|open|winding|cavern|ruins|radial", "scale": "room|site|stronghold|region", "pattern": "small-room|great-hall|keep|courtyard|crypt|cave-cluster|village|bridge|natural", "material": "stone|wood|earth|grass|sand|metal|marble|ice", "width": 7, "height": 7, "openness": 0.6, "water": 0.0, "featureCount": 4 }
   },
+  "npcs": [{ "name": "имя собеседника", "role": "кто он в этой сцене", "summary": "что о нём известно отряду", "voice": "как он говорит", "goals": ["чего он хочет"], "beliefs": ["во что он верит"] }],
   "hook": "центральный сюжетный крючок",
   "suggestions": ["действие 1", "действие 2", "действие 3"]
 }
+
+Про npcs:
+- перечисли 1–3 собеседников, которые физически присутствуют в первой сцене и с которыми игрок может заговорить прямо сейчас;
+- у каждого обязано быть собственное имя: безымянного «хозяина таверны» игрок назвать не сможет, и разговор с ним не состоится;
+- каждый npc из этого списка обязан быть назван по имени в openingNarration — иначе игрок не узнает, что к нему можно обратиться;
+- не описывай в openingNarration других говорящих персонажей, которых нет в npcs.

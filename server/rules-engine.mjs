@@ -233,7 +233,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseCombatAction', 'MoveActor', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
+  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'MoveActor', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -1664,6 +1664,145 @@ export function hasClearTrajectory(state, from, to) {
   }
 }
 
+/**
+ * Единственный владелец вопроса «с преимуществом или с помехой бьёт этот удар».
+ * Им пользуется и сам бросок в `MakeAttack`, и прогноз попадания для интерфейса,
+ * поэтому показанный игроку шанс не может разойтись с тем, что бросит сервер.
+ * Возвращает и список причин: игроку важно видеть, почему шанс именно такой.
+ */
+function attackSwingShape(state, attackerIdValue, targetIdValue, profile, {
+  actorAt = actorPosition(state, attackerIdValue),
+  targetAt = actorPosition(state, targetIdValue),
+  distanceFeet = null,
+  conditionModifiers = conditionAttackModifiers(state, attackerIdValue, targetIdValue, { distanceFeet, profileKind: profile?.kind ?? null }),
+  commandAdvantage = false,
+  commandDisadvantage = false,
+  extraAdvantage = false,
+} = {}) {
+  const attacker = findActor(state, attackerIdValue)
+  const attackerConditions = conditionIdsFor(state, attackerIdValue)
+  const targetConditions = conditionIdsFor(state, targetIdValue)
+  const adjacentTo = (at, other) => Boolean(at && other && Math.max(Math.abs(at.x - other.x), Math.abs(at.y - other.y)) === 1)
+  const enemyAdjacent = profile?.kind === 'ranged' && listActors(state).some((candidate) => isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, attackerIdValue)
+    && isLivingActor(candidate) && adjacentTo(actorPosition(state, actorId(candidate)), actorAt))
+  const longRange = Boolean(profile && distanceFeet != null && distanceFeet > profile.normal_range_feet)
+  const alliedSupport = listActors(state).some((candidate) => actorId(candidate) !== String(attackerIdValue)
+    && isEnemyActor(state, actorId(candidate)) === isEnemyActor(state, attackerIdValue)
+    && isLivingActor(candidate) && adjacentTo(actorPosition(state, actorId(candidate)), targetAt))
+  const packTactics = Boolean(monsterTraitFor(attacker, 'pack-tactics') && alliedSupport)
+  const highGround = highGroundBetween(state, actorAt, targetAt, distanceFeet)
+  const compelledAgainstOther = (state.mechanics?.conditions?.[attackerIdValue] ?? []).some((condition) => String(condition?.id ?? condition) === 'compelled-duel'
+    && String(condition.source_actor ?? '') !== String(targetIdValue))
+  const oneShotDisadvantage = attackerConditions.has('disadvantage-next-attack') || attackerConditions.has('disadvantage-next-weapon-attack') || compelledAgainstOther
+
+  const advantageSources = []
+  if (profile?.advantage) advantageSources.push('свойство атаки')
+  if (attackerConditions.has('helped')) advantageSources.push('помощь союзника')
+  if (attackerConditions.has('hidden')) advantageSources.push('атака из укрытия')
+  if (attackerConditions.has('reckless')) advantageSources.push('безрассудная атака')
+  if (attackerConditions.has('steady-aim')) advantageSources.push('точный прицел')
+  if (attackerConditions.has('true-strike')) advantageSources.push('верный удар')
+  if (attackerConditions.has('silvery-fortune')) advantageSources.push('серебряная удача')
+  if (targetConditions.has('guiding-bolt-advantage')) advantageSources.push('направляющий снаряд')
+  if (targetConditions.has('faerie-fire')) advantageSources.push('огонь фей')
+  if (targetConditions.has('reckless')) advantageSources.push('цель бьётся безрассудно')
+  if (packTactics) advantageSources.push('тактика стаи')
+  if (highGround === 'higher') advantageSources.push('позиция выше цели')
+  if (extraAdvantage) advantageSources.push('заготовленный эффект')
+  advantageSources.push(...conditionModifiers.advantage)
+
+  const disadvantageSources = []
+  if (profile?.disadvantage) disadvantageSources.push('свойство атаки')
+  if (enemyAdjacent) disadvantageSources.push('противник вплотную')
+  if (longRange) disadvantageSources.push('дальний диапазон')
+  if (targetConditions.has('dodging')) disadvantageSources.push('цель уклоняется')
+  if (oneShotDisadvantage) disadvantageSources.push('помеха на следующую атаку')
+  if (highGround === 'lower') disadvantageSources.push('позиция ниже цели')
+  disadvantageSources.push(...conditionModifiers.disadvantage)
+
+  const advantage = profile ? advantageSources.length > 0 : Boolean(commandAdvantage) || advantageSources.length > 0
+  const disadvantage = profile ? disadvantageSources.length > 0 : Boolean(commandDisadvantage) || disadvantageSources.length > 0
+  return {
+    advantage,
+    disadvantage,
+    advantageSources: [...new Set(advantageSources.map(String))],
+    disadvantageSources: [...new Set(disadvantageSources.map(String))],
+    automaticCritical: Boolean(conditionModifiers.automaticCritical),
+    highGround,
+  }
+}
+
+/**
+ * Вероятность попадания одним d20 с учётом преимущества и помехи. `20` всегда
+ * попадает, `1` всегда мимо — как и в самом броске.
+ */
+function d20HitChance(target, { advantage = false, disadvantage = false } = {}) {
+  const needed = Math.min(20, Math.max(2, Math.ceil(target)))
+  const single = (21 - needed) / 20
+  if (advantage === disadvantage) return single
+  return advantage ? 1 - (1 - single) ** 2 : single ** 2
+}
+
+/**
+ * Прогноз удара для интерфейса: шанс попадания, шанс крита и разбор
+ * модификаторов. Ничего не решает и не расходует — читается проекцией, чтобы
+ * игрок видел цену размена до клика, как за столом видит свой лист и СЛ.
+ */
+export function attackForecast(state, attackerIdValue, targetIdValue, { actionId = null, itemId = null } = {}) {
+  const attacker = findActor(state, attackerIdValue)
+  const target = findActor(state, targetIdValue)
+  if (!attacker || !target) return null
+  const profile = (itemId ? itemAttackProfile(state, attacker, itemId) : null) ?? trustedAttackProfile(state, attacker, actionId)
+  if (!profile) return null
+  const actorAt = actorPosition(state, attackerIdValue)
+  const targetAt = actorPosition(state, targetIdValue)
+  const distanceFeet = actorAt && targetAt
+    ? Math.max(Math.abs(actorAt.x - targetAt.x), Math.abs(actorAt.y - targetAt.y)) * 5
+    : null
+  const cover = coverBetween(state, attackerIdValue, targetIdValue, actorAt, targetAt)
+  const armorClass = effectiveArmorClass(state, target, targetIdValue) + cover.armorClassBonus
+  const modifier = safeInteger(profile.modifier, 0) + conditionNumericBonus(state, attackerIdValue, 'attackBonus')
+  const rangeFeet = safeInteger(profile.range_feet, 5)
+  // Цель вне досягаемости движок отвергает до броска, поэтому и прогноз обязан
+  // сказать «не достать», а не считать шанс с надуманной помехой за дальность.
+  const inRange = distanceFeet != null && distanceFeet >= 5 && distanceFeet <= rangeFeet
+  const blockedTrajectory = inRange && rangeFeet > 5 && !hasClearTrajectory(state, actorAt, targetAt)
+  const swing = attackSwingShape(state, attackerIdValue, targetIdValue, profile, { actorAt, targetAt, distanceFeet })
+  const hitChance = d20HitChance(armorClass - modifier, swing)
+  // Крит по обездвиженной цели в упор гарантирован правилами, а не костью.
+  const criticalChance = swing.automaticCritical && distanceFeet != null && distanceFeet <= 5
+    ? hitChance
+    : d20HitChance(20, swing)
+  const reachable = inRange && !blockedTrajectory
+  return {
+    action_id: String(profile.id ?? actionId ?? ''),
+    attack_modifier: modifier,
+    armor_class: armorClass,
+    cover_bonus: cover.armorClassBonus,
+    cover_label: cover.armorClassBonus > 0 ? cover.label ?? 'укрытие' : null,
+    distance_feet: distanceFeet,
+    range_feet: rangeFeet,
+    in_range: reachable,
+    unreachable_reason: reachable ? null
+      : blockedTrajectory ? 'линия удара перекрыта'
+        : distanceFeet != null && distanceFeet < 5 ? 'слишком близко'
+          : `нужно подойти на ${rangeFeet} фт`,
+    advantage: reachable && swing.advantage,
+    disadvantage: reachable && swing.disadvantage,
+    advantage_sources: reachable ? swing.advantageSources : [],
+    disadvantage_sources: reachable ? swing.disadvantageSources : [],
+    hit_chance: reachable ? Math.round(hitChance * 100) : null,
+    critical_chance: reachable ? Math.round(criticalChance * 100) : null,
+    average_damage: averageDamageOf(profile),
+  }
+}
+
+function averageDamageOf(profile) {
+  const match = String(profile?.damage_expression ?? '').match(/^(\d+)d(\d+)([+-]\d+)?$/u)
+  if (!match) return Math.max(0, safeInteger(profile?.damage_amount, 0))
+  return Math.round(Number(match[1]) * (Number(match[2]) + 1) / 2 + Number(match[3] || 0))
+}
+
 export function attackProfileFor(state, actorIdValue, actionId = null) {
   const actor = findActor(state, actorIdValue)
   return actor ? trustedAttackProfile(state, actor, actionId) : null
@@ -2119,6 +2258,20 @@ function assertTurn(command, state, context = {}) {
     if (economy && economy[resource] === false) {
       const label = resource === 'bonus_action' ? 'Бонусное действие' : resource === 'reaction' ? 'Реакция' : 'Действие'
       throw new RulesValidationError(`${label} на этом ходу уже потрачено`, resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : resource === 'reaction' ? 'REACTION_SPENT' : 'ACTION_SPENT')
+    }
+  } else if (command.command_type === 'ResolveImprovisedAction') {
+    // Импровизация в бою платит тем же слотом, что и обычное действие: иначе
+    // «интересная идея» становится бесплатным дополнительным ходом.
+    const resource = command.action_cost === 'bonus_action' ? 'bonus_action' : command.action_cost === 'free' ? null : 'action'
+    const economy = combat.action_economy[command.actor_id]
+    if (resource && economy?.[resource] === false) {
+      throw new RulesValidationError(
+        `${resource === 'bonus_action' ? 'Бонусное действие' : 'Действие'} на этом ходу уже потрачено`,
+        resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : 'ACTION_SPENT',
+      )
+    }
+    if (resource === 'action' && economy?.surged_action_only) {
+      throw new RulesValidationError('Дополнительное действие от Всплеска действий нельзя потратить на импровизацию', 'ACTION_SURGE_IMPROVISED_FORBIDDEN')
     }
   } else if (command.command_type === 'UseCombatAction') {
     const action = combatActionFor(findActor(state, command.actor_id), command.action_id)
@@ -4074,13 +4227,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const guidingBoltAdvantage = targetConditions.has('guiding-bolt-advantage')
       const faerieFireAdvantage = targetConditions.has('faerie-fire')
       const conditionModifiers = conditionAttackModifiers(state, command.actor_id, targetId, { distanceFeet, profileKind: profile?.kind ?? null })
-      const highGround = highGroundBetween(state, actorAt, targetAt, distanceFeet)
-      const conditionAdvantage = conditionModifiers.advantage.length > 0 || highGround === 'higher'
-      const conditionDisadvantage = conditionModifiers.disadvantage.length > 0 || highGround === 'lower'
-      const advantage = profile ? Boolean(profile.advantage || helped || hidden || reckless || steadyAim || trueStrike || silveryFortune || guidingBoltAdvantage || faerieFireAdvantage || targetReckless || packTactics || conditionAdvantage || (pendingWeaponHitMatches && pendingWeaponHit.advantage)) : Boolean(command.advantage || helped || hidden || reckless || steadyAim || trueStrike || silveryFortune || guidingBoltAdvantage || faerieFireAdvantage || targetReckless || conditionAdvantage)
-      const compelledAgainstOther = (state.mechanics.conditions[command.actor_id] ?? []).some((condition) => String(condition?.id ?? condition) === 'compelled-duel' && String(condition.source_actor ?? '') !== targetId)
-      const oneShotDisadvantage = actorConditions.has('disadvantage-next-attack') || actorConditions.has('disadvantage-next-weapon-attack') || compelledAgainstOther
-      const disadvantage = profile ? Boolean(profile.disadvantage || enemyAdjacent || longRange || dodging || oneShotDisadvantage || conditionDisadvantage) : Boolean(command.disadvantage || dodging || oneShotDisadvantage || conditionDisadvantage)
+      const swing = attackSwingShape(state, command.actor_id, targetId, profile, {
+        actorAt, targetAt, distanceFeet, conditionModifiers,
+        commandAdvantage: command.advantage, commandDisadvantage: command.disadvantage,
+        extraAdvantage: pendingWeaponHitMatches && pendingWeaponHit?.advantage,
+      })
+      const advantage = swing.advantage
+      const disadvantage = swing.disadvantage
       // Святилище проверяется **до** броска атаки: провалив спасбросок, атакующий
       // теряет действие целиком и не бросает кость вовсе. Поставить проверку
       // после броска было бы неверно — в протоколе осталась бы атака, которой
@@ -4147,10 +4300,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         ...(interceptedByImage ? { mirror_image_intercepted: true, mirror_images_before: mirrorImages } : {}),
         critical,
         ...(conditionModifiers.automaticCritical && critical && attack.kept !== 20 ? { automatic_critical: true } : {}),
-        ...(conditionAdvantage ? { condition_advantage: conditionModifiers.advantage } : {}),
-        ...(conditionDisadvantage ? { condition_disadvantage: conditionModifiers.disadvantage } : {}),
+        ...(conditionModifiers.advantage.length ? { condition_advantage: conditionModifiers.advantage } : {}),
+        ...(conditionModifiers.disadvantage.length ? { condition_disadvantage: conditionModifiers.disadvantage } : {}),
         ...(cover.armorClassBonus > 0 ? { cover: cover.level, cover_bonus: cover.armorClassBonus, cover_blockers: cover.blockers, ...(cover.scenery ? { cover_scenery: cover.scenery } : {}) } : {}),
-        ...(highGround !== 'level' ? { high_ground: highGround } : {}),
+        ...(swing.highGround !== 'level' ? { high_ground: swing.highGround } : {}),
         range_feet: profile?.range_feet ?? null,
         distance_feet: distanceFeet,
         damage_expression: configuredDamageExpression ?? null,
@@ -4566,6 +4719,20 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const amount = safeInteger(command.amount, 0)
       const after = Math.min(pool.max, pool.current + amount)
       events.push(eventFrom(command, 'ResourceRestored', { resource, amount: after - pool.current, before: pool.current, after, max: pool.max }, [command.actor_id]))
+      break
+    }
+    // Импровизация не заводит собственного типа события: она тратит слот тем же
+    // `CombatActionUsed`, что и любое боевое действие, а её следствие приходит
+    // отдельными командами того же пакета. Поэтому replay не меняется.
+    case 'ResolveImprovisedAction': {
+      if (!state.mechanics.combat.active) break
+      const actionType = command.action_cost === 'bonus_action' ? 'bonus_action' : command.action_cost === 'free' ? 'free' : 'action'
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+        action_id: 'improvised-action',
+        name: String(command.summary || 'Импровизация').slice(0, 160),
+        action_type: actionType,
+        improvised: true,
+      }, [command.actor_id]))
       break
     }
     case 'AddCondition':
@@ -8845,8 +9012,24 @@ export function resolveCommands(commands, initialState, options) {
   return { commands: validatedCommands, events: allEvents, rolls: allRolls, state }
 }
 
-export function eventSummary(event) {
+/**
+ * Строит подстановку `actor_id` → имя по состоянию кампании. Нужна там, где
+ * сводка событий уходит игроку: без неё в летописи оказывались `hero-slot-4`
+ * и `encounter-…-bugbear-1`.
+ */
+export function actorNameResolver(state) {
+  const names = new Map()
+  for (const actor of [...(state?.players ?? []), ...(state?.enemies ?? []), ...(state?.actors ?? [])]) {
+    const id = String(actor?.id ?? actor?.actor_id ?? '')
+    const name = String(actor?.character || actor?.name || '')
+    if (id && name) names.set(id, name)
+  }
+  return (id) => names.get(String(id ?? '')) ?? id
+}
+
+export function eventSummary(event, resolveName = (id) => id) {
   const payload = event.payload ?? {}
+  const named = (id) => (id == null || id === '' ? id : resolveName(id))
   switch (event.event_type) {
     case 'PartyDecisionOpened': return `Party decision opened: ${payload.interaction?.title || payload.interaction?.id}`
     case 'PartyVoteCast': return `${payload.hero_id || event.actor_id} voted for ${payload.option_id}`
@@ -8874,9 +9057,9 @@ export function eventSummary(event) {
     case 'EncounterCreated': return `Создано столкновение: ${(payload.encounter?.enemies ?? []).map((enemy) => enemy.name).join(', ')}`
     case 'EncounterEnded': return `Столкновение завершено: ${payload.reason || payload.outcome || 'resolved'}`
     case 'CombatStarted': return `Бой начался; инициатива определена для ${(event.target_ids ?? []).length} участников`
-    case 'ActorMoved': return `${event.actor_id || 'Участник'} перемещается на ${safeInteger(payload.distance, 0)} фт.`
-    case 'TurnEnded': return `${event.actor_id || 'Участник'} завершает ход`
-    case 'TurnStarted': return `Начинается ход ${(event.target_ids ?? [])[0] || 'следующего участника'}, раунд ${safeInteger(payload.round, 1)}`
+    case 'ActorMoved': return `${named(event.actor_id) || 'Участник'} перемещается на ${safeInteger(payload.distance, 0)} фт.`
+    case 'TurnEnded': return `${named(event.actor_id) || 'Участник'} завершает ход`
+    case 'TurnStarted': return `Начинается ход ${named((event.target_ids ?? [])[0]) || 'следующего участника'}, раунд ${safeInteger(payload.round, 1)}`
     case 'DieRolled': return `Бросок ${payload.expression || 'кости'}: ${safeInteger(payload.total, 0)}`
     case 'DamageApplied': return payload.death_ward_triggered
       ? `Урон: ${payload.applied_amount}; Death Ward удерживает цель на 1 HP`
@@ -8889,7 +9072,7 @@ export function eventSummary(event) {
     case 'AttackResolved': return `Атака ${payload.hit ? 'попала' : 'не попала'}: ${payload.total} против КД ${payload.armor_class}`
     case 'AreaAttackResolved': return `${payload.item_name || 'Снаряд'} поражает область радиусом ${payload.radius_feet} фт.`
     case 'EquipmentChanged': return `${payload.item_name || 'Оружие'} экипировано`
-    case 'CombatActionUsed': return `${event.actor_id || 'Участник'} использует ${payload.name || payload.action_id || 'боевое действие'}`
+    case 'CombatActionUsed': return `${named(event.actor_id) || 'Участник'} использует ${payload.name || payload.action_id || 'боевое действие'}`
     case 'MerchantBargainResolved': return payload.success ? 'Торговец согласился изменить условия сделки' : 'Торговец отказался уступать в цене'
     case 'MerchantItemAppraised': return `Торговец оценил предмет «${payload.item_name ?? payload.item_id}» в ${payload.base_unit_price_cp ?? 0} мм`
     case 'MerchantPurchaseCompleted': return `Покупка: ${payload.item?.name || payload.catalog_id || 'предмет'}, ${payload.quantity} шт. за ${payload.total_price_cp} мм.`
@@ -8917,12 +9100,13 @@ export function eventSummary(event) {
     case 'KnockoutRecoveryProgressed': return `До пробуждения ${(event.target_ids ?? [])[0] || 'существа'} осталось ${payload.recovery_minutes_remaining || 0} мин.`
     case 'KnockoutEnded': return `${(event.target_ids ?? [])[0] || 'Существо'} приходит в сознание после первой помощи`
     case 'StableRecoveryScheduled': return `${(event.target_ids ?? [])[0] || 'Герой'} восстановит 1 ОЗ через ${payload.recovery_hours || 1} ч.`
-    case 'StableRecoveryProgressed': return `До восстановления ${(event.target_ids ?? [])[0] || 'героя'} осталось ${payload.recovery_minutes_remaining || 0} мин.`
-    case 'HeroDied': return `${payload.hero_name || (event.target_ids ?? [])[0] || 'Герой'} погибает`
-    case 'HeroResurrected': return `${(event.target_ids ?? [])[0] || 'Герой'} возвращается к жизни`
+    case 'StableRecoveryProgressed': return `До восстановления ${named((event.target_ids ?? [])[0]) || 'героя'} осталось ${payload.recovery_minutes_remaining || 0} мин.`
+    case 'HeroDied': return `${payload.hero_name || named((event.target_ids ?? [])[0]) || 'Герой'} погибает`
+    case 'HeroResurrected': return `${named((event.target_ids ?? [])[0]) || 'Герой'} возвращается к жизни`
+    case 'CharacterImported': return `${payload.character?.character || named((event.target_ids ?? [])[0]) || 'Герой'} присоединяется к отряду`
     case 'HeroReplaced': return `${payload.replacement_name || 'Новый герой'} присоединяется к группе`
-    case 'RestStarted': return `${event.actor_id || 'Герой'} начинает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых`
-    case 'RestCompleted': return `${event.actor_id || 'Герой'} завершает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых`
+    case 'RestStarted': return `${named(event.actor_id) || 'Герой'} начинает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых`
+    case 'RestCompleted': return `${named(event.actor_id) || 'Герой'} завершает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых`
     case 'RulingRecorded': return 'Для действия сохранён ограниченный следующий шаг.'
     case 'ObjectiveUpdated': return `Цель отряда: ${payload.objective || 'следующий шаг не задан'}`
     case 'ActionDeclared': return 'Намерение героя принято к рассмотрению.'

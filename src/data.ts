@@ -143,3 +143,25 @@ export const initialState: GameState = {
     },
   ],
 }
+
+/**
+ * Состояние «кампания не выбрана». Раньше на её месте подставлялся демо-мир
+ * `RUNE-742` — свежий аккаунт видел чужой отряд, ход 7 и вымышленную историю,
+ * хотя `/api/campaigns` возвращал пустой список, а клиент ещё и сохранял этот
+ * вымысел на сервер.
+ */
+export const emptyState: GameState = {
+  ...initialState,
+  sessionCode: '',
+  campaign: 'Кампания не выбрана',
+  partyName: '',
+  partyMemberIds: [],
+  players: [],
+  merchants: [],
+  enemies: [],
+  tacticalTurn: { sceneTurn: 0, actorId: '', movementSpent: 0, actionUsed: false },
+  activePlayerId: '',
+  suggestions: [],
+  scene: { title: '', location: '', mood: '', objective: '', turn: 0, cells: [] },
+  messages: [],
+}

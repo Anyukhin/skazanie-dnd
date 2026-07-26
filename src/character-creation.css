@@ -14,3 +14,15 @@
 .creation-summary{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid rgba(112,185,148,.24);border-radius:7px;color:#8fb49c;background:rgba(49,93,70,.12)}.creation-summary span{display:grid;gap:2px}.creation-summary b{color:#c9dfd0;font:600 13px Spectral,serif}.creation-summary small{font:500 9px Manrope,sans-serif}
 .slot-creator{display:grid;gap:16px}.hero-slot-preview{display:grid;grid-template-columns:38px 1fr auto;align-items:center;gap:11px;padding:12px;border:1px solid rgba(112,185,148,.2);border-radius:7px;color:#7eaa8e;background:rgba(48,90,68,.1)}.hero-slot-preview>span{width:34px;height:34px;display:grid;place-items:center;border:1px solid rgba(112,185,148,.36);border-radius:50%;font:600 15px Spectral,serif}.hero-slot-preview>div{display:grid;gap:2px}.hero-slot-preview b{color:#c8decf;font:600 14px Spectral,serif}.hero-slot-preview small{color:#81786d;font:600 8px Manrope,sans-serif}
 @media(max-width:760px){.character-creation-backdrop{padding:0}.character-creation-wizard{height:100vh;border-radius:0;grid-template:64px 58px 1fr 68px/1fr}.character-creation-wizard>header{grid-column:1}.character-creation-wizard>nav{grid-row:2;flex-direction:row;overflow:auto;padding:7px;border-right:0;border-bottom:1px solid rgba(255,255,255,.06)}.character-creation-wizard>nav button{min-width:42px;grid-template-columns:1fr;padding:5px}.character-creation-wizard>nav button span{display:none}.character-creation-wizard>main{grid-row:3;padding:15px}.character-creation-wizard>footer{grid-column:1;grid-row:4}.character-creation-wizard>footer>div{display:none}.creation-card-grid,.creation-abilities>div,.creation-spells section>div{grid-template-columns:1fr}.creation-form.identity{grid-template-columns:1fr}.creation-form.identity label:first-child,.creation-form.identity .creation-summary{grid-column:1}}
+
+/* Неисполнимая механика: карточку видно, но выбрать нельзя. */
+.creation-spells article.blocked{opacity:.45}
+.creation-spells article.blocked button{cursor:not-allowed}
+.character-creation-wizard>footer .creation-error{color:#e6a5a0}
+
+/* Выбор числа мест героев в мастере кампании. */
+.slot-count-picker{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.slot-count-picker button{display:grid;gap:3px;place-items:center;padding:10px 6px;border:1px solid rgba(255,255,255,.09);border-radius:7px;background:rgba(255,255,255,.02);color:#a9a094;cursor:pointer}
+.slot-count-picker button.selected{border-color:rgba(203,151,87,.5);background:linear-gradient(135deg,rgba(153,96,44,.2),rgba(91,60,36,.1));color:#e6c79a}
+.slot-count-picker strong{font:600 18px Spectral,serif}
+.slot-count-picker small{font:600 8px Manrope,sans-serif;letter-spacing:.06em;text-transform:uppercase}

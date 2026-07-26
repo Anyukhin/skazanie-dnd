@@ -10,7 +10,7 @@ import { hasMerchantEvent, merchantNarration } from './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
 import { NARRATOR_PROMPT_VERSION, Narrator, deterministicNarration } from './narrator.mjs'
-import { eventSummary, normalizeCampaignState } from './rules-engine.mjs'
+import { actorNameResolver, eventSummary, normalizeCampaignState } from './rules-engine.mjs'
 import { hasSceneEvent, sceneNarration, sceneSuggestions } from './scene-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer } from './viewer-projection.mjs'
@@ -97,6 +97,40 @@ function narrationSocialConsequences(events, state) {
     .slice(-6)
 }
 
+// `purpose` — служебный ключ броска (`ability_check:wis`). Игроку он попадал
+// в карточку результата как есть, вместо названия проверки.
+const ABILITY_CHECK_LABELS = Object.freeze({
+  str: 'Проверка Силы',
+  dex: 'Проверка Ловкости',
+  con: 'Проверка Телосложения',
+  int: 'Проверка Интеллекта',
+  wis: 'Проверка Мудрости',
+  cha: 'Проверка Харизмы',
+})
+const SAVING_THROW_LABELS = Object.freeze({
+  str: 'Спасбросок Силы',
+  dex: 'Спасбросок Ловкости',
+  con: 'Спасбросок Телосложения',
+  int: 'Спасбросок Интеллекта',
+  wis: 'Спасбросок Мудрости',
+  cha: 'Спасбросок Харизмы',
+})
+
+export function rollPurposeLabel(purpose) {
+  const value = String(purpose ?? '').trim()
+  if (!value) return 'Проверка'
+  const [kind, detail = ''] = value.split(':')
+  const ability = detail.toLowerCase()
+  if (kind === 'ability_check') return ABILITY_CHECK_LABELS[ability] ?? 'Проверка характеристики'
+  if (kind === 'saving_throw') return SAVING_THROW_LABELS[ability] ?? 'Спасбросок'
+  if (kind === 'attack_roll' || kind === 'attack') return 'Бросок атаки'
+  if (kind === 'initiative') return 'Инициатива'
+  if (kind === 'death_save') return 'Спасбросок от смерти'
+  if (kind === 'free_roll') return 'Свободный бросок'
+  // Незнакомый служебный ключ лучше не показывать вовсе, чем показывать сырым.
+  return /^[a-z0-9_:.-]+$/i.test(value) ? 'Проверка' : value
+}
+
 function rollForClient(roll) {
   if (!roll) return null
   return {
@@ -105,7 +139,7 @@ function rollForClient(roll) {
     value: roll.kept ?? roll.dice?.[0] ?? 0,
     modifier: Number(roll.modifier) || 0,
     total: Number(roll.total) || 0,
-    label: String(roll.purpose || 'Проверка'),
+    label: rollPurposeLabel(roll.purpose),
     success: typeof roll.success === 'boolean' ? roll.success : undefined,
   }
 }
@@ -134,13 +168,15 @@ function visibleChanges(events) {
   }))
 }
 
-function whyNarration(explanation) {
+function whyNarration(explanation, resolveName) {
   if (!explanation) return 'Для этой кампании ещё нет сохранённого механического решения.'
   const rules = explanation.rules_used?.length ? `Правила: ${explanation.rules_used.join(', ')}.` : 'Официальное правило не выбрано; использовано временное решение.'
   const rolls = explanation.rolls?.length
     ? `Броски: ${explanation.rolls.map((roll) => `${roll.expression} = ${roll.total}`).join('; ')}.`
     : 'Бросков не было.'
-  const events = explanation.events?.length ? `События: ${explanation.events.map(eventSummary).join('; ')}.` : 'Механических событий не было.'
+  const events = explanation.events?.length
+    ? `События: ${explanation.events.map((event) => eventSummary(event, resolveName)).join('; ')}.`
+    : 'Механических событий не было.'
   return `${rules} ${rolls} ${events}`
 }
 
@@ -179,8 +215,8 @@ function cachedNarration(trace, brief, knownRuleIds) {
   }
 }
 
-function deterministicReplayNarration(brief, knownRuleIds) {
-  const fallback = deterministicNarration(brief)
+function deterministicReplayNarration(brief, knownRuleIds, resolveName) {
+  const fallback = deterministicNarration(brief, resolveName)
   return {
     ...fallback,
     verification: verifyNarration(fallback.narration, brief, { knownRuleIds }),
@@ -189,8 +225,8 @@ function deterministicReplayNarration(brief, knownRuleIds) {
   }
 }
 
-function deterministicMechanicsNarration(brief, knownRuleIds) {
-  const fallback = deterministicNarration(brief)
+function deterministicMechanicsNarration(brief, knownRuleIds, resolveName) {
+  const fallback = deterministicNarration(brief, resolveName)
   return {
     ...fallback,
     suggestions: [],
@@ -201,7 +237,7 @@ function deterministicMechanicsNarration(brief, knownRuleIds) {
 }
 
 function deterministicMerchantNarration(events, state, brief, knownRuleIds) {
-  const narration = merchantNarration(events, state) ?? deterministicNarration(brief).narration
+  const narration = merchantNarration(events, state) ?? deterministicNarration(brief, actorNameResolver(state)).narration
   return {
     narration,
     suggestions: [],
@@ -233,7 +269,24 @@ function deterministicSceneNarration(events, state, brief, knownRuleIds) {
   }
 }
 
-function humanMissingInformation(values) {
+/**
+ * Отказ обязан подсказывать выход. Прежнее «Уточните имя собеседника.» было
+ * тупиком: игрок не знал, кто вообще есть в сцене, и ход тратился впустую.
+ */
+function availableNpcNames(state) {
+  const sceneLocation = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  return (state?.social?.npcs ?? [])
+    .filter((npc) => npc?.available !== false)
+    .filter((npc) => {
+      const npcLocation = String(npc?.location ?? '').trim().toLocaleLowerCase('ru')
+      return !sceneLocation || !npcLocation || sceneLocation === npcLocation
+    })
+    .map((npc) => String(npc?.name ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 6)
+}
+
+function humanMissingInformation(values, state) {
   const labels = {
     message: 'само действие',
     target_id: 'цель действия',
@@ -241,6 +294,12 @@ function humanMissingInformation(values) {
     available_npc: 'доступного собеседника',
   }
   const missing = [...new Set((Array.isArray(values) ? values : []).map(String).filter(Boolean))]
+  if (missing.includes('npc_id') || missing.includes('available_npc')) {
+    const names = availableNpcNames(state)
+    return names.length
+      ? `Назовите собеседника по имени. Сейчас рядом: ${names.join(', ')}.`
+      : 'Рядом нет никого, с кем можно заговорить. Осмотритесь или дойдите туда, где есть люди.'
+  }
   return missing.length ? `Уточните ${missing.map((value) => labels[value] ?? 'деталь действия').join(' и ')}.` : 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
 }
 
@@ -412,7 +471,7 @@ export class GameOrchestrator {
         role: input.user?.role,
       })
       const explanation = turnExplanationForViewer(rawExplanation, input.user ?? {}, playerId, originalState)
-      return { narration: whyNarration(explanation), suggestions: [], effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', engine_mode: mode, turn_id: explanation?.turn_id ?? null, state_version: originalState.state_version, explanation, turn_consumed: false }
+      return { narration: whyNarration(explanation, actorNameResolver(originalState)), suggestions: [], effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', engine_mode: mode, turn_id: explanation?.turn_id ?? null, state_version: originalState.state_version, explanation, turn_consumed: false }
     }
 
     const viewer = { playerId, partyIds: input.partyIds ?? [], isPartyMember: true, role: input.user?.role }
@@ -530,7 +589,7 @@ export class GameOrchestrator {
 
 
     if (intent.requires_clarification || plan.clarification_required) {
-      const narration = humanMissingInformation(intent.missing_information ?? plan.missing_information)
+      const narration = humanMissingInformation(intent.missing_information ?? plan.missing_information, authoritativeState)
       const response = { narration, suggestions: [], effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], authoritative_state: authoritativeState, turn_consumed: false }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })
       return response
@@ -660,14 +719,15 @@ export class GameOrchestrator {
     const replayTrace = idempotentReplay && this.traceStore && typeof this.traceStore.get === 'function'
       ? this.traceStore.get(campaignId, turnId)
       : null
-    const storedSocialNarration = npcConversationNarration(committedEvents)
+    const storedSocialNarration = npcConversationNarration(committedEvents, committed.state)
+    const resolveActorName = actorNameResolver(committed.state)
     const replayFallback = hasSceneEvent(committedEvents)
       ? deterministicSceneNarration(committedEvents, committed.state, brief, resolvedRuleIds)
       : hasMerchantEvent(committedEvents)
         ? deterministicMerchantNarration(committedEvents, committed.state, brief, resolvedRuleIds)
         : hasEncounterEvent(committedEvents)
           ? deterministicEncounterNarration(committedEvents, brief, resolvedRuleIds)
-          : storedSocialNarration ?? deterministicReplayNarration(brief, resolvedRuleIds)
+          : storedSocialNarration ?? deterministicReplayNarration(brief, resolvedRuleIds, resolveActorName)
     const structuredMechanics = Array.isArray(input.commands)
       && !hasSceneEvent(committedEvents)
       && !hasMerchantEvent(committedEvents)
@@ -683,10 +743,11 @@ export class GameOrchestrator {
             : storedSocialNarration
               ? storedSocialNarration
               : structuredMechanics
-                ? deterministicMechanicsNarration(brief, resolvedRuleIds)
+                ? deterministicMechanicsNarration(brief, resolvedRuleIds, resolveActorName)
                 : await this.narrator.render(brief, { knownRuleIds: resolvedRuleIds })
     const response = {
       narration: narration.narration,
+      ...(narration.journal_author ? { journal_author: narration.journal_author } : {}),
       suggestions: narration.suggestions,
       effects: eventsToClientEffects(committedEvents, engineResult.rolls),
       provider: narration.provider,

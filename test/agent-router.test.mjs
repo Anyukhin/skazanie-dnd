@@ -46,7 +46,7 @@ test('отряд может доверить развилку общему ку�
 })
 
 test('каждый объявленный prompt_id указывает на существующий версионированный контракт', () => {
-  assert.deepEqual(Object.keys(AGENT_ROLES), ['worldkeeper', 'director', 'game_master', 'narrator', 'map_architect'])
+  assert.deepEqual(Object.keys(AGENT_ROLES), ['worldkeeper', 'director', 'game_master', 'narrator', 'map_architect', 'action_adjudicator'])
   for (const role of Object.values(AGENT_ROLES)) {
     if (!Object.hasOwn(role, 'prompt_id')) continue
     assert.match(role.prompt_id, /\/v1$/, role.id)
