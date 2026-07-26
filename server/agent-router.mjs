@@ -2,10 +2,16 @@ import { interpretResolvedPartyDecision } from './scene-architect.mjs'
 import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 
+/**
+ * Роли и — только там, где роль действительно исполняет модель — версионированный
+ * контракт промпта. Роль без `prompt_id` исполняется детерминированно, кодом:
+ * `worldkeeper` — это `answerKnownLore` ниже, `game_master` — Rules Engine.
+ * Промпты для них удалены 2026-07-26, потому что их никто не загружал.
+ */
 export const AGENT_ROLES = Object.freeze({
-  worldkeeper: { id: 'worldkeeper', prompt_id: 'worldkeeper/v1', purpose: 'Лор, память мира и знания героя' },
+  worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: 'director/v1', purpose: 'Темп, развилки, групповые решения и переходы сцен' },
-  game_master: { id: 'game_master', prompt_id: 'game_master/v1', purpose: 'Правила, проверки, кубики и игровые инструменты' },
+  game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
   narrator: { id: 'narrator', prompt_id: 'narrator/v1', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v1', purpose: 'Динамическая архитектура новой локации и игровой карты' },
 })

@@ -304,8 +304,13 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
   await assert.rejects(client.complete({ messages }), LLMTimeoutError)
 })
 
-test('all role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
-  const promptIds = ['intent_parser', 'adjudicator', 'npc_controller', 'narrator', 'verifier', 'worldkeeper', 'director', 'game_master']
+// intent_parser, adjudicator, verifier, worldkeeper и game_master удалены
+// 2026-07-26: эти роли исполняются кодом, промпта под ними нет. Оставшиеся
+// campaign_creator и map_architect в список не входят — они не объявляют
+// UNTRUSTED_DATA, а дописывать это в промпт значит менять поведение модели;
+// пробел зафиксирован в docs/known-limitations.md.
+test('loaded role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
+  const promptIds = ['npc_controller', 'narrator', 'director']
   for (const id of promptIds) {
     const prompt = await readFile(new URL(`../prompts/${id}/v1.txt`, import.meta.url), 'utf8')
     assert.match(prompt, new RegExp(`PROMPT_ID: ${id}/v1`))

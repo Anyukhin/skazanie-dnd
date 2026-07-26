@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { AGENT_ROLES, answerKnownLore, proposeAgentInteraction, resolvePartyDecision, roleAllowsWorldTools, selectAgentRole } from '../server/agent-router.mjs'
 
 test('маршрутизатор отправляет вопросы о лоре Хранителю мира', () => {
@@ -44,9 +45,20 @@ test('отряд может доверить развилку общему ку�
   assert.equal(proposal.difficulty, 11)
 })
 
-test('все четыре роли имеют версионированные контракты', () => {
+test('каждый объявленный prompt_id указывает на существующий версионированный контракт', () => {
   assert.deepEqual(Object.keys(AGENT_ROLES), ['worldkeeper', 'director', 'game_master', 'narrator', 'map_architect'])
-  for (const role of Object.values(AGENT_ROLES)) assert.match(role.prompt_id, /\/v1$/)
+  for (const role of Object.values(AGENT_ROLES)) {
+    if (!Object.hasOwn(role, 'prompt_id')) continue
+    assert.match(role.prompt_id, /\/v1$/, role.id)
+    assert.equal(existsSync(new URL(`../prompts/${role.prompt_id}.txt`, import.meta.url)), true, role.id)
+  }
+})
+
+test('детерминированные роли не объявляют контракт промпта', () => {
+  for (const id of ['worldkeeper', 'game_master']) {
+    assert.equal(Object.hasOwn(AGENT_ROLES[id], 'prompt_id'), false, id)
+    assert.equal(existsSync(new URL(`../prompts/${id}/v1.txt`, import.meta.url)), false, id)
+  }
 })
 
 test('Хранитель отвечает только из подтверждённой памяти и не меняет мир', () => {

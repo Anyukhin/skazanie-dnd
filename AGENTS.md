@@ -107,8 +107,11 @@ pnpm backup           # резервная копия storage/
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`.
 Не описывать их как «агентов».
 
-`server/agent-router.mjs` объявляет роли и `prompt_id` (`AGENT_ROLES`), но эти
-`prompt_id` сейчас **не читает ни один модуль** — это метаданные, а не привязка.
+`server/agent-router.mjs` объявляет роли (`AGENT_ROLES`). `prompt_id` там стоит
+только у ролей, которые действительно исполняет модель, и **не читается ни одним
+модулем** — это метаданные, а не привязка; сторож — `test/agent-router.test.mjs`.
+Роли `worldkeeper` и `game_master` объявлены без `prompt_id`: первую исполняет
+детерминированный `answerKnownLore` в том же файле, вторую — Rules Engine.
 
 **Автономный цикл:** `autonomous-campaign.mjs` (типы намерений Директора,
 `DIRECTOR_INTENT_TYPES`) → `autonomous-orchestrator.mjs` (исполнение) →
@@ -128,15 +131,15 @@ pnpm backup           # резервная копия storage/
   `autonomous-orchestrator.mjs`.
 - Три модуля `*-narration` (`scene-`, `encounter-`, `merchant-`) не имеют общего
   контракта.
-- **Мёртвые файлы:** `server/index.mjs.orig` и `prompts/director/v1.txt.orig` —
-  на них не ссылается ни код, ни инструменты. В корне лежат девять
-  `.codex-*.patch` и пустой каталог `.agents/`. Не использовать как источник
-  правды; удалять отдельной задачей.
-- **Промпты без потребителя:** `prompts/adjudicator/v1.txt`,
-  `prompts/intent_parser/v1.txt`, `prompts/verifier/v1.txt` не загружаются
-  никем; `prompts/worldkeeper/v1.txt` и `prompts/game_master/v1.txt` —
-  только мёртвым `index.mjs.orig`. Каталог `prompts/legacy/` пуст.
-  Правка этих файлов **не меняет поведение системы**.
+- Трассы (`server/trace-store.mjs`) хранят `prompt_versions` с ярлыками
+  `intent_parser/v1`, `adjudicator/v1` и `verifier/v1`, хотя эти роли исполняются
+  детерминированно и промптов под ними больше нет. Ярлыки лежат в сохранённых
+  данных, поэтому чинятся только вместе с версионированием схемы трасс.
+
+Закрыто 2026-07-26: мёртвые `*.orig`, девять `.codex-*.patch`, пустые `.agents/`
+и `prompts/legacy/` удалены; пять промптов без потребителя удалены как контракты
+ролей, которые исполняются кодом. В `prompts/` остались ровно те шесть файлов,
+которые перечислены в таблице выше и действительно загружаются.
 
 ## 5. Инварианты и их сторожа
 
