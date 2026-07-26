@@ -1,17 +1,13 @@
 {
   "expected": 532,
-  "present": 137,
+  "present": 188,
   "missing": [
     "action-surge",
     "aganazzar-s-scorcher",
-    "aid",
-    "air-bubble",
     "alter-self",
-    "animal-messenger",
     "animate-objects",
     "antagonize",
     "arcane-eye",
-    "arcane-lock",
     "arcane-recovery",
     "ashardalon-s-stride",
     "augury",
@@ -27,7 +23,6 @@
     "beast-sense",
     "bigby-s-hand",
     "blade-barrier",
-    "blight",
     "blinding-smite",
     "blink",
     "blur",
@@ -41,16 +36,13 @@
     "careful-spell",
     "catapult",
     "catnap",
-    "ceremony",
     "chain-lightning",
     "chaos-bolt",
     "charm-monster",
     "chromatic-orb",
-    "circle-of-death",
     "clairvoyance",
     "cleric-bozhestvennyy-kanal-izgnanie-nezhiti",
     "cleric-pravednoe-vosstanovlenie",
-    "cloud-of-daggers",
     "color-spray",
     "commune",
     "commune-with-nature",
@@ -62,7 +54,6 @@
     "conjure-minor-elementals",
     "conjure-woodland-beings",
     "contact-other-plane",
-    "contagion",
     "contingency",
     "continual-flame",
     "control-water",
@@ -76,12 +67,10 @@
     "create-undead",
     "creating-spelljamming-helm",
     "creation",
-    "crown-of-madness",
     "crusader-s-mantle",
     "cunning-dash",
     "cunning-disengage",
     "cunning-hide",
-    "danse-macabre",
     "darkness",
     "darkvision",
     "dawn",
@@ -116,7 +105,6 @@
     "elemental-weapon",
     "empowered-spell",
     "enemies-abound",
-    "enervation",
     "enhance-ability",
     "enlarge-reduce",
     "enthrall",
@@ -128,7 +116,6 @@
     "extinguish-ally",
     "extinguish-self",
     "extra-attack",
-    "eyebite",
     "fabricate",
     "faerie-fire",
     "fast-friends",
@@ -139,7 +126,6 @@
     "fighter-varianty-priemov",
     "fighter-zaschita",
     "find-greater-steed",
-    "find-steed",
     "find-the-path",
     "find-traps",
     "fire-shield",
@@ -152,7 +138,6 @@
     "flock-of-familiars",
     "flurry-of-blows",
     "fly",
-    "fog-cloud",
     "font-of-magic",
     "freedom-of-movement",
     "frost-fingers",
@@ -161,12 +146,10 @@
     "gaseous-form",
     "gate-seal",
     "giant-insect",
-    "gift-of-gab",
     "glyph-of-warding",
     "goodberry",
     "grapple",
     "grasping-vine",
-    "grease",
     "greater-invisibility",
     "guardian-of-faith",
     "guardian-of-nature",
@@ -175,10 +158,8 @@
     "gust-of-wind",
     "hallow",
     "hallucinatory-terrain",
-    "harm",
     "haste",
     "heal",
-    "healing-spirit",
     "healing-word",
     "heat-metal",
     "heightened-spell",
@@ -211,7 +192,6 @@
     "legend-lore",
     "leomund-s-secret-chest",
     "leomund-s-tiny-hut",
-    "lesser-restoration",
     "levitate",
     "lightning-arrow",
     "lightning-bolt",
@@ -221,7 +201,6 @@
     "longstrider",
     "maelstrom",
     "magic-circle",
-    "magic-jar",
     "magic-mouth",
     "magic-weapon",
     "major-image",
@@ -248,7 +227,6 @@
     "motivational-speech",
     "move-earth",
     "nathair-s-mischief",
-    "negative-energy-flood",
     "nondetection",
     "nystul-s-magic-aura",
     "otiluke-s-freezing-sphere",
@@ -257,12 +235,7 @@
     "pact-chain",
     "pact-talisman",
     "pact-tome",
-    "paladin-perehvat",
-    "paladin-pravednoe-vosstanovlenie",
-    "paladin-zaschita",
-    "pass-without-trace",
     "passwall",
-    "patient-defense",
     "phantasmal-force",
     "phantasmal-killer",
     "phantom-steed",
@@ -271,51 +244,33 @@
     "prayer-of-healing",
     "programmed-illusion",
     "protection-from-energy",
-    "protection-from-poison",
     "purify-food-and-drink",
     "pyrotechnics",
-    "quickened-healing",
-    "quickened-spell",
-    "rage",
-    "raise-dead",
-    "ranger-maskirovka-na-vidu",
-    "ranger-prirodnaya-zavesa",
     "rary-s-telepathic-bond",
     "raulothim-s-psychic-lance",
-    "ready",
-    "reckless-attack",
     "reincarnate",
     "remove-curse",
     "rime-s-binding-ice",
-    "rogue-hitroe-deystvie",
-    "rogue-tochnoe-pritselivanie",
     "rope-trick",
-    "sanctuary",
     "scorching-ray",
     "scrying",
-    "search",
     "searing-smite",
     "see-invisibility",
     "seeking-spell",
     "seeming",
     "sending",
     "shadow-blade",
-    "shadow-of-moil",
     "shatter",
-    "shield-of-faith",
     "shove",
     "sickening-radiance",
     "silence",
     "silent-image",
     "skill-empowerment",
     "skywrite",
-    "sleep",
     "sleet-storm",
     "slow",
-    "snare",
     "snilloc-s-snowball-swarm",
     "sorcerer-svobodnoe-zaklinatelstvo",
-    "soul-cage",
     "speak-with-animals",
     "speak-with-plants",
     "spider-climb",
@@ -336,7 +291,6 @@
     "storm-sphere",
     "stunning-strike",
     "subtle-spell",
-    "suggestion",
     "summon-aberration",
     "summon-beast",
     "summon-construct",
@@ -351,7 +305,6 @@
     "tasha-s-mind-whip",
     "tasha-s-otherworldly-guise",
     "telekinesis",
-    "tenser-s-floating-disk",
     "tenser-s-transformation",
     "thunder-step",
     "thunderous-smite",
@@ -367,14 +320,12 @@
     "uncanny-dodge",
     "use-object",
     "vitriolic-sphere",
-    "vortex-warp",
     "wall-of-force",
     "wall-of-ice",
     "wall-of-light",
     "wall-of-sand",
     "wall-of-stone",
     "wall-of-water",
-    "warding-bond",
     "warding-wind",
     "warlock-bezumnoe-proklyatie",
     "warlock-bezzhalostnoe-proklyatie",
@@ -388,15 +339,13 @@
     "water-breathing",
     "water-walk",
     "watery-sphere",
-    "web",
     "wild-companion",
     "wild-shape",
     "wind-walk",
     "wind-wall",
     "wrath-of-nature",
     "wrathful-smite",
-    "zephyr-strike",
-    "zone-of-truth"
+    "zephyr-strike"
   ],
   "duplicates": {},
   "technical_failed": [],
@@ -2411,6 +2360,195 @@
       "tiny_components": 0,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "snare": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\snare.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        141,
+        38,
+        371,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "grease": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\grease.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        41,
+        473,
+        471
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        0.0
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "tenser-s-floating-disk": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\tenser-s-floating-disk.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        45,
+        38,
+        466,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "fog-cloud": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\fog-cloud.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        68,
+        473,
+        444
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        0.0
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "sanctuary": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\sanctuary.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        144,
+        38,
+        368,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "sleep": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\sleep.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        92,
+        38,
+        420,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "ceremony": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\ceremony.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        125,
+        38,
+        387,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "shield": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\shield.png",
       "status": "pass",
@@ -2438,6 +2576,168 @@
       "tiny_components": 0,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "shield-of-faith": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\shield-of-faith.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        41,
+        38,
+        470,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 4,
+      "material_components": 4,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "pass-without-trace": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\pass-without-trace.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        47,
+        38,
+        465,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "vortex-warp": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\vortex-warp.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        55,
+        38,
+        456,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "suggestion": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\suggestion.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        96,
+        38,
+        416,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "air-bubble": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\air-bubble.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        54,
+        38,
+        458,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "arcane-lock": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\arcane-lock.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        68,
+        38,
+        444,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 10,
+      "material_components": 2,
+      "tiny_components": 3,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "blindness-deafness": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\blindness-deafness.png",
       "status": "pass",
@@ -2457,6 +2757,87 @@
       "alpha64_longest": 435,
       "center_offset": [
         0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "protection-from-poison": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\protection-from-poison.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        107,
+        38,
+        404,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "healing-spirit": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\healing-spirit.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        130,
+        38,
+        382,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "crown-of-madness": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\crown-of-madness.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        50,
+        38,
+        461,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
         -0.5
       ],
       "corner_alpha_max": 0,
@@ -2492,6 +2873,33 @@
       "tiny_components": 3,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "lesser-restoration": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\lesser-restoration.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        103,
+        38,
+        409,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "gentle-repose": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\gentle-repose.png",
       "status": "pass",
@@ -2517,6 +2925,222 @@
       "components_alpha64": 33,
       "material_components": 3,
       "tiny_components": 17,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "cloud-of-daggers": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\cloud-of-daggers.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        48,
+        473,
+        464
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        0.0
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "zone-of-truth": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\zone-of-truth.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        69,
+        38,
+        443,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "warding-bond": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\warding-bond.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        57,
+        38,
+        454,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "web": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\web.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        92,
+        38,
+        420,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "gift-of-gab": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\gift-of-gab.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        88,
+        38,
+        423,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "aid": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\aid.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        80,
+        38,
+        432,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "find-steed": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\find-steed.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        40,
+        38,
+        472,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "animal-messenger": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\animal-messenger.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        64,
+        473,
+        448
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        0.0
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
       "semantic_artifact_review": "pending-human-visual-review"
     },
     "wither-and-bloom": {
@@ -2897,6 +3521,33 @@
       "tiny_components": 1,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "shadow-of-moil": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\shadow-of-moil.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        90,
+        38,
+        422,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 8,
+      "material_components": 1,
+      "tiny_components": 2,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "wall-of-fire": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\wall-of-fire.png",
       "status": "pass",
@@ -2922,6 +3573,33 @@
       "components_alpha64": 1,
       "material_components": 1,
       "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "blight": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\blight.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        106,
+        38,
+        405,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 16,
+      "material_components": 2,
+      "tiny_components": 8,
       "semantic_artifact_review": "pending-human-visual-review"
     },
     "greater-restoration": {
@@ -2994,6 +3672,33 @@
         111,
         38,
         401,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "contagion": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\contagion.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        109,
+        38,
+        403,
         473
       ],
       "alpha64_longest": 435,
@@ -3169,6 +3874,33 @@
       "tiny_components": 0,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "enervation": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\enervation.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        45,
+        473,
+        466
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 2,
+      "material_components": 1,
+      "tiny_components": 1,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "geas": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\geas.png",
       "status": "pass",
@@ -3223,6 +3955,33 @@
       "tiny_components": 0,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "raise-dead": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\raise-dead.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        110,
+        38,
+        401,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 2,
+      "material_components": 1,
+      "tiny_components": 1,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "planar-binding": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\planar-binding.png",
       "status": "pass",
@@ -3250,6 +4009,33 @@
       "tiny_components": 0,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "danse-macabre": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\danse-macabre.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        73,
+        473,
+        439
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        0.0
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "dominate-person": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\dominate-person.png",
       "status": "pass",
@@ -3264,6 +4050,33 @@
         94,
         38,
         418,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "negative-energy-flood": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\negative-energy-flood.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        158,
+        38,
+        354,
         473
       ],
       "alpha64_longest": 435,
@@ -3520,6 +4333,33 @@
       "tiny_components": 0,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "magic-jar": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\magic-jar.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        95,
+        38,
+        416,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "drawmij-s-instant-summons": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\drawmij-s-instant-summons.png",
       "status": "pass",
@@ -3567,6 +4407,60 @@
       "center_offset": [
         -0.5,
         -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "soul-cage": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\soul-cage.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        133,
+        38,
+        378,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "circle-of-death": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\circle-of-death.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        40,
+        473,
+        472
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        0.0
       ],
       "corner_alpha_max": 0,
       "components_alpha64": 1,
@@ -3763,6 +4657,33 @@
       "tiny_components": 0,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "harm": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\harm.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        105,
+        38,
+        407,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "summon-fiend": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\summon-fiend.png",
       "status": "pass",
@@ -3837,6 +4758,33 @@
       "center_offset": [
         -0.5,
         -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "eyebite": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\eyebite.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        118,
+        473,
+        394
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        0.0
       ],
       "corner_alpha_max": 0,
       "components_alpha64": 1,
@@ -4033,6 +4981,276 @@
       "tiny_components": 0,
       "semantic_artifact_review": "pending-human-visual-review"
     },
+    "paladin-perehvat": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\paladin-perehvat.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        56,
+        38,
+        455,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "paladin-pravednoe-vosstanovlenie": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\paladin-pravednoe-vosstanovlenie.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        39,
+        38,
+        473,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "paladin-zaschita": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\paladin-zaschita.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        70,
+        38,
+        442,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "patient-defense": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\patient-defense.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        45,
+        38,
+        467,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "quickened-healing": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\quickened-healing.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        41,
+        470,
+        471
+      ],
+      "alpha64_longest": 432,
+      "center_offset": [
+        -2.0,
+        0.0
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 16,
+      "material_components": 4,
+      "tiny_components": 6,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "quickened-spell": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\quickened-spell.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        113,
+        38,
+        398,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 7,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "rage": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\rage.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        76,
+        38,
+        435,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "ranger-maskirovka-na-vidu": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\ranger-maskirovka-na-vidu.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        89,
+        38,
+        423,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "ranger-prirodnaya-zavesa": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\ranger-prirodnaya-zavesa.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        67,
+        38,
+        445,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "ready": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\ready.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        38,
+        85,
+        473,
+        426
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
     "ready-action": {
       "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\ready-action.png",
       "status": "pass",
@@ -4052,6 +5270,114 @@
       "alpha64_longest": 435,
       "center_offset": [
         0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "reckless-attack": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\reckless-attack.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        51,
+        38,
+        461,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 8,
+      "material_components": 8,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "rogue-hitroe-deystvie": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\rogue-hitroe-deystvie.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        72,
+        38,
+        440,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        0.0,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "rogue-tochnoe-pritselivanie": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\rogue-tochnoe-pritselivanie.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        158,
+        38,
+        353,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
+        -0.5
+      ],
+      "corner_alpha_max": 0,
+      "components_alpha64": 1,
+      "material_components": 1,
+      "tiny_components": 0,
+      "semantic_artifact_review": "pending-human-visual-review"
+    },
+    "search": {
+      "path": "C:\\Users\\anton\\PycharmProjects\\Dnd\\tmp\\icon-all\\staging-532\\search.png",
+      "status": "pass",
+      "issues": [],
+      "artifact_flags": [],
+      "mode": "RGBA",
+      "size": [
+        512,
+        512
+      ],
+      "alpha64_bbox": [
+        46,
+        38,
+        465,
+        473
+      ],
+      "alpha64_longest": 435,
+      "center_offset": [
+        -0.5,
         -0.5
       ],
       "corner_alpha_max": 0,

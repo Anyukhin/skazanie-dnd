@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Иконки действий — предпросмотр</title>
+<link rel="stylesheet" href="/src/styles.css">
+<style>
+  body { margin: 0; padding: 24px 28px 40px; background: #171310; color: #d9c9ae; font: 15px Manrope, system-ui, sans-serif; }
+  h1 { margin: 0 0 4px; font: 700 22px Spectral, serif; color: #e8d3a8; }
+  p.lead { margin: 0 0 26px; color: #8d7f6c; max-width: 70ch; }
+  h2 { margin: 30px 0 10px; font: 700 15px Manrope, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #a8916f; }
+  h2 small { display: block; margin-top: 3px; font: 400 13px Manrope, sans-serif; letter-spacing: 0; text-transform: none; color: #7d7060; }
+  /* Выравнивание по верху, а не по низу: подпись в две строки не должна
+     поднимать иконку. Строка подписи фиксированной высоты, чтобы ряд не скакал. */
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; padding: 10px 12px; border: 1px solid rgba(176,137,87,.22); border-radius: 8px; background: linear-gradient(180deg, rgba(38,30,24,.9), rgba(24,19,15,.95)); }
+  .slot { display: grid; grid-template-rows: max-content 28px; justify-items: center; align-items: start; gap: 5px; }
+  .slot span.caption { max-width: 76px; color: #7d7060; font-size: 11px; text-align: center; line-height: 1.25; }
+  .zoom .combat-icon { image-rendering: auto; }
+  .pair { display: flex; gap: 22px; flex-wrap: wrap; }
+  .note { margin-top: 8px; color: #6f6558; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Иконки действий в интерфейсе</h1>
+<p class="lead">Ровно те стили, что применяются в бою: тайл, фаска, свечение и виньетка рисуются CSS,
+картинка ложится сверху прозрачным слоем. Ниже — реальные размеры панели, затем увеличение для разбора.</p>
+
+<h2>Панель боя, 34 пикселя<small>Так иконка выглядит на горячих клавишах во время хода.</small></h2>
+<div class="row" id="hotbar"></div>
+
+<h2>Компактный режим, 27 пикселей<small>Книга заклинаний и списки — самый мелкий размер в игре.</small></h2>
+<div class="row" id="compact"></div>
+
+<h2>Проверка на различимость<small>Три огненных заклинания рядом: силуэт должен отличаться, а не только оттенок.</small></h2>
+<div class="row" id="fire"></div>
+
+<h2>Увеличение ×4<small>Видно, что остаётся от рисунка после уменьшения браузером.</small></h2>
+<div class="row zoom" id="zoom"></div>
+
+<h2>Настоящие плитки панели<small>Разное число детей: у заговора нет счётчика ячеек, у заклинания круга он есть.</small></h2>
+<div class="combat-hotbar"><div class="hotbar-actions" id="tiles"></div></div>
+<p class="note" id="measure"></p>
+
+<script type="module">
+const ICONS = [
+  ['fireball', 'Огненный шар'],
+  ['fire-bolt', 'Огненный снаряд'],
+  ['wall-of-fire', 'Огненная стена'],
+  ['cure-wounds', 'Лечение ран'],
+  ['magic-missile', 'Волшебная стрела'],
+  ['shield', 'Щит'],
+  ['conjure-animals', 'Призыв животных'],
+  ['hold-person', 'Удержание личности'],
+  ['dash', 'Рывок'],
+  ['ready-action', 'Готовность'],
+  ['sneak-attack', 'Скрытая атака'],
+  ['second-wind', 'Второе дыхание'],
+]
+
+/** Повторяет разметку CombatIcon: тайл + слой собственного рисунка. */
+function icon(id, size, compact = false) {
+  const tile = document.createElement('span')
+  tile.className = `combat-icon combat-icon-spell${compact ? ' compact' : ''}`
+  tile.style.setProperty('--combat-icon-src', `url('/assets/ui/action-icons/${id}.png')`)
+  tile.style.width = `${size}px`
+  tile.style.height = `${size}px`
+  const art = document.createElement('i')
+  art.className = 'combat-icon-art own'
+  tile.append(art)
+  return tile
+}
+
+function fill(target, list, size, { compact = false, caption = false } = {}) {
+  const host = document.getElementById(target)
+  for (const [id, label] of list) {
+    const slot = document.createElement('span')
+    slot.className = 'slot'
+    slot.append(icon(id, size, compact))
+    if (caption) {
+      const text = document.createElement('span')
+      text.className = 'caption'
+      text.textContent = label
+      slot.append(text)
+    }
+    host.append(slot)
+  }
+}
+
+fill('hotbar', ICONS, 34, { caption: true })
+fill('compact', ICONS, 27, { compact: true })
+fill('fire', ICONS.slice(0, 3), 34, { caption: true })
+fill('zoom', ICONS, 136, { caption: true })
+
+/** Точная копия разметки боевой плитки из App.tsx, включая разное число детей. */
+const TILES = [
+  { id: 'fireball', name: 'Шар', meta: '3 круг · 150 фт', pool: '3/3' },
+  { id: 'fire-bolt', name: 'Огненный снаряд стужи', meta: 'заговор · 120 фт', pool: null },
+  { id: 'wall-of-fire', name: 'Огненная стена', meta: '4 круг · 120 фт', pool: '3/3' },
+]
+const deck = document.getElementById('tiles')
+for (const tile of TILES) {
+  const button = document.createElement('button')
+  button.className = 'action-tile spell support-verified'
+  button.append(icon(tile.id, 34))
+  const name = document.createElement('strong'); name.textContent = tile.name; button.append(name)
+  const meta = document.createElement('small'); meta.textContent = tile.meta; button.append(meta)
+  if (tile.pool) { const pool = document.createElement('em'); pool.textContent = tile.pool; button.append(pool) }
+  const cost = document.createElement('i'); cost.className = 'action-cost action'; cost.textContent = 'действие'; button.append(cost)
+  deck.append(button)
+}
+
+// Измеряем, а не смотрим глазами: верх иконок обязан совпадать.
+requestAnimationFrame(() => {
+  const tops = [...deck.querySelectorAll('.combat-icon')].map((node) => Math.round(node.getBoundingClientRect().top))
+  const spread = Math.max(...tops) - Math.min(...tops)
+  const report = document.getElementById('measure')
+  report.textContent = `Верх иконок: ${tops.join(', ')} — расхождение ${spread} px${spread === 0 ? ' (ровно)' : ' (ПЛИТКИ РАЗЪЕХАЛИСЬ)'}`
+  report.style.color = spread === 0 ? '#7fae7f' : '#d08a6a'
+  window.__iconTops = tops
+  window.__iconSpread = spread
+})
+</script>
+</body>
+</html>
