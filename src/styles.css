@@ -100,9 +100,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    вычитается из полотна: на 1440×900 те же 420/320 px оставили бы доске 744×436 и
    клетку 33 px — ровно ту, из-за которой бой и был тесным. Компактные значения по
    умолчанию, просторные — только когда ширины действительно хватает. */
-.game-area { --status: 60px; --server-column: 320px; --rail: 268px; --tile-h: 112px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--rail); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
+.game-area { --status: 60px; --server-column: 320px; --rail: 292px; --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--rail); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
 @media (min-width: 1920px) {
-  .game-area { --status: 72px; --server-column: 420px; --rail: 320px; --tile-h: 148px; }
+  .game-area { --status: 72px; --server-column: 420px; --rail: 320px; --slot: 76px; }
 }
 .status-bar { grid-area: status; min-width: 0; display: flex; align-items: center; gap: 18px; padding: 0 26px; border-bottom: 1px solid var(--line); background: rgba(18,16,14,.97); overflow: hidden; }
 .scene-header { position: relative; z-index: auto; flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 18px; pointer-events: none; }
@@ -519,14 +519,18 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .hotbar-economy > span.spent b { color: #8d857b; text-decoration: line-through; }
 
 .hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px) minmax(0, 140px); gap: 16px; }
-/* min-width: 0 обязателен: без него grid-элемент раздувается под содержимое
-   и горизонтальная прокрутка колоды не включается. */
-.hotbar-actions { min-width: 0; min-height: 0; display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; overflow-y: hidden; padding: 0; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
+/* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
+   заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
+   рисунку осознанно: название и описание уже показывает колонка шага справа, а на
+   плитке 162×112 рисунок занимал 5% площади и не читался.
 
-/* Плитка: иконка, название, подпись и — отдельной строкой сетки — стоимость словом.
-   overflow: hidden и min-height: 0 нужны потому, что flex-элемент по умолчанию
-   имеет min-height: auto и растягивается под содержимое. */
-.combat-hotbar .action-tile { position: relative; flex: 0 0 auto; box-sizing: border-box; width: 162px; min-width: 162px; height: var(--tile-h, 112px); min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 22px 18px 20px; justify-items: center; align-content: center; gap: 6px; margin: 0; padding: 10px 8px; overflow: hidden; border: 1px solid rgba(202,176,143,.15); border-radius: 10px; background: radial-gradient(circle at 50% 18%, rgba(128,91,53,.15), rgba(22,18,14,.92) 70%); color: #a68e74; cursor: pointer; }
+   min-width: 0 обязателен: без него grid-элемент раздувается под содержимое
+   и горизонтальная прокрутка колоды не включается. */
+.hotbar-actions { min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, var(--slot, 52px)); justify-content: start; align-content: center; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 0; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
+
+/* Слот: рисунок во всю площадь, тонкая рамка под категорию, полоска стоимости
+   снизу и счётчик ресурса в углу. Всё остальное — в подсказке и колонке шага. */
+.combat-hotbar .action-tile { position: relative; box-sizing: border-box; width: var(--slot, 52px); min-width: 0; height: var(--slot, 52px); min-height: 0; display: block; margin: 0; padding: 0; overflow: hidden; border: 1px solid rgba(202,176,143,.15); border-radius: 9px; background: radial-gradient(circle at 50% 18%, rgba(128,91,53,.15), rgba(22,18,14,.92) 70%); color: #a68e74; cursor: pointer; }
 .combat-hotbar .action-tile::before { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.38); }
 .combat-hotbar .action-tile:hover:not(:disabled) { border-color: rgba(221,165,96,.45); color: #e0bc8b; box-shadow: 0 8px 16px rgba(0,0,0,.34); }
 .combat-hotbar .action-tile.selected { border-color: #e0b47a; color: #f2d3a4; background: linear-gradient(180deg, rgba(177,111,47,.34), rgba(32,23,15,.96)); }
@@ -535,9 +539,15 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .combat-hotbar .action-tile.item { color: #c49167; }
 .combat-hotbar .action-tile:disabled { opacity: .32; cursor: not-allowed; }
 .combat-hotbar .action-tile.support-heuristic:disabled, .combat-hotbar .action-tile.support-ruling-only:disabled { opacity: .5; }
-.combat-hotbar .action-tile strong { display: -webkit-box; width: 100%; overflow: hidden; color: inherit; font: 600 15px/22px Spectral, serif; text-align: center; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
-.combat-hotbar .action-tile small { width: 100%; overflow: hidden; color: #8d857b; font: 13px/18px Manrope, sans-serif; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.combat-hotbar .action-tile em { position: absolute; left: 8px; top: 8px; min-width: 22px; padding: 2px 5px; border-radius: 8px; background: rgba(10,9,8,.82); color: #c4b08e; font: normal 700 12px Manrope, sans-serif; }
+/* Название и подпись остаются в разметке — их читает скринридер и берёт `title`
+   браузера, — но на слоте не рисуются. Скрывать через display: none нельзя:
+   тогда у кнопки не останется доступного имени. */
+.combat-hotbar .action-tile strong, .combat-hotbar .action-tile small { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; white-space: nowrap; }
+/* Рисунок во весь слот: размер задаёт слот, а не свойство size у компонента. */
+.combat-hotbar .action-tile .combat-icon { display: block; width: 100%; height: 100%; border: 0; border-radius: 8px; box-shadow: none; }
+.combat-hotbar .action-tile .combat-icon::after { box-shadow: inset 0 0 6px rgba(0,0,0,.6); }
+/* Счётчик ресурса — угловое число, как заряды в BG3. */
+.combat-hotbar .action-tile em { position: absolute; right: 2px; top: 2px; z-index: 4; min-width: 0; padding: 0 3px; border-radius: 5px; background: rgba(10,9,8,.88); color: #ddc49c; font: normal 700 11px/15px Manrope, sans-serif; }
 
 /* Стоимость — слово, а не буква в кружке: «хватит ли» должно читаться без расшифровки. */
 .action-cost { position: static; width: max-content; height: 20px; display: flex; align-items: center; padding: 0 9px; border: 0; border-radius: 10px; background: rgba(209,152,83,.22); color: #e0b47a; font: normal 600 12px Manrope, sans-serif; }
@@ -546,6 +556,15 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .action-cost.free { background: rgba(110,165,120,.24); color: #a2ccab; }
 .action-cost.movement { background: rgba(110,165,120,.24); color: #a2ccab; }
 .action-cost.long_cast { background: rgba(140,130,120,.24); color: #b6ada2; }
+
+/* На слоте стоимость — цветная полоска снизу: слово туда не влезает, а цвет
+   различает действие, бонус, реакцию и свободное без расшифровки. Слово остаётся
+   в разметке для скринридера и для колонки шага. */
+.combat-hotbar .action-tile .action-cost { position: absolute; right: 0; bottom: 0; left: 0; z-index: 4; width: auto; height: 3px; padding: 0; border-radius: 0; font-size: 0; }
+/* Поддержка механики — точка в углу вместо слова: цвет статуса тот же. */
+.combat-hotbar .action-tile .mechanics-support-badge { top: auto; right: auto; bottom: 3px; left: 3px; width: 7px; height: 7px; max-width: none; padding: 0; border: 0; border-radius: 50%; background: currentColor; font-size: 0; }
+/* Выбранный слот: кольцо внутрь, чтобы рамка не съезжала на соседей. */
+.combat-hotbar .action-tile.selected { box-shadow: inset 0 0 0 2px #e0b47a, 0 0 10px rgba(224,180,122,.32); }
 
 /* Колонка шага: бейдж, заголовок, полное описание, строка ресурса. Вертикальных
    отступов нет намеренно — они дают переполнение фиксированной сетки строк. */
@@ -557,6 +576,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .hotbar-detail .mechanics-support-note { display: -webkit-box; overflow: hidden; color: #8d8174; font: 13px/1.3 Manrope, sans-serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
 .combat-icon { position: relative; z-index: 0; display: inline-grid; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid hsl(var(--combat-icon-hue) 58% 55% / .3); border-radius: 6px; background-image: radial-gradient(circle at 50% 42%, hsl(var(--combat-icon-hue) 52% 24% / .4), transparent 58%), linear-gradient(145deg, rgba(42,36,31,.7), rgba(12,11,10,.84)), url('/assets/ui/combat-icon-texture.png'); background-position: center, center, var(--combat-icon-bg-x) var(--combat-icon-bg-y); background-size: auto, auto, 112px 112px; background-blend-mode: screen, normal, soft-light; box-shadow: inset 0 1px rgba(255,245,220,.08), inset 0 -2px 4px rgba(0,0,0,.7), 0 2px 5px rgba(0,0,0,.4); color: hsl(var(--combat-icon-hue) 92% 70%); isolation: isolate; }
+/* Запасной размер: компонент задаёт width/height, только если ему передали size.
+   Без этой строки иконка без size и без размера от места схлопнулась бы в ноль. */
+.combat-icon { width: 34px; height: 34px; }
 .combat-icon::before { content: ''; position: absolute; inset: 2px; z-index: -1; border: 1px solid rgba(226,199,155,.07); border-radius: 4px; background: linear-gradient(118deg, transparent 0 26%, rgba(255,255,255,.035) 27%, transparent 29% 63%, rgba(0,0,0,.2) 64%, transparent 66%), repeating-linear-gradient(173deg, transparent 0 7px, rgba(232,203,160,.025) 8px, transparent 9px 13px); }
 .combat-icon::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none; border-radius: inherit; box-shadow: inset 0 0 8px rgba(0,0,0,.72); }
 .combat-icon-glyph { position: relative; z-index: 2; width: 63%; height: 63%; color: hsl(var(--combat-icon-hue) 96% 72%); filter: drop-shadow(0 0 2px hsl(var(--combat-icon-hue) 100% 58%)) drop-shadow(0 0 5px hsl(var(--combat-icon-hue) 90% 46% / .55)); transform: rotate(var(--combat-icon-rotation)); }
@@ -571,7 +593,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .spellbook-grid article.spell-kind-healing .combat-icon { --combat-icon-hue: 155 !important; }
 .spellbook-grid article.spell-kind-debuff .combat-icon { --combat-icon-hue: 302 !important; }
 
-.hotbar-empty { flex: 1; min-width: 210px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #8d857b; font: 15px Spectral, serif; }
+/* Пустая колода — единственный элемент сетки слотов, поэтому занимает все строки:
+   иначе фраза сжалась бы в один слот высотой 52 px. */
+.hotbar-empty { grid-row: 1 / -1; flex: 1; min-width: 210px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #8d857b; font: 15px Spectral, serif; }
 
 .knockout-toggle { width: fit-content; display: inline-grid; grid-template-columns: auto auto; align-items: center; gap: 1px 6px; margin-top: 2px; padding: 4px 7px; border: 1px solid rgba(176,125,72,.28); border-radius: 5px; background: rgba(68,42,24,.28); color: #a58665; cursor: pointer; }
 .knockout-toggle input { grid-row: 1 / span 2; margin: 0; accent-color: #b77b3d; }

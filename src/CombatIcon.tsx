@@ -100,7 +100,7 @@ export function ownIconUrl(id: string) {
   return ACTION_ICON_IDS.has(id) ? `/assets/ui/action-icons/${id}.png` : null
 }
 
-export function CombatIcon({ id, kind, hint = '', size = 34, compact = false }: CombatIconProps) {
+export function CombatIcon({ id, kind, hint = '', size, compact = false }: CombatIconProps) {
   // Своя картинка, если она есть; иначе прежняя клетка атласа. Набор наполняется
   // постепенно, поэтому запасной вариант обязателен — иначе интерфейс поедет на
   // полпути, когда нарисована половина каталога.
@@ -108,12 +108,14 @@ export function CombatIcon({ id, kind, hint = '', size = 34, compact = false }: 
   const index = combatIconIndex(id, kind, hint)
   const column = index % 5
   const row = Math.floor(index / 5)
+  // Без size размер задаёт место, куда иконку поставили: слоту боевой панели нужно,
+  // чтобы рисунок занимал его целиком, а слот меняет ширину вместе с экраном.
+  // Запасное значение стоит в CSS, поэтому иконка нигде не схлопнется в ноль.
   const style = {
     ...(own
       ? { '--combat-icon-src': `url('${own}')` }
       : { '--combat-icon-x': `${column * 25}%`, '--combat-icon-y': `${row * 25}%` }),
-    width: size,
-    height: size,
+    ...(size === undefined ? {} : { width: size, height: size }),
   } as CSSProperties
 
   return <span className={`combat-icon combat-icon-${kind}${compact ? ' compact' : ''}`} style={style} aria-hidden="true">
