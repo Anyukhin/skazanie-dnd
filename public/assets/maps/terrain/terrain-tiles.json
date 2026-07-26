@@ -1,0 +1,27 @@
+{
+  "version": "skazanie:terrain-tiles-v1",
+  "cellsPerTile": 8,
+  "tileSide": 512,
+  "floors": {
+    "stone": "maps/terrain/floor-stone.png",
+    "wood": "maps/terrain/floor-wood.png",
+    "earth": "maps/terrain/floor-earth.png",
+    "grass": "maps/terrain/floor-grass.png",
+    "sand": "maps/terrain/floor-sand.png",
+    "marble": "maps/terrain/floor-marble.png",
+    "metal": "maps/terrain/floor-metal.png",
+    "ice": "maps/terrain/floor-ice.png"
+  },
+  "surfaces": {
+    "water": "maps/terrain/surface-water.png",
+    "mud": "maps/terrain/surface-mud.png",
+    "oil": "maps/terrain/surface-oil.png",
+    "rubble": "maps/terrain/surface-rubble.png"
+  },
+  "walls": {
+    "stone": "maps/terrain/wall-stone.png",
+    "wood": "maps/terrain/wall-timber.png",
+    "plaster": "maps/terrain/wall-plaster.png",
+    "cave": "maps/terrain/wall-cave.png"
+  }
+}
