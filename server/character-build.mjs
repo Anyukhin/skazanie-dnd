@@ -23,7 +23,9 @@ function uniqueIds(value, field) {
     throw new CharacterBuildValidationError(`${field} содержит слишком много значений`, 'SPELL_SELECTION_LIMIT_EXCEEDED')
   }
   const result = [...new Set(value.map((item) => clean(item)).filter(Boolean))]
-  if (result.some((item) => !/^[a-z0-9][a-z0-9-]{0,119}$/u.test(item))) {
+  // Алфавит совпадает с cleanIdentifier в character-lifecycle.mjs: навыки
+  // серверного каталога хранятся в snake_case.
+  if (result.some((item) => !/^[a-z0-9][a-z0-9_-]{0,119}$/u.test(item))) {
     throw new CharacterBuildValidationError(`${field} содержит некорректный идентификатор`, 'SPELL_SELECTION_INVALID')
   }
   return result

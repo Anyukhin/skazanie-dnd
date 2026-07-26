@@ -134,7 +134,10 @@ function cleanText(value, maximum = 160, fallback = '') {
 
 function cleanIdentifier(value, field) {
   const result = cleanText(value, 120)
-  if (!result || !/^[a-z0-9][a-z0-9-]{0,119}$/u.test(result)) {
+  // Серверный каталог навыков хранит snake_case (`sleight_of_hand`,
+  // `animal_handling`), поэтому подчёркивание — часть допустимого алфавита.
+  // Без него импорт листа падал на любом герое, взявшем такой навык.
+  if (!result || !/^[a-z0-9][a-z0-9_-]{0,119}$/u.test(result)) {
     throw new CharacterLifecycleValidationError(`${field} должен быть непустым идентификатором`, 'INVALID_IDENTIFIER')
   }
   return result

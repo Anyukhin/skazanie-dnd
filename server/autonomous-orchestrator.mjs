@@ -36,6 +36,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
+import { planImprovisedEffect, resolveActionCost } from './improvised-effects.mjs'
 
 const clone = (value) => structuredClone(value)
 
@@ -160,11 +161,14 @@ function parseJsonFact(fact) {
 }
 
 export class AutonomousCampaignOrchestrator {
-  constructor({ eventStore, rulesEngine, narrator = null, now = () => Date.now() } = {}) {
+  constructor({ eventStore, rulesEngine, narrator = null, actionAdjudicator = null, now = () => Date.now() } = {}) {
     if (!eventStore || !rulesEngine) throw new TypeError('AutonomousCampaignOrchestrator requires eventStore and rulesEngine')
     this.eventStore = eventStore
     this.rulesEngine = rulesEngine
     this.narrator = narrator
+    // Без арбитра свободное действие читает детерминированная таблица: игра
+    // обязана оставаться играбельной без ключа модели.
+    this.actionAdjudicator = actionAdjudicator
     this.now = now
   }
 
@@ -573,7 +577,12 @@ export class AutonomousCampaignOrchestrator {
     }
     // Судейство как у живого ведущего: понять намерение, сверить средства, выбрать режим
     // разрешения, объявить ставки и дать непустое последствие даже при провале.
-    const reading = interpretFreeAction(text)
+    // Смысл задумки понимает агент, если он есть; всё остальное — СЛ, бросок,
+    // сверка средств, цена хода и последствие — остаётся за сервером.
+    const deterministicReading = interpretFreeAction(text)
+    const reading = this.actionAdjudicator
+      ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
+      : deterministicReading
     const means = verifyMeans(loaded.state, actorId, reading.required_means)
     const resolution = means.satisfied
       ? resolutionModeFor(reading)
@@ -664,9 +673,40 @@ export class AutonomousCampaignOrchestrator {
       }
     }
 
+    // В бою импровизация платит слотом хода. Проверка стоит до броска: занятый
+    // слот — это отказ, а не потраченный впустую кубик.
+    const inCombat = Boolean(loaded.state.mechanics?.combat?.active)
+    const actionCost = inCombat ? resolveActionCost(loaded.state, actorId, reading.action_cost) : { cost: 'free', available: true }
+    if (inCombat && !actionCost.available) {
+      const commit = await run([declaration])
+      verifyDuplicate(commit)
+      return {
+        kind: 'clarification',
+        narration: `На этом ходу ${actionCost.slot} уже потрачено. Импровизация обойдётся в него же — попробуйте на следующем ходу или опишите что-то, что укладывается в оставшееся.`,
+        suggestions: [objective],
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+
     // Проверка: бросок делает движок своим Dice Service, число СЛ выбрал сервер.
     const checkCommit = await run([
       declaration,
+      // Провенанс обязателен для любого механического решения: импровизация
+      // опирается на то же самое судейское решение, что записывается ниже.
+      ...(inCombat ? [{
+        command_type: 'ResolveImprovisedAction',
+        actor_id: actorId,
+        action_cost: actionCost.cost,
+        summary: reading.goal_summary,
+        ruling_id: ruling.id,
+      }] : []),
       {
         command_type: 'MakeAbilityCheck',
         actor_id: actorId,
@@ -681,12 +721,22 @@ export class AutonomousCampaignOrchestrator {
     const succeeded = checkEvent?.payload?.success === true
     const consequence = failForwardFor(reading.risk)
     const outcomeRuling = { ...ruling, outcome: succeeded ? 'success' : 'failure' }
+    // Внутри раунда время не идёт и цель отряда не переписывается: ход занимает
+    // секунды, а «следующая цель» посреди боя ломала бы сцену.
+    const effectPlan = succeeded && inCombat
+      ? planImprovisedEffect(checkCommit.state ?? loaded.state, {
+        actorId, effectId: reading.effect, targetId: reading.effect_target, hazardId: reading.hazard, risk: reading.risk,
+      })
+      : null
     const followUp = [
       { command_type: 'RecordRuling', ruling: outcomeRuling, ruling_id: ruling.id },
-      { command_type: 'AdvanceTime', amount: succeeded ? 5 : consequence.minutes, unit: 'minute' },
-      { command_type: 'UpdateObjective', objective },
+      ...(effectPlan?.commands ?? []),
+      ...(inCombat ? [] : [
+        { command_type: 'AdvanceTime', amount: succeeded ? 5 : consequence.minutes, unit: 'minute' },
+        { command_type: 'UpdateObjective', objective },
+      ]),
     ]
-    if (!succeeded && consequence.advances_quest_clock) {
+    if (!succeeded && !inCombat && consequence.advances_quest_clock) {
       const quest = openQuest(loaded.state)
       if (quest) followUp.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })
     }
@@ -704,10 +754,14 @@ export class AutonomousCampaignOrchestrator {
       kind: succeeded ? 'check_success' : 'check_failure',
       ruling: outcomeRuling,
       stakes,
-      narration: succeeded
-        ? `Проверка пройдена. Следующая цель отряда: «${objective}»`
-        : `Не вышло. ${consequence.summary} Следующая цель отряда: «${objective}»`,
-      suggestions: [objective],
+      narration: inCombat
+        ? succeeded
+          ? `Проверка пройдена. ${effectPlan?.summary ?? ''}`.trim()
+          : `Не вышло: задумка сорвалась, и ${actionCost.slot} потрачено впустую.`
+        : succeeded
+          ? `Проверка пройдена. Следующая цель отряда: «${objective}»`
+          : `Не вышло. ${consequence.summary} Следующая цель отряда: «${objective}»`,
+      suggestions: inCombat ? [] : [objective],
       turn_consumed: false,
       admin_commands: 0,
       state: consequenceCommit?.state ?? checkCommit.state ?? loaded.state,

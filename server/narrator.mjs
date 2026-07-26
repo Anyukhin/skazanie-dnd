@@ -12,9 +12,9 @@ function safeSuggestions(value) {
   return Array.isArray(value) ? value.slice(0, 3).map((item) => String(item).slice(0, 120)).filter(Boolean) : []
 }
 
-export function deterministicNarration(brief) {
+export function deterministicNarration(brief, resolveName) {
   assertNarrationBrief(brief)
-  const summaries = brief.visible_events.map(eventSummary).filter(Boolean)
+  const summaries = brief.visible_events.map((event) => eventSummary(event, resolveName)).filter(Boolean)
   const narration = summaries.length
     ? summaries.slice(0, 4).join('. ').replace(/\.+$/u, '') + '.'
     : 'Ситуация остаётся открытой: подтверждённых механических последствий пока нет.'
