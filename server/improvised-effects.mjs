@@ -1,0 +1,188 @@
+/**
+ * Каталог того, что импровизация вообще может сделать с миром.
+ *
+ * Это граница полномочий агента, записанная кодом. Модель называет **ключ** из
+ * закрытого списка и цель; всё остальное — какие кости, сколько, какое условие,
+ * сколько это стоит хода — принадлежит серверу. Модель не может ни придумать
+ * новый эффект, ни назначить число: незнакомый ключ просто отбрасывается.
+ *
+ * Модуль детерминированный и без обращений к LLM, как `campaign-loop-policy.mjs`.
+ */
+
+const clean = (value, maximum = 120) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+/**
+ * Чем импровизация платит в бою. Вне боя цена всегда `free`.
+ *
+ * Перемещения в списке нет намеренно: движок списывает футы только событием
+ * `ActorMoved` с настоящим путём, и «потратить движение» без перемещения было бы
+ * фикцией. Если импровизация двигает героя — это обычная команда перемещения.
+ */
+export const ACTION_COSTS = Object.freeze(['action', 'bonus_action', 'free'])
+
+/**
+ * Эффекты успеха. Каждый опирается на правило, которое движок уже исполняет,
+ * поэтому новых механик здесь нет — есть новый повод применить старые.
+ *
+ * `target` говорит, на кого эффект вообще можно навести: попытка наложить
+ * «помощь» на врага или «сбить с ног» на себя отбрасывается до броска.
+ */
+export const IMPROVISED_EFFECTS = Object.freeze({
+  none: Object.freeze({
+    id: 'none', target: 'none', label: 'без механического следствия',
+    summary: 'Успех меняет обстановку описанием, без механического следствия.',
+  }),
+  prone: Object.freeze({
+    id: 'prone', target: 'enemy', condition: 'prone', label: 'сбить с ног',
+    summary: 'Цель сбита с ног.',
+  }),
+  help_ally: Object.freeze({
+    id: 'help_ally', target: 'ally', condition: 'helped', duration: 'until-used', label: 'помочь союзнику',
+    summary: 'Союзник получает преимущество на следующую атаку.',
+  }),
+  distract: Object.freeze({
+    id: 'distract', target: 'enemy', condition: 'disadvantage-next-attack', duration: 'until-next-turn', label: 'отвлечь противника',
+    summary: 'Противник отвлечён: его следующая атака идёт с помехой.',
+  }),
+  blind: Object.freeze({
+    id: 'blind', target: 'enemy', condition: 'blinded', duration: 'until-next-turn', label: 'ослепить',
+    summary: 'Цель ослеплена до конца своего следующего хода.',
+  }),
+  restrain: Object.freeze({
+    id: 'restrain', target: 'enemy', condition: 'restrained', duration: 'until-next-turn', label: 'опутать',
+    summary: 'Цель опутана до конца своего следующего хода.',
+  }),
+  hazard_damage: Object.freeze({
+    id: 'hazard_damage', target: 'enemy', label: 'подставить под опасность',
+    summary: 'Цель попадает под опасность окружения.',
+    requiresHazard: true,
+  }),
+})
+
+/**
+ * Опасности окружения. Урон за импровизацию раньше не делали намеренно: без
+ * таблицы он был бы произвольным наказанием (`docs/known-limitations.md`).
+ * Таблица закрывает именно это — кости фиксированы здесь, а не выбираются
+ * моделью, и растут только со ставкой, которую сервер уже определил сам.
+ *
+ * Значения держатся в масштабе SRD: падение — 1к6 за 10 футов, огонь и кипяток
+ * сопоставимы с ловушкой низкого уровня.
+ */
+export const ENVIRONMENT_HAZARDS = Object.freeze({
+  fall: Object.freeze({
+    id: 'fall', damage_type: 'bludgeoning', label: 'падение с высоты',
+    expressions: Object.freeze({ none: '1d6', minor: '1d6', serious: '2d6', deadly: '3d6' }),
+  }),
+  fire: Object.freeze({
+    id: 'fire', damage_type: 'fire', label: 'открытый огонь',
+    expressions: Object.freeze({ none: '1d6', minor: '1d6', serious: '2d6', deadly: '3d6' }),
+  }),
+  scalding: Object.freeze({
+    id: 'scalding', damage_type: 'fire', label: 'кипяток или пар',
+    expressions: Object.freeze({ none: '1d4', minor: '1d4', serious: '2d4', deadly: '3d4' }),
+  }),
+  crush: Object.freeze({
+    id: 'crush', damage_type: 'bludgeoning', label: 'обрушение или тяжёлый предмет',
+    expressions: Object.freeze({ none: '1d6', minor: '2d6', serious: '3d6', deadly: '4d6' }),
+  }),
+  caustic: Object.freeze({
+    id: 'caustic', damage_type: 'acid', label: 'едкое вещество',
+    expressions: Object.freeze({ none: '1d4', minor: '1d6', serious: '2d6', deadly: '3d6' }),
+  }),
+  shards: Object.freeze({
+    id: 'shards', damage_type: 'piercing', label: 'осколки или обломки',
+    expressions: Object.freeze({ none: '1d4', minor: '1d6', serious: '2d6', deadly: '2d6' }),
+  }),
+})
+
+export const IMPROVISED_EFFECT_IDS = Object.freeze(Object.keys(IMPROVISED_EFFECTS))
+export const ENVIRONMENT_HAZARD_IDS = Object.freeze(Object.keys(ENVIRONMENT_HAZARDS))
+
+function actorSide(state, actorIdValue) {
+  const id = clean(actorIdValue, 120)
+  if (!id) return null
+  if ((state?.players ?? []).some((actor) => String(actor?.id) === id)) return 'party'
+  if ((state?.actors ?? []).some((actor) => String(actor?.id) === id)) return 'party'
+  if ((state?.enemies ?? []).some((actor) => String(actor?.id) === id)) return 'enemy'
+  return null
+}
+
+function isAlive(state, actorIdValue) {
+  const id = clean(actorIdValue, 120)
+  const actor = [...(state?.players ?? []), ...(state?.actors ?? []), ...(state?.enemies ?? [])]
+    .find((candidate) => String(candidate?.id) === id)
+  if (!actor) return false
+  return actor.alive !== false && Number(actor.hp ?? 1) > 0
+}
+
+/**
+ * Сверка предложенного эффекта с миром. Единственное место, где «сбить с ног
+ * дракона» отличается от «сбить с ног того, кого на поле нет».
+ *
+ * Возвращает либо исполнимый план, либо причину отказа — отказ тоже честный
+ * ответ игроку, а не молчаливое превращение в «ничего не произошло».
+ */
+export function planImprovisedEffect(state, { actorId = '', effectId = 'none', targetId = '', hazardId = '', risk = 'minor' } = {}) {
+  const effect = IMPROVISED_EFFECTS[clean(effectId, 40)] ?? null
+  if (!effect) return { effect: IMPROVISED_EFFECTS.none, commands: [], summary: IMPROVISED_EFFECTS.none.summary }
+  if (effect.target === 'none') return { effect, commands: [], summary: effect.summary }
+
+  const target = clean(targetId, 120)
+  if (!target) return { effect: IMPROVISED_EFFECTS.none, rejected: 'цель не названа', commands: [], summary: IMPROVISED_EFFECTS.none.summary }
+  if (!isAlive(state, target)) return { effect: IMPROVISED_EFFECTS.none, rejected: 'цели нет на поле', commands: [], summary: IMPROVISED_EFFECTS.none.summary }
+
+  const actorTeam = actorSide(state, actorId)
+  const targetTeam = actorSide(state, target)
+  if (effect.target === 'enemy' && (!targetTeam || targetTeam === actorTeam)) {
+    return { effect: IMPROVISED_EFFECTS.none, rejected: 'этот эффект применяется к противнику', commands: [], summary: IMPROVISED_EFFECTS.none.summary }
+  }
+  if (effect.target === 'ally' && (targetTeam !== actorTeam || target === clean(actorId, 120))) {
+    return { effect: IMPROVISED_EFFECTS.none, rejected: 'этот эффект применяется к союзнику', commands: [], summary: IMPROVISED_EFFECTS.none.summary }
+  }
+
+  if (effect.requiresHazard) {
+    const hazard = ENVIRONMENT_HAZARDS[clean(hazardId, 40)] ?? null
+    if (!hazard) return { effect: IMPROVISED_EFFECTS.none, rejected: 'такой опасности нет в списке', commands: [], summary: IMPROVISED_EFFECTS.none.summary }
+    const expression = hazard.expressions[clean(risk, 20)] ?? hazard.expressions.minor
+    return {
+      effect,
+      hazard,
+      commands: [{
+        command_type: 'ApplyDamage',
+        actor_id: clean(actorId, 120),
+        target_id: target,
+        expression,
+        damage_type: hazard.damage_type,
+        source: `improvised:${hazard.id}`,
+      }],
+      summary: `${hazard.label}: цель получает урон (${expression}).`,
+    }
+  }
+
+  return {
+    effect,
+    commands: [{
+      command_type: 'AddCondition',
+      actor_id: clean(actorId, 120),
+      target_id: target,
+      condition: effect.condition,
+      ...(effect.duration ? { duration: effect.duration } : {}),
+      source: 'improvised-action',
+    }],
+    summary: effect.summary,
+  }
+}
+
+/**
+ * Цена хода. Модель предлагает слот, но потратить можно только свободный: если
+ * действие уже израсходовано, импровизация не проходит — как за столом.
+ */
+export function resolveActionCost(state, actorId, requestedCost) {
+  const combat = state?.mechanics?.combat
+  if (!combat?.active) return { cost: 'free', available: true }
+  const cost = ACTION_COSTS.includes(String(requestedCost)) ? String(requestedCost) : 'action'
+  if (cost === 'free') return { cost, available: true, slot: 'свободное взаимодействие' }
+  const economy = combat.action_economy?.[String(actorId)] ?? {}
+  if (cost === 'bonus_action') return { cost, available: economy.bonus_action !== false, slot: 'бонусное действие' }
+  return { cost, available: economy.action !== false, slot: 'действие' }
+}

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { TacticalMap, TacticalMaterial } from './types'
+import type { TacticalMap } from './types'
 import {
   DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardOverlay,
-  syncTileCache, visibleTiles,
-  type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture, type TileSurface,
+  syncTileCache, terrainKeysFor, visibleTiles,
+  type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture, type PropAtlas,
+  type TerrainTiles, type TileSurface,
 } from './board-render'
 
 /**
@@ -20,19 +21,28 @@ import {
 /** Предел стороны холста: дальше браузеры отказываются выделять буфер. */
 const MAX_CANVAS_SIDE = 8192
 
-/** Текстуры местности. Их отсутствие — штатный путь Р6, доска остаётся играбельной. */
-const TERRAIN_TEXTURES: Array<[TacticalMaterial, string]> = [
-  ['stone', '/assets/maps/terrain/stone.webp'],
-  ['wood', '/assets/maps/terrain/wood.webp'],
-  ['earth', '/assets/maps/terrain/earth.webp'],
-  ['grass', '/assets/maps/terrain/grass.webp'],
-  ['sand', '/assets/maps/terrain/sand.webp'],
-  ['marble', '/assets/maps/terrain/marble.webp'],
-  ['metal', '/assets/maps/terrain/metal.webp'],
-]
+/**
+ * Манифест растровых штампов предметов. Собирается `pnpm props:atlas`; его
+ * может не быть — тогда доска рисует предметы вектором (решение Р6 плана).
+ */
+const PROP_ATLAS_MANIFEST = '/assets/maps/props/prop-atlas.json'
+
+/** Манифест фактур пола, поверхностей и стен. Собирается `pnpm terrain:tiles`. */
+const TERRAIN_MANIFEST = '/assets/maps/terrain/terrain-tiles.json'
+
+type TerrainManifest = {
+  cellsPerTile: number
+  floors: Record<string, string>
+  surfaces: Record<string, string>
+  walls: Record<string, string>
+}
 
 const loadedTextures = new Map<string, BoardTexture>()
 const loadedArt = new Map<string, BoardTexture>()
+let propAtlas: PropAtlas | null = null
+let propAtlasAsked = false
+let terrainManifest: TerrainManifest | null = null
+let terrainAsked = false
 
 function loadImage(url: string, into: Map<string, BoardTexture>, onReady: () => void) {
   if (into.has(url) || typeof Image !== 'function') return
@@ -44,6 +54,79 @@ function loadImage(url: string, into: Map<string, BoardTexture>, onReady: () => 
     onReady()
   }
   image.src = url
+}
+
+/**
+ * Фактуры местности: манифест запрашивается один раз, а картинки — только те,
+ * что нужны текущей карте. Весь набор весит около четырёх мегабайт, и тянуть
+ * лёд с мрамором ради деревянной таверны незачем.
+ *
+ * Возвращается то, что **уже** загружено; недостающее ставится в очередь и
+ * приезжает следующим кадром. Поэтому доска рисуется сразу, а не ждёт сети.
+ */
+function terrainTilesFor(keys: { floors: string[]; surfaces: string[]; walls: string[] }, onReady: () => void): TerrainTiles | null {
+  const manifest = terrainManifest
+  if (!manifest) return null
+  const slots = [
+    ['floors', keys.floors, manifest.floors],
+    ['surfaces', keys.surfaces, manifest.surfaces],
+    ['walls', keys.walls, manifest.walls],
+  ] as const
+  const ready = { floors: new Map<string, BoardTexture>(), surfaces: new Map<string, BoardTexture>(), walls: new Map<string, BoardTexture>() }
+  let loaded = 0
+  for (const [slot, wanted, paths] of slots) {
+    for (const key of wanted) {
+      const path = paths[key]
+      if (!path) continue
+      const url = `/assets/${path}`
+      const texture = loadedTextures.get(url)
+      if (!texture) {
+        loadImage(url, loadedTextures, onReady)
+        continue
+      }
+      ready[slot].set(key, texture)
+      loaded += 1
+    }
+  }
+  if (!loaded) return null
+  return { cellsPerTile: manifest.cellsPerTile, ...ready, key: `tiles:${loaded}` }
+}
+
+function loadTerrainManifest(onReady: () => void) {
+  if (terrainAsked || typeof fetch !== 'function') return
+  terrainAsked = true
+  void fetch(TERRAIN_MANIFEST)
+    .then((response) => (response.ok ? response.json() : null))
+    .then((manifest) => {
+      if (!manifest?.cellsPerTile || !manifest?.floors) return
+      terrainManifest = manifest
+      onReady()
+    })
+    .catch(() => {})
+}
+
+/**
+ * Атлас грузится один раз на всё приложение: он общий для всех карт и весит
+ * пару мегабайт. Ошибка запроса не обрабатывается особо — доска остаётся
+ * векторной, и это штатный путь, а не поломка.
+ */
+function loadPropAtlas(onReady: () => void) {
+  if (propAtlasAsked || typeof fetch !== 'function') return
+  propAtlasAsked = true
+  void fetch(PROP_ATLAS_MANIFEST)
+    .then((response) => (response.ok ? response.json() : null))
+    .then((manifest) => {
+      const frames = manifest?.frames
+      if (!manifest?.image || !frames || !Object.keys(frames).length) return
+      const url = `/assets/${manifest.image}`
+      loadImage(url, loadedTextures, () => {
+        const texture = loadedTextures.get(url)
+        if (!texture) return
+        propAtlas = { texture, frames, key: `${manifest.image}:${texture.width}x${texture.height}` }
+        onReady()
+      })
+    })
+    .catch(() => {})
 }
 
 /**
@@ -120,7 +203,8 @@ export function TacticalBoard({
 
   useEffect(() => {
     const notify = () => setAssetsVersion((value) => value + 1)
-    for (const [, url] of TERRAIN_TEXTURES) loadImage(url, loadedTextures, notify)
+    loadPropAtlas(notify)
+    loadTerrainManifest(notify)
   }, [])
   useEffect(() => {
     if (artUrl) loadImage(artUrl, loadedArt, () => setAssetsVersion((value) => value + 1))
@@ -147,15 +231,16 @@ export function TacticalBoard({
     setAssetsVersion((value) => value + 1)
   }, [themeKey])
 
-  const textures = useMemo(() => {
-    const available = new Map<string, BoardTexture>()
-    for (const [material, url] of TERRAIN_TEXTURES) {
-      const texture = loadedTextures.get(url)
-      if (texture) available.set(material, texture)
-    }
-    // Лёд текстуры не имеет — он рисуется заливкой и декалью.
-    return available
-  }, [assetsVersion])
+  // Какие фактуры нужны этой карте: пересчитывается только при смене карты,
+  // обход всех клеток на каждый кадр был бы напрасной работой.
+  const terrainKeys = useMemo(
+    () => (map ? terrainKeysFor(map) : { floors: [], surfaces: [], walls: [] }),
+    [map?.terrainHash],
+  )
+  const terrain = useMemo(
+    () => terrainTilesFor(terrainKeys, () => setAssetsVersion((value) => value + 1)),
+    [terrainKeys, assetsVersion],
+  )
 
   const paint = useCallback(() => {
     const canvas = canvasRef.current
@@ -174,9 +259,10 @@ export function TacticalBoard({
       map,
       palette: paletteRef.current,
       cellSize,
-      textures,
+      terrain,
       art: artUrl ? loadedArt.get(artUrl) ?? null : null,
       artKey: artUrl ?? '',
+      propAtlas,
     }
 
     // Видимое окно в координатах клеток: холст лежит внутри трансформированного
@@ -205,7 +291,7 @@ export function TacticalBoard({
       )
     }
     drawBoardOverlay(context, scene, overlayCells)
-  }, [map, columns, rows, cellPixels, zoom, textures, artUrl, overlayCells, assetsVersion])
+  }, [map, columns, rows, cellPixels, zoom, terrain, artUrl, overlayCells, assetsVersion])
 
   useEffect(() => { paint() }, [paint, pan.x, pan.y])
 

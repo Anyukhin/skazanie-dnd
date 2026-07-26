@@ -7,8 +7,10 @@ import {
   assetById,
   assetsForTheme,
   listAssets,
+  readPropAtlas,
   registeredRightsIds,
   validateAssetRegistry,
+  withAtlasArt,
 } from '../server/asset-registry.mjs'
 
 test('реестр проходит собственную проверку', () => {
@@ -120,9 +122,32 @@ test('крупная мебель занимает больше одной кл�
   }
 })
 
-test('ни одна запись пока не заявляет растр — набор не нарисован', () => {
-  const withRaster = listAssets().filter((record) => record.raster)
-  assert.deepEqual(withRaster, [], 'заявлять нарисованный набор нельзя, пока его нет')
+test('растр берётся из атласа и ссылается на зарегистрированные права', () => {
+  const atlas = readPropAtlas()
+  const rights = registeredRightsIds()
+  assert.ok(atlas.image, 'манифест атласа не прочитался')
+  assert.ok(rights.has(atlas.image), `атлас ${atlas.image} не зарегистрирован в data/asset-rights.json`)
+
+  for (const record of listAssets()) {
+    if (!atlas.frames[record.id]) continue
+    assert.equal(record.raster, `${atlas.image}#${record.id}`, `${record.id}: растр не из атласа`)
+    assert.equal(record.rightsId, atlas.image, `${record.id}: растр без прав`)
+  }
+  // Кадр без записи реестра — это спрайт, который никто не нарисует.
+  for (const id of Object.keys(atlas.frames)) {
+    assert.ok(assetById(id), `в атласе есть кадр ${id}, а записи реестра под него нет`)
+  }
+})
+
+test('без атласа реестр остаётся векторным', () => {
+  // Решение Р6 плана: карта обязана рисоваться и без арта. Пустой манифест —
+  // это не поломка, а штатное состояние до первой сборки атласа.
+  const empty = readPropAtlas('нет такого файла.json')
+  assert.deepEqual(empty, { image: '', cellPixels: 0, frames: {} })
+
+  const vectorOnly = withAtlasArt(listAssets(), empty)
+  assert.deepEqual(vectorOnly.filter((record) => record.raster), [])
+  assert.deepEqual(validateAssetRegistry(vectorOnly).errors, [])
 })
 
 test('каждая тема этапа M6 имеет собственный набор предметов', () => {

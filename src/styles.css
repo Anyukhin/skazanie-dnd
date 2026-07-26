@@ -1468,3 +1468,35 @@ button.campaign-title:hover strong { color: #edc996; }
     transform: translate(-50%, 15%) scale(var(--counter-scale));
   }
 }
+
+/* Экран «кампания ещё не выбрана»: раньше его место занимал демо-мир. */
+.app.no-campaign { grid-template-columns: 1fr; }
+.campaign-empty-screen { min-height: 100vh; display: grid; align-content: center; justify-items: center; gap: 14px; padding: 40px 20px; text-align: center; color: #a9a094; }
+.campaign-empty-screen h1 { font: 600 26px Spectral, serif; color: #e8dcc8; }
+.campaign-empty-screen p { max-width: 460px; line-height: 1.6; }
+.campaign-empty-screen button { min-width: 220px; height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(255,255,255,.12); border-radius: 5px; background: rgba(255,255,255,.03); color: #cdc3b4; cursor: pointer; }
+.campaign-empty-screen button.primary { border-color: rgba(203,151,87,.32); background: linear-gradient(135deg, rgba(153,96,44,.18), rgba(91,60,36,.09)); color: #d2a268; }
+
+/* Прогноз удара: шанс попадания и его причины до клика. */
+.attack-forecast { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08); display: grid; gap: 6px; }
+.attack-forecast > header { display: flex; align-items: baseline; gap: 8px; }
+.attack-forecast > header b { font: 600 22px Spectral, serif; color: #e8dcc8; }
+.attack-forecast > header span { display: grid; font: 600 9px Manrope, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #8d8478; }
+.attack-forecast > header small { font-size: 8px; color: #756c61; }
+.attack-forecast.advantage > header b { color: #8fd0a2; }
+.attack-forecast.disadvantage > header b { color: #e6a5a0; }
+.attack-forecast dl { display: grid; gap: 2px; margin: 0; }
+.attack-forecast dl > div { display: flex; justify-content: space-between; gap: 10px; font: 500 11px Manrope, sans-serif; }
+.attack-forecast dt { color: #756c61; }
+.attack-forecast dd { margin: 0; color: #c2b9ac; }
+.attack-forecast ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; font: 500 10px Manrope, sans-serif; }
+.attack-forecast li.plus { color: #8fd0a2; }
+.attack-forecast li.minus { color: #e6a5a0; }
+.attack-forecast .forecast-note { font-size: 9px; color: #756c61; }
+
+/* Ставки хода: СЛ и цена провала рядом с результатом. */
+.turn-stakes { display: flex; align-items: flex-start; gap: 7px; margin-top: 8px; padding: 7px 9px; border: 1px solid rgba(203,151,87,.22); border-radius: 5px; background: rgba(153,96,44,.08); color: #c8a271; }
+.turn-stakes > svg { flex: none; margin-top: 2px; }
+.turn-stakes span { display: grid; gap: 2px; }
+.turn-stakes b { font: 600 11px Manrope, sans-serif; letter-spacing: .03em; }
+.turn-stakes small { font: 500 10px Manrope, sans-serif; color: #97826a; line-height: 1.45; }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { initialState } from './data'
+import { emptyState } from './data'
 import { fetchWithTimeout, generateItemImage, narrateWithAgent, rollDice, rollSharedDie } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
@@ -187,10 +187,11 @@ function mergeTacticalCommandState(current: GameState, authoritative: GameState,
 function loadState(): GameState {
   const requested = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
   const selected = requested || localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
-  if (!selected || selected === initialState.sessionCode) return structuredClone(initialState)
+  // Пока комната не выбрана, показываем пустую оболочку, а не демо-мир.
+  if (!selected) return structuredClone(emptyState)
   // Never restore a viewer-specific campaign projection from a cross-account
   // local cache. The authenticated room/SSE endpoints repopulate it.
-  return { ...structuredClone(initialState), sessionCode: selected, campaign: 'Загрузка кампании…' }
+  return { ...structuredClone(emptyState), sessionCode: selected, campaign: 'Загрузка кампании…' }
 }
 
 function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null): GameState {
@@ -377,8 +378,25 @@ export function useGameSession() {
       source.close()
       source = null
     }
+    // Комната могла быть удалена или в адресе просто опечатка. Без этой
+    // проверки клиент вечно переподключался к 404 и держал статус
+    // «Связь восстанавливается…».
+    let opened = false
+    let failedConnects = 0
+    const stopIfRoomMissing = async () => {
+      try {
+        const response = await fetch(`/api/rooms/${encodeURIComponent(state.sessionCode)}`)
+        const room = await response.json().catch(() => null) as { state?: unknown } | null
+        if (response.ok && room?.state) return false
+      } catch { return false }
+      active = false
+      closeSource()
+      setConnectionState('offline')
+      return true
+    }
     const scheduleReconnect = () => {
       if (!active || retryScheduled) return
+      if (!opened && ++failedConnects >= 2) { void stopIfRoomMissing().then((stopped) => { if (!stopped) failedConnects = 0 }) }
       retryScheduled = true
       setConnectionState('reconnecting')
       closeSource()
@@ -397,6 +415,8 @@ export function useGameSession() {
       nextSource.addEventListener('room', receive as EventListener)
       nextSource.onopen = () => {
         retryDelay = 1_000
+        opened = true
+        failedConnects = 0
         setConnectionState('connected')
         flushQueuedRooms()
       }
@@ -415,6 +435,9 @@ export function useGameSession() {
   }, [directorBusy, flushQueuedRooms, merchantBusy, state.isNarrating, tacticalBusy])
 
   useEffect(() => {
+    // Пока кампания не выбрана, опрашивать нечего: запрос уходил на
+    // `/api/rooms/` и раз в 15 секунд писал в консоль «Комната недоступна».
+    if (!state.sessionCode) return
     let active = true
     const sync = async () => {
       try {
@@ -440,11 +463,9 @@ export function useGameSession() {
             flushQueuedRooms()
           }
         }
-        if (!room.state && state.sessionCode === initialState.sessionCode) {
-          roomVersion.current = room.version
-          applyRemote(structuredClone(initialState))
-          persistRemote(structuredClone(initialState))
-        } else if (room.state && room.version > roomVersion.current) {
+        // Пустую комнату больше не засеваем демо-миром: выдуманный отряд
+        // уезжал на сервер и подменял «кампаний пока нет».
+        if (room.state && room.version > roomVersion.current) {
           if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current || systemTickBusy.current) {
             queueRoomSnapshot(room)
           } else {
@@ -486,6 +507,9 @@ export function useGameSession() {
       id: `${Date.now()}-agent`, speaker: 'narrator', author: 'Рассказчик',
       timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
       text: aiResult.narration, roll: aiResult.effects.roll ?? roll, turnConsumed: consumesTurn,
+      // Ставки приходили в ответе, но нигде не показывались: игрок узнавал СЛ
+      // и цену провала только из объяснения `/why`, если додумывался спросить.
+      ...(aiResult.stakes ? { stakes: aiResult.stakes } : {}),
     }
     const narrationPersisted = Boolean(aiResult?.narration_message_id)
       && base.messages.some((message) => message.id === aiResult?.narration_message_id)
@@ -752,13 +776,16 @@ export function useGameSession() {
     void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${interaction.title}: ${winner.label}. ${interaction.resolutionPrompt}`)
   }, [state.agentInteraction, submitAction])
 
-  const executeTacticalCommand = useCallback(async (command: TacticalCommand, message: string) => {
-    if (tacticalBusyRef.current) return
+  // Возвращает исход, а не только пишет его в tacticalError: вызывающему коду
+  // (мастеру создания персонажа) нужно отличить отказ сервера от успеха, иначе
+  // он закрывает себя и теряет черновик при 400.
+  const executeTacticalCommand = useCallback(async (command: TacticalCommand, message: string): Promise<{ ok: boolean; error?: string }> => {
+    if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
     const current = stateRef.current
     const combatActorId = currentCombatActorId(current)
     if (!canIssueUiTacticalCommand(current.mechanics?.combat, command, combatActorId)) {
       setTacticalError('Сейчас ход другого участника боя.')
-      return
+      return { ok: false, error: 'Сейчас ход другого участника боя.' }
     }
 
     const requestId = commandId()
@@ -790,8 +817,11 @@ export function useGameSession() {
       }
       if (version != null) roomVersion.current = latestRoomVersion(roomVersion.current, version)
       applyRemote(mergeTacticalCommandState(stateRef.current, authoritative, result ?? {}, requestId))
+      return { ok: true }
     } catch (error) {
-      setTacticalError(error instanceof Error ? error.message : 'Не удалось выполнить команду на сервере')
+      const text = error instanceof Error ? error.message : 'Не удалось выполнить команду на сервере'
+      setTacticalError(text)
+      return { ok: false, error: text }
     } finally {
       tacticalBusyRef.current = false
       setTacticalBusy(false)
@@ -903,7 +933,8 @@ export function useGameSession() {
       setTacticalError(error.message)
       throw error
     }
-    await executeTacticalCommand({ command_type: 'ImportCharacter', actor_id: playerId, document }, 'Импортировать версионированный лист персонажа')
+    const outcome = await executeTacticalCommand({ command_type: 'ImportCharacter', actor_id: playerId, document }, 'Импортировать версионированный лист персонажа')
+    if (!outcome.ok) throw new Error(outcome.error || 'Сервер отклонил создание персонажа.')
   }, [executeTacticalCommand])
 
   const levelUpCharacter = useCallback((playerId: string, expectedLevel: number) => {
@@ -1125,16 +1156,19 @@ export function useGameSession() {
     }
   }, [applyRemote])
 
+  // Раньше сюда подставлялся демо-мир целиком: реальная кампания получала
+  // «Затопленный архив», чужого стража и три вымышленные реплики. Теперь это
+  // ровно то, что обещает кнопка, — снять бой и поднять отряд.
   const reset = useCallback(() => mutate((current) => {
-    const fresh = structuredClone(initialState)
     const members = current.partyMemberIds?.length ? current.partyMemberIds : current.players.map((player) => player.id)
     return {
-      ...fresh,
-      sessionCode: current.sessionCode,
-      campaign: current.campaign,
-      partyName: current.partyName,
-      partyMemberIds: members,
-      players: current.players.map((player, index) => ({ ...player, hp: player.maxHp, x: fresh.players[index]?.x ?? 3, y: fresh.players[index]?.y ?? 4 })),
+      ...current,
+      players: current.players.map((player) => ({ ...player, hp: player.maxHp })),
+      enemies: [],
+      battleLog: [],
+      tacticalTurn: { sceneTurn: 0, actorId: '', movementSpent: 0, actionUsed: false },
+      pendingCheck: null,
+      isNarrating: false,
       activePlayerId: members[0] ?? current.players[0]?.id ?? '',
     }
   }), [mutate])

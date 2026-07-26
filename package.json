@@ -28,7 +28,11 @@
     "start": "node server/index.mjs",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
-    "icons:manifest": "node tools/build-icon-manifest.mjs"
+    "icons:manifest": "node tools/build-icon-manifest.mjs",
+    "props:atlas": "node tools/build-prop-atlas.mjs",
+    "props:rights": "node tools/register-asset-rights.mjs --all-under maps/props",
+    "terrain:tiles": "node tools/build-terrain-tiles.mjs",
+    "terrain:rights": "node tools/register-asset-rights.mjs --all-under maps/terrain"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.3",

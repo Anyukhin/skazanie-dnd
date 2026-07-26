@@ -58,7 +58,7 @@ function recordingContext() {
     strokeRect() { ops.push({ op: 'strokeRect', value: styles.strokeStyle }) },
     clearRect() { ops.push({ op: 'clearRect' }) },
     setLineDash() {},
-    drawImage() { ops.push({ op: 'drawImage' }) },
+    drawImage(...args) { ops.push({ op: 'drawImage', args }) },
   }
   for (const name of ['fillStyle', 'strokeStyle']) {
     Object.defineProperty(context, name, {
@@ -247,6 +247,147 @@ test('при максимальном отдалении предметы ост
   const context = recordingContext()
   render.drawProps(context, { map: clientMap, palette, cellSize: 8 }, tile)
   assert.ok(context.ops.length > 0, 'на общем плане предмет обязан оставаться меткой, а не исчезать')
+})
+
+/** Атлас-пустышка: важны только кадры и размеры, картинка в тестах не рисуется. */
+function stubAtlas(frames) {
+  return { texture: { image: {}, width: 512, height: 512 }, frames, key: 'stub-atlas' }
+}
+
+test('штамп из атласа заменяет вектор и сохраняет пропорцию рисунка', () => {
+  const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true } })
+  addProp(map, { id: 'prop-crate', assetId: 'crate', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
+  const clientMap = decoded(map)
+  const tile = { tileX: 0, tileY: 0 }
+  const palette = render.DEFAULT_BOARD_PALETTE
+  const cellSize = 48
+
+  const context = recordingContext()
+  const atlas = stubAtlas({ crate: { x: 10, y: 20, w: 96, h: 48 } })
+  render.drawProps(context, { map: clientMap, palette, cellSize, propAtlas: atlas }, tile)
+  const stamp = context.ops.find((item) => item.op === 'drawImage')
+  assert.ok(stamp, 'при наличии кадра предмет обязан рисоваться штампом')
+  const [, sx, sy, sw, sh, , , dw, dh] = stamp.args
+  assert.deepEqual([sx, sy, sw, sh], [10, 20, 96, 48], 'окно берётся из кадра атласа')
+  assert.ok(Math.abs(dw / dh - 2) < 1e-6, `пропорция рисунка поехала: ${dw}×${dh}`)
+  // Габарит клетки 1×1 — растянуть кадр 2:1 на квадрат нельзя.
+  const box = cellSize * render.PROP_FOOTPRINT_FILL
+  assert.ok(dw <= box + 1e-6 && dh <= box + 1e-6, `штамп вышел за габарит: ${dw}×${dh} при ${box}`)
+})
+
+test('без атласа и без своего кадра предмет остаётся векторным', () => {
+  const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true } })
+  addProp(map, { id: 'prop-crate', assetId: 'crate', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
+  const clientMap = decoded(map)
+  const tile = { tileX: 0, tileY: 0 }
+  const palette = render.DEFAULT_BOARD_PALETTE
+
+  // Играбельность без арта — блокирующее требование (решение Р6 плана).
+  const withoutAtlas = recordingContext()
+  render.drawProps(withoutAtlas, { map: clientMap, palette, cellSize: 48 }, tile)
+  assert.equal(withoutAtlas.ops.some((item) => item.op === 'drawImage'), false)
+  assert.ok(withoutAtlas.ops.length > 2, 'без атласа предмет обязан быть нарисован вектором')
+
+  // Атлас есть, но кадра этого предмета в нём нет: темы подключаются по одной.
+  const foreign = recordingContext()
+  render.drawProps(foreign, { map: clientMap, palette, cellSize: 48, propAtlas: stubAtlas({ barrel: { x: 0, y: 0, w: 8, h: 8 } }) }, tile)
+  assert.equal(foreign.ops.some((item) => item.op === 'drawImage'), false)
+  assert.ok(foreign.ops.length > 2)
+})
+
+test('на общем плане штамп уступает силуэту, а ключ тайла помнит про атлас', () => {
+  const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true } })
+  addProp(map, { id: 'prop-crate', assetId: 'crate', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
+  const clientMap = decoded(map)
+  const tile = { tileX: 0, tileY: 0 }
+  const palette = render.DEFAULT_BOARD_PALETTE
+  const atlas = stubAtlas({ crate: { x: 0, y: 0, w: 96, h: 96 } })
+
+  const small = recordingContext()
+  render.drawProps(small, { map: clientMap, palette, cellSize: render.PROP_FULL_DETAIL_CELL_PIXELS - 1, propAtlas: atlas }, tile)
+  assert.equal(small.ops.some((item) => item.op === 'drawImage'), false,
+    'на мелкой клетке штамп не нужен: там всё равно несколько пикселей')
+
+  // Подгрузка атласа обязана обесценить кэш тайла, иначе местность останется
+  // нарисованной вектором до первого изменения карты.
+  const withoutAtlas = render.tileKey({ map: clientMap, palette, cellSize: 48 }, tile)
+  const withAtlas = render.tileKey({ map: clientMap, palette, cellSize: 48, propAtlas: atlas }, tile)
+  assert.notEqual(withoutAtlas, withAtlas)
+})
+
+/** Тайлсет-пустышка: плитка на восемь клеток, картинка в тестах не рисуется. */
+function stubTerrain(floors = ['wood'], surfaces = [], walls = ['stone']) {
+  const texture = { image: {}, width: 512, height: 512 }
+  const asMap = (keys) => new Map(keys.map((key) => [key, texture]))
+  return { cellsPerTile: 8, floors: asMap(floors), surfaces: asMap(surfaces), walls: asMap(walls), key: 'stub-terrain' }
+}
+
+test('фактура пола раскладывается по карте непрерывно, а не повторяется в каждой клетке', () => {
+  const map = createTacticalMap({ width: 12, height: 4, fill: { passable: true, revealed: true, material: 'wood' } })
+  const clientMap = decoded(map)
+  const context = recordingContext()
+  const scene = { map: clientMap, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 40, terrain: stubTerrain() }
+  render.drawFloorTiles(context, scene, { tileX: 0, tileY: 0 })
+
+  const stamps = context.ops.filter((item) => item.op === 'drawImage')
+  assert.equal(stamps.length, 48, 'каждая клетка обязана получить свой кусок фактуры')
+  // Клетка (0,0) и клетка (1,0) берут соседние окна, а (8,0) — снова первое:
+  // плитка на восемь клеток, значит через восемь клеток рисунок повторяется.
+  const window = (index) => stamps[index].args.slice(1, 5)
+  assert.deepEqual(window(0), [0, 0, 64, 64])
+  assert.deepEqual(window(1), [64, 0, 64, 64])
+  assert.deepEqual(window(8), window(0))
+})
+
+test('стена берёт фактуру кладки, а не пола', () => {
+  assert.equal(render.wallTextureKeyFor('wood'), 'wood')
+  assert.equal(render.wallTextureKeyFor('marble'), 'plaster')
+  assert.equal(render.wallTextureKeyFor('grass'), 'cave', 'земля и трава — это порода, а не постройка')
+
+  const map = createTacticalMap({ width: 2, height: 1, fill: { passable: true, revealed: true, material: 'stone' } })
+  setCell(map, 1, 0, { passable: false })
+  const clientMap = decoded(map)
+  const keys = render.terrainKeysFor(clientMap)
+  assert.deepEqual(keys.floors, ['stone'])
+  assert.deepEqual(keys.walls, ['stone'], 'непроходимой клетке нужна фактура кладки')
+})
+
+test('карте запрашиваются только те фактуры, которые на ней есть', () => {
+  const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true, material: 'grass' } })
+  setCell(map, 1, 1, { material: 'wood' })
+  setCell(map, 2, 2, { surface: 'water' })
+  const keys = render.terrainKeysFor(decoded(map))
+  assert.deepEqual(keys.floors, ['grass', 'wood'])
+  assert.deepEqual(keys.surfaces, ['water'])
+  assert.equal(keys.floors.includes('marble'), false, 'мрамор на этой карте не нужен и грузиться не должен')
+})
+
+test('дверь, окно и ограда рисуются штампом, а без него — прежней сборкой', () => {
+  const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true } })
+  setEdge(map, 1, 1, 2, 1, { kind: 'door', doorId: 'door-1' })
+  setDoor(map, { id: 'door-1', x: 1, y: 1, dir: 'e', state: 'locked' })
+  setEdge(map, 2, 2, 2, 3, { kind: 'window' })
+  setEdge(map, 0, 0, 0, 1, { kind: 'rail' })
+  const clientMap = decoded(map)
+  const tile = { tileX: 0, tileY: 0 }
+  const palette = render.DEFAULT_BOARD_PALETTE
+  const frames = {
+    door_iron: { x: 0, y: 0, w: 96, h: 36 },
+    window_glazed: { x: 96, y: 0, w: 96, h: 40 },
+    rail_fence: { x: 192, y: 0, w: 96, h: 35 },
+  }
+
+  const withStamps = recordingContext()
+  render.drawEdgeSegments(withStamps, { map: clientMap, palette, cellSize: 48, propAtlas: stubAtlas(frames) }, tile)
+  const drawn = withStamps.ops.filter((item) => item.op === 'drawImage').map((item) => item.args.slice(1, 5))
+  assert.equal(drawn.length, 3, 'дверь, окно и ограда — три штампа')
+  // Запертая дверь показывается окованной: состояние обязано читаться с карты.
+  assert.ok(drawn.some((window) => window[0] === 0 && window[2] === 96), 'запертая дверь взяла не тот кадр')
+
+  const withoutStamps = recordingContext()
+  render.drawEdgeSegments(withoutStamps, { map: clientMap, palette, cellSize: 48 }, tile)
+  assert.equal(withoutStamps.ops.some((item) => item.op === 'drawImage'), false)
+  assert.ok(withoutStamps.ops.length > 3, 'без атласа дверь и окно обязаны рисоваться заливками')
 })
 
 test('без арта каждая клетка получает непрозрачный цвет, а пол, стена и дверь различаются', () => {

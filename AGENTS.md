@@ -54,6 +54,13 @@ pnpm spells:verify    # сверка серверных override заклина�
                       # есть радиус, формулы разбираются, ключи не дублируются.
                       # Обязательно после правки data/dndsu-spell-mechanics-overrides.json
 pnpm cutover:audit    # расхождения room/snapshot/replay (не меняет данные)
+pnpm props:atlas      # пересборка растрового атласа предметов из листов штампов:
+                      # pnpm props:atlas --sheets assets-src/prop-stamps, затем pnpm props:rights.
+                      # Листы лежат вне репозитория, поэтому в pnpm verify сборка не входит;
+                      # собранный атлас сверяется тестом test/prop-atlas.test.mjs
+pnpm props:rights     # хеши атласа в data/asset-rights.json (иначе content:verify падает на дрейфе)
+pnpm terrain:tiles    # пересборка фактур пола, поверхностей и стен из assets-src/floor-wall-stamps:
+                      # сшивает края, уменьшает, пишет палитровым PNG. Затем pnpm terrain:rights
 pnpm migrate:dry-run  # прогон миграций без записи
 pnpm backup           # СЛОМАН: запускает CLI без аргументов, печатает usage и выходит с 1.
                       # Рабочий вызов: node tools/storage-backup.mjs create ./storage <файл>,

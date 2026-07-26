@@ -5,22 +5,26 @@ const FREE_ACTION_PATTERNS = Object.freeze([
   ['bounded_scene_action', /(подпира\w*|баррикад\w*|поджига\w*|зажига\w*|зову\w*\s+страж|крич\w*\s+страж|связыва\w*|прячу\w*\s+след\w*|заслоня\w*)/iu],
 ])
 
+// Шаблоны намерений тоже привязаны к началу слова: без границы `долг` ловил
+// «долго», `тон` — «стоном», а `rest` — любое английское слово с этой
+// подстрокой, и обычная фраза уезжала в отдых или в проверку Силы.
+const W = '(?<![\\p{L}\\p{M}])'
 const INTENT_PATTERNS = [
   ['why', /^\s*\/why\b/i],
-  ['attack', /(атак|удар|бью|стреля|выстрел|рублю|колю|attack|shoot|strike)/iu],
-  ['saving_throw', /(спасброс|saving\s*throw|save)/iu],
+  ['attack', new RegExp(`${W}(атак|удар|бью|стреля|выстрел|рублю|колю|attack|shoot|strike)`, 'iu')],
+  ['saving_throw', new RegExp(`${W}(спасброс|saving\\s*throw|save)`, 'iu')],
   ['improvised_action', FREE_ACTION_PATTERNS[0][1]],
   ['improvised_action', FREE_ACTION_PATTERNS[1][1]],
-  ['ability_check', /(провер|пытаюсь|исслед|осматр|крадусь|взлом|убежд|выбираюсь|выплыв|плыву|тон\w*|check|swim|drown)/iu],
-  ['healing', /(леч|исцел|восстанов.*хит|heal)/iu],
+  ['ability_check', new RegExp(`${W}(провер|пытаюсь|исслед|осматр|осмотр|крадусь|взлом|убежд|выбираюсь|выплыв|плыву|тону|утоп|check|swim|drown)`, 'iu')],
+  ['healing', new RegExp(`${W}(леч|исцел|восстанов\\p{L}*\\s+хит|heal)`, 'iu')],
   ['damage', /(получает?\s+урон|нанести\s+урон|damage)/iu],
-  ['cast_spell', /(каст|заклин|сотвор|spell)/iu],
+  ['cast_spell', new RegExp(`${W}(каст|заклин|сотвор|spell)`, 'iu')],
   ['start_combat', /(начать\s+бой|инициатив|start\s+combat)/iu],
   ['end_combat', /((законч|заверш|прекрат)\p{L}*\s+бой|бой\s+(окончен|заверш[её]н)|end\s+combat)/iu],
   ['end_turn', /^\s*(заканчиваю\s+ход|конец\s+хода|end\s+turn)\s*[.!]?\s*$/iu],
-  ['rest', /(коротк|долг|привал|отдых|rest)/iu],
-  ['social', /(говор|убежд|обман|запуг|спраш|переговор)/iu],
-  ['explore', /(осматр|исслед|иду|двига|открыва|ищу|слуша)/iu],
+  ['rest', new RegExp(`${W}(коротк\\p{L}*\\s+отдых|долг\\p{L}*\\s+отдых|привал|отдых|отдыха|rest)`, 'iu')],
+  ['social', new RegExp(`${W}(говор|убежд|обман|запуг|спраш|переговор)`, 'iu')],
+  ['explore', new RegExp(`${W}(осматр|исслед|иду|двига|открыва|ищу|слуша)`, 'iu')],
 ]
 
 export function classifyFreeActionKind(value) {
@@ -73,15 +77,24 @@ function mentionedActors(message, state) {
   return visibleActors(state).filter((actor) => namesFor(actor).some((name) => mentionsName(lower, name)))
 }
 
+/**
+ * Подходы распознаются по началу слова. Раньше шаблоны были подстроками без
+ * границы, и «сломанные вёсла» попадали в `лома` → проверка Силы, а «дверь со
+ * стоном» — в `тон`. Осмотр и поиск проверяются раньше силовых глаголов:
+ * «осматриваю сломанные вёсла» — это Внимательность, а не попытка что-то
+ * сдвинуть.
+ */
+const APPROACH_PATTERNS = Object.freeze([
+  ['perception', /(?<![\p{L}\p{M}])(осматр|осмотр|разгляд|рассматр|высматр|замеч|заметить|ищу|искать|поиск|обыск|прислуш|слуша|следы?|улик)/iu],
+  ['arcana', /(?<![\p{L}\p{M}])(маги|магич|рун|заклинан|чароде|arcan)/iu],
+  ['stealth', /(?<![\p{L}\p{M}])(крад|тихо|тихонь|скрыт|прячу|прятать|незамет|stealth|sneak)/iu],
+  ['persuasion', /(?<![\p{L}\p{M}])(убежд|уговар|угово|диплом|persuad)/iu],
+  ['intimidation', /(?<![\p{L}\p{M}])(запуг|угрож|припуг|intimidat)/iu],
+  ['strength', /(?<![\p{L}\p{M}])(плыв|плава|тону|утоп|выламыв|ломаю|сломать|взлома|толка|толкаю|поднима|подним|тащ|оттаск|силой|swim|drown|shove|lift)/iu],
+])
+
 function inferApproach(message) {
-  if (/плыв|выбираюсь.*вод|тон\w*|swim|drown/iu.test(message)) return 'strength'
-  if (/крад|тихо|скрыт/iu.test(message)) return 'stealth'
-  if (/убежд|диплом|угов/iu.test(message)) return 'persuasion'
-  if (/запуг|угрож/iu.test(message)) return 'intimidation'
-  if (/сил|лома|толка|поднима/iu.test(message)) return 'strength'
-  if (/осматр|замеч|ищу|слуш/iu.test(message)) return 'perception'
-  if (/маг|рун|заклин/iu.test(message)) return 'arcana'
-  return 'unspecified'
+  return APPROACH_PATTERNS.find(([, pattern]) => pattern.test(message))?.[0] ?? 'unspecified'
 }
 
 export class IntentParser {

@@ -32,14 +32,14 @@ import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
-import { Narrator } from './narrator.mjs'
+import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CreativeDirector } from './creative-director.mjs'
 import { NpcControllerAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
-import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, applyGameEvent, normalizeCampaignState } from './rules-engine.mjs'
+import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
@@ -47,6 +47,7 @@ import { SceneArchitectAgent } from './scene-architect.mjs'
 import { proposeAgentInteraction, resolvePartyDecision } from './agent-router.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
+import { ActionAdjudicator } from './action-adjudicator.mjs'
 import { DirectorAgent } from './director-agent.mjs'
 import {
   MAX_CURRENCY_CP,
@@ -83,6 +84,10 @@ import { characterCreationCatalog, createCharacterSlot } from './character-lifec
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
+// Кампания на одного игрока — поддерживаемый режим; четвёрка осталась верхней
+// границей, а не обязательным составом.
+const MIN_PARTY_SLOTS = 1
+const MAX_PARTY_SLOTS = 4
 const port = Number(process.env.AGENT_PORT || 8787)
 const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
@@ -142,7 +147,8 @@ const creativeDirector = new CreativeDirector({ narrator })
 const npcController = new NpcControllerAgent({ llmClient: apiKey ? llmClient : null })
 const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmClient : null })
 const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null })
-const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator })
+const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
+const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
 
 function json(res, status, body) {
@@ -881,6 +887,79 @@ function narrationMessageId(idempotencyKey) {
   return `narration-${createHash('sha256').update(String(idempotencyKey)).digest('hex').slice(0, 20)}`
 }
 
+function playerMessageId(idempotencyKey) {
+  return `player-${createHash('sha256').update(String(idempotencyKey)).digest('hex').slice(0, 20)}`
+}
+
+function journalRoll(roll) {
+  // Бросок хранится вместе с репликой: иначе после перезагрузки в летописи
+  // оставался только текст, а карточка «d20: 11 + 0 → провал» исчезала.
+  if (!roll || typeof roll !== 'object') return null
+  const total = Number(roll.total)
+  // Без исхода карточка нарисовала бы «осложнение» на любом броске, поэтому
+  // сохраняем только разрешённые проверки.
+  if (!Number.isFinite(total) || typeof roll.success !== 'boolean') return null
+  return {
+    value: Number(roll.value) || 0,
+    modifier: Number(roll.modifier) || 0,
+    total,
+    label: String(roll.label || 'Проверка').slice(0, 80),
+    success: roll.success,
+  }
+}
+
+function journalStakes(stakes) {
+  if (!stakes || typeof stakes !== 'object') return null
+  const difficulty = Number(stakes.difficulty)
+  if (!Number.isFinite(difficulty)) return null
+  return {
+    ...(stakes.skill ? { skill: String(stakes.skill).slice(0, 60) } : {}),
+    ...(stakes.ability ? { ability: String(stakes.ability).slice(0, 20) } : {}),
+    difficulty,
+    ...(stakes.difficulty_category ? { difficulty_category: String(stakes.difficulty_category).slice(0, 40) } : {}),
+    ...(stakes.on_failure ? { on_failure: String(stakes.on_failure).slice(0, 300) } : {}),
+  }
+}
+
+function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null }) {
+  const storedRoll = journalRoll(roll)
+  const storedStakes = journalStakes(stakes)
+  return {
+    id: String(id),
+    speaker: speaker === 'system' ? 'system' : speaker === 'player' ? 'player' : 'narrator',
+    author: String(author || (speaker === 'system' ? 'Система боя' : 'Рассказчик')).slice(0, 80),
+    timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
+    text: String(text).slice(0, 2000),
+    turnConsumed: Boolean(turnConsumed),
+    ...(storedRoll ? { roll: storedRoll } : {}),
+    ...(storedStakes ? { stakes: storedStakes } : {}),
+  }
+}
+
+// Летопись — часть снимка комнаты, а не поток событий (Рассказчик событий не
+// создаёт). Раньше реплика сохранялась только вместе с проекцией
+// authoritative_state, поэтому отыгрыш без механики и реплики самих игроков
+// пропадали при первой же синхронизации комнаты.
+const JOURNAL_HISTORY_LIMIT = 400
+
+function appendRoomJournal(campaignId, entries) {
+  const wanted = entries.filter((entry) => entry?.id && String(entry.text ?? '').trim())
+  if (!wanted.length) return null
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const room = getRoom(campaignId)
+    if (!room.state) return null
+    const existing = new Set((room.state.messages ?? []).map((message) => String(message.id)))
+    // Через `journalEntry`, а не сырыми: иначе в летописи оказывается реплика
+    // без автора и времени — ровно это и было видно как «narrator/undefined».
+    const fresh = wanted.filter((entry) => !existing.has(String(entry.id))).map(journalEntry)
+    if (!fresh.length) return room
+    const messages = [...(room.state.messages ?? []), ...fresh].slice(-JOURNAL_HISTORY_LIMIT)
+    const saved = saveRoom(campaignId, { ...room.state, messages }, room.version)
+    if (!saved.conflict) return saved.room
+  }
+  return null
+}
+
 function applySecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('Referrer-Policy', 'no-referrer')
@@ -948,10 +1027,59 @@ function partyVoterSnapshot(campaignId, state, eligibleHeroIds) {
   }
 }
 
+/**
+ * Прогноз удара для интерфейса. Считается на сервере по доверенному состоянию:
+ * игрок видит шанс попадания и его причины до клика, но не получает скрытые
+ * параметры врага — КД раскрывается только там, где уже раскрыто здоровье.
+ */
+function withCombatForecast(projected, trustedState, viewerActorId) {
+  if (!projected || !trustedState?.mechanics?.combat?.active) return projected
+  const attackerId = String(trustedState.mechanics.combat.initiative?.[trustedState.mechanics.combat.active_index ?? 0]?.actor_id ?? '')
+  if (!attackerId) return projected
+  // Прогноз нужен только тому, кто сейчас ходит: чужой ход игрок не планирует.
+  const controls = String(viewerActorId ?? '') === attackerId
+    || (projected.players ?? []).some((player) => String(player.id) === attackerId)
+  if (!controls) return projected
+  const attacker = (trustedState.players ?? []).concat(trustedState.actors ?? []).find((actor) => String(actor.id) === attackerId)
+  if (!attacker) return projected
+  const options = [
+    ...(attacker.inventory ?? []).filter((item) => item?.equipped && item?.combat?.kind).map((item) => ({ itemId: String(item.id), label: String(item.name ?? 'Оружие') })),
+    { itemId: null, label: 'Базовая атака' },
+  ].slice(0, 6)
+  const forecast = {}
+  for (const enemy of trustedState.enemies ?? []) {
+    if (!enemy || enemy.alive === false || Number(enemy.hp) <= 0) continue
+    const enemyId = String(enemy.id)
+    const visible = (projected.enemies ?? []).find((candidate) => String(candidate.id) === enemyId)
+    if (!visible) continue
+    const exact = visible.healthKnown === 'exact'
+    const entries = []
+    for (const option of options) {
+      const shot = attackForecast(trustedState, attackerId, enemyId, { itemId: option.itemId })
+      if (!shot) continue
+      entries.push({
+        ...shot,
+        label: option.label,
+        item_id: option.itemId,
+        ...(exact ? {} : { armor_class: null, cover_bonus: shot.cover_bonus }),
+      })
+    }
+    if (entries.length) forecast[enemyId] = entries
+  }
+  return Object.keys(forecast).length ? { ...projected, combatForecast: { actor_id: attackerId, targets: forecast } } : projected
+}
+
+function viewerStateFor(state, user, actorId) {
+  return withCombatForecast(campaignStateForViewer(state, user, actorId), state, actorId)
+}
+
 function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
   const connections = streamConnections(campaignId)
   const onlineHeroIds = connectedHeroIdsForCampaign(campaignId)
+  if ([...connections.values()].some((connection) => connection.controlsParty)) {
+    for (const player of state.players ?? []) onlineHeroIds.add(String(player.id))
+  }
   return {
     ...state,
     players: (state.players ?? []).map((player) => ({
@@ -986,7 +1114,7 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
     // Что закэшировано у клиента, соединение знает точно: оно само это и
     // отправило. Пока соединение живо, порядок сообщений сохраняется, а на
     // переподключении объект соединения новый и карта уходит целиком.
-    const projected = campaignStateForViewer(state, connection.user, connection.actorId)
+    const projected = viewerStateFor(state, connection.user, connection.actorId)
     const compacted = compactStateForTransport(projected, connection.mapHash)
     const written = writeCampaignStream(connection, 'room', {
       version: room.version,
@@ -1087,6 +1215,9 @@ const gameOrchestrator = new GameOrchestrator({
   traceStore,
   narrator,
   npcSocialController,
+  // Свободные действия судит тот же арбитр, что и автономный цикл: иначе у
+  // одного вопроса появилось бы два разных ответа.
+  unknownActionHandler: autonomousCampaign,
 })
 
 async function latestCampaignState(campaignId, fallbackState) {
@@ -1347,16 +1478,12 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     const sceneChanged = forceProjectorRefresh || ['SceneAdvanced', 'AreaRevealed', 'ObjectiveUpdated', 'EntitySpawned'].some((type) => eventTypes.has(type))
     const partyDecisionChanged = ['PartyDecisionOpened', 'PartyVoteCast', 'PartyDecisionAbstained', 'PartyDecisionResolved', 'PartyDecisionExpired', 'PartyDecisionConsumed'].some((type) => eventTypes.has(type))
     const messages = [...(room.state.messages ?? [])]
-    if (journalMessage?.id && journalMessage?.text && !messages.some((message) => String(message.id) === String(journalMessage.id))) {
-      messages.push({
-        id: String(journalMessage.id),
-        speaker: journalMessage.speaker === 'system' ? 'system' : 'narrator',
-        author: String(journalMessage.author || (journalMessage.speaker === 'system' ? 'Система боя' : 'Рассказчик')).slice(0, 80),
-        timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
-        text: String(journalMessage.text).slice(0, 2000),
-        turnConsumed: Boolean(journalMessage.turnConsumed),
-      })
+    for (const candidate of [journalMessage].flat()) {
+      if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
+      if (messages.some((message) => String(message.id) === String(candidate.id))) continue
+      messages.push(journalEntry(candidate))
     }
+    if (messages.length > JOURNAL_HISTORY_LIMIT) messages.splice(0, messages.length - JOURNAL_HISTORY_LIMIT)
     let next = normalizeCampaignState({
       ...room.state,
       messages,
@@ -1707,7 +1834,10 @@ const server = createServer(async (req, res) => {
     const connectionId = `stream-${process.pid}-${++campaignStreamSequence}`
     const heroIds = campaignHeroIds(user, campaignId).map(String)
     const actorId = heroIds.find((id) => room.state.players?.some((player) => String(player.id) === id)) ?? ''
-    const connection = { id: connectionId, userId: String(user.id), user, heroIds, actorId, res, closed: false, mapHash: '' }
+    // Администратор ведёт весь отряд, но за его аккаунтом герои не закреплены,
+    // поэтому heroIds пуст и присутствие показывало «0 в сети».
+    const controlsParty = user?.role === 'admin'
+    const connection = { id: connectionId, userId: String(user.id), user, heroIds, actorId, controlsParty, res, closed: false, mapHash: '' }
     streamConnections(campaignId).set(connectionId, connection)
     const heartbeat = setInterval(() => {
       if (!connection.closed && !res.destroyed) res.write(`: heartbeat ${Date.now()}\n\n`)
@@ -1780,7 +1910,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, {
         version: latestRoom.version,
         updatedAt: latestRoom.updatedAt,
-        state: campaignStateForViewer(stateWithLivePresence(latestRoom.state, campaignId), user, heroId),
+        state: viewerStateFor(stateWithLivePresence(latestRoom.state, campaignId), user, heroId),
         mechanics: committed.events,
         state_version: committed.state_version,
       })
@@ -1831,7 +1961,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, {
         version: latestRoom.version,
         updatedAt: latestRoom.updatedAt,
-        state: campaignStateForViewer(stateWithLivePresence(latestRoom.state, campaignId), user, heroId),
+        state: viewerStateFor(stateWithLivePresence(latestRoom.state, campaignId), user, heroId),
         mechanics: committed.events,
         state_version: committed.state_version,
         roll: resolutionEvent?.payload?.roll,
@@ -1898,14 +2028,18 @@ const server = createServer(async (req, res) => {
       const code = String(body.code || '').toUpperCase()
       if (!/^[A-Z0-9-]{3,24}$/.test(code)) return json(res, 400, { error: 'Код кампании должен содержать 3–24 латинских символа, цифры или дефис' })
       if (getRoom(code).state) return json(res, 409, { error: 'Кампания с таким кодом уже существует' })
+      // Размер отряда выбирает создатель: кампания на одного игрока —
+      // законный режим, а не урезанная четвёрка. Верхняя граница остаётся 4.
       const requestedSlotCount = Number(body.bootstrap?.slotCount ?? body.bootstrap?.players?.length ?? 0)
-      if (creator.role !== 'admin' && (!body.bootstrap || requestedSlotCount < 4)) {
-        return json(res, 400, { error: 'Для автономной кампании нужны четыре заполняемых места героев' })
+      if (creator.role !== 'admin' && (!body.bootstrap || !Number.isFinite(requestedSlotCount)
+        || requestedSlotCount < MIN_PARTY_SLOTS || requestedSlotCount > MAX_PARTY_SLOTS)) {
+        return json(res, 400, { error: `Число мест героев должно быть от ${MIN_PARTY_SLOTS} до ${MAX_PARTY_SLOTS}` })
       }
       if (creator.role !== 'admin' && body.state) return json(res, 403, { error: 'Обычный игрок создаёт кампанию только через проверенный мастер создания' })
       const usesServerSlots = creator.role !== 'admin' || !Array.isArray(body.bootstrap?.players) || body.bootstrap.players.length === 0
+      const slotCount = Math.min(MAX_PARTY_SLOTS, Math.max(MIN_PARTY_SLOTS, Math.trunc(requestedSlotCount) || MAX_PARTY_SLOTS))
       const bootstrapPlayers = usesServerSlots
-        ? Array.from({ length: 4 }, (_, index) => createCharacterSlot({
+        ? Array.from({ length: slotCount }, (_, index) => createCharacterSlot({
             id: body.bootstrap?.players?.[index]?.id ?? `hero-slot-${index + 1}`,
             index,
           }))
@@ -2068,7 +2202,7 @@ const server = createServer(async (req, res) => {
         campaign_id: campaignId,
         lifecycle: committed.state.mechanics.campaign_lifecycle,
         version: projected.version,
-        state: campaignStateForViewer(committed.state, user, actorId),
+        state: viewerStateFor(committed.state, user, actorId),
       })
     } catch (error) {
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'INVALID_CAMPAIGN_TRANSITION', 'CAMPAIGN_COMBAT_ACTIVE'].includes(error?.code) ? 409 : 400
@@ -2096,7 +2230,7 @@ const server = createServer(async (req, res) => {
       }
       const authoritative = await autonomousCampaign.load(campaignId)
       persistAuthoritativeProjection(campaignId, authoritative.state, events)
-      return json(res, 200, { intent: result.intent, state_version: authoritative.state_version, admin_commands: 0, state: campaignStateForViewer(authoritative.state, user, authoritative.state.activePlayerId) })
+      return json(res, 200, { intent: result.intent, state_version: authoritative.state_version, admin_commands: 0, state: viewerStateFor(authoritative.state, user, authoritative.state.activePlayerId) })
     } catch (error) {
       return json(res, error?.code === 'DIRECTOR_INTENT_NOT_ALLOWED' || error?.code === 'DIRECTOR_MECHANICS_FORBIDDEN' ? 400 : 409, { error: error instanceof Error ? error.message : 'Автономный ход не выполнен', code: error?.code })
     }
@@ -2116,7 +2250,7 @@ const server = createServer(async (req, res) => {
       const duplicate = await eventStore.getByIdempotencyKey(campaignId, `${key}:intent`)
       if (duplicate) {
         const current = await autonomousCampaign.load(campaignId)
-        return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: campaignStateForViewer(current.state, user, current.state.activePlayerId) })
+        return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: viewerStateFor(current.state, user, current.state.activePlayerId) })
       }
       let loaded = await autonomousCampaign.load(campaignId)
       assertCampaignPlayable(loaded.state)
@@ -2135,11 +2269,23 @@ const server = createServer(async (req, res) => {
       const result = await autonomousCampaign.runIntent({ campaignId, intent: decision.intent, idempotencyKey: key })
       for (const stage of result.results ?? []) events.push(...(stage.events ?? []))
       const authoritative = await autonomousCampaign.load(campaignId)
-      persistAuthoritativeProjection(campaignId, authoritative.state, events)
+      // Шаг Директора менял цель и сцену молча: в ленте не появлялось ни строки,
+      // и игрок видел новую задачу про персонажа, которого ему не представили.
+      const directorNarration = tacticalNarration(events, authoritative.state)
+        || deterministicNarration(
+          { visible_events: events, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
+          actorNameResolver(authoritative.state),
+        ).narration
+      persistAuthoritativeProjection(campaignId, authoritative.state, events, directorNarration ? {
+        id: `director-${createHash('sha256').update(String(key)).digest('hex').slice(0, 20)}`,
+        text: directorNarration,
+        speaker: 'narrator',
+        turnConsumed: false,
+      } : null)
       return json(res, 200, {
         intent: result.intent, director_trace: decision.trace, reward,
         state_version: authoritative.state_version, admin_commands: 0,
-        state: campaignStateForViewer(authoritative.state, user, authoritative.state.activePlayerId),
+        state: viewerStateFor(authoritative.state, user, authoritative.state.activePlayerId),
       })
     } catch (error) {
       return json(res, error?.code === 'DIRECTOR_INTENT_NOT_ALLOWED' || error?.code === 'DIRECTOR_MECHANICS_FORBIDDEN' ? 400 : 409, { error: error instanceof Error ? error.message : 'Director не смог продолжить приключение', code: error?.code })
@@ -2596,14 +2742,14 @@ const server = createServer(async (req, res) => {
       const actorId = campaignHeroIds(user, campaignId).find((id) => room.state.players?.some((player) => String(player.id) === String(id))) ?? ''
       return json(res, 200, {
         ...room,
-        state: campaignStateForViewer(normalizeCampaignState(room.state), user, actorId),
+        state: viewerStateFor(normalizeCampaignState(room.state), user, actorId),
         economy_clock_events: economyClock.events.length,
       })
     } catch (error) {
       if (['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code)) {
         const room = getRoom(campaignId)
         const actorId = campaignHeroIds(user, campaignId).find((id) => room.state?.players?.some((player) => String(player.id) === String(id))) ?? ''
-        return json(res, 200, { ...room, state: campaignStateForViewer(normalizeCampaignState(room.state), user, actorId) })
+        return json(res, 200, { ...room, state: viewerStateFor(normalizeCampaignState(room.state), user, actorId) })
       }
       return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось продолжить системный ход' })
     }
@@ -2661,7 +2807,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, {
         roll,
         ...projected,
-        state: campaignStateForViewer(normalizeCampaignState(projected.state), user, playerId),
+        state: viewerStateFor(normalizeCampaignState(projected.state), user, playerId),
       })
     } catch (error) {
       return json(res, 400, { error: error instanceof Error ? error.message : 'Некорректный бросок' })
@@ -2677,7 +2823,7 @@ const server = createServer(async (req, res) => {
     // Поле недоверенное: это лишь ключ поиска в кэше проекций. Неизвестный или
     // чужой хеш означает «карты у клиента нет» и карта уходит целиком.
     const clientMapHash = String(parsedUrl.searchParams.get('map_hash') ?? '').slice(0, 128)
-    const projected = campaignStateForViewer(presentState, user, actorId)
+    const projected = viewerStateFor(presentState, user, actorId)
     return json(res, 200, { ...room, state: compactStateForTransport(projected, clientMapHash).state })
   }
   if (roomMatch && req.method === 'PUT') {
@@ -2888,19 +3034,37 @@ const server = createServer(async (req, res) => {
         })
       }
       const interactionProjection = await persistInteractionProjection(campaignId, result.effects?.interaction)
-      const journalNarrationId = result.authoritative_state && String(result.narration ?? '').trim()
-        ? narrationMessageId(idempotencyKey)
+      // Служебные команды (`/why`) — не часть истории отряда: реплику игрока не
+      // сохраняем, а ответ подписываем разбором правил, а не Рассказчиком.
+      const metaCommand = /^\s*\//u.test(action)
+      const journalNarrationId = String(result.narration ?? '').trim() ? narrationMessageId(idempotencyKey) : null
+      const narrationEntry = journalNarrationId ? {
+        id: journalNarrationId,
+        text: result.narration,
+        speaker: metaCommand ? 'system' : 'narrator',
+        author: metaCommand ? 'Разбор правил' : result.journal_author,
+        turnConsumed: result.turn_consumed !== false && !metaCommand,
+        roll: result.effects?.roll ?? null,
+        stakes: result.stakes ?? null,
+      } : null
+      const playerEntry = !metaCommand && String(action ?? '').trim() ? {
+        id: playerMessageId(idempotencyKey),
+        text: action,
+        speaker: 'player',
+        author: player?.character ?? player?.name ?? 'Герой',
+      } : null
+      const projected = result.authoritative_state
+        ? persistAuthoritativeProjection(campaignId, result.authoritative_state, result.mechanics)
         : null
-      const projected = result.authoritative_state ? persistAuthoritativeProjection(
-        campaignId,
-        result.authoritative_state,
-        result.mechanics,
-        journalNarrationId ? { id: journalNarrationId, text: result.narration, turnConsumed: result.turn_consumed !== false } : null,
-      ) : null
+      // Летопись пишется отдельным шагом и всегда. Раньше она ехала «прицепом»
+      // к проекции и терялась дважды: на ходе без изменения состояния и на
+      // ходе, чью проекцию уже успел записать кто-то другой (тогда
+      // persistAuthoritativeProjection выходит раньше, чем дойдёт до messages).
+      const journaled = appendRoomJournal(campaignId, [playerEntry, narrationEntry].filter(Boolean))
       const responsePayload = {
         ...result,
         ...(journalNarrationId ? { narration_message_id: journalNarrationId } : {}),
-        ...(result.authoritative_state ? { authoritative_state: projected?.state ?? result.authoritative_state } : {}),
+        ...(result.authoritative_state ? { authoritative_state: journaled?.state ?? projected?.state ?? result.authoritative_state } : {}),
         // Narration can outlive a concurrent room PUT. Returning the snapshot
         // version captured at request start would move the client's optimistic
         // locking cursor backwards and make it lose the completed turn.

@@ -63,20 +63,47 @@ const APPROACH_PATTERNS = Object.freeze([
   { test: /(перепрыг|прыга|перескоч)/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'serious', obstacle: 'разрыв' },
 ])
 
+/**
+ * Приведение прочтения к контракту. Отдельная функция, потому что тот же контракт
+ * обязан выдержать и предложение модели: перечисления одни и те же, а незнакомое
+ * значение молча заменяется безопасным, а не доходит до движка.
+ */
+export function normalizeFreeActionReading(input = {}, fallbackText = '') {
+  const value = clean(fallbackText, 1_000)
+  return {
+    goal_summary: clean(input.goal_summary, 200) || value.slice(0, 200),
+    approach_summary: clean(input.approach_summary, 200) || value.slice(0, 200),
+    ability: inEnum(['str', 'dex', 'con', 'int', 'wis', 'cha'], input.ability, 'wis'),
+    skill: clean(input.skill, 60) || 'perception',
+    plausibility: inEnum(PLAUSIBILITY_LEVELS, input.plausibility, 'plausible'),
+    risk: inEnum(RISK_LEVELS, input.risk, 'minor'),
+    obstacle: clean(input.obstacle, 120) || value.slice(0, 120),
+    required_means: [...new Set((Array.isArray(input.required_means) ? input.required_means : [])
+      .map((entry) => clean(entry, 160)).filter(Boolean))].slice(0, 4),
+    // Цена хода и эффект проверяются каталогом `improvised-effects.mjs`;
+    // здесь достаточно не пропустить мусор дальше.
+    action_cost: inEnum(['action', 'bonus_action', 'free'], input.action_cost, 'action'),
+    effect: clean(input.effect, 40) || 'none',
+    effect_target: clean(input.effect_target, 120),
+    hazard: clean(input.hazard, 40),
+    source: clean(input.source, 60) || 'deterministic-default',
+  }
+}
+
 export function interpretFreeAction(text = '') {
   const value = clean(text, 1_000)
   const match = APPROACH_PATTERNS.find((pattern) => pattern.test.test(value)) ?? null
-  return {
-    goal_summary: value.slice(0, 200),
-    approach_summary: value.slice(0, 200),
-    ability: match?.ability ?? 'wis',
-    skill: match?.skill ?? 'perception',
-    plausibility: match?.plausibility ?? 'plausible',
-    risk: match?.risk ?? 'minor',
-    obstacle: match?.obstacle ?? clean(value, 120),
-    required_means: [],
+  return normalizeFreeActionReading({
+    ability: match?.ability,
+    skill: match?.skill,
+    plausibility: match?.plausibility,
+    risk: match?.risk,
+    obstacle: match?.obstacle,
+    // Детерминированная таблица механических следствий не назначает: она не
+    // понимает, что именно в сцене можно опрокинуть. Это работа агента.
+    effect: 'none',
     source: match ? 'deterministic-pattern' : 'deterministic-default',
-  }
+  }, value)
 }
 
 function actorMeans(state = {}, actorId = '') {

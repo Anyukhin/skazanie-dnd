@@ -102,14 +102,48 @@ function entry(id, overrides = {}) {
 }
 
 /**
+ * Тема проёмов. Рендер выбирает запись по виду ребра и состоянию двери, а не
+ * по теме сцены, поэтому отдельная тема здесь — это способ **не** попасть в
+ * каталог расстановки предметов.
+ */
+export const OPENINGS_THEME = 'openings'
+
+/**
+ * @param {string} id
+ * @param {'door_leaf'|'wall_segment'} kind
+ * @param {Partial<AssetEntry>} [overrides]
+ */
+function opening(id, kind, overrides = {}) {
+  return entry(id, {
+    kind,
+    themes: [OPENINGS_THEME],
+    baseFootprint: { w: 0, h: 0 },
+    anchor: 'wall',
+    ...overrides,
+  })
+}
+
+const OPENINGS = Object.freeze([
+  opening('door_closed', 'door_leaf', { interactive: true, destructible: true, hp: 15 }),
+  opening('door_open', 'door_leaf', { interactive: true, destructible: true, hp: 15 }),
+  opening('door_iron', 'door_leaf', { interactive: true, destructible: true, hp: 30 }),
+  opening('door_broken', 'door_leaf'),
+  opening('window_glazed', 'wall_segment', { destructible: true, hp: 4 }),
+  opening('arrow_slit', 'wall_segment'),
+  opening('rail_fence', 'wall_segment', { destructible: true, hp: 8 }),
+  opening('ledge_step', 'wall_segment'),
+  opening('portcullis_gate', 'wall_segment', { interactive: true, destructible: true, hp: 40 }),
+])
+
+/**
  * Набор под тему «здание с участком» — сцена-эталон из раздела 1 плана.
  * Раздел 12 плана даёт ориентир 60–75 записей.
  *
- * Ни у одной записи пока нет растра: `raster` заполняется отдельно, когда под
- * набор будут зафиксированы права. До тех пор рендер рисует вектор, а при его
- * отсутствии — плоскую заливку. Не описывать эти записи как «нарисованные».
+ * Здесь записи объявлены **без растра**: поле `raster` доклеивается ниже из
+ * манифеста атласа, если атлас собран. Так у набора один источник правды —
+ * сам атлас, — и пересборка набора не требует правки сотни строк реестра.
  */
-const ENTRIES = Object.freeze([
+const DECLARED = Object.freeze([
   // --- Мебель общего зала ---------------------------------------------
   entry('table_round', { baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 12, scaleRange: { min: 0.85, max: 1.15 } }),
   entry('table_long', { baseFootprint: { w: 3, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 15 }),
@@ -233,7 +267,74 @@ const ENTRIES = Object.freeze([
   entry('roadside_shrine', { themes: [...WILD], anchor: 'wall', blocksMove: true, cover: 'half', interactive: true }),
   entry('market_stall', { themes: ['settlement', 'exterior'], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half' }),
   entry('village_fence', { themes: ['settlement', 'exterior'], baseFootprint: { w: 2, h: 1 }, anchor: 'wall', cover: 'half' }),
+
+  // --- Проёмы на рёбрах ----------------------------------------------------
+  // Ребро — не клетка (решение Р2): эти записи ничего не занимают, никого не
+  // держат и укрытия не дают. Проходимость, обзор и укрытие задаёт само ребро,
+  // а запись отвечает только за рисунок.
+  //
+  // Тема у них своя — `openings`. В темы помещений они не входят намеренно:
+  // расстановка предметов берёт каталог по теме (`prop-placement.mjs`), и
+  // дверь, попавшая в этот каталог, встала бы посреди зала как мебель.
+  ...OPENINGS,
 ])
+
+/**
+ * Манифест растрового атласа предметов. Собирается инструментом
+ * `tools/build-prop-atlas.mjs` из листов штампов и лежит рядом с самим атласом
+ * в `public/assets`.
+ *
+ * Читается терпимо: нет файла, битый JSON, пустой набор кадров — реестр
+ * остаётся векторным и доска рисует вектор. Играбельность без арта —
+ * блокирующее требование (решение Р6 плана), поэтому отсутствие атласа не
+ * является ошибкой.
+ */
+export const PROP_ATLAS_FILE = fileURLToPath(new URL('../public/assets/maps/props/prop-atlas.json', import.meta.url))
+
+/**
+ * @typedef {object} PropAtlas
+ * @property {string} image путь внутри `public/assets`, он же `rightsId`
+ * @property {number} cellPixels
+ * @property {Record<string, {x: number, y: number, w: number, h: number}>} frames
+ */
+
+/**
+ * @param {string} [file]
+ * @returns {PropAtlas}
+ */
+export function readPropAtlas(file = PROP_ATLAS_FILE) {
+  const empty = { image: '', cellPixels: 0, frames: {} }
+  try {
+    const raw = JSON.parse(readFileSync(file, 'utf8'))
+    const image = String(raw?.image ?? '')
+    const frames = raw?.frames && typeof raw.frames === 'object' ? raw.frames : {}
+    if (!image || !Object.keys(frames).length) return empty
+    return { image, cellPixels: Number(raw?.cellPixels) || 0, frames }
+  } catch {
+    return empty
+  }
+}
+
+/**
+ * Растр приклеивается к записи по идентификатору кадра. Записи без кадра
+ * остаются векторными: набор наполняется темами постепенно, и половина
+ * реестра без спрайтов — это штатное состояние, а не поломка.
+ *
+ * Единственный источник растра — атлас, поэтому запись без кадра теряет
+ * `raster` и `rightsId`, даже если они у неё были. Иначе пересборка набора
+ * оставила бы в реестре ссылку на спрайт, которого в атласе уже нет.
+ *
+ * @param {AssetEntry[]} entries
+ * @param {PropAtlas} atlas
+ * @returns {AssetEntry[]}
+ */
+export function withAtlasArt(entries, atlas) {
+  return entries.map((record) => (atlas.image && atlas.frames[record.id]
+    ? { ...record, raster: `${atlas.image}#${record.id}`, rightsId: atlas.image }
+    : { ...record, raster: null, rightsId: null }))
+}
+
+const ENTRIES = Object.freeze(withAtlasArt(/** @type {AssetEntry[]} */ ([...DECLARED]), readPropAtlas()))
 
 /** @type {Map<string, AssetEntry>} */
 const BY_ID = new Map(ENTRIES.map((record) => [record.id, record]))

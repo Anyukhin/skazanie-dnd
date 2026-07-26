@@ -634,15 +634,19 @@ export function npcSocialForViewer(input, viewer = {}) {
   return { schema_version: 3, npcs: clone(npcs), relationships, relationship_tiers, conversations: clone(conversations), promises: clone(promises) }
 }
 
-export function npcConversationNarration(events = []) {
+export function npcConversationNarration(events = [], state = {}) {
   const event = events.find((candidate) => candidate.event_type === 'NpcConversationRecorded')
   if (!event?.payload?.conversation?.npc_reply) return null
   const conversation = event.payload.conversation
+  // Реплику NPC подписывает сам NPC, а не Рассказчик: иначе в ленте нельзя
+  // отличить прямую речь собеседника от описания сцены.
+  const npcName = clean(state?.social?.npcs?.find((entry) => entry.id === conversation.npc_id)?.name, 80)
   const skillLabel = { persuasion: '\u0423\u0431\u0435\u0436\u0434\u0435\u043d\u0438\u0435', deception: '\u041e\u0431\u043c\u0430\u043d', intimidation: '\u0417\u0430\u043f\u0443\u0433\u0438\u0432\u0430\u043d\u0438\u0435', insight: '\u041f\u0440\u043e\u043d\u0438\u0446\u0430\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c' }[conversation.check?.skill] ?? conversation.check?.skill
   const outcomeLabel = conversation.check?.success ? '\u0443\u0441\u043f\u0435\u0445' : '\u043f\u0440\u043e\u0432\u0430\u043b'
   const checkSummary = conversation.check ? '\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u00ab' + skillLabel + '\u00bb: ' + outcomeLabel + ' (' + conversation.check.total + ').\n' : ''
   return {
     narration: checkSummary + conversation.npc_reply,
+    ...(npcName ? { journal_author: npcName } : {}),
     suggestions: ['Продолжить разговор', 'Уточнить, откуда NPC это знает'],
     provider: 'NpcSocialController',
     prompt_version: 'npc_controller/social-v1',

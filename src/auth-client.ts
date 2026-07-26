@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Account } from './types'
 
 type AuthResponse = { user?: Account | null; setupRequired?: boolean; error?: string }
@@ -16,11 +16,19 @@ export function useAuth() {
   const [error, setError] = useState('')
   const [setupRequired, setSetupRequired] = useState(false)
 
+  // Один и тот же ответ запрашивали до трёх раз подряд: монтирование,
+  // StrictMode и ручное обновление аккаунта попадали в один тик. Совпавшие по
+  // времени вызовы теперь делят один запрос.
+  const inFlight = useRef<Promise<Account | null> | null>(null)
   const refresh = useCallback(async () => {
-    const result = await authRequest('/api/auth/me')
-    setUser(result.user ?? null)
-    setSetupRequired(Boolean(result.setupRequired))
-    return result.user ?? null
+    if (inFlight.current) return inFlight.current
+    const request = authRequest('/api/auth/me').then((result) => {
+      setUser(result.user ?? null)
+      setSetupRequired(Boolean(result.setupRequired))
+      return result.user ?? null
+    }).finally(() => { inFlight.current = null })
+    inFlight.current = request
+    return request
   }, [])
 
   useEffect(() => {
