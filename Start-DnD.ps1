@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $ProjectRoot = if ($env:DND_PROJECT_ROOT) {
   $env:DND_PROJECT_ROOT.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
@@ -182,10 +182,13 @@ try {
     if (-not $publicUrl) { Start-Sleep -Seconds 2 }
   }
 
-  $localUrl = "http://localhost:8787/?setup=$adminSetupToken"
+  # 127.0.0.1, а не localhost: сервер слушает только IPv4, а localhost на Windows
+  # сначала резолвится в IPv6 ::1. Браузер ждёт таймаута на ::1 и лишь потом идёт
+  # на IPv4 — замерено 2.0 с обрыва против 7 мс напрямую, и так на каждом запросе.
+  $localUrl = "http://127.0.0.1:8787/?setup=$adminSetupToken"
   Write-Host ''
   Write-Host 'Сервер полностью запущен.' -ForegroundColor Green
-  Write-Host 'Локальный адрес: http://localhost:8787' -ForegroundColor Green
+  Write-Host 'Локальный адрес: http://127.0.0.1:8787' -ForegroundColor Green
 
   if ($publicUrl) {
     Set-Content -LiteralPath $PublicLinkPath -Value $publicUrl -Encoding UTF8
