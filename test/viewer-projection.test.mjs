@@ -185,3 +185,45 @@ test('turn result projection covers authoritative state, mechanics and effects.s
   assert.equal(projected.mechanics[0].payload.scene.cells[0].feature, undefined)
   assert.equal(projected.effects.scene.scene.cells[0].feature, undefined)
 })
+
+test('карта в проекции игрока не выдаёт нераскрытую часть', async () => {
+  const { publicSceneFor } = await import('../server/viewer-projection.mjs')
+  const { cellAt, deserializeTacticalMap, edgeList, tacticalMapFromLegacyCells, addProp, serializeTacticalMap, setDoor, setEdge } =
+    await import('../server/tactical-map.mjs')
+
+  const cells = []
+  for (let y = 0; y < 4; y += 1) {
+    for (let x = 0; x < 4; x += 1) {
+      cells.push({ x, y, type: 'floor', revealed: y === 0, material: 'wood', variant: 3, pattern: 'small-room' })
+    }
+  }
+  const map = tacticalMapFromLegacyCells(cells)
+  addProp(map, { id: 'seen', assetId: 'table', x: 1.5, y: 0.5, footprint: [{ x: 1, y: 0 }] })
+  addProp(map, { id: 'hidden', assetId: 'chest', x: 1.5, y: 2.5, footprint: [{ x: 1, y: 2 }] })
+  setEdge(map, 0, 2, 1, 2, { kind: 'wall' })
+  setEdge(map, 0, 0, 1, 0, { kind: 'wall' })
+  setDoor(map, { id: 'hidden-door', x: 2, y: 2, dir: 'e', state: 'closed', blocksMove: true, blocksSight: true })
+
+  const projected = publicSceneFor({ title: 'Комната', cells, map: serializeTacticalMap(map) })
+  assert.ok(projected.map, 'карта обязана попасть в проекцию')
+  const visible = deserializeTacticalMap(projected.map)
+
+  assert.equal(cellAt(visible, 1, 0)?.material, 'wood', 'раскрытая клетка сохраняет материал')
+  assert.equal(cellAt(visible, 1, 0)?.variant, 3)
+  assert.equal(cellAt(visible, 1, 2)?.material, 'stone', 'нераскрытая клетка теряет материал')
+  assert.equal(cellAt(visible, 1, 2)?.variant, 0, 'нераскрытая клетка теряет вариант тайла')
+  assert.ok(cellAt(visible, 1, 2), 'форма карты обязана сохраниться целиком')
+
+  assert.deepEqual(visible.props.map((prop) => prop.assetId), ['table'], 'предмет на нераскрытой клетке не передаётся')
+  const edges = edgeList(visible).map((edge) => `${edge.x},${edge.y},${edge.dir}`)
+  assert.ok(edges.includes('0,0,e'), 'ребро у раскрытой клетки видно')
+  assert.equal(edges.includes('0,2,e'), false, 'ребро между двумя нераскрытыми клетками не передаётся')
+  assert.deepEqual(visible.doors, [], 'дверь на нераскрытом ребре не передаётся')
+})
+
+test('сцена без карты проецируется как прежде', async () => {
+  const { publicSceneFor } = await import('../server/viewer-projection.mjs')
+  const projected = publicSceneFor({ title: 'Без карты', cells: [{ x: 0, y: 0, type: 'floor', revealed: true }] })
+  assert.equal('map' in projected, false)
+  assert.equal(projected.cells.length, 1)
+})

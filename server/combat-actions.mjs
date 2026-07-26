@@ -47,6 +47,13 @@ const COMMON_ACTIONS = Object.freeze([
   action('ready', 'Подготовка', { category: 'common', description: 'Подготовить действие и сохранить реакцию для указанного условия.', mechanicsSupport: 'partial', supportNote: 'Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.', effect: { kind: 'condition', condition: 'readied', duration: 'until-next-turn' } }),
   action('search', 'Поиск', { category: 'common', description: 'Проверка Мудрости (Восприятие) для обнаружения скрытых целей и деталей.', effect: { kind: 'check', ability: 'wis', skill: 'perception' } }),
   action('use-object', 'Использовать предмет', { category: 'common', description: 'Взаимодействовать с немагическим предметом в бою.', effect: { kind: 'special' } }),
+  action('ready-action', 'Готовность', {
+    category: 'common',
+    description: 'Потратить действие, чтобы заготовить атаку оружием или заклинание и выпустить его реакцией, когда сработает выбранный триггер.',
+    effect: { kind: 'ready_action', triggers: ['enemy-approaches', 'enemy-casts-spell'] },
+    mechanicsSupport: 'partial',
+    supportNote: 'Заготавливается атака оружием или заклинание с временем накладывания «действие»: ячейка тратится сразу, магия держится концентрацией. Триггеров два и оба распознаёт сервер — враг подошёл вплотную или начал творить заклинание; произвольное «воспринимаемое обстоятельство» из редакции не исполняется.',
+  }),
 ])
 
 const CLASS_ACTIONS = Object.freeze({
@@ -231,6 +238,22 @@ export function combatActionsFor(actor) {
 
 export function combatActionFor(actor, actionId) {
   return combatActionsFor(actor).find((entry) => entry.id === String(actionId ?? '')) ?? null
+}
+
+/**
+ * How many weapon attacks one Attack action is worth for this actor.  Extra
+ * Attack is a property of the action rather than a separate button, so the
+ * number is read from the same catalog entry that describes the feature and
+ * never duplicated as a second table.
+ */
+export function weaponAttacksPerActionFor(actor) {
+  const level = Math.max(1, Math.min(12, Number(actor?.level) || 1))
+  const extra = combatActionFor(actor, 'extra-attack')
+  if (!extra || level < Number(extra.minimumLevel ?? 1)) return 1
+  const tier = Object.entries(extra.effect?.attacksByLevel ?? {})
+    .sort(([left], [right]) => Number(right) - Number(left))
+    .find(([minimum]) => level >= Number(minimum))
+  return Math.max(1, Math.min(4, Number(tier?.[1] ?? extra.effect?.attacks ?? 1)))
 }
 
 export function combatResourceMaximumsFor(actor) {

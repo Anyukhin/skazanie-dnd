@@ -2,6 +2,16 @@
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { projectVisibleState } from './security.mjs'
+import {
+  SIZE_CLASSES,
+  cellAt,
+  deserializeTacticalMap,
+  edgeList,
+  edgeNeighbor,
+  serializeTacticalMap,
+  setCell,
+  setEdge,
+} from './tactical-map.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
 /**
@@ -137,17 +147,58 @@ function publicCellFor(cell = {}) {
 }
 
 /**
+ * Карта, отфильтрованная по видимости. Нераскрытая клетка остаётся в сетке —
+ * иначе форма карты рассыплется, — но теряет материал, вариант тайла и
+ * поверхность: по текстуре пола читается планировка неисследованной части.
+ * Предметы, рёбра между двумя нераскрытыми клетками и двери на таких рёбрах не
+ * передаются вовсе.
+ *
+ * @param {unknown} value сериализованная карта из `scene.map`
+ * @returns {Record<string, unknown> | null}
+ */
+export function publicTacticalMapFor(value) {
+  if (!value || typeof value !== 'object') return null
+  let map
+  try {
+    map = deserializeTacticalMap(value)
+  } catch {
+    return null
+  }
+  /** @param {number} x @param {number} y */
+  const revealedAt = (x, y) => cellAt(map, x, y)?.revealed === true
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (!cell || cell.revealed) continue
+      setCell(map, x, y, { material: 'stone', variant: 0, surface: 'none', hazardId: null })
+    }
+  }
+  map.props = map.props.filter((prop) => prop.footprint.some((cell) => revealedAt(cell.x, cell.y))
+    || (prop.footprint.length === 0 && revealedAt(Math.floor(prop.x), Math.floor(prop.y))))
+  for (const edge of edgeList(map)) {
+    const neighbor = edgeNeighbor(edge)
+    if (revealedAt(edge.x, edge.y) || revealedAt(neighbor.x, neighbor.y)) continue
+    setEdge(map, edge.x, edge.y, neighbor.x, neighbor.y, { kind: 'none' })
+  }
+  const visibleEdges = new Set(edgeList(map).map((edge) => `${edge.x},${edge.y},${edge.dir}`))
+  map.doors = map.doors.filter((door) => visibleEdges.has(`${door.x},${door.y},${door.dir}`))
+  return serializeTacticalMap(map)
+}
+
+/**
  * @param {Loose} [scene]
  * @returns {Loose & { cells: SceneCell[] }}
  */
 export function publicSceneFor(scene = {}) {
+  const map = publicTacticalMapFor(scene.map)
   return {
     title: text(scene.title, 120),
     location: text(scene.location, 180),
     mood: text(scene.mood, 500),
     objective: text(scene.objective, 500),
     turn: Math.max(0, integer(scene.turn, 0)),
-    cells: (Array.isArray(scene.cells) ? scene.cells : []).map(publicCellFor).slice(0, 500),
+    cells: (Array.isArray(scene.cells) ? scene.cells : []).map(publicCellFor).slice(0, SIZE_CLASSES.area.maxCells),
+    ...(map ? { map } : {}),
     ...(scene.theme == null ? {} : { theme: text(scene.theme, 120) }),
     ...(scene.danger == null ? {} : { danger: text(scene.danger, 40) }),
     ...(scene.scene_kind == null ? {} : { scene_kind: text(scene.scene_kind, 40) }),

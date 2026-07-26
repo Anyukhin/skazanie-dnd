@@ -1,10 +1,14 @@
 import { createHash } from 'node:crypto'
+import { SIZE_CLASSES } from './tactical-map.mjs'
 
 export const ENCOUNTER_PROPOSAL_VERSION = 'skazanie:encounter-proposal-v1'
 
 export const ENCOUNTER_ASSEMBLER_LIMITS = Object.freeze({
   maximum_party_size: 8,
-  maximum_scene_cells: 500,
+  // Предел клеток един для всей системы и живёт в классах размеров карты
+  // (`server/tactical-map.mjs`). Раньше число 500 было продублировано в четырёх
+  // местах и расходилось бы при первом же изменении.
+  maximum_scene_cells: SIZE_CLASSES.area.maxCells,
   maximum_creatures_per_character: 2,
   maximum_creatures: 12,
   minimum_spawn_distance_cells: 2,
@@ -203,7 +207,10 @@ const XP_BUDGET_PER_CHARACTER = deepFreeze({
 
 const TOP_LEVEL_KEYS = new Set(['scene', 'party', 'difficulty', 'theme', 'seed'])
 const SCENE_KEYS = new Set(['cells'])
-const CELL_KEYS = new Set(['x', 'y', 'type', 'revealed', 'feature'])
+// `occupied` появился в M0: раньше занятость клетки существом выражалась
+// записью сущности в `feature`, а после разделения слоёв её нужно передавать
+// явно, иначе двух противников можно поставить в одну клетку.
+const CELL_KEYS = new Set(['x', 'y', 'type', 'revealed', 'feature', 'occupied'])
 const PARTY_MEMBER_KEYS = new Set(['id', 'level', 'x', 'y'])
 const CELL_TYPES = new Set(['wall', 'floor', 'water', 'door'])
 // Shared server-owned map props are obstacles, not client-defined mechanics.
@@ -287,10 +294,20 @@ function validateScene(input) {
     if (entry.feature != null && (typeof entry.feature !== 'string' || !CELL_FEATURES.has(entry.feature))) {
       throw new EncounterAssemblyError('Неизвестный объект в клетке', 'SCENE_CELL_FEATURE_NOT_ALLOWED')
     }
+    if (entry.occupied != null && typeof entry.occupied !== 'boolean') {
+      throw new EncounterAssemblyError('cell.occupied должен быть boolean', 'INVALID_SCENE_CELL_OCCUPANCY')
+    }
     const key = `${x},${y}`
     if (seen.has(key)) throw new EncounterAssemblyError('Координаты клеток не должны повторяться', 'DUPLICATE_SCENE_CELL')
     seen.add(key)
-    return { x, y, type: entry.type, revealed: entry.revealed, ...(entry.feature == null ? {} : { feature: entry.feature }) }
+    return {
+      x,
+      y,
+      type: entry.type,
+      revealed: entry.revealed,
+      ...(entry.feature == null ? {} : { feature: entry.feature }),
+      ...(entry.occupied === true ? { occupied: true } : {}),
+    }
   })
   cells.sort((left, right) => left.y - right.y || left.x - right.x)
   return cells
@@ -366,6 +383,7 @@ function safePlacementCells(cells, party) {
     && WALKABLE_TYPES.has(cell.type)
     && reachable.has(positionKey(cell))
     && cell.feature == null
+    && cell.occupied !== true
     && !occupied.has(positionKey(cell))
     && party.every((member) => (
       Math.abs(member.x - cell.x) + Math.abs(member.y - cell.y)

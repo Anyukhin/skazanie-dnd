@@ -142,7 +142,12 @@ async function playerCommand(baseUrl, cookieValue, key, commandValue) {
   })
 }
 
-test('обычные игроки проходят автономную кампанию, полный бой, награды и три сцены', { timeout: 240_000 }, async (t) => {
+// Сценарий проигрывает целый бой на настоящих случайных костях: длительность
+// плавает втрое (замер 2026-07-26 — от 72 до 217 секунд в одиночном прогоне),
+// а весь набор идёт с `--test-concurrency=4`, где на процессор претендуют ещё
+// три файла. Прежние 240 секунд лежали внутри этого разброса, и тест падал по
+// таймауту на длинном бою, а не из-за механики.
+test('обычные игроки проходят автономную кампанию, полный бой, награды и три сцены', { timeout: 600_000 }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-mvp-player-cycle-'))
   let logs = ''
   let child = null
@@ -441,7 +446,22 @@ test('обычные игроки проходят автономную камп
             battleState = moved.body.authoritative_state
             target = nearestEnemy(battleState, actorId)
           } else {
-            assert.equal(moved.body.code, 'INVALID_DESTINATION', moved.text)
+            // The step count above is a client-side guess and is not
+            // authoritative: the server routes around creatures that moved in
+            // between, and charges extra for crawling, difficult terrain and
+            // reduced speed.  Both refusals below are the server correctly
+            // rejecting that guess; neither may change the state.
+            assert.ok(
+              ['INVALID_DESTINATION', 'SPEED_EXCEEDED', 'PATH_BLOCKED'].includes(moved.body.code),
+              `неожиданный отказ на перемещение: ${moved.text}`,
+            )
+            const afterRefusal = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: actorCookie })
+            assert.equal(afterRefusal.status, 200, afterRefusal.text)
+            assert.deepEqual(
+              actorPosition(afterRefusal.body.state, actorId),
+              actorPosition(battleState, actorId),
+              'отклонённое перемещение не имеет права сдвинуть героя',
+            )
           }
         }
       }
@@ -563,8 +583,11 @@ test('обычные игроки проходят автономную камп
   assert.ok(continued.body.state.players.some((entry) => entry.inventory.some((item) => String(item.id).startsWith('loot-'))))
   const completedTravel = continued.body.state.autonomy.travel_history.at(-1)
   assert.ok(completedTravel?.duration_minutes > 0)
-  assert.equal(continued.body.state.mechanics.world_time.elapsed_minutes, 480 + completedTravel.duration_minutes)
-  assert.equal(continued.body.state.autonomy.downtime_history.at(-1)?.duration_minutes, 480)
+  // Если бой закончился с героем на 0 ОЗ, отряд сначала ждёт его пробуждения
+  // (1d4 часа, не больше четырёх), и только потом отдыхает восемь часов.
+  const downtimeMinutes = continued.body.state.autonomy.downtime_history.at(-1)?.duration_minutes
+  assert.ok([480, 720].includes(downtimeMinutes), `неожиданная длительность отдыха: ${downtimeMinutes}`)
+  assert.equal(continued.body.state.mechanics.world_time.elapsed_minutes, downtimeMinutes + completedTravel.duration_minutes)
   assert.ok(
     continued.body.state.players
       .filter((entry) => continued.body.state.mechanics.death?.heroes?.[entry.id]?.status !== 'dead')

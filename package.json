@@ -16,6 +16,7 @@
     "typecheck:server": "tsc --noEmit -p tsconfig.server.json",
     "verify": "pnpm test && pnpm typecheck:server && pnpm build",
     "content:verify": "node tools/verify-content-integrity.mjs",
+    "spells:verify": "node tools/verify-spell-overrides.mjs",
     "release:verify": "node tools/verify-content-integrity.mjs --release",
     "cutover:audit": "node tools/audit-cutover.mjs",
     "cutover:verify": "node tools/audit-cutover.mjs --strict",

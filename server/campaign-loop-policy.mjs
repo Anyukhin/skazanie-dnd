@@ -217,49 +217,305 @@ function recentEncounterResolved(state = {}) {
   return outcomes.length > travels.length
 }
 
+/* --- Путешествие по графу мира -------------------------------------------
+ *
+ * Единственный источник расстояния, местности и опасности — `state.worldMap`
+ * (`server/world-map.mjs`). Ветка на текстовых названиях ниже оставлена только
+ * для совместимости со старыми кампаниями и явно помечена.
+ */
+
+/**
+ * Полосы расстояния и базовые длительности. Числа те же, что были до перехода
+ * на граф: сменился источник факта, а не баланс.
+ */
+const TRAVEL_DISTANCE_BANDS = Object.freeze([
+  Object.freeze({ band: 'near', maxDistance: 2, minutes: 45 }),
+  Object.freeze({ band: 'regional', maxDistance: 5, minutes: 120 }),
+  Object.freeze({ band: 'far', maxDistance: Number.POSITIVE_INFINITY, minutes: 240 }),
+])
+
+const TRAVEL_BASE_MINUTES = Object.freeze(Object.fromEntries(
+  TRAVEL_DISTANCE_BANDS.map((entry) => [entry.band, entry.minutes]),
+))
+
+/**
+ * Перевод `route.danger` в надбавку к риску. Таблица покрывает все значения,
+ * которые допускает `normalizeRoutes`, плюс английские синонимы для карт,
+ * пришедших от модели до нормализации. Неизвестное значение даёт 0.
+ */
+const ROUTE_DANGER_RISK = Object.freeze({
+  низкая: 5,
+  средняя: 12,
+  высокая: 20,
+  low: 5,
+  medium: 12,
+  high: 20,
+})
+
+/**
+ * Дикая местность. Из `route.kind` дикими считаются все, кроме `road`; из
+ * биомов — четыре, перечисленные в плане (`docs/world-map-plan.md`, Ш1).
+ * `desert` и `tundra` намеренно не входят: их пересмотр — отдельная задача.
+ */
+const WILD_ROUTE_KINDS = Object.freeze(new Set(['trail', 'pass', 'river', 'sea']))
+const WILD_BIOMES = Object.freeze(new Set(['forest', 'marsh', 'mountains', 'wastes']))
+
+/**
+ * Порядок «опаснее» для выбора региона на маршруте. Правило произвольное, но
+ * обязано быть детерминированным: у маршрута два конца с разными `regionId`,
+ * берётся более опасный биом, при равенстве — регион цели.
+ */
+const BIOME_DANGER_RANK = Object.freeze({
+  plains: 0,
+  coast: 1,
+  tundra: 2,
+  desert: 3,
+  forest: 4,
+  marsh: 5,
+  mountains: 6,
+  wastes: 7,
+})
+
+/** Тема будущей стычки — от биома региона на маршруте, а не от названия. */
+const ENCOUNTER_THEMES_BY_BIOME = Object.freeze({
+  plains: Object.freeze(['raiders', 'goblinoids']),
+  coast: Object.freeze(['raiders', 'goblinoids']),
+  tundra: Object.freeze(['beasts', 'raiders']),
+  desert: Object.freeze(['raiders', 'beasts']),
+  forest: Object.freeze(['beasts', 'goblinoids']),
+  marsh: Object.freeze(['undead', 'beasts']),
+  mountains: Object.freeze(['goblinoids', 'beasts']),
+  wastes: Object.freeze(['undead', 'raiders']),
+})
+
+const DEFAULT_ENCOUNTER_THEMES = Object.freeze(['raiders', 'goblinoids'])
+
+/** Столько единиц логической сетки 1000×640 приходится на единицу `distance`. */
+const WORLD_GRID_DISTANCE_UNIT = 48
+
+/** Надбавка за путь напрямик, когда известной дороги между локациями нет. */
+const NO_ROUTE_DANGER_RISK = 15
+
+const nameKey = (value) => clean(value, 180).toLocaleLowerCase('ru')
+
+/** Только собственные ключи таблиц: чужое значение не должно попасть в расчёт. */
+const tableValue = (table, key, fallback) => (Object.hasOwn(table, key) ? table[key] : fallback)
+
+const biomeRank = (biome) => tableValue(BIOME_DANGER_RANK, biome, -1)
+
+/**
+ * Граф мира из состояния. `null` означает, что карты нет или она не
+ * нормализована — тогда работает ветка совместимости.
+ */
+function worldTravelGraph(state = {}) {
+  const map = state.worldMap
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return null
+  const locations = (Array.isArray(map.locations) ? map.locations : [])
+    .filter((location) => location && typeof location === 'object' && clean(location.id, 120))
+  if (!locations.length) return null
+  const byId = new Map(locations.map((location) => [clean(location.id, 120), location]))
+  // Неоткрытые дороги отряду ещё не известны, поэтому в поиске пути не участвуют.
+  const routes = (Array.isArray(map.routes) ? map.routes : []).filter((route) => route
+    && typeof route === 'object'
+    && byId.has(clean(route.from, 120))
+    && byId.has(clean(route.to, 120))
+    && clean(route.from, 120) !== clean(route.to, 120)
+    && route.discovered !== false)
+  const biomeByRegionId = new Map((Array.isArray(map.regions) ? map.regions : [])
+    .filter((region) => region && typeof region === 'object')
+    .map((region) => [clean(region.id, 120), clean(region.biome, 40)]))
+  return { locations, byId, routes, biomeByRegionId, currentLocationId: clean(map.currentLocationId, 120) }
+}
+
+/** Локация графа: сначала по идентификатору, затем по имени без учёта регистра. */
+function graphLocation(graph, { locationId = '', name = '' } = {}) {
+  const byId = graph.byId.get(clean(locationId, 120))
+  if (byId) return byId
+  const expected = nameKey(name)
+  return expected ? graph.locations.find((location) => nameKey(location.name) === expected) ?? null : null
+}
+
+const routeEndpoints = (graph, route) => [
+  graph.byId.get(clean(route.from, 120)),
+  graph.byId.get(clean(route.to, 120)),
+].filter(Boolean)
+
+const locationBiome = (graph, location) => graph.biomeByRegionId.get(clean(location?.regionId, 120)) ?? ''
+
+/** Оценка длины сегмента по координатам — тот же масштаб, что в `world-map.mjs`. */
+function straightDistance(from, to) {
+  const dx = (Number(from?.x) || 0) - (Number(to?.x) || 0)
+  const dy = (Number(from?.y) || 0) - (Number(to?.y) || 0)
+  return Math.max(1, Math.round(Math.hypot(dx, dy) / WORLD_GRID_DISTANCE_UNIT))
+}
+
+function segmentDistance(graph, route) {
+  const parsed = Number(route?.distance)
+  if (Number.isFinite(parsed)) return Math.max(0, Math.round(parsed))
+  const [from, to] = routeEndpoints(graph, route)
+  return straightDistance(from, to)
+}
+
+/**
+ * Поиск пути: обычный BFS по известным маршрутам, кратчайший по числу
+ * сегментов. Порядок обхода задан порядком `routes`, поэтому результат
+ * детерминирован.
+ */
+function routePath(graph, fromId, toId) {
+  if (fromId === toId) return []
+  const neighbours = new Map()
+  for (const route of graph.routes) {
+    const from = clean(route.from, 120)
+    const to = clean(route.to, 120)
+    if (!neighbours.has(from)) neighbours.set(from, [])
+    if (!neighbours.has(to)) neighbours.set(to, [])
+    neighbours.get(from).push({ route, next: to })
+    neighbours.get(to).push({ route, next: from })
+  }
+  const visited = new Set([fromId])
+  const queue = [{ id: fromId, path: [] }]
+  while (queue.length) {
+    const node = queue.shift()
+    if (node.id === toId) return node.path
+    for (const edge of neighbours.get(node.id) ?? []) {
+      if (visited.has(edge.next)) continue
+      visited.add(edge.next)
+      queue.push({ id: edge.next, path: [...node.path, edge.route] })
+    }
+  }
+  return null
+}
+
+/** Более опасный биом из встреченных; при равенстве — регион цели. */
+function pathBiome(graph, locations, destination) {
+  let biome = locationBiome(graph, destination)
+  for (const location of locations) {
+    const candidate = locationBiome(graph, location)
+    if (biomeRank(candidate) > biomeRank(biome)) biome = candidate
+  }
+  return biome
+}
+
+const distanceBandFor = (distance) => (TRAVEL_DISTANCE_BANDS.find((entry) => distance <= entry.maxDistance)
+  ?? TRAVEL_DISTANCE_BANDS.at(-1)).band
+
+const encounterThemesFor = (biome) => tableValue(ENCOUNTER_THEMES_BY_BIOME, biome, DEFAULT_ENCOUNTER_THEMES)
+
+/** Факты пути из графа мира: расстояние, местность, опасность и тема стычки. */
+function graphTravelFacts(graph, origin, destination) {
+  const segments = routePath(graph, clean(origin.id, 120), clean(destination.id, 120))
+  if (!segments) {
+    // Известной дороги нет. Маршрут здесь не выдумывается и `worldMap` не
+    // меняется: честная оценка «идти напрямик» по координатам плюс надбавка.
+    const biome = pathBiome(graph, [origin, destination], destination)
+    return {
+      source: 'graph',
+      band: distanceBandFor(straightDistance(origin, destination)),
+      wilderness: true,
+      dangerRisk: NO_ROUTE_DANGER_RISK,
+      themeOptions: encounterThemesFor(biome),
+      routeId: null,
+      noRoute: true,
+    }
+  }
+  const distance = segments.reduce((total, route) => total + segmentDistance(graph, route), 0)
+  const dangerRisk = segments.reduce((worst, route) => Math.max(
+    worst,
+    tableValue(ROUTE_DANGER_RISK, clean(route.danger, 40).toLocaleLowerCase('ru'), 0),
+  ), 0)
+  const wilderness = segments.some((route) => WILD_ROUTE_KINDS.has(clean(route.kind, 30).toLowerCase())
+    || routeEndpoints(graph, route).some((location) => WILD_BIOMES.has(locationBiome(graph, location))))
+  const biome = pathBiome(graph, segments.flatMap((route) => routeEndpoints(graph, route)), destination)
+  return {
+    source: 'graph',
+    band: distanceBandFor(distance),
+    wilderness,
+    dangerRisk,
+    themeOptions: encounterThemesFor(biome),
+    routeId: segments.length === 1 ? clean(segments[0].id, 100) || null : null,
+    noRoute: false,
+  }
+}
+
+const LEGACY_WILDERNESS_NAME = /(лес|тракт|дорог|пустош|болот|гор|ущель|перевал|пещер|road|forest|wild|marsh|mountain)/iu
+const LEGACY_GRAVE_NAME = /(кладбищ|склеп|руин|grave|crypt|ruin)/iu
+
+/**
+ * ПУТЬ СОВМЕСТИМОСТИ для кампаний без графа мира: `state.worldMap` пуст, не
+ * нормализован или в нём нет исходной либо целевой локации. Это не второй
+ * способ считать расстояние — считать здесь просто нечем, а числа обязаны
+ * совпадать с прежним поведением, иначе у сохранённых кампаний изменится
+ * длительность пути. Новую логику сюда не добавлять.
+ */
+function legacyTextTravelFacts(state, from, to, entropy) {
+  const sceneKind = clean(state.scene?.scene_kind, 40).toLowerCase()
+  const wilderness = sceneKind === 'wilderness' || LEGACY_WILDERNESS_NAME.test(`${from} ${to}`)
+  return {
+    source: 'legacy_text',
+    band: ['near', 'regional', 'far'][entropy % 3],
+    wilderness,
+    dangerRisk: 0,
+    themeOptions: LEGACY_GRAVE_NAME.test(`${from} ${to}`)
+      ? ['undead', 'raiders']
+      : wilderness
+        ? ['beasts', 'goblinoids', 'raiders']
+        : ['raiders', 'goblinoids'],
+    routeId: null,
+    noRoute: false,
+  }
+}
+
 export function planServerTravel(state = {}, {
   campaignId = '',
   destination = '',
+  destinationLocationId = '',
   idempotencyKey = '',
 } = {}) {
-  const from = clean(state.scene?.location, 180) || 'Текущая локация'
-  const to = clean(destination, 180) || `${from} — следующая сцена`
+  const graph = worldTravelGraph(state)
+  const origin = graph
+    ? graphLocation(graph, { locationId: graph.currentLocationId, name: state.scene?.location })
+    : null
+  const target = graph
+    ? graphLocation(graph, { locationId: destinationLocationId, name: destination })
+    : null
+  const from = clean(state.scene?.location, 180) || clean(origin?.name, 180) || 'Текущая локация'
+  const to = clean(destination, 180) || clean(target?.name, 180) || `${from} — следующая сцена`
   const chapter = Math.max(1, Number(state.adventure?.chapter) || 1)
   const fingerprint = `${campaignId}:${idempotencyKey}:${from}:${to}:${chapter}`
   const entropy = hashNumber(fingerprint)
-  const sceneKind = clean(state.scene?.scene_kind, 40).toLowerCase()
-  const wilderness = sceneKind === 'wilderness'
-    || /(лес|тракт|дорог|пустош|болот|гор|ущель|перевал|пещер|road|forest|wild|marsh|mountain)/iu.test(`${from} ${to}`)
-  const distanceBand = ['near', 'regional', 'far'][entropy % 3]
-  const baseMinutes = { near: 45, regional: 120, far: 240 }[distanceBand]
-  const durationMinutes = baseMinutes + (wilderness ? 30 : 0)
+  const facts = origin && target
+    ? graphTravelFacts(graph, origin, target)
+    : legacyTextTravelFacts(state, from, to, entropy)
+  const durationMinutes = TRAVEL_BASE_MINUTES[facts.band] + (facts.wilderness ? 30 : 0)
   const pacingTension = clamp(state.autonomy?.pacing?.tension, 0, 100)
   const activeQuestPressure = (state.worldMemory?.quests ?? []).some((quest) => (
     quest.status === 'active' && Number(quest.clock?.current) >= Math.max(1, Number(quest.clock?.max) - 2)
   )) ? 15 : 0
   const afterEncounterRecovery = recentEncounterResolved(state)
   const recoveryDiscount = afterEncounterRecovery ? 35 : 0
-  const riskScore = clamp(pacingTension + (wilderness ? 20 : 5) + activeQuestPressure - recoveryDiscount, 0, 100)
+  const riskScore = clamp(
+    pacingTension + (facts.wilderness ? 20 : 5) + activeQuestPressure - recoveryDiscount + facts.dangerRisk,
+    0,
+    100,
+  )
   const threshold = clamp(riskScore - 35, 0, 55)
   const roll = (entropy >>> 8) % 100
   const randomEncounter = !afterEncounterRecovery && riskScore >= 65 && roll < threshold
-  const themeOptions = /(кладбищ|склеп|руин|grave|crypt|ruin)/iu.test(`${from} ${to}`)
-    ? ['undead', 'raiders']
-    : wilderness
-      ? ['beasts', 'goblinoids', 'raiders']
-      : ['raiders', 'goblinoids']
-  const theme = themeOptions[(entropy >>> 16) % themeOptions.length]
+  const theme = facts.themeOptions[(entropy >>> 16) % facts.themeOptions.length]
   const difficulty = riskScore >= 90 ? 'hard' : riskScore >= 72 ? 'medium' : 'easy'
   return {
     travel_id: `travel-${createHash('sha256').update(fingerprint).digest('hex').slice(0, 20)}`,
     from,
     to,
-    distance_band: distanceBand,
+    distance_band: facts.band,
     duration_minutes: durationMinutes,
     risk_score: riskScore,
     random_encounter: randomEncounter,
     encounter: randomEncounter ? { theme, difficulty } : null,
-    policy: 'server-travel-v1',
+    source: facts.source,
+    route_id: facts.routeId,
+    no_route: facts.noRoute,
+    policy: 'server-travel-v2',
   }
 }
 

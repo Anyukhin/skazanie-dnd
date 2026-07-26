@@ -4,6 +4,7 @@ import {
   attackProfileFor,
   findActor,
   hasClearTrajectory,
+  incapacitatingConditionFor,
   isEnemyActor,
   isLivingActor,
   normalizeCampaignState,
@@ -162,6 +163,10 @@ export function planNpcTurn(rawState, enemyId) {
   const state = normalizeCampaignState(rawState)
   const enemy = findActor(state, enemyId)
   if (!enemy || !isEnemyActor(state, enemyId) || !isCombatCapable(state, enemy)) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
+  // Surprised, stunned or paralysed enemies still hold their place in the
+  // initiative, but the Rules Engine refuses every command except ending the
+  // turn — so the scheduler must not propose one.
+  if (incapacitatingConditionFor(state, enemyId)) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
   const candidate = targetCandidates(state, enemy)[0]
   if (!candidate) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
   const targetId = actorId(candidate.actor)

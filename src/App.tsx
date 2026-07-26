@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen, ChevronDown, ChevronRight, Copy, Crown, DoorOpen,
   Dices, Flame, Footprints, Gem, History, Menu, MessageSquare,
@@ -24,7 +24,9 @@ import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
 import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
-import { MapProp } from './MapProp'
+import { TacticalBoard, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
+import type { BoardOverlayCell } from './board-render'
+import { sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
 
 type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'merchant' | 'settings' | 'admin' | 'agent-lab'
@@ -386,10 +388,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   statusContent: React.ReactNode
   children?: React.ReactNode
 }) {
-  const [zoom, setZoom] = useState(1)
   const [freeText, setFreeText] = useState('')
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [dragging, setDragging] = useState(false)
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
   const [focusedParticipantId, setFocusedParticipantId] = useState<string | null>(null)
   const [combatMode, setCombatMode] = useState<CombatMode>('weapon')
@@ -408,9 +407,11 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const [hoveredMoveKey, setHoveredMoveKey] = useState<string | null>(null)
   const [pendingMoveKey, setPendingMoveKey] = useState<string | null>(null)
   const [inspectedTarget, setInspectedTarget] = useState<{ id: string; name: string; team: 'ally' | 'enemy'; hp?: number; maxHp?: number; healthLabel?: string; distanceFeet: number; allowed: boolean; reason: string | null } | null>(null)
-  const drag = useRef<{ pointerId: number; startX: number; startY: number; startPanX: number; startPanY: number; moved: boolean } | null>(null)
-  const suppressMapClick = useRef(false)
-  const { columns, rows } = mapGridDimensions(state.scene.cells)
+  const { columns: cellColumns, rows: cellRows } = mapGridDimensions(state.scene.cells)
+  // Канон сцены — `scene.map`; старая проекция без него собирается из клеток.
+  const boardMap = useMemo(() => sceneTacticalMap(state.scene), [state.scene])
+  const columns = boardMap?.width ?? cellColumns
+  const rows = boardMap?.height ?? cellRows
   const irregularMap = state.scene.cells.length < columns * rows
   const combat = combatState(state)
   const combatActive = Boolean(combat.active && combat.initiative?.length)
@@ -490,6 +491,13 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const previewRoute = previewMoveKey ? movementPaths.get(previewMoveKey) ?? null : null
   const previewRouteSteps = new Map((previewRoute?.path ?? []).map((step, index) => [boardPositionKey(step.x, step.y), index + 1]))
   const actionReady = !tactical.actionUsed && economy?.action !== false
+  // «Дополнительная атака» — свойство действия «Атака», а не отдельная кнопка:
+  // действие уже потрачено первым ударом, но оружие бьёт ещё раз, и между
+  // ударами можно перемещаться.
+  const weaponAttacksUsed = Math.max(0, Number(economy?.attacks_used) || 0)
+  const weaponAttacksAllowed = Math.max(1, Number(economy?.attacks_allowed) || 1)
+  const weaponAttacksLeft = Math.max(0, weaponAttacksAllowed - weaponAttacksUsed)
+  const weaponAttackReady = actionReady || (weaponAttacksUsed > 0 && weaponAttacksLeft > 0)
   const bonusReady = economy?.bonus_action !== false
   const reactionReady = economy?.reaction !== false
   const selectedSpellSupport = mechanicsSupportPresentation(selectedSpell?.mechanicsSupport, selectedSpell?.supportNote)
@@ -498,7 +506,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const selectedActionResourceReady = !selectedCombatAction?.resource || Number(selectedActionPool?.current ?? 0) >= Number(selectedCombatAction.cost ?? 1)
   const selectedActionSupport = mechanicsSupportPresentation(selectedCombatAction?.mechanicsSupport, selectedCombatAction?.supportNote)
   const selectedActionEconomyReady = Boolean(selectedCombatAction && !selectedActionSupport.blocked && selectedActionResourceReady && (selectedCombatAction.actionType === 'free' || (selectedCombatAction.actionType === 'bonus_action' ? bonusReady : selectedCombatAction.actionType === 'reaction' ? reactionReady : actionReady)))
-  const selectedCommandReady = combatMode === 'magic' ? spellEconomyReady : combatMode === 'action' ? selectedActionEconomyReady : actionReady
+  const selectedCommandReady = combatMode === 'magic' ? spellEconomyReady : combatMode === 'action' ? selectedActionEconomyReady : weaponAttackReady
   const aliveEnemies = (state.enemies ?? []).filter((enemy) => enemy.alive && !(state.mechanics?.conditions?.[enemy.id] ?? []).some((condition) => condition.id === 'unconscious'))
   const opportunityThreats = combatActive && active && !activeConditionIds.has('disengaged') && !activeConditionIds.has('invisible')
     ? aliveEnemies.filter((enemy) => {
@@ -634,41 +642,241 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     setPendingCommand(null)
   }
 
-  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest('button, .map-cell.move-target')) return
-    drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startPanX: pan.x, startPanY: pan.y, moved: false }
-    event.currentTarget.setPointerCapture(event.pointerId)
-    setDragging(true)
-  }
-  const movePan = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drag.current || drag.current.pointerId !== event.pointerId) return
-    event.preventDefault()
-    const deltaX = event.clientX - drag.current.startX
-    const deltaY = event.clientY - drag.current.startY
-    if (Math.hypot(deltaX, deltaY) > 3) drag.current.moved = true
-    setPan({ x: drag.current.startPanX + deltaX, y: drag.current.startPanY + deltaY })
-  }
-  const stopPan = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drag.current || drag.current.pointerId !== event.pointerId) return
-    suppressMapClick.current = drag.current.moved
-    if (drag.current.moved) window.setTimeout(() => { suppressMapClick.current = false }, 0)
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-    drag.current = null
-    setDragging(false)
-  }
-  const zoomWithWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (event.ctrlKey) return
-    event.preventDefault()
-    const direction = Math.sign(event.deltaY)
-    if (!direction) return
-    setZoom((value) => Math.max(.65, Math.min(1.6, Number((value - direction * .08).toFixed(2)))))
-  }
-  const closeTokenLabelFromMap = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (suppressMapClick.current) {
-      suppressMapClick.current = false
-      return
+  // Доска. Перебор клеток остаётся прежним: он занимает доли миллисекунды и
+  // узким местом не является (`docs/tactical-map-plan.md`, раздел 7). Меняется
+  // то, что из него выходит: местность рисует холст, массовые подсветки —
+  // холст же, а DOM-узел достаётся только активной клетке: занятой фишкой,
+  // досягаемой, входящей в маршрут или в область команды.
+  const boardCells: BoardCellNode[] = []
+  const boardOverlay: BoardOverlayCell[] = []
+  // Подсказки клеток без узла: причина недоступности обязана остаться на всех
+  // клетках, а узел получает только активная.
+  const boardHints = new Map<string, BoardCellHint>()
+  for (const cell of state.scene.cells) {
+    const player = players.find((item) => item.x === cell.x && item.y === cell.y && item.hp > 0)
+    const enemy = state.enemies?.find((item) => item.x === cell.x && item.y === cell.y && item.alive)
+    const summon = state.actors?.find((item) => item.x === cell.x && item.y === cell.y && item.alive)
+    const attackDistanceFeet = enemy && active
+      ? chebyshevFeet(active, enemy)
+      : Number.POSITIVE_INFINITY
+    const spellDistanceFeet = enemy && active ? chebyshevFeet(active, enemy) : Number.POSITIVE_INFINITY
+    const clearTrajectory = Boolean(enemy && active && hasClearBoardTrajectory(state, active, enemy))
+    const enemyInWeaponRange = attackDistanceFeet >= CELL_FEET && attackDistanceFeet <= attackRangeFeet && (attackRangeFeet <= CELL_FEET || clearTrajectory)
+    const enemyInSpellRange = spellDistanceFeet <= selectedSpellRange && (selectedSpellRange <= CELL_FEET || clearTrajectory)
+    const canWeaponTargetEnemy = Boolean(combatActive && selected && combatMode === 'weapon' && weaponAttackReady && enemyInWeaponRange && selectedItem?.combat?.kind !== 'thrown-area' && !needsWeaponChange)
+    const canSpellTargetEnemy = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell && ['enemy', 'creature'].includes(selectedSpell.target) && spellEconomyReady && enemyInSpellRange)
+    const selectedActionRange = selectedCombatAction?.requiresWeapon ? attackRangeFeet : Number(selectedCombatAction?.range ?? 0)
+    const enemyInActionRange = Boolean(enemy && active && chebyshevFeet(active, enemy) <= selectedActionRange && (selectedActionRange <= CELL_FEET || clearTrajectory))
+    const enemyKnockedOut = Boolean(enemy && state.mechanics?.resting?.[enemy.id]?.reason === 'knockout')
+    const canActionTargetEnemy = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['enemy', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && enemyInActionRange && (selectedCombatAction.id !== 'first-aid' || enemyKnockedOut))
+    const targetRangeFeet = combatMode === 'magic' ? selectedSpellRange : combatMode === 'action' ? selectedActionRange : selectedItem?.combat?.kind === 'thrown-area' ? normalRangeFeet : attackRangeFeet
+    const acceptedTarget = combatMode === 'magic'
+      ? selectedSpell?.target === 'ally' ? 'ally' : selectedSpell?.target === 'enemy' ? 'enemy' : 'creature'
+      : combatMode === 'action'
+        ? selectedCombatAction?.target === 'ally' ? 'ally' : selectedCombatAction?.target === 'enemy' ? 'enemy' : 'creature'
+        : 'enemy'
+    const targetEconomyReady = combatMode === 'magic' ? spellEconomyReady : combatMode === 'action' ? selectedActionEconomyReady : weaponAttackReady
+    const targetResourceReady = combatMode === 'magic' ? spellSlotReady : combatMode === 'action' ? selectedActionResourceReady : true
+    const targetEquipmentReady = combatMode !== 'weapon' || !needsWeaponChange
+    const targetSpecialBlock = combatMode === 'magic' && !selectedSpell
+      ? 'У героя нет выбранного боевого заклинания'
+      : combatMode === 'magic' && selectedSpell?.target === 'self'
+        ? 'Это заклинание применяется только на себя'
+        : combatMode === 'action' && !selectedCombatAction
+          ? 'Сначала выберите классовое или основное действие'
+          : combatMode === 'action' && selectedCombatAction?.id === 'first-aid' && !enemyKnockedOut
+            ? 'Первая помощь доступна только нокаутированной цели'
+            : null
+    const enemyTargetCheck = enemy ? evaluateCombatTarget({
+      selected: Boolean(combatActive && selected), economyReady: targetEconomyReady,
+      targetAlive: enemy.alive, targetTeam: 'enemy', acceptedTarget,
+      distanceFeet: attackDistanceFeet, rangeFeet: targetRangeFeet,
+      clearTrajectory: targetRangeFeet <= CELL_FEET || clearTrajectory,
+      equipmentReady: targetEquipmentReady, resourceReady: targetResourceReady,
+      specialBlockReason: targetSpecialBlock,
+    }) : null
+    const cellKey = cell.x + ',' + cell.y
+    const canMoveHere = reachable.has(cellKey)
+    const route = movementPaths.get(cellKey)
+    const moveReason = active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null
+    const routeStep = previewRouteSteps.get(cellKey)
+    const opportunityRisk = Boolean(canMoveHere && opportunityThreats.some((threat) => chebyshevFeet(threat, cell) > CELL_FEET))
+    const canThrowHere = Boolean(combatActive && selected && combatMode === 'weapon' && actionReady && selectedItem?.combat?.kind === 'thrown-area' && active && chebyshevFeet(active, cell) <= normalRangeFeet && hasClearBoardTrajectory(state, active, cell) && cell.revealed && cell.type !== 'wall')
+    const occupied = Boolean(player || enemy || summon)
+    const commandRangeVisible = Boolean(combatActive && selected && targetRangeFeet > 0)
+    const cellInCommandRange = Boolean(commandRangeVisible && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && chebyshevFeet(active, cell) <= targetRangeFeet && (targetRangeFeet <= CELL_FEET || hasClearBoardTrajectory(state, active, cell)))
+    const moveUnavailable = Boolean(selected && movementAvailable && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && !occupied && !canMoveHere && moveReason)
+    const canPointSpellHere = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell?.target === 'point' && spellEconomyReady && active && chebyshevFeet(active, cell) <= selectedSpellRange && hasClearBoardTrajectory(state, active, cell) && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && (!['summon', 'teleport'].includes(selectedSpellKind ?? '') || !occupied))
+    const canSummonHere = Boolean(canPointSpellHere && selectedSpellKind === 'summon')
+    const canAimHere = canThrowHere || canPointSpellHere
+    const blastCenter = combatMode === 'magic' && selectedSpell?.target === 'point' ? pendingPoint ?? aimCell : projectileTarget
+    const blastRadius = combatMode === 'magic' ? spellAreaRadiusFeet : areaRadiusFeet
+    const inBlastArea = Boolean(blastCenter && blastRadius && (selectedSpell?.areaShape === 'cone' && selectedSpell.areaOrigin === 'self' && active
+      ? boardCellInCone(cell, active, blastCenter, blastRadius)
+      : selectedSpell?.areaShape === 'cube' && selectedSpell.areaOrigin === 'self' && active
+        ? boardCellInDirectedCube(cell, active, blastCenter, blastRadius)
+        : chebyshevFeet(blastCenter, cell) <= blastRadius))
+    const inPersistentSpellArea = Boolean((state.mechanics?.active_effects ?? []).some((effect) => effect.center && chebyshevFeet(effect.center, cell) <= Number(effect.radius_feet ?? 0)))
+    const cellIsInteractive = (canMoveHere || canAimHere) && !occupied
+    const cellFeedback = (state.mapFeedback ?? []).filter((item) => item.x === cell.x && item.y === cell.y)
+    const cellLabel = canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}` : canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}` : canMoveHere ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}` : moveReason ?? undefined
+    const enemyKind = enemy ? enemyVisualKind(enemy) : null
+    const enemyHealth = enemy ? enemyHealthPresentation(enemy) : null
+    const enemyCommandAllowed = Boolean(canWeaponTargetEnemy || canSpellTargetEnemy || canActionTargetEnemy || canThrowHere || canPointSpellHere)
+    const enemyTargetReason = enemyCommandAllowed
+      ? attackDistanceFeet > normalRangeFeet && combatMode === 'weapon' ? 'Допустимая цель · дальний диапазон с помехой' : 'Допустимая цель'
+      : enemyTargetCheck?.reason ?? 'Выбранная команда не подходит для этой цели'
+    const enemyConditions = enemy ? (state.mechanics?.conditions?.[enemy.id] ?? []).map(conditionPresentation) : []
+
+    // Область команды и недоступный маршрут накрывают почти всю карту, поэтому
+    // они рисуются на холсте: в разметке это был бы узел на каждую клетку.
+    if (commandRangeVisible && cell.revealed) boardOverlay.push({ x: cell.x, y: cell.y, kind: cellInCommandRange ? 'command-range' : 'command-out-of-range' })
+    if (moveUnavailable && !canAimHere && !cellInCommandRange) boardOverlay.push({ x: cell.x, y: cell.y, kind: 'move-unavailable' })
+
+    const stateClasses = [
+      canMoveHere && !canAimHere ? 'move-target' : '',
+      routeStep ? 'route-step' : '',
+      previewMoveKey === cellKey ? 'route-destination' : '',
+      opportunityRisk && !canAimHere ? 'opportunity-risk' : '',
+      canAimHere ? 'aim-target' : '',
+      canSummonHere ? 'summon-target' : '',
+      inPersistentSpellArea ? 'spell-terrain' : '',
+      inBlastArea ? 'blast-area' : '',
+      pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '',
+      occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : 'occupied-by-enemy' : '',
+    ].filter(Boolean)
+    const cellTitle = opportunityRisk && !canAimHere
+      ? 'Опасная клетка: выход из ближнего боя вызовет атаку по возможности'
+      : moveUnavailable ? moveReason ?? undefined : undefined
+    if (!stateClasses.length && !cellFeedback.length) {
+      if (cellTitle || cellLabel) boardHints.set(cellKey, { title: cellTitle, ariaLabel: cellLabel })
+      continue
     }
-    if (!(event.target as HTMLElement).closest('.map-token')) setOpenTokenLabelId(null)
+
+    boardCells.push({
+      x: cell.x,
+      y: cell.y,
+      className: stateClasses.join(' '),
+      interactive: cellIsInteractive,
+      ariaLabel: cellLabel,
+      title: cellTitle,
+      onPointerEnter: () => { if (canAimHere) setAimCell({ x: cell.x, y: cell.y }); else if (canMoveHere) setHoveredMoveKey(cellKey) },
+      onPointerLeave: () => { if (canAimHere && !pendingCommand) setAimCell(null); if (hoveredMoveKey === cellKey) setHoveredMoveKey(null) },
+      onActivate: () => {
+        if (!selected || (!canMoveHere && !canAimHere)) return
+        if (canPointSpellHere) castAtCell(cell.x, cell.y)
+        else if (canThrowHere) chooseArea(cell.x, cell.y)
+        else if (!combatActive || pendingMoveKey === cellKey) { onMove(selected, cell.x, cell.y); setPendingMoveKey(null) }
+        else setPendingMoveKey(cellKey)
+      },
+      children: <>
+        {routeStep && <span className="route-step-badge" aria-hidden="true">{routeStep}</span>}
+        {/* След на клетке: лежит в плоскости доски, поэтому при любом повороте и
+            наклоне точно совпадает с сеткой. Фигурка стоит стоймя и из-за этого
+            перспективно смещается — позиционную правду несёт именно этот след. */}
+        {occupied && cell.revealed && <span className="cell-footprint" aria-hidden="true" />}
+        {enemy && cell.revealed && (
+          <button
+            className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
+            data-enemy-kind={enemyKind}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onMouseEnter={() => { setAimCell({ x: enemy.x, y: enemy.y }); setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason }) }}
+            onMouseLeave={() => { if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
+            onFocus={() => setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason })}
+            onBlur={() => { if (!pendingCommand) setInspectedTarget(null) }}
+            onClick={(event) => { event.stopPropagation(); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canActionTargetEnemy) useActionAtTarget(enemy.id); else if (canSpellTargetEnemy) castAtTarget(enemy.id); else if (canWeaponTargetEnemy) chooseTarget(enemy.id) }}
+            aria-disabled={tacticalBusy || !enemyCommandAllowed}
+            aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${enemy.name}` : `${canActionTargetEnemy ? `Использовать ${selectedCombatAction?.name} на` : canSpellTargetEnemy ? 'Наложить заклинание на' : 'Атаковать'} ${enemy.name}. Состояние: ${enemyHealth?.label}`}
+            title={enemyTargetReason}
+          >
+            <span className="enemy-emblem">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
+            <span className="enemy-nameplate">{enemy.name}</span>
+            <span className={`enemy-health ${enemyHealth?.status ?? ''}`}><i style={enemyHealth?.percent == null ? undefined : { width: `${enemyHealth.percent}%` }} /></span>
+            <small className="enemy-health-value">{enemyHealth?.label}</small>
+            {enemyConditions.length > 0 && <span className="token-conditions">{enemyConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
+          </button>
+        )}
+        {player && cell.revealed && (() => {
+          const healingDistance = active ? chebyshevFeet(active, player) : Number.POSITIVE_INFINITY
+          const canHeal = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange)
+          const playerKnockedOut = state.mechanics?.resting?.[player.id]?.reason === 'knockout'
+          const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && player.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'stabilize' || player.hp === 0) && (selectedCombatAction.id !== 'first-aid' || playerKnockedOut))
+          const playerCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere)
+          const playerSpecialBlock = combatMode === 'action' && selectedCombatAction?.id === 'stabilize' && player.hp > 0
+            ? 'Стабилизация нужна только герою с 0 ОЗ'
+            : combatMode === 'action' && selectedCombatAction?.id === 'first-aid' && !playerKnockedOut
+              ? 'Первая помощь доступна только нокаутированному союзнику'
+              : combatMode === 'action' && player.id === selected ? 'Выберите другого союзника' : null
+          const playerTargetCheck = evaluateCombatTarget({
+            selected: Boolean(combatActive && selected), economyReady: targetEconomyReady,
+            targetAlive: player.hp > 0 || selectedCombatAction?.id === 'stabilize', targetTeam: 'ally', acceptedTarget,
+            distanceFeet: healingDistance, rangeFeet: targetRangeFeet,
+            clearTrajectory: targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, player)),
+            resourceReady: targetResourceReady, specialBlockReason: playerSpecialBlock,
+          })
+          const playerTargetReason = playerCommandAllowed ? 'Допустимая цель' : playerTargetCheck.reason ?? 'Выбранная команда не подходит для союзника'
+          const playerConditions = (state.mechanics?.conditions?.[player.id] ?? []).map(conditionPresentation)
+          return <button
+            className={'map-token hero-token ' + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
+            style={{ '--token': player.color, backgroundImage: 'url(' + player.portrait + ')', backgroundPosition: player.portraitPosition } as React.CSSProperties}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onMouseEnter={() => { if (canHeal) setAimCell({ x: player.x, y: player.y }); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
+            onMouseLeave={() => { if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
+            onFocus={() => setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason })}
+            onBlur={() => { if (!pendingCommand) setInspectedTarget(null) }}
+            onClick={(event) => { event.stopPropagation(); setOpenTokenLabelId((current) => current === player.id ? null : player.id); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canAid) useActionAtTarget(player.id); else if (canHeal) castAtTarget(player.id) }}
+            aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${player.character}` : canAid ? `Использовать ${selectedCombatAction?.name} на ${player.character}` : canHeal ? `Наложить ${selectedSpell?.name} на ${player.character}` : player.character + (player.id === turnActorId ? ', активный герой' : '')}
+            aria-disabled={!canHeal && !canAid && !canThrowHere}
+            title={playerTargetReason}
+          >
+            <span className="map-token-hp"><i style={{ width: Math.max(0, player.hp / player.maxHp * 100) + '%' }} /></span>
+            <small className="map-token-hp-value">{player.hp}</small>
+            {playerConditions.length > 0 && <span className="token-conditions">{playerConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
+            {openTokenLabelId === player.id && <span className="token-label">{player.character}<small>{player.hp} ОЗ · {combatActive ? `${remainingFeet} фт` : 'свободный ход'}</small></span>}
+          </button>
+        })()}
+        {summon && cell.revealed && (() => {
+          const healingDistance = active ? chebyshevFeet(active, summon) : Number.POSITIVE_INFINITY
+          const canHeal = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange)
+          const summonKnockedOut = state.mechanics?.resting?.[summon.id]?.reason === 'knockout'
+          const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && summon.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'first-aid' || summonKnockedOut))
+          const summonCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere)
+          const summonTargetCheck = evaluateCombatTarget({
+            selected: Boolean(combatActive && selected), economyReady: targetEconomyReady,
+            targetAlive: summon.alive, targetTeam: 'ally', acceptedTarget,
+            distanceFeet: healingDistance, rangeFeet: targetRangeFeet,
+            clearTrajectory: targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, summon)),
+            resourceReady: targetResourceReady,
+            specialBlockReason: combatMode === 'action' && summon.id === selected ? 'Выберите другого союзника' : null,
+          })
+          const summonTargetReason = summonCommandAllowed ? 'Допустимая цель' : summonTargetCheck.reason ?? 'Выбранная команда не подходит для призыва'
+          const summonConditions = (state.mechanics?.conditions?.[summon.id] ?? []).map(conditionPresentation)
+          return <button
+            className={'map-token summon-token ' + (focusedParticipantId === summon.id ? 'initiative-focus ' : '') + (selected === summon.id ? 'selected active-turn' : '') + ' ' + (openTokenLabelId === summon.id ? 'label-open' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected ? 'unavailable-target' : '') + ' ' + (pendingTargetId === summon.id ? 'command-selected' : '')}
+            style={{ '--token': '#70a78b' } as React.CSSProperties}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onMouseEnter={() => { if (canHeal) setAimCell({ x: summon.x, y: summon.y }); setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason }) }}
+            onMouseLeave={() => { if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
+            onFocus={() => setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason })}
+            onBlur={() => { if (!pendingCommand) setInspectedTarget(null) }}
+            onClick={(event) => { event.stopPropagation(); setOpenTokenLabelId((current) => current === summon.id ? null : summon.id); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canAid) useActionAtTarget(summon.id); else if (canHeal) castAtTarget(summon.id) }}
+            aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${summon.name}` : canAid ? `Использовать ${selectedCombatAction?.name} на ${summon.name}` : canHeal ? `Наложить ${selectedSpell?.name} на ${summon.name}` : `${summon.name}, призванный союзник${summon.id === turnActorId ? ', активный участник' : ''}`}
+            aria-disabled={!canHeal && !canAid && !canThrowHere}
+            title={summonTargetReason}
+          >
+            <Sparkles size={15} />
+            <span className="map-token-hp"><i style={{ width: Math.max(0, summon.hp / summon.maxHp * 100) + '%' }} /></span>
+            <small className="map-token-hp-value">{summon.hp}</small>
+            {summonConditions.length > 0 && <span className="token-conditions">{summonConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
+            {openTokenLabelId === summon.id && <span className="token-label">{summon.name}<small>{summon.hp} ОЗ · {remainingFeet} фт</small></span>}
+          </button>
+        })()}
+        {cellFeedback.map((item) => <span key={item.id} className={'map-feedback ' + item.kind}>{item.text}</span>)}
+      </>,
+    })
   }
 
   return (
@@ -727,247 +935,22 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       >
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
-      <div
-        className={'map-scroll ' + (dragging ? 'dragging' : '')}
-        style={{
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          '--counter-scale': 1 / zoom,
-        } as React.CSSProperties}
-        onPointerDown={startPan}
-        onPointerMove={movePan}
-        onPointerUp={stopPan}
-        onPointerCancel={stopPan}
-        onWheel={zoomWithWheel}
-        onDoubleClick={() => { setPan({ x: 0, y: 0 }); setZoom(1) }}
-        onClickCapture={closeTokenLabelFromMap}
-        role="group"
-        aria-label={`Тактическая карта, вид сверху. Колесо меняет масштаб, перетаскивание двигает полотно, двойной клик центрирует. Активный участник: ${activeName}`}
-      >
-        <div className={`map-grid ${irregularMap ? 'irregular' : ''}`} style={{ gridTemplateColumns: 'repeat(' + columns + ', var(--cell))', gridTemplateRows: 'repeat(' + rows + ', var(--cell))' }}>
-          {trajectory && <svg className="projectile-trajectory" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} /></svg>}
-          {state.scene.cells.map((cell) => {
-            const player = players.find((item) => item.x === cell.x && item.y === cell.y && item.hp > 0)
-            const enemy = state.enemies?.find((item) => item.x === cell.x && item.y === cell.y && item.alive)
-            const summon = state.actors?.find((item) => item.x === cell.x && item.y === cell.y && item.alive)
-            const attackDistanceFeet = enemy && active
-              ? chebyshevFeet(active, enemy)
-              : Number.POSITIVE_INFINITY
-            const spellDistanceFeet = enemy && active ? chebyshevFeet(active, enemy) : Number.POSITIVE_INFINITY
-            const clearTrajectory = Boolean(enemy && active && hasClearBoardTrajectory(state, active, enemy))
-            const enemyInWeaponRange = attackDistanceFeet >= CELL_FEET && attackDistanceFeet <= attackRangeFeet && (attackRangeFeet <= CELL_FEET || clearTrajectory)
-            const enemyInSpellRange = spellDistanceFeet <= selectedSpellRange && (selectedSpellRange <= CELL_FEET || clearTrajectory)
-            const canWeaponTargetEnemy = Boolean(combatActive && selected && combatMode === 'weapon' && actionReady && enemyInWeaponRange && selectedItem?.combat?.kind !== 'thrown-area' && !needsWeaponChange)
-            const canSpellTargetEnemy = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell && ['enemy', 'creature'].includes(selectedSpell.target) && spellEconomyReady && enemyInSpellRange)
-            const selectedActionRange = selectedCombatAction?.requiresWeapon ? attackRangeFeet : Number(selectedCombatAction?.range ?? 0)
-            const enemyInActionRange = Boolean(enemy && active && chebyshevFeet(active, enemy) <= selectedActionRange && (selectedActionRange <= CELL_FEET || clearTrajectory))
-            const enemyKnockedOut = Boolean(enemy && state.mechanics?.resting?.[enemy.id]?.reason === 'knockout')
-            const canActionTargetEnemy = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['enemy', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && enemyInActionRange && (selectedCombatAction.id !== 'first-aid' || enemyKnockedOut))
-            const targetRangeFeet = combatMode === 'magic' ? selectedSpellRange : combatMode === 'action' ? selectedActionRange : selectedItem?.combat?.kind === 'thrown-area' ? normalRangeFeet : attackRangeFeet
-            const acceptedTarget = combatMode === 'magic'
-              ? selectedSpell?.target === 'ally' ? 'ally' : selectedSpell?.target === 'enemy' ? 'enemy' : 'creature'
-              : combatMode === 'action'
-                ? selectedCombatAction?.target === 'ally' ? 'ally' : selectedCombatAction?.target === 'enemy' ? 'enemy' : 'creature'
-                : 'enemy'
-            const targetEconomyReady = combatMode === 'magic' ? spellEconomyReady : combatMode === 'action' ? selectedActionEconomyReady : actionReady
-            const targetResourceReady = combatMode === 'magic' ? spellSlotReady : combatMode === 'action' ? selectedActionResourceReady : true
-            const targetEquipmentReady = combatMode !== 'weapon' || !needsWeaponChange
-            const targetSpecialBlock = combatMode === 'magic' && !selectedSpell
-              ? 'У героя нет выбранного боевого заклинания'
-              : combatMode === 'magic' && selectedSpell?.target === 'self'
-                ? 'Это заклинание применяется только на себя'
-                : combatMode === 'action' && !selectedCombatAction
-                  ? 'Сначала выберите классовое или основное действие'
-                  : combatMode === 'action' && selectedCombatAction?.id === 'first-aid' && !enemyKnockedOut
-                    ? 'Первая помощь доступна только нокаутированной цели'
-                    : null
-            const enemyTargetCheck = enemy ? evaluateCombatTarget({
-              selected: Boolean(combatActive && selected), economyReady: targetEconomyReady,
-              targetAlive: enemy.alive, targetTeam: 'enemy', acceptedTarget,
-              distanceFeet: attackDistanceFeet, rangeFeet: targetRangeFeet,
-              clearTrajectory: targetRangeFeet <= CELL_FEET || clearTrajectory,
-              equipmentReady: targetEquipmentReady, resourceReady: targetResourceReady,
-              specialBlockReason: targetSpecialBlock,
-            }) : null
-            const cellKey = cell.x + ',' + cell.y
-            const canMoveHere = reachable.has(cellKey)
-            const route = movementPaths.get(cellKey)
-            const moveReason = active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null
-            const routeStep = previewRouteSteps.get(cellKey)
-            const opportunityRisk = Boolean(canMoveHere && opportunityThreats.some((threat) => chebyshevFeet(threat, cell) > CELL_FEET))
-            const canThrowHere = Boolean(combatActive && selected && combatMode === 'weapon' && actionReady && selectedItem?.combat?.kind === 'thrown-area' && active && chebyshevFeet(active, cell) <= normalRangeFeet && hasClearBoardTrajectory(state, active, cell) && cell.revealed && cell.type !== 'wall')
-            const occupied = Boolean(player || enemy || summon)
-            const commandRangeVisible = Boolean(combatActive && selected && targetRangeFeet > 0)
-            const cellInCommandRange = Boolean(commandRangeVisible && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && chebyshevFeet(active, cell) <= targetRangeFeet && (targetRangeFeet <= CELL_FEET || hasClearBoardTrajectory(state, active, cell)))
-            const moveUnavailable = Boolean(selected && movementAvailable && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && !occupied && !canMoveHere && moveReason)
-            const canPointSpellHere = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell?.target === 'point' && spellEconomyReady && active && chebyshevFeet(active, cell) <= selectedSpellRange && hasClearBoardTrajectory(state, active, cell) && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && (!['summon', 'teleport'].includes(selectedSpellKind ?? '') || !occupied))
-            const canSummonHere = Boolean(canPointSpellHere && selectedSpellKind === 'summon')
-            const canAimHere = canThrowHere || canPointSpellHere
-            const blastCenter = combatMode === 'magic' && selectedSpell?.target === 'point' ? pendingPoint ?? aimCell : projectileTarget
-            const blastRadius = combatMode === 'magic' ? spellAreaRadiusFeet : areaRadiusFeet
-            const inBlastArea = Boolean(blastCenter && blastRadius && (selectedSpell?.areaShape === 'cone' && selectedSpell.areaOrigin === 'self' && active
-              ? boardCellInCone(cell, active, blastCenter, blastRadius)
-              : selectedSpell?.areaShape === 'cube' && selectedSpell.areaOrigin === 'self' && active
-                ? boardCellInDirectedCube(cell, active, blastCenter, blastRadius)
-                : chebyshevFeet(blastCenter, cell) <= blastRadius))
-            const inPersistentSpellArea = Boolean((state.mechanics?.active_effects ?? []).some((effect) => effect.center && chebyshevFeet(effect.center, cell) <= Number(effect.radius_feet ?? 0)))
-            const cellIsInteractive = (canMoveHere || canAimHere) && !occupied
-            const CellElement: 'button' | 'div' = cellIsInteractive ? 'button' : 'div'
-            const cellFeedback = (state.mapFeedback ?? []).filter((item) => item.x === cell.x && item.y === cell.y)
-            const cellLabel = canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}` : canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}` : canMoveHere ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}` : moveReason ?? undefined
-            const enemyKind = enemy ? enemyVisualKind(enemy) : null
-            const enemyHealth = enemy ? enemyHealthPresentation(enemy) : null
-            const enemyCommandAllowed = Boolean(canWeaponTargetEnemy || canSpellTargetEnemy || canActionTargetEnemy || canThrowHere || canPointSpellHere)
-            const enemyTargetReason = enemyCommandAllowed
-              ? attackDistanceFeet > normalRangeFeet && combatMode === 'weapon' ? 'Допустимая цель · дальний диапазон с помехой' : 'Допустимая цель'
-              : enemyTargetCheck?.reason ?? 'Выбранная команда не подходит для этой цели'
-            const enemyConditions = enemy ? (state.mechanics?.conditions?.[enemy.id] ?? []).map(conditionPresentation) : []
-            return (
-              <CellElement
-                key={cell.x + '-' + cell.y}
-                type={cellIsInteractive ? 'button' : undefined}
-                className={'map-cell ' + cell.type + ' material-' + (cell.material ?? 'stone') + ' feature-' + (cell.feature ?? 'none') + ' variant-' + (Math.abs(Number(cell.variant) || 0) % 6) + ' pattern-' + (cell.pattern ?? 'natural') + ' parity-' + ((cell.x + cell.y) % 2 ? 'odd' : 'even') + ' ' + (cell.revealed ? '' : 'hidden') + ' ' + (canMoveHere && !canAimHere ? 'move-target' : '') + ' ' + (moveUnavailable && !canAimHere ? 'move-unavailable' : '') + ' ' + (routeStep ? 'route-step' : '') + ' ' + (previewMoveKey === cellKey ? 'route-destination' : '') + ' ' + (opportunityRisk && !canAimHere ? 'opportunity-risk' : '') + ' ' + (commandRangeVisible ? cellInCommandRange ? 'command-range' : 'command-out-of-range' : '') + ' ' + (canAimHere ? 'aim-target' : '') + ' ' + (canSummonHere ? 'summon-target' : '') + ' ' + (inPersistentSpellArea ? 'spell-terrain' : '') + ' ' + (inBlastArea ? 'blast-area' : '') + ' ' + (pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '') + ' ' + (occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : 'occupied-by-enemy' : '')}
-                style={{
-                  gridColumn: cell.x + 1,
-                  gridRow: cell.y + 1,
-                  '--board-art-size': `${columns * 100}% ${rows * 100}%`,
-                  '--board-art-position': `${columns > 1 ? cell.x / (columns - 1) * 100 : 50}% ${rows > 1 ? cell.y / (rows - 1) * 100 : 50}%`,
-                } as React.CSSProperties}
-                data-cell={cellKey}
-                data-edge={cell.edge_mask ?? ''}
-                aria-label={cellLabel}
-                title={opportunityRisk && !canAimHere ? 'Опасная клетка: выход из ближнего боя вызовет атаку по возможности' : moveUnavailable ? moveReason ?? undefined : undefined}
-                onPointerEnter={() => { if (canAimHere) setAimCell({ x: cell.x, y: cell.y }); else if (canMoveHere) setHoveredMoveKey(cellKey) }}
-                onPointerLeave={() => { if (canAimHere && !pendingCommand) setAimCell(null); if (hoveredMoveKey === cellKey) setHoveredMoveKey(null) }}
-                onPointerDown={(event) => { if (canMoveHere || canAimHere) event.stopPropagation() }}
-                onPointerUp={(event) => { if (canMoveHere || canAimHere) event.stopPropagation() }}
-                onClick={(event) => {
-                  if (!selected || (!canMoveHere && !canAimHere)) return
-                  event.stopPropagation()
-                  if (canPointSpellHere) castAtCell(cell.x, cell.y)
-                  else if (canThrowHere) chooseArea(cell.x, cell.y)
-                  else if (!combatActive || pendingMoveKey === cellKey) { onMove(selected, cell.x, cell.y); setPendingMoveKey(null) }
-                  else setPendingMoveKey(cellKey)
-                }}
-                onKeyDown={(event) => {
-                  if (!selected || (!canMoveHere && !canAimHere) || (event.key !== 'Enter' && event.key !== ' ')) return
-                  event.preventDefault()
-                  if (canPointSpellHere) castAtCell(cell.x, cell.y)
-                  else if (canThrowHere) chooseArea(cell.x, cell.y)
-                  else if (!combatActive || pendingMoveKey === cellKey) { onMove(selected, cell.x, cell.y); setPendingMoveKey(null) }
-                  else setPendingMoveKey(cellKey)
-                }}
-              >
-                {cell.revealed && cell.feature && cell.feature !== 'enemy' && <span className={'feature ' + cell.feature}><MapProp feature={cell.feature} /></span>}
-                {routeStep && <span className="route-step-badge" aria-hidden="true">{routeStep}</span>}
-                {/* След на клетке: лежит в плоскости доски, поэтому при любом повороте и
-                    наклоне точно совпадает с сеткой. Фигурка стоит стоймя и из-за этого
-                    перспективно смещается — позиционную правду несёт именно этот след. */}
-                {occupied && cell.revealed && <span className="cell-footprint" aria-hidden="true" />}
-                {enemy && cell.revealed && (
-                  <button
-                    className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
-                    data-enemy-kind={enemyKind}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onPointerUp={(event) => event.stopPropagation()}
-                    onMouseEnter={() => { setAimCell({ x: enemy.x, y: enemy.y }); setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason }) }}
-                    onMouseLeave={() => { if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
-                    onFocus={() => setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason })}
-                    onBlur={() => { if (!pendingCommand) setInspectedTarget(null) }}
-                    onClick={(event) => { event.stopPropagation(); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canActionTargetEnemy) useActionAtTarget(enemy.id); else if (canSpellTargetEnemy) castAtTarget(enemy.id); else if (canWeaponTargetEnemy) chooseTarget(enemy.id) }}
-                    aria-disabled={tacticalBusy || !enemyCommandAllowed}
-                    aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${enemy.name}` : `${canActionTargetEnemy ? `Использовать ${selectedCombatAction?.name} на` : canSpellTargetEnemy ? 'Наложить заклинание на' : 'Атаковать'} ${enemy.name}. Состояние: ${enemyHealth?.label}`}
-                    title={enemyTargetReason}
-                  >
-                    <span className="enemy-emblem">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
-                    <span className="enemy-nameplate">{enemy.name}</span>
-                    <span className={`enemy-health ${enemyHealth?.status ?? ''}`}><i style={enemyHealth?.percent == null ? undefined : { width: `${enemyHealth.percent}%` }} /></span>
-                    <small className="enemy-health-value">{enemyHealth?.label}</small>
-                    {enemyConditions.length > 0 && <span className="token-conditions">{enemyConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
-                  </button>
-                )}
-                {player && cell.revealed && (() => {
-                  const healingDistance = active ? chebyshevFeet(active, player) : Number.POSITIVE_INFINITY
-                  const canHeal = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange)
-                  const playerKnockedOut = state.mechanics?.resting?.[player.id]?.reason === 'knockout'
-                  const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && player.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'stabilize' || player.hp === 0) && (selectedCombatAction.id !== 'first-aid' || playerKnockedOut))
-                  const playerCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere)
-                  const playerSpecialBlock = combatMode === 'action' && selectedCombatAction?.id === 'stabilize' && player.hp > 0
-                    ? 'Стабилизация нужна только герою с 0 ОЗ'
-                    : combatMode === 'action' && selectedCombatAction?.id === 'first-aid' && !playerKnockedOut
-                      ? 'Первая помощь доступна только нокаутированному союзнику'
-                      : combatMode === 'action' && player.id === selected ? 'Выберите другого союзника' : null
-                  const playerTargetCheck = evaluateCombatTarget({
-                    selected: Boolean(combatActive && selected), economyReady: targetEconomyReady,
-                    targetAlive: player.hp > 0 || selectedCombatAction?.id === 'stabilize', targetTeam: 'ally', acceptedTarget,
-                    distanceFeet: healingDistance, rangeFeet: targetRangeFeet,
-                    clearTrajectory: targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, player)),
-                    resourceReady: targetResourceReady, specialBlockReason: playerSpecialBlock,
-                  })
-                  const playerTargetReason = playerCommandAllowed ? 'Допустимая цель' : playerTargetCheck.reason ?? 'Выбранная команда не подходит для союзника'
-                  const playerConditions = (state.mechanics?.conditions?.[player.id] ?? []).map(conditionPresentation)
-                  return <button
-                    className={'map-token hero-token ' + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
-                    style={{ '--token': player.color, backgroundImage: 'url(' + player.portrait + ')', backgroundPosition: player.portraitPosition } as React.CSSProperties}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onPointerUp={(event) => event.stopPropagation()}
-                    onMouseEnter={() => { if (canHeal) setAimCell({ x: player.x, y: player.y }); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
-                    onMouseLeave={() => { if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
-                    onFocus={() => setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason })}
-                    onBlur={() => { if (!pendingCommand) setInspectedTarget(null) }}
-                    onClick={(event) => { event.stopPropagation(); setOpenTokenLabelId((current) => current === player.id ? null : player.id); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canAid) useActionAtTarget(player.id); else if (canHeal) castAtTarget(player.id) }}
-                    aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${player.character}` : canAid ? `Использовать ${selectedCombatAction?.name} на ${player.character}` : canHeal ? `Наложить ${selectedSpell?.name} на ${player.character}` : player.character + (player.id === turnActorId ? ', активный герой' : '')}
-                    aria-disabled={!canHeal && !canAid && !canThrowHere}
-                    title={playerTargetReason}
-                  >
-                    <span className="map-token-hp"><i style={{ width: Math.max(0, player.hp / player.maxHp * 100) + '%' }} /></span>
-                    <small className="map-token-hp-value">{player.hp}</small>
-                    {playerConditions.length > 0 && <span className="token-conditions">{playerConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
-                    {openTokenLabelId === player.id && <span className="token-label">{player.character}<small>{player.hp} ОЗ · {combatActive ? `${remainingFeet} фт` : 'свободный ход'}</small></span>}
-                  </button>
-                })()}
-                {summon && cell.revealed && (() => {
-                  const healingDistance = active ? chebyshevFeet(active, summon) : Number.POSITIVE_INFINITY
-                  const canHeal = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange)
-                  const summonKnockedOut = state.mechanics?.resting?.[summon.id]?.reason === 'knockout'
-                  const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && summon.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'first-aid' || summonKnockedOut))
-                  const summonCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere)
-                  const summonTargetCheck = evaluateCombatTarget({
-                    selected: Boolean(combatActive && selected), economyReady: targetEconomyReady,
-                    targetAlive: summon.alive, targetTeam: 'ally', acceptedTarget,
-                    distanceFeet: healingDistance, rangeFeet: targetRangeFeet,
-                    clearTrajectory: targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, summon)),
-                    resourceReady: targetResourceReady,
-                    specialBlockReason: combatMode === 'action' && summon.id === selected ? 'Выберите другого союзника' : null,
-                  })
-                  const summonTargetReason = summonCommandAllowed ? 'Допустимая цель' : summonTargetCheck.reason ?? 'Выбранная команда не подходит для призыва'
-                  const summonConditions = (state.mechanics?.conditions?.[summon.id] ?? []).map(conditionPresentation)
-                  return <button
-                    className={'map-token summon-token ' + (focusedParticipantId === summon.id ? 'initiative-focus ' : '') + (selected === summon.id ? 'selected active-turn' : '') + ' ' + (openTokenLabelId === summon.id ? 'label-open' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected ? 'unavailable-target' : '') + ' ' + (pendingTargetId === summon.id ? 'command-selected' : '')}
-                    style={{ '--token': '#70a78b' } as React.CSSProperties}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onPointerUp={(event) => event.stopPropagation()}
-                    onMouseEnter={() => { if (canHeal) setAimCell({ x: summon.x, y: summon.y }); setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason }) }}
-                    onMouseLeave={() => { if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
-                    onFocus={() => setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason })}
-                    onBlur={() => { if (!pendingCommand) setInspectedTarget(null) }}
-                    onClick={(event) => { event.stopPropagation(); setOpenTokenLabelId((current) => current === summon.id ? null : summon.id); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canAid) useActionAtTarget(summon.id); else if (canHeal) castAtTarget(summon.id) }}
-                    aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${summon.name}` : canAid ? `Использовать ${selectedCombatAction?.name} на ${summon.name}` : canHeal ? `Наложить ${selectedSpell?.name} на ${summon.name}` : `${summon.name}, призванный союзник${summon.id === turnActorId ? ', активный участник' : ''}`}
-                    aria-disabled={!canHeal && !canAid && !canThrowHere}
-                    title={summonTargetReason}
-                  >
-                    <Sparkles size={15} />
-                    <span className="map-token-hp"><i style={{ width: Math.max(0, summon.hp / summon.maxHp * 100) + '%' }} /></span>
-                    <small className="map-token-hp-value">{summon.hp}</small>
-                    {summonConditions.length > 0 && <span className="token-conditions">{summonConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
-                    {openTokenLabelId === summon.id && <span className="token-label">{summon.name}<small>{summon.hp} ОЗ · {remainingFeet} фт</small></span>}
-                  </button>
-                })()}
-                {cellFeedback.map((item) => <span key={item.id} className={'map-feedback ' + item.kind}>{item.text}</span>)}
-              </CellElement>
-            )
-          })}
-        </div>
-      </div>
+      <TacticalBoard
+        map={boardMap}
+        columns={columns}
+        rows={rows}
+        irregular={irregularMap}
+        themeKey={visualTheme}
+        artUrl={scenicBackdrop ? mapArt.url : null}
+        ariaLabel={`Тактическая карта, вид сверху. Колесо меняет масштаб, перетаскивание двигает полотно, двойной клик центрирует. Активный участник: ${activeName}`}
+        cells={boardCells}
+        cellHints={boardHints}
+        overlayCells={boardOverlay}
+        onBackgroundActivate={() => setOpenTokenLabelId(null)}
+        decoration={trajectory
+          ? <svg className="projectile-trajectory" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} /></svg>
+          : null}
+      />
       <div className="map-scale-plate">1 клетка = 5 футов</div>
       <div className="map-legend">
         <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг · параметры скрыты</span><span><i className="legend-dot interest" />Интерес</span>
@@ -1052,7 +1035,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               собирать из буквы в кружке на плитке и отдельной плашки над хотбаром. */}
           <div className="hotbar-economy" aria-label="Экономика текущего хода">
             <span className={remainingFeet > 0 && movementAvailable ? 'ready' : 'spent'}><small>Движение</small><b>{movementAvailable ? `${remainingFeet} из ${speedFeet} фт` : 'потрачено'}</b></span>
-            <span className={actionReady ? 'ready' : 'spent'}><small>Действие</small><b>{actionReady ? 'свободно' : 'потрачено'}</b></span>
+            <span className={actionReady || weaponAttackReady ? 'ready' : 'spent'}><small>Действие</small><b>{actionReady ? 'свободно' : weaponAttackReady ? `ещё ${weaponAttacksLeft} атака` : 'потрачено'}</b></span>
             <span className={bonusReady ? 'ready' : 'spent'}><small>Бонус</small><b>{bonusReady ? 'свободен' : 'потрачен'}</b></span>
             <span className={reactionReady ? 'ready' : 'spent'}><small>Реакция</small><b>{reactionReady ? 'свободна' : 'потрачена'}</b></span>
           </div>
@@ -1060,8 +1043,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         <div className="hotbar-main">
           <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия">
             {activeDeck === 'common' && <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || tacticalBusy} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button>}
-            {activeDeck === 'weapon' && <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !actionReady || tacticalBusy} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button>}
-            {activeDeck === 'weapon' && combatItems.filter((item) => item.type === 'weapon').map((item) => <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || tacticalBusy} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт</small><i className="action-cost action">действие</i></button>)}
+            {activeDeck === 'weapon' && <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || tacticalBusy} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button>}
+            {activeDeck === 'weapon' && combatItems.filter((item) => item.type === 'weapon').map((item) => <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || tacticalBusy} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт</small><i className="action-cost action">действие</i></button>)}
             {activeDeck === 'magic' && <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={!spells.length || tacticalBusy} title={`Открыть полный каталог: ${spells.length} заклинаний доступно герою`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{spells.length} доступно</small></button>}
             {activeDeck === 'magic' && hotbarSpells.map((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); return <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || tacticalBusy} onClick={() => selectSpell(spell)} title={support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'бонус' : actionType === 'reaction' ? 'реакция' : actionType === 'long_cast' ? 'вне боя' : 'действие'}</i></button> })}
             {(activeDeck === 'common' || activeDeck === 'class') && combatActions.filter((action) => action.category === activeDeck && action.actionType !== 'reaction').map((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); return <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || tacticalBusy} onClick={() => selectCombatAction(action)} title={support.blocked ? `${support.label}. ${support.explanation}` : action.description}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button> })}

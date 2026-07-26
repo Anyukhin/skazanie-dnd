@@ -34,8 +34,8 @@ test('каталог консервативно разделяет partial, heur
   const wizard = stateFor('wizard').players[0]
   const info = spellCatalogInfo()
   assert.equal(info.verifiedMechanics, 0)
-  assert.equal(info.partialMechanics, 83)
-  assert.equal(info.heuristicMechanics, 353)
+  assert.equal(info.partialMechanics, 232)
+  assert.equal(info.heuristicMechanics, 204)
   assert.equal(info.rulingOnlyMechanics, 3)
   const classifiedSpells = combatSpellsFor(wizard)
   assert.ok(classifiedSpells.length > 0)

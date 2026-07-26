@@ -551,6 +551,148 @@ export type MapCell = {
   edge_mask?: string
 }
 
+/* --- Тактическая карта -----------------------------------------------------
+ * Зеркало серверного контракта `server/tactical-map.mjs`: клетки хранятся
+ * типизированными слоями, стены живут на рёбрах, предметы отвязаны от клетки
+ * (`docs/tactical-map-plan.md`, разделы 4 и 5). Порядок значений в
+ * перечислениях — часть формата хранения: код равен индексу.
+ */
+
+export type TacticalSurface = 'none' | 'water' | 'ice' | 'oil' | 'mud' | 'rubble'
+export type TacticalMaterial = 'stone' | 'wood' | 'earth' | 'grass' | 'sand' | 'marble' | 'metal' | 'ice'
+export type TacticalEdgeKind = 'none' | 'wall' | 'door' | 'window' | 'rail' | 'ledge'
+export type TacticalCover = 'none' | 'half' | 'three_quarters'
+export type TacticalDoorState = 'open' | 'closed' | 'locked' | 'broken'
+export type TacticalZoneKind = 'interior' | 'exterior'
+export type TacticalSpawnRole = 'party' | 'enemy' | 'neutral'
+/** Ребро смотрит только на восток или на юг: канонизация даёт ему один ключ. */
+export type TacticalEdgeDirection = 'e' | 's'
+
+/** Логическое представление клетки: остальной код о слоях не знает. */
+export type TacticalCell = {
+  x: number
+  y: number
+  /** Можно ли войти. */
+  passable: boolean
+  /** 1 или 2; 2 — труднопроходимая местность. */
+  moveCost: number
+  surface: TacticalSurface
+  hazardId: string | null
+  material: TacticalMaterial
+  /** Шаг 5 футов, знаковое. */
+  elevation: number
+  /** Идентификатор зоны, пустая строка — зоны нет. */
+  zone: string
+  variant: number
+  revealed: boolean
+}
+
+export type TacticalEdge = {
+  /** Клетка-владелец ребра: та, у которой меньше индекс. */
+  x: number
+  y: number
+  dir: TacticalEdgeDirection
+  kind: TacticalEdgeKind
+  blocksMove: boolean
+  blocksSight: boolean
+  cover: TacticalCover
+  doorId: string | null
+}
+
+export type TacticalDoor = {
+  id: string
+  x: number
+  y: number
+  dir: TacticalEdgeDirection
+  /** Начальное состояние; дальнейшее живёт в состоянии сцены. */
+  state: TacticalDoorState
+  lockDc: number
+  keyItemId: string | null
+}
+
+export type TacticalProp = {
+  id: string
+  assetId: string
+  /** Дробная координата в клетках. */
+  x: number
+  y: number
+  rotation: number
+  scale: number
+  /** Занимаемые клетки; отделён от визуального размера, может быть пустым. */
+  footprint: Array<{ x: number; y: number }>
+  zOrder: number
+  blocksMove: boolean
+  blocksSight: boolean
+  cover: TacticalCover
+  destructible: boolean
+  hp: number
+  interactive: boolean
+  state: string
+}
+
+export type TacticalZone = {
+  id: string
+  kind: TacticalZoneKind
+  material: TacticalMaterial
+  lightLevel: string
+  label: string
+}
+
+export type TacticalSpawnPoint = { id: string; x: number; y: number; role: TacticalSpawnRole }
+
+export type TacticalBounds = { minX: number; minY: number; maxX: number; maxY: number }
+
+/** Плотная сетка: индекс клетки `i = y * width + x`. */
+export type TacticalLayers = {
+  /** Битсет: клетка существует. */
+  present: Uint8Array
+  passable: Uint8Array
+  revealed: Uint8Array
+  moveCost: Uint8Array
+  surface: Uint8Array
+  material: Uint8Array
+  variant: Uint8Array
+  elevation: Int8Array
+  /** Индекс в zones[] со сдвигом на единицу; 0 — зоны нет. */
+  zoneId: Uint8Array
+}
+
+export type TacticalMap = {
+  version: string
+  locationId: string
+  seed: string
+  generator: { id: string; version: string }
+  width: number
+  height: number
+  bounds: TacticalBounds
+  layers: TacticalLayers
+  /** Индекс клетки → hazardId. */
+  hazards: Record<string, string>
+  /** Только непустые рёбра, ключ вида `x,y,dir`. */
+  edges: Record<string, TacticalEdge>
+  doors: TacticalDoor[]
+  props: TacticalProp[]
+  zones: TacticalZone[]
+  spawnPoints: TacticalSpawnPoint[]
+  combatBounds: TacticalBounds | null
+  theme: string
+  tilesetId: string
+  overlays: { compass: boolean; scaleBar: boolean; roomLabels: Array<{ zoneId: string; label: string }> }
+  sizeClass: string
+  /**
+   * Клиентская производная, которой нет в серверном контракте: отпечаток
+   * местности без слоя `revealed`. Служит ключом кэша тайлов — раскрытие
+   * учитывается отдельно, потайлово.
+   */
+  terrainHash: string
+}
+
+/**
+ * Сериализованная карта из проекции сервера: слои сжаты в base64 либо в одно
+ * число, рёбра упакованы. Разбирается `decodeTacticalMap`.
+ */
+export type SerializedTacticalMap = Record<string, unknown>
+
 export type DndClassKey = 'barbarian' | 'bard' | 'cleric' | 'druid' | 'fighter' | 'monk' | 'paladin' | 'ranger' | 'rogue' | 'sorcerer' | 'warlock' | 'wizard'
 
 export type CombatAction = {
@@ -694,6 +836,11 @@ export type Scene = {
   objective: string
   turn: number
   cells: MapCell[]
+  /**
+   * Каноническая карта сцены. Отсутствует у старой проекции — тогда доска
+   * работает по `cells`.
+   */
+  map?: SerializedTacticalMap
   theme?: string
   danger?: 'низкая' | 'средняя' | 'высокая'
   scene_kind?: 'settlement' | 'wilderness' | 'dungeon' | 'road' | 'other'
@@ -833,6 +980,12 @@ export type GameState = {
       duration_minutes: number
       risk_score: number
       random_encounter: boolean
+      /** `server-travel-v2`: граф мира или текстовая ветка совместимости. */
+      source?: 'graph' | 'legacy_text'
+      /** Заполнен только для одного прямого маршрута графа. */
+      route_id?: string | null
+      /** Известной дороги нет, путь оценён напрямик по координатам. */
+      no_route?: boolean
     }>
     downtime_history?: Array<{
       downtime_id: string
@@ -893,6 +1046,10 @@ export type CombatActionEconomy = {
   movement_bonus?: number
   extra_actions?: number
   surged_action_only?: boolean
+  /** Сколько атак оружием уже сделано внутри текущего действия «Атака». */
+  attacks_used?: number
+  /** Сколько их даёт одно действие: 1, либо больше с «Дополнительной атакой». */
+  attacks_allowed?: number
 }
 
 export type CombatReactionWindow = {

@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowJs": true,
@@ -10,11 +12,17 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "include": [
+    "server/asset-registry.mjs",
+    "server/building-generator.mjs",
     "server/contracts.mjs",
     "server/dynamic-map.mjs",
+    "server/prop-placement.mjs",
+    "server/tactical-map.mjs",
     "server/viewer-projection.mjs"
   ]
 }

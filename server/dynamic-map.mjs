@@ -1,5 +1,6 @@
 // @ts-check
 import { createHash } from 'node:crypto'
+import { SIZE_CLASSES } from './tactical-map.mjs'
 
 /**
  * Форма тактической клетки **до** M0 из `docs/tactical-map-plan.md`. Это
@@ -27,6 +28,7 @@ import { createHash } from 'node:crypto'
  * @property {SceneCellMaterial} [material]
  * @property {number} [variant] целое 0…5, выбор спрайта
  * @property {SceneCellPattern} [pattern]
+ * @property {number} [elevation] высота площадки в футах; отсутствие означает уровень земли
  * @property {string} [edge_mask] подпоследовательность `nesw` — стороны, где клетка граничит с непроходимым
  * @property {string} [feature] декор либо вид сущности; см. примечание выше
  */
@@ -251,9 +253,9 @@ function connectedWalkable(cells, entrance) {
  */
 export function generateDynamicSceneMap({ seed, theme = '', danger = 'средняя', width, height, scale, layout = 'rooms', pattern = 'natural', material, openness = 0.6, water = 0.04, featureCount } = {}) {
   const scaleDefault = scale ? scaleSize(scale) : { width: 13, height: 9 }
-  width = clampInteger(width, scaleDefault.width, 7, 25)
-  height = clampInteger(height, scaleDefault.height, 7, 19)
-  while (width * height > 500) width -= 1
+  width = clampInteger(width, scaleDefault.width, 7, SIZE_CLASSES.arena.maxWidth)
+  height = clampInteger(height, scaleDefault.height, 7, SIZE_CLASSES.arena.maxHeight)
+  while (width * height > SIZE_CLASSES.arena.maxCells) width -= 1
   pattern = PATTERNS.has(pattern) ? pattern : 'natural'
   material = visualMaterial(theme, layout, material)
   const random = randomFor(`${seed}:${theme}:${danger}:${width}:${height}:${layout}:${pattern}:${material}`)
@@ -356,6 +358,64 @@ export function generateDynamicSceneMap({ seed, theme = '', danger = 'средн
   // props still fill the map, while small feature budgets remain traversable by
   // the scene director and compatible with existing campaign maps.
   if (placed.length && !placed.some((cell) => cell.feature === 'stairs')) placed[placed.length - 1].feature = 'stairs'
+
+  // Возвышенности. Правило высоты в Rules Engine существовало давно, но молчало:
+  // генератор никогда не выставлял `elevation`, и все клетки лежали на нуле.
+  // Площадки кладутся последними — после стен, воды и реквизита, — поэтому поток
+  // случайных чисел у всего остального не сдвигается и карта по тому же seed
+  // остаётся прежней, только с уступами. Проходимость не меняется: высота лишь
+  // модификатор броска, а не препятствие.
+  const ledgeBudget = danger === 'высокая' ? 3 : danger === 'низкая' ? 1 : 2
+  /** @type {Set<string>} */
+  const raised = new Set()
+  /** @param {SceneCell | undefined} cell */
+  const ledgeAllowed = (cell) => {
+    if (!cell || cell.type !== 'floor') return false
+    if (!reached.has(key(cell.x, cell.y)) || raised.has(key(cell.x, cell.y))) return false
+    // Въездная дорога — место высадки партии, её оставляем ровной.
+    return !(cell.x <= 2 && cell.y === centerY)
+  }
+  /**
+   * Обратное преобразование тактической карты выдаёт ключи в фиксированном
+   * порядке, и `elevation` там стоит **перед** `feature`. Реквизит уже разложен,
+   * поэтому высоту нельзя просто дописать в конец: клетка с реквизитом получила
+   * бы обратный порядок и круговорот карты перестал бы совпадать байт в байт.
+   * @param {SceneCell} cell
+   * @param {number} step
+   */
+  const raise = (cell, step) => {
+    const feature = cell.feature
+    if (feature === undefined) {
+      cell.elevation = step
+      return
+    }
+    delete cell.feature
+    cell.elevation = step
+    cell.feature = feature
+  }
+  for (let index = 0; index < ledgeBudget; index += 1) {
+    const available = cells.filter(ledgeAllowed)
+    if (!available.length) break
+    // Ступень в 10 футов реже пятифутовой: высокий уступ должен читаться как
+    // заметная позиция, а не как рядовой бугор.
+    const step = random() < 0.3 ? 10 : 5
+    const size = 2 + Math.floor(random() * 4)
+    /** @type {SceneCell[]} */
+    const frontier = [available[Math.floor(random() * available.length)]]
+    let grown = 0
+    while (frontier.length && grown < size) {
+      const cell = frontier.shift()
+      if (!cell || !ledgeAllowed(cell)) continue
+      raised.add(key(cell.x, cell.y))
+      raise(cell, step)
+      grown += 1
+      for (const [nx, ny] of /** @type {[number, number][]} */ ([[cell.x, cell.y - 1], [cell.x + 1, cell.y], [cell.x, cell.y + 1], [cell.x - 1, cell.y]])) {
+        const neighbor = byPosition.get(key(nx, ny))
+        if (neighbor && ledgeAllowed(neighbor)) frontier.push(neighbor)
+      }
+    }
+  }
+
   const finalByPosition = new Map(cells.map((cell) => [key(cell.x, cell.y), cell]))
   for (const cell of cells) {
     const edges = []

@@ -704,6 +704,43 @@ function tacticalActorIsEnemy(state, id) {
   return (state?.enemies ?? []).some((candidate) => String(candidate.id ?? candidate.actor_id ?? '') === expected)
 }
 
+const COVER_SCENERY_LABELS = Object.freeze({
+  altar: 'алтарь', barrel: 'бочку', bed: 'кровать', bookshelf: 'шкаф', bush: 'куст',
+  chest: 'сундук', console: 'пульт', crate: 'ящик', fireplace: 'очаг', grave: 'могилу',
+  pillar: 'колонну', rock: 'камень', statue: 'статую', table: 'стол', tree: 'дерево', well: 'колодец',
+})
+
+const CONDITION_LABELS = Object.freeze({
+  blinded: 'ослеплена', frightened: 'испугана', grappled: 'схвачена', incapacitated: 'недееспособна',
+  invisible: 'невидима', paralyzed: 'парализована', petrified: 'окаменела', poisoned: 'отравлена',
+  prone: 'сбита с ног', restrained: 'опутана', stunned: 'оглушена', unconscious: 'без сознания',
+})
+
+const ATTACKER_CONDITION_LABELS = Object.freeze({
+  blinded: 'ослеплён', frightened: 'испуган', grappled: 'схвачен', incapacitated: 'недееспособен',
+  invisible: 'невидим', paralyzed: 'парализован', petrified: 'окаменел', poisoned: 'отравлен',
+  prone: 'сбит с ног', restrained: 'опутан', stunned: 'оглушён', unconscious: 'без сознания',
+})
+
+/**
+ * Explains why an attack was rolled with advantage or disadvantage.  When both
+ * sides contribute they cancel and the roll is ordinary, so naming either one
+ * would misdescribe what happened.
+ */
+function attackConditionReason(payload) {
+  const advantage = payload.condition_advantage ?? []
+  const disadvantage = payload.condition_disadvantage ?? []
+  if ((advantage.length > 0) === (disadvantage.length > 0)) return ''
+  const entries = advantage.length ? advantage : disadvantage
+  const described = entries.map((entry) => {
+    const [side, condition] = String(entry).split(':')
+    return side === 'target'
+      ? `цель ${CONDITION_LABELS[condition] ?? condition}`
+      : `атакующий ${ATTACKER_CONDITION_LABELS[condition] ?? condition}`
+  }).join(', ')
+  return ` ${advantage.length ? 'с преимуществом' : 'с помехой'} (${described})`
+}
+
 function tacticalNarration(events, state) {
   const meaningful = []
   const turns = []
@@ -720,12 +757,25 @@ function tacticalNarration(events, state) {
       meaningful.push(`Столкновение завершено: ${String(payload.reason ?? payload.outcome ?? 'resolved')}.`)
     } else if (event.event_type === 'CombatStarted') {
       meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
+      const surprised = (payload.surprised ?? []).map((id) => tacticalActorName(state, id))
+      if (surprised.length) meaningful.push(`Застигнуты врасплох: ${surprised.join(', ')} — первый ход они теряют и не могут использовать реакцию.`)
     } else if (event.event_type === 'ActorMoved') {
       meaningful.push(`${actor} перемещается на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
     } else if (event.event_type === 'AttackResolved') {
+      const reason = attackConditionReason(payload)
+        + (payload.high_ground === 'higher' ? ' с возвышенности' : payload.high_ground === 'lower' ? ' снизу вверх' : '')
+        + (payload.cover ? ` сквозь ${[
+          ...(payload.cover_blockers ?? []).map((id) => tacticalActorName(state, id)),
+          ...(payload.cover_scenery ?? []).map((feature) => COVER_SCENERY_LABELS[feature] ?? feature),
+        ].join(', ') || 'помеху'} (${payload.cover === 'three-quarters' ? 'три четверти укрытия' : 'половинное укрытие'}, +${Number(payload.cover_bonus) || 2} к КД)` : '')
+      const outcome = payload.hit
+        ? payload.automatic_critical
+          ? 'критическое попадание — цель не может защищаться'
+          : payload.critical ? 'критическое попадание' : 'попадание'
+        : 'промах'
       meaningful.push(targetIsEnemy
-        ? `${actor} атакует ${target}: ${payload.hit ? 'попадание' : 'промах'}.`
-        : `${actor} атакует ${target}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${payload.hit ? 'попадание' : 'промах'}.`)
+        ? `${actor} атакует ${target}${reason}: ${outcome}.`
+        : `${actor} атакует ${target}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
     } else if (event.event_type === 'AreaAttackResolved') {
       meaningful.push(`${actor} бросает ${payload.item_name || 'снаряд'} в область радиусом ${Number(payload.radius_feet) || 0} фт.`)
     } else if (event.event_type === 'SpellCast') {
@@ -771,6 +821,12 @@ function tacticalNarration(events, state) {
       meaningful.push(`${target} проверяет концентрацию: ${rollText} против СЛ ${Number(payload.difficulty) || 10} — ${payload.saved ? 'успех' : 'провал'}.${auraText}`)
     } else if (event.event_type === 'ConcentrationEnded') {
       meaningful.push(`Концентрация ${target} прекращается (${String(payload.reason ?? 'эффект завершён')}).`)
+    } else if (event.event_type === 'ActionReadied') {
+      meaningful.push(`${target} замирает с оружием наготове и ждёт, когда ${String(payload.trigger_label ?? 'сработает выбранный триггер')}.`)
+    } else if (event.event_type === 'ReadiedActionExpired') {
+      // Про использованную заготовку расскажет сам удар, а вот сгоревшую иначе
+      // никто не заметит: игрок просто не поймёт, куда делось действие.
+      if (payload.reason !== 'used') meaningful.push(`${target} так и не дождался повода: заготовленный удар пропадает.`)
     } else if (event.event_type === 'DeathSaveFailureRecorded') {
       meaningful.push(`${target} получает ${Number(payload.failure_increment) === 2 ? 'два провала' : 'провал'} спасброска от смерти из-за урона.`)
     } else if (event.event_type === 'HeroStabilized') {
@@ -2223,10 +2279,24 @@ const server = createServer(async (req, res) => {
         const position = authoritative.mechanics?.positions?.[String(player.id)] ?? player
         return { id: String(player.id), level: Math.max(1, Math.min(20, Number.isSafeInteger(Number(player.level)) ? Number(player.level) : 1)), x: Number(position.x), y: Number(position.y) }
       })
+      // Тот же расчёт занятости, что и в Rules Engine: предпросмотр обязан
+      // совпадать с тем, что движок повторит перед событием.
+      const previewOccupiedCells = new Set([
+        ...[...(authoritative.enemies ?? []), ...(authoritative.actors ?? [])]
+          .filter((actor) => actor && actor.alive !== false && Number(actor.hp ?? 1) > 0)
+          .map((actor) => {
+            const position = authoritative.mechanics?.positions?.[String(actor.id)] ?? actor
+            return `${Number(position?.x)},${Number(position?.y)}`
+          }),
+        ...(authoritative.entities ?? [])
+          .filter((entity) => String(entity?.kind) === 'enemy')
+          .map((entity) => `${Number(entity?.x)},${Number(entity?.y)}`),
+      ])
       const proposalPreview = assembleEncounter({
         scene: { cells: (authoritative.scene?.cells ?? []).map((cell) => ({
           x: Number(cell.x), y: Number(cell.y), type: String(cell.type ?? 'floor'), revealed: cell.revealed === true,
           ...(cell.feature == null ? {} : { feature: String(cell.feature) }),
+          ...(previewOccupiedCells.has(`${Number(cell.x)},${Number(cell.y)}`) ? { occupied: true } : {}),
         })) },
         party,
         difficulty,

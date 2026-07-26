@@ -38,6 +38,31 @@ import {
 } from './free-action-adjudication.mjs'
 
 const clone = (value) => structuredClone(value)
+
+/** Порядок отряда: сначала явный список, иначе порядок героев в состоянии. */
+export function partyOrderIds(state) {
+  return (state?.partyMemberIds?.length ? state.partyMemberIds : (state?.players ?? []).map((hero) => hero?.id))
+    .map((id) => String(id ?? ''))
+    .filter(Boolean)
+}
+
+export function isUnresolvedDeadHero(state, id) {
+  return state?.mechanics?.death?.heroes?.[String(id)]?.status === 'dead'
+}
+
+/**
+ * Кому достаётся добыча после победы.  Погибший герой не может быть автором ни
+ * одной команды, пока его не воскресят или не заменят, поэтому выдача добычи в
+ * его карман роняет весь ход кампании — а он вполне может оказаться первым в
+ * списке отряда.
+ */
+export function lootOwnerId(state) {
+  const order = partyOrderIds(state)
+  return order.find((id) => !isUnresolvedDeadHero(state, id)) ?? order[0] ?? String(state?.players?.[0]?.id ?? '')
+}
+// A stabilised hero comes round on its own after 1d4 hours, so four hours is the
+// longest the party can have to wait before a long rest is worth anything.
+const STABLE_RECOVERY_MINUTES = 240
 const clean = (value, maximum = 300) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 20)
 
@@ -363,7 +388,10 @@ export class AutonomousCampaignOrchestrator {
       const partyIds = (loaded.state.partyMemberIds?.length
         ? loaded.state.partyMemberIds
         : loaded.state.players?.map((player) => player.id) ?? []).map(String)
-      const actorId = String(loaded.state.activePlayerId ?? partyIds[0] ?? '')
+      // Голосовать за переход должен живой герой: погибший остаётся в списке
+      // отряда, пока его не воскресят или не заменят.
+      const preferred = String(loaded.state.activePlayerId ?? '')
+      const actorId = preferred && !isUnresolvedDeadHero(loaded.state, preferred) ? preferred : lootOwnerId(loaded.state)
       custom.push(partyDecisionOpenedEvent({
         id: decisionId,
         type: 'choice',
@@ -772,7 +800,7 @@ export class AutonomousCampaignOrchestrator {
     const outcomeCommit = await this.commitEvents(campaignId, `${idempotencyKey}:outcome`, completionEvents)
 
     loaded = await this.load(campaignId)
-    const ownerId = String(loaded.state.partyMemberIds[0] ?? loaded.state.players[0]?.id ?? '')
+    const ownerId = lootOwnerId(loaded.state)
     const commands = reward.loot.map((item, index) => ({ command_type: 'GrantItem', actor_id: ownerId, item: {
       id: `loot-${reward.encounter_id}-${index + 1}`,
       catalog_id: item.catalog_id,
@@ -800,16 +828,31 @@ export class AutonomousCampaignOrchestrator {
     const consequences = await this.runCommands(campaignId, `${idempotencyKey}:consequences`, commands)
     let recovery = { events: [] }
     if (outcome === 'enemies_defeated') {
-      const afterConsequences = await this.load(campaignId)
-      const partyIds = new Set((afterConsequences.state.partyMemberIds ?? []).map(String))
-      const restingHeroes = (afterConsequences.state.players ?? []).filter((hero) => (
-        partyIds.has(String(hero.id)) && afterConsequences.state.mechanics?.death?.heroes?.[hero.id]?.status !== 'dead'
-      ))
+      let afterConsequences = await this.load(campaignId)
+      const survivors = (state) => {
+        const partyIds = new Set((state.partyMemberIds ?? []).map(String))
+        return (state.players ?? []).filter((hero) => (
+          partyIds.has(String(hero.id)) && state.mechanics?.death?.heroes?.[hero.id]?.status !== 'dead'
+        ))
+      }
+      // A long rest gives nothing to a hero who is still at 0 hit points, so the
+      // party first waits out the stable hero's 1d4-hour recovery.  Without this
+      // the whole advance fails with REST_ACTOR_INCAPACITATED after any fight
+      // that ended with someone down.
+      let stableRecoveryMinutes = 0
+      if (survivors(afterConsequences.state).some((hero) => Number(hero.hp) === 0)) {
+        stableRecoveryMinutes = STABLE_RECOVERY_MINUTES
+        await this.runCommands(campaignId, `${idempotencyKey}:stable-recovery`, [
+          { command_type: 'AdvanceTime', amount: stableRecoveryMinutes, unit: 'minute' },
+        ])
+        afterConsequences = await this.load(campaignId)
+      }
+      const restingHeroes = survivors(afterConsequences.state).filter((hero) => Number(hero.hp) > 0)
       if (restingHeroes.length) {
         const downtime = completedDowntime(afterConsequences.state, {
           kind: 'long_rest',
-          durationMinutes: 480,
-          reason: 'post_encounter_recovery',
+          durationMinutes: 480 + stableRecoveryMinutes,
+          reason: stableRecoveryMinutes ? 'post_encounter_recovery_after_stabilisation' : 'post_encounter_recovery',
         })
         const recoveryCommands = [
           ...restingHeroes.map((hero) => ({ command_type: 'StartRest', actor_id: String(hero.id), kind: 'long' })),

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>prop preview</title>
+<style>
+  body { margin: 0; background: #12100e; color: #ddd; font: 12px/1.4 monospace; }
+  #out { position: relative; }
+  canvas { image-rendering: pixelated; display: block; }
+  span.tag { position: absolute; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 3px #000; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+<script type="module">
+const Q = new URLSearchParams(location.search)
+const V = Q.get('v') ?? '1'
+const WHAT = Q.get('what') ?? 'tavern'
+const ZOOM = Number(Q.get('zoom') ?? 4)
+const CX = Number(Q.get('cx') ?? 0)
+const CY = Number(Q.get('cy') ?? 0)
+const CW = Number(Q.get('cw') ?? 0)
+const CH = Number(Q.get('ch') ?? 0)
+
+const { decodeTacticalMap } = await import(`/src/tactical-map-client.ts?v=${V}`)
+const { DEFAULT_BOARD_PALETTE, TILE_CELLS, createTileCache, syncTileCache, visibleTiles } =
+  await import(`/src/board-render.ts?v=${V}`)
+
+const CELL = 22
+const TEX = [
+  ['stone', '/assets/maps/terrain/stone.webp'],
+  ['wood', '/assets/maps/terrain/wood.webp'],
+  ['earth', '/assets/maps/terrain/earth.webp'],
+  ['grass', '/assets/maps/terrain/grass.webp'],
+  ['sand', '/assets/maps/terrain/sand.webp'],
+  ['marble', '/assets/maps/terrain/marble.webp'],
+  ['metal', '/assets/maps/terrain/metal.webp'],
+]
+
+function loadImage(url) {
+  return new Promise((resolve) => {
+    const image = new Image()
+    image.onload = () => resolve({ image, width: image.naturalWidth, height: image.naturalHeight })
+    image.onerror = () => resolve(null)
+    image.src = url
+  })
+}
+
+const textures = new Map()
+for (const [material, url] of TEX) {
+  const texture = await loadImage(url)
+  if (texture) textures.set(material, texture)
+}
+
+function createSurface(size) {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  return { canvas, context: canvas.getContext('2d') }
+}
+
+function renderMap(map) {
+  const canvas = document.createElement('canvas')
+  canvas.width = map.width * CELL
+  canvas.height = map.height * CELL
+  const context = canvas.getContext('2d')
+  const scene = { map, palette: { ...DEFAULT_BOARD_PALETTE }, cellSize: CELL, textures, art: null, artKey: '' }
+  const tiles = visibleTiles(map, { x: 0, y: 0, width: map.width, height: map.height })
+  const { entries } = syncTileCache(createTileCache(256), scene, tiles, createSurface)
+  for (const entry of entries) {
+    context.drawImage(entry.surface.canvas, entry.tileX * TILE_CELLS * CELL, entry.tileY * TILE_CELLS * CELL)
+  }
+  return canvas
+}
+
+const source = WHAT === 'sheet'
+  ? await (await fetch(`/props-preview.json?v=${V}`)).json()
+  : { map: await (await fetch(`/tavern-preview.json?v=${V}`)).json(), labels: [] }
+const map = decodeTacticalMap(source.map)
+const full = renderMap(map)
+
+const cropW = CW > 0 ? CW : map.width
+const cropH = CH > 0 ? CH : map.height
+const view = document.createElement('canvas')
+view.width = cropW * CELL * ZOOM
+view.height = cropH * CELL * ZOOM
+const context = view.getContext('2d')
+context.imageSmoothingEnabled = false
+context.drawImage(
+  full, CX * CELL, CY * CELL, cropW * CELL, cropH * CELL,
+  0, 0, view.width, view.height,
+)
+const out = document.getElementById('out')
+out.append(view)
+for (const label of source.labels ?? []) {
+  if (label.x < CX || label.y < CY || label.x >= CX + cropW || label.y >= CY + cropH) continue
+  const tag = document.createElement('span')
+  tag.className = 'tag'
+  tag.textContent = label.id
+  tag.style.left = `${(label.x - CX) * CELL * ZOOM + 2}px`
+  tag.style.top = `${(label.y - CY) * CELL * ZOOM + 1}px`
+  tag.style.fontSize = `${Math.max(9, 4 * ZOOM)}px`
+  out.append(tag)
+}
+document.title = `prop preview ${WHAT} ${map.width}x${map.height}`
+</script>
+</body>
+</html>

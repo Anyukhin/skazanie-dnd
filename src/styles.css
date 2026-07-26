@@ -139,20 +139,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-grid { --cell: clamp(20px, min(5.7cqw, 7.5cqh), 104px); position: relative; display: grid; grid-auto-rows: var(--cell); border: 5px solid #2a2118; outline: 1px solid color-mix(in srgb, var(--map-grid-line), white 18%); background: #30271d; box-shadow: 0 10px 0 #17120d, 0 28px 42px rgba(0,0,0,.58), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 62%); }
 .map-grid.irregular { border-color: transparent; outline: 0; background: transparent; box-shadow: 0 28px 45px rgba(0,0,0,.68), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 68%); }
 .map-grid.irregular .map-cell { filter: drop-shadow(0 2px 2px rgba(0,0,0,.5)); }
+/* Доска кампании: местность рисуется на canvas тайлами, а DOM остаётся только
+   под активные клетки и фишки. Рамка и тень повторяют прежнюю `.map-grid`,
+   которая теперь обслуживает лишь диагностический экран сравнения локаций. */
+/* Ширина задаётся в клетках, поэтому рамка считается снаружи содержимого:
+   иначе граница съедала бы десять пикселей, и холст разошёлся бы с сеткой. */
+.board-frame { --cell: clamp(20px, min(5.7cqw, 7.5cqh), 104px); box-sizing: content-box; position: relative; border: 5px solid #2a2118; outline: 1px solid color-mix(in srgb, var(--map-grid-line), white 18%); background: #30271d; box-shadow: 0 10px 0 #17120d, 0 28px 42px rgba(0,0,0,.58), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 62%); }
+.board-frame.irregular { border-color: transparent; outline: 0; background: transparent; box-shadow: 0 28px 45px rgba(0,0,0,.68), 0 0 45px color-mix(in srgb, var(--map-grid-line), transparent 68%); }
+.board-canvas { display: block; width: 100%; height: 100%; }
+.board-cells { position: absolute; inset: 0; display: grid; pointer-events: none; }
+.board-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; }
+.board-cell.interactive, .board-cell.hover-probe { pointer-events: auto; }
+.board-cell .map-token, .board-cell .enemy-token, .board-cell .token-conditions { pointer-events: auto; }
 .map-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 1px solid var(--map-grid-line); background-color: var(--map-floor); background-image: radial-gradient(circle at 35% 27%, rgba(255,255,255,.055) 0 2%, transparent 3%), linear-gradient(135deg, transparent 48%, rgba(0,0,0,.11) 50%); box-shadow: inset 1px 1px rgba(255,255,255,.025), inset -1px -1px rgba(0,0,0,.22); color: inherit; font: inherit; }
 .map-cell.parity-odd { background-color: var(--map-floor-alt); }
 .map-cell.wall { background-color: var(--map-wall); background-image: linear-gradient(rgba(30,24,19,.38), rgba(20,17,14,.5)), url('/assets/maps/terrain/stone.webp'); background-size: auto, 190px 190px; border-color: color-mix(in srgb, var(--map-grid-line), black 28%); box-shadow: inset 0 0 0 4px rgba(0,0,0,.18), inset 2px 2px 7px color-mix(in srgb, var(--map-grid-line), transparent 60%); }
 .map-cell.wall.revealed::after { content: ''; position: absolute; inset: 5px; border: 1px solid rgba(155,125,83,.08); }
-.map-cell.water { background: repeating-radial-gradient(ellipse at 15% 110%, transparent 0 14%, rgba(210,245,238,.18) 15% 17%, transparent 18% 28%), linear-gradient(160deg, #4f9293, #285d67); overflow: hidden; }
-.map-cell.water::before { content: ''; position: absolute; width: 135%; height: 4px; border-top: 1px solid rgba(125,174,167,.3); border-radius: 50%; transform: rotate(-14deg); }
-.map-cell.door { background: linear-gradient(rgba(64,36,16,.14), rgba(45,25,13,.18)), url('/assets/maps/terrain/wood.webp') center/150px 150px; box-shadow: inset 5px 0 rgba(82,44,20,.28), inset -5px 0 rgba(82,44,20,.28); }
-.map-theme-tech .map-grid { border-color: #0b1519; outline-color: rgba(117,211,215,.26); box-shadow: 0 14px 0 #071014, 0 30px 54px rgba(0,0,0,.75), 0 0 48px rgba(74,156,166,.13); }
-.map-theme-tech .map-cell.floor { background-image: linear-gradient(90deg, transparent 45%, rgba(107,207,209,.08) 46% 54%, transparent 55%), linear-gradient(0deg, transparent 45%, rgba(107,207,209,.055) 46% 54%, transparent 55%), radial-gradient(circle at 72% 25%, rgba(123,224,216,.16) 0 2px, transparent 3px); }
-.map-theme-tech .map-cell.floor::before { content: ''; position: absolute; inset: 5px; border: 1px solid rgba(115,205,207,.08); clip-path: polygon(0 0, 72% 0, 100% 28%, 100% 100%, 28% 100%, 0 72%); }
-.map-theme-tech .map-cell.wall.revealed::after { inset: 4px; border-color: rgba(111,190,195,.13); background: repeating-linear-gradient(90deg, transparent 0 7px, rgba(115,199,203,.045) 8px 9px); }
-.map-theme-tech .map-cell.door { background: repeating-linear-gradient(90deg, #493923 0 5px, #221d18 6px 10px); border-color: rgba(220,168,86,.24); box-shadow: inset 4px 0 rgba(219,163,77,.26), inset -4px 0 rgba(219,163,77,.26), 0 0 12px rgba(218,153,62,.08); }
-.map-theme-tech .feature { color: #80c7c6; filter: drop-shadow(0 0 6px rgba(93,203,202,.45)); }
-.map-theme-tech .feature.chest { color: #d0a45d; }
 .map-cell.floor { border-color: rgba(0,0,0,.055); }
 .map-cell.floor[class*="material-"] { background-size: auto, 200px 200px; background-repeat: repeat; }
 .map-cell.floor.material-stone { background-image: linear-gradient(rgba(255,248,221,.05), rgba(81,57,33,.08)), url('/assets/maps/terrain/stone.webp'); background-color: #a58b65; }
@@ -175,17 +177,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-cell.variant-3 { background-position: 71% 63%; filter: brightness(1.035); }
 .map-cell.variant-4 { background-position: 91% 17%; filter: saturate(1.08); }
 .map-cell.variant-5 { background-position: 28% 87%; filter: brightness(.92); }
-.map-cell.floor[data-edge*="n"] { border-top-color: rgba(5,4,3,.5); }
-.map-cell.floor[data-edge*="e"] { border-right-color: rgba(5,4,3,.5); }
-.map-cell.floor[data-edge*="s"] { border-bottom-color: rgba(5,4,3,.55); }
-.map-cell.floor[data-edge*="w"] { border-left-color: rgba(5,4,3,.5); }
-.map-cell.pattern-great-hall.wall { background-image: radial-gradient(circle, rgba(182,150,104,.14) 0 22%, transparent 24%), linear-gradient(#191510,#0f0d0a); }
-.map-cell.pattern-courtyard.floor.material-stone { background-color: #404034; }
-.map-cell.pattern-bridge.floor { box-shadow: inset 0 2px rgba(208,165,99,.08), inset 0 -3px rgba(0,0,0,.3); }
-.map-cell.hidden { border-color: rgba(40,29,18,.08); filter: brightness(.52) saturate(.6); }
-.map-cell.hidden::before { content: ''; position: absolute; inset: 0; z-index: 3; background: radial-gradient(circle at 50% 45%, rgba(42,37,31,.16), rgba(13,11,9,.48) 88%); box-shadow: inset 0 0 12px rgba(8,7,6,.52); }
-.map-theme-tech .map-cell.hidden { border-color: rgba(95,174,180,.055); filter: brightness(.48) saturate(.62); }
-.map-theme-tech .map-cell.hidden::before { background: radial-gradient(circle, rgba(13,29,34,.12), rgba(5,10,12,.44) 86%); }
 .feature { --prop-base: #8c6540; --prop-light: #c59a62; --prop-line: #382719; --prop-accent: #e69b43; position: relative; z-index: 2; display: grid; width: 88%; height: 88%; place-items: center; color: #bd9b68; filter: drop-shadow(0 3px 3px rgba(0,0,0,.58)); pointer-events: none; }
 .map-prop { width: 100%; height: 100%; overflow: visible; }
 .map-prop .prop-base { fill: var(--prop-base); stroke: var(--prop-line); stroke-width: 1.6; stroke-linejoin: round; }
@@ -794,17 +785,17 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Campaign, party and tactical map controls */
 button.campaign-title { padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
 button.campaign-title:hover strong { color: #edc996; }
-.map-cell.move-target { cursor: crosshair; box-shadow: inset 0 0 0 2px rgba(102,177,118,.38), inset 0 0 18px rgba(69,141,86,.18); }
-.map-cell.move-target::after { content: ''; position: absolute; z-index: 1; width: 10px; height: 10px; border: 1px solid rgba(146,213,158,.72); border-radius: 50%; background: rgba(83,157,99,.18); box-shadow: 0 0 10px rgba(82,176,104,.55); }
-.map-cell.move-target.opportunity-risk { box-shadow: inset 0 0 0 2px rgba(216,92,70,.68), inset 0 0 22px rgba(165,48,35,.28); }
-.map-cell.move-target.opportunity-risk::after { content: '!'; display: grid; place-items: center; width: 15px; height: 15px; border-color: rgba(255,168,126,.88); background: rgba(139,37,28,.78); color: #ffe0c3; box-shadow: 0 0 12px rgba(224,66,42,.78); font: 800 14px Inter, sans-serif; }
-.map-cell.aim-target { cursor: crosshair; box-shadow: inset 0 0 0 1px rgba(213,151,74,.24); }
-.map-cell.aim-target:hover { box-shadow: inset 0 0 0 2px rgba(238,177,91,.65), inset 0 0 20px rgba(202,119,45,.18); }
-.map-cell.summon-target { box-shadow: inset 0 0 0 1px rgba(100,185,144,.38), inset 0 0 16px rgba(64,139,104,.12); }
-.map-cell.summon-target::after { content: '+'; position: absolute; z-index: 2; display: grid; place-items: center; width: 15px; height: 15px; border: 1px solid rgba(135,216,177,.62); border-radius: 50%; background: rgba(37,92,65,.55); color: #b6e3cc; font-size: 14px; }
-.map-cell.spell-terrain { box-shadow: inset 0 0 0 2px rgba(111,176,108,.34), inset 0 0 20px rgba(55,116,73,.22); }
-.map-cell.spell-terrain::before { content: ''; position: absolute; inset: 3px; z-index: 1; border: 1px dashed rgba(157,217,151,.42); pointer-events: none; }
-.map-cell.blast-area { background-color: #50301f; box-shadow: inset 0 0 0 2px rgba(232,120,61,.48), inset 0 0 23px rgba(221,74,38,.25); }
+.board-cell.move-target { cursor: crosshair; box-shadow: inset 0 0 0 2px rgba(102,177,118,.38), inset 0 0 18px rgba(69,141,86,.18); }
+.board-cell.move-target::after { content: ''; position: absolute; z-index: 1; width: 10px; height: 10px; border: 1px solid rgba(146,213,158,.72); border-radius: 50%; background: rgba(83,157,99,.18); box-shadow: 0 0 10px rgba(82,176,104,.55); }
+.board-cell.move-target.opportunity-risk { box-shadow: inset 0 0 0 2px rgba(216,92,70,.68), inset 0 0 22px rgba(165,48,35,.28); }
+.board-cell.move-target.opportunity-risk::after { content: '!'; display: grid; place-items: center; width: 15px; height: 15px; border-color: rgba(255,168,126,.88); background: rgba(139,37,28,.78); color: #ffe0c3; box-shadow: 0 0 12px rgba(224,66,42,.78); font: 800 14px Inter, sans-serif; }
+.board-cell.aim-target { cursor: crosshair; box-shadow: inset 0 0 0 1px rgba(213,151,74,.24); }
+.board-cell.aim-target:hover { box-shadow: inset 0 0 0 2px rgba(238,177,91,.65), inset 0 0 20px rgba(202,119,45,.18); }
+.board-cell.summon-target { box-shadow: inset 0 0 0 1px rgba(100,185,144,.38), inset 0 0 16px rgba(64,139,104,.12); }
+.board-cell.summon-target::after { content: '+'; position: absolute; z-index: 2; display: grid; place-items: center; width: 15px; height: 15px; border: 1px solid rgba(135,216,177,.62); border-radius: 50%; background: rgba(37,92,65,.55); color: #b6e3cc; font-size: 14px; }
+.board-cell.spell-terrain { box-shadow: inset 0 0 0 2px rgba(111,176,108,.34), inset 0 0 20px rgba(55,116,73,.22); }
+.board-cell.spell-terrain::before { content: ''; position: absolute; inset: 3px; z-index: 1; border: 1px dashed rgba(157,217,151,.42); pointer-events: none; }
+.board-cell.blast-area { background-color: rgba(120,58,26,.42); box-shadow: inset 0 0 0 2px rgba(232,120,61,.48), inset 0 0 23px rgba(221,74,38,.25); }
 
 /* Standalone map gallery used to compare location families without campaign state. */
 .preview-page { min-height: 100vh; padding: 36px; display: grid; grid-template-columns: repeat(3, minmax(280px, 1fr)); gap: 24px; background: #17120d; color: #eadcc5; overflow: auto; }
@@ -1192,17 +1183,13 @@ button.campaign-title:hover strong { color: #edc996; }
 .initiative-ribbon .death-save-track{display:grid;place-items:center;min-width:58px;padding:3px 6px;border:1px solid rgba(177,77,67,.3);border-radius:3px;background:rgba(113,35,31,.12);color:#c77c70;font-size: 13px;letter-spacing:.04em}.initiative-ribbon .death-save-track.stable{border-color:rgba(91,146,112,.32);background:rgba(51,104,70,.12);color:#81b493}
 
 /* Tactical combat 0.2: route preview, target validation and readable state. */
-.map-cell.move-unavailable:not(.command-range){filter:brightness(.68) saturate(.65);box-shadow:inset 0 0 0 1px rgba(122,66,58,.24)}
-.map-cell.move-unavailable:not(.command-range)::after{content:'×';position:absolute;z-index:1;color:rgba(125,65,59,.72);font:700 15px Manrope,sans-serif;text-shadow:0 1px 2px #000}
-.map-cell.command-range{box-shadow:inset 0 0 0 1px rgba(225,166,84,.34),inset 0 0 13px rgba(205,125,43,.09)}
-.map-cell.command-out-of-range:not(.hidden){filter:brightness(.72) saturate(.72)}
-.map-cell.route-step{z-index:2;box-shadow:inset 0 0 0 2px rgba(116,207,141,.75),inset 0 0 22px rgba(57,151,89,.34)}
-.map-cell.route-destination{box-shadow:inset 0 0 0 3px rgba(176,235,158,.9),inset 0 0 27px rgba(69,180,95,.5)}
+.board-cell.route-step{z-index:2;box-shadow:inset 0 0 0 2px rgba(116,207,141,.75),inset 0 0 22px rgba(57,151,89,.34)}
+.board-cell.route-destination{box-shadow:inset 0 0 0 3px rgba(176,235,158,.9),inset 0 0 27px rgba(69,180,95,.5)}
 .route-step-badge{position:absolute;z-index:3;display:grid;place-items:center;width:15px;height:15px;border:1px solid rgba(194,235,180,.8);border-radius:50%;background:rgba(35,91,51,.88);color:#e1f3d9;font:700 13px Manrope,sans-serif;box-shadow:0 2px 6px #000}
 .enemy-token.unavailable-target,.map-token.unavailable-target{cursor:help;filter:grayscale(.35) brightness(.78);box-shadow:0 4px 9px #000,0 0 0 3px rgba(125,63,57,.42)}
 .enemy-token.command-selected,.map-token.command-selected{filter:none;box-shadow:0 4px 9px #000,0 0 0 3px rgba(229,169,91,.9),0 0 22px rgba(218,137,53,.72);animation:target-lock-pulse 1.4s ease-in-out infinite}@keyframes target-lock-pulse{50%{box-shadow:0 4px 9px #000,0 0 0 4px rgba(236,187,118,.98),0 0 30px rgba(218,137,53,.88)}}
 .enemy-token.initiative-focus,.map-token.initiative-focus{filter:brightness(1.18);box-shadow:0 0 0 4px rgba(236,187,118,.96),0 0 34px rgba(218,137,53,.92);animation:initiative-focus-pulse 1.2s ease-in-out infinite}
-.map-cell.command-center{box-shadow:inset 0 0 0 3px rgba(238,176,91,.96),inset 0 0 28px rgba(205,118,39,.5)}.map-cell.command-center::after{content:'◎';position:absolute;z-index:4;display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(248,203,139,.88);border-radius:50%;background:rgba(117,63,26,.72);color:#ffe0b1;font:700 13px Manrope,sans-serif;box-shadow:0 0 16px rgba(226,135,54,.82)}
+.board-cell.command-center{box-shadow:inset 0 0 0 3px rgba(238,176,91,.96),inset 0 0 28px rgba(205,118,39,.5)}.board-cell.command-center::after{content:'◎';position:absolute;z-index:4;display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(248,203,139,.88);border-radius:50%;background:rgba(117,63,26,.72);color:#ffe0b1;font:700 13px Manrope,sans-serif;box-shadow:0 0 16px rgba(226,135,54,.82)}
 .enemy-token[aria-disabled="true"],.map-token[aria-disabled="true"]{cursor:help}
 .token-conditions{position:absolute;z-index:8;left:50%;top:calc(100% + 8px);display:flex;gap:2px;transform:translateX(-50%);pointer-events:auto}
 .token-conditions i{width:13px;height:13px;display:grid;place-items:center;border:1px solid rgba(117,155,121,.5);border-radius:50%;background:#203126;color:#b9d6bc;font:700 8px Manrope,sans-serif;font-style:normal;box-shadow:0 2px 4px #000}
@@ -1313,9 +1300,9 @@ button.campaign-title:hover strong { color: #edc996; }
   box-shadow: 0 0 10px color-mix(in srgb, var(--footprint, #d6a55a), transparent 55%);
   pointer-events: none;
 }
-.map-cell.occupied-by-hero { --footprint: #d6a55a; }
-.map-cell.occupied-by-enemy { --footprint: #c86c5d; }
-.map-cell.occupied-by-summon { --footprint: #70a78b; }
+.board-cell.occupied-by-hero { --footprint: #d6a55a; }
+.board-cell.occupied-by-enemy { --footprint: #c86c5d; }
+.board-cell.occupied-by-summon { --footprint: #70a78b; }
 
 /* Фишка стоит на своей клетке без всякой проекции: доска ортографическая, поэтому
    фишке не нужен ни подъём над плоскостью, ни контр-вращение, чтобы не уезжать вбок.
@@ -1369,31 +1356,6 @@ button.campaign-title:hover strong { color: #edc996; }
 .map-theme-cave .feature.stairs .map-prop,
 .map-theme-temple .feature.stairs .map-prop {
   display: none;
-}
-
-/* A single licensed map illustration is sliced across the structured cells. */
-.scenic-backdrop .map-cell.floor,
-.scenic-backdrop .map-cell.door,
-.scenic-backdrop .map-cell.wall {
-  background-image:
-    linear-gradient(rgba(128, 96, 58, .2), rgba(44, 33, 24, .26)),
-    var(--board-art);
-  background-position: center, var(--board-art-position);
-  background-size: 100% 100%, var(--board-art-size);
-  background-repeat: no-repeat;
-  background-blend-mode: multiply;
-}
-.scenic-backdrop .map-cell.floor {
-  background-color: color-mix(in srgb, var(--map-floor) 76%, #d8c7a4 24%);
-}
-.scenic-backdrop .map-cell.parity-odd {
-  background-color: color-mix(in srgb, var(--map-floor-alt) 76%, #d8c7a4 24%);
-}
-.scenic-backdrop .map-cell.wall {
-  background-color: color-mix(in srgb, var(--map-wall) 84%, #211a14 16%);
-}
-.scenic-backdrop .map-cell.door {
-  background-color: #775033;
 }
 
 /* Original painted atlas: readable silhouettes without fluorescent rune effects. */

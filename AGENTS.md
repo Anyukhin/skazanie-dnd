@@ -49,6 +49,10 @@ pnpm verify                            # ОБЯЗАТЕЛЬНЫЙ финальн
 
 pnpm rules:verify     # rule-pack + rule-retriever
 pnpm content:verify   # целостность контента и лицензий
+pnpm spells:verify    # сверка серверных override заклинаний с каталогом dnd.su:
+                      # круг и ячейка не расходятся, вид исполним движком, у площадного
+                      # есть радиус, формулы разбираются, ключи не дублируются.
+                      # Обязательно после правки data/dndsu-spell-mechanics-overrides.json
 pnpm cutover:audit    # расхождения room/snapshot/replay (не меняет данные)
 pnpm migrate:dry-run  # прогон миграций без записи
 pnpm backup           # СЛОМАН: запускает CLI без аргументов, печатает usage и выходит с 1.

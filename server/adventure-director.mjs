@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
+import { SIZE_CLASSES, legacyCellsFromTacticalMap } from './tactical-map.mjs'
+import { REFERENCE_SIZE, buildBuildingScene } from './building-generator.mjs'
 
 const WIDTH = 13
 const HEIGHT = 9
@@ -40,7 +42,7 @@ function normalizedSceneCells(value) {
       ? value.cells
       : []
   const seen = new Set()
-  return source.slice(0, 500).flatMap((raw) => {
+  return source.slice(0, SIZE_CLASSES.area.maxCells).flatMap((raw) => {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
     const x = Number(raw.x)
     const y = Number(raw.y)
@@ -117,6 +119,34 @@ export function rememberCurrentSceneMap(state) {
   const cells = state?.scene?.cells
   if (!Array.isArray(cells) || !cells.length) return state
   return rememberSceneMap(state, sceneLocationId(state), cells)
+}
+
+/**
+ * Тема «здание с участком» распознаётся по названию и виду сцены. Для неё
+ * работает отдельный генератор с тремя помещениями, двором, стенами на рёбрах и
+ * расстановкой по якорям; остальные темы остаются на прежнем процедурном пути.
+ *
+ * Опознание намеренно узкое: пока доведена одна тема, лучше отдать привычную
+ * карту, чем поставить таверну там, где её не ждут.
+ */
+// `\b` в JavaScript опирается на латиницу и с кириллицей не работает: `дом\b`
+// не совпадает с «Дом травницы». Границу приходится задавать явно.
+const BUILDING_SCENE = /таверн|трактир|постоял|корчм|харчевн|гостиниц|(?<![а-яё])дом(?![а-яё])|(?<![а-яё])изб[аеуы](?![а-яё])|хижин|усадьб|поместь|лавк/iu
+
+function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap }) {
+  const looksLikeBuilding = BUILDING_SCENE.test(`${location} ${theme}`)
+    && String(sceneKind ?? '') !== 'wilderness'
+  if (looksLikeBuilding) {
+    const built = buildBuildingScene({
+      seed,
+      locationId,
+      theme: text(theme, 60, 'tavern'),
+      width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
+      height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
+    })
+    return legacyCellsFromTacticalMap(built.map)
+  }
+  return generateDynamicSceneMap({ ...requestedMap, seed, theme, danger })
 }
 
 function stableLocationMapSeed(worldMap, locationId, location) {
@@ -252,11 +282,15 @@ export function createSceneTransition(input = {}, state = {}) {
   const locationId = worldMap.currentLocationId
   const rememberedMap = sceneMapForLocation(state.locationMaps, locationId)
     ?? (sceneLocationId(state) === locationId ? normalizedSceneCells(previousScene.cells) : null)
-  const cells = rememberedMap ?? generateDynamicSceneMap({
-    ...(input.map && typeof input.map === 'object' && !Array.isArray(input.map) ? input.map : {}),
-    seed: stableLocationMapSeed(worldMap, locationId, location),
+  const requestedMap = input.map && typeof input.map === 'object' && !Array.isArray(input.map) ? input.map : {}
+  const cells = rememberedMap ?? generateSceneCellsFor({
     theme,
     danger,
+    location,
+    sceneKind: input.scene_kind,
+    seed: stableLocationMapSeed(worldMap, locationId, location),
+    locationId,
+    requestedMap,
   })
   const scene = {
     title,
