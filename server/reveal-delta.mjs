@@ -1,5 +1,5 @@
 // @ts-check
-import { cellAt, deserializeTacticalMap, setCell } from './tactical-map.mjs'
+import { MATERIALS, SURFACES, cellAt, deserializeTacticalMap, setCell } from './tactical-map.mjs'
 
 /**
  * Дельты раскрытия вместо полной сетки (`docs/tactical-map-plan.md`, 11.2).
@@ -12,9 +12,39 @@ import { cellAt, deserializeTacticalMap, setCell } from './tactical-map.mjs'
  * связной областью вокруг отряда, поэтому интервалов получается единицы. Замер:
  * раскрытие круга радиусом 6 клеток на карте 100×100 — 13 интервалов против 113
  * координат.
+ *
+ * **Формат v2 несёт ещё и значения слоёв.** Проекция обезличивает нераскрытую
+ * клетку: `viewer-projection.mjs` ставит ей `material: 'stone'`, `variant: 0` и
+ * `surface: 'none'`, а при раскрытии возвращает настоящие значения. Дельта из
+ * одних интервалов раскрытия воспроизвести это не могла, поэтому собранная из
+ * неё карта расходилась с проекцией и транспорт всегда откатывался на полную
+ * карту. Теперь дельта несёт значения этих трёх слоёв для каждой затронутой
+ * клетки.
+ *
+ * Пакуются они тем же приёмом, что и слои самой карты (`encodeLayer` в
+ * `tactical-map.mjs`): однородный слой — одно число, разнородный — base64 по
+ * байту на клетку. Материал и поверхность в раскрываемой области однородны и
+ * сжимаются в одно число. Вариант тайла однородным не бывает: настоящие
+ * генераторы ставят его как `Math.floor(random() * 6)` на каждую клетку, и
+ * длины серий его не сжимают, а раздувают — замер на 565 клетках даёт 2.8 КБ
+ * сериями против 0.75 КБ упаковкой по байту.
+ *
+ * Чего дельта по-прежнему не несёт: предметы, рёбра, двери и опасности,
+ * появляющиеся вместе с раскрытием. Сторож в `reveal-transport.mjs` сравнивает
+ * собранную карту с проекцией и в таких случаях честно отдаёт карту целиком.
  */
 
-export const REVEAL_DELTA_VERSION = 'skazanie:reveal-delta-v1'
+export const REVEAL_DELTA_VERSION = 'skazanie:reveal-delta-v2'
+
+/**
+ * Значения слоёв затронутых клеток. Каждое поле — либо одно число (весь слой
+ * однороден), либо base64 по байту на клетку.
+ *
+ * @typedef {object} RevealDeltaValues
+ * @property {string|number} material коды в MATERIALS
+ * @property {string|number} variant варианты тайла
+ * @property {string|number} surface коды в SURFACES
+ */
 
 /**
  * @typedef {object} RevealDelta
@@ -23,6 +53,7 @@ export const REVEAL_DELTA_VERSION = 'skazanie:reveal-delta-v1'
  * @property {number} width ширина карты: без неё индексы бессмысленны
  * @property {Array<[number, number]>} revealed интервалы индексов [начало, длина]
  * @property {Array<[number, number]>} hidden интервалы, которые снова скрыты
+ * @property {RevealDeltaValues} values значения слоёв затронутых клеток
  */
 
 /**
@@ -42,6 +73,66 @@ function toRuns(indexes) {
   }
   if (start >= 0) runs.push([start, length])
   return runs
+}
+
+/**
+ * @param {Uint8Array} values
+ * @returns {string|number}
+ */
+function encodeValues(values) {
+  const first = values[0]
+  for (let index = 1; index < values.length; index += 1) {
+    if (values[index] !== first) return Buffer.from(values).toString('base64')
+  }
+  return values.length ? first : 0
+}
+
+/**
+ * Длина обязана совпасть с числом затронутых клеток: дельта, которая покрывает
+ * не все клетки, испорчена, и молча дорисовывать её нельзя — это была бы карта,
+ * расходящаяся с проекцией.
+ *
+ * @param {unknown} value
+ * @param {number} expected
+ * @param {string} label
+ * @returns {Uint8Array}
+ */
+function decodeValues(value, expected, label) {
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    const filled = new Uint8Array(expected)
+    filled.fill(value & 0xff)
+    return filled
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`Слой ${label} дельты раскрытия должен быть строкой base64 или числом`)
+  }
+  const bytes = Uint8Array.from(Buffer.from(value, 'base64'))
+  if (bytes.length !== expected) {
+    throw new Error(`Слой ${label} дельты раскрытия покрывает ${bytes.length} клеток из ${expected}`)
+  }
+  return bytes
+}
+
+/**
+ * Индексы интервала подряд. Порядок здесь — часть формата: значения слоёв
+ * уложены ровно в этом порядке, сначала раскрытые клетки, затем скрытые.
+ *
+ * @param {unknown} runs
+ * @param {number} limit число клеток карты
+ * @returns {number[]}
+ */
+function runIndexes(runs, limit) {
+  /** @type {number[]} */
+  const indexes = []
+  for (const run of Array.isArray(runs) ? runs : []) {
+    const start = Number(run?.[0])
+    const length = Number(run?.[1])
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(length) || start < 0 || length < 0 || start + length > limit) {
+      throw new Error('Интервал дельты раскрытия выходит за пределы карты')
+    }
+    for (let index = start; index < start + length; index += 1) indexes.push(index)
+  }
+  return indexes
 }
 
 /**
@@ -73,12 +164,27 @@ export function revealDelta(before, after, baseHash = '') {
     if (now) revealed.push(index)
     else hidden.push(index)
   }
+  const touched = [...revealed, ...hidden]
+  const material = new Uint8Array(touched.length)
+  const variant = new Uint8Array(touched.length)
+  const surface = new Uint8Array(touched.length)
+  for (let position = 0; position < touched.length; position += 1) {
+    const index = touched[position]
+    material[position] = after.layers.material[index]
+    variant[position] = after.layers.variant[index]
+    surface[position] = after.layers.surface[index]
+  }
   return {
     version: REVEAL_DELTA_VERSION,
     baseHash,
     width: after.width,
     revealed: toRuns(revealed),
     hidden: toRuns(hidden),
+    values: {
+      material: encodeValues(material),
+      variant: encodeValues(variant),
+      surface: encodeValues(surface),
+    },
   }
 }
 
@@ -94,20 +200,37 @@ export function applyRevealDelta(map, delta) {
   if (delta.width !== map.width) {
     throw new Error('Дельта раскрытия не подходит к этой карте: другая ширина')
   }
-  for (const [start, length] of delta.revealed ?? []) {
-    for (let index = start; index < start + length; index += 1) {
+  const limit = map.width * map.height
+  const revealed = runIndexes(delta.revealed, limit)
+  const hidden = runIndexes(delta.hidden, limit)
+  const touched = revealed.length + hidden.length
+  const values = delta.values ?? /** @type {RevealDeltaValues} */ ({})
+  const material = decodeValues(values.material, touched, 'material')
+  const variant = decodeValues(values.variant, touched, 'variant')
+  const surface = decodeValues(values.surface, touched, 'surface')
+
+  let at = 0
+  /** @param {number[]} indexes @param {boolean} value */
+  const write = (indexes, value) => {
+    for (const index of indexes) {
+      const position = at
+      at += 1
       const x = index % map.width
       const y = Math.floor(index / map.width)
-      if (cellAt(map, x, y)) setCell(map, x, y, { revealed: true })
+      // Клетки, которой нет, дельта не создаёт: форма карты приходит с картой.
+      // Значение при этом всё равно считается израсходованным, иначе порядок
+      // разъехался бы у следующих клеток.
+      if (!cellAt(map, x, y)) continue
+      const materialName = MATERIALS[material[position]]
+      const surfaceName = SURFACES[surface[position]]
+      if (materialName === undefined || surfaceName === undefined) {
+        throw new Error('Дельта раскрытия называет слой, которого нет в перечислении')
+      }
+      setCell(map, x, y, { revealed: value, material: materialName, variant: variant[position], surface: surfaceName })
     }
   }
-  for (const [start, length] of delta.hidden ?? []) {
-    for (let index = start; index < start + length; index += 1) {
-      const x = index % map.width
-      const y = Math.floor(index / map.width)
-      if (cellAt(map, x, y)) setCell(map, x, y, { revealed: false })
-    }
-  }
+  write(revealed, true)
+  write(hidden, false)
   return map
 }
 

@@ -12,6 +12,7 @@ import {
 } from '../server/combat-bounds.mjs'
 import { assembleEncounter } from '../server/encounter-assembler.mjs'
 import {
+  REVEAL_DELTA_VERSION,
   applyRevealDelta,
   revealDelta,
   revealDeltaEmpty,
@@ -176,7 +177,7 @@ test('дельта между картами разного размера от�
   const small = createTacticalMap({ width: 10, height: 10, fill: { passable: true } })
   const big = createTacticalMap({ width: 20, height: 20, fill: { passable: true } })
   assert.throws(() => revealDelta(small, big, 'base'), /одной карты/u)
-  assert.throws(() => applyRevealDelta(small, { version: 'skazanie:reveal-delta-v1', width: 20, revealed: [], hidden: [] }), /другая ширина/u)
+  assert.throws(() => applyRevealDelta(small, { version: REVEAL_DELTA_VERSION, width: 20, revealed: [], hidden: [] }), /другая ширина/u)
 })
 
 test('подрайон ставится при начале боя и раздвигается ходом за границу', async () => {

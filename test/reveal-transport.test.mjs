@@ -15,6 +15,7 @@ import {
 } from '../server/reveal-transport.mjs'
 import { publicSceneFor, publicTacticalMapWithHashFor } from '../server/viewer-projection.mjs'
 import {
+  addProp,
   cellAt,
   createTacticalMap,
   deserializeTacticalMap,
@@ -57,6 +58,34 @@ process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 /** Однородная карта: раскрытие на ней — единственное, что видит проекция. */
 function plainMap({ width = 30, height = 30, revealed = false } = {}) {
   return createTacticalMap({ width, height, seed: 'transport', fill: { passable: true, revealed } })
+}
+
+/**
+ * Правдоподобная карта: материал полосами по местности, вариант тайла — на
+ * каждой клетке свой, как его ставят настоящие генераторы
+ * (`Math.floor(random() * 6)` в `building-generator.mjs`, `dynamic-map.mjs`,
+ * `graph-layout.mjs`, `scene-themes.mjs`).
+ *
+ * Замерять объём дельты на однородной карте нельзя: у неё однородны все слои,
+ * каждый сжимается в одно число, и полная карта 100×100 весит 2.23 КБ — с ней
+ * не сравнится никакая дельта, и порог перестаёт что-либо ловить.
+ *
+ * Полосы материала намеренно шире раскрываемой области: так материал и
+ * поверхность внутри неё однородны и стоят в дельте одно число, а по карте в
+ * целом различаются.
+ */
+function plausibleMap({ width = 100, height = 100 } = {}) {
+  const map = createTacticalMap({ width, height, seed: 'plausible', fill: { passable: true, revealed: false } })
+  let seed = 20260726
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed / 2147483648
+  }
+  for (let y = 0; y < height; y += 1) {
+    const material = y < height / 4 ? 'grass' : y < (height * 3) / 4 ? 'earth' : 'sand'
+    for (let x = 0; x < width; x += 1) setCell(map, x, y, { material, variant: Math.floor(random() * 6) })
+  }
+  return map
 }
 
 /** Проекция карты вместе с хешем — ровно то, что уходит игроку. */
@@ -108,8 +137,8 @@ test('карта не менялась — обновление о ней мол
   assert.equal(again.hash, hash)
 })
 
-test('раскрытие за ход уходит дельтой, а не картой', {"skip":"Дельты раскрытия не подключены к транспорту: работа прервана лимитом сессии. Тест остаётся спецификацией того, что надо дописать."}, () => {
-  const map = plainMap({ width: 100, height: 100 })
+test('раскрытие за ход уходит дельтой, а не картой', () => {
+  const map = plausibleMap({ width: 100, height: 100 })
   revealCircle(map, 50, 50, 12)
   const before = project(map)
   sceneMapUpdateFor(before.map, before.hash)
@@ -166,14 +195,48 @@ test('дельта не раскрывает больше, чем полная �
   }
 })
 
-test('раскрытие, которое меняет не только туман, уходит картой целиком', () => {
-  // Проекция обезличивает материал и вариант тайла нераскрытой клетки. Дельта
-  // раскрытия несёт только сам факт раскрытия, поэтому на разнородной карте её
-  // наложение дало бы игроку камень вместо дерева — и она не отправляется.
+test('материал и вариант тайла доезжают дельтой, а не откатом на полную карту', () => {
+  // Проекция обезличивает материал, вариант тайла и поверхность нераскрытой
+  // клетки, а при раскрытии возвращает их. Формат v2 несёт эти значения, и
+  // разнородная карта больше не заставляет отправлять сетку целиком.
   const map = plainMap({ width: 20, height: 20 })
   for (let y = 0; y < 20; y += 1) {
-    for (let x = 0; x < 20; x += 1) setCell(map, x, y, { material: 'wood', variant: 3 })
+    for (let x = 0; x < 20; x += 1) {
+      setCell(map, x, y, { material: y < 10 ? 'wood' : 'marble', variant: (x * 3 + y) % 6 })
+    }
   }
+  for (let x = 6; x < 14; x += 1) setCell(map, x, 12, { surface: 'water' })
+  revealCircle(map, 10, 10, 3)
+  const before = project(map)
+  sceneMapUpdateFor(before.map, before.hash)
+  revealCircle(map, 10, 10, 6)
+  const after = project(map)
+
+  const update = sceneMapUpdateFor(after.map, after.hash, before.hash)
+  assert.equal(update.kind, 'delta', 'значения слоёв обязаны уехать дельтой')
+
+  // Сторож видимости всё равно проверяется буквально: собранная карта обязана
+  // совпасть с проекцией по каждой клетке, а не только по туману.
+  const authoritative = deserializeTacticalMap(after.map)
+  const restored = deserializeTacticalMap(client.applySerializedRevealDelta(before.map, update.delta))
+  for (let y = 0; y < 20; y += 1) {
+    for (let x = 0; x < 20; x += 1) {
+      const expected = cellAt(authoritative, x, y)
+      const actual = cellAt(restored, x, y)
+      assert.equal(actual?.revealed, expected?.revealed, `клетка ${x},${y} раскрыта по-разному`)
+      assert.equal(actual?.material, expected?.material, `клетка ${x},${y}: материал разошёлся`)
+      assert.equal(actual?.variant, expected?.variant, `клетка ${x},${y}: вариант тайла разошёлся`)
+      assert.equal(actual?.surface, expected?.surface, `клетка ${x},${y}: поверхность разошлась`)
+    }
+  }
+})
+
+test('раскрытие, которое открывает предмет, уходит картой целиком', () => {
+  // Дельта несёт слои клеток, но не предметы, рёбра и двери: проекция прячет
+  // предмет до раскрытия его клетки, и собрать его из дельты не из чего.
+  // Сторож обязан это поймать и отдать карту целиком, а не пустое место.
+  const map = plainMap({ width: 20, height: 20 })
+  addProp(map, { id: 'well', assetId: 'well', x: 10.5, y: 15.5, footprint: [{ x: 10, y: 15 }] })
   revealCircle(map, 10, 10, 3)
   const before = project(map)
   sceneMapUpdateFor(before.map, before.hash)
@@ -207,18 +270,24 @@ test('карта сменилась под игроком — дельта от 
     'другая карта того же размера обязана уйти целиком')
 })
 
-test('вытесненная из кэша карта означает полную отправку, а не расхождение', {"skip":"Дельты раскрытия не подключены к транспорту: работа прервана лимитом сессии. Тест остаётся спецификацией того, что надо дописать."}, () => {
+test('вытесненная из кэша карта означает полную отправку, а не расхождение', () => {
   const map = plainMap({ width: 10, height: 10 })
   revealCircle(map, 5, 5, 2)
   const before = project(map)
   sceneMapUpdateFor(before.map, before.hash)
 
+  // Заполнители обязаны быть попарно разными: кэш адресуется содержимым, и
+  // повтор той же карты занимает не новое место, а прежнее — вытеснения бы не
+  // случилось и тест проверял бы не то, что заявляет.
+  const hashes = new Set()
   for (let index = 0; index < PROJECTED_MAP_CACHE_LIMIT + 1; index += 1) {
     const filler = plainMap({ width: 10, height: 10 })
-    revealCircle(filler, index % 10, 5, 1)
+    revealCircle(filler, index % 10, Math.floor(index / 10), 1)
     const projected = project(filler)
+    hashes.add(projected.hash)
     sceneMapUpdateFor(projected.map, projected.hash)
   }
+  assert.equal(hashes.size, PROJECTED_MAP_CACHE_LIMIT + 1, 'заполнители обязаны быть разными картами')
 
   revealCircle(map, 5, 5, 4)
   const after = project(map)
@@ -331,12 +400,28 @@ test('клиент потерял дельту — обнаруживает эт
 test('клиент отвергает дельту от карты другого размера и чужой версии формата', () => {
   const small = plainMap({ width: 10, height: 10 })
   const projected = project(small)
-  const delta = { version: client.REVEAL_DELTA_VERSION, baseHash: projected.hash, width: 20, revealed: [[0, 1]], hidden: [] }
+  const values = { material: 0, variant: 0, surface: 0 }
+  const delta = { version: client.REVEAL_DELTA_VERSION, baseHash: projected.hash, width: 20, revealed: [[0, 1]], hidden: [], values }
   assert.equal(client.applySerializedRevealDelta(projected.map, delta), null, 'другая ширина — наложить нельзя')
   assert.equal(client.applySerializedRevealDelta(projected.map, { ...delta, width: 10, version: 'другая' }), null)
   assert.equal(client.applySerializedRevealDelta(projected.map, {
     ...delta, width: 10, revealed: [[95, 20]],
   }), null, 'интервал за пределами карты обязан быть отвергнут')
+
+  // Годная дельта того же вида накладывается: проверки выше отвергают именно
+  // испорченное, а не всё подряд.
+  assert.ok(client.applySerializedRevealDelta(projected.map, { ...delta, width: 10 }),
+    'дельта нужной ширины и версии обязана примениться')
+
+  // Значения слоёв обязаны покрывать затронутые клетки ровно один раз.
+  assert.equal(client.applySerializedRevealDelta(projected.map, { ...delta, width: 10, values: {} }), null,
+    'дельта без значений слоёв обязана быть отвергнута')
+  assert.equal(client.applySerializedRevealDelta(projected.map, {
+    ...delta, width: 10, revealed: [[0, 4]], values: { ...values, variant: btoa('') },
+  }), null, 'значений меньше, чем клеток, — дорисовывать нельзя')
+  assert.equal(client.applySerializedRevealDelta(projected.map, {
+    ...delta, width: 10, values: { ...values, material: client.MATERIALS.length },
+  }), null, 'материал вне перечисления обязан быть отвергнут')
 })
 
 test('сцена без карты доходит до доски как есть', () => {
