@@ -12,6 +12,16 @@
 
 - **`server/` — чистый ESM JavaScript (`.mjs`). TypeScript на сервере не
   используется.** Не создавать `server/*.ts`.
+- **Проверка типов на сервере — по одному файлу, через JSDoc.**
+  `pnpm typecheck:server` (`tsconfig.server.json`) входит в `pnpm verify`.
+  Там стоит `checkJs: false`, поэтому проверяется **только файл с `// @ts-check`
+  в первой строке**; импортируемые модули в программу попадают, но их ошибки не
+  считаются. Так файл добавляется в проверку по одному и гейт никогда не красный.
+  Типы описываются JSDoc-ом (`@typedef`, `@param`, `@returns`) и JSDoc-приведением
+  `/** @type {T} */ (expr)` — рантайм при этом не меняется. Если для зелёного
+  нужна правка поведения — остановиться и вынести её отдельной задачей.
+  Проверяются: `contracts.mjs`, `dynamic-map.mjs`, `viewer-projection.mjs`.
+  Форма тактической клетки (`SceneCell`) объявлена в `server/dynamic-map.mjs`.
 - **`src/` — TypeScript + React + Vite.** Проверяется через `tsc --noEmit -p tsconfig.app.json`.
 - **Тесты — встроенный `node:test`, файлы `test/*.test.mjs`.** Ни Jest, ни
   Vitest, ни Playwright в проекте нет; браузерный сценарий проверяется вручную.
@@ -34,7 +44,8 @@ pnpm start            # прод-запуск сервера
 pnpm test                              # весь набор, node --test, concurrency 4
 node --test test/rules-engine.test.mjs # один файл — так проверять точечные правки
 pnpm build                             # tsc --noEmit + vite build
-pnpm verify                            # ОБЯЗАТЕЛЬНЫЙ финальный gate: test + build
+pnpm typecheck:server                  # tsc по tsconfig.server.json (только файлы с // @ts-check)
+pnpm verify                            # ОБЯЗАТЕЛЬНЫЙ финальный gate: test + typecheck:server + build
 
 pnpm rules:verify     # rule-pack + rule-retriever
 pnpm content:verify   # целостность контента и лицензий

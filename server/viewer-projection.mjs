@@ -1,17 +1,47 @@
+// @ts-check
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { projectVisibleState } from './security.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
+/**
+ * Модуль принимает внутреннее состояние кампании — произвольные объекты из
+ * event-sourced стейта, которым нельзя доверять по форме, — и сужает их до
+ * того, что игроку разрешено видеть. Поэтому вход описан свободно (`Loose`),
+ * а типизирован результат: контракт с браузером — это именно он.
+ *
+ * @typedef {Record<string, any>} Loose произвольный объект внутреннего состояния
+ * @typedef {Loose & { enemies?: Loose[], merchants?: Loose[] }} LooseState состояние кампании; названы только поля, по которым модуль итерирует
+ * @typedef {import('./dynamic-map.mjs').SceneCell} SceneCell
+ * @typedef {import('./dynamic-map.mjs').SceneCellType} SceneCellType
+ * @typedef {import('./dynamic-map.mjs').SceneCellMaterial} SceneCellMaterial
+ * @typedef {import('./dynamic-map.mjs').SceneCellPattern} SceneCellPattern
+ * @typedef {{ role: 'admin' | 'player', playerId: string, partyIds: string[], isPartyMember: boolean }} Viewer
+ */
+
+/**
+ * @param {unknown} value
+ * @param {number} [maximum]
+ * @returns {string}
+ */
 function text(value, maximum = 500) {
   return String(value ?? '').normalize('NFKC').trim().slice(0, maximum)
 }
 
+/**
+ * @param {unknown} value
+ * @param {number} [fallback]
+ * @returns {number}
+ */
 function integer(value, fallback = 0) {
   const parsed = Number(value)
   return Number.isSafeInteger(parsed) ? parsed : fallback
 }
 
+/**
+ * @param {Loose} [entry]
+ * @returns {Loose}
+ */
 function publicHistoryEntry(entry = {}) {
   return {
     chapter: Math.max(1, integer(entry.chapter, 1)),
@@ -23,7 +53,10 @@ function publicHistoryEntry(entry = {}) {
   }
 }
 
-/** The browser receives narrative continuity, never arbitrary private buckets. */
+/** The browser receives narrative continuity, never arbitrary private buckets.
+ * @param {Loose} [adventure]
+ * @returns {Loose}
+ */
 export function publicAdventureFor(adventure = {}) {
   return {
     chapter: Math.max(1, integer(adventure.chapter, 1)),
@@ -39,6 +72,10 @@ export function publicAdventureFor(adventure = {}) {
   }
 }
 
+/**
+ * @param {Loose} [worldMap]
+ * @returns {Loose}
+ */
 export function publicWorldMapFor(worldMap = {}) {
   const currentLocationId = text(worldMap.currentLocationId, 100)
   const locations = (Array.isArray(worldMap.locations) ? worldMap.locations : [])
@@ -72,6 +109,14 @@ export function publicWorldMapFor(worldMap = {}) {
   }
 }
 
+/**
+ * Сужает клетку до публичной формы. `feature` отдаётся **только** с раскрытой
+ * клетки — это часть модели видимости, а не косметика; сторож —
+ * `test/viewer-projection.test.mjs`.
+ *
+ * @param {Loose} [cell]
+ * @returns {SceneCell}
+ */
 function publicCellFor(cell = {}) {
   const revealed = cell.revealed === true
   const material = String(cell.material ?? '')
@@ -81,16 +126,20 @@ function publicCellFor(cell = {}) {
   return {
     x: integer(cell.x),
     y: integer(cell.y),
-    type: ['wall', 'floor', 'water', 'door'].includes(String(cell.type)) ? String(cell.type) : 'floor',
+    type: /** @type {SceneCellType} */ (['wall', 'floor', 'water', 'door'].includes(String(cell.type)) ? String(cell.type) : 'floor'),
     revealed,
-    ...(allowedMaterials.has(material) ? { material } : {}),
-    ...(allowedPatterns.has(pattern) ? { pattern } : {}),
+    ...(allowedMaterials.has(material) ? { material: /** @type {SceneCellMaterial} */ (material) } : {}),
+    ...(allowedPatterns.has(pattern) ? { pattern: /** @type {SceneCellPattern} */ (pattern) } : {}),
     ...(Number.isSafeInteger(Number(cell.variant)) ? { variant: Math.max(0, Math.min(5, Number(cell.variant))) } : {}),
     ...(typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask) ? { edge_mask: cell.edge_mask } : {}),
     ...(revealed && cell.feature != null ? { feature: text(cell.feature, 40) } : {}),
   }
 }
 
+/**
+ * @param {Loose} [scene]
+ * @returns {Loose & { cells: SceneCell[] }}
+ */
 export function publicSceneFor(scene = {}) {
   return {
     title: text(scene.title, 120),
@@ -106,6 +155,12 @@ export function publicSceneFor(scene = {}) {
   }
 }
 
+/**
+ * @param {LooseState | null | undefined} state
+ * @param {string} enemyId
+ * @param {string} [actorId]
+ * @returns {Loose}
+ */
 function enemyKnowledgeFor(state, enemyId, actorId = '') {
   const registry = state?.mechanics?.enemy_knowledge
   const entry = registry?.party?.[enemyId] ?? registry?.[enemyId] ?? {}
@@ -113,6 +168,10 @@ function enemyKnowledgeFor(state, enemyId, actorId = '') {
   return knownBy && actorId && !knownBy.includes(String(actorId)) ? {} : entry
 }
 
+/**
+ * @param {Loose} [enemy]
+ * @returns {string}
+ */
 function enemyHealthStatus(enemy = {}) {
   if (enemy.hp == null && enemy.maxHp == null) return enemy.alive === false ? 'defeated' : text(enemy.healthStatus, 20) || 'unharmed'
   const hp = Math.max(0, integer(enemy.hp, 0))
@@ -125,15 +184,32 @@ function enemyHealthStatus(enemy = {}) {
   return 'critical'
 }
 
+/**
+ * @param {Loose | null | undefined} knowledge
+ * @param {string} key
+ * @returns {boolean}
+ */
 function exactEnemyFact(knowledge, key) {
   return knowledge?.[key] === 'exact' || knowledge?.[key] === true
 }
 
+/**
+ * @param {LooseState | null | undefined} state
+ * @param {string} enemyId
+ * @param {string} [actorId]
+ * @returns {boolean}
+ */
 function exactEnemyHealthKnown(state, enemyId, actorId = '') {
   const knowledge = enemyKnowledgeFor(state, enemyId, actorId)
   return knowledge?.health === 'exact' || exactEnemyFact(knowledge, 'hp') || knowledge?.exact_hp === true
 }
 
+/**
+ * @param {Loose} [enemy]
+ * @param {LooseState} [state]
+ * @param {string} [actorId]
+ * @returns {Loose}
+ */
 export function publicEnemyFor(enemy = {}, state = {}, actorId = '') {
   const id = text(enemy.id ?? enemy.actor_id, 120)
   const knowledge = enemyKnowledgeFor(state, id, actorId)
@@ -158,6 +234,12 @@ export function publicEnemyFor(enemy = {}, state = {}, actorId = '') {
   }
 }
 
+/**
+ * @param {Loose[]} initiative
+ * @param {LooseState | null | undefined} state
+ * @param {string} [actorId]
+ * @returns {Loose[]}
+ */
 function publicInitiativeFor(initiative, state, actorId = '') {
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   return (Array.isArray(initiative) ? initiative : []).map((entry) => {
@@ -170,6 +252,12 @@ function publicInitiativeFor(initiative, state, actorId = '') {
   })
 }
 
+/**
+ * @param {Loose} entry
+ * @param {LooseState | null | undefined} state
+ * @param {string} [actorId]
+ * @returns {any}
+ */
 function publicBattleEventFor(entry, state, actorId = '') {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry
   const result = { ...entry }
@@ -195,6 +283,10 @@ function publicBattleEventFor(entry, state, actorId = '') {
   return result
 }
 
+/**
+ * @param {Loose} message
+ * @returns {any}
+ */
 function publicCombatMessageFor(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) return message
   const isCombatMessage = String(message.id ?? '').startsWith('combat-') || String(message.author ?? '').toLocaleLowerCase('ru').includes('система боя')
@@ -209,6 +301,10 @@ function publicCombatMessageFor(message) {
   }
 }
 
+/**
+ * @param {Loose} [encounter]
+ * @returns {Loose | null}
+ */
 export function publicEncounterFor(encounter = {}) {
   if (!encounter || typeof encounter !== 'object' || Array.isArray(encounter)) return null
   return {
@@ -226,12 +322,21 @@ export function publicEncounterFor(encounter = {}) {
   }
 }
 
+/**
+ * @param {Loose} window
+ * @param {LooseState} [state]
+ * @param {string} [actorId]
+ * @returns {Loose | null}
+ */
 function publicReactionWindowFor(window, state = {}, actorId = '') {
   if (!window || typeof window !== 'object' || Array.isArray(window)) return null
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   const targetId = text(window.target_id, 120)
   const enemyTarget = enemyIds.has(targetId)
   const enemySource = enemyIds.has(text(window.source_actor_id, 120))
+  // Поля ниже удаляются выборочно, поэтому тип объявлен свободным: игрок не
+  // должен видеть СЛ по врагу и внутренние слагаемые вражеского броска.
+  /** @type {Loose | null} */
   const triggerRoll = window.trigger_roll && typeof window.trigger_roll === 'object'
     ? {
       kept: integer(window.trigger_roll.kept, 0),
@@ -272,6 +377,12 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
   }
 }
 
+/**
+ * @param {LooseState | null | undefined} state
+ * @param {Loose | null | undefined} user
+ * @param {string} actorId
+ * @returns {Viewer}
+ */
 function viewerFor(state, user, actorId) {
   return {
     role: user?.role === 'admin' ? 'admin' : 'player',
@@ -284,6 +395,11 @@ function viewerFor(state, user, actorId) {
 /**
  * Produces a non-admin campaign projection shared by room, command and narration
  * responses. It is deliberately stricter than the internal event-sourced state.
+ *
+ * @param {LooseState | null | undefined} state
+ * @param {Loose | null | undefined} user
+ * @param {string} [actorId]
+ * @returns {any}
  */
 export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
@@ -293,9 +409,9 @@ export function campaignStateForViewer(state, user, actorId = '') {
   const scene = publicSceneFor(visible.scene ?? state.scene)
   const location = scene.location
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
-    .filter((merchant) => merchant.available !== false && merchantIsAtLocation(merchant, state?.scene ?? location))
+    .filter((/** @type {Loose} */ merchant) => merchant.available !== false && merchantIsAtLocation(merchant, state?.scene ?? location))
     .map(publicMerchantFor)
-  const enemies = (Array.isArray(visible.enemies) ? visible.enemies : []).map((enemy) => publicEnemyFor(enemy, state, actorId))
+  const enemies = (Array.isArray(visible.enemies) ? visible.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId))
   const mechanics = visible.mechanics && typeof visible.mechanics === 'object'
     ? (() => {
       const { enemy_knowledge: _enemyKnowledge, ...publicMechanics } = visible.mechanics
@@ -330,11 +446,18 @@ export function campaignStateForViewer(state, user, actorId = '') {
     merchants,
     enemies,
     mechanics,
-    battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((entry) => publicBattleEventFor(entry, state, actorId)),
+    battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((/** @type {Loose} */ entry) => publicBattleEventFor(entry, state, actorId)),
     messages: (Array.isArray(visible.messages) ? visible.messages : []).map(publicCombatMessageFor),
   }
 }
 
+/**
+ * @param {Loose} event
+ * @param {Loose | null | undefined} user
+ * @param {string} actorId
+ * @param {LooseState} [state]
+ * @returns {Loose | null}
+ */
 function eventForViewer(event, user, actorId, state = {}) {
   const visible = projectVisibleState(event, viewerFor(state, user, actorId), { forNarrator: true })
   if (!visible) return null
@@ -352,12 +475,12 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (visible.event_type === 'EncounterCreated' && payload.encounter) {
     payload.encounter = {
       ...publicEncounterFor(payload.encounter),
-      enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map((enemy) => publicEnemyFor(enemy, state, actorId)),
+      enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId)),
     }
   }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
-  const enemyTargetId = targetIds.find((id) => enemyIds.has(id)) ?? (enemyIds.has(String(payload.target_id ?? '')) ? String(payload.target_id) : '')
+  const enemyTargetId = targetIds.find((/** @type {string} */ id) => enemyIds.has(id)) ?? (enemyIds.has(String(payload.target_id ?? '')) ? String(payload.target_id) : '')
   const enemyActor = enemyIds.has(String(visible.actor_id ?? ''))
   if (enemyTargetId && !exactEnemyHealthKnown(state, enemyTargetId, actorId)) {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'armor_class']) delete payload[key]
@@ -386,11 +509,25 @@ function eventForViewer(event, user, actorId, state = {}) {
   return { ...visible, payload }
 }
 
+/**
+ * @param {Loose[]} events
+ * @param {Loose | null | undefined} user
+ * @param {string} [actorId]
+ * @param {LooseState} [state]
+ * @returns {any}
+ */
 export function mechanicsForViewer(events, user, actorId = '', state = {}) {
   if (!Array.isArray(events) || user?.role === 'admin') return events
   return events.map((event) => eventForViewer(event, user, actorId, state)).filter(Boolean)
 }
 
+/**
+ * @param {Loose | null | undefined} explanation
+ * @param {Loose | null | undefined} user
+ * @param {string} [actorId]
+ * @param {LooseState} [state]
+ * @returns {any}
+ */
 export function turnExplanationForViewer(explanation, user, actorId = '', state = {}) {
   if (!explanation || typeof explanation !== 'object' || user?.role === 'admin') return explanation
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
@@ -417,6 +554,10 @@ export function turnExplanationForViewer(explanation, user, actorId = '', state 
   }
 }
 
+/**
+ * @param {Loose} transition
+ * @returns {any}
+ */
 export function sceneTransitionForViewer(transition) {
   if (!transition || typeof transition !== 'object' || Array.isArray(transition)) return transition
   return {
@@ -433,7 +574,12 @@ export function sceneTransitionForViewer(transition) {
   }
 }
 
-/** Sanitizes every public surface of a command/narration result consistently. */
+/** Sanitizes every public surface of a command/narration result consistently.
+ * @param {Loose | null | undefined} result
+ * @param {Loose | null | undefined} user
+ * @param {string} [actorId]
+ * @returns {any}
+ */
 export function turnResultForViewer(result, user, actorId = '') {
   if (!result || typeof result !== 'object' || user?.role === 'admin') return result
   const visible = projectVisibleState(result, viewerFor(result.authoritative_state, user, actorId), { forNarrator: true }) ?? {}
@@ -442,7 +588,7 @@ export function turnResultForViewer(result, user, actorId = '') {
     ? { ...visible.effects }
     : visible.effects
   if (effects?.scene) effects.scene = sceneTransitionForViewer(effects.scene)
-  const enemyIds = new Set((result.authoritative_state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  const enemyIds = new Set((result.authoritative_state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   if (effects?.roll && enemyIds.has(String(effects.roll.actor_id ?? ''))) {
     effects.roll = {
       roll_id: text(effects.roll.roll_id, 160),

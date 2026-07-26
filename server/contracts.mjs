@@ -1,3 +1,4 @@
+// @ts-check
 /** Infrastructure contracts used by the domain layer. Concrete adapters may be file based today and SQL/remote later. */
 export class LLMClient {
   async complete() { throw new Error('LLMClient.complete не реализован') }

@@ -1,10 +1,54 @@
+// @ts-check
 import { createHash } from 'node:crypto'
 
+/**
+ * Форма тактической клетки **до** M0 из `docs/tactical-map-plan.md`. Это
+ * отправная точка миграции: здесь зафиксировано то, что генератор производит
+ * сегодня. Разбор всех потребителей — в `docs/scene-cells-inventory.md`.
+ *
+ * Обязательны только `x`, `y`, `type` и `revealed`: генератор заполняет и
+ * остальное, но границы системы отдают разные подмножества полей, поэтому
+ * читающая сторона обязана считать их необязательными.
+ *
+ * `feature` намеренно описан как произвольная строка, а не перечисление:
+ * сегодня в него пишется и декор из `featuresFor`, и вид сущности из события
+ * `EntitySpawned` (`rules-engine.mjs:6936`). Разделение этих двух смыслов —
+ * содержание M0.
+ *
+ * @typedef {'floor' | 'wall' | 'water' | 'door'} SceneCellType
+ * @typedef {'stone' | 'wood' | 'earth' | 'grass' | 'sand' | 'metal' | 'marble' | 'ice'} SceneCellMaterial
+ * @typedef {'small-room' | 'great-hall' | 'keep' | 'courtyard' | 'crypt' | 'cave-cluster' | 'village' | 'bridge' | 'natural'} SceneCellPattern
+ *
+ * @typedef {object} SceneCell
+ * @property {number} x
+ * @property {number} y
+ * @property {SceneCellType} type
+ * @property {boolean} revealed
+ * @property {SceneCellMaterial} [material]
+ * @property {number} [variant] целое 0…5, выбор спрайта
+ * @property {SceneCellPattern} [pattern]
+ * @property {string} [edge_mask] подпоследовательность `nesw` — стороны, где клетка граничит с непроходимым
+ * @property {string} [feature] декор либо вид сущности; см. примечание выше
+ */
+
+/** @typedef {() => number} RandomSource детерминированный генератор в [0, 1) */
+
+/**
+ * @param {unknown} value
+ * @param {number} fallback
+ * @param {number} minimum
+ * @param {number} maximum
+ * @returns {number}
+ */
 function clampInteger(value, fallback, minimum, maximum) {
   const number = Number(value)
   return Number.isSafeInteger(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback
 }
 
+/**
+ * @param {string|number} seed
+ * @returns {RandomSource}
+ */
 function randomFor(seed) {
   let state = createHash('sha256').update(String(seed)).digest().readUInt32LE(0) || 1
   return () => {
@@ -13,6 +57,13 @@ function randomFor(seed) {
   }
 }
 
+/**
+ * @param {string} theme
+ * @param {string} layout
+ * @param {string} pattern
+ * @param {string} material
+ * @returns {string[]}
+ */
 function featuresFor(theme, layout, pattern, material) {
   const value = `${theme} ${layout} ${pattern} ${material}`.toLocaleLowerCase('ru')
   if (/дом|комнат|кабинет|камор|спальн|хижин|таверн|small-room/iu.test(value)) {
@@ -44,6 +95,16 @@ function featuresFor(theme, layout, pattern, material) {
   return ['rock', 'torch', 'rune', 'chest', 'stairs', 'crate']
 }
 
+/**
+ * @param {string} feature
+ * @param {SceneCell} cell
+ * @param {Map<string, SceneCell>} byPosition
+ * @param {number} centerX
+ * @param {number} centerY
+ * @param {SceneCell[]} placed
+ * @param {RandomSource} random
+ * @returns {number}
+ */
 function featureCellScore(feature, cell, byPosition, centerX, centerY, placed, random) {
   const adjacentWalls = [[1, 0], [-1, 0], [0, 1], [0, -1]]
     .filter(([dx, dy]) => !walkable(byPosition.get(key(cell.x + dx, cell.y + dy)))).length
@@ -61,11 +122,19 @@ function featureCellScore(feature, cell, byPosition, centerX, centerY, placed, r
   return score
 }
 
+/** @type {ReadonlySet<unknown>} */
 const PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
+/** @type {ReadonlySet<unknown>} */
 const MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
 
+/**
+ * @param {string} theme
+ * @param {string} layout
+ * @param {unknown} requested
+ * @returns {SceneCellMaterial}
+ */
 function visualMaterial(theme, layout, requested) {
-  if (MATERIALS.has(requested)) return requested
+  if (MATERIALS.has(requested)) return /** @type {SceneCellMaterial} */ (requested)
   const value = `${theme} ${layout}`.toLocaleLowerCase('ru')
   if (/косм|станци|тех|кибер|металл|лаборатор/u.test(value)) return 'metal'
   if (/лед|снег|мороз|аркти/u.test(value)) return 'ice'
@@ -77,6 +146,10 @@ function visualMaterial(theme, layout, requested) {
   return 'stone'
 }
 
+/**
+ * @param {unknown} scale
+ * @returns {{ width: number, height: number }}
+ */
 function scaleSize(scale) {
   if (scale === 'room') return { width: 9, height: 7 }
   if (scale === 'stronghold') return { width: 23, height: 17 }
@@ -84,9 +157,24 @@ function scaleSize(scale) {
   return { width: 15, height: 11 }
 }
 
+/** @type {(x: number, y: number) => string} */
 const key = (x, y) => `${x},${y}`
+/**
+ * @param {SceneCell | undefined} cell
+ * @returns {cell is SceneCell}
+ */
 const walkable = (cell) => cell?.type === 'floor' || cell?.type === 'door'
 
+/**
+ * @param {string} layout
+ * @param {string} pattern
+ * @param {number} x
+ * @param {number} y
+ * @param {number} width
+ * @param {number} height
+ * @param {RandomSource} random
+ * @returns {boolean}
+ */
 function footprintFor(layout, pattern, x, y, width, height, random) {
   const cx = (width - 1) / 2
   const cy = (height - 1) / 2
@@ -113,6 +201,11 @@ function footprintFor(layout, pattern, x, y, width, height, random) {
   return true
 }
 
+/**
+ * @param {SceneCell[]} cells
+ * @param {{ x: number, y: number }} entrance
+ * @returns {Set<string>} ключи `"x,y"` проходимых клеток, достижимых от входа
+ */
 function connectedWalkable(cells, entrance) {
   const byPosition = new Map(cells.map((cell) => [key(cell.x, cell.y), cell]))
   const start = byPosition.get(key(entrance.x, entrance.y))
@@ -136,7 +229,26 @@ function connectedWalkable(cells, entrance) {
 /** Generates a deterministic, connected tactical map from a bounded
  * cartographer specification. Organic layouts omit cells outside their
  * footprint, so the board can be cavernous, circular or broken rather than
- * always presenting a rectangular slab. */
+ * always presenting a rectangular slab.
+ *
+ * Возвращает **разреженный** список, отсортированный по `y`, затем по `x`:
+ * координат вне контура в нём просто нет.
+ *
+ * @param {object} [spec]
+ * @param {string|number} [spec.seed]
+ * @param {string} [spec.theme]
+ * @param {string} [spec.danger]
+ * @param {number} [spec.width]
+ * @param {number} [spec.height]
+ * @param {unknown} [spec.scale]
+ * @param {string} [spec.layout]
+ * @param {string} [spec.pattern]
+ * @param {SceneCellMaterial} [spec.material]
+ * @param {unknown} [spec.openness]
+ * @param {unknown} [spec.water]
+ * @param {unknown} [spec.featureCount]
+ * @returns {SceneCell[]}
+ */
 export function generateDynamicSceneMap({ seed, theme = '', danger = 'средняя', width, height, scale, layout = 'rooms', pattern = 'natural', material, openness = 0.6, water = 0.04, featureCount } = {}) {
   const scaleDefault = scale ? scaleSize(scale) : { width: 13, height: 9 }
   width = clampInteger(width, scaleDefault.width, 7, 25)
@@ -151,6 +263,7 @@ export function generateDynamicSceneMap({ seed, theme = '', danger = 'средн
   const waterChance = Math.max(0, Math.min(0.3, Number(water) || 0))
   const streetXs = new Set([centerX, Math.max(2, Math.floor(width / 3)), Math.min(width - 3, Math.floor(width * 2 / 3))])
   const streetYs = new Set([centerY, Math.max(2, Math.floor(height / 3)), Math.min(height - 3, Math.floor(height * 2 / 3))])
+  /** @type {SceneCell[]} */
   const cells = []
 
   for (let y = 0; y < height; y += 1) {
@@ -181,19 +294,24 @@ export function generateDynamicSceneMap({ seed, theme = '', danger = 'средн
         else if (layout === 'ruins') passable = entranceRoad || centralSpine || chamber || ((x + y) % 3 !== 0 && random() < openChance * .58)
         else passable = centralSpine || chamber || random() < openChance * 0.48
       }
+      /** @type {SceneCellType} */
       let type = passable ? 'floor' : 'wall'
       if (passable && !centralSpine && random() < waterChance) type = 'water'
       if ((layout === 'streets' || layout === 'ruins') && type === 'wall' && !border && (streetXs.has(x - 1) || streetXs.has(x + 1) || streetYs.has(y - 1) || streetYs.has(y + 1)) && random() < 0.14) type = 'door'
       const cellMaterial = material === 'grass' && type === 'floor' && (scenicTrail || entranceRoad) ? 'earth' : material
-      cells.push({ x, y, type, revealed: passable && x <= 2, material: cellMaterial, variant: Math.floor(random() * 6), pattern })
+      cells.push({ x, y, type, revealed: passable && x <= 2, material: cellMaterial, variant: Math.floor(random() * 6), pattern: /** @type {SceneCellPattern} */ (pattern) })
     }
   }
 
   const byPosition = new Map(cells.map((cell) => [key(cell.x, cell.y), cell]))
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
   const ensureFloor = (x, y) => {
     let cell = byPosition.get(key(x, y))
     if (!cell) {
-      cell = { x, y, type: 'floor', revealed: x <= 2, material: material === 'grass' ? 'earth' : material, variant: Math.floor(random() * 6), pattern }
+      cell = { x, y, type: 'floor', revealed: x <= 2, material: material === 'grass' ? 'earth' : material, variant: Math.floor(random() * 6), pattern: /** @type {SceneCellPattern} */ (pattern) }
       cells.push(cell)
       byPosition.set(key(x, y), cell)
     }
@@ -241,7 +359,7 @@ export function generateDynamicSceneMap({ seed, theme = '', danger = 'средн
   const finalByPosition = new Map(cells.map((cell) => [key(cell.x, cell.y), cell]))
   for (const cell of cells) {
     const edges = []
-    for (const [label, x, y] of [['n', cell.x, cell.y - 1], ['e', cell.x + 1, cell.y], ['s', cell.x, cell.y + 1], ['w', cell.x - 1, cell.y]]) {
+    for (const [label, x, y] of /** @type {[string, number, number][]} */ ([['n', cell.x, cell.y - 1], ['e', cell.x + 1, cell.y], ['s', cell.x, cell.y + 1], ['w', cell.x - 1, cell.y]])) {
       const neighbor = finalByPosition.get(key(x, y))
       if (!neighbor || (walkable(cell) && !walkable(neighbor))) edges.push(label)
     }
