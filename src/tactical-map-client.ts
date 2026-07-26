@@ -588,12 +588,61 @@ export function tacticalMapFromCells(cells: readonly MapCell[]): TacticalMap | n
   return map
 }
 
-export const REVEAL_DELTA_VERSION = 'skazanie:reveal-delta-v1'
+export const REVEAL_DELTA_VERSION = 'skazanie:reveal-delta-v2'
+
+/**
+ * Однородный слой сервер сжимает в одно число, а не в строку base64. Обратная
+ * сборка обязана делать то же самое, иначе после наложения дельты клиент
+ * положил бы в кэш карту, отличающуюся от серверной записью, а не содержанием.
+ */
+function encodeLayer(array: Uint8Array) {
+  const first = array[0]
+  for (let index = 1; index < array.length; index += 1) {
+    if (array[index] !== first) return bytesToBase64(array)
+  }
+  return array.length ? first : 0
+}
+
+/**
+ * Индексы интервалов подряд. Порядок — часть формата: значения слоёв уложены
+ * ровно в нём, сначала раскрытые клетки, затем скрытые. `null` — интервал вышел
+ * за пределы карты.
+ */
+function revealRunIndexes(runs: Array<[number, number]> | undefined, limit: number): number[] | null {
+  const indexes: number[] = []
+  for (const run of runs ?? []) {
+    const start = Number(run?.[0])
+    const count = Number(run?.[1])
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(count)) return null
+    if (start < 0 || count < 0 || start + count > limit) return null
+    for (let index = start; index < start + count; index += 1) indexes.push(index)
+  }
+  return indexes
+}
+
+/**
+ * Значения слоя затронутых клеток: одно число на однородный слой, иначе base64
+ * по байту на клетку. `null` — слой не покрывает затронутые клетки ровно один
+ * раз; дорисовывать недостающее нельзя, иначе на доске окажется карта,
+ * расходящаяся с проекцией.
+ */
+function decodeDeltaValues(value: unknown, expected: number): Uint8Array | null {
+  try {
+    const values = decodeUnsignedLayer(value, expected, 'значений дельты')
+    return values.length === expected ? values : null
+  } catch {
+    return null
+  }
+}
 
 /**
  * Накладывает дельту раскрытия на **сериализованную** карту, не разбирая её
- * целиком: меняется единственный слой, а остальные поля переезжают как есть.
- * Так закэшированная карта остаётся ровно тем, что прислал сервер.
+ * целиком: меняются четыре слоя, а остальные поля переезжают как есть. Так
+ * закэшированная карта остаётся ровно тем, что прислал сервер.
+ *
+ * Зеркало `server/reveal-delta.mjs`: проекция обезличивает нераскрытую клетку,
+ * поэтому вместе с самим фактом раскрытия дельта несёт материал, вариант тайла
+ * и поверхность затронутых клеток. Разойтись эти две реализации не имеют права.
  *
  * `null` означает «наложить нельзя» — другая ширина, испорченная дельта, чужая
  * версия формата. Вызывающий обязан в этом случае запросить карту целиком, а не
@@ -615,27 +664,56 @@ export function applySerializedRevealDelta(
   const bitsetLength = Math.ceil(length / 8)
   let present: Uint8Array
   let revealed: Uint8Array
+  let material: Uint8Array
+  let variant: Uint8Array
+  let surface: Uint8Array
   try {
     present = decodeUnsignedLayer(layers.present, bitsetLength, 'present')
     revealed = decodeUnsignedLayer(layers.revealed, bitsetLength, 'revealed')
+    material = decodeUnsignedLayer(layers.material, length, 'material')
+    variant = decodeUnsignedLayer(layers.variant, length, 'variant')
+    surface = decodeUnsignedLayer(layers.surface, length, 'surface')
   } catch {
     return null
   }
-  const flip = (runs: Array<[number, number]> | undefined, value: boolean) => {
-    for (const run of runs ?? []) {
-      const start = Number(run?.[0])
-      const count = Number(run?.[1])
-      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(count)) return false
-      if (start < 0 || count < 0 || start + count > length) return false
-      // Как и на сервере: отсутствующая клетка не раскрывается.
-      for (let index = start; index < start + count; index += 1) {
-        if (bitAt(present, index)) setBitAt(revealed, index, value)
-      }
+  const opened = revealRunIndexes(delta.revealed, length)
+  const closed = revealRunIndexes(delta.hidden, length)
+  if (!opened || !closed) return null
+  const touched = opened.length + closed.length
+  const values = delta.values ?? {}
+  const touchedMaterial = decodeDeltaValues(values.material, touched)
+  const touchedVariant = decodeDeltaValues(values.variant, touched)
+  const touchedSurface = decodeDeltaValues(values.surface, touched)
+  if (!touchedMaterial || !touchedVariant || !touchedSurface) return null
+  if (touchedMaterial.some((code) => code >= MATERIALS.length)) return null
+  if (touchedSurface.some((code) => code >= SURFACES.length)) return null
+
+  let at = 0
+  const write = (indexes: number[], value: boolean) => {
+    for (const index of indexes) {
+      const position = at
+      at += 1
+      // Как и на сервере: отсутствующей клетки дельта не создаёт, но значение
+      // всё равно считается израсходованным — иначе порядок разъедется.
+      if (!bitAt(present, index)) continue
+      setBitAt(revealed, index, value)
+      material[index] = touchedMaterial[position]
+      variant[index] = touchedVariant[position]
+      surface[index] = touchedSurface[position]
     }
-    return true
   }
-  if (!flip(delta.revealed, true) || !flip(delta.hidden, false)) return null
-  return { ...raw, layers: { ...layers, revealed: bytesToBase64(revealed) } }
+  write(opened, true)
+  write(closed, false)
+  return {
+    ...raw,
+    layers: {
+      ...layers,
+      revealed: encodeLayer(revealed),
+      material: encodeLayer(material),
+      variant: encodeLayer(variant),
+      surface: encodeLayer(surface),
+    },
+  }
 }
 
 /**

@@ -704,6 +704,17 @@ export type SerializedRevealDelta = {
   width?: number
   revealed?: Array<[number, number]>
   hidden?: Array<[number, number]>
+  /**
+   * Значения слоёв затронутых клеток: одно число на однородный слой, иначе
+   * base64 по байту на клетку. Проекция обезличивает нераскрытую клетку,
+   * поэтому без них собранная из дельты карта расходилась бы с проекцией.
+   * Порядок клеток — сначала интервалы `revealed`, затем `hidden`.
+   */
+  values?: {
+    material?: string | number
+    variant?: string | number
+    surface?: string | number
+  }
 }
 
 export type DndClassKey = 'barbarian' | 'bard' | 'cleric' | 'druid' | 'fighter' | 'monk' | 'paladin' | 'ranger' | 'rogue' | 'sorcerer' | 'warlock' | 'wizard'
