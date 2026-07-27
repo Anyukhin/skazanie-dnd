@@ -34,6 +34,7 @@ import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CreativeDirector } from './creative-director.mjs'
+import { combatNarration as tacticalNarration } from './combat-narration.mjs'
 import { NpcControllerAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
 import { RollRegistry } from './roll-registry.mjs'
@@ -208,7 +209,7 @@ function canUseHero(user, heroId, campaignId) {
   return user?.role === 'admin' || campaignHeroIds(user, campaignId).includes(String(heroId || ''))
 }
 
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'EndTurn', 'ResolveHeroDeath'])
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
 const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
@@ -545,6 +546,11 @@ function sanitizePlayerCombatCommand(user, state, input) {
     if (!enemy || enemy.alive === false || Number(enemy.hp) <= 0) throw commandPolicyError('Игрок может атаковать только живого противника', 'INVALID_ATTACK_TARGET')
     return { ...base, target_id: target, ...(input?.item_id ? { item_id: String(input.item_id) } : {}), ...(input?.knock_out === true ? { knock_out: true } : {}) }
   }
+  if (type === 'IdentifyEnemy') {
+    // Из запроса берётся только цель: навык, характеристику и СЛ выбирает
+    // серверная таблица, и подставить их клиент не может.
+    return { ...base, target_id: String(input?.target_id ?? input?.targetId ?? '').slice(0, 120) }
+  }
   if (type === 'MakeAreaAttack') return { ...base, item_id: String(input?.item_id || ''), to: { x: input?.to?.x, y: input?.to?.y } }
   if (type === 'ChangeWeapon') return { ...base, item_id: String(input?.item_id || '') }
   if (type === 'CastSpell') {
@@ -704,176 +710,8 @@ function sanitizeMerchantCommand(user, state, input, routeMerchantId = null) {
   return { ...base, request_fingerprint: merchantCommandFingerprint(base) }
 }
 
-function tacticalActorName(state, id) {
-  const expected = String(id || '')
-  const actor = [...(state?.players ?? []), ...(state?.enemies ?? []), ...(state?.actors ?? [])]
-    .find((candidate) => String(candidate.id ?? candidate.actor_id ?? '') === expected)
-  return String(actor?.character || actor?.name || expected || 'Участник')
-}
-
-function tacticalActorIsEnemy(state, id) {
-  const expected = String(id || '')
-  return (state?.enemies ?? []).some((candidate) => String(candidate.id ?? candidate.actor_id ?? '') === expected)
-}
-
-const COVER_SCENERY_LABELS = Object.freeze({
-  altar: 'алтарь', barrel: 'бочку', bed: 'кровать', bookshelf: 'шкаф', bush: 'куст',
-  chest: 'сундук', console: 'пульт', crate: 'ящик', fireplace: 'очаг', grave: 'могилу',
-  pillar: 'колонну', rock: 'камень', statue: 'статую', table: 'стол', tree: 'дерево', well: 'колодец',
-})
-
-const CONDITION_LABELS = Object.freeze({
-  blinded: 'ослеплена', frightened: 'испугана', grappled: 'схвачена', incapacitated: 'недееспособна',
-  invisible: 'невидима', paralyzed: 'парализована', petrified: 'окаменела', poisoned: 'отравлена',
-  prone: 'сбита с ног', restrained: 'опутана', stunned: 'оглушена', unconscious: 'без сознания',
-})
-
-const ATTACKER_CONDITION_LABELS = Object.freeze({
-  blinded: 'ослеплён', frightened: 'испуган', grappled: 'схвачен', incapacitated: 'недееспособен',
-  invisible: 'невидим', paralyzed: 'парализован', petrified: 'окаменел', poisoned: 'отравлен',
-  prone: 'сбит с ног', restrained: 'опутан', stunned: 'оглушён', unconscious: 'без сознания',
-})
-
-/**
- * Explains why an attack was rolled with advantage or disadvantage.  When both
- * sides contribute they cancel and the roll is ordinary, so naming either one
- * would misdescribe what happened.
- */
-function attackConditionReason(payload) {
-  const advantage = payload.condition_advantage ?? []
-  const disadvantage = payload.condition_disadvantage ?? []
-  if ((advantage.length > 0) === (disadvantage.length > 0)) return ''
-  const entries = advantage.length ? advantage : disadvantage
-  const described = entries.map((entry) => {
-    const [side, condition] = String(entry).split(':')
-    return side === 'target'
-      ? `цель ${CONDITION_LABELS[condition] ?? condition}`
-      : `атакующий ${ATTACKER_CONDITION_LABELS[condition] ?? condition}`
-  }).join(', ')
-  return ` ${advantage.length ? 'с преимуществом' : 'с помехой'} (${described})`
-}
-
-function tacticalNarration(events, state) {
-  const meaningful = []
-  const turns = []
-  for (const event of events ?? []) {
-    const payload = event.payload ?? {}
-    const actor = tacticalActorName(state, event.actor_id)
-    const targetId = event.target_ids?.[0] ?? payload.target_id
-    const target = tacticalActorName(state, targetId)
-    const targetIsEnemy = tacticalActorIsEnemy(state, targetId)
-    if (event.event_type === 'EncounterCreated') {
-      const names = (payload.encounter?.enemies ?? []).map((enemy) => String(enemy?.name ?? '')).filter(Boolean).slice(0, 12)
-      meaningful.push(`На поле появляются противники: ${names.join(', ')}.`)
-    } else if (event.event_type === 'EncounterEnded') {
-      meaningful.push(`Столкновение завершено: ${String(payload.reason ?? payload.outcome ?? 'resolved')}.`)
-    } else if (event.event_type === 'CombatStarted') {
-      meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
-      const surprised = (payload.surprised ?? []).map((id) => tacticalActorName(state, id))
-      if (surprised.length) meaningful.push(`Застигнуты врасплох: ${surprised.join(', ')} — первый ход они теряют и не могут использовать реакцию.`)
-    } else if (event.event_type === 'ActorMoved') {
-      meaningful.push(`${actor} перемещается на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
-    } else if (event.event_type === 'AttackResolved') {
-      const reason = attackConditionReason(payload)
-        + (payload.high_ground === 'higher' ? ' с возвышенности' : payload.high_ground === 'lower' ? ' снизу вверх' : '')
-        + (payload.cover ? ` сквозь ${[
-          ...(payload.cover_blockers ?? []).map((id) => tacticalActorName(state, id)),
-          ...(payload.cover_scenery ?? []).map((feature) => COVER_SCENERY_LABELS[feature] ?? feature),
-        ].join(', ') || 'помеху'} (${payload.cover === 'three-quarters' ? 'три четверти укрытия' : 'половинное укрытие'}, +${Number(payload.cover_bonus) || 2} к КД)` : '')
-      const outcome = payload.hit
-        ? payload.automatic_critical
-          ? 'критическое попадание — цель не может защищаться'
-          : payload.critical ? 'критическое попадание' : 'попадание'
-        : 'промах'
-      meaningful.push(targetIsEnemy
-        ? `${actor} атакует ${target}${reason}: ${outcome}.`
-        : `${actor} атакует ${target}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
-    } else if (event.event_type === 'AreaAttackResolved') {
-      meaningful.push(`${actor} бросает ${payload.item_name || 'снаряд'} в область радиусом ${Number(payload.radius_feet) || 0} фт.`)
-    } else if (event.event_type === 'SpellCast') {
-      meaningful.push(`${actor} творит заклинание «${payload.name || payload.spell_id || 'магия'}».`)
-    } else if (event.event_type === 'SummonedCreatureCreated') {
-      meaningful.push(`${actor} призывает ${payload.summon?.name || 'помощника'}; его ход поставлен сразу после хозяина.`)
-    } else if (event.event_type === 'SummonedCreatureDismissed') {
-      meaningful.push(`${target} исчезает с поля боя.`)
-    } else if (event.event_type === 'EquipmentChanged') {
-      meaningful.push(`${actor} экипирует ${payload.item_name || 'оружие'}${payload.turns_spent ? ', затрачивая действие' : ' перед атакой'}.`)
-    } else if (event.event_type === 'DamageApplied' && Number(payload.applied_amount) > 0) {
-      meaningful.push(targetIsEnemy
-        ? payload.death_ward_triggered
-          ? `${target} получает ${Number(payload.applied_amount)} урона, но Охрана от смерти удерживает цель на ногах.`
-          : `${target} получает ${Number(payload.applied_amount)} урона.`
-        : payload.death_ward_triggered
-          ? `${target} получает ${Number(payload.applied_amount)} урона, но Охрана от смерти срабатывает и оставляет 1 ОЗ.`
-          : payload.resistance_cantrip_reduction
-            ? `Сопротивление уменьшает урон по ${target} на ${Number(payload.resistance_cantrip_reduction)}; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`
-            : `${target} получает ${Number(payload.applied_amount)} урона; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`)
-    } else if (event.event_type === 'CreatureKnockedOut') {
-      meaningful.push(targetIsEnemy ? `${target} нокаутирован и больше не сопротивляется.` : `${target} нокаутирован, остаётся с 1 ОЗ и начинает короткий отдых.`)
-    } else if (event.event_type === 'KnockoutEnded') {
-      meaningful.push(`${target} приходит в сознание после успешной первой помощи.`)
-    } else if (event.event_type === 'RestCompleted' && payload.reason === 'knockout') {
-      meaningful.push(`${target} приходит в сознание после завершения короткого отдыха.`)
-    } else if (event.event_type === 'HitPointsReducedToZero') {
-      meaningful.push(`${target} падает без сознания и начинает делать спасброски от смерти.`)
-    } else if (event.event_type === 'DeathSavingThrowRolled') {
-      const outcome = payload.result === 'revived' ? 'натуральная 20 возвращает 1 ОЗ' : payload.result === 'stabilized' ? 'герой стабилизирован' : payload.result === 'died' ? 'третий провал' : payload.success ? 'успех' : 'провал'
-      const natural = Number(payload.natural_roll) || 0
-      const modifier = Number(payload.modifier) || 0
-      const total = Number(payload.total) || natural + modifier
-      const rollText = modifier === 0 ? `${natural}` : `${natural} ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)} = ${total}`
-      const auraText = payload.aura_of_protection_bonus ? ` Аура защиты даёт +${Number(payload.aura_of_protection_bonus)}.` : ''
-      meaningful.push(`${target} делает спасбросок от смерти: ${rollText} — ${outcome}.${auraText}`)
-    } else if (event.event_type === 'ConcentrationSavingThrowResolved') {
-      const natural = Number(payload.kept) || 0
-      const modifier = Number(payload.modifier) || 0
-      const total = Number(payload.total) || natural + modifier
-      const rollText = modifier === 0 ? `${natural}` : `${natural} ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)} = ${total}`
-      const auraText = payload.aura_of_protection_bonus ? ` Аура защиты даёт +${Number(payload.aura_of_protection_bonus)}.` : ''
-      meaningful.push(`${target} проверяет концентрацию: ${rollText} против СЛ ${Number(payload.difficulty) || 10} — ${payload.saved ? 'успех' : 'провал'}.${auraText}`)
-    } else if (event.event_type === 'ConcentrationEnded') {
-      meaningful.push(`Концентрация ${target} прекращается (${String(payload.reason ?? 'эффект завершён')}).`)
-    } else if (event.event_type === 'ActionReadied') {
-      meaningful.push(`${target} замирает с оружием наготове и ждёт, когда ${String(payload.trigger_label ?? 'сработает выбранный триггер')}.`)
-    } else if (event.event_type === 'ReadiedActionExpired') {
-      // Про использованную заготовку расскажет сам удар, а вот сгоревшую иначе
-      // никто не заметит: игрок просто не поймёт, куда делось действие.
-      if (payload.reason !== 'used') meaningful.push(`${target} так и не дождался повода: заготовленный удар пропадает.`)
-    } else if (event.event_type === 'DeathSaveFailureRecorded') {
-      meaningful.push(`${target} получает ${Number(payload.failure_increment) === 2 ? 'два провала' : 'провал'} спасброска от смерти из-за урона.`)
-    } else if (event.event_type === 'HeroStabilized') {
-      meaningful.push(`${target} стабилизирован и остаётся без сознания.`)
-    } else if (event.event_type === 'StableRecoveryScheduled') {
-      meaningful.push(`${target} стабилен и восстановит 1 ОЗ через ${Math.max(1, Number(payload.recovery_hours) || 1)} ч.`)
-    } else if (event.event_type === 'HealingApplied' && payload.reason === 'stable-recovery-after-1d4-hours') {
-      meaningful.push(`${target} приходит в сознание с 1 ОЗ после необходимого времени покоя.`)
-    } else if (event.event_type === 'HealingApplied' && payload.spell_id === 'aura-of-life') {
-      meaningful.push(`Аура жизни возвращает ${target} 1 ОЗ в начале хода.`)
-    } else if (event.event_type === 'HitPointMaximumReductionPrevented') {
-      meaningful.push(`Аура жизни защищает максимум ОЗ ${target} от уменьшения.`)
-    } else if (event.event_type === 'HitPointMaximumReduced') {
-      meaningful.push(targetIsEnemy ? `Жизненные силы ${target} ослаблены.` : `Максимум ОЗ ${target} снижается: ${Number(payload.maximum_hp_before) || 0} → ${Number(payload.maximum_hp_after) || 0}.`)
-    } else if (event.event_type === 'HeroDied') {
-      meaningful.push(`${target} погибает. Его судьбу нужно разрешить: воскресить героя или заменить новым.`)
-    } else if (event.event_type === 'HeroResurrected') {
-      meaningful.push(`${target} возвращается к жизни с 1 ОЗ.`)
-    } else if (event.event_type === 'HeroReplaced') {
-      meaningful.push(`${payload.replacement_name || target} присоединяется к группе вместо погибшего героя.`)
-    } else if (event.event_type === 'ConditionAdded' && payload.condition === 'fled') {
-      meaningful.push(`${target} отступает и покидает бой.`)
-    } else if (event.event_type === 'ConditionAdded' && payload.condition === 'surrendered') {
-      meaningful.push(`${target} прекращает сопротивление и сдаётся.`)
-    } else if (event.event_type === 'CombatEnded') {
-      meaningful.push(`Бой завершён в раунде ${Number(payload.round) || 1}.`)
-    } else if (event.event_type === 'TurnEnded') {
-      turns.push(`${actor} завершает ход.`)
-    } else if (event.event_type === 'TurnStarted') {
-      turns.push(`Начинается ход ${target}, раунд ${Number(payload.round) || 1}.`)
-    }
-  }
-  const selected = meaningful.length ? meaningful : turns
-  return selected.slice(0, 8).join(' ')
-}
+// Боевой текст переехал в server/combat-narration.mjs: в index.mjs он был
+// непроверяем — импорт этого файла поднимает HTTP-слушателя.
 
 function combatMessageId(idempotencyKey) {
   return `combat-${createHash('sha256').update(String(idempotencyKey)).digest('hex').slice(0, 20)}`

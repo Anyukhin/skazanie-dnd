@@ -14,10 +14,17 @@ const INTENT_TYPES = new Set(DIRECTOR_INTENT_TYPES)
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard'])
 const THEMES = new Set(['beasts', 'undead', 'goblinoids', 'raiders'])
 const TOP_LEVEL_FIELDS = new Set(['version', 'type', 'theme', 'difficulty', 'quest_id', 'npc_id', 'hook', 'destination', 'reason'])
+/**
+ * Написание ключа значения не имеет: `max_hp`, `maxHp` и `MAX-HP` — одно и то
+ * же поле, и модель придёт к верблюжьему написанию не реже, чем к змеиному.
+ * Поэтому и список, и проверяемый ключ приводятся к одному виду.
+ */
+const mechanicalKey = (value) => String(value).toLowerCase().replace(/[_-]/g, '')
+
 const FORBIDDEN_MECHANICAL_FIELDS = new Set([
   'hp', 'max_hp', 'dc', 'difficulty_class', 'roll', 'dice', 'price', 'quantity', 'xp', 'xp_budget',
   'loot', 'coordinates', 'x', 'y', 'damage', 'armor', 'initiative', 'reputation_delta', 'amount',
-])
+].map(mechanicalKey))
 
 export class DirectorIntentError extends Error {
   constructor(message, code = 'DIRECTOR_INTENT_INVALID') {
@@ -39,7 +46,7 @@ function assertNoMechanics(value, path = '$', seen = new WeakSet()) {
   if (seen.has(value)) throw new DirectorIntentError('Director intent содержит цикл', 'DIRECTOR_INTENT_INVALID_SHAPE')
   seen.add(value)
   for (const [key, child] of Object.entries(value)) {
-    if (FORBIDDEN_MECHANICAL_FIELDS.has(String(key).toLowerCase())) {
+    if (FORBIDDEN_MECHANICAL_FIELDS.has(mechanicalKey(key))) {
       throw new DirectorIntentError(`Director не может задавать механическое поле ${path}.${key}`, 'DIRECTOR_MECHANICS_FORBIDDEN')
     }
     assertNoMechanics(child, `${path}.${key}`, seen)
@@ -78,59 +85,12 @@ function firstOpenQuest(state) {
   return (state.worldMemory?.quests ?? []).find((quest) => quest.status === 'active' && !quest.clock?.triggered) ?? null
 }
 
-function revealedExplorationCells(state) {
-  const cells = Array.isArray(state.scene?.cells) ? state.scene.cells : []
-  const hidden = cells.filter((cell) => cell.revealed !== true && ['floor', 'door'].includes(String(cell.type)))
-    .sort((a, b) => Number(a.y) - Number(b.y) || Number(a.x) - Number(b.x))
-  return hidden.map((cell) => ({ x: Number(cell.x), y: Number(cell.y) }))
-}
-
-function availableNpc(state, requestedId) {
-  const location = clean(state.scene?.location, 180).toLocaleLowerCase('ru')
-  const profiles = state.social?.npcs ?? []
-  return profiles.find((npc) => (!requestedId || npc.id === requestedId) && npc.available !== false
-    && (!npc.location || !location || clean(npc.location, 180).toLocaleLowerCase('ru') === location)) ?? null
-}
-
-/** Converts the six narrative-only intentions into typed server commands. */
-export function commandsForDirectorIntent(rawIntent, state = {}, options = {}) {
-  const intent = normalizeDirectorIntent(rawIntent)
-  const campaignId = clean(options.campaignId ?? state.sessionCode ?? state.campaign_id, 120)
-  const turnKey = clean(options.idempotencyKey, 120) || `director-${digest({ campaignId, intent, version: state.state_version })}`
-  const provenance = {
-    source: 'director', intent_version: DIRECTOR_INTENT_VERSION, intent_type: intent.type,
-    request_fingerprint: digest({ campaignId, intent }),
-  }
-  const record = { command_type: 'RecordDirectorIntent', intent, provenance }
-  const commands = [record]
-  if (intent.type === 'continue_exploration') {
-    const cells = revealedExplorationCells(state)
-    commands.push(cells.length ? { command_type: 'RevealArea', cells, provenance } : { command_type: 'OfferNextHook', hook: '', provenance })
-  }
-  if (intent.type === 'open_social_scene') {
-    const npc = availableNpc(state, intent.npc_id)
-    commands.push(npc
-      ? { command_type: 'OpenSocialScene', npc_id: npc.id, provenance }
-      : { command_type: 'OfferNextHook', hook: 'Найти доступного очевидца или проводника', provenance })
-  }
-  if (intent.type === 'advance_quest_clock') {
-    const quest = (state.worldMemory?.quests ?? []).find((item) => item.id === intent.quest_id) ?? firstOpenQuest(state)
-    if (quest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1, provenance })
-    else commands.push({ command_type: 'OfferNextHook', hook: 'Найти зацепку, открывающую новый квест', provenance })
-  }
-  if (intent.type === 'request_encounter') {
-    commands.push({ command_type: 'CreateEncounter', theme: intent.theme, difficulty: intent.difficulty, seed: `${campaignId}:${turnKey}`, provenance })
-    commands.push({ command_type: 'StartCombat', server_authoritative: true, provenance })
-  }
-  if (intent.type === 'end_scene') commands.push({ command_type: 'CompleteScene', destination: intent.destination, provenance })
-  if (intent.type === 'offer_next_hook') commands.push({ command_type: 'OfferNextHook', hook: intent.hook, provenance })
-  return commands.map((command, index) => ({
-    ...command,
-    campaign_id: campaignId,
-    command_id: `${turnKey}:${index + 1}`,
-    expected_state_version: Number(state.state_version) + index,
-  }))
-}
+// Здесь до 2026-07-27 лежал второй перевод намерения Директора в команды —
+// `commandsForDirectorIntent`. Его не импортировал никто: намерение исполняет
+// `autonomous-orchestrator.mjs`. Разойтись с живым путём он успел настолько,
+// что писал команды `RecordDirectorIntent`, `OfferNextHook`, `OpenSocialScene`
+// и `CompleteScene`, которых в движке нет вовсе. Сторож против повторения —
+// тест «автономный слой не умеет писать команду, которой движок не знает».
 
 export function normalizeAutonomyState(input = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}

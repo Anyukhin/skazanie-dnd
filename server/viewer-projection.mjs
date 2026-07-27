@@ -325,6 +325,14 @@ function publicInitiativeFor(initiative, state, actorId = '') {
   })
 }
 
+/** События, где бросок принадлежит цели, а не действующему лицу. */
+const TARGET_ROLL_EVENT_TYPES = new Set([
+  'SavingThrowResolved', 'AbilityCheckResolved', 'SpellSavingThrowResolved', 'ConcentrationSavingThrowResolved',
+])
+
+/** Записи журнала, где бросок принадлежит цели, а не действующему лицу. */
+const TARGET_ROLL_BATTLE_LOG_TYPES = new Set(['spell-save', 'concentration-save'])
+
 /**
  * @param {Loose} entry
  * @param {LooseState | null | undefined} state
@@ -347,7 +355,12 @@ function publicBattleEventFor(entry, state, actorId = '') {
       delete result.roll.difficulty
     }
   }
-  if (enemyIds.has(actingId) && result.roll && typeof result.roll === 'object') {
+  // Спасбросок бросает цель, а не тот, кто записан действующим лицом: в записи
+  // `spell-save` actorId — это заклинатель-герой. Поэтому проверки «враг
+  // действует» мало, иначе модификатор характеристики врага виден игроку.
+  const rollBelongsToTarget = TARGET_ROLL_BATTLE_LOG_TYPES.has(text(entry.type, 40))
+  if (result.roll && typeof result.roll === 'object'
+    && (enemyIds.has(actingId) || (rollBelongsToTarget && enemyIds.has(targetId)))) {
     result.roll = {
       total: integer(result.roll.total, 0),
       hit: result.roll.hit === true,
@@ -564,8 +577,13 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (enemyActor) {
     for (const key of ['modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression']) delete payload[key]
   }
-  if (enemyTargetId && ['SavingThrowResolved', 'AbilityCheckResolved'].includes(String(visible.event_type))) {
-    for (const key of ['modifier', 'kept', 'dice', 'roll_id']) delete payload[key]
+  // Спасбросок и проверку бросает цель, а не тот, кто записан действующим лицом:
+  // у SpellSavingThrowResolved actor_id — это заклинатель-герой. Формула
+  // `1d20+4` называет модификатор так же прямо, как само поле modifier, поэтому
+  // expression убирается вместе с ним. Итог и СЛ остаются: игрок обязан видеть,
+  // устоял враг или нет.
+  if (enemyTargetId && TARGET_ROLL_EVENT_TYPES.has(String(visible.event_type))) {
+    for (const key of ['modifier', 'kept', 'dice', 'roll_id', 'expression']) delete payload[key]
   }
   if (visible.event_type === 'AbilityCheckResolved' && payload.social_check) {
     delete payload.difficulty

@@ -37,6 +37,7 @@ import {
   verifyMeans,
 } from './free-action-adjudication.mjs'
 import { planImprovisedEffect, resolveActionCost } from './improvised-effects.mjs'
+import { npcProfileAtWorldTime } from './npc-social.mjs'
 
 const clone = (value) => structuredClone(value)
 
@@ -98,10 +99,27 @@ function explorationCells(state) {
     .map((cell) => ({ x: Number(cell.x), y: Number(cell.y) }))
 }
 
+/**
+ * Кого можно позвать в социальную сцену прямо сейчас.
+ *
+ * Смотреть надо на профиль, выведенный из расписания, а не на записанный:
+ * расписание уводит NPC из локации, не переписывая базовые поля, — так и
+ * задумано в `npc-social.mjs`. Разговор это уже учитывает и отвечает
+ * `NPC_SOCIAL_WRONG_LOCATION`, поэтому выбирать надо тем же правилом: иначе
+ * Директор ставит цель «поговорить», а разговор потом невозможен.
+ *
+ * Возвращается **записанный** профиль, а не выведенный: дальше он может уехать
+ * в `UpsertNpcSocialProfile`, и подменять там базовую локацию расписанием
+ * нельзя.
+ */
 function availableNpc(state, requestedId = '') {
   const at = clean(state.scene?.location, 180).toLocaleLowerCase('ru')
-  return (state.social?.npcs ?? []).find((npc) => (!requestedId || npc.id === requestedId) && npc.available !== false
-    && (!npc.location || !at || clean(npc.location, 180).toLocaleLowerCase('ru') === at)) ?? null
+  return (state.social?.npcs ?? []).find((npc) => {
+    if (requestedId && npc.id !== requestedId) return false
+    const now = npcProfileAtWorldTime(npc, state)
+    return now.available !== false
+      && (!now.location || !at || clean(now.location, 180).toLocaleLowerCase('ru') === at)
+  }) ?? null
 }
 
 // Заголовок разворачивается перед подстановкой: в кампаниях, созданных до этой правки,

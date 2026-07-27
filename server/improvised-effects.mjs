@@ -9,6 +9,8 @@
  * Модуль детерминированный и без обращений к LLM, как `campaign-loop-policy.mjs`.
  */
 
+import { actorPosition } from './rules-engine.mjs'
+
 const clean = (value, maximum = 120) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 
 /**
@@ -20,12 +22,29 @@ const clean = (value, maximum = 120) => String(value ?? '').normalize('NFKC').re
  */
 export const ACTION_COSTS = Object.freeze(['action', 'bonus_action', 'free'])
 
+const MELEE_REACH_FEET = 5
+/**
+ * Окрик и брошенная в глаза горсть песка достают дальше касания — решение
+ * пользователя от 2026-07-27. Тридцать футов, а не «сколько слышно»: дальность
+ * обязана быть конечной и проверяемой, иначе отвлечь можно было бы кого угодно
+ * на карте.
+ */
+const SHOUTING_RANGE_FEET = 30
+
 /**
  * Эффекты успеха. Каждый опирается на правило, которое движок уже исполняет,
  * поэтому новых механик здесь нет — есть новый повод применить старые.
  *
  * `target` говорит, на кого эффект вообще можно навести: попытка наложить
  * «помощь» на врага или «сбить с ног» на себя отбрасывается до броска.
+ *
+ * `range_feet` — досягаемость, и она у эффектов разная. Подсечь, подхватить под
+ * руку, опутать и подставить под опасность — это касание, обычная ближняя
+ * досягаемость SRD, та же, что движок уже применяет к ближней атаке. Отвлечь
+ * окриком и ослепить брошенным в глаза можно с расстояния.
+ *
+ * Досягаемость объявлена полем каталога, а не константой в логике: разрешить
+ * очередной эффект на расстоянии — правка одной строки данных.
  */
 export const IMPROVISED_EFFECTS = Object.freeze({
   none: Object.freeze({
@@ -33,27 +52,27 @@ export const IMPROVISED_EFFECTS = Object.freeze({
     summary: 'Успех меняет обстановку описанием, без механического следствия.',
   }),
   prone: Object.freeze({
-    id: 'prone', target: 'enemy', condition: 'prone', label: 'сбить с ног',
+    id: 'prone', target: 'enemy', range_feet: MELEE_REACH_FEET, condition: 'prone', label: 'сбить с ног',
     summary: 'Цель сбита с ног.',
   }),
   help_ally: Object.freeze({
-    id: 'help_ally', target: 'ally', condition: 'helped', duration: 'until-used', label: 'помочь союзнику',
+    id: 'help_ally', target: 'ally', range_feet: MELEE_REACH_FEET, condition: 'helped', duration: 'until-used', label: 'помочь союзнику',
     summary: 'Союзник получает преимущество на следующую атаку.',
   }),
   distract: Object.freeze({
-    id: 'distract', target: 'enemy', condition: 'disadvantage-next-attack', duration: 'until-next-turn', label: 'отвлечь противника',
+    id: 'distract', target: 'enemy', range_feet: SHOUTING_RANGE_FEET, condition: 'disadvantage-next-attack', duration: 'until-next-turn', label: 'отвлечь противника',
     summary: 'Противник отвлечён: его следующая атака идёт с помехой.',
   }),
   blind: Object.freeze({
-    id: 'blind', target: 'enemy', condition: 'blinded', duration: 'until-next-turn', label: 'ослепить',
+    id: 'blind', target: 'enemy', range_feet: SHOUTING_RANGE_FEET, condition: 'blinded', duration: 'until-next-turn', label: 'ослепить',
     summary: 'Цель ослеплена до конца своего следующего хода.',
   }),
   restrain: Object.freeze({
-    id: 'restrain', target: 'enemy', condition: 'restrained', duration: 'until-next-turn', label: 'опутать',
+    id: 'restrain', target: 'enemy', range_feet: MELEE_REACH_FEET, condition: 'restrained', duration: 'until-next-turn', label: 'опутать',
     summary: 'Цель опутана до конца своего следующего хода.',
   }),
   hazard_damage: Object.freeze({
-    id: 'hazard_damage', target: 'enemy', label: 'подставить под опасность',
+    id: 'hazard_damage', target: 'enemy', range_feet: MELEE_REACH_FEET, label: 'подставить под опасность',
     summary: 'Цель попадает под опасность окружения.',
     requiresHazard: true,
   }),
@@ -107,6 +126,13 @@ function actorSide(state, actorIdValue) {
   return null
 }
 
+/** Расстояние берётся из той же серверной позиции, по которой ходит движок. */
+function distanceInFeet(state, firstActorId, secondActorId) {
+  const first = actorPosition(state, clean(firstActorId, 120))
+  const second = actorPosition(state, clean(secondActorId, 120))
+  return first && second ? Math.max(Math.abs(first.x - second.x), Math.abs(first.y - second.y)) * 5 : null
+}
+
 function isAlive(state, actorIdValue) {
   const id = clean(actorIdValue, 120)
   const actor = [...(state?.players ?? []), ...(state?.actors ?? []), ...(state?.enemies ?? [])]
@@ -138,6 +164,15 @@ export function planImprovisedEffect(state, { actorId = '', effectId = 'none', t
   }
   if (effect.target === 'ally' && (targetTeam !== actorTeam || target === clean(actorId, 120))) {
     return { effect: IMPROVISED_EFFECTS.none, rejected: 'этот эффект применяется к союзнику', commands: [], summary: IMPROVISED_EFFECTS.none.summary }
+  }
+
+  // Дальность сервер меряет сам. Без этой проверки агенту достаточно было
+  // назвать любого живого противника на карте, и сервер сбивал его с ног или
+  // подставлял под огонь через весь коридор.
+  const reach = Math.max(0, Number(effect.range_feet) || 0)
+  const distance = distanceInFeet(state, actorId, target)
+  if (distance == null || distance > reach) {
+    return { effect: IMPROVISED_EFFECTS.none, rejected: `цель слишком далеко: досягаемость ${reach} фт`, commands: [], summary: IMPROVISED_EFFECTS.none.summary }
   }
 
   if (effect.requiresHazard) {

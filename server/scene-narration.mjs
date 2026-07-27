@@ -1,8 +1,5 @@
 import { merchantNarration } from './merchant-narration.mjs'
-
-function clean(value, maximum = 1_000) {
-  return String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
-}
+import { NARRATOR_PRIORITY, cleanNarrationText as clean, registerDeterministicNarrator } from './deterministic-narration.mjs'
 
 export function hasSceneEvent(events) {
   return (Array.isArray(events) ? events : []).some((event) => event?.event_type === 'SceneAdvanced')
@@ -25,4 +22,17 @@ export function sceneNarration(events, state) {
   const commerce = merchantNarration(events, state)
   return [transition, arrival, commerce].filter(Boolean).join('\n\n')
 }
+
+// Регистрируется первым: смена сцены перекрывает и торговлю, и появление
+// противников. Этот приоритет существовал и раньше — он был зашит в порядок
+// ветвей `?:` в оркестраторе и нигде не назывался.
+export const sceneNarrator = registerDeterministicNarrator({
+  id: 'scene',
+  priority: NARRATOR_PRIORITY.scene,
+  promptVersion: 'scene-narrator/v1',
+  provider: 'deterministic-scene',
+  matches: hasSceneEvent,
+  narrate: sceneNarration,
+  suggestions: sceneSuggestions,
+})
 

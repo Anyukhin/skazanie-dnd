@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 
 import {
   FallbackLLMClient,
@@ -309,12 +309,42 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
 // campaign_creator и map_architect в список не входят — они не объявляют
 // UNTRUSTED_DATA, а дописывать это в промпт значит менять поведение модели;
 // пробел зафиксирован в docs/known-limitations.md.
+// action_adjudicator добавлен 2026-07-27: он загружается server/action-adjudicator.mjs
+// с самого начала, все три требования выполняет, но в списке его не было — в
+// AGENTS.md §4 роль тоже отсутствовала, и расхождение держалось незамеченным.
 test('loaded role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
-  const promptIds = ['npc_controller', 'narrator', 'director']
+  const promptIds = ['npc_controller', 'narrator', 'director', 'action_adjudicator']
   for (const id of promptIds) {
     const prompt = await readFile(new URL(`../prompts/${id}/v1.txt`, import.meta.url), 'utf8')
     assert.match(prompt, new RegExp(`PROMPT_ID: ${id}/v1`))
     assert.match(prompt, /UNTRUSTED_DATA/)
-    assert.match(prompt, /не (?:изменяй|меняй|исполняешь|добавляй|достраивай)|не является/iu)
+    // Проверяется свойство, а не глагол: промпт обязан прямо запретить модели
+    // додумывать за сервер. Список глаголов — артефакт первых трёх промптов;
+    // арбитр свободного действия выражает тот же запрет через «не выдумывай»
+    // и «не называешь числа», и это не слабее.
+    assert.match(prompt, /не (?:изменяй|меняй|исполняешь|добавляй|достраивай|выдумывай|называешь|бросаешь)|не является/iu)
   }
+})
+
+// Список выше поддерживается руками, поэтому он же и расходится с реальностью:
+// именно так action_adjudicator и выпал. Сторож ниже сверяет список с тем, что
+// модули действительно читают, — и падает на роли, добавленной без записи.
+test('контрактным списком покрыта каждая роль, которая действительно грузит промпт', async () => {
+  const serverDir = new URL('../server/', import.meta.url)
+  const loaded = new Map()
+  for (const file of (await readdir(serverDir)).filter((name) => name.endsWith('.mjs'))) {
+    const source = await readFile(new URL(file, serverDir), 'utf8')
+    for (const match of source.matchAll(/\.\.\/prompts\/([A-Za-z0-9_]+)\/([A-Za-z0-9_]+)\.txt/g)) {
+      loaded.set(`${match[1]}/${match[2]}`, file)
+    }
+  }
+  assert.ok(loaded.size >= 7, `ролей, читающих промпт, найдено ${loaded.size} — поиск потерял покрытие`)
+
+  // campaign_creator и map_architect в контрактном списке отсутствуют осознанно:
+  // они не объявляют UNTRUSTED_DATA, и дописать это значит менять поведение
+  // модели. Пробел зафиксирован в docs/known-limitations.md.
+  const knownGaps = new Set(['campaign_creator/v1', 'map_architect/v1'])
+  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v1', 'narrator/v1', 'director/v1', 'action_adjudicator/v1'])
+  const uncovered = [...loaded.keys()].filter((id) => !covered.has(id) && !knownGaps.has(id)).sort()
+  assert.deepEqual(uncovered, [], 'роль грузит промпт, но не покрыта ни контрактным списком, ни записанным пробелом')
 })

@@ -163,8 +163,53 @@ export const RULE_IDS = Object.freeze({
   indomitable: `${DEFAULT_RULESET_ID}:classes:fighter-indomitable`,
 })
 
+/**
+ * Чем судить попытку опознать противника. Три навыка — решение владельца от
+ * 2026-07-27; таблица серверная, модель к выбору не допускается.
+ *
+ * Виды пишутся и по-английски, и по-русски: `creature_type` приходит из
+ * каталога SRD, но в сохранённых кампаниях встречается и русское написание.
+ */
+const ENEMY_LORE_SKILLS = Object.freeze([
+  { test: /undead|нежит|fiend|исчад|демон|дьявол|celestial|небожит|ангел/u, skill: 'religion' },
+  { test: /beast|звер|животн|plant|растен|ooze|слизь|тина/u, skill: 'nature' },
+])
+const DEFAULT_ENEMY_LORE_SKILL = 'arcana'
+
+/**
+ * СЛ выводится из уровня опасности, а не из желания агента. Значения — те же
+ * три ступени, которыми пользуется остальной движок (`10 / 15 / 20`), чтобы в
+ * кампании не завелось второй шкалы сложности.
+ */
+const ENEMY_LORE_DIFFICULTY = Object.freeze({ easy: 10, medium: 15, hard: 20 })
+
+/** `1/8`, `1/2`, `3` → число. Неразобранное считается слабым противником. */
+function challengeRatingValue(actor) {
+  const raw = String(actor?.provenance?.challenge_rating ?? actor?.challenge_rating ?? actor?.challengeRating ?? '').trim()
+  if (!raw) return 0
+  const fraction = /^(\d+)\s*\/\s*(\d+)$/.exec(raw)
+  if (fraction) {
+    const denominator = Number(fraction[2])
+    return denominator > 0 ? Number(fraction[1]) / denominator : 0
+  }
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 ? value : 0
+}
+
+export function enemyLoreCheckFor(actor) {
+  const type = String(actor?.creature_type ?? actor?.creatureType ?? actor?.monster_type ?? actor?.monsterType ?? actor?.kind ?? '')
+    .toLocaleLowerCase('ru')
+  const skill = ENEMY_LORE_SKILLS.find((entry) => entry.test.test(type))?.skill ?? DEFAULT_ENEMY_LORE_SKILL
+  const challenge = challengeRatingValue(actor)
+  const category = challenge < 1 ? 'easy' : challenge < 5 ? 'medium' : 'hard'
+  return { skill, difficulty_category: category, difficulty: ENEMY_LORE_DIFFICULTY[category], challenge_rating: challenge }
+}
+
 const COMMAND_RULES = Object.freeze({
   MakeAbilityCheck: [RULE_IDS.abilityCheck],
+  // Опознание противника — обычная проверка характеристики, потраченная как
+  // действие: своего правила в паке у неё нет и не нужно.
+  IdentifyEnemy: [RULE_IDS.abilityCheck, RULE_IDS.turns],
   MakeSavingThrow: [RULE_IDS.savingThrow],
   MakeAttack: [RULE_IDS.attack],
   MakeAreaAttack: [RULE_IDS.attack, RULE_IDS.damage],
@@ -233,7 +278,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'MoveActor', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
+  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -824,6 +869,32 @@ export function findActor(state, id) {
   return listActors(state).find((actor) => actorId(actor) === expected) ?? null
 }
 
+/**
+ * Что именно можно узнать о враге. Список закрыт: раскрытие обязано быть
+ * перечислимым фактом, а не «чем-нибудь ещё».
+ */
+export const ENEMY_KNOWLEDGE_FACTS = Object.freeze(['health', 'armor_class', 'speed', 'stat_block'])
+
+/**
+ * Реестр раскрытого. Область `party` означает, что узнанное принадлежит всему
+ * отряду: за столом сведения о противнике объявляют вслух, а не шепчут одному
+ * герою. Значение всегда `'exact'` — реестр отвечает на «известно ли точно»,
+ * а сами числа берутся из состояния врага.
+ */
+function normalizeEnemyKnowledge(input) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  const party = source.party && typeof source.party === 'object' && !Array.isArray(source.party) ? source.party : {}
+  const entries = Object.entries(party).slice(0, 500).flatMap(([enemyId, facts]) => {
+    const id = String(enemyId ?? '').slice(0, 120)
+    if (!id || !facts || typeof facts !== 'object' || Array.isArray(facts)) return []
+    const known = Object.fromEntries(ENEMY_KNOWLEDGE_FACTS
+      .filter((fact) => facts[fact] === 'exact' || facts[fact] === true)
+      .map((fact) => [fact, 'exact']))
+    return Object.keys(known).length ? [[id, known]] : []
+  })
+  return { party: Object.fromEntries(entries) }
+}
+
 function defaultMechanics() {
   return {
     schema_version: 1,
@@ -931,6 +1002,7 @@ export function normalizeCampaignState(input = {}) {
   mechanics.concentration = clone(state.mechanics?.concentration ?? {})
   mechanics.positions = clone(state.mechanics?.positions ?? {})
   mechanics.item_appraisals = clone(state.mechanics?.item_appraisals ?? {})
+  mechanics.enemy_knowledge = normalizeEnemyKnowledge(state.mechanics?.enemy_knowledge)
   mechanics.encounter = state.mechanics?.encounter && typeof state.mechanics.encounter === 'object'
     ? clone(state.mechanics.encounter)
     : null
@@ -1863,7 +1935,10 @@ const ALL_ABILITIES = Object.freeze(['str', 'dex', 'con', 'int', 'wis', 'cha'])
 
 const CONDITION_EFFECTS = Object.freeze({
   blinded: { attackDisadvantage: true, grantsAttackAdvantage: true },
-  frightened: { attackDisadvantage: true },
+  // SRD 5.2.1: помеха и на проверки характеристик, не только на атаку.
+  // Оговорка про «пока источник страха в поле зрения» не моделируется — ни
+  // здесь, ни для атаки: движок не отслеживает видимость источника.
+  frightened: { attackDisadvantage: true, checkDisadvantage: true },
   // Ниже — не состояния SRD, а эффекты заклинаний, которые двигают те же числа.
   // Они живут в одной таблице с состояниями, потому что читаются теми же
   // функциями: класс доспеха, скорость и экономика хода не должны знать, какое
@@ -1935,12 +2010,12 @@ const CONDITION_EFFECTS = Object.freeze({
   blurred: { grantsAttackDisadvantage: true },
   paralyzed: { incapacitated: true, speedZero: true, grantsAttackAdvantage: true, autoCriticalInReach: true, autoFailedSaves: ['str', 'dex'] },
   petrified: { incapacitated: true, speedZero: true, grantsAttackAdvantage: true, autoFailedSaves: ['str', 'dex'], resistsAllDamage: true },
-  poisoned: { attackDisadvantage: true },
+  poisoned: { attackDisadvantage: true, checkDisadvantage: true },
   // Prone gives the attacker disadvantage on its own attacks.  What attacks
   // against it get depends on distance, so that half lives in
   // `conditionAttackModifiers` rather than in a flag.
   prone: { attackDisadvantage: true },
-  restrained: { speedZero: true, attackDisadvantage: true, grantsAttackAdvantage: true },
+  restrained: { speedZero: true, attackDisadvantage: true, grantsAttackAdvantage: true, saveDisadvantageAbilities: ['dex'] },
   // Not an SRD condition but a building block: several effects pin a creature in
   // place without any of the other consequences, and they say so by adding this.
   'speed-zero': { speedZero: true },
@@ -2188,7 +2263,7 @@ function assertActorPermission(command, context, state) {
 
 function assertTurn(command, state, context = {}) {
   const combat = state.mechanics.combat
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'MoveActor', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'IdentifyEnemy', 'MoveActor', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   // Дополнительные лучи одного заклинания — часть уже совершённого действия,
   // а не новое применение: экономика хода за них не платит второй раз.
@@ -2259,6 +2334,11 @@ function assertTurn(command, state, context = {}) {
       const label = resource === 'bonus_action' ? 'Бонусное действие' : resource === 'reaction' ? 'Реакция' : 'Действие'
       throw new RulesValidationError(`${label} на этом ходу уже потрачено`, resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : resource === 'reaction' ? 'REACTION_SPENT' : 'ACTION_SPENT')
     }
+  } else if (command.command_type === 'IdentifyEnemy') {
+    // Опознание стоит действия так же, как импровизация: разглядывать врага
+    // бесплатно означало бы лишний ход каждому герою каждый раунд.
+    const economy = combat.action_economy[command.actor_id]
+    if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'ResolveImprovisedAction') {
     // Импровизация в бою платит тем же слотом, что и обычное действие: иначе
     // «интересная идея» становится бесплатным дополнительным ходом.
@@ -2767,6 +2847,23 @@ export function validateCommand(input, rawState, context = {}) {
       command.spell_slot_resource = slot.resource
       command.slot_level = slot.level
     }
+  }
+  if (command.command_type === 'IdentifyEnemy') {
+    const actor = findActor(state, command.actor_id)
+    const targetId = String(command.target_id ?? '')
+    if (!actor || !isLivingActor(actor)) throw new RulesValidationError('Опознавать противника может только живой герой', 'ACTOR_DEFEATED')
+    if (isEnemyActor(state, command.actor_id)) throw new RulesValidationError('Опознание доступно отряду, а не противнику', 'ACTOR_FORBIDDEN')
+    if (!isEnemyActor(state, targetId)) throw new RulesValidationError('Опознать можно только противника', 'INVALID_TARGET')
+    const target = findActor(state, targetId)
+    if (!target || !isLivingActor(target)) throw new RulesValidationError('Побеждённого противника опознавать поздно', 'INVALID_TARGET')
+    // Уже известное не стоит второго действия: отказ честнее, чем молча
+    // потраченный ход.
+    const known = state.mechanics.enemy_knowledge?.party?.[targetId] ?? {}
+    if (known.health === 'exact' && known.armor_class === 'exact') {
+      throw new RulesValidationError('Этот противник уже опознан', 'ENEMY_ALREADY_IDENTIFIED')
+    }
+    command.target_id = targetId
+    command.target_ids = [targetId]
   }
   if (command.command_type === 'UseCombatAction' && (command.server_authoritative || context.serverAuthoritativeCombat)) {
     const actor = findActor(state, command.actor_id)
@@ -4724,6 +4821,49 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     // Импровизация не заводит собственного типа события: она тратит слот тем же
     // `CombatActionUsed`, что и любое боевое действие, а её следствие приходит
     // отдельными командами того же пакета. Поэтому replay не меняется.
+    case 'IdentifyEnemy': {
+      const actor = findActor(state, command.actor_id)
+      const target = findActor(state, command.target_id)
+      const lore = enemyLoreCheckFor(target)
+      const ability = String(skillAbility(lore.skill) || 'int').toLowerCase()
+      const modifier = abilityModifier(actor?.abilities?.[ability]) + skillProficiencyBonus(actor, lore.skill)
+      // Действие тратится независимо от исхода: попытка стоит хода, даже если
+      // герой ничего не вспомнил. Вне боя экономии хода нет, и событие не нужно.
+      if (state.mechanics.combat.active) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+          action_id: 'identify-enemy',
+          name: 'Опознать противника',
+          action_type: 'action',
+        }, [command.actor_id]))
+      }
+      const roll = diceService.rollCheck({
+        modifier,
+        difficulty: lore.difficulty,
+        purpose: `enemy_lore:${lore.skill}`,
+        actorId: command.actor_id,
+        advantage: Boolean(command.advantage),
+        disadvantage: Boolean(command.disadvantage),
+        visibility: command.visibility,
+      })
+      rolls.push(roll)
+      // Бросок принадлежит герою, поэтому и цель события — герой: иначе
+      // проекция вычистила бы его собственный бросок как чужой.
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+        ability, skill: lore.skill, ...roll,
+        enemy_lore: { enemy_id: command.target_id, difficulty_category: lore.difficulty_category },
+      }, [command.actor_id]))
+      if (roll.success) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'EnemyKnowledgeRevealed', {
+          enemy_id: command.target_id,
+          scope: 'party',
+          facts: { health: 'exact', armor_class: 'exact' },
+          skill: lore.skill,
+          difficulty: lore.difficulty,
+          check_id: roll.roll_id,
+        }, [command.target_id]))
+      }
+      break
+    }
     case 'ResolveImprovisedAction': {
       if (!state.mechanics.combat.active) break
       const actionType = command.action_cost === 'bonus_action' ? 'bonus_action' : command.action_cost === 'free' ? 'free' : 'action'
@@ -8158,6 +8298,21 @@ export function applyGameEvent(rawState, event) {
       state.mechanics.resources[id][payload.resource] = { current: safeInteger(payload.after, 0), max: Math.max(0, safeInteger(payload.max, 0)) }
       break
     }
+    // Единственное место, где реестр раскрытого наполняется. До 2026-07-27 его
+    // не наполнял никто: проекция умела читать `enemy_knowledge`, а писать в
+    // него было нечему, и «появляется после серверного факта раскрытия»
+    // оставалось невыполнимым обещанием.
+    case 'EnemyKnowledgeRevealed': {
+      const enemyId = String(payload.enemy_id ?? target ?? '')
+      if (!enemyId) break
+      const known = ENEMY_KNOWLEDGE_FACTS.filter((fact) => payload.facts?.[fact] === 'exact' || payload.facts?.[fact] === true)
+      if (!known.length) break
+      state.mechanics.enemy_knowledge.party[enemyId] = {
+        ...(state.mechanics.enemy_knowledge.party[enemyId] ?? {}),
+        ...Object.fromEntries(known.map((fact) => [fact, 'exact'])),
+      }
+      break
+    }
     case 'ConditionAdded': {
       const current = state.mechanics.conditions[target] ?? []
       const condition = String(payload.condition)
@@ -9090,6 +9245,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'ConcentrationSavingThrowResolved': return `Концентрация: ${payload.total} против СЛ ${payload.difficulty} — ${payload.saved ? 'сохранена' : 'потеряна'}${payload.aura_of_protection_bonus ? ` (Аура защиты +${payload.aura_of_protection_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
     case 'ConcentrationEnded': return `Концентрация прекращена: ${payload.reason || 'эффект завершён'}`
     case 'ResourceSpent': return `${payload.resource}: ${payload.before} → ${payload.after}`
+    case 'EnemyKnowledgeRevealed': return `${resolveName(payload.enemy_id)} опознан: отряд знает точные ОЗ и КД`
     case 'ConditionAdded': return `Добавлено состояние: ${payload.condition}`
     case 'ConditionRemoved': return `Снято состояние: ${payload.condition}`
     case 'HitPointsReducedToZero': return `${(event.target_ids ?? [])[0] || 'Цель'} выбывает из боя`
