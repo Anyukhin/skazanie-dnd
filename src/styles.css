@@ -366,6 +366,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 15px; border-bottom: 1px solid var(--line); }
 .chat-head > div { display: flex; align-items: center; gap: 9px; }
 .chat-head svg { color: #a77c4b; }
+/* Заголовок хроники набирается как все надписи этого ряда — «ВАШ ГЕРОЙ» под ним
+   и «ОТРЯД» в меню: Manrope 700, разрядка, приглушённое золото. Своего правила
+   у него не было вовсе, и он брал корневой шрифт: 16px, обычного начертания,
+   почти белый — из-за этого и выделялся. */
+.chat-head-eyebrow { color: #856944; font: 700 var(--fs-sm) Manrope, sans-serif; letter-spacing: .14em; }
 .chat-head strong { font-family: Spectral, serif; color: #cfc5b8; font-size: var(--fs-xs); font-weight: 600; }
 .live-dot { display: flex; align-items: center; gap: 5px; margin-left: 3px; color: #668b6b; font-size: var(--fs-sm); letter-spacing: .13em; }
 .live-dot::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #6e9e76; box-shadow: 0 0 0 3px rgba(110,158,118,.1); }
