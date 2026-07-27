@@ -273,7 +273,10 @@ function PlayerCard({ player, selected, turn, accessible, deathSaves, onClick }:
           {deathSaves && !deathSaves.stable && <em>{deathSaves.successes}✓ · {deathSaves.failures}✕</em>}
         </div>}
       </div>
-      <Shield className="armor-icon" size={15} /><b className="armor-value">{player.armor}</b>
+      {/* Щит и число — один блок. Раньше число висело абсолютом от края карточки,
+          а щит стоял в колонке сетки: их центры совпадали только на одном
+          сочетании шрифта и размера иконки и разъезжались при любом другом. */}
+      <span className="armor-badge"><Shield className="armor-icon" size={15} /><b className="armor-value">{player.armor}</b></span>
     </button>
   )
 }
