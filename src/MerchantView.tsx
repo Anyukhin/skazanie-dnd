@@ -47,12 +47,24 @@ const coinLabels = [
   ['copper', 'мм'],
 ] as const
 
+/**
+ * Цена монетами, а не дробью. Раньше 55 медяков показывались как «5,5 см» —
+ * это читается сантиметрами и вдобавок предлагает половину серебряной монеты,
+ * которой не существует. Правильно разложить по номиналам: «5 см 5 мм».
+ */
 function formatCopper(value?: number) {
   if (!Number.isFinite(value)) return '—'
   const cp = Math.max(0, Math.round(value ?? 0))
-  if (cp >= 100) return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(cp / 100)} зм`
-  if (cp >= 10) return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(cp / 10)} см`
-  return `${cp} мм`
+  if (cp === 0) return '0 мм'
+  const parts: string[] = []
+  const gold = Math.floor(cp / 100)
+  const silver = Math.floor((cp % 100) / 10)
+  const copper = cp % 10
+  const number = (amount: number) => new Intl.NumberFormat('ru-RU').format(amount)
+  if (gold) parts.push(`${number(gold)} зм`)
+  if (silver) parts.push(`${silver} см`)
+  if (copper) parts.push(`${copper} мм`)
+  return parts.join(' ')
 }
 
 function percentage(value?: number) {
