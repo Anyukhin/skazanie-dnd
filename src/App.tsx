@@ -343,6 +343,19 @@ function enemyVisualKind(enemy: Enemy): EnemyVisualKind {
   return 'raider'
 }
 
+/* Числа лежат на самой полоске, а фон под ними по мере ранения меняется с заливки
+   на пустоту. Поэтому текст рисуется дважды: светлый на всю ширину и тёмный,
+   обрезанный по заливке. Контраст держится при любом остатке, без обводки — она
+   на полоске в 11px превращается в грязь. */
+function TokenHealthBar({ fill, label, className }: { fill: number; label?: string; className?: string }) {
+  const ratio = Math.min(1, Math.max(0, Number.isFinite(fill) ? fill : 0))
+  return <span className={`map-token-hp ${className ?? ''}`} style={{ '--hp-fill': ratio } as React.CSSProperties}>
+    <i />
+    {label ? <b>{label}</b> : null}
+    {label && ratio > 0 ? <span className="map-token-hp-lit"><b>{label}</b></span> : null}
+  </span>
+}
+
 function enemyHealthPresentation(enemy: Enemy) {
   const exact = enemy.healthKnown === 'exact' && Number.isFinite(enemy.hp) && Number.isFinite(enemy.maxHp) && Number(enemy.maxHp) > 0
   const labels: Record<NonNullable<Enemy['healthStatus']>, string> = {
@@ -357,11 +370,19 @@ function enemyHealthPresentation(enemy: Enemy) {
     : null
   const derivedStatus: NonNullable<Enemy['healthStatus']> = enemy.healthStatus
     ?? (!enemy.alive || ratio === 0 ? 'defeated' : ratio == null || ratio >= 1 ? 'unharmed' : ratio > .5 ? 'wounded' : ratio > .25 ? 'bloodied' : 'critical')
+  /* Пока характеристики не раскрыты, точной доли нет — полоска показывает ступень
+     состояния теми же долями, какими её раньше задавали классы в CSS. */
+  const statusFill: Record<NonNullable<Enemy['healthStatus']>, number> = { unharmed: 1, wounded: .75, bloodied: .5, critical: .2, defeated: 0 }
   return {
     exact,
     status: derivedStatus,
     label: exact ? `${enemy.hp}/${enemy.maxHp} ОЗ` : labels[derivedStatus],
     percent: exact ? Math.max(0, Math.min(100, Number(enemy.hp) / Number(enemy.maxHp) * 100)) : null,
+    fill: exact ? Math.max(0, Math.min(1, Number(enemy.hp) / Number(enemy.maxHp))) : statusFill[derivedStatus],
+    /* В полоску пишем только то, что игрок имеет право знать: числа при раскрытых
+       характеристиках. Слово состояния туда не влезает («Тяжело ранен» вдвое шире
+       полоски), поэтому оно остаётся в подписи под токеном и в aria-label. */
+    barLabel: exact ? `${enemy.hp}/${enemy.maxHp}` : '',
   }
 }
 
@@ -561,6 +582,11 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       })
     : []
   const showStartCombat = aliveEnemies.length > 0 && !combatActive
+  /* Вне боя плитки видны, но не нажимаются: выбор цели на карте закрыт по всему
+     клиенту (`combatActive &&` в каждом правиле наведения), да и сервер отвергает
+     атаку и боевое действие без инициативы — `COMBAT_NOT_ACTIVE` в rules-engine.
+     Показывать живую плитку, которая никуда не ведёт, хуже, чем закрытую. */
+  const actionsLocked = tacticalBusy || !combatActive
   const availableSpellLevels = [...new Set(spells.map((spell) => spell.level))].sort((left, right) => left - right)
   const normalizedSpellSearch = spellSearch.trim().toLocaleLowerCase('ru')
   const filteredSpellbookSpells = spells.filter((spell) => (spellLevelFilter === 'all' || spell.level === spellLevelFilter) && (!normalizedSpellSearch || `${spell.name} ${spell.englishName ?? ''} ${spell.description ?? ''}`.toLocaleLowerCase('ru').includes(normalizedSpellSearch)))
@@ -823,6 +849,10 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             наклоне точно совпадает с сеткой. Фигурка стоит стоймя и из-за этого
             перспективно смещается — позиционную правду несёт именно этот след. */}
         {occupied && cell.revealed && <span className="cell-footprint" aria-hidden="true" />}
+        {/* Полоска врага лежит рядом с токеном, а не внутри него: у токена
+            `clip-path` под силуэт щита, и всё, что выходит за него, срезается —
+            проверено на макете, внутри кнопки полоска не видна вовсе. */}
+        {enemy && cell.revealed && <TokenHealthBar fill={enemyHealth?.fill ?? 0} label={enemyHealth?.barLabel} className={`enemy-health ${enemyHealth?.status ?? ''}`} />}
         {enemy && cell.revealed && (
           <button
             className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
@@ -840,7 +870,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           >
             <span className="enemy-emblem">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
             <span className="enemy-nameplate">{enemy.name}</span>
-            <span className={`enemy-health ${enemyHealth?.status ?? ''}`}><i style={enemyHealth?.percent == null ? undefined : { width: `${enemyHealth.percent}%` }} /></span>
             <small className="enemy-health-value">{enemyHealth?.label}</small>
             {enemyConditions.length > 0 && <span className="token-conditions">{enemyConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
           </button>
@@ -879,8 +908,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             aria-disabled={!canHeal && !canAid && !canThrowHere}
             title={playerTargetReason}
           >
-            <span className="map-token-hp"><i style={{ width: Math.max(0, player.hp / player.maxHp * 100) + '%' }} /></span>
-            <small className="map-token-hp-value">{player.hp}</small>
+            <TokenHealthBar fill={player.hp / Math.max(1, player.maxHp)} label={`${Math.max(0, player.hp)}/${Math.max(1, player.maxHp)}`} />
             {playerConditions.length > 0 && <span className="token-conditions">{playerConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
             {openTokenLabelId === player.id && <span className="token-label">{player.character}<small>{player.hp} ОЗ · {combatActive ? `${remainingFeet} фт` : 'свободный ход'}</small></span>}
           </button>
@@ -916,8 +944,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             title={summonTargetReason}
           >
             <Sparkles size={15} />
-            <span className="map-token-hp"><i style={{ width: Math.max(0, summon.hp / summon.maxHp * 100) + '%' }} /></span>
-            <small className="map-token-hp-value">{summon.hp}</small>
+            <TokenHealthBar fill={summon.hp / Math.max(1, summon.maxHp)} label={`${Math.max(0, summon.hp)}/${Math.max(1, summon.maxHp)}`} />
             {summonConditions.length > 0 && <span className="token-conditions">{summonConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
             {openTokenLabelId === summon.id && <span className="token-label">{summon.name}<small>{summon.hp} ОЗ · {remainingFeet} фт</small></span>}
           </button>
@@ -1088,7 +1115,11 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         <button type="submit" disabled={narrating || !freeText.trim()}><Send size={17} />Отправить</button>
         <small>не расходует ход до подтверждённого броска</small>
       </form>
-      {combatActive ? <section className="tactical-control combat-hotbar" aria-label={`Панель боевых действий: ${activeName}`}>
+      {/* Панель одна на оба режима. Раньше вне боя вместо неё показывалась полоска
+          «исследование», а колоды и плитки не рендерились вовсе: игрок не видел, чем
+          вообще владеет герой, пока не бросит инициативу. Место под панель в сетке
+          зарезервировано всегда, поэтому показывать арсенал ничего не стоит. */}
+      <section className={`tactical-control combat-hotbar ${combatActive ? '' : 'out-of-combat'}`} aria-label={combatActive ? `Панель боевых действий: ${activeName}` : `Панель действий вне боя: ${activeName}`}>
         <div className="hotbar-controls-row">
           <nav className="hotbar-decks" role="tablist" aria-label="Категории действий">
             {([
@@ -1101,26 +1132,34 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           </nav>
           {/* Остаток хода читается словами и целиком: «хватит ли» больше не нужно
               собирать из буквы в кружке на плитке и отдельной плашки над хотбаром. */}
-          <div className="hotbar-economy" aria-label="Экономика текущего хода">
+          {combatActive ? <div className="hotbar-economy" aria-label="Экономика текущего хода">
             <span className={remainingFeet > 0 && movementAvailable ? 'ready' : 'spent'}><small>Движение</small><b>{movementAvailable ? `${remainingFeet} из ${speedFeet} фт` : 'потрачено'}</b></span>
             <span className={actionReady || weaponAttackReady ? 'ready' : 'spent'}><small>Действие</small><b>{actionReady ? 'свободно' : weaponAttackReady ? `ещё ${weaponAttacksLeft} атака` : 'потрачено'}</b></span>
             <span className={bonusReady ? 'ready' : 'spent'}><small>Бонус</small><b>{bonusReady ? 'свободен' : 'потрачен'}</b></span>
             <span className={reactionReady ? 'ready' : 'spent'}><small>Реакция</small><b>{reactionReady ? 'свободна' : 'потрачена'}</b></span>
-          </div>
+          </div> : <div className="hotbar-exploration-note" aria-label="Режим исследования">
+            <span className="exploration-mode-icon"><Compass size={20} /></span>
+            <span className="exploration-mode-copy"><small>ИССЛЕДОВАНИЕ</small><strong>{activeName} движется свободно</strong></span>
+            {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
+          </div>}
         </div>
         <div className="hotbar-main">
           <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия">
-            {activeDeck === 'common' && <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || tacticalBusy} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Перемещение — выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button>}
-            {activeDeck === 'weapon' && <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || tacticalBusy} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button>}
-            {activeDeck === 'weapon' && combatItems.filter((item) => item.type === 'weapon').map((item) => <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || tacticalBusy} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт</small><i className="action-cost action">действие</i></button>)}
-            {activeDeck === 'magic' && <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={!spells.length || tacticalBusy} title={`Открыть полный каталог: ${spells.length} заклинаний доступно герою`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{spells.length} доступно</small></button>}
-            {activeDeck === 'magic' && hotbarSpells.map((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); return <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || tacticalBusy} onClick={() => selectSpell(spell)} title={`${spell.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'бонус' : actionType === 'reaction' ? 'реакция' : actionType === 'long_cast' ? 'вне боя' : 'действие'}</i></button> })}
-            {(activeDeck === 'common' || activeDeck === 'class') && combatActions.filter((action) => action.category === activeDeck && action.actionType !== 'reaction').map((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); return <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || tacticalBusy} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button> })}
-            {activeDeck === 'items' && combatItems.filter((item) => item.type !== 'weapon').map((item) => <button key={item.id} className={`action-tile item ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || tacticalBusy} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name} — ${item.description}`}><CombatIcon id={item.id} kind="item" hint={`${item.name} ${item.type} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.quantity} шт. · {item.combat?.radius ? `радиус ${item.combat.radius} фт` : 'предмет'}</small><i className="action-cost action">действие</i></button>)}
+            {activeDeck === 'common' && <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || actionsLocked} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Перемещение — выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button>}
+            {activeDeck === 'weapon' && <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button>}
+            {activeDeck === 'weapon' && combatItems.filter((item) => item.type === 'weapon').map((item) => <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт</small><i className="action-cost action">действие</i></button>)}
+            {activeDeck === 'magic' && <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={!spells.length || actionsLocked} title={`Открыть полный каталог: ${spells.length} заклинаний доступно герою`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{spells.length} доступно</small></button>}
+            {activeDeck === 'magic' && hotbarSpells.map((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); return <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked} onClick={() => selectSpell(spell)} title={`${spell.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'бонус' : actionType === 'reaction' ? 'реакция' : actionType === 'long_cast' ? 'вне боя' : 'действие'}</i></button> })}
+            {(activeDeck === 'common' || activeDeck === 'class') && combatActions.filter((action) => action.category === activeDeck && action.actionType !== 'reaction').map((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); return <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button> })}
+            {activeDeck === 'items' && combatItems.filter((item) => item.type !== 'weapon').map((item) => <button key={item.id} className={`action-tile item ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name} — ${item.description}`}><CombatIcon id={item.id} kind="item" hint={`${item.name} ${item.type} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.quantity} шт. · {item.combat?.radius ? `радиус ${item.combat.radius} фт` : 'предмет'}</small><i className="action-cost action">действие</i></button>)}
             {((activeDeck === 'magic' && !spells.length) || (activeDeck === 'class' && !combatActions.some((action) => action.category === 'class')) || (activeDeck === 'items' && !combatItems.some((item) => item.type !== 'weapon'))) && <div className="hotbar-empty"><LockKeyhole size={18} /><span>У героя нет доступных действий этой категории</span></div>}
           </div>
           <aside className="hotbar-detail" aria-live="polite">
-            {combatMode === 'magic' && selectedSpell ? <>
+            {!combatActive ? <>
+              <strong>Вне боя</strong>
+              <p>Колоды листаются, плитки показывают дальность, цену и остаток зарядов. Применить их можно после броска инициативы: вне боя цель на карте не выбирается.</p>
+              <span>Свободные действия — строкой «Своими словами» ниже</span>
+            </> : combatMode === 'magic' && selectedSpell ? <>
               <strong>{selectedSpell.name}</strong>
               <p>{selectedSpell.description}</p>
               <i className={`mechanics-support-detail support-${selectedSpellSupport.status}`}>{selectedSpellSupport.label}</i>
@@ -1134,26 +1173,16 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             </> : combatMode === 'action' && selectedCombatAction ? <><strong>{selectedCombatAction.name}</strong><p>{selectedCombatAction.description}</p><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i>{selectedActionSupport.status !== 'verified' && <small className="mechanics-support-note">{selectedActionSupport.explanation}</small>}<span>{selectedCombatAction.target === 'self' ? 'Применяется сразу' : 'Выберите цель на карте'}</span></> : <><strong>{selectedItem?.name ?? 'Базовая атака'}</strong><p>{selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')}</p><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
           </aside>
           <div className="hotbar-turn-controls">
-            {knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
-            {pendingCommand && <button className="manual-attack-roll" disabled={tacticalBusy} onClick={confirmPreparedCommand}><CombatIcon id="confirm-prepared-command" kind="roll" hint="подтвердить выбранную цель" size={27} compact /><span>{pendingCommand.kind === 'target' || pendingCommand.kind === 'area' ? 'Бросить' : 'Подтвердить'}</span></button>}
-            {selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
-            <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>
+            {!combatActive && <div className="exploration-path-status"><Footprints size={17} /><span><b>Без лимита футов</b><small>вне боя шаги не считаны</small></span></div>}
+            {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
+            {combatActive && pendingCommand && <button className="manual-attack-roll" disabled={tacticalBusy} onClick={confirmPreparedCommand}><CombatIcon id="confirm-prepared-command" kind="roll" hint="подтвердить выбранную цель" size={27} compact /><span>{pendingCommand.kind === 'target' || pendingCommand.kind === 'area' ? 'Бросить' : 'Подтвердить'}</span></button>}
+            {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
+            {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
           </div>
         </div>
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
-      </section> : <section className="tactical-control exploration-hotbar" aria-label={`Панель исследования: ${activeName}`}>
-        <div className="exploration-mode-icon"><Compass size={24} /></div>
-        <div className="exploration-mode-copy">
-          <small>ИССЛЕДОВАНИЕ</small>
-          <strong>{activeName} движется свободно</strong>
-          <p>Выберите любую подсвеченную достижимую клетку. Лимит скорости включится после броска инициативы.</p>
-        </div>
-        <div className="exploration-path-status"><Footprints size={17} /><span><b>Без лимита футов</b><small>вне боя шаги не считаны</small></span></div>
-        {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={31} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
-        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
-        {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
-      </section>}
+      </section>
       </section>
     </>
   )
