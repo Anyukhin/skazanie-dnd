@@ -668,7 +668,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    Описание к нему — речь о выбранном, и подложка ей не нужна: она читается
    как продолжение карточки, а не как второй ящик рядом. Перегородки между
    ними тоже нет — их разделяет промежуток. */
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto clamp(300px, 25%, 420px); gap: 12px; }
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto clamp(360px, 34%, 620px); gap: 14px; }
 .hotbar-actions { padding: 12px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 .hotbar-actions { grid-column: 1; }
 .hotbar-turn-controls { grid-column: 2; }
@@ -820,7 +820,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .director-status { display: none; }
   .combat-hotbar.tactical-control { width: calc(100% - 32px); }
   /* Порядок колонок тот же, что на широком экране: колода, шаг, описание. */
-  .hotbar-main { grid-template-columns: minmax(0, 1fr) 112px minmax(220px, 360px); gap: 12px; }
+  .hotbar-main { grid-template-columns: minmax(0, 1fr) 112px minmax(260px, 420px); gap: 12px; }
   .player-hud-stack, .player-hud { display: none; }
 }
 
