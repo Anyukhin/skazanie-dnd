@@ -607,7 +607,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Ручка повторяет коробку карточки, а не ряд: карточка прижата к верху и её
    середина ниже середины ряда — при выравнивании по ряду язычок съезжал вниз.
    Сам язычок рисует `::before` по центру этой коробки. */
-.actions-resize { position: relative; grid-column: 1; grid-row: 1; justify-self: end; align-self: start; z-index: 12; width: 14px; height: min(calc(var(--slot, 64px) * 2 + 28px), 100%); display: grid; align-content: center; justify-items: center; gap: 3px; cursor: ew-resize; touch-action: none; }
+.actions-resize { position: relative; grid-column: 1; grid-row: 1; justify-self: end; align-self: start; z-index: 12; width: 14px; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 6px + 22px), 100%); display: grid; align-content: center; justify-items: center; gap: 3px; cursor: ew-resize; touch-action: none; }
 .actions-resize::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 54px; transform: translateY(-50%); border-left: 1px solid rgba(211,184,149,.14); border-radius: 0 8px 8px 0; background: rgba(30,26,22,.92); }
 .actions-resize i { position: relative; z-index: 1; width: 4px; height: 4px; border-radius: 50%; background: rgba(222,201,171,.45); }
 .actions-resize:hover::before { background: rgba(48,39,29,.95); }
@@ -625,6 +625,16 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Ярлык выбранного действия живёт внутри поля: игрок видит, что уедет по
    «Отправить», ровно там, где дописывает слова к этому действию. */
 .prepared-chip { flex: 0 0 auto; max-width: 46%; display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 6px 0 9px; border: 1px solid rgba(214,161,96,.45); border-radius: 7px; background: rgba(174,113,52,.16); color: #e6bd83; }
+/* Переключатель рядов: две крошечные кнопки в тоне колод, чтобы не спорить с
+   ними за внимание. Полоски внутри показывают, что получится. */
+.tile-rows-switch { flex: 0 0 auto; display: flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; }
+.rail-free-input .tile-rows-switch button { width: 26px; min-height: 26px; height: 26px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #8d857b; cursor: pointer; }
+.rail-free-input .tile-rows-switch button:hover { background: rgba(255,255,255,.05); color: #c0ab8d; }
+.rail-free-input .tile-rows-switch button.active { background: rgba(192,132,66,.16); color: #e2b87c; }
+.rows-glyph { display: grid; gap: 2px; width: 13px; }
+.rows-glyph i { height: 4px; border-radius: 1px; background: currentColor; }
+.rows-glyph.one i { height: 10px; }
+
 /* Пока цель не выбрана, ярлык другой: пунктир и приглушённый тон — видно, что
    команда собрана не до конца и отправлять нечего. */
 .prepared-chip.awaiting { border-style: dashed; border-color: rgba(222,201,171,.3); background: rgba(255,255,255,.03); color: #9b9083; }
@@ -688,7 +698,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    снизу оставалось по 19 пикселей пустоты. Число рядов считается от высоты
    контейнера, поэтому её нельзя отдать содержимому — иначе ряд остаётся один и
    двадцать плиток «Основных» уходят в горизонтальную прокрутку. */
-.hotbar-actions { align-self: start; height: min(calc(var(--slot, 64px) * 2 + 28px), 100%); padding: 10px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+.hotbar-actions { align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 6px + 22px), 100%); padding: 10px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 /* Все четверо живут в одном ряду: без явного ряда ручка занимала первый, а
    карточки уезжали во второй и отрывались от неё. */
 .hotbar-actions { grid-column: 1; grid-row: 1; }
@@ -704,7 +714,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 
    min-width: 0 обязателен: без него grid-элемент раздувается под содержимое
    и горизонтальная прокрутка колоды не включается. */
-.hotbar-actions { min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, var(--slot, 52px)); justify-content: start; align-content: center; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
+.hotbar-actions { min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--ui-tile-rows, 2), var(--slot, 64px)); justify-content: start; align-content: center; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
 
 /* Слот: рисунок во всю площадь, тонкая рамка под категорию, полоска стоимости
    снизу и счётчик ресурса в углу. Всё остальное — в подсказке и колонке шага. */

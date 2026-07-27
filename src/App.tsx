@@ -37,6 +37,7 @@ const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
 const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
 const DETAIL_WIDTH_KEY = 'skazanie-detail-width-v1'
+const TILE_ROWS_KEY = 'skazanie-tile-rows-v1'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
 const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 150
@@ -500,6 +501,12 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const [railHeight, setRailHeight] = useState(() => Number(window.localStorage.getItem(RAIL_HEIGHT_KEY)) || 0)
   const [serverWidth, setServerWidth] = useState(() => Number(window.localStorage.getItem(SERVER_WIDTH_KEY)) || 0)
   const [detailWidth, setDetailWidth] = useState(() => Number(window.localStorage.getItem(DETAIL_WIDTH_KEY)) || 0)
+  /* Рядов плиток — один или два. Раньше их считал `auto-fill` от высоты
+     карточки, и в «Основных» получалась петля: плитки не влезали по ширине,
+     появлялся ползунок, он съедал высоту, второй ряд переставал помещаться —
+     и колода оставалась в один ряд, хотя место было. Теперь это решение
+     игрока, а не побочный эффект. */
+  const [tileRows, setTileRows] = useState(() => (Number(window.localStorage.getItem(TILE_ROWS_KEY)) === 1 ? 1 : 2))
   useEffect(() => {
     const root = document.documentElement.style
     if (railHeight) root.setProperty('--ui-rail-height', `${railHeight}px`)
@@ -508,7 +515,9 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     else root.removeProperty('--ui-server-column')
     if (detailWidth) root.setProperty('--ui-detail-width', `${detailWidth}px`)
     else root.removeProperty('--ui-detail-width')
-  }, [railHeight, serverWidth, detailWidth])
+    root.setProperty('--ui-tile-rows', String(tileRows))
+    window.localStorage.setItem(TILE_ROWS_KEY, String(tileRows))
+  }, [railHeight, serverWidth, detailWidth, tileRows])
   const startRailResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startY = event.clientY
@@ -1300,6 +1309,11 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             ['items', 'Предметы', <CombatIcon id="deck-items" kind="deck" hint="предметы зелья" size={21} compact />],
           ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button type="button" key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy || (deck === 'magic' && !spells.length)} title={label}>{icon}<span>{label}</span></button>)}
         </nav>
+        {/* Переключатель рядов: два ряда — плиток видно больше сразу, один —
+            панель ниже и карта крупнее. Решение игрока, оно сохраняется. */}
+        <div className="tile-rows-switch" role="group" aria-label="Рядов плиток в панели">
+          {[1, 2].map((rows) => <button type="button" key={rows} className={tileRows === rows ? 'active' : ''} aria-pressed={tileRows === rows} onClick={() => setTileRows(rows)} title={rows === 1 ? 'Один ряд плиток' : 'Два ряда плиток'}>{rows === 1 ? <span className="rows-glyph one"><i /></span> : <span className="rows-glyph two"><i /><i /></span>}</button>)}
+        </div>
         <div className="rail-input-shell">
           {preparedLabel && <span className={`prepared-chip ${awaitingTarget ? 'awaiting' : ''}`}><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
           <input
