@@ -173,7 +173,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    умолчанию, просторные — только когда ширины действительно хватает. */
 .game-area { --status: 60px; --server-column: var(--ui-server-column, 320px); --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--ui-rail-height, auto); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
 @media (min-width: 1920px) {
-  .game-area { --status: 72px; --server-column: 420px; --rail: 320px; --slot: 76px; }
+  /* На широком экране другие умолчания, но заданный игроком размер остаётся
+     главнее: раньше это правило жёстко ставило 420 и перетаскивание колонки в
+     полноэкранном режиме переставало работать вовсе. */
+  .game-area { --status: 72px; --server-column: var(--ui-server-column, 420px); --rail: var(--ui-rail-height, 320px); --slot: 76px; }
 }
 .status-bar { grid-area: status; min-width: 0; display: flex; align-items: center; gap: 18px; padding: 0 26px; border-bottom: 1px solid var(--line); background: rgba(18,16,14,.97); overflow: hidden; }
 .scene-header { position: relative; z-index: auto; flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 18px; pointer-events: none; }
