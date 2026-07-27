@@ -837,6 +837,19 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   }
   /* Что именно уедет по «Отправить». Ярлык показывается прямо в строке ввода,
      поэтому игрок видит выбранное действие там же, где пишет слова к нему. */
+  const targetWord = combatMode === 'magic' && selectedSpell
+    ? (selectedSpell.target === 'point' ? 'выберите клетку' : selectedSpell.target === 'ally' ? 'выберите союзника' : selectedSpell.target === 'creature' ? 'выберите существо' : 'выберите врага')
+    : combatMode === 'action' && selectedCombatAction
+      ? (selectedCombatAction.target === 'ally' ? 'выберите союзника' : 'выберите врага')
+      : selectedItem?.combat?.kind === 'thrown-area' ? 'выберите клетку' : 'выберите цель'
+  /* Пока цель не выбрана, ярлык говорит, чего он ждёт. Раньше это стояло
+     строкой в колонке описания, далеко от кнопки, которой действие
+     отправляют. */
+  const awaitingTarget = Boolean(selected && !pendingCommand && !selfCastReady && selectedCommandReady && (
+    (combatMode === 'magic' && selectedSpell && selectedSpell.target !== 'self')
+    || (combatMode === 'action' && selectedCombatAction && selectedCombatAction.target !== 'self')
+    || (combatMode === 'weapon' && combatActive)
+  ))
   const preparedLabel = (() => {
     if (pendingCommand?.kind === 'target') return `${selectedItem?.name ?? 'Базовая атака'} → ${pendingTargetName ?? 'цель'}`
     if (pendingCommand?.kind === 'area') return `${selectedItem?.name ?? 'Бросок'} → клетка`
@@ -845,6 +858,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     if (pendingCommand?.kind === 'action-target') return `${selectedCombatAction?.name ?? 'Действие'} → ${pendingTargetName ?? 'цель'}`
     if (selfCastSpell) return `${selfCastSpell.name} → на себя`
     if (selfUseAction) return `${selfUseAction.name} → на себя`
+    if (awaitingTarget) return `${(combatMode === 'magic' ? selectedSpell?.name : combatMode === 'action' ? selectedCombatAction?.name : selectedItem?.name) ?? 'Действие'} → ${targetWord}`
     return null
   })()
   const clearPrepared = () => { setPendingCommand(null); setCombatMode('weapon') }
@@ -1287,7 +1301,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button type="button" key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy || (deck === 'magic' && !spells.length)} title={label}>{icon}<span>{label}</span></button>)}
         </nav>
         <div className="rail-input-shell">
-          {preparedLabel && <span className="prepared-chip"><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
+          {preparedLabel && <span className={`prepared-chip ${awaitingTarget ? 'awaiting' : ''}`}><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
           <input
             value={freeText}
             onChange={(event) => setFreeText(event.target.value)}
@@ -1296,7 +1310,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             disabled={narrating}
           />
         </div>
-        <button type="submit" disabled={narrating || (!preparedLabel && !freeText.trim())}><Send size={17} />Отправить</button>
+        <button type="submit" disabled={narrating || ((!preparedLabel || awaitingTarget) && !freeText.trim())}><Send size={17} />Отправить</button>
       </form>
       {/* Панель одна на оба режима. Раньше вне боя вместо неё показывалась полоска
           «исследование», а колоды и плитки не рендерились вовсе: игрок не видел, чем
@@ -1353,11 +1367,10 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               </div> : null}
               {/* Раньше подпись всегда звала выбрать цель, даже когда она уже
                   была выбрана: клик по врагу выглядел как несработавший. */}
-              <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя — нажмите «Отправить»' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'}</span>
-            </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} meta={supportMark(selectedActionSupport.status) ? <i className={`detail-chip mark support-${selectedActionSupport.status}`} title={`${selectedActionSupport.label}. ${selectedActionSupport.explanation}`}>{supportMark(selectedActionSupport.status)}</i> : null} /><span>{selectedCombatAction.target === 'self' ? 'На себя — нажмите «Отправить»' : 'Выберите цель на карте, затем «Отправить»'}</span></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} meta={<>
+            </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} meta={supportMark(selectedActionSupport.status) ? <i className={`detail-chip mark support-${selectedActionSupport.status}`} title={`${selectedActionSupport.label}. ${selectedActionSupport.explanation}`}>{supportMark(selectedActionSupport.status)}</i> : null} /></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} meta={<>
               <i className="detail-chip" title={`Дальность: ${attackRangeFeet} фт`}>{attackRangeFeet} фт</i>
               {areaRadiusFeet ? <i className="detail-chip" title={`Радиус поражения: ${areaRadiusFeet} фт`}>◍ {areaRadiusFeet}</i> : null}
-            </>} /><span>{selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку, затем «Отправить»' : 'Выберите цель на карте, затем «Отправить»'}</span></>}
+            </>} /></>}
           </aside>
           {/* Колонка шага рисуется, только когда в ней что-то есть: вне боя это
               подтверждение выбранной цели, в бою — кнопки хода. Пустой колонки в
