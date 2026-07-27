@@ -79,11 +79,11 @@ export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'label' | 
   return response.json() as Promise<RollResult>
 }
 
-export async function rollSharedDie(sessionCode: string, playerId: string): Promise<SharedDiceRollResponse> {
+export async function rollSharedDie(sessionCode: string, playerId: string, sides = 20): Promise<SharedDiceRollResponse> {
   const response = await fetch(`/api/rooms/${encodeURIComponent(sessionCode)}/dice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ playerId, sides: 20 }),
+    body: JSON.stringify({ playerId, sides }),
   })
   if (!response.ok) {
     const details = await response.json().catch(() => ({})) as { error?: string }

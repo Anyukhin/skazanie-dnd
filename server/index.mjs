@@ -209,6 +209,7 @@ function canUseHero(user, heroId, campaignId) {
   return user?.role === 'admin' || campaignHeroIds(user, campaignId).includes(String(heroId || ''))
 }
 
+const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
 const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
@@ -2627,7 +2628,11 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req)
       const playerId = String(body.playerId || '')
       if (!canUseHero(user, playerId, roomDiceMatch[1])) return json(res, 403, { error: 'Бросок доступен только владельцу героя' })
-      if (Number(body.sides ?? 20) !== 20) return json(res, 400, { error: 'Сейчас доступен только d20' })
+      /* Набор костей закрыт и серверный: клиент выбирает из него, но подставить
+         произвольную грань не может — общий бросок виден всем и должен быть
+         обычной костью, а не выдумкой. */
+      const sides = Number(body.sides ?? 20)
+      if (!PUBLIC_DIE_SIDES.has(sides)) return json(res, 400, { error: 'Такой кости нет: доступны d4, d6, d8, d10, d12, d20 и d100' })
 
       const current = getRoom(roomDiceMatch[1])
       if (!current.state) return json(res, 409, { error: 'Комната ещё не готова — повторите бросок через секунду' })
@@ -2638,11 +2643,11 @@ const server = createServer(async (req, res) => {
         : null
       if (!player) return json(res, 404, { error: 'Герой не найден в этой комнате' })
 
-      const rolled = diceService.roll('1d20', 'free_roll', playerId, 'public')
+      const rolled = diceService.roll(`1d${sides}`, 'free_roll', playerId, 'public')
       const roll = {
         id: rolled.roll_id,
         kind: 'free',
-        sides: 20,
+        sides,
         value: rolled.dice[0],
         playerId,
         playerName: String(player.character || player.name || 'Игрок').slice(0, 80),

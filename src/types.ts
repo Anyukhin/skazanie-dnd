@@ -22,7 +22,9 @@ export type RollResult = NonNullable<Message['roll']>
 export type DiceRollEvent = {
   id: string
   kind: 'free' | 'party'
-  sides: 20
+  /* Свободный бросок теперь любой обычной костью, а не только d20. Набор
+     закрыт на сервере (`PUBLIC_DIE_SIDES`), клиент выбирает из него. */
+  sides: 4 | 6 | 8 | 10 | 12 | 20 | 100
   value: number
   playerId: string
   playerName: string

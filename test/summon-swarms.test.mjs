@@ -85,8 +85,11 @@ test('призывы с накладыванием в минуту в бою н�
   // Правило проекта: не объявляем исполняемым то, чего нельзя применить в бою.
   // Стихийный элементаль, феи и поднятие нежити творятся минуту — их нет.
   for (const spellId of ['conjure-elemental', 'conjure-fey', 'animate-dead', 'conjure-minor-elementals', 'flock-of-familiars']) {
-    // Заблокированы либо как непроверенная механика, либо как недоступное герою.
-    assert.throws(() => summonAt(field({ casterClass: 'wizard' }), spellId), (error) => ['MECHANICS_NOT_VERIFIED', 'SPELL_NOT_AVAILABLE'].includes(error.code), `${spellId} не должен быть исполняемым`)
+    // Заблокированы боевым правилом о длинном накладывании, непроверенной
+    // механикой или недоступностью герою. С 2026-07-27 длинное накладывание
+    // отвечает первым и только про бой: вне боя такие заклинания разрешены
+    // (см. test/out-of-combat-casting.test.mjs), в бою — нет.
+    assert.throws(() => summonAt(field({ casterClass: 'wizard' }), spellId), (error) => ['SPELL_CAST_TIME_TOO_LONG', 'MECHANICS_NOT_VERIFIED', 'SPELL_NOT_AVAILABLE'].includes(error.code), `${spellId} не должен быть исполняемым`)
   }
 })
 
