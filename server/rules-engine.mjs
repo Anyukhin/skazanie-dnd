@@ -1935,7 +1935,10 @@ const ALL_ABILITIES = Object.freeze(['str', 'dex', 'con', 'int', 'wis', 'cha'])
 
 const CONDITION_EFFECTS = Object.freeze({
   blinded: { attackDisadvantage: true, grantsAttackAdvantage: true },
-  frightened: { attackDisadvantage: true },
+  // SRD 5.2.1: помеха и на проверки характеристик, не только на атаку.
+  // Оговорка про «пока источник страха в поле зрения» не моделируется — ни
+  // здесь, ни для атаки: движок не отслеживает видимость источника.
+  frightened: { attackDisadvantage: true, checkDisadvantage: true },
   // Ниже — не состояния SRD, а эффекты заклинаний, которые двигают те же числа.
   // Они живут в одной таблице с состояниями, потому что читаются теми же
   // функциями: класс доспеха, скорость и экономика хода не должны знать, какое
@@ -2007,12 +2010,12 @@ const CONDITION_EFFECTS = Object.freeze({
   blurred: { grantsAttackDisadvantage: true },
   paralyzed: { incapacitated: true, speedZero: true, grantsAttackAdvantage: true, autoCriticalInReach: true, autoFailedSaves: ['str', 'dex'] },
   petrified: { incapacitated: true, speedZero: true, grantsAttackAdvantage: true, autoFailedSaves: ['str', 'dex'], resistsAllDamage: true },
-  poisoned: { attackDisadvantage: true },
+  poisoned: { attackDisadvantage: true, checkDisadvantage: true },
   // Prone gives the attacker disadvantage on its own attacks.  What attacks
   // against it get depends on distance, so that half lives in
   // `conditionAttackModifiers` rather than in a flag.
   prone: { attackDisadvantage: true },
-  restrained: { speedZero: true, attackDisadvantage: true, grantsAttackAdvantage: true },
+  restrained: { speedZero: true, attackDisadvantage: true, grantsAttackAdvantage: true, saveDisadvantageAbilities: ['dex'] },
   // Not an SRD condition but a building block: several effects pin a creature in
   // place without any of the other consequences, and they say so by adding this.
   'speed-zero': { speedZero: true },
