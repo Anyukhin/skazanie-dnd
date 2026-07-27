@@ -518,7 +518,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     const startWidth = document.querySelector('.hotbar-detail')?.getBoundingClientRect().width ?? 360
     const rowWidth = document.querySelector('.hotbar-main')?.getBoundingClientRect().width ?? 1200
     const move = (moveEvent: PointerEvent) => {
-      setDetailWidth(Math.round(Math.min(rowWidth * .6, Math.max(260, startWidth + (startX - moveEvent.clientX)))))
+      setDetailWidth(Math.round(Math.min(rowWidth * .6, Math.max(260, startWidth - (moveEvent.clientX - startX)))))
     }
     const stop = () => {
       window.removeEventListener('pointermove', move)
@@ -1305,6 +1305,9 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         </div>
         <div className="hotbar-main">
           <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия">
+            {/* Ручка сидит на самой карточке действий: в промежутке между областями её
+                не было видно — тёмная полоска на тёмном фоне без опоры. */}
+            <div className="actions-resize" role="separator" aria-orientation="vertical" aria-label="Ширина области действий" onPointerDown={startDetailResize} onDoubleClick={() => { setDetailWidth(0); window.localStorage.removeItem(DETAIL_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную"><i /><i /><i /></div>
             {activeDeck === 'common' && <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || actionsLocked} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Перемещение — выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button>}
             {activeDeck === 'weapon' && <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button>}
             {activeDeck === 'weapon' && combatItems.filter((item) => item.type === 'weapon').map((item) => <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт</small><i className="action-cost action">действие</i></button>)}
@@ -1315,7 +1318,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             {((activeDeck === 'magic' && !spells.length) || (activeDeck === 'class' && !combatActions.some((action) => action.category === 'class')) || (activeDeck === 'items' && !combatItems.some((item) => item.type !== 'weapon'))) && <div className="hotbar-empty"><LockKeyhole size={18} /><span>У героя нет доступных действий этой категории</span></div>}
           </div>
           <aside className="hotbar-detail" aria-live="polite">
-            <div className="detail-resize" role="separator" aria-orientation="vertical" aria-label="Ширина области описания" onPointerDown={startDetailResize} onDoubleClick={() => { setDetailWidth(0); window.localStorage.removeItem(DETAIL_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную" />
             {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
               <DetailHeader title="Вне боя" description="Лечение, усиление и утилита творятся прямо здесь. Всё, что бьёт, требует инициативы." />
               {/* Про футы сказано здесь, а не отдельной колонкой справа: ради

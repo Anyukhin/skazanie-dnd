@@ -601,9 +601,13 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .rail-resize { position: absolute; z-index: 12; left: 0; right: 0; top: -3px; height: 9px; cursor: ns-resize; touch-action: none; }
 .rail-resize::after { content: ''; position: absolute; left: 50%; top: 3px; width: 46px; height: 3px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateX(-50%); transition: background .15s ease; }
 .rail-resize:hover::after { background: rgba(214,161,96,.55); }
-.detail-resize { position: absolute; z-index: 12; top: 0; bottom: 0; left: -10px; width: 12px; cursor: ew-resize; touch-action: none; }
-.detail-resize::after { content: ''; position: absolute; top: 50%; left: 4px; width: 3px; height: 38px; border-radius: 2px; background: rgba(222,201,171,.16); transform: translateY(-50%); transition: background .15s ease; }
-.detail-resize:hover::after { background: rgba(214,161,96,.55); }
+/* Ручка ширины сидит на правом краю карточки действий и видна всегда: три
+   насечки в пергаментном тоне на самой рамке. В промежутке между областями её
+   не было видно вовсе — тёмная полоска на тёмном фоне. */
+.actions-resize { position: absolute; z-index: 12; top: 50%; right: -1px; width: 14px; height: 54px; display: grid; align-content: center; justify-items: center; gap: 3px; transform: translateY(-50%); border-left: 1px solid rgba(211,184,149,.14); border-radius: 0 8px 8px 0; background: rgba(30,26,22,.9); cursor: ew-resize; touch-action: none; }
+.actions-resize i { width: 4px; height: 4px; border-radius: 50%; background: rgba(222,201,171,.45); }
+.actions-resize:hover { background: rgba(48,39,29,.95); }
+.actions-resize:hover i { background: #d7a866; }
 .server-resize { position: absolute; z-index: 12; top: 0; bottom: 0; left: -3px; width: 9px; cursor: ew-resize; touch-action: none; }
 .server-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 3px; height: 46px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateY(-50%); transition: background .15s ease; }
 .server-resize:hover::after { background: rgba(214,161,96,.55); }
@@ -672,7 +676,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    как продолжение карточки, а не как второй ящик рядом. Перегородки между
    ними тоже нет — их разделяет промежуток. */
 .hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto var(--ui-detail-width, clamp(360px, 34%, 620px)); gap: 14px; }
-.hotbar-actions { padding: 12px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+.hotbar-actions { position: relative; padding: 12px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 .hotbar-actions { grid-column: 1; }
 .hotbar-turn-controls { grid-column: 2; }
 .hotbar-detail { grid-column: 3; }
