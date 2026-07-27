@@ -128,6 +128,52 @@ pnpm dev:client -- --port 4174
 `pnpm content:verify` и `pnpm cutover:audit` красные по построению
 (`docs/production-readiness.md`) — это не регрессия.
 
+### Базовая линия `pnpm test` — согласованное исключение
+
+Решение пользователя от 2026-07-27 по вопросу из итерации 1 журнала.
+
+Три теста `test/content-integrity.test.mjs` падают на нетронутом дереве:
+
+```
+content integrity gate verifies hashes, references, counts and the complete asset registry
+release gate stays closed while rights and mandatory SRD coverage are unresolved
+a changed registered artifact fails closed before release packaging
+```
+
+Причина — расхождение размера зарегистрированного артефакта
+`data/rule_packs/srd_5_2_1/rules.jsonl`: в `data/content-provenance.json`
+записано 29535 байт, блоб в индексе весит 29517. Это дрейф реестра в `data/`,
+он вне границ владения трека и чинится не здесь (разбор — в журнале, итерация 1).
+
+Поэтому гейт трека ведётся **по базовой линии, а не по нулю падений**:
+
+| | |
+| --- | --- |
+| Базовая линия | `pnpm test` — 1048 ✔ из 1051, 3 ✖ (только перечисленные выше) |
+| Зелёным считается | падений не больше базовой линии и ровно те же три теста |
+| Красным считается | любое четвёртое падение либо другое имя теста |
+
+`pnpm typecheck:server` и `pnpm build` — по-прежнему строго ноль ошибок.
+`pnpm verify` останавливается на `pnpm test` и до них не доходит, поэтому
+прогонять их отдельно:
+
+```bash
+pnpm test                # сверить с базовой линией
+pnpm typecheck:server    # обязан быть зелёным
+pnpm build               # обязан быть зелёным
+```
+
+На Windows дополнительно нужен локальный `.git/info/attributes` (файл вне
+репозитория, в коммит не идёт) — иначе к базовой линии добавляется windows-шум
+от CRLF:
+
+```
+data/rule_packs/** -text
+```
+
+Исключение действует, пока владелец `data/**` не закроет дрейф. Когда закроет —
+убрать этот раздел и вернуть гейт к нулю падений.
+
 Красная проверка — работа не коммитится. Откатить (`git restore` по своим
 файлам), записать в журнал, что не получилось и почему, взять следующую задачу.
 
