@@ -64,7 +64,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .demo-badge > span { display: flex; flex-direction: column; min-width: 0; }
 .demo-badge b { font-size: 14px; letter-spacing: .04em; }
 .demo-badge small { margin-top: 2px; color: #716a62; font-size: 14px; }
-.demo-badge.connected { background: rgba(81,125,84,.09); color: #7ea181; }
 .collapsed .sidebar-top { padding: 0; justify-content: center; }
 .collapsed .logo, .collapsed .nav-item span, .collapsed .section-label, .collapsed .player-meta, .collapsed .armor-icon, .collapsed .armor-value, .collapsed .demo-badge span { display: none; }
 .collapsed .collapse-button { display: grid; }

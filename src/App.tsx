@@ -318,7 +318,11 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, m
       </div>
       <div className="sidebar-bottom">
         <button className={`nav-item ${view === 'settings' ? 'active' : ''}`} data-tooltip="Настройки" aria-label="Настройки" onClick={() => onNavigate('settings')}><Settings size={18} /><span>Настройки</span></button>
-        <div className={`demo-badge ${aiConnected ? 'connected' : ''}`}><Sparkles size={14} /><span><b>{aiConnected ? 'Агент подключён' : 'Демо-режим'}</b><small>{aiConnected ? 'RouterAI · инструменты' : 'Локальный рассказчик'}</small></span></div>
+        {/* Об исправном агенте сообщать нечего: он подключён почти всегда, и
+            плашка просто занимала угол. А вот демо-режим менять ожидания игрока
+            обязан — историю в нём ведёт локальный рассказчик. Кто именно
+            подключён и какая модель, видно в настройках. */}
+        {!aiConnected && <div className="demo-badge"><Sparkles size={14} /><span><b>Демо-режим</b><small>Локальный рассказчик</small></span></div>}
       </div>
     </aside>
   )
