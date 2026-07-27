@@ -499,7 +499,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     const startY = event.clientY
     const startHeight = document.querySelector('.turn-rail')?.getBoundingClientRect().height ?? 292
     const move = (moveEvent: PointerEvent) => {
-      const next = Math.round(Math.min(window.innerHeight * .45, Math.max(150, startHeight + (startY - moveEvent.clientY))))
+      const next = Math.round(Math.min(window.innerHeight * .45, Math.max(196, startHeight + (startY - moveEvent.clientY))))
       setRailHeight(next)
     }
     const stop = () => {

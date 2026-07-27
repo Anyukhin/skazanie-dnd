@@ -611,7 +611,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .server-resize { position: absolute; z-index: 12; top: 0; bottom: 0; left: -3px; width: 9px; cursor: ew-resize; touch-action: none; }
 .server-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 3px; height: 46px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateY(-50%); transition: background .15s ease; }
 .server-resize:hover::after { background: rgba(214,161,96,.55); }
-.turn-rail { position: relative; grid-area: rail; min-width: 0; min-height: var(--rail); max-height: 38vh; display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
+.turn-rail { position: relative; grid-area: rail; min-width: 0; min-height: var(--ui-rail-height, var(--rail)); max-height: var(--ui-rail-height, 38vh); display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
 /* Одна строка на всё действие: слева колоды, справа поле со словами и отправка.
    Отдельного ряда под колоды больше нет — панель стала ниже на его высоту. */
 .rail-free-input { min-width: 0; display: flex; align-items: center; gap: 12px; }
@@ -681,12 +681,14 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    снизу оставалось по 19 пикселей пустоты. Число рядов считается от высоты
    контейнера, поэтому её нельзя отдать содержимому — иначе ряд остаётся один и
    двадцать плиток «Основных» уходят в горизонтальную прокрутку. */
-.hotbar-actions { align-self: center; height: calc(var(--slot, 64px) * 2 + 20px); padding: 6px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+.hotbar-actions { align-self: start; height: min(calc(var(--slot, 64px) * 2 + 28px), 100%); padding: 10px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 /* Все четверо живут в одном ряду: без явного ряда ручка занимала первый, а
    карточки уезжали во второй и отрывались от неё. */
 .hotbar-actions { grid-column: 1; grid-row: 1; }
 .hotbar-turn-controls { grid-column: 2; grid-row: 1; }
-.hotbar-detail { grid-column: 3; grid-row: 1; }
+/* Описание начинается на той же линии, что и карточка действий: обе прижаты к
+   верху ряда, поэтому при любой высоте панели они выровнены между собой. */
+.hotbar-detail { grid-column: 3; grid-row: 1; align-self: start; }
 
 /* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
    заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
