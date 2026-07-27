@@ -123,7 +123,7 @@ export function CharacterCreationWizard({
   const preparedLimit = Math.min(spellRules?.preparedLimit ?? 0, leveledSpells.length)
 
   const steps = useMemo(() => [
-    { title: 'Класс', description: 'Серверный каталог классов' },
+    { title: 'Класс', description: 'Двенадцать классов на выбор' },
     { title: 'Происхождение', description: 'Вид и предыстория' },
     { title: 'Характеристики', description: 'Стандартный массив' },
     { title: 'Навыки', description: 'Классовый выбор' },
@@ -206,7 +206,7 @@ export function CharacterCreationWizard({
     const selected = draft.knownSpellIds.filter((value) => categoryIds.has(value))
     const other = draft.knownSpellIds.filter((value) => !categoryIds.has(value))
     const next = toggleBounded(selected, id, maximum)
-    if (next === selected) setError(`Достигнут серверный лимит: ${maximum}.`)
+    if (next === selected) setError(`Больше ${maximum} выбрать нельзя.`)
     else {
       patch('knownSpellIds', [...other, ...next])
       if (!next.includes(id)) patch('preparedSpellIds', draft.preparedSpellIds.filter((value) => value !== id))
@@ -283,7 +283,7 @@ export function CharacterCreationWizard({
       await onImport(JSON.stringify(document))
       onClose()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Сервер отклонил создание персонажа.')
+      setError(reason instanceof Error ? reason.message : 'Не удалось создать персонажа.')
     } finally {
       setBusy(false)
     }
@@ -318,7 +318,7 @@ export function CharacterCreationWizard({
             <label><span>Вид</span><select value={draft.speciesOptionId} onChange={(event) => patch('speciesOptionId', event.target.value)}>{catalog.ability_policy.species_options.map((entry) => <option key={entry.id} value={entry.id}>{entry.label} · {entry.base_speed} фт.</option>)}</select></label>
             {speciesOption?.id === 'custom' && <label><span>Название авторского вида</span><input value={draft.customSpecies} onChange={(event) => patch('customSpecies', event.target.value)} maxLength={120} /></label>}
             <label><span>Предыстория</span><input value={draft.background} onChange={(event) => patch('background', event.target.value)} placeholder="Например: солдат, учёная, странник" maxLength={160} /></label>
-            <p><ShieldCheck size={17} />Скорость берётся из серверного варианта вида. Числовые бонусы происхождения в policy v1 равны нулю и не подменяют стандартный массив.</p>
+            <p><ShieldCheck size={17} />Скорость определяется видом. Происхождение даёт умения и снаряжение, а не прибавки к характеристикам.</p>
           </div>}
           {step === 2 && <div className="creation-abilities">
             <p>Распределите значения {catalog.ability_policy.standard_array.join(', ')}. При выборе уже занятого значения мастер автоматически меняет характеристики местами.</p>
@@ -329,7 +329,7 @@ export function CharacterCreationWizard({
             {featureGroups.map((group) => <section key={group.id}><header><span>{group.name}</span><b>{group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length}/{group.choiceCount}</b></header><div>{group.options.map((option) => <button key={option.id} className={draft.selectedFeatureIds.includes(option.id) ? 'selected' : ''} aria-label={FEATURE_HINTS[option.id] ? `${option.name}: ${FEATURE_HINTS[option.id]}` : option.name} title={FEATURE_HINTS[option.id]} onClick={() => toggleFeature(group, option.id)}><Check size={13} />{option.name}{FEATURE_HINTS[option.id] && <small>{FEATURE_HINTS[option.id]}</small>}</button>)}</div></section>)}
           </div>}
           {step === 4 && <div className="creation-spells">
-            {!spellRules ? <div className="creation-empty"><ShieldCheck size={24} /><strong>На 1 уровне у этого класса нет выбора заклинаний</strong><p>Мастер отправит пустые списки, а сервер подтвердит их по каталогу.</p></div> : <>
+            {!spellRules ? <div className="creation-empty"><ShieldCheck size={24} /><strong>На 1 уровне у этого класса нет выбора заклинаний</strong><p>Заклинания появятся на следующих уровнях.</p></div> : <>
               {cantrips.length > 0 && <section><header><span>Заговоры</span><b>{selectedCantrips}/{cantripLimit}</b></header><div>{cantrips.map((spell) => <SpellChoice key={spell.id} spell={spell} selected={draft.knownSpellIds.includes(spell.id)} onClick={() => toggleSpell(spell.id)} />)}</div></section>}
               {leveledSpells.length > 0 && <section><header><span>Заклинания 1 круга</span><b>{spellRules.mode === 'known' ? `${selectedKnownSpells}/${knownLimit}` : spellRules.mode === 'spellbook' ? `книга ${selectedKnownSpells}/${bookLimit}` : `подготовлено ${selectedPreparedSpells}/${preparedLimit}`}</b></header><div>{leveledSpells.map((spell) => {
                 const preparedMode = spellRules.mode === 'prepared'
@@ -342,20 +342,20 @@ export function CharacterCreationWizard({
             <label><span>Имя героя</span><input aria-label="Имя героя" value={draft.character} onChange={(event) => patch('character', event.target.value)} maxLength={120} autoFocus /></label>
             <label><span>Внешность и характер</span><textarea aria-label="Внешность и характер" value={draft.appearance} onChange={(event) => patch('appearance', event.target.value)} maxLength={2000} rows={4} /></label>
             <label><span>Предыстория и личный мотив</span><textarea aria-label="Предыстория и личный мотив" value={draft.backstory} onChange={(event) => patch('backstory', event.target.value)} maxLength={8000} rows={6} /></label>
-            <div className="creation-summary"><ShieldCheck size={18} /><span><b>{classOption?.label} · {selectedSpecies}</b><small>Уровень, ОЗ, КД, скорость и бонус мастерства рассчитает сервер после импорта листа.</small></span></div>
+            <div className="creation-summary"><ShieldCheck size={18} /><span><b>{classOption?.label} · {selectedSpecies}</b><small>Уровень, ОЗ, КД, скорость и бонус мастерства посчитаются сами по листу героя.</small></span></div>
           </div>}
         </main>
         <footer>
           <div className={error ? 'creation-error' : ''} role={error ? 'alert' : undefined}>
             {error || (required
-              ? 'Пока герой не создан, сервер не примет ваш ход. Мастер можно закрыть и вернуться позже.'
-              : 'Все механические значения будут повторно проверены сервером.')}
+              ? 'Пока герой не создан, ходить он не может. Мастер можно закрыть и вернуться позже.'
+              : '')}
           </div>
           <span>
             <button disabled={step === 0 || busy} onClick={() => setStep((current) => Math.max(0, current - 1))}><ArrowLeft size={15} />Назад</button>
             {step < steps.length - 1
               ? <button className="primary" onClick={next}>Дальше<ArrowRight size={15} /></button>
-              : <button className="primary" disabled={busy} onClick={() => { void submit() }}><ShieldCheck size={15} />{busy ? 'Сервер проверяет…' : 'Создать героя'}</button>}
+              : <button className="primary" disabled={busy} onClick={() => { void submit() }}><ShieldCheck size={15} />{busy ? 'Создаём героя…' : 'Создать героя'}</button>}
           </span>
         </footer>
       </section>
