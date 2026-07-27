@@ -631,8 +631,8 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    и они: та же рамка, радиус и подложка. Кнопки внутри повторяют вид кнопок
    интерфейса — прозрачные, с пергаментной рамкой на наведении и золотом в
    нажатом состоянии, как у колод и кнопок героя. */
-.tile-toolbar { grid-column: 1; grid-row: 1; align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); display: grid; align-content: start; gap: 6px; padding: 10px 6px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
-.combat-hotbar .tile-toolbar button { width: 26px; min-height: 26px; height: 26px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.02); color: #8d857b; cursor: pointer; transition: .18s; }
+.tile-toolbar { grid-column: 1; grid-row: 1; align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); display: grid; align-content: center; justify-items: center; gap: 6px; padding: 8px 6px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+.combat-hotbar .tile-toolbar button { width: 26px; min-height: 26px; height: 26px; margin: 0; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.02); color: #8d857b; cursor: pointer; transition: .18s; }
 .combat-hotbar .tile-toolbar button:hover { border-color: rgba(211,160,97,.4); background: rgba(255,255,255,.05); color: #c49a63; }
 .combat-hotbar .tile-toolbar button.active { border-color: rgba(214,161,96,.5); background: rgba(192,132,66,.16); color: #e2b87c; }
 .rows-glyph { display: grid; gap: 3px; width: 15px; }
