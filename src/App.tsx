@@ -1177,7 +1177,10 @@ function SceneHeader({ title, location, objective, turn, chapter, round, merchan
       {/* Приглашение стоит до «текущей цели»: у неё `margin-left: auto`, и всё,
           что после, уезжает вправо под кнопку сброса с `position: absolute`. */}
       {merchants.length > 0 && <button className="scene-merchant" onClick={onOpenMerchant} aria-haspopup="dialog" aria-label={merchantLabel} title={merchantLabel}><Store size={16} /></button>}
-      <div className="objective"><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></div>
+      {/* Цель не помещается в строку заголовка и обрезается многоточием, а
+          читать её игроку надо: замерено — из 571 px текста видно 311. Полная
+          формулировка уходит в подсказку, иначе цель просто теряется. */}
+      <div className="objective" title={objective}><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></div>
       <button className="icon-button reset-button" onClick={onReset} title="Снять бой и поднять павших героев"><RotateCcw size={17} /></button>
     </div>
   )
