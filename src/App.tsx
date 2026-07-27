@@ -1190,7 +1190,9 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               {/* Коротко намеренно: колонка держит три строки, а при увеличенном
                   интерфейсе — две, и хвост длинного текста просто обрезался бы. */}
               <p>Лечение, усиление и утилита творятся прямо здесь. Всё, что бьёт, требует инициативы.</p>
-              <span>Свободные действия — строкой «Своими словами» ниже</span>
+              {/* Про футы сказано здесь, а не отдельной колонкой справа: ради
+                  одной фразы держать 140px в строке было нечем оправдать. */}
+              <span>Шаги не считаны · свободные действия — строкой «Своими словами» ниже</span>
             </> : combatMode === 'magic' && selectedSpell ? <>
               <strong>{selectedSpell.name}</strong>
               <p>{selectedSpell.description}</p>
@@ -1204,13 +1206,15 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'} · {selectedSpellRange} фт{selectedSpell.concentration ? ' · концентрация' : ''}</span>
             </> : combatMode === 'action' && selectedCombatAction ? <><strong>{selectedCombatAction.name}</strong><p>{selectedCombatAction.description}</p><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i>{selectedActionSupport.status !== 'verified' && <small className="mechanics-support-note">{selectedActionSupport.explanation}</small>}<span>{selectedCombatAction.target === 'self' ? 'Применяется сразу' : 'Выберите цель на карте'}</span></> : <><strong>{selectedItem?.name ?? 'Базовая атака'}</strong><p>{selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')}</p><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
           </aside>
-          <div className="hotbar-turn-controls">
-            {!combatActive && <div className="exploration-path-status"><Footprints size={17} /><span><b>Без лимита футов</b><small>вне боя шаги не считаны</small></span></div>}
+          {/* Колонка шага рисуется, только когда в ней что-то есть: вне боя это
+              подтверждение выбранной цели, в бою — кнопки хода. Пустой колонки в
+              140px, как раньше, в строке больше не остаётся. */}
+          {(combatActive || pendingCommand) && <div className="hotbar-turn-controls">
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
             {pendingCommand && <button className="manual-attack-roll" disabled={tacticalBusy} onClick={confirmPreparedCommand}><CombatIcon id="confirm-prepared-command" kind="roll" hint="подтвердить выбранную цель" size={27} compact /><span>{pendingCommand.kind === 'target' || pendingCommand.kind === 'area' ? 'Бросить' : 'Подтвердить'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
             {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
-          </div>
+          </div>}
         </div>
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}

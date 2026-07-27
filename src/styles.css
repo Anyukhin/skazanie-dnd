@@ -638,7 +638,13 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    арсенала, а не ради нажатия. */
 .combat-hotbar.out-of-combat .action-tile:disabled { opacity: .5; }
 
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px) minmax(0, 140px); gap: 16px; }
+/* Колонки по содержимому, а не по жёстким долям. Раньше колода занимала долю
+   строки независимо от числа плиток: в колоде с одной плиткой 850 из 914
+   пикселей пустовали, а колонка шага держала свои 140 даже пустой. Теперь
+   плитки берут по себе (но не больше 58% строки — дальше прокрутка внутри),
+   описание забирает остаток, а колонка шага сжимается в ноль, когда в ней
+   нечего показать. */
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: fit-content(58%) minmax(260px, 1fr) auto; gap: 16px; }
 /* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
    заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
    рисунку осознанно: название и описание уже показывает колонка шага справа, а на
@@ -689,6 +695,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Колонка шага: бейдж, заголовок, полное описание, строка ресурса. Вертикальных
    отступов нет намеренно — они дают переполнение фиксированной сетки строк. */
 .hotbar-detail { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-auto-rows: min-content; align-content: center; gap: 5px; padding: 0 0 0 18px; border-left: 1px solid rgba(255,255,255,.07); background: none; }
+/* Мера строки, а не ширина колонки: колонка может быть широкой, когда колода
+   короткая, но строка длиннее ~70 знаков уже не читается — глаз теряет начало
+   следующей. Остаток колонки остаётся спокойным полем. */
+.hotbar-detail > * { max-width: 68ch; }
 .hotbar-detail strong { overflow: hidden; color: #e2d6c6; font: 600 var(--fs-2xl) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .hotbar-detail span { overflow: hidden; color: #c8a06a; font: var(--fs-lg) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
