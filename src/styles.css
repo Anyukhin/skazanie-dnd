@@ -676,7 +676,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    как продолжение карточки, а не как второй ящик рядом. Перегородки между
    ними тоже нет — их разделяет промежуток. */
 .hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto var(--ui-detail-width, clamp(360px, 34%, 620px)); gap: 14px; }
-.hotbar-actions { padding: 12px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+/* Сверху и снизу отступ меньше бокового: плитки квадратные, и лишний воздух
+   по вертикали читается как пустая полоса, а не как поле карточки. */
+.hotbar-actions { padding: 6px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 /* Все четверо живут в одном ряду: без явного ряда ручка занимала первый, а
    карточки уезжали во второй и отрывались от неё. */
 .hotbar-actions { grid-column: 1; grid-row: 1; }
