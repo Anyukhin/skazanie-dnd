@@ -1733,8 +1733,32 @@ function serveStatic(req, res) {
   catch { return json(res, 400, { error: 'Некорректный путь' }) }
   let file = resolve(dist, requested)
   if (!(file === dist || file.startsWith(`${dist}${sep}`)) || !existsSync(file) || statSync(file).isDirectory()) file = join(dist, 'index.html')
+  const stats = statSync(file)
+  // Раздача шла вообще без валидаторов, поэтому браузер тянул каждый файл заново:
+  // у боевой панели свой PNG на действие, сотни картинок по 60 КБ повторялись на
+  // каждой перерисовке. Событийный цикл стоял на этих потоках, и даже healthcheck
+  // не укладывался в свои пять секунд — контейнер уходил в unhealthy.
+  const etag = `W/"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`
+  // Имена сборки vite содержат хеш содержимого — их можно держать в кеше вечно.
+  // Файлы из public/ имя не меняют, поэтому им нужна перепроверка по ETag: иначе
+  // перерисованная иконка не доедет до экрана.
+  const immutable = /^assets\/[^/]+-[A-Za-z0-9_-]{8,}\.(?:js|css)$/.test(requested)
+  // index.html держим на короткой цепи: он тянет за собой имена собранных чанков,
+  // и после пересборки браузер обязан увидеть новые. Остальному из public/ хватает
+  // часа — иначе пятьсот рисунков действий переспрашиваются на каждой перерисовке
+  // боевой панели, а через проброс порта Docker Desktop это минуты ожидания.
+  const cacheControl = file === join(dist, 'index.html') ? 'no-cache'
+    : immutable ? 'public, max-age=31536000, immutable'
+      : 'public, max-age=3600'
+  const validators = { ETag: etag, 'Last-Modified': stats.mtime.toUTCString(), 'Cache-Control': cacheControl }
+  const noneMatch = String(req.headers['if-none-match'] || '')
+  const modifiedSince = Date.parse(req.headers['if-modified-since'] || '')
+  const fresh = noneMatch
+    ? noneMatch.split(',').some((tag) => tag.trim() === etag)
+    : Number.isFinite(modifiedSince) && modifiedSince >= Math.floor(stats.mtimeMs / 1000) * 1000
+  if (fresh) { res.writeHead(304, validators); return res.end() }
   const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
-  res.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream' })
+  res.writeHead(200, { ...validators, 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Content-Length': stats.size })
   createReadStream(file).pipe(res)
 }
 
