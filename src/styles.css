@@ -655,8 +655,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* В строке остался только вход в бой: сам режим переехал на поле. */
 .hotbar-exploration-note { margin-left: auto; display: flex; align-items: center; gap: 11px; }
 .combat-hotbar.out-of-combat .hotbar-decks button.active { border-color: rgba(112,185,148,.42); background: rgba(74,141,107,.16); color: #a7cdb5; }
-.combat-hotbar.out-of-combat .hotbar-detail { border-color: rgba(104,170,137,.24); }
-.combat-hotbar.out-of-combat .hotbar-detail > strong { color: #a7cdb5; }
 /* Закрытая плитка вне боя гасится сильнее обычного: она здесь ради обзора
    арсенала, а не ради нажатия. */
 .combat-hotbar.out-of-combat .action-tile:disabled { opacity: .5; }
@@ -666,10 +664,12 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    прокручивается внутри себя, сколько бы плиток в ней ни было — раньше ширина
    колонок зависела от наполнения, и описание прыгало при смене колоды.
    Колонка шага стоит между ними и сжимается в ноль, когда показывать нечего. */
-/* Плитки и описание — одна карточка, как у героя справа: та же рамка, тот же
-   радиус и подложка. Перегородки между ними нет: это не два блока, а один
-   разговор — вот чем можно действовать и вот что это значит. */
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto clamp(300px, 25%, 420px); gap: 16px; padding: 12px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+/* Карточка только у действий: плитки — предметный набор, им нужна оправа.
+   Описание к нему — речь о выбранном, и подложка ей не нужна: она читается
+   как продолжение карточки, а не как второй ящик рядом. Перегородки между
+   ними тоже нет — их разделяет промежуток. */
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto clamp(300px, 25%, 420px); gap: 12px; }
+.hotbar-actions { padding: 12px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 .hotbar-actions { grid-column: 1; }
 .hotbar-turn-controls { grid-column: 2; }
 .hotbar-detail { grid-column: 3; }
@@ -681,7 +681,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 
    min-width: 0 обязателен: без него grid-элемент раздувается под содержимое
    и горизонтальная прокрутка колоды не включается. */
-.hotbar-actions { min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, var(--slot, 52px)); justify-content: start; align-content: center; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 0; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
+.hotbar-actions { min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, var(--slot, 52px)); justify-content: start; align-content: center; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
 
 /* Слот: рисунок во всю площадь, тонкая рамка под категорию, полоска стоимости
    снизу и счётчик ресурса в углу. Всё остальное — в подсказке и колонке шага. */
@@ -726,7 +726,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* На невысоком экране описание не влезает целиком: заголовок, текст, ярлык и
    подпись дают больше высоты, чем остаётся строке. Прокрутка внутри колонки
    честнее молчаливой обрезки — на широком экране она не появляется. */
-.hotbar-detail { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #4a3f34 transparent; display: grid; grid-auto-rows: min-content; align-content: center; gap: 5px; padding: 0; border: 0; background: none; }
+.hotbar-detail { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #4a3f34 transparent; display: grid; grid-auto-rows: min-content; align-content: start; gap: 5px; padding: 2px 0 2px 4px; border: 0; background: none; }
 /* Мера строки, а не ширина колонки: колонка может быть широкой, когда колода
    короткая, но строка длиннее ~70 знаков уже не читается — глаз теряет начало
    следующей. Остаток колонки остаётся спокойным полем. */
