@@ -5,6 +5,8 @@ import { eventSummary } from './rules-engine.mjs'
 import { DeterministicNarrationVerifier, assertNarrationBrief, buildDataOnlyContext } from './security.mjs'
 
 export const NARRATOR_PROMPT_VERSION = 'narrator/v1'
+/** Постоянный серверный текст: он и только он стоит снаружи блока данных. */
+const REPAIR_INSTRUCTION = 'Исправь нарушения предыдущего варианта: они перечислены в секции narration_violations.'
 const promptPath = fileURLToPath(new URL('../prompts/narrator/v1.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 
@@ -49,15 +51,25 @@ export class Narrator {
     try {
       let lastVerification = null
       for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
-        const repair = lastVerification?.violations?.length
-          ? `\nИсправь нарушения предыдущего варианта: ${JSON.stringify(lastVerification.violations)}`
-          : ''
+        // Перечень нарушений несёт куски предыдущего ответа модели: `match`
+        // приходит из её же текста. Модель — недоверенный генератор, поэтому
+        // сам перечень уходит отдельной секцией внутрь UNTRUSTED_DATA, а
+        // снаружи остаётся только постоянная серверная фраза.
+        const violations = lastVerification?.violations?.length ? lastVerification.violations : null
+        const repair = violations ? `\n${REPAIR_INSTRUCTION}` : ''
         let output
         try {
           output = await this.llmClient.completeJson({
             messages: [
               { role: 'system', content: narratorPrompt },
-              { role: 'user', content: `${buildDataOnlyContext({ narration_brief: brief, style })}${repair}` },
+              {
+                role: 'user',
+                content: `${buildDataOnlyContext({
+                  narration_brief: brief,
+                  style,
+                  ...(violations ? { narration_violations: violations } : {}),
+                })}${repair}`,
+              },
             ],
             temperature: 0.55,
             jsonExpected: 'object',
