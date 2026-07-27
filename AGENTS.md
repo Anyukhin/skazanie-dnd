@@ -156,8 +156,6 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 
 - `adventure-director.mjs` пересекается по назначению с `director-agent.mjs` и
   `autonomous-orchestrator.mjs`.
-- Три модуля `*-narration` (`scene-`, `encounter-`, `merchant-`) не имеют общего
-  контракта.
 - Трассы (`server/trace-store.mjs`) хранят `prompt_versions` с ярлыками
   `intent_parser/v1`, `adjudicator/v1` и `verifier/v1`, хотя эти роли исполняются
   детерминированно и промптов под ними больше нет. Ярлыки лежат в сохранённых
@@ -167,6 +165,15 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 и `prompts/legacy/` удалены; пять промптов без потребителя удалены как контракты
 ролей, которые исполняются кодом. В `prompts/` остались ровно те файлы, которые
 перечислены в таблице выше и действительно загружаются.
+
+Закрыто 2026-07-27: у модулей `*-narration` появился общий контракт —
+`server/deterministic-narration.mjs`. Рассказчик объявляет `id`, `priority`,
+`promptVersion`, `provider`, `matches` и `narrate`; приоритет задан числом, а не
+порядком импортов. Оркестратор больше не держит три обёртки и две одинаковые
+лестницы `?:` — он спрашивает реестр. Боевой текст переехал из `index.mjs` в
+`server/combat-narration.mjs` по тому же контракту и впервые покрыт тестом; в
+реестр он намеренно не входит, потому что живёт в другом потоке. Сторожа —
+`test/deterministic-narration.test.mjs` и `test/combat-narration.test.mjs`.
 
 Уточнено 2026-07-27: файлов семь, а не шесть. `action_adjudicator/v1.txt`
 загружается `server/action-adjudicator.mjs` с самого начала, но в таблицу не
