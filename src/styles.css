@@ -607,7 +607,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Ручка повторяет коробку карточки, а не ряд: карточка прижата к верху и её
    середина ниже середины ряда — при выравнивании по ряду язычок съезжал вниз.
    Сам язычок рисует `::before` по центру этой коробки. */
-.actions-resize { position: relative; grid-column: 1; grid-row: 1; justify-self: end; align-self: start; z-index: 12; width: 14px; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 6px + 22px), 100%); display: grid; align-content: center; justify-items: center; gap: 3px; cursor: ew-resize; touch-action: none; }
+.actions-resize { position: relative; grid-column: 2; grid-row: 1; justify-self: end; align-self: start; z-index: 12; width: 14px; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); display: grid; align-content: center; justify-items: center; gap: 3px; cursor: ew-resize; touch-action: none; }
 .actions-resize::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 54px; transform: translateY(-50%); border-left: 1px solid rgba(211,184,149,.14); border-radius: 0 8px 8px 0; background: rgba(30,26,22,.92); }
 .actions-resize i { position: relative; z-index: 1; width: 4px; height: 4px; border-radius: 50%; background: rgba(222,201,171,.45); }
 .actions-resize:hover::before { background: rgba(48,39,29,.95); }
@@ -627,13 +627,17 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .prepared-chip { flex: 0 0 auto; max-width: 46%; display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 6px 0 9px; border: 1px solid rgba(214,161,96,.45); border-radius: 7px; background: rgba(174,113,52,.16); color: #e6bd83; }
 /* Настройки панели живут у самой панели: узкая планка на левом краю карточки
    действий. В строке ввода им места нет — она нужна словам. */
-.tile-toolbar { grid-column: 1; grid-row: 1; justify-self: start; align-self: start; z-index: 12; display: grid; gap: 3px; padding: 9px 4px; }
-.tile-toolbar button { width: 22px; min-height: 22px; height: 22px; padding: 0; display: grid; place-items: center; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #8d857b; cursor: pointer; }
-.tile-toolbar button:hover { border-color: var(--line); background: rgba(255,255,255,.05); color: #c0ab8d; }
-.tile-toolbar button.active { border-color: rgba(214,161,96,.45); background: rgba(192,132,66,.18); color: #e2b87c; }
-.rows-glyph { display: grid; gap: 2px; width: 13px; }
-.rows-glyph i { height: 4px; border-radius: 1px; background: currentColor; }
-.rows-glyph.one i { height: 10px; }
+/* Настройки панели — своя узкая карточка слева от плиток, в той же оправе, что
+   и они: та же рамка, радиус и подложка. Кнопки внутри повторяют вид кнопок
+   интерфейса — прозрачные, с пергаментной рамкой на наведении и золотом в
+   нажатом состоянии, как у колод и кнопок героя. */
+.tile-toolbar { grid-column: 1; grid-row: 1; align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); display: grid; align-content: start; gap: 6px; padding: 10px 6px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+.combat-hotbar .tile-toolbar button { width: 26px; min-height: 26px; height: 26px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.02); color: #8d857b; cursor: pointer; transition: .18s; }
+.combat-hotbar .tile-toolbar button:hover { border-color: rgba(211,160,97,.4); background: rgba(255,255,255,.05); color: #c49a63; }
+.combat-hotbar .tile-toolbar button.active { border-color: rgba(214,161,96,.5); background: rgba(192,132,66,.16); color: #e2b87c; }
+.rows-glyph { display: grid; gap: 3px; width: 15px; }
+.rows-glyph i { height: 5px; border: 1.6px solid currentColor; border-radius: 2px; }
+.rows-glyph.one i { height: 13px; }
 
 /* Пока цель не выбрана, ярлык другой: пунктир и приглушённый тон — видно, что
    команда собрана не до конца и отправлять нечего. */
@@ -692,20 +696,20 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    Описание к нему — речь о выбранном, и подложка ей не нужна: она читается
    как продолжение карточки, а не как второй ящик рядом. Перегородки между
    ними тоже нет — их разделяет промежуток. */
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto var(--ui-detail-width, clamp(360px, 34%, 620px)); gap: 14px; }
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto var(--ui-detail-width, clamp(340px, 32%, 600px)); gap: 10px; }
 /* Высота карточки закреплена ровно под два ряда плиток и не зависит от колоды:
    раньше она тянулась на весь ряд панели, плитки центрировались, и сверху и
    снизу оставалось по 19 пикселей пустоты. Число рядов считается от высоты
    контейнера, поэтому её нельзя отдать содержимому — иначе ряд остаётся один и
    двадцать плиток «Основных» уходят в горизонтальную прокрутку. */
-.hotbar-actions { align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 6px + 22px), 100%); padding: 10px 10px 10px 40px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+.hotbar-actions { align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); padding: 10px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 /* Все четверо живут в одном ряду: без явного ряда ручка занимала первый, а
    карточки уезжали во второй и отрывались от неё. */
-.hotbar-actions { grid-column: 1; grid-row: 1; }
-.hotbar-turn-controls { grid-column: 2; grid-row: 1; }
+.hotbar-actions { grid-column: 2; grid-row: 1; }
+.hotbar-turn-controls { grid-column: 3; grid-row: 1; }
 /* Описание начинается на той же линии, что и карточка действий: обе прижаты к
    верху ряда, поэтому при любой высоте панели они выровнены между собой. */
-.hotbar-detail { grid-column: 3; grid-row: 1; align-self: start; }
+.hotbar-detail { grid-column: 4; grid-row: 1; align-self: start; }
 
 /* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
    заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
@@ -714,7 +718,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 
    min-width: 0 обязателен: без него grid-элемент раздувается под содержимое
    и горизонтальная прокрутка колоды не включается. */
-.hotbar-actions { min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--ui-tile-rows, 2), var(--slot, 64px)); justify-content: start; align-content: center; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
+.hotbar-actions { min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--ui-tile-rows, 2), var(--slot, 64px)); justify-content: start; align-content: center; gap: 4px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
 
 /* Слот: рисунок во всю площадь, тонкая рамка под категорию, полоска стоимости
    снизу и счётчик ресурса в углу. Всё остальное — в подсказке и колонке шага. */
@@ -866,7 +870,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .director-status { display: none; }
   .combat-hotbar.tactical-control { width: calc(100% - 32px); }
   /* Порядок колонок тот же, что на широком экране: колода, шаг, описание. */
-  .hotbar-main { grid-template-columns: minmax(0, 1fr) 112px minmax(260px, 420px); gap: 12px; }
+  .hotbar-main { grid-template-columns: auto minmax(0, 1fr) 112px minmax(260px, 420px); gap: 10px; }
   .player-hud-stack, .player-hud { display: none; }
 }
 
@@ -877,7 +881,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .spellbook-tools label { flex-basis: 100%; }
   .combat-hotbar.tactical-control { bottom: 8px; width: calc(100% - 16px); }
   .exploration-path-status { display: none; }
-  .hotbar-main { grid-template-columns: minmax(0, 1fr) 94px; gap: 10px; }
+  .hotbar-main { grid-template-columns: auto minmax(0, 1fr) 94px; gap: 8px; }
   .hotbar-detail { display: none; }
   .combat-hotbar .action-tile { width: 138px; min-width: 138px; height: 140px; }
   .map-legend { display: none; }
@@ -886,7 +890,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 @media (max-width: 560px) {
   .spellbook-grid { grid-template-columns: 1fr; }
   .spellbook-tools > span { display: none; }
-  .hotbar-main { grid-template-columns: minmax(0, 1fr) 84px; }
+  .hotbar-main { grid-template-columns: auto minmax(0, 1fr) 84px; }
   .hotbar-decks { overflow-x: auto; scrollbar-width: none; }
   .hotbar-decks button, .hotbar-decks button:last-child { min-height: 36px; height: 36px; padding: 0 10px; }
   .hotbar-decks button span { display: none; }
