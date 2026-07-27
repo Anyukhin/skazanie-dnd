@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "dnd",
+      "runtimeExecutable": "C:\\Users\\anton\\AppData\\Local\\OpenAI\\Codex\\bin\\5b9024f90663758b\\node.exe",
+      "runtimeArgs": ["server/dev.mjs"],
+      "port": 4173
+    },
+    {
       "name": "vite",
       "runtimeExecutable": "C:\\Users\\anton\\AppData\\Local\\OpenAI\\Codex\\bin\\5b9024f90663758b\\node.exe",
       "runtimeArgs": ["node_modules/vite/bin/vite.js", "--port", "5173", "--strictPort"],
