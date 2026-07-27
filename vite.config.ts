@@ -1,10 +1,10 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Порт сервера берётся из того же AGENT_PORT, которым его запускают
-// (`AGENT_PORT=8788 pnpm dev:agent`). Пока адрес был вписан жёстко, второй
-// клиент проксировал в первый сервер, и параллельно поднять своё приложение
-// было нельзя — а значит, и посмотреть правку интерфейса глазами тоже.
+// Порт сервера берётся из того же AGENT_PORT, которым его запускают. Пока адрес
+// был вписан жёстко, второй клиент проксировал в первый сервер, и параллельно
+// поднять своё приложение было нельзя — а значит, и посмотреть правку
+// интерфейса глазами тоже.
 const DEFAULT_AGENT_PORT = 8787
 
 function resolveAgentPort(raw: string | undefined): number {
@@ -14,9 +14,7 @@ function resolveAgentPort(raw: string | undefined): number {
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : DEFAULT_AGENT_PORT
 }
 
-const agentTarget = `http://127.0.0.1:${resolveAgentPort(process.env.AGENT_PORT)}`
-
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   build: {
     rollupOptions: {
@@ -30,9 +28,16 @@ export default defineConfig({
     },
   },
   server: {
-    proxy: {
-      '/api': agentTarget,
-      '/generated': agentTarget,
-    },
+    proxy: (() => {
+      // Порт живёт в .env — оттуда же его берёт сервер через dotenv. Без
+      // loadEnv конфиг видел бы только переменные оболочки, и заданный в .env
+      // порт молча расходился бы с тем, куда стучится прокси: сервер отвечает,
+      // клиент получает 502, и выглядит это как поломка сервера.
+      // Префикс пустой намеренно: AGENT_PORT не начинается с VITE_ и в
+      // браузер не попадает — его читает только этот конфиг.
+      const env = loadEnv(mode, process.cwd(), '')
+      const agentTarget = `http://127.0.0.1:${resolveAgentPort(env.AGENT_PORT)}`
+      return { '/api': agentTarget, '/generated': agentTarget }
+    })(),
   },
-})
+}))
