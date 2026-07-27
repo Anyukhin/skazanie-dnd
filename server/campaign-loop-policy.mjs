@@ -553,8 +553,15 @@ export function assembleSocialNpc(state = {}, {
     .filter(Boolean)
     .slice(0, 20)
   const faction = (state.worldMemory?.entities ?? []).find((entity) => entity.kind === 'faction')
+  // Запрошенный идентификатор принимается, только если такого NPC ещё нет.
+  // Иначе собранный профиль уехал бы в `UpsertNpcSocialProfile` под чужим id и
+  // переписал бы настоящего NPC: другое имя, другая роль, пустое расписание, —
+  // а обещания и разговоры остались бы привязаны к этому id. Директор просит
+  // недоступного собеседника — сервер приводит другого, а не подменяет этого.
+  const requested = clean(requestedId, 120)
+  const taken = (state.social?.npcs ?? []).some((npc) => String(npc?.id) === requested)
   return {
-    id: clean(requestedId, 120) || generatedId,
+    id: requested && !taken ? requested : generatedId,
     name,
     role,
     location,
