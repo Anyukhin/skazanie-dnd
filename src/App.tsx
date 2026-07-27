@@ -1054,7 +1054,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       <div className="map-legend">
         <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг · параметры скрыты</span><span><i className="legend-dot interest" />Интерес</span>
       </div>
-      <div className="map-controls-hint"><span>Тяните — панорама</span><i>·</i><span>Колесо — масштаб</span><i>·</i><span>Двойной клик — центрировать</span></div>
       {spellbookOpen && <section className="spellbook-panel" role="dialog" aria-modal="true" aria-label={`Книга заклинаний: ${activeName}`} onPointerDown={(event) => event.stopPropagation()}>
         <header><div><BookOpen size={21} /><span><small>КНИГА ЗАКЛИНАНИЙ</small><strong>{activeName}</strong></span></div><button onClick={() => setSpellbookOpen(false)} aria-label="Закрыть книгу заклинаний"><X size={18} /></button></header>
         <div className="spellbook-tools">

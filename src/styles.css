@@ -53,14 +53,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .icon-button:hover { color: #e2d7c9; background: rgba(255,255,255,.055); }
 .collapse-button { flex: 0 0 auto; }
 .main-nav { display: grid; gap: 4px; padding: 18px 13px; border-bottom: 1px solid var(--line); }
-.nav-item { height: 42px; width: 100%; border: 0; border-radius: 6px; display: flex; align-items: center; gap: 13px; padding: 0 13px; background: transparent; color: #938b82; cursor: pointer; white-space: nowrap; overflow: hidden; text-align: left; font-size: var(--fs-sm); }
+/* Разделы — основная навигация, поэтому кегль на ступень выше подписей. */
+.nav-item { height: 44px; width: 100%; border: 0; border-radius: 6px; display: flex; align-items: center; gap: 13px; padding: 0 13px; background: transparent; color: #938b82; cursor: pointer; white-space: nowrap; overflow: hidden; text-align: left; font-size: var(--fs-lg); }
 .nav-item svg { flex: 0 0 auto; }
 .nav-item:hover { background: rgba(255,255,255,.035); color: #ddd3c5; }
 .nav-item.active { background: linear-gradient(90deg, rgba(195,139,75,.18), rgba(195,139,75,.035)); color: #dfb378; box-shadow: inset 2px 0 #cb9250; }
 .sidebar-section { padding: 17px 12px; min-height: 0; flex: 1; overflow-y: auto; }
 .section-label { height: 25px; padding: 0 8px 8px; display: flex; justify-content: space-between; align-items: center; color: #726b64; font-size: var(--fs-md); font-weight: 700; letter-spacing: .13em; white-space: nowrap; overflow: hidden; }
 .players-list { display: grid; gap: 6px; }
-.player-card { position: relative; height: 68px; border: 1px solid transparent; border-radius: 7px; padding: 8px; display: grid; grid-template-columns: 39px minmax(0,1fr) 20px; align-items: center; gap: 9px; background: transparent; cursor: pointer; text-align: left; overflow: hidden; transition: .18s; }
+/* Не жёсткая высота, а нижняя граница: при увеличенном интерфейсе имя,
+   роль и полоска здоровья перестали помещаться в 68px и подрезались. */
+.player-card { position: relative; min-height: 68px; border: 1px solid transparent; border-radius: 7px; padding: 8px; display: grid; grid-template-columns: 39px minmax(0,1fr) 20px; align-items: center; gap: 9px; background: transparent; cursor: pointer; text-align: left; overflow: hidden; transition: .18s; }
 .player-card:hover { background: rgba(255,255,255,.025); }
 .player-card.active { border-color: rgba(210,155,88,.25); background: rgba(185,126,62,.075); }
 .player-card.locked { opacity: .48; cursor: not-allowed; }.player-card.locked:hover { background: transparent; }.player-card.locked .player-name-row svg { color: #716861; }
@@ -70,9 +73,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .presence.online { background: #76a37b; }
 .player-meta { min-width: 0; }
 .player-name-row { display: flex; align-items: center; gap: 5px; }
-.player-name-row strong { overflow: hidden; text-overflow: ellipsis; font-family: Spectral, serif; font-size: var(--fs-sm); color: #d9d0c4; }
+/* Имя героя крупнее подписи под ним. Раньше было наоборот — имя 13px, роль
+   14px, — и карточка читалась снизу вверх. */
+.player-name-row strong { overflow: hidden; text-overflow: ellipsis; font-family: Spectral, serif; font-size: var(--fs-lg); color: #d9d0c4; }
 .player-name-row svg { color: var(--gold); }
-.player-meta > span { display: block; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-md); color: #756e67; white-space: nowrap; }
+.player-meta > span { display: block; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); color: #756e67; white-space: nowrap; }
 .hp-line { position: relative; height: 3px; margin-top: 7px; background: #292521; border-radius: 2px; }
 .hp-line i { display: block; height: 100%; background: #8c554b; border-radius: inherit; }
 .hp-line small { display: none; }
@@ -93,7 +98,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .collapsed .logo-mark { width: 31px; height: 31px; }
 .collapsed .main-nav, .collapsed .sidebar-section, .collapsed .sidebar-bottom { padding-left: 11px; padding-right: 11px; }
 .collapsed .nav-item { justify-content: center; padding: 0; }
-.collapsed .player-card { width: 52px; height: 55px; grid-template-columns: 1fr; padding: 7px; justify-items: center; }
+.collapsed .player-card { width: 52px; min-height: 55px; grid-template-columns: 1fr; padding: 7px; justify-items: center; }
 .collapsed .avatar { width: 36px; height: 36px; }
 .collapsed .demo-badge { justify-content: center; padding: 0; }
 
@@ -305,8 +310,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    слева, легенда и подсказки управления по нижнему краю. Над самой картой не лежит
    ничего, что можно принять за часть местности. */
 .map-scale-plate { position: absolute; z-index: 8; left: 22px; top: 20px; padding: 7px 12px; border: 1px solid rgba(222,201,171,.16); border-radius: 6px; background: rgba(15,13,11,.86); color: #c6b9a6; font: 700 var(--fs-xs) Manrope, sans-serif; }
-.map-controls-hint { position: absolute; z-index: 8; right: 24px; bottom: 22px; display: flex; align-items: center; gap: 10px; padding: 9px 13px; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.78); color: #8d857b; font: var(--fs-xs) Manrope, sans-serif; }
-.map-controls-hint i { color: #4f4a44; font-style: normal; }
 .map-legend { position: absolute; z-index: 8; left: 24px; bottom: 22px; display: flex; gap: 16px; padding: 9px 13px; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.78); color: #8d857b; font: var(--fs-xs) Manrope, sans-serif; }
 .map-legend span { display: flex; align-items: center; gap: 7px; }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
@@ -511,7 +514,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .sidebar:not(.collapsed) .collapse-button { display: grid; }
   .sidebar:not(.collapsed) .main-nav { padding: 18px 13px; }.sidebar:not(.collapsed) .sidebar-section { padding: 17px 12px; }.sidebar:not(.collapsed) .sidebar-bottom { padding: 11px 13px 14px; }
   .sidebar:not(.collapsed) .nav-item { justify-content: flex-start; padding: 0 13px; }
-  .sidebar:not(.collapsed) .player-card { width: 100%; height: 68px; grid-template-columns: 39px minmax(0,1fr) 20px; padding: 8px; justify-items: initial; }
+  .sidebar:not(.collapsed) .player-card { width: 100%; min-height: 68px; grid-template-columns: 39px minmax(0,1fr) 20px; padding: 8px; justify-items: initial; }
   .sidebar:not(.collapsed) .demo-badge { justify-content: flex-start; padding: 8px 13px; }
   .game-main { height: 100dvh; }
   .topbar { height: 58px; flex-basis: 58px; padding: 0 12px; }
@@ -817,12 +820,12 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 }
 
 
-/* Text and icons scale independently; panel and map geometry stay fixed. */
-.nav-item { font-size: var(--fs-sm); }
+/* Иконки растут вместе с текстом; геометрия панелей и карты не меняется.
+   Размеры самого текста здесь больше не переопределяются: они заданы один раз
+   в правилах самих элементов, а масштаб живёт в шкале. Дубли отсюда убраны —
+   из-за них правка размера в одном месте ничего не давала. */
 .nav-item svg { width: var(--fs-2xl); height: var(--fs-2xl); }
 .section-label { font-size: var(--fs-md); }
-.player-name-row strong { font-size: var(--fs-sm); }
-.player-meta > span { font-size: var(--fs-md); }
 .demo-badge b { font-size: var(--fs-md); }
 .demo-badge small { font-size: var(--fs-md); }
 .campaign-title span, .session-code { font-size: var(--fs-sm); }
@@ -833,7 +836,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .account-chip small { font-size: var(--fs-sm); }
 .scene-title > span, .objective small { font-size: var(--fs-sm); }
 .scene-title p, .objective strong { font-size: var(--fs-lg); }
-.map-legend, .map-scale-plate, .map-controls-hint { font-size: var(--fs-xs); }
+.map-legend, .map-scale-plate { font-size: var(--fs-xs); }
 .zoom-control span { font-size: var(--fs-sm); }
 .zoom-control .map-drag-label { font-size: var(--fs-sm); }
 .hud-identity strong { font-size: var(--fs-md); }
@@ -1106,7 +1109,6 @@ button.campaign-title:hover strong { color: #edc996; }
 .player-hud { width: var(--ui-hud-width, 246px); }
 
 .section-label,
-.player-meta > span,
 .demo-badge small,
 .session-code b,
 .message-meta time,
