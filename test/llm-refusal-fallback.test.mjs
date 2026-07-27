@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { ActionAdjudicator } from '../server/action-adjudicator.mjs'
+import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { DirectorAgent } from '../server/director-agent.mjs'
 import { Narrator } from '../server/narrator.mjs'
 import { NpcControllerAgent } from '../server/npc-controller.mjs'
@@ -121,6 +122,25 @@ const ROLES = [
       .read(state(), 'hero', 'подпираю дверь скамьёй', interpretFreeAction('подпираю дверь скамьёй')),
     strip: ({ source: _source, ...rest }) => rest,
   },
+  {
+    // Создание кампании — самый критический переход из всех: продуктовые
+    // принципы требуют, чтобы кампания становилась `active` только после
+    // валидной серверной инициализации. Отказ провайдера обязан оставить её
+    // играбельной, а не полупустой.
+    name: 'CampaignBootstrapper',
+    call: (client) => new CampaignBootstrapper({ llmClient: client }).create({
+      code: 'REFUSAL-1', name: 'Проба', partyName: 'Отряд',
+      world: { preset: 'dark-fantasy', tone: 'мрачно' },
+      players: [{ id: 'hero', character: 'Лира', role: 'следопыт' }],
+    }),
+    // Метки настенных часов законно отличаются между двумя созданиями: время
+    // фиксации ruleset и время открывающей реплики. Проверено прогоном, что
+    // больше не отличается ничего.
+    strip: ({ ruleset_locked_at: _locked, messages, ...rest }) => ({
+      ...rest,
+      messages: (messages ?? []).map(({ timestamp: _timestamp, ...message }) => message),
+    }),
+  },
 ]
 
 for (const role of ROLES) {
@@ -135,6 +155,38 @@ for (const role of ROLES) {
     await assert.doesNotReject(() => role.call(new RefusingClient('LLM_TIMEOUT')))
   })
 }
+
+// Совпадение с работой без ключа доказывает согласованность, но не играбельность:
+// обе ветки могли бы одинаково отдавать полупустую кампанию. Продуктовые
+// принципы требуют другого — кампания становится `active` только после валидной
+// серверной инициализации, а отказ провайдера это требование не отменяет.
+test('кампания, созданная при отказе модели, играбельна', async () => {
+  const created = await new CampaignBootstrapper({ llmClient: new RefusingClient() }).create({
+    code: 'REFUSAL-2', name: 'Проба', partyName: 'Отряд',
+    world: { preset: 'dark-fantasy', tone: 'мрачно' },
+    players: [{ id: 'hero', character: 'Лира', role: 'следопыт' }, { id: 'ally', character: 'Бран', role: 'воин' }],
+  })
+  const campaign = normalizeCampaignState(created)
+
+  assert.equal(campaign.players.length, 2)
+  for (const hero of campaign.players) {
+    assert.ok(Number.isInteger(hero.x) && Number.isInteger(hero.y), `${hero.id}: герой обязан стоять на карте`)
+  }
+  // Две стартовые точки не совпадают: иначе отряд начинает в одной клетке.
+  assert.notDeepEqual(
+    { x: campaign.players[0].x, y: campaign.players[0].y },
+    { x: campaign.players[1].x, y: campaign.players[1].y },
+  )
+  assert.ok(campaign.scene.cells.length > 0, 'без карты сцена не играбельна')
+  assert.ok(campaign.scene.cells.some((cell) => cell.type === 'floor'), 'на карте обязан быть пол')
+  assert.ok(campaign.scene.location, 'у сцены обязана быть локация')
+  assert.ok(campaign.scene.objective, 'без цели сцены отряду нечего делать')
+  assert.ok(campaign.messages[0]?.text, 'открывающая реплика обязана быть не пустой')
+  assert.equal(campaign.engine_mode, 'enforce')
+  assert.equal(campaign.state_version, 0)
+  assert.equal(campaign.activePlayerId, 'hero')
+  assert.ok(campaign.worldMap?.currentLocationId, 'кампания обязана знать, где отряд на карте мира')
+})
 
 test('отказ модели не меняет состояние кампании', async () => {
   const before = state()
