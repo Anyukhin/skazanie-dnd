@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { actorPosition, findActor, isEnemyActor, isLivingActor, shortestTacticalPath } from './rules-engine.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
+import { buildDataOnlyContext } from './security.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/v1.txt', import.meta.url)), 'utf8')
 const DISPOSITIONS = new Set(['fight', 'flee', 'surrender'])
@@ -88,7 +89,7 @@ export class NpcControllerAgent {
       const result = await this.llmClient.completeJson({
         messages: [
           { role: 'system', content: prompt },
-          { role: 'user', content: `UNTRUSTED_DATA\n${JSON.stringify(publicBrief(state, enemy))}` },
+          { role: 'user', content: buildDataOnlyContext({ npc_morale_brief: publicBrief(state, enemy) }) },
         ],
         temperature: 0.65,
         maxTokens: 300,

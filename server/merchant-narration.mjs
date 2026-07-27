@@ -1,4 +1,5 @@
 import { findMerchant } from './merchant-economy.mjs'
+import { NARRATOR_PRIORITY, narrationTextOr, registerDeterministicNarrator } from './deterministic-narration.mjs'
 
 const MERCHANT_EVENT_TYPES = new Set([
   'MerchantBargainResolved',
@@ -17,10 +18,7 @@ function safeInteger(value, fallback = 0) {
   return Number.isSafeInteger(number) ? number : fallback
 }
 
-function safeText(value, fallback, maximum = 120) {
-  const text = String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
-  return text || fallback
-}
+const safeText = narrationTextOr
 
 function formatCopper(value) {
   let copper = Math.max(0, safeInteger(value, 0))
@@ -99,3 +97,12 @@ export function merchantNarration(events, state) {
   }
   return `${merchantName} принимает товар: ${itemName} × ${quantity}. Получено ${total}.`
 }
+
+export const merchantNarrator = registerDeterministicNarrator({
+  id: 'merchant',
+  priority: NARRATOR_PRIORITY.merchant,
+  promptVersion: 'merchant-narrator/v1',
+  provider: 'deterministic-merchant',
+  matches: hasMerchantEvent,
+  narrate: merchantNarration,
+})

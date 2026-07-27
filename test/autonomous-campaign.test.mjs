@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -10,7 +11,7 @@ import { AutonomousCampaignOrchestrator } from '../server/autonomous-orchestrato
 import { createAutonomyEvalReport } from '../server/autonomy-eval.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
-import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { ALLOWED_COMMAND_TYPES, RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 
 function cells(width = 13, height = 9) {
   return Array.from({ length: width * height }, (_, index) => ({
@@ -95,6 +96,114 @@ test('Director contract accepts only six narrative intentions and rejects forged
     { type: 'advance_quest_clock', quest_id: 'ledger-quest', amount: 20 },
     { type: 'request_encounter', theme: 'dragon', difficulty: 'impossible' },
   ]) assert.throws(() => normalizeDirectorIntent(forged), DirectorIntentError)
+})
+
+// Тест выше берёт три образца механических полей. Контракт же обещает, что
+// отклоняются **все** — и на каждом из шести намерений, а не только на том, где
+// пример оказался под рукой. Здесь перебор: каждое поле из списка, в змеином и
+// верблюжьем написании, на каждом валидном намерении, сверху и вложенно.
+const VALID_INTENTS = Object.freeze([
+  { type: 'continue_exploration' },
+  { type: 'open_social_scene', npc_id: 'marta' },
+  { type: 'advance_quest_clock', quest_id: 'ledger-quest' },
+  { type: 'request_encounter', theme: 'beasts', difficulty: 'easy' },
+  { type: 'end_scene', destination: 'North Gate' },
+  { type: 'offer_next_hook', hook: 'Follow the tracks' },
+])
+
+// Список из docs/loop-rules.md, ось 2: hp, dc, броски, цены, количества, XP,
+// координаты, урон, инициатива, reputation delta.
+const MECHANICAL_FIELDS = Object.freeze([
+  'hp', 'max_hp', 'dc', 'difficulty_class', 'roll', 'dice', 'price', 'quantity',
+  'xp', 'xp_budget', 'loot', 'coordinates', 'x', 'y', 'damage', 'armor',
+  'initiative', 'reputation_delta', 'amount',
+])
+
+/** `max_hp` → `maxHp`: то же поле, к которому модель придёт естественнее. */
+function camelCase(field) {
+  return field.replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase())
+}
+
+test('ни одно механическое поле не проходит контракт Директора — ни на одном намерении', () => {
+  for (const base of VALID_INTENTS) {
+    for (const field of MECHANICAL_FIELDS) {
+      for (const key of new Set([field, camelCase(field), field.toUpperCase()])) {
+        assert.throws(
+          () => normalizeDirectorIntent({ ...base, [key]: 7 }),
+          DirectorIntentError,
+          `${base.type}: поле ${key} прошло контракт`,
+        )
+      }
+    }
+  }
+})
+
+test('механическое поле не проходит и вложенным в разрешённое поле намерения', () => {
+  for (const field of MECHANICAL_FIELDS) {
+    for (const key of new Set([field, camelCase(field)])) {
+      assert.throws(
+        () => normalizeDirectorIntent({ type: 'offer_next_hook', hook: 'Follow the tracks', reason: { [key]: 7 } }),
+        DirectorIntentError,
+        `вложенное поле reason.${key} прошло контракт`,
+      )
+    }
+  }
+})
+
+// Автономный слой сам команд не исполняет — он их составляет, а исполняет
+// RulesEngine. Значит любой тип команды, который слой умеет написать, движок
+// обязан уметь принять. Иначе получается второй путь, который расходится с
+// первым молча: код есть, читается как рабочий, а до исполнения не доживает.
+//
+// Проверка статическая, по исходникам: типы, собранные из переменных, она не
+// увидит, но именно записанные строкой расхождения и накапливаются.
+test('автономный слой не умеет писать команду, которой движок не знает', async () => {
+  const modules = ['autonomous-campaign.mjs', 'autonomous-orchestrator.mjs', 'campaign-loop-policy.mjs']
+  const unknown = []
+  for (const name of modules) {
+    const source = await readFile(new URL(`../server/${name}`, import.meta.url), 'utf8')
+    for (const match of source.matchAll(/command_type:\s*'([A-Za-z]+)'/g)) {
+      if (!ALLOWED_COMMAND_TYPES.has(match[1])) unknown.push(`${name}: ${match[1]}`)
+    }
+  }
+  assert.deepEqual([...new Set(unknown)], [], 'эти команды движок исполнить не сможет')
+})
+
+// Расписание NPC — такой же факт мира, как его местоположение: `AdvanceTime`
+// исполняет пересечённые записи, а `npcProfileAtWorldTime` выводит из них, где
+// NPC сейчас. Разговор это уже проверяет и отвечает NPC_SOCIAL_WRONG_LOCATION.
+// Значит и Директор не должен открывать сцену с тем, кого по его же расписанию
+// в локации нет: иначе цель «Поговорить с Мартой» ставится, а разговор потом
+// невозможен — сцена встаёт.
+test('социальную сцену нельзя открыть с NPC, которого расписание увело из локации', async (t) => {
+  const state = campaign()
+  state.social.npcs[0] = {
+    ...state.social.npcs[0],
+    schedule: [{
+      id: 'day-shift', days: [], start_minute: 480, end_minute: 1_080,
+      location: 'Warehouse', available: true, visibility: 'party',
+    }],
+  }
+  // Десять часов мира: Марта на складе, отряд остался на Old Road.
+  state.mechanics.world_time = { ...state.mechanics.world_time, elapsed_minutes: 600 }
+  const { autonomy } = await fixture(t, normalizeCampaignState(state))
+
+  const result = await autonomy.runIntent({
+    campaignId: 'AUTONOMY-30',
+    intent: { type: 'open_social_scene', npc_id: 'marta' },
+    idempotencyKey: 'schedule-away-1',
+  })
+  const events = (result.results ?? []).flatMap((stage) => stage.events ?? [])
+  const opened = events.find((entry) => entry.event_type === 'SocialSceneOpened')
+  assert.notEqual(opened?.payload?.npc_id, 'marta', 'Директор открыл сцену с NPC, которого нет в локации')
+
+  // И подменять отсутствующего собой собранный NPC тоже не должен: обещания и
+  // разговоры привязаны к идентификатору, а профиль уезжает в upsert.
+  const upserted = events.filter((entry) => entry.event_type === 'NpcSocialProfileUpserted')
+  assert.equal(upserted.some((entry) => entry.payload?.npc?.id === 'marta'), false, 'собранный NPC занял чужой идентификатор')
+  const marta = (result.state?.social?.npcs ?? []).find((npc) => npc.id === 'marta')
+  assert.equal(marta?.name, 'Marta', 'настоящий профиль NPC переписан')
+  assert.equal(marta?.location, 'Old Road')
 })
 
 test('climax resolves a triggered quest and completes the campaign replay-identically', async (t) => {

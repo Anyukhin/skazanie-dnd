@@ -153,6 +153,56 @@ test('combat event projection removes enemy HP, armor class and initiative modif
   assert.deepEqual(events[2].payload.initiative[1], { actor_id: 'goblin-secret' })
 })
 
+// Спасбросок врага — единственный бросок, который делает враг, но инициирует
+// герой: actor_id события — заклинатель, а бросает цель. Оба сторожа
+// проверяли «враг — действующее лицо», поэтому модификатор характеристики
+// врага уезжал игроку и в событии, и в боевом журнале. Продуктовые принципы
+// требуют скрывать модификаторы врага до факта раскрытия в enemy_knowledge.
+test('enemy saving throws do not reveal the enemy ability modifier', () => {
+  const state = privateState()
+  const save = {
+    roll_id: 'roll-1', expression: '1d20+4', dice: [9], kept: 9, mode: 'normal', modifier: 4, total: 13,
+    purpose: 'spell_save:sacred-flame:dex', actor_id: 'goblin-secret', spell_id: 'sacred-flame',
+    ability: 'dex', difficulty: 13, saved: true,
+  }
+  const events = mechanicsForViewer([
+    { event_type: 'SpellSavingThrowResolved', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public', payload: { ...save } },
+    { event_type: 'ConcentrationSavingThrowResolved', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public', payload: { ...save, ability: 'con' } },
+  ], user, 'hero', state)
+  for (const event of events) {
+    for (const key of ['modifier', 'kept', 'dice', 'expression', 'roll_id']) {
+      assert.equal(event.payload[key], undefined, `${event.event_type}.${key} раскрывает бросок врага`)
+    }
+    // Исход виден: игрок обязан понимать, устоял враг или нет.
+    assert.equal(event.payload.total, 13)
+    assert.equal(event.payload.saved, true)
+  }
+})
+
+test('battle log hides the ability modifier of an enemy saving throw', () => {
+  const state = privateState()
+  state.battleLog = [
+    {
+      id: 'log-1', type: 'spell-save', actorId: 'hero', actorKind: 'player', targetId: 'goblin-secret',
+      spellId: 'sacred-flame', ability: 'dex', result: 'success',
+      roll: { die: 9, modifier: 4, total: 13, difficulty: 13, hit: true },
+    },
+    {
+      id: 'log-2', type: 'attack', actorId: 'hero', actorKind: 'player', targetId: 'goblin-secret',
+      roll: { die: 12, modifier: 5, total: 17, difficulty: 15, hit: true },
+    },
+  ]
+  const [save, attack] = campaignStateForViewer(state, user, 'hero').battleLog
+  assert.equal(save.roll.modifier, undefined)
+  assert.equal(save.roll.die, undefined)
+  assert.equal(save.roll.total, 13)
+  assert.equal(save.roll.hit, true)
+  // Свой бросок атаки герой по-прежнему видит целиком, кроме КД врага.
+  assert.equal(attack.roll.modifier, 5)
+  assert.equal(attack.roll.die, 12)
+  assert.equal(attack.roll.difficulty, undefined)
+})
+
 test('player event projection sanitizes SceneAdvanced and MerchantCreated payloads', () => {
   const state = privateState()
   const events = mechanicsForViewer([

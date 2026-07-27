@@ -4,14 +4,15 @@ import { Adjudicator } from './adjudicator.mjs'
 import { answerKnownLore } from './agent-router.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { IdempotencyConflictError } from './event-store.mjs'
-import { encounterNarration, hasEncounterEvent } from './encounter-narration.mjs'
+import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'
+import './encounter-narration.mjs'
 import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
-import { hasMerchantEvent, merchantNarration } from './merchant-narration.mjs'
+import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
 import { NARRATOR_PROMPT_VERSION, Narrator, deterministicNarration } from './narrator.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState } from './rules-engine.mjs'
-import { hasSceneEvent, sceneNarration, sceneSuggestions } from './scene-narration.mjs'
+import './scene-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer } from './viewer-projection.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
@@ -236,37 +237,18 @@ function deterministicMechanicsNarration(brief, knownRuleIds, resolveName) {
   }
 }
 
-function deterministicMerchantNarration(events, state, brief, knownRuleIds) {
-  const narration = merchantNarration(events, state) ?? deterministicNarration(brief, actorNameResolver(state)).narration
-  return {
-    narration,
-    suggestions: [],
-    verification: verifyNarration(narration, brief, { knownRuleIds }),
-    prompt_version: 'merchant-narrator/v1',
-    provider: 'deterministic-merchant',
-  }
-}
-
-function deterministicEncounterNarration(events, brief, knownRuleIds) {
-  const narration = encounterNarration(events) ?? deterministicNarration(brief).narration
-  return {
-    narration,
-    suggestions: [],
-    verification: verifyNarration(narration, brief, { knownRuleIds }),
-    prompt_version: 'encounter-narrator/v1',
-    provider: 'deterministic-encounter',
-  }
-}
-
-function deterministicSceneNarration(events, state, brief, knownRuleIds) {
-  const narration = sceneNarration(events, state) ?? deterministicNarration(brief).narration
-  return {
-    narration,
-    suggestions: sceneSuggestions(events),
-    verification: verifyNarration(narration, brief, { knownRuleIds }),
-    prompt_version: 'scene-narrator/v1',
-    provider: 'deterministic-scene',
-  }
+/**
+ * Один путь для всех детерминированных рассказчиков вместо трёх почти
+ * одинаковых обёрток. Кто именно отвечает за события, решает реестр в
+ * `deterministic-narration.mjs`, а не лестница тернарных операторов здесь.
+ */
+function deterministicNarratorResponse(narrator, events, state, brief, knownRuleIds) {
+  const rendered = renderDeterministicNarration(narrator, {
+    events,
+    state,
+    fallbackNarration: deterministicNarration(brief, actorNameResolver(state)).narration,
+  })
+  return { ...rendered, verification: verifyNarration(rendered.narration, brief, { knownRuleIds }) }
 }
 
 /**
@@ -721,30 +703,24 @@ export class GameOrchestrator {
       : null
     const storedSocialNarration = npcConversationNarration(committedEvents, committed.state)
     const resolveActorName = actorNameResolver(committed.state)
-    const replayFallback = hasSceneEvent(committedEvents)
-      ? deterministicSceneNarration(committedEvents, committed.state, brief, resolvedRuleIds)
-      : hasMerchantEvent(committedEvents)
-        ? deterministicMerchantNarration(committedEvents, committed.state, brief, resolvedRuleIds)
-        : hasEncounterEvent(committedEvents)
-          ? deterministicEncounterNarration(committedEvents, brief, resolvedRuleIds)
-          : storedSocialNarration ?? deterministicReplayNarration(brief, resolvedRuleIds, resolveActorName)
-    const structuredMechanics = Array.isArray(input.commands)
-      && !hasSceneEvent(committedEvents)
-      && !hasMerchantEvent(committedEvents)
-      && !hasEncounterEvent(committedEvents)
+    // Кто рассказывает про эти события, знает реестр. Раньше выбор был записан
+    // лестницей `?:` дважды — здесь и в ветке повтора, — и расходились они
+    // молча.
+    const deterministicNarrator = deterministicNarratorFor(committedEvents)
+    const deterministicResponse = deterministicNarrator
+      ? deterministicNarratorResponse(deterministicNarrator, committedEvents, committed.state, brief, resolvedRuleIds)
+      : null
+    const replayFallback = deterministicResponse
+      ?? storedSocialNarration
+      ?? deterministicReplayNarration(brief, resolvedRuleIds, resolveActorName)
+    const structuredMechanics = Array.isArray(input.commands) && !deterministicNarrator
     const narration = idempotentReplay
       ? cachedNarration(replayTrace, brief, resolvedRuleIds) ?? replayFallback
-      : hasSceneEvent(committedEvents)
-        ? deterministicSceneNarration(committedEvents, committed.state, brief, resolvedRuleIds)
-        : hasMerchantEvent(committedEvents)
-          ? deterministicMerchantNarration(committedEvents, committed.state, brief, resolvedRuleIds)
-          : hasEncounterEvent(committedEvents)
-            ? deterministicEncounterNarration(committedEvents, brief, resolvedRuleIds)
-            : storedSocialNarration
-              ? storedSocialNarration
-              : structuredMechanics
-                ? deterministicMechanicsNarration(brief, resolvedRuleIds, resolveActorName)
-                : await this.narrator.render(brief, { knownRuleIds: resolvedRuleIds })
+      : deterministicResponse
+        ?? storedSocialNarration
+        ?? (structuredMechanics
+          ? deterministicMechanicsNarration(brief, resolvedRuleIds, resolveActorName)
+          : await this.narrator.render(brief, { knownRuleIds: resolvedRuleIds }))
     const response = {
       narration: narration.narration,
       ...(narration.journal_author ? { journal_author: narration.journal_author } : {}),

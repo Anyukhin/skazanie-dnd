@@ -194,3 +194,39 @@ test('последствия состояний воспроизводятся r
   assert.deepEqual(replayed, applied)
   assert.equal(applied.enemies[0].hp, 40 - damageEvent(result).payload.applied_amount)
 })
+
+// SRD 5.2.1 даёт отравлению и испугу помеху не только на атаку, но и на
+// проверки характеристик, а опутанности — помеху на спасброски Ловкости.
+// Машинерия для этого в таблице есть и работает — ею пользуется истощение, —
+// но у самих состояний поля не были проставлены.
+const checkMode = (state, ability = 'str') => resolveCommand(
+  { command_type: 'MakeAbilityCheck', actor_id: 'hero', ability, difficulty: 12 },
+  state,
+  options(dice([12, 5])),
+).events.find((event) => event.event_type === 'AbilityCheckResolved').payload.mode
+
+const saveMode = (state, ability = 'dex') => resolveCommand(
+  { command_type: 'MakeSavingThrow', actor_id: 'hero', ability, difficulty: 12 },
+  state,
+  options(dice([12, 5])),
+).events.find((event) => event.event_type === 'SavingThrowResolved').payload.mode
+
+test('отравление и испуг дают помеху и на проверки характеристик, а не только на атаку', () => {
+  assert.equal(checkMode(combatState()), 'normal', 'без состояний проверка обычная')
+
+  for (const condition of ['poisoned', 'frightened']) {
+    const state = combatState({ conditions: { hero: [{ id: condition, duration: null }] } })
+    assert.equal(checkMode(state), 'disadvantage', `${condition}: SRD требует помеху на проверки характеристик`)
+    // Помеха на атаку была и раньше — она не должна пропасть.
+    assert.equal(attackEvent(attack(state, [12, 5, 4])).payload.mode, 'disadvantage', `${condition}: помеха на атаку`)
+  }
+})
+
+test('опутанность даёт помеху на спасброски Ловкости', () => {
+  assert.equal(saveMode(combatState()), 'normal', 'без состояний спасбросок обычный')
+
+  const restrained = combatState({ conditions: { hero: [{ id: 'restrained', duration: null }] } })
+  assert.equal(saveMode(restrained), 'disadvantage', 'SRD: опутанный проваливает уклонение чаще')
+  // Спасброски других характеристик опутанность не трогает.
+  assert.equal(saveMode(restrained, 'wis'), 'normal', 'помеха только на Ловкость')
+})
