@@ -114,6 +114,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .objective { flex: 0 1 auto; margin-left: auto; min-width: 0; max-width: 340px; height: 38px; display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 14px; border: 1px solid rgba(211,153,86,.32); border-radius: 19px; background: none; text-align: left; }
 .objective strong { min-width: 0; overflow: hidden; margin: 0; color: #c9a06a; font: 600 15px Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .reset-button { position: absolute; top: 2px; right: 0; pointer-events: auto; background: rgba(20,18,15,.65); border: 1px solid var(--line); }
+/* Приглашение к торговцу живёт в заголовке сцены, а не только в боковом меню:
+   до лавки игрок доходит по карте и смотрит именно сюда. Зелёный тон тот же,
+   что у метки торговца в меню, — это одна и та же сущность.
+   `pointer-events` возвращаем: вся `.scene-header` их не принимает, чтобы не
+   перехватывать перетаскивание карты под собой. */
+/* Только значок: с подписью кнопка отбирала у названия сцены больше половины
+   заголовка. Действие и имя торговца читает screen reader из aria-label,
+   мышь — из подсказки, а словами пункт «Торговец» стоит в боковом меню. */
+.scene-merchant { flex: 0 0 auto; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(114,150,120,.45); border-radius: 50%; background: rgba(23,32,25,.75); color: #9ec2a4; cursor: pointer; pointer-events: auto; }
+.scene-merchant:hover { border-color: rgba(140,193,148,.75); background: rgba(37,55,41,.88); color: #c4e1c8; }
 .server-column { grid-area: server; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow: hidden; }
 .server-column > .combat-context-panel { grid-row: 1; min-width: 0; min-height: 0; max-height: 34vh; overflow: auto; }
 .server-column > .chat-panel { grid-row: 2; min-width: 0; min-height: 0; }
