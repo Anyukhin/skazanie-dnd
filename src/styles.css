@@ -317,9 +317,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    в книге; на карте надпись без них висит в пустоте.
 
    Линии гаснут к краям градиентом, а не обрываются: жёсткая черта поверх
-   древесины читалась бы как часть местности. Тень вместо подложки — по
-   светлому полу иначе теряется само слово. */
-.map-mode-plate { position: absolute; z-index: 8; left: 50%; top: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; color: #bb9058; font: 700 var(--fs-xs) Manrope, sans-serif; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 0 7px rgba(0,0,0,.85); }
+   древесины читалась бы как часть местности. Затемнение позади — не плашка, а
+   растяжка без краёв: на светлом полу слово держалось на одной тени и давало
+   контраст 1.5:1, а пятно, гаснущее к краям, читается как свет на карте, а не
+   как ещё одна панель поверх неё. */
+.map-mode-plate { position: absolute; z-index: 8; left: 50%; top: 8px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 12px 40px; background: radial-gradient(ellipse at center, rgba(9,7,6,.78) 0%, rgba(9,7,6,.52) 42%, rgba(9,7,6,0) 76%); color: #bb9058; font: 700 var(--fs-xs) Manrope, sans-serif; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 0 7px rgba(0,0,0,.85); }
 .map-mode-plate::before, .map-mode-plate::after { content: ''; width: 46px; height: 1px; background: linear-gradient(90deg, transparent, rgba(198,161,105,.55)); }
 .map-mode-plate::after { background: linear-gradient(90deg, rgba(198,161,105,.55), transparent); }
 .map-legend { position: absolute; z-index: 8; left: 24px; bottom: 22px; display: flex; gap: 16px; padding: 9px 13px; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.78); color: #8d857b; font: var(--fs-xs) Manrope, sans-serif; }
