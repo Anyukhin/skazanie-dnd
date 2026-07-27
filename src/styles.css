@@ -63,11 +63,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .players-list { display: grid; gap: 6px; }
 /* Не жёсткая высота, а нижняя граница: при увеличенном интерфейсе имя,
    роль и полоска здоровья перестали помещаться в 68px и подрезались. */
-.player-card { position: relative; min-height: 68px; border: 1px solid transparent; border-radius: 7px; padding: 8px; display: grid; grid-template-columns: 39px minmax(0,1fr) 20px; align-items: center; gap: 9px; background: transparent; cursor: pointer; text-align: left; overflow: hidden; transition: .18s; }
+.player-card { position: relative; min-height: 68px; border: 1px solid transparent; border-radius: 7px; padding: 8px; display: grid; grid-template-columns: 47px minmax(0,1fr) 20px; align-items: center; gap: 9px; background: transparent; cursor: pointer; text-align: left; overflow: hidden; transition: .18s; }
 .player-card:hover { background: rgba(255,255,255,.025); }
 .player-card.active { border-color: rgba(210,155,88,.25); background: rgba(185,126,62,.075); }
 .player-card.locked { opacity: .48; cursor: not-allowed; }.player-card.locked:hover { background: transparent; }.player-card.locked .player-name-row svg { color: #716861; }
-.avatar { position: relative; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--avatar), white 20%); background: color-mix(in srgb, var(--avatar), #191512 62%); font-family: Spectral, serif; font-size: var(--fs-xs); color: #eee3d5; box-shadow: inset 0 0 0 3px rgba(0,0,0,.2); }
+.avatar { position: relative; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--avatar), white 20%); background: color-mix(in srgb, var(--avatar), #191512 62%); font-family: Spectral, serif; font-size: var(--fs-xs); color: #eee3d5; box-shadow: inset 0 0 0 3px rgba(0,0,0,.2); }
 .portrait-avatar { background-size: 200% 200%; background-repeat: no-repeat; box-shadow: inset 0 0 0 2px rgba(0,0,0,.22), 0 3px 8px rgba(0,0,0,.25); }
 .presence { position: absolute; right: -1px; bottom: 0; width: 9px; height: 9px; border: 2px solid #171512; border-radius: 50%; background: #5a5550; }
 .presence.online { background: #76a37b; }
@@ -345,7 +345,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .player-hud-stack > .dice-tray:not(.dice-tray--rolling) .dice-tray__die { width: 49px; height: 45px; }
 .player-hud-stack > .dice-tray--rolling { position: fixed; }
 .hud-identity { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
-.hud-portrait { width: 42px; height: 42px; flex: 0 0 auto; border: 1px solid rgba(216,168,107,.3); border-radius: 6px; background-size: 200% 200%; background-repeat: no-repeat; }
+.hud-portrait { width: 54px; height: 54px; flex: 0 0 auto; border: 1px solid rgba(216,168,107,.3); border-radius: 6px; background-size: 200% 200%; background-repeat: no-repeat; }
 .hud-identity > span { min-width: 0; display: grid; }
 .hud-identity small { color: #856944; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .14em; }
 .hud-identity strong { margin-top: 1px; overflow: hidden; color: #d5cabd; font: 600 var(--fs-md) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
@@ -528,7 +528,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .sidebar:not(.collapsed) .collapse-button { display: grid; }
   .sidebar:not(.collapsed) .main-nav { padding: 18px 13px; }.sidebar:not(.collapsed) .sidebar-section { padding: 17px 12px; }.sidebar:not(.collapsed) .sidebar-bottom { padding: 11px 13px 14px; }
   .sidebar:not(.collapsed) .nav-item { justify-content: flex-start; padding: 0 13px; }
-  .sidebar:not(.collapsed) .player-card { width: 100%; min-height: 68px; grid-template-columns: 39px minmax(0,1fr) 20px; padding: 8px; justify-items: initial; }
+  .sidebar:not(.collapsed) .player-card { width: 100%; min-height: 68px; grid-template-columns: 47px minmax(0,1fr) 20px; padding: 8px; justify-items: initial; }
   .sidebar:not(.collapsed) .demo-badge { justify-content: flex-start; padding: 8px 13px; }
   .game-main { height: 100dvh; }
   .topbar { height: 58px; flex-basis: 58px; padding: 0 12px; }
