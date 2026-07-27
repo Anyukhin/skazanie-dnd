@@ -1051,9 +1051,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       <div className="map-scale-plate">1 клетка = 5 футов</div>
       {/* Режим стоит над полем по центру: он описывает то, что происходит на
           карте, и читается раньше, чем взгляд уходит к панели действий. */}
-      {!combatActive && <div className="map-mode-plate" aria-label="Режим исследования">
-        <small>ИССЛЕДОВАНИЕ</small><strong>{activeName} движется свободно</strong>
-      </div>}
+      {!combatActive && <div className="map-mode-plate" role="status">Исследование</div>}
       <div className="map-legend">
         <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг · параметры скрыты</span><span><i className="legend-dot interest" />Интерес</span>
       </div>
