@@ -1186,7 +1186,9 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           <aside className="hotbar-detail" aria-live="polite">
             {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
               <strong>Вне боя</strong>
-              <p>Мирные заклинания — лечение, усиление, утилита, призыв — творятся прямо здесь: выберите плитку и цель на карте. Всё, что бьёт, требует инициативы.</p>
+              {/* Коротко намеренно: колонка держит три строки, а при увеличенном
+                  интерфейсе — две, и хвост длинного текста просто обрезался бы. */}
+              <p>Лечение, усиление и утилита творятся прямо здесь. Всё, что бьёт, требует инициативы.</p>
               <span>Свободные действия — строкой «Своими словами» ниже</span>
             </> : combatMode === 'magic' && selectedSpell ? <>
               <strong>{selectedSpell.name}</strong>
@@ -2146,6 +2148,12 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [creatingPlayerId, heroWizardDismissed, ownedHeroIds, partyPlayers])
   useEffect(() => {
     window.localStorage.setItem(UI_SCALE_KEY, String(uiScale))
+    /* Масштаб живёт на корне документа, а не на `.app`: шкала кегля объявлена
+       в `:root`, и подстановка `calc(13px * var(--ui-readable-scale))` считается
+       там же. Пока переменную ставили на `.app`, при вычислении шкалы её ещё не
+       было, и настройка не действовала ни на что. Заодно её видят экраны вне
+       `.app` — вход, гибель отряда, модальные окна. */
+    document.documentElement.style.setProperty('--ui-readable-scale', String(uiScale / 100))
   }, [uiScale])
   useEffect(() => { window.localStorage.setItem('skazanie-auto-attack-roll', String(autoAttackRoll)) }, [autoAttackRoll])
   useEffect(() => { window.localStorage.setItem(SCENIC_BACKDROP_KEY, String(scenicBackdrop)) }, [scenicBackdrop])
@@ -2239,7 +2247,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
 
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`} style={{
-      '--ui-readable-scale': uiScale / 100,
       '--ui-sidebar-width': `${Math.round(276 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>

@@ -22,112 +22,115 @@
 .merchant-nav-dot { width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: #729678; box-shadow: 0 0 8px rgba(111, 164, 119, .55); }
 .collapsed .merchant-nav-dot { position: absolute; right: 8px; top: 8px; }
 .merchant-page-head { max-width: 1280px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
-.merchant-page-head > div:first-child > span { color: #a77843; font-size: calc(8px * var(--ui-readable-scale, 1)); font-weight: 700; letter-spacing: .18em; }
+.merchant-page-head > div:first-child > span { color: #a77843; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .18em; }
 .merchant-page-head h1 { margin: 5px 0 3px; color: #e1d6c8; font: 600 clamp(27px, 3vw, 38px) Spectral, serif; }
-.merchant-page-head p { margin: 0; color: #766f68; font: calc(11px * var(--ui-readable-scale, 1)) Spectral, serif; }
+.merchant-page-head p { margin: 0; color: #766f68; font: var(--fs-xxs) Spectral, serif; }
 .merchant-location { max-width: 340px; display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; color: #a27748; background: rgba(255,255,255,.015); }
 .merchant-location > span { min-width: 0; display: grid; }
-.merchant-location small { color: #625a52; font-size: calc(6px * var(--ui-readable-scale, 1)); letter-spacing: .11em; }
-.merchant-location b { overflow: hidden; color: #ada195; font: 600 calc(10px * var(--ui-readable-scale, 1)) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.merchant-location small { color: #625a52; font-size: var(--fs-xxs); letter-spacing: .11em; }
+.merchant-location b { overflow: hidden; color: #ada195; font: 600 var(--fs-xs) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .merchant-mode-warning, .merchant-error { max-width: 1280px; display: flex; align-items: center; gap: 11px; margin-bottom: 13px; padding: 11px 13px; border: 1px solid rgba(181, 127, 64, .19); border-radius: 6px; background: rgba(151, 96, 38, .07); color: #bc8950; }
 .merchant-mode-warning > div { display: grid; gap: 2px; }
-.merchant-mode-warning b { color: #c7a277; font: 600 calc(11px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-mode-warning p { margin: 0; color: #74675a; font-size: calc(8px * var(--ui-readable-scale, 1)); }
-.merchant-error { border-color: rgba(175, 76, 65, .22); background: rgba(135, 52, 44, .08); color: #b9786e; font-size: calc(9px * var(--ui-readable-scale, 1)); }
+.merchant-mode-warning b { color: #c7a277; font: 600 var(--fs-xxs) Spectral, serif; }
+.merchant-mode-warning p { margin: 0; color: #74675a; font-size: var(--fs-xs); }
+.merchant-error { border-color: rgba(175, 76, 65, .22); background: rgba(135, 52, 44, .08); color: #b9786e; font-size: var(--fs-xs); }
 .merchant-error span { flex: 1; }
 .merchant-error button { height: 29px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid rgba(185, 100, 88, .2); border-radius: 4px; background: transparent; color: #b9786e; cursor: pointer; }
 .merchant-selector { max-width: 1280px; display: flex; gap: 7px; margin-bottom: 12px; }
-.merchant-selector button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 5px; background: rgba(0,0,0,.13); color: #756d65; font-size: calc(8px * var(--ui-readable-scale, 1)); cursor: pointer; }
+.merchant-selector button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 5px; background: rgba(0,0,0,.13); color: #756d65; font-size: var(--fs-xs); cursor: pointer; }
 .merchant-selector button.active { border-color: rgba(201, 149, 85, .28); background: rgba(173, 111, 49, .08); color: #c48f54; }
 .merchant-selector button:disabled { opacity: .45; cursor: wait; }
 .merchant-layout { max-width: 1280px; display: grid; grid-template-columns: minmax(250px, .62fr) minmax(520px, 1.65fr); gap: 14px; align-items: start; }
 .merchant-profile, .merchant-market { min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: rgba(25, 22, 19, .9); box-shadow: 0 16px 42px rgba(0,0,0,.17); }
 .merchant-profile { position: sticky; top: 0; padding: 22px; text-align: center; }
-.merchant-avatar { position: relative; width: 92px; height: 92px; display: grid; place-items: center; margin: 0 auto 12px; overflow: hidden; border: 1px solid rgba(207, 157, 96, .3); border-radius: 50%; background: radial-gradient(circle at 40% 35%, #5b4128, #241b14 67%); box-shadow: inset 0 0 0 5px rgba(10,8,7,.28), 0 12px 28px rgba(0,0,0,.28); color: #e0b77e; font: 600 25px Spectral, serif; }
+.merchant-avatar { position: relative; width: 92px; height: 92px; display: grid; place-items: center; margin: 0 auto 12px; overflow: hidden; border: 1px solid rgba(207, 157, 96, .3); border-radius: 50%; background: radial-gradient(circle at 40% 35%, #5b4128, #241b14 67%); box-shadow: inset 0 0 0 5px rgba(10,8,7,.28), 0 12px 28px rgba(0,0,0,.28); color: #e0b77e; font: 600 var(--fs-3xl) Spectral, serif; }
 .merchant-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .merchant-avatar i { position: absolute; right: 5px; bottom: 8px; width: 13px; height: 13px; border: 3px solid #241d17; border-radius: 50%; background: #729678; }
-.merchant-status { display: inline-flex; align-items: center; gap: 5px; color: #79937b; font-size: calc(6px * var(--ui-readable-scale, 1)); font-weight: 700; letter-spacing: .09em; }
+.merchant-status { display: inline-flex; align-items: center; gap: 5px; color: #79937b; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .09em; }
 .merchant-status.unavailable { color: #9b6d62; }
-.merchant-profile h2 { margin: 6px 0 1px; color: #d9ccbd; font: 600 calc(22px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-profile > small { color: #9c7448; font-size: calc(8px * var(--ui-readable-scale, 1)); }
-.merchant-profile > p { margin: 12px 0 15px; color: #746d65; font: calc(10px * var(--ui-readable-scale, 1))/1.55 Spectral, serif; }
-.merchant-profile blockquote { position: relative; margin: 0; padding: 13px 13px 13px 34px; border: 1px solid rgba(204, 153, 90, .13); border-radius: 6px; background: rgba(154, 99, 42, .05); color: #9d8b77; font: italic calc(10px * var(--ui-readable-scale, 1))/1.5 Spectral, serif; text-align: left; }
+.merchant-profile h2 { margin: 6px 0 1px; color: #d9ccbd; font: 600 var(--fs-3xl) Spectral, serif; }
+.merchant-profile > small { color: #9c7448; font-size: var(--fs-xs); }
+.merchant-profile > p { margin: 12px 0 15px; color: #746d65; font: var(--fs-xs)/1.55 Spectral, serif; }
+.merchant-profile blockquote { position: relative; margin: 0; padding: 13px 13px 13px 34px; border: 1px solid rgba(204, 153, 90, .13); border-radius: 6px; background: rgba(154, 99, 42, .05); color: #9d8b77; font: italic var(--fs-xs)/1.5 Spectral, serif; text-align: left; }
 .merchant-profile blockquote svg { position: absolute; left: 11px; top: 14px; color: #9c7142; }
 .merchant-policy { display: flex; align-items: flex-start; gap: 9px; margin-top: 13px; padding: 12px; border-radius: 6px; background: rgba(0,0,0,.14); color: #9b764e; text-align: left; }
 .merchant-policy > span { display: grid; min-width: 0; }
-.merchant-policy b { color: #a99b8c; font: 600 calc(10px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-policy p { margin: 3px 0 7px; color: #686159; font-size: calc(7px * var(--ui-readable-scale, 1)); line-height: 1.5; }
-.merchant-policy small { overflow: hidden; color: #765b3e; font-size: calc(6px * var(--ui-readable-scale, 1)); letter-spacing: .08em; text-overflow: ellipsis; }
-.merchant-bargain { width: 100%; height: 39px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; border: 1px solid rgba(204, 153, 89, .3); border-radius: 5px; background: linear-gradient(145deg, rgba(135, 88, 43, .2), rgba(83, 55, 31, .12)); color: #cc985c; font-size: calc(9px * var(--ui-readable-scale, 1)); font-weight: 700; cursor: pointer; }
+.merchant-policy b { color: #a99b8c; font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-policy p { margin: 3px 0 7px; color: #686159; font-size: var(--fs-xxs); line-height: 1.5; }
+.merchant-policy small { overflow: hidden; color: #765b3e; font-size: var(--fs-xxs); letter-spacing: .08em; text-overflow: ellipsis; }
+.merchant-bargain { width: 100%; height: 39px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; border: 1px solid rgba(204, 153, 89, .3); border-radius: 5px; background: linear-gradient(145deg, rgba(135, 88, 43, .2), rgba(83, 55, 31, .12)); color: #cc985c; font-size: var(--fs-xs); font-weight: 700; cursor: pointer; }
 .merchant-bargain:hover:not(:disabled), .merchant-item-actions > button:hover:not(:disabled) { filter: brightness(1.15); }
 .merchant-bargain:disabled, .merchant-item-actions > button:disabled, .merchant-wallet button:disabled { opacity: .4; cursor: not-allowed; }
 .merchant-bargain-result { display: grid; gap: 2px; margin-top: 8px; padding: 9px; border: 1px solid rgba(105, 150, 108, .17); border-radius: 5px; background: rgba(71, 109, 74, .07); color: #779479; text-align: left; }
 .merchant-bargain-result.failure { border-color: rgba(161, 91, 73, .16); background: rgba(120, 60, 49, .06); color: #9b6d62; }
-.merchant-bargain-result b { font: 600 calc(9px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-bargain-result span { color: #726b63; font-size: calc(7px * var(--ui-readable-scale, 1)); }
+.merchant-bargain-result b { font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-bargain-result span { color: #726b63; font-size: var(--fs-xxs); }
 .merchant-market { overflow: hidden; }
 .merchant-wallet { min-height: 69px; display: flex; align-items: center; gap: 15px; padding: 11px 14px; border-bottom: 1px solid var(--line); background: rgba(0,0,0,.1); }
 .merchant-wallet > div:first-child { display: flex; align-items: center; gap: 9px; color: #af7e47; }
 .merchant-wallet > div:first-child span { display: grid; }
-.merchant-wallet small { color: #665e56; font-size: calc(6px * var(--ui-readable-scale, 1)); letter-spacing: .08em; }
-.merchant-wallet > div:first-child b { color: #c2b4a4; font: 600 calc(12px * var(--ui-readable-scale, 1)) Spectral, serif; }
+.merchant-wallet small { color: #665e56; font-size: var(--fs-xxs); letter-spacing: .08em; }
+.merchant-wallet > div:first-child b { color: #c2b4a4; font: 600 var(--fs-xs) Spectral, serif; }
 .merchant-purse { display: flex; align-items: center; gap: 8px; padding-left: 14px; border-left: 1px solid var(--line); color: #7d966f; }
 .merchant-purse span { display: grid; }
-.merchant-purse b { color: #a9b89e; font: 600 calc(11px * var(--ui-readable-scale, 1)) Spectral, serif; }
+.merchant-purse b { color: #a9b89e; font: 600 var(--fs-xxs) Spectral, serif; }
 .merchant-coins { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .merchant-coins span { min-width: 43px; display: grid; justify-items: center; padding: 6px 7px; border: 1px solid rgba(255,255,255,.045); border-radius: 4px; background: rgba(255,255,255,.016); }
-.merchant-coins b { color: #a99d90; font: 600 calc(11px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-wallet button { height: 31px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: #80766c; font-size: calc(7px * var(--ui-readable-scale, 1)); cursor: pointer; }
+.merchant-coins b { color: #a99d90; font: 600 var(--fs-xxs) Spectral, serif; }
+.merchant-wallet button { height: 31px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: #80766c; font-size: var(--fs-xxs); cursor: pointer; }
 .merchant-tabs { display: flex; border-bottom: 1px solid var(--line); }
-.merchant-tabs button { height: 45px; display: flex; align-items: center; gap: 7px; padding: 0 18px; border: 0; border-right: 1px solid var(--line); background: transparent; color: #736b63; font-size: calc(9px * var(--ui-readable-scale, 1)); cursor: pointer; }
-.merchant-tabs button b { min-width: 20px; padding: 3px 5px; border-radius: 10px; background: rgba(255,255,255,.035); color: #857b70; font-size: calc(7px * var(--ui-readable-scale, 1)); }
+.merchant-tabs button { height: 45px; display: flex; align-items: center; gap: 7px; padding: 0 18px; border: 0; border-right: 1px solid var(--line); background: transparent; color: #736b63; font-size: var(--fs-xs); cursor: pointer; }
+.merchant-tabs button b { min-width: 20px; padding: 3px 5px; border-radius: 10px; background: rgba(255,255,255,.035); color: #857b70; font-size: var(--fs-xxs); }
 .merchant-tabs button.active { color: #ca9559; background: rgba(163, 104, 47, .06); box-shadow: inset 0 -2px #b77e41; }
 .merchant-items { display: grid; gap: 10px; padding: 12px; }
 .merchant-item { overflow: hidden; border: 1px solid rgba(255,255,255,.055); border-radius: 7px; background: rgba(0,0,0,.09); }
 .merchant-item-title { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; align-items: start; padding: 13px; }
 .merchant-item-title > svg { width: 32px; height: 32px; padding: 7px; border-radius: 5px; background: rgba(154, 105, 52, .07); color: #9d7347; }
 .merchant-item-title > span { min-width: 0; }
-.merchant-item-title small { display: block; overflow: hidden; color: #625b54; font-size: calc(6px * var(--ui-readable-scale, 1)); letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
-.merchant-item-title h3 { margin: 2px 0; color: #c9bcad; font: 600 calc(14px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-item-title p { margin: 0; color: #706860; font: calc(8px * var(--ui-readable-scale, 1))/1.4 Spectral, serif; }
-.merchant-item-title em { padding: 4px 6px; border-radius: 3px; background: rgba(84, 119, 87, .07); color: #748976; font-size: calc(6px * var(--ui-readable-scale, 1)); font-style: normal; white-space: nowrap; }
+.merchant-item-title small { display: block; overflow: hidden; color: #625b54; font-size: var(--fs-xxs); letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
+.merchant-item-title h3 { margin: 2px 0; color: #c9bcad; font: 600 var(--fs-md) Spectral, serif; }
+.merchant-item-title p { margin: 0; color: #706860; font: var(--fs-xs)/1.4 Spectral, serif; }
+.merchant-item-title em { padding: 4px 6px; border-radius: 3px; background: rgba(84, 119, 87, .07); color: #748976; font-size: var(--fs-xxs); font-style: normal; white-space: nowrap; }
 .merchant-quote { padding: 0 13px 11px; }
-.merchant-server-badge { width: max-content; display: flex; align-items: center; gap: 5px; margin-bottom: 7px; color: #709375; font-size: calc(6px * var(--ui-readable-scale, 1)); font-weight: 700; letter-spacing: .08em; }
+.merchant-server-badge { width: max-content; display: flex; align-items: center; gap: 5px; margin-bottom: 7px; color: #709375; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .08em; }
 .merchant-price-flow { display: grid; grid-template-columns: minmax(78px,1fr) auto minmax(98px,1.2fr) auto minmax(94px,1.1fr) auto minmax(90px,1fr); align-items: stretch; gap: 5px; }
 .merchant-price-flow > span { min-width: 0; display: grid; align-content: center; gap: 2px; padding: 7px 8px; border-radius: 4px; background: rgba(255,255,255,.02); }
-.merchant-price-flow small { overflow: hidden; color: #5d5650; font-size: calc(5px * var(--ui-readable-scale, 1)); letter-spacing: .07em; text-overflow: ellipsis; white-space: nowrap; }
-.merchant-price-flow b { color: #9e9285; font: 600 calc(10px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-price-flow > i { align-self: center; color: #4f4841; font-size: 11px; font-style: normal; }
+.merchant-price-flow small { overflow: hidden; color: #5d5650; font-size: var(--fs-xxs); letter-spacing: .07em; text-overflow: ellipsis; white-space: nowrap; }
+.merchant-price-flow b { color: #9e9285; font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-price-flow > i { align-self: center; color: #4f4841; font-size: var(--fs-xxs); font-style: normal; }
 .merchant-price-flow .merchant-final-price { background: rgba(161, 108, 49, .08); }
 .merchant-price-flow .merchant-final-price small { color: #775b3c; }
 .merchant-price-flow .merchant-final-price b { color: #cc995d; }
 .merchant-price-flow.compact { grid-template-columns: minmax(140px, auto) 1fr; }
-.merchant-price-flow.compact p { align-self: center; margin: 0; color: #625b54; font-size: calc(7px * var(--ui-readable-scale, 1)); }
+.merchant-price-flow.compact p { align-self: center; margin: 0; color: #625b54; font-size: var(--fs-xxs); }
 .merchant-transaction-total { display: flex; align-items: center; justify-content: flex-end; gap: 13px; margin-top: 8px; padding: 9px 10px; border: 1px solid rgba(201, 149, 85, .12); border-radius: 4px; background: rgba(152, 96, 40, .045); }
-.merchant-transaction-total > span { margin-right: auto; color: #735a40; font-size: calc(6px * var(--ui-readable-scale, 1)); font-weight: 700; letter-spacing: .09em; }
-.merchant-transaction-total b { display: flex; align-items: baseline; gap: 7px; color: #7f7469; font: 600 calc(10px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-transaction-total b i { color: #65594d; font-size: .8em; font-style: normal; }
-.merchant-transaction-total b strong { color: #d2a265; font-size: calc(13px * var(--ui-readable-scale, 1)); }
-.merchant-no-quote { margin: 0 13px 11px; padding: 8px; border: 1px dashed rgba(255,255,255,.065); border-radius: 4px; color: #635c55; font-size: calc(7px * var(--ui-readable-scale, 1)); text-align: center; }
+.merchant-transaction-total > span { margin-right: auto; color: #735a40; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .09em; }
+.merchant-transaction-total b { display: flex; align-items: baseline; gap: 7px; color: #7f7469; font: 600 var(--fs-xs) Spectral, serif; }
+/* Множитель `.8em` уводил знак умножения на 9.6px мимо шкалы; `small` рядом
+   ужимался браузерным умолчанием до 10px. Оба переведены на шкалу. */
+.merchant-transaction-total b i { color: #65594d; font-size: var(--fs-xxs); font-style: normal; }
+.merchant-transaction-total b small { font-size: var(--fs-xxs); }
+.merchant-transaction-total b strong { color: #d2a265; font-size: var(--fs-sm); }
+.merchant-no-quote { margin: 0 13px 11px; padding: 8px; border: 1px dashed rgba(255,255,255,.065); border-radius: 4px; color: #635c55; font-size: var(--fs-xxs); text-align: center; }
 .merchant-item-actions { min-height: 55px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 9px 13px; border-top: 1px solid rgba(255,255,255,.045); background: rgba(0,0,0,.1); }
 .merchant-quantity { display: grid; gap: 3px; margin-right: auto; }
-.merchant-quantity > span { color: #5f5750; font-size: calc(5px * var(--ui-readable-scale, 1)); letter-spacing: .08em; }
-.merchant-quantity input { width: 64px; height: 29px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px; outline: none; background: rgba(0,0,0,.17); color: #b5a99c; font-size: calc(9px * var(--ui-readable-scale, 1)); }
+.merchant-quantity > span { color: #5f5750; font-size: var(--fs-xxs); letter-spacing: .08em; }
+.merchant-quantity input { width: 64px; height: 29px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px; outline: none; background: rgba(0,0,0,.17); color: #b5a99c; font-size: var(--fs-xs); }
 .merchant-quantity input:focus { border-color: rgba(203, 151, 88, .35); }
-.merchant-item-actions > button { min-width: 190px; height: 33px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid rgba(203, 151, 88, .3); border-radius: 4px; background: rgba(171, 112, 52, .09); color: #c18e54; font-size: calc(8px * var(--ui-readable-scale, 1)); cursor: pointer; }
-.merchant-refusal { margin: -3px 13px 10px; color: #9b6a61; font-size: calc(7px * var(--ui-readable-scale, 1)); }
+.merchant-item-actions > button { min-width: 190px; height: 33px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid rgba(203, 151, 88, .3); border-radius: 4px; background: rgba(171, 112, 52, .09); color: #c18e54; font-size: var(--fs-xs); cursor: pointer; }
+.merchant-refusal { margin: -3px 13px 10px; color: #9b6a61; font-size: var(--fs-xxs); }
 .merchant-appraisal-note { display: flex; align-items: flex-start; gap: 9px; margin: 0 13px 11px; padding: 10px; border: 1px solid rgba(124, 151, 105, .17); border-radius: 5px; background: rgba(86, 117, 72, .06); color: #829b73; }
 .merchant-appraisal-note span { display: grid; gap: 2px; }
-.merchant-appraisal-note b { color: #a8b89c; font: 600 calc(9px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-appraisal-note small, .merchant-appraisal-hint { color: #6f7868; font-size: calc(7px * var(--ui-readable-scale, 1)); line-height: 1.45; }
+.merchant-appraisal-note b { color: #a8b89c; font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-appraisal-note small, .merchant-appraisal-hint { color: #6f7868; font-size: var(--fs-xxs); line-height: 1.45; }
 .merchant-appraisal-hint { margin-right: auto; }
 .merchant-loading, .merchant-list-empty, .merchant-empty-state { display: grid; place-items: center; align-content: center; gap: 7px; min-height: 260px; padding: 35px; color: #80664a; text-align: center; }
-.merchant-loading b, .merchant-list-empty b { color: #a4988b; font: 600 calc(13px * var(--ui-readable-scale, 1)) Spectral, serif; }
-.merchant-loading span, .merchant-list-empty span { color: #625b54; font-size: calc(8px * var(--ui-readable-scale, 1)); }
+.merchant-loading b, .merchant-list-empty b { color: #a4988b; font: 600 var(--fs-sm) Spectral, serif; }
+.merchant-loading span, .merchant-list-empty span { color: #625b54; font-size: var(--fs-xs); }
 .merchant-empty-state { min-height: 65vh; }
-.merchant-empty-state > span { color: #9d7040; font-size: calc(7px * var(--ui-readable-scale, 1)); font-weight: 700; letter-spacing: .16em; }
+.merchant-empty-state > span { color: #9d7040; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .16em; }
 .merchant-empty-state h1 { margin: 0; color: #cfc3b5; font: 600 clamp(25px, 4vw, 38px) Spectral, serif; }
-.merchant-empty-state p { max-width: 500px; margin: 0; color: #716960; font: calc(10px * var(--ui-readable-scale, 1))/1.55 Spectral, serif; }
+.merchant-empty-state p { max-width: 500px; margin: 0; color: #716960; font: var(--fs-xs)/1.55 Spectral, serif; }
 
 @media (max-width: 1100px) {
   .merchant-layout { grid-template-columns: minmax(220px, .55fr) minmax(480px, 1.45fr); }
