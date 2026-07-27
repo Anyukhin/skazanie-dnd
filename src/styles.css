@@ -583,10 +583,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .mechanics-support-badge { position: absolute; top: 4px; right: 4px; z-index: 2; max-width: calc(100% - 8px); padding: 2px 4px; overflow: hidden; border: 1px solid currentColor; border-radius: 3px; background: rgba(15,13,11,.94); font: normal 700 var(--fs-xs)/1 Manrope, sans-serif; letter-spacing: .045em; text-overflow: ellipsis; white-space: nowrap; }
 .combat-hotbar .mechanics-support-badge { top: auto; right: auto; bottom: 4px; left: 4px; max-width: 65px; }
 .spellbook-panel .mechanics-support-badge { top: auto; right: auto; bottom: 4px; left: 4px; }
-.mechanics-support-badge.support-partial, .mechanics-support-detail.support-partial { color: #d7ad66; }
-.mechanics-support-badge.support-heuristic, .mechanics-support-detail.support-heuristic { color: #c58b62; }
-.mechanics-support-badge.support-ruling-only, .mechanics-support-detail.support-ruling-only { color: #cf746f; }
-.mechanics-support-badge.support-verified, .mechanics-support-detail.support-verified { color: #75aa8d; }
+.mechanics-support-badge.support-partial { color: #d7ad66; }
+.mechanics-support-badge.support-heuristic { color: #c58b62; }
+.mechanics-support-badge.support-ruling-only { color: #cf746f; }
+.mechanics-support-badge.support-verified { color: #75aa8d; }
 .spellbook-panel article.support-heuristic, .spellbook-panel article.support-ruling-only { border-color: rgba(197,116,96,.28); }
 
 .combat-hotbar .action-tile.spellbook-tile { color: #d0a96f; background: radial-gradient(circle at 50% 18%, rgba(145,99,48,.22), rgba(28,22,16,.94) 70%); }
@@ -766,6 +766,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    пришлось бы заучивать, а число футов и «К» игрок уже видел на плитках. */
 .detail-chip { flex: 0 0 auto; height: 20px; padding: 0 8px; display: inline-flex; align-items: center; border: 1px solid rgba(222,201,171,.18); border-radius: 10px; color: #a2957f; font: 600 var(--fs-xs) Manrope, sans-serif; font-style: normal; white-space: nowrap; }
 .detail-chip.mark { width: 20px; padding: 0; justify-content: center; border-color: rgba(214,161,96,.4); color: #d0a36c; }
+/* Знак поддержки механики держит те же цвета, что и значок на плитке. */
+.detail-chip.mark.support-partial { border-color: rgba(215,173,102,.5); color: #d7ad66; }
+.detail-chip.mark.support-heuristic { border-color: rgba(197,139,98,.5); color: #c58b62; }
+.detail-chip.mark.support-ruling-only { border-color: rgba(207,116,111,.5); color: #cf746f; }
 
 /* Название и метки в одной строке: кнопка не уводит взгляд и не занимает
    отдельной строки в и без того невысокой колонке. */
@@ -776,7 +780,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Подпись переносится, а не обрезается: «на себя — нажмите „Подтвердить“» в
    узкой колонке заканчивалось многоточием ровно там, где начиналось дело. */
 .hotbar-detail span { color: #c8a06a; font: var(--fs-lg)/1.35 Manrope, sans-serif; }
-.hotbar-detail .mechanics-support-detail { width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid currentColor; border-radius: 4px; font: normal 700 var(--fs-lg)/1 Manrope, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
 
 .combat-icon { position: relative; z-index: 0; display: inline-grid; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid hsl(var(--combat-icon-hue) 58% 55% / .3); border-radius: 6px; background-image: radial-gradient(circle at 50% 42%, hsl(var(--combat-icon-hue) 52% 24% / .4), transparent 58%), linear-gradient(145deg, rgba(42,36,31,.7), rgba(12,11,10,.84)), url('/assets/ui/combat-icon-texture.png'); background-position: center, center, var(--combat-icon-bg-x) var(--combat-icon-bg-y); background-size: auto, auto, 112px 112px; background-blend-mode: screen, normal, soft-light; box-shadow: inset 0 1px rgba(255,245,220,.08), inset 0 -2px 4px rgba(0,0,0,.7), 0 2px 5px rgba(0,0,0,.4); color: hsl(var(--combat-icon-hue) 92% 70%); isolation: isolate; }
 /* Запасной размер: компонент задаёт width/height, только если ему передали size.
