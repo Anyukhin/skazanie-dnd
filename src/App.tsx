@@ -466,10 +466,10 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   onClearTacticalError: () => void
   onStartCombat: () => void
   onMove: (actorId: string, x: number, y: number) => void
-  onAttack: (actorId: string, enemyId: string, itemId?: string, knockOut?: boolean) => void
-  onAreaAttack: (actorId: string, itemId: string, x: number, y: number) => void
-  onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean })) => void
-  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string) => void
+  onAttack: (actorId: string, enemyId: string, itemId?: string, knockOut?: boolean, note?: string) => void
+  onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => void
+  onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean; note?: string })) => void
+  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => void
   onChangeWeapon: (actorId: string, itemId: string) => void
   onFinishTurn: () => void
   onFreeAction: (text: string) => void
@@ -608,10 +608,10 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const selfCastSpell = combatMode === 'magic' && selectedSpell?.target === 'self' && spellEconomyReady ? selectedSpell : null
   const selfUseAction = combatMode === 'action' && selectedCombatAction?.target === 'self' && selectedActionEconomyReady ? selectedCombatAction : null
   const selfCastReady = Boolean(selected && !tacticalBusy && (selfCastSpell || selfUseAction))
-  const confirmSelfCast = () => {
+  const confirmSelfCast = (note?: string) => {
     if (!selected) return
-    if (selfCastSpell) onCastSpell(selected, selfCastSpell.id, { targetId: selected, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}) })
-    else if (selfUseAction) onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined)
+    if (selfCastSpell) onCastSpell(selected, selfCastSpell.id, { targetId: selected, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(note ? { note } : {}) })
+    else if (selfUseAction) onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
   }
   /* Выбор надо уметь снять. Вне боя плитка базовой атаки закрыта, и без этой
      кнопки подтверждение висело бы до следующего выбранного заклинания. */
@@ -756,16 +756,30 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     setCombatMode('action')
     // Как и заклинание на себя: выбор, описание, и только потом подтверждение.
   }
-  const confirmPreparedCommand = () => {
+  /* Что именно уедет по «Отправить». Ярлык показывается прямо в строке ввода,
+     поэтому игрок видит выбранное действие там же, где пишет слова к нему. */
+  const preparedLabel = (() => {
+    if (pendingCommand?.kind === 'target') return `${selectedItem?.name ?? 'Базовая атака'} → ${pendingTargetName ?? 'цель'}`
+    if (pendingCommand?.kind === 'area') return `${selectedItem?.name ?? 'Бросок'} → клетка`
+    if (pendingCommand?.kind === 'spell-target') return `${selectedSpell?.name ?? 'Заклинание'} → ${pendingTargetName ?? 'цель'}`
+    if (pendingCommand?.kind === 'spell-point') return `${selectedSpell?.name ?? 'Заклинание'} → клетка`
+    if (pendingCommand?.kind === 'action-target') return `${selectedCombatAction?.name ?? 'Действие'} → ${pendingTargetName ?? 'цель'}`
+    if (selfCastSpell) return `${selfCastSpell.name} → на себя`
+    if (selfUseAction) return `${selfUseAction.name} → на себя`
+    return null
+  })()
+  const clearPrepared = () => { setPendingCommand(null); setCombatMode('weapon') }
+
+  const confirmPreparedCommand = (note?: string) => {
     if (!selected || !pendingCommand) return
-    if (pendingCommand.kind === 'target') onAttack(selected, pendingCommand.targetId, selectedItem?.id, knockOut && knockoutEligible)
-    else if (pendingCommand.kind === 'area' && selectedItem) onAreaAttack(selected, selectedItem.id, pendingCommand.x, pendingCommand.y)
+    if (pendingCommand.kind === 'target') onAttack(selected, pendingCommand.targetId, selectedItem?.id, knockOut && knockoutEligible, note)
+    else if (pendingCommand.kind === 'area' && selectedItem) onAreaAttack(selected, selectedItem.id, pendingCommand.x, pendingCommand.y, note)
     else if (pendingCommand.kind === 'spell-target' && selectedSpell) {
-      onCastSpell(selected, selectedSpell.id, { targetId: pendingCommand.targetId, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(knockOut && knockoutEligible ? { knockOut: true } : {}) })
+      onCastSpell(selected, selectedSpell.id, { targetId: pendingCommand.targetId, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(knockOut && knockoutEligible ? { knockOut: true } : {}), ...(note ? { note } : {}) })
     } else if (pendingCommand.kind === 'spell-point' && selectedSpell) {
-      onCastSpell(selected, selectedSpell.id, { x: pendingCommand.x, y: pendingCommand.y })
+      onCastSpell(selected, selectedSpell.id, { x: pendingCommand.x, y: pendingCommand.y, ...(note ? { note } : {}) })
     } else if (pendingCommand.kind === 'action-target' && selectedCombatAction) {
-      onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined)
+      onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
     }
     setPendingCommand(null)
   }
@@ -1149,8 +1163,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           </div>}
           {pendingCommand && <div className="combat-command-confirmation">
             <header><Target size={14} /><span><small>ЦЕЛЬ ЗАФИКСИРОВАНА</small><strong>{pendingCommandLabel}</strong></span></header>
-            <p>Команда ещё не отправлена. Проверьте цель и подтвердите действие.</p>
-            <div><button disabled={tacticalBusy} onClick={confirmPreparedCommand}><Check size={13} />{pendingCommand.kind === 'target' || pendingCommand.kind === 'area' ? 'Бросить' : 'Подтвердить'}</button><button onClick={() => { setPendingCommand(null); setAimCell(null); setInspectedTarget(null) }} aria-label="Отменить выбранную команду"><X size={13} /></button></div>
+            <p>Команда ждёт в строке действия внизу: добавьте слова, если хотите, и нажмите «Отправить».</p>
+            <div><button onClick={() => { setPendingCommand(null); setAimCell(null); setInspectedTarget(null) }}><X size={13} />Отменить</button></div>
           </div>}
           {previewRoute && <div className={`movement-preview ${pendingMoveKey ? 'selected' : ''}`}>
             <span><Footprints size={14} /><b>{previewRoute.costFeet} фт</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
@@ -1165,21 +1179,42 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           принципы 2 и 3 требуют, чтобы предложения интерфейса не были границами;
           раньше в бою на месте этого поля стоял только хотбар, и у принципа не было
           носителя в UI. Ход не расходуется до подтверждённого сервером броска. */}
+      {/* Одна строка на всё: слева колоды, справа поле и «Отправить». Выбранное
+          действие подтверждается той же кнопкой — отдельного «Подтвердить»
+          больше нет, а слова игрока уезжают вместе с командой. */}
       <form
         className="rail-free-input"
-        onSubmit={(event) => { event.preventDefault(); const text = freeText.trim(); if (!text || narrating) return; onFreeAction(text); setFreeText('') }}
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (narrating) return
+          const text = freeText.trim()
+          if (pendingCommand) { confirmPreparedCommand(text || undefined); setFreeText(''); return }
+          if (selfCastReady) { confirmSelfCast(text || undefined); setFreeText(''); return }
+          if (!text) return
+          onFreeAction(text)
+          setFreeText('')
+        }}
       >
-        {/* Ярлык «Своими словами» убран: то же самое написано в самом поле,
-            а места он занимал столько же, сколько кнопка отправки. */}
-        <input
-          value={freeText}
-          onChange={(event) => setFreeText(event.target.value)}
-          placeholder={`Опишите действие ${activeName} так, как сказали бы за столом — Арбитр найдёт правило`}
-          aria-label="Действие своими словами"
-          disabled={narrating}
-        />
-        <button type="submit" disabled={narrating || !freeText.trim()}><Send size={17} />Отправить</button>
-        <small>не расходует ход до подтверждённого броска</small>
+        <nav className="hotbar-decks" role="tablist" aria-label="Категории действий">
+          {([
+            ['common', 'Основные', <CombatIcon id="deck-common" kind="deck" hint="перемещение основные действия" size={21} compact />],
+            ['weapon', 'Атаки', <CombatIcon id="deck-weapon" kind="deck" hint="оружие атака меч" size={21} compact />],
+            ['magic', 'Заклинания', <CombatIcon id="deck-magic" kind="deck" hint="магия заклинания" size={21} compact />],
+            ['class', 'Классовые', <CombatIcon id="deck-class" kind="deck" hint="классовые способности защита" size={21} compact />],
+            ['items', 'Предметы', <CombatIcon id="deck-items" kind="deck" hint="предметы зелья" size={21} compact />],
+          ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button type="button" key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy || (deck === 'magic' && !spells.length)} title={label}>{icon}<span>{label}</span></button>)}
+        </nav>
+        <div className="rail-input-shell">
+          {preparedLabel && <span className="prepared-chip"><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
+          <input
+            value={freeText}
+            onChange={(event) => setFreeText(event.target.value)}
+            placeholder={preparedLabel ? 'Добавьте слова к действию — или отправьте как есть' : `Опишите действие ${activeName} так, как сказали бы за столом — Арбитр найдёт правило`}
+            aria-label="Действие своими словами"
+            disabled={narrating}
+          />
+        </div>
+        <button type="submit" disabled={narrating || (!preparedLabel && !freeText.trim())}><Send size={17} />Отправить</button>
       </form>
       {/* Панель одна на оба режима. Раньше вне боя вместо неё показывалась полоска
           «исследование», а колоды и плитки не рендерились вовсе: игрок не видел, чем
@@ -1187,15 +1222,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           зарезервировано всегда, поэтому показывать арсенал ничего не стоит. */}
       <section className={`tactical-control combat-hotbar ${combatActive ? '' : 'out-of-combat'}`} aria-label={combatActive ? `Панель боевых действий: ${activeName}` : `Панель действий вне боя: ${activeName}`}>
         <div className="hotbar-controls-row">
-          <nav className="hotbar-decks" role="tablist" aria-label="Категории действий">
-            {([
-              ['common', 'Основные', <CombatIcon id="deck-common" kind="deck" hint="перемещение основные действия" size={23} compact />],
-              ['weapon', 'Атаки', <CombatIcon id="deck-weapon" kind="deck" hint="оружие атака меч" size={23} compact />],
-              ['magic', 'Заклинания', <CombatIcon id="deck-magic" kind="deck" hint="магия заклинания" size={23} compact />],
-              ['class', 'Классовые', <CombatIcon id="deck-class" kind="deck" hint="классовые способности защита" size={23} compact />],
-              ['items', 'Предметы', <CombatIcon id="deck-items" kind="deck" hint="предметы зелья" size={23} compact />],
-            ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy || (deck === 'magic' && !spells.length)}>{icon}<span>{label}</span></button>)}
-          </nav>
           {/* Остаток хода читается словами и целиком: «хватит ли» больше не нужно
               собирать из буквы в кружке на плитке и отдельной плашки над хотбаром. */}
           {combatActive ? <div className="hotbar-economy" aria-label="Экономика текущего хода">
@@ -1238,19 +1264,14 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               </div> : null}
               {/* Раньше подпись всегда звала выбрать цель, даже когда она уже
                   была выбрана: клик по врагу выглядел как несработавший. */}
-              <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя — нажмите «Подтвердить»' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'} · {selectedSpellRange} фт{selectedSpell.concentration ? ' · концентрация' : ''}</span>
-            {!pendingCommand && selfCastReady && <div className="detail-actions">
-              <button className="detail-confirm" disabled={tacticalBusy} onClick={confirmSelfCast}><CombatIcon id="confirm-self-cast" kind="roll" hint="подтвердить действие на себя" size={19} compact /><span>Подтвердить</span></button>
-              <button className="detail-cancel" onClick={cancelSelfCast}><X size={13} /><span>Отмена</span></button>
-            </div>}
-            </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} /><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i><span>{selectedCombatAction.target === 'self' ? 'На себя — нажмите «Подтвердить»' : 'Выберите цель на карте'}</span></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} /><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
+              <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя — нажмите «Отправить»' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'} · {selectedSpellRange} фт{selectedSpell.concentration ? ' · концентрация' : ''}</span>
+            </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} /><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i><span>{selectedCombatAction.target === 'self' ? 'На себя — нажмите «Отправить»' : 'Выберите цель на карте, затем «Отправить»'}</span></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} /><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
           </aside>
           {/* Колонка шага рисуется, только когда в ней что-то есть: вне боя это
               подтверждение выбранной цели, в бою — кнопки хода. Пустой колонки в
               140px, как раньше, в строке больше не остаётся. */}
           {(combatActive || pendingCommand) && <div className="hotbar-turn-controls">
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
-            {pendingCommand && <button className="manual-attack-roll" disabled={tacticalBusy} onClick={confirmPreparedCommand}><CombatIcon id="confirm-prepared-command" kind="roll" hint="подтвердить выбранную цель" size={27} compact /><span>{pendingCommand.kind === 'target' || pendingCommand.kind === 'area' ? 'Бросить' : 'Подтвердить'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
             {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
           </div>}

@@ -866,32 +866,37 @@ export function useGameSession() {
     void executeTacticalCommand({ command_type: 'MoveActor', actor_id: playerId, to: { x, y } }, `Переместить героя на клетку ${x}, ${y}`)
   }, [executeTacticalCommand])
 
-  const attackEnemy = useCallback((playerId: string, enemyId: string, itemId?: string, knockOut = false) => {
-    void executeTacticalCommand({ command_type: 'MakeAttack', actor_id: playerId, target_id: enemyId, ...(itemId ? { item_id: itemId } : {}), ...(knockOut ? { knock_out: true } : {}) } as TacticalCommand, knockOut ? 'Нокаутировать выбранную цель' : 'Атаковать выбранную цель')
+  /* Слова игрока едут вместе с командой: подтверждение теперь одно на всё —
+     кнопка «Отправить», и приписка к действию должна доходить до рассказчика
+     тем же запросом, а не отдельной репликой после. */
+  const attackEnemy = useCallback((playerId: string, enemyId: string, itemId?: string, knockOut = false, note?: string) => {
+    const base = knockOut ? 'Нокаутировать выбранную цель' : 'Атаковать выбранную цель'
+    void executeTacticalCommand({ command_type: 'MakeAttack', actor_id: playerId, target_id: enemyId, ...(itemId ? { item_id: itemId } : {}), ...(knockOut ? { knock_out: true } : {}) } as TacticalCommand, note ? `${base}. ${note}` : base)
   }, [executeTacticalCommand])
 
-  const throwAreaItem = useCallback((playerId: string, itemId: string, x: number, y: number) => {
-    void executeTacticalCommand({ command_type: 'MakeAreaAttack', actor_id: playerId, item_id: itemId, to: { x, y } }, `Бросить предмет в клетку ${x}, ${y}`)
+  const throwAreaItem = useCallback((playerId: string, itemId: string, x: number, y: number, note?: string) => {
+    const base = `Бросить предмет в клетку ${x}, ${y}`
+    void executeTacticalCommand({ command_type: 'MakeAreaAttack', actor_id: playerId, item_id: itemId, to: { x, y } }, note ? `${base}. ${note}` : base)
   }, [executeTacticalCommand])
 
-  const castSpell = useCallback((actorId: string, spellId: string, target: ({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean }) => {
+  const castSpell = useCallback((actorId: string, spellId: string, target: ({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean; note?: string }) => {
     const command: TacticalCommand = 'targetId' in target
       ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, target_id: target.targetId, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
       : { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, to: { x: target.x, y: target.y }, ...(target.spellOption ? { spell_option: target.spellOption } : {}) }
-    void executeTacticalCommand(command, 'Сотворить выбранное заклинание')
+    void executeTacticalCommand(command, target.note ? `Сотворить выбранное заклинание. ${target.note}` : 'Сотворить выбранное заклинание')
   }, [executeTacticalCommand])
 
   const changeWeapon = useCallback((playerId: string, itemId: string) => {
     void executeTacticalCommand({ command_type: 'ChangeWeapon', actor_id: playerId, item_id: itemId }, 'Сменить оружие')
   }, [executeTacticalCommand])
 
-  const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string) => {
+  const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => {
     void executeTacticalCommand({
       command_type: 'UseCombatAction', actor_id: actorId, action_id: actionId,
       ...(targetId ? { target_id: targetId } : {}),
       ...(itemId ? { item_id: itemId } : {}),
       ...(beneficiaryId ? { beneficiary_id: beneficiaryId } : {}),
-    }, 'Использовать выбранное боевое действие')
+    }, note ? `Использовать выбранное боевое действие. ${note}` : 'Использовать выбранное боевое действие')
   }, [executeTacticalCommand])
 
   const finishMapTurn = useCallback(() => {
