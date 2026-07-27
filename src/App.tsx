@@ -36,6 +36,7 @@ type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'set
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
 const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
+const DETAIL_WIDTH_KEY = 'skazanie-detail-width-v1'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
 const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 150
@@ -483,13 +484,16 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
      где объявлены переменные сетки. */
   const [railHeight, setRailHeight] = useState(() => Number(window.localStorage.getItem(RAIL_HEIGHT_KEY)) || 0)
   const [serverWidth, setServerWidth] = useState(() => Number(window.localStorage.getItem(SERVER_WIDTH_KEY)) || 0)
+  const [detailWidth, setDetailWidth] = useState(() => Number(window.localStorage.getItem(DETAIL_WIDTH_KEY)) || 0)
   useEffect(() => {
     const root = document.documentElement.style
     if (railHeight) root.setProperty('--ui-rail-height', `${railHeight}px`)
     else root.removeProperty('--ui-rail-height')
     if (serverWidth) root.setProperty('--ui-server-column', `${serverWidth}px`)
     else root.removeProperty('--ui-server-column')
-  }, [railHeight, serverWidth])
+    if (detailWidth) root.setProperty('--ui-detail-width', `${detailWidth}px`)
+    else root.removeProperty('--ui-detail-width')
+  }, [railHeight, serverWidth, detailWidth])
   const startRailResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startY = event.clientY
@@ -502,6 +506,24 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
       setRailHeight((value) => { if (value) window.localStorage.setItem(RAIL_HEIGHT_KEY, String(value)); return value })
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }
+  /* Граница между колодой и описанием. Тянем влево — описание шире, вправо —
+     больше места плиткам; за нижним пределом колода начинает прокручиваться. */
+  const startDetailResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = document.querySelector('.hotbar-detail')?.getBoundingClientRect().width ?? 360
+    const rowWidth = document.querySelector('.hotbar-main')?.getBoundingClientRect().width ?? 1200
+    const move = (moveEvent: PointerEvent) => {
+      setDetailWidth(Math.round(Math.min(rowWidth * .6, Math.max(260, startWidth + (startX - moveEvent.clientX)))))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      setDetailWidth((value) => { if (value) window.localStorage.setItem(DETAIL_WIDTH_KEY, String(value)); return value })
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
@@ -1293,6 +1315,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             {((activeDeck === 'magic' && !spells.length) || (activeDeck === 'class' && !combatActions.some((action) => action.category === 'class')) || (activeDeck === 'items' && !combatItems.some((item) => item.type !== 'weapon'))) && <div className="hotbar-empty"><LockKeyhole size={18} /><span>У героя нет доступных действий этой категории</span></div>}
           </div>
           <aside className="hotbar-detail" aria-live="polite">
+            <div className="detail-resize" role="separator" aria-orientation="vertical" aria-label="Ширина области описания" onPointerDown={startDetailResize} onDoubleClick={() => { setDetailWidth(0); window.localStorage.removeItem(DETAIL_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную" />
             {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
               <DetailHeader title="Вне боя" description="Лечение, усиление и утилита творятся прямо здесь. Всё, что бьёт, требует инициативы." />
               {/* Про футы сказано здесь, а не отдельной колонкой справа: ради
