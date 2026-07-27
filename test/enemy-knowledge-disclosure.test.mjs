@@ -109,7 +109,11 @@ function numbersLeaked(value, needles) {
 
 test('свежая кампания не раскрывает точные значения врага ни на одной видимой поверхности', () => {
   const { state, events } = playOneRound(fixture())
-  assert.equal(state.mechanics.enemy_knowledge ?? null, null, 'ни одно событие боя не записало факт раскрытия')
+  // Реестр существует всегда — с 2026-07-27 его создаёт нормализация состояния,
+  // чтобы записывать раскрытие было куда. Проверяется не отсутствие реестра, а
+  // его пустота: удар и заклинание сами по себе ничего не раскрывают, раскрытие
+  // требует отдельного действия (`IdentifyEnemy`).
+  assert.deepEqual(state.mechanics.enemy_knowledge, { party: {} }, 'ни одно событие боя не записало факт раскрытия')
 
   const publicEvents = mechanicsForViewer(events, user, 'hero', state)
   const brief = buildNarrationBrief({

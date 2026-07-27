@@ -208,7 +208,7 @@ function canUseHero(user, heroId, campaignId) {
   return user?.role === 'admin' || campaignHeroIds(user, campaignId).includes(String(heroId || ''))
 }
 
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'EndTurn', 'ResolveHeroDeath'])
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
 const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
@@ -544,6 +544,11 @@ function sanitizePlayerCombatCommand(user, state, input) {
     const enemy = (state.enemies ?? []).find((candidate) => String(candidate.id) === target)
     if (!enemy || enemy.alive === false || Number(enemy.hp) <= 0) throw commandPolicyError('Игрок может атаковать только живого противника', 'INVALID_ATTACK_TARGET')
     return { ...base, target_id: target, ...(input?.item_id ? { item_id: String(input.item_id) } : {}), ...(input?.knock_out === true ? { knock_out: true } : {}) }
+  }
+  if (type === 'IdentifyEnemy') {
+    // Из запроса берётся только цель: навык, характеристику и СЛ выбирает
+    // серверная таблица, и подставить их клиент не может.
+    return { ...base, target_id: String(input?.target_id ?? input?.targetId ?? '').slice(0, 120) }
   }
   if (type === 'MakeAreaAttack') return { ...base, item_id: String(input?.item_id || ''), to: { x: input?.to?.x, y: input?.to?.y } }
   if (type === 'ChangeWeapon') return { ...base, item_id: String(input?.item_id || '') }
