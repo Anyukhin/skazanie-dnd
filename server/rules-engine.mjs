@@ -164,6 +164,14 @@ export const RULE_IDS = Object.freeze({
 })
 
 /**
+ * Виды заклинаний, которые считаются нападением и потому требуют инициативы.
+ * Список закрытый и серверный: клиент им только подсвечивает плитки, решение
+ * принимает движок. Всё, чего здесь нет (`utility`, `buff`, `healing`,
+ * `summon`, `teleport`), творится и вне боя.
+ */
+const HARMFUL_SPELL_KINDS = new Set(['attack', 'damage', 'area-damage', 'save', 'area-save', 'debuff'])
+
+/**
  * Чем судить попытку опознать противника. Три навыка — решение владельца от
  * 2026-07-27; таблица серверная, модель к выбору не допускается.
  *
@@ -354,6 +362,20 @@ function assertMechanicsSupported(subject, label) {
 function safeInteger(value, fallback = 0) {
   const number = Number(value)
   return Number.isSafeInteger(number) ? number : fallback
+}
+
+/**
+ * Сколько минут занимает накладывание. Строка приходит из каталога в вольном
+ * виде («10 минут», «1 час», «1 действие или 8 часов»), поэтому берём первое
+ * число с единицей и не гадаем: непонятную строку считаем нулём, и тогда время
+ * просто не двигается.
+ */
+function castingTimeMinutes(castingTime) {
+  const match = /(\d+)\s*(минут|мин|час|часа|часов|день|дня|дней|сутки|суток)/iu.exec(String(castingTime ?? ''))
+  if (!match) return 0
+  const unit = match[2].toLowerCase()
+  const perUnit = unit.startsWith('час') ? 60 : ['день', 'дня', 'дней', 'сутки', 'суток'].includes(unit) ? 1_440 : 1
+  return Math.max(0, Number(match[1]) * perUnit)
 }
 
 function durationInMinutes(amount, unit = 'minute') {
@@ -2788,9 +2810,23 @@ export function validateCommand(input, rawState, context = {}) {
   if (command.command_type === 'CastSpell' && (command.server_authoritative || context.serverAuthoritativeCombat)) {
     const actor = findActor(state, command.actor_id)
     const spell = combatSpellFor(actor, command.spell_id)
-    if (!state.mechanics.combat.active) throw new RulesValidationError('Сначала нужно начать бой и определить инициативу', 'COMBAT_NOT_ACTIVE')
     if (!isLivingActor(actor)) throw new RulesValidationError('Побеждённый участник не может творить заклинания', 'ACTOR_DEFEATED')
     if (!spell) throw new RulesValidationError('Заклинание не найдено среди доступных герою', 'SPELL_NOT_AVAILABLE')
+    /* Вне боя творится только то, что не бьёт: лечение, усиление, утилита,
+       призыв, перемещение. Всё, что наносит урон или требует спасброска, —
+       нападение, а нападение начинается с инициативы. Иначе первый удар
+       проходил бы вне очереди и вне экономики хода. Решение владельца от
+       2026-07-27, ось — `srd_5_2_1:combat:initiative`.
+
+       Обе проверки идут до проверки поддержки механики: «в бою так нельзя» —
+       ответ о правилах, он не должен зависеть от того, размечена ли карточка
+       в каталоге. */
+    if (!state.mechanics.combat.active && HARMFUL_SPELL_KINDS.has(String(spell.kind))) {
+      throw new RulesValidationError('Боевое заклинание требует инициативы: сначала начните бой', 'COMBAT_NOT_ACTIVE')
+    }
+    if (spell.actionType === 'long_cast' && state.mechanics.combat.active) {
+      throw new RulesValidationError('Это заклинание требует больше одного хода и в бою недоступно', 'SPELL_CAST_TIME_TOO_LONG')
+    }
     assertMechanicsSupported(spell, 'заклинания')
     if (command.knock_out === true && !(spell.kind === 'attack' && spell.attackKind === 'melee')) {
       throw new RulesValidationError('Нокаутировать можно только ближней атакой заклинанием', 'KNOCKOUT_REQUIRES_MELEE_ATTACK')
@@ -2799,7 +2835,6 @@ export function validateCommand(input, rawState, context = {}) {
       if (isEnemyActor(state, command.actor_id) && command.spell_option == null) command.spell_option = spell.spellOptions[0]
       else throw new RulesValidationError('Для этого заклинания нужно выбрать вариант эффекта', 'SPELL_OPTION_REQUIRED')
     }
-    if (spell.actionType === 'long_cast') throw new RulesValidationError('Это заклинание требует больше одного хода и недоступно на боевой панели', 'SPELL_CAST_TIME_TOO_LONG')
     const metamagic = conditionIdsFor(state, command.actor_id)
     const maximumSpellRange = metamagic.has('metamagic-distant') && spell.range > 0 ? spell.range * 2 : spell.range
     const from = actorPosition(state, command.actor_id)
@@ -2829,6 +2864,10 @@ export function validateCommand(input, rawState, context = {}) {
         const targetIsHostile = isEnemyActor(state, actorId(target)) !== isEnemyActor(state, command.actor_id)
         if (spell.target === 'enemy' && !targetIsHostile) throw new RulesValidationError('Это заклинание требует противника', 'INVALID_SPELL_TARGET')
         if (spell.target === 'ally' && targetIsHostile) throw new RulesValidationError('Это заклинание требует союзника', 'INVALID_SPELL_TARGET')
+        // Мирное по виду заклинание, направленное во врага, — то же нападение.
+        if (!state.mechanics.combat.active && targetIsHostile) {
+          throw new RulesValidationError('Заклинание против противника требует инициативы: сначала начните бой', 'COMBAT_NOT_ACTIVE')
+        }
         const to = actorPosition(state, actorId(target))
         if (!to) throw new RulesValidationError('Цель должна находиться на карте', 'MAP_POSITION_REQUIRED')
         const distance = Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5
@@ -5587,6 +5626,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const actor = findActor(state, command.actor_id)
         const spell = combatSpellFor(actor, command.spell_id)
         assertMechanicsSupported(spell, 'заклинания')
+        /* Ритуал вне боя занимает своё время. Мир двигается до того, как ляжет
+           эффект: десять минут накладывания — это десять минут, в которые отряд
+           стоит на месте, а не бесплатная строчка в журнале. */
+        if (!state.mechanics.combat.active && spell?.actionType === 'long_cast') {
+          const minutes = castingTimeMinutes(spell.castingTime)
+          if (minutes > 0) {
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'TimeAdvanced', { amount: minutes, unit: 'minute', elapsed_minutes: minutes }, []))
+          }
+        }
         if (!command.counterspell_bypassed) {
           const reaction = counterspellReactionFor(state, command.actor_id)
           if (reaction) {
