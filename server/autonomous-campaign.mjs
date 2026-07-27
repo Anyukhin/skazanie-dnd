@@ -14,10 +14,17 @@ const INTENT_TYPES = new Set(DIRECTOR_INTENT_TYPES)
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard'])
 const THEMES = new Set(['beasts', 'undead', 'goblinoids', 'raiders'])
 const TOP_LEVEL_FIELDS = new Set(['version', 'type', 'theme', 'difficulty', 'quest_id', 'npc_id', 'hook', 'destination', 'reason'])
+/**
+ * Написание ключа значения не имеет: `max_hp`, `maxHp` и `MAX-HP` — одно и то
+ * же поле, и модель придёт к верблюжьему написанию не реже, чем к змеиному.
+ * Поэтому и список, и проверяемый ключ приводятся к одному виду.
+ */
+const mechanicalKey = (value) => String(value).toLowerCase().replace(/[_-]/g, '')
+
 const FORBIDDEN_MECHANICAL_FIELDS = new Set([
   'hp', 'max_hp', 'dc', 'difficulty_class', 'roll', 'dice', 'price', 'quantity', 'xp', 'xp_budget',
   'loot', 'coordinates', 'x', 'y', 'damage', 'armor', 'initiative', 'reputation_delta', 'amount',
-])
+].map(mechanicalKey))
 
 export class DirectorIntentError extends Error {
   constructor(message, code = 'DIRECTOR_INTENT_INVALID') {
@@ -39,7 +46,7 @@ function assertNoMechanics(value, path = '$', seen = new WeakSet()) {
   if (seen.has(value)) throw new DirectorIntentError('Director intent содержит цикл', 'DIRECTOR_INTENT_INVALID_SHAPE')
   seen.add(value)
   for (const [key, child] of Object.entries(value)) {
-    if (FORBIDDEN_MECHANICAL_FIELDS.has(String(key).toLowerCase())) {
+    if (FORBIDDEN_MECHANICAL_FIELDS.has(mechanicalKey(key))) {
       throw new DirectorIntentError(`Director не может задавать механическое поле ${path}.${key}`, 'DIRECTOR_MECHANICS_FORBIDDEN')
     }
     assertNoMechanics(child, `${path}.${key}`, seen)

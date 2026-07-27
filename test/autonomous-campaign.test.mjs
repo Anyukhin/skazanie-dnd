@@ -97,6 +97,58 @@ test('Director contract accepts only six narrative intentions and rejects forged
   ]) assert.throws(() => normalizeDirectorIntent(forged), DirectorIntentError)
 })
 
+// Тест выше берёт три образца механических полей. Контракт же обещает, что
+// отклоняются **все** — и на каждом из шести намерений, а не только на том, где
+// пример оказался под рукой. Здесь перебор: каждое поле из списка, в змеином и
+// верблюжьем написании, на каждом валидном намерении, сверху и вложенно.
+const VALID_INTENTS = Object.freeze([
+  { type: 'continue_exploration' },
+  { type: 'open_social_scene', npc_id: 'marta' },
+  { type: 'advance_quest_clock', quest_id: 'ledger-quest' },
+  { type: 'request_encounter', theme: 'beasts', difficulty: 'easy' },
+  { type: 'end_scene', destination: 'North Gate' },
+  { type: 'offer_next_hook', hook: 'Follow the tracks' },
+])
+
+// Список из docs/loop-rules.md, ось 2: hp, dc, броски, цены, количества, XP,
+// координаты, урон, инициатива, reputation delta.
+const MECHANICAL_FIELDS = Object.freeze([
+  'hp', 'max_hp', 'dc', 'difficulty_class', 'roll', 'dice', 'price', 'quantity',
+  'xp', 'xp_budget', 'loot', 'coordinates', 'x', 'y', 'damage', 'armor',
+  'initiative', 'reputation_delta', 'amount',
+])
+
+/** `max_hp` → `maxHp`: то же поле, к которому модель придёт естественнее. */
+function camelCase(field) {
+  return field.replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase())
+}
+
+test('ни одно механическое поле не проходит контракт Директора — ни на одном намерении', () => {
+  for (const base of VALID_INTENTS) {
+    for (const field of MECHANICAL_FIELDS) {
+      for (const key of new Set([field, camelCase(field), field.toUpperCase()])) {
+        assert.throws(
+          () => normalizeDirectorIntent({ ...base, [key]: 7 }),
+          DirectorIntentError,
+          `${base.type}: поле ${key} прошло контракт`,
+        )
+      }
+    }
+  }
+})
+
+test('механическое поле не проходит и вложенным в разрешённое поле намерения', () => {
+  for (const field of MECHANICAL_FIELDS) {
+    for (const key of new Set([field, camelCase(field)])) {
+      assert.throws(
+        () => normalizeDirectorIntent({ type: 'offer_next_hook', hook: 'Follow the tracks', reason: { [key]: 7 } }),
+        DirectorIntentError,
+        `вложенное поле reason.${key} прошло контракт`,
+      )
+    }
+  }
+})
+
 test('climax resolves a triggered quest and completes the campaign replay-identically', async (t) => {
   const initial = campaign()
   initial.worldMemory.quests[0].clock = { current: 7, max: 8, label: 'Evidence', triggered: false }
