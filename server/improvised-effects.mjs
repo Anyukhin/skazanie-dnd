@@ -23,6 +23,13 @@ const clean = (value, maximum = 120) => String(value ?? '').normalize('NFKC').re
 export const ACTION_COSTS = Object.freeze(['action', 'bonus_action', 'free'])
 
 const MELEE_REACH_FEET = 5
+/**
+ * Окрик и брошенная в глаза горсть песка достают дальше касания — решение
+ * пользователя от 2026-07-27. Тридцать футов, а не «сколько слышно»: дальность
+ * обязана быть конечной и проверяемой, иначе отвлечь можно было бы кого угодно
+ * на карте.
+ */
+const SHOUTING_RANGE_FEET = 30
 
 /**
  * Эффекты успеха. Каждый опирается на правило, которое движок уже исполняет,
@@ -31,12 +38,13 @@ const MELEE_REACH_FEET = 5
  * `target` говорит, на кого эффект вообще можно навести: попытка наложить
  * «помощь» на врага или «сбить с ног» на себя отбрасывается до броска.
  *
- * `range_feet` — досягаемость. Все эти эффекты физически касаются существа:
- * подсечь, подхватить под руку, швырнуть песок в глаза, подставить под огонь.
- * Поэтому здесь стоит обычная ближняя досягаемость SRD, та же, что движок уже
- * применяет к ближней атаке. Значение объявлено полем, а не константой,
- * намеренно: если какой-то эффект решат разрешить на расстоянии — например
- * отвлечь окриком, — это правка одной строки данных, а не логики.
+ * `range_feet` — досягаемость, и она у эффектов разная. Подсечь, подхватить под
+ * руку, опутать и подставить под опасность — это касание, обычная ближняя
+ * досягаемость SRD, та же, что движок уже применяет к ближней атаке. Отвлечь
+ * окриком и ослепить брошенным в глаза можно с расстояния.
+ *
+ * Досягаемость объявлена полем каталога, а не константой в логике: разрешить
+ * очередной эффект на расстоянии — правка одной строки данных.
  */
 export const IMPROVISED_EFFECTS = Object.freeze({
   none: Object.freeze({
@@ -52,11 +60,11 @@ export const IMPROVISED_EFFECTS = Object.freeze({
     summary: 'Союзник получает преимущество на следующую атаку.',
   }),
   distract: Object.freeze({
-    id: 'distract', target: 'enemy', range_feet: MELEE_REACH_FEET, condition: 'disadvantage-next-attack', duration: 'until-next-turn', label: 'отвлечь противника',
+    id: 'distract', target: 'enemy', range_feet: SHOUTING_RANGE_FEET, condition: 'disadvantage-next-attack', duration: 'until-next-turn', label: 'отвлечь противника',
     summary: 'Противник отвлечён: его следующая атака идёт с помехой.',
   }),
   blind: Object.freeze({
-    id: 'blind', target: 'enemy', range_feet: MELEE_REACH_FEET, condition: 'blinded', duration: 'until-next-turn', label: 'ослепить',
+    id: 'blind', target: 'enemy', range_feet: SHOUTING_RANGE_FEET, condition: 'blinded', duration: 'until-next-turn', label: 'ослепить',
     summary: 'Цель ослеплена до конца своего следующего хода.',
   }),
   restrain: Object.freeze({

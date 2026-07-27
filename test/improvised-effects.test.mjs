@@ -142,6 +142,35 @@ test('эффект нельзя навести на цель вне досяга
   assert.equal(adjacent.commands.length, 1)
 })
 
+// Решение пользователя от 2026-07-27: окрик и брошенная в глаза горсть песка
+// работают на расстоянии, остальное — касание. Проверяется именно граница между
+// двумя группами, а не одно число: иначе тест переживёт любую правку каталога.
+test('окрик и ослепление достают дальше касания, остальные эффекты — нет', () => {
+  const state = battlefield()
+  // Четыре клетки — 20 футов: дальше касания, но в пределах слышимости.
+  state.enemies[0] = { ...state.enemies[0], x: 4, y: 0 }
+  state.mechanics.positions.ogre = { x: 4, y: 0 }
+
+  for (const effectId of ['distract', 'blind']) {
+    const plan = planImprovisedEffect(state, { actorId: 'hero', effectId, targetId: 'ogre' })
+    assert.equal(plan.effect.id, effectId, `${effectId}: должен доставать на 20 футов`)
+    assert.equal(plan.commands.length, 1)
+  }
+  for (const effectId of ['prone', 'restrain', 'hazard_damage']) {
+    const plan = planImprovisedEffect(state, { actorId: 'hero', effectId, targetId: 'ogre', hazardId: 'fire' })
+    assert.equal(plan.effect.id, 'none', `${effectId}: касание не должно доставать на 20 футов`)
+    assert.match(plan.rejected, /далеко/)
+  }
+
+  // И у дальних эффектов дальность не бесконечна.
+  const far = battlefield()
+  far.enemies[0] = { ...far.enemies[0], x: 8, y: 0 }
+  far.mechanics.positions.ogre = { x: 8, y: 0 }
+  const shout = planImprovisedEffect(far, { actorId: 'hero', effectId: 'distract', targetId: 'ogre' })
+  assert.equal(shout.effect.id, 'none', 'на 40 футах окрик тоже обязан получить отказ')
+  assert.match(shout.rejected, /далеко/)
+})
+
 test('каталог эффектов закрыт и каждый эффект знает свою сторону и досягаемость', () => {
   for (const [id, effect] of Object.entries(IMPROVISED_EFFECTS)) {
     assert.equal(effect.id, id)
