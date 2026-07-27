@@ -171,7 +171,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    вычитается из полотна: на 1440×900 те же 420/320 px оставили бы доске 744×436 и
    клетку 33 px — ровно ту, из-за которой бой и был тесным. Компактные значения по
    умолчанию, просторные — только когда ширины действительно хватает. */
-.game-area { --status: 60px; --server-column: 320px; --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--rail); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
+.game-area { --status: 60px; --server-column: 320px; --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) auto; grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
 @media (min-width: 1920px) {
   .game-area { --status: 72px; --server-column: 420px; --rail: 320px; --slot: 76px; }
 }
@@ -592,7 +592,11 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .combat-hotbar .action-tile.spellbook-tile { color: #d0a96f; background: radial-gradient(circle at 50% 18%, rgba(145,99,48,.22), rgba(28,22,16,.94) 70%); }
 /* Тракт хода: свободный ввод, затем колоды с экономией, затем плитки и колонка шага.
    Каркас между состояниями не переставляется — меняется только содержимое. */
-.turn-rail { grid-area: rail; min-width: 0; min-height: 0; display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
+/* Высота полосы считается по содержимому: раскрытое описание должно
+   помещаться целиком, а не прокручиваться в коробке. Нижняя граница — прежние
+   292px (столько занимают две строки плиток), верхняя — 46vh, чтобы карта не
+   схлопнулась под длинной карточкой; дальше описание всё же прокрутится. */
+.turn-rail { grid-area: rail; min-width: 0; min-height: var(--rail); max-height: 46vh; display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
 .rail-free-input { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .rail-free-tab { flex: 0 0 auto; height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 16px; border: 1px solid rgba(214,161,96,.5); border-radius: 9px; background: rgba(192,132,66,.16); color: #e2b87c; font: 600 var(--fs-lg) Manrope, sans-serif; }
 .rail-free-input input { flex: 1 1 0; min-width: 0; height: 52px; padding: 0 16px; border: 1px solid rgba(222,201,171,.16); border-radius: 9px; background: rgba(9,8,7,.72); color: #e7ddd0; font: var(--fs-xl) Spectral, Georgia, serif; }
@@ -647,6 +651,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .hotbar-actions { grid-column: 1; }
 .hotbar-turn-controls { grid-column: 2; }
 .hotbar-detail { grid-column: 3; }
+/* Пока описание раскрыто, колонка шире: тот же текст ложится в меньшее
+   число строк, и полосе не приходится расти вниз за счёт карты. */
+.combat-hotbar:has(.detail-more[aria-expanded="true"]) .hotbar-main { grid-template-columns: minmax(0, 1fr) auto clamp(420px, 40%, 760px); }
 
 /* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
    заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
