@@ -705,8 +705,19 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    короткая, но строка длиннее ~70 знаков уже не читается — глаз теряет начало
    следующей. Остаток колонки остаётся спокойным полем. */
 .hotbar-detail > * { max-width: 68ch; }
+/* Название и «…» в одной строке: кнопка не уводит взгляд и не занимает
+   отдельной строки в и без того невысокой колонке. */
+.detail-head { display: flex; align-items: baseline; gap: 8px; }
+.detail-head > strong { min-width: 0; }
+/* Ширину и минимальную высоту приходится перебивать явно: `.tactical-control
+   button` растягивает любую кнопку панели на всю строку, и «…» занимала её
+   целиком, выдавливая название в ноль. */
+.hotbar-detail .detail-more { flex: 0 0 auto; width: auto; min-height: 0; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: 11px; background: transparent; color: #9a8d7e; font: 700 var(--fs-sm)/1 Manrope, sans-serif; letter-spacing: .08em; cursor: pointer; }
+.hotbar-detail .detail-more:hover { border-color: rgba(211,160,97,.4); color: #d0a36c; }
+.hotbar-detail .detail-more[aria-expanded="true"] { border-color: rgba(211,160,97,.4); background: rgba(174,113,52,.12); color: #d0a36c; }
 .hotbar-detail strong { overflow: hidden; color: #e2d6c6; font: 600 var(--fs-2xl) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
-.hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+.hotbar-detail p.expanded { display: block; -webkit-line-clamp: none; }
 .hotbar-detail span { overflow: hidden; color: #c8a06a; font: var(--fs-lg) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .hotbar-detail .mechanics-support-detail { width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid currentColor; border-radius: 4px; font: normal 700 var(--fs-lg)/1 Manrope, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
 
@@ -747,6 +758,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .combat-hotbar .hotbar-turn-controls .end-turn-hotbar { border-color: rgba(146,177,113,.3); background: rgba(71,105,52,.12); color: #abc48e; }
 .combat-hotbar .hotbar-turn-controls .start-combat-button { border-color: rgba(188,79,63,.36); background: rgba(126,48,39,.16); color: #cf8174; }
 .combat-hotbar .hotbar-turn-controls button:disabled { opacity: .35; cursor: default; }
+/* Отмена рядом с подтверждением: тише кнопкой, но того же роста. */
+.combat-hotbar .hotbar-turn-controls .cancel-self-cast { min-height: 28px; justify-content: center; gap: 6px; border-color: var(--line); background: transparent; color: #8b8177; }
+.combat-hotbar .hotbar-turn-controls .cancel-self-cast:hover { border-color: rgba(211,160,97,.35); color: #c49a63; }
 .combat-hotbar > .tactical-command-status { position: absolute; left: 10px; bottom: calc(100% + 45px); margin: 0; padding: 6px 9px; border-radius: 4px; background: rgba(15,13,11,.92); }
 .combat-hotbar > .tactical-command-error { position: absolute; right: 0; bottom: calc(100% + 44px); width: min(360px, 70vw); margin: 0; }
 .combat-hotbar > .tactical-command-error button { width: 18px; margin: -3px -3px 0 0; }
