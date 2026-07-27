@@ -1049,6 +1049,12 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           : null}
       />
       <div className="map-scale-plate">1 клетка = 5 футов</div>
+      {/* Режим стоит над полем по центру: он описывает то, что происходит на
+          карте, и читается раньше, чем взгляд уходит к панели действий. */}
+      {!combatActive && <div className="map-mode-plate" aria-label="Режим исследования">
+        <Compass size={15} />
+        <span><small>ИССЛЕДОВАНИЕ</small><strong>{activeName} движется свободно</strong></span>
+      </div>}
       <div className="map-legend">
         <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг · параметры скрыты</span><span><i className="legend-dot interest" />Интерес</span>
       </div>
@@ -1163,11 +1169,12 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             <span className={actionReady || weaponAttackReady ? 'ready' : 'spent'}><small>Действие</small><b>{actionReady ? 'свободно' : weaponAttackReady ? `ещё ${weaponAttacksLeft} атака` : 'потрачено'}</b></span>
             <span className={bonusReady ? 'ready' : 'spent'}><small>Бонус</small><b>{bonusReady ? 'свободен' : 'потрачен'}</b></span>
             <span className={reactionReady ? 'ready' : 'spent'}><small>Реакция</small><b>{reactionReady ? 'свободна' : 'потрачена'}</b></span>
-          </div> : <div className="hotbar-exploration-note" aria-label="Режим исследования">
-            <span className="exploration-mode-icon"><Compass size={20} /></span>
-            <span className="exploration-mode-copy"><small>ИССЛЕДОВАНИЕ</small><strong>{activeName} движется свободно</strong></span>
-            {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
-          </div>}
+          </div> : showStartCombat ? <div className="hotbar-exploration-note">
+            {/* Сам режим переехал на поле, по центру сверху: он относится к карте,
+                а не к панели действий. Здесь остался только вход в бой, и пустой
+                коробки без него не остаётся. */}
+            <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>
+          </div> : null}
         </div>
         <div className="hotbar-main">
           <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия">

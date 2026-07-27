@@ -311,6 +311,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    слева, легенда и подсказки управления по нижнему краю. Над самой картой не лежит
    ничего, что можно принять за часть местности. */
 .map-scale-plate { position: absolute; z-index: 8; left: 22px; top: 20px; padding: 7px 12px; border: 1px solid rgba(222,201,171,.16); border-radius: 6px; background: rgba(15,13,11,.86); color: #c6b9a6; font: 700 var(--fs-xs) Manrope, sans-serif; }
+/* Табличка режима — того же семейства, что и масштабная плашка слева: тот же
+   фон, та же пергаментная рамка, тот же радиус. Стоит по центру верхнего края
+   поля, кликам не мешает. */
+.map-mode-plate { position: absolute; z-index: 8; left: 50%; top: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 9px; max-width: min(420px, 60%); padding: 6px 14px; border: 1px solid rgba(222,201,171,.16); border-radius: 6px; background: rgba(15,13,11,.86); color: #7ea88f; pointer-events: none; }
+.map-mode-plate > span { min-width: 0; display: grid; gap: 1px; }
+.map-mode-plate small { color: #6f9d85; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.map-mode-plate strong { overflow: hidden; color: #cfc4b5; font: 600 var(--fs-sm) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .map-legend { position: absolute; z-index: 8; left: 24px; bottom: 22px; display: flex; gap: 16px; padding: 9px 13px; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.78); color: #8d857b; font: var(--fs-xs) Manrope, sans-serif; }
 .map-legend span { display: flex; align-items: center; gap: 7px; }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
@@ -616,9 +623,8 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Вне боя ту же строку занимает не экономика хода, а режим исследования: слева
    компас и имя героя, справа бросок инициативы. Панель зеленеет — цвет режима
    тот же, каким была прежняя полоска исследования. */
+/* В строке остался только вход в бой: сам режим переехал на поле. */
 .hotbar-exploration-note { margin-left: auto; display: flex; align-items: center; gap: 11px; }
-.hotbar-exploration-note .exploration-mode-icon { width: 38px; height: 38px; }
-.hotbar-exploration-note .exploration-mode-copy > strong { font-size: var(--fs-md); }
 .combat-hotbar.out-of-combat .hotbar-decks button.active { border-color: rgba(112,185,148,.42); background: rgba(74,141,107,.16); color: #a7cdb5; }
 .combat-hotbar.out-of-combat .hotbar-detail { border-color: rgba(104,170,137,.24); }
 .combat-hotbar.out-of-combat .hotbar-detail > strong { color: #a7cdb5; }
@@ -726,10 +732,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Отдельной панели исследования больше нет — её место заняла общая панель
    действий в режиме `out-of-combat`. Классы ниже остались: ими размечены строка
    режима и бросок инициативы внутри неё. */
-.exploration-mode-icon { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid rgba(112,185,148,.25); border-radius: 50%; color: #8fc4a8; background: radial-gradient(circle, rgba(74,141,107,.22), rgba(14,25,19,.9)); }
-.exploration-mode-copy { min-width: 0; display: grid; gap: 2px; }
-.exploration-mode-copy > small { color: #6f9d85; font: 700 var(--fs-xs) Manrope, sans-serif; letter-spacing: .13em; }
-.exploration-mode-copy > strong { overflow: hidden; color: #c3d7c9; font: 600 var(--fs-xs) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .exploration-path-status { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-left: 1px solid rgba(255,255,255,.06); color: #83b298; }
 .exploration-path-status > span { display: grid; gap: 1px; }
 .exploration-path-status b { color: #9fc5af; font: 700 var(--fs-sm) Manrope, sans-serif; white-space: nowrap; }
@@ -781,7 +783,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .combat-hotbar .action-tile { width: 128px; min-width: 128px; height: 134px; padding: 10px 6px; }
   .hotbar-economy > span { padding: 0 9px; }
   .game-area > .dice-tray:not(.dice-tray--rolling) { bottom: 150px; }
-  .exploration-mode-icon { width: 32px; height: 32px; }
   .exploration-start-combat { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }
   .exploration-start-combat span { display: none; }
 }
