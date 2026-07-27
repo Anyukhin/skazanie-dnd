@@ -29,7 +29,9 @@ import type { BoardOverlayCell } from './board-render'
 import { sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
 
-type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'merchant' | 'settings' | 'admin' | 'agent-lab'
+// Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
+// а не отдельным разделом. Второго пути к ней быть не должно.
+type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'settings' | 'admin' | 'agent-lab'
 
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
@@ -276,8 +278,8 @@ function PlayerCard({ player, selected, turn, accessible, deathSaves, onClick }:
   )
 }
 
-function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, merchantAvailable, isAdmin, deathSavesByHero, onSelect, collapsed, onToggle, view, onNavigate, aiConnected }: {
-  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; merchantAvailable: boolean; isAdmin: boolean; deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>; onSelect: (id: string) => void; collapsed: boolean; onToggle: () => void; view: View; onNavigate: (view: View) => void; aiConnected: boolean
+function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, merchantAvailable, merchantOpen, isAdmin, deathSavesByHero, onSelect, collapsed, onToggle, view, onNavigate, onOpenMerchant, aiConnected }: {
+  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; merchantAvailable: boolean; merchantOpen: boolean; isAdmin: boolean; deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>; onSelect: (id: string) => void; collapsed: boolean; onToggle: () => void; view: View; onNavigate: (view: View) => void; onOpenMerchant: () => void; aiConnected: boolean
 }) {
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -299,7 +301,12 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, m
         <button className={`nav-item ${view === 'journal' ? 'active' : ''}`} data-tooltip="Журнал кампании" aria-label="Журнал кампании" onClick={() => onNavigate('journal')}><ScrollText size={18} /><span>Журнал кампании</span></button>
         <button className={`nav-item ${view === 'characters' ? 'active' : ''}`} data-tooltip="Персонажи" aria-label="Персонажи" onClick={() => onNavigate('characters')}><BookOpen size={18} /><span>Персонажи</span></button>
         <button className={`nav-item ${view === 'inventory' ? 'active' : ''}`} data-tooltip="Инвентарь" aria-label="Инвентарь" onClick={() => onNavigate('inventory')}><BackpackIcon /><span>Инвентарь</span></button>
-        <button className={`nav-item ${view === 'merchant' ? 'active' : ''} ${merchantAvailable ? '' : 'unavailable'}`} data-tooltip={merchantAvailable ? 'Доступный торговец' : 'В этой локации нет торговца'} aria-label="Торговец" onClick={() => onNavigate('merchant')}><Store size={18} /><span>Торговец</span>{merchantAvailable && <i className="merchant-nav-dot" />}</button>
+        {/* Торговля открывается поверх комнаты, а не вместо неё: раньше это был
+            отдельный раздел, и уход в него уносил карту, историю и положение
+            камеры. Кнопка остаётся нажимаемой и без торговца — причину отказа
+            объясняет само окно, а всплывающая подсказка на сенсорном экране
+            недоступна. */}
+        <button className={`nav-item ${merchantOpen ? 'active' : ''} ${merchantAvailable ? '' : 'unavailable'}`} data-tooltip={merchantAvailable ? 'Доступный торговец' : 'В этой локации нет торговца'} aria-label="Торговец" aria-haspopup="dialog" aria-expanded={merchantOpen} onClick={onOpenMerchant}><Store size={18} /><span>Торговец</span>{merchantAvailable && <i className="merchant-nav-dot" />}</button>
         {isAdmin && <button className={`nav-item ${view === 'admin' ? 'active' : ''}`} data-tooltip="Управление миром" aria-label="Управление миром" onClick={() => onNavigate('admin')}><ShieldCheck size={18} /><span>Управление миром</span></button>}
         {isAdmin && <button className={`nav-item ${view === 'agent-lab' ? 'active' : ''}`} data-tooltip="Лаборатория агентов" aria-label="Открыть лабораторию агентов в отдельном окне" onClick={() => { const url = new URL(window.location.href); url.searchParams.set('agentLab', '1'); window.open(url.toString(), 'skazanie-agent-lab', 'width=1500,height=950') }}><BrainCircuit size={18} /><span>Лаборатория агентов</span></button>}
       </nav>
@@ -1020,7 +1027,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         })}</div>
       </section>}
       </div>
-      <aside className="server-column" aria-label="Серверное состояние сцены">
+      <aside className="server-column" aria-label="Состояние сцены">
         {combatActive && <section className="combat-context-panel" aria-label="Текущее состояние боя" aria-live="polite">
           <header><div><small>СЕЙЧАС ХОДИТ · {activeTeam}</small><strong>{activeName}</strong></div><span><Heart size={13} />{activeHealth}</span></header>
           <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
@@ -1133,7 +1140,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>
           </div>
         </div>
-        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер обрабатывает действие и его последствия…</p>}
+        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
       </section> : <section className="tactical-control exploration-hotbar" aria-label={`Панель исследования: ${activeName}`}>
         <div className="exploration-mode-icon"><Compass size={24} /></div>
@@ -1142,22 +1149,38 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           <strong>{activeName} движется свободно</strong>
           <p>Выберите любую подсвеченную достижимую клетку. Лимит скорости включится после броска инициативы.</p>
         </div>
-        <div className="exploration-path-status"><Footprints size={17} /><span><b>Без лимита футов</b><small>путь проверяет сервер</small></span></div>
+        <div className="exploration-path-status"><Footprints size={17} /><span><b>Без лимита футов</b><small>вне боя шаги не считаны</small></span></div>
         {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={31} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
-        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер обрабатывает действие и его последствия…</p>}
+        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
       </section>}
       </section>
     </>
   )
 }
-function SceneHeader({ title, location, objective, turn, chapter, round, onReset }: { title: string; location: string; objective: string; turn: number; chapter: number; round?: number; onReset: () => void }) {
+function SceneHeader({ title, location, objective, turn, chapter, round, merchants, onOpenMerchant, onReset }: { title: string; location: string; objective: string; turn: number; chapter: number; round?: number; merchants: Merchant[]; onOpenMerchant: () => void; onReset: () => void }) {
+  // Торговец в сцене виден прямо в заголовке, а не только пунктом бокового меню:
+  // до него игрок доходит по карте, и предложение должно стоять там же, где он
+  // смотрит.
+  // Подписи у кнопки нет намеренно. Заголовок узкий: при 1280 px на всё про всё
+  // 594 px, и подпись «Подойти к торговцу: Мартен Рыжий» съедала 280 из них —
+  // название сцены обрезалось до «Точк…». Замерено в комнате: без подписи
+  // название получает свои 188 px и читается целиком. Текст действия и имя
+  // торговца живут в подсказке и в aria-label, а словесный пункт «Торговец»
+  // остаётся в боковом меню.
+  const merchantLabel = merchants.length === 1 ? `Подойти к торговцу: ${merchants[0].name}` : `Торговцев рядом: ${merchants.length}`
   return (
     <div className="scene-header">
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
       <div className="scene-title"><span>ГЛАВА {chapter}{round != null ? ` · РАУНД ${round}` : ''} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
-      <div className="objective"><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></div>
+      {/* Приглашение стоит до «текущей цели»: у неё `margin-left: auto`, и всё,
+          что после, уезжает вправо под кнопку сброса с `position: absolute`. */}
+      {merchants.length > 0 && <button className="scene-merchant" onClick={onOpenMerchant} aria-haspopup="dialog" aria-label={merchantLabel} title={merchantLabel}><Store size={16} /></button>}
+      {/* Цель не помещается в строку заголовка и обрезается многоточием, а
+          читать её игроку надо: замерено — из 571 px текста видно 311. Полная
+          формулировка уходит в подсказку, иначе цель просто теряется. */}
+      <div className="objective" title={objective}><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></div>
       <button className="icon-button reset-button" onClick={onReset} title="Снять бой и поднять павших героев"><RotateCcw size={17} /></button>
     </div>
   )
@@ -1179,7 +1202,7 @@ function DiceCheckCard({ check, onRoll, onCancel }: { check: PendingCheck; onRol
         <span>{rolling ? 'Кость катится…' : resolving ? `Итого ${check.result?.total}` : 'Бросить кубик'}</span>
       </button>
       <button className="cancel-check" onClick={onCancel} disabled={check.status === 'rolling'}>{check.status === 'resolving' ? 'Отменить зависшее разрешение' : 'Отказаться от действия'}</button>
-      <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : 'Нажми на кость — результат будет честно определён сервером.'}</p>
+      <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : 'Нажми на кость — что выпадет, то и будет.'}</p>
     </div>
   )
 }
@@ -1241,7 +1264,7 @@ function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, 
   }
 
   return (
-    <section className="chat-panel" aria-label="Что происходит: подтверждённые сервером события">
+    <section className="chat-panel" aria-label="Что происходит в сцене">
       <div className="chat-head">
         <div><span className="chat-head-eyebrow">ЧТО ПРОИСХОДИТ</span></div>
         <button className="icon-button" onClick={onToggle} aria-label="Свернуть историю"><ChevronDown size={20} /></button>
@@ -1970,6 +1993,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [merchantOpen, setMerchantOpen] = useState(false)
   const [campaignsOpen, setCampaignsOpen] = useState(() => account.heroIds.length === 0 && !account.campaignMemberships?.length)
   const [joinError, setJoinError] = useState<string | null>(null)
   const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
@@ -1986,6 +2010,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') !== 'false')
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
   const combatWasActive = useRef(false)
+  const merchantLocation = useRef(state.scene.location)
   const joinAttempted = useRef(false)
   const isAdmin = account.role === 'admin'
   const partyIdSet = new Set(state.partyMemberIds?.length ? state.partyMemberIds : state.players.map((player) => player.id))
@@ -2068,9 +2093,25 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   useEffect(() => { window.localStorage.setItem(SCENIC_BACKDROP_KEY, String(scenicBackdrop)) }, [scenicBackdrop])
   useEffect(() => {
     const combatActive = Boolean(state.mechanics?.combat?.active)
-    if (combatActive && !combatWasActive.current) setChatOpen(false)
+    // Начавшийся бой закрывает и историю, и лавку: торговля посреди инициативы —
+    // это окно поверх боя, за которым не видно ни карты, ни своего хода.
+    if (combatActive && !combatWasActive.current) {
+      setChatOpen(false)
+      setMerchantOpen(false)
+    }
     combatWasActive.current = combatActive
   }, [state.mechanics?.combat?.active])
+  useEffect(() => {
+    // Отряд сменил локацию — открытая лавка закрывается сама: на экране иначе
+    // остаётся торговец, которого рядом уже нет. Сторожим именно смену места, а
+    // не отсутствие торговца: окно с объяснением «здесь торговцев нет» открывать
+    // можно и нужно, и захлопываться сразу же оно не должно.
+    const location = state.scene.location
+    if (merchantLocation.current !== location) {
+      merchantLocation.current = location
+      setMerchantOpen(false)
+    }
+  }, [state.scene.location])
   useEffect(() => {
     if (!accessibleHeroIds.includes(selectedHeroId)) setSelectedHeroId(accessibleHeroIds[0])
   }, [state.sessionCode, state.partyMemberIds?.join(',')])
@@ -2082,6 +2123,12 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
 
   const navigate = (next: View) => {
     setView(next)
+    if (window.innerWidth <= 680) setSidebarCollapsed(true)
+  }
+  // Лавка не меняет раздел: она ложится поверх того, что игрок и так смотрит.
+  // Узкое меню при этом сворачивается — иначе на телефоне оно перекроет окно.
+  const openMerchant = () => {
+    setMerchantOpen(true)
     if (window.innerWidth <= 680) setSidebarCollapsed(true)
   }
   const activePlayer = partyPlayers.find((player) => player.id === selectedHeroId && accessibleHeroIds.includes(player.id)) ?? partyPlayers.find((player) => accessibleHeroIds.includes(player.id)) ?? partyPlayers[0] ?? state.players[0]
@@ -2138,13 +2185,15 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       '--ui-sidebar-width': `${Math.round(276 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>
-      <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} merchantAvailable={availableMerchants.length > 0} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
+      <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} merchantAvailable={availableMerchants.length > 0} merchantOpen={merchantOpen} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} onOpenMerchant={openMerchant} aiConnected={Boolean(aiHealth?.configured)} />
       <main className="game-main">
         <header className="topbar">
           <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
           <button className="campaign-title" onClick={() => setCampaignsOpen(true)} title="Переключить кампанию или группу"><span>КАМПАНИЯ · {state.partyName}</span><strong>{state.campaign}</strong><ChevronDown size={15} /></button>
           <div className="top-actions">
-            <div className="session-code"><i />КОМНАТА <b>{state.sessionCode}</b></div>
+            {/* Подпись в отдельном span: на узкой верхней панели её прячут, а
+                сам код обязан оставаться читаемым — по нему зовут в игру. */}
+            <div className="session-code" title={`Код комнаты: ${state.sessionCode}`}><i /><span>КОМНАТА</span><b>{state.sessionCode}</b></div>
             <ConnectionIndicator status={connectionState} />
             {pacing && pacing.beat > 0 && <div className={`director-status ${pacing.phase}`} title={lastTravel ? `Последний путь: ${lastTravel.from} → ${lastTravel.to}, ${lastTravel.duration_minutes} мин., риск ${lastTravel.risk_score}` : 'Серверный темп автономной кампании'}><Sparkles size={13} /><span>{pacingLabels[pacing.phase]}</span><b>{pacing.tension}</b></div>}
             {lifecycleStatus === 'active' && !combatActive && accessibleHeroIds.length > 0 && <button className="invite-button director-button" onClick={() => { void advanceAdventure().catch(() => {}) }} disabled={directorBusy} title="Director выберет следующий допустимый этап по подтверждённому состоянию"><Sparkles size={17} />{directorBusy ? 'Режиссёр думает…' : 'Продолжить сюжет'}</button>}
@@ -2177,7 +2226,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onFinishTurn={finishMapTurn}
             onFreeAction={submitAction}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} turnName={turnActorName} combatActive={combatActive} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} onWhy={() => { void submitAction('/why') }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
@@ -2199,11 +2248,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
         />}
-        {view === 'merchant' && <MerchantScreen merchants={availableMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} />}
         {view === 'settings' && <SettingsView health={aiHealth} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
+      {merchantOpen && <MerchantScreen merchants={availableMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantOpen(false)} />}
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
       {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onClose={() => setCampaignsOpen(false)} />}
       {creatingPlayerId && aiHealth?.characterCreation && <CharacterCreationWizard

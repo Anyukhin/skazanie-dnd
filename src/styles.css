@@ -81,7 +81,50 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .campaign-title span { grid-column: 1 / -1; overflow: hidden; color: #716a62; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; letter-spacing: .17em; }
 .campaign-title strong { min-width: 0; overflow: hidden; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; font-family: Spectral, serif; font-size: 15px; font-weight: 600; color: #d8cfc3; }
 .campaign-title svg { color: #777068; }
-.top-actions { display: flex; align-items: center; gap: 12px; }
+/* Верхняя панель обязана укладываться в экран. При открытом боковом меню на
+   1280 px её содержимое вылезало за край на 227 px: карточка аккаунта и часть
+   кнопок уезжали за границу, а страница получала горизонтальную прокрутку.
+   Сжимаются справочные части — код комнаты и состояние связи; кнопки и
+   карточка аккаунта не ужимаются, терять действие хуже. Перенос не включаем:
+   во flexbox строка набирается до сжатия, поэтому `wrap` уводил панель на две
+   строки даже там, где всё помещалось. */
+.top-actions { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+/* Уступает место название кампании, а не панель действий: название есть и в
+   боковом меню, и в окне кампаний, а действия больше нигде не продублированы.
+   Именно приоритет сжатия, а не запрет: с `flex: 0 0 auto` панель переставала
+   сжиматься вовсе и вылезала уже вправо, унося карточку аккаунта за экран. */
+.campaign-title { flex-shrink: 100; min-width: 150px; }
+/* При развёрнутом меню строки не хватает на всё, и название уходит целиком:
+   обрезанное до нуля оно всё равно ничего не сообщает, а рядом, в меню, оно
+   написано полностью. */
+.app:not(.sidebar-is-collapsed) .campaign-title { display: none; }
+/* Нижние границы обязательны: без них сжатие доводило код комнаты до 25 px, а
+   по нему зовут в игру — читаемым он остаться должен. Состояние связи ужимается
+   до одного значка: цвет и иконка говорят то же, что и подпись. */
+/* Код сжимается с многоточием, но не в ноль. `max-content` тут пробовал и он
+   вреден: несжимаемая коробка не влезала в панель, а при `justify-content:
+   flex-end` переполнение уходит НЕ вправо, а влево — код наезжал на название
+   кампании, и прокрутки, которая бы это выдала, не появлялось.
+   Пол в 92 px оставляет читаемым начало кода; целиком он есть в подсказке и в
+   окне приглашения. */
+.session-code { flex: 0 1 auto; min-width: 92px; }
+.session-code b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Ниже 1440 px подпись «КОМНАТА» уходит, код остаётся целиком: подпись
+   дублирует иконку и заголовок, а код — единственное, что нельзя потерять.
+   Полная форма остаётся в `title`. */
+@media (max-width: 1439px) { .session-code span { display: none; } }
+.connection-status { min-width: 34px; overflow: hidden; }
+.connection-status span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Панели не хватало 120 px из 998 нужных, и переполнение уходило влево, под
+   название кампании. Добираем без прятанья: зазоры и поля кнопок чуть уже, а
+   имя в карточке аккаунта сжимается многоточием — оно длиннее всего и меньше
+   всего нужно целиком. Кнопки сохраняют размер: обрезанное действие хуже
+   обрезанного имени. */
+.top-actions { gap: 8px; }
+.top-actions .invite-button { flex: 0 0 auto; padding: 0 10px; }
+.top-actions .account-chip { flex: 0 1 auto; min-width: 0; }
+.top-actions .account-chip > span { min-width: 0; }
+.top-actions .account-chip > span > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-chip { height: 36px; display: flex; align-items: center; gap: 8px; padding-left: 11px; border-left: 1px solid var(--line); }.account-chip > span { display: grid; text-align: right; }.account-chip > span { color: #aaa095; font: 14px Spectral, serif; }.account-chip small { color: #68615a; font: 13px Manrope, sans-serif; }.account-chip button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: rgba(255,255,255,.025); color: #786f67; cursor: pointer; }.account-chip button:hover { color: #c98273; background: rgba(147,72,62,.09); }
 .session-code { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: 5px; color: #726a62; font-size: 13px; letter-spacing: .11em; }
 .session-code i { width: 6px; height: 6px; border-radius: 50%; background: #71a07c; box-shadow: 0 0 0 3px rgba(113,160,124,.12); }
@@ -114,6 +157,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .objective { flex: 0 1 auto; margin-left: auto; min-width: 0; max-width: 340px; height: 38px; display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 14px; border: 1px solid rgba(211,153,86,.32); border-radius: 19px; background: none; text-align: left; }
 .objective strong { min-width: 0; overflow: hidden; margin: 0; color: #c9a06a; font: 600 15px Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .reset-button { position: absolute; top: 2px; right: 0; pointer-events: auto; background: rgba(20,18,15,.65); border: 1px solid var(--line); }
+/* Приглашение к торговцу живёт в заголовке сцены, а не только в боковом меню:
+   до лавки игрок доходит по карте и смотрит именно сюда. Зелёный тон тот же,
+   что у метки торговца в меню, — это одна и та же сущность.
+   `pointer-events` возвращаем: вся `.scene-header` их не принимает, чтобы не
+   перехватывать перетаскивание карты под собой. */
+/* Только значок: с подписью кнопка отбирала у названия сцены больше половины
+   заголовка. Действие и имя торговца читает screen reader из aria-label,
+   мышь — из подсказки, а словами пункт «Торговец» стоит в боковом меню. */
+.scene-merchant { flex: 0 0 auto; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(114,150,120,.45); border-radius: 50%; background: rgba(23,32,25,.75); color: #9ec2a4; cursor: pointer; pointer-events: auto; }
+.scene-merchant:hover { border-color: rgba(140,193,148,.75); background: rgba(37,55,41,.88); color: #c4e1c8; }
 .server-column { grid-area: server; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow: hidden; }
 .server-column > .combat-context-panel { grid-row: 1; min-width: 0; min-height: 0; max-height: 34vh; overflow: auto; }
 .server-column > .chat-panel { grid-row: 2; min-width: 0; min-height: 0; }
@@ -1416,7 +1469,10 @@ button.campaign-title:hover strong { color: #edc996; }
   filter: saturate(.82) contrast(1.04) brightness(.94);
 }
 /* Собственный рисунок действия: вписывается целиком, без обрезки по клетке
-   атласа. Прозрачный фон картинки пропускает тайл под ней. */
+   атласа. Прозрачный фон картинки пропускает тайл под ней.
+   Пока --combat-icon-src не подставлен, var() здесь невалиден, background-image
+   берёт начальное значение none, и виден один тайл: именно так и выглядит
+   иконка до того, как её показали. Клетка атласа при этом не проступает. */
 .combat-icon-art.own {
   background-image: var(--combat-icon-src);
   background-position: center;

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   BadgeCheck, CircleAlert, Coins, HandCoins, LoaderCircle, MapPin,
-  PackageOpen, RefreshCw, ScrollText, Search, ShieldCheck, ShoppingBag, Sparkles,
+  PackageOpen, RefreshCw, ScrollText, Search, ShieldCheck, ShoppingBag, Sparkles, X,
 } from 'lucide-react'
 import type { Merchant, MerchantQuote, MerchantView as MerchantViewModel, Player } from './types'
 
@@ -20,7 +21,24 @@ type MerchantScreenProps = {
   onSell: (merchantId: string, actorId: string, itemId: string, quantity: number) => void
   onAppraise: (merchantId: string, actorId: string, itemId: string) => void
   onService: (merchantId: string, actorId: string, serviceId: string) => void
+  onClose: () => void
 }
+
+// Тип предмета приходит английским идентификатором и раньше печатался как есть:
+// в русском интерфейсе игрок видел «consumable · potion-healing». Идентификатор
+// каталога ему не нужен вовсе, а тип нужен словом.
+const itemTypeLabels: Record<string, string> = {
+  weapon: 'оружие',
+  armor: 'доспех',
+  consumable: 'расходник',
+  tool: 'инструмент',
+  quest: 'сюжетная вещь',
+  treasure: 'ценность',
+  document: 'бумаги',
+  other: 'разное',
+}
+
+const itemTypeLabel = (type: string) => itemTypeLabels[type] ?? 'разное'
 
 const coinLabels = [
   ['platinum', 'пм'],
@@ -29,12 +47,24 @@ const coinLabels = [
   ['copper', 'мм'],
 ] as const
 
+/**
+ * Цена монетами, а не дробью. Раньше 55 медяков показывались как «5,5 см» —
+ * это читается сантиметрами и вдобавок предлагает половину серебряной монеты,
+ * которой не существует. Правильно разложить по номиналам: «5 см 5 мм».
+ */
 function formatCopper(value?: number) {
   if (!Number.isFinite(value)) return '—'
   const cp = Math.max(0, Math.round(value ?? 0))
-  if (cp >= 100) return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(cp / 100)} зм`
-  if (cp >= 10) return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(cp / 10)} см`
-  return `${cp} мм`
+  if (cp === 0) return '0 мм'
+  const parts: string[] = []
+  const gold = Math.floor(cp / 100)
+  const silver = Math.floor((cp % 100) / 10)
+  const copper = cp % 10
+  const number = (amount: number) => new Intl.NumberFormat('ru-RU').format(amount)
+  if (gold) parts.push(`${number(gold)} зм`)
+  if (silver) parts.push(`${silver} см`)
+  if (copper) parts.push(`${copper} мм`)
+  return parts.join(' ')
 }
 
 function percentage(value?: number) {
@@ -50,14 +80,13 @@ function quoteTotal(quote: MerchantQuote | undefined, quantity: number) {
 }
 
 function QuoteBreakdown({ quote, quantity, direction }: { quote?: MerchantQuote; quantity: number; direction: 'buy' | 'sell' }) {
-  if (!quote || quote.unit_price_cp <= 0) return <div className="merchant-no-quote">Серверная котировка недоступна</div>
+  if (!quote || quote.unit_price_cp <= 0) return <div className="merchant-no-quote">Торговец пока не назвал цену</div>
   const breakdown = quote.breakdown
   const total = quoteTotal(quote, quantity)
   return (
     <div className="merchant-quote">
-      <div className="merchant-server-badge"><ShieldCheck size={12} />Расчёт сервера</div>
       {breakdown ? <div className="merchant-price-flow" aria-label="Расшифровка цены">
-        <span><small>{quote.price_provenance === 'server_appraisal_policy' ? 'ОЦЕНКА ТОРГОВЦА' : 'БАЗА КАТАЛОГА'}</small><b>{formatCopper(breakdown.catalog_base_unit_cp)}</b></span>
+        <span><small>{quote.price_provenance === 'server_appraisal_policy' ? 'ОЦЕНКА ТОРГОВЦА' : 'ОБЫЧНАЯ ЦЕНА'}</small><b>{formatCopper(breakdown.catalog_base_unit_cp)}</b></span>
         <i>→</i>
         <span><small>ПОЛИТИКА ТОРГОВЦА</small><b>{percentage(breakdown.merchant_adjustment_percent)}</b></span>
         <i>→</i>
@@ -65,7 +94,7 @@ function QuoteBreakdown({ quote, quantity, direction }: { quote?: MerchantQuote;
         <i>→</i>
         <span className="merchant-final-price"><small>ЦЕНА ЗА 1</small><b>{formatCopper(breakdown.final_unit_price_cp)}</b></span>
       </div> : <div className="merchant-price-flow compact">
-        <span className="merchant-final-price"><small>СЕРВЕРНАЯ ЦЕНА ЗА 1</small><b>{formatCopper(quote.unit_price_cp)}</b></span>
+        <span className="merchant-final-price"><small>ЦЕНА ЗА 1</small><b>{formatCopper(quote.unit_price_cp)}</b></span>
         <p>Сервер не передал подробную раскладку этой котировки.</p>
       </div>}
       <div className="merchant-transaction-total" aria-live="polite">
@@ -90,7 +119,33 @@ function QuantityPicker({ value, max, disabled, onChange }: { value: number; max
   </label>
 }
 
-export function MerchantScreen({ merchants, player, sceneLocation, stateVersion, view, narration, busy, error, onLoad, onBargain, onBuy, onSell, onAppraise, onService }: MerchantScreenProps) {
+/** Оболочка лавки: затемнение, закрытие по Escape и по клику мимо окна. */
+function MerchantShell({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const panel = useRef<HTMLElement>(null)
+  // Обработчик держим в ref: onClose приходит новой стрелкой на каждый рендер
+  // родителя, и без этого эффект перезапускался бы постоянно, забирая фокус из
+  // поля количества прямо во время набора.
+  const close = useRef(onClose)
+  close.current = onClose
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close.current() }
+    window.addEventListener('keydown', onKey)
+    // Фокус переносим в окно один раз при открытии: иначе Tab уводит по кнопкам
+    // комнаты под затемнением, а с клавиатуры лавка недостижима.
+    panel.current?.focus()
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  return <div className="merchant-backdrop" onMouseDown={() => close.current()}>
+    <section ref={panel} tabIndex={-1} className="merchant-page merchant-modal" role="dialog" aria-modal="true" aria-label="Торговля" onMouseDown={(event) => event.stopPropagation()}>
+      <button className="merchant-close icon-button" onClick={onClose} aria-label="Закрыть лавку" title="Закрыть лавку (Escape)"><X size={18} /></button>
+      {children}
+    </section>
+  </div>
+}
+
+export function MerchantScreen({ merchants, player, sceneLocation, stateVersion, view, narration, busy, error, onLoad, onBargain, onBuy, onSell, onAppraise, onService, onClose }: MerchantScreenProps) {
   const [tab, setTab] = useState<'buy' | 'sell'>('buy')
   const [selectedMerchantId, setSelectedMerchantId] = useState(merchants[0]?.id ?? '')
   const [buyQuantities, setBuyQuantities] = useState<Record<string, number>>({})
@@ -128,13 +183,13 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
   const controlsDisabled = busy || Boolean(error) || shownMerchant?.available !== true || !serverView
   const bargainAttempted = Boolean(serverView?.bargain?.attempted)
 
-  if (!shownMerchant) return <section className="section-page merchant-page">
+  if (!shownMerchant) return <MerchantShell onClose={onClose}>
     <div className="merchant-empty-state"><ShoppingBag size={38} /><span>ТОРГОВАЯ ПЛОЩАДКА</span><h1>Здесь сейчас нет торговцев</h1><p>Торговое меню появляется только рядом с доступным NPC. Текущая локация: «{sceneLocation}».</p></div>
-  </section>
+  </MerchantShell>
 
-  return <section className="section-page merchant-page">
+  return <MerchantShell onClose={onClose}>
     <header className="merchant-page-head">
-      <div><span>ТОРГОВЛЯ И ПЕРЕГОВОРЫ</span><h1>Лавка в пути</h1><p>Все цены, остатки и монеты подтверждаются сервером до изменения состояния игры.</p></div>
+      <div><span>ТОРГОВЛЯ И ПЕРЕГОВОРЫ</span><h1>Лавка в пути</h1><p>Товар разложен, цена названа. Поторгуйтесь — или идите дальше.</p></div>
       <div className="merchant-location"><MapPin size={15} /><span><small>ТЕКУЩАЯ ЛОКАЦИЯ</small><b>{sceneLocation}</b></span></div>
     </header>
 
@@ -154,7 +209,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
         <p>{shownMerchant.description}</p>
         <blockquote><MessageBubble />{narration || shownMerchant.greeting || 'Торговец молча раскладывает товар на прилавке.'}</blockquote>
         <div className="merchant-policy">
-          <ScrollText size={16} /><span><b>Как формируется цена</b><p>{serverView?.pricing_explanation || shownMerchant.pricing.description || 'Каталожная база, политика торговца и результат торга рассчитываются отдельно.'}</p><small>КАТАЛОГ · {shownMerchant.pricing.catalog_id}</small></span>
+          <ScrollText size={16} /><span><b>Как формируется цена</b><p>{serverView?.pricing_explanation || shownMerchant.pricing.description || 'Обычная цена товара, надбавка лавки и то, о чём удалось договориться.'}</p></span>
         </div>
         <button className="merchant-bargain" onClick={() => onBargain(shownMerchant.id, player.id)} disabled={controlsDisabled || bargainAttempted}>
           {busy ? <LoaderCircle className="spinning" size={16} /> : <Sparkles size={16} />}{busy ? 'Торговец отвечает…' : bargainAttempted ? 'Условия торга определены' : 'Попробовать поторговаться'}
@@ -190,8 +245,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
               <em>{quote.service.duration_minutes} мин.</em>
             </div>
             <div className="merchant-quote">
-              <div className="merchant-server-badge"><ShieldCheck size={12} />Расчёт сервера</div>
-              <div className="merchant-transaction-total"><span>К СПИСАНИЮ</span><b><strong>{formatCopper(quote.price_cp)}</strong></b></div>
+                      <div className="merchant-transaction-total"><span>К СПИСАНИЮ</span><b><strong>{formatCopper(quote.price_cp)}</strong></b></div>
             </div>
             <div className="merchant-item-actions">
               <span />
@@ -209,7 +263,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
             const purchaseMax = Math.max(0, Math.min(stockAvailable, quote?.max_quantity ?? stockAvailable))
             const quantity = Math.min(buyQuantities[item.stock_id] ?? 1, Math.max(1, purchaseMax))
             return <article className="merchant-item" key={item.stock_id}>
-              <div className="merchant-item-title"><PackageOpen size={20} /><span><small>{item.type} · {item.catalog_id}</small><h3>{item.name}</h3><p>{item.description}</p></span><em>{stockAvailable} в наличии</em></div>
+              <div className="merchant-item-title"><PackageOpen size={20} /><span><small>{itemTypeLabel(item.type)}</small><h3>{item.name}</h3><p>{item.description}</p></span><em>{stockAvailable} в наличии</em></div>
               <QuoteBreakdown quote={quote} quantity={quantity} direction="buy" />
               <div className="merchant-item-actions">
                 <QuantityPicker value={quantity} max={purchaseMax} disabled={controlsDisabled || !quote || purchaseMax < 1} onChange={(next) => setBuyQuantities((values) => ({ ...values, [item.stock_id]: next }))} />
@@ -228,7 +282,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
             const canAppraise = appraisalRequired && quote?.can_appraise === true
             const merchantCanAfford = quote?.can_afford !== false
             return <article className="merchant-item" key={item.id}>
-              <div className="merchant-item-title"><PackageOpen size={20} /><span><small>{item.type} · в инвентаре: {item.quantity}</small><h3>{item.name}</h3><p>{item.description}</p></span>{item.equipped && <em>НАДЕТО</em>}</div>
+              <div className="merchant-item-title"><PackageOpen size={20} /><span><small>{itemTypeLabel(item.type)} · в инвентаре: {item.quantity}</small><h3>{item.name}</h3><p>{item.description}</p></span>{item.equipped && <em>НАДЕТО</em>}</div>
               {appraisalRequired
                 ? <div className="merchant-appraisal-note"><Search size={16} /><span><b>Нужна серверная оценка</b><small>Торговец осмотрит предмет, а цену рассчитает правило кампании.</small></span></div>
                 : <QuoteBreakdown quote={quote} quantity={quantity} direction="sell" />}
@@ -244,7 +298,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
         )}
       </div>
     </div>
-  </section>
+  </MerchantShell>
 }
 
 function MessageBubble() {

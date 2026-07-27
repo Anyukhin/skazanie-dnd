@@ -66,8 +66,37 @@ function initialDraft(catalog: CharacterCreationCatalog): CreationDraft {
   }
 }
 
+/**
+ * Русский счёт: 1 заговор, 2 заговора, 5 заговоров. Раньше подсказки склеивали
+ * число с одной формой — «Выберите 3 заговоров», — и текст выдавал шаблон.
+ */
+function plural(count: number, forms: [string, string, string]) {
+  const tail = Math.abs(count) % 100
+  const last = tail % 10
+  if (tail > 10 && tail < 20) return forms[2]
+  if (last === 1) return forms[0]
+  if (last > 1 && last < 5) return forms[1]
+  return forms[2]
+}
+
 function abilityModifier(score: number) {
   return Math.floor((score - 10) / 2)
+}
+
+/**
+ * Общий статус механики для списка — или `null`, если статусы разные.
+ *
+ * Статус обязан быть виден игроку (`AGENTS.md`, словарь статусов), но когда он
+ * одинаков у всех до единого заклинаний, ярлык в каждой карточке перестаёт
+ * что-либо различать и превращается в шум: список из тридцати «ЧАСТИЧНО» не
+ * несёт информации. Одинаковый статус выносим строкой над списком, разный
+ * оставляем на карточках — там он и правда различает.
+ */
+function sharedSupport(spells: Array<{ mechanics_support?: MechanicsSupport | null }>) {
+  if (spells.length < 2) return null
+  const first = mechanicsSupportPresentation(spells[0].mechanics_support ?? undefined)
+  const same = spells.every((spell) => mechanicsSupportPresentation(spell.mechanics_support ?? undefined).status === first.status)
+  return same ? first : null
 }
 
 function signed(value: number) {
@@ -121,9 +150,11 @@ export function CharacterCreationWizard({
   const knownLimit = Math.min(spellRules?.spellsKnown ?? 0, leveledSpells.length)
   const bookLimit = Math.min(spellRules?.spellbookMinimum ?? 0, leveledSpells.length)
   const preparedLimit = Math.min(spellRules?.preparedLimit ?? 0, leveledSpells.length)
+  const cantripSupport = sharedSupport(cantrips)
+  const leveledSupport = sharedSupport(leveledSpells)
 
   const steps = useMemo(() => [
-    { title: 'Класс', description: 'Серверный каталог классов' },
+    { title: 'Класс', description: 'Двенадцать классов на выбор' },
     { title: 'Происхождение', description: 'Вид и предыстория' },
     { title: 'Характеристики', description: 'Стандартный массив' },
     { title: 'Навыки', description: 'Классовый выбор' },
@@ -171,7 +202,7 @@ export function CharacterCreationWizard({
   const toggleSkill = (id: string) => {
     if (!skillRule) return
     const next = toggleBounded(draft.classSkillIds, id, skillRule.choice_count)
-    if (next === draft.classSkillIds) setError(`Можно выбрать ${skillRule.choice_count} навыка.`)
+    if (next === draft.classSkillIds) setError(`Можно выбрать ${skillRule.choice_count} ${plural(skillRule.choice_count, ['навык', 'навыка', 'навыков'])}.`)
     else patch('classSkillIds', next)
   }
 
@@ -206,7 +237,7 @@ export function CharacterCreationWizard({
     const selected = draft.knownSpellIds.filter((value) => categoryIds.has(value))
     const other = draft.knownSpellIds.filter((value) => !categoryIds.has(value))
     const next = toggleBounded(selected, id, maximum)
-    if (next === selected) setError(`Достигнут серверный лимит: ${maximum}.`)
+    if (next === selected) setError(`Больше ${maximum} выбрать нельзя.`)
     else {
       patch('knownSpellIds', [...other, ...next])
       if (!next.includes(id)) patch('preparedSpellIds', draft.preparedSpellIds.filter((value) => value !== id))
@@ -216,15 +247,15 @@ export function CharacterCreationWizard({
   const validateStep = () => {
     if (!classOption) return 'Выберите поддерживаемый класс.'
     if (step === 1 && (!speciesOption || !selectedSpecies || !draft.background.trim())) return 'Выберите вид и укажите предысторию.'
-    if (step === 3 && skillRule && draft.classSkillIds.length !== skillRule.choice_count) return `Выберите ${skillRule.choice_count} классовых навыка.`
+    if (step === 3 && skillRule && draft.classSkillIds.length !== skillRule.choice_count) return `Выберите ${skillRule.choice_count} ${plural(skillRule.choice_count, ['классовый навык', 'классовых навыка', 'классовых навыков'])}.`
     if (step === 3) {
       const incomplete = featureGroups.find((group) => group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length !== group.choiceCount)
       if (incomplete) return `${incomplete.name}: выберите ${incomplete.choiceCount}.`
     }
     if (step === 4 && spellRules) {
-      if (selectedCantrips !== cantripLimit) return `Выберите ${cantripLimit} заговоров.`
-      if (spellRules.mode === 'known' && selectedKnownSpells !== knownLimit) return `Выберите ${knownLimit} заклинаний 1 круга.`
-      if (spellRules.mode === 'spellbook' && selectedKnownSpells !== bookLimit) return `Добавьте ${bookLimit} заклинаний в книгу.`
+      if (selectedCantrips !== cantripLimit) return `Выберите ${cantripLimit} ${plural(cantripLimit, ['заговор', 'заговора', 'заговоров'])}.`
+      if (spellRules.mode === 'known' && selectedKnownSpells !== knownLimit) return `Выберите ${knownLimit} ${plural(knownLimit, ['заклинание', 'заклинания', 'заклинаний'])} 1 круга.`
+      if (spellRules.mode === 'spellbook' && selectedKnownSpells !== bookLimit) return `Добавьте ${bookLimit} ${plural(bookLimit, ['заклинание', 'заклинания', 'заклинаний'])} в книгу.`
     }
     if (step === 5 && !draft.character.trim()) return 'Назовите персонажа.'
     return ''
@@ -283,7 +314,7 @@ export function CharacterCreationWizard({
       await onImport(JSON.stringify(document))
       onClose()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Сервер отклонил создание персонажа.')
+      setError(reason instanceof Error ? reason.message : 'Не удалось создать персонажа.')
     } finally {
       setBusy(false)
     }
@@ -318,7 +349,7 @@ export function CharacterCreationWizard({
             <label><span>Вид</span><select value={draft.speciesOptionId} onChange={(event) => patch('speciesOptionId', event.target.value)}>{catalog.ability_policy.species_options.map((entry) => <option key={entry.id} value={entry.id}>{entry.label} · {entry.base_speed} фт.</option>)}</select></label>
             {speciesOption?.id === 'custom' && <label><span>Название авторского вида</span><input value={draft.customSpecies} onChange={(event) => patch('customSpecies', event.target.value)} maxLength={120} /></label>}
             <label><span>Предыстория</span><input value={draft.background} onChange={(event) => patch('background', event.target.value)} placeholder="Например: солдат, учёная, странник" maxLength={160} /></label>
-            <p><ShieldCheck size={17} />Скорость берётся из серверного варианта вида. Числовые бонусы происхождения в policy v1 равны нулю и не подменяют стандартный массив.</p>
+            <p><ShieldCheck size={17} />Скорость определяется видом. Происхождение даёт умения и снаряжение, а не прибавки к характеристикам.</p>
           </div>}
           {step === 2 && <div className="creation-abilities">
             <p>Распределите значения {catalog.ability_policy.standard_array.join(', ')}. При выборе уже занятого значения мастер автоматически меняет характеристики местами.</p>
@@ -329,12 +360,12 @@ export function CharacterCreationWizard({
             {featureGroups.map((group) => <section key={group.id}><header><span>{group.name}</span><b>{group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length}/{group.choiceCount}</b></header><div>{group.options.map((option) => <button key={option.id} className={draft.selectedFeatureIds.includes(option.id) ? 'selected' : ''} aria-label={FEATURE_HINTS[option.id] ? `${option.name}: ${FEATURE_HINTS[option.id]}` : option.name} title={FEATURE_HINTS[option.id]} onClick={() => toggleFeature(group, option.id)}><Check size={13} />{option.name}{FEATURE_HINTS[option.id] && <small>{FEATURE_HINTS[option.id]}</small>}</button>)}</div></section>)}
           </div>}
           {step === 4 && <div className="creation-spells">
-            {!spellRules ? <div className="creation-empty"><ShieldCheck size={24} /><strong>На 1 уровне у этого класса нет выбора заклинаний</strong><p>Мастер отправит пустые списки, а сервер подтвердит их по каталогу.</p></div> : <>
-              {cantrips.length > 0 && <section><header><span>Заговоры</span><b>{selectedCantrips}/{cantripLimit}</b></header><div>{cantrips.map((spell) => <SpellChoice key={spell.id} spell={spell} selected={draft.knownSpellIds.includes(spell.id)} onClick={() => toggleSpell(spell.id)} />)}</div></section>}
-              {leveledSpells.length > 0 && <section><header><span>Заклинания 1 круга</span><b>{spellRules.mode === 'known' ? `${selectedKnownSpells}/${knownLimit}` : spellRules.mode === 'spellbook' ? `книга ${selectedKnownSpells}/${bookLimit}` : `подготовлено ${selectedPreparedSpells}/${preparedLimit}`}</b></header><div>{leveledSpells.map((spell) => {
+            {!spellRules ? <div className="creation-empty"><ShieldCheck size={24} /><strong>На 1 уровне у этого класса нет выбора заклинаний</strong><p>Заклинания появятся на следующих уровнях.</p></div> : <>
+              {cantrips.length > 0 && <section><header><span>Заговоры</span><b>{selectedCantrips}/{cantripLimit}</b></header>{cantripSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{cantripSupport.label}</b> — {cantripSupport.explanation}</span></p>}<div>{cantrips.map((spell) => <SpellChoice key={spell.id} spell={spell} selected={draft.knownSpellIds.includes(spell.id)} showSupport={!cantripSupport} onClick={() => toggleSpell(spell.id)} />)}</div></section>}
+              {leveledSpells.length > 0 && <section><header><span>Заклинания 1 круга</span><b>{spellRules.mode === 'known' ? `${selectedKnownSpells}/${knownLimit}` : spellRules.mode === 'spellbook' ? `книга ${selectedKnownSpells}/${bookLimit}` : `подготовлено ${selectedPreparedSpells}/${preparedLimit}`}</b></header>{leveledSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{leveledSupport.label}</b> — {leveledSupport.explanation}</span></p>}<div>{leveledSpells.map((spell) => {
                 const preparedMode = spellRules.mode === 'prepared'
                 const inBook = draft.knownSpellIds.includes(spell.id)
-                return <SpellChoice key={spell.id} spell={spell} selected={preparedMode ? draft.preparedSpellIds.includes(spell.id) : inBook} secondary={spellRules.mode === 'spellbook' && inBook ? { selected: draft.preparedSpellIds.includes(spell.id), onClick: () => toggleSpell(spell.id, true) } : undefined} onClick={() => preparedMode ? toggleSpell(spell.id, true) : toggleSpell(spell.id)} />
+                return <SpellChoice key={spell.id} spell={spell} showSupport={!leveledSupport} selected={preparedMode ? draft.preparedSpellIds.includes(spell.id) : inBook} secondary={spellRules.mode === 'spellbook' && inBook ? { selected: draft.preparedSpellIds.includes(spell.id), onClick: () => toggleSpell(spell.id, true) } : undefined} onClick={() => preparedMode ? toggleSpell(spell.id, true) : toggleSpell(spell.id)} />
               })}</div></section>}
             </>}
           </div>}
@@ -342,20 +373,20 @@ export function CharacterCreationWizard({
             <label><span>Имя героя</span><input aria-label="Имя героя" value={draft.character} onChange={(event) => patch('character', event.target.value)} maxLength={120} autoFocus /></label>
             <label><span>Внешность и характер</span><textarea aria-label="Внешность и характер" value={draft.appearance} onChange={(event) => patch('appearance', event.target.value)} maxLength={2000} rows={4} /></label>
             <label><span>Предыстория и личный мотив</span><textarea aria-label="Предыстория и личный мотив" value={draft.backstory} onChange={(event) => patch('backstory', event.target.value)} maxLength={8000} rows={6} /></label>
-            <div className="creation-summary"><ShieldCheck size={18} /><span><b>{classOption?.label} · {selectedSpecies}</b><small>Уровень, ОЗ, КД, скорость и бонус мастерства рассчитает сервер после импорта листа.</small></span></div>
+            <div className="creation-summary"><ShieldCheck size={18} /><span><b>{classOption?.label} · {selectedSpecies}</b><small>Уровень, ОЗ, КД, скорость и бонус мастерства посчитаются сами по листу героя.</small></span></div>
           </div>}
         </main>
         <footer>
           <div className={error ? 'creation-error' : ''} role={error ? 'alert' : undefined}>
             {error || (required
-              ? 'Пока герой не создан, сервер не примет ваш ход. Мастер можно закрыть и вернуться позже.'
-              : 'Все механические значения будут повторно проверены сервером.')}
+              ? 'Пока герой не создан, ходить он не может. Мастер можно закрыть и вернуться позже.'
+              : '')}
           </div>
           <span>
             <button disabled={step === 0 || busy} onClick={() => setStep((current) => Math.max(0, current - 1))}><ArrowLeft size={15} />Назад</button>
             {step < steps.length - 1
               ? <button className="primary" onClick={next}>Дальше<ArrowRight size={15} /></button>
-              : <button className="primary" disabled={busy} onClick={() => { void submit() }}><ShieldCheck size={15} />{busy ? 'Сервер проверяет…' : 'Создать героя'}</button>}
+              : <button className="primary" disabled={busy} onClick={() => { void submit() }}><ShieldCheck size={15} />{busy ? 'Создаём героя…' : 'Создать героя'}</button>}
           </span>
         </footer>
       </section>
@@ -367,11 +398,13 @@ function SpellChoice({
   spell,
   selected,
   secondary,
+  showSupport = true,
   onClick,
 }: {
   spell: NonNullable<CharacterCreationCatalog['classes'][number]['spell_selection']>['spells'][number]
   selected: boolean
   secondary?: { selected: boolean; onClick: () => void }
+  showSupport?: boolean
   onClick: () => void
 }) {
   // Тот же словарь статусов, что и в бою: в мастере раньше печатался сырой
@@ -386,7 +419,7 @@ function SpellChoice({
       aria-label={`${spell.name}, ${spell.level === 0 ? 'заговор' : 'заклинание 1 круга'}, ${support.label}`}
       title={support.explanation}
     >
-      <span><strong>{spell.name}</strong><small>{spell.level === 0 ? 'заговор' : '1 круг'} · {support.shortLabel}</small></span><Check size={14} />
+      <span><strong>{spell.name}</strong><small>{spell.level === 0 ? 'заговор' : '1 круг'}{showSupport ? ` · ${support.shortLabel}` : ''}</small></span><Check size={14} />
     </button>
     {secondary && <button className={secondary.selected ? 'prepare selected' : 'prepare'} onClick={secondary.onClick}>{secondary.selected ? 'Подготовлено' : 'Подготовить'}</button>}
   </article>

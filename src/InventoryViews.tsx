@@ -387,7 +387,7 @@ export function InventoryView({
   const items = player.inventory.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()))
 
   return <section className="section-page inventory-page">
-    <div className="inventory-head"><div><span>ЛИЧНЫЕ ВЕЩИ</span><h1>Инвентарь {player.character}</h1><p>Все механические действия подтверждаются сервером и сохраняются как события кампании.</p></div>
+    <div className="inventory-head"><div><span>ЛИЧНЫЕ ВЕЩИ</span><h1>Инвентарь {player.character}</h1><p>Всё, что герой несёт с собой: снаряжение, находки и то, что пока не пригодилось.</p></div>
       <div className="inventory-owner"><div className="mini-owner-avatar" style={{ backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition }} /><span><small>ВЛАДЕЛЕЦ</small><b>{player.character}</b></span></div>
     </div>
     <div className="inventory-summary"><div><PackageOpen size={19} /><span><b>{player.inventory.length}</b><small>предметов</small></span></div><div><Weight size={19} /><span><b>{totalWeight.toFixed(1)} / {player.inventoryLoad?.capacity ?? player.abilities.str * 15}</b><small>фунтов</small></span></div><div><Coins size={19} /><span><b>{player.currency.gold}</b><small>золотых</small></span></div></div>

@@ -1,4 +1,23 @@
 .merchant-page { background: radial-gradient(circle at 12% 8%, rgba(139, 91, 42, .13), transparent 32%), radial-gradient(circle at 88% 28%, rgba(70, 103, 77, .07), transparent 28%), #100f0d; }
+
+/* Лавка открывается поверх комнаты, а не вместо неё: карта, история, отряд и
+   положение камеры остаются на месте, и «вернуться из торговли» не нужно —
+   окно просто гаснет. Раньше это был отдельный раздел, и уход в него сбрасывал
+   весь контекст сцены.
+   Слой 110: выше комнаты и обычных окон, но ниже предметного окна инвентаря
+   (120) и окна реакции (140) — прерывающая реакция обязана перекрывать всё. */
+.merchant-backdrop { position: fixed; z-index: 110; inset: 0; display: grid; place-items: center; padding: clamp(10px, 3vh, 32px) clamp(10px, 3vw, 32px); background: rgba(6, 5, 4, .74); backdrop-filter: blur(6px); animation: fadeIn .18s; }
+/* Не во весь экран: окно на 87% площади читается как отдельная страница, и
+   смысл «торгуешь, не выходя из сцены» пропадает. Комната обязана оставаться
+   видимой рамкой вокруг — тогда понятно, что это временно и выход рядом. */
+.merchant-modal { position: relative; width: min(1080px, 92%); max-height: 90%; overflow-y: auto; overscroll-behavior: contain; padding: clamp(16px, 2.4vw, 28px); border: 1px solid rgba(217, 174, 119, .22); border-radius: 10px; box-shadow: 0 26px 90px #000; scrollbar-width: thin; }
+.merchant-modal:focus { outline: none; }
+/* Заголовку нужен отступ под кнопкой закрытия, иначе она ложится на текст. */
+.merchant-modal .merchant-page-head { padding-right: 44px; }
+.merchant-close { position: absolute; z-index: 3; top: 12px; right: 12px; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; background: rgba(8, 7, 6, .72); color: #93887d; cursor: pointer; }
+.merchant-close:hover { border-color: rgba(211, 153, 86, .4); color: #d0a36c; }
+/* На всю страницу пустое состояние занимало 65vh — в окне это дыра. */
+.merchant-modal .merchant-empty-state { min-height: 300px; }
 .nav-item.unavailable { color: #675f58; }
 .merchant-nav-dot { width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: #729678; box-shadow: 0 0 8px rgba(111, 164, 119, .55); }
 .collapsed .merchant-nav-dot { position: absolute; right: 8px; top: 8px; }
@@ -130,4 +149,12 @@
 @media (max-width: 440px) {
   .merchant-profile { display: block; text-align: center; }.merchant-avatar { margin: 0 auto 11px; }.merchant-profile blockquote, .merchant-policy { text-align: left; }
   .merchant-price-flow, .merchant-price-flow.compact { grid-template-columns: 1fr; }.merchant-transaction-total { align-items: flex-start; flex-direction: column; gap: 4px; }.merchant-transaction-total b { width: 100%; justify-content: flex-end; }.merchant-item-actions { align-items: flex-end; }.merchant-item-actions > button { min-width: 150px; padding: 0 8px; }
+}
+
+@media (max-width: 680px) {
+  /* Пальцем в 32 px попадают не с первого раза: на узком экране кнопка
+     закрытия — основной способ выйти из лавки, и она обязана держать
+     устойчивые 44×44 из критериев приёмки аудита интерфейса. */
+  .merchant-close { top: 9px; right: 9px; width: 44px; height: 44px; }
+  .merchant-modal .merchant-page-head { padding-right: 54px; }
 }

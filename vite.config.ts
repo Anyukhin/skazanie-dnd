@@ -1,7 +1,20 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+// Порт сервера берётся из того же AGENT_PORT, которым его запускают. Пока адрес
+// был вписан жёстко, второй клиент проксировал в первый сервер, и параллельно
+// поднять своё приложение было нельзя — а значит, и посмотреть правку
+// интерфейса глазами тоже.
+const DEFAULT_AGENT_PORT = 8787
+
+function resolveAgentPort(raw: string | undefined): number {
+  const parsed = Number(raw)
+  // Подставлять в адрес мусор из окружения молча нельзя: прокси тогда уходит
+  // в никуда, а выглядит это как отказ сервера, а не как опечатка в порту.
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : DEFAULT_AGENT_PORT
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   build: {
     rollupOptions: {
@@ -15,9 +28,16 @@ export default defineConfig({
     },
   },
   server: {
-    proxy: {
-      '/api': 'http://127.0.0.1:8787',
-      '/generated': 'http://127.0.0.1:8787',
-    },
+    proxy: (() => {
+      // Порт живёт в .env — оттуда же его берёт сервер через dotenv. Без
+      // loadEnv конфиг видел бы только переменные оболочки, и заданный в .env
+      // порт молча расходился бы с тем, куда стучится прокси: сервер отвечает,
+      // клиент получает 502, и выглядит это как поломка сервера.
+      // Префикс пустой намеренно: AGENT_PORT не начинается с VITE_ и в
+      // браузер не попадает — его читает только этот конфиг.
+      const env = loadEnv(mode, process.cwd(), '')
+      const agentTarget = `http://127.0.0.1:${resolveAgentPort(env.AGENT_PORT)}`
+      return { '/api': agentTarget, '/generated': agentTarget }
+    })(),
   },
-})
+}))
