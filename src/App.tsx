@@ -1140,7 +1140,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>
           </div>
         </div>
-        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер обрабатывает действие и его последствия…</p>}
+        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
       </section> : <section className="tactical-control exploration-hotbar" aria-label={`Панель исследования: ${activeName}`}>
         <div className="exploration-mode-icon"><Compass size={24} /></div>
@@ -1151,7 +1151,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         </div>
         <div className="exploration-path-status"><Footprints size={17} /><span><b>Без лимита футов</b><small>вне боя шаги не считаны</small></span></div>
         {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={31} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
-        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Сервер обрабатывает действие и его последствия…</p>}
+        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
       </section>}
       </section>
