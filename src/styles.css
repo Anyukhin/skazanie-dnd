@@ -604,7 +604,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .server-resize { position: absolute; z-index: 12; top: 0; bottom: 0; left: -3px; width: 9px; cursor: ew-resize; touch-action: none; }
 .server-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 3px; height: 46px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateY(-50%); transition: background .15s ease; }
 .server-resize:hover::after { background: rgba(214,161,96,.55); }
-.turn-rail { position: relative; grid-area: rail; min-width: 0; min-height: var(--rail); max-height: 46vh; display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
+.turn-rail { position: relative; grid-area: rail; min-width: 0; min-height: var(--rail); max-height: 38vh; display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
 /* Одна строка на всё действие: слева колоды, справа поле со словами и отправка.
    Отдельного ряда под колоды больше нет — панель стала ниже на его высоту. */
 .rail-free-input { min-width: 0; display: flex; align-items: center; gap: 12px; }
@@ -666,7 +666,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    прокручивается внутри себя, сколько бы плиток в ней ни было — раньше ширина
    колонок зависела от наполнения, и описание прыгало при смене колоды.
    Колонка шага стоит между ними и сжимается в ноль, когда показывать нечего. */
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto clamp(300px, 25%, 420px); gap: 16px; }
+/* Плитки и описание — одна карточка, как у героя справа: та же рамка, тот же
+   радиус и подложка. Перегородки между ними нет: это не два блока, а один
+   разговор — вот чем можно действовать и вот что это значит. */
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto clamp(300px, 25%, 420px); gap: 16px; padding: 12px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 .hotbar-actions { grid-column: 1; }
 .hotbar-turn-controls { grid-column: 2; }
 .hotbar-detail { grid-column: 3; }
@@ -723,7 +726,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* На невысоком экране описание не влезает целиком: заголовок, текст, ярлык и
    подпись дают больше высоты, чем остаётся строке. Прокрутка внутри колонки
    честнее молчаливой обрезки — на широком экране она не появляется. */
-.hotbar-detail { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #4a3f34 transparent; display: grid; grid-auto-rows: min-content; align-content: center; gap: 5px; padding: 0 0 0 18px; border-left: 1px solid rgba(255,255,255,.07); background: none; }
+.hotbar-detail { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #4a3f34 transparent; display: grid; grid-auto-rows: min-content; align-content: center; gap: 5px; padding: 0; border: 0; background: none; }
 /* Мера строки, а не ширина колонки: колонка может быть широкой, когда колода
    короткая, но строка длиннее ~70 знаков уже не читается — глаз теряет начало
    следующей. Остаток колонки остаётся спокойным полем. */

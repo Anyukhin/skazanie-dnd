@@ -495,7 +495,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     const startY = event.clientY
     const startHeight = document.querySelector('.turn-rail')?.getBoundingClientRect().height ?? 292
     const move = (moveEvent: PointerEvent) => {
-      const next = Math.round(Math.min(window.innerHeight * .62, Math.max(150, startHeight + (startY - moveEvent.clientY))))
+      const next = Math.round(Math.min(window.innerHeight * .45, Math.max(150, startHeight + (startY - moveEvent.clientY))))
       setRailHeight(next)
     }
     const stop = () => {
@@ -511,7 +511,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     const startX = event.clientX
     const startWidth = document.querySelector('.server-column')?.getBoundingClientRect().width ?? 320
     const move = (moveEvent: PointerEvent) => {
-      const next = Math.round(Math.min(window.innerWidth * .5, Math.max(240, startWidth + (startX - moveEvent.clientX))))
+      const next = Math.round(Math.min(window.innerWidth * .32, Math.max(240, startWidth + (startX - moveEvent.clientX))))
       setServerWidth(next)
     }
     const stop = () => {
