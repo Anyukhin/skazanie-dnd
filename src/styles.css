@@ -171,7 +171,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    вычитается из полотна: на 1440×900 те же 420/320 px оставили бы доске 744×436 и
    клетку 33 px — ровно ту, из-за которой бой и был тесным. Компактные значения по
    умолчанию, просторные — только когда ширины действительно хватает. */
-.game-area { --status: 60px; --server-column: 320px; --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) auto; grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
+.game-area { --status: 60px; --server-column: var(--ui-server-column, 320px); --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--ui-rail-height, auto); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
 @media (min-width: 1920px) {
   .game-area { --status: 72px; --server-column: 420px; --rail: 320px; --slot: 76px; }
 }
@@ -195,7 +195,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    мышь — из подсказки, а словами пункт «Торговец» стоит в боковом меню. */
 .scene-merchant { flex: 0 0 auto; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(114,150,120,.45); border-radius: 50%; background: rgba(23,32,25,.75); color: #9ec2a4; cursor: pointer; pointer-events: auto; }
 .scene-merchant:hover { border-color: rgba(140,193,148,.75); background: rgba(37,55,41,.88); color: #c4e1c8; }
-.server-column { grid-area: server; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow: hidden; }
+.server-column { position: relative; grid-area: server; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow: hidden; }
 .server-column > .combat-context-panel { grid-row: 1; min-width: 0; min-height: 0; max-height: 34vh; overflow: auto; }
 .server-column > .chat-panel { grid-row: 2; min-width: 0; min-height: 0; }
 .server-column > .chat-closed { grid-row: 2; position: static; inset: auto; width: 100%; justify-self: stretch; align-self: start; }
@@ -596,7 +596,15 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    помещаться целиком, а не прокручиваться в коробке. Нижняя граница — прежние
    292px (столько занимают две строки плиток), верхняя — 46vh, чтобы карта не
    схлопнулась под длинной карточкой; дальше описание всё же прокрутится. */
-.turn-rail { grid-area: rail; min-width: 0; min-height: var(--rail); max-height: 46vh; display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
+/* Ручки размеров: узкая полоса по краю панели. Курсор объясняет жест, а само
+   тело ручки прозрачно — линию рисует уже существующая граница панели. */
+.rail-resize { position: absolute; z-index: 12; left: 0; right: 0; top: -3px; height: 9px; cursor: ns-resize; touch-action: none; }
+.rail-resize::after { content: ''; position: absolute; left: 50%; top: 3px; width: 46px; height: 3px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateX(-50%); transition: background .15s ease; }
+.rail-resize:hover::after { background: rgba(214,161,96,.55); }
+.server-resize { position: absolute; z-index: 12; top: 0; bottom: 0; left: -3px; width: 9px; cursor: ew-resize; touch-action: none; }
+.server-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 3px; height: 46px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateY(-50%); transition: background .15s ease; }
+.server-resize:hover::after { background: rgba(214,161,96,.55); }
+.turn-rail { position: relative; grid-area: rail; min-width: 0; min-height: var(--rail); max-height: 46vh; display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
 /* Одна строка на всё действие: слева колоды, справа поле со словами и отправка.
    Отдельного ряда под колоды больше нет — панель стала ниже на его высоту. */
 .rail-free-input { min-width: 0; display: flex; align-items: center; gap: 12px; }
@@ -662,9 +670,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .hotbar-actions { grid-column: 1; }
 .hotbar-turn-controls { grid-column: 2; }
 .hotbar-detail { grid-column: 3; }
-/* Пока описание раскрыто, колонка шире: тот же текст ложится в меньшее
-   число строк, и полосе не приходится расти вниз за счёт карты. */
-.combat-hotbar:has(.detail-more[aria-expanded="true"]) .hotbar-main { grid-template-columns: minmax(0, 1fr) auto clamp(420px, 40%, 760px); }
 
 /* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
    заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
@@ -737,15 +742,8 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    отдельной строки в и без того невысокой колонке. */
 .detail-head { display: flex; align-items: baseline; gap: 8px; }
 .detail-head > strong { min-width: 0; }
-/* Ширину и минимальную высоту приходится перебивать явно: `.tactical-control
-   button` растягивает любую кнопку панели на всю строку, и «…» занимала её
-   целиком, выдавливая название в ноль. */
-.hotbar-detail .detail-more { flex: 0 0 auto; width: auto; min-height: 0; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: 11px; background: transparent; color: #9a8d7e; font: 700 var(--fs-sm)/1 Manrope, sans-serif; letter-spacing: .08em; cursor: pointer; }
-.hotbar-detail .detail-more:hover { border-color: rgba(211,160,97,.4); color: #d0a36c; }
-.hotbar-detail .detail-more[aria-expanded="true"] { border-color: rgba(211,160,97,.4); background: rgba(174,113,52,.12); color: #d0a36c; }
 .hotbar-detail strong { overflow: hidden; color: #e2d6c6; font: 600 var(--fs-2xl) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
-.hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
-.hotbar-detail p.expanded { display: block; -webkit-line-clamp: none; }
+.hotbar-detail p { margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; }
 /* Подпись переносится, а не обрезается: «на себя — нажмите „Подтвердить“» в
    узкой колонке заканчивалось многоточием ровно там, где начиналось дело. */
 .hotbar-detail span { color: #c8a06a; font: var(--fs-lg)/1.35 Manrope, sans-serif; }

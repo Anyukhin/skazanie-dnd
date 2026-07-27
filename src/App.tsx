@@ -34,6 +34,8 @@ import { WorldMapView } from './WorldMapView'
 type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'settings' | 'admin' | 'agent-lab'
 
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
+const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
+const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
 const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 150
@@ -370,17 +372,13 @@ const HARMFUL_SPELL_KINDS = new Set(['attack', 'damage', 'area-damage', 'save', 
 const castableOutOfCombat = (spell: { kind?: string } | null | undefined) => Boolean(spell && !HARMFUL_SPELL_KINDS.has(String(spell.kind)))
 
 /**
- * Шапка колонки описания: название, краткое описание одной строкой и «…».
- * Полный текст по нажатию раскрывается прямо здесь, а не уводит игрока в
- * подсказку: в строке действий место дороже, чем полнота с первого взгляда.
+ * Шапка колонки описания: название и полный текст. Кнопки раскрытия нет —
+ * высоту панели игрок задаёт сам, перетаскивая её верхний край.
  */
-function DetailHeader({ title, description, expanded, onToggle }: { title: string; description?: string; expanded: boolean; onToggle: () => void }) {
+function DetailHeader({ title, description }: { title: string; description?: string }) {
   return <>
-    <div className="detail-head">
-      <strong>{title}</strong>
-      {description ? <button className="detail-more" onClick={onToggle} aria-expanded={expanded} aria-label={expanded ? 'Свернуть описание' : 'Показать описание целиком'} title={expanded ? 'Свернуть' : 'Показать целиком'}>…</button> : null}
-    </div>
-    {description ? <p className={expanded ? 'expanded' : ''}>{description}</p> : null}
+    <div className="detail-head"><strong>{title}</strong></div>
+    {description ? <p>{description}</p> : null}
   </>
 }
 
@@ -479,6 +477,52 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
 }) {
   const [freeText, setFreeText] = useState('')
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
+  /* Размеры панелей задаёт игрок и они переживают перезагрузку: у кого-то
+     широкий монитор и хочется больше карты, у кого-то — длинные описания.
+     Значения храним в тех же единицах, что и CSS, и пишем на корень документа,
+     где объявлены переменные сетки. */
+  const [railHeight, setRailHeight] = useState(() => Number(window.localStorage.getItem(RAIL_HEIGHT_KEY)) || 0)
+  const [serverWidth, setServerWidth] = useState(() => Number(window.localStorage.getItem(SERVER_WIDTH_KEY)) || 0)
+  useEffect(() => {
+    const root = document.documentElement.style
+    if (railHeight) root.setProperty('--ui-rail-height', `${railHeight}px`)
+    else root.removeProperty('--ui-rail-height')
+    if (serverWidth) root.setProperty('--ui-server-column', `${serverWidth}px`)
+    else root.removeProperty('--ui-server-column')
+  }, [railHeight, serverWidth])
+  const startRailResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const startY = event.clientY
+    const startHeight = document.querySelector('.turn-rail')?.getBoundingClientRect().height ?? 292
+    const move = (moveEvent: PointerEvent) => {
+      const next = Math.round(Math.min(window.innerHeight * .62, Math.max(150, startHeight + (startY - moveEvent.clientY))))
+      setRailHeight(next)
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      setRailHeight((value) => { if (value) window.localStorage.setItem(RAIL_HEIGHT_KEY, String(value)); return value })
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }
+  const startServerResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = document.querySelector('.server-column')?.getBoundingClientRect().width ?? 320
+    const move = (moveEvent: PointerEvent) => {
+      const next = Math.round(Math.min(window.innerWidth * .5, Math.max(240, startWidth + (startX - moveEvent.clientX))))
+      setServerWidth(next)
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      setServerWidth((value) => { if (value) window.localStorage.setItem(SERVER_WIDTH_KEY, String(value)); return value })
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }
+
   const [focusedParticipantId, setFocusedParticipantId] = useState<string | null>(null)
   const [combatMode, setCombatMode] = useState<CombatMode>('weapon')
   const [activeDeck, setActiveDeck] = useState<CombatDeck>('weapon')
@@ -493,7 +537,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const [hotbarSpellIds, setHotbarSpellIds] = useState<string[]>([])
   const [aimCell, setAimCell] = useState<{ x: number; y: number } | null>(null)
   const [pendingCommand, setPendingCommand] = useState<PendingCombatCommand | null>(null)
-  const [detailExpanded, setDetailExpanded] = useState(false)
   const [hoveredMoveKey, setHoveredMoveKey] = useState<string | null>(null)
   const [pendingMoveKey, setPendingMoveKey] = useState<string | null>(null)
   const [inspectedTarget, setInspectedTarget] = useState<{ id: string; name: string; team: 'ally' | 'enemy'; hp?: number; maxHp?: number; healthLabel?: string; distanceFeet: number; allowed: boolean; reason: string | null } | null>(null)
@@ -699,7 +742,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   useEffect(() => { if (!knockoutEligible) setKnockOut(false) }, [knockoutEligible])
   useEffect(() => {
     setPendingCommand(null)
-    setDetailExpanded(false)
     setPendingMoveKey(null)
     setHoveredMoveKey(null)
     setInspectedTarget(null)
@@ -1134,6 +1176,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       </section>}
       </div>
       <aside className="server-column" aria-label="Состояние сцены">
+        <div className="server-resize" role="separator" aria-orientation="vertical" aria-label="Ширина правой колонки" onPointerDown={startServerResize} onDoubleClick={() => { setServerWidth(0); window.localStorage.removeItem(SERVER_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную" />
         {combatActive && <section className="combat-context-panel" aria-label="Текущее состояние боя" aria-live="polite">
           <header><div><small>СЕЙЧАС ХОДИТ · {activeTeam}</small><strong>{activeName}</strong></div><span><Heart size={13} />{activeHealth}</span></header>
           <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
@@ -1175,6 +1218,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         {children}
       </aside>
       <section className="turn-rail">
+        {/* Ручка высоты: тянется вверх и вниз, значение переживает перезагрузку. */}
+        <div className="rail-resize" role="separator" aria-orientation="horizontal" aria-label="Высота нижней панели" onPointerDown={startRailResize} onDoubleClick={() => { setRailHeight(0); window.localStorage.removeItem(RAIL_HEIGHT_KEY) }} title="Потяните, чтобы изменить высоту. Двойной щелчок — вернуть обычную" />
       {/* Свободный ввод присутствует во ВСЕХ состояниях, включая бой. Продуктовые
           принципы 2 и 3 требуют, чтобы предложения интерфейса не были границами;
           раньше в бою на месте этого поля стоял только хотбар, и у принципа не было
@@ -1249,12 +1294,12 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           </div>
           <aside className="hotbar-detail" aria-live="polite">
             {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
-              <DetailHeader title="Вне боя" description="Лечение, усиление и утилита творятся прямо здесь. Всё, что бьёт, требует инициативы." expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} />
+              <DetailHeader title="Вне боя" description="Лечение, усиление и утилита творятся прямо здесь. Всё, что бьёт, требует инициативы." />
               {/* Про футы сказано здесь, а не отдельной колонкой справа: ради
                   одной фразы держать 140px в строке было нечем оправдать. */}
               <span>Шаги не считаны · свободные действия — строкой «Своими словами» ниже</span>
             </> : combatMode === 'magic' && selectedSpell ? <>
-              <DetailHeader title={selectedSpell.name} description={selectedSpell.description} expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} />
+              <DetailHeader title={selectedSpell.name} description={selectedSpell.description} />
               <i className={`mechanics-support-detail support-${selectedSpellSupport.status}`}>{selectedSpellSupport.label}</i>
               {/* Оговорка о полноте механики убрана из колонки: игроку она
                   ничего не даёт, а место занимала больше самого описания. Ярлык
@@ -1265,7 +1310,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               {/* Раньше подпись всегда звала выбрать цель, даже когда она уже
                   была выбрана: клик по врагу выглядел как несработавший. */}
               <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя — нажмите «Отправить»' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'} · {selectedSpellRange} фт{selectedSpell.concentration ? ' · концентрация' : ''}</span>
-            </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} /><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i><span>{selectedCombatAction.target === 'self' ? 'На себя — нажмите «Отправить»' : 'Выберите цель на карте, затем «Отправить»'}</span></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} /><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
+            </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} /><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i><span>{selectedCombatAction.target === 'self' ? 'На себя — нажмите «Отправить»' : 'Выберите цель на карте, затем «Отправить»'}</span></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} /><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
           </aside>
           {/* Колонка шага рисуется, только когда в ней что-то есть: вне боя это
               подтверждение выбранной цели, в бою — кнопки хода. Пустой колонки в
