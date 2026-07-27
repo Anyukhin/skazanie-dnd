@@ -598,7 +598,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    схлопнулась под длинной карточкой; дальше описание всё же прокрутится. */
 .turn-rail { grid-area: rail; min-width: 0; min-height: var(--rail); max-height: 46vh; display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
 .rail-free-input { min-width: 0; display: flex; align-items: center; gap: 10px; }
-.rail-free-tab { flex: 0 0 auto; height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 16px; border: 1px solid rgba(214,161,96,.5); border-radius: 9px; background: rgba(192,132,66,.16); color: #e2b87c; font: 600 var(--fs-lg) Manrope, sans-serif; }
 .rail-free-input input { flex: 1 1 0; min-width: 0; height: 52px; padding: 0 16px; border: 1px solid rgba(222,201,171,.16); border-radius: 9px; background: rgba(9,8,7,.72); color: #e7ddd0; font: var(--fs-xl) Spectral, Georgia, serif; }
 .rail-free-input input::placeholder { color: #6f675f; }
 .rail-free-input input:focus-visible { border-color: rgba(214,161,96,.6); outline: none; }
@@ -712,6 +711,16 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    короткая, но строка длиннее ~70 знаков уже не читается — глаз теряет начало
    следующей. Остаток колонки остаётся спокойным полем. */
 .hotbar-detail > * { max-width: 68ch; }
+/* Подтверждение стоит под описанием, а не отдельной колонкой посреди строки:
+   игрок читает, что выбрал, и тут же соглашается. Ширину задаём явно — общее
+   правило `.tactical-control button` растягивает кнопки на всю строку. */
+.detail-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.hotbar-detail .detail-actions button { width: auto; min-height: 30px; padding: 0 12px; display: flex; align-items: center; gap: 7px; border-radius: 6px; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }
+.hotbar-detail .detail-confirm { border: 1px solid rgba(217,166,101,.5); background: linear-gradient(145deg, rgba(126,87,50,.9), rgba(83,58,37,.9)); color: #e9c48f; }
+.hotbar-detail .detail-confirm:disabled { opacity: .45; cursor: not-allowed; }
+.hotbar-detail .detail-cancel { border: 1px solid var(--line); background: transparent; color: #8b8177; }
+.hotbar-detail .detail-cancel:hover { border-color: rgba(211,160,97,.35); color: #c49a63; }
+
 /* Название и «…» в одной строке: кнопка не уводит взгляд и не занимает
    отдельной строки в и без того невысокой колонке. */
 .detail-head { display: flex; align-items: baseline; gap: 8px; }
@@ -725,7 +734,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .hotbar-detail strong { overflow: hidden; color: #e2d6c6; font: 600 var(--fs-2xl) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
 .hotbar-detail p.expanded { display: block; -webkit-line-clamp: none; }
-.hotbar-detail span { overflow: hidden; color: #c8a06a; font: var(--fs-lg) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+/* Подпись переносится, а не обрезается: «на себя — нажмите „Подтвердить“» в
+   узкой колонке заканчивалось многоточием ровно там, где начиналось дело. */
+.hotbar-detail span { color: #c8a06a; font: var(--fs-lg)/1.35 Manrope, sans-serif; }
 .hotbar-detail .mechanics-support-detail { width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid currentColor; border-radius: 4px; font: normal 700 var(--fs-lg)/1 Manrope, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
 
 .combat-icon { position: relative; z-index: 0; display: inline-grid; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid hsl(var(--combat-icon-hue) 58% 55% / .3); border-radius: 6px; background-image: radial-gradient(circle at 50% 42%, hsl(var(--combat-icon-hue) 52% 24% / .4), transparent 58%), linear-gradient(145deg, rgba(42,36,31,.7), rgba(12,11,10,.84)), url('/assets/ui/combat-icon-texture.png'); background-position: center, center, var(--combat-icon-bg-x) var(--combat-icon-bg-y); background-size: auto, auto, 112px 112px; background-blend-mode: screen, normal, soft-light; box-shadow: inset 0 1px rgba(255,245,220,.08), inset 0 -2px 4px rgba(0,0,0,.7), 0 2px 5px rgba(0,0,0,.4); color: hsl(var(--combat-icon-hue) 92% 70%); isolation: isolate; }

@@ -1169,7 +1169,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         className="rail-free-input"
         onSubmit={(event) => { event.preventDefault(); const text = freeText.trim(); if (!text || narrating) return; onFreeAction(text); setFreeText('') }}
       >
-        <span className="rail-free-tab"><MessageSquare size={17} />Своими словами</span>
+        {/* Ярлык «Своими словами» убран: то же самое написано в самом поле,
+            а места он занимал столько же, сколько кнопка отправки. */}
         <input
           value={freeText}
           onChange={(event) => setFreeText(event.target.value)}
@@ -1238,15 +1239,17 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               {/* Раньше подпись всегда звала выбрать цель, даже когда она уже
                   была выбрана: клик по врагу выглядел как несработавший. */}
               <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя — нажмите «Подтвердить»' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'} · {selectedSpellRange} фт{selectedSpell.concentration ? ' · концентрация' : ''}</span>
+            {!pendingCommand && selfCastReady && <div className="detail-actions">
+              <button className="detail-confirm" disabled={tacticalBusy} onClick={confirmSelfCast}><CombatIcon id="confirm-self-cast" kind="roll" hint="подтвердить действие на себя" size={19} compact /><span>Подтвердить</span></button>
+              <button className="detail-cancel" onClick={cancelSelfCast}><X size={13} /><span>Отмена</span></button>
+            </div>}
             </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} /><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i><span>{selectedCombatAction.target === 'self' ? 'На себя — нажмите «Подтвердить»' : 'Выберите цель на карте'}</span></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} expanded={detailExpanded} onToggle={() => setDetailExpanded((value) => !value)} /><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
           </aside>
           {/* Колонка шага рисуется, только когда в ней что-то есть: вне боя это
               подтверждение выбранной цели, в бою — кнопки хода. Пустой колонки в
               140px, как раньше, в строке больше не остаётся. */}
-          {(combatActive || pendingCommand || selfCastReady) && <div className="hotbar-turn-controls">
+          {(combatActive || pendingCommand) && <div className="hotbar-turn-controls">
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
-            {!pendingCommand && selfCastReady && <button className="manual-attack-roll" disabled={tacticalBusy} onClick={confirmSelfCast}><CombatIcon id="confirm-self-cast" kind="roll" hint="подтвердить действие на себя" size={27} compact /><span>Подтвердить</span></button>}
-            {!pendingCommand && selfCastReady && <button className="cancel-self-cast" onClick={cancelSelfCast} aria-label="Снять выбор"><X size={14} /><span>Отмена</span></button>}
             {pendingCommand && <button className="manual-attack-roll" disabled={tacticalBusy} onClick={confirmPreparedCommand}><CombatIcon id="confirm-prepared-command" kind="roll" hint="подтвердить выбранную цель" size={27} compact /><span>{pendingCommand.kind === 'target' || pendingCommand.kind === 'area' ? 'Бросить' : 'Подтвердить'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
             {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
