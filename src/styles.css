@@ -676,9 +676,12 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    как продолжение карточки, а не как второй ящик рядом. Перегородки между
    ними тоже нет — их разделяет промежуток. */
 .hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto var(--ui-detail-width, clamp(360px, 34%, 620px)); gap: 14px; }
-/* Сверху и снизу отступ меньше бокового: плитки квадратные, и лишний воздух
-   по вертикали читается как пустая полоса, а не как поле карточки. */
-.hotbar-actions { padding: 6px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+/* Высота карточки закреплена ровно под два ряда плиток и не зависит от колоды:
+   раньше она тянулась на весь ряд панели, плитки центрировались, и сверху и
+   снизу оставалось по 19 пикселей пустоты. Число рядов считается от высоты
+   контейнера, поэтому её нельзя отдать содержимому — иначе ряд остаётся один и
+   двадцать плиток «Основных» уходят в горизонтальную прокрутку. */
+.hotbar-actions { align-self: center; height: calc(var(--slot, 64px) * 2 + 20px); padding: 6px 14px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 /* Все четверо живут в одном ряду: без явного ряда ручка занимала первый, а
    карточки уезжали во второй и отрывались от неё. */
 .hotbar-actions { grid-column: 1; grid-row: 1; }
