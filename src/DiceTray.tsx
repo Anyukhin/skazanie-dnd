@@ -5,9 +5,14 @@ import './dice-tray.css'
 
 type DiceTrayProps = {
   latestRoll?: DiceRollEvent | null
-  onRoll: () => Promise<DiceRollEvent>
+  onRoll: (sides: number) => Promise<DiceRollEvent>
   disabled?: boolean
+  /** Значок на карте вместо карточки в колонке: кость и список костей по нажатию. */
+  compact?: boolean
 }
+
+/* Набор повторяет серверный: подставить произвольную грань клиент не может. */
+const DICE = [4, 6, 10, 20, 100] as const
 
 type AnimationPhase = 'idle' | 'rolling' | 'settled'
 
@@ -59,12 +64,14 @@ function D20({ value }: { value: number }) {
  * A server-backed free d20 roll. Pass GameState.lastDiceRoll so rolls made by
  * other players animate here too.
  */
-export function DiceTray({ latestRoll, onRoll, disabled = false }: DiceTrayProps) {
+export function DiceTray({ latestRoll, onRoll, disabled = false, compact = false }: DiceTrayProps) {
   const reducedMotion = usePrefersReducedMotion()
   const [visibleRoll, setVisibleRoll] = useState<DiceRollEvent | null>(() => latestRoll ?? null)
   const [displayValue, setDisplayValue] = useState(() => latestRoll?.value ?? 20)
   const [phase, setPhase] = useState<AnimationPhase>('idle')
   const [error, setError] = useState('')
+  const [sides, setSides] = useState(20)
+  const [menuOpen, setMenuOpen] = useState(false)
   const ownRollPending = useRef(false)
   const settleTimer = useRef<number | null>(null)
 
@@ -85,9 +92,9 @@ export function DiceTray({ latestRoll, onRoll, disabled = false }: DiceTrayProps
 
   useEffect(() => {
     if (phase !== 'rolling' || reducedMotion) return
-    const timer = window.setInterval(() => setDisplayValue(Math.floor(Math.random() * 20) + 1), 72)
+    const timer = window.setInterval(() => setDisplayValue(Math.floor(Math.random() * sides) + 1), 72)
     return () => window.clearInterval(timer)
-  }, [phase, reducedMotion])
+  }, [phase, reducedMotion, sides])
 
   useEffect(() => {
     if (!latestRoll || latestRoll.id === visibleRoll?.id || ownRollPending.current) return
@@ -97,22 +104,24 @@ export function DiceTray({ latestRoll, onRoll, disabled = false }: DiceTrayProps
     return () => window.clearTimeout(timer)
   }, [latestRoll, reducedMotion, visibleRoll?.id])
 
-  const handleRoll = async () => {
+  const handleRoll = async (rollSides: number = sides) => {
     if (disabled || phase === 'rolling' || ownRollPending.current) return
+    setSides(rollSides)
+    setMenuOpen(false)
     ownRollPending.current = true
     setError('')
     setPhase('rolling')
     const startedAt = performance.now()
     try {
-      const roll = await onRoll()
+      const roll = await onRoll(rollSides)
       const elapsed = performance.now() - startedAt
       if (!reducedMotion && elapsed < ROLL_ANIMATION_MS) await wait(ROLL_ANIMATION_MS - elapsed)
       showResult(roll)
     } catch (reason) {
       clearSettleTimer()
       setPhase('idle')
-      setDisplayValue(visibleRoll?.value ?? 20)
-      setError(reason instanceof Error ? reason.message : 'Не удалось бросить d20')
+      setDisplayValue(visibleRoll?.value ?? rollSides)
+      setError(reason instanceof Error ? reason.message : `Не удалось бросить d${rollSides}`)
     } finally {
       ownRollPending.current = false
     }
@@ -124,12 +133,41 @@ export function DiceTray({ latestRoll, onRoll, disabled = false }: DiceTrayProps
     : rolling
       ? 'Кость катится…'
       : visibleRoll
-        ? `${visibleRoll.playerName}: выпало ${visibleRoll.value} на d20`
-        : 'Свободный бросок d20 готов'
+        ? `${visibleRoll.playerName}: выпало ${visibleRoll.value} на d${visibleRoll.sides ?? sides}`
+        : `Свободный бросок d${sides} готов`
+
+  /* На карте — только кость. Список костей открывается по нажатию и закрывается
+     выбором, повторным нажатием или щелчком мимо: карточке с подписями на поле
+     места нет, а бросок нужен под рукой. */
+  if (compact) {
+    return (
+      <aside className={`dice-tray dice-tray--compact dice-tray--${phase}${error ? ' dice-tray--error' : ''}`} aria-label="Свободный бросок" aria-busy={rolling}>
+        {menuOpen && <div className="dice-tray__backdrop" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
+        <button
+          className="dice-tray__chip"
+          type="button"
+          onClick={() => (rolling ? undefined : setMenuOpen((open) => !open))}
+          disabled={disabled}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          title={rolling ? 'Кость катится…' : 'Свободный бросок — выберите кость'}
+        >
+          <span className="dice-tray__die"><D20 value={displayValue} /></span>
+          <b>{rolling ? '…' : visibleRoll ? visibleRoll.value : `d${sides}`}</b>
+        </button>
+        {menuOpen && <div className="dice-tray__menu" role="menu">
+          <small>СВОБОДНЫЙ БРОСОК</small>
+          <div>{DICE.map((die) => <button key={die} type="button" role="menuitem" className={die === sides ? 'active' : ''} onClick={() => { void handleRoll(die) }}>d{die}</button>)}</div>
+          <em>{visibleRoll ? `${visibleRoll.playerName}: ${visibleRoll.value} · ${timeLabel(visibleRoll.rolledAt)}` : 'Результат увидят все'}</em>
+        </div>}
+        <span className="dice-tray__sr-status" role="status" aria-live="polite">{status}</span>
+      </aside>
+    )
+  }
 
   return (
     <aside className={`dice-tray dice-tray--${phase}${error ? ' dice-tray--error' : ''}`} aria-label="Свободный бросок d20" aria-busy={rolling}>
-      <button className="dice-tray__button" type="button" onClick={handleRoll} disabled={disabled || rolling} aria-label={rolling ? 'Выполняется бросок d20' : 'Бросить d20'}>
+      <button className="dice-tray__button" type="button" onClick={() => { void handleRoll() }} disabled={disabled || rolling} aria-label={rolling ? 'Выполняется бросок d20' : 'Бросить d20'}>
         <span className="dice-tray__die-scene"><span className="dice-tray__die"><D20 value={displayValue} /></span><i /></span>
         <span className="dice-tray__copy">
           <small><Dices size={12} /> СВОБОДНЫЙ БРОСОК</small>

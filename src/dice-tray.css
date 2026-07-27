@@ -147,3 +147,23 @@
 .dice-tray__copy > small { font-size: var(--fs-xs); }
 .dice-tray__copy > strong { font-size: var(--fs-xl); }
 .dice-tray__copy > span { font-size: var(--fs-xs); }
+
+/* Значок кости в правом верхнем углу поля — на одной линии с масштабной
+   плашкой слева и надписью режима по центру. Список костей открывается вниз,
+   как обычное меню, и закрывается щелчком мимо. */
+.dice-tray--compact { position: absolute; z-index: 14; top: calc(var(--status, 60px) + 18px); right: calc(var(--server-column, 320px) + 22px); width: auto; padding: 0; border: 0; background: none; box-shadow: none; }
+.dice-tray--compact .dice-tray__chip { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px 0 8px; border: 1px solid rgba(222,201,171,.16); border-radius: 8px; background: rgba(15,13,11,.86); color: #c6b9a6; cursor: pointer; }
+.dice-tray--compact .dice-tray__chip:hover { border-color: rgba(214,161,96,.45); color: #e2b87c; }
+.dice-tray--compact .dice-tray__chip b { font: 700 var(--fs-sm) Manrope, sans-serif; letter-spacing: .04em; }
+.dice-tray--compact .dice-tray__die { width: 28px; height: 28px; display: grid; place-items: center; }
+.dice-tray--compact .dice-tray__die svg { width: 28px; height: 28px; }
+.dice-tray--compact.dice-tray--rolling .dice-tray__die { animation: dice-tray-compact-spin .72s linear infinite; }
+@keyframes dice-tray-compact-spin { to { transform: rotate(360deg); } }
+.dice-tray__backdrop { position: fixed; inset: 0; z-index: 1; }
+.dice-tray__menu { position: absolute; z-index: 2; top: calc(100% + 8px); right: 0; min-width: 190px; display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(222,201,171,.18); border-radius: 9px; background: rgba(17,15,13,.97); box-shadow: 0 18px 44px rgba(0,0,0,.55); }
+.dice-tray__menu small { color: #856944; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .14em; }
+.dice-tray__menu > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.dice-tray__menu button { min-width: 46px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.02); color: #b3a894; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }
+.dice-tray__menu button:hover { border-color: rgba(211,160,97,.45); background: rgba(192,132,66,.14); color: #e2b87c; }
+.dice-tray__menu button.active { border-color: rgba(214,161,96,.5); color: #e2b87c; }
+.dice-tray__menu em { color: #756e67; font: var(--fs-xs) Manrope, sans-serif; font-style: normal; }

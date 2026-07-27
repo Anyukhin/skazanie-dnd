@@ -2505,6 +2505,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         </header>
         {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'}`}>
           {(directorError || joinError || lifecycleError) && <div className="admin-error director-error">{directorError || joinError || lifecycleError}</div>}
+          {/* Свободный бросок переехал из правой колонки в угол карты: он нужен
+              в любой момент, а карточка с подписями занимала место рядом с
+              состоянием героя. */}
+          <DiceTray key={state.sessionCode} compact latestRoll={state.lastDiceRoll} onRoll={(sides) => rollFreeDie(activePlayer.id, sides)} />
           <DungeonMap
             state={state}
             players={partyPlayers}
@@ -2530,7 +2534,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} turnName={turnActorName} combatActive={combatActive} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} onWhy={() => { void submitAction('/why') }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
               <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
-              <DiceTray key={state.sessionCode} latestRoll={state.lastDiceRoll} onRoll={() => rollFreeDie(activePlayer.id)} />
+
             </div>
           </DungeonMap>
         </div>}

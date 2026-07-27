@@ -692,13 +692,13 @@ export function useGameSession() {
     }))
   }, [mutate])
 
-  const rollFreeDie = useCallback(async (playerId: string): Promise<DiceRollEvent> => {
+  const rollFreeDie = useCallback(async (playerId: string, sides = 20): Promise<DiceRollEvent> => {
     if (freeRollBusy.current) throw new Error('Предыдущий бросок ещё не завершён')
     freeRollBusy.current = true
     try {
       // This endpoint rolls and updates the room in one server-side operation.
       // Unlike a skill check, it does not touch messages, the active hero or turn.
-      const room = await rollSharedDie(state.sessionCode, playerId)
+      const room = await rollSharedDie(state.sessionCode, playerId, sides)
       roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
       applyRemote(room.state)
       return room.roll
