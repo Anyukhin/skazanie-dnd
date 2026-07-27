@@ -373,12 +373,15 @@ const HARMFUL_SPELL_KINDS = new Set(['attack', 'damage', 'area-damage', 'save', 
 const castableOutOfCombat = (spell: { kind?: string } | null | undefined) => Boolean(spell && !HARMFUL_SPELL_KINDS.has(String(spell.kind)))
 
 /**
- * Шапка колонки описания: название и полный текст. Кнопки раскрытия нет —
- * высоту панели игрок задаёт сам, перетаскивая её верхний край.
+ * Шапка колонки описания: название, рядом с ним — метки самого действия
+ * (дальность, концентрация, область), под ним полный текст. Метки стоят
+ * здесь, а не строкой внизу: внизу остаётся только указание, что делать
+ * дальше, и оно не тонет среди чисел. Условные знаки взяты из уже принятых
+ * в игре — «К» концентрации из книги заклинаний, футы с плиток.
  */
-function DetailHeader({ title, description }: { title: string; description?: string }) {
+function DetailHeader({ title, description, meta }: { title: string; description?: string; meta?: React.ReactNode }) {
   return <>
-    <div className="detail-head"><strong>{title}</strong></div>
+    <div className="detail-head"><strong>{title}</strong>{meta}</div>
     {description ? <p>{description}</p> : null}
   </>
 }
@@ -1325,7 +1328,10 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                   одной фразы держать 140px в строке было нечем оправдать. */}
               <span>Шаги не считаны · свободные действия — строкой «Своими словами» ниже</span>
             </> : combatMode === 'magic' && selectedSpell ? <>
-              <DetailHeader title={selectedSpell.name} description={selectedSpell.description} />
+              <DetailHeader title={selectedSpell.name} description={selectedSpell.description} meta={<>
+                {selectedSpellRange > 0 ? <i className="detail-chip" title={`Дальность: ${selectedSpellRange} фт`}>{selectedSpellRange} фт</i> : <i className="detail-chip" title="Заклинание на себя">на себя</i>}
+                {selectedSpell.concentration ? <i className="detail-chip mark" title="Требует концентрации">К</i> : null}
+              </>} />
               <i className={`mechanics-support-detail support-${selectedSpellSupport.status}`}>{selectedSpellSupport.label}</i>
               {/* Оговорка о полноте механики убрана из колонки: игроку она
                   ничего не даёт, а место занимала больше самого описания. Ярлык
@@ -1335,8 +1341,11 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               </div> : null}
               {/* Раньше подпись всегда звала выбрать цель, даже когда она уже
                   была выбрана: клик по врагу выглядел как несработавший. */}
-              <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя — нажмите «Отправить»' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'} · {selectedSpellRange} фт{selectedSpell.concentration ? ' · концентрация' : ''}</span>
-            </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} /><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i><span>{selectedCombatAction.target === 'self' ? 'На себя — нажмите «Отправить»' : 'Выберите цель на карте, затем «Отправить»'}</span></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} /><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
+              <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя — нажмите «Отправить»' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'}</span>
+            </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} /><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i><span>{selectedCombatAction.target === 'self' ? 'На себя — нажмите «Отправить»' : 'Выберите цель на карте, затем «Отправить»'}</span></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} meta={<>
+              <i className="detail-chip" title={`Дальность: ${attackRangeFeet} фт`}>{attackRangeFeet} фт</i>
+              {areaRadiusFeet ? <i className="detail-chip" title={`Радиус поражения: ${areaRadiusFeet} фт`}>◍ {areaRadiusFeet}</i> : null}
+            </>} /><span>{selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку, затем «Отправить»' : 'Выберите цель на карте, затем «Отправить»'}</span></>}
           </aside>
           {/* Колонка шага рисуется, только когда в ней что-то есть: вне боя это
               подтверждение выбранной цели, в бою — кнопки хода. Пустой колонки в

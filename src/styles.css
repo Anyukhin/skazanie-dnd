@@ -761,9 +761,15 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .hotbar-detail .detail-cancel { border: 1px solid var(--line); background: transparent; color: #8b8177; }
 .hotbar-detail .detail-cancel:hover { border-color: rgba(211,160,97,.35); color: #c49a63; }
 
-/* Название и «…» в одной строке: кнопка не уводит взгляд и не занимает
+/* Метки рядом с названием: дальность числом, концентрация — знаком «К», как в
+   книге заклинаний. Отдельными фигурами не кодирую: треугольник и квадрат
+   пришлось бы заучивать, а число футов и «К» игрок уже видел на плитках. */
+.detail-chip { flex: 0 0 auto; height: 20px; padding: 0 8px; display: inline-flex; align-items: center; border: 1px solid rgba(222,201,171,.18); border-radius: 10px; color: #a2957f; font: 600 var(--fs-xs) Manrope, sans-serif; font-style: normal; white-space: nowrap; }
+.detail-chip.mark { width: 20px; padding: 0; justify-content: center; border-color: rgba(214,161,96,.4); color: #d0a36c; }
+
+/* Название и метки в одной строке: кнопка не уводит взгляд и не занимает
    отдельной строки в и без того невысокой колонке. */
-.detail-head { display: flex; align-items: baseline; gap: 8px; }
+.detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .detail-head > strong { min-width: 0; }
 .hotbar-detail strong { overflow: hidden; color: #e2d6c6; font: 600 var(--fs-2xl) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .hotbar-detail p { margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; }
