@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -10,7 +11,7 @@ import { AutonomousCampaignOrchestrator } from '../server/autonomous-orchestrato
 import { createAutonomyEvalReport } from '../server/autonomy-eval.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
-import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { ALLOWED_COMMAND_TYPES, RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 
 function cells(width = 13, height = 9) {
   return Array.from({ length: width * height }, (_, index) => ({
@@ -147,6 +148,25 @@ test('механическое поле не проходит и вложенн�
       )
     }
   }
+})
+
+// Автономный слой сам команд не исполняет — он их составляет, а исполняет
+// RulesEngine. Значит любой тип команды, который слой умеет написать, движок
+// обязан уметь принять. Иначе получается второй путь, который расходится с
+// первым молча: код есть, читается как рабочий, а до исполнения не доживает.
+//
+// Проверка статическая, по исходникам: типы, собранные из переменных, она не
+// увидит, но именно записанные строкой расхождения и накапливаются.
+test('автономный слой не умеет писать команду, которой движок не знает', async () => {
+  const modules = ['autonomous-campaign.mjs', 'autonomous-orchestrator.mjs', 'campaign-loop-policy.mjs']
+  const unknown = []
+  for (const name of modules) {
+    const source = await readFile(new URL(`../server/${name}`, import.meta.url), 'utf8')
+    for (const match of source.matchAll(/command_type:\s*'([A-Za-z]+)'/g)) {
+      if (!ALLOWED_COMMAND_TYPES.has(match[1])) unknown.push(`${name}: ${match[1]}`)
+    }
+  }
+  assert.deepEqual([...new Set(unknown)], [], 'эти команды движок исполнить не сможет')
 })
 
 test('climax resolves a triggered quest and completes the campaign replay-identically', async (t) => {
