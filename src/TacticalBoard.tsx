@@ -164,6 +164,20 @@ export type BoardCellNode = {
 /** Подсказка клетки, у которой нет собственного узла: причина недоступности. */
 export type BoardCellHint = { title?: string; ariaLabel?: string }
 
+/**
+ * Камера доски, пережившая размонтирование.
+ *
+ * Масштаб и панорама жили в состоянии компонента, а компонент умирает при уходе
+ * в любой другой раздел: игрок наводил вид на нужный угол карты, заглядывал в
+ * журнал — и возвращался к сброшенным 100% в исходной точке. Ключ — локация:
+ * при переходе в новое место камера обязана сброситься, а при возврате из
+ * раздела в ту же сцену — нет.
+ *
+ * Память намеренно только на время сессии: переживать перезагрузку страницы
+ * камере незачем, а `sessionStorage` пришлось бы ещё и разбирать при чтении.
+ */
+const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: number } }>()
+
 export function TacticalBoard({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
   onBackgroundActivate,
@@ -187,12 +201,24 @@ export function TacticalBoard({
   decoration?: React.ReactNode
   onBackgroundActivate?: () => void
 }) {
-  const [zoom, setZoom] = useState(1)
+  const cameraKey = map?.locationId || 'нет карты'
+  const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
   const [hoverCell, setHoverCell] = useState<{ x: number; y: number } | null>(null)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [pan, setPan] = useState(() => cameraByLocation.get(cameraKey)?.pan ?? { x: 0, y: 0 })
+  const lastCameraKey = useRef(cameraKey)
   const [dragging, setDragging] = useState(false)
   const [cellPixels, setCellPixels] = useState(0)
   const [assetsVersion, setAssetsVersion] = useState(0)
+  useEffect(() => { cameraByLocation.set(cameraKey, { zoom, pan }) }, [cameraKey, zoom, pan])
+  useEffect(() => {
+    // Локация сменилась под живым компонентом — берём её камеру, а не чужую.
+    if (lastCameraKey.current === cameraKey) return
+    lastCameraKey.current = cameraKey
+    const saved = cameraByLocation.get(cameraKey)
+    setZoom(saved?.zoom ?? 1)
+    setPan(saved?.pan ?? { x: 0, y: 0 })
+  }, [cameraKey])
+
   const frameRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const cacheRef = useRef(createTileCache())
