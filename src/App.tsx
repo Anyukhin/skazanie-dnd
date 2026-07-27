@@ -1052,8 +1052,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       {/* Режим стоит над полем по центру: он описывает то, что происходит на
           карте, и читается раньше, чем взгляд уходит к панели действий. */}
       {!combatActive && <div className="map-mode-plate" aria-label="Режим исследования">
-        <Compass size={15} />
-        <span><small>ИССЛЕДОВАНИЕ</small><strong>{activeName} движется свободно</strong></span>
+        <small>ИССЛЕДОВАНИЕ</small><strong>{activeName} движется свободно</strong>
       </div>}
       <div className="map-legend">
         <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг · параметры скрыты</span><span><i className="legend-dot interest" />Интерес</span>

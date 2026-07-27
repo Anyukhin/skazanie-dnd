@@ -311,13 +311,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    слева, легенда и подсказки управления по нижнему краю. Над самой картой не лежит
    ничего, что можно принять за часть местности. */
 .map-scale-plate { position: absolute; z-index: 8; left: 22px; top: 20px; padding: 7px 12px; border: 1px solid rgba(222,201,171,.16); border-radius: 6px; background: rgba(15,13,11,.86); color: #c6b9a6; font: 700 var(--fs-xs) Manrope, sans-serif; }
-/* Табличка режима — того же семейства, что и масштабная плашка слева: тот же
-   фон, та же пергаментная рамка, тот же радиус. Стоит по центру верхнего края
-   поля, кликам не мешает. */
-.map-mode-plate { position: absolute; z-index: 8; left: 50%; top: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 9px; max-width: min(420px, 60%); padding: 6px 14px; border: 1px solid rgba(222,201,171,.16); border-radius: 6px; background: rgba(15,13,11,.86); color: #7ea88f; pointer-events: none; }
-.map-mode-plate > span { min-width: 0; display: grid; gap: 1px; }
-.map-mode-plate small { color: #6f9d85; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
-.map-mode-plate strong { overflow: hidden; color: #cfc4b5; font: 600 var(--fs-sm) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+/* Надпись режима, а не плашка: ни подложки, ни рамки, ни значка — только две
+   строки по центру верхнего края поля. Кликам не мешает, карту не перекрывает.
+   Тень вместо фона: по светлому дереву белый текст иначе теряется. */
+.map-mode-plate { position: absolute; z-index: 8; left: 50%; top: 18px; transform: translateX(-50%); display: grid; justify-items: center; gap: 2px; max-width: min(460px, 70%); text-align: center; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,.85), 0 0 12px rgba(0,0,0,.6); }
+.map-mode-plate small { color: #86b39a; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .16em; }
+.map-mode-plate strong { max-width: 100%; overflow: hidden; color: #e2dacd; font: 600 var(--fs-md) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .map-legend { position: absolute; z-index: 8; left: 24px; bottom: 22px; display: flex; gap: 16px; padding: 9px 13px; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.78); color: #8d857b; font: var(--fs-xs) Manrope, sans-serif; }
 .map-legend span { display: flex; align-items: center; gap: 7px; }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
