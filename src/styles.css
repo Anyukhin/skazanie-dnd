@@ -171,7 +171,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    вычитается из полотна: на 1440×900 те же 420/320 px оставили бы доске 744×436 и
    клетку 33 px — ровно ту, из-за которой бой и был тесным. Компактные значения по
    умолчанию, просторные — только когда ширины действительно хватает. */
-.game-area { --status: 60px; --server-column: 320px; --rail: 292px; --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--rail); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
+.game-area { --status: 60px; --server-column: 320px; --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--rail); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
 @media (min-width: 1920px) {
   .game-area { --status: 72px; --server-column: 420px; --rail: 320px; --slot: 76px; }
 }
@@ -638,13 +638,16 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    арсенала, а не ради нажатия. */
 .combat-hotbar.out-of-combat .action-tile:disabled { opacity: .5; }
 
-/* Колонки по содержимому, а не по жёстким долям. Раньше колода занимала долю
-   строки независимо от числа плиток: в колоде с одной плиткой 850 из 914
-   пикселей пустовали, а колонка шага держала свои 140 даже пустой. Теперь
-   плитки берут по себе (но не больше 58% строки — дальше прокрутка внутри),
-   описание забирает остаток, а колонка шага сжимается в ноль, когда в ней
-   нечего показать. */
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: fit-content(58%) minmax(260px, 1fr) auto; gap: 16px; }
+/* Описание закреплено справа и не ездит: у него своя колонка постоянной
+   ширины, последняя в строке. Колода занимает всё, что осталось слева, и
+   прокручивается внутри себя, сколько бы плиток в ней ни было — раньше ширина
+   колонок зависела от наполнения, и описание прыгало при смене колоды.
+   Колонка шага стоит между ними и сжимается в ноль, когда показывать нечего. */
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto clamp(300px, 25%, 420px); gap: 16px; }
+.hotbar-actions { grid-column: 1; }
+.hotbar-turn-controls { grid-column: 2; }
+.hotbar-detail { grid-column: 3; }
+
 /* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
    заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
    рисунку осознанно: название и описание уже показывает колонка шага справа, а на
@@ -694,16 +697,18 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 
 /* Колонка шага: бейдж, заголовок, полное описание, строка ресурса. Вертикальных
    отступов нет намеренно — они дают переполнение фиксированной сетки строк. */
-.hotbar-detail { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-auto-rows: min-content; align-content: center; gap: 5px; padding: 0 0 0 18px; border-left: 1px solid rgba(255,255,255,.07); background: none; }
+/* На невысоком экране описание не влезает целиком: заголовок, текст, ярлык и
+   подпись дают больше высоты, чем остаётся строке. Прокрутка внутри колонки
+   честнее молчаливой обрезки — на широком экране она не появляется. */
+.hotbar-detail { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #4a3f34 transparent; display: grid; grid-auto-rows: min-content; align-content: center; gap: 5px; padding: 0 0 0 18px; border-left: 1px solid rgba(255,255,255,.07); background: none; }
 /* Мера строки, а не ширина колонки: колонка может быть широкой, когда колода
    короткая, но строка длиннее ~70 знаков уже не читается — глаз теряет начало
    следующей. Остаток колонки остаётся спокойным полем. */
 .hotbar-detail > * { max-width: 68ch; }
 .hotbar-detail strong { overflow: hidden; color: #e2d6c6; font: 600 var(--fs-2xl) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
-.hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.hotbar-detail p { display: -webkit-box; overflow: hidden; margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .hotbar-detail span { overflow: hidden; color: #c8a06a; font: var(--fs-lg) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .hotbar-detail .mechanics-support-detail { width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid currentColor; border-radius: 4px; font: normal 700 var(--fs-lg)/1 Manrope, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
-.hotbar-detail .mechanics-support-note { display: -webkit-box; overflow: hidden; color: #8d8174; font: var(--fs-sm)/1.3 Manrope, sans-serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
 .combat-icon { position: relative; z-index: 0; display: inline-grid; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid hsl(var(--combat-icon-hue) 58% 55% / .3); border-radius: 6px; background-image: radial-gradient(circle at 50% 42%, hsl(var(--combat-icon-hue) 52% 24% / .4), transparent 58%), linear-gradient(145deg, rgba(42,36,31,.7), rgba(12,11,10,.84)), url('/assets/ui/combat-icon-texture.png'); background-position: center, center, var(--combat-icon-bg-x) var(--combat-icon-bg-y); background-size: auto, auto, 112px 112px; background-blend-mode: screen, normal, soft-light; box-shadow: inset 0 1px rgba(255,245,220,.08), inset 0 -2px 4px rgba(0,0,0,.7), 0 2px 5px rgba(0,0,0,.4); color: hsl(var(--combat-icon-hue) 92% 70%); isolation: isolate; }
 /* Запасной размер: компонент задаёт width/height, только если ему передали size.
@@ -769,7 +774,8 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 @media (max-width: 1120px) {
   .director-status { display: none; }
   .combat-hotbar.tactical-control { width: calc(100% - 32px); }
-  .hotbar-main { grid-template-columns: minmax(0, 1fr) minmax(220px, 360px) 112px; gap: 12px; }
+  /* Порядок колонок тот же, что на широком экране: колода, шаг, описание. */
+  .hotbar-main { grid-template-columns: minmax(0, 1fr) 112px minmax(220px, 360px); gap: 12px; }
   .player-hud-stack, .player-hud { display: none; }
 }
 

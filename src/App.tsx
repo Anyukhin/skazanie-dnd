@@ -586,6 +586,17 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const selectedActionSupport = mechanicsSupportPresentation(selectedCombatAction?.mechanicsSupport, selectedCombatAction?.supportNote)
   const selectedActionEconomyReady = Boolean(selectedCombatAction && !selectedActionSupport.blocked && selectedActionResourceReady && (selectedCombatAction.actionType === 'free' || (selectedCombatAction.actionType === 'bonus_action' ? bonusReady : selectedCombatAction.actionType === 'reaction' ? reactionReady : actionReady)))
   const selectedCommandReady = combatMode === 'magic' ? spellEconomyReady : combatMode === 'action' ? selectedActionEconomyReady : weaponAttackReady
+  /* Действие на себя цели на карте не требует, поэтому подтверждение выводится
+     из самого выбора, а не хранится в `pendingCommand`: команду стирает эффект,
+     который срабатывает как раз на смену выбранного заклинания. */
+  const selfCastSpell = combatMode === 'magic' && selectedSpell?.target === 'self' && spellEconomyReady ? selectedSpell : null
+  const selfUseAction = combatMode === 'action' && selectedCombatAction?.target === 'self' && selectedActionEconomyReady ? selectedCombatAction : null
+  const selfCastReady = Boolean(selected && !tacticalBusy && (selfCastSpell || selfUseAction))
+  const confirmSelfCast = () => {
+    if (!selected) return
+    if (selfCastSpell) onCastSpell(selected, selfCastSpell.id, { targetId: selected, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}) })
+    else if (selfUseAction) onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined)
+  }
   const aliveEnemies = (state.enemies ?? []).filter((enemy) => enemy.alive && !(state.mechanics?.conditions?.[enemy.id] ?? []).some((condition) => condition.id === 'unconscious'))
   const opportunityThreats = combatActive && active && !activeConditionIds.has('disengaged') && !activeConditionIds.has('invisible')
     ? aliveEnemies.filter((enemy) => {
@@ -698,7 +709,12 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     setSelectedSpellId(spell.id)
     setSelectedSpellOption(spell.spellOptions?.[0] ?? '')
     setCombatMode('magic')
-    if (selected && spell.target === 'self' && spellActionType(spell) !== 'long_cast') onCastSpell(selected, spell.id, { targetId: selected })
+    /* Нажатие на плитку выбирает, а не применяет. Раньше заклинание на себя
+       уходило на сервер прямо из клика: игрок открывал колоду посмотреть, что у
+       героя есть, и случайно тратил ячейку. Теперь оно ждёт подтверждения —
+       кнопку рисует `selfCastReady`, выведенный из выбора. Хранить его в
+       `pendingCommand` нельзя: эффект ниже стирает команду как раз при смене
+       выбранного заклинания. */
   }
   const toggleHotbarSpell = (spellId: string) => {
     const next = hotbarSpellIds.includes(spellId) ? hotbarSpellIds.filter((id) => id !== spellId) : [...hotbarSpellIds, spellId].slice(-24)
@@ -718,7 +734,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     if (!resourceReady || !economyReady) return
     setSelectedCombatActionId(action.id)
     setCombatMode('action')
-    if (action.target === 'self') onUseCombatAction(selected, action.id, undefined, action.requiresWeapon ? selectedItem?.id : undefined)
+    // Как и заклинание на себя: выбор, описание, и только потом подтверждение.
   }
   const confirmPreparedCommand = () => {
     if (!selected || !pendingCommand) return
@@ -1197,20 +1213,23 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               <strong>{selectedSpell.name}</strong>
               <p>{selectedSpell.description}</p>
               <i className={`mechanics-support-detail support-${selectedSpellSupport.status}`}>{selectedSpellSupport.label}</i>
-              {selectedSpellSupport.status !== 'verified' && <small className="mechanics-support-note">{selectedSpellSupport.explanation}</small>}
+              {/* Оговорка о полноте механики убрана из колонки: игроку она
+                  ничего не даёт, а место занимала больше самого описания. Ярлык
+                  статуса рядом остаётся, полный текст живёт в подсказке плитки. */}
               {selectedSpell.spellOptions?.length ? <div className="spell-option-picker" aria-label="Вариант заклинания">
                 {selectedSpell.spellOptions.map((option) => <button key={option} className={selectedSpellOption === option ? 'selected' : ''} onClick={() => setSelectedSpellOption(option)}>{SPELL_OPTION_LABELS[option] ?? option}</button>)}
               </div> : null}
               {/* Раньше подпись всегда звала выбрать цель, даже когда она уже
                   была выбрана: клик по врагу выглядел как несработавший. */}
-              <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'} · {selectedSpellRange} фт{selectedSpell.concentration ? ' · концентрация' : ''}</span>
-            </> : combatMode === 'action' && selectedCombatAction ? <><strong>{selectedCombatAction.name}</strong><p>{selectedCombatAction.description}</p><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i>{selectedActionSupport.status !== 'verified' && <small className="mechanics-support-note">{selectedActionSupport.explanation}</small>}<span>{selectedCombatAction.target === 'self' ? 'Применяется сразу' : 'Выберите цель на карте'}</span></> : <><strong>{selectedItem?.name ?? 'Базовая атака'}</strong><p>{selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')}</p><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
+              <span>{pendingTargetName ? `Цель: ${pendingTargetName}` : selectedSpell.target === 'self' ? 'На себя — нажмите «Подтвердить»' : selectedSpell.target === 'point' ? 'Выберите клетку' : selectedSpell.target === 'ally' ? 'Выберите союзника' : selectedSpell.target === 'creature' ? 'Выберите существо' : 'Выберите врага'} · {selectedSpellRange} фт{selectedSpell.concentration ? ' · концентрация' : ''}</span>
+            </> : combatMode === 'action' && selectedCombatAction ? <><strong>{selectedCombatAction.name}</strong><p>{selectedCombatAction.description}</p><i className={`mechanics-support-detail support-${selectedActionSupport.status}`}>{selectedActionSupport.label}</i><span>{selectedCombatAction.target === 'self' ? 'На себя — нажмите «Подтвердить»' : 'Выберите цель на карте'}</span></> : <><strong>{selectedItem?.name ?? 'Базовая атака'}</strong><p>{selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')}</p><span>{attackRangeFeet} фт{areaRadiusFeet ? ` · область ${areaRadiusFeet} фт` : ''}</span></>}
           </aside>
           {/* Колонка шага рисуется, только когда в ней что-то есть: вне боя это
               подтверждение выбранной цели, в бою — кнопки хода. Пустой колонки в
               140px, как раньше, в строке больше не остаётся. */}
-          {(combatActive || pendingCommand) && <div className="hotbar-turn-controls">
+          {(combatActive || pendingCommand || selfCastReady) && <div className="hotbar-turn-controls">
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
+            {!pendingCommand && selfCastReady && <button className="manual-attack-roll" disabled={tacticalBusy} onClick={confirmSelfCast}><CombatIcon id="confirm-self-cast" kind="roll" hint="подтвердить действие на себя" size={27} compact /><span>Подтвердить</span></button>}
             {pendingCommand && <button className="manual-attack-roll" disabled={tacticalBusy} onClick={confirmPreparedCommand}><CombatIcon id="confirm-prepared-command" kind="roll" hint="подтвердить выбранную цель" size={27} compact /><span>{pendingCommand.kind === 'target' || pendingCommand.kind === 'area' ? 'Бросить' : 'Подтвердить'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
             {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
