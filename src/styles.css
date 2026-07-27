@@ -1416,7 +1416,10 @@ button.campaign-title:hover strong { color: #edc996; }
   filter: saturate(.82) contrast(1.04) brightness(.94);
 }
 /* Собственный рисунок действия: вписывается целиком, без обрезки по клетке
-   атласа. Прозрачный фон картинки пропускает тайл под ней. */
+   атласа. Прозрачный фон картинки пропускает тайл под ней.
+   Пока --combat-icon-src не подставлен, var() здесь невалиден, background-image
+   берёт начальное значение none, и виден один тайл: именно так и выглядит
+   иконка до того, как её показали. Клетка атласа при этом не проступает. */
 .combat-icon-art.own {
   background-image: var(--combat-icon-src);
   background-position: center;
