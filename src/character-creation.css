@@ -26,3 +26,10 @@
 .slot-count-picker button.selected{border-color:rgba(203,151,87,.5);background:linear-gradient(135deg,rgba(153,96,44,.2),rgba(91,60,36,.1));color:#e6c79a}
 .slot-count-picker strong{font:600 18px Spectral,serif}
 .slot-count-picker small{font:600 8px Manrope,sans-serif;letter-spacing:.06em;text-transform:uppercase}
+
+/* Общий статус механики для всего списка: одна строка вместо ярлыка в каждой
+   карточке. Статус остаётся видимым, как требует словарь статусов, но перестаёт
+   быть тридцатью одинаковыми «ЧАСТИЧНО», среди которых ничего не различить. */
+.creation-support-note { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; padding: 9px 11px; border: 1px solid rgba(190, 140, 78, .18); border-radius: 6px; background: rgba(150, 98, 42, .06); color: #97794f; }
+.creation-support-note > span { min-width: 0; font: calc(11px * var(--ui-readable-scale, 1))/1.5 Spectral, serif; }
+.creation-support-note b { color: #bb9a6c; font-weight: 700; }
