@@ -81,7 +81,29 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .campaign-title span { grid-column: 1 / -1; overflow: hidden; color: #716a62; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; letter-spacing: .17em; }
 .campaign-title strong { min-width: 0; overflow: hidden; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; font-family: Spectral, serif; font-size: 15px; font-weight: 600; color: #d8cfc3; }
 .campaign-title svg { color: #777068; }
-.top-actions { display: flex; align-items: center; gap: 12px; }
+/* Верхняя панель обязана укладываться в экран. При открытом боковом меню на
+   1280 px её содержимое вылезало за край на 227 px: карточка аккаунта и часть
+   кнопок уезжали за границу, а страница получала горизонтальную прокрутку.
+   Сжимаются справочные части — код комнаты и состояние связи; кнопки и
+   карточка аккаунта не ужимаются, терять действие хуже. Перенос не включаем:
+   во flexbox строка набирается до сжатия, поэтому `wrap` уводил панель на две
+   строки даже там, где всё помещалось. */
+.top-actions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+/* Нижние границы обязательны: без них сжатие доводило код комнаты до 25 px, а
+   по нему зовут в игру — читаемым он остаться должен. Состояние связи ужимается
+   до одного значка: цвет и иконка говорят то же, что и подпись. */
+/* Нижняя граница — ширина содержимого: без неё flexbox ужимал коробку до 25 px,
+   а неразрывный код вылезал за её край поверх соседних элементов. Число тут не
+   годится — код комнаты меняет длину, а `max-content` считает сам. */
+.session-code { flex: 0 1 auto; min-width: max-content; }
+.session-code b { flex: 0 0 auto; white-space: nowrap; }
+/* Ниже 1440 px подпись «КОМНАТА» уходит, код остаётся целиком: подпись
+   дублирует иконку и заголовок, а код — единственное, что нельзя потерять.
+   Полная форма остаётся в `title`. */
+@media (max-width: 1439px) { .session-code span { display: none; } }
+.connection-status { min-width: 34px; overflow: hidden; }
+.connection-status span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.top-actions .invite-button, .top-actions .account-chip { flex: 0 0 auto; }
 .account-chip { height: 36px; display: flex; align-items: center; gap: 8px; padding-left: 11px; border-left: 1px solid var(--line); }.account-chip > span { display: grid; text-align: right; }.account-chip > span { color: #aaa095; font: 14px Spectral, serif; }.account-chip small { color: #68615a; font: 13px Manrope, sans-serif; }.account-chip button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: rgba(255,255,255,.025); color: #786f67; cursor: pointer; }.account-chip button:hover { color: #c98273; background: rgba(147,72,62,.09); }
 .session-code { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: 5px; color: #726a62; font-size: 13px; letter-spacing: .11em; }
 .session-code i { width: 6px; height: 6px; border-radius: 50%; background: #71a07c; box-shadow: 0 0 0 3px rgba(113,160,124,.12); }

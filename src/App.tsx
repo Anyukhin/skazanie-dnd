@@ -2188,7 +2188,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
           <button className="campaign-title" onClick={() => setCampaignsOpen(true)} title="Переключить кампанию или группу"><span>КАМПАНИЯ · {state.partyName}</span><strong>{state.campaign}</strong><ChevronDown size={15} /></button>
           <div className="top-actions">
-            <div className="session-code"><i />КОМНАТА <b>{state.sessionCode}</b></div>
+            {/* Подпись в отдельном span: на узкой верхней панели её прячут, а
+                сам код обязан оставаться читаемым — по нему зовут в игру. */}
+            <div className="session-code" title={`Код комнаты: ${state.sessionCode}`}><i /><span>КОМНАТА</span><b>{state.sessionCode}</b></div>
             <ConnectionIndicator status={connectionState} />
             {pacing && pacing.beat > 0 && <div className={`director-status ${pacing.phase}`} title={lastTravel ? `Последний путь: ${lastTravel.from} → ${lastTravel.to}, ${lastTravel.duration_minutes} мин., риск ${lastTravel.risk_score}` : 'Серверный темп автономной кампании'}><Sparkles size={13} /><span>{pacingLabels[pacing.phase]}</span><b>{pacing.tension}</b></div>}
             {lifecycleStatus === 'active' && !combatActive && accessibleHeroIds.length > 0 && <button className="invite-button director-button" onClick={() => { void advanceAdventure().catch(() => {}) }} disabled={directorBusy} title="Director выберет следующий допустимый этап по подтверждённому состоянию"><Sparkles size={17} />{directorBusy ? 'Режиссёр думает…' : 'Продолжить сюжет'}</button>}
