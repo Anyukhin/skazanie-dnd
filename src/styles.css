@@ -604,9 +604,13 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Ручка ширины сидит на правом краю карточки действий и видна всегда: три
    насечки в пергаментном тоне на самой рамке. В промежутке между областями её
    не было видно вовсе — тёмная полоска на тёмном фоне. */
-.actions-resize { grid-column: 1; grid-row: 1; justify-self: end; align-self: center; z-index: 12; width: 14px; height: 54px; display: grid; align-content: center; justify-items: center; gap: 3px; border-left: 1px solid rgba(211,184,149,.14); border-radius: 0 8px 8px 0; background: rgba(30,26,22,.92); cursor: ew-resize; touch-action: none; }
-.actions-resize i { width: 4px; height: 4px; border-radius: 50%; background: rgba(222,201,171,.45); }
-.actions-resize:hover { background: rgba(48,39,29,.95); }
+/* Ручка повторяет коробку карточки, а не ряд: карточка прижата к верху и её
+   середина ниже середины ряда — при выравнивании по ряду язычок съезжал вниз.
+   Сам язычок рисует `::before` по центру этой коробки. */
+.actions-resize { position: relative; grid-column: 1; grid-row: 1; justify-self: end; align-self: start; z-index: 12; width: 14px; height: min(calc(var(--slot, 64px) * 2 + 28px), 100%); display: grid; align-content: center; justify-items: center; gap: 3px; cursor: ew-resize; touch-action: none; }
+.actions-resize::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 54px; transform: translateY(-50%); border-left: 1px solid rgba(211,184,149,.14); border-radius: 0 8px 8px 0; background: rgba(30,26,22,.92); }
+.actions-resize i { position: relative; z-index: 1; width: 4px; height: 4px; border-radius: 50%; background: rgba(222,201,171,.45); }
+.actions-resize:hover::before { background: rgba(48,39,29,.95); }
 .actions-resize:hover i { background: #d7a866; }
 .server-resize { position: absolute; z-index: 12; top: 0; bottom: 0; left: -3px; width: 9px; cursor: ew-resize; touch-action: none; }
 .server-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 3px; height: 46px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateY(-50%); transition: background .15s ease; }
