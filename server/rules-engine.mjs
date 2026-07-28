@@ -83,6 +83,10 @@ import {
   trustedStockAppraisalFor,
 } from './merchant-economy.mjs'
 import {
+  reputationPriceBps,
+  reputationStandingFor,
+} from './reputation-policy.mjs'
+import {
   CATEGORY_APPRAISAL_POLICY_ID,
   appraiseItem,
 } from './item-appraisal.mjs'
@@ -2707,7 +2711,7 @@ export function validateCommand(input, rawState, context = {}) {
       const stock = merchantStock(merchant, command.stock_id)
       if (!stock) throw new RulesValidationError('Товар не найден на складе торговца', 'STOCK_NOT_FOUND')
       if (safeInteger(stock.quantity, 0) < command.quantity) throw new RulesValidationError('У торговца недостаточно товара', 'INSUFFICIENT_STOCK')
-      const quote = quoteMerchantBuyUnit(merchant, actor.id, stock)
+      const quote = quoteMerchantBuyUnit(merchant, actor.id, stock, reputationPriceBps(state, merchant.id))
       if (!quote) throw new RulesValidationError('Для товара не задана серверная цена', 'PRICE_UNAVAILABLE')
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       if (currencyToCopper(actor.currency) < total) throw new RulesValidationError('У героя недостаточно монет', 'INSUFFICIENT_FUNDS')
@@ -2727,7 +2731,13 @@ export function validateCommand(input, rawState, context = {}) {
       const service = findMerchantService(merchant, command.service_id)
       if (!service) throw new RulesValidationError('Услуга торговца не найдена', 'SERVICE_NOT_FOUND')
       if (service.available === false) throw new RulesValidationError('Услуга торговца сейчас недоступна', 'SERVICE_UNAVAILABLE')
-      const quote = quoteMerchantService(merchant, actor.id, service)
+      // Услуга — одолжение, и в нём отказывают. Товар продают всем: запертая
+      // лавка останавливает кампанию, а наценка её только окрашивает.
+      const standing = reputationStandingFor(state, merchant.id)
+      if (!standing.services_available) {
+        throw new RulesValidationError('Торговец не станет оказывать услуги отряду с такой славой', 'SERVICE_REFUSED_BY_REPUTATION')
+      }
+      const quote = quoteMerchantService(merchant, actor.id, service, standing.price_adjustment_bps)
       if (!quote) throw new RulesValidationError('Для услуги не удалось рассчитать серверную цену', 'PRICE_UNAVAILABLE')
       const total = checkedTransactionTotal(quote.price_cp, 1)
       if (currencyToCopper(actor.currency) < total) throw new RulesValidationError('У героя недостаточно монет', 'INSUFFICIENT_FUNDS')
@@ -2742,7 +2752,7 @@ export function validateCommand(input, rawState, context = {}) {
       const appraisal = trustedItemAppraisalFor(state, actor.id, item)
       const allowed = sellability(item, appraisal)
       if (!allowed.can_sell) throw new RulesValidationError(allowed.reason, item.equipped ? 'ITEM_EQUIPPED' : 'ITEM_NOT_SELLABLE')
-      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal)
+      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id))
       if (!quote) throw new RulesValidationError('Для предмета не задана серверная цена', 'PRICE_UNAVAILABLE')
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       if (normalizeMerchantPurseCp(merchant.purse_cp) < total) {
@@ -7130,7 +7140,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const actor = playerActor(state, command.actor_id)
       const merchant = findMerchant(state, command.merchant_id)
       const stock = merchantStock(merchant, command.stock_id)
-      const quote = quoteMerchantBuyUnit(merchant, actor.id, stock)
+      const quote = quoteMerchantBuyUnit(merchant, actor.id, stock, reputationPriceBps(state, merchant.id))
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       const balanceBeforeCp = currencyToCopper(actor.currency)
       const merchantPurseBeforeCp = normalizeMerchantPurseCp(merchant.purse_cp)
@@ -7175,7 +7185,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const actor = playerActor(state, command.actor_id)
       const merchant = findMerchant(state, command.merchant_id)
       const service = findMerchantService(merchant, command.service_id)
-      const quote = quoteMerchantService(merchant, actor.id, service)
+      const quote = quoteMerchantService(merchant, actor.id, service, reputationPriceBps(state, merchant.id))
       const total = checkedTransactionTotal(quote.price_cp, 1)
       const balanceBeforeCp = currencyToCopper(actor.currency)
       const merchantPurseBeforeCp = normalizeMerchantPurseCp(merchant.purse_cp)
@@ -7207,7 +7217,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const merchant = findMerchant(state, command.merchant_id)
       const item = inventoryItem(actor, command.item_id)
       const appraisal = trustedItemAppraisalFor(state, actor.id, item)
-      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal)
+      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id))
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       const balanceBeforeCp = currencyToCopper(actor.currency)
       const merchantPurseBeforeCp = normalizeMerchantPurseCp(merchant.purse_cp)

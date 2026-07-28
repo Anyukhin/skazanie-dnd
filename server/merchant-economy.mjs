@@ -560,16 +560,26 @@ export function bargainFor(merchant, actorId) {
   return merchant?.bargains?.[String(actorId ?? '')] ?? null
 }
 
-function pricingMultipliers(merchant, actorId) {
+/**
+ * `reputationBps` — поправка от репутации отряда у фракций торговца
+ * (`server/reputation-policy.mjs`). Она приходит извне, а не считается здесь:
+ * ценообразование не должно знать про фракции, а репутация — про наценки.
+ * Ноль по умолчанию сохраняет прежнее поведение для вызовов без состояния.
+ * Итог всё равно зажат прежними `min/max_multiplier_bps`, поэтому репутация
+ * не может увести цену за границы политики торговца.
+ */
+function pricingMultipliers(merchant, actorId, reputationBps = 0) {
   const pricing = normalizeMerchantPricing(merchant?.pricing)
   const bargain = bargainFor(merchant, actorId)
   const bargainAdjustment = clampInteger(bargain?.pricing_adjustment_bps, -5_000, 5_000, 0)
-  const buyBeforeBargain = pricing.buy_markup_bps + pricing.agent_adjustment_bps
-  const sellBeforeBargain = pricing.sell_rate_bps - pricing.agent_adjustment_bps
+  const reputation = clampInteger(reputationBps, -1_000, 1_000, 0)
+  const buyBeforeBargain = pricing.buy_markup_bps + pricing.agent_adjustment_bps + reputation
+  const sellBeforeBargain = pricing.sell_rate_bps - pricing.agent_adjustment_bps - reputation
   return {
     pricing,
     bargain,
     bargainAdjustment,
+    reputationBps: reputation,
     buy: Math.max(pricing.min_multiplier_bps, Math.min(pricing.max_multiplier_bps, buyBeforeBargain + bargainAdjustment)),
     sell: Math.max(pricing.min_multiplier_bps, Math.min(pricing.max_multiplier_bps, sellBeforeBargain - bargainAdjustment)),
     buyBeforeBargain,
@@ -584,17 +594,18 @@ export function findMerchantService(merchant, serviceId) {
 }
 
 /** Price a configured service with the same bounded merchant/bargain policy as goods. */
-export function quoteMerchantService(merchant, actorId, service) {
+export function quoteMerchantService(merchant, actorId, service, reputationBps = 0) {
   if (!service || typeof service !== 'object' || Array.isArray(service)) return null
   const normalized = normalizeMerchantServices([service])[0]
   if (!normalized || !normalized.available) return null
-  const multipliers = pricingMultipliers(merchant, actorId)
+  const multipliers = pricingMultipliers(merchant, actorId, reputationBps)
   return {
     service_id: normalized.service_id,
     base_price_cp: normalized.base_price_cp,
     price_cp: Math.ceil(normalized.base_price_cp * multipliers.buy / 10_000),
     merchant_adjustment_bps: multipliers.buyBeforeBargain - 10_000,
     bargain_adjustment_bps: multipliers.bargainAdjustment,
+    reputation_adjustment_bps: multipliers.reputationBps,
     multiplier_bps: multipliers.buy,
     price_provenance: normalized.price_provenance,
     policy_id: MERCHANT_SERVICES_POLICY_ID,
@@ -750,25 +761,29 @@ export function applyMerchantRestockPlan(merchant, plan) {
   })
 }
 
-export function quoteMerchantBuyUnit(merchant, actorId, stockEntry) {
+export function quoteMerchantBuyUnit(merchant, actorId, stockEntry, reputationBps = 0) {
   const base = resolveCatalogBasePriceCp(stockEntry) || trustedStockAppraisalFor(stockEntry)?.base_price_cp || 0
   if (!base) return null
-  const multipliers = pricingMultipliers(merchant, actorId)
+  const multipliers = pricingMultipliers(merchant, actorId, reputationBps)
   return {
     base_unit_price_cp: base,
     unit_price_cp: Math.max(1, Math.ceil(base * multipliers.buy / 10_000)),
     merchant_adjustment_bps: multipliers.buyBeforeBargain - 10_000,
     bargain_adjustment_bps: multipliers.bargainAdjustment,
+    reputation_adjustment_bps: multipliers.reputationBps,
     multiplier_bps: multipliers.buy,
   }
 }
 
-export function quoteMerchantSellUnit(merchant, actorId, item, appraisal = null) {
+export function quoteMerchantSellUnit(merchant, actorId, item, appraisal = null, reputationBps = 0) {
   const base = trustedBasePriceCp(item, appraisal)
   if (!base) return null
-  const multipliers = pricingMultipliers(merchant, actorId)
+  const multipliers = pricingMultipliers(merchant, actorId, reputationBps)
   const valuable = ['treasure', 'trade_good', 'trade-good', 'valuable'].includes(String(item?.type || '').toLowerCase())
-  const sellBeforeBargain = (valuable ? 10_000 : multipliers.pricing.sell_rate_bps) - multipliers.pricing.agent_adjustment_bps
+  // Ценности выкупают по каталогу, но репутация действует и здесь: она
+  // описывает отношение, а не сорт товара.
+  const sellBeforeBargain = (valuable ? 10_000 : multipliers.pricing.sell_rate_bps)
+    - multipliers.pricing.agent_adjustment_bps - multipliers.reputationBps
   const sellMultiplier = Math.max(multipliers.pricing.min_multiplier_bps, Math.min(
     multipliers.pricing.max_multiplier_bps,
     sellBeforeBargain - multipliers.bargainAdjustment,
@@ -778,6 +793,7 @@ export function quoteMerchantSellUnit(merchant, actorId, item, appraisal = null)
     unit_price_cp: Math.max(1, Math.floor(base * sellMultiplier / 10_000)),
     merchant_adjustment_bps: sellBeforeBargain - 10_000,
     bargain_adjustment_bps: -multipliers.bargainAdjustment,
+    reputation_adjustment_bps: multipliers.reputationBps,
     multiplier_bps: sellMultiplier,
     value_class: valuable ? 'valuable' : 'equipment',
   }

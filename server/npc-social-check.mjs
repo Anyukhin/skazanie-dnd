@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { ensureNpcSocialState, npcProfileAtWorldTime } from './npc-social.mjs'
+import { reputationStandingFor } from './reputation-policy.mjs'
 
 export const NPC_SOCIAL_CHECK_SKILLS = new Set(['persuasion', 'deception', 'intimidation', 'insight'])
 
@@ -32,7 +33,16 @@ function attitudeFor(social, npcId, heroId) {
   return { relationship, stance }
 }
 
-function difficultyFor(profile, skill, attitude) {
+/**
+ * `reputationShift` — поправка от славы отряда у фракций этого NPC
+ * (`server/reputation-policy.mjs`). Личное отношение и репутация — разные
+ * вещи и складываются: трактирщик может любить героя лично и всё равно
+ * опасаться говорить с тем, кого его гильдия объявила врагом.
+ *
+ * Явно заданный `social_dcs` репутацией не двигается: это ручное решение
+ * автора кампании, и перебивать его политикой нельзя.
+ */
+function difficultyFor(profile, skill, attitude, reputationShift = 0) {
   const configured = Number(profile.social_dcs?.[skill])
   if (Number.isSafeInteger(configured)) return clamp(configured, 5, 30)
   const base = { friendly: 10, neutral: 12, guarded: 15, hostile: 18 }[attitude.stance] ?? 12
@@ -44,7 +54,7 @@ function difficultyFor(profile, skill, attitude) {
             : attitude.relationship <= -5 ? 1
               : 0
   const skillAdjustment = skill === 'deception' ? 1 : skill === 'insight' ? 3 : 0
-  return clamp(base + relationshipAdjustment + skillAdjustment, 5, 25)
+  return clamp(base + relationshipAdjustment + skillAdjustment + clamp(reputationShift, -3, 3), 5, 25)
 }
 
 export function buildNpcSocialCheckPolicy({ state = {}, npcId = '', heroId = '', message = '', turnId = '' } = {}) {
@@ -57,6 +67,7 @@ export function buildNpcSocialCheckPolicy({ state = {}, npcId = '', heroId = '',
   const normalizedNpcId = String(profile.id)
   const normalizedHeroId = String(heroId)
   const attitude = attitudeFor(social, normalizedNpcId, normalizedHeroId)
+  const standing = reputationStandingFor(state, normalizedNpcId)
   const fingerprint = stableHash(normalizedNpcId, normalizedHeroId, skill, message)
   return Object.freeze({
     check_id: `social-check:${stableHash(turnId, fingerprint).slice(0, 24)}`,
@@ -65,7 +76,8 @@ export function buildNpcSocialCheckPolicy({ state = {}, npcId = '', heroId = '',
     hero_id: normalizedHeroId,
     skill,
     ability: SKILL_ABILITIES[skill],
-    difficulty: difficultyFor(profile, skill, attitude),
+    difficulty: difficultyFor(profile, skill, attitude, standing.social_dc_shift),
+    reputation_tier: standing.tier,
     visibility: 'specific_player',
   })
 }
