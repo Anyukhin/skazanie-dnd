@@ -14,13 +14,45 @@ function safeSuggestions(value) {
   return Array.isArray(value) ? value.slice(0, 3).map((item) => String(item).slice(0, 120)).filter(Boolean) : []
 }
 
+const sceneText = (value, maximum = 120) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+/**
+ * Обрамление сцены для детерминированного текста.
+ *
+ * Оно не добавляет ни одного факта: место, настроение, имена присутствующих
+ * NPC и заголовок активного квеста уже лежат в NarrationBrief и уже прошли
+ * фильтр видимости. Функция чистая — тот же brief даёт тот же текст, поэтому
+ * replay остаётся идентичным.
+ *
+ * Смысл правки: когда провайдер недоступен, игрок видел голую строку вида
+ * «Проверка Харизмы: 15 против СЛ 12» — механику без единого признака места и
+ * происходящего. Отказ модели не должен выглядеть как отказ игры.
+ */
+function deterministicFraming(brief) {
+  const environment = brief.known_environment ?? {}
+  const scene = environment.scene ?? {}
+  const story = environment.story_context ?? {}
+  const location = sceneText(scene.location || scene.title)
+  const mood = sceneText(scene.mood, 60)
+  const names = (Array.isArray(story.present_npcs) ? story.present_npcs : [])
+    .map((npc) => sceneText(npc?.name, 60)).filter(Boolean).slice(0, 2)
+  const opening = []
+  if (location) opening.push(mood ? `${location}, ${mood}.` : `${location}.`)
+  if (names.length) opening.push(`Рядом ${names.join(' и ')}.`)
+  const quests = Array.isArray(story.active_quests) ? story.active_quests : []
+  return { opening: opening.join(' '), quest: sceneText(quests[0]?.title) }
+}
+
 export function deterministicNarration(brief, resolveName) {
   assertNarrationBrief(brief)
   const summaries = brief.visible_events.map((event) => eventSummary(event, resolveName)).filter(Boolean)
-  const narration = summaries.length
-    ? summaries.slice(0, 4).join('. ').replace(/\.+$/u, '') + '.'
-    : 'Ситуация остаётся открытой: подтверждённых механических последствий пока нет.'
-  return { narration, suggestions: [] }
+  const { opening, quest } = deterministicFraming(brief)
+  const body = summaries.length
+    ? `${summaries.slice(0, 4).join('. ').replace(/\.+$/u, '')}.`
+    : quest
+      ? `Пока ничего не меняется: «${quest}» ждёт решения отряда.`
+      : 'Пока ничего не меняется: следующий шаг за отрядом.'
+  return { narration: [opening, body].filter(Boolean).join(' '), suggestions: [] }
 }
 
 export class Narrator {
