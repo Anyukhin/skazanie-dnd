@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import { reputationStandingFor } from './reputation-policy.mjs'
+
 export const ECONOMY_POLICY_ID = 'skazanie:economy:merchant-policy-v1'
 export const ECONOMY_CATALOG_VERSION = 'srd_5_2_1'
 export const ECONOMY_CATALOG_SOURCE = Object.freeze({
@@ -892,8 +894,13 @@ export function merchantViewFor(state, merchantId, actorId) {
   const balanceCp = currencyToCopper(balance)
   const merchantPurseCp = normalizeMerchantPurseCp(merchant.purse_cp)
   const bargain = bargainFor(merchant, actor.id)
+  // Витрина обязана считать той же формулой, что и сделка. Без этой поправки
+  // игрок видел одну цену, а Rules Engine брал другую — ревью 2026-07-28
+  // поймало расхождение сразу после подключения репутации к исполнению.
+  const standing = reputationStandingFor(state, merchant.id)
+  const reputationBps = standing.price_adjustment_bps
   const buyQuotes = merchant.stock.filter((stock) => stock.quantity > 0).flatMap((stock) => {
-    const quote = quoteMerchantBuyUnit(merchant, actor.id, stock)
+    const quote = quoteMerchantBuyUnit(merchant, actor.id, stock, reputationBps)
     if (!quote) return []
     const maxQuantity = Math.min(stock.quantity, Math.floor(balanceCp / quote.unit_price_cp), MAX_TRANSACTION_QUANTITY)
     return [{
@@ -916,13 +923,14 @@ export function merchantViewFor(state, merchantId, actorId) {
         catalog_base_unit_cp: quote.base_unit_price_cp,
         merchant_adjustment_percent: quote.merchant_adjustment_bps / 100,
         bargain_adjustment_percent: quote.bargain_adjustment_bps / 100,
+        reputation_adjustment_percent: quote.reputation_adjustment_bps / 100,
         final_unit_price_cp: quote.unit_price_cp,
       },
     }]
   })
   const sellQuotes = (Array.isArray(actor.inventory) ? actor.inventory : []).flatMap((item) => {
     const appraisal = trustedItemAppraisalFor(state, actor.id, item)
-    const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal)
+    const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationBps)
     const allowed = sellability(item, appraisal)
     const catalogPrice = resolveCatalogPrice(item)
     const appraisalBlocked = item?.quest_item === true || item?.sellable === false || String(item?.type || '').toLowerCase() === 'quest' || String(item?.rarity || '').toLocaleLowerCase('ru') === 'сюжетный'
@@ -956,12 +964,13 @@ export function merchantViewFor(state, merchantId, actorId) {
         catalog_base_unit_cp: quote.base_unit_price_cp,
         merchant_adjustment_percent: quote.merchant_adjustment_bps / 100,
         bargain_adjustment_percent: quote.bargain_adjustment_bps / 100,
+        reputation_adjustment_percent: quote.reputation_adjustment_bps / 100,
         final_unit_price_cp: quote.unit_price_cp,
       } : undefined,
     }]
   })
   const serviceQuotes = (Array.isArray(merchant.services) ? merchant.services : []).flatMap((service) => {
-    const quote = quoteMerchantService(merchant, actor.id, service)
+    const quote = quoteMerchantService(merchant, actor.id, service, reputationBps)
     if (!quote) return []
     return [{
       quote_id: `service:${merchant.id}:${actor.id}:${quote.service_id}`,
@@ -974,12 +983,16 @@ export function merchantViewFor(state, merchantId, actorId) {
       service: normalizeMerchantServices([service])[0],
       price_cp: quote.price_cp,
       can_afford: balanceCp >= quote.price_cp,
-      available: merchant.available && service.available !== false,
+      // Отказ по славе виден в витрине, а не только в ошибке команды: кнопка
+      // недоступна по объявленной причине, без невидимых сюжетных стен.
+      available: merchant.available && service.available !== false && standing.services_available,
+      ...(standing.services_available ? {} : { unavailable_reason: 'Торговец не станет оказывать услуги отряду с такой славой' }),
       price_provenance: quote.price_provenance,
       breakdown: {
         base_price_cp: quote.base_price_cp,
         merchant_adjustment_percent: quote.merchant_adjustment_bps / 100,
         bargain_adjustment_percent: quote.bargain_adjustment_bps / 100,
+        reputation_adjustment_percent: quote.reputation_adjustment_bps / 100,
         final_price_cp: quote.price_cp,
       },
       policy_id: MERCHANT_SERVICES_POLICY_ID,

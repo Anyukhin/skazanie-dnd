@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { buildNpcSocialCheckPolicy } from '../server/npc-social-check.mjs'
-import { quoteMerchantBuyUnit, quoteMerchantSellUnit } from '../server/merchant-economy.mjs'
+import { merchantViewFor, quoteMerchantBuyUnit, quoteMerchantSellUnit } from '../server/merchant-economy.mjs'
 import {
   REPUTATION_PRICE_BPS,
   factionIdsForNpc,
@@ -112,6 +112,36 @@ test('слава отряда двигает СЛ социальной пров�
   assert.ok(hated.difficulty > neutral.difficulty, `врагу должно быть труднее: ${hated.difficulty} против ${neutral.difficulty}`)
   assert.ok(honoured.difficulty < neutral.difficulty, `другу должно быть легче: ${honoured.difficulty} против ${neutral.difficulty}`)
   assert.ok(hated.difficulty <= 25, 'СЛ обязана остаться в границах политики')
+})
+
+/**
+ * Ревью 2026-07-28 поймало расхождение: витрина (`merchantViewFor`) считала
+ * цену без репутации, а исполнение `BuyItem` — с ней. Игрок видел одну цену,
+ * платил другую — нарушение контракта «явный итог до подтверждения команды».
+ * Паритет витрины и сделки закреплён здесь навсегда.
+ */
+test('витрина показывает ту же цену, которую возьмёт сделка, и объявляет поправку славы', () => {
+  const state = {
+    ...world({ reputations: { guild: -80 } }),
+    state_version: 7,
+    merchants: [{ ...merchant }],
+  }
+  state.players = [{ id: 'hero', character: 'Ада', currency: { gold: 100 }, inventory: [] }]
+
+  const view = merchantViewFor(state, 'merchant-1', 'hero')
+  assert.ok(view, 'витрина обязана собраться')
+  const shown = view.buy_quotes.find((quote) => quote.stock_id === 's1')
+  const charged = quoteMerchantBuyUnit(state.merchants[0], 'hero', state.merchants[0].stock[0], reputationPriceBps(state, 'merchant-1'))
+
+  assert.equal(shown.unit_price_cp, charged.unit_price_cp, 'цена в витрине обязана совпадать с ценой сделки')
+  assert.equal(shown.breakdown.reputation_adjustment_percent, REPUTATION_PRICE_BPS.reviled / 100, 'поправка славы объявляется в расшифровке')
+
+  // Отказ в услугах виден заранее и с причиной, а не только ошибкой команды.
+  const stateWithService = { ...state, merchants: [{ ...merchant, services: [{ service_id: 'svc-room', name: 'Ночлег', kind: 'lodging', base_price_cp: 100, available: true }] }] }
+  const refused = merchantViewFor(stateWithService, 'merchant-1', 'hero')
+  const serviceQuote = refused.service_quotes.find((quote) => quote.service_id === 'svc-room')
+  assert.equal(serviceQuote.available, false)
+  assert.match(String(serviceQuote.unavailable_reason), /славой/u)
 })
 
 /**
