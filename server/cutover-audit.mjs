@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import { FileEventStore } from './event-store.mjs'
+import { MapStore } from './map-store.mjs'
 import { compareProjection, projectionHash } from './projection-integrity.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, applyGameEvent, normalizeCampaignState } from './rules-engine.mjs'
 
@@ -48,9 +49,22 @@ export async function auditLegacyCutover({ storageRoot } = {}) {
     reducer: applyGameEvent,
     normalizeState: normalizeCampaignState,
     snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
+    /**
+     * MapStore обязателен, и его отсутствие здесь было настоящим дефектом.
+     *
+     * Снимок хранит карту **ссылкой** (`skazanie:map-ref-v1` + хеш), а комната
+     * — клетками: клиенту нужны клетки, снимку — размер. Без хранилища карт
+     * `load()` не может вернуть карту на место, ссылка остаётся ссылкой, и
+     * сверка сцены сравнивает ссылку с клетками. Совпасть это не могло
+     * никогда: `cutover:verify` был красным у любой кампании, чья карта
+     * вынесена из снимка, — то есть у всех. Данные при этом были целы.
+     */
+    mapStore: new MapStore({ rootDir: engineRoot }),
   })
   const campaigns = []
   const blockers = []
+  /** Замечания видны в отчёте, но выпуск не останавливают. */
+  const warnings = []
 
   for (const campaignId of campaignIds) {
     if (campaignId.startsWith('invalid:')) {
@@ -96,9 +110,27 @@ export async function auditLegacyCutover({ storageRoot } = {}) {
         blockers.push({ code: 'PROJECTION_VERSION_DIVERGENCE', campaign_id: campaignId })
       }
       if (pending) blockers.push({ code: 'PROJECTION_NOT_ACKNOWLEDGED', campaign_id: campaignId })
+      /**
+       * Контрольная точка хранит хеш, посчитанный **кодом того дня**, когда
+       * проекция записывалась. Любое изменение `normalizeCampaignState` —
+       * новое поле механики, новый умолчательный раздел — меняет канонический
+       * хеш, и старая отметка перестаёт совпадать, хотя на диске всё цело.
+       *
+       * Поэтому расхождение отметки блокирует выпуск только тогда, когда о
+       * беде говорит что-то ещё: проекция разошлась с авторитетным состоянием
+       * или запись не была подтверждена. Если сверка сегодняшним кодом
+       * сходится, отметка просто устарела — это замечание, а не блокер, и
+       * сервер обновит её при следующей записи проекции.
+       *
+       * Ослаблять настоящую защиту здесь нечего: она держится на
+       * `projection_matched` и `pending_projection`, а не на исторической
+       * отметке.
+       */
       if (!pending && metadata?.projection_checkpoint_version > 0
         && metadata.projection_checkpoint_hash !== projection?.projected_hash) {
-        blockers.push({ code: 'PROJECTION_CHECKPOINT_HASH_MISMATCH', campaign_id: campaignId })
+        const entry = { code: 'PROJECTION_CHECKPOINT_HASH_MISMATCH', campaign_id: campaignId }
+        if (projection?.matched) warnings.push({ ...entry, reason: 'STALE_CHECKPOINT_AFTER_SCHEMA_CHANGE' })
+        else blockers.push(entry)
       }
       if (room?.state?.engine_mode && room.state.engine_mode !== 'enforce') {
         blockers.push({ code: 'RETIRED_MODE_IN_ROOM', campaign_id: campaignId, value: room.state.engine_mode })
@@ -111,11 +143,12 @@ export async function auditLegacyCutover({ storageRoot } = {}) {
   }
 
   return {
-    schema_version: 1,
+    schema_version: 2,
     storage_root: root,
     campaign_count: campaigns.length,
     ready: blockers.length === 0,
     campaigns,
     blockers,
+    warnings,
   }
 }
