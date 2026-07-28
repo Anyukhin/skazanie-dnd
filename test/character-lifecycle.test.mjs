@@ -94,11 +94,13 @@ test('LevelUp is one server-authoritative level with XP, ownership and hit-die v
   )
 })
 
-test('LevelUp rejects insufficient XP, combat and attempts to skip a level', () => {
+test('LevelUp rejects insufficient progression, combat and attempts to skip a level', () => {
   const noXp = { players: [fighter({ experience: 6_499 })], mechanics: { combat: { active: false } } }
   assert.throws(
+    // Код переименован 2026-07-28: уровень заслуживают опытом **или** вехой,
+    // и отказ теперь называет оба пути, а не только опыт.
     () => validateLevelUpCommand({ command_type: 'LevelUp', actor_id: 'fighter' }, noXp, { allowedActorIds: ['fighter'] }),
-    (error) => error.code === 'LEVEL_UP_EXPERIENCE_REQUIRED',
+    (error) => error.code === 'LEVEL_UP_PROGRESSION_REQUIRED',
   )
   const combat = { players: [fighter()], mechanics: { combat: { active: true } } }
   assert.throws(

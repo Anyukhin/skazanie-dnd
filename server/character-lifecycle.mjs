@@ -628,9 +628,26 @@ export function validateLevelUpCommand(command, state, context = {}) {
   }
   const experience = integer(actor.experience, 'experience', { minimum: 0, maximum: MAX_EXPERIENCE, fallback: 0 })
   const requiredExperience = experienceForLevel(nextLevel)
-  if (experience < requiredExperience) {
-    throw new CharacterLifecycleValidationError(`Для уровня ${nextLevel} нужно ${requiredExperience} XP`, 'LEVEL_UP_EXPERIENCE_REQUIRED')
+  /**
+   * Уровень заслуживают двумя путями, и ворота обязаны знать оба.
+   *
+   * До 2026-07-28 здесь стоял только опыт. Кампания на вехах опыта не
+   * начисляет вовсе (`MilestoneAwarded` вместо `ExperienceAwarded`), поэтому
+   * её герои не могли повыситься **никогда**: реестр вех считал заслуженный
+   * уровень, а ворота отвечали «нужно 300 XP». Счётчик без ворот — обещание,
+   * которое движок не может исполнить.
+   *
+   * Порог вех списывается reducer'ом на `CharacterLeveledUp`, поэтому один
+   * заслуженный уровень нельзя потратить дважды.
+   */
+  const milestoneEarned = state?.mechanics?.progression?.level_up_available === true
+  if (experience < requiredExperience && !milestoneEarned) {
+    throw new CharacterLifecycleValidationError(
+      `Для уровня ${nextLevel} нужно ${requiredExperience} XP или заслуженная веха`,
+      'LEVEL_UP_PROGRESSION_REQUIRED',
+    )
   }
+  const progressionSource = experience >= requiredExperience ? 'experience' : 'milestone'
   const hitDie = hitDieFor(actor)
   const rawRoll = command.hit_point_roll ?? command.hitPointRoll
   const hitPointRoll = rawRoll == null
@@ -654,6 +671,7 @@ export function validateLevelUpCommand(command, state, context = {}) {
     level_after: nextLevel,
     experience,
     experience_required: requiredExperience,
+    progression_source: progressionSource,
     hit_die: hitDie,
     hit_point_roll: hitPointRoll,
     hit_point_policy: hitPointPolicy,
@@ -680,6 +698,9 @@ export function levelUpEvent(command) {
       level_after: command.level_after,
       experience: command.experience,
       experience_required: command.experience_required,
+      // Чем именно заслужен уровень — видно в событии, а не выводится задним
+      // числом: опыт мог накопиться уже после повышения по вехе.
+      progression_source: command.progression_source ?? 'experience',
       hit_die: command.hit_die,
       hit_point_roll: command.hit_point_roll,
       hit_point_policy: command.hit_point_policy,

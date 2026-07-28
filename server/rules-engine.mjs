@@ -9160,9 +9160,10 @@ export function applyGameEvent(rawState, event) {
     case 'CharacterImported': {
       const next = applyCharacterLifecycleEvent(state, event)
       state.players = next.players
-      if (event.event_type === 'CharacterLeveledUp') {
-        // Заслуженный уровень израсходован: счётчик вех начинается заново,
-        // иначе одно повышение открывало бы следующее немедленно.
+      // Порог вех списывает только повышение, которое им и оплачено. Уровень,
+      // взятый опытом, вехи не тратит — иначе накопленный кредит исчезал бы
+      // молча, и смешанная кампания теряла бы прогрессию на ровном месте.
+      if (event.event_type === 'CharacterLeveledUp' && payload.progression_source === 'milestone') {
         const progression = state.mechanics.progression
         progression.milestones_since_level = Math.max(0, progression.milestones_since_level - MILESTONES_PER_LEVEL)
         progression.level_up_available = progression.milestones_since_level >= MILESTONES_PER_LEVEL
