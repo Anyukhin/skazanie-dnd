@@ -236,7 +236,7 @@ export class RouterAIClient extends LLMClient {
   constructor({
     apiKey = process.env.ROUTERAI_API_KEY ?? '',
     baseUrl = process.env.ROUTERAI_BASE_URL ?? 'https://routerai.ru/api/v1',
-    model = process.env.DND_AI_MODEL ?? 'qwen/qwen3.7-plus',
+    model = process.env.DND_AI_MODEL ?? 'deepseek/deepseek-v4-flash',
     maxTokens = Number(process.env.DND_AI_MAX_TOKENS) || 1200,
     reasoning = null,
     timeoutMs = DEFAULT_TIMEOUT_MS,

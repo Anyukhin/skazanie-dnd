@@ -66,7 +66,7 @@ class MeteredModel extends RouterAIClient {
 }
 
 function productionChainClient() {
-  const primary = process.env.DND_AI_MODEL ?? 'qwen/qwen3.7-plus'
+  const primary = process.env.DND_AI_MODEL ?? 'deepseek/deepseek-v4-flash'
   const fallbacks = String(process.env.DND_AI_FALLBACK_MODELS ?? '').split(',').map((id) => id.trim()).filter(Boolean)
   const timeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS) || 9_000
   return new FallbackLLMClient({

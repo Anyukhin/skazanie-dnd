@@ -93,7 +93,7 @@ const port = Number(process.env.AGENT_PORT || 8787)
 const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
 const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').replace(/\/$/, '')
-const model = process.env.DND_AI_MODEL || 'qwen/qwen3.7-plus'
+const model = process.env.DND_AI_MODEL || 'deepseek/deepseek-v4-flash'
 const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'z-ai/glm-5.2,deepseek/deepseek-v4-flash,google/gemini-2.5-flash-lite,openai/gpt-4.1-nano')
   .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
