@@ -921,6 +921,37 @@ function normalizeEnemyKnowledge(input) {
   return { party: Object.fromEntries(entries) }
 }
 
+/**
+ * Прогрессия по вехам.
+ *
+ * `MilestoneAwarded` выпускался с самого появления автономного цикла — его
+ * создаёт каждое завершение встречи без XP, — но reducer до 2026-07-28 ронял
+ * это событие в `default: break`. Вехи копились в потоке событий и нигде не
+ * складывались, поэтому кампания без XP не имела прогрессии вовсе: герои
+ * оставались первого уровня сколько угодно сессий.
+ *
+ * Реестр только считает. Уровень не выдаётся автоматически: `LevelUp` требует
+ * выбора подкласса и умений, и решать это за игроком сервер не должен —
+ * политика лишь объявляет, что уровень заслужен.
+ */
+export const MILESTONES_PER_LEVEL = 3
+
+function normalizeProgression(input) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  const milestones = (Array.isArray(source.milestones) ? source.milestones : []).slice(-200).map((entry) => ({
+    id: String(entry?.id ?? '').slice(0, 160),
+    milestone: String(entry?.milestone ?? '').slice(0, 160),
+    encounter_id: String(entry?.encounter_id ?? '').slice(0, 160),
+  })).filter((entry) => entry.id)
+  const since = Math.max(0, safeInteger(source.milestones_since_level, milestones.length))
+  return {
+    milestones,
+    milestones_since_level: since,
+    milestones_per_level: MILESTONES_PER_LEVEL,
+    level_up_available: since >= MILESTONES_PER_LEVEL,
+  }
+}
+
 function defaultMechanics() {
   return {
     schema_version: 1,
@@ -934,6 +965,7 @@ function defaultMechanics() {
     item_appraisals: {},
     encounter: null,
     active_effects: [],
+    progression: { milestones: [], milestones_since_level: 0, milestones_per_level: MILESTONES_PER_LEVEL, level_up_available: false },
     // Принятые облики: исходный лист существа хранится целиком, чтобы возврат
     // был точным, а не пересчитанным заново.
     shapes: {},
@@ -1033,6 +1065,7 @@ export function normalizeCampaignState(input = {}) {
     ? clone(state.mechanics.encounter)
     : null
   mechanics.active_effects = Array.isArray(state.mechanics?.active_effects) ? clone(state.mechanics.active_effects) : []
+  mechanics.progression = normalizeProgression(state.mechanics?.progression)
   const rawWorldTime = state.mechanics?.world_time ?? {}
   const elapsedMinutes = rawWorldTime.elapsed_minutes != null && Number.isSafeInteger(Number(rawWorldTime.elapsed_minutes))
     ? Math.max(0, Number(rawWorldTime.elapsed_minutes))
@@ -9127,6 +9160,13 @@ export function applyGameEvent(rawState, event) {
     case 'CharacterImported': {
       const next = applyCharacterLifecycleEvent(state, event)
       state.players = next.players
+      if (event.event_type === 'CharacterLeveledUp') {
+        // Заслуженный уровень израсходован: счётчик вех начинается заново,
+        // иначе одно повышение открывало бы следующее немедленно.
+        const progression = state.mechanics.progression
+        progression.milestones_since_level = Math.max(0, progression.milestones_since_level - MILESTONES_PER_LEVEL)
+        progression.level_up_available = progression.milestones_since_level >= MILESTONES_PER_LEVEL
+      }
       let leveledActor = state.players.find((actor) => actorId(actor) === String(target))
       if (leveledActor) {
         const sheet = deriveCharacterSheet(leveledActor)
@@ -9164,6 +9204,22 @@ export function applyGameEvent(rawState, event) {
         state.players = state.players.map((player) => ({
           ...player, experience: Math.max(0, safeInteger(player.experience, 0) + (awards.get(actorId(player)) ?? 0)),
         }))
+      }
+      break
+    }
+    case 'MilestoneAwarded': {
+      // Веха идемпотентна по event_id: повторный commit того же события не
+      // должен приближать уровень второй раз.
+      const progression = state.mechanics.progression
+      const id = String(event.event_id ?? payload.milestone ?? '').slice(0, 160)
+      if (id && !progression.milestones.some((entry) => entry.id === id)) {
+        progression.milestones = [...progression.milestones, {
+          id,
+          milestone: String(payload.milestone ?? '').slice(0, 160),
+          encounter_id: String(payload.encounter_id ?? '').slice(0, 160),
+        }].slice(-200)
+        progression.milestones_since_level += 1
+        progression.level_up_available = progression.milestones_since_level >= MILESTONES_PER_LEVEL
       }
       break
     }
