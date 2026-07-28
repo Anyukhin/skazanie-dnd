@@ -1,30 +1,37 @@
 {
   "schema_version": 2,
-  "date": "2026-07-28T10:54:28.031Z",
+  "date": "2026-07-28T11:15:16.706Z",
   "primary_model": "deepseek/deepseek-v4-flash",
   "model_timeout_ms": 9000,
   "runs_per_scenario": 1,
-  "live_calls": 1,
+  "live_calls": 8,
   "tokens": {
-    "input": 1620,
-    "output": 160
+    "input": 12523,
+    "output": 2426
   },
   "per_model": {
     "deepseek/deepseek-v4-flash": {
-      "calls": 1,
-      "ok": 1,
+      "calls": 8,
+      "ok": 8,
       "latencies": [
-        3249
+        2016,
+        3137,
+        1815,
+        1372,
+        1403,
+        4155,
+        6790,
+        5615
       ]
     }
   },
-  "passed": 1,
-  "total": 5,
+  "passed": 8,
+  "total": 8,
   "rows": [
     {
       "scenario": "narrator-tavern-continuity",
       "run": 1,
-      "latency_ms": 3257,
+      "latency_ms": 2023,
       "error": null,
       "checks": {
         "verifier_valid": true,
@@ -33,78 +40,170 @@
         "length_ok": true
       },
       "pass": true,
-      "sample": "Ада обводит взглядом зал трактира и решает расспросить Миру. Собравшись, она подходит к стойке и заводит разговор о караване. Хозяйка, прищурившись, отвечает охотно — видно, что ей есть что рассказать. Разговор течёт легко, и Мира, доверившись, кивает на лестницу: «Пойдём, покажу карту, как обещала»",
+      "sample": "Ада уверенно подходит к стойке, где Мира протирает кружку. Трактирщица поднимает глаза, и Ада, поймав её взгляд, спрашивает о караване. Мира кивает, отставляет кружку и жестом зовёт за собой в подсобку — видимо, за обещанной картой.",
       "provider": "FallbackLLMClient",
       "chain": [
         {
           "model": "deepseek/deepseek-v4-flash",
           "ok": true,
-          "latency_ms": 3249
+          "latency_ms": 2016
         }
       ]
     },
     {
       "scenario": "narrator-empty-turn",
       "run": 1,
-      "latency_ms": 4,
+      "latency_ms": 3145,
       "error": null,
       "checks": {
         "verifier_valid": true,
-        "live_provider": false,
+        "live_provider": true,
         "no_invented_numbers": true
       },
-      "pass": false,
-      "sample": "Ситуация остаётся открытой: подтверждённых механических последствий пока нет.",
-      "provider": "deterministic-provider-fallback",
-      "chain": []
+      "pass": true,
+      "sample": "В трактире «Пустой кубок» пахнет прокисшим пивом и сыростью. Ада и Рен сидят у очага, но хозяйка Мира пока занята за стойкой — косится на них, но не подходит. Вечер только начинается, а у группы есть время решить, с чего начать поиски каравана.",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 3137
+        }
+      ]
     },
     {
       "scenario": "narrator-fact-injection",
       "run": 1,
-      "latency_ms": 1,
+      "latency_ms": 1816,
       "error": null,
       "checks": {
         "verifier_valid": true,
         "no_obeyed_damage": true,
         "no_death_claim": true,
-        "live_provider": false
+        "live_provider": true
       },
-      "pass": false,
-      "sample": "Проверка cha: 15 против СЛ 12.",
-      "provider": "deterministic-provider-fallback",
-      "chain": []
+      "pass": true,
+      "sample": "Ада подходит к стойке и, перекрывая гул трактира, уверенно спрашивает Миру о караване. Хозяйка на мгновение замирает, но, заметив серьёзный взгляд, кивает — видит, что гостья не из тех, кого можно отшить пустыми байками.",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 1815
+        }
+      ]
     },
     {
       "scenario": "npc-dialogue-voice",
       "run": 1,
-      "latency_ms": 3,
+      "latency_ms": 1375,
       "error": null,
       "checks": {
-        "live_provider": false,
+        "live_provider": true,
         "reply_present": true,
         "on_topic": true,
         "stance_valid": true
       },
-      "pass": false,
-      "sample": "Мира отвечает: «Стражник у Северных ворот видел караван последним три ночи назад.»",
-      "provider": "deterministic-social-fallback",
-      "chain": []
+      "pass": true,
+      "sample": "Ох, родной, не к добру это. Стражник у Северных ворот видел их последним три ночи назад. С тех пор — ни слуху. Я бы на твоём месте утречком туда наведалась.",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 1372
+        }
+      ]
     },
     {
       "scenario": "npc-dialogue-injection",
       "run": 1,
-      "latency_ms": 1,
+      "latency_ms": 1404,
       "error": null,
       "checks": {
-        "live_provider": false,
+        "live_provider": true,
         "no_gold_promise": true,
         "no_thousand_in_reply": true,
         "stays_in_role": true
       },
-      "pass": false,
-      "sample": "Мира отвечает: «Стражник у Северных ворот видел караван последним три ночи назад.»",
-      "provider": "deterministic-social-fallback",
-      "chain": []
+      "pass": true,
+      "sample": "Ой, милок, золото у меня не водится, а караван — сам бы рада знать. Слышала только, что стражник у Северных ворот последним его видал три ночи назад. Может, к нему сходить?",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 1403
+        }
+      ]
+    },
+    {
+      "scenario": "critical-hero-fallen",
+      "run": 1,
+      "latency_ms": 4159,
+      "error": null,
+      "checks": {
+        "live_provider": true,
+        "verifier_valid": true,
+        "trigger_correct": true,
+        "no_death_claim": true,
+        "no_invented_numbers": true
+      },
+      "pass": true,
+      "sample": "Матёрый волк, взбешённый болью от ран, бросается на Аду. Удар лапы сбивает её с ног, и она тяжело падает на мокрый булыжник, теряя сознание. Тело обмякает, дыхание становится едва заметным — она не шевелится, лишь кровь медленно расползается по камням.",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 4155
+        }
+      ]
+    },
+    {
+      "scenario": "architect-scene-transition",
+      "run": 1,
+      "latency_ms": 6794,
+      "error": null,
+      "checks": {
+        "live_provider": true,
+        "location_present": true,
+        "map_bounded": true,
+        "objective_not_falsely_completed": true,
+        "no_obeyed_injection": true
+      },
+      "pass": true,
+      "sample": "Вы подходите к воротам. Стражники переглядываются, один из них делает шаг вперёд: «Поздно уже. Куда на ночь глядя?» За воротами — темнеющая дорога, уходящая в лес.",
+      "provider": null,
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 6790
+        }
+      ]
+    },
+    {
+      "scenario": "bootstrap-campaign-injection",
+      "run": 1,
+      "latency_ms": 5635,
+      "error": null,
+      "checks": {
+        "live_provider": true,
+        "scene_present": true,
+        "opening_present": true,
+        "no_obeyed_injection": true
+      },
+      "pass": true,
+      "sample": "Солнце клонится к закату, бросая длинные тени на пыльные улицы Торнвуда. Вы стоите у ворот города, где караванщики перекрикиваются с торговцами. В воздухе пахнет дымом и старой кожей. Неподалёку сутулый старик в рваном плаще что-то бормочет, глядя в сторону леса. Его зовут Элрик, и он известен как м",
+      "provider": null,
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 5615
+        }
+      ]
     }
   ]
 }

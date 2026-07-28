@@ -9296,14 +9296,17 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'EnemyKnowledgeRevealed': return `${resolveName(payload.enemy_id)} опознан: отряд знает точные ОЗ и КД`
     case 'ConditionAdded': return `Добавлено состояние: ${payload.condition}`
     case 'ConditionRemoved': return `Снято состояние: ${payload.condition}`
-    case 'HitPointsReducedToZero': return `${(event.target_ids ?? [])[0] || 'Цель'} выбывает из боя`
-    case 'DeathSavingThrowRolled': return `Спасбросок от смерти ${(event.target_ids ?? [])[0] || 'героя'}: ${payload.natural_roll} — ${payload.result}${payload.aura_of_protection_bonus ? ` (Аура защиты +${payload.aura_of_protection_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
-    case 'DeathSaveFailureRecorded': return `${(event.target_ids ?? [])[0] || 'Герой'} получает ${payload.failure_increment || 1} провал спасброска от смерти из-за урона`
-    case 'HeroStabilized': return `${payload.hero_name || (event.target_ids ?? [])[0] || 'Герой'} стабилизирован`
-    case 'CreatureKnockedOut': return `${(event.target_ids ?? [])[0] || 'Существо'} нокаутировано и начинает короткий отдых`
-    case 'KnockoutRecoveryProgressed': return `До пробуждения ${(event.target_ids ?? [])[0] || 'существа'} осталось ${payload.recovery_minutes_remaining || 0} мин.`
-    case 'KnockoutEnded': return `${(event.target_ids ?? [])[0] || 'Существо'} приходит в сознание после первой помощи`
-    case 'StableRecoveryScheduled': return `${(event.target_ids ?? [])[0] || 'Герой'} восстановит 1 ОЗ через ${payload.recovery_hours || 1} ч.`
+    // Семейство «падение и смерть» печатало сырой `target_ids[0]`: игрок
+    // видел «hero выбывает из боя» вместо имени героя. Это самые заметные
+    // события партии, и запасной текст рассказчика строится именно из них.
+    case 'HitPointsReducedToZero': return `${named((event.target_ids ?? [])[0]) || 'Цель'} выбывает из боя`
+    case 'DeathSavingThrowRolled': return `Спасбросок от смерти ${named((event.target_ids ?? [])[0]) || 'героя'}: ${payload.natural_roll} — ${payload.result}${payload.aura_of_protection_bonus ? ` (Аура защиты +${payload.aura_of_protection_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
+    case 'DeathSaveFailureRecorded': return `${named((event.target_ids ?? [])[0]) || 'Герой'} получает ${payload.failure_increment || 1} провал спасброска от смерти из-за урона`
+    case 'HeroStabilized': return `${payload.hero_name || named((event.target_ids ?? [])[0]) || 'Герой'} стабилизирован`
+    case 'CreatureKnockedOut': return `${named((event.target_ids ?? [])[0]) || 'Существо'} нокаутировано и начинает короткий отдых`
+    case 'KnockoutRecoveryProgressed': return `До пробуждения ${named((event.target_ids ?? [])[0]) || 'существа'} осталось ${payload.recovery_minutes_remaining || 0} мин.`
+    case 'KnockoutEnded': return `${named((event.target_ids ?? [])[0]) || 'Существо'} приходит в сознание после первой помощи`
+    case 'StableRecoveryScheduled': return `${named((event.target_ids ?? [])[0]) || 'Герой'} восстановит 1 ОЗ через ${payload.recovery_hours || 1} ч.`
     case 'StableRecoveryProgressed': return `До восстановления ${named((event.target_ids ?? [])[0]) || 'героя'} осталось ${payload.recovery_minutes_remaining || 0} мин.`
     case 'HeroDied': return `${payload.hero_name || named((event.target_ids ?? [])[0]) || 'Герой'} погибает`
     case 'HeroResurrected': return `${named((event.target_ids ?? [])[0]) || 'Герой'} возвращается к жизни`

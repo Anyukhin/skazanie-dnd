@@ -59,6 +59,25 @@ test('текст детерминирован: тот же brief даёт ту �
   assert.equal(first, second)
 })
 
+test('запасной текст называет героя по имени, а не служебным идентификатором', () => {
+  const fallen = buildNarrationBrief({
+    visible_events: [{
+      event_type: 'HitPointsReducedToZero', actor_id: 'enemy:wolf', target_ids: ['hero'],
+      payload: { target_id: 'hero' }, visibility: 'public', source_rule_ids: ['srd:zero-hp'],
+    }],
+    visible_state_changes: [],
+    known_environment: {
+      scene: { location: 'Северные ворота', mood: 'отчаянно' },
+      // Форма критического момента: имена приходят в participants, а не в story_context.
+      participants: { heroes: [{ id: 'hero', name: 'Ада' }], enemies: [{ id: 'enemy:wolf', name: 'Матёрый волк' }] },
+    },
+    permitted_npc_reactions: [], narration_constraints: [],
+  })
+  const { narration } = deterministicNarration(fallen)
+  assert.match(narration, /Ада/u)
+  assert.doesNotMatch(narration, /\bhero\b/u, 'служебный идентификатор не должен доезжать до игрока')
+})
+
 test('обрамление не нарушает собственный Verifier — иначе отказ модели портил бы трассу', () => {
   for (const constraints of [[], ['no-unconfirmed-world-changes']]) {
     const value = buildNarrationBrief({

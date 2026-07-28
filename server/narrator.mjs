@@ -43,9 +43,38 @@ function deterministicFraming(brief) {
   return { opening: opening.join(' '), quest: sceneText(quests[0]?.title) }
 }
 
+/**
+ * Имена участников из самого brief.
+ *
+ * Оркестратор передаёт резолвер только на части путей, а `Narrator` вызывает
+ * запасной текст без него — и игрок видел служебный идентификатор:
+ * «hero выбывает из боя» вместо «Ада выбывает из боя». Brief несёт нужные
+ * пары id→имя сам: состав отряда и присутствующих NPC в `story_context`,
+ * участники схватки — в `participants` критического момента.
+ */
+function briefNameResolver(brief) {
+  const environment = brief.known_environment ?? {}
+  const story = environment.story_context ?? {}
+  const participants = environment.participants ?? {}
+  const names = new Map()
+  const remember = (list) => {
+    for (const entry of Array.isArray(list) ? list : []) {
+      const id = sceneText(entry?.id, 120)
+      const name = sceneText(entry?.name, 120)
+      if (id && name) names.set(id, name)
+    }
+  }
+  remember(story.heroes)
+  remember(story.present_npcs)
+  remember(participants.heroes)
+  remember(participants.enemies)
+  return (id) => names.get(sceneText(id, 120)) ?? id
+}
+
 export function deterministicNarration(brief, resolveName) {
   assertNarrationBrief(brief)
-  const summaries = brief.visible_events.map((event) => eventSummary(event, resolveName)).filter(Boolean)
+  const resolve = resolveName ?? briefNameResolver(brief)
+  const summaries = brief.visible_events.map((event) => eventSummary(event, resolve)).filter(Boolean)
   const { opening, quest } = deterministicFraming(brief)
   const body = summaries.length
     ? `${summaries.slice(0, 4).join('. ').replace(/\.+$/u, '')}.`

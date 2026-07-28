@@ -12,6 +12,16 @@ import { buildDataOnlyContext } from './security.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v2.txt', import.meta.url)), 'utf8')
 
+/**
+ * Создание кампании — не ход. Оно просит у модели на порядок больше текста
+ * (история мира, глобальная карта, пролог, NPC — до 3200 токенов), и общий
+ * боевой таймаут в 9 секунд ей не по размеру: живой замер 2026-07-28 показал
+ * три подряд таймаута и 35 секунд ожидания, прежде чем ответила четвёртая
+ * модель. Операция разовая и происходит на экране создания мира, где
+ * ожидание уместно, а сожжённые впустую попытки — нет.
+ */
+export const CAMPAIGN_BOOTSTRAP_TIMEOUT_MS = 45_000
+
 function clean(value, maximum = 500) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
 }
@@ -254,6 +264,7 @@ export class CampaignBootstrapper {
           ],
           temperature: 0.8,
           maxTokens: 3200,
+          timeoutMs: CAMPAIGN_BOOTSTRAP_TIMEOUT_MS,
         })
         opening = normalizeOpening(result, fallback)
         generatedBy = 'ai-storyteller'
