@@ -445,6 +445,8 @@ export type MerchantQuoteBreakdown = {
   merchant_adjustment_cp?: number
   bargain_adjustment_percent?: number
   bargain_adjustment_cp?: number
+  /** Поправка за славу отряда у фракций торговца; 0 — фракций нет или отряд им безразличен. */
+  reputation_adjustment_percent?: number
   final_unit_price_cp: number
 }
 
@@ -489,6 +491,8 @@ export type MerchantServiceQuote = {
   price_cp: number
   can_afford: boolean
   available: boolean
+  /** Почему услуга недоступна — например, отряд с дурной славой. */
+  unavailable_reason?: string
   state_version: number
   expected_state_version: number
 }
@@ -1011,6 +1015,7 @@ export type GameState = {
   rulings?: Array<Record<string, unknown>>
   entities?: Array<Record<string, unknown>>
   adventure?: AdventureState
+  worldMemory?: WorldMemoryProjection
   autonomy?: {
     schema_version?: number
     pacing?: {
@@ -1040,7 +1045,32 @@ export type GameState = {
       duration_minutes: number
       participant_ids: string[]
     }>
+    /**
+     * Слава отряда у фракций — ступенями, не числом: сервер намеренно не
+     * отдаёт сырой счёт (`server/viewer-projection.mjs`, `publicAutonomyFor`).
+     */
+    reputation_standing?: Array<{ faction_id: string; tier: ReputationTier }>
   }
+}
+
+export type ReputationTier = 'reviled' | 'distrusted' | 'unknown' | 'respected' | 'honoured'
+
+/**
+ * Память мира в проекции игрока. Сервер уже отфильтровал её по видимости и по
+ * личному знанию героя (`worldMemoryForViewer`), поэтому здесь описано только
+ * то, что игроку показывать можно.
+ */
+export type WorldMemoryProjection = {
+  quests?: Array<{
+    id: string
+    title: string
+    summary?: string
+    status?: string
+    objectives?: string[]
+    clock?: { current: number; max: number; label?: string } | null
+  }>
+  threads?: Array<{ id: string; title: string; summary?: string; status?: string }>
+  summaries?: Array<{ id: string; kind?: string; title: string; summary: string }>
 }
 
 export type CombatInitiativeEntry = {
@@ -1194,6 +1224,16 @@ export type GameMechanics = Record<string, unknown> & {
     concentration?: boolean
     expires_round?: number
   }>
+  /**
+   * Прогрессия по вехам. Сервер считает заслуженный уровень, но не выдаёт его
+   * сам: `LevelUp` требует выбора подкласса и умений, и это решение игрока.
+   */
+  progression?: {
+    milestones: Array<{ id: string; milestone: string; encounter_id: string }>
+    milestones_since_level: number
+    milestones_per_level: number
+    level_up_available: boolean
+  }
 }
 
 export type CampaignSummary = {

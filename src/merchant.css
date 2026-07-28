@@ -110,6 +110,10 @@
 .merchant-transaction-total b strong { color: #d2a265; font-size: var(--fs-sm); }
 .merchant-no-quote { margin: 0 13px 11px; padding: 8px; border: 1px dashed rgba(255,255,255,.065); border-radius: 4px; color: #635c55; font-size: var(--fs-xxs); text-align: center; }
 .merchant-item-actions { min-height: 55px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 9px 13px; border-top: 1px solid rgba(255,255,255,.045); background: rgba(0,0,0,.1); }
+/* Причина отказа стоит рядом с погашенной кнопкой: игрок должен понимать,
+   почему нельзя, а не гадать. Занимает свободное место слева от кнопки. */
+.merchant-item-actions > span:first-child { flex: 1 1 auto; min-width: 0; }
+.merchant-refusal { color: #c07a5e; font-size: var(--fs-sm); font-style: normal; line-height: 1.4; }
 .merchant-quantity { display: grid; gap: 3px; margin-right: auto; }
 .merchant-quantity > span { color: #5f5750; font-size: var(--fs-xxs); letter-spacing: .08em; }
 .merchant-quantity input { width: 64px; height: 29px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px; outline: none; background: rgba(0,0,0,.17); color: #b5a99c; font-size: var(--fs-xs); }

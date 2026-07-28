@@ -164,6 +164,34 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .director-status b { min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.05); color: #bbc9b5; font-size: var(--fs-sm); }
 .director-status.escalation, .director-status.climax { border-color: rgba(190,113,66,.32); color: #c38d61; background: rgba(130,69,40,.1); }
 .director-status.climax b { color: #e0a07d; }
+/* Прогрессия и слава живут в одной планке с темпом Режиссёра: это тот же род
+   сведений — состояние отряда в целом, а не отдельного героя. Заслуженный
+   уровень — единственный из трёх, который зовёт к действию, поэтому только он
+   выглядит кнопкой. */
+.progression-status, .reputation-status { height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid rgba(112,138,103,.24); border-radius: 5px; color: #8aa183; background: rgba(73,100,68,.08); font-size: var(--fs-sm); letter-spacing: .08em; }
+.progression-status b, .reputation-status b { min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.05); color: #bbc9b5; font-size: var(--fs-sm); }
+.progression-status.earned { border-color: rgba(214,161,96,.45); color: #dfb477; background: rgba(192,132,66,.12); cursor: pointer; }
+.progression-status.earned:hover { background: rgba(192,132,66,.2); }
+/* Доска задач в журнале: что отряд делает сейчас и что тянется из прошлого.
+   Две колонки, чтобы нити и резюме не отодвигали задачи вниз. */
+.quest-board { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin: 0 0 22px; }
+.quest-column { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.quest-column header { display: flex; align-items: center; gap: 8px; color: #9b7448; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.quest-column header strong { font-weight: 700; }
+.quest-column header span { min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.05); color: #bbc9b5; }
+.quest-column header:not(:first-child) { margin-top: 8px; }
+.quest-card { padding: 12px 14px; border: 1px solid var(--line); border-left: 2px solid rgba(214,161,96,.5); border-radius: 5px; background: rgba(24,21,18,.7); }
+.quest-card b { display: block; color: #e7ddd0; font-family: Spectral, Georgia, serif; font-size: var(--fs-lg); }
+.quest-card p { margin: 5px 0 0; color: #9d958a; font-size: var(--fs-sm); line-height: 1.5; }
+.quest-card ul { margin: 8px 0 0; padding-left: 16px; color: #b3aa9d; font-size: var(--fs-sm); line-height: 1.6; }
+.quest-card.thread { border-left-color: rgba(112,138,103,.5); }
+.quest-card.summary { border-left-color: rgba(120,110,150,.45); }
+.quest-clock { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: #8aa183; font-size: var(--fs-xs); letter-spacing: .1em; text-transform: uppercase; }
+.quest-clock i { display: flex; gap: 3px; }
+.quest-clock u { width: 9px; height: 9px; border: 1px solid rgba(190,113,66,.4); border-radius: 50%; text-decoration: none; }
+.quest-clock u.filled { background: #be7142; border-color: #be7142; }
+.quest-clock b { color: #c38d61; }
+@media (max-width: 900px) { .quest-board { grid-template-columns: minmax(0, 1fr); } }
 .invite-button { height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid rgba(214,161,96,.35); border-radius: 5px; color: #dfb477; background: rgba(192,132,66,.09); font-size: var(--fs-lg); cursor: pointer; }
 .invite-button:hover { background: rgba(192,132,66,.16); }
 .mobile-menu { display: none; }
@@ -875,7 +903,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .map-legend { bottom: 18px; }
 
 @media (max-width: 1120px) {
-  .director-status { display: none; }
+  .director-status, .reputation-status { display: none; }
+  /* Заслуженный уровень остаётся и на узком экране: это действие, а не
+     справка, и потерять его игрок не должен. */
+  .progression-status:not(.earned) { display: none; }
   .combat-hotbar.tactical-control { width: calc(100% - 32px); }
   /* Порядок колонок тот же, что на широком экране: колода, шаг, описание. */
   .hotbar-main { grid-template-columns: auto minmax(0, 1fr) 112px minmax(260px, 420px); gap: 10px; }

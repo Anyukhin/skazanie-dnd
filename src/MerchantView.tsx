@@ -91,6 +91,13 @@ function QuoteBreakdown({ quote, quantity, direction }: { quote?: MerchantQuote;
         <span><small>ПОЛИТИКА ТОРГОВЦА</small><b>{percentage(breakdown.merchant_adjustment_percent)}</b></span>
         <i>→</i>
         <span><small>РЕЗУЛЬТАТ ТОРГА</small><b>{percentage(breakdown.bargain_adjustment_percent)}</b></span>
+        {/* Слава показывается только когда она на что-то влияет: у торговца
+            без фракций поправка нулевая, и лишний шаг цепочки её бы удлинял
+            без смысла. */}
+        {Boolean(breakdown.reputation_adjustment_percent) && <>
+          <i>→</i>
+          <span title="Поправка за славу отряда у фракций этого торговца"><small>СЛАВА ОТРЯДА</small><b>{percentage(breakdown.reputation_adjustment_percent)}</b></span>
+        </>}
         <i>→</i>
         <span className="merchant-final-price"><small>ЦЕНА ЗА 1</small><b>{formatCopper(breakdown.final_unit_price_cp)}</b></span>
       </div> : <div className="merchant-price-flow compact">
@@ -248,9 +255,15 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
                       <div className="merchant-transaction-total"><span>К СПИСАНИЮ</span><b><strong>{formatCopper(quote.price_cp)}</strong></b></div>
             </div>
             <div className="merchant-item-actions">
-              <span />
-              <button onClick={() => onService(shownMerchant.id, player.id, quote.service_id)} disabled={controlsDisabled || !quote.available || !quote.can_afford}>
-                <ScrollText size={15} />{!quote.available ? 'Недоступно' : !quote.can_afford ? 'Недостаточно монет' : `Заказать · ${formatCopper(quote.price_cp)}`}
+              <span>{!quote.available && quote.unavailable_reason ? <em className="merchant-refusal">{quote.unavailable_reason}</em> : null}</span>
+              {/* Запрет обязан объясняться причиной, а не молчаливо неактивной
+                  кнопкой: сервер присылает её вместе с котировкой. */}
+              <button
+                onClick={() => onService(shownMerchant.id, player.id, quote.service_id)}
+                disabled={controlsDisabled || !quote.available || !quote.can_afford}
+                title={!quote.available ? (quote.unavailable_reason || 'Услуга сейчас недоступна') : undefined}
+              >
+                <ScrollText size={15} />{!quote.available ? (quote.unavailable_reason ? 'Отказано' : 'Недоступно') : !quote.can_afford ? 'Недостаточно монет' : `Заказать · ${formatCopper(quote.price_cp)}`}
               </button>
             </div>
           </article>)}

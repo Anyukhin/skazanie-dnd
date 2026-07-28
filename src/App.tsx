@@ -9,7 +9,7 @@ import {
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, EncounterProposal, Enemy, GameState, MapCell, Merchant, Message, PendingCheck, Player, SummonedCreature } from './types'
+import type { Account, AgentInteraction, AiHealth, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, EncounterProposal, Enemy, GameState, MapCell, Merchant, Message, PendingCheck, Player, ReputationTier, SummonedCreature } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
@@ -32,6 +32,15 @@ import { WorldMapView } from './WorldMapView'
 // Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
 // а не отдельным разделом. Второго пути к ней быть не должно.
 type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'settings' | 'admin' | 'agent-lab'
+
+/** Слава приходит с сервера ступенями, а не числом: показываем то же словом. */
+const REPUTATION_TIER_LABELS: Record<ReputationTier, string> = {
+  reviled: 'ненавидят',
+  distrusted: 'не доверяют',
+  unknown: 'не знают',
+  respected: 'уважают',
+  honoured: 'чтут',
+}
 
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
@@ -1880,6 +1889,12 @@ function JournalView({ state }: { state: GameState }) {
   const battleLog = state.battleLog ?? []
   const completedChapters = state.adventure?.history ?? []
   const currentChapter = state.adventure?.chapter ?? completedChapters.length + 1
+  // Память мира сервер уже отфильтровал по видимости и личному знанию героя,
+  // но игрок её нигде не видел: квесты, нити и резюме прошлых сцен доезжали
+  // до клиента и молча пропадали.
+  const quests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
+  const threads = (state.worldMemory?.threads ?? []).filter((thread) => thread.status === 'active')
+  const summaries = (state.worldMemory?.summaries ?? []).slice(-4).reverse()
   return (
     <section className="section-page">
       <PageHeader eyebrow="ЛЕТОПИСЬ ПРИКЛЮЧЕНИЯ" title="Журнал кампании" description="Общая память отряда: реплики, решения, броски и последствия." />
@@ -1888,6 +1903,37 @@ function JournalView({ state }: { state: GameState }) {
         <div><Sparkles size={18} /><span><b>{narratorCount}</b><small>сцен рассказчика</small></span></div>
         <div><History size={18} /><span><b>{state.scene.turn}</b><small>текущий ход</small></span></div>
       </div>
+      {(quests.length > 0 || threads.length > 0 || summaries.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
+        {quests.length > 0 && <div className="quest-column">
+          <header><ScrollText size={15} /><strong>Задачи отряда</strong><span>{quests.length}</span></header>
+          {quests.map((quest) => <article className="quest-card" key={quest.id}>
+            <b>{quest.title}</b>
+            {quest.summary && <p>{quest.summary}</p>}
+            {quest.objectives && quest.objectives.length > 0 && <ul>{quest.objectives.slice(0, 4).map((objective) => <li key={objective}>{objective}</li>)}</ul>}
+            {/* Часы квеста — server-owned счётчик давления, а не украшение:
+                когда он заполнится, ситуация изменится сама. */}
+            {quest.clock && quest.clock.max > 0 && <div className="quest-clock" title={quest.clock.label || 'Часы задачи'}>
+              <span>{quest.clock.label || 'ЧАСЫ'}</span>
+              <i>{Array.from({ length: Math.min(12, quest.clock.max) }, (_, index) => <u key={index} className={index < quest.clock!.current ? 'filled' : ''} />)}</i>
+              <b>{quest.clock.current}/{quest.clock.max}</b>
+            </div>}
+          </article>)}
+        </div>}
+        {(threads.length > 0 || summaries.length > 0) && <div className="quest-column">
+          {threads.length > 0 && <>
+            <header><History size={15} /><strong>Незакрытые нити</strong><span>{threads.length}</span></header>
+            {threads.map((thread) => <article className="quest-card thread" key={thread.id}>
+              <b>{thread.title}</b>{thread.summary && <p>{thread.summary}</p>}
+            </article>)}
+          </>}
+          {summaries.length > 0 && <>
+            <header><Sparkles size={15} /><strong>Что было раньше</strong><span>{summaries.length}</span></header>
+            {summaries.map((summary) => <article className="quest-card summary" key={summary.id}>
+              <b>{summary.title}</b><p>{summary.summary}</p>
+            </article>)}
+          </>}
+        </div>}
+      </section>}
       <div className="journal-layout">
         <aside className="chapter-list"><span>ГЛАВЫ</span>
           {completedChapters.map((chapter) => <button key={`${chapter.chapter}-${chapter.location}`}><i>{String(chapter.chapter).padStart(2, '0')}</i><b>{chapter.title}</b><small>{chapter.outcome || chapter.location}</small></button>)}
@@ -2320,6 +2366,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const pacing = state.autonomy?.pacing
   const pacingLabels = { breather: 'ПЕРЕДЫШКА', development: 'РАЗВИТИЕ', escalation: 'НАРАСТАНИЕ', climax: 'КУЛЬМИНАЦИЯ' } as const
   const lastTravel = state.autonomy?.travel_history?.at(-1)
+  // Сервер считает заслуженный уровень, но не выдаёт его сам: выбор подкласса
+  // и умений остаётся за игроком. Прогресс виден всегда — принцип 3 запрещает
+  // молчаливо неактивные кнопки, поэтому «ещё не набрано» показывается прямо.
+  const progression = state.mechanics?.progression
+  const reputationStanding = state.autonomy?.reputation_standing ?? []
   const canManageLifecycle = isAdmin || currentMembership?.role === 'owner'
   const accessibleHeroIds = isAdmin
     ? partyPlayers.map((player) => player.id)
@@ -2496,6 +2547,20 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <div className="session-code" title={`Код комнаты: ${state.sessionCode}`}><i /><span>КОМНАТА</span><b>{state.sessionCode}</b></div>
             <ConnectionIndicator status={connectionState} />
             {pacing && pacing.beat > 0 && <div className={`director-status ${pacing.phase}`} title={lastTravel ? `Последний путь: ${lastTravel.from} → ${lastTravel.to}, ${lastTravel.duration_minutes} мин., риск ${lastTravel.risk_score}` : 'Серверный темп автономной кампании'}><Sparkles size={13} /><span>{pacingLabels[pacing.phase]}</span><b>{pacing.tension}</b></div>}
+            {progression && progression.milestones_since_level > 0 && (progression.level_up_available
+              ? <button
+                  className="progression-status earned"
+                  onClick={() => setEditingPlayerId(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id)}
+                  title="Отряд заслужил уровень. Откройте лист героя, чтобы выбрать умения."
+                ><Sparkles size={13} /><span>УРОВЕНЬ ГОТОВ</span></button>
+              : <div
+                  className="progression-status"
+                  title={`Вех до нового уровня: ${progression.milestones_since_level} из ${progression.milestones_per_level}`}
+                ><span>ВЕХИ</span><b>{progression.milestones_since_level}/{progression.milestones_per_level}</b></div>)}
+            {reputationStanding.length > 0 && <div
+              className="reputation-status"
+              title={`Слава отряда: ${reputationStanding.map((entry) => `${entry.faction_id} — ${REPUTATION_TIER_LABELS[entry.tier]}`).join('; ')}`}
+            ><span>СЛАВА</span><b>{reputationStanding.filter((entry) => entry.tier !== 'unknown').length || '—'}</b></div>}
             {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => { void changeLifecycle('pause') }} disabled={lifecycleBusy}>Пауза</button>}
             {canManageLifecycle && lifecycleStatus === 'paused' && <button className="invite-button" onClick={() => { void changeLifecycle('resume') }} disabled={lifecycleBusy}>Продолжить</button>}
             {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button className="invite-button" onClick={() => { if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) void changeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить</button>}
