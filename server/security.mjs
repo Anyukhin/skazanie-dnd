@@ -316,7 +316,7 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     rollExpressions: new Set(), rollSides: new Set(), ruleIds: new Set(strings(extraRuleIds)),
     hasHp: false, hasDamage: false, hasHealing: false,
     hasResource: false, hasResourceSpent: false, hasResourceRestored: false,
-    hasRoll: false, hasItem: false,
+    hasRoll: false, hasItem: false, hasPromiseResolution: false,
   }
 
   const visit = (value, path = [], inherited = { hp: false, resource: false, roll: false }, seen = new WeakSet()) => {
@@ -345,6 +345,7 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     if (/resourcerestored|restcompleted/i.test(eventType)) evidence.hasResourceRestored = true
     if (eventIsRoll) evidence.hasRoll = true
     if (eventIsItem) evidence.hasItem = true
+    if (/promiseresolved/i.test(eventType)) evidence.hasPromiseResolution = true
 
     if (/^(?:source_rule_ids|rule_ids|rule_id|house_rule_id|ruling_id)$/.test(key)) {
       for (const id of strings(value)) evidence.ruleIds.add(id)
@@ -473,6 +474,37 @@ const ITEM_TRANSFER_PATTERN = new RegExp(
   'iu',
 )
 
+/**
+ * Расширять словарь предметов именами из brief — тупик, и это проверено.
+ *
+ * Замысел был такой: «хрустальный фиал Нирна» в `ITEM_NOUNS` не попадёт
+ * никогда, зато brief называет вещь сам. На деле единственный источник имён —
+ * свободный текст (обещания, цели квестов, резюме), а рядом с ним в brief
+ * лежат **имена героев и NPC**. Взяв слова оттуда, проверка начинает ловить
+ * «Ада получает…» и «Мира находит…» как переход вещи: ложное срабатывание на
+ * самой обычной фразе. Имена же из событий бесполезны — при любом событии о
+ * предмете проверка и так пропускает текст.
+ *
+ * Поэтому словарь остаётся ограниченным осознанно; см. docs/known-limitations.md.
+ */
+
+/**
+ * Обещание считается исполненным только событием `NpcPromiseResolved`.
+ *
+ * `open_promises` лежит в `story_context` с 2026-07-28, и рассказчик о них
+ * знает — это и делает мир связным. Но «Мира выполнила обещание» без события
+ * закрывает нить, которую сервер по-прежнему держит открытой: игрок считает
+ * дело сделанным, а мир — нет.
+ */
+const PROMISE_FULFILMENT_PATTERN = new RegExp(
+  `(?:${ruStems('обещан', 'обет', 'слов', 'уговор', 'сделк')})[^.!?]{0,60}`
+  + `(?:${ruStems('выполн', 'исполн', 'сдержа', 'соблюд', 'наруш', 'преда', 'забы')})`
+  // Обратный порядок нужен отдельной веткой: «сдержала слово» ставит глагол
+  // перед существительным, и прямая ветка его не видит.
+  + `|(?:${ruStems('выполн', 'исполн', 'сдержа', 'соблюд', 'наруш')})[^.!?]{0,40}(?:${ruStems('обещан', 'обет', 'уговор', 'слов')})`,
+  'iu',
+)
+
 export function verifyNarration(narration, brief, {
   hiddenValues = [],
   forbiddenHiddenTerms = [],
@@ -493,6 +525,12 @@ export function verifyNarration(narration, brief, {
 
   if (ITEM_TRANSFER_PATTERN.test(text) && !evidence.hasItem) {
     addViolation(violations, 'ITEM_TRANSFER_NOT_IN_BRIEF', 'Narrator объявил переход вещи без подтверждённого события')
+  }
+
+  // Обещание закрывает только событие. Упоминать обещание можно и нужно —
+  // на этом держится связность мира, — но объявлять его исполненным нельзя.
+  if (PROMISE_FULFILMENT_PATTERN.test(text) && !evidence.hasPromiseResolution) {
+    addViolation(violations, 'PROMISE_RESOLUTION_NOT_IN_BRIEF', 'Narrator объявил обещание исполненным или нарушенным без подтверждённого события')
   }
 
   const hpMarker = /\b(?:hp|хп|оз)\b|\bхит(?:ы|ов|а)?\b|очк\w*\s+здоровья|(?:здоровье|хиты)\s+(?:сниз|уменьш|восстанов|остал|стало)/iu.test(text)

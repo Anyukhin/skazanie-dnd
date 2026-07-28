@@ -130,6 +130,83 @@ test('запрет изменений мира ловит огонь, обруш
   }
 })
 
+/**
+ * Проверено 2026-07-28 и отклонено: расширять словарь предметов именами из
+ * brief нельзя. Единственный источник имён вне событий — свободный текст
+ * (обещания, цели, резюме), а рядом с ним в brief лежат имена героев и NPC.
+ * Взяв слова оттуда, проверка начала бы ловить «Ада получает…» как переход
+ * вещи. Тест закрепляет обе половины вывода: выдуманное имя не ловится, и
+ * обычная фраза с именем героя нарушением не становится.
+ */
+test('выдуманное имя вещи вне словаря не ловится — и это осознанная граница', () => {
+  const named = buildNarrationBrief({
+    visible_events: [],
+    visible_state_changes: [],
+    known_environment: {
+      scene: { title: 'Трактир', location: 'Трактир' },
+      story_context: {
+        active_quests: [], active_threads: [], recent_summaries: [],
+        heroes: [{ id: 'hero', name: 'Ада' }], present_npcs: [],
+        open_promises: [{ npc: 'Мира', direction: 'npc_to_party', text: 'Мира обещала принести хрустальный фиал Нирна.' }],
+      },
+    },
+    permitted_npc_reactions: [],
+    narration_constraints: [],
+  })
+  assert.equal(verifyNarration('Мира протягивает Аде хрустальный фиал Нирна.', named).valid, true)
+  // Обратная сторона той же границы — ради неё она и выбрана.
+  assert.equal(verifyNarration('Ада получает известие от стражника.', named).valid, true)
+  assert.equal(verifyNarration('Мира находит нужные слова и успокаивает зал.', named).valid, true)
+})
+
+/**
+ * `open_promises` лежит в brief, и рассказчик о них знает — на этом держится
+ * связность мира. Но объявить обещание закрытым может только событие:
+ * иначе игрок считает дело сделанным, а сервер держит нить открытой.
+ */
+const PROMISE_CLAIMS = [
+  'Мира выполнила своё обещание и больше ничего не должна.',
+  'Хозяйка сдержала слово, данное на прошлой неделе.',
+  'Обещание нарушено: Мира и не собиралась помогать.',
+  'Уговор исполнен, теперь отряд свободен.',
+]
+
+const PROMISE_SAFE = [
+  'Мира напоминает про обещанную карту и просит подождать до вечера.',
+  'Обещание всё ещё висит между ними невысказанным.',
+  'Ада ждёт обещанного, но не торопит хозяйку.',
+  'Разговор о данном слове откладывается до утра.',
+]
+
+test('исполнение обещания без события — нарушение, а упоминание — нет', () => {
+  const brief = briefWithout()
+  for (const claim of PROMISE_CLAIMS) {
+    const result = verifyNarration(claim, brief)
+    assert.ok(
+      result.violations.some((violation) => violation.code === 'PROMISE_RESOLUTION_NOT_IN_BRIEF'),
+      `не поймано закрытие обещания: «${claim}»`,
+    )
+  }
+  for (const safe of PROMISE_SAFE) {
+    const result = verifyNarration(safe, brief)
+    assert.equal(result.valid, true, `ложное срабатывание на «${safe}»: ${JSON.stringify(result.violations)}`)
+  }
+})
+
+test('подтверждённое NpcPromiseResolved разрешает рассказать об исходе обещания', () => {
+  const resolved = briefWithout([{
+    event_type: 'NpcPromiseResolved', actor_id: 'npc:mira', target_ids: ['hero'],
+    payload: { promise_id: 'promise:map', status: 'fulfilled' },
+    visibility: 'party', source_rule_ids: [],
+  }])
+  const result = verifyNarration('Мира выполнила своё обещание и приносит карту старых троп.', resolved)
+  assert.equal(
+    result.violations.some((violation) => violation.code === 'PROMISE_RESOLUTION_NOT_IN_BRIEF'),
+    false,
+    JSON.stringify(result.violations),
+  )
+})
+
 test('переход вещи ловится и под общим запретом изменений мира', () => {
   const constrained = buildNarrationBrief({
     visible_events: [],
