@@ -344,7 +344,7 @@ test('контрактным списком покрыта каждая роль
   assert.ok(loaded.size >= 7, `ролей, читающих промпт, найдено ${loaded.size} — поиск потерял покрытие`)
 
   const knownGaps = new Set([])
-  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v1', 'narrator/v2', 'director/v1', 'action_adjudicator/v1', 'campaign_creator/v2', 'map_architect/v2'])
+  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v2', 'narrator/v2', 'director/v1', 'action_adjudicator/v1', 'campaign_creator/v2', 'map_architect/v2'])
   const uncovered = [...loaded.keys()].filter((id) => !covered.has(id) && !knownGaps.has(id)).sort()
   assert.deepEqual(uncovered, [], 'роль грузит промпт, но не покрыта ни контрактным списком, ни записанным пробелом')
 })

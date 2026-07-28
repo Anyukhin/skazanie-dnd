@@ -7,7 +7,7 @@ import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v1.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v2.txt', import.meta.url)), 'utf8')
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 export const NPC_SOCIAL_MEMORY_LIMIT = 8
@@ -69,10 +69,26 @@ function npcClaims(state, profile, message = '') {
   }))
 }
 
+function heroName(state, heroId) {
+  const expected = String(heroId ?? '')
+  const hero = (state.players ?? []).find((player) => String(player?.id ?? '') === expected)
+  return clean(hero?.character || hero?.name, 120) || expected
+}
+
 function briefFor(state, profile, playerId, message, checkOutcome = null) {
   const social = ensureNpcSocialState(state.social, state)
   return {
     campaign_premise: campaignConceptForAgent(state),
+    // NPC знает, где идёт разговор: сцена делает реплику местной, а не общей.
+    scene: {
+      title: clean(state.scene?.title, 160),
+      location: clean(state.scene?.location, 180),
+      mood: clean(state.scene?.mood, 160),
+      objective: clean(state.scene?.objective, 300),
+    },
+    // Цели и убеждения профиля намеренно не передаются: всё, что уходит в
+    // модель, может дословно оказаться в реплике перед игроком, поэтому бриф
+    // держит только party-видимые поля. Характер выражают voice и summary.
     npc: {
       id: profile.id, name: profile.name, role: profile.role,
       public_summary: profile.public_summary, voice: profile.voice,
@@ -89,6 +105,12 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
       .filter((entry) => entry.npc_id === profile.id && entry.hero_id === playerId)
       .slice(-6)
       .map((entry) => ({ player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance, ...(entry.check ? { check: { skill: entry.check.skill, success: entry.check.success, degree: entry.check.degree } } : {}) })),
+    // NPC помнит отряд, а не одно лицо: последние разговоры с другими героями
+    // видимы группе (visibility: party) и приходят с именем собеседника.
+    recent_party_conversation: social.conversations
+      .filter((entry) => entry.npc_id === profile.id && entry.hero_id !== playerId)
+      .slice(-4)
+      .map((entry) => ({ hero: heroName(state, entry.hero_id), player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })),
     speakable_facts: npcFacts(state, profile, message),
     speakable_claims: npcClaims(state, profile, message),
     player_message: clean(message, 1_000),
