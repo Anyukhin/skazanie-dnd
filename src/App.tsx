@@ -9,7 +9,7 @@ import {
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, EncounterProposal, Enemy, GameState, MapCell, Merchant, Message, PendingCheck, Player, ReputationTier, SummonedCreature } from './types'
+import type { Account, AgentInteraction, AiHealth, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SummonedCreature } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
@@ -26,7 +26,7 @@ import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
 import type { BoardOverlayCell } from './board-render'
-import { sceneTacticalMap } from './tactical-map-client'
+import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
 
 // Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
@@ -440,6 +440,39 @@ function enemyHealthPresentation(enemy: Enemy) {
   }
 }
 
+/* Отметка над клеткой живёт ровно столько, сколько нужно, чтобы её прочитать.
+   Движок держит последние шесть записей до самой смены сцены, и без этого
+   «Промах» висел над клеткой все следующие раунды — как будто бой замер на том
+   броске. Считаем от первого показа у игрока, а не от прихода состояния:
+   повторная проекция того же события метку не продлевает. */
+const MAP_FEEDBACK_TTL_MS = 4200
+
+function useTransientMapFeedback(feedback: MapFeedback[] | undefined) {
+  const [expired, setExpired] = useState<string[]>([])
+  const timers = useRef(new Map<string, number>())
+  // Ключ по идентификаторам: объект состояния пересоздаётся на каждой проекции,
+  // а набор отметок при этом тот же — пересчёт по ссылке перезапускал бы отсчёт.
+  const idKey = (feedback ?? []).map((item) => String(item.id)).join('|')
+  const items = useMemo(() => feedback ?? [], [idKey])
+  useEffect(() => {
+    const live = new Set(items.map((item) => String(item.id)))
+    for (const id of live) {
+      if (timers.current.has(id)) continue
+      timers.current.set(id, window.setTimeout(() => setExpired((current) => current.includes(id) ? current : [...current, id]), MAP_FEEDBACK_TTL_MS))
+    }
+    for (const [id, handle] of [...timers.current]) if (!live.has(id)) { window.clearTimeout(handle); timers.current.delete(id) }
+    setExpired((current) => {
+      const next = current.filter((id) => live.has(id))
+      return next.length === current.length ? current : next
+    })
+  }, [items])
+  useEffect(() => {
+    const handles = timers.current
+    return () => { for (const handle of handles.values()) window.clearTimeout(handle); handles.clear() }
+  }, [])
+  return useMemo(() => items.filter((item) => !expired.includes(String(item.id))), [items, expired])
+}
+
 function EnemyGlyph({ kind }: { kind: EnemyVisualKind }) {
   if (kind === 'construct') return <Bot size={17} />
   if (kind === 'undead') return <Skull size={17} />
@@ -480,7 +513,7 @@ function boardMapArt(state: GameState, visualTheme: string) {
   return BOARD_MAP_LIBRARY.dungeon
 }
 
-function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onFinishTurn, onFreeAction, narrating, statusContent, children }: {
+function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onFinishTurn, onFreeAction, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -497,6 +530,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean; note?: string })) => void
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => void
   onChangeWeapon: (actorId: string, itemId: string) => void
+  onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => void
   onFinishTurn: () => void
   onFreeAction: (text: string) => void
   narrating: boolean
@@ -679,7 +713,13 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const speedFeet = (active?.speed ?? 0) + movementBonus
   const remainingFeet = Math.max(0, speedFeet - tactical.movementSpent)
   const movementAvailable = !combatActive || economy?.movement !== false
-  const movementPaths = active ? buildMovementPaths(state, active, CELL_FEET) : new Map<string, MovementPath>()
+  const movementPaths = active ? buildMovementPaths(state, active, CELL_FEET, boardMap) : new Map<string, MovementPath>()
+  /* Двери, до которых активный участник дотягивается рукой. Открыть или закрыть
+     дверь — свободное взаимодействие, выломать — действие; какое именно из них
+     доступно, решает состояние полотна. */
+  const doorsAtHand = active && boardMap
+    ? doorsReachableFrom(boardMap, active.x, active.y).filter((door) => door.state !== 'broken')
+    : []
   const movementLimit = combatActive ? remainingFeet : Number.POSITIVE_INFINITY
   const reachable = selected && active && movementAvailable
     ? new Set([...movementPaths.entries()].filter(([, route]) => route.costFeet <= movementLimit).map(([key]) => key))
@@ -911,6 +951,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   // досягаемой, входящей в маршрут или в область команды.
   const boardCells: BoardCellNode[] = []
   const boardOverlay: BoardOverlayCell[] = []
+  const visibleMapFeedback = useTransientMapFeedback(state.mapFeedback)
   // Подсказки клеток без узла: причина недоступности обязана остаться на всех
   // клетках, а узел получает только активная.
   const boardHints = new Map<string, BoardCellHint>()
@@ -980,7 +1021,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         : chebyshevFeet(blastCenter, cell) <= blastRadius))
     const inPersistentSpellArea = Boolean((state.mechanics?.active_effects ?? []).some((effect) => effect.center && chebyshevFeet(effect.center, cell) <= Number(effect.radius_feet ?? 0)))
     const cellIsInteractive = (canMoveHere || canAimHere) && !occupied
-    const cellFeedback = (state.mapFeedback ?? []).filter((item) => item.x === cell.x && item.y === cell.y)
+    const cellFeedback = visibleMapFeedback.filter((item) => item.x === cell.x && item.y === cell.y)
     const cellLabel = canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}` : canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}` : canMoveHere ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}` : moveReason ?? undefined
     const enemyKind = enemy ? enemyVisualKind(enemy) : null
     const enemyHealth = enemy ? enemyHealthPresentation(enemy) : null
@@ -1039,8 +1080,13 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         {occupied && cell.revealed && <span className="cell-footprint" aria-hidden="true" />}
         {/* Полоска врага лежит рядом с токеном, а не внутри него: у токена
             `clip-path` под силуэт щита, и всё, что выходит за него, срезается —
-            проверено на макете, внутри кнопки полоска не видна вовсе. */}
-        {enemy && cell.revealed && <TokenHealthBar fill={enemyHealth?.fill ?? 0} label={enemyHealth?.barLabel} className={`enemy-health ${enemyHealth?.status ?? ''}`} />}
+            проверено на макете, внутри кнопки полоска не видна вовсе.
+
+            Показываем её только там, где движок отдал точные числа: за столом
+            запас сил противника не объявляют, его узнают действием — осмотром,
+            знанием о твари, репликой Рассказчика. Пока знание не получено,
+            ступень состояния тоже молчит: по ней читалось то же самое. */}
+        {enemy && cell.revealed && enemyHealth?.exact && <TokenHealthBar fill={enemyHealth.fill} label={enemyHealth.barLabel} className={`enemy-health ${enemyHealth.status}`} />}
         {enemy && cell.revealed && (
           <button
             className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
@@ -1058,7 +1104,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           >
             <span className="enemy-emblem">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
             <span className="enemy-nameplate">{enemy.name}</span>
-            <small className="enemy-health-value">{enemyHealth?.label}</small>
+            {enemyHealth?.exact && <small className="enemy-health-value">{enemyHealth.label}</small>}
             {enemyConditions.length > 0 && <span className="token-conditions">{enemyConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
           </button>
         )}
@@ -1259,6 +1305,16 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       <div className="map-legend">
         <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг · параметры скрыты</span><span><i className="legend-dot interest" />Интерес</span>
       </div>
+      {/* Остаток хода стоит у нижней кромки стола, а не над панелью действий:
+          «хватит ли на ещё один шаг» спрашивают, глядя на карту, и ответ теперь
+          лежит на той же линии взгляда. Плашка не перехватывает указатель —
+          клетки под ней остаются кликабельными. */}
+      {combatActive && <div className="map-economy" aria-label="Экономика текущего хода">
+        <span className={remainingFeet > 0 && movementAvailable ? 'ready' : 'spent'}><small>Движение</small><b>{movementAvailable ? `${remainingFeet} из ${speedFeet} фт` : 'потрачено'}</b></span>
+        <span className={actionReady || weaponAttackReady ? 'ready' : 'spent'}><small>Действие</small><b>{actionReady ? 'свободно' : weaponAttackReady ? `ещё ${weaponAttacksLeft} атака` : 'потрачено'}</b></span>
+        <span className={bonusReady ? 'ready' : 'spent'}><small>Бонус</small><b>{bonusReady ? 'свободен' : 'потрачен'}</b></span>
+        <span className={reactionReady ? 'ready' : 'spent'}><small>Реакция</small><b>{reactionReady ? 'свободна' : 'потрачена'}</b></span>
+      </div>}
       {spellbookOpen && <section className="spellbook-panel" role="dialog" aria-modal="true" aria-label={`Книга заклинаний: ${activeName}`} onPointerDown={(event) => event.stopPropagation()}>
         <header><div><BookOpen size={21} /><span><small>КНИГА ЗАКЛИНАНИЙ</small><strong>{activeName}</strong></span></div><button onClick={() => setSpellbookOpen(false)} aria-label="Закрыть книгу заклинаний"><X size={18} /></button></header>
         <div className="spellbook-tools">
@@ -1378,21 +1434,16 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           вообще владеет герой, пока не бросит инициативу. Место под панель в сетке
           зарезервировано всегда, поэтому показывать арсенал ничего не стоит. */}
       <section className={`tactical-control combat-hotbar ${combatActive ? '' : 'out-of-combat'}`} aria-label={combatActive ? `Панель боевых действий: ${activeName}` : `Панель действий вне боя: ${activeName}`}>
-        <div className="hotbar-controls-row">
-          {/* Остаток хода читается словами и целиком: «хватит ли» больше не нужно
-              собирать из буквы в кружке на плитке и отдельной плашки над хотбаром. */}
-          {combatActive ? <div className="hotbar-economy" aria-label="Экономика текущего хода">
-            <span className={remainingFeet > 0 && movementAvailable ? 'ready' : 'spent'}><small>Движение</small><b>{movementAvailable ? `${remainingFeet} из ${speedFeet} фт` : 'потрачено'}</b></span>
-            <span className={actionReady || weaponAttackReady ? 'ready' : 'spent'}><small>Действие</small><b>{actionReady ? 'свободно' : weaponAttackReady ? `ещё ${weaponAttacksLeft} атака` : 'потрачено'}</b></span>
-            <span className={bonusReady ? 'ready' : 'spent'}><small>Бонус</small><b>{bonusReady ? 'свободен' : 'потрачен'}</b></span>
-            <span className={reactionReady ? 'ready' : 'spent'}><small>Реакция</small><b>{reactionReady ? 'свободна' : 'потрачена'}</b></span>
-          </div> : showStartCombat ? <div className="hotbar-exploration-note">
+        {/* Ряд рисуется только со своим содержимым: остаток хода уехал под стол,
+            и в бою здесь не остаётся ничего, кроме пустой полосы отступов. */}
+        {showStartCombat && !combatActive && <div className="hotbar-controls-row">
+          <div className="hotbar-exploration-note">
             {/* Сам режим переехал на поле, по центру сверху: он относится к карте,
                 а не к панели действий. Здесь остался только вход в бой, и пустой
                 коробки без него не остаётся. */}
             <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>
-          </div> : null}
-        </div>
+          </div>
+        </div>}
         <div className="hotbar-main">
           {/* Настройки панели держатся у самой панели, а не в строке ввода: замок
               бережёт расстановку, вторая кнопка меняет число рядов. */}
@@ -1404,6 +1455,11 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               прокрутки: внутри она выступала на пиксель за содержимое, и из-за этого
               под плитками появлялся ползунок, хотя прокручивать было нечего. */}
           <div className="actions-resize" role="separator" aria-orientation="vertical" aria-label="Ширина области действий" onPointerDown={startDetailResize} onDoubleClick={() => { setDetailWidth(0); window.localStorage.removeItem(DETAIL_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную"><i /><i /><i /></div>
+          {/* Кнопки хода живут внутри карточки действий, прижатые к её правому
+              краю: они завершают тот же выбор, что и плитки, а отдельной колонкой
+              между колодой и описанием рвала строку надвое. Прокрутка плиток их
+              не уносит — они лежат рядом с областью прокрутки, а не в ней. */}
+          <div className="hotbar-actions-shell">
           <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия">
             {orderedTiles.map(({ id, node }) => cloneElement(node as React.ReactElement<Record<string, unknown>>, {
               key: id,
@@ -1415,6 +1471,21 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               className: `${(node.props as { className?: string }).className ?? ''}${tilesLocked ? '' : ' movable'}`,
             }))}
             {((activeDeck === 'magic' && !spells.length) || (activeDeck === 'class' && !combatActions.some((action) => action.category === 'class')) || (activeDeck === 'items' && !combatItems.some((item) => item.type !== 'weapon'))) && <div className="hotbar-empty"><LockKeyhole size={18} /><span>У героя нет доступных действий этой категории</span></div>}
+          </div>
+          {/* Кнопки шага: вне боя это подтверждение выбранной цели и двери под
+              рукой, в бою — ещё нокаут, смена оружия и завершение хода. Без
+              содержимого блок не рисуется, и плитки занимают всю карточку. */}
+          {(combatActive || pendingCommand || doorsAtHand.length > 0) && <div className="hotbar-turn-controls">
+            {/* Дверь рядом — единственное, что делается и вне боя: заперто это
+                или просто прикрыто, игрок видит по самой кнопке. */}
+            {doorsAtHand.map((door) => (door.state === 'locked'
+              ? <button key={door.id} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Замок заперт. Проверка Силы (Атлетика), СЛ ${Math.max(10, door.lockDc)}. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь</span></button>
+              : <button key={door.id} className="door-control" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')} title={door.state === 'open' ? 'Закрыть дверь: свободное взаимодействие' : 'Открыть дверь: свободное взаимодействие'}><CombatIcon id={`door-${door.id}`} kind="swap" hint="открыть закрыть дверь проём" size={27} compact /><span>{door.state === 'open' ? 'Закрыть дверь' : 'Открыть дверь'}</span></button>
+            ))}
+            {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
+            {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
+            {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
+          </div>}
           </div>
           <aside className="hotbar-detail" aria-live="polite">
             {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
@@ -1441,14 +1512,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               {areaRadiusFeet ? <i className="detail-chip" title={`Радиус поражения: ${areaRadiusFeet} фт`}>◍ {areaRadiusFeet}</i> : null}
             </>} /></>}
           </aside>
-          {/* Колонка шага рисуется, только когда в ней что-то есть: вне боя это
-              подтверждение выбранной цели, в бою — кнопки хода. Пустой колонки в
-              140px, как раньше, в строке больше не остаётся. */}
-          {(combatActive || pendingCommand) && <div className="hotbar-turn-controls">
-            {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
-            {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
-            {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
-          </div>}
         </div>
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
         {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
@@ -2330,7 +2393,7 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
+  const { state, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -2591,6 +2654,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCastSpell={castSpell}
             onUseCombatAction={useCombatAction}
             onChangeWeapon={changeWeapon}
+            onOperateDoor={operateDoor}
             onFinishTurn={finishMapTurn}
             onFreeAction={submitAction}
             narrating={state.isNarrating}

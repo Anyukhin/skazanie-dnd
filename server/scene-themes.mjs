@@ -23,19 +23,50 @@ import { SIZE_CLASSES, addZone, cellAt, createTacticalMap, setCell, setEdge } fr
  * `dynamic-map.mjs`.
  */
 
+/**
+ * `live` — отдаётся ли тема живой игре. Собираются и проверяются все семь, но
+ * геометрия готова не у всех, и подключать тему, которая делает сцену хуже
+ * прежнего процедурного генератора, нельзя.
+ *
+ * Сравнение обеих карт на одном seed, 2026-07-29:
+ *
+ * | Тема | Тематический генератор | Итог |
+ * | --- | --- | --- |
+ * | building | дом из трёх помещений, окна, проёмы, двор, 21 предмет | лучше |
+ * | temple | четыре палаты с алтарём и колоннами, 25 предметов | лучше |
+ * | crypt | четыре палаты, запертая дверь с ключом, 27 предметов | лучше |
+ * | forest | поле с опушкой, 22 дерева и куста | лучше |
+ * | road | поле с полосой утоптанной земли поперёк карты | лучше |
+ * | cave | прямоугольные палаты по сетке | **хуже** |
+ * | settlement | пустое поле, домов нет вовсе | **хуже** |
+ *
+ * Пещера и поселение строятся теми же двумя способами, что и остальные:
+ * `graph` режет площадь двоичным разбиением на прямоугольники, `open` кладёт
+ * ровное поле с опушкой. Палате в склепе и храме это подходит, пещере — нет:
+ * пещера не бывает из комнат по сетке, а у деревни на открытом поле не
+ * оказывается ни одного дома. Прежний процедурный генератор в обоих случаях
+ * даёт более уместную картинку, поэтому пещера и поселение остаются на нём до
+ * своих способов сборки: пещере нужен органический рост полости, поселению —
+ * дома как объекты.
+ */
 export const SCENE_THEMES = Object.freeze([
   {
     id: 'building',
     label: 'Здание с участком',
     kind: 'building',
+    live: true,
     material: 'wood',
     // `\b` в JavaScript опирается на латиницу и с кириллицей не работает.
-    match: /таверн|трактир|постоял|корчм|харчевн|гостиниц|(?<![а-яё])дом(?![а-яё])|(?<![а-яё])изб[аеуы](?![а-яё])|хижин|усадьб|поместь|лавк/iu,
+    // Караван-сарай, подворье и ночлежка — те же постоялые дворы: здание с
+    // двором, ровно то, что строит генератор. «Караван» без дефисной части не
+    // берём: торговый караван в пути — это не постройка.
+    match: /таверн|трактир|постоял|корчм|харчевн|гостиниц|караван-сара|подворь|ночлежк|особняк|терем|(?<![а-яё])дом(?![а-яё])|(?<![а-яё])изб[аеуы](?![а-яё])|хижин|усадьб|поместь|лавк/iu,
   },
   {
     id: 'temple',
     label: 'Храм',
     kind: 'graph',
+    live: true,
     material: 'marble',
     match: /храм|святилищ|капищ|алтар|собор|монастыр/iu,
     zones: ['Притвор', 'Неф', 'Алтарная', 'Ризница'],
@@ -47,6 +78,7 @@ export const SCENE_THEMES = Object.freeze([
     id: 'crypt',
     label: 'Склеп',
     kind: 'graph',
+    live: true,
     material: 'stone',
     match: /склеп|крипт|гробниц|усыпальниц|катакомб|мавзоле/iu,
     zones: ['Вход', 'Галерея', 'Погребальная', 'Тайник'],
@@ -59,6 +91,7 @@ export const SCENE_THEMES = Object.freeze([
     id: 'cave',
     label: 'Пещера',
     kind: 'graph',
+    live: false,
     material: 'earth',
     match: /пещер|грот|каверн|штольн|шахт|подземель|нора/iu,
     zones: ['Устье', 'Штрек', 'Зал', 'Тупик'],
@@ -70,6 +103,7 @@ export const SCENE_THEMES = Object.freeze([
     id: 'forest',
     label: 'Лес',
     kind: 'open',
+    live: true,
     material: 'grass',
     match: /лес|чащ|рощ|бор|дубрав|пущ|тайг/iu,
     density: 11,
@@ -80,6 +114,7 @@ export const SCENE_THEMES = Object.freeze([
     id: 'road',
     label: 'Дорога',
     kind: 'open',
+    live: true,
     material: 'earth',
     match: /дорог|тракт|путь|перекрёст|перекрест|мост|брод|перевал/iu,
     density: 6,
@@ -91,6 +126,7 @@ export const SCENE_THEMES = Object.freeze([
     id: 'settlement',
     label: 'Поселение',
     kind: 'open',
+    live: false,
     material: 'earth',
     match: /деревн|поселен|село|посад|хутор|город|слобод|рынок|площад/iu,
     density: 9,
@@ -150,6 +186,43 @@ export function matchTheme({ location = '', theme = '', sceneKind = '' } = {}) {
   // Дикая местность без опознанной темы — это лес, а не таверна.
   if (wilderness) return SCENE_THEMES.find((candidate) => candidate.id === 'forest') ?? null
   return null
+}
+
+/**
+ * Узор и планировка из заявки картографа — тоже его слова, а не догадка по
+ * названию. Часть значений называет тему однозначно: `crypt` — это склеп, а не
+ * «что-то каменное». Остальные (`keep`, `great-hall`, `courtyard`, `bridge`,
+ * `radial`, `ruins`, `natural`) своей темы не имеют и достаются прежнему
+ * процедурному генератору — выдавать за них таверну хуже, чем отдать привычную
+ * карту.
+ *
+ * Сознательно не сопоставляется `small-room`: комната бывает в любом здании, и
+ * по одному этому слову нельзя ставить дом с двором, оградой и деревьями.
+ *
+ * @param {{layout?: string, pattern?: string}} [request]
+ * @returns {typeof SCENE_THEMES[number]|null}
+ */
+export function themeFromMapRequest({ pattern = '' } = {}) {
+  // Сопоставление намеренно одно. `cave-cluster` и `village` тоже называют тему
+  // однозначно, но их темы не отдаются живой игре (см. `live` выше), и вести к
+  // ним значило бы ухудшить сцену. Появятся способы сборки — появятся и строки.
+  // Планировка (`layout`) сейчас не сопоставляется ничему: `cavern` и `streets`
+  // ведут к тем же двум неготовым темам.
+  /** @type {Record<string, string>} */
+  const byPattern = { crypt: 'crypt' }
+  const id = byPattern[String(pattern).toLocaleLowerCase('en')] ?? ''
+  return id ? SCENE_THEMES.find((candidate) => candidate.id === id) ?? null : null
+}
+
+/**
+ * Готова ли тема к живой игре. Отдельная функция, а не чтение поля на месте:
+ * вызывающему не нужно знать, чем именно выражена готовность.
+ *
+ * @param {typeof SCENE_THEMES[number]|null} theme
+ * @returns {boolean}
+ */
+export function isLiveTheme(theme) {
+  return Boolean(theme?.live)
 }
 
 /**
@@ -268,12 +341,16 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
  * @param {number} [options.width]
  * @param {number} [options.height]
  * @param {string} [options.locationId]
+ * @param {string} [options.themeId] уже опознанная тема; сильнее названия
  * @returns {{map: import('./tactical-map.mjs').TacticalMap, theme: string, warnings: string[]}}
  */
 export function buildThemedScene({
-  location = '', theme = '', sceneKind = '', seed = 'scene', width = 26, height = 26, locationId = '',
+  location = '', theme = '', sceneKind = '', seed = 'scene', width = 26, height = 26, locationId = '', themeId = '',
 } = {}) {
-  const definition = themeFor({ location, theme, sceneKind })
+  // Тему могли опознать не по названию, а по узору из заявки картографа. Тогда
+  // повторное опознание здесь её потеряет: `themeFor` читает только слова.
+  const chosen = themeId ? SCENE_THEMES.find((candidate) => candidate.id === themeId) : null
+  const definition = chosen ?? themeFor({ location, theme, sceneKind })
 
   if (definition.kind === 'building') {
     const built = buildBuildingScene({ seed, width, height, locationId, theme: definition.id })

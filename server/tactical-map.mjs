@@ -791,6 +791,96 @@ export function reachableCells(map, fromX, fromY, { throughDoors = true } = {}) 
 }
 
 /**
+ * Мешает ли полотно двери шагнуть между двумя соседними клетками **прямо
+ * сейчас**. Ответ словом, а не признаком: движку нужно объяснить игроку, что
+ * именно случилось, и «закрыта» отличается от «заперта».
+ *
+ * Отличие от `reachableCells`: та отвечает на вопрос «дойдёт ли отряд когда-
+ * нибудь» и закрытую дверь считает проходимой — её ведь можно открыть. Здесь
+ * вопрос другой, поэтому и правило другое.
+ *
+ * Спрашивается **только дверь**. Стены на рёбрах движению по-прежнему не
+ * мешают: проходимость считается по клетке, и это отдельная незакрытая задача.
+ * Смешивать их здесь нельзя — рёбра со стенами строятся вокруг каждой
+ * непроходимой клетки, и существо, оказавшееся на такой клетке (герой в воде),
+ * не смогло бы с неё сойти.
+ *
+ * Полотно двери и стена вокруг него — разные вещи. `edge.blocksMove` описывает
+ * стену: у проёма между двумя проходимыми клетками он ложен, и по нему нельзя
+ * судить о самой двери.
+ *
+ * @param {TacticalMap} map
+ * @param {number} ax
+ * @param {number} ay
+ * @param {number} bx
+ * @param {number} by
+ * @returns {'closed'|'locked'|null} null — дверь не мешает
+ */
+export function doorBlocksStep(map, ax, ay, bx, by) {
+  const edge = edgeBetween(map, ax, ay, bx, by)
+  if (!edge || edge.kind !== 'door') return null
+  const door = edge.doorId ? map.doors.find((entry) => entry.id === edge.doorId) : null
+  const state = String(door?.state ?? 'closed')
+  if (state === 'open' || state === 'broken') return null
+  return state === 'locked' ? 'locked' : 'closed'
+}
+
+/**
+ * Дверь по её клетке-владельцу и направлению ребра.
+ *
+ * @param {TacticalMap} map
+ * @param {string} doorId
+ * @returns {TacticalDoor|null}
+ */
+export function doorById(map, doorId) {
+  const id = String(doorId ?? '')
+  return map.doors.find((entry) => entry.id === id) ?? null
+}
+
+/**
+ * На какое ребро вешать дверь в прорубленном проёме. Полотно обязано встать
+ * поперёк прохода, иначе оно ничего не перекрывает: дверь на глухом ребре —
+ * украшение, а отряд обходит её по соседней клетке.
+ *
+ * Сначала ищется ось, по которой проход идёт насквозь — обе противоположные
+ * клетки проходимы. Если насквозь не выходит (проём в тупике или у края),
+ * берётся любой проходимый сосед. Владельцем ребра всегда является верхняя или
+ * левая из двух клеток, поэтому для запада и севера владелец — сам сосед.
+ *
+ * @param {TacticalMap} map
+ * @param {number} x
+ * @param {number} y
+ * @returns {{x: number, y: number, dir: EdgeDirection}|null}
+ */
+export function doorwayEdgeAt(map, x, y) {
+  /** @param {number} cx @param {number} cy */
+  const passable = (cx, cy) => cellAt(map, cx, cy)?.passable === true
+  if (passable(x - 1, y) && passable(x + 1, y)) return { x, y, dir: 'e' }
+  if (passable(x, y - 1) && passable(x, y + 1)) return { x, y, dir: 's' }
+  if (passable(x + 1, y)) return { x, y, dir: 'e' }
+  if (passable(x - 1, y)) return { x: x - 1, y, dir: 'e' }
+  if (passable(x, y + 1)) return { x, y, dir: 's' }
+  if (passable(x, y - 1)) return { x, y: y - 1, dir: 's' }
+  return null
+}
+
+/**
+ * Двери, к которым можно дотянуться из клетки: рукой достаётся дверь на любом
+ * из четырёх её рёбер, с любой стороны полотна.
+ *
+ * @param {TacticalMap} map
+ * @param {number} x
+ * @param {number} y
+ * @returns {TacticalDoor[]}
+ */
+export function doorsReachableFrom(map, x, y) {
+  return map.doors.filter((door) => {
+    const neighbor = edgeNeighbor(door)
+    return (door.x === x && door.y === y) || (neighbor.x === x && neighbor.y === y)
+  })
+}
+
+/**
  * @param {TacticalMap} map
  * @param {number} ax
  * @param {number} ay

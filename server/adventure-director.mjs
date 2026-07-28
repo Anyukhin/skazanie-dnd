@@ -3,7 +3,7 @@ import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
 import { SIZE_CLASSES, legacyCellsFromTacticalMap } from './tactical-map.mjs'
 import { REFERENCE_SIZE } from './building-generator.mjs'
-import { buildThemedScene, matchTheme } from './scene-themes.mjs'
+import { buildThemedScene, isLiveTheme, matchTheme, themeFromMapRequest } from './scene-themes.mjs'
 
 const WIDTH = 13
 const HEIGHT = 9
@@ -123,27 +123,42 @@ export function rememberCurrentSceneMap(state) {
 }
 
 /**
- * Тема «здание с участком» распознаётся по названию и виду сцены. Для неё
- * работает отдельный генератор с тремя помещениями, двором, стенами на рёбрах и
- * расстановкой по якорям; остальные темы остаются на прежнем процедурном пути.
+ * Тема сцены — здание с участком, храм, склеп, пещера, лес, дорога или
+ * поселение — распознаётся по словам картографа и его же заявке на карту. Для
+ * темы работает отдельный генератор со стенами на рёбрах и расстановкой по
+ * якорям; неопознанная сцена достаётся прежнему процедурному пути.
  *
- * Опознание намеренно узкое: пока доведена одна тема, лучше отдать привычную
- * карту, чем поставить таверну там, где её не ждут.
+ * Порядок источников — от точного к общему:
+ *
+ * 1. Название локации и тема сцены. Это самые конкретные слова, и пишет их сам
+ *    картограф: «древний склеп» он называет складом не по недосмотру.
+ * 2. Узор и планировка из заявки. Часть значений называет тему однозначно.
+ * 3. Ничего не опознано либо тема ещё не отдаётся живой игре — процедурный
+ *    генератор с запрошенной планировкой.
+ *
+ * Опознанная тема — ещё не повод её применить: у пещеры и поселения геометрия
+ * пока делает сцену хуже прежнего генератора, и это записано прямо в каталоге
+ * (`live`). Проверка стоит здесь, а не в опознании: `matchTheme` отвечает на
+ * вопрос «что это за место», а не «чем это строить».
+ *
+ * Прежде здесь стояли ворота: если картограф назвал `layout` или `pattern`, тема
+ * не применялась вовсе — считалось, что это его осознанное решение. Ворота
+ * оказались наглухо закрытыми. Промпт `map_architect` требует оба поля в каждом
+ * ответе, и `fallbackPlan` ниже проставляет их сам, поэтому признак был истинен
+ * всегда, а весь тематический конвейер в живой игре не работал ни разу. Замысел
+ * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
+ * ведёт к теме, а не мимо неё.
  */
 function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap }) {
-  // Явная просьба картографа сильнее догадки по названию: если он назвал
-  // планировку или узор, это осознанное решение агента сцены, и подменять его
-  // опознанной темой нельзя.
-  const explicitLayout = Boolean(requestedMap.layout || requestedMap.pattern)
-  // Опознание темы живёт в одном месте — `server/scene-themes.mjs`. Если тема
-  // не узнана, сцена достаётся прежнему процедурному генератору: выдавать
-  // таверну за всё подряд хуже, чем отдать привычную карту.
-  const matched = explicitLayout ? null : matchTheme({ location, theme, sceneKind })
+  // Опознание живёт в одном месте — `server/scene-themes.mjs`.
+  const recognized = matchTheme({ location, theme, sceneKind }) ?? themeFromMapRequest(requestedMap)
+  const matched = isLiveTheme(recognized) ? recognized : null
   if (matched) {
     const built = buildThemedScene({
       location,
       theme: text(theme, 60, matched.id),
       sceneKind,
+      themeId: matched.id,
       seed,
       locationId,
       width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
@@ -152,6 +167,19 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locat
     return legacyCellsFromTacticalMap(built.map)
   }
   return generateDynamicSceneMap({ ...requestedMap, seed, theme, danger })
+}
+
+/**
+ * Тот же выбор генератора для тех, кто собирает сцену вне перехода Режиссёра —
+ * прежде всего для первой сцены кампании. Пока эта развилка жила только внутри
+ * перехода, стартовая сцена не могла получить тему ни при каких словах.
+ *
+ * @param {object} input
+ * @returns {ReturnType<typeof generateDynamicSceneMap>}
+ */
+export function generateSceneCells({ theme = '', danger = 'средняя', location = '', sceneKind = '', seed = 'scene', locationId = '', map = {} } = {}) {
+  const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
+  return generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap })
 }
 
 function stableLocationMapSeed(worldMap, locationId, location) {

@@ -1,4 +1,5 @@
-import type { BattleEvent, GameState, MapCell, MechanicsSupport } from './types'
+import { doorBlocksStep } from './tactical-map-client'
+import type { BattleEvent, GameState, MapCell, MechanicsSupport, TacticalMap } from './types'
 
 export const boardPositionKey = (x: number, y: number) => `${x},${y}`
 
@@ -31,7 +32,7 @@ export function occupiedBoardPositions(state: GameState, exceptId?: string) {
  * source of truth; this result is only used to preview a command before it is
  * sent.
  */
-export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet = 5) {
+export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet = 5, map?: TacticalMap | null) {
   const cells = new Map(state.scene.cells.map((cell) => [boardPositionKey(cell.x, cell.y), cell]))
   const blocked = occupiedBoardPositions(state, actor.id)
   const start = boardPositionKey(actor.x, actor.y)
@@ -44,6 +45,9 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
     for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
       const next = boardPositionKey(nextX, nextY)
       if (previous.has(next) || blocked.has(next) || !isWalkable(cells.get(next))) continue
+      // Закрытая и запертая дверь останавливают шаг ровно так же, как на
+      // сервере: иначе предпросмотр вёл бы маршрут сквозь запертую дверь.
+      if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
       previous.set(next, current)
       queue.push(next)
     }
@@ -69,7 +73,7 @@ export function movementCellReason(state: GameState, actor: BoardActor, cell: Ma
   if (cell.type !== 'floor' && cell.type !== 'door') return 'Клетка непроходима'
   if (occupiedBoardPositions(state, actor.id).has(boardPositionKey(cell.x, cell.y))) return 'Клетка занята'
   const route = paths.get(boardPositionKey(cell.x, cell.y))
-  if (!route) return 'Нет доступного маршрута'
+  if (!route) return 'Нет доступного маршрута: возможно, путь перекрыт закрытой дверью'
   if (route.costFeet > remainingFeet) return `Нужно ${route.costFeet} фт, осталось ${Math.max(0, remainingFeet)} фт`
   return null
 }

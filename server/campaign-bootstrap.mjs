@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { generateDynamicSceneMap } from './dynamic-map.mjs'
+import { generateSceneCells } from './adventure-director.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
 import { withStarterKit } from './starter-kit.mjs'
 import { ensureSceneWorldMemory } from './scene-memory.mjs'
@@ -271,7 +271,17 @@ export class CampaignBootstrapper {
       } catch { /* A new campaign must still be playable when the provider is unavailable. */ }
     }
     const seed = createHash('sha256').update(JSON.stringify({ campaignCode, world, heroes: heroes.map((hero) => hero.id) })).digest('hex').slice(0, 24)
-    const cells = generateDynamicSceneMap({ seed, theme: opening.scene.theme, danger: opening.scene.danger, ...opening.scene.map })
+    // Через тот же выбор генератора, что и переходы Режиссёра: первая сцена
+    // кампании — такая же локация, и таверна в её начале обязана быть таверной,
+    // а не серой коробкой. Прежде здесь стоял прямой вызов процедурного
+    // генератора, и стартовая сцена не могла получить тему ни при каких словах.
+    const cells = generateSceneCells({
+      seed,
+      theme: opening.scene.theme,
+      danger: opening.scene.danger,
+      location: opening.scene.location,
+      map: opening.scene.map,
+    })
     const positions = startingCells(cells, heroes.length)
     const positionedHeroes = heroes.map((hero, index) => ({ ...hero, x: positions[index].x, y: positions[index].y }))
     const merchants = normalizeMerchants(Array.isArray(rawMerchants) && rawMerchants.length

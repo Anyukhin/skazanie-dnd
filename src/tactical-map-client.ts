@@ -179,6 +179,31 @@ export function doorStates(map: TacticalMap) {
   return states
 }
 
+/**
+ * Зеркало серверного `doorBlocksStep` (`server/tactical-map.mjs`) и обязано
+ * меняться вместе с ним: разойдись они, предпросмотр маршрута покажет путь
+ * сквозь закрытую дверь, а сервер команду отклонит.
+ *
+ * Спрашивается только полотно двери. Стены на рёбрах движению пока не мешают —
+ * проходимость считается по клетке.
+ */
+export function doorBlocksStep(map: TacticalMap, ax: number, ay: number, bx: number, by: number): 'closed' | 'locked' | null {
+  const edge = edgeBetween(map, ax, ay, bx, by)
+  if (!edge || edge.kind !== 'door') return null
+  const door = edge.doorId ? map.doors.find((entry) => entry.id === edge.doorId) : null
+  const state = door?.state ?? 'closed'
+  if (state === 'open' || state === 'broken') return null
+  return state === 'locked' ? 'locked' : 'closed'
+}
+
+/** Двери, до которых дотягивается стоящий в клетке: любое из четырёх её рёбер. */
+export function doorsReachableFrom(map: TacticalMap, x: number, y: number) {
+  return map.doors.filter((door) => {
+    const neighbor = edgeNeighbor(door)
+    return (door.x === x && door.y === y) || (neighbor.x === x && neighbor.y === y)
+  })
+}
+
 // --- отпечаток местности -------------------------------------------------
 
 /**

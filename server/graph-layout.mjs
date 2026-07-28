@@ -7,6 +7,7 @@ import {
   addZone,
   cellAt,
   createTacticalMap,
+  doorwayEdgeAt,
   reachableCells,
   setCell,
   setDoor,
@@ -310,24 +311,24 @@ function carveDoorway(map, x, y, link, material) {
   }
   if (link.kind === 'open') return
 
-  const east = cellAt(map, x + 1, y)
-  const south = cellAt(map, x, y + 1)
-  /** @type {'e'|'s'} */
-  let dir = 'e'
-  if (east && east.passable && south && !south.passable) dir = 's'
-  const neighbor = dir === 'e' ? east : south
-  const blocked = !neighbor || !neighbor.passable
+  // Ребро выбирается поперёк прохода. Прежде направление угадывалось условием
+  // «восток проходим, а юг нет», и на вертикальном проходе дверь садилась на
+  // глухое ребро в породу: полотно было, а перекрывать ему было нечего.
+  const edge = doorwayEdgeAt(map, x, y)
+  if (!edge) return
   setDoor(map, {
     id: `door-${link.id}`,
-    x,
-    y,
-    dir,
+    x: edge.x,
+    y: edge.y,
+    dir: edge.dir,
     // Состояние двери — начальное; дальше оно живёт в состоянии сцены.
     state: link.kind === 'locked' ? 'locked' : 'closed',
     lockDc: link.kind === 'locked' ? 15 : 0,
     keyItemId: link.keyId,
-    blocksMove: blocked,
-    blocksSight: blocked,
+    // Признаки стены — про сам проём: он открыт. Перекрывает проход полотно
+    // двери, и спрашивают о нём отдельно (`doorBlocksStep`).
+    blocksMove: false,
+    blocksSight: false,
   })
 }
 

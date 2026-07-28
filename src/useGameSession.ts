@@ -19,6 +19,7 @@ type TacticalCommand =
   | { command_type: 'CastSpell'; actor_id: string; spell_id: string; to: { x: number; y: number }; spell_option?: string }
   | { command_type: 'UseCombatAction'; actor_id: string; action_id: string; target_id?: string; item_id?: string }
   | { command_type: 'ChangeWeapon'; actor_id: string; item_id: string }
+  | { command_type: 'OperateDoor'; actor_id: string; door_id: string; intent: 'open' | 'close' | 'force' }
   | { command_type: 'EndTurn'; actor_id: string }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
   | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
@@ -890,6 +891,11 @@ export function useGameSession() {
     void executeTacticalCommand({ command_type: 'ChangeWeapon', actor_id: playerId, item_id: itemId }, 'Сменить оружие')
   }, [executeTacticalCommand])
 
+  const operateDoor = useCallback((playerId: string, doorId: string, intent: 'open' | 'close' | 'force') => {
+    const label = intent === 'force' ? 'Выломать дверь' : intent === 'close' ? 'Закрыть дверь' : 'Открыть дверь'
+    void executeTacticalCommand({ command_type: 'OperateDoor', actor_id: playerId, door_id: doorId, intent }, label)
+  }, [executeTacticalCommand])
+
   const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => {
     void executeTacticalCommand({
       command_type: 'UseCombatAction', actor_id: actorId, action_id: actionId,
@@ -1259,6 +1265,7 @@ export function useGameSession() {
     castSpell,
     useCombatAction,
     changeWeapon,
+    operateDoor,
     finishMapTurn,
     resolveHeroDeath,
     equipItem,

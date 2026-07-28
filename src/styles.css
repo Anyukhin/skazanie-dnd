@@ -356,6 +356,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-mode-plate::before, .map-mode-plate::after { content: ''; width: 46px; height: 1px; background: linear-gradient(90deg, transparent, rgba(198,161,105,.55)); }
 .map-mode-plate::after { background: linear-gradient(90deg, rgba(198,161,105,.55), transparent); }
 .map-legend { position: absolute; z-index: 8; left: 24px; bottom: 22px; display: flex; gap: 16px; padding: 9px 13px; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.78); color: #8d857b; font: var(--fs-xs) Manrope, sans-serif; }
+/* Нижнюю строку стола в бою занимает остаток хода, и легенда встаёт над ней:
+   вместе они шире поля (533 + 473 при ~900 доступных) и наезжали друг на друга. */
+.map-stage:has(.map-economy) .map-legend { bottom: 90px; }
 .map-legend span { display: flex; align-items: center; gap: 7px; }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
 .legend-dot.party { background: #c9985b; }.legend-dot.summon { background: #70a78b; }.legend-dot.danger { background: #994a45; }.legend-dot.interest { background: #5f8f78; }
@@ -704,14 +707,16 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .hotbar-decks button.active { border-color: rgba(214,161,96,.5); background: rgba(192,132,66,.16); color: #e2b87c; }
 .hotbar-decks button:disabled { opacity: .38; cursor: not-allowed; }
 
-/* Четыре пилюли со словесными значениями: без букв Д/Б/Р/С. */
-.hotbar-economy { position: static; margin-left: auto; display: flex; align-items: center; gap: 8px; transform: none; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
-.hotbar-economy > span { min-width: 0; height: 44px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 0 14px; border: 1px solid rgba(222,201,171,.14); border-radius: 22px; background: rgba(255,255,255,.03); color: #8d857b; }
-.hotbar-economy > span.ready { border-color: rgba(214,161,96,.32); background: rgba(174,113,52,.13); }
-.hotbar-economy > span.spent { color: #8d857b; }
-.hotbar-economy small { color: #8d857b; font: 600 var(--fs-sm) Manrope, sans-serif; letter-spacing: 0; }
-.hotbar-economy b { color: #e6bd83; font: 700 var(--fs-lg) Manrope, sans-serif; white-space: nowrap; }
-.hotbar-economy > span.spent b { color: #8d857b; text-decoration: line-through; }
+/* Четыре пилюли со словесными значениями: без букв Д/Б/Р/С. Стоят у нижней
+   кромки стола по центру — там же, где игрок ведёт фишку, а не над панелью
+   действий. Указатель сквозь плашку проходит: клетки под ней кликаются. */
+.map-economy { position: absolute; z-index: 8; left: 50%; bottom: 22px; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid rgba(222,201,171,.14); border-radius: 26px; background: rgba(15,13,11,.82); box-shadow: 0 10px 28px rgba(0,0,0,.45); backdrop-filter: blur(10px); transform: translateX(-50%); pointer-events: none; }
+.map-economy > span { min-width: 0; height: 44px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 0 14px; border: 1px solid rgba(222,201,171,.14); border-radius: 22px; background: rgba(255,255,255,.03); color: #8d857b; }
+.map-economy > span.ready { border-color: rgba(214,161,96,.32); background: rgba(174,113,52,.13); }
+.map-economy > span.spent { color: #8d857b; }
+.map-economy small { color: #8d857b; font: 600 var(--fs-sm) Manrope, sans-serif; letter-spacing: 0; }
+.map-economy b { color: #e6bd83; font: 700 var(--fs-lg) Manrope, sans-serif; white-space: nowrap; }
+.map-economy > span.spent b { color: #8d857b; text-decoration: line-through; }
 
 /* Вне боя ту же строку занимает не экономика хода, а режим исследования: слева
    компас и имя героя, справа бросок инициативы. Панель зеленеет — цвет режима
@@ -732,20 +737,22 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    Описание к нему — речь о выбранном, и подложка ей не нужна: она читается
    как продолжение карточки, а не как второй ящик рядом. Перегородки между
    ними тоже нет — их разделяет промежуток. */
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto var(--ui-detail-width, clamp(340px, 32%, 600px)); gap: 10px; }
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) var(--ui-detail-width, clamp(340px, 32%, 600px)); gap: 10px; }
 /* Высота карточки закреплена ровно под два ряда плиток и не зависит от колоды:
    раньше она тянулась на весь ряд панели, плитки центрировались, и сверху и
    снизу оставалось по 19 пикселей пустоты. Число рядов считается от высоты
    контейнера, поэтому её нельзя отдать содержимому — иначе ряд остаётся один и
    двадцать плиток «Основных» уходят в горизонтальную прокрутку. */
-.hotbar-actions { align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); padding: 10px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
-/* Все четверо живут в одном ряду: без явного ряда ручка занимала первый, а
+/* Рамка карточки принадлежит оболочке, а не области прокрутки: внутри одной
+   рамки теперь лежат и плитки, и кнопки хода. Правый отступ шире левого — под
+   ним проходит ручка ширины, и кнопки не должны попадать ей под курсор. */
+.hotbar-actions-shell { min-width: 0; align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); display: flex; align-items: stretch; gap: 10px; padding: 10px 20px 10px 10px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+/* Все трое живут в одном ряду: без явного ряда ручка занимала первый, а
    карточки уезжали во второй и отрывались от неё. */
-.hotbar-actions { grid-column: 2; grid-row: 1; }
-.hotbar-turn-controls { grid-column: 3; grid-row: 1; }
+.hotbar-actions-shell { grid-column: 2; grid-row: 1; }
 /* Описание начинается на той же линии, что и карточка действий: обе прижаты к
    верху ряда, поэтому при любой высоте панели они выровнены между собой. */
-.hotbar-detail { grid-column: 4; grid-row: 1; align-self: start; }
+.hotbar-detail { grid-column: 3; grid-row: 1; align-self: start; }
 
 /* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
    заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
@@ -754,7 +761,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 
    min-width: 0 обязателен: без него grid-элемент раздувается под содержимое
    и горизонтальная прокрутка колоды не включается. */
-.hotbar-actions { min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--ui-tile-rows, 2), var(--slot, 64px)); justify-content: start; align-content: center; gap: 4px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
+.hotbar-actions { flex: 1 1 auto; min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--ui-tile-rows, 2), var(--slot, 64px)); justify-content: start; align-content: center; gap: 4px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #6b4c2f rgba(255,255,255,.05); }
 
 /* Слот: рисунок во всю площадь, тонкая рамка под категорию, полоска стоимости
    снизу и счётчик ресурса в углу. Всё остальное — в подсказке и колонке шага. */
@@ -870,9 +877,14 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .spell-option-picker button { min-height: 20px; padding: 2px 6px; border: 1px solid rgba(202,164,105,.2); border-radius: 4px; background: rgba(29,22,18,.88); color: #9f8c75; font: 600 var(--fs-xs) Spectral, serif; cursor: pointer; }
 .spell-option-picker button:hover, .spell-option-picker button.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
 .combat-hotbar .hotbar-turn-controls button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hotbar-turn-controls { min-width: 0; display: grid; align-content: center; gap: 6px; padding: 0 0 0 12px; border-left: 1px solid rgba(255,255,255,.07); }
+/* Кнопки прижаты к правому краю карточки и не участвуют в прокрутке плиток:
+   ширина по содержимому, но не уже 132px — «Сменить оружие» иначе режется. */
+.hotbar-turn-controls { flex: 0 0 auto; min-width: 132px; max-width: 176px; display: grid; align-content: center; gap: 6px; padding: 0 0 0 12px; border-left: 1px solid rgba(255,255,255,.07); }
 .combat-hotbar .hotbar-turn-controls button { width: 100%; min-width: 0; overflow: hidden; font-size: var(--fs-sm); min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 5px; margin: 0; padding: 5px; border: 1px solid rgba(211,160,97,.2); border-radius: 5px; background: rgba(127,81,36,.08); color: #a9845d; font-size: var(--fs-sm); cursor: pointer; }
 .combat-hotbar .hotbar-turn-controls .end-turn-hotbar { border-color: rgba(146,177,113,.3); background: rgba(71,105,52,.12); color: #abc48e; }
+/* Дверь под рукой: обычная — в цвете панели, запертая — тревожным красным,
+   потому что она стоит хода и может не поддаться. */
+.combat-hotbar .hotbar-turn-controls .door-control.locked { border-color: rgba(188,79,63,.36); background: rgba(126,48,39,.16); color: #cf8174; }
 .combat-hotbar .hotbar-turn-controls .start-combat-button { border-color: rgba(188,79,63,.36); background: rgba(126,48,39,.16); color: #cf8174; }
 .combat-hotbar .hotbar-turn-controls button:disabled { opacity: .35; cursor: default; }
 /* Отмена рядом с подтверждением: тише кнопкой, но того же роста. */
@@ -908,8 +920,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
      справка, и потерять его игрок не должен. */
   .progression-status:not(.earned) { display: none; }
   .combat-hotbar.tactical-control { width: calc(100% - 32px); }
-  /* Порядок колонок тот же, что на широком экране: колода, шаг, описание. */
-  .hotbar-main { grid-template-columns: auto minmax(0, 1fr) 112px minmax(260px, 420px); gap: 10px; }
+  /* Порядок колонок тот же, что на широком экране: колода с кнопками хода и
+     описание. */
+  .hotbar-main { grid-template-columns: auto minmax(0, 1fr) minmax(260px, 420px); gap: 10px; }
+  .hotbar-turn-controls { min-width: 112px; }
   .player-hud-stack, .player-hud { display: none; }
 }
 
@@ -920,8 +934,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .spellbook-tools label { flex-basis: 100%; }
   .combat-hotbar.tactical-control { bottom: 8px; width: calc(100% - 16px); }
   .exploration-path-status { display: none; }
-  .hotbar-main { grid-template-columns: auto minmax(0, 1fr) 94px; gap: 8px; }
+  .hotbar-main { grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
   .hotbar-detail { display: none; }
+  .hotbar-turn-controls { min-width: 94px; }
   .combat-hotbar .action-tile { width: 138px; min-width: 138px; height: 140px; }
   .map-legend { display: none; }
 }
@@ -929,15 +944,18 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 @media (max-width: 560px) {
   .spellbook-grid { grid-template-columns: 1fr; }
   .spellbook-tools > span { display: none; }
-  .hotbar-main { grid-template-columns: auto minmax(0, 1fr) 84px; }
+  .hotbar-main { grid-template-columns: auto minmax(0, 1fr); }
   .hotbar-decks { overflow-x: auto; scrollbar-width: none; }
   .hotbar-decks button, .hotbar-decks button:last-child { min-height: 36px; height: 36px; padding: 0 10px; }
   .hotbar-decks button span { display: none; }
-  .hotbar-actions { grid-column: 1; }
-  .hotbar-turn-controls { grid-column: 2; padding: 4px; }
+  .hotbar-actions-shell { grid-column: 2; padding-right: 16px; }
+  /* На узком экране у кнопок остаются только значки: подпись съедала половину
+     карточки, а плиткам нужна вся оставшаяся ширина. */
+  .hotbar-turn-controls { min-width: 0; padding-left: 8px; }
   .hotbar-turn-controls button span { display: none; }
   .combat-hotbar .action-tile { width: 128px; min-width: 128px; height: 134px; padding: 10px 6px; }
-  .hotbar-economy > span { padding: 0 9px; }
+  .map-economy { gap: 5px; padding: 5px 6px; }
+  .map-economy > span { padding: 0 9px; }
   .game-area > .dice-tray:not(.dice-tray--rolling) { bottom: 150px; }
   .exploration-start-combat { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }
   .exploration-start-combat span { display: none; }
@@ -1561,8 +1579,23 @@ button.campaign-title:hover strong { color: #edc996; }
 @media (min-width: 1280px) {
   /* Ширина по содержимому: при пяти участниках фиксированная полоса выглядела
      наполовину пустой, а при большом бою по-прежнему упрётся в предел и прокрутится. */
-  .initiative-ribbon { width: max-content; max-width: min(860px, calc(100% - 560px)); gap: 12px; padding: 9px 12px; }
-  .initiative-ribbon > ol { gap: 8px; }
+  /* Высота строки состояния идёт за портретами. Пока она держалась на 60px, а
+     лента на 52px из общего правила, увеличенные здесь до 58px кружки не
+     помещались и срезались `overflow: hidden` сверху и снизу — вместе с
+     подсветкой активного, которому `scale(1.1)` добавляет ещё почти три пикселя
+     с каждой стороны. 84px = 58 портрет + 8 полей списка + 14 полей ленты +
+     рамка. Значение обязано остаться длиной, а не `auto`: на `--status` стоит
+     `calc()` в позиции кубика (`.dice-tray--compact`), и `calc(auto + 18px)`
+     обнуляет отступ — свободный бросок уезжает в самый верх, на планку. */
+  .game-area { --status: 84px; }
+  .initiative-ribbon { height: auto; min-height: 52px; width: max-content; max-width: min(860px, calc(100% - 560px)); gap: 12px; padding: 7px 12px; }
+  /* Свои поля вместо срезки родителем — и только по вертикали: два пикселя по
+     бокам уводили ленту за предел `max-width`, планка вылезала из своей колонки
+     и её правый угол срезался краем окна. Прокрутка при большом бою остаётся, а
+     ползунок под кружками — нет: он занимал десять пикселей ширины и читался
+     как обрывок белой полосы у последнего портрета. */
+  .initiative-ribbon > ol { gap: 8px; padding: 4px 0; scrollbar-width: none; }
+  .initiative-ribbon > ol::-webkit-scrollbar { width: 0; height: 0; }
   .initiative-avatar-button { width: 58px; height: 58px; }
   .initiative-avatar { width: 46px; height: 46px; }
   .initiative-ribbon > header b { font-size: var(--fs-2xl); }
@@ -1731,12 +1764,21 @@ button.campaign-title:hover strong { color: #edc996; }
   backface-visibility: hidden;
   transform: translate(-50%, -80%) scale(var(--counter-scale));
   transform-origin: center;
-  animation: crispFeedbackPop .45s ease-out;
+  /* Вторая анимация гасит отметку в конце жизни: разметку снимает таймер в
+     `useTransientMapFeedback` (MAP_FEEDBACK_TTL_MS), и затухание подведено ровно
+     под него — узел исчезает уже прозрачным, а не пропадает рывком. */
+  animation: crispFeedbackPop .45s ease-out, mapFeedbackFade .7s ease-in 3.5s forwards;
 }
 @keyframes crispFeedbackPop {
   from {
     opacity: 0;
     transform: translate(-50%, 15%) scale(var(--counter-scale));
+  }
+}
+@keyframes mapFeedbackFade {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -150%) scale(var(--counter-scale));
   }
 }
 

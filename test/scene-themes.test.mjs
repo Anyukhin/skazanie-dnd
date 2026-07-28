@@ -4,9 +4,12 @@ import test from 'node:test'
 import {
   SCENE_THEMES,
   buildThemedScene,
+  isLiveTheme,
   layoutOpenTerrain,
+  matchTheme,
   sceneGraphForTheme,
   themeFor,
+  themeFromMapRequest,
 } from '../server/scene-themes.mjs'
 import { validateSceneGraph } from '../server/scene-graph.mjs'
 import { assetsForTheme } from '../server/asset-registry.mjs'
@@ -35,6 +38,45 @@ test('тема опознаётся по названию локации', () =>
   for (const [location, expected] of cases) {
     assert.equal(themeFor({ location }).id, expected, `«${location}» опознан неверно`)
   }
+})
+
+test('постоялый двор под любым именем — здание', () => {
+  // Караван-сарай стоял в игре как «keep»: серый лабиринт вместо двора с
+  // постройкой. Слово в названии есть, а темы у него не было.
+  for (const location of [
+    'Заброшенный караван-сарай', 'Вход в древний караван-сарай на торговом пути',
+    'Подворье у переправы', 'Ночлежка на окраине', 'Особняк наместника', 'Терем воеводы',
+  ]) {
+    assert.equal(themeFor({ location }).id, 'building', `«${location}» опознан неверно`)
+  }
+  // Торговый караван в пути постройкой не является. Спрашиваем `matchTheme`:
+  // `themeFor` подставляет здание как тему по умолчанию и на этот вопрос не
+  // отвечает.
+  assert.equal(matchTheme({ location: 'Разграбленный караван' }), null)
+})
+
+test('к живой игре отдаются только темы с готовой геометрией', () => {
+  const live = SCENE_THEMES.filter(isLiveTheme).map((theme) => theme.id).sort()
+  // Пещера из прямоугольных палат и деревня без домов хуже прежнего
+  // процедурного генератора — замер лежит в комментарии к каталогу.
+  assert.deepEqual(live, ['building', 'crypt', 'forest', 'road', 'temple'])
+  for (const theme of SCENE_THEMES) {
+    assert.equal(typeof theme.live, 'boolean', `${theme.id}: готовность не объявлена`)
+  }
+})
+
+test('узор из заявки картографа называет тему, когда название молчит', () => {
+  assert.equal(themeFromMapRequest({ pattern: 'crypt' })?.id, 'crypt')
+  assert.equal(themeFromMapRequest({ pattern: 'crypt', layout: 'cavern' })?.id, 'crypt')
+  // Узоры без своей темы ведут к процедурному генератору, а не к подмене.
+  for (const pattern of ['keep', 'great-hall', 'courtyard', 'bridge', 'natural', 'small-room']) {
+    assert.equal(themeFromMapRequest({ pattern }), null, `${pattern}: подменён темой`)
+  }
+  // Узоры неготовых тем тоже молчат: вести к ним нечем.
+  for (const pattern of ['cave-cluster', 'village']) {
+    assert.equal(themeFromMapRequest({ pattern }), null, `${pattern}: тема ещё не готова`)
+  }
+  assert.equal(themeFromMapRequest(), null)
 })
 
 test('дикая местность не становится зданием, даже если в названии есть дом', () => {

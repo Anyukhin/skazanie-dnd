@@ -9,10 +9,18 @@ import test from 'node:test'
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-tactical-ui-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const source = fileURLToPath(new URL('../src/tactical-ui.ts', import.meta.url))
-const compiled = spawnSync(process.execPath, [compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--skipLibCheck', '--outDir', buildDir, source], { encoding: 'utf8' })
+// Предпросмотр маршрута спрашивает у карты состояние дверей, поэтому её чтение
+// компилируется рядом: без второго модуля импорт из собранного файла не
+// разрешится, и тест упадёт ещё до первой проверки.
+const mapClientSource = fileURLToPath(new URL('../src/tactical-map-client.ts', import.meta.url))
+const compiled = spawnSync(process.execPath, [compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--skipLibCheck', '--outDir', buildDir, source, mapClientSource], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 const jsFile = join(buildDir, 'tactical-ui.js')
 const moduleFile = join(buildDir, 'tactical-ui.mjs')
+// Импорт внутри собранного файла указывает на './tactical-map-client' без
+// расширения — Node такой путь не разрешает, поэтому сосед переименовывается в
+// точности под него.
+renameSync(join(buildDir, 'tactical-map-client.js'), join(buildDir, 'tactical-map-client'))
 renameSync(jsFile, moduleFile)
 const tacticalUi = await import(pathToFileURL(moduleFile).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))

@@ -7,6 +7,7 @@ import {
   addZone,
   cellAt,
   createTacticalMap,
+  doorwayEdgeAt,
   edgeBetween,
   reachableCells,
   setCell,
@@ -286,21 +287,21 @@ function openDoorway(map, x, y, id) {
     if (!neighbor || !neighbor.passable) continue
     setEdge(map, x, y, x + dx, y + dy, { kind: 'none' })
   }
-  // Дверь ставится на ребро, владельцем которого является сама клетка прохода.
-  const east = cellAt(map, x + 1, y)
-  const south = cellAt(map, x, y + 1)
-  /** @type {'e'|'s'} */
-  let dir = 'e'
-  if (east && east.passable && south && !south.passable) dir = 's'
-  const neighbor = dir === 'e' ? east : south
+  // Дверь встаёт поперёк прохода. Прежде направление угадывалось условием
+  // «восток проходим, а юг нет», и на проходе вдоль вертикальной стены полотно
+  // садилось на глухое ребро: дверь была, а перекрывать ей было нечего.
+  const edge = doorwayEdgeAt(map, x, y)
+  if (!edge) return
   setDoor(map, {
     id,
-    x,
-    y,
-    dir,
+    x: edge.x,
+    y: edge.y,
+    dir: edge.dir,
     state: 'closed',
-    blocksMove: !neighbor || !neighbor.passable,
-    blocksSight: !neighbor || !neighbor.passable,
+    // Признаки стены — про сам проём: он открыт. Проход перекрывает полотно
+    // двери, и спрашивают о нём отдельно (`doorBlocksStep`).
+    blocksMove: false,
+    blocksSight: false,
   })
 }
 

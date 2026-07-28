@@ -15,11 +15,18 @@ import {
   expandCombatBounds,
 } from './combat-bounds.mjs'
 import {
+  DOOR_STATES,
   addProp as addTacticalProp,
   deserializeTacticalMap,
+  doorById,
+  doorsReachableFrom,
+  edgeBetween,
+  edgeNeighbor,
   legacyCellsFromTacticalMap,
   serializeTacticalMap,
   setCell as setTacticalCell,
+  setDoor as setTacticalDoor,
+  doorBlocksStep,
   tacticalMapFromLegacyCells,
 } from './tactical-map.mjs'
 import { campaignCanAutoComplete, normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
@@ -238,6 +245,10 @@ const COMMAND_RULES = Object.freeze({
   CastSpell: [RULE_IDS.turns],
   UseCombatAction: [RULE_IDS.actions],
   MoveActor: [RULE_IDS.turns],
+  // Открыть дверь — свободное взаимодействие с предметом, выломать — действие:
+  // и то и другое живёт в экономике хода. Проверку Силы команда добавляет себе
+  // сама, когда до неё доходит дело.
+  OperateDoor: [RULE_IDS.turns],
   StartCombat: [RULE_IDS.initiative],
   EndCombat: [RULE_IDS.initiative, RULE_IDS.turns],
   EndTurn: [RULE_IDS.turns],
@@ -290,7 +301,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
+  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -1376,6 +1387,29 @@ function legacyCellsDiverged(actual, derived) {
  */
 const CREATURE_ENTITY_KINDS = new Set(['enemy'])
 
+/**
+ * Меняет состояние двери в карте сцены. Начальное состояние приходит из
+ * планировки, дальнейшее живёт здесь и меняется только событиями
+ * (`docs/tactical-map-plan.md`, раздел 5) — второго источника истины нет.
+ */
+function setSceneDoorState(state, doorId, doorState) {
+  const map = ensureSceneTacticalMap(state)
+  if (!map) return state
+  const door = doorById(map, doorId)
+  if (!door || !DOOR_STATES.includes(String(doorState))) return state
+  const edge = edgeBetween(map, door.x, door.y, edgeNeighbor(door).x, edgeNeighbor(door).y)
+  setTacticalDoor(map, {
+    ...door,
+    state: String(doorState),
+    // Признаки ребра принадлежат проёму в стене и от полотна не зависят:
+    // `setDoor` перезаписывает ребро целиком, и без переноса стена вокруг
+    // двери потеряла бы свои свойства.
+    blocksMove: edge?.blocksMove === true,
+    blocksSight: edge?.blocksSight === true,
+  })
+  return writeSceneTacticalMap(state, map)
+}
+
 /** Ставит предмет в клетку, заменяя прежний предмет той же клетки. */
 function setScenePropAt(state, x, y, assetId) {
   const map = ensureSceneTacticalMap(state)
@@ -1480,6 +1514,10 @@ export function shortestTacticalPath(state, actorIdValue, destination, { allowOc
   const fromCell = cells.get(positionKey(from))
   if (!cells.size || !fromCell || fromCell.revealed === false || !isWalkableCell(cells.get(positionKey(to)))) return null
   const occupied = occupiedPositions(state, actorIdValue)
+  // Закрытая и запертая дверь останавливают шаг. Карта может отсутствовать у
+  // состояния, сохранённого до перехода на слои, — тогда путь считается по
+  // клеткам, как раньше.
+  const map = sceneTacticalMap(state)
   const start = positionKey(from)
   const target = positionKey(to)
   const queue = [start]
@@ -1492,6 +1530,7 @@ export function shortestTacticalPath(state, actorIdValue, destination, { allowOc
       const next = `${nextX},${nextY}`
       if (previous.has(next) || !isWalkableCell(cells.get(next))) continue
       if (occupied.has(next) && !(allowOccupiedDestination && next === target)) continue
+      if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
       previous.set(next, current)
       queue.push(next)
     }
@@ -6879,6 +6918,63 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       break
     }
+    /**
+     * Дверь как механика, а не украшение. До этого `Door.state` заполнялся
+     * генератором и не читался никем: клетка двери считалась обычным полом, и
+     * запертая дверь склепа пропускала отряд насквозь вместе со всей проверкой
+     * ключей.
+     *
+     * Стоимость по редакции: открыть или закрыть дверь — свободное
+     * взаимодействие с предметом, отдельного ресурса хода оно не требует.
+     * Выломать — действие: это уже не «мимоходом».
+     *
+     * Ключа предметом в мире пока нет (`keyItemId` живёт только в графе зон),
+     * поэтому запертая дверь открывается силой. Не дать никакого способа было
+     * нельзя: цель склепа лежит за такой дверью, и сцена стала бы непроходимой.
+     */
+    case 'OperateDoor': {
+      const map = ensureSceneTacticalMap(state)
+      if (!map) throw new RulesValidationError('Для двери нужна тактическая карта', 'TACTICAL_MAP_REQUIRED')
+      const door = doorById(map, command.door_id)
+      if (!door) throw new RulesValidationError('Такой двери нет на карте', 'DOOR_NOT_FOUND')
+      const at = actorPosition(state, command.actor_id)
+      if (!at) throw new RulesValidationError('Участник должен находиться на карте', 'MAP_POSITION_REQUIRED')
+      if (!doorsReachableFrom(map, at.x, at.y).some((entry) => entry.id === door.id)) {
+        throw new RulesValidationError('До двери нужно дотянуться: встаньте вплотную', 'DOOR_OUT_OF_REACH')
+      }
+      const intent = ['open', 'close', 'force'].includes(String(command.intent)) ? String(command.intent) : 'open'
+      const before = String(door.state)
+      if (intent === 'open') {
+        if (before === 'locked') throw new RulesValidationError('Дверь заперта: её придётся выломать', 'DOOR_LOCKED')
+        if (before !== 'closed') throw new RulesValidationError('Эта дверь и так открыта', 'DOOR_ALREADY_OPEN')
+        events.push(eventFrom(command, 'DoorStateChanged', { door_id: door.id, state: 'open', previous_state: before, method: 'hand' }, []))
+        break
+      }
+      if (intent === 'close') {
+        if (before === 'broken') throw new RulesValidationError('Выломанную дверь уже не закрыть', 'DOOR_BROKEN')
+        if (before !== 'open') throw new RulesValidationError('Эта дверь и так закрыта', 'DOOR_ALREADY_CLOSED')
+        events.push(eventFrom(command, 'DoorStateChanged', { door_id: door.id, state: 'closed', previous_state: before, method: 'hand' }, []))
+        break
+      }
+      if (before === 'open' || before === 'broken') throw new RulesValidationError('Ломать нечего: проход свободен', 'DOOR_ALREADY_OPEN')
+      const economy = state.mechanics.combat.action_economy[command.actor_id]
+      if (state.mechanics.combat.active && economy && economy.action === false) {
+        throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+      }
+      const actor = findActor(state, command.actor_id)
+      const difficulty = Math.max(10, safeInteger(door.lockDc, 0))
+      const modifier = abilityModifier(actor?.abilities?.str) + skillProficiencyBonus(actor, 'athletics')
+      const check = diceService.rollCheck({ modifier, difficulty, purpose: 'door:athletics', actorId: command.actor_id, visibility: command.visibility })
+      rolls.push(check)
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', { ability: 'str', skill: 'athletics', ...check }, []))
+      // Событие отдельное и приходит всегда, даже при неудаче: ход потрачен в
+      // любом случае, а `DoorStateChanged` описывает состоявшуюся перемену и
+      // на провале был бы событием «ничего не изменилось».
+      events.push(eventFrom(command, 'DoorForced', {
+        door_id: door.id, success: check.success, previous_state: before, difficulty, check_total: check.total,
+      }, []))
+      break
+    }
     case 'CreateEncounter': {
       const encounterId = String(command.encounter.proposal_id).replace(/^encounter-proposal-/u, 'encounter-')
       const encounter = {
@@ -9123,6 +9219,15 @@ export function applyGameEvent(rawState, event) {
     }
     case 'AreaRevealed':
       revealSceneCells(state, Array.isArray(payload.cells) ? payload.cells : [])
+      break
+    case 'DoorStateChanged':
+      setSceneDoorState(state, payload.door_id, payload.state)
+      break
+    case 'DoorForced':
+      // Ход тратится и на неудачную попытку: замок либо поддался, либо нет, а
+      // время ушло одинаково.
+      spendCombatEconomy(state, event.actor_id, 'action')
+      if (payload.success === true) setSceneDoorState(state, payload.door_id, 'broken')
       break
     case 'ObjectiveUpdated':
       if (state.scene) state.scene.objective = String(payload.objective || '')
