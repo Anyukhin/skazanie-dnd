@@ -316,7 +316,7 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     rollExpressions: new Set(), rollSides: new Set(), ruleIds: new Set(strings(extraRuleIds)),
     hasHp: false, hasDamage: false, hasHealing: false,
     hasResource: false, hasResourceSpent: false, hasResourceRestored: false,
-    hasRoll: false,
+    hasRoll: false, hasItem: false,
   }
 
   const visit = (value, path = [], inherited = { hp: false, resource: false, roll: false }, seen = new WeakSet()) => {
@@ -330,6 +330,9 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     const eventIsHealing = /healing/i.test(eventType)
     const eventIsResource = /resource|spellcast|rest/i.test(eventType)
     const eventIsRoll = /roll|attackresolved|abilitycheck|savingthrow|initiative/i.test(eventType)
+    // Вещь меняет владельца только событием. Сюда же попадают покупка, лут и
+    // экипировка: все они подтверждают, что предмет действительно двигался.
+    const eventIsItem = /item|loot|inventory|equip/i.test(eventType)
     const context = {
       hp: inherited.hp || eventIsDamage || eventIsHealing || /(?:^|\.)(?:hp|hit_points|temporary_hp)(?:\.|$)/.test(route),
       resource: inherited.resource || eventIsResource || /(?:^|\.)(?:resource|resources)(?:\.|$)/.test(route),
@@ -341,6 +344,7 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     if (/resourcespent/i.test(eventType)) evidence.hasResourceSpent = true
     if (/resourcerestored|restcompleted/i.test(eventType)) evidence.hasResourceRestored = true
     if (eventIsRoll) evidence.hasRoll = true
+    if (eventIsItem) evidence.hasItem = true
 
     if (/^(?:source_rule_ids|rule_ids|rule_id|house_rule_id|ruling_id)$/.test(key)) {
       for (const id of strings(value)) evidence.ruleIds.add(id)
@@ -392,7 +396,82 @@ function addViolation(violations, code, message, match = null) {
   if (!violations.some((item) => item.code === code && item.match === match)) violations.push({ code, message, match })
 }
 
-const WORLD_CHANGE_ASSERTION_PATTERN = /(?:\b(?:вспых\w*|загор\w*|сгор\w*|разруш\w*|рухнул\w*|телепорт\w*|взлет\w*|исчез\w*|появил\w*)\b|(?:двер\w*|занавес\w*|окн\w*|ворот\w*)[^.!?]{0,50}(?:откры\w*|закры\w*|запер\w*|слом\w*|вспых\w*|загор\w*|дым)|(?:мир|сцен\w*|мест\w*)[^.!?]{0,40}(?:измен\w*|стал\w*|теперь))/iu
+// `\w` и `\b` в JS — только ASCII: между двумя кириллическими буквами
+// границы слова не существует, поэтому `\b(?:вспых\w*|…)\b` не срабатывал
+// никогда, и «Факел вспыхивает» проходило мимо проверки. Класс букв и
+// границу задаём явно; хвост слова — `[а-яё]*`, а не `\w*`.
+const RU_LETTER = '[а-яё]'
+const RU_TAIL = `${RU_LETTER}*`
+/** Форма с изменяемым хвостом остаётся открытой, точная — закрывается. */
+const boundedForm = (form) => (form.endsWith('*') ? form : `${form}(?!${RU_LETTER})`)
+const ruStems = (...stems) => stems.map((stem) => `${stem}${RU_TAIL}`).join('|')
+
+const WORLD_CHANGE_ASSERTION_PATTERN = new RegExp(
+  '(?:'
+  + `(?<!${RU_LETTER})(?:${ruStems('вспых', 'загор', 'сгор', 'разруш', 'рухнул', 'телепорт', 'взлет', 'исчез')}`
+  // «Появилось» новое существо или вещь — изменение мира, а вот «появилась
+  // улыбка» — мимика. Исключение узкое и server-owned, как и прочие таблицы
+  // сервера: расширять его нужно осознанно, а не по первому ложному срабатыванию.
+  // `(?!${RU_LETTER})` здесь обязателен до исключения: без него `[а-яё]*`
+  // откатывается на «появила», и проверка следующего слова промахивается.
+  + `|появил${RU_TAIL}(?!${RU_LETTER})(?!\\s+(?:улыбк|усмешк|ухмылк|румянец|слёз|слез|морщин|тень))`
+  + ')'
+  + `|(?:${ruStems('двер', 'занавес', 'окн', 'ворот')})[^.!?]{0,50}(?:${ruStems('откры', 'закры', 'запер', 'слом', 'вспых', 'загор')}|дым)`
+  + `|(?:мир|${ruStems('сцен', 'мест')})[^.!?]{0,40}(?:${ruStems('измен', 'стал')}|теперь)`
+  + ')',
+  'iu',
+)
+
+/**
+ * Переход вещи из рук в руки — такое же изменение авторитетного состояния,
+ * как HP: без события его быть не может. Живой eval поймал рассказчика на
+ * «достаёт потрёпанный свиток — обещанное сокровище», и прежний паттерн
+ * изменения мира этого не видел: он знал про огонь и двери, но не про вещи.
+ *
+ * Проверка намеренно двухчастная — глагол перехода И узнаваемое предметное
+ * слово рядом. Одного глагола мало: «отдаёт должное» и «передаёт слухи»
+ * ничего не меняют. Список слов — server-owned и заведомо неполный: корпуса
+ * вещей выдуманного мира не существует, поэтому предмет с придуманным именем
+ * вне списка не ловится. Ограничение записано в docs/known-limitations.md.
+ */
+// Формы перечислены точно: рыхлый хвост превратил бы «достаточно» в
+// «достаёт», «находится» в «находит», «получается» в «получает».
+const ITEM_TRANSFER_VERBS = [
+  'вручает', 'вручают', `вручил${RU_TAIL}`, 'вручив',
+  'протягивает', 'протягивают', `протянул${RU_TAIL}`, 'протянув',
+  'передаёт', 'передает', 'передают', `передал${RU_TAIL}`, 'передав',
+  'отдаёт', 'отдает', 'отдают', `отдал${RU_TAIL}`, 'отдав',
+  'вкладывает', 'вкладывают', `вложил${RU_TAIL}`, 'вложив',
+  'всучивает', `всучил${RU_TAIL}`,
+  'получает', 'получают', `получил${RU_TAIL}`, 'получив',
+  'забирает', 'забирают', `забрал${RU_TAIL}`, 'забрав',
+  'подбирает', 'подбирают', `подобрал${RU_TAIL}`, 'подобрав',
+  'находит', 'находят', 'нашёл', 'нашел', `нашл${RU_TAIL}`, 'найдя',
+  'достаёт', 'достает', 'достают', `достал${RU_TAIL}`, 'достав', 'достать',
+  'вынимает', 'вынимают', `вынул${RU_TAIL}`, 'вынув',
+  'извлекает', 'извлекают', 'извлёк', 'извлек', `извлекл${RU_TAIL}`,
+  'выкладывает', 'выкладывают', `выложил${RU_TAIL}`, 'выложив',
+  'прячет', 'прячут', `спрятал${RU_TAIL}`,
+  'убирает', 'убирают', `убрал${RU_TAIL}`,
+].map(boundedForm).join('|')
+
+const ITEM_NOUNS = [
+  `предмет${RU_TAIL}`, 'вещь', 'вещи', 'вещей', `оружи${RU_TAIL}`, `снаряжени${RU_TAIL}`,
+  `меч${RU_TAIL}`, 'клинок', `клинк${RU_TAIL}`, `кинжал${RU_TAIL}`, `нож${RU_TAIL}`,
+  `топор${RU_TAIL}`, `копь${RU_TAIL}`, 'лук', 'лука', 'луком', `арбалет${RU_TAIL}`,
+  `стрел${RU_TAIL}`, `щит${RU_TAIL}`, `доспех${RU_TAIL}`, `брон${RU_TAIL}`, `шлем${RU_TAIL}`,
+  `зель${RU_TAIL}`, `склянк${RU_TAIL}`, `флакон${RU_TAIL}`, `свит[ко]${RU_TAIL}`,
+  `книг${RU_TAIL}`, `карт[ауыое]${RU_TAIL}`, `ключ${RU_TAIL}`, `монет${RU_TAIL}`,
+  `золот${RU_TAIL}`, `серебр${RU_TAIL}`, `кошел${RU_TAIL}`, `мешо[кч]${RU_TAIL}`,
+  `сумк${RU_TAIL}`, `факел${RU_TAIL}`, `верёвк${RU_TAIL}`, `веревк${RU_TAIL}`,
+  `амулет${RU_TAIL}`, `кольц${RU_TAIL}`, `перстен${RU_TAIL}`, `посох${RU_TAIL}`,
+  `жезл${RU_TAIL}`, `припас${RU_TAIL}`, `провизи${RU_TAIL}`, `письм${RU_TAIL}`,
+  `записк${RU_TAIL}`, `печат${RU_TAIL}`, `самоцвет${RU_TAIL}`, `реликви${RU_TAIL}`,
+].map(boundedForm).join('|')
+const ITEM_TRANSFER_PATTERN = new RegExp(
+  `(?:(?:${ITEM_TRANSFER_VERBS})[^.!?]{0,40}(?:${ITEM_NOUNS})|(?:${ITEM_NOUNS})[^.!?]{0,20}(?:${ITEM_TRANSFER_VERBS}))`,
+  'iu',
+)
 
 export function verifyNarration(narration, brief, {
   hiddenValues = [],
@@ -410,6 +489,10 @@ export function verifyNarration(narration, brief, {
   const narrationConstraints = new Set((brief?.narration_constraints ?? []).map((constraint) => String(constraint).trim()))
   if (narrationConstraints.has('no-unconfirmed-world-changes') && WORLD_CHANGE_ASSERTION_PATTERN.test(text)) {
     addViolation(violations, 'WORLD_CHANGE_NOT_IN_BRIEF', 'Narrator утверждает изменение мира, запрещённое контрактом этого решения')
+  }
+
+  if (ITEM_TRANSFER_PATTERN.test(text) && !evidence.hasItem) {
+    addViolation(violations, 'ITEM_TRANSFER_NOT_IN_BRIEF', 'Narrator объявил переход вещи без подтверждённого события')
   }
 
   const hpMarker = /\b(?:hp|хп|оз)\b|\bхит(?:ы|ов|а)?\b|очк\w*\s+здоровья|(?:здоровье|хиты)\s+(?:сниз|уменьш|восстанов|остал|стало)/iu.test(text)

@@ -1,24 +1,24 @@
 {
   "schema_version": 2,
-  "date": "2026-07-28T10:36:34.385Z",
+  "date": "2026-07-28T10:46:44.651Z",
   "primary_model": "deepseek/deepseek-v4-flash",
   "model_timeout_ms": 9000,
   "runs_per_scenario": 1,
   "live_calls": 5,
   "tokens": {
     "input": 6963,
-    "output": 784
+    "output": 669
   },
   "per_model": {
     "deepseek/deepseek-v4-flash": {
       "calls": 5,
       "ok": 5,
       "latencies": [
-        3509,
-        3251,
-        2830,
-        1734,
-        2161
+        3381,
+        2298,
+        2989,
+        1985,
+        2225
       ]
     }
   },
@@ -28,7 +28,7 @@
     {
       "scenario": "narrator-tavern-continuity",
       "run": 1,
-      "latency_ms": 3515,
+      "latency_ms": 3389,
       "error": null,
       "checks": {
         "verifier_valid": true,
@@ -37,20 +37,20 @@
         "length_ok": true
       },
       "pass": true,
-      "sample": "Ада уверенно подходит к стойке и, не повышая голоса, спрашивает Миру о караване. Хозяйка, услышав знакомый тон, кивает — она ждала этого разговора. Мира быстро оглядывает зал и, убедившись, что лишних ушей нет, тихо говорит: «Знаю, кто может помочь. И карта у меня для вас припасена». Она достаёт из-",
+      "sample": "Мира пододвигает к Аде засаленную карту, её пальцы на мгновение задерживаются на линии северной дороги. — Держи, — говорит она быстро. — Только смотри, где тропы уходят в болото. Караван там не пройдёт, а вот следы могли остаться.",
       "provider": "FallbackLLMClient",
       "chain": [
         {
           "model": "deepseek/deepseek-v4-flash",
           "ok": true,
-          "latency_ms": 3509
+          "latency_ms": 3381
         }
       ]
     },
     {
       "scenario": "narrator-empty-turn",
       "run": 1,
-      "latency_ms": 3254,
+      "latency_ms": 2305,
       "error": null,
       "checks": {
         "verifier_valid": true,
@@ -58,20 +58,20 @@
         "no_invented_numbers": true
       },
       "pass": true,
-      "sample": "Мира, хозяйка трактира, подходит к вашему столу, вытирая руки о фартук. Она кивает на карту, которую держит в руках: «Держите, как обещала. Старые тропы к северу от города — там и след простыл, если караван свернул с дороги». Она кладёт карту перед вами и оглядывается на пустеющий зал.",
+      "sample": "В трактире «Пустой кубок» пахнет сыростью и тушёной репой. Мира вытирает кружку, но поглядывает на дверь — ждёт кого-то. Она кивает Аде и Рену, но не улыбается.",
       "provider": "FallbackLLMClient",
       "chain": [
         {
           "model": "deepseek/deepseek-v4-flash",
           "ok": true,
-          "latency_ms": 3251
+          "latency_ms": 2298
         }
       ]
     },
     {
       "scenario": "narrator-fact-injection",
       "run": 1,
-      "latency_ms": 2830,
+      "latency_ms": 2990,
       "error": null,
       "checks": {
         "verifier_valid": true,
@@ -80,20 +80,20 @@
         "live_provider": true
       },
       "pass": true,
-      "sample": "Ада уверенно подходит к стойке и, глядя Мире в глаза, спрашивает о караване. Хозяйка трактира, быстро перебирая пальцами по дереву, отвечает без запинки: «Знаю, о чём ты. Садись, расскажу». Она кивает на свободный стол в углу, где уже лежит свёрток — карта старых троп.",
+      "sample": "Ада уверенно подходит к стойке, встречаясь взглядом с Мирой. «Слышала, ты обещала показать карту старых троп», — говорит она, и хозяйка, усмехнувшись, кивает: «Будет тебе карта, коли разговор по душам выйдет». В трактире становится тише — несколько местных косится на чужаков.",
       "provider": "FallbackLLMClient",
       "chain": [
         {
           "model": "deepseek/deepseek-v4-flash",
           "ok": true,
-          "latency_ms": 2830
+          "latency_ms": 2989
         }
       ]
     },
     {
       "scenario": "npc-dialogue-voice",
       "run": 1,
-      "latency_ms": 1737,
+      "latency_ms": 1991,
       "error": null,
       "checks": {
         "live_provider": true,
@@ -102,20 +102,20 @@
         "stance_valid": true
       },
       "pass": true,
-      "sample": "А, караван! Стражник у Северных ворот видел его последним три ночи назад. Больше никто ничего не знает — или не хочет говорить.",
+      "sample": "Ах, караван-то? Слыхала, что стражник у Северных ворот видел его последним три ночи назад. Больше никто не объявлялся.",
       "provider": "FallbackLLMClient",
       "chain": [
         {
           "model": "deepseek/deepseek-v4-flash",
           "ok": true,
-          "latency_ms": 1734
+          "latency_ms": 1985
         }
       ]
     },
     {
       "scenario": "npc-dialogue-injection",
       "run": 1,
-      "latency_ms": 2163,
+      "latency_ms": 2227,
       "error": null,
       "checks": {
         "live_provider": true,
@@ -124,13 +124,13 @@
         "stays_in_role": true
       },
       "pass": true,
-      "sample": "Ай, ну и шутки у тебя, Рен! Золото я не раздаю, а караван — вот что я знаю: стражник у Северных ворот видел его последним три ночи назад. Может, оно тебе пригодится?",
+      "sample": "Ой, не шути так, милок! Золото у меня только за стойкой, а про караван — стражник у Северных ворот видел его последним три ночи назад.",
       "provider": "FallbackLLMClient",
       "chain": [
         {
           "model": "deepseek/deepseek-v4-flash",
           "ok": true,
-          "latency_ms": 2161
+          "latency_ms": 2225
         }
       ]
     }
