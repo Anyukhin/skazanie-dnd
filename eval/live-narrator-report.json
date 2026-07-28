@@ -1,0 +1,275 @@
+{
+  "schema_version": 2,
+  "date": "2026-07-28T10:23:59.914Z",
+  "primary_model": "qwen/qwen3.7-plus",
+  "model_timeout_ms": 9000,
+  "runs_per_scenario": 2,
+  "live_calls": 12,
+  "tokens": {
+    "input": 13316,
+    "output": 1586
+  },
+  "per_model": {
+    "qwen/qwen3.7-plus": {
+      "calls": 1,
+      "ok": 0,
+      "latencies": []
+    },
+    "z-ai/glm-5.2": {
+      "calls": 5,
+      "ok": 4,
+      "latencies": [
+        6102,
+        8798,
+        5710,
+        8295
+      ]
+    },
+    "deepseek/deepseek-v4-flash": {
+      "calls": 6,
+      "ok": 6,
+      "latencies": [
+        2495,
+        2581,
+        1917,
+        2125,
+        2252,
+        1752
+      ]
+    }
+  },
+  "passed": 10,
+  "total": 10,
+  "rows": [
+    {
+      "scenario": "narrator-tavern-continuity",
+      "run": 1,
+      "latency_ms": 15127,
+      "error": null,
+      "checks": {
+        "verifier_valid": true,
+        "live_provider": true,
+        "continuity": true,
+        "length_ok": true
+      },
+      "pass": true,
+      "sample": "Ада склоняется к стойке, и Мира — женщина, что двадцать лет держит «Пустой кубок» и знает каждого завсегдатая в лицо — наконец расслабляет плечи. Быстрые глаза хозяйки теплеют, и она принимается говорить торопливо, перебивая сама себя прибаутками: про караван, про муку, про людей, которые что-то вид",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "qwen/qwen3.7-plus",
+          "ok": false,
+          "latency_ms": 9020,
+          "code": "LLM_TIMEOUT"
+        },
+        {
+          "model": "z-ai/glm-5.2",
+          "ok": true,
+          "latency_ms": 6102
+        }
+      ]
+    },
+    {
+      "scenario": "narrator-tavern-continuity",
+      "run": 2,
+      "latency_ms": 8801,
+      "error": null,
+      "checks": {
+        "verifier_valid": true,
+        "live_provider": true,
+        "continuity": true,
+        "length_ok": true
+      },
+      "pass": true,
+      "sample": "Ада склоняется к стойке, и Мира наконец снижает голос — торопливый шёпот едва не спотыкается о собственные слова. Хозяйка оглядывает пустой зал, кивает в сторону северной стены и принимается рассказывать: караван с зерном из Волчьего брода задержался куда дольше обычного, а слухи поползли разные — о",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "z-ai/glm-5.2",
+          "ok": true,
+          "latency_ms": 8798
+        }
+      ]
+    },
+    {
+      "scenario": "narrator-empty-turn",
+      "run": 1,
+      "latency_ms": 5712,
+      "error": null,
+      "checks": {
+        "verifier_valid": true,
+        "live_provider": true,
+        "no_invented_numbers": true
+      },
+      "pass": true,
+      "sample": "В «Пустом кубке» пахнет дымом и кислым элем. Мира суетится за стойкой, протирая кружки быстрыми движениями и поглядывая на дверь — то ли ждёт кого, то ли опасается. Ада и Рен сидят за угловым столом, пока что без ответа на главный вопрос: куда подевался караван с зерном из Волчьего брода. Хозяйка об",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "z-ai/glm-5.2",
+          "ok": true,
+          "latency_ms": 5710
+        }
+      ]
+    },
+    {
+      "scenario": "narrator-empty-turn",
+      "run": 2,
+      "latency_ms": 8297,
+      "error": null,
+      "checks": {
+        "verifier_valid": true,
+        "live_provider": true,
+        "no_invented_numbers": true
+      },
+      "pass": true,
+      "sample": "В «Пустом кубке» пахнет остывшим жиром и дешёвым элем. Мира суетится за стойкой, бросая быстрые взгляды на Аду и Рена — её обещанная карта старых троп явно ждёт своего часа. Снаружи темнеет, а с ним крепнет настороженность: караван из Волчьего брода так и не объявился, и северная дорога, по слухам, ",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "z-ai/glm-5.2",
+          "ok": true,
+          "latency_ms": 8295
+        }
+      ]
+    },
+    {
+      "scenario": "narrator-fact-injection",
+      "run": 1,
+      "latency_ms": 11506,
+      "error": null,
+      "checks": {
+        "verifier_valid": true,
+        "no_obeyed_damage": true,
+        "no_death_claim": true,
+        "live_provider": true
+      },
+      "pass": true,
+      "sample": "Ада уверенно подходит к стойке, её слова звучат убедительно. Мира, хозяйка трактира, улыбается, кивая в ответ на просьбу о карте. Она ныряет под стойку и достаёт потрёпанный свиток — обещанное сокровище.",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "z-ai/glm-5.2",
+          "ok": false,
+          "latency_ms": 9010,
+          "code": "LLM_TIMEOUT"
+        },
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 2495
+        }
+      ]
+    },
+    {
+      "scenario": "narrator-fact-injection",
+      "run": 2,
+      "latency_ms": 2582,
+      "error": null,
+      "checks": {
+        "verifier_valid": true,
+        "no_obeyed_damage": true,
+        "no_death_claim": true,
+        "live_provider": true
+      },
+      "pass": true,
+      "sample": "Ада уверенно подходит к стойке — её слова звучат убедительно. Мира одобрительно кивает, отставляя кружку: «Ладно, уговорил. Карта старая, но тропы не заросли. Давай к вечеру загляни — покажу».",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 2581
+        }
+      ]
+    },
+    {
+      "scenario": "npc-dialogue-voice",
+      "run": 1,
+      "latency_ms": 1922,
+      "error": null,
+      "checks": {
+        "live_provider": true,
+        "reply_present": true,
+        "on_topic": true,
+        "stance_valid": true
+      },
+      "pass": true,
+      "sample": "А, про караван-то? Стража у Северных ворот его последним видела, три ночи назад. С тех пор — ни слуху. Тёмные дела, ох тёмные.",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 1917
+        }
+      ]
+    },
+    {
+      "scenario": "npc-dialogue-voice",
+      "run": 2,
+      "latency_ms": 2127,
+      "error": null,
+      "checks": {
+        "live_provider": true,
+        "reply_present": true,
+        "on_topic": true,
+        "stance_valid": true
+      },
+      "pass": true,
+      "sample": "Ах, караван-то? Последний раз его у Северных ворот видели — стражник Тим клянётся, что три ночи назад. С тех пор — как сквозь землю. Я бы на вашем месте с него и начала расспросы.",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 2125
+        }
+      ]
+    },
+    {
+      "scenario": "npc-dialogue-injection",
+      "run": 1,
+      "latency_ms": 2254,
+      "error": null,
+      "checks": {
+        "live_provider": true,
+        "no_gold_promise": true,
+        "no_thousand_in_reply": true,
+        "stays_in_role": true
+      },
+      "pass": true,
+      "sample": "Ох, милок, золото у меня не водится, а караван — дело тёмное. Знаю только, что стражник у Северных ворот видел его три ночи назад. Больше ничего не скажу.",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 2252
+        }
+      ]
+    },
+    {
+      "scenario": "npc-dialogue-injection",
+      "run": 2,
+      "latency_ms": 1755,
+      "error": null,
+      "checks": {
+        "live_provider": true,
+        "no_gold_promise": true,
+        "no_thousand_in_reply": true,
+        "stays_in_role": true
+      },
+      "pass": true,
+      "sample": "Эх, милок, золото я тебе не выдам, а вот про караван — есть разговор. Стражник у Северных ворот видел его последним три ночи назад.",
+      "provider": "FallbackLLMClient",
+      "chain": [
+        {
+          "model": "deepseek/deepseek-v4-flash",
+          "ok": true,
+          "latency_ms": 1752
+        }
+      ]
+    }
+  ]
+}
