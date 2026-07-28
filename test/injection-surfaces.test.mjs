@@ -3,6 +3,9 @@ import { readFile, readdir } from 'node:fs/promises'
 import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
+import { DirectorAgent } from '../server/director-agent.mjs'
+import { Narrator } from '../server/narrator.mjs'
+import { NpcSocialController } from '../server/npc-social-controller.mjs'
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { DATA_ONLY_INSTRUCTION, UNTRUSTED_DATA_END, UNTRUSTED_DATA_START } from '../server/security.mjs'
 
@@ -68,6 +71,55 @@ test('решение партии уходит картографу только
   assert.match(system.content, /PROMPT_ID: map_architect\/v2/)
   assert.match(system.content, /UNTRUSTED_DATA/)
   assertInsideUntrustedData(user.content, INJECTION)
+})
+
+test('реплика героя уходит Режиссёру только внутри UNTRUSTED_DATA', async () => {
+  const client = captureClient({})
+  const director = new DirectorAgent({ llmClient: client })
+  await director.choose({
+    state: { scene: { title: 'Ворота', location: 'Ворота', objective: 'Пройти' } },
+    playerAction: INJECTION,
+  })
+  assert.ok(client.captured.messages, 'модель должна была быть вызвана')
+  assertInsideUntrustedData(client.captured.messages[1].content, INJECTION)
+})
+
+test('реплика героя уходит NPC-собеседнику только внутри UNTRUSTED_DATA', async () => {
+  const client = captureClient({ reply: 'Хорошо.', stance: 'neutral' })
+  const controller = new NpcSocialController({ llmClient: client })
+  const result = await controller.respond({
+    state: {
+      scene: { title: 'Трактир', location: 'Трактир', objective: 'Поговорить' },
+      social: {
+        npcs: [{ id: 'npc:mira', name: 'Мира', role: 'хозяйка', location: 'Трактир', public_summary: 'Знает всех.', voice: 'Быстро.', visibility: 'party', available: true }],
+        relationships: {}, promises: [], conversations: [],
+      },
+    },
+    playerId: 'hero',
+    npcId: 'npc:mira',
+    message: INJECTION,
+    turnId: 'turn-injection',
+  })
+  assert.ok(result)
+  assert.ok(client.captured.messages, 'модель должна была быть вызвана')
+  assertInsideUntrustedData(client.captured.messages[1].content, INJECTION)
+})
+
+test('записанный world fact уходит рассказчику только внутри UNTRUSTED_DATA', async () => {
+  const client = captureClient({ narration: 'Ситуация ожидает решения.', suggestions: [] })
+  const narrator = new Narrator({ llmClient: client })
+  await narrator.render({
+    visible_events: [],
+    visible_state_changes: [],
+    known_environment: {
+      scene: { title: 'Ворота', location: 'Ворота' },
+      world_memory: { facts: [{ id: 'fact:hostile', subject: 'Ворота', predicate: 'notice', summary: INJECTION }] },
+    },
+    permitted_npc_reactions: [],
+    narration_constraints: [],
+  })
+  assert.ok(client.captured.messages, 'модель должна была быть вызвана')
+  assertInsideUntrustedData(client.captured.messages[1].content, INJECTION)
 })
 
 // Сторож поверхности: каждый модуль, который сам вызывает completeJson,
