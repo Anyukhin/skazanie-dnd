@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { buildNpcSocialCheckPolicy } from '../server/npc-social-check.mjs'
+import { npcSocialForViewer } from '../server/npc-social.mjs'
 import { merchantViewFor, quoteMerchantBuyUnit, quoteMerchantSellUnit } from '../server/merchant-economy.mjs'
 import {
   REPUTATION_PRICE_BPS,
@@ -145,22 +146,51 @@ test('витрина показывает ту же цену, которую в�
 })
 
 /**
- * Найдено 2026-07-28 при работе над репутацией. `difficultyFor` умеет уважать
- * заранее заданную `profile.social_dcs[skill]` и возвращать её без поправок,
- * но нормализатор профиля NPC (`safeProfile` в `server/npc-social.mjs`) поле
- * `social_dcs` не переносит: у него явный allowlist полей. Значит ветка
- * ручной СЛ недостижима, и все СЛ считаются политикой.
- *
- * Это не сломано — просто мёртвая ветка. Тест фиксирует факт, чтобы правка
- * схемы профиля не прошла мимо: как только `social_dcs` начнёт доезжать,
- * проверка упадёт и заставит решить, перебивает ли ручная СЛ репутацию.
+ * `difficultyFor` умел уважать заранее заданную `profile.social_dcs[skill]` с
+ * самого появления социальных проверок, но нормализатор профиля это поле не
+ * переносил, и ветка была мёртвой: авторская настройка молча пропадала.
+ * Оживлено 2026-07-28 — ручная СЛ сильнее политики, потому что это прямое
+ * решение автора кампании, а политика лишь считает по общим правилам.
  */
-test('ручная СЛ пока недостижима: профиль NPC не переносит social_dcs', () => {
-  const state = world({ reputations: { guild: -80 } })
-  state.social.npcs[0].social_dcs = { persuasion: 11 }
+test('ручная СЛ перебивает и отношение, и славу — авторское слово сильнее политики', () => {
+  const hostile = world({ reputations: { guild: -80 } })
+  hostile.social.npcs[0].social_dcs = { persuasion: 11 }
+  const withDc = buildNpcSocialCheckPolicy({
+    state: hostile, npcId: 'merchant-1', heroId: 'hero', message: 'Убеждаю её', turnId: 't1',
+  })
+  assert.equal(withDc.difficulty, 11)
+  // Ступень всё равно объявляется: она нужна тексту и трассе, просто на СЛ
+  // в этом случае не влияет.
+  assert.equal(withDc.reputation_tier, 'reviled')
+
+  // Навык без ручной СЛ по-прежнему считается политикой.
+  const other = buildNpcSocialCheckPolicy({
+    state: hostile, npcId: 'merchant-1', heroId: 'hero', message: 'Запугиваю её', turnId: 't2',
+  })
+  assert.equal(other.skill, 'intimidation')
+  assert.notEqual(other.difficulty, 11)
+})
+
+test('ручная СЛ принимает ровно те же навыки, что и социальная проверка, и держится в границах', () => {
+  const state = world()
+  state.social.npcs[0].social_dcs = { persuasion: 3, deception: 99, intimidation: 14, insight: 12, athletics: 5 }
   const policy = buildNpcSocialCheckPolicy({
     state, npcId: 'merchant-1', heroId: 'hero', message: 'Убеждаю её', turnId: 't1',
   })
-  assert.notEqual(policy.difficulty, 11, 'social_dcs начал доезжать до политики — решите, перебивает ли он репутацию')
-  assert.equal(policy.reputation_tier, 'reviled')
+  // 3 зажимается снизу до 5: ручная СЛ уточняет сложность, но не отменяет
+  // границы политики.
+  assert.equal(policy.difficulty, 5)
+
+  const lying = buildNpcSocialCheckPolicy({
+    state, npcId: 'merchant-1', heroId: 'hero', message: 'Обманываю её', turnId: 't2',
+  })
+  assert.equal(lying.difficulty, 25, '99 зажимается сверху до 25')
+})
+
+test('ручная СЛ остаётся приватной: игрок не видит её до броска', () => {
+  const state = world()
+  state.social.npcs[0].social_dcs = { persuasion: 11 }
+  const visible = npcSocialForViewer(state.social, { playerId: 'hero', isPartyMember: true, state })
+  assert.equal(JSON.stringify(visible).includes('social_dcs'), false)
+  assert.equal(JSON.stringify(visible).includes('11'), false)
 })

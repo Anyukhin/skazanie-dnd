@@ -2,6 +2,11 @@ const PROFILE_VISIBILITIES = new Set(['public', 'party', 'gm_only'])
 const PROMISE_DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 const PROMISE_STATUSES = new Set(['open', 'fulfilled', 'broken', 'cancelled'])
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
+/**
+ * Навыки социальной проверки. Список дублирует `NPC_SOCIAL_CHECK_SKILLS` из
+ * `npc-social-check.mjs` намеренно: обратный импорт замкнул бы модули в цикл,
+ * а расхождение ловит тест «ручная СЛ принимает ровно те же навыки».
+ */
 const SOCIAL_CHECK_SKILLS = new Set(['persuasion', 'deception', 'intimidation', 'insight'])
 const SOCIAL_CHECK_DEGREES = new Set(['strong_success', 'success', 'failure', 'severe_failure'])
 const WEEK_DAYS = new Set([0, 1, 2, 3, 4, 5, 6])
@@ -151,6 +156,28 @@ function fields(value, allowed, label) {
   if (unexpected.length) throw new NpcSocialValidationError(`${label} содержит запрещённые поля: ${unexpected.join(', ')}`, 'NPC_SOCIAL_UNKNOWN_FIELD')
 }
 
+/**
+ * Ручные СЛ социальных проверок этого NPC.
+ *
+ * `difficultyFor` в `server/npc-social-check.mjs` умел уважать это поле с
+ * самого появления социальных проверок, но нормализатор профиля его не
+ * переносил — allowlist полей его не знал, — и ветка была мёртвой: все СЛ
+ * считались политикой, а авторская настройка молча пропадала.
+ *
+ * Диапазон тот же, что у политики (5–25): ручная СЛ уточняет сложность, а не
+ * отменяет её границы. Поле приватное, как цели и убеждения: игроку СЛ до
+ * броска не показывают, иначе исчезает сама проверка.
+ */
+function safeSocialDcs(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const entries = Object.entries(value)
+    .filter(([skill]) => SOCIAL_CHECK_SKILLS.has(String(skill)))
+    .map(([skill, dc]) => [String(skill), Number(dc)])
+    .filter(([, dc]) => Number.isSafeInteger(dc))
+    .map(([skill, dc]) => [skill, Math.max(5, Math.min(25, dc))])
+  return Object.fromEntries(entries)
+}
+
 function safeProfile(value = {}) {
   return {
     id: clean(value.id, 120),
@@ -162,6 +189,7 @@ function safeProfile(value = {}) {
     goals: strings(value.goals, 300, 12),
     beliefs: strings(value.beliefs, 300, 20),
     known_fact_ids: strings(value.known_fact_ids, 120, 100),
+    social_dcs: safeSocialDcs(value.social_dcs),
     visibility: PROFILE_VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
     available: value.available !== false,
     tags: strings(value.tags, 60, 20),
@@ -389,7 +417,7 @@ function strictInventoryInput(value) {
 
 function normalizeProfileInput(input) {
   const value = object(input, 'npc')
-  fields(value, new Set(['id', 'name', 'role', 'location', 'public_summary', 'voice', 'goals', 'beliefs', 'known_fact_ids', 'visibility', 'available', 'tags', 'schedule', 'inventory']), 'npc')
+  fields(value, new Set(['id', 'name', 'role', 'location', 'public_summary', 'voice', 'goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'visibility', 'available', 'tags', 'schedule', 'inventory']), 'npc')
   const result = safeProfile({
     ...value,
     id: identifier(value.id, 'npc.id'),
