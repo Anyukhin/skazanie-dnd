@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import { ENCOUNTER_THEMES } from './encounter-assembler.mjs'
+
 export const DIRECTOR_INTENT_VERSION = 'skazanie:director-intent-v1'
 export const DIRECTOR_INTENT_TYPES = Object.freeze([
   'continue_exploration',
@@ -12,7 +14,13 @@ export const DIRECTOR_INTENT_TYPES = Object.freeze([
 
 const INTENT_TYPES = new Set(DIRECTOR_INTENT_TYPES)
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard'])
-const THEMES = new Set(['beasts', 'undead', 'goblinoids', 'raiders'])
+/**
+ * Список тем был записан здесь вторым, руками, и разошёлся с реальным: у
+ * EncounterAssembler их было пять, а Директор мог попросить четыре — `generic`
+ * оставался недостижимым, хотя ростер под него существовал. Теперь источник
+ * один, и новая тема в сборщике сразу доступна Директору.
+ */
+const THEMES = new Set(ENCOUNTER_THEMES)
 const TOP_LEVEL_FIELDS = new Set(['version', 'type', 'theme', 'difficulty', 'quest_id', 'npc_id', 'hook', 'destination', 'reason'])
 /**
  * Написание ключа значения не имеет: `max_hp`, `maxHp` и `MAX-HP` — одно и то
@@ -123,6 +131,63 @@ export function normalizeAutonomyState(input = {}) {
   }
 }
 
+/**
+ * Добыча: тематический предмет плюс зелья по сложности.
+ *
+ * Прежняя таблица выдавала один и тот же предмет на всю кампанию — факел за
+ * лёгкую встречу, зелье за среднюю, два за тяжёлую, — и на тридцатой сессии
+ * это переставало быть наградой. Тематическая часть выбирается детерминированно
+ * по `encounter_id`: разные встречи дают разное, а replay того же события даёт
+ * тот же предмет.
+ *
+ * Все `catalog_id` обязаны существовать в `SRD_EQUIPMENT_CATALOG`
+ * (`server/merchant-economy.mjs`): иначе торговец не узнает выданную вещь и
+ * оценит её политикой вместо каталожной цены. Сторож ссылочной целостности —
+ * `test/encounter-reward.test.mjs`.
+ */
+const LOOT_ITEMS = Object.freeze({
+  torch: { catalog_id: 'srd_5_2_1:torch', name: 'Факел', type: 'tool' },
+  rations: { catalog_id: 'srd_5_2_1:rations-one-day', name: 'Сухой паёк, 1 день', type: 'consumable' },
+  rope: { catalog_id: 'srd_5_2_1:rope-hempen-50-feet', name: 'Пеньковая верёвка, 50 футов', type: 'tool' },
+  arrows: { catalog_id: 'srd_5_2_1:arrows-20', name: 'Стрелы, 20 штук', type: 'other' },
+  dagger: { catalog_id: 'srd_5_2_1:dagger', name: 'Кинжал', type: 'weapon' },
+  shield: { catalog_id: 'srd_5_2_1:shield', name: 'Щит', type: 'armor' },
+  leather: { catalog_id: 'srd_5_2_1:leather-armor', name: 'Кожаный доспех', type: 'armor' },
+  longsword: { catalog_id: 'srd_5_2_1:longsword', name: 'Длинный меч', type: 'weapon' },
+  potion: { catalog_id: 'srd_5_2_1:potion-of-healing', name: 'Зелье лечения', type: 'consumable' },
+})
+
+/** Что можно снять с побеждённых именно этой темы. */
+const LOOT_BY_THEME = Object.freeze({
+  goblinoids: ['arrows', 'dagger', 'torch'],
+  undead: ['torch', 'rope', 'dagger'],
+  beasts: ['rations', 'rope', 'torch'],
+  raiders: ['dagger', 'leather', 'arrows', 'shield'],
+  warband: ['leather', 'shield', 'longsword', 'arrows'],
+  vermin: ['rations', 'rope', 'torch'],
+  ambush: ['dagger', 'arrows', 'rope'],
+  crypt: ['dagger', 'rope', 'torch'],
+  cave: ['rope', 'torch', 'rations'],
+  wilderness: ['rations', 'rope', 'arrows'],
+  generic: ['torch', 'rations', 'rope', 'dagger'],
+})
+
+/** Сколько зелий кладёт сложность сверх тематического предмета. */
+const LOOT_POTIONS_BY_DIFFICULTY = Object.freeze({ easy: 0, medium: 1, hard: 2 })
+
+export function serverEncounterLoot({ theme = 'generic', difficulty = 'medium', encounterId = '' } = {}) {
+  const table = LOOT_BY_THEME[theme] ?? LOOT_BY_THEME.generic
+  // Детерминированный выбор: тот же encounter_id — тот же предмет, поэтому
+  // replay и повторный commit не расходятся.
+  const offset = Number.parseInt(createHash('sha256').update(`loot:${theme}:${encounterId}`).digest('hex').slice(0, 8), 16)
+  const flavour = LOOT_ITEMS[table[offset % table.length]]
+  const potions = LOOT_POTIONS_BY_DIFFICULTY[difficulty] ?? 0
+  return [
+    ...(potions > 0 ? [{ ...LOOT_ITEMS.potion, quantity: potions }] : []),
+    { ...flavour, quantity: 1 },
+  ]
+}
+
 export function serverRewardForEncounter(state = {}, outcome = 'enemies_defeated') {
   const encounter = state.mechanics?.encounter ?? {}
   const encounterId = clean(encounter.id ?? encounter.encounter_id, 120)
@@ -135,12 +200,10 @@ export function serverRewardForEncounter(state = {}, outcome = 'enemies_defeated
     ? Math.max(projectedEnemyXp, assembledEncounterXp)
     : 0
   const difficulty = DIFFICULTIES.has(encounter.difficulty) ? encounter.difficulty : 'medium'
-  const lootPolicy = {
-    easy: [{ catalog_id: 'srd_5_2_1:torch', name: 'Факел', quantity: 1 }],
-    medium: [{ catalog_id: 'srd_5_2_1:healing-potion', name: 'Зелье лечения', quantity: 1 }],
-    hard: [{ catalog_id: 'srd_5_2_1:healing-potion', name: 'Зелье лечения', quantity: 2 }],
-  }
-  const loot = outcome === 'enemies_defeated' ? clone(lootPolicy[difficulty]) : []
+  const theme = clean(encounter.theme, 40)
+  const loot = outcome === 'enemies_defeated'
+    ? serverEncounterLoot({ theme, difficulty, encounterId })
+    : []
   return { encounter_id: encounterId, outcome, xp, progression: xp > 0 ? 'xp' : 'milestone', milestone: xp > 0 ? null : 'encounter-resolved', loot }
 }
 

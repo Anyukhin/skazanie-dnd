@@ -170,11 +170,32 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
   },
 })
 
+/**
+ * Темы — это состав ростера, а не отдельный бестиарий: каждая перечисляет
+ * подмножество того же server-owned allowlist. Их одиннадцать вместо прежних
+ * пяти, и разница между ними настоящая — «стая» из быстрых зверей ощущается
+ * иначе, чем «ватага» из трёх тяжёлых бойцов, даже когда бюджет XP один.
+ *
+ * Честная граница: сам бестиарий по-прежнему двенадцать существ, и никакая
+ * перестановка не заменит его расширения (`docs/known-limitations.md`).
+ */
 const THEMES = deepFreeze({
   goblinoids: ['srd_5_2_1:goblin-minion', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:kobold', 'srd_5_2_1:bugbear'],
   undead: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie'],
   beasts: ['srd_5_2_1:wolf', 'srd_5_2_1:giant-rat', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:giant-spider'],
   raiders: ['srd_5_2_1:orc', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:bugbear'],
+  // Ватага: только тяжёлые бойцы, мало целей и каждая больно бьёт.
+  warband: ['srd_5_2_1:orc', 'srd_5_2_1:bugbear', 'srd_5_2_1:hobgoblin'],
+  // Мелочь: много слабых существ, бой решается площадью, а не силой удара.
+  vermin: ['srd_5_2_1:giant-rat', 'srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion'],
+  // Засада: быстрые и хрупкие, наказывают за растянутый строй.
+  ambush: ['srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:wolf'],
+  // Склеп: нежить и то, что кормится в мёртвом месте.
+  crypt: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie', 'srd_5_2_1:giant-rat'],
+  // Пещера: обитатели подземелья вперемешку с тем, кто их туда загнал.
+  cave: ['srd_5_2_1:kobold', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-rat', 'srd_5_2_1:bugbear'],
+  // Дикая местность: звери открытых пространств.
+  wilderness: ['srd_5_2_1:wolf', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-wolf-spider'],
   generic: Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST),
 })
 

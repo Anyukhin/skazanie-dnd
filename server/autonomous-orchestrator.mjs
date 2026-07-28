@@ -878,7 +878,9 @@ export class AutonomousCampaignOrchestrator {
       catalog_id: item.catalog_id,
       name: item.name,
       quantity: item.quantity,
-      type: 'consumable', rarity: 'обычный', weight: 0, equipped: false,
+      // Тип приходит из таблицы добычи: прежде щит и меч попадали в инвентарь
+      // «расходником», и интерфейс предлагал их выпить.
+      type: item.type ?? 'consumable', rarity: 'обычный', weight: 0, equipped: false,
     } }))
     const quest = openQuest(loaded.state)
     if (quest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })

@@ -42,7 +42,11 @@ function expectCode(fn, code) {
 test('exports an expanded dnd.su-linked SRD 5.2.1 monster catalog with fixed source provenance', () => {
   assert.equal(ENCOUNTER_PROPOSAL_VERSION, 'skazanie:encounter-proposal-v1')
   assert.deepEqual(ENCOUNTER_DIFFICULTIES, ['easy', 'medium', 'hard'])
-  assert.deepEqual(ENCOUNTER_THEMES, ['goblinoids', 'undead', 'beasts', 'raiders', 'generic'])
+  assert.deepEqual(ENCOUNTER_THEMES, [
+    'goblinoids', 'undead', 'beasts', 'raiders',
+    'warband', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness',
+    'generic',
+  ])
   assert.equal(Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length, 12)
   assert.equal(DND_SU_BESTIARY_SOURCE.url, 'https://dnd.su/bestiary/')
   assert.equal(SRD_5_2_1_SOURCE.version, '5.2.1')
@@ -61,6 +65,31 @@ test('exports an expanded dnd.su-linked SRD 5.2.1 monster catalog with fixed sou
   assert.ok(Object.isFrozen(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:wolf']))
   assert.ok(Object.values(SRD_5_2_1_MONSTER_ALLOWLIST).every((monster) => monster.source_url?.startsWith('https://dnd.su/bestiary/')))
   assert.ok(Object.values(SRD_5_2_1_MONSTER_ALLOWLIST).every((monster) => monster.action_profiles?.length >= 1))
+})
+
+// Тема без работающей сборки — не тема, а строка в списке. Проверка держит
+// каждую: ростер непустой, состоит только из существ allowlist, укладывается
+// в бюджет XP и воспроизводится при повторной сборке.
+test('каждая тема встреч собирает исполнимый ростер по своему составу', () => {
+  const rosters = new Map()
+  for (const theme of ENCOUNTER_THEMES) {
+    for (const difficulty of ENCOUNTER_DIFFICULTIES) {
+      const proposal = assembleEncounter(baseInput({ theme, difficulty }))
+      assert.ok(proposal.enemies.length >= 1, `${theme}/${difficulty}: пустой ростер`)
+      // Проекция намеренно не отдаёт catalog_id, поэтому сверяемся по имени:
+      // сборщик нумерует одинаковых существ суффиксом «Гоблин-воин 2».
+      const allowedNames = new Set(Object.values(SRD_5_2_1_MONSTER_ALLOWLIST).map((monster) => monster.name))
+      assert.ok(
+        proposal.enemies.every((enemy) => allowedNames.has(String(enemy.name).replace(/\s+\d+$/u, ''))),
+        `${theme}/${difficulty}: в ростер попало существо вне allowlist`,
+      )
+      assert.deepEqual(assembleEncounter(baseInput({ theme, difficulty })), proposal, `${theme}/${difficulty}: сборка недетерминирована`)
+      if (difficulty === 'medium') rosters.set(theme, proposal.enemies.map((enemy) => enemy.name).sort().join(','))
+    }
+  }
+  // Темы обязаны отличаться друг от друга составом, иначе расширение
+  // декоративно: одиннадцать имён одного и того же ростера разнообразия не дают.
+  assert.ok(new Set(rosters.values()).size >= 6, `слишком мало различных ростеров: ${new Set(rosters.values()).size}`)
 })
 
 test('assembly is deterministic, input-order independent, bounded by the official XP budget, and deeply immutable', () => {
