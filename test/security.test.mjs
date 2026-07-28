@@ -313,10 +313,12 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
 // с самого начала, все три требования выполняет, но в списке его не было — в
 // AGENTS.md §4 роль тоже отсутствовала, и расхождение держалось незамеченным.
 test('loaded role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
-  const promptIds = ['npc_controller', 'narrator', 'director', 'action_adjudicator']
+  // Версия в списке обязана совпадать с той, которую роль действительно грузит:
+  // narrator перешёл на v2 (story_context в NarrationBrief), остальные на v1.
+  const promptIds = ['npc_controller/v1', 'narrator/v2', 'director/v1', 'action_adjudicator/v1']
   for (const id of promptIds) {
-    const prompt = await readFile(new URL(`../prompts/${id}/v1.txt`, import.meta.url), 'utf8')
-    assert.match(prompt, new RegExp(`PROMPT_ID: ${id}/v1`))
+    const prompt = await readFile(new URL(`../prompts/${id}.txt`, import.meta.url), 'utf8')
+    assert.match(prompt, new RegExp(`PROMPT_ID: ${id}`))
     assert.match(prompt, /UNTRUSTED_DATA/)
     // Проверяется свойство, а не глагол: промпт обязан прямо запретить модели
     // додумывать за сервер. Список глаголов — артефакт первых трёх промптов;
@@ -344,7 +346,7 @@ test('контрактным списком покрыта каждая роль
   // они не объявляют UNTRUSTED_DATA, и дописать это значит менять поведение
   // модели. Пробел зафиксирован в docs/known-limitations.md.
   const knownGaps = new Set(['campaign_creator/v1', 'map_architect/v1'])
-  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v1', 'narrator/v1', 'director/v1', 'action_adjudicator/v1'])
+  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v1', 'narrator/v2', 'director/v1', 'action_adjudicator/v1'])
   const uncovered = [...loaded.keys()].filter((id) => !covered.has(id) && !knownGaps.has(id)).sort()
   assert.deepEqual(uncovered, [], 'роль грузит промпт, но не покрыта ни контрактным списком, ни записанным пробелом')
 })

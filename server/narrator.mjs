@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url'
 import { eventSummary } from './rules-engine.mjs'
 import { DeterministicNarrationVerifier, assertNarrationBrief, buildDataOnlyContext } from './security.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v1'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v2'
 /** Постоянный серверный текст: он и только он стоит снаружи блока данных. */
 const REPAIR_INSTRUCTION = 'Исправь нарушения предыдущего варианта: они перечислены в секции narration_violations.'
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v1.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v2.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 
 function safeSuggestions(value) {

@@ -8,7 +8,7 @@ import { deterministicNarratorFor, renderDeterministicNarration } from './determ
 import './encounter-narration.mjs'
 import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import './merchant-narration.mjs'
-import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
+import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
 import { NARRATOR_PROMPT_VERSION, Narrator, deterministicNarration } from './narrator.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState } from './rules-engine.mjs'
@@ -74,6 +74,87 @@ function narrationWorldFacts(state, viewer, message, events) {
     }))
     .filter((fact) => fact.id && fact.summary)
     .slice(0, NARRATION_WORLD_FACT_LIMIT)
+}
+
+/**
+ * Story context gives the narrator continuity, not authority: active quests,
+ * plot threads, recent scene summaries, the party roster, NPCs presently in
+ * the scene and their open promises. Every entry is bounded, party-visible
+ * and still passes the narrator projection with the rest of the brief.
+ */
+export const NARRATION_STORY_LIMITS = Object.freeze({
+  quests: 2, threads: 2, summaries: 2, heroes: 6, npcs: 4, promises: 4,
+})
+
+const partyVisibleRecord = (value) => ['public', 'party'].includes(String(value?.visibility ?? '').toLowerCase())
+
+function narrationQuestClock(clock) {
+  const max = Number(clock?.max)
+  if (!Number.isSafeInteger(max) || max <= 0) return null
+  return { label: memoryText(clock.label, 80), current: Math.max(0, Number(clock.current) || 0), max }
+}
+
+export function narrationStoryContext(state, viewer = {}) {
+  const memory = state.worldMemory ?? {}
+  const active_quests = (memory.quests ?? [])
+    .filter((quest) => quest.status === 'active' && partyVisibleRecord(quest))
+    .slice(-NARRATION_STORY_LIMITS.quests)
+    .map((quest) => {
+      const clock = narrationQuestClock(quest.clock)
+      return {
+        title: memoryText(quest.title, 160),
+        summary: memoryText(quest.summary, 400),
+        objectives: (Array.isArray(quest.objectives) ? quest.objectives : []).slice(0, 3).map((objective) => memoryText(objective, 200)).filter(Boolean),
+        ...(clock ? { clock } : {}),
+      }
+    })
+    .filter((quest) => quest.title)
+  const active_threads = (memory.threads ?? [])
+    .filter((thread) => thread.status === 'active' && partyVisibleRecord(thread))
+    .slice(-NARRATION_STORY_LIMITS.threads)
+    .map((thread) => ({ title: memoryText(thread.title, 160), summary: memoryText(thread.summary, 300) }))
+    .filter((thread) => thread.title)
+  const recent_summaries = (memory.summaries ?? [])
+    .filter(partyVisibleRecord)
+    .slice(-NARRATION_STORY_LIMITS.summaries)
+    .map((summary) => ({ title: memoryText(summary.title, 160), summary: memoryText(summary.summary, 500) }))
+    .filter((summary) => summary.title && summary.summary)
+  const heroes = (state.players ?? [])
+    .slice(0, NARRATION_STORY_LIMITS.heroes)
+    .map((actor) => ({ id: String(actor?.id ?? ''), name: memoryText(actor?.character || actor?.name, 120) }))
+    .filter((hero) => hero.id && hero.name)
+
+  const social = ensureNpcSocialState(state.social, state)
+  const sceneLocation = memoryText(state.scene?.location, 180).toLocaleLowerCase('ru')
+  const presentProfiles = social.npcs
+    .map((npc) => npcProfileAtWorldTime(npc, state))
+    .filter((npc) => npc.available !== false && partyVisibleRecord(npc))
+    .filter((npc) => npc.location && sceneLocation && npc.location.toLocaleLowerCase('ru') === sceneLocation)
+    .slice(0, NARRATION_STORY_LIMITS.npcs)
+  const relationships = social.relationships ?? {}
+  const present_npcs = presentProfiles.map((npc) => ({
+    id: String(npc.id),
+    name: memoryText(npc.name, 120),
+    role: memoryText(npc.role, 120),
+    public_summary: memoryText(npc.public_summary, 300),
+    voice: memoryText(npc.voice, 200),
+    relationship: relationshipTier(relationships[npc.id]?.[viewer?.playerId] ?? 0),
+  })).filter((npc) => npc.id && npc.name)
+  const presentIds = new Set(presentProfiles.map((npc) => String(npc.id)))
+  const npcNames = new Map(presentProfiles.map((npc) => [String(npc.id), npc.name]))
+  const promiseVisible = (promise) => promise.visibility === 'party'
+    || (promise.visibility === 'specific_player' && String(promise.hero_id) === String(viewer?.playerId ?? ''))
+  const open_promises = (social.promises ?? [])
+    .filter((promise) => promise.status === 'open' && promiseVisible(promise) && presentIds.has(String(promise.npc_id)))
+    .slice(-NARRATION_STORY_LIMITS.promises)
+    .map((promise) => ({
+      npc: memoryText(npcNames.get(String(promise.npc_id)) || promise.npc_id, 120),
+      direction: memoryText(promise.direction, 40),
+      text: memoryText(promise.text, 280),
+      ...(promise.due_hint ? { due_hint: memoryText(promise.due_hint, 160) } : {}),
+    }))
+    .filter((promise) => promise.text)
+  return { active_quests, active_threads, recent_summaries, heroes, present_npcs, open_promises }
 }
 
 function narrationSocialConsequences(events, state) {
@@ -356,6 +437,7 @@ export class GameOrchestrator {
         scene: projectVisibleState(state.scene ?? {}, viewer, { forNarrator: true }) ?? {},
         campaign_premise: campaignConceptForAgent(state),
         world_memory: { facts: narrationWorldFacts(state, viewer, message, publicCommittedEvents) },
+        story_context: narrationStoryContext(state, viewer),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
       },
       permitted_npc_reactions: [],
@@ -691,6 +773,7 @@ export class GameOrchestrator {
         world_memory: {
           facts: narrationWorldFacts(committed.state, viewer, message, publicCommittedEvents),
         },
+        story_context: narrationStoryContext(committed.state, viewer),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, committed.state),
       },
       permitted_npc_reactions: [],
