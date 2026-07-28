@@ -30,7 +30,9 @@ test('a changed registered artifact fails closed before release packaging', () =
     () => verifyDeclaredArtifact(process.cwd(), {
       path: 'data/rule_packs/srd_5_2_1/rules.jsonl',
       sha256: '0'.repeat(64),
-      size_bytes: 29535,
+      // Размер обязан совпадать с фактическим блобом (нормализация 2026-07-28):
+      // иначе первой срабатывает проверка размера, а тест проверяет именно хеш.
+      size_bytes: 29517,
       rights_status: 'verified',
     }),
     (error) => error instanceof ContentIntegrityError && error.code === 'CONTENT_HASH_MISMATCH',

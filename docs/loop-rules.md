@@ -173,9 +173,10 @@ replay identical, restart identical), `test/campaign-loop-policy.test.mjs`,
 pnpm verify        # tests + typecheck:server + build
 ```
 
-`pnpm content:verify` и `pnpm cutover:audit` красные по построению
-(`docs/production-readiness.md`) — это не регрессия. Но если они покраснели
-**по-новому**, это находка: записать различие.
+`pnpm content:verify` зелёный с нормализации 2026-07-28 — его покраснение
+теперь регрессия. `pnpm release:verify` и `pnpm cutover:audit` красные по
+построению (`docs/production-readiness.md`) — это не регрессия. Но если они
+покраснели **по-новому**, это находка: записать различие.
 
 Порт 8787 не занимать, он может быть занят приложением пользователя:
 

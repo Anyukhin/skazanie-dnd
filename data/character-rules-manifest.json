@@ -5,9 +5,9 @@
   "compatibility_profile": "dndsu-5e-2014-official",
   "maximum_character_level": 12,
   "source_file": "dndsu-class-build-rules-1-12.json",
-  "source_sha256": "444cd3d790c81a687d9fd65b7fc7a479ef4e3007966c152e6413b0ecc2c195ff",
-  "source_size_bytes": 9920,
+  "source_sha256": "0c3ed5a59267c003c0d488f56e5d110ece5e78c501faa5cddabdedba3f1efdbc",
+  "source_size_bytes": 9818,
   "license_id": "PROJECT-COMPATIBILITY-DATA",
   "content_origin": "bounded compatibility catalog; the authoritative mechanical ruleset remains srd_5_2_1",
-  "verified_at": "2026-07-24"
+  "verified_at": "2026-07-28"
 }

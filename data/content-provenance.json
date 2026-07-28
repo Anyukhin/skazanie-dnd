@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "ruleset_id": "srd_5_2_1",
-  "verified_at": "2026-07-24",
+  "verified_at": "2026-07-28",
   "external_sources": [
     {
       "id": "srd-5.2.1",
@@ -35,8 +35,8 @@
     },
     {
       "path": "data/rule_packs/srd_5_2_1/coverage.yaml",
-      "sha256": "6fb5fdfc6bd3ee6f31ec77ee8482a7017bc3b28184ca7a98ee1b31d022c74c87",
-      "size_bytes": 818,
+      "sha256": "a9de4f64eee1dedbdd77f4c2a1a5e1b6ea42fde5c750d25780e85fe66f01bcd3",
+      "size_bytes": 795,
       "source_id": "srd-5.2.1",
       "rights_status": "project_license_required"
     },
@@ -49,43 +49,43 @@
     },
     {
       "path": "data/rule_packs/srd_5_2_1/rules.jsonl",
-      "sha256": "ad7b8d6b825e048113cbc6d8574e082ed87c21bb0002258ee191de4c46e7f236",
-      "size_bytes": 29535,
+      "sha256": "9aa9d2971b3eb6fbc92e7cb60b38dc620b0fb9efc3e73d0adb744151d1f43d06",
+      "size_bytes": 29517,
       "source_id": "srd-5.2.1",
       "rights_status": "project_license_required"
     },
     {
       "path": "data/rule_packs/srd_5_2_1/ontology_edges.jsonl",
-      "sha256": "6cc83537a549360ed87235b7071a4bf0cbb014f211bb307e0165100b2b83ddc4",
-      "size_bytes": 4002,
+      "sha256": "9db57d9949ed9411ed37770543e02c3c845e1ca978ea965036e7a737f2edd5cf",
+      "size_bytes": 3984,
       "source_id": "srd-5.2.1",
       "rights_status": "project_license_required"
     },
     {
       "path": "data/dndsu-spells-0-6.json",
-      "sha256": "1c9ac9a3292ff9e906fac97202156d5d03164b8ccc2354920c6f072338464918",
-      "size_bytes": 448356,
+      "sha256": "5a0a4c1bc9e718a1fe7ca4e967b535ee1f867aac7b4669027739aa8faad0a1db",
+      "size_bytes": 433305,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
     {
       "path": "data/dndsu-class-actions-1-12.json",
-      "sha256": "14a039225c411029d56808d810559eb0312863194e2b65f2ad08aea101638f92",
-      "size_bytes": 259457,
+      "sha256": "0dbc4b58af60a1aa32aaed2fd3a4cf3a1bb4dd2ab5b187d35cfde503c8df5636",
+      "size_bytes": 252318,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
     {
       "path": "data/dndsu-class-build-rules-1-12.json",
-      "sha256": "444cd3d790c81a687d9fd65b7fc7a479ef4e3007966c152e6413b0ecc2c195ff",
-      "size_bytes": 9920,
+      "sha256": "0c3ed5a59267c003c0d488f56e5d110ece5e78c501faa5cddabdedba3f1efdbc",
+      "size_bytes": 9818,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
     {
       "path": "data/dndsu-spell-mechanics-overrides.json",
-      "sha256": "172464a7a5751769f37b9d107b49bb09dd7c1f4a4ed183ac8e54f23920ae5f18",
-      "size_bytes": 170554,
+      "sha256": "31490b262106dbe55cf83a91dd96bd399d7eae8250222b92844c84fc4401a167",
+      "size_bytes": 170310,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     }

@@ -213,12 +213,12 @@ docs/**     (кроме docs/interface-*.md и docs/loop-ui*.md)
 Обязательна до коммита, полностью:
 
 ```bash
-pnpm test                # база: 3 известных падения content-integrity, ни одним больше
-pnpm typecheck:server    # строго 0 ошибок
-pnpm build               # строго 0 ошибок
+pnpm verify              # tests + typecheck:server + build, строго 0 падений
 ```
 
-`pnpm content:verify` и `pnpm cutover:audit` красные по построению — это не
+Дрейф реестра `data/` закрыт нормализацией 2026-07-28: гейт — **ноль падений**,
+прежняя база «3 известных» не действует. `pnpm release:verify` и
+`pnpm cutover:audit` красные по построению (права и cutover) — это не
 регрессия. Порт 8787 не занимать: `AGENT_PORT=8788 pnpm dev:agent`.
 
 Красная проверка — работа не коммитится: откатить, записать причину, взять
