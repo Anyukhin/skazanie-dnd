@@ -1,6 +1,7 @@
 // @ts-check
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
+import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
 import {
   SIZE_CLASSES,
@@ -464,6 +465,70 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
 }
 
 /**
+ * Автономный слой — рабочая память Ведущего, а не состояние отряда.
+ *
+ * До 2026-07-28 он уезжал игроку целиком: `hooks` — заготовленные повороты
+ * сюжета, то есть прямые спойлеры; `npc_schedules` — где и когда будет NPC,
+ * включая нераскрытые расписания; `director_history` и `director_outcomes` —
+ * замысел и рассуждения Режиссёра; `witness_graph` — кто что видел.
+ * Раскрытие любого из них обесценивает игру ещё до того, как она случилась.
+ *
+ * Наружу выходит ровно то, что отряд пережил сам: темп сцены, свои переходы и
+ * привалы, слава у фракций. Граница проходит не по «интересности», а по
+ * источнику: путь и отдых отряд прожил, а замысел Режиссёра — нет. Слава идёт
+ * ступенями, не числом: тот же приём, что и с ОЗ врага, — отряд чувствует
+ * отношение, а не читает счёт.
+ *
+ * @param {Loose | null | undefined} autonomy
+ * @returns {Loose | undefined}
+ */
+function publicAutonomyFor(autonomy) {
+  if (!autonomy || typeof autonomy !== 'object' || Array.isArray(autonomy)) return undefined
+  const pacing = autonomy.pacing && typeof autonomy.pacing === 'object' && !Array.isArray(autonomy.pacing)
+    ? autonomy.pacing
+    : {}
+  const reputations = autonomy.reputations && typeof autonomy.reputations === 'object' && !Array.isArray(autonomy.reputations)
+    ? autonomy.reputations
+    : {}
+  return {
+    schema_version: autonomy.schema_version,
+    pacing: {
+      beat: Math.max(0, integer(pacing.beat, 0)),
+      phase: ['breather', 'development', 'escalation', 'climax'].includes(pacing.phase) ? pacing.phase : 'breather',
+      tension: Math.max(0, Math.min(100, integer(pacing.tension, 0))),
+    },
+    travel_history: (Array.isArray(autonomy.travel_history) ? autonomy.travel_history : []).slice(-20),
+    downtime_history: (Array.isArray(autonomy.downtime_history) ? autonomy.downtime_history : []).slice(-20),
+    reputation_standing: Object.entries(reputations).slice(0, 100).map(([factionId, score]) => ({
+      faction_id: text(factionId, 120),
+      tier: reputationTier(score),
+    })).filter((entry) => entry.faction_id),
+  }
+}
+
+/**
+ * Ключи состояния, для которых у проекции есть осознанное решение: либо своя
+ * публичная форма, либо явное «отдаём как есть, здесь нечего скрывать».
+ *
+ * Сторож существует потому, что проекция собирается спредом с последующим
+ * переопределением по доменам: новый ключ верхнего уровня проходит **сырым**,
+ * и никто этого не замечает. Ровно так утёк `autonomy`. Появился новый ключ —
+ * тест падает и требует решения, а не молчаливой утечки.
+ */
+export const PROJECTED_STATE_KEYS = Object.freeze([
+  // Своя публичная форма.
+  'scene', 'adventure', 'worldMap', 'worldMemory', 'social', 'merchants',
+  'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
+  // Отдаются как есть: общий контекст отряда без скрытого.
+  'sessionCode', 'campaign', 'partyName', 'partyMemberIds', 'partyDecisionPolicy',
+  'campaignConcept', 'state_version', 'ruleset_id', 'ruleset_version',
+  'enabled_rule_packs', 'enabled_house_rules', 'ruleset_locked_at', 'engine_mode',
+  'players', 'entities', 'mapFeedback', 'rulings', 'activePlayerId', 'tacticalTurn',
+  'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll', 'suggestions',
+  'actors', 'economyLog', 'state_projector_version', 'presence', 'locationMaps',
+])
+
+/**
  * @param {LooseState | null | undefined} state
  * @param {Loose | null | undefined} user
  * @param {string} actorId
@@ -534,6 +599,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     mechanics,
     battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((/** @type {Loose} */ entry) => publicBattleEventFor(entry, state, actorId)),
     messages: (Array.isArray(visible.messages) ? visible.messages : []).map(publicCombatMessageFor),
+    ...(publicAutonomyFor(state.autonomy) ? { autonomy: publicAutonomyFor(state.autonomy) } : {}),
   }
 }
 
