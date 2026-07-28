@@ -157,6 +157,50 @@ export function narrationStoryContext(state, viewer = {}) {
   return { active_quests, active_threads, recent_summaries, heroes, present_npcs, open_promises }
 }
 
+/**
+ * Разрешённые реакции NPC. Поле называется «permitted» не случайно: это
+ * allowlist, а не подсказка. Без него рассказчик додумывал отношение
+ * присутствующих NPC к происходящему сам — теперь он может показать только
+ * ту реакцию, которую выбрал сервер, и только у названного NPC.
+ *
+ * Словарь — presentation, а не механика: реакция ничего не меняет в
+ * состоянии, отношения двигает отдельная команда социального хода.
+ */
+export const NPC_REACTION_LIMIT = 3
+const NPC_REACTION_LABELS = Object.freeze({
+  alarmed: 'встревожен происходящим',
+  persuaded: 'принимает довод героя',
+  unconvinced: 'остаётся при своём',
+  welcoming: 'держится приветливо',
+  attentive: 'молча наблюдает за разговором',
+  watchful: 'держится настороже',
+  cold: 'держится холодно',
+})
+const NPC_REACTION_BY_TIER = Object.freeze({
+  trusted: 'welcoming', friendly: 'welcoming', neutral: 'attentive',
+  unfriendly: 'watchful', hostile: 'cold',
+})
+
+export function narrationNpcReactions(presentNpcs = [], events = []) {
+  // Насилие в сцене перекрывает отношения: даже дружелюбный NPC сначала
+  // реагирует на кровь, а не на давнее знакомство.
+  const alarming = (events ?? []).some((event) => /damage|hitpointsreducedtozero|herodied|combatstarted/i.test(String(event.event_type ?? '')))
+  const socialOutcomes = new Map((events ?? [])
+    .filter((event) => event.event_type === 'AbilityCheckResolved' && event.payload?.social_check?.npc_id)
+    .map((event) => [String(event.payload.social_check.npc_id), event.payload.success === true]))
+  return presentNpcs.slice(0, NPC_REACTION_LIMIT).map((npc) => {
+    const outcome = socialOutcomes.get(String(npc.id))
+    const reaction = alarming
+      ? 'alarmed'
+      : outcome === true
+        ? 'persuaded'
+        : outcome === false
+          ? 'unconvinced'
+          : NPC_REACTION_BY_TIER[npc.relationship] ?? 'attentive'
+    return { npc_id: String(npc.id), name: memoryText(npc.name, 120), reaction, description: NPC_REACTION_LABELS[reaction] }
+  })
+}
+
 function narrationSocialConsequences(events, state) {
   const promises = new Map((state.social?.promises ?? []).map((promise) => [String(promise.id), promise]))
   return (events ?? [])
@@ -430,6 +474,7 @@ export class GameOrchestrator {
       ...(noWorldChangeConstraint(plan) ? ['no-unconfirmed-world-changes'] : []),
       ...(Array.isArray(freeAction.narration_constraints) ? freeAction.narration_constraints : []),
     ]
+    const storyContext = narrationStoryContext(state, viewer)
     const brief = buildNarrationBrief({
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),
@@ -437,10 +482,10 @@ export class GameOrchestrator {
         scene: projectVisibleState(state.scene ?? {}, viewer, { forNarrator: true }) ?? {},
         campaign_premise: campaignConceptForAgent(state),
         world_memory: { facts: narrationWorldFacts(state, viewer, message, publicCommittedEvents) },
-        story_context: narrationStoryContext(state, viewer),
+        story_context: storyContext,
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
       },
-      permitted_npc_reactions: [],
+      permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents),
       narration_constraints: constraints,
       viewer,
     })
@@ -764,6 +809,7 @@ export class GameOrchestrator {
       rolls: [...precedingRolls, ...(engineResult.rolls ?? [])],
     }
     const changes = visibleChanges(committedEvents)
+    const storyContext = narrationStoryContext(committed.state, viewer)
     const brief = buildNarrationBrief({
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),
@@ -773,10 +819,10 @@ export class GameOrchestrator {
         world_memory: {
           facts: narrationWorldFacts(committed.state, viewer, message, publicCommittedEvents),
         },
-        story_context: narrationStoryContext(committed.state, viewer),
+        story_context: storyContext,
         social_consequences: narrationSocialConsequences(publicCommittedEvents, committed.state),
       },
-      permitted_npc_reactions: [],
+      permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents),
       viewer,
     })
     const resolvedRuleIds = [...new Set([...(plan.rule_ids ?? []), ...committedEvents.flatMap((event) => event.source_rule_ids ?? [])])]
