@@ -10,14 +10,12 @@ import {
 } from './campaign-loop-policy.mjs'
 import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
+import { planHeroTurn } from './party-tactics.mjs'
 import {
-  actorPosition,
-  attackProfileFor,
   findActor,
   isEnemyActor,
   isLivingActor,
   normalizeCampaignState,
-  shortestTacticalPath,
 } from './rules-engine.mjs'
 import { classifyFreeActionKind } from './intent-parser.mjs'
 import {
@@ -803,6 +801,7 @@ export class AutonomousCampaignOrchestrator {
       const livingEnemies = state.enemies.filter(isLivingActor)
       const livingHeroes = state.players.filter(isLivingActor)
       let commands
+      let heroRule = null
       if (!livingEnemies.length || !livingHeroes.length) {
         commands = [{ command_type: 'EndCombat', actor_id: actorId || livingHeroes[0]?.id || livingEnemies[0]?.id, reason: livingEnemies.length ? 'party_defeated' : 'enemies_defeated' }]
       } else if (!isLivingActor(actor)) {
@@ -810,30 +809,21 @@ export class AutonomousCampaignOrchestrator {
       } else if (isEnemyActor(state, actorId)) {
         commands = planNpcTurn(state, actorId)
       } else {
-        const target = livingEnemies.sort((a, b) => Number(a.hp) - Number(b.hp) || String(a.id).localeCompare(String(b.id)))[0]
-        const profile = attackProfileFor(state, actorId)
-        const from = actorPosition(state, actorId)
-        const to = actorPosition(state, target.id)
-        let attackFrom = from
-        let distance = from && to ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 : Number.MAX_SAFE_INTEGER
-        commands = []
-        if (profile && distance > profile.range_feet) {
-          const path = shortestTacticalPath(state, actorId, to, { allowOccupiedDestination: true })
-          const rangeCells = Math.max(1, Math.floor(Number(profile.range_feet) / 5))
-          const neededSteps = Math.max(0, (path?.length ?? 0) - rangeCells)
-          const steps = Math.min(neededSteps, Math.max(1, Math.floor((Number(actor?.speed) || 30) / 5)))
-          if (steps > 0 && path?.[steps - 1]) {
-            attackFrom = path[steps - 1]
-            commands.push({ command_type: 'MoveActor', actor_id: actorId, to: attackFrom })
-          }
-          distance = attackFrom && to ? Math.max(Math.abs(attackFrom.x - to.x), Math.abs(attackFrom.y - to.y)) * 5 : Number.MAX_SAFE_INTEGER
-        }
-        if (profile && distance <= profile.range_feet) commands.push({ command_type: 'MakeAttack', actor_id: actorId, target_id: String(target.id), server_authoritative: true })
-        commands.push({ command_type: 'EndTurn', actor_id: actorId })
+        // Тактика героя — отдельная серверная политика (`party-tactics.mjs`),
+        // а не лестница условий внутри цикла боя: её нужно проверять тестом
+        // отдельно от оркестрации.
+        const plan = planHeroTurn(state, actorId)
+        commands = plan.commands
+        heroRule = plan.rule
       }
       const key = `${idempotencyPrefix}:${iteration + 1}:v${loaded.state_version}`
       const committed = await this.runCommands(campaignId, key, commands, { isNpcScheduler: isEnemyActor(state, actorId) })
-      turns.push({ actor_id: actorId, commands: commands.map((command) => command.command_type), events: committed.events.map((entry) => entry.event_type) })
+      turns.push({
+        actor_id: actorId,
+        commands: commands.map((command) => command.command_type),
+        events: committed.events.map((entry) => entry.event_type),
+        ...(heroRule ? { tactic: heroRule } : {}),
+      })
     }
     throw new Error(`Autonomous combat exceeded ${maxTurns} turns`)
   }
