@@ -4,8 +4,9 @@ import { fileURLToPath } from 'node:url'
 import { publicAdventureMemory } from './adventure-director.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
+import { buildDataOnlyContext } from './security.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v1.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v2.txt', import.meta.url)), 'utf8')
 
 function clean(value, maximum = 240) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -194,7 +195,10 @@ export class SceneArchitectAgent {
       const result = await this.llmClient.completeJson({
         messages: [
           { role: 'system', content: prompt },
-          { role: 'user', content: JSON.stringify({ selected_party_decision: clean(decision, 500), destination_hint: clean(destinationHint, 120), ...planningBrief, full_resolution_context: clean(action, 2000) }) },
+          // Решение партии и текст разрешения — свободный текст игроков; память
+          // кампании тоже могла быть записана из их слов. Всё уходит только
+          // внутри UNTRUSTED_DATA, снаружи не остаётся ни одной их строки.
+          { role: 'user', content: buildDataOnlyContext({ scene_planning: { selected_party_decision: clean(decision, 500), destination_hint: clean(destinationHint, 120), ...planningBrief, full_resolution_context: clean(action, 2000) } }) },
         ],
         temperature: 0.45,
         maxTokens: 1000,

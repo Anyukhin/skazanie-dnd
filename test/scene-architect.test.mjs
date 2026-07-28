@@ -5,6 +5,18 @@ import { createSceneTransition } from '../server/adventure-director.mjs'
 import { generateDynamicSceneMap } from '../server/dynamic-map.mjs'
 import { SceneArchitectAgent, interpretResolvedPartyDecision } from '../server/scene-architect.mjs'
 import { SCENE_COMMERCE_PLAN_VERSION, defaultSceneShopIntent } from '../server/scene-commerce.mjs'
+import { UNTRUSTED_DATA_END, UNTRUSTED_DATA_START } from '../server/security.mjs'
+
+// Сообщение картографу собирается через buildDataOnlyContext: полезная
+// нагрузка лежит внутри блока UNTRUSTED_DATA и извлекается по его маркерам.
+function untrustedPayload(content, section) {
+  const open = `${UNTRUSTED_DATA_START}:${section}>>>`
+  const close = `${UNTRUSTED_DATA_END}:${section}>>>`
+  const start = content.indexOf(open)
+  const end = content.indexOf(close)
+  assert.ok(start >= 0 && end > start, `блок UNTRUSTED_DATA:${section} обязан присутствовать`)
+  return JSON.parse(content.slice(start + open.length, end))
+}
 
 const archiveState = {
   sessionCode: 'LAB-ARCHIVE',
@@ -171,7 +183,7 @@ test('Scene Architect получает только public planning brief без
   })
 
   assert.ok(capturedRequest)
-  const context = JSON.parse(capturedRequest.messages[1].content)
+  const context = untrustedPayload(capturedRequest.messages[1].content, 'scene_planning')
   assert.equal(Object.hasOwn(context.current_scene, 'cells'), false)
   assert.equal(Object.hasOwn(context.current_scene, 'gm_only'), false)
   assert.equal(Object.hasOwn(context.adventure_memory, 'gm_only'), false)

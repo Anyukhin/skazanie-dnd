@@ -305,17 +305,18 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
 })
 
 // intent_parser, adjudicator, verifier, worldkeeper и game_master удалены
-// 2026-07-26: эти роли исполняются кодом, промпта под ними нет. Оставшиеся
-// campaign_creator и map_architect в список не входят — они не объявляют
-// UNTRUSTED_DATA, а дописывать это в промпт значит менять поведение модели;
-// пробел зафиксирован в docs/known-limitations.md.
+// 2026-07-26: эти роли исполняются кодом, промпта под ними нет.
 // action_adjudicator добавлен 2026-07-27: он загружается server/action-adjudicator.mjs
 // с самого начала, все три требования выполняет, но в списке его не было — в
 // AGENTS.md §4 роль тоже отсутствовала, и расхождение держалось незамеченным.
+// campaign_creator и map_architect добавлены 2026-07-28: их v2 объявляют границу
+// UNTRUSTED_DATA, а сборка сообщения переведена на buildDataOnlyContext —
+// прежний записанный пробел закрыт.
 test('loaded role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
   // Версия в списке обязана совпадать с той, которую роль действительно грузит:
-  // narrator перешёл на v2 (story_context в NarrationBrief), остальные на v1.
-  const promptIds = ['npc_controller/v1', 'narrator/v2', 'director/v1', 'action_adjudicator/v1']
+  // narrator перешёл на v2 (story_context в NarrationBrief), campaign_creator и
+  // map_architect — на v2 с границей UNTRUSTED_DATA, остальные на v1.
+  const promptIds = ['npc_controller/v1', 'narrator/v2', 'director/v1', 'action_adjudicator/v1', 'campaign_creator/v2', 'map_architect/v2']
   for (const id of promptIds) {
     const prompt = await readFile(new URL(`../prompts/${id}.txt`, import.meta.url), 'utf8')
     assert.match(prompt, new RegExp(`PROMPT_ID: ${id}`))
@@ -342,11 +343,8 @@ test('контрактным списком покрыта каждая роль
   }
   assert.ok(loaded.size >= 7, `ролей, читающих промпт, найдено ${loaded.size} — поиск потерял покрытие`)
 
-  // campaign_creator и map_architect в контрактном списке отсутствуют осознанно:
-  // они не объявляют UNTRUSTED_DATA, и дописать это значит менять поведение
-  // модели. Пробел зафиксирован в docs/known-limitations.md.
-  const knownGaps = new Set(['campaign_creator/v1', 'map_architect/v1'])
-  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v1', 'narrator/v2', 'director/v1', 'action_adjudicator/v1'])
+  const knownGaps = new Set([])
+  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v1', 'narrator/v2', 'director/v1', 'action_adjudicator/v1', 'campaign_creator/v2', 'map_architect/v2'])
   const uncovered = [...loaded.keys()].filter((id) => !covered.has(id) && !knownGaps.has(id)).sort()
   assert.deepEqual(uncovered, [], 'роль грузит промпт, но не покрыта ни контрактным списком, ни записанным пробелом')
 })

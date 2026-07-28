@@ -3,6 +3,18 @@ import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { FakeLLM } from '../server/llm-client.mjs'
+import { UNTRUSTED_DATA_END, UNTRUSTED_DATA_START } from '../server/security.mjs'
+
+// Сообщение автору кампании собирается через buildDataOnlyContext: полезная
+// нагрузка лежит внутри блока UNTRUSTED_DATA и извлекается по его маркерам.
+function untrustedPayload(content, section) {
+  const open = `${UNTRUSTED_DATA_START}:${section}>>>`
+  const close = `${UNTRUSTED_DATA_END}:${section}>>>`
+  const start = content.indexOf(open)
+  const end = content.indexOf(close)
+  assert.ok(start >= 0 && end > start, `блок UNTRUSTED_DATA:${section} обязан присутствовать`)
+  return JSON.parse(content.slice(start + open.length, end))
+}
 
 const hero = {
   id: 'nova',
@@ -89,7 +101,7 @@ test('рассказчик получает вводные владельца и
     players: [hero],
   })
 
-  const requestContext = JSON.parse(llm.requests[0].messages[1].content)
+  const requestContext = untrustedPayload(llm.requests[0].messages[1].content, 'campaign_setup')
   assert.equal(requestContext.heroes[0].backstory, hero.backstory)
   assert.equal(requestContext.world.premise, 'Первый контакт')
   assert.equal(state.campaignConcept.generatedBy, 'ai-storyteller')
@@ -110,7 +122,7 @@ test('пустые вводные мира разрешены и передаю�
     code: 'AUTO-01', name: '', partyName: '', world: {}, players: [hero],
   })
 
-  const requestContext = JSON.parse(llm.requests[0].messages[1].content)
+  const requestContext = untrustedPayload(llm.requests[0].messages[1].content, 'campaign_setup')
   assert.equal(requestContext.world.era, '')
   assert.equal(requestContext.world.genre, '')
   assert.equal(requestContext.world.preset, '')
@@ -124,7 +136,7 @@ test('свободный текст пресета передаётся аген
   await new CampaignBootstrapper({ llmClient: llm }).create({
     code: 'CUSTOM-1', world: { preset: 'Подводный соларпанк с разумными китами' }, players: [hero],
   })
-  const requestContext = JSON.parse(llm.requests[0].messages[1].content)
+  const requestContext = untrustedPayload(llm.requests[0].messages[1].content, 'campaign_setup')
   assert.equal(requestContext.world.preset, 'Подводный соларпанк с разумными китами')
 })
 

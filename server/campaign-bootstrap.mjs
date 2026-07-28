@@ -8,8 +8,9 @@ import { withStarterKit } from './starter-kit.mjs'
 import { ensureSceneWorldMemory } from './scene-memory.mjs'
 import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
+import { buildDataOnlyContext } from './security.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v1.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v2.txt', import.meta.url)), 'utf8')
 
 function clean(value, maximum = 500) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -246,7 +247,10 @@ export class CampaignBootstrapper {
         const result = await this.llmClient.completeJson({
           messages: [
             { role: 'system', content: prompt },
-            { role: 'user', content: JSON.stringify({ campaign: campaignName, party: groupName, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) }) },
+            // Вводные владельца и листы героев — свободный текст игроков. Они
+            // уходят только внутри UNTRUSTED_DATA: предыстория героя не должна
+            // уметь командовать автором кампании.
+            { role: 'user', content: buildDataOnlyContext({ campaign_setup: { campaign: campaignName, party: groupName, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) } }) },
           ],
           temperature: 0.8,
           maxTokens: 3200,
