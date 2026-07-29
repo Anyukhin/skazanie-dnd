@@ -484,12 +484,16 @@ function useTransientBattleRoll(battleLog: BattleEvent[] | undefined) {
     () => [...(battleLog ?? [])].reverse().find((event) => battleRollPresentation(event)) ?? null,
     [logKey],
   )
-  const [visibleId, setVisibleId] = useState<string | null>(() => latest?.id ?? null)
+  const seenId = useRef<string | null>(latest?.id ?? null)
+  const [visibleId, setVisibleId] = useState<string | null>(null)
   useEffect(() => {
     if (!latest) {
+      seenId.current = null
       setVisibleId(null)
       return
     }
+    if (seenId.current === latest.id) return
+    seenId.current = latest.id
     setVisibleId(latest.id)
     const handle = window.setTimeout(() => setVisibleId((current) => current === latest.id ? null : current), BATTLE_ROLL_TTL_MS)
     return () => window.clearTimeout(handle)
@@ -500,12 +504,16 @@ function useTransientBattleRoll(battleLog: BattleEvent[] | undefined) {
 function useTransientNpcTactic(batch: CombatVisualBatch | null | undefined) {
   const latest = [...(batch?.npcTurns ?? [])].reverse().find((turn) => turn.kind === 'enemy-turn' && turn.tactic) ?? null
   const key = latest ? `${batch?.id ?? ''}:${latest.actor_id ?? ''}:${latest.tactic ?? ''}` : ''
-  const [visibleKey, setVisibleKey] = useState(() => key)
+  const seenKey = useRef(key)
+  const [visibleKey, setVisibleKey] = useState('')
   useEffect(() => {
     if (!key) {
+      seenKey.current = ''
       setVisibleKey('')
       return
     }
+    if (seenKey.current === key) return
+    seenKey.current = key
     setVisibleKey(key)
     const handle = window.setTimeout(() => setVisibleKey((current) => current === key ? '' : current), NPC_TACTIC_TTL_MS)
     return () => window.clearTimeout(handle)

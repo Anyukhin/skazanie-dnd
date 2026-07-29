@@ -791,7 +791,12 @@ export function TacticalBoard({
       onDoubleClick={() => { setPan({ x: 0, y: 0 }); setZoom(1) }}
       onKeyDown={moveFocus}
       onClickCapture={(event) => {
-        if (activeAnimationRef.current) skipAnimations()
+        if (activeAnimationRef.current) {
+          skipAnimations()
+          event.preventDefault()
+          event.stopPropagation()
+          return
+        }
         if (suppressClick.current) {
           suppressClick.current = false
           return
