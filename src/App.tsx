@@ -1655,6 +1655,10 @@ function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, 
   )
   const visibleCountRef = useRef(visibleMessages.length)
 
+  // Эффект ведёт себя как реакция на приход сообщений, поэтому `followLatest`
+  // читается, но в зависимости не входит намеренно: сам по себе возврат к низу
+  // ленты уже обработан в `handleScroll`, и повторный прыжок там не нужен.
+  // Значение при этом свежее — замыкание пересобирается на каждый рендер.
   useEffect(() => {
     const newMessageCount = Math.max(0, visibleMessages.length - visibleCountRef.current)
     visibleCountRef.current = visibleMessages.length

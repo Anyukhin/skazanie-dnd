@@ -173,6 +173,10 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locat
     })
     return legacyCellsFromTacticalMap(built.map)
   }
+  // Сейчас сюда не попадает ни одна сцена: `fallbackThemeFor` всегда возвращает
+  // тему, а `live` стоит у всех семи. Ветка остаётся предохранителем на случай
+  // новой темы, которую отключат флагом, — тогда сцена уйдёт прежним
+  // процедурным путём вместо того, чтобы собраться недоделанной геометрией.
   return generateDynamicSceneMap({ ...requestedMap, seed, theme, danger })
 }
 

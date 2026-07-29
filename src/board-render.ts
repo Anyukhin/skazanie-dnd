@@ -3145,38 +3145,57 @@ export function coordinateColumnLabel(index: number) {
 
 export type RoomLabelPlacement = { zoneId: string; label: string; x: number; y: number; revealedCells: number }
 
+type ZoneBounds = { minX: number; minY: number; maxX: number; maxY: number; revealedCells: number }
+
+/**
+ * Декодированная карта на клиенте неизменяема: раскрытие приходит дельтой и
+ * даёт новый объект (`sceneTacticalMap` в `src/tactical-map-client.ts`).
+ * Поэтому границы зон считаются один раз на карту, а не на каждый кадр: слой
+ * подписей рисуется вне тайлового кэша и переживает каждый пан и зум.
+ */
+const roomLabelCache = new WeakMap<TacticalMap, RoomLabelPlacement[]>()
+
 /**
  * Центры подписей только по уже раскрытым клеткам. Само наличие подписи в
  * `map.overlays` не даёт права показать название комнаты сквозь туман.
  */
 export function revealedRoomLabelPlacements(map: TacticalMap): RoomLabelPlacement[] {
-  const placements: RoomLabelPlacement[] = []
-  for (const entry of map.overlays.roomLabels) {
-    let minX = Number.POSITIVE_INFINITY
-    let minY = Number.POSITIVE_INFINITY
-    let maxX = Number.NEGATIVE_INFINITY
-    let maxY = Number.NEGATIVE_INFINITY
-    let revealedCells = 0
+  const cached = roomLabelCache.get(map)
+  if (cached) return cached
+  // Один проход по карте на все подписи сразу: по проходу на подпись — это
+  // ширина × высота × число комнат на каждый вызов.
+  const wanted = new Map(map.overlays.roomLabels.map((entry) => [entry.zoneId, entry.label]))
+  const bounds = new Map<string, ZoneBounds>()
+  if (wanted.size) {
     for (let y = 0; y < map.height; y += 1) {
       for (let x = 0; x < map.width; x += 1) {
         const cell = cellAt(map, x, y)
-        if (!cell?.revealed || cell.zone !== entry.zoneId) continue
-        minX = Math.min(minX, x)
-        minY = Math.min(minY, y)
-        maxX = Math.max(maxX, x)
-        maxY = Math.max(maxY, y)
-        revealedCells += 1
+        if (!cell?.revealed || !wanted.has(cell.zone)) continue
+        const own = bounds.get(cell.zone)
+        if (!own) bounds.set(cell.zone, { minX: x, minY: y, maxX: x, maxY: y, revealedCells: 1 })
+        else {
+          own.minX = Math.min(own.minX, x)
+          own.minY = Math.min(own.minY, y)
+          own.maxX = Math.max(own.maxX, x)
+          own.maxY = Math.max(own.maxY, y)
+          own.revealedCells += 1
+        }
       }
     }
-    if (!revealedCells || !entry.label.trim()) continue
+  }
+  const placements: RoomLabelPlacement[] = []
+  for (const entry of map.overlays.roomLabels) {
+    const own = bounds.get(entry.zoneId)
+    if (!own || !entry.label.trim()) continue
     placements.push({
       zoneId: entry.zoneId,
       label: entry.label,
-      x: (minX + maxX + 1) / 2,
-      y: (minY + maxY + 1) / 2,
-      revealedCells,
+      x: (own.minX + own.maxX + 1) / 2,
+      y: (own.minY + own.maxY + 1) / 2,
+      revealedCells: own.revealedCells,
     })
   }
+  roomLabelCache.set(map, placements)
   return placements
 }
 

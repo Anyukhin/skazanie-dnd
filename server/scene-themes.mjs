@@ -376,6 +376,8 @@ export function layoutOrganicCave(theme, {
       kind: 'interior',
       material: theme.material,
       lightLevel: index === 0 ? 'dim' : index === graph.zones.length - 1 ? 'dark' : 'dim',
+      // У породы нет настила, и разворачивать её фактуру нечему.
+      floorDirection: 'horizontal',
       label: zone.label,
     })
   }
@@ -582,8 +584,8 @@ export function layoutSettlement(theme, {
     theme: theme.id,
     sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
   })
-  addZone(map, { id: 'common', kind: 'exterior', material: 'grass', lightLevel: 'bright', label: 'Поселение' })
-  addZone(map, { id: 'street', kind: 'exterior', material: 'earth', lightLevel: 'bright', label: 'Главная улица' })
+  addZone(map, { id: 'common', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Поселение' })
+  addZone(map, { id: 'street', kind: 'exterior', material: 'earth', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Главная улица' })
 
   for (let y = 0; y < safeHeight; y += 1) {
     for (let x = 0; x < safeWidth; x += 1) {

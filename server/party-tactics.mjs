@@ -4,6 +4,7 @@ import {
   findActor,
   isLivingActor,
   shortestTacticalPath,
+  weaponAttackProfileFor,
 } from './rules-engine.mjs'
 
 /**
@@ -153,14 +154,20 @@ export function planHeroTurn(state, actorIdValue) {
   const profile = attackProfileFor(state, actorIdValue)
   if (!profile) return { rule: 'no-attack-profile', commands: [...standing.commands, end] }
   const weapon = equippedWeapon(actor)
-  const attackRangeFeet = weapon
-    ? Math.max(5, Number(weapon.combat?.range_feet ?? weapon.combat?.range ?? 5) || 5)
-    : profile.range_feet
+  // Дальность берётся из того же профиля, который движок соберёт по `item_id`:
+  // считать её здесь по своим полям значит разойтись с проверкой `MakeAttack`.
+  // Прежняя формула читала `combat.range_feet`, которого у предметов нет вовсе
+  // (`server/starter-kit.mjs` пишет `normalRange`/`longRange`), и любое оружие
+  // оказывалось на пяти футах: лучник шёл в упор и стрелял с помехой.
+  const weaponProfile = weapon ? weaponAttackProfileFor(state, actorIdValue, String(weapon.id)) : null
+  // Порог — обычная дальность, а не предельная: за нею бросок идёт с помехой,
+  // и подойти выгоднее, чем выстрелить.
+  const attackRangeFeet = weaponProfile?.normal_range_feet ?? profile.range_feet
   const attackCommand = (targetId) => ({
     command_type: 'MakeAttack',
     actor_id: actorIdValue,
     target_id: targetId,
-    ...(weapon ? { item_id: String(weapon.id) } : {}),
+    ...(weaponProfile ? { item_id: String(weapon.id) } : {}),
     server_authoritative: true,
   })
 
