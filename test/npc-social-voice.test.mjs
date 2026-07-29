@@ -100,6 +100,35 @@ test('память отряда ограничена последними чет
   assert.deepEqual(brief.recent_party_conversation.map((entry) => entry.player_message), ['Реплика 5', 'Реплика 6', 'Реплика 7', 'Реплика 8'])
 })
 
+test('бриф NPC не раскрывает specific_player разговор другого героя', async () => {
+  const state = dialogueState()
+  state.social.conversations.push(
+    {
+      id: 'conv-private-rogue', npc_id: 'npc:mira', hero_id: 'rogue',
+      player_message: 'ЧУЖОЙ СКРЫТЫЙ ВОПРОС', npc_reply: 'ЧУЖОЙ СКРЫТЫЙ ОТВЕТ',
+      stance: 'neutral', visibility: 'specific_player',
+    },
+    {
+      id: 'conv-private-hero', npc_id: 'npc:mira', hero_id: 'hero',
+      player_message: 'МОЙ СКРЫТЫЙ ВОПРОС', npc_reply: 'МОЙ СКРЫТЫЙ ОТВЕТ',
+      stance: 'friendly', visibility: 'specific_player',
+    },
+  )
+  const requests = []
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => { requests.push(input); return { reply: 'Слушаю.', stance: 'neutral' } } },
+  })
+
+  await controller.respond({
+    state, playerId: 'hero', npcId: 'npc:mira', message: 'Что ты помнишь?', turnId: 'voice-private',
+  })
+
+  const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
+  assert.ok(brief.recent_conversation.some((entry) => entry.player_message === 'МОЙ СКРЫТЫЙ ВОПРОС'))
+  assert.ok(brief.recent_party_conversation.some((entry) => entry.player_message === 'Что слышно у ворот?'))
+  assert.doesNotMatch(JSON.stringify(brief), /ЧУЖОЙ СКРЫТЫЙ ВОПРОС|ЧУЖОЙ СКРЫТЫЙ ОТВЕТ/u)
+})
+
 test('два NPC одной сцены получают разные server-owned речевые профили', async () => {
   const requests = []
   const controller = new NpcSocialController({

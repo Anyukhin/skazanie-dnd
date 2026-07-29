@@ -196,6 +196,40 @@ test('story context смотрит на отношение глазами кон
   ])
 })
 
+test('story context не выдаёт присутствие NPC из gm_only расписания', () => {
+  const social = storySocial()
+  social.npcs.push(
+    {
+      id: 'npc:secret-schedule', name: 'Тайный курьер', role: 'курьер',
+      location: 'Дальняя застава', public_summary: 'Иногда бывает в городе.',
+      voice: 'Говорит коротко.', visibility: 'party', available: true,
+      schedule: [{
+        id: 'schedule:secret', days: [], start_minute: 0, end_minute: 1_440,
+        location: 'Трактир «Пустой кубок»', available: true,
+        summary: 'СКРЫТЫЙ ВИЗИТ КУРЬЕРА', visibility: 'gm_only',
+      }],
+    },
+    {
+      id: 'npc:party-schedule', name: 'Открытый посыльный', role: 'посыльный',
+      location: 'Дальняя застава', public_summary: 'Приходит к вечеру.',
+      voice: 'Говорит громко.', visibility: 'party', available: true,
+      schedule: [{
+        id: 'schedule:party', days: [], start_minute: 0, end_minute: 1_440,
+        location: 'Трактир «Пустой кубок»', available: true,
+        summary: 'Вечерний визит', visibility: 'party',
+      }],
+    },
+  )
+  const state = campaign({ worldMemory: storyWorldMemory(), social })
+  const context = narrationStoryContext(state, {
+    playerId: 'hero', partyIds: ['hero', 'rogue'], isPartyMember: true,
+  })
+
+  assert.ok(context.present_npcs.some((npc) => npc.name === 'Открытый посыльный'))
+  assert.ok(!context.present_npcs.some((npc) => npc.name === 'Тайный курьер'))
+  assert.doesNotMatch(JSON.stringify(context), /СКРЫТЫЙ ВИЗИТ КУРЬЕРА/u)
+})
+
 test('story context ограничен явными пределами', () => {
   const quests = Array.from({ length: 10 }, (_, index) => ({
     id: `quest:${index}`, title: `Квест ${index}`, summary: 'Активен.', status: 'active', visibility: 'party', entity_ids: [], objectives: [],

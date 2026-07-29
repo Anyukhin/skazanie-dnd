@@ -10,7 +10,13 @@ import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
-import { NARRATOR_PROMPT_VERSION, NARRATOR_RECENT_TEXT_LIMIT, Narrator, deterministicNarration } from './narrator.mjs'
+import {
+  NARRATOR_PROMPT_VERSION,
+  NARRATOR_RECENT_TEXT_LIMIT,
+  Narrator,
+  deterministicNarration,
+  verifyNarratorCraft,
+} from './narrator.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState } from './rules-engine.mjs'
 import './scene-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
@@ -162,9 +168,20 @@ export function narrationStoryContext(state, viewer = {}) {
 
   const social = ensureNpcSocialState(state.social, state)
   const sceneLocation = memoryText(state.scene?.location, 180).toLocaleLowerCase('ru')
+  const viewerSocial = npcSocialForViewer(social, {
+    ...viewer,
+    isAdmin: false,
+    state,
+  })
+  const viewerProfiles = new Map(viewerSocial.npcs.map((npc) => [String(npc.id), npc]))
   const presentProfiles = social.npcs
-    .map((npc) => npcProfileAtWorldTime(npc, state))
-    .filter((npc) => npc.available !== false && partyVisibleRecord(npc))
+    .map((npc) => {
+      const visibleCurrent = viewerProfiles.get(String(npc.id))
+      return visibleCurrent
+        ? { ...npc, location: visibleCurrent.location, available: visibleCurrent.available }
+        : null
+    })
+    .filter((npc) => npc && npc.available !== false && partyVisibleRecord(npc))
     .filter((npc) => npc.location && sceneLocation && npc.location.toLocaleLowerCase('ru') === sceneLocation)
     .slice(0, NARRATION_STORY_LIMITS.npcs)
   const relationships = social.relationships ?? {}
@@ -189,6 +206,7 @@ export function narrationStoryContext(state, viewer = {}) {
     .filter((promise) => promise.status === 'open' && promiseVisible(promise) && presentIds.has(String(promise.npc_id)))
     .slice(-NARRATION_STORY_LIMITS.promises)
     .map((promise) => ({
+      id: memoryText(promise.id, 120),
       npc: memoryText(npcNames.get(String(promise.npc_id)) || promise.npc_id, 120),
       direction: memoryText(promise.direction, 40),
       text: memoryText(promise.text, 280),
@@ -401,16 +419,18 @@ function cachedNarration(trace, brief, knownRuleIds) {
   const cached = trace?.narration_result
   const text = typeof cached?.narration === 'string' ? cached.narration.trim() : ''
   if (!text) return null
-  const verification = verifyNarration(text, brief, { knownRuleIds })
+  const verification = verifyNarratorCraft(
+    text,
+    brief,
+    verifyNarration(text, brief, { knownRuleIds }),
+  )
   if (!verification.valid) return null
   return {
     narration: text,
     suggestions: Array.isArray(cached.suggestions)
       ? cached.suggestions.slice(0, 3).map((suggestion) => String(suggestion).slice(0, 120)).filter(Boolean)
       : [],
-    verification: cached.verification && typeof cached.verification === 'object'
-      ? cached.verification
-      : verification,
+    verification,
     prompt_version: String(cached.prompt_version || NARRATOR_PROMPT_VERSION),
     provider: String(cached.provider || 'cached-idempotent-replay'),
   }
@@ -420,7 +440,11 @@ function deterministicReplayNarration(brief, knownRuleIds, resolveName) {
   const fallback = deterministicNarration(brief, resolveName)
   return {
     ...fallback,
-    verification: verifyNarration(fallback.narration, brief, { knownRuleIds }),
+    verification: verifyNarratorCraft(
+      fallback.narration,
+      brief,
+      verifyNarration(fallback.narration, brief, { knownRuleIds }),
+    ),
     prompt_version: NARRATOR_PROMPT_VERSION,
     provider: 'deterministic-idempotent-replay',
   }

@@ -76,6 +76,11 @@ function heroName(state, heroId) {
   return clean(hero?.character || hero?.name, 120) || expected
 }
 
+function conversationVisibleTo(entry, playerId) {
+  return entry.visibility === 'party'
+    || (entry.visibility === 'specific_player' && String(entry.hero_id) === String(playerId))
+}
+
 function briefFor(state, profile, playerId, message, checkOutcome = null) {
   const social = ensureNpcSocialState(state.social, state)
   return {
@@ -104,13 +109,17 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
       .slice(-10)
       .map((entry) => ({ id: entry.id, direction: entry.direction, text: entry.text, due_hint: entry.due_hint })),
     recent_conversation: social.conversations
-      .filter((entry) => entry.npc_id === profile.id && entry.hero_id === playerId)
+      .filter((entry) => entry.npc_id === profile.id
+        && entry.hero_id === playerId
+        && conversationVisibleTo(entry, playerId))
       .slice(-6)
       .map((entry) => ({ player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance, ...(entry.check ? { check: { skill: entry.check.skill, success: entry.check.success, degree: entry.check.degree } } : {}) })),
     // NPC помнит отряд, а не одно лицо: последние разговоры с другими героями
     // видимы группе (visibility: party) и приходят с именем собеседника.
     recent_party_conversation: social.conversations
-      .filter((entry) => entry.npc_id === profile.id && entry.hero_id !== playerId)
+      .filter((entry) => entry.npc_id === profile.id
+        && entry.hero_id !== playerId
+        && conversationVisibleTo(entry, playerId))
       .slice(-4)
       .map((entry) => ({ hero: heroName(state, entry.hero_id), player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })),
     speakable_facts: npcFacts(state, profile, message),

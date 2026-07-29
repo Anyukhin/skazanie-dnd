@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "label": "production-after-offline-replay",
-  "date": "2026-07-29T21:28:37.493Z",
+  "label": "production-safety-output-after-offline-replay",
+  "date": "2026-07-29T22:08:08.592Z",
   "live_calls": 0,
   "tokens": {
     "input": 0,
@@ -9,9 +9,10 @@
   },
   "provider_log": [],
   "provenance": {
-    "method": "offline-replay-current-narrator",
+    "method": "offline-replay-current-production-safety-path",
     "source_path": "eval/narrator-craft-after.json",
-    "source_sha256": "2f7ee22666b3c8ceeba542b1136d793e27528652d062fa24422251d8007b855f",
+    "source_sha256": "bc9d03d9fd20fd9fb8152bed316a05f80894ce600d728f6170eab9345dd9efb0",
+    "source_json_sha256": "c52bcdf6e32b23d912e3a21b4867ea0bbb23258bd6cfa9afa210c14c6981002f",
     "source_schema_version": 1,
     "source_label": "after",
     "source_date": "2026-07-29T20:07:06.919Z",
@@ -21,12 +22,30 @@
       "output": 776
     },
     "replay_prompt_version": "narrator/v3",
-    "replay_max_attempts": 1,
+    "replay_max_attempts": 2,
+    "source_outputs_are_final_production_outputs": true,
+    "source_narrator_output_mix": {
+      "provider_model": 3,
+      "deterministic_fallback": 1
+    },
+    "source_all_final_outputs_ngram_jaccard_pct": 3.73,
+    "source_provider_model_only_ngram": {
+      "narrator_samples": 3,
+      "pairwise_jaccard_pct": 6.41
+    },
+    "saved_final_source_outputs_per_narrator_scenario": 1,
+    "repair_model_outputs_replayed": 0,
     "recent_narration_window": 3,
     "narrator_scenarios_replayed": 4,
     "non_narrator_samples_copied_unchanged": 2,
     "network_calls": 0,
-    "note": "Источник хранит outputs прежнего production-пайплайна; потерянные сырые payload провайдера не реконструируются."
+    "implementation_sha256_normalized_lf": {
+      "narrator_module": "e39dc4b439fec927e4ea80664e84c20b0e89a8371ece6f5d5f9e52d01ef1ba13",
+      "narrator_prompt": "35179d3d0fe9b6ece431341da1c0fd50f530545c09c86bdcbd2226bab9867810",
+      "metrics_module": "e0c4abcf3ac7e6f72fa9fb2a1d1bd75a8dde599f248575d301f5d17f3ecad262",
+      "replay_runner": "78e0175a06210072285e1677c435fce3ef35a3ac5b3f7e55c822f4f022409a48"
+    },
+    "note": "Источник хранит финальные production outputs: три принятых provider model outputs и один уже готовый deterministic-fallback. Offline harness повторно подаёт каждый сохранённый финальный output как candidate текущему guard; это safety replay, а не точное восстановление прежней provider lineage. Когда нужен новый repair, отсутствие несохранённого ответа приводит к настоящему deterministic-provider-fallback. Метрики отчёта описывают финальный safety-output этой offline-ветки, а не качество model repair или narrator/v3."
   },
   "samples": [
     {
@@ -68,7 +87,7 @@
         "решени",
         "син(?:яя|ей|юю)?\\s+нит"
       ],
-      "provider": "deterministic-fallback",
+      "provider": "deterministic-provider-fallback",
       "prompt_version": "narrator/v3",
       "verification": {
         "valid": true,
@@ -80,14 +99,19 @@
             "message": "Рассказчик приписал герою новое действие, мысль или решение",
             "match": "Ада приседает"
           }
-        ]
+        ],
+        "provider_error": "OFFLINE_REPLAY_REPAIR_OUTPUT_UNAVAILABLE"
       },
       "replay_source": {
-        "stage": "saved-production-output",
+        "stage": "saved-final-production-output-as-offline-candidate",
+        "source_output_kind": "provider-model",
         "text_sha256": "e95c531a07754b93d3b2e7837ac83e2731044d0fca27113fd2cba33e1950d8ee",
         "suggestions_sha256": "4487425a42ccf399bcd4639eb879754e2b54c1c76a5b6e651086d794f74327b6",
         "provider": "FallbackLLMClient",
-        "prompt_version": "narrator/v3"
+        "prompt_version": "narrator/v3",
+        "offline_pipeline_attempts": 2,
+        "saved_final_source_outputs_available": 1,
+        "repair_model_outputs_available": 0
       }
     },
     {
@@ -129,7 +153,7 @@
         "решени",
         "син(?:яя|ей|юю)?\\s+нит"
       ],
-      "provider": "deterministic-fallback",
+      "provider": "deterministic-provider-fallback",
       "prompt_version": "narrator/v3",
       "verification": {
         "valid": true,
@@ -151,14 +175,19 @@
             "message": "Рассказчик объявил обещанное полученным или находящимся на месте без события",
             "match": ""
           }
-        ]
+        ],
+        "provider_error": "OFFLINE_REPLAY_REPAIR_OUTPUT_UNAVAILABLE"
       },
       "replay_source": {
-        "stage": "saved-production-output",
+        "stage": "saved-final-production-output-as-offline-candidate",
+        "source_output_kind": "provider-model",
         "text_sha256": "ffef5796118eedf3527ff7aa0ff0b77c9d15404de43d336cc3b3371924cdb812",
         "suggestions_sha256": "8ae73b202295e97d4811e9bbe4cdb904d8bc5435fa6e08abd6a38afe03fd95e4",
         "provider": "FallbackLLMClient",
-        "prompt_version": "narrator/v3"
+        "prompt_version": "narrator/v3",
+        "offline_pipeline_attempts": 2,
+        "saved_final_source_outputs_available": 1,
+        "repair_model_outputs_available": 0
       }
     },
     {
@@ -200,7 +229,7 @@
         "решени",
         "син(?:яя|ей|юю)?\\s+нит"
       ],
-      "provider": "deterministic-fallback",
+      "provider": "deterministic-provider-fallback",
       "prompt_version": "narrator/v3",
       "verification": {
         "valid": true,
@@ -211,15 +240,25 @@
             "code": "NPC_REACTION_NOT_PERMITTED",
             "message": "Повествование добавило текущую реакцию NPC вне allowlist",
             "match": "Мира кивает"
+          },
+          {
+            "code": "PROMISE_RESOLUTION_NOT_IN_BRIEF",
+            "message": "Рассказчик объявил обещанное полученным или находящимся на месте без события",
+            "match": ""
           }
-        ]
+        ],
+        "provider_error": "OFFLINE_REPLAY_REPAIR_OUTPUT_UNAVAILABLE"
       },
       "replay_source": {
-        "stage": "saved-production-output",
+        "stage": "saved-final-production-output-as-offline-candidate",
+        "source_output_kind": "provider-model",
         "text_sha256": "299e15846f06139eafbc93ade38c9799eb05b6a75143b844b6b08250b9956d64",
         "suggestions_sha256": "45caa06ae796b2f1415eb9134b02eca13c8da62e98bd84139dafb5f94e222e0b",
         "provider": "FallbackLLMClient",
-        "prompt_version": "narrator/v3"
+        "prompt_version": "narrator/v3",
+        "offline_pipeline_attempts": 2,
+        "saved_final_source_outputs_available": 1,
+        "repair_model_outputs_available": 0
       }
     },
     {
@@ -257,7 +296,7 @@
         "решени",
         "син(?:яя|ей|юю)?\\s+нит"
       ],
-      "provider": "deterministic-fallback",
+      "provider": "deterministic-provider-fallback",
       "prompt_version": "narrator/v3",
       "verification": {
         "valid": true,
@@ -269,14 +308,19 @@
             "message": "Пересечение 3-грамм с недавним текстом превышает 5%",
             "match": "рядом мира и"
           }
-        ]
+        ],
+        "provider_error": "OFFLINE_REPLAY_REPAIR_OUTPUT_UNAVAILABLE"
       },
       "replay_source": {
-        "stage": "saved-production-output",
+        "stage": "saved-final-production-output-as-offline-candidate",
+        "source_output_kind": "deterministic-fallback",
         "text_sha256": "4b1af70978092df46fc75fef2df31f6d083af4e8f0b7d5a3cc0f7a11618ad5a2",
         "suggestions_sha256": "50570428915fee46fc164d07d738903b75d16c30ab49da0ca9ab2cbc63abc48d",
         "provider": "deterministic-fallback",
-        "prompt_version": "narrator/v3"
+        "prompt_version": "narrator/v3",
+        "offline_pipeline_attempts": 2,
+        "saved_final_source_outputs_available": 1,
+        "repair_model_outputs_available": 0
       }
     },
     {

@@ -331,19 +331,92 @@ const CURRENT_REACTION_VERBS = [
   'улыба(?:ется|ются)', 'вздыха(?:ет|ют)', 'жестикулиру(?:ет|ют)',
   'открыва(?:ет|ют)', 'бер[её]т', 'клад[её]т',
   'говорит', 'отвеча(?:ет|ют)', 'произнос(?:ит|ят)', 'спрашива(?:ет|ют)',
+  'отворачива(?:ется|ются)', 'поворачива(?:ется|ются)',
+  'уход(?:ит|ят)', 'покида(?:ет|ют)', 'выход(?:ит|ят)', 'вход(?:ит|ят)',
+  'подход(?:ит|ят)', 'отход(?:ит|ят)', 'отступа(?:ет|ют)',
+  'вста(?:[её]т|ют)', 'сад(?:ится|ятся)',
+  'отпира(?:ет|ют)', 'запира(?:ет|ют)', 'закрыва(?:ет|ют)',
+  'доста[её]т', 'переда[её]т', 'поднима(?:ет|ют)', 'опуска(?:ет|ют)',
 ].join('|')
+const PERMITTED_REACTION_PHRASES = [
+  'встревожен\\w*', 'принима(?:ет|ют)\\s+довод\\w*',
+  'оста[её]тся\\s+при\\s+сво[её]м', 'молча\\s+наблюда(?:ет|ют)',
+  'держится\\s+(?:приветлив\\w*|насторож\\w*|холодн\\w*)',
+  'наблюда(?:ет|ют)', 'след(?:ит|ят)',
+].join('|')
+const NPC_REACTION_MARKERS = `(?:${CURRENT_REACTION_VERBS}|${PERMITTED_REACTION_PHRASES})`
+const NPC_REACTION_MATCHERS = Object.freeze({
+  alarmed: /(?:встревож|тревож|вздрог|испуг)/iu,
+  persuaded: /(?:принима\w*\s+довод|соглаша|убежд)/iu,
+  unconvinced: /(?:оста[её]тся\s+при\s+сво[её]м|не\s+соглаша|не\s+убежд|отверга)/iu,
+  welcoming: /(?:держится\s+приветлив|приветлив|радуш|доброжел)/iu,
+  attentive: /(?:молча[^.!?]{0,24}(?:наблюда|смотр)|вниматель[^.!?]{0,24}(?:наблюда|смотр|слуша)|наблюда\w*\s+за\s+разговор)/iu,
+  watchful: /(?:держится\s+насторож|настороже|насторожен|следит)/iu,
+  cold: /(?:держится\s+холодн|холодно|отстран|сухо)/iu,
+})
 const HERO_AGENCY_VERBS = [
   'подход(?:ит|ят)', 'приседа(?:ет|ют)', 'склоня(?:ется|ются)',
   'наклоня(?:ется|ются)', 'проверя(?:ет|ют)', 'сравнива(?:ет|ют)',
   'складыва(?:ет|ют)', 'дума(?:ет|ют)', 'реша(?:ет|ют)',
   'осматрива(?:ет|ют)', 'каса(?:ется|ются)', 'трога(?:ет|ют)',
   'перебира(?:ет|ют)', 'ловит', 'вспомина(?:ет|ют)',
+  'отпира(?:ет|ют)', 'запира(?:ет|ют)', 'открыва(?:ет|ют)', 'закрыва(?:ет|ют)',
+  'уход(?:ит|ят)', 'покида(?:ет|ют)', 'вход(?:ит|ят)', 'выход(?:ит|ят)',
+  'поворачива(?:ется|ются)', 'отворачива(?:ется|ются)',
+  'вста(?:[её]т|ют)', 'сад(?:ится|ятся)',
+  'бер[её]т', 'клад[её]т', 'доста[её]т', 'переда[её]т',
+  'поднима(?:ет|ют)', 'опуска(?:ет|ют)',
 ].join('|')
 const MECHANICAL_TERM = '(?:брос\\w*|выпал\\w*|итог\\w*|СЛ|HP|ОЗ|КД|урон\\w*|лечен\\w*|цен\\w*|монет\\w*|фт\\.?|фут\\w*|метр\\w*|минут\\w*|час\\w*|ресурс\\w*|заряд\\w*|ячейк\\w*)'
 const MECHANICAL_NUMBER_PATTERN = new RegExp(`(?:${MECHANICAL_TERM})[^.!?\\d]{0,24}\\d|\\d[^.!?]{0,24}(?:${MECHANICAL_TERM})`, 'iu')
 const OPEN_PROMISE_RESOLUTION_PATTERN = /обещан\w*[^.!?]{0,50}(?:на\s+месте|лежит|видне|торчит|найден|нашл|получен|передан|забра|доста)/iu
+const PROMISED_OBJECT_STATE_PATTERN = /(?:леж(?:ит|ат|ал[аои]?|али)|наход(?:ит(?:ся)?|ятся|ился|илась|илось|ились)|видне(?:ется|ются|лся|лась|лись)|торч(?:ит|ат|ал[аои]?|али)|спрятан\w*|оставлен\w*|готов\w*|жд[её]т|найден\w*|на\s+месте)/iu
+const PROMISE_GENERIC_ROOT_PREFIXES = [
+  'обещ', 'остав', 'принес', 'покаж', 'показ', 'переда', 'получ',
+  'исполн', 'выполн', 'сдерж', 'слов', 'открыт', 'прежн',
+]
 
-function narrationCraftVerification(narration, brief, verification, recentNarrations = []) {
+function normalizedActorName(value) {
+  return sceneText(value, 120).toLocaleLowerCase('ru').replace(/[«»"'’.,:;!?()[\]{}]/gu, '').trim()
+}
+
+function actorReactionClauses(text, actor) {
+  const name = sceneText(actor, 120)
+  if (!name) return []
+  const pattern = new RegExp(
+    `(?<![\\p{L}\\p{N}_])${escapePattern(name)}(?![\\p{L}\\p{N}_])[^.!?]{0,56}(?:${NPC_REACTION_MARKERS})`,
+    'giu',
+  )
+  return [...text.matchAll(pattern)].map((match) => match[0])
+}
+
+function reactionMatchesPermit(clause, permit) {
+  const reaction = String(permit?.reaction ?? '').trim()
+  const matcher = NPC_REACTION_MATCHERS[reaction]
+  if (matcher?.test(clause)) return true
+  return sharedRootCount(clause, permit?.description) >= 2
+}
+
+function promiseHasResolutionEvent(brief, promise) {
+  const events = (brief.visible_events ?? []).filter((event) => event?.event_type === 'NpcPromiseResolved')
+  if (!events.length) return false
+  const promiseId = String(promise?.id ?? '').trim()
+  if (!promiseId) return true
+  return events.some((event) => String(event?.payload?.promise_id ?? '') === promiseId)
+}
+
+function promiseAnchorMatches(sentence, promise) {
+  const actorRoots = suggestionRoots(promise?.npc)
+  const anchors = [...suggestionRoots(promise?.text)].filter((root) => (
+    !actorRoots.has(root)
+    && !PROMISE_GENERIC_ROOT_PREFIXES.some((prefix) => root.startsWith(prefix))
+  ))
+  const sentenceRoots = suggestionRoots(sentence)
+  if (anchors.length) return anchors.some((root) => sentenceRoots.has(root))
+  return sharedRootCount(sentence, [promise?.npc, promise?.text]) >= 2
+}
+
+export function verifyNarratorCraft(narration, brief, verification, recentNarrations = []) {
   const text = String(narration ?? '')
   const story = brief.known_environment?.story_context ?? {}
   const violations = [...(verification.violations ?? [])]
@@ -362,20 +435,50 @@ function narrationCraftVerification(narration, brief, verification, recentNarrat
     }
   }
 
-  if ((brief.permitted_npc_reactions ?? []).length === 0) {
-    const npcNames = (Array.isArray(story.present_npcs) ? story.present_npcs : []).map((npc) => npc?.name).filter(Boolean)
-    const currentActors = [...npcNames, 'стража', 'стражи', 'посетители', 'толпа', 'люди']
-    if (currentActors.length) {
-      const npcReaction = new RegExp(`(?:${currentActors.map(escapePattern).join('|')})[^.!?]{0,48}(?:${CURRENT_REACTION_VERBS})`, 'iu')
-      if (npcReaction.test(text)) {
-        add('NPC_REACTION_NOT_PERMITTED', 'Повествование добавило текущую реакцию NPC вне allowlist', npcReaction.exec(text)?.[0])
-      }
+  const permits = Array.isArray(brief.permitted_npc_reactions) ? brief.permitted_npc_reactions : []
+  const permitsByName = new Map(permits
+    .map((entry) => [normalizedActorName(entry?.name), entry])
+    .filter(([name]) => name))
+  const npcNames = (Array.isArray(story.present_npcs) ? story.present_npcs : [])
+    .map((npc) => npc?.name)
+    .filter(Boolean)
+  const genericActors = ['стража', 'стражи', 'посетители', 'толпа', 'люди']
+  const currentActors = [...new Set([...npcNames, ...permits.map((entry) => entry?.name), ...genericActors].filter(Boolean))]
+  for (const actor of currentActors) {
+    const clauses = actorReactionClauses(text, actor)
+    if (!clauses.length) continue
+    const permit = permitsByName.get(normalizedActorName(actor))
+    if (!permit) {
+      add('NPC_REACTION_NOT_PERMITTED', 'Повествование добавило текущую реакцию NPC вне allowlist', clauses[0])
+      continue
+    }
+    if (clauses.some((clause) => !reactionMatchesPermit(clause, permit))) {
+      add('NPC_REACTION_MISMATCH', 'Текущая реакция NPC не соответствует подтверждённому описанию allowlist', clauses.find((clause) => !reactionMatchesPermit(clause, permit)))
     }
   }
 
-  const hasOpenPromise = (Array.isArray(story.open_promises) ? story.open_promises : []).length > 0
-  const promiseResolved = brief.visible_events.some((event) => event?.event_type === 'NpcPromiseResolved')
-  if (hasOpenPromise && !promiseResolved && OPEN_PROMISE_RESOLUTION_PATTERN.test(text)) {
+  const knownActors = new Set([
+    ...currentActors.map(normalizedActorName),
+    ...heroNames.map(normalizedActorName),
+  ])
+  const unconfirmedNamedReaction = new RegExp(
+    `(?<![\\p{L}\\p{N}_])([А-ЯЁ][а-яё'’\\-]{1,50}(?:\\s+[А-ЯЁ][а-яё'’\\-]{1,50}){0,2})\\s+(?:${NPC_REACTION_MARKERS})`,
+    'gu',
+  )
+  for (const match of text.matchAll(unconfirmedNamedReaction)) {
+    if (!knownActors.has(normalizedActorName(match[1]))) {
+      add('NPC_REACTION_NOT_PERMITTED', 'Повествование добавило реакцию неподтверждённого персонажа', match[0])
+      break
+    }
+  }
+
+  const openPromises = (Array.isArray(story.open_promises) ? story.open_promises : [])
+    .filter((promise) => !promiseHasResolutionEvent(brief, promise))
+  const promiseStateAssertion = (text.match(/[^.!?]+[.!?]?/gu) ?? []).find((sentence) => (
+    PROMISED_OBJECT_STATE_PATTERN.test(sentence)
+    && openPromises.some((promise) => promiseAnchorMatches(sentence, promise))
+  ))
+  if (openPromises.length && (OPEN_PROMISE_RESOLUTION_PATTERN.test(text) || promiseStateAssertion)) {
     add('PROMISE_RESOLUTION_NOT_IN_BRIEF', 'Рассказчик объявил обещанное полученным или находящимся на месте без события')
   }
 
@@ -656,7 +759,7 @@ export class Narrator {
       const fallback = deterministicNarration(brief, undefined, { recentNarrations: recent })
       return {
         ...fallback,
-        verification: narrationCraftVerification(
+        verification: verifyNarratorCraft(
           fallback.narration,
           brief,
           this.verifier.verify(fallback.narration, brief, { knownRuleIds }),
@@ -710,12 +813,15 @@ export class Narrator {
           return {
             ...fallback,
             verification: {
-              ...narrationCraftVerification(
+              ...verifyNarratorCraft(
                 fallback.narration,
                 brief,
                 this.verifier.verify(fallback.narration, brief, { knownRuleIds }),
                 recent,
               ),
+              ...(lastVerification?.violations?.length
+                ? { repaired_from: lastVerification.violations }
+                : {}),
               provider_error: String(error?.code ?? error?.name ?? 'LLM_PROVIDER_ERROR').slice(0, 80),
             },
             prompt_version: NARRATOR_PROMPT_VERSION,
@@ -723,7 +829,7 @@ export class Narrator {
           }
         }
         const result = { narration: String(output?.narration || '').trim(), suggestions: narratorSuggestions(brief, output?.suggestions) }
-        lastVerification = narrationCraftVerification(
+        lastVerification = verifyNarratorCraft(
           result.narration,
           brief,
           this.verifier.verify(result.narration, brief, { knownRuleIds }),
@@ -738,7 +844,7 @@ export class Narrator {
       return {
         ...fallback,
         verification: {
-          ...narrationCraftVerification(
+          ...verifyNarratorCraft(
             fallback.narration,
             brief,
             this.verifier.verify(fallback.narration, brief, { knownRuleIds }),

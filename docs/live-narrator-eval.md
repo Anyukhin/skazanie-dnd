@@ -140,7 +140,7 @@ node eval/live-narrator-eval.mjs --runs 2 --max-calls 40
 `eval/narrator-craft-eval.mjs`; отчёты:
 `eval/narrator-craft-baseline.json` и `eval/narrator-craft-after.json`.
 
-| Метрика | До (`narrator/v2`, `social-v2`) | После (`narrator/v3`, `social-v3`) | Изменение |
+| Метрика | До: 4 model outputs (`narrator/v2`) | После: 3 model + 1 fallback (`narrator/v3`) | Изменение |
 | --- | ---: | ---: | ---: |
 | Попарный Jaccard 3-грамм | 0,67% | 3,73% | **+3,06 п.п., регрессия** |
 | Вхождения клише | 5 | 0 | **−5** |
@@ -150,6 +150,13 @@ node eval/live-narrator-eval.mjs --runs 2 --max-calls 40
 | Крючок вперёд | 100% | 100% | без изменения |
 | Личная идея | 50% | 100% | **+50 п.п.** |
 | Не больше 3 × 120 символов | 100% | 100% | без изменения |
+
+Это сравнение относится к сохранённым **финальным production outputs**.
+Baseline содержит четыре provider model outputs; after — три принятых model
+outputs и `forward-hook` от `deterministic-fallback`. Поэтому 3,73% не является
+чистой метрикой модели. Отдельно три after model samples дают 6,41%; на тех же
+трёх сценариях baseline был 0,55%. Нисходящий тренд не достигнут ни в
+смешанном, ни в сопоставимом model-only срезе.
 
 Финальный замер: 7 provider-вызовов, 13 498 + 776 токенов. До него был один
 диагностический post-change прогон на 7 вызовов; baseline занял 6. Общий
@@ -175,18 +182,56 @@ provider-вызовов.
 
 ### Что промпт не удержал
 
-Сырой after-прогон дал два семантически недопустимых текста: карта была
+Сохранённый after-прогон дал два семантически недопустимых текста: карта была
 объявлена находящейся под кружкой без события, а Мира и Борин жестикулировали
 при пустом `permitted_npc_reactions`. Старый лексический Verifier пометил оба
-ответа валидными. После находки в `Narrator` добавлен отдельный craft-guard:
-он отклоняет новое действие героя, реакцию NPC вне allowlist, мнимое исполнение
-открытого обещания, видимые механические числа и пропуск `memory_focus`.
-Сторож — `test/narrator-craft.test.mjs`.
+ответа валидными. После находки в `Narrator` добавлен отдельный bounded lexical
+craft-guard. Вместе с базовым Verifier он ловит server-owned набор явных
+глагольных шаблонов действий героя (`проверяет`, `отпирает`, `уходит`),
+реакций NPC (`кивает`, `отворачивается`, `покидает`) вне allowlist,
+несовпадение с описанием непустого allowlist, распознаваемое мнимое исполнение
+открытого обещания — включая «карта лежит под кружкой» — видимые механические
+числа и пропуск `memory_focus`. Старый cached narration проходит этот guard
+заново. Это конечный лексический список, не полный семантический
+классификатор: новая перифраза требует отдельного правила и тестового корпуса.
+Сторожи — `test/narrator-craft.test.mjs` и
+`test/game-orchestrator.test.mjs`.
 
 Новый guard проверен офлайн и unit-тестом после исчерпания bounded live-бюджета;
-повторный платный прогон ради переписывания отчёта не делался. Это по-прежнему
-лексическая, а не полная семантическая проверка: неизвестное имя предмета и
-совсем новая перифраза могут потребовать расширения корпуса.
+повторный платный прогон ради переписывания отчёта не делался.
+
+### Финальный production safety-output без новых вызовов
+
+`eval/narrator-craft-production-after.json` воспроизводимо подаёт каждый
+неизменённый финальный production output как offline candidate текущему
+`Narrator` с боевыми двумя попытками и окном трёх последних текстов. Три
+candidate пришли от provider model, `forward-hook` уже был deterministic
+fallback. Сохранённого нового repair-output нет: при его запросе
+offline-клиент возвращает
+`OFFLINE_REPLAY_REPAIR_OUTPUT_UNAVAILABLE`, после чего текущий production-код
+выбирает `deterministic-provider-fallback`.
+
+| Метрика | Baseline live | Финальные live-after outputs | Финальный safety-output |
+| --- | ---: | ---: | ---: |
+| Попарный Jaccard 3-грамм | 0,67% | 3,73% | **0,00%** |
+| Вхождения клише | 5 | 0 | **0** |
+| Связанная память | 66,67% | 100% | **100%** |
+| Различимые голоса | 0% | 100% | **100%** |
+| Конкретные suggestions | 75% | 100% | **100%** |
+| Крючок вперёд | 100% | 100% | **100%** |
+| Личная идея | 50% | 100% | **100%** |
+| Не больше 3 × 120 символов | 100% | 100% | **100%** |
+
+У replay ноль сетевых/provider-вызовов и ноль токенов. Все четыре narrator
+samples — финальные deterministic fallbacks после отклонения сохранённого
+candidate; два NPC social samples скопированы без изменения текста и не
+переисполнялись. Поэтому третья колонка доказывает свойства финального
+safety-output и сохранение трёх успехов/одной неудачи, но **не** доказывает
+улучшение model repair или model-only качества `narrator/v3`. Provenance
+отдельно фиксирует смесь 3 + 1, model-only Jaccard 6,41%, byte SHA-256
+исходного after
+`bc9d03d9fd20fd9fb8152bed316a05f80894ce600d728f6170eab9345dd9efb0`,
+canonical-JSON SHA-256 и нормализованные хеши реализации.
 
 Повтор:
 
@@ -198,4 +243,9 @@ node eval/narrator-craft-eval.mjs \
 
 node eval/narrator-craft-eval.mjs \
   --compare eval/narrator-craft-baseline.json eval/narrator-craft-after.json
+
+node eval/narrator-craft-eval.mjs \
+  --replay eval/narrator-craft-after.json \
+  --label production-safety-output-after-offline-replay \
+  --output eval/narrator-craft-production-after.json
 ```

@@ -78,6 +78,33 @@ test('idempotent replay без turn trace не вызывает Narrator и во
   assert.equal(narratorCalls, 0)
 })
 
+test('idempotent replay заново применяет craft guard к старому cached narration', async () => {
+  const { orchestrator, traceStore } = await setup()
+  const input = {
+    state, playerId: 'hero', message: 'Системная команда', idempotencyKey: 'unsafe-cached-replay',
+    commands: [{ command_type: 'ApplyDamage', actor_id: 'hero', target_id: 'goblin', amount: 2, damage_type: 'slashing' }],
+  }
+  const first = await orchestrator.handle(input)
+  const trace = traceStore.get('TEST-ROOM', first.turn_id)
+  traceStore.save({
+    ...trace,
+    narration_result: {
+      narration: 'Ада проверяет дверь.',
+      suggestions: [],
+      verification: { valid: true, violations: [] },
+      prompt_version: 'narrator/v2',
+      provider: 'legacy-cached',
+    },
+  })
+
+  const replay = await orchestrator.handle(input)
+
+  assert.equal(replay.idempotent_replay, true)
+  assert.equal(replay.provider, 'deterministic-idempotent-replay')
+  assert.equal(replay.verification.valid, true)
+  assert.doesNotMatch(replay.narration, /Ада проверяет дверь/u)
+})
+
 test('structured merchant command bypasses free-form Narrator and speaks only from committed trade facts', async () => {
   const shopState = normalizeCampaignState({
     sessionCode: 'SHOP-NARRATION', activePlayerId: 'hero', engine_mode: 'enforce',
