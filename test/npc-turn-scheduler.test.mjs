@@ -705,6 +705,43 @@ test('keep-distance retreats without inventing Disengage and then shoots determi
   assert.equal(moved.events.some((event) => event.event_type === 'AttackResolved'), false)
 })
 
+test('keep-distance holds its ground when no melee threat can reach it this turn', () => {
+  // Карта шире стандартной фикстуры: отход обязан быть физически возможен,
+  // иначе тест прошёл бы и без правила — просто от того, что отходить некуда.
+  const state = fixture({ scene: { turn: 1, cells: cells(20, 3) } })
+  state.enemies = [{
+    id: 'archer', name: 'Лучник', hp: 20, maxHp: 20, armor: 12, speed: 30,
+    abilities: { str: 10, dex: 16, con: 12, int: 10, wis: 12, cha: 8 },
+    traits: [{ id: 'keep-distance', name: 'Держит дистанцию' }],
+    action_profiles: [{
+      id: 'longbow', name: 'Длинный лук', kind: 'ranged', attack_modifier: 5,
+      damage_expression: '1d8+3', damage_type: 'piercing', range_feet: 600, normal_range_feet: 150,
+    }],
+    x: 14, y: 1, alive: true,
+  }]
+  // Герой со скоростью 30 стоит в 70 футах: дойти и ударить в этот ход он не
+  // успевает, а лук достаёт без всякой помехи. Отходить не от кого.
+  state.mechanics.positions = { hero: { x: 0, y: 1 }, archer: { x: 14, y: 1 } }
+  state.mechanics.encounter = { enemy_ids: ['archer'] }
+  state.mechanics.combat.initiative = [{ actor_id: 'archer', total: 20 }, { actor_id: 'hero', total: 10 }]
+  state.mechanics.combat.active_index = 0
+  state.mechanics.combat.action_economy = {
+    archer: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+  }
+
+  const plan = planNpcTurn(state, 'archer')
+  assert.deepEqual(plan.map((command) => command.command_type), ['MakeAttack', 'EndTurn'],
+    'стрелок без угрозы обязан стрелять с места, а не пятиться')
+
+  // Тот же стрелок, но герой уже в пределах броска — отход снова уместен.
+  const threatened = normalizeCampaignState(state)
+  threatened.enemies[0].x = 6
+  threatened.mechanics.positions.archer = { x: 6, y: 1 }
+  const threatenedPlan = planNpcTurn(threatened, 'archer')
+  assert.deepEqual(threatenedPlan.map((command) => command.command_type), ['MoveActor', 'MakeAttack', 'EndTurn'])
+  assert.equal(threatenedPlan[0].monster_ability, 'keep-distance')
+})
+
 test('melee nimble escape spends a bonus action, disengages and retreats after the attack', () => {
   const block = SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:tiger']
   const state = fixture()

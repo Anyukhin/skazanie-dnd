@@ -15,6 +15,17 @@ import { commandsForMoraleDecision, isMoraleMoment } from './npc-controller.mjs'
 
 const CELL_FEET = 5
 
+/**
+ * Словарь повадок: имя черты на стат-блоке → политика, которая её исполняет.
+ * Ветки с именем конкретного существа здесь запрещены — новое существо с уже
+ * описанной повадкой заводится правкой одного каталога.
+ *
+ * Исполняются в разных слоях, и это осознанно: `multiattack`, `keep-distance` и
+ * `relentless-pursuit` меняют **план хода** и живут здесь; `charge` и
+ * `bloodied-frenzy` меняют **разрешение удара** (рывок, преимущество раненого) и
+ * живут в `server/rules-engine.mjs`. Словарь один на оба слоя, чтобы список
+ * поддержанных повадок нельзя было прочитать в двух местах по-разному.
+ */
 export const NPC_BEHAVIOR_POLICIES = Object.freeze({
   multiattack: 'multiattack',
   keepDistance: 'keep-distance',
@@ -145,6 +156,27 @@ function adjacentPartyMember(state, enemy) {
     const at = actorPosition(state, actorId(member))
     return at && Math.max(Math.abs(at.x - enemyAt.x), Math.abs(at.y - enemyAt.y)) === 1
   }))
+}
+
+/**
+ * Может ли кто-то из отряда дойти до стрелка и ударить его **на своём ближайшем
+ * ходу**. Это условие «держать дистанцию»: без него стрелок пятился каждый ход
+ * даже там, где ему ничто не угрожало — уходил от своих, терял тактику стаи и
+ * упирался в край карты, ничего этим не выигрывая.
+ *
+ * Порог намеренно щедрый — вся скорость плюс клетка досягаемости: лучше отойти
+ * на ход раньше, чем позволить себя достать.
+ */
+function meleeThreatWithinReach(state, enemy) {
+  const enemyAt = actorPosition(state, actorId(enemy))
+  if (!enemyAt) return false
+  return livingParty(state).some((member) => {
+    const at = actorPosition(state, actorId(member))
+    if (!at) return false
+    const feet = Math.max(Math.abs(at.x - enemyAt.x), Math.abs(at.y - enemyAt.y)) * CELL_FEET
+    const speed = Math.max(0, Number(member.speed) || 30)
+    return feet <= speed + CELL_FEET
+  })
 }
 
 function targetCandidates(state, enemy) {
@@ -287,7 +319,11 @@ export function planNpcTurn(rawState, enemyId) {
   let movementOnlyPhase = false
   let plannedMovementFeet = 0
   let plannedPosition = null
-  if (candidate.inRange && profile.kind === 'ranged' && hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance) && !adjacentPartyMember(state, enemy)) {
+  if (candidate.inRange
+    && profile.kind === 'ranged'
+    && hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance)
+    && !adjacentPartyMember(state, enemy)
+    && meleeThreatWithinReach(state, enemy)) {
     const retreat = retreatDestination(state, enemy, candidate.actor, profile)
     if (retreat) {
       commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: retreat, monster_ability: 'keep-distance' })
@@ -422,7 +458,11 @@ export async function runNpcTurnScheduler({
   rulesEngine,
   npcController = null,
   advanceNpc = true,
-  maxTurns = 64,
+  // Один ход существа больше не равен одной итерации: multiattack выпускается
+  // отдельными commit-фазами (до восьми атак плюс перемещение), поэтому прежние
+  // 64 съедались втрое быстрее и крупная встреча могла упереться в предел на
+  // ровном месте. Предел остаётся страховкой от зацикливания, а не бюджетом боя.
+  maxTurns = 160,
 } = {}) {
   if (!campaignId || !eventStore || !rulesEngine) throw new TypeError('NPC scheduler requires campaignId, eventStore and rulesEngine')
   if (!Number.isSafeInteger(maxTurns) || maxTurns < 1 || maxTurns > 256) throw new RangeError('maxTurns must be between 1 and 256')
