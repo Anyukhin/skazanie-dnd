@@ -11,6 +11,8 @@ import {
   addZone,
   cellAt,
   createTacticalMap,
+  edgeList,
+  edgeNeighbor,
   setCell,
   setDoor,
   setEdge,
@@ -312,6 +314,34 @@ export function sceneGraphForTheme(theme, seed) {
 /** @param {number} value @param {number} min @param {number} max */
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value))
+}
+
+/**
+ * Заменяет часть глухих стен узкими проёмами — решёткой или бойницей.
+ *
+ * Меняется **только вид ребра**: `blocksMove` у стены, бойницы и решётки один
+ * и тот же, поэтому проходимость сцены остаётся ровно прежней и связность,
+ * проверенная сборкой, сломаться не может. Разница в другом — сквозь проём
+ * видно (`blocksSight` снимается) и укрытие слабее сплошной кладки: три
+ * четверти у бойницы, половина у решётки.
+ *
+ * Выбор идёт по отсортированному списку рёбер с постоянным шагом, поэтому тот
+ * же seed даёт ту же карту — как и вся остальная сборка темы.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{kind: 'loophole' | 'grate', stride: number, limit: number}} options
+ * @returns {number} сколько стен заменено
+ */
+function pierceWalls(map, { kind, stride, limit }) {
+  const walls = edgeList(map).filter((edge) => edge.kind === 'wall')
+  let pierced = 0
+  for (let index = Math.floor(stride / 2); index < walls.length && pierced < limit; index += stride) {
+    const wall = walls[index]
+    const neighbor = edgeNeighbor(wall)
+    setEdge(map, wall.x, wall.y, neighbor.x, neighbor.y, { kind })
+    pierced += 1
+  }
+  return pierced
 }
 
 /**
@@ -734,6 +764,11 @@ export function buildThemedScene({
     const built = buildSceneFromGraph(graph, {
       seed, width, height, locationId, theme: definition.id, material: definition.material,
     })
+    // Каменная тема получает узкие проёмы в кладке: склеп перегорожен
+    // решётками, храм смотрит наружу щелями под сводом. Это те же стены —
+    // пройти сквозь них нельзя, но видно и укрытие слабее.
+    if (definition.id === 'crypt') pierceWalls(built.map, { kind: 'grate', stride: 13, limit: 3 })
+    if (definition.id === 'temple') pierceWalls(built.map, { kind: 'loophole', stride: 11, limit: 4 })
     const map = placeProps(built.map, {
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (built.map.sizeClass)].maxProps,

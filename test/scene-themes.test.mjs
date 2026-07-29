@@ -16,7 +16,7 @@ import {
 } from '../server/scene-themes.mjs'
 import { validateSceneGraph } from '../server/scene-graph.mjs'
 import { assetsForTheme } from '../server/asset-registry.mjs'
-import { cellAt, reachableCells, serializeTacticalMap, validateTacticalMap } from '../server/tactical-map.mjs'
+import { cellAt, edgeList, edgeNeighbor, reachableCells, serializeTacticalMap, setEdge, validateTacticalMap } from '../server/tactical-map.mjs'
 
 const THEMES = ['building', 'temple', 'crypt', 'cave', 'forest', 'road', 'settlement']
 
@@ -246,6 +246,37 @@ test('каждая тема собирается в валидную связн�
     const reached = reachableCells(built.map, spawn.x, spawn.y)
     assert.ok(reached.size > 20, `${theme.id}: от точки появления достижимо всего ${reached.size} клеток`)
     assert.ok(built.map.props.length > 5, `${theme.id}: предметов всего ${built.map.props.length}`)
+  }
+})
+
+test('решётка склепа и бойница храма стоят на карте и не открывают прохода', () => {
+  const cases = [['Склеп Норвин', 'crypt', 'grate'], ['Храм Утренней Звезды', 'temple', 'loophole']]
+  for (const [location, themeId, kind] of cases) {
+    const built = buildThemedScene({ location, seed: `pierce-${themeId}`, width: 28, height: 28 })
+    assert.equal(built.theme, themeId)
+    const pierced = edgeList(built.map).filter((edge) => edge.kind === kind)
+    assert.ok(pierced.length > 0, `${themeId}: проёмов вида ${kind} на карте нет`)
+
+    for (const edge of pierced) {
+      // Проём заменяет глухую стену, а не проход: шаг сквозь него по-прежнему
+      // невозможен. Обзор и укрытие записаны в карте — в бою движок их пока не
+      // спрашивает (`docs/known-limitations.md`).
+      assert.equal(edge.blocksMove, true, `${themeId}: ${kind} открыл проход сквозь стену`)
+      assert.equal(edge.blocksSight, false, `${themeId}: сквозь ${kind} не видно`)
+      assert.notEqual(edge.cover, 'none', `${themeId}: ${kind} перестал давать укрытие`)
+    }
+
+    // Достижимость считается по тем же рёбрам, поэтому сцена обязана остаться
+    // ровно такой же связной, как до замены.
+    const spawn = built.map.spawnPoints.find((point) => point.role === 'party')
+    const reached = reachableCells(built.map, spawn.x, spawn.y)
+    const solid = buildThemedScene({ location, seed: `pierce-${themeId}`, width: 28, height: 28 }).map
+    for (const edge of edgeList(solid).filter((candidate) => candidate.kind === kind)) {
+      const neighbor = edgeNeighbor(edge)
+      setEdge(solid, edge.x, edge.y, neighbor.x, neighbor.y, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
+    }
+    assert.equal(reached.size, reachableCells(solid, spawn.x, spawn.y).size,
+      `${themeId}: замена стены на ${kind} изменила проходимость`)
   }
 })
 
