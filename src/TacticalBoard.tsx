@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { TacticalMap } from './types'
+import type { BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
   DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
   type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture, type PropAtlas,
   type TerrainTiles, type TileSurface,
 } from './board-render'
+import {
+  COMBAT_ANIMATION_QUEUE_LIMIT,
+  combatAnimationCuesFromBattleLog,
+  combatAnimationCuesFromEvents,
+  type BoardPoint,
+  type CombatAnimationCue,
+} from './combat-animation'
 
 /**
  * Тактическая доска. Местность (слои 1–7 плана) живёт на canvas и кэшируется
@@ -164,6 +171,17 @@ export type BoardCellNode = {
 /** Подсказка клетки, у которой нет собственного узла: причина недоступности. */
 export type BoardCellHint = { title?: string; ariaLabel?: string }
 
+export type BoardAnimationActor = {
+  id: string
+  x: number
+  y: number
+  label: string
+  color?: string
+  kind: 'hero' | 'enemy' | 'summon'
+}
+
+type BoardConditionState = Record<string, Array<{ id: string }>>
+
 /**
  * Камера доски, пережившая размонтирование.
  *
@@ -180,7 +198,7 @@ const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: nu
 
 export function TacticalBoard({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
-  onBackgroundActivate,
+  battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
 }: {
   map: TacticalMap | null
   columns: number
@@ -199,6 +217,12 @@ export function TacticalBoard({
   cellHints?: Map<string, BoardCellHint>
   overlayCells: BoardOverlayCell[]
   decoration?: React.ReactNode
+  battleLog?: BattleEvent[]
+  visualBatch?: CombatVisualBatch | null
+  animationActors?: BoardAnimationActor[]
+  animationsEnabled?: boolean
+  conditions?: BoardConditionState
+  conditionVersion?: number
   onBackgroundActivate?: () => void
 }) {
   const cameraKey = map?.locationId || 'нет карты'
@@ -221,11 +245,32 @@ export function TacticalBoard({
 
   const frameRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const effectsCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const cacheRef = useRef(createTileCache())
   const paletteRef = useRef<BoardPalette>(DEFAULT_BOARD_PALETTE)
   const drag = useRef<{ pointerId: number; startX: number; startY: number; startPanX: number; startPanY: number; moved: boolean } | null>(null)
   const suppressClick = useRef(false)
   const hovered = useRef<string | null>(null)
+  const animationActorsRef = useRef(animationActors ?? [])
+  animationActorsRef.current = animationActors ?? []
+  const latestBattleLogRef = useRef(battleLog ?? [])
+  latestBattleLogRef.current = battleLog ?? []
+  const latestVisualBatchRef = useRef(visualBatch ?? null)
+  latestVisualBatchRef.current = visualBatch ?? null
+  const conditionEntries = Object.entries(conditions ?? {}).flatMap(([actorId, actorConditions]) => (
+    actorConditions.map((condition) => `${actorId}|${String(condition.id)}`)
+  )).sort()
+  const conditionKey = conditionEntries.join(',')
+  const latestConditionKeysRef = useRef(new Set(conditionEntries))
+  latestConditionKeysRef.current = new Set(conditionEntries)
+  const previousConditionKeys = useRef(new Set(conditionEntries))
+  const initialBattleCues = useRef(combatAnimationCuesFromBattleLog(battleLog ?? []))
+  const seenAnimationIds = useRef(new Set(initialBattleCues.current.map((cue) => cue.id)))
+  const processedVisualBatches = useRef(new Set(visualBatch ? [visualBatch.id] : []))
+  const [animationQueue, setAnimationQueue] = useState<CombatAnimationCue[]>([])
+  const [activeAnimation, setActiveAnimation] = useState<CombatAnimationCue | null>(null)
+  const activeAnimationRef = useRef<CombatAnimationCue | null>(null)
+  activeAnimationRef.current = activeAnimation
 
   useEffect(() => {
     const notify = () => setAssetsVersion((value) => value + 1)
@@ -321,6 +366,324 @@ export function TacticalBoard({
   }, [map, columns, rows, cellPixels, zoom, terrain, artUrl, overlayCells, assetsVersion])
 
   useEffect(() => { paint() }, [paint, pan.x, pan.y])
+
+  const clearEffectsCanvas = useCallback(() => {
+    const canvas = effectsCanvasRef.current
+    const context = canvas?.getContext('2d')
+    if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height)
+  }, [])
+
+  const skipAnimations = useCallback(() => {
+    setAnimationQueue([])
+    setActiveAnimation(null)
+    clearEffectsCanvas()
+  }, [clearEffectsCanvas])
+
+  const enqueueAnimations = useCallback((incoming: readonly CombatAnimationCue[]) => {
+    const fresh: CombatAnimationCue[] = []
+    for (const cue of incoming) {
+      if (seenAnimationIds.current.has(cue.id)) continue
+      seenAnimationIds.current.add(cue.id)
+      fresh.push(cue)
+    }
+    // Помечаем события даже при выключенных эффектах и в фоновой вкладке:
+    // после возврата уже подтверждённые ходы не должны проигрываться заново.
+    if (!fresh.length || animationsEnabled === false || (typeof document !== 'undefined' && document.hidden)) return
+    setAnimationQueue((current) => [...current, ...fresh].slice(-COMBAT_ANIMATION_QUEUE_LIMIT))
+  }, [animationsEnabled])
+
+  const battleLogKey = (battleLog ?? []).map((event) => `${event.id}:${event.damage ?? ''}:${event.hpAfter ?? ''}`).join('|')
+  useEffect(() => {
+    if (visualBatch && !processedVisualBatches.current.has(visualBatch.id)) {
+      processedVisualBatches.current.add(visualBatch.id)
+      enqueueAnimations(combatAnimationCuesFromEvents(visualBatch.events))
+    }
+    enqueueAnimations(combatAnimationCuesFromBattleLog(battleLog ?? []))
+  }, [battleLogKey, enqueueAnimations, visualBatch?.id])
+
+  useEffect(() => {
+    const next = new Set(conditionEntries)
+    const includedByLiveBatch = new Set((visualBatch?.events ?? [])
+      .filter((event) => event.event_type === 'ConditionAdded')
+      .map((event) => `${String(event.target_ids?.[0] ?? event.payload?.target_id ?? event.payload?.actor_id ?? '')}|${String(event.payload?.condition ?? '')}`))
+    const projectedEvents = conditionEntries.flatMap((entry) => {
+      if (previousConditionKeys.current.has(entry) || includedByLiveBatch.has(entry)) return []
+      const [actorId, condition] = entry.split('|')
+      // Внутренние маркеры ресурсов содержат двоеточие или явный префикс
+      // потраченного действия. Это учёт механики, а не видимое состояние.
+      if (!actorId || !condition || condition.includes(':') || condition.startsWith('monster-action-used')) return []
+      return [{
+        event_id: `projected-condition:${conditionVersion ?? 0}:${actorId}:${condition}`,
+        event_type: 'ConditionAdded',
+        actor_id: actorId,
+        target_ids: [actorId],
+        payload: { target_id: actorId, condition },
+      }]
+    })
+    previousConditionKeys.current = next
+    enqueueAnimations(combatAnimationCuesFromEvents(projectedEvents))
+  }, [conditionKey, conditionVersion, enqueueAnimations, visualBatch?.id])
+
+  useEffect(() => {
+    if (animationsEnabled !== false) return
+    skipAnimations()
+  }, [animationsEnabled, skipAnimations])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const dropBufferedVisuals = () => {
+      skipAnimations()
+      const batch = latestVisualBatchRef.current
+      if (batch) {
+        processedVisualBatches.current.add(batch.id)
+        for (const cue of combatAnimationCuesFromEvents(batch.events)) seenAnimationIds.current.add(cue.id)
+      }
+      for (const cue of combatAnimationCuesFromBattleLog(latestBattleLogRef.current)) seenAnimationIds.current.add(cue.id)
+      previousConditionKeys.current = new Set(latestConditionKeysRef.current)
+    }
+    const onVisibilityChange = () => {
+      // Сбрасываем на обоих переходах: при скрытии сразу отменяем RAF, а при
+      // возврате продвигаем отметку просмотренного через заторможенный рендер.
+      dropBufferedVisuals()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [skipAnimations])
+
+  useEffect(() => {
+    if (activeAnimation || !animationQueue.length || animationsEnabled === false) return
+    const [next, ...rest] = animationQueue
+    setAnimationQueue(rest)
+    setActiveAnimation(next)
+  }, [activeAnimation, animationQueue, animationsEnabled])
+
+  const actorAt = (id: string) => animationActorsRef.current.find((actor) => actor.id === id)
+
+  const prepareEffectsContext = () => {
+    const base = canvasRef.current
+    const canvas = effectsCanvasRef.current
+    if (!base || !canvas || !base.width || !base.height) return null
+    if (canvas.width !== base.width || canvas.height !== base.height) {
+      canvas.width = base.width
+      canvas.height = base.height
+    }
+    const context = canvas.getContext('2d')
+    if (!context) return null
+    return {
+      canvas,
+      context,
+      cellSize: base.width / Math.max(1, columns),
+    }
+  }
+
+  const screenPoint = (position: BoardPoint, cellSize: number) => ({
+    x: (position.x + .5) * cellSize,
+    y: (position.y + .5) * cellSize,
+  })
+
+  const animationColor = (cue: CombatAnimationCue) => {
+    if (cue.kind === 'impact') {
+      if (cue.tone === 'healing') return '#8ad09a'
+      if (cue.tone === 'miss') return '#d7cec2'
+      const type = String(cue.damageType ?? '').toLocaleLowerCase('ru')
+      if (/cold|холод/u.test(type)) return '#8bc9dd'
+      if (/poison|acid|яд|кисл/u.test(type)) return '#9fc878'
+      if (/radiant|излуч/u.test(type)) return '#f3d47e'
+      if (/necrotic|некрот/u.test(type)) return '#b28ac5'
+      return '#ef8b78'
+    }
+    return '#ef8b78'
+  }
+
+  const drawActor = (context: CanvasRenderingContext2D, position: BoardPoint, cellSize: number, actorId: string, alpha = 1) => {
+    const actor = actorAt(actorId)
+    const center = screenPoint(position, cellSize)
+    const radius = Math.max(7, cellSize * .29)
+    const color = actor?.color || (actor?.kind === 'enemy' ? '#bd6256' : actor?.kind === 'summon' ? '#70a78b' : '#d6a55a')
+    context.save()
+    context.globalAlpha = alpha
+    context.beginPath()
+    context.arc(center.x, center.y, radius, 0, Math.PI * 2)
+    context.fillStyle = color
+    context.shadowBlur = radius * .8
+    context.shadowColor = color
+    context.fill()
+    context.shadowBlur = 0
+    context.lineWidth = Math.max(2, cellSize * .045)
+    context.strokeStyle = '#f7ead8'
+    context.stroke()
+    const initials = String(actor?.label ?? '').trim().split(/\s+/u).slice(0, 2).map((word) => word[0]).join('').toLocaleUpperCase('ru')
+    if (initials) {
+      context.fillStyle = '#17120e'
+      context.font = `800 ${Math.max(10, Math.round(cellSize * .2))}px Manrope, sans-serif`
+      context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      context.fillText(initials, center.x, center.y + 1)
+    }
+    context.restore()
+    return center
+  }
+
+  const drawFloatingText = (
+    context: CanvasRenderingContext2D,
+    position: BoardPoint,
+    cellSize: number,
+    text: string,
+    color: string,
+    progress: number,
+  ) => {
+    const center = screenPoint(position, cellSize)
+    context.save()
+    context.globalAlpha = Math.min(1, progress * 5) * Math.max(0, 1 - Math.max(0, progress - .72) / .28)
+    context.fillStyle = color
+    context.strokeStyle = 'rgba(18, 12, 9, .95)'
+    context.lineWidth = Math.max(3, cellSize * .07)
+    context.font = `900 ${Math.max(13, Math.round(cellSize * .27))}px Manrope, sans-serif`
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    const y = center.y - cellSize * (.25 + progress * .48)
+    context.strokeText(text, center.x, y)
+    context.fillText(text, center.x, y)
+    context.restore()
+  }
+
+  useEffect(() => {
+    if (!activeAnimation) {
+      clearEffectsCanvas()
+      return
+    }
+    let frameHandle = 0
+    let cancelled = false
+    const startedAt = performance.now()
+    const ghostIds = activeAnimation.kind === 'move' || activeAnimation.kind === 'strike'
+      ? [activeAnimation.actorId]
+      : []
+    const ghosted = [...(frameRef.current?.querySelectorAll<HTMLElement>('[data-actor-id]') ?? [])]
+      .filter((element) => ghostIds.includes(String(element.dataset.actorId)))
+    ghosted.forEach((element) => element.classList.add('animation-ghosted'))
+
+    const frame = (now: number) => {
+      if (cancelled) return
+      const prepared = prepareEffectsContext()
+      if (!prepared) {
+        setActiveAnimation(null)
+        return
+      }
+      const { canvas, context, cellSize } = prepared
+      const progress = Math.max(0, Math.min(1, (now - startedAt) / Math.max(1, activeAnimation.durationMs)))
+      const eased = 1 - Math.pow(1 - progress, 3)
+      context.clearRect(0, 0, canvas.width, canvas.height)
+
+      if (activeAnimation.kind === 'move') {
+        const route = [activeAnimation.from, ...activeAnimation.path]
+        const travel = eased * Math.max(1, route.length - 1)
+        const index = Math.min(route.length - 2, Math.floor(travel))
+        const local = Math.min(1, travel - index)
+        const from = route[Math.max(0, index)] ?? activeAnimation.from
+        const to = route[Math.min(route.length - 1, index + 1)] ?? activeAnimation.to
+        drawActor(context, {
+          x: from.x + (to.x - from.x) * local,
+          y: from.y + (to.y - from.y) * local,
+        }, cellSize, activeAnimation.actorId)
+      } else if (activeAnimation.kind === 'strike') {
+        const actor = actorAt(activeAnimation.actorId)
+        const target = actorAt(activeAnimation.targetId)
+        if (actor && target) {
+          const dx = target.x - actor.x
+          const dy = target.y - actor.y
+          const length = Math.max(1, Math.hypot(dx, dy))
+          const lunge = Math.sin(Math.min(1, progress / .58) * Math.PI) * .34
+          drawActor(context, { x: actor.x + dx / length * lunge, y: actor.y + dy / length * lunge }, cellSize, activeAnimation.actorId)
+          if (progress > .18) {
+            const targetCenter = screenPoint(target, cellSize)
+            context.save()
+            context.globalAlpha = Math.max(0, 1 - progress) * .9
+            context.beginPath()
+            context.arc(targetCenter.x, targetCenter.y, cellSize * (.28 + progress * .42), 0, Math.PI * 2)
+            context.lineWidth = Math.max(3, cellSize * .08)
+            context.strokeStyle = activeAnimation.hit ? '#f4bb72' : '#d7cec2'
+            context.shadowBlur = cellSize * .3
+            context.shadowColor = context.strokeStyle
+            context.stroke()
+            context.restore()
+            const label = activeAnimation.hit
+              ? activeAnimation.amount != null && activeAnimation.amount > 0 ? `−${activeAnimation.amount}` : 'ПОПАДАНИЕ'
+              : 'МИМО'
+            drawFloatingText(context, target, cellSize, label, activeAnimation.hit ? '#ef8b78' : '#d7cec2', progress)
+          }
+        }
+      } else if (activeAnimation.kind === 'impact') {
+        const target = actorAt(activeAnimation.targetId)
+        if (target) {
+          const color = animationColor(activeAnimation)
+          const center = screenPoint(target, cellSize)
+          context.save()
+          context.globalAlpha = Math.max(0, 1 - progress)
+          context.beginPath()
+          context.arc(center.x, center.y, cellSize * (.22 + eased * .48), 0, Math.PI * 2)
+          context.fillStyle = `${color}33`
+          context.fill()
+          context.lineWidth = Math.max(2, cellSize * .06)
+          context.strokeStyle = color
+          context.stroke()
+          context.restore()
+          const label = activeAnimation.tone === 'healing'
+            ? `+${activeAnimation.amount ?? 0}`
+            : activeAnimation.tone === 'miss' ? 'МИМО' : `−${activeAnimation.amount ?? 0}`
+          drawFloatingText(context, target, cellSize, label, color, progress)
+        }
+      } else if (activeAnimation.kind === 'death') {
+        const target = actorAt(activeAnimation.targetId)
+        if (target) {
+          const alpha = Math.max(0, 1 - eased)
+          const center = drawActor(context, target, cellSize, activeAnimation.targetId, alpha)
+          context.save()
+          context.globalAlpha = Math.min(1, progress * 3) * alpha
+          context.strokeStyle = '#d9c2b2'
+          context.lineWidth = Math.max(3, cellSize * .065)
+          const radius = cellSize * .22
+          context.beginPath()
+          context.moveTo(center.x - radius, center.y - radius)
+          context.lineTo(center.x + radius, center.y + radius)
+          context.moveTo(center.x + radius, center.y - radius)
+          context.lineTo(center.x - radius, center.y + radius)
+          context.stroke()
+          context.restore()
+          drawFloatingText(context, target, cellSize, 'ВЫБЫЛ', '#e2c6ba', progress)
+        }
+      } else if (activeAnimation.kind === 'condition') {
+        const target = actorAt(activeAnimation.targetId)
+        if (target) {
+          const center = screenPoint(target, cellSize)
+          context.save()
+          context.globalAlpha = Math.max(0, 1 - Math.max(0, progress - .65) / .35)
+          context.beginPath()
+          context.arc(center.x, center.y, cellSize * (.28 + Math.sin(progress * Math.PI) * .12), 0, Math.PI * 2)
+          context.setLineDash([Math.max(4, cellSize * .1), Math.max(3, cellSize * .07)])
+          context.lineWidth = Math.max(2, cellSize * .055)
+          context.strokeStyle = '#c49bde'
+          context.shadowBlur = cellSize * .24
+          context.shadowColor = '#9e71bd'
+          context.stroke()
+          context.restore()
+          drawFloatingText(context, target, cellSize, activeAnimation.label.toLocaleUpperCase('ru'), '#d8b9e8', progress)
+        }
+      }
+
+      if (progress >= 1) {
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        setActiveAnimation(null)
+        return
+      }
+      frameHandle = requestAnimationFrame(frame)
+    }
+    frameHandle = requestAnimationFrame(frame)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frameHandle)
+      ghosted.forEach((element) => element.classList.remove('animation-ghosted'))
+    }
+  }, [activeAnimation, clearEffectsCanvas, columns])
 
   const cellFromPoint = useCallback((clientX: number, clientY: number) => {
     const frame = frameRef.current
@@ -428,6 +791,12 @@ export function TacticalBoard({
       onDoubleClick={() => { setPan({ x: 0, y: 0 }); setZoom(1) }}
       onKeyDown={moveFocus}
       onClickCapture={(event) => {
+        if (activeAnimationRef.current) {
+          skipAnimations()
+          event.preventDefault()
+          event.stopPropagation()
+          return
+        }
         if (suppressClick.current) {
           suppressClick.current = false
           return
@@ -500,6 +869,17 @@ export function TacticalBoard({
             />
           )}
         </div>
+        <canvas ref={effectsCanvasRef} className="board-effects-canvas" aria-hidden="true" />
+        {activeAnimation && (
+          <button
+            type="button"
+            className="board-animation-skip"
+            onClick={(event) => { event.stopPropagation(); skipAnimations() }}
+            aria-label="Пропустить боевые анимации"
+          >
+            Пропустить
+          </button>
+        )}
       </div>
     </div>
   )

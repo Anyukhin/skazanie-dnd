@@ -41,7 +41,8 @@ test('пустой ход без модели больше не выглядит
 test('обрамление добавляется и к механическому исходу, не заменяя его', () => {
   const { narration } = deterministicNarration(brief({ events: [CHECK_EVENT], story: STORY }))
   assert.match(narration, /Трактир «Пустой кубок»/u)
-  assert.match(narration, /15/u, 'подтверждённый исход обязан остаться в тексте')
+  assert.match(narration, /успехом/u, 'подтверждённый исход обязан остаться в тексте')
+  assert.doesNotMatch(narration, /\d/u, 'числа проверки уже видны в интерфейсе')
 })
 
 test('без story_context и сцены текст остаётся осмысленным', () => {

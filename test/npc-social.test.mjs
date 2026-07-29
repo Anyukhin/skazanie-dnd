@@ -86,6 +86,11 @@ test('persistent NPC schedules and inventories are normalized, replayed, and pro
   const initial = campaign()
   const npc = {
     ...initial.social.npcs[0],
+    speech_profile: {
+      pace: 'быстро, короткими фразами',
+      lexicon: 'торговые термины и названия товара',
+      mannerism: 'перед ценой говорит «счёт любит точность»',
+    },
     schedule: [
       { id: 'market-hours', days: [0, 1, 2, 3, 4], start_minute: 540, end_minute: 1_020, location: 'Market Square', available: true, summary: 'Open market hours.', visibility: 'party' },
       { id: 'private-errand', days: [0], start_minute: 1_020, end_minute: 1_140, location: 'Duke Archive', available: false, summary: 'PRIVATE_ARCHIVE_ROUTE', visibility: 'gm_only' },
@@ -103,6 +108,7 @@ test('persistent NPC schedules and inventories are normalized, replayed, and pro
   const stored = replayed.social.npcs.find((entry) => entry.id === 'marta')
   assert.equal(stored.schedule.length, 2)
   assert.equal(stored.inventory.length, 2)
+  assert.deepEqual(stored.speech_profile, npc.speech_profile)
 
   const marketTime = { mechanics: { world_time: { elapsed_minutes: 600 } } }
   const errandTime = { mechanics: { world_time: { elapsed_minutes: 1_050 } } }
@@ -140,6 +146,14 @@ test('NPC profile management rejects overlapping schedules and invalid inventory
   assert.throws(
     () => resolveCommand({ command_type: 'UpsertNpcSocialProfile', npc: invalidInventory }, initial, { diceService: dice(), context: { isAdmin: true } }),
     (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_INVENTORY_INVALID',
+  )
+  const incompleteSpeechProfile = {
+    ...initial.social.npcs[0],
+    speech_profile: { pace: 'быстро', lexicon: 'торговые слова' },
+  }
+  assert.throws(
+    () => resolveCommand({ command_type: 'UpsertNpcSocialProfile', npc: incompleteSpeechProfile }, initial, { diceService: dice(), context: { isAdmin: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_SPEECH_PROFILE_INVALID',
   )
 })
 

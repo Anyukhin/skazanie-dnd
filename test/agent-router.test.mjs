@@ -47,9 +47,15 @@ test('отряд может доверить развилку общему ку�
 
 test('каждый объявленный prompt_id указывает на существующий версионированный контракт', () => {
   assert.deepEqual(Object.keys(AGENT_ROLES), ['worldkeeper', 'director', 'game_master', 'narrator', 'map_architect', 'action_adjudicator'])
+  const expectedPromptIds = {
+    director: 'director/v1',
+    narrator: 'narrator/v3',
+    map_architect: 'map_architect/v1',
+    action_adjudicator: 'action_adjudicator/v1',
+  }
   for (const role of Object.values(AGENT_ROLES)) {
     if (!Object.hasOwn(role, 'prompt_id')) continue
-    assert.match(role.prompt_id, /\/v1$/, role.id)
+    assert.equal(role.prompt_id, expectedPromptIds[role.id], role.id)
     assert.equal(existsSync(new URL(`../prompts/${role.prompt_id}.txt`, import.meta.url)), true, role.id)
   }
 })

@@ -10,11 +10,17 @@ import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
-import { NARRATOR_PROMPT_VERSION, Narrator, deterministicNarration } from './narrator.mjs'
+import {
+  NARRATOR_PROMPT_VERSION,
+  NARRATOR_RECENT_TEXT_LIMIT,
+  Narrator,
+  deterministicNarration,
+  verifyNarratorCraft,
+} from './narrator.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState } from './rules-engine.mjs'
 import './scene-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
-import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer } from './viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
@@ -83,7 +89,8 @@ function narrationWorldFacts(state, viewer, message, events) {
  * and still passes the narrator projection with the rest of the brief.
  */
 export const NARRATION_STORY_LIMITS = Object.freeze({
-  quests: 2, threads: 2, summaries: 2, heroes: 6, npcs: 4, promises: 4,
+  quests: 2, threads: 2, summaries: 2, decisions: 2,
+  heroes: 6, npcs: 4, promises: 4, interactions: 4,
 })
 
 const partyVisibleRecord = (value) => ['public', 'party'].includes(String(value?.visibility ?? '').toLowerCase())
@@ -117,18 +124,64 @@ export function narrationStoryContext(state, viewer = {}) {
   const recent_summaries = (memory.summaries ?? [])
     .filter(partyVisibleRecord)
     .slice(-NARRATION_STORY_LIMITS.summaries)
-    .map((summary) => ({ title: memoryText(summary.title, 160), summary: memoryText(summary.summary, 500) }))
+    .map((summary) => ({
+      id: memoryText(summary.id, 120),
+      kind: memoryText(summary.kind, 40) || 'scene',
+      title: memoryText(summary.title, 160),
+      summary: memoryText(summary.summary, 500),
+    }))
     .filter((summary) => summary.title && summary.summary)
+  const adventure = state.adventure ?? {}
+  const visibleAdventure = {
+    ...adventure,
+    history: (Array.isArray(adventure.history) ? adventure.history : [])
+      .filter((entry) => !entry?.visibility || partyVisibleRecord(entry)),
+  }
+  const recent_decisions = (publicAdventureFor(visibleAdventure).history ?? [])
+    .slice(-NARRATION_STORY_LIMITS.decisions)
+    .map((entry) => ({
+      title: memoryText(entry.title, 160),
+      location: memoryText(entry.location, 180),
+      objective: memoryText(entry.objective, 300),
+      outcome: memoryText(entry.outcome, 300),
+      ...(entry.status ? { status: memoryText(entry.status, 40) } : {}),
+    }))
+    .filter((entry) => entry.title || entry.location || entry.objective || entry.outcome)
+  const viewerId = String(viewer?.playerId ?? '')
   const heroes = (state.players ?? [])
     .slice(0, NARRATION_STORY_LIMITS.heroes)
-    .map((actor) => ({ id: String(actor?.id ?? ''), name: memoryText(actor?.character || actor?.name, 120) }))
+    .map((actor) => {
+      const id = String(actor?.id ?? '')
+      const isViewer = id === viewerId
+      const role = memoryText(actor?.role || actor?.characterClass, 120)
+        .replace(/\s*[·—-]?\s*(?:ур(?:овень)?\.?|level)\s*\d+.*$/iu, '')
+        .trim()
+      return {
+        id,
+        name: memoryText(actor?.character || actor?.name, 120),
+        is_viewer: isViewer,
+        ...(isViewer && role ? { class_name: role } : {}),
+        ...(isViewer && actor?.background ? { background: memoryText(actor.background, 160) } : {}),
+      }
+    })
     .filter((hero) => hero.id && hero.name)
 
   const social = ensureNpcSocialState(state.social, state)
   const sceneLocation = memoryText(state.scene?.location, 180).toLocaleLowerCase('ru')
+  const viewerSocial = npcSocialForViewer(social, {
+    ...viewer,
+    isAdmin: false,
+    state,
+  })
+  const viewerProfiles = new Map(viewerSocial.npcs.map((npc) => [String(npc.id), npc]))
   const presentProfiles = social.npcs
-    .map((npc) => npcProfileAtWorldTime(npc, state))
-    .filter((npc) => npc.available !== false && partyVisibleRecord(npc))
+    .map((npc) => {
+      const visibleCurrent = viewerProfiles.get(String(npc.id))
+      return visibleCurrent
+        ? { ...npc, location: visibleCurrent.location, available: visibleCurrent.available }
+        : null
+    })
+    .filter((npc) => npc && npc.available !== false && partyVisibleRecord(npc))
     .filter((npc) => npc.location && sceneLocation && npc.location.toLocaleLowerCase('ru') === sceneLocation)
     .slice(0, NARRATION_STORY_LIMITS.npcs)
   const relationships = social.relationships ?? {}
@@ -138,6 +191,11 @@ export function narrationStoryContext(state, viewer = {}) {
     role: memoryText(npc.role, 120),
     public_summary: memoryText(npc.public_summary, 300),
     voice: memoryText(npc.voice, 200),
+    speech_profile: {
+      pace: memoryText(npc.speech_profile?.pace, 100),
+      lexicon: memoryText(npc.speech_profile?.lexicon, 180),
+      mannerism: memoryText(npc.speech_profile?.mannerism, 180),
+    },
     relationship: relationshipTier(relationships[npc.id]?.[viewer?.playerId] ?? 0),
   })).filter((npc) => npc.id && npc.name)
   const presentIds = new Set(presentProfiles.map((npc) => String(npc.id)))
@@ -148,13 +206,35 @@ export function narrationStoryContext(state, viewer = {}) {
     .filter((promise) => promise.status === 'open' && promiseVisible(promise) && presentIds.has(String(promise.npc_id)))
     .slice(-NARRATION_STORY_LIMITS.promises)
     .map((promise) => ({
+      id: memoryText(promise.id, 120),
       npc: memoryText(npcNames.get(String(promise.npc_id)) || promise.npc_id, 120),
       direction: memoryText(promise.direction, 40),
       text: memoryText(promise.text, 280),
       ...(promise.due_hint ? { due_hint: memoryText(promise.due_hint, 160) } : {}),
     }))
     .filter((promise) => promise.text)
-  return { active_quests, active_threads, recent_summaries, heroes, present_npcs, open_promises }
+  const heroNames = new Map(heroes.map((hero) => [String(hero.id), hero.name]))
+  const recent_interactions = (social.conversations ?? [])
+    .filter((entry) => entry.visibility === 'party' && presentIds.has(String(entry.npc_id)))
+    .slice(-NARRATION_STORY_LIMITS.interactions)
+    .map((entry) => ({
+      npc: memoryText(npcNames.get(String(entry.npc_id)) || entry.npc_id, 120),
+      hero: memoryText(heroNames.get(String(entry.hero_id)) || entry.hero_id, 120),
+      player_message: memoryText(entry.player_message, 240),
+      npc_reply: memoryText(entry.npc_reply, 240),
+      stance: memoryText(entry.stance, 40),
+    }))
+    .filter((entry) => entry.npc && entry.npc_reply)
+  return {
+    active_quests,
+    active_threads,
+    recent_summaries,
+    recent_decisions,
+    heroes,
+    present_npcs,
+    open_promises,
+    recent_interactions,
+  }
 }
 
 /**
@@ -312,6 +392,22 @@ function modelIdentifiers(narration) {
   }
 }
 
+/** Сколько кампаний держать в тёплой памяти процесса одновременно. */
+const NARRATION_MEMORY_CAMPAIGNS = 64
+
+function recentCampaignNarrations(traceStore, campaignId) {
+  if (!traceStore || !campaignId) return []
+  const traces = typeof traceStore.recent === 'function'
+    ? traceStore.recent(campaignId, NARRATOR_RECENT_TEXT_LIMIT)
+    : (typeof traceStore.latest === 'function' ? [traceStore.latest(campaignId)] : [])
+  return traces
+    .filter(Boolean)
+    .reverse()
+    .map((trace) => String(trace?.narration_result?.narration ?? '').trim())
+    .filter(Boolean)
+    .slice(-NARRATOR_RECENT_TEXT_LIMIT)
+}
+
 function structuredCommandTurnId(campaignId, idempotencyKey) {
   const digest = createHash('sha256')
     .update(String(campaignId))
@@ -326,16 +422,18 @@ function cachedNarration(trace, brief, knownRuleIds) {
   const cached = trace?.narration_result
   const text = typeof cached?.narration === 'string' ? cached.narration.trim() : ''
   if (!text) return null
-  const verification = verifyNarration(text, brief, { knownRuleIds })
+  const verification = verifyNarratorCraft(
+    text,
+    brief,
+    verifyNarration(text, brief, { knownRuleIds }),
+  )
   if (!verification.valid) return null
   return {
     narration: text,
     suggestions: Array.isArray(cached.suggestions)
       ? cached.suggestions.slice(0, 3).map((suggestion) => String(suggestion).slice(0, 120)).filter(Boolean)
       : [],
-    verification: cached.verification && typeof cached.verification === 'object'
-      ? cached.verification
-      : verification,
+    verification,
     prompt_version: String(cached.prompt_version || NARRATOR_PROMPT_VERSION),
     provider: String(cached.provider || 'cached-idempotent-replay'),
   }
@@ -345,7 +443,11 @@ function deterministicReplayNarration(brief, knownRuleIds, resolveName) {
   const fallback = deterministicNarration(brief, resolveName)
   return {
     ...fallback,
-    verification: verifyNarration(fallback.narration, brief, { knownRuleIds }),
+    verification: verifyNarratorCraft(
+      fallback.narration,
+      brief,
+      verifyNarration(fallback.narration, brief, { knownRuleIds }),
+    ),
     prompt_version: NARRATOR_PROMPT_VERSION,
     provider: 'deterministic-idempotent-replay',
   }
@@ -431,6 +533,20 @@ export class GameOrchestrator {
   } = {}) {
     if (!rulesEngine) throw new TypeError('GameOrchestrator требует RulesEngine')
     if (!eventStore) throw new TypeError('GameOrchestrator требует EventStore')
+    /**
+     * Последние нарации кампании — тёплый буфер в памяти процесса.
+     *
+     * Раньше их брали из трейс-стора **на каждую нарацию**, а `recent()` читает
+     * и разбирает все файлы трасс кампании целиком: за кампанию из N ходов это
+     * ~N²/2 чтений и парсингов. Сквозной прогон кампании упирался из-за этого в
+     * потолок таймаута (239 с на прежнем main против 600 с и отмены).
+     *
+     * Трейс-стор остаётся источником только на холодном старте: один скан на
+     * кампанию после запуска процесса, дальше буфер обновляется на месте.
+     * Нарация не входит в поток событий, поэтому память процесса здесь не
+     * ухудшает replay: он и раньше зависел от трасс, а не от событий.
+     */
+    this.narrationMemory = new Map()
     this.intentParser = intentParser
     this.ruleRetriever = ruleRetriever
     this.adjudicator = adjudicator
@@ -442,6 +558,37 @@ export class GameOrchestrator {
     this.unknownActionHandler = unknownActionHandler ?? new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, now })
     this.idFactory = idFactory
     this.now = now
+  }
+
+  /**
+   * Последние нарации кампании. Холодный старт поднимает историю из трасс один
+   * раз, дальше отвечает тёплый буфер.
+   */
+  recentNarrationsFor(campaignId) {
+    const key = String(campaignId ?? '')
+    if (!key) return []
+    const warm = this.narrationMemory.get(key)
+    if (warm) return warm
+    const cold = recentCampaignNarrations(this.traceStore, key)
+    this.narrationMemory.set(key, cold)
+    return cold
+  }
+
+  /** Запоминает показанный игроку текст, чтобы следующая нарация его не повторила. */
+  rememberNarration(campaignId, value) {
+    const key = String(campaignId ?? '')
+    const text = String(value ?? '').trim()
+    if (!key || !text) return
+    const next = [...this.recentNarrationsFor(key), text].slice(-NARRATOR_RECENT_TEXT_LIMIT)
+    // Переустановка ключа поднимает кампанию в конец очереди: вытесняется та,
+    // к которой дольше всех не обращались.
+    this.narrationMemory.delete(key)
+    this.narrationMemory.set(key, next)
+    while (this.narrationMemory.size > NARRATION_MEMORY_CAMPAIGNS) {
+      const oldest = this.narrationMemory.keys().next().value
+      if (oldest === undefined) break
+      this.narrationMemory.delete(oldest)
+    }
   }
 
   explanation(campaignId, turnId = null, viewer = null) {
@@ -849,7 +996,11 @@ export class GameOrchestrator {
         ?? storedSocialNarration
         ?? (structuredMechanics
           ? deterministicMechanicsNarration(brief, resolvedRuleIds, resolveActorName)
-          : await this.narrator.render(brief, { knownRuleIds: resolvedRuleIds }))
+          : await this.narrator.render(brief, {
+              knownRuleIds: resolvedRuleIds,
+              recentNarrations: this.recentNarrationsFor(campaignId),
+            }))
+    if (!idempotentReplay) this.rememberNarration(campaignId, narration.narration)
     const response = {
       narration: narration.narration,
       ...(narration.journal_author ? { journal_author: narration.journal_author } : {}),

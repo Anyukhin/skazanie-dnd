@@ -178,6 +178,52 @@ function safeSocialDcs(value) {
   return Object.fromEntries(entries)
 }
 
+/**
+ * Короткий server-owned речевой профиль NPC.
+ *
+ * Старые кампании хранят одно поле `voice`. Оно остаётся совместимым
+ * источником, но нормализатор раскладывает его в три исполнимых признака:
+ * темп, словарь и речевую привычку. Новые профили могут передать эти признаки
+ * явно; они живут рядом с NPC, а не в общем списке характеров промпта.
+ */
+export function npcSpeechProfile(value = {}) {
+  const explicit = value?.speech_profile && typeof value.speech_profile === 'object' && !Array.isArray(value.speech_profile)
+    ? value.speech_profile
+    : {}
+  const voice = clean(value?.voice, 500)
+  const role = clean(value?.role, 160)
+  const style = `${voice} ${role}`.toLocaleLowerCase('ru')
+  const pace = clean(explicit.pace, 100)
+    || (/быстр|тороп|скороговор/iu.test(style)
+      ? 'быстро, короткими фразами'
+      : /медлен|нетороп|пауз/iu.test(style)
+        ? 'медленно, с заметными паузами'
+        : /коротк|лаконич|немногослов/iu.test(style)
+          ? 'ровно, короткими фразами'
+          : 'ровно, фразами средней длины')
+  const lexicon = clean(explicit.lexicon, 180)
+    || (/прибаут|послов|простореч|жаргон/iu.test(style)
+      ? 'простые слова, поговорки и профессиональные присказки'
+      : /архив|уч[её]н|книж|летопис|писар/iu.test(style)
+        ? 'точные книжные слова и названия записей'
+        : /торгов|купц|лавк|трактир|постоял/iu.test(style)
+          ? 'бытовые и деловые слова своей работы'
+          : role
+            ? `предметные слова из роли «${role}»`
+            : 'простые предметные слова')
+  const mannerism = clean(explicit.mannerism, 180)
+    || (/прибаут|послов/iu.test(style)
+      ? 'вставляет одну короткую прибаутку, не повторяя её дословно'
+      : /пауз|медлен|нетороп/iu.test(style)
+        ? 'перед важным выводом делает короткую паузу'
+        : /коротк|лаконич|немногослов/iu.test(style)
+          ? 'заканчивает ответ без лишнего пояснения'
+          : voice
+            ? `сохраняет указанную манеру: ${voice}`
+            : 'перед выводом задаёт один уточняющий вопрос')
+  return { pace, lexicon, mannerism }
+}
+
 function safeProfile(value = {}) {
   return {
     id: clean(value.id, 120),
@@ -186,6 +232,7 @@ function safeProfile(value = {}) {
     location: clean(value.location, 180),
     public_summary: clean(value.public_summary, 1_000),
     voice: clean(value.voice, 500),
+    speech_profile: npcSpeechProfile(value),
     goals: strings(value.goals, 300, 12),
     beliefs: strings(value.beliefs, 300, 20),
     known_fact_ids: strings(value.known_fact_ids, 120, 100),
@@ -415,12 +462,31 @@ function strictInventoryInput(value) {
   return normalized
 }
 
+function strictSpeechProfileInput(value) {
+  if (value == null) return null
+  const profile = object(value, 'npc.speech_profile')
+  fields(profile, new Set(['pace', 'lexicon', 'mannerism']), 'npc.speech_profile')
+  const normalized = {
+    pace: clean(profile.pace, 100),
+    lexicon: clean(profile.lexicon, 180),
+    mannerism: clean(profile.mannerism, 180),
+  }
+  if (!normalized.pace || !normalized.lexicon || !normalized.mannerism) {
+    throw new NpcSocialValidationError(
+      'Речевой профиль NPC требует темп, словарь и привычку',
+      'NPC_SOCIAL_SPEECH_PROFILE_INVALID',
+    )
+  }
+  return normalized
+}
+
 function normalizeProfileInput(input) {
   const value = object(input, 'npc')
-  fields(value, new Set(['id', 'name', 'role', 'location', 'public_summary', 'voice', 'goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'visibility', 'available', 'tags', 'schedule', 'inventory']), 'npc')
+  fields(value, new Set(['id', 'name', 'role', 'location', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'visibility', 'available', 'tags', 'schedule', 'inventory']), 'npc')
   const result = safeProfile({
     ...value,
     id: identifier(value.id, 'npc.id'),
+    ...(value.speech_profile == null ? {} : { speech_profile: strictSpeechProfileInput(value.speech_profile) }),
     schedule: strictScheduleInput(value.schedule),
     inventory: strictInventoryInput(value.inventory),
   })
@@ -677,7 +743,7 @@ export function npcConversationNarration(events = [], state = {}) {
     ...(npcName ? { journal_author: npcName } : {}),
     suggestions: ['Продолжить разговор', 'Уточнить, откуда NPC это знает'],
     provider: 'NpcSocialController',
-    prompt_version: 'npc_controller/social-v1',
+    prompt_version: 'npc_controller/social-v3',
     verification: { valid: true, violations: [] },
   }
 }

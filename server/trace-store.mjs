@@ -91,12 +91,17 @@ export class FileTraceStore {
   }
 
   latest(campaignId) {
+    return this.recent(campaignId, 1)[0] ?? null
+  }
+
+  recent(campaignId, limit = 3) {
     const directory = this.campaignDir(campaignId)
+    const boundedLimit = Math.max(1, Math.min(20, Number(limit) || 3))
     const traces = readdirSync(directory)
       .filter((name) => name.endsWith('.json') && SAFE_ID.test(name.slice(0, -5)))
       .map((name) => JSON.parse(readFileSync(join(directory, name), 'utf8')))
       .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))
-    return traces[0] ?? null
+    return traces.slice(0, boundedLimit)
   }
 }
 

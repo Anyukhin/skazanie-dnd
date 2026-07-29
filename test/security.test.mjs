@@ -314,12 +314,20 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
 // прежний записанный пробел закрыт.
 test('loaded role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
   // Версия в списке обязана совпадать с той, которую роль действительно грузит:
-  // narrator перешёл на v2 (story_context в NarrationBrief), campaign_creator и
+  // narrator и социальный контроллер перешли на v3, campaign_creator и
   // map_architect — на v2 с границей UNTRUSTED_DATA, остальные на v1.
-  const promptIds = ['npc_controller/v1', 'narrator/v2', 'director/v1', 'action_adjudicator/v1', 'campaign_creator/v2', 'map_architect/v2']
-  for (const id of promptIds) {
-    const prompt = await readFile(new URL(`../prompts/${id}.txt`, import.meta.url), 'utf8')
-    assert.match(prompt, new RegExp(`PROMPT_ID: ${id}`))
+  const prompts = [
+    ['npc_controller/v1', 'npc_controller/v1'],
+    ['npc_controller/social_v3', 'npc_controller/social-v3'],
+    ['narrator/v3', 'narrator/v3'],
+    ['director/v1', 'director/v1'],
+    ['action_adjudicator/v1', 'action_adjudicator/v1'],
+    ['campaign_creator/v2', 'campaign_creator/v2'],
+    ['map_architect/v2', 'map_architect/v2'],
+  ]
+  for (const [fileId, promptId] of prompts) {
+    const prompt = await readFile(new URL(`../prompts/${fileId}.txt`, import.meta.url), 'utf8')
+    assert.match(prompt, new RegExp(`PROMPT_ID: ${promptId}`))
     assert.match(prompt, /UNTRUSTED_DATA/)
     // Проверяется свойство, а не глагол: промпт обязан прямо запретить модели
     // додумывать за сервер. Список глаголов — артефакт первых трёх промптов;
@@ -341,10 +349,10 @@ test('контрактным списком покрыта каждая роль
       loaded.set(`${match[1]}/${match[2]}`, file)
     }
   }
-  assert.ok(loaded.size >= 7, `ролей, читающих промпт, найдено ${loaded.size} — поиск потерял покрытие`)
+  assert.equal(loaded.size, 7, `ожидались ровно семь ролей, читающих промпт, найдено ${loaded.size}`)
 
   const knownGaps = new Set([])
-  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v2', 'narrator/v2', 'director/v1', 'action_adjudicator/v1', 'campaign_creator/v2', 'map_architect/v2'])
+  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v3', 'narrator/v3', 'director/v1', 'action_adjudicator/v1', 'campaign_creator/v2', 'map_architect/v2'])
   const uncovered = [...loaded.keys()].filter((id) => !covered.has(id) && !knownGaps.has(id)).sort()
   assert.deepEqual(uncovered, [], 'роль грузит промпт, но не покрыта ни контрактным списком, ни записанным пробелом')
 })

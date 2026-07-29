@@ -7,7 +7,8 @@ import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v2.txt', import.meta.url)), 'utf8')
+export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v3'
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v3.txt', import.meta.url)), 'utf8')
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 export const NPC_SOCIAL_MEMORY_LIMIT = 8
@@ -75,6 +76,11 @@ function heroName(state, heroId) {
   return clean(hero?.character || hero?.name, 120) || expected
 }
 
+function conversationVisibleTo(entry, playerId) {
+  return entry.visibility === 'party'
+    || (entry.visibility === 'specific_player' && String(entry.hero_id) === String(playerId))
+}
+
 function briefFor(state, profile, playerId, message, checkOutcome = null) {
   const social = ensureNpcSocialState(state.social, state)
   return {
@@ -92,6 +98,7 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
     npc: {
       id: profile.id, name: profile.name, role: profile.role,
       public_summary: profile.public_summary, voice: profile.voice,
+      speech_profile: profile.speech_profile,
     },
     relationship: {
       score: social.relationships[profile.id]?.[playerId] ?? 0,
@@ -102,13 +109,17 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
       .slice(-10)
       .map((entry) => ({ id: entry.id, direction: entry.direction, text: entry.text, due_hint: entry.due_hint })),
     recent_conversation: social.conversations
-      .filter((entry) => entry.npc_id === profile.id && entry.hero_id === playerId)
+      .filter((entry) => entry.npc_id === profile.id
+        && entry.hero_id === playerId
+        && conversationVisibleTo(entry, playerId))
       .slice(-6)
       .map((entry) => ({ player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance, ...(entry.check ? { check: { skill: entry.check.skill, success: entry.check.success, degree: entry.check.degree } } : {}) })),
     // NPC помнит отряд, а не одно лицо: последние разговоры с другими героями
     // видимы группе (visibility: party) и приходят с именем собеседника.
     recent_party_conversation: social.conversations
-      .filter((entry) => entry.npc_id === profile.id && entry.hero_id !== playerId)
+      .filter((entry) => entry.npc_id === profile.id
+        && entry.hero_id !== playerId
+        && conversationVisibleTo(entry, playerId))
       .slice(-4)
       .map((entry) => ({ hero: heroName(state, entry.hero_id), player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })),
     speakable_facts: npcFacts(state, profile, message),
@@ -192,7 +203,11 @@ export class NpcSocialController {
     const profile = persistedProfile ? npcProfileAtWorldTime(persistedProfile, state) : null
     if (!profile || profile.available === false) return null
     const facts = npcFacts(state, profile, message)
-    if (!this.llmClient) return { ...normalizedResult({}, profile, state, String(playerId), message, turnId, checkOutcome), provider: 'deterministic-social-fallback' }
+    if (!this.llmClient) return {
+      ...normalizedResult({}, profile, state, String(playerId), message, turnId, checkOutcome),
+      provider: 'deterministic-social-fallback',
+      prompt_version: NPC_SOCIAL_PROMPT_VERSION,
+    }
     try {
       const result = await this.llmClient.completeJson({
         messages: [
@@ -202,9 +217,19 @@ export class NpcSocialController {
         temperature: 0.7,
         maxTokens: 700,
       })
-      return { ...normalizedResult(result, profile, state, String(playerId), message, turnId, checkOutcome), provider: this.llmClient.constructor?.name ?? 'llm' }
+      return {
+        ...normalizedResult(result, profile, state, String(playerId), message, turnId, checkOutcome),
+        provider: this.llmClient.constructor?.name ?? 'llm',
+        prompt_version: NPC_SOCIAL_PROMPT_VERSION,
+      }
     } catch (error) {
-      return { ...normalizedResult({}, profile, state, String(playerId), message, turnId, checkOutcome), provider: 'deterministic-social-fallback', provider_error: clean(error?.code ?? error?.name ?? 'LLM_PROVIDER_ERROR', 80), facts_available: facts.length }
+      return {
+        ...normalizedResult({}, profile, state, String(playerId), message, turnId, checkOutcome),
+        provider: 'deterministic-social-fallback',
+        prompt_version: NPC_SOCIAL_PROMPT_VERSION,
+        provider_error: clean(error?.code ?? error?.name ?? 'LLM_PROVIDER_ERROR', 80),
+        facts_available: facts.length,
+      }
     }
   }
 }
