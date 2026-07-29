@@ -42,7 +42,7 @@ Machine-readable release coverage хранится в
 | Dice expression parser | частично | да | да | unit | Отдельной полной grammar rule в corpus нет |
 | Проверка характеристики | да | да | да, enforce | unit | Special checks и полный UI flow не моделируются |
 | Спасбросок | да | да | да, enforce | unit | Generic ability save; сложные триггеры не оркестрованы |
-| Бросок атаки | да | да | да, enforce UI/API | unit + authoritative HTTP | Профиль выводится сервером; безоружный PC fallback использует `1 + STR`, а EncounterAssembler projection содержит только один основной attack profile без multiattack/spells |
+| Бросок атаки | да | да | да, enforce UI/API | unit + authoritative HTTP | Профиль выводится сервером; безоружный PC fallback использует `1 + STR`, а EncounterAssembler projection содержит именные action profiles и phased multiattack; monster spellcasting не поддержан |
 | Класс доспеха | да | да | да, enforce | unit + authoritative HTTP | Берётся из server actor; клиентский override игнорируется, но полной derivation AC из экипировки нет |
 | Натуральные 1/20 | да | да | да, enforce | unit | Для атаки natural 1 промахивается, natural 20 отмечается critical и удваивает только damage dice, не модификатор |
 | Урон | да | да | да | unit + domain integration + HTTP | `MakeAttack` и `ApplyDamage` создают zero-HP/concentration follow-ups; authoritative HTTP проверяет server-derived attack damage |
@@ -79,7 +79,7 @@ Machine-readable release coverage хранится в
 | Плавание в бурной воде | да | частично | да, legacy/shadow | unit + retrieval | SRD СЛ 15 извлекается и используется для hazard; полной геометрии скорости плавания нет |
 | Удушье | да | частично | частично | unit + retrieval | Hazard и условие снятия сохраняются; автоматический счёт минут и уровней Истощения по ходам ещё не реализован |
 | Длительные эффекты | частично | частично | да для hazards | unit | Условие окончания и обязательная проверка исполняются; общего scheduler длительностей пока нет |
-| Блоки существ | частично | частично | да, admin enforce UI/API | unit + domain integration + HTTP | EncounterAssembler имеет 12 server-owned SRD 5.2.1 profiles с несколькими действиями и ограниченными traits; нет полного stat block corpus, полной модели saves/resistances, spellcasting, legendary/lair/recharge и особых действий |
+| Блоки существ | частично | частично | да, admin enforce UI/API | unit + domain integration + HTTP | EncounterAssembler имеет 50 server-owned SRD 5.2.1 profiles с несколькими действиями, phased multiattack и ограниченными traits; нет полного stat block corpus, полной модели saves/resistances, spellcasting, legendary/lair/recharge и особых действий |
 | Сборка встречи | нет | частично | да, admin enforce UI/API | unit + domain integration + HTTP | Официальный XP budget уровней 1–20, bounded difficulty/theme, quantity cap и revealed/reachable spawn не ближе 10 футов и — на карте шире 28 клеток — только внутри подрайона боя вокруг отряда (`docs/tactical-map-plan.md`, 11.4); нет Director auto-trigger, tactics profiles, loot/rewards |
 | Способности классов | частично | частично | частично, enforce UI/API | unit + replay | Реализованы отдельные server-owned способности, включая Aura of Protection и Fighter Indomitable; полного корпуса уровней 1–12 нет |
 

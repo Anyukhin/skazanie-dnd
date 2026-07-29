@@ -802,7 +802,14 @@ export class AutonomousCampaignOrchestrator {
       const livingHeroes = state.players.filter(isLivingActor)
       let commands
       let heroRule = null
-      if (!livingEnemies.length || !livingHeroes.length) {
+      if (combat.reaction_window) {
+        commands = [{
+          command_type: 'UseCombatAction',
+          actor_id: String(combat.reaction_window.actor_id),
+          action_id: 'decline-reaction',
+          server_authoritative: true,
+        }]
+      } else if (!livingEnemies.length || !livingHeroes.length) {
         commands = [{ command_type: 'EndCombat', actor_id: actorId || livingHeroes[0]?.id || livingEnemies[0]?.id, reason: livingEnemies.length ? 'party_defeated' : 'enemies_defeated' }]
       } else if (!isLivingActor(actor)) {
         commands = [{ command_type: 'EndTurn', actor_id: actorId }]

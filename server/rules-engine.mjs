@@ -2476,15 +2476,49 @@ function assertTurn(command, state, context = {}) {
     }
   } else if (['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'UseItem'].includes(command.command_type)) {
     const economy = combat.action_economy[command.actor_id]
+    if (command.command_type === 'MakeAttack' && command.monster_ability === 'multiattack') {
+      const actor = findActor(state, command.actor_id)
+      const attacksUsed = Math.max(0, safeInteger(economy?.attacks_used, 0))
+      const sequence = monsterMultiattackActionIds(actor, command.action_id)
+      const expectedActionId = sequence[attacksUsed]
+      const multiattack = monsterTraitFor(actor, 'multiattack')
+      const actionCounts = monsterMultiattackActionCounts(multiattack)
+      const usedActionIds = Array.isArray(economy?.multiattack_action_ids)
+        ? economy.multiattack_action_ids.map(String)
+        : attacksUsed > 0 && economy?.multiattack_action_id
+          ? [String(economy.multiattack_action_id)]
+          : []
+      const actionCountValid = !actionCounts.size
+        || usedActionIds.filter((id) => id === String(command.action_id ?? '')).length < (actionCounts.get(String(command.action_id ?? '')) ?? 0)
+      const sameActionMismatch = multiattack?.same_action === true
+        && attacksUsed > 0
+        && String(economy?.multiattack_action_id ?? '') !== String(command.action_id ?? '')
+      if (!context.isNpcScheduler
+        || sequence.length <= 1
+        || sameActionMismatch
+        || !actionCountValid
+        || !actionCounts.size && String(command.action_id ?? '') !== String(expectedActionId ?? '')
+        || safeInteger(command.multiattack_index, 0) !== attacksUsed + 1
+        || safeInteger(command.multiattack_count, 0) !== sequence.length) {
+        throw new RulesValidationError('Команда не соответствует объявленной последовательности multiattack', 'INVALID_MONSTER_MULTIATTACK')
+      }
+    }
     if (economy && economy.action === false) {
       // Extra Attack lets the Attack action carry more than one weapon attack.
       // The exception applies only to a creature that has already attacked this
       // turn: spending the action on anything else leaves no attacks to make.
       const attacksUsed = Math.max(0, safeInteger(economy.attacks_used, 0))
+      const actor = findActor(state, command.actor_id)
       const attacksAllowed = command.command_type === 'MakeAttack'
-        ? allowedWeaponAttacks(state, findActor(state, command.actor_id), command.actor_id)
+        ? allowedWeaponAttacks(state, actor, command.actor_id)
         : 1
-      if (!(attacksUsed > 0 && attacksUsed < attacksAllowed)) {
+      const classAttackLimit = weaponAttacksPerActionFor(actor) + (conditionIdsFor(state, command.actor_id).has('hasted') ? 1 : 0)
+      const classContinuation = attacksUsed > 0 && attacksUsed < classAttackLimit
+      const monsterContinuation = command.command_type === 'MakeAttack'
+        && command.monster_ability === 'multiattack'
+        && attacksUsed > 0
+        && attacksUsed < attacksAllowed
+      if (!(classContinuation || monsterContinuation)) {
         throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
       }
     }
@@ -3457,7 +3491,7 @@ function resourcePool(state, actorIdValue, resourceName, providedMax = 0) {
 }
 
 function actionEconomy() {
-  return { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0, movement_bonus: 0, extra_actions: 0, surged_action_only: false, attacks_used: 0, attacks_allowed: 1 }
+  return { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0, movement_path: [], movement_bonus: 0, extra_actions: 0, surged_action_only: false, attacks_used: 0, attacks_allowed: 1 }
 }
 
 function reactionOptionsAfterAttack(state, target, {
@@ -3813,7 +3847,71 @@ function checkAdvantageConditionFor(state, id, ability) {
  * Extra Attack.
  */
 function allowedWeaponAttacks(state, actor, id) {
-  return weaponAttacksPerActionFor(actor) + (conditionIdsFor(state, id).has('hasted') ? 1 : 0)
+  const multiattack = monsterTraitFor(actor, 'multiattack')
+  const actionCount = [...monsterMultiattackActionCounts(multiattack).values()].reduce((sum, count) => sum + count, 0)
+  const sequenceCount = Array.isArray(multiattack?.sequence) ? multiattack.sequence.length : 0
+  const monsterAttackCount = multiattack
+    ? Math.max(1, Math.min(8, actionCount || sequenceCount || safeInteger(multiattack.attacks, 1)))
+    : 1
+  return Math.max(
+    monsterAttackCount,
+    weaponAttacksPerActionFor(actor) + (conditionIdsFor(state, id).has('hasted') ? 1 : 0),
+  )
+}
+
+function monsterMultiattackActionCounts(multiattack) {
+  if (!multiattack?.action_counts || typeof multiattack.action_counts !== 'object' || Array.isArray(multiattack.action_counts)) return new Map()
+  return new Map(Object.entries(multiattack.action_counts)
+    .map(([id, count]) => [String(id), Math.max(0, Math.min(8, safeInteger(count, 0)))])
+    .filter(([id, count]) => id && count > 0)
+    .sort(([left], [right]) => left.localeCompare(right)))
+}
+
+function monsterMultiattackActionIds(actor, fallbackActionId = null) {
+  const multiattack = monsterTraitFor(actor, 'multiattack')
+  if (!multiattack) return []
+  const actionCounts = monsterMultiattackActionCounts(multiattack)
+  if (actionCounts.size) return [...actionCounts].flatMap(([id, count]) => Array.from({ length: count }, () => id)).slice(0, 8)
+  const sequence = Array.isArray(multiattack.sequence)
+    ? multiattack.sequence.map(String).filter(Boolean)
+    : []
+  if (sequence.length) return sequence.slice(0, 8)
+  const count = Math.max(1, Math.min(8, safeInteger(multiattack.attacks, 1)))
+  const actionId = String(multiattack.action_id ?? fallbackActionId ?? '')
+  return actionId ? Array.from({ length: count }, () => actionId) : []
+}
+
+function creatureSizeRank(actor) {
+  const raw = String(actor?.size ?? actor?.creature_size ?? actor?.creatureSize ?? 'medium').toLocaleLowerCase('ru')
+  if (raw.includes('gargantuan') || raw.includes('громад')) return 5
+  if (raw.includes('huge') || raw.includes('огром')) return 4
+  if (raw.includes('large') || raw.includes('больш')) return 3
+  if (raw.includes('small') || raw.includes('мал')) return 1
+  if (raw.includes('tiny') || raw.includes('крош')) return 0
+  return 2
+}
+
+function sizeRankByName(size) {
+  return creatureSizeRank({ size })
+}
+
+function completedStraightCharge(state, actorIdValue, targetIdValue, minimumDistanceFeet) {
+  const economy = state.mechanics?.combat?.action_economy?.[String(actorIdValue)]
+  const points = Array.isArray(economy?.movement_path) ? economy.movement_path : []
+  const requiredSteps = Math.max(1, Math.ceil(Math.max(5, safeInteger(minimumDistanceFeet, 20)) / 5))
+  if (points.length < requiredSteps + 1) return false
+  const segment = points.slice(-(requiredSteps + 1))
+  const dx = Math.sign(Number(segment[1]?.x) - Number(segment[0]?.x))
+  const dy = Math.sign(Number(segment[1]?.y) - Number(segment[0]?.y))
+  if (dx === 0 && dy === 0) return false
+  for (let index = 1; index < segment.length; index += 1) {
+    if (Math.sign(Number(segment[index]?.x) - Number(segment[index - 1]?.x)) !== dx
+      || Math.sign(Number(segment[index]?.y) - Number(segment[index - 1]?.y)) !== dy) return false
+  }
+  const actorAt = actorPosition(state, actorIdValue)
+  const targetAt = actorPosition(state, targetIdValue)
+  if (!actorAt || !targetAt) return false
+  return Math.sign(targetAt.x - actorAt.x) === dx && Math.sign(targetAt.y - actorAt.y) === dy
 }
 
 /**
@@ -4090,6 +4188,14 @@ function isSavingThrowProficient(actor, ability) {
   return (CLASS_SAVING_THROW_PROFICIENCIES[characterClassKey(actor)] ?? []).includes(normalizedAbility)
 }
 
+function bloodiedFrenzySaveAdvantage(state, targetId) {
+  const actor = findActor(state, targetId)
+  const trait = monsterTraitFor(actor, 'bloodied-frenzy')
+  return Boolean(trait
+    && trait.saving_throws !== false
+    && actorHp(actor) * 2 <= Math.max(1, actorMaxHp(actor)))
+}
+
 /**
  * Rolls a saving throw.  Pass `ability` to let the conditions that make a save
  * fail without a roll apply: the die is still rolled and recorded so the
@@ -4103,16 +4209,18 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
   // от того, кто и откуда бросок запросил.
   const advantageCondition = saveAdvantageConditionFor(state, targetId, options.ability)
   const disadvantageCondition = saveDisadvantageConditionFor(state, targetId, options.ability)
+  const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, targetId)
   return {
     ...diceService.rollD20({
       ...options,
-      advantage: options.advantage === true || Boolean(advantageCondition),
+      advantage: options.advantage === true || Boolean(advantageCondition) || bloodiedFrenzy,
       disadvantage: options.disadvantage === true || Boolean(disadvantageCondition),
       modifier: auraProtection.modifier,
       actorId: targetId,
     }),
     ...auraOfProtectionPayload(auraProtection.aura),
     ...(advantageCondition ? { save_advantage_condition: advantageCondition } : {}),
+    ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
     ...(disadvantageCondition ? { save_disadvantage_condition: disadvantageCondition } : {}),
     ...(autoFailed ? { auto_failed: true, auto_failed_condition: autoFailed } : {}),
   }
@@ -4121,9 +4229,11 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
 function rollSavingThrowCheck(state, diceService, targetId, options = {}) {
   const auraProtection = savingThrowModifierWithAura(state, targetId, options.modifier)
   const autoFailed = autoFailedSaveConditionFor(state, targetId, options.ability)
+  const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, targetId)
   return {
-    ...diceService.rollCheck({ ...options, modifier: auraProtection.modifier, actorId: targetId }),
+    ...diceService.rollCheck({ ...options, advantage: options.advantage === true || bloodiedFrenzy, modifier: auraProtection.modifier, actorId: targetId }),
     ...auraOfProtectionPayload(auraProtection.aura),
+    ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
     ...(autoFailed ? { success: false, auto_failed: true, auto_failed_condition: autoFailed } : {}),
   }
 }
@@ -4373,12 +4483,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // ровно на том пути, которым спасброски запрашивает интерфейс.
       const savePenalty = saveDisadvantageConditionFor(state, command.actor_id, ability)
       const saveBoost = saveAdvantageConditionFor(state, command.actor_id, ability)
-      const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `saving_throw:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(saveBoost), disadvantage: Boolean(command.disadvantage) || Boolean(savePenalty), visibility: command.visibility })
+      const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, command.actor_id)
+      const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `saving_throw:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(saveBoost) || bloodiedFrenzy, disadvantage: Boolean(command.disadvantage) || Boolean(savePenalty), visibility: command.visibility })
       rolls.push(roll)
-      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || savePenalty || saveBoost ? RULE_IDS.advantage : null), 'SavingThrowResolved', {
+      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || savePenalty || saveBoost || bloodiedFrenzy ? RULE_IDS.advantage : null), 'SavingThrowResolved', {
         ability, ...roll, ...auraOfProtectionPayload(auraProtection.aura),
         ...(savePenalty ? { save_disadvantage_condition: savePenalty } : {}),
         ...(saveBoost ? { save_advantage_condition: saveBoost } : {}),
+        ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
       }, [command.actor_id]))
       if (silveryFortune) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'silvery-fortune' }, [command.actor_id]))
       break
@@ -4428,6 +4540,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const pendingWeaponHitMatches = Boolean(pendingWeaponHit && profile
         && (!pendingWeaponHit.meleeOnly || profile.kind === 'melee')
         && (!pendingWeaponHit.rangedOnly || profile.kind === 'ranged'))
+      const bloodiedFrenzyTrait = monsterTraitFor(actor, 'bloodied-frenzy')
+      const bloodiedFrenzy = Boolean(bloodiedFrenzyTrait
+        && (!Array.isArray(bloodiedFrenzyTrait.attack_kinds) || bloodiedFrenzyTrait.attack_kinds.map(String).includes(String(profile?.kind ?? '')))
+        && Math.max(0, safeInteger(actor?.hp, 0)) * 2 <= Math.max(1, safeInteger(actor?.maxHp, actor?.hp)))
+      const chargeTrait = monsterTraitFor(actor, 'charge')
+      const chargeActive = Boolean(context.isNpcScheduler && chargeTrait
+        && (!chargeTrait.action_id || String(chargeTrait.action_id) === String(profile?.id ?? ''))
+        && completedStraightCharge(state, command.actor_id, targetId, chargeTrait.minimum_distance_feet)
+        && creatureSizeRank(target) <= sizeRankByName(chargeTrait.target_size_max ?? 'large'))
       if (actorConditions.has('bless-d4')) {
         const blessing = diceService.roll('1d4', 'spell:bless:attack', command.actor_id, command.visibility ?? 'public')
         rolls.push(blessing)
@@ -4463,7 +4584,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const swing = attackSwingShape(state, command.actor_id, targetId, profile, {
         actorAt, targetAt, distanceFeet, conditionModifiers,
         commandAdvantage: command.advantage, commandDisadvantage: command.disadvantage,
-        extraAdvantage: pendingWeaponHitMatches && pendingWeaponHit?.advantage,
+        extraAdvantage: bloodiedFrenzy || pendingWeaponHitMatches && pendingWeaponHit?.advantage,
       })
       const advantage = swing.advantage
       const disadvantage = swing.disadvantage
@@ -4546,6 +4667,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         action_id: profile?.id ?? null,
         action_name: profile?.name ?? null,
         pack_tactics: packTactics,
+        bloodied_frenzy: bloodiedFrenzy,
+        charge: chargeActive,
         trajectory: actorAt && targetAt ? lineCells(actorAt, targetAt) : [],
         long_range: Boolean(longRange),
         reaction_attack: command.reaction_attack === true,
@@ -4608,6 +4731,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           raw += traitDamage.total
         }
         let pendingCondition = null
+        let secondaryDamage = null
         const onHit = profile?.on_hit
         if (onHit) {
           let saved = false
@@ -4623,9 +4747,50 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             const secondary = diceService.roll(String(onHit.damage_expression), 'monster_action_damage', command.actor_id, command.visibility ?? 'public')
             rolls.push(secondary)
             events.push(eventFrom(command, 'DieRolled', { ...secondary, action_id: profile.id, damage_type: String(onHit.damage_type || damageType) }, []))
-            raw += saved && onHit.half_on_save ? Math.floor(secondary.total / 2) : saved ? 0 : secondary.total
+            secondaryDamage = {
+              amount: saved && onHit.half_on_save ? Math.floor(secondary.total / 2) : saved ? 0 : secondary.total,
+              type: String(onHit.damage_type || damageType),
+              action_id: profile.id,
+            }
           }
-          if (onHit.condition && !saved) pendingCondition = { id: String(onHit.condition), duration: onHit.duration ?? null }
+          const targetSizeAllowed = !onHit.target_size_max
+            || creatureSizeRank(target) <= sizeRankByName(onHit.target_size_max)
+          if (onHit.condition && !saved && targetSizeAllowed) pendingCondition = { id: String(onHit.condition), duration: onHit.duration ?? null }
+        }
+        if (chargeActive) {
+          if (chargeTrait.damage_expression) {
+            const chargeDamage = diceService.roll(
+              critical ? criticalDamageExpression(String(chargeTrait.damage_expression)) : String(chargeTrait.damage_expression),
+              'monster_trait_damage',
+              command.actor_id,
+              command.visibility ?? 'public',
+            )
+            rolls.push(chargeDamage)
+            events.push(eventFrom(command, 'DieRolled', { ...chargeDamage, trait_id: 'charge' }, []))
+            raw += chargeDamage.total
+          }
+          let saved = false
+          if (chargeTrait.save_ability) {
+            const saveAbility = String(chargeTrait.save_ability)
+            const saveDc = Math.max(1, safeInteger(chargeTrait.save_dc, 10))
+            const save = rollSavingThrowCheck(state, diceService, targetId, {
+              ability: saveAbility,
+              modifier: abilityModifier(target?.abilities?.[saveAbility]),
+              difficulty: saveDc,
+              purpose: `monster_trait_save:charge:${saveAbility}`,
+              visibility: command.visibility,
+            })
+            rolls.push(save)
+            saved = save.success
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SavingThrowResolved', {
+              ...save,
+              ability: saveAbility,
+              trait_id: 'charge',
+            }, [targetId]))
+          }
+          if (chargeTrait.condition && !saved) {
+            pendingCondition = { id: String(chargeTrait.condition), duration: chargeTrait.duration ?? null }
+          }
         }
         let payload = resolveDamagePayload(state, targetId, raw, damageType)
         const knockedOut = command.knock_out === true && profile?.kind === 'melee' && payload.hp_before > 0 && payload.hp_after === 0
@@ -4642,8 +4807,38 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SavingThrowResolved', { ...fortitude, ability: 'con', trait_id: 'undead-fortitude' }, [targetId]))
           if (fortitude.success) payload = { ...payload, hp_after: 1, applied_amount: Math.max(0, payload.hp_before - 1), undead_fortitude: true, undead_fortitude_dc: difficulty }
         }
-        damageOutcome = payload
         events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.damage, payload.immune || payload.resistant || payload.vulnerable ? RULE_IDS.resistance : null, payload.temporary_hp_absorbed ? RULE_IDS.temporaryHp : null), 'DamageApplied', payload, [targetId]))
+        let finalPayload = payload
+        if (secondaryDamage?.amount > 0 && payload.hp_after > 0) {
+          const afterPrimary = replayEvents(state, events)
+          const secondaryPayload = resolveDamagePayload(afterPrimary, targetId, secondaryDamage.amount, secondaryDamage.type)
+          events.push(eventFrom(commandWithRules(
+            attackCommand,
+            RULE_IDS.damage,
+            secondaryPayload.immune || secondaryPayload.resistant || secondaryPayload.vulnerable ? RULE_IDS.resistance : null,
+            secondaryPayload.temporary_hp_absorbed ? RULE_IDS.temporaryHp : null,
+          ), 'DamageApplied', {
+            ...secondaryPayload,
+            action_id: secondaryDamage.action_id,
+            secondary_damage: true,
+          }, [targetId]))
+          finalPayload = secondaryPayload
+          damageOutcome = {
+            ...secondaryPayload,
+            damage_type: payload.damage_type === secondaryPayload.damage_type ? payload.damage_type : 'mixed',
+            damage_components: [
+              { damage_type: payload.damage_type, raw_amount: payload.raw_amount, applied_amount: payload.applied_amount },
+              { damage_type: secondaryPayload.damage_type, raw_amount: secondaryPayload.raw_amount, applied_amount: secondaryPayload.applied_amount },
+            ],
+            raw_amount: payload.raw_amount + secondaryPayload.raw_amount,
+            applied_amount: payload.applied_amount + secondaryPayload.applied_amount,
+            temporary_hp_before: payload.temporary_hp_before,
+            temporary_hp_absorbed: payload.temporary_hp_absorbed + secondaryPayload.temporary_hp_absorbed,
+            hp_before: payload.hp_before,
+          }
+        } else {
+          damageOutcome = payload
+        }
         if (knockedOut) events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.zeroHp, RULE_IDS.conditions, RULE_IDS.resource), 'CreatureKnockedOut', {
           condition: 'unconscious',
           rest_kind: 'short',
@@ -4658,7 +4853,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...retaliationPayload, spell_id: 'armor-of-agathys', retaliation: true }, [command.actor_id]))
           if (retaliationPayload.hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [command.actor_id]))
         }
-        if (agathys && payload.temporary_hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: String(agathys.id) }, [targetId]))
+        if (agathys && damageOutcome.temporary_hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: String(agathys.id) }, [targetId]))
         // Отражение урона от состояния. «Доспех Агатиса» остаётся частным
         // случаем: он привязан к временным хитам и тратится вместе с ними, а
         // здесь общий механизм — щит просто жжёт того, кто дотянулся.
@@ -4672,10 +4867,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...retaliationPayload, condition, retaliation: true }, [command.actor_id]))
           if (retaliationPayload.hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [command.actor_id]))
         }
-        if (pendingCondition && payload.hp_after > 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: pendingCondition.id, duration: pendingCondition.duration, source_actor: command.actor_id, action_id: profile?.id ?? null }, [targetId]))
+        if (pendingCondition && finalPayload.hp_after > 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: pendingCondition.id, duration: pendingCondition.duration, source_actor: command.actor_id, action_id: profile?.id ?? null }, [targetId]))
         if (targetConditions.has('uncanny-dodge')) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'uncanny-dodge' }, [targetId]))
         if (steadyAim) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'steady-aim' }, [command.actor_id]))
-        events.push(...zeroHitPointDamageConsequences(state, attackCommand, targetId, payload, { critical }))
+        events.push(...zeroHitPointDamageConsequences(state, attackCommand, targetId, finalPayload, { critical }))
       }
       if (landed && pendingWeaponHitMatches && pendingWeaponHitCondition && pendingWeaponHitSpell) {
         const effectId = pendingWeaponHitCondition.effect_id ?? state.mechanics.concentration[command.actor_id]?.effect_id ?? null
@@ -5012,6 +5207,22 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       break
     }
     case 'AddCondition':
+      if (command.monster_ability === 'nimble-escape') {
+        const actor = findActor(state, command.actor_id)
+        const economy = state.mechanics.combat.action_economy[command.actor_id]
+        if (!context.isNpcScheduler
+          || !monsterTraitFor(actor, 'nimble-escape')
+          || String(targetId) !== String(command.actor_id)
+          || String(command.condition) !== 'disengaged') {
+          throw new RulesValidationError('Хитрый отход доступен только существу с этой чертой', 'NIMBLE_ESCAPE_FORBIDDEN')
+        }
+        if (economy?.bonus_action === false) throw new RulesValidationError('Бонусное действие на этом ходу уже потрачено', 'BONUS_ACTION_SPENT')
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+          action_id: 'nimble-escape',
+          name: 'Хитрый отход',
+          action_type: 'bonus_action',
+        }, [command.actor_id]))
+      }
       events.push(eventFrom(command, 'ConditionAdded', { condition: String(command.condition), duration: command.duration ?? null }, [targetId]))
       break
     case 'RemoveCondition':
@@ -8518,10 +8729,15 @@ export function applyGameEvent(rawState, event) {
     case 'ConditionAdded': {
       const current = state.mechanics.conditions[target] ?? []
       const condition = String(payload.condition)
-      if (!current.some((item) => item.id === condition)) current.push({
+      const duration = payload.duration ?? null
+      const sourceActor = payload.source_actor ?? event.actor_id ?? null
+      const sourceScoped = duration === 'until-source-next-turn' || /^source-turns:\d+$/u.test(String(duration ?? ''))
+      const alreadyPresent = current.some((item) => item.id === condition
+        && (!sourceScoped || String(item.source_actor ?? '') === String(sourceActor ?? '')))
+      if (!alreadyPresent) current.push({
         id: condition,
-        duration: payload.duration ?? null,
-        source_actor: payload.source_actor ?? event.actor_id ?? null,
+        duration,
+        source_actor: sourceActor,
         effect_id: payload.effect_id ?? null,
         repeat_save_timing: payload.repeat_save_timing ?? null,
         repeat_save_on_damage: payload.repeat_save_on_damage === true,
@@ -8622,10 +8838,15 @@ export function applyGameEvent(rawState, event) {
         const attacker = findActor(state, event.actor_id)
         if (state.mechanics.combat.active && event.actor_id && attacker) {
           const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
+          const usedActionIds = Array.isArray(economy.multiattack_action_ids) ? economy.multiattack_action_ids.map(String) : []
           state.mechanics.combat.action_economy[event.actor_id] = {
             ...economy,
             attacks_used: Math.max(0, safeInteger(economy.attacks_used, 0)) + 1,
             attacks_allowed: allowedWeaponAttacks(state, attacker, event.actor_id),
+            ...(payload.action_id ? { multiattack_action_id: String(economy.multiattack_action_id ?? payload.action_id) } : {}),
+            ...(payload.action_id && monsterTraitFor(attacker, 'multiattack')
+              ? { multiattack_action_ids: [...usedActionIds, String(payload.action_id)] }
+              : {}),
           }
         }
       }
@@ -9130,6 +9351,12 @@ export function applyGameEvent(rawState, event) {
     case 'TurnStarted':
       state.mechanics.combat.round = safeInteger(payload.round, state.mechanics.combat.round)
       state.mechanics.combat.active_index = safeInteger(payload.active_index, state.mechanics.combat.active_index)
+      for (const [actorIdValue, conditions] of Object.entries(state.mechanics.conditions)) {
+        state.mechanics.conditions[actorIdValue] = (conditions ?? []).filter((condition) => !(
+          condition.duration === 'until-source-next-turn'
+          && String(condition.source_actor ?? '') === String(target ?? '')
+        ))
+      }
       // Новая фаза — новый счёт отходивших.
       state.mechanics.combat.turn_completed = []
       // В групповом режиме `TurnStarted` приходит один на всю фазу, поэтому
@@ -9178,9 +9405,15 @@ export function applyGameEvent(rawState, event) {
         : actor)
       if (state.mechanics.combat.active && event.actor_id && payload.spend_movement !== false) {
         const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
+        const priorPath = Array.isArray(economy.movement_path) ? economy.movement_path : []
+        const segment = Array.isArray(payload.path) ? payload.path.map(clone) : payload.to ? [clone(payload.to)] : []
+        const movementPath = priorPath.length
+          ? [...priorPath, ...segment]
+          : [payload.from ? clone(payload.from) : null, ...segment].filter(Boolean)
         state.mechanics.combat.action_economy[event.actor_id] = {
           ...economy,
           movement_spent: Math.max(0, safeInteger(payload.movement_spent, safeInteger(economy.movement_spent, 0) + safeInteger(payload.distance, 0))),
+          movement_path: movementPath,
           movement: safeInteger(payload.movement_remaining, 0) > 0,
           ...(payload.monster_ability === 'aggressive' ? { bonus_action: false } : {}),
         }

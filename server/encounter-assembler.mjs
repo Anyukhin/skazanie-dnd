@@ -233,6 +233,411 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
       { id: 'rend', name: 'Раздирание', kind: 'melee', attack_modifier: 7, damage_expression: '2d8+5', damage_type: 'slashing', range_feet: 5 },
     ],
   },
+  'srd_5_2_1:scout': {
+    name: 'Разведчик', hp: 16, armor: 13, speed: 30, abilities: { str: 11, dex: 14, con: 12, int: 11, wis: 13, cha: 11 },
+    initiative_bonus: 2, attackBonus: 4, damageDice: 6, damageBonus: 2,
+    challenge_rating: '1/2', xp: 100, source_page: 322, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/439-scout/', image: '/assets/enemies/scout.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2 },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'shortsword', name: 'Короткий меч', kind: 'melee', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'piercing', range_feet: 5 },
+      { id: 'longbow', name: 'Длинный лук', kind: 'ranged', attack_modifier: 4, damage_expression: '1d8+2', damage_type: 'piercing', range_feet: 600, normal_range_feet: 150 },
+    ],
+  },
+  'srd_5_2_1:spy': {
+    name: 'Шпион', hp: 27, armor: 12, speed: 30, abilities: { str: 10, dex: 15, con: 10, int: 12, wis: 14, cha: 16 },
+    initiative_bonus: 4, attackBonus: 4, damageDice: 6, damageBonus: 2,
+    challenge_rating: '1', xp: 200, source_page: 329, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/444-spy/', image: '/assets/enemies/spy.png',
+    traits: [
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+      { id: 'nimble-escape', name: 'Хитрое действие' },
+    ],
+    action_profiles: [
+      { id: 'shortsword', name: 'Короткий меч', kind: 'melee', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'piercing', range_feet: 5, on_hit: { damage_expression: '2d6', damage_type: 'poison' } },
+      { id: 'hand-crossbow', name: 'Ручной арбалет', kind: 'ranged', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'piercing', range_feet: 120, normal_range_feet: 30, on_hit: { damage_expression: '2d6', damage_type: 'poison' } },
+    ],
+  },
+  'srd_5_2_1:giant-centipede': {
+    name: 'Гигантская многоножка', hp: 9, armor: 14, speed: 30, abilities: { str: 5, dex: 14, con: 12, int: 1, wis: 7, cha: 3 },
+    initiative_bonus: 2, attackBonus: 4, damageDice: 4, damageBonus: 2,
+    challenge_rating: '1/4', xp: 50, source_page: 349, creature_type: 'beast',
+    source_url: 'https://dnd.su/bestiary/341-giant-centipede/', image: '/assets/enemies/giant-centipede.png',
+    traits: [{ id: 'relentless-pursuit', name: 'Неотступная охота' }],
+    action_profiles: [
+      { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 4, damage_expression: '1d4+2', damage_type: 'piercing', range_feet: 5, on_hit: { condition: 'poisoned', duration: 'until-source-next-turn' } },
+    ],
+  },
+  'srd_5_2_1:violet-fungus': {
+    name: 'Лиловый гриб', hp: 18, armor: 5, speed: 5, abilities: { str: 3, dex: 1, con: 10, int: 1, wis: 3, cha: 1 },
+    initiative_bonus: -5, attackBonus: 2, damageDice: 8, damageBonus: 0,
+    challenge_rating: '1/4', xp: 50, source_page: 286, creature_type: 'plant',
+    source_url: 'https://dnd.su/bestiary/157-violet-fungus/', image: '/assets/enemies/violet-fungus.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'rotting-touch' },
+      { id: 'relentless-pursuit', name: 'Неотступная охота' },
+    ],
+    action_profiles: [
+      { id: 'rotting-touch', name: 'Разлагающее касание', kind: 'melee', attack_modifier: 2, damage_expression: '1d8', damage_type: 'necrotic', range_feet: 10 },
+    ],
+  },
+  'srd_5_2_1:minotaur-skeleton': {
+    name: 'Скелет минотавра', hp: 45, armor: 12, speed: 40, abilities: { str: 18, dex: 11, con: 15, int: 6, wis: 8, cha: 5 },
+    initiative_bonus: 0, attackBonus: 6, damageDice: 6, damageBonus: 4,
+    challenge_rating: '2', xp: 450, source_page: 326, creature_type: 'undead',
+    source_url: 'https://dnd.su/bestiary/286-minotaur_skeleton/', image: '/assets/enemies/minotaur-skeleton.png',
+    traits: [{
+      id: 'charge', name: 'Разбег', action_id: 'gore', minimum_distance_feet: 20,
+      requires_straight_toward_target: true, target_size_max: 'large',
+      damage_expression: '2d8', damage_type: 'piercing', condition: 'prone', duration: 'until-next-turn',
+    }],
+    action_profiles: [
+      { id: 'gore', name: 'Рога', kind: 'melee', attack_modifier: 6, damage_expression: '2d6+4', damage_type: 'piercing', range_feet: 5 },
+      { id: 'slam', name: 'Размашистый удар', kind: 'melee', attack_modifier: 6, damage_expression: '2d10+4', damage_type: 'bludgeoning', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:ankylosaurus': {
+    name: 'Анкилозавр', hp: 68, armor: 15, speed: 30, abilities: { str: 19, dex: 11, con: 15, int: 2, wis: 12, cha: 5 },
+    initiative_bonus: 0, attackBonus: 6, damageDice: 10, damageBonus: 4,
+    challenge_rating: '3', xp: 700, source_page: 344, creature_type: 'beast',
+    source_url: 'https://dnd.su/bestiary/21185-ankylosaurus/', image: '/assets/enemies/ankylosaurus.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'tail' }],
+    action_profiles: [
+      { id: 'tail', name: 'Хвост', kind: 'melee', attack_modifier: 6, damage_expression: '1d10+4', damage_type: 'bludgeoning', range_feet: 10, on_hit: { condition: 'prone', duration: 'until-next-turn', target_size_max: 'huge' } },
+    ],
+  },
+  'srd_5_2_1:berserker': {
+    name: 'Берсерк', hp: 67, armor: 13, speed: 30, abilities: { str: 16, dex: 12, con: 17, int: 9, wis: 11, cha: 9 },
+    initiative_bonus: 1, attackBonus: 5, damageDice: 12, damageBonus: 3,
+    challenge_rating: '2', xp: 450, source_page: 263, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/420-berserker/', image: '/assets/enemies/berserker.png',
+    traits: [{ id: 'bloodied-frenzy', name: 'Кровавая ярость' }],
+    action_profiles: [
+      { id: 'greataxe', name: 'Секира', kind: 'melee', attack_modifier: 5, damage_expression: '1d12+3', damage_type: 'slashing', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:lion': {
+    name: 'Лев', hp: 22, armor: 12, speed: 50, abilities: { str: 17, dex: 15, con: 11, int: 3, wis: 12, cha: 8 },
+    initiative_bonus: 2, attackBonus: 5, damageDice: 8, damageBonus: 3,
+    challenge_rating: '1', xp: 200, source_page: 356, creature_type: 'beast',
+    source_url: 'https://dnd.su/bestiary/375-lion/', image: '/assets/enemies/lion.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'rend' },
+      { id: 'pack-tactics', name: 'Тактика стаи' },
+    ],
+    action_profiles: [
+      { id: 'rend', name: 'Раздирание', kind: 'melee', attack_modifier: 5, damage_expression: '1d8+3', damage_type: 'slashing', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:brown-bear': {
+    name: 'Бурый медведь', hp: 22, armor: 11, speed: 40, abilities: { str: 17, dex: 12, con: 15, int: 2, wis: 13, cha: 7 },
+    initiative_bonus: 1, attackBonus: 5, damageDice: 8, damageBonus: 3,
+    challenge_rating: '1', xp: 200, source_page: 346, creature_type: 'beast',
+    source_url: 'https://dnd.su/bestiary/19977-brown-bear/', image: '/assets/enemies/brown-bear.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', action_counts: { bite: 1, claw: 1 } }],
+    action_profiles: [
+      { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 5, damage_expression: '1d8+3', damage_type: 'piercing', range_feet: 5 },
+      { id: 'claw', name: 'Когти', kind: 'melee', attack_modifier: 5, damage_expression: '1d4+3', damage_type: 'slashing', range_feet: 5, on_hit: { condition: 'prone', duration: 'until-next-turn', target_size_max: 'large' } },
+    ],
+  },
+  'srd_5_2_1:giant-boar': {
+    name: 'Гигантский кабан', hp: 42, armor: 13, speed: 40, abilities: { str: 17, dex: 10, con: 16, int: 2, wis: 7, cha: 5 },
+    initiative_bonus: 0, attackBonus: 5, damageDice: 6, damageBonus: 3,
+    challenge_rating: '2', xp: 450, source_page: 349, creature_type: 'beast',
+    source_url: 'https://dnd.su/bestiary/21326-giant-boar/', image: '/assets/enemies/giant-boar.png',
+    traits: [
+      {
+        id: 'charge', name: 'Разбег', action_id: 'gore', minimum_distance_feet: 20,
+        requires_straight_toward_target: true, target_size_max: 'large',
+        damage_expression: '2d6', damage_type: 'piercing', condition: 'prone', duration: 'until-next-turn',
+      },
+      { id: 'bloodied-frenzy', name: 'Ярость раненого', attack_kinds: ['melee'], saving_throws: false },
+    ],
+    action_profiles: [
+      { id: 'gore', name: 'Бодание', kind: 'melee', attack_modifier: 5, damage_expression: '2d6+3', damage_type: 'piercing', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:tiger': {
+    name: 'Тигр', hp: 30, armor: 13, speed: 40, abilities: { str: 17, dex: 16, con: 14, int: 3, wis: 12, cha: 8 },
+    initiative_bonus: 3, attackBonus: 5, damageDice: 6, damageBonus: 3,
+    challenge_rating: '1', xp: 200, source_page: 363, creature_type: 'beast',
+    source_url: 'https://dnd.su/bestiary/21588-tiger/', image: '/assets/enemies/tiger.png',
+    traits: [{ id: 'nimble-escape', name: 'Хитрый отход' }],
+    action_profiles: [
+      { id: 'rend', name: 'Раздирание', kind: 'melee', attack_modifier: 5, damage_expression: '2d6+3', damage_type: 'slashing', range_feet: 5, on_hit: { condition: 'prone', duration: 'until-next-turn', target_size_max: 'large' } },
+    ],
+  },
+  'srd_5_2_1:sahuagin-warrior': {
+    name: 'Воин сахуагинов', hp: 22, armor: 12, speed: 30, abilities: { str: 13, dex: 11, con: 12, int: 12, wis: 13, cha: 9 },
+    initiative_bonus: 0, attackBonus: 3, damageDice: 6, damageBonus: 1,
+    challenge_rating: '1/2', xp: 100, source_page: 321, creature_type: 'fiend',
+    source_url: 'https://dnd.su/bestiary/21533-sahuagin-warrior/', image: '/assets/enemies/sahuagin-warrior.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'claw' }],
+    action_profiles: [
+      { id: 'claw', name: 'Когти', kind: 'melee', attack_modifier: 3, damage_expression: '1d6+1', damage_type: 'slashing', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:bandit-captain': {
+    name: 'Атаман бандитов', hp: 52, armor: 15, speed: 30, abilities: { str: 15, dex: 16, con: 14, int: 14, wis: 11, cha: 14 },
+    initiative_bonus: 3, attackBonus: 5, damageDice: 6, damageBonus: 3,
+    challenge_rating: '2', xp: 450, source_page: 261, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/21201-bandit-captain/', image: '/assets/enemies/bandit-captain.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2 },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'scimitar', name: 'Скимитар', kind: 'melee', attack_modifier: 5, damage_expression: '1d6+3', damage_type: 'slashing', range_feet: 5 },
+      { id: 'pistol', name: 'Пистоль', kind: 'ranged', attack_modifier: 5, damage_expression: '1d10+3', damage_type: 'piercing', range_feet: 90, normal_range_feet: 30 },
+    ],
+  },
+  'srd_5_2_1:warrior-veteran': {
+    name: 'Воитель-ветеран', hp: 65, armor: 17, speed: 30, abilities: { str: 16, dex: 13, con: 14, int: 10, wis: 11, cha: 10 },
+    initiative_bonus: 3, attackBonus: 5, damageDice: 6, damageBonus: 3,
+    challenge_rating: '3', xp: 700, source_page: 337, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/21617-warrior-veteran/', image: '/assets/enemies/warrior-veteran.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2, same_action: true },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'greatsword', name: 'Двуручный меч', kind: 'melee', attack_modifier: 5, damage_expression: '2d6+3', damage_type: 'slashing', range_feet: 5 },
+      { id: 'heavy-crossbow', name: 'Тяжёлый арбалет', kind: 'ranged', attack_modifier: 3, damage_expression: '2d10+1', damage_type: 'piercing', range_feet: 400, normal_range_feet: 100 },
+    ],
+  },
+  'srd_5_2_1:ettin': {
+    name: 'Эттин', hp: 85, armor: 12, speed: 40, abilities: { str: 21, dex: 8, con: 17, int: 6, wis: 10, cha: 8 },
+    initiative_bonus: -1, attackBonus: 7, damageDice: 8, damageBonus: 5,
+    challenge_rating: '4', xp: 1100, source_page: 284, creature_type: 'giant',
+    source_url: 'https://dnd.su/bestiary/21300-ettin/', image: '/assets/enemies/ettin.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', action_counts: { battleaxe: 1, morningstar: 1 } }],
+    action_profiles: [
+      { id: 'battleaxe', name: 'Боевой топор', kind: 'melee', attack_modifier: 7, damage_expression: '2d8+5', damage_type: 'slashing', range_feet: 5, on_hit: { condition: 'prone', duration: 'until-next-turn', target_size_max: 'large' } },
+      { id: 'morningstar', name: 'Моргенштерн', kind: 'melee', attack_modifier: 7, damage_expression: '2d8+5', damage_type: 'piercing', range_feet: 5, on_hit: { condition: 'disadvantage-next-attack', duration: 'until-own-turn-end' } },
+    ],
+  },
+  'srd_5_2_1:guard-captain': {
+    name: 'Капитан стражи', hp: 75, armor: 18, speed: 30, abilities: { str: 18, dex: 14, con: 16, int: 12, wis: 14, cha: 13 },
+    initiative_bonus: 4, attackBonus: 6, damageDice: 10, damageBonus: 4,
+    challenge_rating: '4', xp: 1100, source_page: 296, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/21384-guard-captain/', image: '/assets/enemies/guard-captain.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2 },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'longsword', name: 'Длинный меч', kind: 'melee', attack_modifier: 6, damage_expression: '2d10+4', damage_type: 'slashing', range_feet: 5 },
+      { id: 'javelin-melee', name: 'Метательное копьё (рукопашная)', kind: 'melee', attack_modifier: 6, damage_expression: '3d6+4', damage_type: 'piercing', range_feet: 5 },
+      { id: 'javelin-ranged', name: 'Метательное копьё (бросок)', kind: 'ranged', attack_modifier: 6, damage_expression: '3d6+4', damage_type: 'piercing', range_feet: 120, normal_range_feet: 30 },
+    ],
+  },
+  'srd_5_2_1:awakened-tree': {
+    name: 'Пробуждённое дерево', hp: 59, armor: 13, speed: 20, abilities: { str: 19, dex: 6, con: 15, int: 10, wis: 10, cha: 7 },
+    initiative_bonus: -2, attackBonus: 6, damageDice: 6, damageBonus: 4,
+    challenge_rating: '2', xp: 450, source_page: 260, creature_type: 'plant',
+    source_url: 'https://dnd.su/bestiary/21194-awakened-tree/', image: '/assets/enemies/awakened-tree.png',
+    traits: [{ id: 'relentless-pursuit', name: 'Политика: неумолимое преследование' }],
+    action_profiles: [
+      { id: 'slam', name: 'Размашистый удар', kind: 'melee', attack_modifier: 6, damage_expression: '3d6+4', damage_type: 'bludgeoning', range_feet: 10 },
+    ],
+  },
+  'srd_5_2_1:giant-elk': {
+    name: 'Гигантский лось', hp: 42, armor: 14, speed: 60, abilities: { str: 19, dex: 18, con: 14, int: 7, wis: 14, cha: 10 },
+    initiative_bonus: 6, attackBonus: 6, damageDice: 6, damageBonus: 4,
+    challenge_rating: '2', xp: 450, source_page: 351, creature_type: 'celestial',
+    source_url: 'https://dnd.su/bestiary/21332-giant-elk/', image: '/assets/enemies/giant-elk.png',
+    traits: [{
+      id: 'charge', name: 'Разбег', action_id: 'ram', minimum_distance_feet: 20,
+      requires_straight_toward_target: true, target_size_max: 'huge',
+      damage_expression: '2d4', damage_type: 'bludgeoning', condition: 'prone', duration: 'until-next-turn',
+    }],
+    action_profiles: [
+      {
+        id: 'ram', name: 'Таран', kind: 'melee', attack_modifier: 6,
+        damage_expression: '2d6+4', damage_type: 'bludgeoning', range_feet: 10,
+        on_hit: { damage_expression: '2d4', damage_type: 'radiant' },
+      },
+    ],
+  },
+  'srd_5_2_1:ogre-zombie': {
+    name: 'Огр-зомби', hp: 85, armor: 8, speed: 30, abilities: { str: 19, dex: 6, con: 18, int: 3, wis: 6, cha: 5 },
+    initiative_bonus: -2, attackBonus: 6, damageDice: 8, damageBonus: 4,
+    challenge_rating: '2', xp: 450, source_page: 344, creature_type: 'undead',
+    source_url: 'https://dnd.su/bestiary/21479-ogre-zombie/', image: '/assets/enemies/ogre-zombie.png',
+    traits: [{ id: 'undead-fortitude', name: 'Стойкость нежити' }],
+    action_profiles: [
+      { id: 'slam', name: 'Размашистый удар', kind: 'melee', attack_modifier: 6, damage_expression: '2d8+4', damage_type: 'bludgeoning', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:knight': {
+    name: 'Рыцарь', hp: 52, armor: 18, speed: 30, abilities: { str: 16, dex: 11, con: 14, int: 11, wis: 11, cha: 15 },
+    initiative_bonus: 0, attackBonus: 5, damageDice: 6, damageBonus: 3,
+    challenge_rating: '3', xp: 700, source_page: 302, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/21419-knight/', image: '/assets/enemies/knight.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2 },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'greatsword', name: 'Двуручный меч', kind: 'melee', attack_modifier: 5, damage_expression: '2d6+3', damage_type: 'slashing', range_feet: 5, on_hit: { damage_expression: '1d8', damage_type: 'radiant' } },
+      { id: 'heavy-crossbow', name: 'Тяжёлый арбалет', kind: 'ranged', attack_modifier: 2, damage_expression: '2d10', damage_type: 'piercing', range_feet: 400, normal_range_feet: 100, on_hit: { damage_expression: '1d8', damage_type: 'radiant' } },
+    ],
+  },
+  'srd_5_2_1:hippopotamus': {
+    name: 'Гиппопотам', hp: 82, armor: 14, speed: 30, abilities: { str: 21, dex: 7, con: 15, int: 2, wis: 12, cha: 4 },
+    initiative_bonus: -2, attackBonus: 7, damageDice: 10, damageBonus: 5,
+    challenge_rating: '4', xp: 1100, source_page: 355, creature_type: 'beast',
+    source_url: 'https://dnd.su/bestiary/21397-hippopotamus/', image: '/assets/enemies/hippopotamus.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'bite' }],
+    action_profiles: [
+      { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 7, damage_expression: '2d10+5', damage_type: 'piercing', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:earth-elemental': {
+    name: 'Земляной элементаль', hp: 147, armor: 17, speed: 30, abilities: { str: 20, dex: 8, con: 20, int: 5, wis: 10, cha: 5 },
+    initiative_bonus: -1, attackBonus: 8, damageDice: 8, damageBonus: 5,
+    challenge_rating: '5', xp: 1800, source_page: 282, creature_type: 'elemental',
+    source_url: 'https://dnd.su/bestiary/21290-earth-elemental/', image: '/assets/enemies/earth-elemental.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2 },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'slam', name: 'Размашистый удар', kind: 'melee', attack_modifier: 8, damage_expression: '2d8+5', damage_type: 'bludgeoning', range_feet: 10 },
+      { id: 'rock-launch', name: 'Бросок булыжника', kind: 'ranged', attack_modifier: 8, damage_expression: '1d6+5', damage_type: 'bludgeoning', range_feet: 60, normal_range_feet: 60, on_hit: { condition: 'prone', duration: 'until-next-turn', target_size_max: 'large' } },
+    ],
+  },
+  'srd_5_2_1:hill-giant': {
+    name: 'Холмовой великан', hp: 105, armor: 13, speed: 40, abilities: { str: 21, dex: 8, con: 19, int: 5, wis: 9, cha: 6 },
+    initiative_bonus: 2, attackBonus: 8, damageDice: 8, damageBonus: 5,
+    challenge_rating: '5', xp: 1800, source_page: 298, creature_type: 'giant',
+    source_url: 'https://dnd.su/bestiary/21395-hill-giant/', image: '/assets/enemies/hill-giant.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2 },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'tree-club', name: 'Вырванное дерево', kind: 'melee', attack_modifier: 8, damage_expression: '3d8+5', damage_type: 'bludgeoning', range_feet: 10, on_hit: { condition: 'prone', duration: 'until-next-turn', target_size_max: 'large' } },
+      { id: 'trash-lob', name: 'Пригоршня мусора', kind: 'ranged', attack_modifier: 8, damage_expression: '2d10+5', damage_type: 'bludgeoning', range_feet: 240, normal_range_feet: 60, on_hit: { condition: 'poisoned', duration: 'until-own-turn-end' } },
+    ],
+  },
+  'srd_5_2_1:xorn': {
+    name: 'Зорн', hp: 84, armor: 19, speed: 20, abilities: { str: 17, dex: 10, con: 22, int: 11, wis: 10, cha: 11 },
+    initiative_bonus: 0, attackBonus: 6, damageDice: 6, damageBonus: 3,
+    challenge_rating: '5', xp: 1800, source_page: 343, creature_type: 'elemental',
+    source_url: 'https://dnd.su/bestiary/21635-xorn/', image: '/assets/enemies/xorn.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', action_counts: { bite: 1, claw: 3 } },
+      { id: 'aggressive', name: 'Налёт' },
+    ],
+    action_profiles: [
+      { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 6, damage_expression: '4d6+3', damage_type: 'piercing', range_feet: 5 },
+      { id: 'claw', name: 'Когти', kind: 'melee', attack_modifier: 6, damage_expression: '1d10+3', damage_type: 'slashing', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:animated-armor': {
+    name: 'Живой доспех', hp: 33, armor: 18, speed: 25, abilities: { str: 14, dex: 11, con: 13, int: 1, wis: 3, cha: 1 },
+    initiative_bonus: 2, attackBonus: 4, damageDice: 6, damageBonus: 2,
+    challenge_rating: '1', xp: 200, source_page: 259, creature_type: 'construct',
+    source_url: 'https://dnd.su/bestiary/35-animated-armor/', image: '/assets/enemies/animated-armor.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'slam' }],
+    action_profiles: [
+      { id: 'slam', name: 'Размашистый удар', kind: 'melee', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'bludgeoning', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:ochre-jelly': {
+    name: 'Золотистый студень', hp: 52, armor: 8, speed: 20, abilities: { str: 15, dex: 6, con: 14, int: 2, wis: 6, cha: 1 },
+    initiative_bonus: -2, attackBonus: 4, damageDice: 6, damageBonus: 2,
+    challenge_rating: '2', xp: 450, source_page: 312, creature_type: 'ooze',
+    source_url: 'https://dnd.su/bestiary/8-ochre-jelly/', image: '/assets/enemies/ochre-jelly.png',
+    traits: [{ id: 'relentless-pursuit', name: 'Политика: неумолимое преследование' }],
+    action_profiles: [
+      { id: 'pseudopod', name: 'Ложноножка', kind: 'melee', attack_modifier: 4, damage_expression: '3d6+2', damage_type: 'acid', range_feet: 5 },
+    ],
+  },
+  'srd_5_2_1:barbed-devil': {
+    name: 'Шипастый дьявол', hp: 110, armor: 15, speed: 30, abilities: { str: 16, dex: 17, con: 18, int: 12, wis: 14, cha: 14 },
+    initiative_bonus: 3, attackBonus: 6, damageDice: 6, damageBonus: 3,
+    challenge_rating: '5', xp: 1800, source_page: 262, creature_type: 'fiend',
+    source_url: 'https://dnd.su/bestiary/77-barbed_devil/', image: '/assets/enemies/barbed-devil.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака: когти и хвост', action_counts: { claws: 1, tail: 1 } }],
+    action_profiles: [
+      { id: 'claws', name: 'Когти', kind: 'melee', attack_modifier: 6, damage_expression: '2d6+3', damage_type: 'piercing', range_feet: 5 },
+      { id: 'tail', name: 'Хвост', kind: 'melee', attack_modifier: 6, damage_expression: '2d10+3', damage_type: 'slashing', range_feet: 10 },
+    ],
+  },
+  'srd_5_2_1:gladiator': {
+    name: 'Гладиатор', hp: 112, armor: 16, speed: 30, abilities: { str: 18, dex: 15, con: 16, int: 10, wis: 12, cha: 15 },
+    initiative_bonus: 5, attackBonus: 7, damageDice: 6, damageBonus: 4,
+    challenge_rating: '5', xp: 1800, source_page: 289, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/423-gladiator/', image: '/assets/enemies/gladiator.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 3 },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'spear-melee', name: 'Копьё (рукопашная)', kind: 'melee', attack_modifier: 7, damage_expression: '2d6+4', damage_type: 'piercing', range_feet: 5 },
+      { id: 'spear-ranged', name: 'Копьё (бросок)', kind: 'ranged', attack_modifier: 7, damage_expression: '2d6+4', damage_type: 'piercing', range_feet: 60, normal_range_feet: 20 },
+    ],
+  },
+  'srd_5_2_1:giant-scorpion': {
+    name: 'Гигантский скорпион', hp: 52, armor: 15, speed: 40, abilities: { str: 16, dex: 13, con: 15, int: 1, wis: 9, cha: 3 },
+    initiative_bonus: 1, attackBonus: 5, damageDice: 6, damageBonus: 3,
+    challenge_rating: '3', xp: 700, source_page: 353, creature_type: 'beast',
+    source_url: 'https://dnd.su/bestiary/359-giant-scorpion/', image: '/assets/enemies/giant-scorpion.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', action_counts: { claw: 2, sting: 1 } }],
+    action_profiles: [
+      { id: 'claw', name: 'Клешня', kind: 'melee', attack_modifier: 5, damage_expression: '1d6+3', damage_type: 'bludgeoning', range_feet: 5 },
+      { id: 'sting', name: 'Жало', kind: 'melee', attack_modifier: 5, damage_expression: '1d8+3', damage_type: 'piercing', range_feet: 5, on_hit: { damage_expression: '2d10', damage_type: 'poison' } },
+    ],
+  },
+  'srd_5_2_1:wyvern': {
+    name: 'Виверна', hp: 127, armor: 14, speed: 30, abilities: { str: 19, dex: 10, con: 16, int: 5, wis: 12, cha: 6 },
+    initiative_bonus: 0, attackBonus: 7, damageDice: 8, damageBonus: 4,
+    challenge_rating: '6', xp: 2300, source_page: 343, creature_type: 'dragon',
+    source_url: 'https://dnd.su/bestiary/313-wyvern/', image: '/assets/enemies/wyvern.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', action_counts: { bite: 1, sting: 1 } }],
+    action_profiles: [
+      { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 7, damage_expression: '2d8+4', damage_type: 'piercing', range_feet: 5 },
+      {
+        id: 'sting', name: 'Жало', kind: 'melee', attack_modifier: 7,
+        damage_expression: '2d6+4', damage_type: 'piercing', range_feet: 10,
+        on_hit: { damage_expression: '7d6', damage_type: 'poison', condition: 'poisoned', duration: 'until-source-next-turn' },
+      },
+    ],
+  },
+  'srd_5_2_1:manticore': {
+    name: 'Мантикора', hp: 68, armor: 14, speed: 30, abilities: { str: 17, dex: 16, con: 17, int: 7, wis: 12, cha: 8 },
+    initiative_bonus: 3, attackBonus: 5, damageDice: 8, damageBonus: 3,
+    challenge_rating: '3', xp: 700, source_page: 306, creature_type: 'monstrosity',
+    source_url: 'https://dnd.su/bestiary/226-manticore/', image: '/assets/enemies/manticore.png',
+    traits: [
+      { id: 'multiattack', name: 'Мультиатака', attacks: 3 },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'rend', name: 'Раздирание', kind: 'melee', attack_modifier: 5, damage_expression: '1d8+3', damage_type: 'slashing', range_feet: 5 },
+      { id: 'tail-spike', name: 'Хвостовой шип', kind: 'ranged', attack_modifier: 5, damage_expression: '1d8+3', damage_type: 'piercing', range_feet: 200, normal_range_feet: 100 },
+    ],
+  },
+  'srd_5_2_1:tough-boss': {
+    name: 'Босс громил', hp: 82, armor: 16, speed: 30, abilities: { str: 17, dex: 14, con: 16, int: 11, wis: 10, cha: 11 },
+    initiative_bonus: 2, attackBonus: 5, damageDice: 8, damageBonus: 3,
+    challenge_rating: '4', xp: 1100, source_page: 332, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/21589-tough-boss/', image: '/assets/enemies/tough-boss.png',
+    traits: [
+      { id: 'pack-tactics', name: 'Тактика стаи' },
+      { id: 'multiattack', name: 'Мультиатака', attacks: 2 },
+      { id: 'keep-distance', name: 'Держит дистанцию' },
+    ],
+    action_profiles: [
+      { id: 'warhammer', name: 'Боевой молот', kind: 'melee', attack_modifier: 5, damage_expression: '2d8+3', damage_type: 'bludgeoning', range_feet: 5 },
+      { id: 'heavy-crossbow', name: 'Тяжёлый арбалет', kind: 'ranged', attack_modifier: 4, damage_expression: '2d10+2', damage_type: 'piercing', range_feet: 400, normal_range_feet: 100 },
+    ],
+  },
 })
 
 /**
@@ -241,26 +646,26 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
  * пяти, и разница между ними настоящая — «стая» из быстрых зверей ощущается
  * иначе, чем «ватага» из трёх тяжёлых бойцов, даже когда бюджет XP один.
  *
- * Честная граница: бестиарий расширен до восемнадцати существ, но это всё ещё
+ * Честная граница: бестиарий расширен до пятидесяти существ, но это всё ещё
  * компактный mini-compendium, а не полный monster corpus (`docs/known-limitations.md`).
  */
 const THEMES = deepFreeze({
   goblinoids: ['srd_5_2_1:goblin-minion', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:kobold', 'srd_5_2_1:bugbear'],
-  undead: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie', 'srd_5_2_1:ghoul'],
-  beasts: ['srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf', 'srd_5_2_1:owlbear', 'srd_5_2_1:giant-rat', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:giant-spider'],
-  raiders: ['srd_5_2_1:bandit', 'srd_5_2_1:gnoll-warrior', 'srd_5_2_1:ogre', 'srd_5_2_1:orc', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:bugbear'],
+  undead: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie', 'srd_5_2_1:ghoul', 'srd_5_2_1:minotaur-skeleton', 'srd_5_2_1:ogre-zombie'],
+  beasts: ['srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf', 'srd_5_2_1:owlbear', 'srd_5_2_1:giant-rat', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-centipede', 'srd_5_2_1:ankylosaurus', 'srd_5_2_1:lion', 'srd_5_2_1:brown-bear', 'srd_5_2_1:giant-boar', 'srd_5_2_1:tiger', 'srd_5_2_1:giant-elk', 'srd_5_2_1:hippopotamus'],
+  raiders: ['srd_5_2_1:bandit', 'srd_5_2_1:gnoll-warrior', 'srd_5_2_1:ogre', 'srd_5_2_1:orc', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:bugbear', 'srd_5_2_1:scout', 'srd_5_2_1:spy', 'srd_5_2_1:berserker', 'srd_5_2_1:bandit-captain', 'srd_5_2_1:warrior-veteran', 'srd_5_2_1:ettin', 'srd_5_2_1:hill-giant', 'srd_5_2_1:gladiator', 'srd_5_2_1:tough-boss'],
   // Ватага: только тяжёлые бойцы, мало целей и каждая больно бьёт.
-  warband: ['srd_5_2_1:gnoll-warrior', 'srd_5_2_1:ogre', 'srd_5_2_1:orc', 'srd_5_2_1:bugbear', 'srd_5_2_1:hobgoblin'],
+  warband: ['srd_5_2_1:gnoll-warrior', 'srd_5_2_1:ogre', 'srd_5_2_1:orc', 'srd_5_2_1:bugbear', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:berserker', 'srd_5_2_1:sahuagin-warrior', 'srd_5_2_1:bandit-captain', 'srd_5_2_1:warrior-veteran', 'srd_5_2_1:ettin', 'srd_5_2_1:guard-captain', 'srd_5_2_1:knight', 'srd_5_2_1:hill-giant', 'srd_5_2_1:barbed-devil', 'srd_5_2_1:gladiator', 'srd_5_2_1:tough-boss'],
   // Мелочь: много слабых существ, бой решается площадью, а не силой удара.
-  vermin: ['srd_5_2_1:giant-rat', 'srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion'],
+  vermin: ['srd_5_2_1:giant-rat', 'srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion', 'srd_5_2_1:giant-centipede', 'srd_5_2_1:violet-fungus', 'srd_5_2_1:ochre-jelly', 'srd_5_2_1:giant-scorpion'],
   // Засада: быстрые и хрупкие, наказывают за растянутый строй.
-  ambush: ['srd_5_2_1:bandit', 'srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf'],
+  ambush: ['srd_5_2_1:bandit', 'srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf', 'srd_5_2_1:scout', 'srd_5_2_1:spy', 'srd_5_2_1:lion', 'srd_5_2_1:tiger', 'srd_5_2_1:bandit-captain', 'srd_5_2_1:wyvern', 'srd_5_2_1:manticore'],
   // Склеп: нежить и то, что кормится в мёртвом месте.
-  crypt: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie', 'srd_5_2_1:ghoul', 'srd_5_2_1:giant-rat'],
+  crypt: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie', 'srd_5_2_1:ghoul', 'srd_5_2_1:giant-rat', 'srd_5_2_1:minotaur-skeleton', 'srd_5_2_1:giant-centipede', 'srd_5_2_1:ogre-zombie', 'srd_5_2_1:animated-armor', 'srd_5_2_1:ochre-jelly'],
   // Пещера: обитатели подземелья вперемешку с тем, кто их туда загнал.
-  cave: ['srd_5_2_1:kobold', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-rat', 'srd_5_2_1:bugbear', 'srd_5_2_1:ghoul', 'srd_5_2_1:ogre', 'srd_5_2_1:owlbear'],
+  cave: ['srd_5_2_1:kobold', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-rat', 'srd_5_2_1:bugbear', 'srd_5_2_1:ghoul', 'srd_5_2_1:ogre', 'srd_5_2_1:owlbear', 'srd_5_2_1:giant-centipede', 'srd_5_2_1:violet-fungus', 'srd_5_2_1:minotaur-skeleton', 'srd_5_2_1:brown-bear', 'srd_5_2_1:ettin', 'srd_5_2_1:awakened-tree', 'srd_5_2_1:ogre-zombie', 'srd_5_2_1:earth-elemental', 'srd_5_2_1:hill-giant', 'srd_5_2_1:xorn', 'srd_5_2_1:animated-armor', 'srd_5_2_1:ochre-jelly', 'srd_5_2_1:barbed-devil', 'srd_5_2_1:giant-scorpion'],
   // Дикая местность: звери открытых пространств.
-  wilderness: ['srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf', 'srd_5_2_1:owlbear', 'srd_5_2_1:gnoll-warrior', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-wolf-spider'],
+  wilderness: ['srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf', 'srd_5_2_1:owlbear', 'srd_5_2_1:gnoll-warrior', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:scout', 'srd_5_2_1:ankylosaurus', 'srd_5_2_1:lion', 'srd_5_2_1:brown-bear', 'srd_5_2_1:giant-boar', 'srd_5_2_1:tiger', 'srd_5_2_1:awakened-tree', 'srd_5_2_1:giant-elk', 'srd_5_2_1:hippopotamus', 'srd_5_2_1:hill-giant', 'srd_5_2_1:giant-scorpion', 'srd_5_2_1:wyvern', 'srd_5_2_1:manticore'],
   generic: Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST),
 })
 
