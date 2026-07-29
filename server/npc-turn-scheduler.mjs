@@ -292,6 +292,41 @@ function attackCommands(state, enemy, targetId, selectedProfile) {
   }]
 }
 
+/**
+ * Публичная причина детерминированного выбора называет только видимые на поле
+ * факты: перемещение, раненую цель, контроль от действия или поддержку союзника.
+ * Числовая оценка, скрытая КД и внутренние параметры существа наружу не выходят.
+ */
+function publicTacticFor(state, enemy, candidate, commands = []) {
+  if (!candidate) return null
+  const targetId = actorId(candidate.actor)
+  const profile = candidate.profile
+  const supported = adjacentEnemyAlly(state, enemy, candidate.actor)
+  const packTactics = supported && (hasTrait(enemy, 'pack-tactics') || hasTrait(enemy, 'martial-advantage'))
+  const targetHp = Math.max(0, Number(candidate.actor?.hp) || 0)
+  const targetMaximum = Math.max(1, Number(candidate.actor?.maxHp) || targetHp || 1)
+  const targetWounded = targetHp > 0 && targetHp <= targetMaximum / 2
+  const condition = String(profile?.on_hit?.condition ?? '')
+  const alreadyControlled = condition && conditionIds(state, targetId).has(condition)
+  const retreat = commands.some((command) => command.command_type === 'MoveActor')
+    && commands.some((command) => ['keep-distance', 'nimble-escape'].includes(String(command.monster_ability ?? '')))
+  const tactic = retreat
+    ? 'держит дистанцию'
+    : packTactics
+      ? 'тактика стаи'
+      : condition && !alreadyControlled
+        ? 'пытается сковать цель'
+        : targetWounded
+          ? 'давит на раненого'
+          : candidate.inRange
+            ? profile?.kind === 'ranged' ? 'держит линию огня' : 'атакует доступную цель'
+            : profile?.kind === 'ranged' ? 'выходит на линию атаки' : 'сокращает дистанцию'
+  return {
+    tactic,
+    target_id: targetId,
+  }
+}
+
 export function planNpcTurn(rawState, enemyId) {
   const state = normalizeCampaignState(rawState)
   const enemy = findActor(state, enemyId)
@@ -523,9 +558,13 @@ export async function runNpcTurnScheduler({
       return { state: loaded.state, state_version: loaded.state_version, turns, events }
     }
     if (!current) throw new RulesValidationError('Initiative references an unknown actor', 'INVALID_COMBAT_STATE')
-    const ordinaryCommands = current && isCombatCapable(state, current) && isEnemyActor(state, currentId)
+    const ordinaryEnemy = current && isCombatCapable(state, current) && isEnemyActor(state, currentId)
+    const ordinaryCommands = ordinaryEnemy
       ? planNpcTurn(state, currentId)
       : [{ command_type: 'EndTurn', actor_id: currentId }]
+    const ordinaryTactic = ordinaryEnemy
+      ? publicTacticFor(state, current, targetCandidates(state, current)[0], ordinaryCommands)
+      : null
     const creativeDecision = npcController && isMoraleMoment(state, currentId)
       ? await npcController.decide({ state, enemyId: currentId })
       : null
@@ -551,6 +590,9 @@ export async function runNpcTurnScheduler({
         reaction: creativeDecision.reaction,
         provider: creativeDecision.provider,
       } : null,
+      ...(creativeDecision ? {
+        tactic: creativeDecision.disposition === 'surrender' ? 'слом морали' : 'пытается спастись',
+      } : ordinaryTactic ?? {}),
       idempotency_key: key,
       state_version: committed.state_version,
     })

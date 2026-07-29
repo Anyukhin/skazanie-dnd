@@ -833,6 +833,8 @@ export type BattleEvent = {
   theme?: string
   from?: { x: number; y: number }
   to?: { x: number; y: number }
+  /** Клиент может достроить путь для анимации; старые проекции журнала его не содержат. */
+  path?: Array<{ x: number; y: number }>
   distanceFeet?: number
   roll?: { die?: number; modifier?: number; total: number; difficulty?: number; hit: boolean }
   damage?: number
@@ -1311,6 +1313,23 @@ export type GameEvent = {
   state_version_before?: number
   state_version_after?: number
   visibility?: 'public' | 'party' | 'specific_player' | 'gm_only' | 'npc_private'
+}
+
+/**
+ * Эфемерная, уже отфильтрованная для зрителя механика подтверждённой команды.
+ * В GameState она не сохраняется: авторитетная модель чтения не меняется,
+ * а доска может проиграть только фактически зафиксированные события.
+ */
+export type CombatVisualBatch = {
+  id: string
+  events: GameEvent[]
+  npcTurns: Array<{
+    actor_id?: string
+    kind?: string
+    tactic?: string
+    target_id?: string
+    state_version?: number
+  }>
 }
 
 export type AiHealth = {

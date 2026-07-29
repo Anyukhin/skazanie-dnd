@@ -159,6 +159,8 @@ test('NPC scheduler moves, attacks and ends turns until control returns to a liv
   assert.equal(creativeCalls, 0)
   assert.equal(result.turns.length, 1)
   assert.deepEqual(result.turns[0].commands, ['MoveActor', 'MakeAttack', 'EndTurn'])
+  assert.equal(result.turns[0].tactic, 'сокращает дистанцию')
+  assert.equal(result.turns[0].target_id, 'hero')
   assert.deepEqual([result.state.enemies[0].x, result.state.enemies[0].y], [1, 1])
   assert.equal(result.state.players[0].hp, 26)
   assert.equal(result.state.activePlayerId, 'hero')

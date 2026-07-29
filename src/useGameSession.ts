@@ -4,7 +4,7 @@ import { fetchWithTimeout, generateItemImage, narrateWithAgent, rollDice, rollSh
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -48,7 +48,7 @@ type TacticalCommandResult = {
   authoritative_state?: GameState
   narration?: string
   mechanics?: GameEvent[]
-  npc_turns?: Array<Record<string, unknown>>
+  npc_turns?: CombatVisualBatch['npcTurns']
   room_version?: number
   state_version?: number
   turn_id?: string | null
@@ -249,6 +249,7 @@ export function useGameSession() {
   const [merchantError, setMerchantError] = useState<string | null>(null)
   const [directorBusy, setDirectorBusy] = useState(false)
   const [directorError, setDirectorError] = useState<string | null>(null)
+  const [combatVisualBatch, setCombatVisualBatch] = useState<CombatVisualBatch | null>(null)
   const [merchantView, setMerchantView] = useState<MerchantView | null>(null)
   const [merchantNarration, setMerchantNarration] = useState<string | null>(null)
   const stateRef = useRef(state)
@@ -431,6 +432,10 @@ export function useGameSession() {
     }
   }, [applyRoomSnapshot, flushQueuedRooms, queueRoomSnapshot, refreshFullRoom, state.sessionCode])
 
+  // Пакет анимации принадлежит одной кампании. При смене комнаты это состояние
+  // представления сбрасывается, чтобы не проиграть последний ход чужого стола.
+  useEffect(() => { setCombatVisualBatch(null) }, [state.sessionCode])
+
   useEffect(() => {
     if (!busy.current && !tacticalBusy && !merchantBusy && !directorBusy) flushQueuedRooms()
   }, [directorBusy, flushQueuedRooms, merchantBusy, state.isNarrating, tacticalBusy])
@@ -561,6 +566,13 @@ export function useGameSession() {
       return
     }
     if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
+    if (aiResult?.mechanics?.length) {
+      setCombatVisualBatch({
+        id: `narrate:${aiResult.turn_id ?? aiResult.state_version ?? Date.now()}`,
+        events: aiResult.mechanics,
+        npcTurns: [],
+      })
+    }
 
     const check = aiResult?.check ?? null
     if (check) {
@@ -662,6 +674,13 @@ export function useGameSession() {
     }
     if (epoch !== actionEpoch.current) { busy.current = false; return }
     if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
+    if (aiResult?.mechanics?.length) {
+      setCombatVisualBatch({
+        id: `check:${aiResult.turn_id ?? aiResult.state_version ?? Date.now()}`,
+        events: aiResult.mechanics,
+        npcTurns: [],
+      })
+    }
     mutate((current) => finishTurn(current, check.action, aiResult!, result))
     busy.current = false
 
@@ -817,6 +836,13 @@ export function useGameSession() {
         version = room.version ?? version
       }
       if (version != null) roomVersion.current = latestRoomVersion(roomVersion.current, version)
+      if (result?.mechanics?.length || result?.npc_turns?.length) {
+        setCombatVisualBatch({
+          id: `${requestId}:${result.state_version ?? version ?? 'committed'}`,
+          events: result.mechanics ?? [],
+          npcTurns: result.npc_turns ?? [],
+        })
+      }
       applyRemote(mergeTacticalCommandState(stateRef.current, authoritative, result ?? {}, requestId))
       return { ok: true }
     } catch (error) {
@@ -1246,6 +1272,7 @@ export function useGameSession() {
     merchantError,
     directorBusy,
     directorError,
+    combatVisualBatch,
     merchantView,
     merchantNarration,
     clearTacticalError: () => setTacticalError(null),

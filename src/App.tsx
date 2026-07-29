@@ -9,7 +9,7 @@ import {
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SummonedCreature } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SummonedCreature } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
@@ -19,13 +19,13 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, type MovementPath } from './tactical-ui'
+import { battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
 import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
-import { TacticalBoard, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
+import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
 import type { BoardOverlayCell } from './board-render'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
@@ -52,6 +52,7 @@ const TILE_ROWS_KEY = 'skazanie-tile-rows-v1'
 const TILE_LOCK_KEY = 'skazanie-tiles-locked-v1'
 const TILE_ORDER_KEY = 'skazanie-tile-order-v1'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
+const COMBAT_ANIMATIONS_KEY = 'skazanie-combat-animations-v1'
 const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 150
 const UI_SCALE_PRESETS = [80, 90, 100, 110, 115, 125, 150]
@@ -448,6 +449,8 @@ function enemyHealthPresentation(enemy: Enemy) {
    броске. Считаем от первого показа у игрока, а не от прихода состояния:
    повторная проекция того же события метку не продлевает. */
 const MAP_FEEDBACK_TTL_MS = 4200
+const BATTLE_ROLL_TTL_MS = 4600
+const NPC_TACTIC_TTL_MS = 4800
 
 function useTransientMapFeedback(feedback: MapFeedback[] | undefined) {
   const [expired, setExpired] = useState<string[]>([])
@@ -473,6 +476,56 @@ function useTransientMapFeedback(feedback: MapFeedback[] | undefined) {
     return () => { for (const handle of handles.values()) window.clearTimeout(handle); handles.clear() }
   }, [])
   return useMemo(() => items.filter((item) => !expired.includes(String(item.id))), [items, expired])
+}
+
+function useTransientBattleRoll(battleLog: BattleEvent[] | undefined) {
+  const logKey = (battleLog ?? []).map((event) => `${event.id}:${event.roll?.die ?? ''}:${event.roll?.total ?? ''}`).join('|')
+  const latest = useMemo(
+    () => [...(battleLog ?? [])].reverse().find((event) => battleRollPresentation(event)) ?? null,
+    [logKey],
+  )
+  const [visibleId, setVisibleId] = useState<string | null>(() => latest?.id ?? null)
+  useEffect(() => {
+    if (!latest) {
+      setVisibleId(null)
+      return
+    }
+    setVisibleId(latest.id)
+    const handle = window.setTimeout(() => setVisibleId((current) => current === latest.id ? null : current), BATTLE_ROLL_TTL_MS)
+    return () => window.clearTimeout(handle)
+  }, [latest?.id])
+  return latest && latest.id === visibleId ? latest : null
+}
+
+function useTransientNpcTactic(batch: CombatVisualBatch | null | undefined) {
+  const latest = [...(batch?.npcTurns ?? [])].reverse().find((turn) => turn.kind === 'enemy-turn' && turn.tactic) ?? null
+  const key = latest ? `${batch?.id ?? ''}:${latest.actor_id ?? ''}:${latest.tactic ?? ''}` : ''
+  const [visibleKey, setVisibleKey] = useState(() => key)
+  useEffect(() => {
+    if (!key) {
+      setVisibleKey('')
+      return
+    }
+    setVisibleKey(key)
+    const handle = window.setTimeout(() => setVisibleKey((current) => current === key ? '' : current), NPC_TACTIC_TTL_MS)
+    return () => window.clearTimeout(handle)
+  }, [key])
+  return key && key === visibleKey ? latest : null
+}
+
+function BattleRollCard({ event }: { event: BattleEvent }) {
+  const roll = battleRollPresentation(event)
+  if (!roll) return null
+  return <div className={`battle-roll-card ${roll.success ? 'success' : 'failed'}`} role="status" aria-label={`Бросок d20: ${roll.natural} ${roll.modifierText}, итого ${roll.total}${roll.difficulty != null ? ` против ${roll.difficultyLabel} ${roll.difficulty}` : ''}. ${roll.success ? 'Успех' : event.type === 'attack' ? 'Промах' : 'Неудача'}`}>
+    <div className="battle-roll-d20"><small>d20</small><b>{roll.natural}</b></div>
+    <div className="battle-roll-summary">
+      <span><small>МОДИФИКАТОР</small><b>{roll.modifierText}</b></span>
+      <i aria-hidden="true">=</i>
+      <span className="total"><small>ИТОГ</small><b>{roll.total}</b></span>
+      {roll.difficulty != null && <><i aria-hidden="true">против</i><span><small>{roll.difficultyLabel}</small><b>{roll.difficulty}</b></span></>}
+    </div>
+    <strong>{roll.success ? 'УСПЕХ' : event.type === 'attack' ? 'ПРОМАХ' : 'НЕУДАЧА'}</strong>
+  </div>
 }
 
 function EnemyGlyph({ kind }: { kind: EnemyVisualKind }) {
@@ -515,7 +568,7 @@ function boardMapArt(state: GameState, visualTheme: string) {
   return BOARD_MAP_LIBRARY.dungeon
 }
 
-function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onFinishTurn, onFreeAction, narrating, statusContent, children }: {
+function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onFinishTurn, onFreeAction, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -524,6 +577,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   tacticalError: string | null
   autoAttackRoll: boolean
   scenicBackdrop: boolean
+  combatAnimations: boolean
+  visualBatch: CombatVisualBatch | null
   onClearTacticalError: () => void
   onStartCombat: () => void
   onMove: (actorId: string, x: number, y: number) => void
@@ -540,6 +595,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   children?: React.ReactNode
 }) {
   const [freeText, setFreeText] = useState('')
+  const freeInputRef = useRef<HTMLInputElement | null>(null)
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
   /* Размеры панелей задаёт игрок и они переживают перезагрузку: у кого-то
      широкий монитор и хочется больше карты, у кого-то — длинные описания.
@@ -649,12 +705,73 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const irregularMap = state.scene.cells.length < columns * rows
   const combat = combatState(state)
   const combatActive = Boolean(combat.active && combat.initiative?.length)
+  const activeInitiativeIndex = Math.max(0, Number(combat.active_index) || 0)
+  const visibleBattleRoll = useTransientBattleRoll(state.battleLog)
+  const visibleNpcTactic = useTransientNpcTactic(visualBatch)
   const activeHero = players.find((player) => player.id === turnActorId)
   const activeSummon = state.actors?.find((actor) => actor.id === turnActorId && actor.alive)
   const activeEnemy = state.enemies?.find((enemy) => enemy.id === turnActorId && enemy.alive)
   const activeTurnLabel = !combatActive ? 'ИДЁТ СВОБОДНО' : activeEnemy ? 'ХОД ПРОТИВНИКА' : activeSummon ? 'ХОД ПРИЗЫВА' : 'ХОД ИГРОКА'
   const active: BoardCombatant | undefined = activeHero ?? activeSummon
   const activeName = activeHero?.character ?? activeSummon?.name ?? activeEnemy?.name ?? 'участник боя'
+  const actorNameById = (id?: string) => {
+    if (!id) return ''
+    return players.find((player) => player.id === id)?.character
+      ?? state.enemies?.find((enemy) => enemy.id === id)?.name
+      ?? state.actors?.find((actor) => actor.id === id)?.name
+      ?? id
+  }
+  const npcTacticText = visibleNpcTactic?.tactic
+    ? (() => {
+        const actorName = actorNameById(visibleNpcTactic.actor_id)
+        const targetName = actorNameById(visibleNpcTactic.target_id)
+        const action = !targetName
+          ? `${actorName} меняет план`
+          : visibleNpcTactic.tactic === 'тактика стаи'
+            ? `${actorName} бросается на ${targetName}`
+            : visibleNpcTactic.tactic.includes('сковать')
+              ? `${actorName} пытается сковать ${targetName}`
+              : visibleNpcTactic.tactic.includes('дистанц') || visibleNpcTactic.tactic.includes('лини')
+                ? `${actorName} маневрирует против ${targetName}`
+                : `${actorName} действует против ${targetName}`
+        return `${action} — ${visibleNpcTactic.tactic}`
+      })()
+    : null
+  const animationActors: BoardAnimationActor[] = [
+    ...players.map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.character, color: player.color, kind: 'hero' as const })),
+    ...(state.enemies ?? []).map((enemy) => ({ id: enemy.id, x: enemy.x, y: enemy.y, label: enemy.name, color: '#c86c5d', kind: 'enemy' as const })),
+    ...(state.actors ?? []).map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, color: '#70a78b', kind: 'summon' as const })),
+  ]
+  const animatedBattleLog = useMemo(() => {
+    const recentIds = new Set((state.battleLog ?? []).slice(-12).map((event) => event.id))
+    return (state.battleLog ?? []).map((event) => {
+      if (event.type !== 'move' || event.path?.length || !event.actorId || !event.from || !event.to || !recentIds.has(event.id)) return event
+      const playersAtMove = state.players.map((actor) => actor.id === event.actorId ? { ...actor, ...event.from } : actor)
+      const enemiesAtMove = (state.enemies ?? []).map((actor) => actor.id === event.actorId ? { ...actor, ...event.from, alive: true } : actor)
+      const actorsAtMove = (state.actors ?? []).map((actor) => actor.id === event.actorId ? { ...actor, ...event.from, alive: true } : actor)
+      const projectedAtMove = { ...state, players: playersAtMove, enemies: enemiesAtMove, actors: actorsAtMove }
+      const route = buildMovementPaths(projectedAtMove, { id: event.actorId, ...event.from }, CELL_FEET, boardMap)
+        .get(boardPositionKey(event.to.x, event.to.y))
+      return { ...event, path: route?.path ?? [event.to] }
+    })
+  }, [state.battleLog, state.players, state.enemies, state.actors, state.scene.cells, boardMap])
+  const participantDefeated = (actorId: string) => {
+    const hero = state.players.find((player) => player.id === actorId)
+    const enemy = state.enemies?.find((item) => item.id === actorId)
+    const summon = state.actors?.find((item) => item.id === actorId)
+    return hero ? hero.hp <= 0 : summon ? !summon.alive || summon.hp <= 0 : enemy ? !enemy.alive : false
+  }
+  let nextInitiativeIndex = -1
+  if (combatActive && combat.initiative?.length) {
+    for (let step = 1; step < combat.initiative.length; step += 1) {
+      const index = (activeInitiativeIndex + step) % combat.initiative.length
+      if (!participantDefeated(combat.initiative[index].actor_id)) {
+        nextInitiativeIndex = index
+        break
+      }
+    }
+  }
+  const visibleSuggestions = (state.suggestions ?? []).map((suggestion) => suggestion.trim()).filter(Boolean).slice(0, 3)
   const combatItems = (activeHero?.inventory ?? []).map(inferredCombatItem).filter((item): item is NonNullable<typeof item> => Boolean(item && item.quantity > 0))
   const selectedItem = selectedItemId === BASE_ATTACK_ID ? undefined : combatItems.find((item) => item.id === selectedItemId)
   const weaponSelectionId = selectedItem?.id ?? BASE_ATTACK_ID
@@ -1090,7 +1207,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         {enemy && cell.revealed && enemyHealth?.exact && <TokenHealthBar fill={enemyHealth.fill} label={enemyHealth.barLabel} className={`enemy-health ${enemyHealth.status}`} />}
         {enemy && cell.revealed && (
           <button
-            className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
+            className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${enemy.id === turnActorId ? 'active-turn' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
+            data-actor-id={enemy.id}
             data-enemy-kind={enemyKind}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
@@ -1133,6 +1251,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           const playerConditions = (state.mechanics?.conditions?.[player.id] ?? []).map(conditionPresentation)
           return <button
             className={'map-token hero-token ' + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
+            data-actor-id={player.id}
             style={{ '--token': player.color, backgroundImage: 'url(' + player.portrait + ')', backgroundPosition: player.portraitPosition } as React.CSSProperties}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
@@ -1169,7 +1288,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           const summonTargetReason = summonCommandAllowed ? 'Допустимая цель' : summonTargetCheck.reason ?? 'Выбранная команда не подходит для призыва'
           const summonConditions = (state.mechanics?.conditions?.[summon.id] ?? []).map(conditionPresentation)
           return <button
-            className={'map-token summon-token ' + (focusedParticipantId === summon.id ? 'initiative-focus ' : '') + (selected === summon.id ? 'selected active-turn' : '') + ' ' + (openTokenLabelId === summon.id ? 'label-open' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected ? 'unavailable-target' : '') + ' ' + (pendingTargetId === summon.id ? 'command-selected' : '')}
+            className={'map-token summon-token ' + (focusedParticipantId === summon.id ? 'initiative-focus ' : '') + (selected === summon.id ? 'selected ' : '') + (summon.id === turnActorId ? 'active-turn ' : '') + (openTokenLabelId === summon.id ? 'label-open' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected ? 'unavailable-target' : '') + ' ' + (pendingTargetId === summon.id ? 'command-selected' : '')}
+            data-actor-id={summon.id}
             style={{ '--token': '#70a78b' } as React.CSSProperties}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
@@ -1254,13 +1374,17 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               const summon = state.actors?.find((item) => item.id === entry.actor_id)
               const kind = summon ? 'summon' : enemy ? 'enemy' : 'hero'
               const name = hero?.character ?? summon?.name ?? enemy?.name ?? entry.actor_id
-              const defeated = hero ? hero.hp <= 0 : summon ? !summon.alive || summon.hp <= 0 : enemy ? !enemy.alive : false
+              const defeated = participantDefeated(entry.actor_id)
+              const activeNow = index === activeInitiativeIndex
+              const nextUp = index === nextInitiativeIndex
+              const statusLabel = defeated ? 'выбыл' : activeNow ? 'сейчас' : nextUp ? 'следующий' : ''
               const enemyKind = enemy ? enemyVisualKind(enemy) : null
-              return <li key={entry.actor_id} className={`${kind} ${index === combat.active_index ? 'active' : ''} ${defeated ? 'defeated' : ''}`} aria-current={index === combat.active_index ? 'step' : undefined}>
+              return <li key={entry.actor_id} className={`${kind} ${activeNow ? 'active' : ''} ${nextUp ? 'next' : ''} ${defeated ? 'defeated' : ''}`} aria-current={activeNow ? 'step' : undefined}>
                 <button
                   className={`initiative-avatar-button ${focusedParticipantId === entry.actor_id ? 'focused' : ''}`}
-                  aria-label={`Выделить на карте: ${name}${index === combat.active_index ? ', сейчас ходит' : ''}`}
+                  aria-label={`Выделить на карте: ${name}${statusLabel ? `, ${statusLabel}` : ''}`}
                   aria-pressed={focusedParticipantId === entry.actor_id}
+                  title={`${name}${statusLabel ? ` · ${statusLabel}` : ''}`}
                   onClick={() => setFocusedParticipantId((current) => current === entry.actor_id ? null : entry.actor_id)}
                 >
                   <span className="initiative-order" aria-hidden="true">{index + 1}</span>
@@ -1269,7 +1393,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                     : enemy
                       ? <span className="initiative-avatar enemy">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
                       : <span className="initiative-avatar summon"><Sparkles size={18} /></span>}
-                  {index === combat.active_index && <span className="initiative-turn-dot" aria-hidden="true" />}
+                  {activeNow && <span className="initiative-turn-dot" aria-hidden="true" />}
+                  {statusLabel && <span className={`initiative-status-label ${defeated ? 'defeated' : activeNow ? 'active' : 'next'}`}>{statusLabel}</span>}
                 </button>
               </li>
             })}</ol>
@@ -1289,7 +1414,9 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       >
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
+      {npcTacticText && <div className="npc-tactic-banner" role="status" aria-live="polite"><Swords size={15} /><span>{npcTacticText}</span></div>}
       <TacticalBoard
+        key={state.sessionCode}
         map={boardMap}
         columns={columns}
         rows={rows}
@@ -1300,6 +1427,12 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         cells={boardCells}
         cellHints={boardHints}
         overlayCells={boardOverlay}
+        battleLog={animatedBattleLog}
+        visualBatch={visualBatch}
+        animationActors={animationActors}
+        animationsEnabled={combatAnimations}
+        conditions={state.mechanics?.conditions}
+        conditionVersion={state.state_version}
         onBackgroundActivate={() => setOpenTokenLabelId(null)}
         decoration={trajectory
           ? <svg className="projectile-trajectory" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} /></svg>
@@ -1354,6 +1487,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         <div className="server-resize" role="separator" aria-orientation="vertical" aria-label="Ширина правой колонки" onPointerDown={startServerResize} onDoubleClick={() => { setServerWidth(0); window.localStorage.removeItem(SERVER_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную" />
         {combatActive && <section className="combat-context-panel" aria-label="Текущее состояние боя" aria-live="polite">
           <header><div><small>СЕЙЧАС ХОДИТ · {activeTeam}</small><strong>{activeName}</strong></div><span><Heart size={13} />{activeHealth}</span></header>
+          {visibleBattleRoll && <BattleRollCard event={visibleBattleRoll} />}
           <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
           <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>
           {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}`}>
@@ -1423,9 +1557,21 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             ['items', 'Предметы', <CombatIcon id="deck-items" kind="deck" hint="предметы зелья" size={21} compact />],
           ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button type="button" key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy || (deck === 'magic' && !spells.length)} title={label}>{icon}<span>{label}</span></button>)}
         </nav>
+        {visibleSuggestions.length > 0 && <div className="action-suggestions" aria-label="Подсказки рассказчика">
+          {visibleSuggestions.map((suggestion) => <button
+            type="button"
+            key={suggestion}
+            title={suggestion}
+            onClick={() => {
+              setFreeText(suggestion)
+              window.requestAnimationFrame(() => freeInputRef.current?.focus())
+            }}
+          >{suggestion}</button>)}
+        </div>}
         <div className="rail-input-shell">
           {preparedLabel && <span className={`prepared-chip ${awaitingTarget ? 'awaiting' : ''}`}><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
           <input
+            ref={freeInputRef}
             value={freeText}
             onChange={(event) => setFreeText(event.target.value)}
             placeholder={preparedLabel ? 'Добавьте слова к действию — или отправьте как есть' : `Опишите действие ${activeName} так, как сказали бы за столом — Арбитр найдёт правило`}
@@ -2096,7 +2242,7 @@ function ToggleRow({ icon, title, description, value, onChange }: { icon: React.
   return <button className="setting-row" onClick={onChange}><span className="setting-icon">{icon}</span><span><b>{title}</b><small>{description}</small></span><i className={value ? 'on' : ''}><u /></i></button>
 }
 
-function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange }: { health: AiHealth | null; uiScale: number; autoAttackRoll: boolean; scenicBackdrop: boolean; onUiScaleChange: (value: number) => void; onAutoAttackRollChange: (value: boolean) => void; onScenicBackdropChange: (value: boolean) => void }) {
+function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange }: { health: AiHealth | null; uiScale: number; autoAttackRoll: boolean; scenicBackdrop: boolean; combatAnimations: boolean; onUiScaleChange: (value: number) => void; onAutoAttackRollChange: (value: boolean) => void; onScenicBackdropChange: (value: boolean) => void; onCombatAnimationsChange: (value: boolean) => void }) {
   const [scaleInput, setScaleInput] = useState(String(uiScale))
 
   useEffect(() => setScaleInput(String(uiScale)), [uiScale])
@@ -2136,6 +2282,7 @@ function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, onUiSca
           </label>
           <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — окружение соответствует месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
           <ToggleRow icon={<Dices size={17} />} title="Автобросок при атаке" description="Включено — цель сразу атакуется; выключено — появляется отдельная кнопка кубика" value={autoAttackRoll} onChange={() => onAutoAttackRollChange(!autoAttackRoll)} />
+          <ToggleRow icon={<Swords size={17} />} title="Боевые анимации" description="Движение, удары и состояния проигрываются поверх доски; клик пропускает текущую очередь" value={combatAnimations} onChange={() => onCombatAnimationsChange(!combatAnimations)} />
         </div>
       </div>
     </section>
@@ -2435,7 +2582,7 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -2460,6 +2607,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [uiScale, setUiScale] = useState(loadUiScale)
   const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') !== 'false')
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
+  const [combatAnimations, setCombatAnimations] = useState(() => window.localStorage.getItem(COMBAT_ANIMATIONS_KEY) !== 'false')
   const combatWasActive = useRef(false)
   const merchantLocation = useRef(state.scene.location)
   const joinAttempted = useRef(false)
@@ -2560,6 +2708,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [uiScale])
   useEffect(() => { window.localStorage.setItem('skazanie-auto-attack-roll', String(autoAttackRoll)) }, [autoAttackRoll])
   useEffect(() => { window.localStorage.setItem(SCENIC_BACKDROP_KEY, String(scenicBackdrop)) }, [scenicBackdrop])
+  useEffect(() => { window.localStorage.setItem(COMBAT_ANIMATIONS_KEY, String(combatAnimations)) }, [combatAnimations])
   useEffect(() => {
     const combatActive = Boolean(state.mechanics?.combat?.active)
     // Начавшийся бой закрывает и историю, и лавку: торговля посреди инициативы —
@@ -2700,6 +2849,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             tacticalError={tacticalError}
             autoAttackRoll={autoAttackRoll}
             scenicBackdrop={scenicBackdrop}
+            combatAnimations={combatAnimations}
+            visualBatch={combatVisualBatch}
             onClearTacticalError={clearTacticalError}
             onStartCombat={() => startCombat(activePlayer.id)}
             onMove={movePlayer}
@@ -2734,7 +2885,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} />}
+        {view === 'settings' && <SettingsView health={aiHealth} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
