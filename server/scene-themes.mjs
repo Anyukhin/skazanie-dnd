@@ -5,7 +5,16 @@ import { buildBuildingScene } from './building-generator.mjs'
 import { buildSceneFromGraph } from './graph-layout.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { placeProps } from './prop-placement.mjs'
-import { SIZE_CLASSES, addZone, cellAt, createTacticalMap, setCell, setEdge } from './tactical-map.mjs'
+import {
+  SIZE_CLASSES,
+  addSpawnPoint,
+  addZone,
+  cellAt,
+  createTacticalMap,
+  setCell,
+  setDoor,
+  setEdge,
+} from './tactical-map.mjs'
 
 /**
  * Каталог тем сцены — этап M6 (`docs/tactical-map-plan.md`, раздел 12).
@@ -14,9 +23,10 @@ import { SIZE_CLASSES, addZone, cellAt, createTacticalMap, setCell, setEdge } fr
  * берётся одним из трёх способов, и выбор способа — часть темы:
  *
  * - `building` — здание с участком, отдельный генератор планировки;
- * - `graph` — помещения и проходы: сначала граф зон с проверкой ключей, затем
- *   геометрия. Так строятся храм, склеп и пещера;
- * - `open` — открытая местность без помещений: лес, дорога, поселение.
+ * - `graph` — сначала граф зон с проверкой ключей, затем подходящая теме
+ *   геометрия. Храм и склеп получают помещения, пещера — органическую полость;
+ * - `open` — открытая местность без помещений: лес и дорога;
+ * - `settlement` — открытая местность с улицей и отдельными домами.
  *
  * Опознание темы идёт по названию локации и по виду сцены. Это единственное
  * место, где такое опознание живёт: раньше оно было размазано регулярками по
@@ -24,9 +34,9 @@ import { SIZE_CLASSES, addZone, cellAt, createTacticalMap, setCell, setEdge } fr
  */
 
 /**
- * `live` — отдаётся ли тема живой игре. Собираются и проверяются все семь, но
- * геометрия готова не у всех, и подключать тему, которая делает сцену хуже
- * прежнего процедурного генератора, нельзя.
+ * `live` — отдаётся ли тема живой игре. Сейчас готовы все семь; флаг остаётся
+ * явным предохранителем для будущих тем, которые ещё хуже структурированного
+ * fallback.
  *
  * Сравнение обеих карт на одном seed, 2026-07-29:
  *
@@ -37,17 +47,8 @@ import { SIZE_CLASSES, addZone, cellAt, createTacticalMap, setCell, setEdge } fr
  * | crypt | четыре палаты, запертая дверь с ключом, 27 предметов | лучше |
  * | forest | поле с опушкой, 22 дерева и куста | лучше |
  * | road | поле с полосой утоптанной земли поперёк карты | лучше |
- * | cave | прямоугольные палаты по сетке | **хуже** |
- * | settlement | пустое поле, домов нет вовсе | **хуже** |
- *
- * Пещера и поселение строятся теми же двумя способами, что и остальные:
- * `graph` режет площадь двоичным разбиением на прямоугольники, `open` кладёт
- * ровное поле с опушкой. Палате в склепе и храме это подходит, пещере — нет:
- * пещера не бывает из комнат по сетке, а у деревни на открытом поле не
- * оказывается ни одного дома. Прежний процедурный генератор в обоих случаях
- * даёт более уместную картинку, поэтому пещера и поселение остаются на нём до
- * своих способов сборки: пещере нужен органический рост полости, поселению —
- * дома как объекты.
+ * | cave | связная извилистая полость с неровными залами | лучше |
+ * | settlement | четыре дома, улица, площадь и проходы к дверям | лучше |
  */
 export const SCENE_THEMES = Object.freeze([
   {
@@ -91,7 +92,7 @@ export const SCENE_THEMES = Object.freeze([
     id: 'cave',
     label: 'Пещера',
     kind: 'graph',
-    live: false,
+    live: true,
     material: 'earth',
     match: /пещер|грот|каверн|штольн|шахт|подземель|нора/iu,
     zones: ['Устье', 'Штрек', 'Зал', 'Тупик'],
@@ -125,13 +126,16 @@ export const SCENE_THEMES = Object.freeze([
   {
     id: 'settlement',
     label: 'Поселение',
-    kind: 'open',
-    live: false,
+    kind: 'settlement',
+    live: true,
     material: 'earth',
     match: /деревн|поселен|село|посад|хутор|город|слобод|рынок|площад/iu,
     density: 9,
     require: ['market_stall', 'well', 'cart', 'village_fence'],
-    prefer: ['market_stall', 'village_fence', 'cart', 'haystack', 'woodpile', 'tree_birch', 'hitching_post'],
+    // Одноклеточный `campfire` сохраняется и в legacy-клетках под известным
+    // движку feature. `hitching_post` намеренно не здесь: старый контракт
+    // encounter-cell такого идентификатора не знает.
+    prefer: ['market_stall', 'village_fence', 'cart', 'haystack', 'woodpile', 'tree_birch', 'campfire'],
     road: true,
   },
 ])
@@ -162,13 +166,21 @@ function randomFor(seed) {
  * @returns {typeof SCENE_THEMES[number]}
  */
 export function themeFor(input = {}) {
-  return matchTheme(input) ?? FALLBACK_THEME
+  const matched = matchTheme(input)
+  if (matched) return matched
+  // Для прямого вызова без карты дикая местность всё равно безопасно
+  // показывается лесом. Живой выбор генератора получает `null` от matchTheme и
+  // успевает учесть layout/pattern до такого fallback.
+  if (String(input.sceneKind) === 'wilderness') {
+    return SCENE_THEMES.find((candidate) => candidate.id === 'forest') ?? FALLBACK_THEME
+  }
+  return FALLBACK_THEME
 }
 
 /**
  * То же опознание, но без подстановки темы по умолчанию: `null` означает «не
- * узнал». Вызывающий вправе отдать такую сцену прежнему процедурному
- * генератору, а не выдавать таверну за всё подряд.
+ * узнал». Вызывающий после этого выбирает структурированный fallback по виду
+ * сцены и заявленной планировке.
  *
  * @param {object} input
  * @param {string} [input.location]
@@ -183,8 +195,6 @@ export function matchTheme({ location = '', theme = '', sceneKind = '' } = {}) {
     if (wilderness && candidate.kind === 'building') continue
     if (candidate.match.test(haystack)) return candidate
   }
-  // Дикая местность без опознанной темы — это лес, а не таверна.
-  if (wilderness) return SCENE_THEMES.find((candidate) => candidate.id === 'forest') ?? null
   return null
 }
 
@@ -192,9 +202,8 @@ export function matchTheme({ location = '', theme = '', sceneKind = '' } = {}) {
  * Узор и планировка из заявки картографа — тоже его слова, а не догадка по
  * названию. Часть значений называет тему однозначно: `crypt` — это склеп, а не
  * «что-то каменное». Остальные (`keep`, `great-hall`, `courtyard`, `bridge`,
- * `radial`, `ruins`, `natural`) своей темы не имеют и достаются прежнему
- * процедурному генератору — выдавать за них таверну хуже, чем отдать привычную
- * карту.
+ * `radial`, `ruins`, `natural`) своей темы не имеют и достаются безопасному
+ * тематическому fallback по планировке.
  *
  * Сознательно не сопоставляется `small-room`: комната бывает в любом здании, и
  * по одному этому слову нельзя ставить дом с двором, оградой и деревьями.
@@ -202,16 +211,55 @@ export function matchTheme({ location = '', theme = '', sceneKind = '' } = {}) {
  * @param {{layout?: string, pattern?: string}} [request]
  * @returns {typeof SCENE_THEMES[number]|null}
  */
-export function themeFromMapRequest({ pattern = '' } = {}) {
-  // Сопоставление намеренно одно. `cave-cluster` и `village` тоже называют тему
-  // однозначно, но их темы не отдаются живой игре (см. `live` выше), и вести к
-  // ним значило бы ухудшить сцену. Появятся способы сборки — появятся и строки.
-  // Планировка (`layout`) сейчас не сопоставляется ничему: `cavern` и `streets`
-  // ведут к тем же двум неготовым темам.
+export function themeFromMapRequest({ pattern = '', layout = '' } = {}) {
   /** @type {Record<string, string>} */
-  const byPattern = { crypt: 'crypt' }
-  const id = byPattern[String(pattern).toLocaleLowerCase('en')] ?? ''
+  const byPattern = {
+    crypt: 'crypt',
+    'cave-cluster': 'cave',
+    village: 'settlement',
+    bridge: 'road',
+  }
+  /** @type {Record<string, string>} */
+  const byLayout = { cavern: 'cave', streets: 'settlement', winding: 'road' }
+  const id = byPattern[String(pattern).toLocaleLowerCase('en')]
+    ?? byLayout[String(layout).toLocaleLowerCase('en')]
+    ?? ''
   return id ? SCENE_THEMES.find((candidate) => candidate.id === id) ?? null : null
+}
+
+/**
+ * Безопасная тема для неопознанной локации. Это последний выбор геометрии, а
+ * не попытка угадать художественный смысл: он сохраняет заявленную топологию
+ * и всегда отдаёт структурированную, связную карту.
+ *
+ * @param {object} [input]
+ * @param {string} [input.sceneKind]
+ * @param {{layout?: string, pattern?: string, material?: string}} [input.request]
+ * @returns {typeof SCENE_THEMES[number]}
+ */
+export function fallbackThemeFor({ sceneKind = '', request = {} } = {}) {
+  const requested = themeFromMapRequest(request)
+  if (requested) return requested
+
+  const kind = String(sceneKind).toLocaleLowerCase('en')
+  const layout = String(request?.layout ?? '').toLocaleLowerCase('en')
+  const pattern = String(request?.pattern ?? '').toLocaleLowerCase('en')
+  const material = String(request?.material ?? '').toLocaleLowerCase('en')
+  let id = ''
+  if (kind === 'settlement') id = 'settlement'
+  else if (kind === 'road') id = 'road'
+  else if (kind === 'wilderness') id = layout === 'winding' || pattern === 'bridge' ? 'road' : 'forest'
+  else if (kind === 'dungeon') id = layout === 'cavern' ? 'cave' : 'crypt'
+  else if (layout === 'open' || pattern === 'natural') id = 'forest'
+  else if (layout === 'rooms' || layout === 'ruins' || layout === 'radial'
+    || ['small-room', 'great-hall', 'keep', 'courtyard'].includes(pattern)) {
+    const masonry = ['stone', 'marble', 'earth'].includes(material)
+      || ['keep', 'great-hall'].includes(pattern)
+      || ['ruins', 'radial'].includes(layout)
+    id = masonry ? 'crypt' : 'building'
+  }
+  else id = 'road'
+  return SCENE_THEMES.find((candidate) => candidate.id === id) ?? FALLBACK_THEME
 }
 
 /**
@@ -261,6 +309,180 @@ export function sceneGraphForTheme(theme, seed) {
   return graph
 }
 
+/** @param {number} value @param {number} min @param {number} max */
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value))
+}
+
+/**
+ * Ставит стены на границе пола и непроходимой породы. Клеточная форма нужна
+ * старому представлению сцены, рёбра — структурированной карте; оба вида
+ * описывают одну и ту же границу.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ */
+function outlineImpassableCells(map) {
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const own = cellAt(map, x, y)
+      if (!own || own.passable) continue
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (cellAt(map, x + dx, y + dy)?.passable) {
+          setEdge(map, x, y, x + dx, y + dy, {
+            kind: 'wall',
+            blocksMove: true,
+            blocksSight: true,
+            cover: 'three_quarters',
+          })
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Органическая геометрия пещеры. Граф зон остаётся стадией 1, но вместо
+ * двоичного разбиения на прямоугольные комнаты его узлы становятся неровными
+ * залами, соединёнными вырубленным извилистым ходом.
+ *
+ * Полость строится только добавлением пересекающихся дисков. Поэтому она
+ * связна по построению, а не благодаря ремонту после случайной генерации.
+ *
+ * @param {typeof SCENE_THEMES[number]} theme
+ * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
+ * @returns {import('./tactical-map.mjs').TacticalMap}
+ */
+export function layoutOrganicCave(theme, {
+  seed = 'cave', width = 26, height = 26, locationId = '',
+} = {}) {
+  const safeWidth = Math.max(16, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
+  const safeHeight = Math.max(16, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
+  const random = randomFor(`cave:${theme.id}:${seed}`)
+  const graph = sceneGraphForTheme(theme, String(seed))
+  const map = createTacticalMap({
+    width: safeWidth,
+    height: safeHeight,
+    locationId,
+    seed: String(seed),
+    generator: { id: 'theme-cave-organic', version: '1' },
+    theme: theme.id,
+    sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
+  })
+
+  for (let index = 0; index < graph.zones.length; index += 1) {
+    const zone = graph.zones[index]
+    addZone(map, {
+      id: zone.id,
+      kind: 'interior',
+      material: theme.material,
+      lightLevel: index === 0 ? 'dim' : index === graph.zones.length - 1 ? 'dark' : 'dim',
+      label: zone.label,
+    })
+  }
+
+  // Порода существует на всей сетке; игровая форма задаётся вырубленным полом.
+  for (let y = 0; y < safeHeight; y += 1) {
+    for (let x = 0; x < safeWidth; x += 1) {
+      setCell(map, x, y, {
+        passable: false,
+        material: theme.material,
+        variant: Math.floor(random() * 6),
+        revealed: true,
+      })
+    }
+  }
+
+  /** @type {Set<string>} */
+  const floor = new Set()
+  /**
+   * Неровность радиуса считается внутри фиксированного обхода, поэтому не
+   * нарушает детерминизм. Ядро радиусом `radius - 0.45` остаётся сплошным.
+   * @param {number} cx
+   * @param {number} cy
+   * @param {number} radius
+   */
+  const carveDisc = (cx, cy, radius) => {
+    const reach = Math.ceil(radius + 0.5)
+    for (let dy = -reach; dy <= reach; dy += 1) {
+      for (let dx = -reach; dx <= reach; dx += 1) {
+        const x = Math.round(cx + dx)
+        const y = Math.round(cy + dy)
+        const raggedRadius = radius + random() * 0.9 - 0.45
+        if (x < 0 || y < 1 || x >= safeWidth || y >= safeHeight - 1) continue
+        if (Math.hypot(dx, dy) <= raggedRadius) floor.add(`${x},${y}`)
+      }
+    }
+  }
+
+  const count = graph.zones.length
+  const verticalRoom = Math.max(2, Math.min(5, Math.floor(safeHeight * 0.2)))
+  /** @type {Array<{x: number, y: number}>} */
+  const centers = []
+  for (let index = 0; index < count; index += 1) {
+    const progress = count <= 1 ? 0 : index / (count - 1)
+    const x = Math.round(2 + progress * (safeWidth - 5))
+    const wave = Math.sin(progress * Math.PI * 2 + random() * 0.8) * verticalRoom
+    const y = clamp(Math.round(safeHeight / 2 + wave + (random() - 0.5) * 3), 3, safeHeight - 4)
+    centers.push({ x, y })
+    const chamberRadius = clamp(Math.min(safeWidth, safeHeight) * (0.115 + random() * 0.035), 2.5, 5)
+    carveDisc(x, y, chamberRadius)
+    // Боковая ниша ломает круглую симметрию зала, но пересекается с ним.
+    const side = random() < 0.5 ? -1 : 1
+    carveDisc(x + side * Math.max(1, Math.floor(chamberRadius * 0.65)), y + (random() < 0.5 ? -1 : 1), chamberRadius * 0.62)
+  }
+
+  // Последовательные узлы графа соединяются одной гарантированной полостью.
+  for (let index = 1; index < centers.length; index += 1) {
+    const target = centers[index]
+    let x = centers[index - 1].x
+    let y = centers[index - 1].y
+    let guard = safeWidth * safeHeight
+    while ((x !== target.x || y !== target.y) && guard > 0) {
+      carveDisc(x, y, 1.45 + random() * 0.65)
+      const dx = target.x - x
+      const dy = target.y - y
+      const horizontalChance = Math.abs(dx) / Math.max(1, Math.abs(dx) + Math.abs(dy))
+      if (dx && (!dy || random() < horizontalChance)) x += Math.sign(dx)
+      else if (dy) y += Math.sign(dy)
+      guard -= 1
+    }
+    carveDisc(target.x, target.y, 1.8)
+  }
+
+  // Устье до края карты — настоящий вход, а не точка появления внутри скалы.
+  const entranceY = centers[0]?.y ?? Math.floor(safeHeight / 2)
+  for (let x = 0; x <= (centers[0]?.x ?? 2); x += 1) carveDisc(x, entranceY, 1.35)
+
+  for (const key of floor) {
+    const [x, y] = key.split(',').map(Number)
+    let zoneIndex = 0
+    let nearest = Number.POSITIVE_INFINITY
+    for (let index = 0; index < centers.length; index += 1) {
+      const distance = Math.abs(centers[index].x - x) + Math.abs(centers[index].y - y)
+      if (distance < nearest) {
+        nearest = distance
+        zoneIndex = index
+      }
+    }
+    setCell(map, x, y, {
+      passable: true,
+      material: theme.material,
+      zone: graph.zones[zoneIndex]?.id ?? graph.zones[0].id,
+      variant: Math.floor(random() * 6),
+      revealed: true,
+    })
+  }
+
+  outlineImpassableCells(map)
+  addSpawnPoint(map, { id: 'party-entrance', x: 1, y: entranceY, role: 'party' })
+  map.overlays = {
+    compass: true,
+    scaleBar: true,
+    roomLabels: graph.zones.map((zone) => ({ zoneId: zone.id, label: zone.label })),
+  }
+  return map
+}
+
 /**
  * Открытая местность: помещений нет, есть проходимая площадка с опушкой по
  * краю. У дороги и поселения через карту идёт полоса утоптанной земли.
@@ -282,7 +504,14 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
     theme: theme.id,
     sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
   })
-  addZone(map, { id: 'field', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: theme.label })
+  addZone(map, {
+    id: 'field',
+    kind: 'exterior',
+    material: theme.material,
+    lightLevel: 'bright',
+    floorDirection: 'horizontal',
+    label: theme.label,
+  })
 
   const roadY = Math.floor(safeHeight / 2)
   for (let y = 0; y < safeHeight; y += 1) {
@@ -330,6 +559,132 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
 }
 
 /**
+ * Поселение с улицей и домами. Дом — не картинка под сеткой: это отдельная
+ * зона с деревянным полом, непроходимой стеной и дверью. Поэтому геометрия
+ * остаётся играбельной без растрового арта и переживает legacy-проекцию.
+ *
+ * @param {typeof SCENE_THEMES[number]} theme
+ * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
+ * @returns {import('./tactical-map.mjs').TacticalMap}
+ */
+export function layoutSettlement(theme, {
+  seed = 'settlement', width = 26, height = 26, locationId = '',
+} = {}) {
+  const safeWidth = Math.max(20, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
+  const safeHeight = Math.max(20, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
+  const random = randomFor(`settlement:${theme.id}:${seed}`)
+  const map = createTacticalMap({
+    width: safeWidth,
+    height: safeHeight,
+    locationId,
+    seed: String(seed),
+    generator: { id: 'theme-settlement', version: '1' },
+    theme: theme.id,
+    sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
+  })
+  addZone(map, { id: 'common', kind: 'exterior', material: 'grass', lightLevel: 'bright', label: 'Поселение' })
+  addZone(map, { id: 'street', kind: 'exterior', material: 'earth', lightLevel: 'bright', label: 'Главная улица' })
+
+  for (let y = 0; y < safeHeight; y += 1) {
+    for (let x = 0; x < safeWidth; x += 1) {
+      setCell(map, x, y, {
+        passable: true,
+        material: 'grass',
+        zone: 'common',
+        variant: Math.floor(random() * 6),
+        revealed: true,
+      })
+    }
+  }
+
+  /** @param {number} x */
+  const roadYAt = (x) => (
+    Math.floor(safeHeight / 2)
+    + Math.round(Math.sin((x / Math.max(1, safeWidth - 1)) * Math.PI * 2) * Math.max(1, safeHeight * 0.045))
+  )
+  for (let x = 0; x < safeWidth; x += 1) {
+    const roadY = roadYAt(x)
+    for (let dy = -1; dy <= 1; dy += 1) {
+      setCell(map, x, roadY + dy, { passable: true, material: 'earth', zone: 'street' })
+    }
+  }
+  // Площадь и поперечный переулок не дают деревне читаться одной полосой.
+  const crossX = Math.floor(safeWidth / 2)
+  for (let y = 0; y < safeHeight; y += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      setCell(map, crossX + dx, y, { passable: true, material: 'earth', zone: 'street' })
+    }
+  }
+
+  const houseWidth = clamp(Math.round(safeWidth * 0.24), 5, 7)
+  const houseHeight = clamp(Math.round(safeHeight * 0.22), 5, 6)
+  const leftX = 2
+  const rightX = safeWidth - houseWidth - 2
+  const topY = 1
+  const bottomY = safeHeight - houseHeight - 1
+  const houses = [
+    { x: leftX, y: topY, side: 'top', label: 'Дом ремесленника' },
+    { x: rightX, y: topY, side: 'top', label: 'Дом травницы' },
+    { x: leftX, y: bottomY, side: 'bottom', label: 'Амбар' },
+    { x: rightX, y: bottomY, side: 'bottom', label: 'Дом старосты' },
+  ]
+  /** @type {Array<{id: string, x: number, y: number, dir: 's'}>} */
+  const doors = []
+
+  for (let index = 0; index < houses.length; index += 1) {
+    const house = houses[index]
+    const zoneId = `house-${index + 1}`
+    addZone(map, {
+      id: zoneId,
+      kind: 'interior',
+      material: 'wood',
+      lightLevel: 'dim',
+      floorDirection: index % 2 === 0 ? 'horizontal' : 'vertical',
+      label: house.label,
+    })
+    for (let dy = 0; dy < houseHeight; dy += 1) {
+      for (let dx = 0; dx < houseWidth; dx += 1) {
+        const boundary = dx === 0 || dy === 0 || dx === houseWidth - 1 || dy === houseHeight - 1
+        setCell(map, house.x + dx, house.y + dy, boundary
+          ? { passable: false, material: 'wood', zone: '' }
+          : { passable: true, material: 'wood', zone: zoneId })
+      }
+    }
+
+    const doorX = house.x + Math.floor(houseWidth / 2)
+    const doorY = house.side === 'top' ? house.y + houseHeight - 1 : house.y
+    setCell(map, doorX, doorY, { passable: true, material: 'wood', zone: zoneId })
+    doors.push({ id: `house-door-${index + 1}`, x: doorX, y: doorY, dir: 's' })
+
+    // От каждой двери до главной улицы лежит отдельный проход.
+    const streetY = roadYAt(doorX)
+    const fromY = Math.min(doorY, streetY)
+    const toY = Math.max(doorY, streetY)
+    for (let y = fromY; y <= toY; y += 1) {
+      if (y === doorY) continue
+      setCell(map, doorX, y, { passable: true, material: 'earth', zone: 'street' })
+    }
+  }
+
+  outlineImpassableCells(map)
+  for (const door of doors) {
+    setDoor(map, { ...door, state: 'closed', blocksMove: false, blocksSight: false })
+  }
+  addSpawnPoint(map, { id: 'party-entrance', x: 0, y: roadYAt(0), role: 'party' })
+  map.overlays = {
+    compass: true,
+    scaleBar: true,
+    roomLabels: [
+      { zoneId: 'street', label: 'Главная улица' },
+      ...map.zones
+        .filter((zone) => zone.id.startsWith('house-'))
+        .map((zone) => ({ zoneId: zone.id, label: zone.label })),
+    ],
+  }
+  return map
+}
+
+/**
  * Собирает сцену по теме. Единая точка входа: вызывающему не нужно знать, каким
  * способом строится геометрия.
  *
@@ -358,6 +713,21 @@ export function buildThemedScene({
   }
 
   if (definition.kind === 'graph') {
+    if (definition.id === 'cave') {
+      const map = layoutOrganicCave(definition, { seed, width, height, locationId })
+      placeProps(map, {
+        seed: `${seed}:props`,
+        maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
+        zones: map.zones.map((zone) => ({
+          zoneId: zone.id,
+          theme: definition.id,
+          density: definition.density ?? 12,
+          require: definition.require,
+          prefer: definition.prefer,
+        })),
+      })
+      return { map, theme: definition.id, warnings: [] }
+    }
     const graph = sceneGraphForTheme(definition, seed)
     const built = buildSceneFromGraph(graph, {
       seed, width, height, locationId, theme: definition.id, material: definition.material,
@@ -380,6 +750,22 @@ export function buildThemedScene({
       theme: definition.id,
       warnings: [...built.warnings, ...built.errors.map((issue) => issue.code)],
     }
+  }
+
+  if (definition.kind === 'settlement') {
+    const map = layoutSettlement(definition, { seed, width, height, locationId })
+    placeProps(map, {
+      seed: `${seed}:props`,
+      maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
+      zones: [{
+        zoneId: 'common',
+        theme: definition.id,
+        density: definition.density ?? 10,
+        require: definition.require,
+        prefer: definition.prefer,
+      }],
+    })
+    return { map, theme: definition.id, warnings: [] }
   }
 
   const map = layoutOpenTerrain(definition, { seed, width, height, locationId })

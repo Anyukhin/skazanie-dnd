@@ -5,7 +5,7 @@ import { HEAL_THRESHOLD_RATIO, healingTargetFor, planHeroTurn } from '../server/
 import { normalizeCampaignState } from '../server/rules-engine.mjs'
 
 const POTION = { id: 'item-potion', catalog_id: 'srd_5_2_1:potion-of-healing', name: 'Зелье лечения', quantity: 1, type: 'consumable' }
-const SWORD = { id: 'item-sword', catalog_id: 'srd_5_2_1:longsword', name: 'Длинный меч', quantity: 1, type: 'weapon', equipped: true, combat: { damage: '1d8', damageType: 'slashing', range: 5 } }
+const SWORD = { id: 'item-sword', catalog_id: 'srd_5_2_1:longsword', name: 'Длинный меч', quantity: 1, type: 'weapon', equipped: true, combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', range: 5 } }
 
 // Пустая сцена ломает поиск пути: без клеток герой не может дойти никуда, и
 // любой план вырождается в EndTurn. Проверять тактику на такой карте бессмысленно.
@@ -80,7 +80,33 @@ test('противник вплотную бьётся первым, а не т�
 
   assert.equal(plan.rule, 'attack-adjacent')
   assert.equal(plan.commands.some((command) => command.command_type === 'MoveActor'), false)
-  assert.equal(plan.commands.find((command) => command.command_type === 'MakeAttack').target_id, 'adjacent-orc')
+  const attack = plan.commands.find((command) => command.command_type === 'MakeAttack')
+  assert.equal(attack.target_id, 'adjacent-orc')
+  assert.equal(attack.item_id, 'item-sword', 'автономный герой обязан бить экипированным оружием, а не базовым уроном')
+})
+
+test('сбитый с ног автономный герой встаёт до атаки и платит половиной скорости', () => {
+  const state = battle({
+    heroes: [hero('fighter')],
+    enemies: [enemy('adjacent-wolf')],
+    positions: { fighter: { x: 1, y: 1 }, 'adjacent-wolf': { x: 1, y: 2 } },
+  })
+  state.mechanics.conditions.fighter = [{ id: 'prone', source_actor: 'adjacent-wolf' }]
+
+  const plan = planHeroTurn(state, 'fighter')
+  assert.deepEqual(plan.commands.map((command) => command.command_type), ['UseCombatAction', 'MakeAttack', 'EndTurn'])
+  assert.equal(plan.commands[0].action_id, 'stand-up')
+
+  const distant = battle({
+    heroes: [hero('fighter')],
+    enemies: [enemy('distant-wolf')],
+    positions: { fighter: { x: 1, y: 1 }, 'distant-wolf': { x: 6, y: 1 } },
+  })
+  distant.mechanics.conditions.fighter = [{ id: 'prone', source_actor: 'distant-wolf' }]
+  const advance = planHeroTurn(distant, 'fighter')
+  const move = advance.commands.find((command) => command.command_type === 'MoveActor')
+  assert.deepEqual(move?.to, { x: 4, y: 1 }, 'после подъёма остаётся только 15 футов движения')
+  assert.equal(advance.commands.some((command) => command.command_type === 'MakeAttack'), false)
 })
 
 test('когда рядом никого — прежнее сосредоточение огня на самом раненом', () => {

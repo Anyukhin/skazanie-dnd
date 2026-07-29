@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { generateDynamicSceneMap } from '../server/dynamic-map.mjs'
 import {
+  EDGE_KINDS,
   MATERIALS,
   SIZE_CLASSES,
   SURFACES,
@@ -46,7 +47,7 @@ function legacyMap(options) {
 
 test('карта переживает сборку, сериализацию и чтение обратно', () => {
   const map = createTacticalMap({ width: 4, height: 3, locationId: 'loc-1', seed: 'seed-1' })
-  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', label: 'Общий зал' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', floorDirection: 'vertical', label: 'Общий зал' })
   for (let y = 0; y < 3; y += 1) {
     for (let x = 0; x < 4; x += 1) {
       setCell(map, x, y, {
@@ -71,10 +72,20 @@ test('карта переживает сборку, сериализацию и 
   assert.deepEqual(edgeList(restored), edgeList(map))
   assert.deepEqual(restored.doors, map.doors)
   assert.deepEqual(restored.zones, map.zones)
+  assert.equal(restored.zones[0].floorDirection, 'vertical', 'направление настила теряется при сериализации')
   assert.deepEqual(restored.bounds, map.bounds)
   assert.equal(cellAt(restored, 2, 2)?.hazardId, 'hz-1')
   assert.equal(cellAt(restored, 1, 0)?.moveCost, 2)
   assert.equal(cellAt(restored, 0, 2)?.elevation, -1)
+})
+
+test('старая зона без направления настила получает совместимое горизонтальное значение', () => {
+  const map = createTacticalMap({ width: 1, height: 1, fill: { passable: true } })
+  addZone(map, { id: 'legacy', kind: 'interior', material: 'wood' })
+  const raw = serializeTacticalMap(map)
+  delete raw.zones[0].floorDirection
+  const restored = deserializeTacticalMap(raw)
+  assert.equal(restored.zones[0].floorDirection, 'horizontal')
 })
 
 test('старые клетки восстанавливаются из карты побайтово на восьми планировках', () => {
@@ -146,6 +157,30 @@ test('ребро канонизируется и не существует ме�
   ))
   setEdge(map, 1, 1, 2, 1, { kind: 'none' })
   assert.equal(edgeBetween(map, 1, 1, 2, 1), null)
+})
+
+test('бойница и решётка дополняют старые коды рёбер и несут проверяемую механику проёма', () => {
+  assert.deepEqual(
+    EDGE_KINDS.slice(0, 6),
+    ['none', 'wall', 'door', 'window', 'rail', 'ledge'],
+    'индексы старых рёбер нельзя сдвигать в сохранённых картах',
+  )
+  assert.deepEqual(EDGE_KINDS.slice(6), ['loophole', 'grate'])
+  const map = createTacticalMap({ width: 3, height: 2, fill: { passable: true } })
+  const loophole = setEdge(map, 0, 0, 1, 0, { kind: 'loophole' })
+  const grate = setEdge(map, 1, 1, 2, 1, { kind: 'grate' })
+  assert.deepEqual(
+    { blocksMove: loophole.blocksMove, blocksSight: loophole.blocksSight, cover: loophole.cover },
+    { blocksMove: true, blocksSight: false, cover: 'three_quarters' },
+    'бойница должна останавливать движение, пропускать взгляд и давать укрытие',
+  )
+  assert.deepEqual(
+    { blocksMove: grate.blocksMove, blocksSight: grate.blocksSight, cover: grate.cover },
+    { blocksMove: true, blocksSight: false, cover: 'half' },
+    'решётка должна останавливать движение, пропускать взгляд и давать укрытие',
+  )
+  const restored = deserializeTacticalMap(serializeTacticalMap(map))
+  assert.deepEqual(edgeList(restored), edgeList(map), 'новые проёмы теряются в упакованном контракте')
 })
 
 test('валидация ловит каждый структурный отказ', () => {

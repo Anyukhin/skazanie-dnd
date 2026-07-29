@@ -20,10 +20,11 @@ export const TACTICAL_MAP_VERSION = 'skazanie:tactical-map-v1'
  */
 export const SURFACES = Object.freeze(['none', 'water', 'ice', 'oil', 'mud', 'rubble'])
 export const MATERIALS = Object.freeze(['stone', 'wood', 'earth', 'grass', 'sand', 'marble', 'metal', 'ice'])
-export const EDGE_KINDS = Object.freeze(['none', 'wall', 'door', 'window', 'rail', 'ledge'])
+export const EDGE_KINDS = Object.freeze(['none', 'wall', 'door', 'window', 'rail', 'ledge', 'loophole', 'grate'])
 export const COVER_LEVELS = Object.freeze(['none', 'half', 'three_quarters'])
 export const DOOR_STATES = Object.freeze(['open', 'closed', 'locked', 'broken'])
 export const ZONE_KINDS = Object.freeze(['interior', 'exterior'])
+export const FLOOR_DIRECTIONS = Object.freeze(['horizontal', 'vertical'])
 export const SPAWN_ROLES = Object.freeze(['party', 'enemy', 'neutral'])
 
 /**
@@ -145,6 +146,7 @@ export class TacticalMapError extends Error {
  * @property {string} kind значение из ZONE_KINDS
  * @property {string} material
  * @property {string} lightLevel
+ * @property {string} floorDirection значение из FLOOR_DIRECTIONS
  * @property {string} label
  */
 
@@ -597,7 +599,8 @@ export function setEdge(map, ax, ay, bx, by, edge) {
     delete map.edges[key]
     return null
   }
-  const cover = String(edge.cover ?? 'none')
+  const defaultCover = kind === 'loophole' ? 'three_quarters' : kind === 'grate' ? 'half' : 'none'
+  const cover = String(edge.cover ?? defaultCover)
   if (!COVER_LEVELS.includes(cover)) {
     throw new TacticalMapError(`Недопустимое укрытие: ${cover}`, 'COVER_NOT_ALLOWED')
   }
@@ -607,7 +610,7 @@ export function setEdge(map, ax, ay, bx, by, edge) {
     y: canonical.y,
     dir: canonical.dir,
     kind,
-    blocksMove: edge.blocksMove !== undefined ? edge.blocksMove === true : kind === 'wall',
+    blocksMove: edge.blocksMove !== undefined ? edge.blocksMove === true : ['wall', 'loophole', 'grate'].includes(kind),
     blocksSight: edge.blocksSight !== undefined ? edge.blocksSight === true : kind === 'wall',
     cover,
     doorId: edge.doorId == null ? null : String(edge.doorId),
@@ -724,6 +727,7 @@ export function addZone(map, zone) {
     kind,
     material: MATERIALS.includes(String(zone.material)) ? String(zone.material) : 'stone',
     lightLevel: boundedText(zone.lightLevel, 40, 'bright'),
+    floorDirection: FLOOR_DIRECTIONS.includes(String(zone.floorDirection)) ? String(zone.floorDirection) : 'horizontal',
     label: boundedText(zone.label, 120),
   }
   if (!record.id) throw new TacticalMapError('У зоны должен быть идентификатор', 'ZONE_ID_REQUIRED')

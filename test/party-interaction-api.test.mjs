@@ -134,8 +134,10 @@ test('агент открывает общее голосование, а неа
   assert.notEqual(transition.effects.scene.scene.location, '\u041D\u0438\u0436\u043D\u0438\u0439 \u0437\u0430\u043B')
   assert.ok(transition.agent_trace.some((stage) => stage.agent === 'AgentCartographer'))
   assert.equal(transition.effects.scene.adventure.chapter, 2)
-  assert.ok(transition.effects.scene.scene.cells.length > 80)
-  assert.ok(transition.effects.scene.scene.cells.length < 117, 'organic scene should keep a non-rectangular silhouette')
+  assert.ok(transition.effects.scene.scene.cells.length >= 16 * 16,
+    'неопознанный выход обязан получить структурированный тематический fallback')
+  assert.ok(transition.effects.scene.scene.cells.some((cell) => cell.feature),
+    'fallback не должен оставлять новую сцену пустой')
 
   const labResponse = await fetch(baseUrl + '/api/agent-lab/scene-transition', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
@@ -150,7 +152,9 @@ test('агент открывает общее голосование, а неа
   const lab = await labResponse.json()
   assert.equal(lab.dry_run, true)
   assert.equal(lab.transition.scene.location, 'Город')
-  assert.equal(lab.transition.scene.cells.length, 17 * 11)
+  assert.equal(lab.transition.scene.cells.length, 20 * 20)
+  assert.ok(lab.transition.scene.cells.filter((cell) => cell.type === 'door').length >= 4,
+    'городская карта обязана содержать двери домов')
   assert.deepEqual(lab.stages.map((stage) => stage.agent), ['AgentDirector', 'AgentCartographer', 'WorldEngine', 'AgentNarrator'])
   assert.match(lab.transition.adventure.currentHook, /Печать архивариуса/u)
 })

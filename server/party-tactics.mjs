@@ -49,6 +49,13 @@ function healingItem(actor) {
     && Number(item?.quantity ?? 1) > 0) ?? null
 }
 
+function equippedWeapon(actor) {
+  return (actor?.inventory ?? []).find((item) => item?.type === 'weapon'
+    && item?.equipped === true
+    && Number(item?.quantity ?? 1) > 0
+    && ['melee', 'ranged'].includes(String(item?.combat?.kind ?? ''))) ?? null
+}
+
 /**
  * Кого лечить. Порядок жёсткий и объяснимый: сначала те, кто уже упал (у них
  * идут спасброски от смерти), затем тяжело раненные. Внутри группы — меньшие
@@ -68,21 +75,44 @@ export function healingTargetFor(state, actorIdValue) {
 }
 
 /** Сколько шагов пути герой успевает пройти за ход. */
-function stepsWithinSpeed(actor, path, keepDistanceCells = 0) {
-  const budget = Math.max(1, Math.floor((Number(actor?.speed) || 30) / 5))
+function stepsWithinSpeed(actor, path, keepDistanceCells = 0, availableMovementFeet = Number(actor?.speed) || 30) {
+  const budget = Math.max(0, Math.floor(Math.max(0, availableMovementFeet) / 5))
   const needed = Math.max(0, (path?.length ?? 0) - keepDistanceCells)
   return Math.min(needed, budget)
 }
 
-function approachCommands(state, actorIdValue, actor, targetId, keepDistanceFeet) {
+function approachCommands(state, actorIdValue, actor, targetId, keepDistanceFeet, plannedMovementFeet = 0) {
   const to = actorPosition(state, targetId)
   const path = shortestTacticalPath(state, actorIdValue, to, { allowOccupiedDestination: true })
   const keepCells = Math.max(0, Math.floor(Number(keepDistanceFeet) / 5))
-  const steps = stepsWithinSpeed(actor, path, keepCells)
+  const speed = Math.max(0, Number(actor?.speed) || 30)
+  const economy = state?.mechanics?.combat?.action_economy?.[String(actorIdValue)] ?? {}
+  const availableMovementFeet = speed
+    + Math.max(0, Number(economy.movement_bonus) || 0)
+    - Math.max(0, Number(economy.movement_spent) || 0)
+    - Math.max(0, Number(plannedMovementFeet) || 0)
+  const steps = stepsWithinSpeed(actor, path, keepCells, availableMovementFeet)
   if (steps <= 0 || !path?.[steps - 1]) return { commands: [], position: actorPosition(state, actorIdValue) }
   return {
     commands: [{ command_type: 'MoveActor', actor_id: actorIdValue, to: path[steps - 1] }],
     position: path[steps - 1],
+  }
+}
+
+function standUpPlan(state, actorIdValue, actor) {
+  const prone = (state?.mechanics?.conditions?.[String(actorIdValue)] ?? [])
+    .some((condition) => String(condition?.id ?? condition) === 'prone')
+  if (!prone) return { commands: [], movementCost: 0 }
+  const speed = Math.max(0, Number(actor?.speed) || 30)
+  const economy = state?.mechanics?.combat?.action_economy?.[String(actorIdValue)] ?? {}
+  const movementCost = Math.ceil(speed / 2)
+  const available = speed
+    + Math.max(0, Number(economy.movement_bonus) || 0)
+    - Math.max(0, Number(economy.movement_spent) || 0)
+  if (available < movementCost) return { commands: [], movementCost: 0 }
+  return {
+    commands: [{ command_type: 'UseCombatAction', actor_id: actorIdValue, action_id: 'stand-up' }],
+    movementCost,
   }
 }
 
@@ -98,6 +128,7 @@ export function planHeroTurn(state, actorIdValue) {
   if (!actor || !livingEnemies.length) return { rule: 'end-turn', commands: [end] }
 
   const from = actorPosition(state, actorIdValue)
+  const standing = standUpPlan(state, actorIdValue, actor)
 
   // 1. Упавший или тяжело раненный союзник важнее ещё одного удара: зелье в
   //    сумке, потраченное после боя, спасти его уже не может.
@@ -108,19 +139,30 @@ export function planHeroTurn(state, actorIdValue) {
     const commands = []
     let position = from
     if (feetBetween(position, actorPosition(state, allyId)) > HEALING_RANGE_FEET && allyId !== actorIdValue) {
-      const approach = approachCommands(state, actorIdValue, actor, allyId, HEALING_RANGE_FEET)
+      const approach = approachCommands(state, actorIdValue, actor, allyId, HEALING_RANGE_FEET, standing.movementCost)
       commands.push(...approach.commands)
       position = approach.position
     }
     if (allyId === actorIdValue || feetBetween(position, actorPosition(state, allyId)) <= HEALING_RANGE_FEET) {
       commands.push({ command_type: 'UseItem', actor_id: actorIdValue, item_id: String(potion.id), target_id: allyId })
-      return { rule: allyId === actorIdValue ? 'heal-self' : 'heal-ally', commands: [...commands, end] }
+      return { rule: allyId === actorIdValue ? 'heal-self' : 'heal-ally', commands: [...standing.commands, ...commands, end] }
     }
     // Дойти не успели — ход не пропадает: ниже отработает обычная атака.
   }
 
   const profile = attackProfileFor(state, actorIdValue)
-  if (!profile) return { rule: 'no-attack-profile', commands: [end] }
+  if (!profile) return { rule: 'no-attack-profile', commands: [...standing.commands, end] }
+  const weapon = equippedWeapon(actor)
+  const attackRangeFeet = weapon
+    ? Math.max(5, Number(weapon.combat?.range_feet ?? weapon.combat?.range ?? 5) || 5)
+    : profile.range_feet
+  const attackCommand = (targetId) => ({
+    command_type: 'MakeAttack',
+    actor_id: actorIdValue,
+    target_id: targetId,
+    ...(weapon ? { item_id: String(weapon.id) } : {}),
+    server_authoritative: true,
+  })
 
   // 2. Противник вплотную бьётся здесь и сейчас. Уходить от него через всю
   //    карту к более раненой цели значит подставиться под атаку по
@@ -131,7 +173,7 @@ export function planHeroTurn(state, actorIdValue) {
   if (adjacent) {
     return {
       rule: 'attack-adjacent',
-      commands: [{ command_type: 'MakeAttack', actor_id: actorIdValue, target_id: idOf(adjacent), server_authoritative: true }, end],
+      commands: [...standing.commands, attackCommand(idOf(adjacent)), end],
     }
   }
 
@@ -140,14 +182,14 @@ export function planHeroTurn(state, actorIdValue) {
   const targetId = idOf(target)
   const commands = []
   let position = from
-  if (feetBetween(position, actorPosition(state, targetId)) > profile.range_feet) {
-    const approach = approachCommands(state, actorIdValue, actor, targetId, profile.range_feet)
+  if (feetBetween(position, actorPosition(state, targetId)) > attackRangeFeet) {
+    const approach = approachCommands(state, actorIdValue, actor, targetId, attackRangeFeet, standing.movementCost)
     commands.push(...approach.commands)
     position = approach.position
   }
-  if (feetBetween(position, actorPosition(state, targetId)) <= profile.range_feet) {
-    commands.push({ command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetId, server_authoritative: true })
-    return { rule: commands.length > 1 ? 'close-and-attack' : 'attack-focus', commands: [...commands, end] }
+  if (feetBetween(position, actorPosition(state, targetId)) <= attackRangeFeet) {
+    commands.push(attackCommand(targetId))
+    return { rule: commands.length > 1 ? 'close-and-attack' : 'attack-focus', commands: [...standing.commands, ...commands, end] }
   }
-  return { rule: 'advance', commands: [...commands, end] }
+  return { rule: 'advance', commands: [...standing.commands, ...commands, end] }
 }

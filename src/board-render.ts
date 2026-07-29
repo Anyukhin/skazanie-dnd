@@ -79,8 +79,12 @@ export type BoardContext2D = {
   clearRect(x: number, y: number, width: number, height: number): void
   setLineDash(segments: number[]): void
   drawImage(image: CanvasImageSource, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): void
+  fillText(text: string, x: number, y: number, maxWidth?: number): void
   fillStyle: string | CanvasGradient | CanvasPattern
   strokeStyle: string | CanvasGradient | CanvasPattern
+  font: string
+  textAlign: CanvasTextAlign
+  textBaseline: CanvasTextBaseline
   lineWidth: number
   globalAlpha: number
   globalCompositeOperation: GlobalCompositeOperation
@@ -555,6 +559,40 @@ function drawTexture(context: BoardContext2D, texture: BoardTexture, variant: nu
   context.restore()
 }
 
+function drawFloorTerrainTexture(
+  context: BoardContext2D, scene: BoardScene, texture: BoardTexture, cell: TacticalCell,
+  left: number, top: number, size: number, floorDirection: string,
+) {
+  const terrain = scene.terrain
+  if (!terrain) return
+  if (cell.passable && floorDirection === 'vertical') {
+    context.save()
+    context.translate(left + size / 2, top + size / 2)
+    context.rotate(Math.PI / 2)
+    // Координаты источника меняются местами вместе с поворотом: соседние
+    // окна фактуры остаются сшитыми, а не превращаются в набор квадратов.
+    drawTerrainRect(context, texture, terrain.cellsPerTile, cell.y, cell.x, 1, 1, -size / 2, -size / 2, size, size)
+    context.restore()
+    return
+  }
+  drawTerrainRect(context, texture, terrain.cellsPerTile, cell.x, cell.y, 1, 1, left, top, size, size)
+}
+
+function drawLegacyFloorTexture(
+  context: BoardContext2D, texture: BoardTexture, cell: TacticalCell,
+  alpha: number, left: number, top: number, size: number, floorDirection: string,
+) {
+  if (cell.passable && floorDirection === 'vertical') {
+    context.save()
+    context.translate(left + size / 2, top + size / 2)
+    context.rotate(Math.PI / 2)
+    drawTexture(context, texture, cell.variant, alpha, -size / 2, -size / 2, size)
+    context.restore()
+    return
+  }
+  drawTexture(context, texture, cell.variant, alpha, left, top, size)
+}
+
 function drawSceneArt(context: BoardContext2D, scene: BoardScene, cell: TacticalCell, left: number, top: number) {
   const art = scene.art
   if (!art) return
@@ -598,6 +636,7 @@ export function drawFloorTiles(context: BoardContext2D, scene: BoardScene, tile:
   const frame = tileFrame(scene, tile)
   const textures = scene.textures
   const available = texturesAvailableIn(scene)
+  const zoneDirections = new Map(scene.map.zones.map((zone) => [zone.id, zone.floorDirection]))
   for (let y = frame.minY; y <= frame.maxY; y += 1) {
     for (let x = frame.minX; x <= frame.maxX; x += 1) {
       const cell = cellAt(scene.map, x, y)
@@ -607,8 +646,9 @@ export function drawFloorTiles(context: BoardContext2D, scene: BoardScene, tile:
       context.fillStyle = boardFillColor({ kind: 'floor', cell }, scene.palette, available)
       context.fillRect(left, top, frame.size, frame.size)
       const tile = terrainTextureFor(scene, cell)
+      const floorDirection = zoneDirections.get(cell.zone) ?? 'horizontal'
       if (tile && scene.terrain) {
-        drawTerrainRect(context, tile, scene.terrain.cellsPerTile, x, y, 1, 1, left, top, frame.size, frame.size)
+        drawFloorTerrainTexture(context, scene, tile, cell, left, top, frame.size, floorDirection)
         // Непроходимая клетка — это массив породы или кладка. Фактура у неё
         // своя, но без притемнения она на светлом полу читается как пол.
         if (!cell.passable) {
@@ -621,7 +661,7 @@ export function drawFloorTiles(context: BoardContext2D, scene: BoardScene, tile:
         drawSurfaceTexture(context, scene, cell, left, top, frame.size, x, y)
       } else {
         const texture = textures?.get(cell.material)
-        if (texture) drawTexture(context, texture, cell.variant, cell.passable ? 0.55 : 0.72, left, top, frame.size)
+        if (texture) drawLegacyFloorTexture(context, texture, cell, cell.passable ? 0.55 : 0.72, left, top, frame.size, floorDirection)
       }
       drawSceneArt(context, scene, cell, left, top)
     }
@@ -820,10 +860,26 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
       }
       continue
     }
-    // Дверь и окно — это разрыв в стене с косяками по краям. У штампа косяки
+    // Проём — это разрыв в стене с косяками по краям. У штампа косяки
     // нарисованы внутри самого рисунка, поэтому он заменяет всю сборку целиком.
     const doorState = (edge.doorId ? states.get(edge.doorId) : undefined) ?? 'closed'
-    if (drawEdgeStamp(context, scene, geometry, edge.kind === 'window' ? 'window_glazed' : DOOR_STAMPS[doorState])) continue
+    const openingStamp = edge.kind === 'window'
+      ? 'window_glazed'
+      : edge.kind === 'loophole'
+        ? 'arrow_slit'
+        : edge.kind === 'grate'
+          ? 'portcullis_gate'
+          : DOOR_STAMPS[doorState]
+    if (drawEdgeStamp(context, scene, geometry, openingStamp)) continue
+    if (edge.kind === 'loophole') {
+      // Бойница — узкая щель в цельной стене: движение перекрыто, но через
+      // центр читается линия обзора и укрытие в три четверти.
+      context.fillStyle = boardFillColor({ kind: 'wall', cell: side }, scene.palette, available)
+      fillAlongEdge(context, geometry, 0, geometry.length, geometry.thickness)
+      context.fillStyle = boardFillColor({ kind: 'window' }, scene.palette, available)
+      fillAlongEdge(context, geometry, geometry.length * 0.39, geometry.length * 0.61, Math.max(1, geometry.thickness * 0.3))
+      continue
+    }
     context.fillStyle = boardFillColor({ kind: 'wall', cell: side }, scene.palette, available)
     fillAlongEdge(context, geometry, 0, geometry.length * 0.22, geometry.thickness)
     fillAlongEdge(context, geometry, geometry.length * 0.78, geometry.length, geometry.thickness)
@@ -833,6 +889,21 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
     if (edge.kind === 'window') {
       context.fillStyle = boardFillColor({ kind: 'window' }, scene.palette, available)
       fillAlongEdge(context, geometry, geometry.length * 0.24, geometry.length * 0.76, Math.max(1, geometry.thickness * 0.45))
+      continue
+    }
+    if (edge.kind === 'grate') {
+      context.fillStyle = scene.palette.rail
+      fillAlongEdge(context, geometry, geometry.length * 0.24, geometry.length * 0.76, Math.max(1, geometry.thickness * 0.24))
+      const centerX = geometry.left + geometry.width / 2
+      const centerY = geometry.top + geometry.height / 2
+      const bar = Math.max(1, geometry.thickness * 0.18)
+      for (const step of [0.32, 0.44, 0.56, 0.68]) {
+        if (geometry.vertical) {
+          context.fillRect(centerX - geometry.thickness * 0.62, geometry.top + geometry.length * step - bar / 2, geometry.thickness * 1.24, bar)
+        } else {
+          context.fillRect(geometry.left + geometry.length * step - bar / 2, centerY - geometry.thickness * 0.62, bar, geometry.thickness * 1.24)
+        }
+      }
       continue
     }
     drawDoorLeaf(context, scene, geometry, doorState)
@@ -2957,6 +3028,36 @@ export function drawGrid(context: BoardContext2D, scene: BoardScene, tile: Board
   context.restore()
 }
 
+/** Световая заливка зоны; `null` означает нейтральный яркий свет. */
+export function zoneLightTreatment(lightLevel: string): string | null {
+  const level = String(lightLevel ?? '').trim().toLowerCase()
+  if (level === 'dark' || level === 'darkness') return 'rgba(7,9,14,.44)'
+  if (level === 'dim' || level === 'low') return 'rgba(24,22,29,.2)'
+  if (level === 'bright' || level === 'sunlit') return 'rgba(255,235,177,.08)'
+  return null
+}
+
+/**
+ * Свет ложится поверх пола, стен и предметов, но только в раскрытых клетках.
+ * Нераскрытая часть остаётся единым туманом и не выдаёт границы тёмной зоны.
+ */
+export function drawZoneLighting(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
+  const frame = tileFrame(scene, tile)
+  const lights = new Map(scene.map.zones.map((zone) => [zone.id, zoneLightTreatment(zone.lightLevel)]))
+  context.save()
+  for (let y = frame.minY; y <= frame.maxY; y += 1) {
+    for (let x = frame.minX; x <= frame.maxX; x += 1) {
+      const cell = cellAt(scene.map, x, y)
+      if (!cell?.revealed) continue
+      const treatment = lights.get(cell.zone)
+      if (!treatment) continue
+      context.fillStyle = treatment
+      context.fillRect((x - frame.minX) * frame.size, (y - frame.minY) * frame.size, frame.size, frame.size)
+    }
+  }
+  context.restore()
+}
+
 /** Слой 7: туман войны по `revealed`. */
 export function drawFog(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
@@ -2981,6 +3082,7 @@ export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile
   drawDecals(context, scene, tile)
   drawEdgeSegments(context, scene, tile)
   drawProps(context, scene, tile)
+  drawZoneLighting(context, scene, tile)
   drawGrid(context, scene, tile)
   drawFog(context, scene, tile)
 }
@@ -3025,6 +3127,181 @@ export function drawBoardOverlay(context: BoardContext2D, scene: BoardScene, cel
     context.stroke()
   }
   context.restore()
+}
+
+// --- печатные оверлеи карты ---------------------------------------------
+
+/** Буквенная координата столбца: 0 → A, 25 → Z, 26 → AA. */
+export function coordinateColumnLabel(index: number) {
+  let value = Math.max(0, Math.floor(index)) + 1
+  let label = ''
+  while (value > 0) {
+    value -= 1
+    label = String.fromCharCode(65 + (value % 26)) + label
+    value = Math.floor(value / 26)
+  }
+  return label
+}
+
+export type RoomLabelPlacement = { zoneId: string; label: string; x: number; y: number; revealedCells: number }
+
+/**
+ * Центры подписей только по уже раскрытым клеткам. Само наличие подписи в
+ * `map.overlays` не даёт права показать название комнаты сквозь туман.
+ */
+export function revealedRoomLabelPlacements(map: TacticalMap): RoomLabelPlacement[] {
+  const placements: RoomLabelPlacement[] = []
+  for (const entry of map.overlays.roomLabels) {
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    let revealedCells = 0
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const cell = cellAt(map, x, y)
+        if (!cell?.revealed || cell.zone !== entry.zoneId) continue
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x)
+        maxY = Math.max(maxY, y)
+        revealedCells += 1
+      }
+    }
+    if (!revealedCells || !entry.label.trim()) continue
+    placements.push({
+      zoneId: entry.zoneId,
+      label: entry.label,
+      x: (minX + maxX + 1) / 2,
+      y: (minY + maxY + 1) / 2,
+      revealedCells,
+    })
+  }
+  return placements
+}
+
+function drawCoordinateFrame(context: BoardContext2D, scene: BoardScene) {
+  const { map, cellSize: size } = scene
+  const width = map.width * size
+  const height = map.height * size
+  const fontSize = Math.max(7, Math.min(13, size * 0.28))
+  const columnStep = Math.max(1, Math.ceil(fontSize * 1.6 / Math.max(1, size)))
+  const rowStep = Math.max(1, Math.ceil(fontSize * 2.2 / Math.max(1, size)))
+  const badge = 'rgba(232,214,174,.78)'
+  const ink = '#30271d'
+  context.save()
+  context.strokeStyle = 'rgba(48,39,29,.82)'
+  context.lineWidth = Math.max(1, size / 16)
+  context.strokeRect(0.5, 0.5, Math.max(0, width - 1), Math.max(0, height - 1))
+  context.font = `700 ${fontSize}px Manrope, sans-serif`
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  for (let x = 0; x < map.width; x += columnStep) {
+    const centerX = (x + 0.5) * size
+    const label = coordinateColumnLabel(x)
+    context.fillStyle = badge
+    context.fillRect(centerX - size * 0.24, 0, size * 0.48, fontSize * 1.18)
+    context.fillRect(centerX - size * 0.24, height - fontSize * 1.18, size * 0.48, fontSize * 1.18)
+    context.fillStyle = ink
+    context.fillText(label, centerX, fontSize * 0.55)
+    context.fillText(label, centerX, height - fontSize * 0.55)
+  }
+  for (let y = 0; y < map.height; y += rowStep) {
+    const centerY = (y + 0.5) * size
+    const label = String(y + 1)
+    const badgeWidth = Math.max(size * 0.48, fontSize * (label.length * 0.62 + 0.5))
+    context.fillStyle = badge
+    context.fillRect(0, centerY - fontSize * 0.59, badgeWidth, fontSize * 1.18)
+    context.fillRect(width - badgeWidth, centerY - fontSize * 0.59, badgeWidth, fontSize * 1.18)
+    context.fillStyle = ink
+    context.fillText(label, badgeWidth / 2, centerY)
+    context.fillText(label, width - badgeWidth / 2, centerY)
+  }
+  context.restore()
+}
+
+function drawCompass(context: BoardContext2D, scene: BoardScene) {
+  const size = scene.cellSize
+  const width = scene.map.width * size
+  const radius = Math.max(7, Math.min(size * 0.62, width * 0.07))
+  const centerX = Math.max(radius + 3, width - radius - size * 0.55)
+  const centerY = radius + size * 0.68
+  context.save()
+  context.fillStyle = 'rgba(232,214,174,.82)'
+  context.beginPath()
+  context.arc(centerX, centerY, radius * 1.12, 0, Math.PI * 2)
+  context.fill()
+  context.strokeStyle = 'rgba(48,39,29,.84)'
+  context.lineWidth = Math.max(1, size / 20)
+  context.beginPath()
+  context.moveTo(centerX, centerY - radius)
+  context.lineTo(centerX + radius * 0.23, centerY)
+  context.lineTo(centerX, centerY + radius)
+  context.lineTo(centerX - radius * 0.23, centerY)
+  context.closePath()
+  context.stroke()
+  context.fillStyle = '#30271d'
+  context.font = `700 ${Math.max(8, radius * 0.72)}px Spectral, serif`
+  context.textAlign = 'center'
+  context.textBaseline = 'bottom'
+  context.fillText('С', centerX, centerY - radius * 1.02)
+  context.restore()
+}
+
+function drawScaleBar(context: BoardContext2D, scene: BoardScene) {
+  const size = scene.cellSize
+  const mapWidth = scene.map.width * size
+  const mapHeight = scene.map.height * size
+  const cells = Math.max(1, Math.min(4, scene.map.width - 2))
+  const segment = Math.max(5, Math.min(size, mapWidth / (cells + 2)))
+  const barWidth = cells * segment
+  const left = Math.max(3, size * 0.7)
+  const top = Math.max(size, mapHeight - size * 1.35)
+  const barHeight = Math.max(3, size * 0.13)
+  context.save()
+  for (let index = 0; index < cells; index += 1) {
+    context.fillStyle = index % 2 === 0 ? '#30271d' : 'rgba(232,214,174,.92)'
+    context.fillRect(left + index * segment, top, segment, barHeight)
+  }
+  context.strokeStyle = 'rgba(48,39,29,.9)'
+  context.lineWidth = Math.max(1, size / 28)
+  context.strokeRect(left, top, barWidth, barHeight)
+  context.fillStyle = '#30271d'
+  context.font = `700 ${Math.max(7, Math.min(12, size * 0.25))}px Manrope, sans-serif`
+  context.textAlign = 'left'
+  context.textBaseline = 'bottom'
+  context.fillText(`${cells * 5} футов`, left, top - Math.max(2, size * 0.08))
+  context.restore()
+}
+
+function drawRoomLabels(context: BoardContext2D, scene: BoardScene) {
+  const size = scene.cellSize
+  const fontSize = Math.max(8, Math.min(18, size * 0.36))
+  context.save()
+  context.font = `600 ${fontSize}px Spectral, serif`
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  for (const entry of revealedRoomLabelPlacements(scene.map)) {
+    const x = entry.x * size
+    const y = entry.y * size
+    const width = Math.min(scene.map.width * size * 0.45, Math.max(size * 1.7, entry.label.length * fontSize * 0.58))
+    context.fillStyle = 'rgba(238,221,184,.72)'
+    context.fillRect(x - width / 2, y - fontSize * 0.75, width, fontSize * 1.5)
+    context.fillStyle = '#34291e'
+    context.fillText(entry.label, x, y, Math.max(size, width - size * 0.22))
+  }
+  context.restore()
+}
+
+/**
+ * Слой печатной карты: координатная рамка обязательна, остальные элементы
+ * следуют флагам серверного контракта.
+ */
+export function drawMapDecorations(context: BoardContext2D, scene: BoardScene) {
+  drawCoordinateFrame(context, scene)
+  if (scene.map.overlays.roomLabels.length) drawRoomLabels(context, scene)
+  if (scene.map.overlays.compass) drawCompass(context, scene)
+  if (scene.map.overlays.scaleBar) drawScaleBar(context, scene)
 }
 
 // --- кэш тайлов ----------------------------------------------------------

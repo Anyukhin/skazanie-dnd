@@ -203,16 +203,17 @@ export function layoutSceneGraph(graph, {
     theme,
     sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
   })
-  for (const zone of graph.zones) {
+  for (const [zoneIndex, zone] of graph.zones.entries()) {
     addZone(map, {
       id: zone.id,
       kind: zone.kind === 'exterior' ? 'exterior' : 'interior',
       material: zone.kind === 'exterior' ? 'grass' : material,
       lightLevel: zone.kind === 'exterior' ? 'bright' : 'dim',
+      floorDirection: zoneIndex % 2 === 0 ? 'horizontal' : 'vertical',
       label: zone.label || zone.id,
     })
   }
-  addZone(map, { id: 'rock', kind: 'interior', material, lightLevel: 'dark', label: '' })
+  addZone(map, { id: 'rock', kind: 'interior', material, lightLevel: 'dark', floorDirection: 'horizontal', label: '' })
 
   // Всё, что не помещение, — сплошная порода: карта заведомо непроходима, и
   // проходимость появляется только внутри комнат.

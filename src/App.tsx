@@ -17,8 +17,9 @@ import { CharacterEditor, InventoryView } from './InventoryViews'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { useGameSession, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
+import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, type MovementPath } from './tactical-ui'
+import { boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
@@ -28,6 +29,7 @@ import { TacticalBoard, type BoardCellHint, type BoardCellNode } from './Tactica
 import type { BoardOverlayCell } from './board-render'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
+import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
 
 // Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
 // а не отдельным разделом. Второго пути к ней быть не должно.
@@ -405,8 +407,8 @@ function supportMark(status: string) {
 
 function DetailHeader({ title, description, meta }: { title: string; description?: string; meta?: React.ReactNode }) {
   return <>
-    <div className="detail-head"><strong>{title}</strong>{meta}</div>
-    {description ? <p>{description}</p> : null}
+    <div className="detail-head"><strong>{title}</strong>{meta ? <div className="detail-meta">{meta}</div> : null}</div>
+    {description ? <p className="detail-description">{description}</p> : null}
   </>
 }
 
@@ -559,6 +561,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     try { return JSON.parse(window.localStorage.getItem(TILE_ORDER_KEY) ?? '{}') as Record<string, string[]> } catch { return {} }
   })
   const [draggedTileId, setDraggedTileId] = useState<string | null>(null)
+  const [hoveredDoorId, setHoveredDoorId] = useState<string | null>(null)
   useEffect(() => {
     const root = document.documentElement.style
     if (railHeight) root.setProperty('--ui-rail-height', `${railHeight}px`)
@@ -807,15 +810,13 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     ? ('character' in pendingTarget ? pendingTarget.character : pendingTarget.name)
     : pendingPoint ? `клетка ${pendingPoint.x + 1}:${pendingPoint.y + 1}` : ''
   const pendingCommandLabel = pendingCommand ? `${selectedCommandName} → ${pendingTargetName}` : ''
-  // Прогноз выбирается под выбранное оружие: игрок сравнивает варианты, а не
-  // смотрит на один усреднённый процент.
-  const inspectedForecast = (() => {
-    if (!inspectedTarget || inspectedTarget.team !== 'enemy') return null
-    const entries = state.combatForecast?.targets?.[inspectedTarget.id] ?? []
-    if (!entries.length) return null
-    return entries.find((entry) => entry.item_id === (selectedItem?.id ?? null)) ?? entries[0]
-  })()
-  const latestBattleEvent = state.battleLog?.at(-1)
+  // Прогноз выбирается под пару «выбранное оружие + наведённая/выбранная цель».
+  // Все числа уже пришли с сервера; без цели helper намеренно возвращает null.
+  const inspectedForecast = selectedAttackForecast(
+    state.combatForecast?.targets,
+    inspectedTarget?.team === 'enemy' ? inspectedTarget.id : null,
+    selectedItem?.id ?? null,
+  )
   const visualTheme = boardVisualTheme(state)
   const mapArt = boardMapArt(state, visualTheme)
 
@@ -1191,6 +1192,12 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       </>,
     })
   }
+  const highlightedDoor = doorsAtHand.find((door) => door.id === hoveredDoorId)
+  if (highlightedDoor) {
+    for (const cell of doorOverlayCells(highlightedDoor)) {
+      boardOverlay.push({ ...cell, kind: 'command-range' })
+    }
+  }
 
   /* Плитки собираются в один список, чтобы их можно было переставлять:
      порядок хранится по герою и колоде и переживает перезагрузку. Пока замок
@@ -1381,7 +1388,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             <span><Footprints size={14} /><b>{previewRoute.costFeet} фт</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
             {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); onMove(selected, x, y); setPendingMoveKey(null) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
           </div>}
-          {latestBattleEvent && <BattleResultCard state={state} event={latestBattleEvent} />}
         </section>}
         {children}
       </aside>
@@ -1478,10 +1484,19 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           {(combatActive || pendingCommand || doorsAtHand.length > 0) && <div className="hotbar-turn-controls">
             {/* Дверь рядом — единственное, что делается и вне боя: заперто это
                 или просто прикрыто, игрок видит по самой кнопке. */}
-            {doorsAtHand.map((door) => (door.state === 'locked'
-              ? <button key={door.id} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Замок заперт. Проверка Силы (Атлетика), СЛ ${Math.max(10, door.lockDc)}. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь</span></button>
-              : <button key={door.id} className="door-control" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')} title={door.state === 'open' ? 'Закрыть дверь: свободное взаимодействие' : 'Открыть дверь: свободное взаимодействие'}><CombatIcon id={`door-${door.id}`} kind="swap" hint="открыть закрыть дверь проём" size={27} compact /><span>{door.state === 'open' ? 'Закрыть дверь' : 'Открыть дверь'}</span></button>
-            ))}
+            {doorsAtHand.map((door) => {
+              const direction = active ? doorDirectionFromActor(door, active) : ''
+              const lockDc = Math.max(10, door.lockDc)
+              const hoverProps = {
+                onPointerEnter: () => setHoveredDoorId(door.id),
+                onPointerLeave: () => setHoveredDoorId((current) => current === door.id ? null : current),
+                onFocus: () => setHoveredDoorId(door.id),
+                onBlur: () => setHoveredDoorId((current) => current === door.id ? null : current),
+              }
+              return door.state === 'locked'
+                ? <button {...hoverProps} key={door.id} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Запертая дверь на ${direction}. Проверка Силы (Атлетика), СЛ ${lockDc}. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь ({direction}, СЛ {lockDc})</span></button>
+                : <button {...hoverProps} key={door.id} className="door-control" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')} title={`${door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь на ${direction}: свободное взаимодействие`}><CombatIcon id={`door-${door.id}`} kind="swap" hint="открыть закрыть дверь проём" size={27} compact /><span>{door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь ({direction})</span></button>
+            })}
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
             {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
@@ -1510,6 +1525,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             </> : combatMode === 'action' && selectedCombatAction ? <><DetailHeader title={selectedCombatAction.name} description={selectedCombatAction.description} meta={supportMark(selectedActionSupport.status) ? <i className={`detail-chip mark support-${selectedActionSupport.status}`} title={`${selectedActionSupport.label}. ${selectedActionSupport.explanation}`}>{supportMark(selectedActionSupport.status)}</i> : null} /></> : <><DetailHeader title={selectedItem?.name ?? 'Базовая атака'} description={selectedItem?.description || (selectedItem?.combat?.kind === 'thrown-area' ? 'Выберите клетку для броска.' : 'Выберите противника на карте.')} meta={<>
               <i className="detail-chip" title={`Дальность: ${attackRangeFeet} фт`}>{attackRangeFeet} фт</i>
               {areaRadiusFeet ? <i className="detail-chip" title={`Радиус поражения: ${areaRadiusFeet} фт`}>◍ {areaRadiusFeet}</i> : null}
+              {inspectedForecast ? <i className="detail-chip forecast" title="Бонус атаки рассчитан сервером для выбранной цели">атака {inspectedForecast.attack_modifier >= 0 ? '+' : '−'}{Math.abs(inspectedForecast.attack_modifier)}</i> : null}
+              {inspectedForecast ? <i className="detail-chip forecast" title="Урон взят из серверного профиля выбранного оружия">{selectedItem?.combat?.damage ? `урон ${selectedItem.combat.damage}` : `средний урон ${inspectedForecast.average_damage}`}</i> : null}
             </>} /></>}
           </aside>
         </div>
@@ -1521,6 +1538,16 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   )
 }
 function SceneHeader({ title, location, objective, turn, chapter, round, merchants, onOpenMerchant, onReset }: { title: string; location: string; objective: string; turn: number; chapter: number; round?: number; merchants: Merchant[]; onOpenMerchant: () => void; onReset: () => void }) {
+  const [objectiveExpanded, setObjectiveExpanded] = useState(false)
+  const objectiveRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!objectiveExpanded) return
+    const closeOutside = (event: PointerEvent) => {
+      if (!objectiveRef.current?.contains(event.target as Node)) setObjectiveExpanded(false)
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    return () => document.removeEventListener('pointerdown', closeOutside)
+  }, [objectiveExpanded])
   // Торговец в сцене виден прямо в заголовке, а не только пунктом бокового меню:
   // до него игрок доходит по карте, и предложение должно стоять там же, где он
   // смотрит.
@@ -1542,7 +1569,7 @@ function SceneHeader({ title, location, objective, turn, chapter, round, merchan
       {/* Цель не помещается в строку заголовка и обрезается многоточием, а
           читать её игроку надо: замерено — из 571 px текста видно 311. Полная
           формулировка уходит в подсказку, иначе цель просто теряется. */}
-      <div className="objective" title={objective}><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></div>
+      <button ref={objectiveRef} type="button" className={`objective ${objectiveExpanded ? 'expanded' : ''}`} title={objective} aria-expanded={objectiveExpanded} onClick={() => setObjectiveExpanded((value) => !value)}><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></button>
       <button className="icon-button reset-button" onClick={onReset} title="Снять бой и поднять павших героев"><RotateCcw size={17} /></button>
     </div>
   )
@@ -1618,8 +1645,45 @@ function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, 
   messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; pendingCheck: PendingCheck | null; interaction?: AgentInteraction | null; players: Player[]; currentPlayerId: string; canAct: boolean; turnName: string; combatActive: boolean; onRoll: () => void; onCancelCheck: () => void; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; open: boolean; onToggle: () => void
 }) {
   const endRef = useRef<HTMLDivElement>(null)
+  const messagesRef = useRef<HTMLDivElement>(null)
+  const [filter, setFilter] = useState<ChronicleFilter>('all')
+  const [followLatest, setFollowLatest] = useState(true)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => chronicleMatchesFilter(message.speaker, filter)),
+    [filter, messages],
+  )
+  const visibleCountRef = useRef(visibleMessages.length)
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isNarrating])
+  useEffect(() => {
+    const newMessageCount = Math.max(0, visibleMessages.length - visibleCountRef.current)
+    visibleCountRef.current = visibleMessages.length
+    if (followLatest) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      setUnreadCount(0)
+    } else if (newMessageCount > 0) {
+      setUnreadCount((count) => count + newMessageCount)
+    }
+  }, [isNarrating, visibleMessages.length])
+
+  function chooseFilter(nextFilter: ChronicleFilter) {
+    setFilter(nextFilter)
+    setFollowLatest(true)
+  }
+
+  function handleScroll() {
+    const viewport = messagesRef.current
+    if (!viewport) return
+    const nearBottom = isChronicleNearBottom(viewport)
+    setFollowLatest(nearBottom)
+    if (nearBottom) setUnreadCount(0)
+  }
+
+  function scrollToLatest() {
+    setFollowLatest(true)
+    setUnreadCount(0)
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }
 
   if (!open) {
     return <button className="chat-closed" onClick={onToggle}><MessageSquare size={19} /><span>История</span><b>{messages.length}</b></button>
@@ -1628,18 +1692,27 @@ function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, 
   return (
     <section className="chat-panel" aria-label="Что происходит в сцене">
       <div className="chat-head">
-        <div><span className="chat-head-eyebrow">ЧТО ПРОИСХОДИТ</span></div>
+        <div>
+          <span className="chat-head-eyebrow">ЧТО ПРОИСХОДИТ</span>
+          <nav className="chronicle-filters" aria-label="Фильтр хроники">
+            <button className={filter === 'all' ? 'active' : ''} type="button" onClick={() => chooseFilter('all')} aria-pressed={filter === 'all'}>Всё</button>
+            <button className={filter === 'story' ? 'active' : ''} type="button" onClick={() => chooseFilter('story')} aria-pressed={filter === 'story'}>Рассказ</button>
+            <button className={filter === 'combat' ? 'active' : ''} type="button" onClick={() => chooseFilter('combat')} aria-pressed={filter === 'combat'}>Бой</button>
+          </nav>
+        </div>
         <button className="icon-button" onClick={onToggle} aria-label="Свернуть историю"><ChevronDown size={20} /></button>
       </div>
       {/* Голосование и проверка живут здесь, среди подтверждённой правды, а не в
           композере: ключевое мультиплеерное событие не должно зависеть от геометрии
           панели, которую можно перетащить или свернуть. */}
-      {interaction ? <AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onAbstain={onAbstain} onRoll={onRollInteraction} onContinue={onContinueInteraction} />
-        : pendingCheck ? (canAct ? <DiceCheckCard check={pendingCheck} onRoll={onRoll} onCancel={onCancelCheck} />
-          : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnName}</small></span></div>)
-        : null}
-      <div className="messages">
-        {messages.map((message) => (
+      <div className="chat-interaction-slot">
+        {interaction ? <AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onAbstain={onAbstain} onRoll={onRollInteraction} onContinue={onContinueInteraction} />
+          : pendingCheck ? (canAct ? <DiceCheckCard check={pendingCheck} onRoll={onRoll} onCancel={onCancelCheck} />
+            : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnName}</small></span></div>)
+            : null}
+      </div>
+      <div className="messages" ref={messagesRef} onScroll={handleScroll}>
+        {visibleMessages.map((message) => (
           <article key={message.id} className={`message ${message.speaker}`}>
             <div className="message-body">
               <div className="message-meta"><strong>{message.author}</strong><time>{message.timestamp}</time></div>
@@ -1672,6 +1745,7 @@ function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, 
         {isNarrating && <div className="typing"><span /><span /><span /> Рассказчик меняет мир…</div>}
         <div ref={endRef} />
       </div>
+      {!followLatest && <button className="chronicle-to-latest" type="button" onClick={scrollToLatest} aria-label="К последним сообщениям"><ChevronDown size={16} />{unreadCount > 0 && <b>{unreadCount}</b>}</button>}
     </section>
   )
 }
@@ -1911,42 +1985,6 @@ function battleEventText(state: GameState, event: NonNullable<GameState['battleL
   return event.type
 }
 
-function BattleResultCard({ state, event }: { state: GameState; event: NonNullable<GameState['battleLog']>[number] }) {
-  const enemyTarget = state.enemies?.find((enemy) => enemy.id === event.targetId)
-  const enemyActor = state.enemies?.find((enemy) => enemy.id === event.actorId)
-  const hideTargetFacts = Boolean(enemyTarget && enemyTarget.healthKnown !== 'exact')
-  const hideActorFacts = Boolean(enemyActor && enemyActor.healthKnown !== 'exact')
-  const rawRoll = hideActorFacts ? null : battleRollPresentation(event)
-  const roll = rawRoll && hideTargetFacts ? { ...rawRoll, difficulty: undefined } : rawRoll
-  const tone = event.type === 'healing' ? 'healing'
-    : event.type === 'attack' ? event.roll?.hit ? 'success' : 'miss'
-      : event.type === 'spell-save' ? event.result === 'success' ? 'saved' : 'failed'
-        : event.damage != null ? 'success' : 'neutral'
-  const label = event.type === 'attack' ? 'БРОСОК АТАКИ'
-    : event.type === 'spell-save' ? 'СПАСБРОСОК'
-      : event.type === 'healing' ? 'ЛЕЧЕНИЕ'
-        : event.type === 'spell-damage' ? 'УРОН ЗАКЛИНАНИЕМ' : 'ПОСЛЕДНИЙ РЕЗУЛЬТАТ'
-  const outcome = event.type === 'attack' ? event.roll?.hit ? 'ПОПАДАНИЕ' : 'ПРОМАХ'
-    : event.type === 'spell-save' ? event.result === 'success' ? 'УСПЕХ' : 'ПРОВАЛ'
-      : event.type === 'healing' ? `+${event.healing ?? 0} ОЗ`
-        : event.damage != null ? `${event.damage} УРОНА` : null
-  return <div className={`combat-result-card ${tone}`} role="status">
-    <div className="combat-result-icon"><Dices size={15} /></div>
-    <div className="combat-result-body">
-      <header><small>{label}</small>{outcome && <strong>{outcome}</strong>}</header>
-      <p>{battleEventText(state, event)}</p>
-      {roll && <div className={`combat-roll-equation ${roll.difficulty == null ? 'difficulty-hidden' : ''}`} aria-label={`Бросок d20: ${roll.natural} ${roll.modifierText}, итог ${roll.total}${roll.difficulty == null ? '' : `, ${roll.difficultyLabel} ${roll.difficulty}`}`}>
-        <span><small>d20</small><b>{roll.natural}</b></span><i>+</i><span><small>мод.</small><b>{roll.modifierText}</b></span><i>=</i><span className="total"><small>итог</small><b>{roll.total}</b></span>{roll.difficulty != null && <><i>vs</i><span className="difficulty"><small>{roll.difficultyLabel}</small><b>{roll.difficulty}</b></span></>}
-      </div>}
-      {(event.damage != null || event.healing != null || event.hpAfter != null) && <footer>
-        {event.damage != null && <span><Flame size={11} />{event.damage} урона{event.damageType ? ` · ${event.damageType}` : ''}</span>}
-        {event.healing != null && <span><Heart size={11} />+{event.healing} ОЗ</span>}
-        {!hideTargetFacts && event.hpAfter != null && <span><Heart size={11} />ОЗ {event.hpBefore ?? '?'} → {event.hpAfter}</span>}
-      </footer>}
-    </div>
-  </div>
-}
-
 function JournalView({ state }: { state: GameState }) {
   const narratorCount = state.messages.filter((message) => message.speaker === 'narrator').length
   const battleLog = state.battleLog ?? []
@@ -1975,8 +2013,8 @@ function JournalView({ state }: { state: GameState }) {
             {quest.objectives && quest.objectives.length > 0 && <ul>{quest.objectives.slice(0, 4).map((objective) => <li key={objective}>{objective}</li>)}</ul>}
             {/* Часы квеста — server-owned счётчик давления, а не украшение:
                 когда он заполнится, ситуация изменится сама. */}
-            {quest.clock && quest.clock.max > 0 && <div className="quest-clock" title={quest.clock.label || 'Часы задачи'}>
-              <span>{quest.clock.label || 'ЧАСЫ'}</span>
+            {quest.clock && quest.clock.max > 0 && <div className="quest-clock" title={localizedQuestClockLabel(quest.clock.label)}>
+              <span>{localizedQuestClockLabel(quest.clock.label)}</span>
               <i>{Array.from({ length: Math.min(12, quest.clock.max) }, (_, index) => <u key={index} className={index < quest.clock!.current ? 'filled' : ''} />)}</i>
               <b>{quest.clock.current}/{quest.clock.max}</b>
             </div>}
@@ -2035,7 +2073,7 @@ function CharactersView({ players, selectedId, turnId, accessibleHeroIds, onSele
           <button key={player.id} disabled={!accessibleHeroIds.includes(player.id)} className={`character-sheet ${selectedId === player.id ? 'active' : ''} ${accessibleHeroIds.includes(player.id) ? '' : 'locked'}`} onClick={() => onSelect(player.id)}>
             <div className="character-art" style={{ backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition }}><span className={player.online ? 'online' : ''}>{player.online ? 'В СЕТИ' : 'НЕ В СЕТИ'}</span></div>
             <div className="character-info"><small>{player.name} играет за</small><h2>{player.character}</h2><p>{player.role}</p>
-              <div className="character-stats"><span><b>{player.hp}</b> / {player.maxHp}<small>ЗДОРОВЬЕ</small></span><span><b>{player.armor}</b><small>КЛАСС БРОНИ</small></span><span><b>{player.x}:{player.y}</b><small>КООРДИНАТЫ</small></span></div>
+              <div className="character-stats"><span><b>{player.hp}</b> / {player.maxHp}<small>ЗДОРОВЬЕ</small></span><span><b>{player.armor}</b><small>КЛАСС БРОНИ</small></span><span><b>{player.speed} фт</b><small>СКОРОСТЬ</small></span></div>
             </div>
             {turnId === player.id && <em><Crown size={13} />Сейчас ходит</em>}
           </button>
@@ -2398,7 +2436,12 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [merchantOpen, setMerchantOpen] = useState(false)
-  const [campaignsOpen, setCampaignsOpen] = useState(() => account.heroIds.length === 0 && !account.campaignMemberships?.length)
+  const requestedRoomAtEntry = useRef(new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? '')
+  const [campaignsOpen, setCampaignsOpen] = useState(() => shouldAutoOpenCampaignModal({
+    heroCount: account.heroIds.length,
+    membershipCount: account.campaignMemberships?.length ?? 0,
+    requestedRoom: requestedRoomAtEntry.current,
+  }))
   const [joinError, setJoinError] = useState<string | null>(null)
   const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
   const [aiHealth, setAiHealth] = useState<AiHealth | null>(null)
@@ -2463,6 +2506,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }
 
   useEffect(() => { getAiHealth().then(setAiHealth).catch(() => setAiHealth(null)) }, [])
+  useEffect(() => {
+    const requestedRoom = requestedRoomAtEntry.current
+    const roomLoaded = requestedRoom
+      && state.sessionCode.toUpperCase() === requestedRoom
+      && state.campaign !== 'Загрузка кампании…'
+    if (roomLoaded) setCampaignsOpen(false)
+  }, [state.campaign, state.sessionCode])
   useEffect(() => {
     const requestedRoom = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
     if (!requestedRoom || isAdmin || joinAttempted.current) return

@@ -418,6 +418,15 @@ test('обычные игроки проходят автономную камп
 
     if (Number(current.hp) > 0 && current.alive !== false) {
       const conditions = battleState.mechanics.conditions?.[actorId] ?? []
+      const prone = conditions.some((entry) => String(entry?.id ?? entry) === 'prone')
+      if (prone) {
+        const stoodUp = await playerCommand(baseUrl, actorCookie, `player-stand-up-${++commandIndex}`, {
+          command_type: 'UseCombatAction', actor_id: actorId, action_id: 'stand-up',
+        })
+        assert.equal(stoodUp.status, 200, stoodUp.text)
+        combatEvents.push(...(stoodUp.body.mechanics ?? []))
+        battleState = stoodUp.body.authoritative_state
+      }
       const raging = conditions.some((entry) => String(entry?.id ?? entry) === 'raging')
       const bonusReady = combat.action_economy?.[actorId]?.bonus_action !== false
       if (!raging && bonusReady) {

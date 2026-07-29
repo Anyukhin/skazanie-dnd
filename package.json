@@ -29,8 +29,11 @@
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
     "icons:manifest": "node tools/build-icon-manifest.mjs",
+    "items:manifest": "node tools/build-item-manifest.mjs",
+    "items:rights": "node tools/register-asset-rights.mjs --all-under items",
     "props:atlas": "node tools/build-prop-atlas.mjs",
     "props:rights": "node tools/register-asset-rights.mjs --all-under maps/props",
+    "enemies:rights": "node tools/register-asset-rights.mjs --all-under enemies",
     "terrain:tiles": "node tools/build-terrain-tiles.mjs",
     "terrain:rights": "node tools/register-asset-rights.mjs --all-under maps/terrain"
   },

@@ -63,7 +63,7 @@ function sceneQuest({ chapter, scene, adventure, locationId }) {
     visibility: 'party',
     entity_ids: locationId ? [locationId] : [],
     objectives: objective ? [objective] : [],
-    clock: { current: 0, max: 4, label: 'Scene objective', triggered: false },
+    clock: { current: 0, max: 4, label: 'Цель сцены', triggered: false },
   }
 }
 

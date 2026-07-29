@@ -3,7 +3,13 @@ import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
 import { SIZE_CLASSES, legacyCellsFromTacticalMap } from './tactical-map.mjs'
 import { REFERENCE_SIZE } from './building-generator.mjs'
-import { buildThemedScene, isLiveTheme, matchTheme, themeFromMapRequest } from './scene-themes.mjs'
+import {
+  buildThemedScene,
+  fallbackThemeFor,
+  isLiveTheme,
+  matchTheme,
+  themeFromMapRequest,
+} from './scene-themes.mjs'
 
 const WIDTH = 13
 const HEIGHT = 9
@@ -126,20 +132,19 @@ export function rememberCurrentSceneMap(state) {
  * Тема сцены — здание с участком, храм, склеп, пещера, лес, дорога или
  * поселение — распознаётся по словам картографа и его же заявке на карту. Для
  * темы работает отдельный генератор со стенами на рёбрах и расстановкой по
- * якорям; неопознанная сцена достаётся прежнему процедурному пути.
+ * якорям; неопознанная сцена получает безопасную тему по своей планировке.
  *
  * Порядок источников — от точного к общему:
  *
  * 1. Название локации и тема сцены. Это самые конкретные слова, и пишет их сам
  *    картограф: «древний склеп» он называет складом не по недосмотру.
  * 2. Узор и планировка из заявки. Часть значений называет тему однозначно.
- * 3. Ничего не опознано либо тема ещё не отдаётся живой игре — процедурный
- *    генератор с запрошенной планировкой.
+ * 3. Ничего не опознано — структурированный тематический fallback, сохраняющий
+ *    топологию заявки (`cavern`, `streets`, `open`, `rooms`).
  *
- * Опознанная тема — ещё не повод её применить: у пещеры и поселения геометрия
- * пока делает сцену хуже прежнего генератора, и это записано прямо в каталоге
- * (`live`). Проверка стоит здесь, а не в опознании: `matchTheme` отвечает на
- * вопрос «что это за место», а не «чем это строить».
+ * Проверка `live` стоит здесь, а не в опознании: `matchTheme` отвечает на
+ * вопрос «что это за место», а не «чем это строить». Сейчас все заявленные
+ * темы имеют самостоятельную геометрию.
  *
  * Прежде здесь стояли ворота: если картограф назвал `layout` или `pattern`, тема
  * не применялась вовсе — считалось, что это его осознанное решение. Ворота
@@ -151,7 +156,9 @@ export function rememberCurrentSceneMap(state) {
  */
 function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap }) {
   // Опознание живёт в одном месте — `server/scene-themes.mjs`.
-  const recognized = matchTheme({ location, theme, sceneKind }) ?? themeFromMapRequest(requestedMap)
+  const recognized = matchTheme({ location, theme, sceneKind })
+    ?? themeFromMapRequest(requestedMap)
+    ?? fallbackThemeFor({ sceneKind, request: requestedMap })
   const matched = isLiveTheme(recognized) ? recognized : null
   if (matched) {
     const built = buildThemedScene({

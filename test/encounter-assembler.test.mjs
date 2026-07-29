@@ -47,7 +47,7 @@ test('exports an expanded dnd.su-linked SRD 5.2.1 monster catalog with fixed sou
     'warband', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness',
     'generic',
   ])
-  assert.equal(Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length, 12)
+  assert.equal(Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length, 18)
   assert.equal(DND_SU_BESTIARY_SOURCE.url, 'https://dnd.su/bestiary/')
   assert.equal(SRD_5_2_1_SOURCE.version, '5.2.1')
   assert.equal(SRD_5_2_1_SOURCE.encounter_budget_page, 202)
@@ -60,6 +60,12 @@ test('exports an expanded dnd.su-linked SRD 5.2.1 monster catalog with fixed sou
   assert.equal(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:zombie'].source_page, 343)
   assert.equal(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:zombie'].initiative_bonus, -2)
   assert.equal(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:wolf'].source_page, 364)
+  assert.equal(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:bandit'].source_page, 261)
+  assert.equal(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:dire-wolf'].source_page, 347)
+  assert.equal(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:ghoul'].source_page, 288)
+  assert.equal(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:gnoll-warrior'].source_page, 289)
+  assert.equal(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:ogre'].source_page, 312)
+  assert.equal(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:owlbear'].source_page, 313)
   assert.ok(Object.isFrozen(SRD_5_2_1_SOURCE))
   assert.ok(Object.isFrozen(SRD_5_2_1_MONSTER_ALLOWLIST))
   assert.ok(Object.isFrozen(SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:wolf']))
@@ -185,7 +191,7 @@ test('available-cell and per-character caps take priority over a large XP budget
   assert.equal(proposal.xp_budget, 176_000)
   assert.equal(proposal.enemies.length, ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures)
   assert.equal(proposal.threat.quantity_cap, ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures)
-  assert.equal(proposal.xp_spent, 600)
+  assert.equal(proposal.xp_spent, 2_400)
 })
 
 test('enemy output carries engine-compatible actions, traits, image and server provenance', () => {
@@ -200,7 +206,7 @@ test('enemy output carries engine-compatible actions, traits, image and server p
   assert.equal(enemy.maxHp, 11)
   assert.equal(enemy.initiativeBonus, 2)
   assert.equal(enemy.damageDice, 6)
-  assert.equal(enemy.image, '/assets/enemies/wolf.jpg')
+  assert.equal(enemy.image, '/assets/enemies/wolf.png')
   assert.equal(enemy.source_url, 'https://dnd.su/bestiary/2-wolf/')
   assert.equal(enemy.traits[0].id, 'pack-tactics')
   assert.equal(enemy.action_profiles[0].on_hit.condition, 'prone')
@@ -226,6 +232,13 @@ test('rejects unknown, secret, price-like, budget, quantity, and forged numeric 
   expectCode(() => assembleEncounter(baseInput({
     party: [{ id: 'hero', level: 1, x: 0, y: 0, hp: 9_999 }],
   })), 'UNEXPECTED_PARTY_MEMBER_FIELD')
+})
+
+test('встреча принимает server-owned реквизит темы и по-прежнему отклоняет произвольный feature', () => {
+  const themed = cells().map((cell, index) => index === 10 ? { ...cell, feature: 'stalagmite' } : cell)
+  assert.ok(assembleEncounter(baseInput({ scene: { cells: themed } })).enemies.length > 0)
+  const forged = cells().map((cell, index) => index === 10 ? { ...cell, feature: 'forged-client-prop' } : cell)
+  expectCode(() => assembleEncounter(baseInput({ scene: { cells: forged } })), 'SCENE_CELL_FEATURE_NOT_ALLOWED')
 })
 
 test('rejects malformed enums, numbers, duplicate positions, sparse arrays, and unsafe placement', () => {

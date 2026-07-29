@@ -49,7 +49,9 @@ test('картограф без модели строит городскую к�
   assert.equal(planned.shopIntent.action, 'create')
   assert.equal(planned.shopIntent.settlement_type, 'city')
   assert.equal(transition.scene.location, 'Город')
-  assert.equal(transition.scene.cells.length, 17 * 11)
+  assert.equal(transition.scene.cells.length, 20 * 20)
+  assert.ok(transition.scene.cells.filter((cell) => cell.type === 'door').length >= 4,
+    'городская карта обязана содержать двери домов')
   assert.match(transition.adventure.currentHook, /Печать архивариуса/u)
   assert.ok(transition.adventure.unresolvedThreads.includes(archiveState.adventure.currentHook))
   assert.equal(transition.adventure.history.at(-1).status, 'unresolved')
@@ -249,7 +251,9 @@ test('масштаб крепости не может быть сжат моде
   assert.equal(planned.sceneArgs.map.width, 19)
   assert.equal(planned.sceneArgs.map.height, 13)
   const transition = createSceneTransition(planned.sceneArgs, archiveState)
-  assert.equal(transition.scene.cells.length, 19 * 13)
+  assert.equal(transition.scene.cells.length, 19 * 16)
+  assert.ok(transition.scene.cells.some((cell) => cell.type === 'door'),
+    'каменная крепость обязана получить структурированную планировку с проходами')
 })
 
 test('органические шаблоны создают разные неровные силуэты без недостижимых проходов', () => {

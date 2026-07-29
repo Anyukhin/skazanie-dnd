@@ -100,7 +100,7 @@ export const initialState: GameState = {
   engine_mode: 'enforce',
   players,
   merchants,
-  enemies: [{ id: 'archive-guardian', name: 'Страж архива', hp: 18, maxHp: 18, armor: 13, speed: 30, attackBonus: 4, damageDice: 6, damageBonus: 2, x: 10, y: 5, alive: true }],
+  enemies: [{ id: 'archive-guardian', name: 'Страж архива', hp: 18, maxHp: 18, armor: 13, speed: 30, attackBonus: 4, damageDice: 6, damageBonus: 2, image: '/assets/enemies/archive-guardian.png', x: 10, y: 5, alive: true }],
   tacticalTurn: { sceneTurn: 7, actorId: 'lira', movementSpent: 0, actionUsed: false },
   mapFeedback: [],
   battleLog: [],

@@ -131,11 +131,11 @@ export function generateBuildingScene({
     tilesetId: 'building',
     sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
   })
-  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', label: 'Участок' })
-  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Общий зал' })
-  addZone(map, { id: 'kitchen', kind: 'interior', material: 'stone', lightLevel: 'dim', label: 'Кухня' })
-  addZone(map, { id: 'store', kind: 'interior', material: 'wood', lightLevel: 'dark', label: 'Кладовая' })
-  addZone(map, { id: 'walls', kind: 'interior', material: 'stone', lightLevel: 'dark', label: '' })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Участок' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Общий зал' })
+  addZone(map, { id: 'kitchen', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'vertical', label: 'Кухня' })
+  addZone(map, { id: 'store', kind: 'interior', material: 'wood', lightLevel: 'dark', floorDirection: 'vertical', label: 'Кладовая' })
+  addZone(map, { id: 'walls', kind: 'interior', material: 'stone', lightLevel: 'dark', floorDirection: 'horizontal', label: '' })
 
   // --- участок --------------------------------------------------------
   for (let y = 0; y < safeHeight; y += 1) {
@@ -449,7 +449,7 @@ export function safeRoom({ seed = 'safe', locationId = '', theme = 'tavern' } = 
     theme,
     sizeClass: 'arena',
   })
-  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Комната' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Комната' })
   for (let y = 0; y < 9; y += 1) {
     for (let x = 0; x < 11; x += 1) {
       const border = x === 0 || y === 0 || x === 10 || y === 8
