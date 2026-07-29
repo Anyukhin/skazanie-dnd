@@ -392,6 +392,9 @@ function modelIdentifiers(narration) {
   }
 }
 
+/** Сколько кампаний держать в тёплой памяти процесса одновременно. */
+const NARRATION_MEMORY_CAMPAIGNS = 64
+
 function recentCampaignNarrations(traceStore, campaignId) {
   if (!traceStore || !campaignId) return []
   const traces = typeof traceStore.recent === 'function'
@@ -530,6 +533,20 @@ export class GameOrchestrator {
   } = {}) {
     if (!rulesEngine) throw new TypeError('GameOrchestrator требует RulesEngine')
     if (!eventStore) throw new TypeError('GameOrchestrator требует EventStore')
+    /**
+     * Последние нарации кампании — тёплый буфер в памяти процесса.
+     *
+     * Раньше их брали из трейс-стора **на каждую нарацию**, а `recent()` читает
+     * и разбирает все файлы трасс кампании целиком: за кампанию из N ходов это
+     * ~N²/2 чтений и парсингов. Сквозной прогон кампании упирался из-за этого в
+     * потолок таймаута (239 с на прежнем main против 600 с и отмены).
+     *
+     * Трейс-стор остаётся источником только на холодном старте: один скан на
+     * кампанию после запуска процесса, дальше буфер обновляется на месте.
+     * Нарация не входит в поток событий, поэтому память процесса здесь не
+     * ухудшает replay: он и раньше зависел от трасс, а не от событий.
+     */
+    this.narrationMemory = new Map()
     this.intentParser = intentParser
     this.ruleRetriever = ruleRetriever
     this.adjudicator = adjudicator
@@ -541,6 +558,37 @@ export class GameOrchestrator {
     this.unknownActionHandler = unknownActionHandler ?? new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, now })
     this.idFactory = idFactory
     this.now = now
+  }
+
+  /**
+   * Последние нарации кампании. Холодный старт поднимает историю из трасс один
+   * раз, дальше отвечает тёплый буфер.
+   */
+  recentNarrationsFor(campaignId) {
+    const key = String(campaignId ?? '')
+    if (!key) return []
+    const warm = this.narrationMemory.get(key)
+    if (warm) return warm
+    const cold = recentCampaignNarrations(this.traceStore, key)
+    this.narrationMemory.set(key, cold)
+    return cold
+  }
+
+  /** Запоминает показанный игроку текст, чтобы следующая нарация его не повторила. */
+  rememberNarration(campaignId, value) {
+    const key = String(campaignId ?? '')
+    const text = String(value ?? '').trim()
+    if (!key || !text) return
+    const next = [...this.recentNarrationsFor(key), text].slice(-NARRATOR_RECENT_TEXT_LIMIT)
+    // Переустановка ключа поднимает кампанию в конец очереди: вытесняется та,
+    // к которой дольше всех не обращались.
+    this.narrationMemory.delete(key)
+    this.narrationMemory.set(key, next)
+    while (this.narrationMemory.size > NARRATION_MEMORY_CAMPAIGNS) {
+      const oldest = this.narrationMemory.keys().next().value
+      if (oldest === undefined) break
+      this.narrationMemory.delete(oldest)
+    }
   }
 
   explanation(campaignId, turnId = null, viewer = null) {
@@ -950,8 +998,9 @@ export class GameOrchestrator {
           ? deterministicMechanicsNarration(brief, resolvedRuleIds, resolveActorName)
           : await this.narrator.render(brief, {
               knownRuleIds: resolvedRuleIds,
-              recentNarrations: recentCampaignNarrations(this.traceStore, campaignId),
+              recentNarrations: this.recentNarrationsFor(campaignId),
             }))
+    if (!idempotentReplay) this.rememberNarration(campaignId, narration.narration)
     const response = {
       narration: narration.narration,
       ...(narration.journal_author ? { journal_author: narration.journal_author } : {}),

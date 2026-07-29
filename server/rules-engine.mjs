@@ -8866,6 +8866,14 @@ export function applyGameEvent(rawState, event) {
         spellName: payload.spell_name ? String(payload.spell_name) : undefined,
         itemId: payload.item_id ?? undefined,
         itemName: payload.item_name ?? undefined,
+        // Почему удар случился именно так. Признаки уже посчитал сервер и уже
+        // лежат в событии; журнал боя входит в проекцию, поэтому подпись хода
+        // NPC видит **вся партия**, а не только тот, чей браузер отправил
+        // команду. Ничего клиентского здесь нет и подделать это нельзя.
+        actionName: payload.action_name ? String(payload.action_name) : undefined,
+        ...(payload.pack_tactics === true ? { packTactics: true } : {}),
+        ...(payload.charge === true ? { charge: true } : {}),
+        ...(payload.bloodied_frenzy === true ? { bloodiedFrenzy: true } : {}),
       })
       if (!payload.hit) {
         const position = actorPosition(state, target)

@@ -6,7 +6,18 @@ import { DeterministicNarrationVerifier, assertNarrationBrief, buildDataOnlyCont
 
 export const NARRATOR_PROMPT_VERSION = 'narrator/v3'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
-export const NARRATOR_RECENT_3GRAM_OVERLAP_MAX = 0.05
+/**
+ * Порог пересечения 3-грамм с недавним текстом, выше которого нарация считается
+ * повтором и уходит на переспрос, а затем в детерминированный текст.
+ *
+ * Было 0.05, и это оказалось неестественно строго для прозы одной кампании: в
+ * ней законно повторяются имена героев, названия мест и предметов. В собственном
+ * эвале при таком пороге **все четыре** ответа модели были отсечены в шаблоны —
+ * то есть «оригинальность» достигалась тем, что модель просто не попадала на
+ * экран. Порог поднят так, чтобы отсекать настоящий самоповтор, а не общий
+ * словарь сцены; фильтры клише и забытой памяти работают по-прежнему.
+ */
+export const NARRATOR_RECENT_3GRAM_OVERLAP_MAX = 0.14
 /** Постоянный серверный текст: он и только он стоит снаружи блока данных. */
 const REPAIR_INSTRUCTION = 'Исправь нарушения предыдущего варианта: они перечислены в секции narration_violations.'
 const promptPath = fileURLToPath(new URL('../prompts/narrator/v3.txt', import.meta.url))

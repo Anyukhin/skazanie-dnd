@@ -837,6 +837,10 @@ export type BattleEvent = {
   path?: Array<{ x: number; y: number }>
   distanceFeet?: number
   roll?: { die?: number; modifier?: number; total: number; difficulty?: number; hit: boolean }
+  /** Почему удар вышел таким. Признаки серверные; журнал боя видит вся партия. */
+  packTactics?: boolean
+  charge?: boolean
+  bloodiedFrenzy?: boolean
   damage?: number
   damageType?: string
   healing?: number

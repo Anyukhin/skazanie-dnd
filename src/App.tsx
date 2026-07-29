@@ -501,9 +501,33 @@ function useTransientBattleRoll(battleLog: BattleEvent[] | undefined) {
   return latest && latest.id === visibleId ? latest : null
 }
 
-function useTransientNpcTactic(batch: CombatVisualBatch | null | undefined) {
-  const latest = [...(batch?.npcTurns ?? [])].reverse().find((turn) => turn.kind === 'enemy-turn' && turn.tactic) ?? null
-  const key = latest ? `${batch?.id ?? ''}:${latest.actor_id ?? ''}:${latest.tactic ?? ''}` : ''
+/**
+ * Подпись хода NPC из журнала боя. Журнал входит в проекцию состояния, поэтому
+ * этот источник виден **всей партии**, а не только тому, чей браузер отправил
+ * команду: батч `npcTurns` приходит лишь в ответе на HTTP-команду инициатора.
+ * Признаки удара посчитал сервер, клиент лишь подбирает слова.
+ */
+function npcTacticFromBattleLog(battleLog: BattleEvent[] | undefined) {
+  for (let index = (battleLog?.length ?? 0) - 1; index >= 0; index -= 1) {
+    const entry = battleLog?.[index]
+    if (!entry || entry.type !== 'attack' || entry.actorKind !== 'enemy') continue
+    const tactic = entry.packTactics ? 'тактика стаи'
+      : entry.charge ? 'удар с разбега'
+        : entry.bloodiedFrenzy ? 'ярость раненого'
+          : entry.actionName ? entry.actionName.toLocaleLowerCase('ru')
+            : 'идёт в атаку'
+    return { id: entry.id, kind: 'enemy-turn' as const, actor_id: entry.actorId, target_id: entry.targetId, tactic }
+  }
+  return null
+}
+
+function useTransientNpcTactic(batch: CombatVisualBatch | null | undefined, battleLog?: BattleEvent[]) {
+  const fromBatch = [...(batch?.npcTurns ?? [])].reverse().find((turn) => turn.kind === 'enemy-turn' && turn.tactic) ?? null
+  const fromLog = npcTacticFromBattleLog(battleLog)
+  const latest = fromBatch ?? fromLog
+  const key = latest
+    ? `${fromBatch ? batch?.id ?? '' : fromLog?.id ?? ''}:${latest.actor_id ?? ''}:${latest.tactic ?? ''}`
+    : ''
   const seenKey = useRef(key)
   const [visibleKey, setVisibleKey] = useState('')
   useEffect(() => {
@@ -715,7 +739,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const combatActive = Boolean(combat.active && combat.initiative?.length)
   const activeInitiativeIndex = Math.max(0, Number(combat.active_index) || 0)
   const visibleBattleRoll = useTransientBattleRoll(state.battleLog)
-  const visibleNpcTactic = useTransientNpcTactic(visualBatch)
+  const visibleNpcTactic = useTransientNpcTactic(visualBatch, state.battleLog)
   const activeHero = players.find((player) => player.id === turnActorId)
   const activeSummon = state.actors?.find((actor) => actor.id === turnActorId && actor.alive)
   const activeEnemy = state.enemies?.find((enemy) => enemy.id === turnActorId && enemy.alive)

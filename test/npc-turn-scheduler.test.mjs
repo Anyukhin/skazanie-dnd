@@ -1092,6 +1092,14 @@ test('pack tactics grants advantage and wolf bite can knock a hero prone', () =>
   assert.equal(attack.payload.pack_tactics, true)
   const after = result.events.reduce(applyGameEvent, state)
   assert.ok(after.mechanics.conditions.hero.some((condition) => condition.id === 'prone'))
+
+  // Подпись хода NPC обязана лежать в журнале боя, а не только в ответе на
+  // HTTP-команду: журнал входит в проекцию, и за столом на 3–5 человек
+  // объяснение хода должно доехать до всех, а не до одного инициатора.
+  const logged = [...after.battleLog].reverse().find((entry) => entry.type === 'attack')
+  assert.equal(logged.actorKind, 'enemy')
+  assert.equal(logged.packTactics, true, 'журнал боя обязан объяснять, почему удар вышел таким')
+  assert.equal(logged.actionName, 'Укус')
 })
 
 test('spider bite resolves its Constitution save and poison damage', () => {
