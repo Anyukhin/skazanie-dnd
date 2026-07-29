@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { NpcSocialController } from '../server/npc-social-controller.mjs'
+import { NPC_SOCIAL_PROMPT_VERSION, NpcSocialController } from '../server/npc-social-controller.mjs'
 import { UNTRUSTED_DATA_END, UNTRUSTED_DATA_START } from '../server/security.mjs'
 
 function untrustedPayload(content, section) {
@@ -24,10 +24,24 @@ function dialogueState() {
       npcs: [{
         id: 'npc:mira', name: 'Мира', role: 'хозяйка трактира', location: 'Трактир «Пустой кубок»',
         public_summary: 'Держит трактир двадцать лет.', voice: 'Говорит быстро, с прибаутками.',
+        speech_profile: {
+          pace: 'быстро, короткими фразами',
+          lexicon: 'трактирные поговорки и бытовые слова',
+          mannerism: 'один раз заканчивает мысль словами «так-то оно вернее»',
+        },
         goals: ['Сохранить трактир', 'Узнать, кто пугает поставщиков'],
         visibility: 'party', available: true,
+      }, {
+        id: 'npc:orin', name: 'Орин', role: 'архивариус', location: 'Трактир «Пустой кубок»',
+        public_summary: 'Сверяет дорожные записи.', voice: 'Говорит медленно и точно.',
+        speech_profile: {
+          pace: 'медленно, с паузой перед выводом',
+          lexicon: 'книжные слова и названия документов',
+          mannerism: 'перед выводом говорит «согласно записи»',
+        },
+        visibility: 'party', available: true,
       }],
-      relationships: { 'npc:mira': { hero: 10, rogue: 0 } },
+      relationships: { 'npc:mira': { hero: 10, rogue: 0 }, 'npc:orin': { hero: 0, rogue: 0 } },
       promises: [],
       conversations: [
         { id: 'conv-1', npc_id: 'npc:mira', hero_id: 'rogue', player_message: 'Что слышно у ворот?', npc_reply: 'Стража стала жадной.', stance: 'neutral', visibility: 'party' },
@@ -48,7 +62,8 @@ test('бриф NPC-диалога несёт сцену, цели NPC и пам�
   assert.ok(result)
   assert.equal(requests.length, 1)
 
-  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v2/)
+  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v3/)
+  assert.equal(result.prompt_version, NPC_SOCIAL_PROMPT_VERSION)
   const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
 
   assert.equal(brief.scene.location, 'Трактир «Пустой кубок»')
@@ -57,6 +72,11 @@ test('бриф NPC-диалога несёт сцену, цели NPC и пам�
   // поля, потому что всё переданное может дословно уйти в реплику игроку.
   assert.equal(Object.hasOwn(brief.npc, 'goals'), false)
   assert.doesNotMatch(requests[0].messages[1].content, /Сохранить трактир|кто пугает поставщиков/u)
+  assert.deepEqual(brief.npc.speech_profile, {
+    pace: 'быстро, короткими фразами',
+    lexicon: 'трактирные поговорки и бытовые слова',
+    mannerism: 'один раз заканчивает мысль словами «так-то оно вернее»',
+  })
 
   // Личная память — только текущий герой, память отряда — остальные с именами.
   assert.deepEqual(brief.recent_conversation.map((entry) => entry.player_message), ['Налей чего покрепче.'])
@@ -78,4 +98,19 @@ test('память отряда ограничена последними чет
   await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Ещё раз', turnId: 'voice-2' })
   const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
   assert.deepEqual(brief.recent_party_conversation.map((entry) => entry.player_message), ['Реплика 5', 'Реплика 6', 'Реплика 7', 'Реплика 8'])
+})
+
+test('два NPC одной сцены получают разные server-owned речевые профили', async () => {
+  const requests = []
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => { requests.push(input); return { reply: 'Слушаю.', stance: 'neutral' } } },
+  })
+  const state = dialogueState()
+  await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Что известно?', turnId: 'voice-mira' })
+  await controller.respond({ state, playerId: 'hero', npcId: 'npc:orin', message: 'Что известно?', turnId: 'voice-orin' })
+
+  const [mira, orin] = requests.map((request) => untrustedPayload(request.messages[1].content, 'npc_social_brief').npc)
+  assert.notDeepEqual(mira.speech_profile, orin.speech_profile)
+  assert.match(mira.speech_profile.mannerism, /так-то оно вернее/u)
+  assert.match(orin.speech_profile.mannerism, /согласно записи/u)
 })

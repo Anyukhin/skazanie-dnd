@@ -14,18 +14,19 @@ const brief = buildNarrationBrief({
 
 test('deterministic narrator описывает только подтверждённые события', () => {
   const result = deterministicNarration(brief)
-  assert.match(result.narration, /3/)
-  assert.match(result.narration, /10 → 7/)
+  assert.match(result.narration, /подтверждённый урон/u)
+  assert.doesNotMatch(result.narration, /\d/u, 'механические числа остаются в интерфейсе, а не в повествовании')
 })
 
 test('Narrator исправляет неподтверждённую механику или использует безопасный fallback', async () => {
   const llm = new FakeLLM([
     { content: JSON.stringify({ narration: 'Выпало 20, и герой получает 1000 HP.', suggestions: [] }) },
-    { content: JSON.stringify({ narration: 'Удар причиняет 3 урона; здоровье цели меняется с 10 до 7.', suggestions: ['Продолжить'] }) },
+    { content: JSON.stringify({ narration: deterministicNarration(brief).narration, suggestions: ['Продолжить'] }) },
   ])
   const result = await new Narrator({ llmClient: llm }).render(brief, { knownRuleIds: ['srd:test:damage'] })
   assert.equal(result.verification.valid, true)
   assert.doesNotMatch(result.narration, /1000/)
+  assert.doesNotMatch(result.narration, /\d/u)
   assert.equal(llm.requests.length, 2)
 })
 
@@ -35,7 +36,8 @@ test('Narrator превращает ошибку провайдера после
   assert.equal(result.provider, 'deterministic-provider-fallback')
   assert.equal(result.verification.valid, true)
   assert.equal(result.verification.provider_error, 'LLM_TIMEOUT')
-  assert.match(result.narration, /3/u)
+  assert.match(result.narration, /подтверждённый урон/u)
+  assert.doesNotMatch(result.narration, /\d/u)
 })
 
 test('Narrator прерывает необязательное повествование по общему дедлайну', async () => {

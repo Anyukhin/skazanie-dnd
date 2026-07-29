@@ -25,6 +25,21 @@ test('секреты редактируются до записи трассир
   assert.equal(redacted.nested.text, 'ok')
 })
 
+test('recent возвращает ограниченное окно последних трасс для антиповтора', () => {
+  const store = new FileTraceStore({ rootDir: mkdtempSync(join(tmpdir(), 'skazanie-trace-recent-')) })
+  for (let index = 1; index <= 4; index += 1) {
+    store.save({
+      turn_id: `turn-${index}`,
+      campaign_id: 'ROOM-RECENT',
+      created_at: `2026-07-29T20:00:0${index}.000Z`,
+      narration_result: { narration: `Текст ${index}.` },
+    })
+  }
+
+  assert.deepEqual(store.recent('ROOM-RECENT', 3).map((trace) => trace.turn_id), ['turn-4', 'turn-3', 'turn-2'])
+  assert.equal(store.latest('ROOM-RECENT').turn_id, 'turn-4')
+})
+
 test('объяснение хода проецирует private knowledge для конкретного героя', () => {
   const trace = {
     turn_id: 'private-turn',
