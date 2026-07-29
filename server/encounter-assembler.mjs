@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { listAssets } from './asset-registry.mjs'
 import { combatBoundsContain, combatBoundsUseful, computeCombatBounds } from './combat-bounds.mjs'
 import { SIZE_CLASSES } from './tactical-map.mjs'
 
@@ -48,7 +49,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Гоблин-налётчик', hp: 7, armor: 12, speed: 30, abilities: { str: 8, dex: 14, con: 10, int: 10, wis: 8, cha: 8 },
     initiative_bonus: 2, attackBonus: 4, damageDice: 4, damageBonus: 2,
     challenge_rating: '1/8', xp: 25, source_page: 290, creature_type: 'humanoid',
-    source_url: 'https://dnd.su/bestiary/4-goblin/', image: '/assets/enemies/goblin.jpg',
+    source_url: 'https://dnd.su/bestiary/4-goblin/', image: '/assets/enemies/goblin.png',
     traits: [{ id: 'nimble-escape', name: 'Ловкое бегство' }],
     action_profiles: [
       { id: 'scimitar', name: 'Скимитар', kind: 'melee', attack_modifier: 4, damage_expression: '1d4+2', damage_type: 'slashing', range_feet: 5 },
@@ -59,7 +60,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Гоблин-воин', hp: 10, armor: 15, speed: 30, abilities: { str: 8, dex: 14, con: 10, int: 10, wis: 8, cha: 8 },
     initiative_bonus: 2, attackBonus: 4, damageDice: 6, damageBonus: 2,
     challenge_rating: '1/4', xp: 50, source_page: 290, creature_type: 'humanoid',
-    source_url: 'https://dnd.su/bestiary/4-goblin/', image: '/assets/enemies/goblin.jpg',
+    source_url: 'https://dnd.su/bestiary/4-goblin/', image: '/assets/enemies/goblin.png',
     traits: [{ id: 'nimble-escape', name: 'Ловкое бегство' }],
     action_profiles: [
       { id: 'scimitar', name: 'Скимитар', kind: 'melee', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'slashing', range_feet: 5 },
@@ -70,7 +71,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Скелет', hp: 13, armor: 14, speed: 30, abilities: { str: 10, dex: 16, con: 15, int: 6, wis: 8, cha: 5 },
     initiative_bonus: 3, attackBonus: 5, damageDice: 6, damageBonus: 3,
     challenge_rating: '1/4', xp: 50, source_page: 325, creature_type: 'undead',
-    source_url: 'https://dnd.su/bestiary/24-skeleton/', image: '/assets/enemies/skeleton.jpg',
+    source_url: 'https://dnd.su/bestiary/24-skeleton/', image: '/assets/enemies/skeleton.png',
     traits: [{ id: 'undead-nature', name: 'Природа нежити' }],
     action_profiles: [
       { id: 'shortsword', name: 'Короткий меч', kind: 'melee', attack_modifier: 5, damage_expression: '1d6+3', damage_type: 'piercing', range_feet: 5 },
@@ -81,7 +82,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Зомби', hp: 15, armor: 8, speed: 20, abilities: { str: 13, dex: 6, con: 16, int: 3, wis: 6, cha: 5 },
     initiative_bonus: -2, attackBonus: 3, damageDice: 8, damageBonus: 1,
     challenge_rating: '1/4', xp: 50, source_page: 343, creature_type: 'undead',
-    source_url: 'https://dnd.su/bestiary/9-zombie/', image: '/assets/enemies/zombie.jpg',
+    source_url: 'https://dnd.su/bestiary/9-zombie/', image: '/assets/enemies/zombie.png',
     traits: [{ id: 'undead-fortitude', name: 'Стойкость нежити' }, { id: 'undead-nature', name: 'Природа нежити' }],
     action_profiles: [
       { id: 'slam', name: 'Размашистый удар', kind: 'melee', attack_modifier: 3, damage_expression: '1d8+1', damage_type: 'bludgeoning', range_feet: 5 },
@@ -91,7 +92,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Волк', hp: 11, armor: 12, speed: 40, abilities: { str: 14, dex: 15, con: 12, int: 3, wis: 12, cha: 6 },
     initiative_bonus: 2, attackBonus: 4, damageDice: 6, damageBonus: 2,
     challenge_rating: '1/4', xp: 50, source_page: 364, creature_type: 'beast',
-    source_url: 'https://dnd.su/bestiary/2-wolf/', image: '/assets/enemies/wolf.jpg',
+    source_url: 'https://dnd.su/bestiary/2-wolf/', image: '/assets/enemies/wolf.png',
     traits: [{ id: 'pack-tactics', name: 'Тактика стаи' }],
     action_profiles: [
       { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'piercing', range_feet: 5, on_hit: { save_ability: 'str', save_dc: 11, condition: 'prone', duration: 'until-next-turn' } },
@@ -101,7 +102,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Гигантская крыса', hp: 7, armor: 13, speed: 30, abilities: { str: 7, dex: 16, con: 11, int: 2, wis: 10, cha: 4 },
     initiative_bonus: 3, attackBonus: 5, damageDice: 4, damageBonus: 3,
     challenge_rating: '1/8', xp: 25, source_page: 296, creature_type: 'beast',
-    source_url: 'https://dnd.su/bestiary/336-giant-rat/', image: '/assets/enemies/giant-rat.jpg',
+    source_url: 'https://dnd.su/bestiary/336-giant-rat/', image: '/assets/enemies/giant-rat.png',
     traits: [{ id: 'pack-tactics', name: 'Тактика стаи' }],
     action_profiles: [{ id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 5, damage_expression: '1d4+3', damage_type: 'piercing', range_feet: 5 }],
   },
@@ -117,7 +118,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Гигантский паук', hp: 26, armor: 14, speed: 30, abilities: { str: 14, dex: 16, con: 12, int: 2, wis: 11, cha: 4 },
     initiative_bonus: 3, attackBonus: 5, damageDice: 8, damageBonus: 3,
     challenge_rating: '1', xp: 200, source_page: 305, creature_type: 'beast',
-    source_url: 'https://dnd.su/bestiary/3-giant-spider/', image: '/assets/enemies/giant-spider.jpg',
+    source_url: 'https://dnd.su/bestiary/3-giant-spider/', image: '/assets/enemies/giant-spider.png',
     traits: [{ id: 'spider-climb', name: 'Паучье лазание' }, { id: 'web-walker', name: 'Хождение по паутине' }],
     action_profiles: [
       { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 5, damage_expression: '1d8+3', damage_type: 'piercing', range_feet: 5, on_hit: { save_ability: 'con', save_dc: 11, damage_expression: '2d8', damage_type: 'poison', half_on_save: true } },
@@ -128,7 +129,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Орк', hp: 15, armor: 13, speed: 30, abilities: { str: 16, dex: 12, con: 16, int: 7, wis: 11, cha: 10 },
     initiative_bonus: 1, attackBonus: 5, damageDice: 12, damageBonus: 3,
     challenge_rating: '1/2', xp: 100, source_page: 315, creature_type: 'humanoid',
-    source_url: 'https://dnd.su/bestiary/20-orc/', image: '/assets/enemies/orc.jpg',
+    source_url: 'https://dnd.su/bestiary/20-orc/', image: '/assets/enemies/orc.png',
     traits: [{ id: 'aggressive', name: 'Агрессивный' }],
     action_profiles: [
       { id: 'greataxe', name: 'Секира', kind: 'melee', attack_modifier: 5, damage_expression: '1d12+3', damage_type: 'slashing', range_feet: 5 },
@@ -139,7 +140,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Хобгоблин', hp: 11, armor: 18, speed: 30, abilities: { str: 13, dex: 12, con: 12, int: 10, wis: 10, cha: 9 },
     initiative_bonus: 1, attackBonus: 3, damageDice: 8, damageBonus: 1,
     challenge_rating: '1/2', xp: 100, source_page: 295, creature_type: 'humanoid',
-    source_url: 'https://dnd.su/bestiary/27-hobgoblin/', image: '/assets/enemies/hobgoblin.jpg',
+    source_url: 'https://dnd.su/bestiary/27-hobgoblin/', image: '/assets/enemies/hobgoblin.png',
     traits: [{ id: 'martial-advantage', name: 'Воинское превосходство', damage_expression: '2d6' }],
     action_profiles: [
       { id: 'longsword', name: 'Длинный меч', kind: 'melee', attack_modifier: 3, damage_expression: '1d8+1', damage_type: 'slashing', range_feet: 5 },
@@ -150,7 +151,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Кобольд', hp: 5, armor: 12, speed: 30, abilities: { str: 7, dex: 15, con: 9, int: 8, wis: 7, cha: 8 },
     initiative_bonus: 2, attackBonus: 4, damageDice: 4, damageBonus: 2,
     challenge_rating: '1/8', xp: 25, source_page: 299, creature_type: 'humanoid',
-    source_url: 'https://dnd.su/bestiary/210-kobold/', image: '/assets/enemies/kobold.jpg',
+    source_url: 'https://dnd.su/bestiary/210-kobold/', image: '/assets/enemies/kobold.png',
     traits: [{ id: 'pack-tactics', name: 'Тактика стаи' }],
     action_profiles: [
       { id: 'dagger', name: 'Кинжал', kind: 'melee', attack_modifier: 4, damage_expression: '1d4+2', damage_type: 'piercing', range_feet: 5 },
@@ -161,11 +162,75 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Багбир', hp: 27, armor: 16, speed: 30, abilities: { str: 15, dex: 14, con: 13, int: 8, wis: 11, cha: 9 },
     initiative_bonus: 2, attackBonus: 4, damageDice: 8, damageBonus: 2,
     challenge_rating: '1', xp: 200, source_page: 282, creature_type: 'humanoid',
-    source_url: 'https://dnd.su/bestiary/13-bugbear/', image: '/assets/enemies/bugbear.jpg',
+    source_url: 'https://dnd.su/bestiary/13-bugbear/', image: '/assets/enemies/bugbear.png',
     traits: [{ id: 'surprise-attack', name: 'Внезапная атака', damage_expression: '2d6' }],
     action_profiles: [
       { id: 'morningstar', name: 'Моргенштерн', kind: 'melee', attack_modifier: 4, damage_expression: '2d8+2', damage_type: 'piercing', range_feet: 5 },
       { id: 'javelin', name: 'Метательное копьё', kind: 'ranged', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'piercing', range_feet: 120, normal_range_feet: 30 },
+    ],
+  },
+  'srd_5_2_1:bandit': {
+    name: 'Бандит', hp: 11, armor: 12, speed: 30, abilities: { str: 11, dex: 12, con: 12, int: 10, wis: 10, cha: 10 },
+    initiative_bonus: 1, attackBonus: 3, damageDice: 6, damageBonus: 1,
+    challenge_rating: '1/8', xp: 25, source_page: 261, creature_type: 'humanoid',
+    source_url: 'https://dnd.su/bestiary/21204-bandit/', image: '/assets/enemies/bandit.png',
+    traits: [],
+    action_profiles: [
+      { id: 'scimitar', name: 'Скимитар', kind: 'melee', attack_modifier: 3, damage_expression: '1d6+1', damage_type: 'slashing', range_feet: 5 },
+      { id: 'light-crossbow', name: 'Лёгкий арбалет', kind: 'ranged', attack_modifier: 3, damage_expression: '1d8+1', damage_type: 'piercing', range_feet: 320, normal_range_feet: 80 },
+    ],
+  },
+  'srd_5_2_1:dire-wolf': {
+    name: 'Лютый волк', hp: 22, armor: 14, speed: 50, abilities: { str: 17, dex: 15, con: 15, int: 3, wis: 12, cha: 7 },
+    initiative_bonus: 2, attackBonus: 5, damageDice: 10, damageBonus: 3,
+    challenge_rating: '1', xp: 200, source_page: 347, creature_type: 'beast',
+    source_url: 'https://dnd.su/bestiary/297-dire-wolf/', image: '/assets/enemies/dire-wolf.png',
+    traits: [{ id: 'pack-tactics', name: 'Тактика стаи' }],
+    action_profiles: [
+      { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 5, damage_expression: '1d10+3', damage_type: 'piercing', range_feet: 5, on_hit: { save_ability: 'str', save_dc: 13, condition: 'prone', duration: 'until-next-turn' } },
+    ],
+  },
+  'srd_5_2_1:ghoul': {
+    name: 'Упырь', hp: 22, armor: 12, speed: 30, abilities: { str: 13, dex: 15, con: 10, int: 7, wis: 10, cha: 6 },
+    initiative_bonus: 2, attackBonus: 4, damageDice: 6, damageBonus: 2,
+    challenge_rating: '1', xp: 200, source_page: 288, creature_type: 'undead',
+    source_url: 'https://dnd.su/bestiary/21321-ghoul/', image: '/assets/enemies/ghoul.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'bite' }],
+    action_profiles: [
+      { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'piercing', range_feet: 5, on_hit: { damage_expression: '1d6', damage_type: 'necrotic' } },
+      { id: 'claw', name: 'Коготь', kind: 'melee', attack_modifier: 4, damage_expression: '1d4+2', damage_type: 'slashing', range_feet: 5, on_hit: { save_ability: 'con', save_dc: 10, condition: 'paralyzed', duration: 'until-next-turn' }, tactical_priority: 8 },
+    ],
+  },
+  'srd_5_2_1:gnoll-warrior': {
+    name: 'Гнолл-воин', hp: 27, armor: 15, speed: 30, abilities: { str: 14, dex: 12, con: 11, int: 6, wis: 10, cha: 7 },
+    initiative_bonus: 1, attackBonus: 4, damageDice: 6, damageBonus: 2,
+    challenge_rating: '1/2', xp: 100, source_page: 289, creature_type: 'fiend',
+    source_url: 'https://dnd.su/bestiary/178-gnoll/', image: '/assets/enemies/gnoll-warrior.png',
+    traits: [{ id: 'rampage', name: 'Буйство', uses: 1 }],
+    action_profiles: [
+      { id: 'rend', name: 'Раздирание', kind: 'melee', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'piercing', range_feet: 5 },
+      { id: 'bone-bow', name: 'Костяной лук', kind: 'ranged', attack_modifier: 3, damage_expression: '1d10+1', damage_type: 'piercing', range_feet: 600, normal_range_feet: 150 },
+    ],
+  },
+  'srd_5_2_1:ogre': {
+    name: 'Огр', hp: 68, armor: 11, speed: 40, abilities: { str: 19, dex: 8, con: 16, int: 5, wis: 7, cha: 7 },
+    initiative_bonus: -1, attackBonus: 6, damageDice: 8, damageBonus: 4,
+    challenge_rating: '2', xp: 450, source_page: 312, creature_type: 'giant',
+    source_url: 'https://dnd.su/bestiary/21480-ogre/', image: '/assets/enemies/ogre.png',
+    traits: [],
+    action_profiles: [
+      { id: 'greatclub', name: 'Палица', kind: 'melee', attack_modifier: 6, damage_expression: '2d8+4', damage_type: 'bludgeoning', range_feet: 5 },
+      { id: 'javelin', name: 'Метательное копьё', kind: 'ranged', attack_modifier: 6, damage_expression: '2d6+4', damage_type: 'piercing', range_feet: 120, normal_range_feet: 30 },
+    ],
+  },
+  'srd_5_2_1:owlbear': {
+    name: 'Совомед', hp: 59, armor: 13, speed: 40, abilities: { str: 20, dex: 12, con: 17, int: 3, wis: 12, cha: 7 },
+    initiative_bonus: 1, attackBonus: 7, damageDice: 8, damageBonus: 5,
+    challenge_rating: '3', xp: 700, source_page: 313, creature_type: 'monstrosity',
+    source_url: 'https://dnd.su/bestiary/25-owlbear/', image: '/assets/enemies/owlbear.png',
+    traits: [{ id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'rend' }],
+    action_profiles: [
+      { id: 'rend', name: 'Раздирание', kind: 'melee', attack_modifier: 7, damage_expression: '2d8+5', damage_type: 'slashing', range_feet: 5 },
     ],
   },
 })
@@ -176,26 +241,26 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
  * пяти, и разница между ними настоящая — «стая» из быстрых зверей ощущается
  * иначе, чем «ватага» из трёх тяжёлых бойцов, даже когда бюджет XP один.
  *
- * Честная граница: сам бестиарий по-прежнему двенадцать существ, и никакая
- * перестановка не заменит его расширения (`docs/known-limitations.md`).
+ * Честная граница: бестиарий расширен до восемнадцати существ, но это всё ещё
+ * компактный mini-compendium, а не полный monster corpus (`docs/known-limitations.md`).
  */
 const THEMES = deepFreeze({
   goblinoids: ['srd_5_2_1:goblin-minion', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:kobold', 'srd_5_2_1:bugbear'],
-  undead: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie'],
-  beasts: ['srd_5_2_1:wolf', 'srd_5_2_1:giant-rat', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:giant-spider'],
-  raiders: ['srd_5_2_1:orc', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:bugbear'],
+  undead: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie', 'srd_5_2_1:ghoul'],
+  beasts: ['srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf', 'srd_5_2_1:owlbear', 'srd_5_2_1:giant-rat', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:giant-spider'],
+  raiders: ['srd_5_2_1:bandit', 'srd_5_2_1:gnoll-warrior', 'srd_5_2_1:ogre', 'srd_5_2_1:orc', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:bugbear'],
   // Ватага: только тяжёлые бойцы, мало целей и каждая больно бьёт.
-  warband: ['srd_5_2_1:orc', 'srd_5_2_1:bugbear', 'srd_5_2_1:hobgoblin'],
+  warband: ['srd_5_2_1:gnoll-warrior', 'srd_5_2_1:ogre', 'srd_5_2_1:orc', 'srd_5_2_1:bugbear', 'srd_5_2_1:hobgoblin'],
   // Мелочь: много слабых существ, бой решается площадью, а не силой удара.
   vermin: ['srd_5_2_1:giant-rat', 'srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion'],
   // Засада: быстрые и хрупкие, наказывают за растянутый строй.
-  ambush: ['srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:wolf'],
+  ambush: ['srd_5_2_1:bandit', 'srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf'],
   // Склеп: нежить и то, что кормится в мёртвом месте.
-  crypt: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie', 'srd_5_2_1:giant-rat'],
+  crypt: ['srd_5_2_1:skeleton', 'srd_5_2_1:zombie', 'srd_5_2_1:ghoul', 'srd_5_2_1:giant-rat'],
   // Пещера: обитатели подземелья вперемешку с тем, кто их туда загнал.
-  cave: ['srd_5_2_1:kobold', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-rat', 'srd_5_2_1:bugbear'],
+  cave: ['srd_5_2_1:kobold', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-rat', 'srd_5_2_1:bugbear', 'srd_5_2_1:ghoul', 'srd_5_2_1:ogre', 'srd_5_2_1:owlbear'],
   // Дикая местность: звери открытых пространств.
-  wilderness: ['srd_5_2_1:wolf', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-wolf-spider'],
+  wilderness: ['srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf', 'srd_5_2_1:owlbear', 'srd_5_2_1:gnoll-warrior', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-wolf-spider'],
   generic: Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST),
 })
 
@@ -235,10 +300,13 @@ const SCENE_KEYS = new Set(['cells'])
 const CELL_KEYS = new Set(['x', 'y', 'type', 'revealed', 'feature', 'occupied'])
 const PARTY_MEMBER_KEYS = new Set(['id', 'level', 'x', 'y'])
 const CELL_TYPES = new Set(['wall', 'floor', 'water', 'door'])
-// Shared server-owned map props are obstacles, not client-defined mechanics.
+// Общие server-owned предметы карты — препятствия, а не клиентская механика.
+// Каталог ассетов является allowlist: тематический генератор не должен ломать
+// встречу только потому, что его `assetId` новее прежних legacy-ярлыков.
 const CELL_FEATURES = new Set([
   'chest', 'altar', 'torch', 'rune', 'stairs', 'enemy', 'bed', 'table', 'chair', 'fireplace', 'bookshelf',
   'barrel', 'crate', 'rock', 'mushroom', 'bones', 'campfire', 'grave', 'pillar', 'statue', 'tree', 'bush', 'wagon', 'well', 'console',
+  ...listAssets().map((asset) => asset.id),
 ])
 const WALKABLE_TYPES = new Set(['floor', 'door'])
 

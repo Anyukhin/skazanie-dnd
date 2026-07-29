@@ -4,8 +4,11 @@ import test from 'node:test'
 import {
   SCENE_THEMES,
   buildThemedScene,
+  fallbackThemeFor,
   isLiveTheme,
+  layoutOrganicCave,
   layoutOpenTerrain,
+  layoutSettlement,
   matchTheme,
   sceneGraphForTheme,
   themeFor,
@@ -13,14 +16,14 @@ import {
 } from '../server/scene-themes.mjs'
 import { validateSceneGraph } from '../server/scene-graph.mjs'
 import { assetsForTheme } from '../server/asset-registry.mjs'
-import { cellAt, reachableCells, serializeTacticalMap, validateTacticalMap } from '../server/tactical-map.mjs'
+import { cellAt, edgeList, edgeNeighbor, reachableCells, serializeTacticalMap, setEdge, validateTacticalMap } from '../server/tactical-map.mjs'
 
 const THEMES = ['building', 'temple', 'crypt', 'cave', 'forest', 'road', 'settlement']
 
 test('план требует шесть тем сверх здания — все объявлены', () => {
   assert.deepEqual(SCENE_THEMES.map((theme) => theme.id).sort(), [...THEMES].sort())
   for (const theme of SCENE_THEMES) {
-    assert.ok(['building', 'graph', 'open'].includes(theme.kind), `${theme.id}: неизвестный способ сборки`)
+    assert.ok(['building', 'graph', 'open', 'settlement'].includes(theme.kind), `${theme.id}: неизвестный способ сборки`)
     assert.ok(theme.label, `${theme.id}: нет подписи`)
   }
 })
@@ -57,26 +60,140 @@ test('постоялый двор под любым именем — здани�
 
 test('к живой игре отдаются только темы с готовой геометрией', () => {
   const live = SCENE_THEMES.filter(isLiveTheme).map((theme) => theme.id).sort()
-  // Пещера из прямоугольных палат и деревня без домов хуже прежнего
-  // процедурного генератора — замер лежит в комментарии к каталогу.
-  assert.deepEqual(live, ['building', 'crypt', 'forest', 'road', 'temple'])
+  assert.deepEqual(live, [...THEMES].sort())
   for (const theme of SCENE_THEMES) {
     assert.equal(typeof theme.live, 'boolean', `${theme.id}: готовность не объявлена`)
+  }
+})
+
+test('поселение содержит дома-зоны, двери и непрерывную главную улицу', () => {
+  const settlement = SCENE_THEMES.find((theme) => theme.id === 'settlement')
+  for (const seed of ['village-a', 'village-b']) {
+    const map = layoutSettlement(settlement, { seed, width: 28, height: 24 })
+    assert.deepEqual(validateTacticalMap(map).errors, [], `${seed}: поселение невалидно`)
+    const houses = map.zones.filter((zone) => zone.id.startsWith('house-'))
+    assert.equal(houses.length, 4, `${seed}: домов ${houses.length}`)
+    assert.equal(map.doors.filter((door) => door.id.startsWith('house-door-')).length, houses.length,
+      `${seed}: не у каждого дома есть дверь`)
+
+    const spawn = map.spawnPoints.find((point) => point.role === 'party')
+    const reached = reachableCells(map, spawn.x, spawn.y)
+    for (const house of houses) {
+      const interior = []
+      let adjacentWalls = 0
+      for (let y = 0; y < map.height; y += 1) {
+        for (let x = 0; x < map.width; x += 1) {
+          const cell = cellAt(map, x, y)
+          if (cell?.passable && cell.zone === house.id) {
+            interior.push({ x, y })
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const neighbor = cellAt(map, x + dx, y + dy)
+              if (neighbor && !neighbor.passable && neighbor.material === 'wood') adjacentWalls += 1
+            }
+          }
+        }
+      }
+      assert.ok(interior.length >= 10, `${seed}/${house.id}: дом не имеет читаемого интерьера`)
+      assert.ok(adjacentWalls >= 6, `${seed}/${house.id}: дом не окружён стенами`)
+      assert.ok(interior.some((cell) => reached.has(`${cell.x},${cell.y}`)),
+        `${seed}/${house.id}: из улицы нельзя войти в дом`)
+    }
+
+    const streetStart = []
+    for (let y = 0; y < map.height; y += 1) {
+      if (cellAt(map, 0, y)?.zone === 'street') streetStart.push({ x: 0, y })
+    }
+    const streetReached = new Set(streetStart.map((cell) => `${cell.x},${cell.y}`))
+    const queue = [...streetStart]
+    for (let index = 0; index < queue.length; index += 1) {
+      const current = queue[index]
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = current.x + dx
+        const y = current.y + dy
+        const key = `${x},${y}`
+        const cell = cellAt(map, x, y)
+        if (!streetReached.has(key) && cell?.passable && cell.zone === 'street') {
+          streetReached.add(key)
+          queue.push({ x, y })
+        }
+      }
+    }
+    assert.ok([...streetReached].some((key) => key.startsWith(`${map.width - 1},`)),
+      `${seed}: главная улица не пересекает карту`)
+  }
+
+  const built = buildThemedScene({ location: 'Деревня Заречье', seed: 'village-props', width: 28, height: 24 }).map
+  const assets = new Set(built.props.map((prop) => prop.assetId))
+  for (const asset of ['market_stall', 'well', 'cart']) {
+    assert.ok(assets.has(asset), `в поселении нет ${asset}`)
+  }
+})
+
+test('пещера — одна связная органическая полость, а не прямоугольные палаты', () => {
+  const cave = SCENE_THEMES.find((theme) => theme.id === 'cave')
+  for (const seed of ['organic-a', 'organic-b', 'organic-c']) {
+    const map = layoutOrganicCave(cave, { seed, width: 28, height: 24 })
+    const floor = []
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        if (cellAt(map, x, y)?.passable) floor.push({ x, y })
+      }
+    }
+    const spawn = map.spawnPoints.find((point) => point.role === 'party')
+    assert.ok(spawn, `${seed}: нет устья`)
+    assert.equal(reachableCells(map, spawn.x, spawn.y).size, floor.length,
+      `${seed}: внутри полости есть отрезанный участок`)
+
+    const minX = Math.min(...floor.map((cell) => cell.x))
+    const maxX = Math.max(...floor.map((cell) => cell.x))
+    const minY = Math.min(...floor.map((cell) => cell.y))
+    const maxY = Math.max(...floor.map((cell) => cell.y))
+    const boundingArea = (maxX - minX + 1) * (maxY - minY + 1)
+    assert.ok(floor.length / boundingArea < 0.72,
+      `${seed}: полость заполняет ${(floor.length / boundingArea).toFixed(2)} своего прямоугольника`)
+
+    const rowWidths = new Set()
+    for (let y = minY; y <= maxY; y += 1) {
+      rowWidths.add(floor.filter((cell) => cell.y === y).length)
+    }
+    assert.ok(rowWidths.size >= 6, `${seed}: контур имеет всего ${rowWidths.size} разных ширин`)
+
+    const occupiedZones = new Set(floor.map((cell) => cellAt(map, cell.x, cell.y)?.zone).filter(Boolean))
+    assert.equal(occupiedZones.size, map.zones.length, `${seed}: один из залов графа не получил геометрию`)
   }
 })
 
 test('узор из заявки картографа называет тему, когда название молчит', () => {
   assert.equal(themeFromMapRequest({ pattern: 'crypt' })?.id, 'crypt')
   assert.equal(themeFromMapRequest({ pattern: 'crypt', layout: 'cavern' })?.id, 'crypt')
-  // Узоры без своей темы ведут к процедурному генератору, а не к подмене.
-  for (const pattern of ['keep', 'great-hall', 'courtyard', 'bridge', 'natural', 'small-room']) {
+  assert.equal(themeFromMapRequest({ pattern: 'cave-cluster' })?.id, 'cave')
+  assert.equal(themeFromMapRequest({ pattern: 'village' })?.id, 'settlement')
+  assert.equal(themeFromMapRequest({ pattern: 'bridge' })?.id, 'road')
+  assert.equal(themeFromMapRequest({ layout: 'cavern' })?.id, 'cave')
+  assert.equal(themeFromMapRequest({ layout: 'streets' })?.id, 'settlement')
+  // Неоднозначные узоры сами тему не называют: для них отдельно работает
+  // fallback по сочетанию kind/layout/pattern.
+  for (const pattern of ['keep', 'great-hall', 'courtyard', 'natural', 'small-room']) {
     assert.equal(themeFromMapRequest({ pattern }), null, `${pattern}: подменён темой`)
   }
-  // Узоры неготовых тем тоже молчат: вести к ним нечем.
-  for (const pattern of ['cave-cluster', 'village']) {
-    assert.equal(themeFromMapRequest({ pattern }), null, `${pattern}: тема ещё не готова`)
-  }
   assert.equal(themeFromMapRequest(), null)
+})
+
+test('неопознанная локация получает тематический fallback по топологии заявки', () => {
+  const cases = [
+    [{ sceneKind: 'dungeon', request: { layout: 'rooms', pattern: 'natural' } }, 'crypt'],
+    [{ request: { layout: 'cavern', pattern: 'natural' } }, 'cave'],
+    [{ request: { layout: 'streets', pattern: 'natural' } }, 'settlement'],
+    [{ sceneKind: 'wilderness', request: { layout: 'open', pattern: 'natural' } }, 'forest'],
+    [{ request: { layout: 'rooms', pattern: 'keep', material: 'stone' } }, 'crypt'],
+    [{ request: { layout: 'rooms', pattern: 'small-room', material: 'wood' } }, 'building'],
+    [{ request: {} }, 'road'],
+  ]
+  for (const [input, expected] of cases) {
+    const fallback = fallbackThemeFor(input)
+    assert.equal(fallback.id, expected)
+    assert.equal(isLiveTheme(fallback), true, `${expected}: fallback не готов к живой игре`)
+  }
 })
 
 test('дикая местность не становится зданием, даже если в названии есть дом', () => {
@@ -129,6 +246,37 @@ test('каждая тема собирается в валидную связн�
     const reached = reachableCells(built.map, spawn.x, spawn.y)
     assert.ok(reached.size > 20, `${theme.id}: от точки появления достижимо всего ${reached.size} клеток`)
     assert.ok(built.map.props.length > 5, `${theme.id}: предметов всего ${built.map.props.length}`)
+  }
+})
+
+test('решётка склепа и бойница храма стоят на карте и не открывают прохода', () => {
+  const cases = [['Склеп Норвин', 'crypt', 'grate'], ['Храм Утренней Звезды', 'temple', 'loophole']]
+  for (const [location, themeId, kind] of cases) {
+    const built = buildThemedScene({ location, seed: `pierce-${themeId}`, width: 28, height: 28 })
+    assert.equal(built.theme, themeId)
+    const pierced = edgeList(built.map).filter((edge) => edge.kind === kind)
+    assert.ok(pierced.length > 0, `${themeId}: проёмов вида ${kind} на карте нет`)
+
+    for (const edge of pierced) {
+      // Проём заменяет глухую стену, а не проход: шаг сквозь него по-прежнему
+      // невозможен. Обзор и укрытие записаны в карте — в бою движок их пока не
+      // спрашивает (`docs/known-limitations.md`).
+      assert.equal(edge.blocksMove, true, `${themeId}: ${kind} открыл проход сквозь стену`)
+      assert.equal(edge.blocksSight, false, `${themeId}: сквозь ${kind} не видно`)
+      assert.notEqual(edge.cover, 'none', `${themeId}: ${kind} перестал давать укрытие`)
+    }
+
+    // Достижимость считается по тем же рёбрам, поэтому сцена обязана остаться
+    // ровно такой же связной, как до замены.
+    const spawn = built.map.spawnPoints.find((point) => point.role === 'party')
+    const reached = reachableCells(built.map, spawn.x, spawn.y)
+    const solid = buildThemedScene({ location, seed: `pierce-${themeId}`, width: 28, height: 28 }).map
+    for (const edge of edgeList(solid).filter((candidate) => candidate.kind === kind)) {
+      const neighbor = edgeNeighbor(edge)
+      setEdge(solid, edge.x, edge.y, neighbor.x, neighbor.y, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
+    }
+    assert.equal(reached.size, reachableCells(solid, spawn.x, spawn.y).size,
+      `${themeId}: замена стены на ${kind} изменила проходимость`)
   }
 })
 

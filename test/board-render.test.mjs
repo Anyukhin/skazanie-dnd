@@ -45,8 +45,8 @@ function recordingContext() {
     globalCompositeOperation: 'source-over',
     save() { ops.push({ op: 'save' }) },
     restore() { ops.push({ op: 'restore' }) },
-    translate() {},
-    rotate() {},
+    translate(x, y) { ops.push({ op: 'translate', x, y }) },
+    rotate(angle) { ops.push({ op: 'rotate', angle }) },
     beginPath() {},
     closePath() {},
     moveTo() {},
@@ -56,9 +56,13 @@ function recordingContext() {
     stroke() { ops.push({ op: 'stroke', value: styles.strokeStyle }) },
     fillRect() { ops.push({ op: 'fillRect', value: styles.fillStyle }) },
     strokeRect() { ops.push({ op: 'strokeRect', value: styles.strokeStyle }) },
+    fillText(text, x, y) { ops.push({ op: 'fillText', text, x, y, value: styles.fillStyle }) },
     clearRect() { ops.push({ op: 'clearRect' }) },
     setLineDash() {},
     drawImage(...args) { ops.push({ op: 'drawImage', args }) },
+    font: '',
+    textAlign: 'start',
+    textBaseline: 'alphabetic',
   }
   for (const name of ['fillStyle', 'strokeStyle']) {
     Object.defineProperty(context, name, {
@@ -339,6 +343,39 @@ test('фактура пола раскладывается по карте не�
   assert.deepEqual(window(8), window(0))
 })
 
+test('направление настила берётся из зоны и поворачивает только вертикальную зону', () => {
+  const map = createTacticalMap({ width: 2, height: 1 })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', floorDirection: 'horizontal' })
+  addZone(map, { id: 'store', kind: 'interior', material: 'wood', floorDirection: 'vertical' })
+  setCell(map, 0, 0, { passable: true, revealed: true, material: 'wood', zone: 'hall' })
+  setCell(map, 1, 0, { passable: true, revealed: true, material: 'wood', zone: 'store' })
+  const context = recordingContext()
+  render.drawFloorTiles(context, {
+    map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 40, terrain: stubTerrain(),
+  }, { tileX: 0, tileY: 0 })
+  const turns = context.ops.filter((item) => item.op === 'rotate').map((item) => item.angle)
+  assert.equal(turns.length, 1, 'горизонтальная зона не должна поворачиваться вместе с вертикальной')
+  assert.ok(Math.abs(turns[0] - Math.PI / 2) < 1e-9, 'вертикальный настил не повернулся на четверть оборота')
+})
+
+test('уровень света заметно различает зоны и не рисуется под туманом', () => {
+  const map = createTacticalMap({ width: 3, height: 1 })
+  addZone(map, { id: 'sun', kind: 'exterior', material: 'grass', lightLevel: 'bright' })
+  addZone(map, { id: 'crypt', kind: 'interior', material: 'stone', lightLevel: 'dark' })
+  setCell(map, 0, 0, { passable: true, revealed: true, zone: 'sun' })
+  setCell(map, 1, 0, { passable: true, revealed: true, zone: 'crypt' })
+  setCell(map, 2, 0, { passable: true, revealed: false, zone: 'crypt' })
+  const context = recordingContext()
+  render.drawZoneLighting(context, {
+    map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 40,
+  }, { tileX: 0, tileY: 0 })
+  const fills = context.ops.filter((item) => item.op === 'fillRect')
+  assert.equal(fills.length, 2, 'скрытая тёмная клетка не должна выдавать свою зону световой заливкой')
+  assert.ok(fills.some((item) => item.value === render.zoneLightTreatment('bright')), 'солнечная зона не подсвечена')
+  assert.ok(fills.some((item) => item.value === render.zoneLightTreatment('dark')), 'тёмная зона не затемнена')
+  assert.notEqual(render.zoneLightTreatment('bright'), render.zoneLightTreatment('dark'))
+})
+
 test('стена берёт фактуру кладки, а не пола', () => {
   assert.equal(render.wallTextureKeyFor('wood'), 'wood')
   assert.equal(render.wallTextureKeyFor('marble'), 'plaster')
@@ -362,12 +399,14 @@ test('карте запрашиваются только те фактуры, к
   assert.equal(keys.floors.includes('marble'), false, 'мрамор на этой карте не нужен и грузиться не должен')
 })
 
-test('дверь, окно и ограда рисуются штампом, а без него — прежней сборкой', () => {
+test('дверь, окно, ограда, бойница и решётка рисуются своими штампами и имеют fallback', () => {
   const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true } })
   setEdge(map, 1, 1, 2, 1, { kind: 'door', doorId: 'door-1' })
   setDoor(map, { id: 'door-1', x: 1, y: 1, dir: 'e', state: 'locked' })
   setEdge(map, 2, 2, 2, 3, { kind: 'window' })
   setEdge(map, 0, 0, 0, 1, { kind: 'rail' })
+  setEdge(map, 0, 2, 1, 2, { kind: 'loophole' })
+  setEdge(map, 2, 0, 3, 0, { kind: 'grate' })
   const clientMap = decoded(map)
   const tile = { tileX: 0, tileY: 0 }
   const palette = render.DEFAULT_BOARD_PALETTE
@@ -375,14 +414,18 @@ test('дверь, окно и ограда рисуются штампом, а �
     door_iron: { x: 0, y: 0, w: 96, h: 36 },
     window_glazed: { x: 96, y: 0, w: 96, h: 40 },
     rail_fence: { x: 192, y: 0, w: 96, h: 35 },
+    arrow_slit: { x: 288, y: 0, w: 96, h: 37 },
+    portcullis_gate: { x: 384, y: 0, w: 96, h: 36 },
   }
 
   const withStamps = recordingContext()
   render.drawEdgeSegments(withStamps, { map: clientMap, palette, cellSize: 48, propAtlas: stubAtlas(frames) }, tile)
   const drawn = withStamps.ops.filter((item) => item.op === 'drawImage').map((item) => item.args.slice(1, 5))
-  assert.equal(drawn.length, 3, 'дверь, окно и ограда — три штампа')
+  assert.equal(drawn.length, 5, 'каждый из пяти видов проёма обязан взять свой штамп')
   // Запертая дверь показывается окованной: состояние обязано читаться с карты.
   assert.ok(drawn.some((window) => window[0] === 0 && window[2] === 96), 'запертая дверь взяла не тот кадр')
+  assert.ok(drawn.some((window) => window[0] === 288), 'бойница не взяла arrow_slit')
+  assert.ok(drawn.some((window) => window[0] === 384), 'решётка не взяла portcullis_gate')
 
   const withoutStamps = recordingContext()
   render.drawEdgeSegments(withoutStamps, { map: clientMap, palette, cellSize: 48 }, tile)
@@ -467,6 +510,41 @@ test('доска без поля map собирается из старых кл
   assert.equal(map.doors.length, 1)
   assert.ok(map.terrainHash)
   assert.equal(client.sceneTacticalMap({ cells: [] }), null)
+})
+
+test('печатные оверлеи рисуют координаты, компас, масштаб и только раскрытые подписи комнат', () => {
+  const map = createTacticalMap({ width: 28, height: 4 })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Общий зал' })
+  addZone(map, { id: 'secret', kind: 'interior', material: 'stone', lightLevel: 'dark', label: 'Тайник' })
+  for (let y = 0; y < 4; y += 1) {
+    for (let x = 0; x < 28; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: 'hall' })
+  }
+  setCell(map, 27, 3, { zone: 'secret', revealed: false })
+  map.overlays = {
+    compass: true,
+    scaleBar: true,
+    roomLabels: [
+      { zoneId: 'hall', label: 'Общий зал' },
+      { zoneId: 'secret', label: 'Тайник' },
+    ],
+  }
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+  assert.equal(render.coordinateColumnLabel(0), 'A')
+  assert.equal(render.coordinateColumnLabel(25), 'Z')
+  assert.equal(render.coordinateColumnLabel(26), 'AA')
+  assert.deepEqual(
+    render.revealedRoomLabelPlacements(scene.map).map((entry) => entry.label),
+    ['Общий зал'],
+    'подпись скрытой зоны не должна выходить сквозь туман',
+  )
+
+  const context = recordingContext()
+  render.drawMapDecorations(context, scene)
+  const labels = context.ops.filter((item) => item.op === 'fillText').map((item) => item.text)
+  for (const expected of ['A', 'Z', 'AA', '1', 'Общий зал', 'С', '20 футов']) {
+    assert.ok(labels.includes(expected), `на печатной карте нет «${expected}»`)
+  }
+  assert.equal(labels.includes('Тайник'), false, 'туман не скрывает подпись тайной комнаты')
 })
 
 test('предмет на шве тайлов не остаётся половиной после смены раскрытия', () => {

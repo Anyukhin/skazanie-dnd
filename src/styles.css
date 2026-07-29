@@ -215,6 +215,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .scene-title p { display: none; }
 .objective { flex: 0 1 auto; margin-left: auto; min-width: 0; max-width: 340px; height: 38px; display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 14px; border: 1px solid rgba(211,153,86,.32); border-radius: 19px; background: none; text-align: left; }
 .objective strong { min-width: 0; overflow: hidden; margin: 0; color: #c9a06a; font: 600 var(--fs-lg) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+@media (min-width: 1280px) {
+  .objective { pointer-events: auto; cursor: pointer; }
+  .status-bar:has(.objective.expanded) { z-index: 20; overflow: visible; }
+  .objective.expanded { position: absolute; z-index: 3; top: calc(100% + 8px); right: 42px; width: min(540px, 58vw); max-width: none; height: auto; min-height: 56px; align-items: flex-start; padding: 10px 16px; border-radius: 8px; background: rgba(21,18,15,.97); box-shadow: 0 16px 36px rgba(0,0,0,.62); }
+  .objective.expanded small { display: block; flex: 0 0 auto; padding-top: 3px; color: #765d42; }
+  .objective.expanded strong { overflow: visible; white-space: normal; line-height: 1.45; }
+}
 .reset-button { position: absolute; top: 2px; right: 0; pointer-events: auto; background: rgba(20,18,15,.65); border: 1px solid var(--line); }
 /* Приглашение к торговцу живёт в заголовке сцены, а не только в боковом меню:
    до лавки игрок доходит по карте и смотрит именно сюда. Зелёный тон тот же,
@@ -405,10 +412,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    у него не было вовсе, и он брал корневой шрифт: 16px, обычного начертания,
    почти белый — из-за этого и выделялся. */
 .chat-head-eyebrow { color: #856944; font: 700 var(--fs-sm) Manrope, sans-serif; letter-spacing: .14em; }
+.chronicle-filters { display: none; align-items: center; gap: 2px; padding: 2px; border: 1px solid rgba(211,184,149,.09); border-radius: 15px; background: rgba(5,4,3,.24); }
+.chronicle-filters button { height: 22px; padding: 0 8px; border: 0; border-radius: 11px; background: transparent; color: #746b61; font: 700 var(--fs-xs) Manrope,sans-serif; cursor: pointer; }
+.chronicle-filters button:hover { color: #b39777; }
+.chronicle-filters button.active { background: rgba(190,137,73,.15); color: #c79b65; }
 .chat-head strong { font-family: Spectral, serif; color: #cfc5b8; font-size: var(--fs-xs); font-weight: 600; }
 .live-dot { display: flex; align-items: center; gap: 5px; margin-left: 3px; color: #668b6b; font-size: var(--fs-sm); letter-spacing: .13em; }
 .live-dot::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #6e9e76; box-shadow: 0 0 0 3px rgba(110,158,118,.1); }
-.messages { padding: 14px 20px 6px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #433a31 transparent; }
+.chat-interaction-slot:empty { display: none; }
+.messages { min-height: 0; padding: 14px 20px 6px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #433a31 transparent; }
 /* Одна колонка: аватарку сообщения убрали в 10be690, а колонка под неё осталась —
    и текст все эти дни жил в 29px, переносясь по слову на строку. Стили самой
    аватарки удалены вместе с колонкой, элемента для них больше нет. */
@@ -420,6 +432,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .message.player .message-meta strong { color: #9ca08b; }
 .message-meta time { color: #5e5852; font-size: var(--fs-sm); }
 .message-body p { margin: 2px 0 0; color: #b8afa4; font-family: Spectral, Georgia, serif; font-size: var(--fs-xs); line-height: 1.5; }
+.chronicle-to-latest { position: absolute; z-index: 3; right: 14px; bottom: 13px; min-width: 31px; height: 31px; display: none; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 1px solid rgba(201,149,85,.34); border-radius: 16px; background: rgba(34,28,22,.96); color: #c3935d; cursor: pointer; box-shadow: 0 5px 16px rgba(0,0,0,.55); }
+.chronicle-to-latest b { min-width: 15px; height: 15px; display: grid; place-items: center; border-radius: 8px; background: rgba(198,139,72,.18); font-size: var(--fs-xs); }
+@media (min-width: 1280px) {
+  .chat-panel { grid-template-rows: auto auto minmax(0, 1fr); }
+  .chat-head { min-height: 47px; gap: 8px; padding: 5px 8px 5px 13px; }
+  .chat-head > div { min-width: 0; gap: 10px; }
+  .chat-interaction-slot:empty { display: block; }
+  .chronicle-filters { display: flex; }
+  .message.system { margin-bottom: 9px; opacity: .72; }
+  .message.system .message-meta { min-height: 14px; }
+  .message.system .message-meta strong { color: #7d746a; font: 700 var(--fs-xs) Manrope,sans-serif; letter-spacing: .04em; }
+  .message.system .message-meta time { color: #504b46; font-size: var(--fs-xs); }
+  .message.system .message-body p { color: #827a72; font: var(--fs-sm)/1.4 Manrope,sans-serif; }
+  .chronicle-to-latest { display: flex; }
+}
 .roll-result { display: inline-flex; align-items: center; gap: 8px; min-width: 250px; margin-top: 8px; padding: 6px 8px; border: 1px solid rgba(112,144,116,.19); border-radius: 4px; background: rgba(62,83,64,.12); color: #739276; }
 .roll-result > span { display: grid; min-width: 93px; }
 .roll-result small { color: #837d74; font-size: var(--fs-sm); }
@@ -839,11 +866,33 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    отдельной строки в и без того невысокой колонке. */
 .detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .detail-head > strong { min-width: 0; }
+.detail-meta { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .hotbar-detail strong { overflow: hidden; color: #e2d6c6; font: 600 var(--fs-2xl) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .hotbar-detail p { margin: 0; color: #a89e92; font: var(--fs-lg)/1.4 Spectral, Georgia, serif; }
 /* Подпись переносится, а не обрезается: «на себя — нажмите „Подтвердить“» в
    узкой колонке заканчивалось многоточием ровно там, где начиналось дело. */
 .hotbar-detail span { color: #c8a06a; font: var(--fs-lg)/1.35 Manrope, sans-serif; }
+
+/* На широком рабочем столе описание использует всю выданную ему колонку:
+   заголовок и метки образуют два ясных ряда, а текст делится только когда сама
+   колонка действительно достигла 400px (она может быть уже из-за ручки). */
+@media (min-width: 1500px) {
+  .hotbar-detail { container: hotbar-detail / inline-size; gap: 8px; }
+  .hotbar-detail .detail-head { display: grid; align-items: start; gap: 6px; }
+  .hotbar-detail .detail-head > strong { font-size: var(--fs-3xl); }
+  .hotbar-detail .detail-meta { width: 100%; }
+  .detail-chip.forecast { border-color: rgba(211,153,86,.34); color: #d4ad79; }
+}
+
+@container hotbar-detail (min-width: 400px) {
+  .hotbar-detail .detail-description {
+    max-width: none;
+    columns: 2;
+    column-gap: 24px;
+    column-rule: 1px solid rgba(255,255,255,.06);
+    text-wrap: pretty;
+  }
+}
 
 .combat-icon { position: relative; z-index: 0; display: inline-grid; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid hsl(var(--combat-icon-hue) 58% 55% / .3); border-radius: 6px; background-image: radial-gradient(circle at 50% 42%, hsl(var(--combat-icon-hue) 52% 24% / .4), transparent 58%), linear-gradient(145deg, rgba(42,36,31,.7), rgba(12,11,10,.84)), url('/assets/ui/combat-icon-texture.png'); background-position: center, center, var(--combat-icon-bg-x) var(--combat-icon-bg-y); background-size: auto, auto, 112px 112px; background-blend-mode: screen, normal, soft-light; box-shadow: inset 0 1px rgba(255,245,220,.08), inset 0 -2px 4px rgba(0,0,0,.7), 0 2px 5px rgba(0,0,0,.4); color: hsl(var(--combat-icon-hue) 92% 70%); isolation: isolate; }
 /* Запасной размер: компонент задаёт width/height, только если ему передали size.

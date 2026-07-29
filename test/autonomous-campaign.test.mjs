@@ -9,7 +9,7 @@ import { AUTONOMY_EVAL_SCENARIOS, LONG_CAMPAIGN_EVALS } from '../eval/autonomous
 import { DirectorIntentError, normalizeDirectorIntent } from '../server/autonomous-campaign.mjs'
 import { AutonomousCampaignOrchestrator } from '../server/autonomous-orchestrator.mjs'
 import { createAutonomyEvalReport } from '../server/autonomy-eval.mjs'
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { DiceService } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { ALLOWED_COMMAND_TYPES, RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 
@@ -68,12 +68,23 @@ function campaign() {
   })
 }
 
+class SeededDiceRng {
+  constructor(seed = 0x5eed1234) {
+    this.state = seed >>> 0
+  }
+
+  randint(minimum, maximum) {
+    this.state = (Math.imul(this.state, 1_664_525) + 1_013_904_223) >>> 0
+    return minimum + (this.state % (maximum - minimum + 1))
+  }
+}
+
 async function fixture(t, initialState = campaign(), narrator = null) {
   const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-autonomy-'))
   t.after(() => rmSync(rootDir, { recursive: true, force: true }))
   const eventStore = new FileEventStore({ rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState, snapshotEvery: 7 })
   await eventStore.initializeCampaign({ campaign_id: 'AUTONOMY-30', initial_state: initialState })
-  const diceService = new DiceService({ rng: new SequenceDiceRng(Array.from({ length: 4_000 }, (_, index) => index % 4 === 0 ? 18 : 6)) })
+  const diceService = new DiceService({ rng: new SeededDiceRng() })
   const rulesEngine = new RulesEngine({ diceService })
   return { rootDir, eventStore, rulesEngine, autonomy: new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, now: () => 1_784_466_000_000 }) }
 }

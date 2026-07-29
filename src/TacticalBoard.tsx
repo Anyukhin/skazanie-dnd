@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { TacticalMap } from './types'
 import {
-  DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardOverlay,
+  DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
   type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture, type PropAtlas,
   type TerrainTiles, type TileSurface,
@@ -317,6 +317,7 @@ export function TacticalBoard({
       )
     }
     drawBoardOverlay(context, scene, overlayCells)
+    drawMapDecorations(context, scene)
   }, [map, columns, rows, cellPixels, zoom, terrain, artUrl, overlayCells, assetsVersion])
 
   useEffect(() => { paint() }, [paint, pan.x, pan.y])

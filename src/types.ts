@@ -568,10 +568,11 @@ export type MapCell = {
 
 export type TacticalSurface = 'none' | 'water' | 'ice' | 'oil' | 'mud' | 'rubble'
 export type TacticalMaterial = 'stone' | 'wood' | 'earth' | 'grass' | 'sand' | 'marble' | 'metal' | 'ice'
-export type TacticalEdgeKind = 'none' | 'wall' | 'door' | 'window' | 'rail' | 'ledge'
+export type TacticalEdgeKind = 'none' | 'wall' | 'door' | 'window' | 'rail' | 'ledge' | 'loophole' | 'grate'
 export type TacticalCover = 'none' | 'half' | 'three_quarters'
 export type TacticalDoorState = 'open' | 'closed' | 'locked' | 'broken'
 export type TacticalZoneKind = 'interior' | 'exterior'
+export type TacticalFloorDirection = 'horizontal' | 'vertical'
 export type TacticalSpawnRole = 'party' | 'enemy' | 'neutral'
 /** Ребро смотрит только на восток или на юг: канонизация даёт ему один ключ. */
 export type TacticalEdgeDirection = 'e' | 's'
@@ -643,6 +644,8 @@ export type TacticalZone = {
   kind: TacticalZoneKind
   material: TacticalMaterial
   lightLevel: string
+  /** Направление непрерывного рисунка настила внутри зоны. */
+  floorDirection: TacticalFloorDirection
   label: string
 }
 

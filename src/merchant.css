@@ -81,8 +81,11 @@
 .merchant-tabs button.active { color: #ca9559; background: rgba(163, 104, 47, .06); box-shadow: inset 0 -2px #b77e41; }
 .merchant-items { display: grid; gap: 10px; padding: 12px; }
 .merchant-item { overflow: hidden; border: 1px solid rgba(255,255,255,.055); border-radius: 7px; background: rgba(0,0,0,.09); }
-.merchant-item-title { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; align-items: start; padding: 13px; }
+.merchant-item-title { display: grid; grid-template-columns: 48px minmax(0,1fr) auto; gap: 10px; align-items: start; padding: 13px; }
 .merchant-item-title > svg { width: 32px; height: 32px; padding: 7px; border-radius: 5px; background: rgba(154, 105, 52, .07); color: #9d7347; }
+.merchant-item-art { width: 48px; height: 48px; overflow: hidden; display: grid; place-items: center; border: 1px solid rgba(154,105,52,.18); border-radius: 6px; background: radial-gradient(circle,rgba(133,91,48,.16),rgba(13,12,10,.86)); color: #8c6a44; }
+.merchant-item-art img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.merchant-item-art.neutral { border-style: dashed; }
 .merchant-item-title > span { min-width: 0; }
 .merchant-item-title small { display: block; overflow: hidden; color: #625b54; font-size: var(--fs-xxs); letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
 .merchant-item-title h3 { margin: 2px 0; color: #c9bcad; font: 600 var(--fs-md) Spectral, serif; }

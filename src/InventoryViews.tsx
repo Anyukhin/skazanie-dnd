@@ -7,6 +7,7 @@ import { generateItemImage } from './ai-client'
 import { DND_CLASS_OPTIONS, classFeatureCatalogFor, playerClassKey, subclassOptionsFor } from './combat-actions'
 import { fallbackCombatSpells, spellSelectionRules } from './combat-spells'
 import { classSkillRulesFor, featureChoiceGroupsFor, normalizedSelectedFeatures } from './character-progression'
+import { itemImageFor } from './item-images'
 import type { FeatureChoiceGroup } from './character-progression'
 import type { InventoryItem, Player } from './types'
 
@@ -293,9 +294,10 @@ export function CharacterEditor({ player, onClose, onSave, onImport, onLevelUp }
 }
 
 function ItemImage({ item, zoom = 1 }: { item: InventoryItem; zoom?: number }) {
-  if (!item.image) return <div className="item-image-placeholder"><Sparkles size={25} /><span>{item.imageStatus === 'failed' ? 'Генерация не удалась' : 'Изображение создаётся'}</span></div>
-  if (item.image.includes('item-atlas')) return <div className="item-atlas-crop" role="img" aria-label={item.name} style={{ backgroundImage: `url(${item.image})`, backgroundPosition: item.imagePosition ?? '0% 0%', transform: `scale(${zoom})` }} />
-  return <img src={item.image} alt={item.name} style={{ objectPosition: item.imagePosition ?? 'center', transform: `scale(${zoom})` }} />
+  const image = itemImageFor(item)
+  if (!image) return <div className="item-image-placeholder" role="img" aria-label={`Предмет: ${item.name}`}><PackageOpen size={27} /></div>
+  if (image.includes('item-atlas')) return <div className="item-atlas-crop" role="img" aria-label={item.name} style={{ backgroundImage: `url(${image})`, backgroundPosition: item.imagePosition ?? '0% 0%', transform: `scale(${zoom})` }} />
+  return <img src={image} alt={item.name} style={{ objectPosition: item.imagePosition ?? 'center', transform: `scale(${zoom})` }} />
 }
 
 function ItemModal({ item, isNew, onClose, onSave, onRemove }: { item: InventoryItem; isNew: boolean; onClose: () => void; onSave: (item: InventoryItem) => void; onRemove: (id: string) => void }) {
@@ -321,7 +323,7 @@ function ItemModal({ item, isNew, onClose, onSave, onRemove }: { item: Inventory
   return <div className="item-modal-backdrop" onMouseDown={onClose}><section className="item-modal" role="dialog" aria-modal="true" aria-label={isNew ? 'Создание предмета' : `Предмет: ${draft.name}`} onMouseDown={(event) => event.stopPropagation()}>
     <button className="item-modal-close" onClick={onClose} aria-label="Закрыть предмет"><X size={20} /></button>
     <div className={`item-hero ${draft.type === 'document' ? 'landscape' : ''}`}><ItemImage item={draft} zoom={zoom} />
-      {draft.image && <div className="item-zoom"><button onClick={() => setZoom((value) => Math.max(1, value - .25))}><ZoomOut size={16} /></button><span>{Math.round(zoom * 100)}%</span><button onClick={() => setZoom((value) => Math.min(3, value + .25))}><ZoomIn size={16} /></button></div>}
+      {itemImageFor(draft) && <div className="item-zoom"><button onClick={() => setZoom((value) => Math.max(1, value - .25))}><ZoomOut size={16} /></button><span>{Math.round(zoom * 100)}%</span><button onClick={() => setZoom((value) => Math.min(3, value + .25))}><ZoomIn size={16} /></button></div>}
     </div>
     <div className="item-modal-body">
       {editing ? <div className="item-form">

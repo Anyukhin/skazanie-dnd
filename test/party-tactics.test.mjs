@@ -3,9 +3,13 @@ import test from 'node:test'
 
 import { HEAL_THRESHOLD_RATIO, healingTargetFor, planHeroTurn } from '../server/party-tactics.mjs'
 import { normalizeCampaignState } from '../server/rules-engine.mjs'
+import { withStarterKit } from '../server/starter-kit.mjs'
 
 const POTION = { id: 'item-potion', catalog_id: 'srd_5_2_1:potion-of-healing', name: 'Зелье лечения', quantity: 1, type: 'consumable' }
-const SWORD = { id: 'item-sword', catalog_id: 'srd_5_2_1:longsword', name: 'Длинный меч', quantity: 1, type: 'weapon', equipped: true, combat: { damage: '1d8', damageType: 'slashing', range: 5 } }
+// Форма `combat` повторяет каталог снаряжения (`server/starter-kit.mjs`):
+// дальность там называется `normalRange`/`longRange`, и выдуманное поле в
+// фикстуре скрыло бы ровно ту ошибку, ради которой этот файл и существует.
+const SWORD = { id: 'item-sword', catalog_id: 'srd_5_2_1:longsword', name: 'Длинный меч', quantity: 1, type: 'weapon', equipped: true, combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 } }
 
 // Пустая сцена ломает поиск пути: без клеток герой не может дойти никуда, и
 // любой план вырождается в EndTurn. Проверять тактику на такой карте бессмысленно.
@@ -15,12 +19,12 @@ const floor = (size = 12) => {
   return cells
 }
 
-function battle({ heroes = [], enemies = [], positions = {} } = {}) {
+function battle({ heroes = [], enemies = [], positions = {}, size = 12 } = {}) {
   return normalizeCampaignState({
     sessionCode: 'TACTICS',
     partyMemberIds: heroes.map((hero) => hero.id),
     activePlayerId: heroes[0]?.id,
-    scene: { title: 'Схватка', location: 'Ворота', cells: floor() },
+    scene: { title: 'Схватка', location: 'Ворота', cells: floor(size) },
     players: heroes,
     enemies,
     mechanics: {
@@ -80,7 +84,73 @@ test('противник вплотную бьётся первым, а не т�
 
   assert.equal(plan.rule, 'attack-adjacent')
   assert.equal(plan.commands.some((command) => command.command_type === 'MoveActor'), false)
-  assert.equal(plan.commands.find((command) => command.command_type === 'MakeAttack').target_id, 'adjacent-orc')
+  const attack = plan.commands.find((command) => command.command_type === 'MakeAttack')
+  assert.equal(attack.target_id, 'adjacent-orc')
+  assert.equal(attack.item_id, 'item-sword', 'автономный герой обязан бить экипированным оружием, а не базовым уроном')
+})
+
+// Стартовое снаряжение берётся у самого каталога, а не переписывается руками:
+// разойтись с ним — и тактика снова начнёт считать дальность по полю, которого
+// у настоящего предмета нет.
+const ranger = () => withStarterKit({ id: 'ranger', character: 'ranger', characterClass: 'ranger', hp: 12, maxHp: 12, speed: 30 })
+
+test('лучник стреляет с дистанции, а не идёт в упор', () => {
+  const bow = ranger().inventory.find((item) => item.catalog_id === 'srd_5_2_1:shortbow')
+  assert.equal(bow?.equipped, true, 'следопыт обязан выходить с экипированным луком')
+  assert.equal(bow.combat.normalRange, 80, 'обычная дальность лука — 80 футов')
+
+  const state = battle({
+    heroes: [ranger()],
+    enemies: [enemy('orc')],
+    // Восемь клеток — 40 футов: далеко для меча и близко для лука.
+    positions: { ranger: { x: 1, y: 1 }, orc: { x: 9, y: 1 } },
+  })
+  const plan = planHeroTurn(state, 'ranger')
+
+  assert.equal(plan.rule, 'attack-focus')
+  assert.equal(plan.commands.some((command) => command.command_type === 'MoveActor'), false, 'подходить незачем — цель уже на дистанции выстрела')
+  const attack = plan.commands.find((command) => command.command_type === 'MakeAttack')
+  assert.equal(attack?.item_id, bow.id)
+})
+
+test('за пределом обычной дальности лучник подходит, а не стреляет с помехой', () => {
+  const state = battle({
+    size: 30,
+    heroes: [ranger()],
+    // Двадцать четыре клетки — 120 футов: в предельные 320 укладывается, но
+    // выстрел оттуда идёт с помехой за дальность.
+    enemies: [enemy('orc')],
+    positions: { ranger: { x: 1, y: 1 }, orc: { x: 25, y: 1 } },
+  })
+  const plan = planHeroTurn(state, 'ranger')
+
+  assert.equal(plan.rule, 'advance')
+  assert.equal(plan.commands.some((command) => command.command_type === 'MakeAttack'), false)
+  assert.deepEqual(plan.commands.find((command) => command.command_type === 'MoveActor')?.to, { x: 7, y: 1 }, 'герой проходит все 30 футов навстречу')
+})
+
+test('сбитый с ног автономный герой встаёт до атаки и платит половиной скорости', () => {
+  const state = battle({
+    heroes: [hero('fighter')],
+    enemies: [enemy('adjacent-wolf')],
+    positions: { fighter: { x: 1, y: 1 }, 'adjacent-wolf': { x: 1, y: 2 } },
+  })
+  state.mechanics.conditions.fighter = [{ id: 'prone', source_actor: 'adjacent-wolf' }]
+
+  const plan = planHeroTurn(state, 'fighter')
+  assert.deepEqual(plan.commands.map((command) => command.command_type), ['UseCombatAction', 'MakeAttack', 'EndTurn'])
+  assert.equal(plan.commands[0].action_id, 'stand-up')
+
+  const distant = battle({
+    heroes: [hero('fighter')],
+    enemies: [enemy('distant-wolf')],
+    positions: { fighter: { x: 1, y: 1 }, 'distant-wolf': { x: 6, y: 1 } },
+  })
+  distant.mechanics.conditions.fighter = [{ id: 'prone', source_actor: 'distant-wolf' }]
+  const advance = planHeroTurn(distant, 'fighter')
+  const move = advance.commands.find((command) => command.command_type === 'MoveActor')
+  assert.deepEqual(move?.to, { x: 4, y: 1 }, 'после подъёма остаётся только 15 футов движения')
+  assert.equal(advance.commands.some((command) => command.command_type === 'MakeAttack'), false)
 })
 
 test('когда рядом никого — прежнее сосредоточение огня на самом раненом', () => {

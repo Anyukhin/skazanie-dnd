@@ -1978,6 +1978,21 @@ export function attackProfileFor(state, actorIdValue, actionId = null) {
   return actor ? trustedAttackProfile(state, actor, actionId) : null
 }
 
+/**
+ * Профиль удара конкретным предметом — тот самый, который `MakeAttack` выберет
+ * по `item_id`. Отдельный экспорт нужен серверным политикам (тактика отряда):
+ * планировать дальность по своей формуле значит рано или поздно разойтись с
+ * проверкой движка. `null` — предмета нет или он не оружие.
+ *
+ * @param {object} state
+ * @param {string} actorIdValue
+ * @param {string} itemId
+ */
+export function weaponAttackProfileFor(state, actorIdValue, itemId) {
+  const actor = findActor(state, actorIdValue)
+  return actor ? itemAttackProfile(state, actor, itemId) : null
+}
+
 function distanceBetweenActors(state, firstActorId, secondActorId) {
   const first = actorPosition(state, firstActorId)
   const second = actorPosition(state, secondActorId)

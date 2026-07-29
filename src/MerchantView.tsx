@@ -4,6 +4,7 @@ import {
   BadgeCheck, CircleAlert, Coins, HandCoins, LoaderCircle, MapPin,
   PackageOpen, RefreshCw, ScrollText, Search, ShieldCheck, ShoppingBag, Sparkles, X,
 } from 'lucide-react'
+import { itemImageFor, type ItemImageInput } from './item-images'
 import type { Merchant, MerchantQuote, MerchantView as MerchantViewModel, Player } from './types'
 
 type MerchantScreenProps = {
@@ -39,6 +40,15 @@ const itemTypeLabels: Record<string, string> = {
 }
 
 const itemTypeLabel = (type: string) => itemTypeLabels[type] ?? 'разное'
+
+function MerchantItemArtwork({ item, name }: { item: ItemImageInput; name: string }) {
+  const image = itemImageFor(item)
+  return <div className={`merchant-item-art${image ? '' : ' neutral'}`} role={image ? undefined : 'img'} aria-label={image ? undefined : `Предмет: ${name}`}>
+    {image
+      ? <img src={image} alt={name} style={{ objectPosition: item.imagePosition ?? 'center' }} />
+      : <PackageOpen size={22} />}
+  </div>
+}
 
 const coinLabels = [
   ['platinum', 'пм'],
@@ -276,7 +286,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
             const purchaseMax = Math.max(0, Math.min(stockAvailable, quote?.max_quantity ?? stockAvailable))
             const quantity = Math.min(buyQuantities[item.stock_id] ?? 1, Math.max(1, purchaseMax))
             return <article className="merchant-item" key={item.stock_id}>
-              <div className="merchant-item-title"><PackageOpen size={20} /><span><small>{itemTypeLabel(item.type)}</small><h3>{item.name}</h3><p>{item.description}</p></span><em>{stockAvailable} в наличии</em></div>
+              <div className="merchant-item-title"><MerchantItemArtwork item={item} name={item.name} /><span><small>{itemTypeLabel(item.type)}</small><h3>{item.name}</h3><p>{item.description}</p></span><em>{stockAvailable} в наличии</em></div>
               <QuoteBreakdown quote={quote} quantity={quantity} direction="buy" />
               <div className="merchant-item-actions">
                 <QuantityPicker value={quantity} max={purchaseMax} disabled={controlsDisabled || !quote || purchaseMax < 1} onChange={(next) => setBuyQuantities((values) => ({ ...values, [item.stock_id]: next }))} />
@@ -295,7 +305,7 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
             const canAppraise = appraisalRequired && quote?.can_appraise === true
             const merchantCanAfford = quote?.can_afford !== false
             return <article className="merchant-item" key={item.id}>
-              <div className="merchant-item-title"><PackageOpen size={20} /><span><small>{itemTypeLabel(item.type)} · в инвентаре: {item.quantity}</small><h3>{item.name}</h3><p>{item.description}</p></span>{item.equipped && <em>НАДЕТО</em>}</div>
+              <div className="merchant-item-title"><MerchantItemArtwork item={item} name={item.name} /><span><small>{itemTypeLabel(item.type)} · в инвентаре: {item.quantity}</small><h3>{item.name}</h3><p>{item.description}</p></span>{item.equipped && <em>НАДЕТО</em>}</div>
               {appraisalRequired
                 ? <div className="merchant-appraisal-note"><Search size={16} /><span><b>Нужна серверная оценка</b><small>Торговец осмотрит предмет, а цену рассчитает правило кампании.</small></span></div>
                 : <QuoteBreakdown quote={quote} quantity={quantity} direction="sell" />}

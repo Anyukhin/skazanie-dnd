@@ -1,7 +1,7 @@
 import type {
   MapCell, SerializedRevealDelta, SerializedTacticalMap, TacticalCell, TacticalCover, TacticalDoor,
   TacticalDoorState, TacticalEdge, TacticalEdgeDirection, TacticalEdgeKind, TacticalLayers, TacticalMap,
-  TacticalMaterial, TacticalProp, TacticalSpawnRole, TacticalSurface, TacticalZone, TacticalZoneKind,
+  TacticalFloorDirection, TacticalMaterial, TacticalProp, TacticalSpawnRole, TacticalSurface, TacticalZone, TacticalZoneKind,
 } from './types'
 
 /**
@@ -16,10 +16,11 @@ import type {
 
 export const SURFACES: readonly TacticalSurface[] = ['none', 'water', 'ice', 'oil', 'mud', 'rubble']
 export const MATERIALS: readonly TacticalMaterial[] = ['stone', 'wood', 'earth', 'grass', 'sand', 'marble', 'metal', 'ice']
-export const EDGE_KINDS: readonly TacticalEdgeKind[] = ['none', 'wall', 'door', 'window', 'rail', 'ledge']
+export const EDGE_KINDS: readonly TacticalEdgeKind[] = ['none', 'wall', 'door', 'window', 'rail', 'ledge', 'loophole', 'grate']
 export const COVER_LEVELS: readonly TacticalCover[] = ['none', 'half', 'three_quarters']
 export const DOOR_STATES: readonly TacticalDoorState[] = ['open', 'closed', 'locked', 'broken']
 export const ZONE_KINDS: readonly TacticalZoneKind[] = ['interior', 'exterior']
+export const FLOOR_DIRECTIONS: readonly TacticalFloorDirection[] = ['horizontal', 'vertical']
 export const SPAWN_ROLES: readonly TacticalSpawnRole[] = ['party', 'enemy', 'neutral']
 
 const MAX_WIDTH = 100
@@ -396,6 +397,9 @@ function decodeZone(value: unknown): TacticalZone | null {
     kind: (ZONE_KINDS.includes(raw.kind as TacticalZoneKind) ? raw.kind : 'interior') as TacticalZoneKind,
     material: (MATERIALS.includes(raw.material as TacticalMaterial) ? raw.material : 'stone') as TacticalMaterial,
     lightLevel: text(raw.lightLevel, 40, 'bright'),
+    floorDirection: (FLOOR_DIRECTIONS.includes(raw.floorDirection as TacticalFloorDirection)
+      ? raw.floorDirection
+      : 'horizontal') as TacticalFloorDirection,
     label: text(raw.label, 120),
   }
 }

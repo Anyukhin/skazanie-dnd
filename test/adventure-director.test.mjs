@@ -113,25 +113,46 @@ test('заявка картографа на планировку больше �
   assert.ok(looksThemed(cells), `таверна собрана прежним генератором: ${cells.length} клеток`)
 })
 
-test('неопознанная локация остаётся на прежнем процедурном генераторе', () => {
-  const cells = generateSceneCells({
+test('неопознанная локация получает связный тематический fallback', () => {
+  const input = {
     theme: 'новая местность', location: 'Безымянная низина',
     seed: 'gate:plain', locationId: 'plain', map: mapRequest({ layout: 'open', pattern: 'natural', width: 15, height: 11 }),
-  })
-  assert.ok(cells.length <= 15 * 11, `запрошено 15×11, отдано ${cells.length} клеток`)
-  assert.ok(cells.length < THEMED_MIN_CELLS)
+  }
+  const cells = generateSceneCells(input)
+  assert.equal(cells.length, 16 * 16, 'fallback обязан идти через полноразмерную тематическую карту')
+  assert.ok(cells.some((cell) => cell.type === 'wall'), 'fallback не обозначил границу игровой области')
+  assert.ok(cells.some((cell) => cell.feature), 'fallback оставил карту пустой')
+  assert.deepEqual(cells, generateSceneCells(input), 'fallback недетерминирован')
 })
 
-test('тема с неготовой геометрией к игроку не попадает', () => {
-  // Пещера опознаётся по названию, но её палаты по сетке хуже органической
-  // полости процедурного генератора — сцена обязана остаться на нём.
-  for (const [location, theme] of [['Пещера у водопада', 'подземные пещеры'], ['Деревня Заречье', 'городские улицы']]) {
-    const cells = generateSceneCells({
-      theme, location, seed: `hold:${location}`, locationId: location,
-      map: mapRequest({ layout: 'cavern', pattern: 'cave-cluster', width: 15, height: 11 }),
-    })
-    assert.ok(cells.length < THEMED_MIN_CELLS, `«${location}» отдан неготовой теме: ${cells.length} клеток`)
-  }
+test('fallback сохраняет явно запрошенный маршрут даже для неопознанной дикой местности', () => {
+  const cells = generateSceneCells({
+    theme: 'неизвестная окраина', location: 'Безымянный рубеж', sceneKind: 'wilderness',
+    seed: 'fallback:route', locationId: 'route',
+    map: mapRequest({ layout: 'winding', pattern: 'bridge', material: 'earth', width: 20, height: 16 }),
+  })
+  const earthColumns = new Set(cells.filter((cell) => cell.material === 'earth').map((cell) => cell.x))
+  assert.equal(earthColumns.size, 20, 'дорога fallback обязана пройти от края до края')
+})
+
+test('органическая пещера и поселение с домами доходят до живой сцены', () => {
+  const cave = generateSceneCells({
+    theme: 'подземные пещеры', location: 'Пещера у водопада',
+    seed: 'live:cave', locationId: 'cave',
+    map: mapRequest({ layout: 'cavern', pattern: 'cave-cluster', width: 20, height: 18 }),
+  })
+  assert.equal(cave.length, 20 * 18, 'пещера обязана прийти из полноразмерной тематической карты')
+  assert.ok(cave.some((cell) => cell.feature === 'stalagmite'), 'в пещере нет пещерного реквизита')
+
+  const settlement = generateSceneCells({
+    theme: 'городские улицы', location: 'Деревня Заречье',
+    seed: 'live:settlement', locationId: 'settlement',
+    map: mapRequest({ layout: 'streets', pattern: 'village', width: 15, height: 11 }),
+  })
+  assert.equal(settlement.length, 20 * 20, 'поселению нужен размер, в котором помещаются дома и улица')
+  assert.ok(settlement.filter((cell) => cell.type === 'door').length >= 4, 'в legacy-карте не читаются двери домов')
+  assert.ok(settlement.filter((cell) => cell.type === 'wall' && cell.material === 'wood').length >= 40,
+    'в legacy-карте не читаются стены домов')
 })
 
 test('узор crypt ведёт к склепу, даже когда название о нём молчит', () => {
@@ -145,7 +166,8 @@ test('узор crypt ведёт к склепу, даже когда назва�
 test('каждая живая тема доходит до карты через выбор генератора', () => {
   const named = {
     building: 'Таверна «Три бочки»', temple: 'Храм Утренней Звезды',
-    crypt: 'Склеп Норвин', forest: 'Тёмный лес', road: 'Северный тракт',
+    crypt: 'Склеп Норвин', cave: 'Пещера у водопада',
+    forest: 'Тёмный лес', road: 'Северный тракт', settlement: 'Деревня Заречье',
   }
   for (const theme of SCENE_THEMES.filter(isLiveTheme)) {
     const cells = generateSceneCells({
