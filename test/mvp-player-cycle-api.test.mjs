@@ -555,6 +555,17 @@ test('обычные игроки проходят автономную камп
   assert.ok(playerTurns >= 3, `expected a tactical fight, received ${playerTurns} attacking turns`)
   assert.equal(midCombatRestarted, true, 'combat must survive a restart after at least one committed attack')
   assert.equal(livingEnemies(battleState).length, 0, 'the party must win the mandatory encounter')
+  for (const hero of battleState.players ?? []) {
+    if (battleState.mechanics.death?.heroes?.[hero.id]?.status !== 'dead') continue
+    const resurrected = await playerCommand(baseUrl, cookieFor(hero.id), `player-post-combat-resurrect-${++commandIndex}`, {
+      command_type: 'ResolveHeroDeath', actor_id: hero.id, resolution: 'resurrect',
+    })
+    assert.equal(resurrected.status, 200, resurrected.text)
+    assert.ok(resurrected.body.mechanics.some((event) => event.event_type === 'HeroResurrected'))
+    combatEvents.push(...(resurrected.body.mechanics ?? []))
+    battleState = resurrected.body.authoritative_state
+    assert.notEqual(battleState.mechanics.death?.heroes?.[hero.id]?.status, 'dead')
+  }
   const uniqueCombatEvents = combatEvents.filter((event, index, all) => all.findIndex((candidate) => candidate.event_id === event.event_id) === index)
   const combatRolls = uniqueCombatEvents.filter((event) => event.event_type === 'DieRolled')
   const hpChanges = uniqueCombatEvents.filter((event) => ['DamageApplied', 'HealingApplied'].includes(event.event_type))

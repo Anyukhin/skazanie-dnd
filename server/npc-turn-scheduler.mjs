@@ -15,6 +15,25 @@ import { commandsForMoraleDecision, isMoraleMoment } from './npc-controller.mjs'
 
 const CELL_FEET = 5
 
+/**
+ * Словарь повадок: имя черты на стат-блоке → политика, которая её исполняет.
+ * Ветки с именем конкретного существа здесь запрещены — новое существо с уже
+ * описанной повадкой заводится правкой одного каталога.
+ *
+ * Исполняются в разных слоях, и это осознанно: `multiattack`, `keep-distance` и
+ * `relentless-pursuit` меняют **план хода** и живут здесь; `charge` и
+ * `bloodied-frenzy` меняют **разрешение удара** (рывок, преимущество раненого) и
+ * живут в `server/rules-engine.mjs`. Словарь один на оба слоя, чтобы список
+ * поддержанных повадок нельзя было прочитать в двух местах по-разному.
+ */
+export const NPC_BEHAVIOR_POLICIES = Object.freeze({
+  multiattack: 'multiattack',
+  keepDistance: 'keep-distance',
+  charge: 'charge',
+  bloodiedFrenzy: 'bloodied-frenzy',
+  relentlessPursuit: 'relentless-pursuit',
+})
+
 function actorId(actor) {
   return String(actor?.id ?? actor?.actor_id ?? '')
 }
@@ -73,14 +92,36 @@ function isCombatCapable(state, actor) {
   return state.mechanics?.resting?.[id]?.reason !== 'knockout' && !conditionIds(state, id).has('unconscious')
 }
 
+function traitFor(actor, id) {
+  const trait = (Array.isArray(actor?.traits) ? actor.traits : []).find((candidate) => String(candidate?.id ?? candidate) === id)
+  return trait && typeof trait === 'object' ? trait : trait ? { id } : null
+}
+
 function hasTrait(actor, id) {
-  return (Array.isArray(actor?.traits) ? actor.traits : []).some((trait) => String(trait?.id ?? trait) === id)
+  return Boolean(traitFor(actor, id))
 }
 
 function actionProfiles(state, enemy) {
   const explicit = Array.isArray(enemy?.action_profiles) ? enemy.action_profiles : []
   const spent = conditionIds(state, actorId(enemy))
-  const available = explicit.filter((action) => !(Number(action?.uses) > 0 && spent.has(`monster-action-used:${action.id}`)))
+  const economy = state.mechanics?.combat?.action_economy?.[actorId(enemy)] ?? {}
+  const attacksUsed = Math.max(0, Number(economy.attacks_used) || 0)
+  const multiattack = traitFor(enemy, NPC_BEHAVIOR_POLICIES.multiattack)
+  const actionCounts = multiattackActionCounts(multiattack)
+  const usedActionIds = Array.isArray(economy.multiattack_action_ids)
+    ? economy.multiattack_action_ids.map(String)
+    : attacksUsed > 0 && economy.multiattack_action_id
+      ? [String(economy.multiattack_action_id)]
+      : []
+  const fixedSequence = Array.isArray(multiattack?.sequence)
+    ? multiattack.sequence.map(String).filter(Boolean)
+    : []
+  const requiredActionId = multiattack?.same_action === true && attacksUsed > 0
+    ? String(economy.multiattack_action_id ?? '') || null
+    : fixedSequence[attacksUsed] ?? null
+  const available = explicit.filter((action) => !(Number(action?.uses) > 0 && spent.has(`monster-action-used:${action.id}`))
+    && (!requiredActionId || String(action?.id ?? '') === requiredActionId)
+    && (!actionCounts.size || usedActionIds.filter((id) => id === String(action?.id ?? '')).length < (actionCounts.get(String(action?.id ?? '')) ?? 0)))
   if (available.length) return available.map((action) => attackProfileFor(state, actorId(enemy), action.id)).filter(Boolean)
   const fallback = attackProfileFor(state, actorId(enemy))
   return fallback ? [fallback] : []
@@ -109,6 +150,35 @@ function adjacentEnemyAlly(state, enemy, target) {
   })())
 }
 
+function adjacentPartyMember(state, enemy) {
+  const enemyAt = actorPosition(state, actorId(enemy))
+  return Boolean(enemyAt && livingParty(state).some((member) => {
+    const at = actorPosition(state, actorId(member))
+    return at && Math.max(Math.abs(at.x - enemyAt.x), Math.abs(at.y - enemyAt.y)) === 1
+  }))
+}
+
+/**
+ * Может ли кто-то из отряда дойти до стрелка и ударить его **на своём ближайшем
+ * ходу**. Это условие «держать дистанцию»: без него стрелок пятился каждый ход
+ * даже там, где ему ничто не угрожало — уходил от своих, терял тактику стаи и
+ * упирался в край карты, ничего этим не выигрывая.
+ *
+ * Порог намеренно щедрый — вся скорость плюс клетка досягаемости: лучше отойти
+ * на ход раньше, чем позволить себя достать.
+ */
+function meleeThreatWithinReach(state, enemy) {
+  const enemyAt = actorPosition(state, actorId(enemy))
+  if (!enemyAt) return false
+  return livingParty(state).some((member) => {
+    const at = actorPosition(state, actorId(member))
+    if (!at) return false
+    const feet = Math.max(Math.abs(at.x - enemyAt.x), Math.abs(at.y - enemyAt.y)) * CELL_FEET
+    const speed = Math.max(0, Number(member.speed) || 30)
+    return feet <= speed + CELL_FEET
+  })
+}
+
 function targetCandidates(state, enemy) {
   const enemyAt = actorPosition(state, actorId(enemy))
   const profiles = actionProfiles(state, enemy)
@@ -127,9 +197,13 @@ function targetCandidates(state, enemy) {
       const controlValue = profile.on_hit?.condition && !alreadyControlled ? 80 + Number(profile.tactical_priority || 0) * 10 : 0
       const packValue = support && (hasTrait(enemy, 'pack-tactics') || hasTrait(enemy, 'martial-advantage')) ? 90 : 0
       const rangedAtMeleePenalty = profile.kind === 'ranged' && enemyAt && targetAt && Math.max(Math.abs(enemyAt.x - targetAt.x), Math.abs(enemyAt.y - targetAt.y)) === 1 ? 70 : 0
+      const relentlessPursuit = hasTrait(enemy, NPC_BEHAVIOR_POLICIES.relentlessPursuit)
       const score = Number(inRange) * 1_000 + Number(Boolean(path)) * 400 + Math.min(300, damage * 12)
-        + (damage >= targetHp ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))
-        + Math.max(0, 22 - targetArmor) * 4 + controlValue + packValue - pathDistance * 3 - rangedAtMeleePenalty
+        + (relentlessPursuit
+          ? Math.max(0, 800 - pathDistance * 80)
+          : damage >= targetHp ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))
+        + (relentlessPursuit ? 0 : Math.max(0, 22 - targetArmor) * 4 + controlValue + packValue)
+        - pathDistance * 3 - rangedAtMeleePenalty
       candidates.push({ actor: target, path, inRange, distance: pathDistance, profile, score })
     }
   }
@@ -144,7 +218,9 @@ function retreatDestination(state, enemy, target, profile) {
   const from = actorPosition(state, actorId(enemy))
   const targetAt = actorPosition(state, actorId(target))
   if (!from || !targetAt) return null
-  const maximumSteps = Math.max(1, Math.floor((Number(enemy.speed) || 30) / CELL_FEET))
+  const movementSpent = Math.max(0, Number(state.mechanics?.combat?.action_economy?.[actorId(enemy)]?.movement_spent) || 0)
+  const maximumSteps = Math.max(0, Math.floor(((Number(enemy.speed) || 30) - movementSpent) / CELL_FEET))
+  if (!maximumSteps) return null
   let best = null
   for (const cell of state.scene?.cells ?? []) {
     if (!cell.revealed || !['floor', 'door'].includes(cell.type)) continue
@@ -154,9 +230,66 @@ function retreatDestination(state, enemy, target, profile) {
     const distance = Math.max(Math.abs(destination.x - targetAt.x), Math.abs(destination.y - targetAt.y)) * CELL_FEET
     if (distance > profile.range_feet || distance < CELL_FEET || !hasClearTrajectory(state, destination, targetAt)) continue
     const score = Math.min(distance, profile.normal_range_feet) * 10 + path.length
-    if (!best || score > best.score) best = { score, destination }
+    if (!best
+      || score > best.score
+      || score === best.score && (destination.x < best.destination.x
+        || destination.x === best.destination.x && destination.y < best.destination.y)) {
+      best = { score, destination }
+    }
   }
   return best?.destination ?? null
+}
+
+function multiattackActionCounts(multiattack) {
+  if (!multiattack?.action_counts || typeof multiattack.action_counts !== 'object' || Array.isArray(multiattack.action_counts)) return new Map()
+  return new Map(Object.entries(multiattack.action_counts)
+    .map(([id, count]) => [String(id), Math.max(0, Math.min(8, Number(count) || 0))])
+    .filter(([id, count]) => id && count > 0)
+    .sort(([left], [right]) => left.localeCompare(right)))
+}
+
+function multiattackActionIds(enemy, selectedProfile) {
+  const multiattack = traitFor(enemy, NPC_BEHAVIOR_POLICIES.multiattack)
+  if (!multiattack) return selectedProfile?.id ? [String(selectedProfile.id)] : []
+  const actionCounts = multiattackActionCounts(multiattack)
+  if (actionCounts.size) return [...actionCounts].flatMap(([id, count]) => Array.from({ length: count }, () => id))
+  const sequence = Array.isArray(multiattack.sequence)
+    ? multiattack.sequence.map(String).filter(Boolean)
+    : []
+  if (sequence.length) return sequence
+  const count = Math.max(1, Math.min(8, Number(multiattack.attacks) || 1))
+  const actionId = String(multiattack.action_id ?? selectedProfile?.id ?? '')
+  return actionId ? Array.from({ length: count }, () => actionId) : []
+}
+
+function multiattackCount(enemy) {
+  const multiattack = traitFor(enemy, NPC_BEHAVIOR_POLICIES.multiattack)
+  if (!multiattack) return 1
+  const actionCount = [...multiattackActionCounts(multiattack).values()].reduce((sum, count) => sum + count, 0)
+  if (actionCount) return Math.min(8, actionCount)
+  const sequence = Array.isArray(multiattack.sequence)
+    ? multiattack.sequence.map(String).filter(Boolean)
+    : []
+  return sequence.length || Math.max(1, Math.min(8, Number(multiattack.attacks) || 1))
+}
+
+function attackCommands(state, enemy, targetId, selectedProfile) {
+  const sequence = multiattackActionIds(enemy, selectedProfile)
+  const actionCounts = multiattackActionCounts(traitFor(enemy, NPC_BEHAVIOR_POLICIES.multiattack))
+  const attacksUsed = Math.max(0, Number(state.mechanics?.combat?.action_economy?.[actorId(enemy)]?.attacks_used) || 0)
+  const actionId = actionCounts.size ? selectedProfile?.id ?? null : sequence[attacksUsed] ?? selectedProfile?.id ?? null
+  const attackCount = multiattackCount(enemy)
+  return [{
+    command_type: 'MakeAttack',
+    actor_id: actorId(enemy),
+    target_id: String(targetId),
+    ...(actionId ? { action_id: String(actionId) } : {}),
+    ...(attackCount > 1 ? {
+      monster_ability: 'multiattack',
+      multiattack_index: attacksUsed + 1,
+      multiattack_count: attackCount,
+    } : {}),
+  }]
 }
 
 export function planNpcTurn(rawState, enemyId) {
@@ -167,6 +300,14 @@ export function planNpcTurn(rawState, enemyId) {
   // initiative, but the Rules Engine refuses every command except ending the
   // turn — so the scheduler must not propose one.
   if (incapacitatingConditionFor(state, enemyId)) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
+  const currentEconomy = state.mechanics?.combat?.action_economy?.[String(enemyId)] ?? {}
+  const usedBeforePlan = Math.max(0, Number(currentEconomy.attacks_used) || 0)
+  const declaredMultiattackCount = multiattackCount(enemy)
+  if (currentEconomy.action === false
+    && declaredMultiattackCount > 1
+    && (usedBeforePlan === 0 || usedBeforePlan >= declaredMultiattackCount)) {
+    return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
+  }
   const candidate = targetCandidates(state, enemy)[0]
   if (!candidate) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
   const targetId = actorId(candidate.actor)
@@ -175,32 +316,105 @@ export function planNpcTurn(rawState, enemyId) {
   const enemyAt = actorPosition(state, enemyId)
   const targetAt = actorPosition(state, targetId)
   const adjacent = enemyAt && targetAt && Math.max(Math.abs(enemyAt.x - targetAt.x), Math.abs(enemyAt.y - targetAt.y)) === 1
-  if (candidate.inRange && profile.kind === 'ranged' && adjacent && hasTrait(enemy, 'nimble-escape')) {
+  let movementOnlyPhase = false
+  let plannedMovementFeet = 0
+  let plannedPosition = null
+  if (candidate.inRange
+    && profile.kind === 'ranged'
+    && hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance)
+    && !adjacentPartyMember(state, enemy)
+    && meleeThreatWithinReach(state, enemy)) {
     const retreat = retreatDestination(state, enemy, candidate.actor, profile)
     if (retreat) {
-      commands.push({ command_type: 'AddCondition', actor_id: String(enemyId), target_id: String(enemyId), condition: 'disengaged', duration: 'until-next-turn', monster_ability: 'nimble-escape' })
+      commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: retreat, monster_ability: 'keep-distance' })
+      commands.push(...attackCommands(state, enemy, targetId, profile))
+    } else {
+      commands.push(...attackCommands(state, enemy, targetId, profile))
+    }
+  } else if (candidate.inRange && profile.kind === 'ranged' && hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance) && adjacent && !hasTrait(enemy, 'nimble-escape')) {
+    const retreat = retreatDestination(state, enemy, candidate.actor, profile)
+    if (retreat) {
+      commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: retreat, monster_ability: 'keep-distance' })
+      movementOnlyPhase = true
+    } else {
+      commands.push(...attackCommands(state, enemy, targetId, profile))
+    }
+  } else if (candidate.inRange && profile.kind === 'ranged' && adjacent && hasTrait(enemy, 'nimble-escape')) {
+    const retreat = retreatDestination(state, enemy, candidate.actor, profile)
+    if (retreat) {
+      commands.push({ command_type: 'AddCondition', actor_id: String(enemyId), target_id: String(enemyId), condition: 'disengaged', duration: 'until-own-turn-end', monster_ability: 'nimble-escape' })
       commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: retreat })
-      commands.push({ command_type: 'MakeAttack', actor_id: String(enemyId), target_id: targetId, action_id: profile.id })
+      commands.push(...attackCommands(state, enemy, targetId, profile))
     }
   } else if (!candidate.inRange && candidate.path?.length) {
     const rangeCells = Math.max(1, Math.floor((profile?.range_feet ?? CELL_FEET) / CELL_FEET))
     const speed = Number(enemy.speed)
-    const normalSteps = Math.max(0, Math.floor((Number.isFinite(speed) ? speed : 30) / CELL_FEET))
-    const needsAggressive = hasTrait(enemy, 'aggressive') && candidate.path.length - rangeCells > normalSteps
-    const maximumSteps = needsAggressive ? normalSteps * 2 : normalSteps
+    const speedFeet = Number.isFinite(speed) ? speed : 30
+    const actionEconomy = state.mechanics?.combat?.action_economy?.[String(enemyId)] ?? {}
+    const movementSpent = Math.max(0, Number(actionEconomy.movement_spent) || 0)
+    const normalSteps = Math.max(0, Math.floor((speedFeet - movementSpent) / CELL_FEET))
+    const aggressiveAvailable = hasTrait(enemy, 'aggressive') && actionEconomy.bonus_action !== false
+    const needsAggressive = aggressiveAvailable && candidate.path.length - rangeCells > normalSteps
+    const maximumSteps = needsAggressive
+      ? Math.max(0, Math.floor((speedFeet * 2 - movementSpent) / CELL_FEET))
+      : normalSteps
     const steps = Math.min(maximumSteps, Math.max(0, candidate.path.length - rangeCells))
-    if (steps > 0) commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: candidate.path[steps - 1], ...(needsAggressive ? { monster_ability: 'aggressive' } : {}) })
+    if (steps > 0) {
+      plannedMovementFeet = steps * CELL_FEET
+      plannedPosition = candidate.path[steps - 1]
+      commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: plannedPosition, ...(needsAggressive ? { monster_ability: 'aggressive' } : {}) })
+    }
     const destination = steps > 0 ? candidate.path[steps - 1] : actorPosition(state, enemyId)
     const distanceAfterMove = destination && targetAt
       ? Math.max(Math.abs(destination.x - targetAt.x), Math.abs(destination.y - targetAt.y)) * CELL_FEET
       : Number.MAX_SAFE_INTEGER
     if (profile && distanceAfterMove >= CELL_FEET && distanceAfterMove <= profile.range_feet && (profile.range_feet <= CELL_FEET || hasClearTrajectory(state, destination, targetAt))) {
-      commands.push({ command_type: 'MakeAttack', actor_id: String(enemyId), target_id: targetId, action_id: profile.id })
+      commands.push(...attackCommands(state, enemy, targetId, profile))
     }
   } else if (candidate.inRange) {
-    commands.push({ command_type: 'MakeAttack', actor_id: String(enemyId), target_id: targetId, ...(profile?.id ? { action_id: profile.id } : {}) })
+    commands.push(...attackCommands(state, enemy, targetId, profile))
   }
-  commands.push({ command_type: 'EndTurn', actor_id: String(enemyId) })
+  const attackPlanned = commands.some((command) => command.command_type === 'MakeAttack')
+  const attacksAllowed = multiattackCount(enemy)
+  if (attackPlanned
+    && profile.kind === 'melee'
+    && attacksAllowed <= 1
+    && hasTrait(enemy, 'nimble-escape')
+    && currentEconomy.bonus_action !== false) {
+    const retreatState = plannedPosition ? normalizeCampaignState(state) : state
+    if (plannedPosition) {
+      retreatState.mechanics.positions[String(enemyId)] = { ...plannedPosition }
+      const retreatEnemy = findActor(retreatState, enemyId)
+      if (retreatEnemy) {
+        retreatEnemy.x = plannedPosition.x
+        retreatEnemy.y = plannedPosition.y
+      }
+      retreatState.mechanics.combat.action_economy[String(enemyId)] = {
+        ...retreatState.mechanics.combat.action_economy[String(enemyId)],
+        movement_spent: Math.max(0, Number(currentEconomy.movement_spent) || 0) + plannedMovementFeet,
+      }
+    }
+    const retreatEnemy = findActor(retreatState, enemyId) ?? enemy
+    const retreat = retreatDestination(retreatState, retreatEnemy, candidate.actor, {
+      ...profile,
+      range_feet: 10_000,
+      normal_range_feet: 10_000,
+    })
+    if (retreat) {
+      commands.push({
+        command_type: 'AddCondition',
+        actor_id: String(enemyId),
+        target_id: String(enemyId),
+        condition: 'disengaged',
+        duration: 'until-own-turn-end',
+        monster_ability: 'nimble-escape',
+      })
+      commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: retreat })
+    }
+  }
+  if (!movementOnlyPhase && (!attackPlanned || attacksAllowed <= 1)) {
+    commands.push({ command_type: 'EndTurn', actor_id: String(enemyId) })
+  }
   return commands
 }
 
@@ -244,7 +458,11 @@ export async function runNpcTurnScheduler({
   rulesEngine,
   npcController = null,
   advanceNpc = true,
-  maxTurns = 64,
+  // Один ход существа больше не равен одной итерации: multiattack выпускается
+  // отдельными commit-фазами (до восьми атак плюс перемещение), поэтому прежние
+  // 64 съедались втрое быстрее и крупная встреча могла упереться в предел на
+  // ровном месте. Предел остаётся страховкой от зацикливания, а не бюджетом боя.
+  maxTurns = 160,
 } = {}) {
   if (!campaignId || !eventStore || !rulesEngine) throw new TypeError('NPC scheduler requires campaignId, eventStore and rulesEngine')
   if (!Number.isSafeInteger(maxTurns) || maxTurns < 1 || maxTurns > 256) throw new RangeError('maxTurns must be between 1 and 256')
@@ -314,7 +532,11 @@ export async function runNpcTurnScheduler({
     const commands = creativeDecision
       ? commandsForMoraleDecision(state, currentId, creativeDecision, ordinaryCommands)
       : ordinaryCommands
-    const suffix = creativeDecision ? `morale-${creativeDecision.disposition}` : isCombatCapable(state, current) ? 'turn' : 'skip'
+    const actionEconomy = state.mechanics?.combat?.action_economy?.[currentId] ?? {}
+    const attackPhase = Math.max(0, Number(actionEconomy.attacks_used) || 0)
+    const movementPhase = Math.max(0, Number(actionEconomy.movement_spent) || 0)
+    const actionSpentPhase = actionEconomy.action === false ? 1 : 0
+    const suffix = creativeDecision ? `morale-${creativeDecision.disposition}` : isCombatCapable(state, current) ? `turn-a${attackPhase}-m${movementPhase}-s${actionSpentPhase}` : 'skip'
     const key = schedulerKey(campaignId, combat, currentId, suffix)
     const { committed } = await commitPlan({ campaignId, eventStore, rulesEngine, loaded, commands, key })
     events.push(...committed.events)

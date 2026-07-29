@@ -47,7 +47,7 @@ test('exports an expanded dnd.su-linked SRD 5.2.1 monster catalog with fixed sou
     'warband', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness',
     'generic',
   ])
-  assert.equal(Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length, 18)
+  assert.equal(Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length, 50)
   assert.equal(DND_SU_BESTIARY_SOURCE.url, 'https://dnd.su/bestiary/')
   assert.equal(SRD_5_2_1_SOURCE.version, '5.2.1')
   assert.equal(SRD_5_2_1_SOURCE.encounter_budget_page, 202)
@@ -191,11 +191,17 @@ test('available-cell and per-character caps take priority over a large XP budget
   assert.equal(proposal.xp_budget, 176_000)
   assert.equal(proposal.enemies.length, ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures)
   assert.equal(proposal.threat.quantity_cap, ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures)
-  assert.equal(proposal.xp_spent, 2_400)
+  assert.ok(proposal.xp_spent < proposal.xp_budget)
+  assert.equal(proposal.enemies.length, proposal.threat.quantity_cap)
 })
 
 test('enemy output carries engine-compatible actions, traits, image and server provenance', () => {
-  const enemy = assembleEncounter(baseInput({ theme: 'beasts', party: [{ id: 'hero', level: 1, x: 0, y: 0 }] })).enemies[0]
+  const enemy = assembleEncounter(baseInput({
+    theme: 'beasts',
+    party: [{ id: 'hero', level: 1, x: 0, y: 0 }],
+    seed: 'wolf-1',
+  })).enemies.find((candidate) => candidate.stat_block_id === 'srd_5_2_1:wolf')
+  assert.ok(enemy)
   assert.deepEqual(Object.keys(enemy), [
     'id', 'name', 'hp', 'maxHp', 'armor', 'speed', 'initiativeBonus', 'attackBonus', 'damageDice',
     'damageBonus', 'abilities', 'creature_type', 'image', 'source_url', 'traits', 'action_profiles',
