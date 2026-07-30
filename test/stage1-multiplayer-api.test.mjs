@@ -225,6 +225,34 @@ test('этап 1: два игрока получают SSE presence, комми�
     body: { invite_token: invite.body.token },
   })).status, 200)
 
+  const guestSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', { cookie: guestCookie })
+  assert.equal(guestSettings.status, 200, guestSettings.text)
+  assert.equal(guestSettings.body.canManage, false)
+  assert.equal((await request(baseUrl, '/api/campaigns/STAGE1/settings', {
+    method: 'PATCH',
+    cookie: guestCookie,
+    body: { model: guestSettings.body.settings.model, narratorStyle: 'formal' },
+  })).status, 403)
+
+  const ownerSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', { cookie: ownerCookie })
+  assert.equal(ownerSettings.status, 200, ownerSettings.text)
+  assert.equal(ownerSettings.body.canManage, true)
+  const selectedModel = ownerSettings.body.availableModels.at(-1)
+  const savedSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', {
+    method: 'PATCH',
+    cookie: ownerCookie,
+    body: { model: selectedModel, narratorStyle: 'formal' },
+  })
+  assert.equal(savedSettings.status, 200, savedSettings.text)
+  assert.deepEqual(savedSettings.body.settings, { model: selectedModel, narratorStyle: 'formal' })
+  const rejectedModel = await request(baseUrl, '/api/campaigns/STAGE1/settings', {
+    method: 'PATCH',
+    cookie: ownerCookie,
+    body: { model: 'arbitrary/provider-model', narratorStyle: 'formal' },
+  })
+  assert.equal(rejectedModel.status, 400, rejectedModel.text)
+  assert.equal(rejectedModel.body.code, 'AI_MODEL_NOT_ALLOWED')
+
   const importHero = (cookieValue, actorId, character) => request(baseUrl, '/api/campaigns/STAGE1/commands', {
     method: 'POST',
     cookie: cookieValue,
@@ -298,5 +326,8 @@ test('этап 1: два игрока получают SSE presence, комми�
   const recovered = await request(baseUrl, '/api/rooms/STAGE1', { cookie: ownerCookie })
   assert.equal(recovered.status, 200, recovered.text)
   assert.deepEqual(recovered.body.state.players.map((player) => player.experience), [10, 10, 10, 10])
+  const recoveredSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', { cookie: ownerCookie })
+  assert.equal(recoveredSettings.status, 200, recoveredSettings.text)
+  assert.deepEqual(recoveredSettings.body.settings, { model: selectedModel, narratorStyle: 'formal' })
   assert.equal(await eventStore.pendingProjection('STAGE1'), null)
 })

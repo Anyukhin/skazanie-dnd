@@ -56,3 +56,16 @@ test('event mapping отличает hit/miss и не раскрывает ск�
   assert.match(source, /TrapHidden/u)
   assert.doesNotMatch(source, /TrapHidden:\s*'(?:hit|dice|door|narration)'/u)
 })
+
+test('профили дают разную устойчивую гармонию, а шум остаётся фоновой текстурой', () => {
+  const block = source.match(/const MOOD_PROFILES:[\s\S]*?= Object\.freeze\(\{([\s\S]*?)\}\)/u)
+  assert.ok(block, 'профили атмосферы должны быть статически описаны')
+  const profiles = [...block[1].matchAll(/^\s{2}(\w+): \{ base: ([\d.]+), harmony: ([\d.]+), color: ([\d.]+), wave: '([^']+)', pulse: ([\d.]+), noise: ([\d.]+), cutoff: ([\d_]+) \},$/gmu)].map((entry) => ({
+    base: Number(entry[2]), harmony: Number(entry[3]), color: Number(entry[4]), noise: Number(entry[7]),
+  }))
+  assert.equal(profiles.length, 9)
+  assert.equal(new Set(profiles.map((profile) => `${profile.base}/${profile.harmony}/${profile.color}`)).size, profiles.length)
+  assert.ok(profiles.every((profile) => profile.noise < 0.035), 'noise должен быть тише самого тихого музыкального голоса')
+  assert.match(source, /const AMBIENT_VOICE_LEVELS = \[0\.070, 0\.050, 0\.035\] as const/u)
+  assert.match(source, /\[profile\.color, AMBIENT_VOICE_LEVELS\[2\]\]/u)
+})

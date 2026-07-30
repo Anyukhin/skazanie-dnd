@@ -11,6 +11,7 @@ import {
   createCampaignInvite,
   createSession,
   deleteSession,
+  getCampaignAiSettings,
   getRoom,
   hasAdmin,
   listCampaignMemberships,
@@ -19,6 +20,7 @@ import {
   onRoomSaved,
   redeemCampaignInvite,
   registerUser,
+  saveCampaignAiSettings,
   saveRoom,
   storageDir,
   updateUserAccess,
@@ -26,6 +28,7 @@ import {
   userForToken,
   verifyUser,
 } from './store.mjs'
+import { NARRATOR_STYLES, normalizeNarratorStyle, runWithCampaignAiSettings } from './campaign-ai-context.mjs'
 import { DiceService } from './dice-service.mjs'
 import { MapStore } from './map-store.mjs'
 import { FileEventStore } from './event-store.mjs'
@@ -96,6 +99,7 @@ const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').
 const model = process.env.DND_AI_MODEL || 'deepseek/deepseek-v4-flash'
 const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'z-ai/glm-5.2,deepseek/deepseek-v4-flash,google/gemini-2.5-flash-lite,openai/gpt-4.1-nano')
   .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
+const allowedAiModels = Object.freeze([model, ...fallbackModels])
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
 const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
 const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)
@@ -1651,7 +1655,15 @@ function serveGenerated(req, res) {
   createReadStream(file).pipe(res)
 }
 
-const server = createServer(async (req, res) => {
+const server = createServer((req, res) => {
+  const requestPath = new URL(req.url || '/', 'http://skazanie.local').pathname
+  const campaignPathMatch = requestPath.match(/^\/api\/(?:campaigns|rooms)\/([A-Za-z0-9-]+)/)
+  const requestCampaignId = campaignPathMatch?.[1]?.toUpperCase() ?? ''
+  const storedAiSettings = requestCampaignId ? getCampaignAiSettings(requestCampaignId) : null
+  const requestAiSettings = storedAiSettings
+    ? { ...storedAiSettings, model: storedAiSettings.model || model }
+    : null
+  return runWithCampaignAiSettings(requestAiSettings, async () => {
   applySecurityHeaders(res)
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4173', 'Access-Control-Allow-Headers': 'Content-Type, X-Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Credentials': 'true' }); return res.end() }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || '') && !originAllowed(req)) return json(res, 403, { error: 'Запрос с другого источника отклонён' })
@@ -2002,6 +2014,56 @@ const server = createServer(async (req, res) => {
       const updatedCreator = userForToken(cookies(req).skazanie_session) ?? creator
       return json(res, 201, { ...room.room, user: updatedCreator })
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось создать кампанию' }) }
+  }
+
+  const campaignAiSettingsMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/settings$/)
+  if (campaignAiSettingsMatch && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignAiSettingsMatch[1].toUpperCase()
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    const saved = getCampaignAiSettings(campaignId)
+    return json(res, 200, {
+      settings: {
+        model: allowedAiModels.includes(saved.model) ? saved.model : model,
+        narratorStyle: normalizeNarratorStyle(saved.narratorStyle),
+      },
+      availableModels: allowedAiModels,
+      narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
+      canManage: user.role === 'admin' || campaignMembershipFor(user.id, campaignId)?.role === 'owner',
+    })
+  }
+  if (campaignAiSettingsMatch && req.method === 'PATCH') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignAiSettingsMatch[1].toUpperCase()
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+    const membership = campaignMembershipFor(user.id, campaignId)
+    if (user.role !== 'admin' && membership?.role !== 'owner') {
+      return json(res, 403, { error: 'Настройки ИИ может менять только владелец кампании' })
+    }
+    try {
+      const body = await readBody(req)
+      const current = getCampaignAiSettings(campaignId)
+      const requestedModel = body.model === undefined ? (current.model || model) : String(body.model).trim()
+      const requestedStyle = body.narratorStyle === undefined ? current.narratorStyle : String(body.narratorStyle).trim().toLowerCase()
+      if (!allowedAiModels.includes(requestedModel)) {
+        return json(res, 400, { error: 'Эта модель не входит в серверный список разрешённых моделей', code: 'AI_MODEL_NOT_ALLOWED' })
+      }
+      if (!Object.hasOwn(NARRATOR_STYLES, requestedStyle)) {
+        return json(res, 400, { error: 'Неизвестный стиль рассказчика', code: 'NARRATOR_STYLE_NOT_ALLOWED' })
+      }
+      const saved = saveCampaignAiSettings(campaignId, { model: requestedModel, narratorStyle: requestedStyle })
+      return json(res, 200, {
+        settings: { model: saved.model, narratorStyle: saved.narratorStyle },
+        availableModels: allowedAiModels,
+        narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
+        canManage: true,
+      })
+    } catch (error) {
+      return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось сохранить настройки ИИ кампании' })
+    }
   }
 
   const campaignInviteMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/invites$/)
@@ -2921,51 +2983,57 @@ const server = createServer(async (req, res) => {
         : null
 
       let result
-      if (directorReplay) {
-        result = await replayDirectorSceneTransition({
-          campaignId, room, user, action, idempotencyKey,
-          duplicate: directorReplay.duplicate,
-          resolution: directorReplay.resolution,
-        })
-      } else if (directorResolution?.type === 'scene_request') {
-        result = await executeDirectorSceneTransition({
-          campaignId, room, user, action, idempotencyKey, resolution: directorResolution,
-        })
-      } else if (directorResolution?.type === 'narration') {
-        result = {
-          narration: directorResolution.narration,
-          effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
-          provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
-          state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
+      const campaignAiSettings = getCampaignAiSettings(campaignId)
+      await runWithCampaignAiSettings({
+        ...campaignAiSettings,
+        model: allowedAiModels.includes(campaignAiSettings.model) ? campaignAiSettings.model : model,
+      }, async () => {
+        if (directorReplay) {
+          result = await replayDirectorSceneTransition({
+            campaignId, room, user, action, idempotencyKey,
+            duplicate: directorReplay.duplicate,
+            resolution: directorReplay.resolution,
+          })
+        } else if (directorResolution?.type === 'scene_request') {
+          result = await executeDirectorSceneTransition({
+            campaignId, room, user, action, idempotencyKey, resolution: directorResolution,
+          })
+        } else if (directorResolution?.type === 'narration') {
+          result = {
+            narration: directorResolution.narration,
+            effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
+            provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
+            state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
+          }
+        } else if (directorInteraction) {
+          const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
+          executeTool('request_party_decision', directorInteraction, effects, trustedState)
+          result = {
+            narration: effects.interaction.description,
+            effects,
+            provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
+            state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
+          }
+        } else {
+          result = await gameOrchestrator.handle({
+            ...body,
+            // `/api/narrate` accepts prose only. Structured commands and the
+            // unforgeable Director capability are supplied by server branches.
+            commands: undefined,
+            commandCapability: undefined,
+            state: trustedState,
+            roomVersion: room.version,
+            campaignId,
+            playerId,
+            playerName: player?.character ?? player?.name ?? body.player,
+            message: action,
+            idempotencyKey,
+            verifiedRoll,
+            user,
+            allowedActorIds: campaignHeroIds(user, campaignId),
+          })
         }
-      } else if (directorInteraction) {
-        const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
-        executeTool('request_party_decision', directorInteraction, effects, trustedState)
-        result = {
-          narration: effects.interaction.description,
-          effects,
-          provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
-          state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
-        }
-      } else {
-        result = await gameOrchestrator.handle({
-          ...body,
-          // `/api/narrate` accepts prose only. Structured commands and the
-          // unforgeable Director capability are supplied by server branches.
-          commands: undefined,
-          commandCapability: undefined,
-          state: trustedState,
-          roomVersion: room.version,
-          campaignId,
-          playerId,
-          playerName: player?.character ?? player?.name ?? body.player,
-          message: action,
-          idempotencyKey,
-          verifiedRoll,
-          user,
-          allowedActorIds: campaignHeroIds(user, campaignId),
-        })
-      }
+      })
       const interactionProjection = await persistInteractionProjection(campaignId, result.effects?.interaction)
       // Служебные команды (`/why`) — не часть истории отряда: реплику игрока не
       // сохраняем, а ответ подписываем разбором правил, а не Рассказчиком.
@@ -3012,6 +3080,7 @@ const server = createServer(async (req, res) => {
   }
   if (parsedUrl.pathname.startsWith('/api/')) return json(res, 404, { error: 'API endpoint не найден' })
   return serveStatic(req, res)
+  })
 })
 
 await reconcileAllCampaignProjections()

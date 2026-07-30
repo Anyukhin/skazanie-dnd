@@ -9,7 +9,7 @@ import {
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
@@ -56,7 +56,6 @@ const REPUTATION_TIER_LABELS: Record<ReputationTier, string> = {
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
 const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
-const DETAIL_WIDTH_KEY = 'skazanie-detail-width-v1'
 const TILE_ROWS_KEY = 'skazanie-tile-rows-v1'
 const TILE_LOCK_KEY = 'skazanie-tiles-locked-v1'
 const TILE_ORDER_KEY = 'skazanie-tile-order-v1'
@@ -266,7 +265,7 @@ function inferredCombatItem(item: Player['inventory'][number]) {
 
 function loadUiScale() {
   const saved = Number(window.localStorage.getItem(UI_SCALE_KEY))
-  return Number.isFinite(saved) && saved >= UI_SCALE_MIN && saved <= UI_SCALE_MAX ? saved : 125
+  return Number.isFinite(saved) && saved >= UI_SCALE_MIN && saved <= UI_SCALE_MAX ? saved : 100
 }
 
 const clampUiScale = (value: number) => Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round(value / 5) * 5))
@@ -317,7 +316,7 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, on
       <div className="player-meta">
         <div className="player-name-row"><strong>{player.character}</strong>{turn && <Crown size={12} />}{!accessible && <LockKeyhole size={11} />}</div>
         <span>{player.role} · {typing ? 'печатает…' : player.online ? 'в сети' : 'не в сети'}</span>
-        <div className="hp-line"><i style={{ width: `${Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100}%` }} /><small>{player.hp}/{player.maxHp}</small></div>
+        <div className="hp-line"><i style={{ width: `${Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100}%` }} /><small>{player.hp}/{player.maxHp} ОЗ</small></div>
         {downed && <div className="downed-line" title={deathSaves ? `Спасброски от смерти: ${deathSaves.successes} успеха, ${deathSaves.failures} провала` : undefined}>
           <HeartCrack size={11} /><span>{downedLabel}</span>
           {deathSaves && !deathSaves.stable && <em>{deathSaves.successes}✓ · {deathSaves.failures}✕</em>}
@@ -661,13 +660,11 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
       onTypingChange(typingActorId, false)
     }
   }, [onTypingChange, typingActorId])
-  /* Размеры панелей задаёт игрок и они переживают перезагрузку: у кого-то
-     широкий монитор и хочется больше карты, у кого-то — длинные описания.
-     Значения храним в тех же единицах, что и CSS, и пишем на корень документа,
-     где объявлены переменные сетки. */
+  /* Высота панели и ширина хроники переживают перезагрузку. Описание действия
+     больше не отделено ручкой: она дробила нижнюю полосу и заставляла текст
+     переноситься, хотя рядом оставалось свободное место. */
   const [railHeight, setRailHeight] = useState(() => Number(window.localStorage.getItem(RAIL_HEIGHT_KEY)) || 0)
   const [serverWidth, setServerWidth] = useState(() => Number(window.localStorage.getItem(SERVER_WIDTH_KEY)) || 0)
-  const [detailWidth, setDetailWidth] = useState(() => Number(window.localStorage.getItem(DETAIL_WIDTH_KEY)) || 0)
   /* Рядов плиток — один или два. Раньше их считал `auto-fill` от высоты
      карточки, и в «Основных» получалась петля: плитки не влезали по ширине,
      появлялся ползунок, он съедал высоту, второй ряд переставал помещаться —
@@ -690,11 +687,9 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     else root.removeProperty('--ui-rail-height')
     if (serverWidth) root.setProperty('--ui-server-column', `${serverWidth}px`)
     else root.removeProperty('--ui-server-column')
-    if (detailWidth) root.setProperty('--ui-detail-width', `${detailWidth}px`)
-    else root.removeProperty('--ui-detail-width')
     root.setProperty('--ui-tile-rows', String(tileRows))
     window.localStorage.setItem(TILE_ROWS_KEY, String(tileRows))
-  }, [railHeight, serverWidth, detailWidth, tileRows])
+  }, [railHeight, serverWidth, tileRows])
   const startRailResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startY = event.clientY
@@ -707,24 +702,6 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
       setRailHeight((value) => { if (value) window.localStorage.setItem(RAIL_HEIGHT_KEY, String(value)); return value })
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', stop)
-  }
-  /* Граница между колодой и описанием. Тянем влево — описание шире, вправо —
-     больше места плиткам; за нижним пределом колода начинает прокручиваться. */
-  const startDetailResize = (event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = document.querySelector('.hotbar-detail')?.getBoundingClientRect().width ?? 360
-    const rowWidth = document.querySelector('.hotbar-main')?.getBoundingClientRect().width ?? 1200
-    const move = (moveEvent: PointerEvent) => {
-      setDetailWidth(Math.round(Math.min(rowWidth * .6, Math.max(260, startWidth - (moveEvent.clientX - startX)))))
-    }
-    const stop = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', stop)
-      setDetailWidth((value) => { if (value) window.localStorage.setItem(DETAIL_WIDTH_KEY, String(value)); return value })
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
@@ -1388,7 +1365,6 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             aria-disabled={!canHeal && !canAid && !canThrowHere}
             title={playerTargetReason}
           >
-            <TokenHealthBar fill={player.hp / Math.max(1, player.maxHp)} label={`${Math.max(0, player.hp)}/${Math.max(1, player.maxHp)}`} />
             {playerConditions.length > 0 && <span className="token-conditions">{playerConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
             {openTokenLabelId === player.id && <span className="token-label">{player.character}<small>{player.hp} ОЗ · {combatActive ? `${remainingFeet} фт` : 'свободный ход'}</small></span>}
           </button>
@@ -1427,7 +1403,6 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             title={summonTargetReason}
           >
             <Sparkles size={15} />
-            <TokenHealthBar fill={summon.hp / Math.max(1, summon.maxHp)} label={`${Math.max(0, summon.hp)}/${Math.max(1, summon.maxHp)}`} />
             {summonConditions.length > 0 && <span className="token-conditions">{summonConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
             {openTokenLabelId === summon.id && <span className="token-label">{summon.name}<small>{summon.hp} ОЗ · {remainingFeet} фт</small></span>}
           </button>
@@ -1459,7 +1434,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   if (activeDeck === 'weapon') deckTiles.push({ id: BASE_ATTACK_ID, node: <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button> })
   if (activeDeck === 'weapon') combatItems.filter((item) => item.type === 'weapon').forEach((item) => deckTiles.push({ id: item.id, node: <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт</small><i className="action-cost action">действие</i></button> }))
   if (activeDeck === 'magic') deckTiles.push({ id: 'spellbook', node: <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={!spells.length || tacticalBusy} title={`Открыть полный каталог: ${spells.length} заклинаний доступно герою`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{spells.length} доступно</small></button> })
-  if (activeDeck === 'magic') hotbarSpells.forEach((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); deckTiles.push({ id: spell.id, node: <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || (combatActive ? tacticalBusy : !castableOutOfCombat(spell))} onClick={() => selectSpell(spell)} title={`${spell.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'бонус' : actionType === 'reaction' ? 'реакция' : actionType === 'long_cast' ? 'вне боя' : 'действие'}</i></button>  }) })
+  if (activeDeck === 'magic') hotbarSpells.forEach((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); deckTiles.push({ id: spell.id, node: <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || (combatActive ? tacticalBusy : !castableOutOfCombat(spell))} onClick={() => selectSpell(spell)} title={`${spell.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} priority /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'бонус' : actionType === 'reaction' ? 'реакция' : actionType === 'long_cast' ? 'вне боя' : 'действие'}</i></button>  }) })
   if (activeDeck === 'common' || activeDeck === 'class') combatActions.filter((action) => action.category === activeDeck && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
   if (activeDeck === 'items') combatItems.filter((item) => item.type !== 'weapon').forEach((item) => deckTiles.push({ id: item.id, node: <button key={item.id} className={`action-tile item ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name} — ${item.description}`}><CombatIcon id={item.id} kind="item" hint={`${item.name} ${item.type} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.quantity} шт. · {item.combat?.radius ? `радиус ${item.combat.radius} фт` : 'предмет'}</small><i className="action-cost action">действие</i></button> }))
   const tileOrderKey = `${turnActorId}:${activeDeck}`
@@ -1605,7 +1580,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
           const unavailableReason = support.blocked ? `${support.label}. ${support.explanation}` : spell.prepared === false ? 'Заклинание не изучено или не подготовлено' : spell.actionType === 'long_cast' ? `Время накладывания: ${spell.castingTime}` : lockedOutOfCombat ? 'Боевое заклинание требует инициативы: сначала начните бой' : 'Выбрать заклинание'
           return <article key={spell.id} className={`${pinned ? 'pinned' : ''} ${spell.prepared === false ? 'unprepared' : ''} support-${support.status} spell-kind-${spell.kind}`}>
             <button className="spellbook-spell" onClick={() => { selectSpell(spell); if (spell.actionType !== 'long_cast') setSpellbookOpen(false) }} disabled={support.blocked || spell.actionType === 'long_cast' || spell.prepared === false || lockedOutOfCombat} title={unavailableReason}>
-              <CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} size={31} /><span><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spell.castingTime || '1 действие'} · {spell.rangeText || `${spell.range} фт`}</small><em>{spell.description}</em></span>
+              <CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} size={76} /><span><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spell.castingTime || '1 действие'} · {spell.rangeText || `${spell.range} фт`}</small><em>{spell.description}</em></span>
             </button>
             <button className="pin-spell" disabled={support.blocked || spell.prepared === false} onClick={() => toggleHotbarSpell(spell.id)} aria-pressed={pinned} title={support.blocked ? unavailableReason : spell.prepared === false ? 'Сначала изучите или подготовьте заклинание' : pinned ? 'Убрать с панели' : 'Закрепить на панели'}>{pinned ? <Check size={15} /> : <Plus size={15} />}</button>
             {spell.concentration && <i className="spellbook-tag">К</i>}
@@ -1725,10 +1700,6 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             <button type="button" className={tilesLocked ? '' : 'active'} aria-pressed={!tilesLocked} onClick={() => { const next = !tilesLocked; setTilesLocked(next); window.localStorage.setItem(TILE_LOCK_KEY, next ? 'locked' : 'unlocked') }} title={tilesLocked ? 'Разблокировать: плитки можно перетаскивать' : 'Заблокировать: расстановка сохранится'}>{tilesLocked ? <Lock size={15} /> : <LockOpen size={15} />}</button>
             <button type="button" onClick={() => setTileRows(tileRows === 1 ? 2 : 1)} title={tileRows === 1 ? 'Сейчас один ряд плиток — переключить на два' : 'Сейчас два ряда плиток — переключить на один'} aria-label={`Рядов плиток: ${tileRows}`}>{tileRows === 1 ? <span className="rows-glyph one"><i /></span> : <span className="rows-glyph two"><i /><i /></span>}</button>
           </div>
-          {/* Ручка лежит в той же ячейке сетки, что и колода, но снаружи её области
-              прокрутки: внутри она выступала на пиксель за содержимое, и из-за этого
-              под плитками появлялся ползунок, хотя прокручивать было нечего. */}
-          <div className="actions-resize" role="separator" aria-orientation="vertical" aria-label="Ширина области действий" onPointerDown={startDetailResize} onDoubleClick={() => { setDetailWidth(0); window.localStorage.removeItem(DETAIL_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную"><i /><i /><i /></div>
           {/* Кнопки хода живут внутри карточки действий, прижатые к её правому
               краю: они завершают тот же выбор, что и плитки, а отдельной колонкой
               между колодой и описанием рвала строку надвое. Прокрутка плиток их
@@ -1796,9 +1767,6 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
           <aside className="hotbar-detail" aria-live="polite">
             {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
               <DetailHeader title="Вне боя" description="Лечение, усиление и утилита творятся прямо здесь. Всё, что бьёт, требует инициативы." />
-              {/* Про футы сказано здесь, а не отдельной колонкой справа: ради
-                  одной фразы держать 140px в строке было нечем оправдать. */}
-              <span>Шаги не считаны · свободные действия — строкой «Своими словами» ниже</span>
             </> : combatMode === 'magic' && selectedSpell ? <>
               <DetailHeader title={selectedSpell.name} description={selectedSpell.description} meta={<>
                 {selectedSpellRange > 0 ? <i className="detail-chip" title={`Дальность: ${selectedSpellRange} фт`}>{selectedSpellRange} фт</i> : <i className="detail-chip" title="Заклинание на себя">на себя</i>}
@@ -1966,8 +1934,8 @@ function AgentInteractionCard({ interaction, players, playerId, canContinue, onV
   )
 }
 
-function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, typingActorIds, currentPlayerId, canAct, turnName, combatActive, onRoll, onCancelCheck, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, open, onToggle }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; pendingCheck: PendingCheck | null; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; turnName: string; combatActive: boolean; onRoll: () => void; onCancelCheck: () => void; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; open: boolean; onToggle: () => void
+function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, open, onToggle }: {
+  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; open: boolean; onToggle: () => void
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -2031,14 +1999,10 @@ function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, 
         </div>
         <button className="icon-button" onClick={onToggle} aria-label="Свернуть историю"><ChevronDown size={20} /></button>
       </div>
-      {/* Голосование и проверка живут здесь, среди подтверждённой правды, а не в
-          композере: ключевое мультиплеерное событие не должно зависеть от геометрии
-          панели, которую можно перетащить или свернуть. */}
+      {/* Групповое решение остаётся рядом с хроникой. Проверка вынесена на карту:
+          она относится к текущему действию и не должна раздувать колонку истории. */}
       <div className="chat-interaction-slot">
-        {interaction ? <AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onAbstain={onAbstain} onRoll={onRollInteraction} onContinue={onContinueInteraction} />
-          : pendingCheck ? (canAct ? <DiceCheckCard check={pendingCheck} onRoll={onRoll} onCancel={onCancelCheck} />
-            : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnName}</small></span></div>)
-            : null}
+        {interaction ? <AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onAbstain={onAbstain} onRoll={onRollInteraction} onContinue={onContinueInteraction} /> : null}
       </div>
       <div className="messages" ref={messagesRef} onScroll={handleScroll}>
         {visibleMessages.map((message) => (
@@ -2431,13 +2395,17 @@ function AtmosphereRange({ label, description, value, onChange }: { label: strin
   </label>
 }
 
-function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange }: {
+function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange }: {
   health: AiHealth | null
+  campaignAi: CampaignAiSettingsResponse | null
+  campaignAiBusy: boolean
+  campaignAiError: string
   uiScale: number
   autoAttackRoll: boolean
   scenicBackdrop: boolean
   combatAnimations: boolean
   atmosphereSettings: AtmosphereSettings
+  onCampaignAiChange: (patch: Partial<CampaignAiSettings>) => void
   onUiScaleChange: (value: number) => void
   onAutoAttackRollChange: (value: boolean) => void
   onScenicBackdropChange: (value: boolean) => void
@@ -2465,6 +2433,30 @@ function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, combatA
       <div className="settings-grid">
         <div className="settings-card ai-card">
           <div className="settings-card-title"><BrainCircuit size={20} /><span><b>ИИ-рассказчик</b><small>Серверное подключение</small></span><em className={health?.configured ? 'connected' : ''}>{health?.configured ? <Wifi size={14} /> : <WifiOff size={14} />}{health?.configured ? 'ПОДКЛЮЧЁН' : 'НЕДОСТУПЕН'}</em></div>
+          <label className="ui-scale-setting">
+            <span><b>Модель для группы</b><small>Сервер разрешает только модели из настроенного основного и резервного списка</small></span>
+            <select
+              value={campaignAi?.settings.model ?? health?.model ?? ''}
+              disabled={!campaignAi?.canManage || campaignAiBusy}
+              onChange={(event) => onCampaignAiChange({ model: event.currentTarget.value })}
+              aria-label="Модель ИИ для группы"
+            >
+              {(campaignAi?.availableModels ?? [health?.model].filter((value): value is string => Boolean(value))).map((modelId) => <option key={modelId} value={modelId}>{modelId}</option>)}
+            </select>
+          </label>
+          <label className="ui-scale-setting">
+            <span><b>Стиль рассказчика</b><small>Интонация применяется ко всем новым художественным ответам этой кампании</small></span>
+            <select
+              value={campaignAi?.settings.narratorStyle ?? 'neutral'}
+              disabled={!campaignAi?.canManage || campaignAiBusy}
+              onChange={(event) => onCampaignAiChange({ narratorStyle: event.currentTarget.value as CampaignAiSettings['narratorStyle'] })}
+              aria-label="Стиль рассказчика"
+            >
+              {(campaignAi?.narratorStyles ?? [{ id: 'neutral' as const, label: 'Нейтральный' }]).map((style) => <option key={style.id} value={style.id}>{style.label}</option>)}
+            </select>
+          </label>
+          {!campaignAi?.canManage && campaignAi && <p className="secure-note"><Lock size={14} />Изменять общие настройки ИИ может владелец кампании или администратор.</p>}
+          {campaignAiError && <p className="admin-error">{campaignAiError}</p>}
           <div className="provider-info"><span>ПРОВАЙДЕР<strong>{health?.provider ?? 'RouterAI'}</strong></span><span>МОДЕЛЬ<strong>{health?.model ?? 'Проверка подключения…'}</strong></span><span>МЕХАНИКА<strong>Единый серверный движок</strong></span><span>RULESET<strong>{health?.rulesetId ?? 'не выбран'}</strong></span></div>
           <div className="tools-list"><small>ДОСТУПНЫЕ ИНСТРУМЕНТЫ</small><div>{(health?.tools ?? ['roll_check', 'reveal_area', 'update_objective', 'spawn_entity', 'grant_item']).map((tool) => <span key={tool}><Check size={11} />{tool}</span>)}</div></div>
           <p className="secure-note"><Shield size={14} />Ключ RouterAI хранится только в серверном `.env` и не передаётся в браузер.</p>
@@ -2807,6 +2799,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [joinError, setJoinError] = useState<string | null>(null)
   const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
   const [aiHealth, setAiHealth] = useState<AiHealth | null>(null)
+  const [campaignAi, setCampaignAi] = useState<CampaignAiSettingsResponse | null>(null)
+  const [campaignAiBusy, setCampaignAiBusy] = useState(false)
+  const [campaignAiError, setCampaignAiError] = useState('')
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null)
   const [creatingPlayerId, setCreatingPlayerId] = useState<string | null>(null)
   // Закрытый мастер не должен открываться заново на том же экране: иначе
@@ -2890,7 +2885,43 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     }
   }
 
+  const updateCampaignAi = useCallback(async (patch: Partial<CampaignAiSettings>) => {
+    if (!campaignAi?.canManage || campaignAiBusy) return
+    setCampaignAiBusy(true)
+    setCampaignAiError('')
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...campaignAi.settings, ...patch }),
+      })
+      const body = await response.json().catch(() => null) as CampaignAiSettingsResponse | null
+      if (!response.ok || !body?.settings) throw new Error(body?.error || 'Не удалось сохранить настройки ИИ кампании')
+      setCampaignAi(body)
+    } catch (error) {
+      setCampaignAiError(error instanceof Error ? error.message : 'Не удалось сохранить настройки ИИ кампании')
+    } finally {
+      setCampaignAiBusy(false)
+    }
+  }, [campaignAi, campaignAiBusy, state.sessionCode])
+
   useEffect(() => { getAiHealth().then(setAiHealth).catch(() => setAiHealth(null)) }, [])
+  useEffect(() => {
+    const controller = new AbortController()
+    setCampaignAi(null)
+    setCampaignAiError('')
+    void fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/settings`, { signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json().catch(() => null) as CampaignAiSettingsResponse | null
+        if (!response.ok || !body?.settings) throw new Error(body?.error || 'Не удалось загрузить настройки ИИ кампании')
+        setCampaignAi(body)
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setCampaignAiError(error instanceof Error ? error.message : 'Не удалось загрузить настройки ИИ кампании')
+      })
+    return () => controller.abort()
+  }, [state.sessionCode])
   useEffect(() => {
     const requestedRoom = requestedRoomAtEntry.current
     const roomLoaded = requestedRoom
@@ -3187,6 +3218,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
               в любой момент, а карточка с подписями занимала место рядом с
               состоянием героя. */}
           <DiceTray key={state.sessionCode} compact latestRoll={state.lastDiceRoll} onRoll={(sides) => rollFreeDie(activePlayer.id, sides)} />
+          {state.pendingCheck && (
+            <details key={state.pendingCheck.check_id ?? state.pendingCheck.action} className="pending-check-overlay" open aria-live="polite">
+              <summary><Dices size={15} /><span>Ожидающая проверка</span><ChevronDown size={16} /></summary>
+              {canAct
+                ? <DiceCheckCard check={state.pendingCheck} onRoll={rollPendingCheck} onCancel={cancelPendingCheck} />
+                : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnActorName}</small></span></div>}
+            </details>
+          )}
           <DungeonMap
             state={state}
             players={partyPlayers}
@@ -3215,7 +3254,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             narrating={state.isNarrating}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} turnName={turnActorName} combatActive={combatActive} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
               <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
 
@@ -3235,7 +3274,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} />}
+        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>

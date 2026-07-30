@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { eventSummary } from './rules-engine.mjs'
 import { DeterministicNarrationVerifier, assertNarrationBrief, buildDataOnlyContext } from './security.mjs'
+import { currentNarratorStyleInstruction } from './campaign-ai-context.mjs'
 
 export const NARRATOR_PROMPT_VERSION = 'narrator/v4'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
@@ -643,6 +644,8 @@ export class Narrator {
     recentNarrations = [],
   } = {}) {
     assertNarrationBrief(brief)
+    const campaignStyle = currentNarratorStyleInstruction()
+    if (campaignStyle) style = `${campaignStyle}\n${style}`
     const recent = boundedRecentNarrations(recentNarrations)
     if (!this.llmClient) {
       const fallback = deterministicNarration(brief, undefined, { recentNarrations: recent })

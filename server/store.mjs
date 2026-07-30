@@ -9,7 +9,9 @@ export const storageDir = process.env.DND_STORAGE_DIR ? resolve(process.env.DND_
 const authFile = join(storageDir, 'auth.json')
 const authLockFile = join(storageDir, 'auth.json.lock')
 const roomsDir = join(storageDir, 'rooms')
+const campaignSettingsDir = join(storageDir, 'campaign-settings')
 mkdirSync(roomsDir, { recursive: true })
+mkdirSync(campaignSettingsDir, { recursive: true })
 
 const AUTH_LOCK_STALE_MS = 30_000
 const AUTH_LOCK_WAIT_MS = 30_000
@@ -313,6 +315,36 @@ function roomFile(code) {
   return join(roomsDir, `${safeCode}.json`)
 }
 
+function campaignSettingsFile(code) {
+  const safeCode = String(code || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 24)
+  if (!safeCode) throw new Error('Некорректный код кампании')
+  return join(campaignSettingsDir, `${safeCode}.json`)
+}
+
+export function getCampaignAiSettings(code) {
+  const value = readJson(campaignSettingsFile(code), { model: '', narratorStyle: 'neutral' })
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new StorageCorruptionError(campaignSettingsFile(code), new Error('Некорректная структура настроек ИИ'))
+  }
+  return {
+    model: String(value.model ?? '').trim(),
+    narratorStyle: String(value.narratorStyle ?? 'neutral').trim(),
+  }
+}
+
+export function saveCampaignAiSettings(code, settings) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    throw new TypeError('Настройки ИИ кампании должны быть объектом')
+  }
+  const value = {
+    model: String(settings.model ?? '').trim(),
+    narratorStyle: String(settings.narratorStyle ?? 'neutral').trim(),
+    updatedAt: new Date().toISOString(),
+  }
+  atomicWrite(campaignSettingsFile(code), value)
+  return structuredClone(value)
+}
+
 const roomSaveListeners = new Set()
 
 export function onRoomSaved(listener) {
@@ -353,5 +385,5 @@ export function listRoomCodes() {
 }
 
 export function storagePaths() {
-  return { storageDir, authFile, roomsDir }
+  return { storageDir, authFile, roomsDir, campaignSettingsDir }
 }

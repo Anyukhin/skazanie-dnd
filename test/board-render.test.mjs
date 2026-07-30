@@ -319,6 +319,38 @@ test('на общем плане штамп уступает силуэту, а 
   assert.notEqual(withoutAtlas, withAtlas)
 })
 
+test('факел и лестницы остаются художественными штампами на общем плане', () => {
+  const map = createTacticalMap({ width: 4, height: 2, fill: { passable: true, revealed: true } })
+  for (const [index, assetId] of ['torch_wall', 'stairs_up', 'stairs_down', 'crate'].entries()) {
+    addProp(map, {
+      id: `prop-${assetId}`,
+      assetId,
+      x: index + 0.5,
+      y: 0.5,
+      footprint: [{ x: index, y: 0 }],
+    })
+  }
+  const frames = {
+    torch_wall: { x: 10, y: 0, w: 40, h: 80 },
+    stairs_up: { x: 60, y: 0, w: 96, h: 48 },
+    stairs_down: { x: 160, y: 0, w: 96, h: 48 },
+    crate: { x: 260, y: 0, w: 96, h: 96 },
+  }
+  const context = recordingContext()
+  render.drawProps(context, {
+    map: decoded(map),
+    palette: render.DEFAULT_BOARD_PALETTE,
+    cellSize: render.PROP_MIN_CELL_PIXELS - 1,
+    propAtlas: stubAtlas(frames),
+  }, { tileX: 0, tileY: 0 })
+
+  const sourceX = context.ops
+    .filter((item) => item.op === 'drawImage')
+    .map((item) => item.args[1])
+  assert.deepEqual(sourceX.sort((left, right) => left - right), [10, 60, 160],
+    'факел и лестницы должны брать готовый арт, а обычный предмет на таком масштабе — дешёвую метку')
+})
+
 /** Тайлсет-пустышка: плитка на восемь клеток, картинка в тестах не рисуется. */
 function stubTerrain(floors = ['wood'], surfaces = [], walls = ['stone']) {
   const texture = { image: {}, width: 512, height: 512 }
@@ -335,12 +367,33 @@ test('фактура пола раскладывается по карте не�
 
   const stamps = context.ops.filter((item) => item.op === 'drawImage')
   assert.equal(stamps.length, 48, 'каждая клетка обязана получить свой кусок фактуры')
-  // Клетка (0,0) и клетка (1,0) берут соседние окна, а (8,0) — снова первое:
-  // плитка на восемь клеток, значит через восемь клеток рисунок повторяется.
+  // Дерево берёт вдвое больше пикселей исходника на клетку: доски становятся
+  // мельче, соседние окна остаются сшитыми, а повтор наступает через 4 клетки.
   const window = (index) => stamps[index].args.slice(1, 5)
-  assert.deepEqual(window(0), [0, 0, 64, 64])
-  assert.deepEqual(window(1), [64, 0, 64, 64])
-  assert.deepEqual(window(8), window(0))
+  assert.deepEqual(window(0), [0, 0, 128, 128])
+  assert.deepEqual(window(1), [128, 0, 128, 128])
+  assert.deepEqual(window(4), window(0))
+})
+
+test('масштаб уменьшается только у деревянного пола и деревянных стен', () => {
+  assert.equal(render.WOOD_TEXTURE_REPEAT_SCALE, 2)
+  assert.equal(render.terrainCellsPerTileFor('wood', 8), 4)
+  for (const material of ['stone', 'earth', 'grass', 'sand', 'marble', 'metal', 'ice']) {
+    assert.equal(render.terrainCellsPerTileFor(material, 8), 8, `${material} не должен менять масштаб`)
+  }
+
+  const map = createTacticalMap({ width: 2, height: 1, fill: { passable: true, revealed: true, material: 'wood' } })
+  setEdge(map, 0, 0, 1, 0, { kind: 'wall' })
+  const context = recordingContext()
+  render.drawEdgeSegments(context, {
+    map: decoded(map),
+    palette: render.DEFAULT_BOARD_PALETTE,
+    cellSize: 48,
+    terrain: stubTerrain(['wood'], [], ['wood']),
+  }, { tileX: 0, tileY: 0 })
+  const timber = context.ops.find((item) => item.op === 'drawImage')
+  assert.ok(timber, 'деревянная стена должна получить растровую фактуру')
+  assert.equal(timber.args[4], 128, 'на клетку стены должно приходиться вдвое больше исходника')
 })
 
 test('направление настила берётся из зоны и поворачивает только вертикальную зону', () => {

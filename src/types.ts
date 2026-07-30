@@ -1373,6 +1373,19 @@ export type AiHealth = {
   characterCreation?: CharacterCreationCatalog
 }
 
+export type CampaignAiSettings = {
+  model: string
+  narratorStyle: 'neutral' | 'formal' | 'ironic'
+}
+
+export type CampaignAiSettingsResponse = {
+  settings: CampaignAiSettings
+  availableModels: string[]
+  narratorStyles: Array<{ id: CampaignAiSettings['narratorStyle']; label: string }>
+  canManage: boolean
+  error?: string
+}
+
 export type CharacterAbilityScores = {
   str: number
   dex: number

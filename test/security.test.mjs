@@ -11,6 +11,7 @@ import {
   RouterAIClient,
   strictJsonParse,
 } from '../server/llm-client.mjs'
+import { currentCampaignModel, runWithCampaignAiSettings } from '../server/campaign-ai-context.mjs'
 import {
   DATA_ONLY_INSTRUCTION,
   SecurityValidationError,
@@ -242,6 +243,29 @@ test('fallback cascade switches models on timeout and observes cooldown', async 
   assert.deepEqual(first.fallback_attempts, [{ model: 'primary', code: 'LLM_TIMEOUT' }])
   assert.equal(second.fallback_used, false)
   assert.deepEqual(calls, ['primary', 'secondary', 'secondary'])
+})
+
+test('fallback cascade prioritizes the model selected for the current campaign only', async () => {
+  const calls = []
+  const primary = { model: 'primary', async complete() { calls.push('primary'); return { content: 'primary', model: 'primary' } } }
+  const secondary = { model: 'secondary', async complete() { calls.push('secondary'); return { content: 'secondary', model: 'secondary' } } }
+  const cascade = new FallbackLLMClient({ clients: [primary, secondary] })
+  const [selected, isolated] = await Promise.all([
+    runWithCampaignAiSettings({ model: 'secondary', narratorStyle: 'ironic' }, async () => {
+      await Promise.resolve()
+      assert.equal(currentCampaignModel(), 'secondary')
+      return cascade.complete({ messages })
+    }),
+    runWithCampaignAiSettings({ model: 'primary', narratorStyle: 'neutral' }, async () => {
+      await Promise.resolve()
+      assert.equal(currentCampaignModel(), 'primary')
+      return cascade.complete({ messages })
+    }),
+  ])
+  assert.equal(selected.model, 'secondary')
+  assert.equal(isolated.model, 'primary')
+  assert.deepEqual(calls.sort(), ['primary', 'secondary'])
+  assert.equal(currentCampaignModel(), '')
 })
 
 test('fallback cascade rejects a formally successful but unusable model response', async () => {

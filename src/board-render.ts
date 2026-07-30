@@ -54,6 +54,9 @@ export const PROP_DECAL_ALPHA = 0.82
 /** Толщина сегмента стены — около одной шестой клетки. */
 export const WALL_THICKNESS_RATIO = 1 / 6
 
+/** Деревянные доски повторяются вдвое чаще остальных фактур. */
+export const WOOD_TEXTURE_REPEAT_SCALE = 2
+
 /** Предел кэша тайлов: без него панорамирование большой карты растит его без границ. */
 export const DEFAULT_TILE_CACHE_LIMIT = 64
 
@@ -510,6 +513,17 @@ function drawTerrainRect(
 }
 
 /**
+ * Деревянные фактуры собраны из более крупных досок, чем остальные тайлы.
+ * Большее окно исходника на одну клетку уменьшает доски без пересборки
+ * лицензированного растрового набора и сохраняет непрерывность текстуры.
+ */
+export function terrainCellsPerTileFor(material: TacticalMaterial, cellsPerTile: number) {
+  return material === 'wood'
+    ? Math.max(1, cellsPerTile / WOOD_TEXTURE_REPEAT_SCALE)
+    : cellsPerTile
+}
+
+/**
  * Прозрачность поверхности поверх пола. Вода и грязь скрывают пол почти
  * целиком, лёд остаётся полупрозрачным — под ним обязано читаться, что там
  * было.
@@ -565,17 +579,18 @@ function drawFloorTerrainTexture(
 ) {
   const terrain = scene.terrain
   if (!terrain) return
+  const cellsPerTile = terrainCellsPerTileFor(cell.material, terrain.cellsPerTile)
   if (cell.passable && floorDirection === 'vertical') {
     context.save()
     context.translate(left + size / 2, top + size / 2)
     context.rotate(Math.PI / 2)
     // Координаты источника меняются местами вместе с поворотом: соседние
     // окна фактуры остаются сшитыми, а не превращаются в набор квадратов.
-    drawTerrainRect(context, texture, terrain.cellsPerTile, cell.y, cell.x, 1, 1, -size / 2, -size / 2, size, size)
+    drawTerrainRect(context, texture, cellsPerTile, cell.y, cell.x, 1, 1, -size / 2, -size / 2, size, size)
     context.restore()
     return
   }
-  drawTerrainRect(context, texture, terrain.cellsPerTile, cell.x, cell.y, 1, 1, left, top, size, size)
+  drawTerrainRect(context, texture, cellsPerTile, cell.x, cell.y, 1, 1, left, top, size, size)
 }
 
 function drawLegacyFloorTexture(
@@ -819,7 +834,7 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
       const masonry = scene.terrain?.walls.get(wallTextureKeyFor(side?.material ?? 'stone'))
       if (masonry && scene.terrain) {
         drawTerrainRect(
-          context, masonry, scene.terrain.cellsPerTile,
+          context, masonry, terrainCellsPerTileFor(side?.material ?? 'stone', scene.terrain.cellsPerTile),
           edge.x, edge.y, geometry.width / frame.size, geometry.height / frame.size,
           geometry.left, geometry.top, geometry.width, geometry.height,
         )
@@ -2977,6 +2992,13 @@ function drawStamp(context: BoardContext2D, box: PropBox, atlas: PropAtlas, fram
   context.drawImage(atlas.texture.image, frame.x, frame.y, frame.w, frame.h, -width / 2, -height / 2, width, height)
 }
 
+/**
+ * Для переходов и настенного света схематичный fallback особенно похож на
+ * служебный значок. Их готовые художественные кадры достаточно контрастны и
+ * остаются читаемыми даже на общем плане.
+ */
+const ART_ONLY_PROP_ASSETS = new Set(['torch_wall', 'stairs_up', 'stairs_down'])
+
 /** Слой 5: предметы по `zOrder`, с поворотом, масштабом и футпринтом. */
 export function drawProps(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const level = propDetailLevel(scene.cellSize)
@@ -2986,7 +3008,9 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     const placement = propPlacement(prop, drawing, frame.size)
     // Штамп берётся только на полной детализации: ниже её предмет занимает
     // считаные пиксели, и силуэт заливкой там и дешевле, и разборчивее.
-    const stamp = level === 'full' ? scene.propAtlas?.frames[prop.assetId] : undefined
+    const stamp = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId)
+      ? scene.propAtlas?.frames[prop.assetId]
+      : undefined
     context.save()
     context.translate((placement.x - frame.minX) * frame.size, (placement.y - frame.minY) * frame.size)
     if (prop.rotation) context.rotate((prop.rotation * Math.PI) / 180)
