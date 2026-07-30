@@ -22,6 +22,8 @@ export const NARRATOR_RECENT_TEXT_LIMIT = 3
 export const NARRATOR_RECENT_3GRAM_OVERLAP_MAX = 0.14
 /** Постоянный серверный текст: он и только он стоит снаружи блока данных. */
 const REPAIR_INSTRUCTION = 'Исправь нарушения предыдущего варианта: они перечислены в секции narration_violations.'
+/** Сколько уже написанных моделью клише напоминать ей на следующем ходу. */
+export const NARRATOR_CLICHE_REMINDER_LIMIT = 6
 const promptPath = fileURLToPath(new URL('../prompts/narrator/v4.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 
@@ -68,6 +70,24 @@ function closestRecentNarration(value, recentNarrations) {
     if (candidate.score > closest.score) closest = candidate
   }
   return closest
+}
+
+/**
+ * Клише, которые модель уже написала в этой кампании. Каталог целиком в промпт
+ * не уезжает — иначе он снова начнёт их подсказывать (задача 46). Уходят только
+ * дословные фрагменты собственного недавнего текста модели, то есть ровно тот
+ * вердикт прошлого хода, который craft-guard записал в трассу.
+ */
+export function recentClicheReminders(recentNarrations) {
+  const seen = new Map()
+  for (const recent of boundedRecentNarrations(recentNarrations)) {
+    // `label` — читаемая форма оборота; `match` бывает обрезком шаблона вроде
+    // «воздух густе», и в напоминании он только сбивал бы модель с толку.
+    for (const cliche of findNarratorCliches(recent)) {
+      if (!seen.has(cliche.id)) seen.set(cliche.id, sceneText(cliche.label, 60))
+    }
+  }
+  return [...seen.values()].slice(0, NARRATOR_CLICHE_REMINDER_LIMIT)
 }
 
 const SUGGESTION_STOP_WORDS = new Set([
@@ -318,10 +338,16 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
   if (MECHANICAL_NUMBER_PATTERN.test(text)) {
     add('VISIBLE_MECHANICAL_NUMBER', 'Повествование повторяет механическое число, уже показанное интерфейсом')
   }
-  const cliche = findNarratorCliches(text)[0]
-  if (cliche) {
-    add('NARRATOR_CLICHE', `Повествование использует клише из production-каталога: «${cliche.label}»`, cliche.match)
-  }
+  // Клише — вопрос вкуса, а не безопасности: оно не выдумывает событие и не
+  // раскрывает скрытое. Поэтому оно не отклоняет абзац и не тратит вторую
+  // генерацию — иначе проверка стоила бы игрокам темпа ровно за то, чего
+  // промпт модели больше не объясняет. Замечание уходит в трассу и в промпт
+  // следующего хода: там оно называет фразу, которую модель уже написала.
+  const craftNotes = findNarratorCliches(text).map((cliche) => ({
+    code: 'NARRATOR_CLICHE',
+    message: `Повествование использует клише из production-каталога: «${cliche.label}»`,
+    match: sceneText(cliche.match, 120),
+  }))
 
   const heroNames = (Array.isArray(story.heroes) ? story.heroes : []).map((hero) => hero?.name).filter(Boolean)
   if (heroNames.length) {
@@ -398,6 +424,7 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
     ...verification,
     valid: violations.length === 0,
     violations,
+    ...(craftNotes.length ? { craft_notes: craftNotes } : {}),
   }
 }
 
@@ -680,6 +707,10 @@ export class Narrator {
       : null
     try {
       let lastVerification = null
+      // Вердикт прошлого хода: он собран из собственного текста модели и потому
+      // тоже недоверенный — уезжает секцией внутрь UNTRUSTED_DATA, как и всё
+      // остальное, что модель когда-либо написала.
+      const avoidCliches = recentClicheReminders(recent)
       for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
         // Перечень нарушений несёт куски предыдущего ответа модели: `match`
         // приходит из её же текста. Модель — недоверенный генератор, поэтому
@@ -698,6 +729,7 @@ export class Narrator {
                 content: `${buildDataOnlyContext({
                   narration_brief: briefForNarratorPrompt(brief),
                   style,
+                  ...(avoidCliches.length ? { avoid_repeated_phrases: avoidCliches } : {}),
                   ...(violations ? { narration_violations: violations } : {}),
                 })}${repair}`,
               },

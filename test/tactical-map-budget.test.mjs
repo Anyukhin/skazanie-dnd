@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { buildBuildingScene } from '../server/building-generator.mjs'
 import { campaignStateForViewer, publicSceneFor } from '../server/viewer-projection.mjs'
-import { normalizeCampaignState } from '../server/rules-engine.mjs'
+import { movementStepCostFor, normalizeCampaignState, shortestTacticalPath } from '../server/rules-engine.mjs'
 import {
   SIZE_CLASSES,
   addProp,
@@ -122,6 +122,49 @@ test('поиск пути через всю карту укладывается 
   // Счётчик важнее времени: он ловит регресс независимо от загрузки машины.
   assert.ok(reached > 7_000, `обход прошёл всего ${reached} клеток — карта перестала быть связной`)
   assert.ok(median <= 25, `поиск пути ${median.toFixed(2)} мс, порог плана — 25 мс`)
+})
+
+test('взвешенный поиск пути через всю карту укладывается в 40 мс', () => {
+  // `MoveActor` считает маршрут взвешенно на **каждом** ходу — и героя, и NPC.
+  // Невзвешенный BFS выше этот путь уже не покрывает: у него нет ни очереди с
+  // приоритетом, ни предиката стоимости, который зовётся на каждом кандидате.
+  const map = regionMap()
+  const state = normalizeCampaignState({
+    sessionCode: 'BUDGET-PATH',
+    partyMemberIds: ['hero'],
+    players: [{ id: 'hero', character: 'Герой', hp: 10, maxHp: 10, inventory: [], x: 5, y: 5, level: 1 }],
+    scene: { title: 'Сцена', location: 'Поле', cells: legacyCellsFromTacticalMap(map) },
+    // Худший случай для предиката: несколько длящихся областей, каждую из
+    // которых он перебирает на каждом кандидате.
+    mechanics: {
+      active_effects: Array.from({ length: 4 }, (_, index) => ({
+        id: `web-${index}`,
+        difficult_terrain: true,
+        cells: Array.from({ length: 25 }, (_, cell) => ({ x: 20 + index * 5 + cell % 5, y: 30 + Math.floor(cell / 5) })),
+      })),
+    },
+  })
+
+  let inspected = 0
+  let path = null
+  const median = measure('взвешенный поиск 100×100', () => {
+    const { stepCost, map: decoded } = movementStepCostFor(state, 'hero')
+    inspected = 0
+    path = shortestTacticalPath(state, 'hero', { x: 94, y: 94 }, {
+      tacticalMap: decoded,
+      stepCost: (step, pathMap) => {
+        inspected += 1
+        return stepCost(step, pathMap)
+      },
+    })
+  })
+
+  console.log(`  просмотрено кандидатов: ${inspected}, длина маршрута: ${path?.length ?? 0}`)
+  // Счётчик важнее времени: он ловит регресс независимо от загрузки машины.
+  assert.ok(path?.length > 0, 'маршрут через открытую карту обязан находиться')
+  assert.ok(inspected > 5_000, `просмотрено всего ${inspected} кандидатов — карта перестала быть связной`)
+  assert.ok(inspected <= 60_000, `просмотрено ${inspected} кандидатов: поиск перестал отсекать дорогие ветки`)
+  assert.ok(median <= 40, `взвешенный поиск ${median.toFixed(2)} мс, порог — 40 мс`)
 })
 
 test('проекция видимости на игрока укладывается в 10 мс', () => {

@@ -106,26 +106,66 @@ test('сервер не сохраняет предложенные модель
   assert.match(requests[0].messages[1].content, /Ада сохранила синюю нить как улику/u)
 })
 
-test('production craft-guard отправляет клише из каталога в асинхронную repair-попытку', async () => {
+test('клише не отклоняет абзац и не тратит вторую генерацию', async () => {
   const brief = craftBrief()
   const safeNarration = deterministicNarration(brief).narration
+  const clicheNarration = `Воздух густеет. ${safeNarration}`
   const requests = []
   const llmClient = {
     completeJson: async (input) => {
       requests.push(input)
-      return requests.length === 1
-        ? { narration: `Воздух густеет. ${safeNarration}` }
-        : { narration: safeNarration }
+      return { narration: clicheNarration }
     },
   }
 
   const result = await new Narrator({ llmClient, maxAttempts: 2 }).render(brief)
 
-  assert.equal(requests.length, 2)
-  assert.equal(result.narration, safeNarration)
+  assert.equal(requests.length, 1, 'клише не стоит игрокам второго вызова провайдера')
+  assert.equal(result.narration, clicheNarration, 'первый вариант уходит игрокам как есть')
   assert.equal(result.verification.valid, true)
-  assert.match(requests[1].messages[1].content, /NARRATOR_CLICHE/u)
-  assert.match(requests[1].messages[1].content, /воздух густеет/iu)
+  assert.equal(result.verification.violations.length, 0)
+  assert.deepEqual(result.verification.craft_notes.map((note) => note.code), ['NARRATOR_CLICHE'])
+  assert.match(result.verification.craft_notes[0].match, /Воздух густе/u, 'замечание цитирует текст модели')
+  assert.match(result.verification.craft_notes[0].message, /воздух густеет/u, 'и называет оборот целиком')
+})
+
+test('вердикт по клише уходит в промпт следующего хода, а каталог — нет', async () => {
+  const brief = craftBrief()
+  const requests = []
+  const llmClient = {
+    completeJson: async (input) => {
+      requests.push(input)
+      return { narration: deterministicNarration(brief).narration }
+    },
+  }
+
+  await new Narrator({ llmClient }).render(brief, {
+    recentNarrations: ['Воздух густеет, и Мирина настороженность тает.'],
+  })
+
+  const data = requests[0].messages[1].content
+  assert.match(data, /UNTRUSTED_DATA:avoid_repeated_phrases/u)
+  assert.match(data, /воздух густеет/iu)
+  assert.match(data, /настороженность тает/iu)
+  // В промпт уходят только те обороты, которые модель уже написала сама:
+  // остальной каталог она по-прежнему не видит и не может подхватить.
+  assert.doesNotMatch(data, /ноги подкашиваются|солнце клонится/u)
+  assert.doesNotMatch(requests[0].messages[0].content, /воздух густеет/iu)
+})
+
+test('чистый текст не тянет в промпт секцию напоминаний', async () => {
+  const brief = craftBrief()
+  const requests = []
+  const llmClient = {
+    completeJson: async (input) => {
+      requests.push(input)
+      return { narration: deterministicNarration(brief).narration }
+    },
+  }
+
+  await new Narrator({ llmClient }).render(brief, { recentNarrations: ['Ада убирает нить в поясной кошель.'] })
+
+  assert.doesNotMatch(requests[0].messages[1].content, /avoid_repeated_phrases/u)
 })
 
 test('memory_focus выбирает N-2, обещание и прошлую встречу по явной связи сцены', () => {

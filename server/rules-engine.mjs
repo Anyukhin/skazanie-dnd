@@ -159,8 +159,16 @@ export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // 6: состояние интерактивных объектов сцены сохраняется в mechanics и
 // одинаково восстанавливается из snapshot и полного replay.
 // 7: начало хода и окна реакции проецируется в mechanics для durable таймера
-// без отдельного чтения всего журнала событий.
+// без отдельного чтения всего журнала событий, а продления срока за ответ на
+// реакцию считаются в пределах хода.
 export const GAME_STATE_PROJECTOR_VERSION = 7
+
+/**
+ * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
+ * означал бы, что прерванный игрок отвечает на реакцию за счёт собственного
+ * времени; без потолка автопропуск не гарантирует ничего.
+ */
+export const TURN_REACTION_EXTENSION_LIMIT = 2
 
 export const RULE_IDS = Object.freeze({
   abilityCheck: `${DEFAULT_RULESET_ID}:checks:ability-check`,
@@ -1156,6 +1164,14 @@ export function normalizeCampaignState(input = {}) {
     .filter(([id, readied]) => id && readied && typeof readied === 'object' && READIED_TRIGGERS[String(readied.trigger)]))
   mechanics.combat.group_initiative = mechanics.combat.group_initiative === true
   mechanics.combat.turn_completed = uniqueStrings(mechanics.combat.turn_completed)
+  // Счётчик живёт только внутри хода, в котором реакция действительно случилась:
+  // ноль — это его отсутствие, и лишнего поля в форме combat он не создаёт.
+  const reactionExtensions = Math.max(
+    0,
+    Math.min(TURN_REACTION_EXTENSION_LIMIT, safeInteger(mechanics.combat.turn_reaction_extensions, 0)),
+  )
+  if (reactionExtensions > 0) mechanics.combat.turn_reaction_extensions = reactionExtensions
+  else delete mechanics.combat.turn_reaction_extensions
   if (mechanics.combat.turn_started_at != null) {
     mechanics.combat.turn_started_at = String(mechanics.combat.turn_started_at)
   } else delete mechanics.combat.turn_started_at
@@ -3898,6 +3914,31 @@ function isDifficultTerrainAt(state, position, map) {
   const mapCell = map ? cellAt(map, Number(position?.x), Number(position?.y)) : null
   return Number(mapCell?.moveCost ?? 1) > 1
     || activeAreaEffectsAt(state, position).some((effect) => effect.difficult_terrain === true)
+}
+
+/**
+ * Единственная формула стоимости шага. По ней считает и авторитетный
+ * `MoveActor`, и планировщик хода NPC: разойдясь, они выдают `SPEED_EXCEEDED`
+ * на собственном же плане, и бой встаёт на существе, которое «уже решило» идти.
+ *
+ * `state` ожидается нормализованным — функция вызывается на горячем пути и
+ * повторной нормализации не делает. Карта декодируется один раз здесь, а не в
+ * предикате: взвешенный поиск зовёт его тысячи раз.
+ */
+export function movementStepCostFor(state, actorIdValue, { tacticalMap } = {}) {
+  const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
+  const ignoresTerrain = ignoresDifficultTerrain(state, actorIdValue)
+  const crawling = conditionIdsFor(state, actorIdValue).has('prone')
+  const stepCost = (step, pathMap = map) => 5
+    + (!ignoresTerrain && isDifficultTerrainAt(state, step, pathMap) ? 5 : 0)
+    + (crawling ? 5 : 0)
+  return { map, stepCost, ignoresTerrain, crawling }
+}
+
+/** Во что обойдётся уже выбранный маршрут: та же формула, применённая к списку. */
+export function movementCostOfPath(state, actorIdValue, path, options = {}) {
+  const { stepCost } = movementStepCostFor(state, actorIdValue, options)
+  return (Array.isArray(path) ? path : []).reduce((total, step) => total + stepCost(step), 0)
 }
 
 /**
@@ -7184,15 +7225,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (!isWalkableCell(cells.get(positionKey(to))) || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
           throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
         }
-        const map = sceneTacticalMap(state)
-        const ignoresTerrain = ignoresDifficultTerrain(state, command.actor_id)
-        const crawling = conditionIdsFor(state, command.actor_id).has('prone')
-        path = shortestTacticalPath(state, command.actor_id, to, {
-          tacticalMap: map,
-          stepCost: (step, pathMap) => 5
-            + (!ignoresTerrain && isDifficultTerrainAt(state, step, pathMap) ? 5 : 0)
-            + (crawling ? 5 : 0),
-        })
+        const { map, stepCost, ignoresTerrain, crawling } = movementStepCostFor(state, command.actor_id)
+        path = shortestTacticalPath(state, command.actor_id, to, { tacticalMap: map, stepCost })
         if (!path?.length) throw new RulesValidationError('До клетки назначения нет свободного пути', 'PATH_BLOCKED')
         if (!reactionMovement) {
           const movementConditions = state.mechanics.conditions[command.actor_id] ?? []
@@ -9705,9 +9739,17 @@ export function applyGameEvent(rawState, event) {
           replaceActor(state, fleeingActorId, (actor) => ({ ...actor, alive: false }))
         }
         state.mechanics.combat.reaction_window = null
-        // После ответа на реакцию основной ход получает новый полный интервал.
-        state.mechanics.combat.turn_started_at = event.created_at ?? null
-        state.mechanics.combat.turn_started_event_id = event.event_id ?? null
+        // Ответ на реакцию прерывает ход, поэтому основной срок начинается
+        // заново. Но продлений на один ход не больше `TURN_REACTION_EXTENSION_LIMIT`:
+        // иначе существо, которое провоцирует атаки по возможности одну за
+        // другой, откладывало бы автопропуск бесконечно и таймер переставал бы
+        // что-либо гарантировать.
+        const used = safeInteger(state.mechanics.combat.turn_reaction_extensions, 0)
+        if (used < TURN_REACTION_EXTENSION_LIMIT) {
+          state.mechanics.combat.turn_reaction_extensions = used + 1
+          state.mechanics.combat.turn_started_at = event.created_at ?? null
+          state.mechanics.combat.turn_started_event_id = event.event_id ?? null
+        }
       }
       break
     }
@@ -9841,6 +9883,7 @@ export function applyGameEvent(rawState, event) {
         if (String(event.actor_id) === String(deadlineOwner ?? '')) {
           state.mechanics.combat.turn_started_at = event.created_at ?? null
           state.mechanics.combat.turn_started_event_id = event.event_id ?? null
+          delete state.mechanics.combat.turn_reaction_extensions
         }
       }
       appendBattleLog(state, event, {
@@ -9853,6 +9896,8 @@ export function applyGameEvent(rawState, event) {
       state.mechanics.combat.active_index = safeInteger(payload.active_index, state.mechanics.combat.active_index)
       state.mechanics.combat.turn_started_at = event.created_at ?? null
       state.mechanics.combat.turn_started_event_id = event.event_id ?? null
+      // Новый ход — новый запас продлений: потолок ограничивает один ход, а не бой.
+      delete state.mechanics.combat.turn_reaction_extensions
       for (const [actorIdValue, conditions] of Object.entries(state.mechanics.conditions)) {
         state.mechanics.conditions[actorIdValue] = (conditions ?? []).filter((condition) => !(
           condition.duration === 'until-source-next-turn'

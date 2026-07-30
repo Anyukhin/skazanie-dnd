@@ -12,7 +12,12 @@ import {
 } from '../server/combat-turn-coordinator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
-import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import {
+  RulesEngine,
+  TURN_REACTION_EXTENSION_LIMIT,
+  applyGameEvent,
+  normalizeCampaignState,
+} from '../server/rules-engine.mjs'
 
 function fixture({ activeActor = 'hero', group = false } = {}) {
   const initiative = activeActor === 'wolf'
@@ -617,4 +622,47 @@ test('SSE не публикует clock прошлого участника по
     },
   })
   assert.equal(combatTurnClockForState(enemyTurn, clock), null)
+})
+
+test('окно реакции продлевает ход считанное число раз, а не бесконечно', () => {
+  const opened = (index) => ({
+    event_type: 'ReactionWindowOpened',
+    event_id: `window-${index}`,
+    created_at: `2026-07-30T12:0${index}:00.000Z`,
+    payload: { id: `window-${index}`, actor_id: 'wolf', trigger: 'enemy-left-reach' },
+    target_ids: ['wolf'],
+  })
+  const closed = (index) => ({
+    event_type: 'ReactionWindowClosed',
+    event_id: `close-${index}`,
+    created_at: `2026-07-30T12:0${index}:30.000Z`,
+    payload: { id: `window-${index}`, accepted: false },
+    target_ids: ['wolf'],
+  })
+
+  let state = fixture()
+  const anchors = []
+  for (let index = 1; index <= TURN_REACTION_EXTENSION_LIMIT + 2; index += 1) {
+    state = applyGameEvent(applyGameEvent(state, opened(index)), closed(index))
+    anchors.push(state.mechanics.combat.turn_started_at)
+  }
+
+  const extended = new Set(anchors)
+  assert.equal(
+    extended.size,
+    TURN_REACTION_EXTENSION_LIMIT,
+    'после исчерпания лимита якорь хода перестаёт двигаться',
+  )
+  assert.equal(state.mechanics.combat.turn_reaction_extensions, TURN_REACTION_EXTENSION_LIMIT)
+  assert.equal(anchors.at(-1), anchors[TURN_REACTION_EXTENSION_LIMIT - 1])
+
+  // Следующий ход получает запас заново: потолок ограничивает ход, а не бой.
+  const nextTurn = applyGameEvent(state, {
+    event_type: 'TurnStarted',
+    event_id: 'turn-two',
+    created_at: '2026-07-30T12:10:00.000Z',
+    payload: { round: 1, active_index: 1 },
+    target_ids: ['wolf'],
+  })
+  assert.equal(nextTurn.mechanics.combat.turn_reaction_extensions ?? 0, 0)
 })

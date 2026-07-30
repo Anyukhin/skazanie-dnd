@@ -8,6 +8,7 @@ import {
   initiativeGroupIds,
   isEnemyActor,
   isLivingActor,
+  movementStepCostFor,
   normalizeCampaignState,
   shortestTacticalPath,
 } from './rules-engine.mjs'
@@ -215,18 +216,43 @@ function targetCandidates(state, enemy) {
     || String(left.profile.id ?? '').localeCompare(String(right.profile.id ?? '')))
 }
 
+/**
+ * Самый длинный отрезок маршрута, который существо оплатит из оставшейся
+ * скорости. Маршрут приходит от невзвешенного поиска, поэтому его цена — верхняя
+ * оценка: авторитетный `MoveActor` ищет дешевейший путь и возьмёт не больше.
+ */
+function affordablePathPrefix(state, actorIdValue, path, maximumSteps, budgetFeet) {
+  const { stepCost } = movementStepCostFor(state, String(actorIdValue))
+  const limit = Math.min(Math.max(0, maximumSteps), Array.isArray(path) ? path.length : 0)
+  let steps = 0
+  let costFeet = 0
+  for (let index = 0; index < limit; index += 1) {
+    const next = costFeet + stepCost(path[index])
+    if (next > budgetFeet) break
+    costFeet = next
+    steps = index + 1
+  }
+  return { steps, costFeet }
+}
+
 function retreatDestination(state, enemy, target, profile) {
   const from = actorPosition(state, actorId(enemy))
   const targetAt = actorPosition(state, actorId(target))
   if (!from || !targetAt) return null
   const movementSpent = Math.max(0, Number(state.mechanics?.combat?.action_economy?.[actorId(enemy)]?.movement_spent) || 0)
-  const maximumSteps = Math.max(0, Math.floor(((Number(enemy.speed) || 30) - movementSpent) / CELL_FEET))
+  const budgetFeet = (Number(enemy.speed) || 30) - movementSpent
+  const maximumSteps = Math.max(0, Math.floor(budgetFeet / CELL_FEET))
   if (!maximumSteps) return null
+  const { stepCost } = movementStepCostFor(state, actorId(enemy))
   let best = null
   for (const cell of state.scene?.cells ?? []) {
     if (!cell.revealed || !['floor', 'door'].includes(cell.type)) continue
     const path = shortestTacticalPath(state, actorId(enemy), { x: Number(cell.x), y: Number(cell.y) })
     if (!path?.length || path.length > maximumSteps) continue
+    // Отступление тоже платит за местность. Кандидаты по-прежнему ищутся
+    // невзвешенно — их тут перебирается вся сцена, — но цена выбранного
+    // маршрута проверяется той же формулой, что применит `MoveActor`.
+    if (path.reduce((total, step) => total + stepCost(step), 0) > budgetFeet) continue
     const destination = path.at(-1)
     const distance = Math.max(Math.abs(destination.x - targetAt.x), Math.abs(destination.y - targetAt.y)) * CELL_FEET
     if (distance > profile.range_feet || distance < CELL_FEET || !hasClearTrajectory(state, destination, targetAt)) continue
@@ -388,18 +414,23 @@ export function planNpcTurn(rawState, enemyId) {
     const speedFeet = Number.isFinite(speed) ? speed : 30
     const actionEconomy = state.mechanics?.combat?.action_economy?.[String(enemyId)] ?? {}
     const movementSpent = Math.max(0, Number(actionEconomy.movement_spent) || 0)
-    const normalSteps = Math.max(0, Math.floor((speedFeet - movementSpent) / CELL_FEET))
     const aggressiveAvailable = hasTrait(enemy, 'aggressive') && actionEconomy.bonus_action !== false
-    const needsAggressive = aggressiveAvailable && candidate.path.length - rangeCells > normalSteps
-    const maximumSteps = needsAggressive
-      ? Math.max(0, Math.floor((speedFeet * 2 - movementSpent) / CELL_FEET))
-      : normalSteps
-    const steps = Math.min(maximumSteps, Math.max(0, candidate.path.length - rangeCells))
-    if (steps > 0) {
-      plannedMovementFeet = steps * CELL_FEET
-      plannedPosition = candidate.path[steps - 1]
+    // Бюджет считается в футах по той же формуле, что и у `MoveActor`: трудная
+    // местность и ползание дороже шага. Планировать «по клеткам» значило бы
+    // выбрать цель, на которую у существа не хватит скорости, — и весь ход NPC
+    // упал бы в SPEED_EXCEEDED уже на собственном плане.
+    const approachSteps = Math.max(0, candidate.path.length - rangeCells)
+    const affordable = affordablePathPrefix(state, enemyId, candidate.path, approachSteps, speedFeet - movementSpent)
+    const needsAggressive = aggressiveAvailable && affordable.steps < approachSteps
+    const reach = needsAggressive
+      ? affordablePathPrefix(state, enemyId, candidate.path, approachSteps, speedFeet * 2 - movementSpent)
+      : affordable
+    if (reach.steps > 0) {
+      plannedMovementFeet = reach.costFeet
+      plannedPosition = candidate.path[reach.steps - 1]
       commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: plannedPosition, ...(needsAggressive ? { monster_ability: 'aggressive' } : {}) })
     }
+    const steps = reach.steps
     const destination = steps > 0 ? candidate.path[steps - 1] : actorPosition(state, enemyId)
     const distanceAfterMove = destination && targetAt
       ? Math.max(Math.abs(destination.x - targetAt.x), Math.abs(destination.y - targetAt.y)) * CELL_FEET
