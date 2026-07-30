@@ -990,6 +990,17 @@ export type CampaignConcept = {
   worldSummary?: string
   worldHistory?: string
   generatedBy?: string
+  /** Стол заранее объявил, что развязка арки открывает следующую, а не финал. */
+  arc_chain?: boolean
+  arc?: { arc_number?: number; target_scenes?: number; preset?: string }
+  /** Закрытые арки этой кампании: номер, финальная сцена и эпилог. */
+  arc_history?: Array<{
+    arc_number?: number
+    final_chapter?: number
+    final_location?: string
+    epilogue?: string
+    concluded_at?: string | null
+  }>
 }
 
 export type GameState = {

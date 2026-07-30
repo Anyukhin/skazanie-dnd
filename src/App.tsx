@@ -2979,6 +2979,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const progression = state.mechanics?.progression
   const reputationStanding = state.autonomy?.reputation_standing ?? []
   const canManageLifecycle = isAdmin || currentMembership?.role === 'owner'
+  const arcChainEnabled = state.campaignConcept?.arc_chain === true
   const accessibleHeroIds = isAdmin
     ? partyPlayers.map((player) => player.id)
     : (currentMembership?.heroIds ?? account.heroIds).filter((id) => partyIdSet.has(id))
@@ -2991,7 +2992,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const alertActorName = partyPlayers.find((player) => player.id === alertTurnActorId)?.character ?? 'герой'
   const turnAlertCursor = useRef({ sessionCode: state.sessionCode, actorId: alertTurnActorId })
 
-  const changeLifecycle = async (action: 'pause' | 'resume' | 'complete' | 'archive') => {
+  const changeLifecycle = async (action: 'pause' | 'resume' | 'complete' | 'archive' | 'chain_arcs' | 'conclude_after_arc') => {
     setLifecycleBusy(true)
     setLifecycleError(null)
     try {
@@ -3393,6 +3394,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => { void changeLifecycle('pause') }} disabled={lifecycleBusy}>Пауза</button>}
             {canManageLifecycle && lifecycleStatus === 'paused' && <button className="invite-button" onClick={() => { void changeLifecycle('resume') }} disabled={lifecycleBusy}>Продолжить</button>}
             {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button className="invite-button" onClick={() => { if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) void changeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить</button>}
+            {/* Выбор объявляется заранее: развязку арки сервер закрывает сам, и
+                в этот момент спрашивать стол уже поздно. */}
+            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && (arcChainEnabled
+              ? <button className="invite-button" onClick={() => { void changeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
+              : <button className="invite-button" onClick={() => { void changeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>)}
             {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => setInviteOpen(true)}><Users size={17} />Пригласить</button>}
             <div className="account-chip"><span>{account.name}<small>{activePlayer.character}</small></span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
           </div>

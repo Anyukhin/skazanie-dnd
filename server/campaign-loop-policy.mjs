@@ -18,6 +18,13 @@ const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, N
 export const ONE_EVENING_ARC_VERSION = 'skazanie:campaign-arc-v1'
 export const ONE_EVENING_PRESET = 'one_evening'
 
+/**
+ * Потолок длины цепочки арок. Он не художественный, а инженерный: номер арки
+ * входит в seed и в идентификаторы глав, и неограниченный счётчик означал бы
+ * неограниченно растущее состояние кампании без единой точки, где его смотрят.
+ */
+export const MAX_CAMPAIGN_ARCS = 12
+
 const ONE_EVENING_CHAPTER_CLOCK_MAX = 2
 const ONE_EVENING_FORCE_AFTER_BEATS = 2
 const ONE_EVENING_MAX_DIRECTOR_BEATS = 5
@@ -52,13 +59,23 @@ function phaseForEveningScene(sceneNumber, targetScenes) {
   return 'development'
 }
 
-export function buildCampaignArcPlan(seed = '') {
+/** Номер арки — часть seed, поэтому вторая арка тех же героев не повторяет первую. */
+export const arcSeedFor = (seed, arcNumber) => (
+  Math.max(1, Number(arcNumber) || 1) <= 1
+    ? clean(seed, 200)
+    : `${clean(seed, 200)}#arc${Math.max(1, Number(arcNumber) || 1)}`
+)
+
+export function buildCampaignArcPlan(seed = '', arcNumber = 1) {
+  const number = Math.max(1, Math.min(MAX_CAMPAIGN_ARCS, Math.floor(Number(arcNumber) || 1)))
   const normalizedSeed = clean(seed, 240) || 'one-evening'
-  const targetScenes = 3 + (hashNumber(`${ONE_EVENING_ARC_VERSION}:${normalizedSeed}`) % 3)
+  const chainedSeed = arcSeedFor(normalizedSeed, number)
+  const targetScenes = 3 + (hashNumber(`${ONE_EVENING_ARC_VERSION}:${chainedSeed}`) % 3)
   return Object.freeze({
     version: ONE_EVENING_ARC_VERSION,
     preset: ONE_EVENING_PRESET,
     seed: normalizedSeed,
+    arc_number: number,
     target_scenes: targetScenes,
     chapter_clock_max: ONE_EVENING_CHAPTER_CLOCK_MAX,
     force_after_beats: ONE_EVENING_FORCE_AFTER_BEATS,
@@ -70,7 +87,8 @@ export function buildCampaignArcPlan(seed = '') {
 export function campaignArcPlan(state = {}) {
   const raw = state.campaignConcept?.arc
   if (!raw || raw.version !== ONE_EVENING_ARC_VERSION || raw.preset !== ONE_EVENING_PRESET) return null
-  const canonical = buildCampaignArcPlan(raw.seed)
+  // Арка без номера — сохранение до цепочки арок: это первая арка по определению.
+  const canonical = buildCampaignArcPlan(raw.seed, raw.arc_number ?? 1)
   return raw.target_scenes === canonical.target_scenes ? canonical : null
 }
 

@@ -30,8 +30,19 @@ import {
   doorBlocksStep,
   tacticalMapFromLegacyCells,
 } from './tactical-map.mjs'
-import { campaignCanAutoComplete, lifecycleEventForAction, normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
-import { authorizeDirectorIntent } from './campaign-loop-policy.mjs'
+import {
+  campaignArcCarryOver,
+  campaignCanAdvanceArc,
+  campaignCanAutoComplete,
+  lifecycleEventForAction,
+  normalizeCampaignLifecycle,
+} from './campaign-lifecycle.mjs'
+import {
+  MAX_CAMPAIGN_ARCS,
+  authorizeDirectorIntent,
+  buildCampaignArcPlan,
+  campaignArcPlan,
+} from './campaign-loop-policy.mjs'
 import { normalizePartyDecision, normalizePartyDecisionPolicy } from './party-decision.mjs'
 import {
   WORLD_MEMORY_COMMAND_TYPES,
@@ -335,7 +346,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'LevelUp', 'ImportCharacter',
-  'CompleteCampaign',
+  'CompleteCampaign', 'AdvanceCampaignArc',
 ])
 
 const MERCHANT_LIFECYCLE_COMMAND_TYPES = new Set([
@@ -2895,6 +2906,23 @@ export function validateCommand(input, rawState, context = {}) {
     command.reason = String(command.reason || 'main_thread_resolved_at_climax').slice(0, 240)
     command.occurred_at = String(command.occurred_at || '').slice(0, 40)
   }
+  if (command.command_type === 'AdvanceCampaignArc') {
+    // Тот же серверный контур, что и у финала: закрытие арки и закрытие
+    // кампании — два исхода одного подтверждённого момента, и решать, какой из
+    // них наступил, игровая команда не может.
+    if (context?.isDirector !== true) {
+      throw new RulesValidationError('Смена арки доступна только серверному контуру кампании', 'CAMPAIGN_ARC_FORBIDDEN')
+    }
+    if (!campaignCanAdvanceArc(state)) {
+      throw new RulesValidationError('Арка ещё не закрыта подтверждённой кульминацией', 'CAMPAIGN_ARC_NOT_READY')
+    }
+    command.epilogue = String(command.epilogue || '').normalize('NFKC').trim().slice(0, 8_000)
+    if (!command.epilogue) throw new RulesValidationError('Закрытие арки требует связного эпилога', 'CAMPAIGN_EPILOGUE_REQUIRED')
+    command.hook = String(command.hook || '').normalize('NFKC').trim().slice(0, 300)
+    if (!command.hook) throw new RulesValidationError('Следующая арка требует зацепки', 'CAMPAIGN_ARC_HOOK_REQUIRED')
+    command.reason = String(command.reason || 'arc_resolved_at_climax').slice(0, 240)
+    command.occurred_at = String(command.occurred_at || '').slice(0, 40)
+  }
   if (command.command_type === 'AdvanceScene') {
     if (context?.isAdmin !== true && context?.isDirector !== true) {
       throw new RulesValidationError('Переход между сценами доступен только системному контуру кампании', 'SCENE_ADVANCE_FORBIDDEN')
@@ -3344,7 +3372,7 @@ export function validateCommand(input, rawState, context = {}) {
     }
   }
 
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', 'CompleteCampaign', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -8322,6 +8350,26 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         completion_policy: 'campaign-arc-completion-v1',
       }, []))
       break
+    case 'AdvanceCampaignArc': {
+      const closingArc = campaignArcPlan(state)
+      const nextArc = buildCampaignArcPlan(closingArc.seed, closingArc.arc_number + 1)
+      events.push(eventFrom(command, 'CampaignArcCompleted', {
+        reason: command.reason,
+        occurred_at: command.occurred_at || null,
+        epilogue: command.epilogue,
+        hook: command.hook,
+        closed_arc: {
+          arc_number: closingArc.arc_number,
+          target_scenes: closingArc.target_scenes,
+          final_chapter: Math.max(1, safeInteger(state.adventure?.chapter, 1)),
+          final_location: String(state.scene?.location ?? '').slice(0, 180),
+        },
+        next_arc: nextArc,
+        carried: campaignArcCarryOver(state),
+        arc_policy: 'campaign-arc-chain-v1',
+      }, []))
+      break
+    }
     case 'UpsertNpcSocialProfile':
     case 'RecordNpcSocialTurn':
     case 'ResolveNpcPromise': {
@@ -8786,6 +8834,51 @@ export function applyGameEvent(rawState, event) {
         changed_by: payload.changed_by ?? event.actor_id ?? null,
       }
       break
+    case 'CampaignArcChainSet':
+      state.campaignConcept = { ...(state.campaignConcept ?? {}), arc_chain: payload.enabled === true }
+      break
+    case 'CampaignArcCompleted': {
+      // Что переезжает — не перечисляется: герои, инвентарь, репутация, память
+      // мира, социальные профили и незакрытые нити просто остаются в состоянии.
+      // Перечисляется то, что **обязано** обнулиться, иначе новая арка начнётся
+      // с закрытой главой, чужим encounter и накопленным напряжением прошлой.
+      const nextArc = payload.next_arc && typeof payload.next_arc === 'object' ? clone(payload.next_arc) : null
+      if (nextArc) {
+        const history = Array.isArray(state.campaignConcept?.arc_history) ? state.campaignConcept.arc_history : []
+        state.campaignConcept = {
+          ...(state.campaignConcept ?? {}),
+          arc: nextArc,
+          arc_history: [...history, {
+            ...(payload.closed_arc && typeof payload.closed_arc === 'object' ? clone(payload.closed_arc) : {}),
+            epilogue: String(payload.epilogue ?? '').slice(0, 8_000),
+            concluded_at: payload.occurred_at ?? event.occurred_at ?? event.created_at ?? null,
+          }].slice(-MAX_CAMPAIGN_ARCS),
+        }
+      }
+      state.adventure = {
+        ...(state.adventure ?? {}),
+        chapter: 1,
+        history: [
+          ...(Array.isArray(state.adventure?.history) ? state.adventure.history : []),
+          { chapter: Math.max(1, safeInteger(payload.closed_arc?.final_chapter, 1)), summary: String(payload.epilogue ?? '').slice(0, 600) },
+        ].slice(-24),
+      }
+      // Главы прошлой арки закрыты вместе с ней: их часы больше ничего не
+      // измеряют, а Директор считает по ним фазу текущей сцены.
+      if (state.worldMemory?.quests) {
+        state.worldMemory.quests = state.worldMemory.quests.filter((quest) => !String(quest?.id ?? '').startsWith('quest:chapter:'))
+      }
+      state.mechanics.encounter = null
+      state.autonomy = {
+        ...(state.autonomy ?? {}),
+        pacing: { beat: 0, phase: 'breather', tension: 0, policy: 'campaign-pacing-one-evening-v1' },
+        director_history: [],
+        director_outcomes: [],
+        encounter_outcomes: [],
+      }
+      state.scene = { ...(state.scene ?? {}), objective: String(payload.hook ?? state.scene?.objective ?? '').slice(0, 300) }
+      break
+    }
     case 'CampaignArchived':
       state.mechanics.campaign_lifecycle = {
         ...state.mechanics.campaign_lifecycle,
