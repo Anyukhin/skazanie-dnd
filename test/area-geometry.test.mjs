@@ -65,6 +65,7 @@ test('направленный куб имеет заданное ребро, а
     shape: 'cube',
     origin: { x: 2, y: 2 },
     target: { x: 6, y: 2 },
+    originMode: 'self',
     sizeFeet: 15,
   })), [
     '3,1', '4,1', '5,1',
@@ -84,11 +85,13 @@ test('направленный куб имеет заданное ребро, а
   )
 })
 
-test('ненаправленный куб трактует размер как ребро, включая чётный размер', () => {
+test('point-cube трактует размер как серверный Chebyshev-радиус', () => {
   assert.deepEqual(keys(geometry.areaCells({
     shape: 'cube',
-    origin: { x: 4, y: 4 },
-    sizeFeet: 15,
+    origin: { x: 0, y: 0 },
+    target: { x: 4, y: 4 },
+    originMode: 'point',
+    sizeFeet: 5,
   })), [
     '3,3', '4,3', '5,3',
     '3,4', '4,4', '5,4',
@@ -96,12 +99,36 @@ test('ненаправленный куб трактует размер как �
   ])
   assert.deepEqual(keys(geometry.areaCells({
     shape: 'cube',
-    origin: { x: 4, y: 4 },
+    origin: { x: 0, y: 0 },
+    target: { x: 4, y: 4 },
+    originMode: 'point',
     sizeFeet: 10,
   })), [
-    '4,4', '5,4',
-    '4,5', '5,5',
-  ], 'у чётного ребра дополнительная строка и колонка лежат восточнее и южнее центра')
+    '2,2', '3,2', '4,2', '5,2', '6,2',
+    '2,3', '3,3', '4,3', '5,3', '6,3',
+    '2,4', '3,4', '4,4', '5,4', '6,4',
+    '2,5', '3,5', '4,5', '5,5', '6,5',
+    '2,6', '3,6', '4,6', '5,6', '6,6',
+  ])
+})
+
+test('self-cube трактует размер как направленное ребро', () => {
+  assert.deepEqual(keys(geometry.areaCells({
+    shape: 'cube',
+    origin: { x: 2, y: 2 },
+    target: { x: 6, y: 2 },
+    originMode: 'self',
+    sizeFeet: 15,
+  })), [
+    '3,1', '4,1', '5,1',
+    '3,2', '4,2', '5,2',
+    '3,3', '4,3', '5,3',
+  ])
+  assert.deepEqual(
+    geometry.areaCells({ shape: 'cube', origin: { x: 2, y: 2 }, originMode: 'self', sizeFeet: 15 }),
+    [],
+    'self-cube без направления не должен подсвечивать область',
+  )
 })
 
 test('предпросмотр возвращает и врагов, и союзников, но не выбывших', () => {

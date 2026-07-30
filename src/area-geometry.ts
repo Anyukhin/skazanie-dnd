@@ -12,9 +12,14 @@ export type AreaGeometry = {
   shape: AreaShape
   /** Для конуса, линии и направленного куба — клетка заклинателя. */
   origin: AreaPoint
-  /** Точка прицеливания; для сферы/цилиндра это центр области. */
+  /** Точка прицеливания; для сферы, цилиндра и point-cube это центр области. */
   target?: AreaPoint
-  /** Радиус, длина или ребро области — в футах, как в каталоге заклинаний. */
+  /**
+   * `self` делает куб направленным от заклинателя и трактует размер как ребро.
+   * `point` делает куб центрированным в target и трактует размер как радиус.
+   */
+  originMode?: 'self' | 'point'
+  /** Радиус либо длина/ребро области — в футах, как в серверном профиле. */
   sizeFeet: number
   cellFeet?: number
   bounds?: AreaBounds
@@ -93,21 +98,16 @@ export function areaCells(geometry: AreaGeometry): AreaPoint[] {
   if (geometry.shape === 'line') {
     result = lineCells(geometry.origin, geometry.target, cells)
   } else {
+    const selfCube = geometry.shape === 'cube' && geometry.originMode === 'self'
+    const directedCube = selfCube
+      && Boolean(geometry.target && key(geometry.target) !== key(geometry.origin))
+    if (selfCube && !directedCube) return []
     const center = geometry.shape === 'sphere' || geometry.shape === 'cylinder'
+      || geometry.shape === 'cube' && !selfCube
       ? geometry.target ?? geometry.origin
       : geometry.origin
-    const directedCube = geometry.shape === 'cube'
-      && Boolean(geometry.target && key(geometry.target) !== key(geometry.origin))
-    // У ненаправленного куба sizeFeet — длина ребра, не радиус. Нечётное
-    // ребро центрируется обычно; у чётного лишняя строка/колонка уходит на
-    // восток и юг, то есть указанная клетка — северо-западная из центральных.
-    const cubeMinOffset = -Math.floor((cells - 1) / 2)
-    const minX = geometry.shape === 'cube' && !directedCube ? center.x + cubeMinOffset : center.x - cells
-    const minY = geometry.shape === 'cube' && !directedCube ? center.y + cubeMinOffset : center.y - cells
-    const maxX = geometry.shape === 'cube' && !directedCube ? minX + cells - 1 : center.x + cells
-    const maxY = geometry.shape === 'cube' && !directedCube ? minY + cells - 1 : center.y + cells
-    for (let y = minY; y <= maxY; y += 1) {
-      for (let x = minX; x <= maxX; x += 1) {
+    for (let y = center.y - cells; y <= center.y + cells; y += 1) {
+      for (let x = center.x - cells; x <= center.x + cells; x += 1) {
         const point = { x, y }
         if (geometry.shape === 'cone' && !coneContains(point, geometry.origin, geometry.target, cells)) continue
         if (directedCube) {
