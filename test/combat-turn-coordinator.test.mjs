@@ -8,6 +8,7 @@ import {
   CombatTurnCoordinator,
   activeTurnActorIds,
   combatTurnClock,
+  combatTurnClockForState,
 } from '../server/combat-turn-coordinator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
@@ -342,4 +343,27 @@ test('одинаковая инициатива в двух боях получ�
   assert.equal(first?.round, second?.round)
   assert.equal(first?.active_index, second?.active_index)
   assert.notEqual(first?.turn_id, second?.turn_id)
+})
+
+test('SSE не публикует clock прошлого участника после смены active index', () => {
+  const state = fixture()
+  const clock = combatTurnClock(state, [{
+    event_type: 'TurnStarted',
+    event_id: 'turn-one',
+    created_at: '2026-07-30T12:00:00.000Z',
+    target_ids: ['hero'],
+  }], {
+    timeoutMs: 90_000,
+    now: Date.parse('2026-07-30T12:00:10.000Z'),
+  })
+
+  assert.equal(combatTurnClockForState(state, clock), clock)
+  const enemyTurn = normalizeCampaignState({
+    ...state,
+    mechanics: {
+      ...state.mechanics,
+      combat: { ...state.mechanics.combat, active_index: 1 },
+    },
+  })
+  assert.equal(combatTurnClockForState(enemyTurn, clock), null)
 })

@@ -15,6 +15,7 @@ test('клиентский recovery polling не будит NPC, сервер п
 })
 
 test('серверный clock доступен в room/SSE projection, а compatibility endpoint сохранён', () => {
-  assert.match(serverSource, /turn_clock:\s*combatTurnCoordinator\.clockFor/u)
+  assert.match(serverSource, /combatTurnClockForState\(state,\s*combatTurnCoordinator\.clockFor/u)
+  assert.match(serverSource, /turn_clock:\s*turnClock/u)
   assert.match(serverSource, /\/system-tick/u)
 })

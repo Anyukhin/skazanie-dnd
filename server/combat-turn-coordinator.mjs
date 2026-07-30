@@ -70,6 +70,29 @@ export function combatTurnClock(rawState, events, {
   }
 }
 
+/**
+ * Не публикует устаревший clock между commit нового active actor и следующим
+ * settle coordinator. Иначе быстрый SSE успевает на мгновение показать
+ * истёкший таймер героя уже во время хода NPC.
+ */
+export function combatTurnClockForState(rawState, clock) {
+  if (!clock) return null
+  const state = normalizeCampaignState(rawState)
+  const combat = state.mechanics?.combat
+  if (!combat?.active
+    || Number(clock.round) !== (Number(combat.round) || 1)
+    || Number(clock.active_index) !== (Number(combat.active_index) || 0)) {
+    return null
+  }
+  const expectedActorIds = activeTurnActorIds(state)
+  const clockActorIds = Array.isArray(clock.actor_ids) ? clock.actor_ids.map(String) : []
+  if (expectedActorIds.length !== clockActorIds.length
+    || expectedActorIds.some((actorId, index) => actorId !== clockActorIds[index])) {
+    return null
+  }
+  return clock
+}
+
 async function commitTimedOutTurn({ campaignId, eventStore, rulesEngine, loaded, clock }) {
   const combat = loaded.state.mechanics.combat
   const actorIds = activeTurnActorIds(loaded.state)
