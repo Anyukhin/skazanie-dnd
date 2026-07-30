@@ -115,6 +115,31 @@ test('клеточный moveCost карты также считается тр�
   assert.equal(route.difficultTerrainFeet, 5)
 })
 
+test('предпросмотр выбирает более длинный, но дешёвый путь вокруг трудной местности', () => {
+  const current = state()
+  current.scene.cells = Array.from({ length: 2 }, (_, y) => (
+    Array.from({ length: 5 }, (_, x) => ({ x, y, type: 'floor', revealed: true }))
+  )).flat()
+  current.players = [current.players[0]]
+  current.enemies = []
+  current.players[0].x = 0
+  current.players[0].y = 1
+  current.mechanics = {
+    active_effects: [{
+      id: 'mud-strip',
+      difficult_terrain: true,
+      cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }],
+    }],
+  }
+
+  const route = tacticalUi.buildMovementPaths(current, current.players[0]).get('4,1')
+  assert.ok(route)
+  assert.equal(route.costFeet, 30)
+  assert.equal(route.baseCostFeet, 30)
+  assert.equal(route.difficultTerrainFeet, 0)
+  assert.ok(route.path.some((cell) => cell.y === 0))
+})
+
 test('серверный дедлайн превращается только в отображаемый обратный отсчёт', () => {
   const clock = {
     turn_id: 'event:turn-1',

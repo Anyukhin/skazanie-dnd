@@ -91,20 +91,54 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
   const cells = new Map(state.scene.cells.map((cell) => [boardPositionKey(cell.x, cell.y), cell]))
   const blocked = occupiedBoardPositions(state, actor.id)
   const start = boardPositionKey(actor.x, actor.y)
-  const queue = [start]
+  const costs = new Map<string, number>([[start, 0]])
   const previous = new Map<string, string | null>([[start, null]])
+  const frontier: Array<{ key: string; cost: number }> = [{ key: start, cost: 0 }]
+  const pushFrontier = (entry: { key: string; cost: number }) => {
+    frontier.push(entry)
+    let child = frontier.length - 1
+    while (child > 0) {
+      const parent = Math.floor((child - 1) / 2)
+      if (frontier[parent].cost <= frontier[child].cost) break
+      ;[frontier[parent], frontier[child]] = [frontier[child], frontier[parent]]
+      child = parent
+    }
+  }
+  const popFrontier = () => {
+    const first = frontier[0]
+    const last = frontier.pop()
+    if (frontier.length && last) {
+      frontier[0] = last
+      let parent = 0
+      while (true) {
+        const left = parent * 2 + 1
+        const right = left + 1
+        let smallest = parent
+        if (left < frontier.length && frontier[left].cost < frontier[smallest].cost) smallest = left
+        if (right < frontier.length && frontier[right].cost < frontier[smallest].cost) smallest = right
+        if (smallest === parent) break
+        ;[frontier[parent], frontier[smallest]] = [frontier[smallest], frontier[parent]]
+        parent = smallest
+      }
+    }
+    return first
+  }
 
-  for (let index = 0; index < queue.length; index += 1) {
-    const current = queue[index]
-    const [x, y] = current.split(',').map(Number)
+  while (frontier.length) {
+    const current = popFrontier()
+    if (!current || current.cost !== costs.get(current.key)) continue
+    const [x, y] = current.key.split(',').map(Number)
     for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
       const next = boardPositionKey(nextX, nextY)
-      if (previous.has(next) || blocked.has(next) || !isWalkable(cells.get(next))) continue
+      if (blocked.has(next) || !isWalkable(cells.get(next))) continue
       // Закрытая и запертая дверь останавливают шаг ровно так же, как на
       // сервере: иначе предпросмотр вёл бы маршрут сквозь запертую дверь.
       if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
-      previous.set(next, current)
-      queue.push(next)
+      const nextCost = current.cost + cellFeet * (isDifficultTerrain(state, { x: nextX, y: nextY }, map) ? 2 : 1)
+      if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
+      costs.set(next, nextCost)
+      previous.set(next, current.key)
+      pushFrontier({ key: next, cost: nextCost })
     }
   }
 
@@ -119,8 +153,9 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
       cursor = previous.get(cursor) ?? null
     }
     const baseCostFeet = path.length * cellFeet
-    const difficultTerrainFeet = path.filter((step) => isDifficultTerrain(state, step, map)).length * cellFeet
-    result.set(destination, { path, baseCostFeet, difficultTerrainFeet, costFeet: baseCostFeet + difficultTerrainFeet })
+    const costFeet = costs.get(destination) ?? baseCostFeet
+    const difficultTerrainFeet = Math.max(0, costFeet - baseCostFeet)
+    result.set(destination, { path, baseCostFeet, difficultTerrainFeet, costFeet })
   }
   return result
 }
