@@ -616,7 +616,7 @@ function PartyQuestHud({ state }: { state: GameState }) {
   </section>
 }
 
-function CombatTurnClock({ clock }: { clock: GameState['turn_clock'] }) {
+function CombatTurnClock({ clock, actorName }: { clock: GameState['turn_clock']; actorName?: string }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     setNow(Date.now())
@@ -630,9 +630,9 @@ function CombatTurnClock({ clock }: { clock: GameState['turn_clock'] }) {
     className={`combat-turn-clock ${presentation.urgent ? 'urgent' : ''} ${presentation.expired ? 'expired' : ''}`}
     role="timer"
     aria-live={presentation.urgent ? 'polite' : 'off'}
-    aria-label={`До автоматического пропуска хода ${presentation.label}`}
+    aria-label={`До автоматического пропуска хода${actorName ? ` ${actorName}` : ''}: ${presentation.label}`}
   >
-    <small>{clock?.reaction_window_id ? 'ОТВЕТ НА РЕАКЦИЮ' : 'ДО АВТОПРОПУСКА'}</small>
+    <small>{clock?.reaction_window_id ? 'ОТВЕТ НА РЕАКЦИЮ' : 'ДО АВТОПРОПУСКА'}{actorName ? ` · ${actorName}` : ''}</small>
     <b>{presentation.label}</b>
     <span aria-hidden="true"><i style={{ width: `${presentation.remainingRatio * 100}%` }} /></span>
   </div>
@@ -1683,7 +1683,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         <div className="server-resize" role="separator" aria-orientation="vertical" aria-label="Ширина правой колонки" onPointerDown={startServerResize} onDoubleClick={() => { setServerWidth(0); window.localStorage.removeItem(SERVER_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную" />
         {combatActive && <section className="combat-context-panel" aria-label="Текущее состояние боя" aria-live="polite">
           <header><div><small>СЕЙЧАС ХОДИТ · {activeTeam}</small><strong>{activeName}</strong></div><span><Heart size={13} />{activeHealth}</span></header>
-          <CombatTurnClock clock={state.turn_clock} />
+          <CombatTurnClock clock={state.turn_clock} actorName={actorNameById(state.turn_clock?.actor_ids?.[0])} />
           {visibleBattleRoll && <BattleRollCard event={visibleBattleRoll} context={visibleBattleRollContext} />}
           <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
           <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>

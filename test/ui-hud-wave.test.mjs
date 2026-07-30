@@ -47,7 +47,8 @@ test('подтверждённый бросок разбирается возл�
 
 test('предпросмотр области использует общий модуль геометрии', () => {
   assert.match(appSource, /import \{ areaCells \} from '\.\/area-geometry'/u)
-  assert.match(appSource, /const previewBlastKeys = new Set\(/u)
+  assert.match(appSource, /const previewBlastKeys = useMemo\(\(\) => \{/u)
+  assert.match(appSource, /if \(!previewBlastCenter \|\| !active \|\| previewBlastSizeFeet <= 0\) return new Set<string>\(\)/u)
   assert.match(appSource, /const inBlastArea = previewBlastKeys\.has\(cellKey\)/u)
   assert.doesNotMatch(appSource, /function boardCellInCone/u)
   assert.doesNotMatch(appSource, /function boardCellInDirectedCube/u)
@@ -67,6 +68,7 @@ test('сигнал своего хода уважает видимость вк�
 test('боевой HUD показывает только серверный turn_clock и не решает авто-пропуск сам', () => {
   assert.match(appSource, /function CombatTurnClock/u)
   assert.match(appSource, /turnClockPresentation\(clock, now\)/u)
-  assert.match(appSource, /<CombatTurnClock clock=\{state\.turn_clock\}/u)
+  assert.match(appSource, /<CombatTurnClock clock=\{state\.turn_clock\} actorName=\{actorNameById\(state\.turn_clock\?\.actor_ids\?\.\[0\]\)\}/u)
+  assert.match(appSource, /ДО АВТОПРОПУСКА'\}\{actorName \? ` · \$\{actorName\}`/u)
   assert.doesNotMatch(appSource, /fetch\([^)]*system-tick/u)
 })
