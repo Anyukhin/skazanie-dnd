@@ -10,7 +10,7 @@ import {
 } from '../server/tactical-map.mjs'
 import {
   RULE_IDS, RulesEngine, RulesValidationError, abilityModifier, applyGameEvent,
-  hasClearTrajectory, normalizeCampaignState, replayEvents, resolveCommand, resolveCommands, validateCommand,
+  hasClearTrajectory, normalizeCampaignState, replayEvents, resolveCommand, resolveCommands, shortestTacticalPath, validateCommand,
 } from '../server/rules-engine.mjs'
 import { loadRulePack } from '../server/rule-pack.mjs'
 
@@ -343,6 +343,37 @@ test('MoveActor выбирает дешёвый путь по static moveCost и
   const replayed = replayEvents(state, result.events)
   assert.deepEqual(replayed.mechanics.positions.hero, { x: 4, y: 0 })
   assert.equal(replayed.mechanics.combat.action_economy.hero.movement_spent, 30)
+})
+
+test('взвешенный поиск переиспользует одну декодированную карту на всех кандидатах', () => {
+  const width = 20
+  const height = 20
+  const cells = Array.from({ length: width * height }, (_, index) => ({
+    x: index % width,
+    y: Math.floor(index / width),
+    type: 'floor',
+    revealed: true,
+  }))
+  const map = tacticalMapFromLegacyCells(cells)
+  const state = normalizeCampaignState({
+    partyMemberIds: ['hero'],
+    players: [{ id: 'hero', character: 'Адара', hp: 12, maxHp: 12, x: 0, y: 0, inventory: [] }],
+    scene: { cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map), turn: 1 },
+  })
+  const seenMaps = new Set()
+  let inspectedCandidates = 0
+  const path = shortestTacticalPath(state, 'hero', { x: width - 1, y: height - 1 }, {
+    tacticalMap: map,
+    stepCost: (_step, decodedMap) => {
+      inspectedCandidates += 1
+      seenMaps.add(decodedMap)
+      return 5
+    },
+  })
+
+  assert.equal(path.length, width + height - 2)
+  assert.ok(inspectedCandidates > width * height, 'поиск обязан посетить достаточно кандидатов для проверки горячего пути')
+  assert.deepEqual([...seenMaps], [map], 'число объектов карты не растёт вместе с числом кандидатов')
 })
 
 function opportunityState({ heroHp = 12, disengaged = false } = {}) {

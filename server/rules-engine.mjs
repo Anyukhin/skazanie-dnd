@@ -1625,7 +1625,11 @@ function occupiedPositions(state, exceptActorId = null) {
  * `stepCost` switches the search to a weighted path without changing the
  * step-count semantics used by NPC planning and other existing callers.
  */
-export function shortestTacticalPath(state, actorIdValue, destination, { allowOccupiedDestination = false, stepCost = null } = {}) {
+export function shortestTacticalPath(state, actorIdValue, destination, {
+  allowOccupiedDestination = false,
+  stepCost = null,
+  tacticalMap = undefined,
+} = {}) {
   const from = actorPosition(state, actorIdValue)
   const to = { x: Number(destination?.x), y: Number(destination?.y) }
   if (!from || !Number.isSafeInteger(to.x) || !Number.isSafeInteger(to.y)) return null
@@ -1637,7 +1641,10 @@ export function shortestTacticalPath(state, actorIdValue, destination, { allowOc
   // Закрытая и запертая дверь останавливают шаг. Карта может отсутствовать у
   // состояния, сохранённого до перехода на слои, — тогда путь считается по
   // клеткам, как раньше.
-  const map = sceneTacticalMap(state)
+  // Weighted search may inspect thousands of candidate steps. Decode the map
+  // once before the loop (or reuse the caller's decoded instance), never from
+  // the per-step cost predicate.
+  const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
   const start = positionKey(from)
   const target = positionKey(to)
   const previous = new Map([[start, null]])
@@ -1699,7 +1706,7 @@ export function shortestTacticalPath(state, actorIdValue, destination, { allowOc
         if (!isWalkableCell(cells.get(next))) continue
         if (occupied.has(next) && !(allowOccupiedDestination && next === target)) continue
         if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
-        const weight = Math.max(1, Number(stepCost({ x: nextX, y: nextY })) || 1)
+        const weight = Math.max(1, Number(stepCost({ x: nextX, y: nextY }, map)) || 1)
         const nextCost = current.cost + weight
         if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
         costs.set(next, nextCost)
@@ -3887,8 +3894,7 @@ function activeAreaEffectsAt(state, position) {
 }
 
 /** Статическая и длящаяся труднопроходимость — одно правило и одна доплата. */
-function isDifficultTerrainAt(state, position) {
-  const map = sceneTacticalMap(state)
+function isDifficultTerrainAt(state, position, map) {
   const mapCell = map ? cellAt(map, Number(position?.x), Number(position?.y)) : null
   return Number(mapCell?.moveCost ?? 1) > 1
     || activeAreaEffectsAt(state, position).some((effect) => effect.difficult_terrain === true)
@@ -7178,11 +7184,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (!isWalkableCell(cells.get(positionKey(to))) || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
           throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
         }
+        const map = sceneTacticalMap(state)
         const ignoresTerrain = ignoresDifficultTerrain(state, command.actor_id)
         const crawling = conditionIdsFor(state, command.actor_id).has('prone')
         path = shortestTacticalPath(state, command.actor_id, to, {
-          stepCost: (step) => 5
-            + (!ignoresTerrain && isDifficultTerrainAt(state, step) ? 5 : 0)
+          tacticalMap: map,
+          stepCost: (step, pathMap) => 5
+            + (!ignoresTerrain && isDifficultTerrainAt(state, step, pathMap) ? 5 : 0)
             + (crawling ? 5 : 0),
         })
         if (!path?.length) throw new RulesValidationError('До клетки назначения нет свободного пути', 'PATH_BLOCKED')
@@ -7213,7 +7221,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         distance = path.length * 5
         const difficultSteps = ignoresTerrain
           ? 0
-          : path.filter((step) => isDifficultTerrainAt(state, step)).length
+          : path.filter((step) => isDifficultTerrainAt(state, step, map)).length
         const crawlingSteps = crawling ? path.length : 0
         movementCost = distance + difficultSteps * 5 + crawlingSteps * 5
         const speed = effectiveSpeedFeet(state, actor, command.actor_id)
