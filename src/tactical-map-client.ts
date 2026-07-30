@@ -1,7 +1,7 @@
 import type {
   MapCell, SerializedRevealDelta, SerializedTacticalMap, TacticalCell, TacticalCover, TacticalDoor,
   TacticalDoorState, TacticalEdge, TacticalEdgeDirection, TacticalEdgeKind, TacticalLayers, TacticalMap,
-  TacticalFloorDirection, TacticalMaterial, TacticalProp, TacticalSpawnRole, TacticalSurface, TacticalZone, TacticalZoneKind,
+  SceneObjectIntent, TacticalFloorDirection, TacticalMaterial, TacticalProp, TacticalSpawnRole, TacticalSurface, TacticalZone, TacticalZoneKind,
 } from './types'
 
 /**
@@ -22,6 +22,7 @@ export const DOOR_STATES: readonly TacticalDoorState[] = ['open', 'closed', 'loc
 export const ZONE_KINDS: readonly TacticalZoneKind[] = ['interior', 'exterior']
 export const FLOOR_DIRECTIONS: readonly TacticalFloorDirection[] = ['horizontal', 'vertical']
 export const SPAWN_ROLES: readonly TacticalSpawnRole[] = ['party', 'enemy', 'neutral']
+const SCENE_OBJECT_INTENTS: readonly SceneObjectIntent[] = ['inspect', 'open', 'take', 'use']
 
 const MAX_WIDTH = 100
 const MAX_HEIGHT = 100
@@ -365,6 +366,17 @@ function decodeProp(value: unknown): TacticalProp | null {
   const id = text(raw.id, 120)
   if (!id) return null
   const scale = Number(raw.scale)
+  const rawInteraction = raw.interaction && typeof raw.interaction === 'object'
+    ? raw.interaction as Record<string, unknown>
+    : null
+  const interactionKind = rawInteraction ? text(rawInteraction.kind, 60) : ''
+  const interactionVerbs = rawInteraction && Array.isArray(rawInteraction.verbs)
+    ? [...new Set(rawInteraction.verbs.filter((verb): verb is SceneObjectIntent => SCENE_OBJECT_INTENTS.includes(verb as SceneObjectIntent)))]
+    : []
+  const legacyInteractionKind = text(raw.interactionKind, 60)
+  const legacyInteractionVerbs = Array.isArray(raw.interactionVerbs)
+    ? [...new Set(raw.interactionVerbs.filter((verb): verb is SceneObjectIntent => SCENE_OBJECT_INTENTS.includes(verb as SceneObjectIntent)))]
+    : []
   return {
     id,
     assetId: text(raw.assetId, 120),
@@ -384,6 +396,15 @@ function decodeProp(value: unknown): TacticalProp | null {
     hp: boundedInteger(raw.hp, 0, 0, 1_000),
     interactive: raw.interactive === true,
     state: text(raw.state, 40),
+    ...(rawInteraction && interactionKind ? {
+      interaction: {
+        kind: interactionKind,
+        verbs: interactionVerbs,
+        pointOfInterest: rawInteraction.pointOfInterest === true,
+      },
+    } : {}),
+    ...(legacyInteractionKind ? { interactionKind: legacyInteractionKind } : {}),
+    ...(legacyInteractionVerbs.length ? { interactionVerbs: legacyInteractionVerbs } : {}),
   }
 }
 

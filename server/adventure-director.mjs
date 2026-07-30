@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
 import { SIZE_CLASSES, legacyCellsFromTacticalMap } from './tactical-map.mjs'
+import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './scene-interactions.mjs'
 import { REFERENCE_SIZE } from './building-generator.mjs'
 import {
   buildThemedScene,
@@ -29,6 +30,42 @@ function text(value, maxLength, fallback = '') {
 function integer(value, fallback, minimum, maximum) {
   const number = Number(value)
   return Number.isSafeInteger(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback
+}
+
+/**
+ * Свежий тематический генератор иногда раскладывает только визуальные assets
+ * (деревья, сталагмиты, дорожные знаки), которые не входят в словарь механики.
+ * До сохранения новой сцены заменяем максимум два уже существующих предмета на
+ * канонические aliases словаря. Число feature и обязательные лестницы не
+ * меняются; remembered maps сюда не проходят.
+ *
+ * @param {ReturnType<typeof legacyCellsFromTacticalMap>} cells
+ * @param {string|number} seed
+ */
+function ensureSceneInteractionFeatures(cells, seed) {
+  let supported = cells.filter((cell) => sceneInteractionCatalogEntry(cell.feature)).length
+  if (supported >= 2) return cells
+  const fallbackAssets = sceneInteractionFallbackAssets()
+  const replaceable = cells
+    .filter((cell) => (
+      typeof cell.feature === 'string'
+      && cell.feature !== 'enemy'
+      && !/stairs/iu.test(cell.feature)
+      && !sceneInteractionCatalogEntry(cell.feature)
+    ))
+    .map((cell) => ({
+      cell,
+      score: createHash('sha256').update(`${seed}:poi-feature:${cell.x}:${cell.y}:${cell.feature}`).digest().readUInt32LE(0),
+    }))
+    .sort((left, right) => left.score - right.score || left.cell.y - right.cell.y || left.cell.x - right.cell.x)
+  for (const candidate of replaceable) {
+    const feature = fallbackAssets[(candidate.score + supported) % fallbackAssets.length]
+    if (!feature) break
+    candidate.cell.feature = feature
+    supported += 1
+    if (supported >= 2) break
+  }
+  return cells
 }
 
 function publicText(value, maximum, fallback = '') {
@@ -171,7 +208,7 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locat
       width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
       height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
     })
-    return legacyCellsFromTacticalMap(built.map)
+    return ensureSceneInteractionFeatures(legacyCellsFromTacticalMap(built.map), seed)
   }
   // Сейчас сюда не попадает ни одна сцена: `fallbackThemeFor` всегда возвращает
   // тему, а `live` стоит у всех семи. Ветка остаётся предохранителем на случай

@@ -1,4 +1,5 @@
 import { NARRATOR_PRIORITY, assertNarratorContract } from './deterministic-narration.mjs'
+import { sceneInteractionNarration } from './scene-interactions.mjs'
 
 /**
  * Боевой текст для ленты: удары, состояния, спасброски, ход времени.
@@ -67,6 +68,8 @@ function attackConditionReason(payload) {
 function tacticalNarration(events, state) {
   const meaningful = []
   const turns = []
+  const sceneInteraction = sceneInteractionNarration(events)
+  if (sceneInteraction) meaningful.push(sceneInteraction)
   const partyFailed = (events ?? []).some((event) => event?.event_type === 'CampaignFailed')
   for (const event of events ?? []) {
     const payload = event.payload ?? {}
@@ -203,6 +206,9 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
   'KnockoutEnded', 'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
+  'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected',
+  'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
+  'SceneObjectStateChanged',
   'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed', 'TurnEnded',
   'TurnStarted',
 ]))

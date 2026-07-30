@@ -9,7 +9,7 @@ import {
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SummonedCreature } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
@@ -57,6 +57,12 @@ const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 150
 const UI_SCALE_PRESETS = [80, 90, 100, 110, 115, 125, 150]
 const BASE_ATTACK_ID = '__base-attack__'
+const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
+  inspect: 'Осмотреть',
+  open: 'Открыть',
+  take: 'Взять',
+  use: 'Использовать',
+}
 const SPELL_OPTION_LABELS: Record<string, string> = {
   approach: 'Подойди',
   drop: 'Брось',
@@ -106,6 +112,23 @@ function spellActionType(spell?: CombatSpell | null): CombatSpell['actionType'] 
 
 function chebyshevFeet(from: { x: number; y: number }, to: { x: number; y: number }) {
   return Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * CELL_FEET
+}
+
+function sceneObjectCells(prop: TacticalProp) {
+  return prop.footprint.length
+    ? prop.footprint
+    : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
+}
+
+function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
+  const projected = prop.interaction?.verbs ?? prop.interactionVerbs ?? []
+  return [...new Set(projected.filter((verb): verb is SceneObjectIntent => (
+    verb === 'inspect' || verb === 'open' || verb === 'take' || verb === 'use'
+  )))]
+}
+
+function sceneObjectLabel(prop: TacticalProp) {
+  return prop.interaction?.pointOfInterest ? 'Точка интереса' : 'Объект сцены'
 }
 
 function boardCellInCone(cell: { x: number; y: number }, origin: { x: number; y: number }, toward: { x: number; y: number }, rangeFeet: number) {
@@ -600,7 +623,7 @@ function boardMapArt(state: GameState, visualTheme: string) {
   return BOARD_MAP_LIBRARY.dungeon
 }
 
-function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onFinishTurn, onFreeAction, narrating, statusContent, children }: {
+function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onFinishTurn, onFreeAction, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -620,6 +643,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => void
   onChangeWeapon: (actorId: string, itemId: string) => void
   onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => void
+  onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => void
   onFinishTurn: () => void
   onFreeAction: (text: string) => void
   narrating: boolean
@@ -650,6 +674,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   })
   const [draggedTileId, setDraggedTileId] = useState<string | null>(null)
   const [hoveredDoorId, setHoveredDoorId] = useState<string | null>(null)
+  const [selectedSceneObjectId, setSelectedSceneObjectId] = useState<string | null>(null)
+  const [hoveredSceneObjectId, setHoveredSceneObjectId] = useState<string | null>(null)
   useEffect(() => {
     const root = document.documentElement.style
     if (railHeight) root.setProperty('--ui-rail-height', `${railHeight}px`)
@@ -732,6 +758,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const { columns: cellColumns, rows: cellRows } = mapGridDimensions(state.scene.cells)
   // Канон сцены — `scene.map`; старая проекция без него собирается из клеток.
   const boardMap = useMemo(() => sceneTacticalMap(state.scene), [state.scene])
+  useEffect(() => setSelectedSceneObjectId(null), [boardMap?.locationId])
   const columns = boardMap?.width ?? cellColumns
   const rows = boardMap?.height ?? cellRows
   const irregularMap = state.scene.cells.length < columns * rows
@@ -872,6 +899,17 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const doorsAtHand = active && boardMap
     ? doorsReachableFrom(boardMap, active.x, active.y).filter((door) => door.state !== 'broken')
     : []
+  const interactiveSceneObjects = (boardMap?.props ?? []).filter((prop) => prop.interactive)
+  const sceneObjectsAtHand = active
+    ? interactiveSceneObjects.filter((prop) => sceneObjectCells(prop).some((cell) => chebyshevFeet(active, cell) <= CELL_FEET))
+    : []
+  const selectedSceneObject = interactiveSceneObjects.find((prop) => prop.id === selectedSceneObjectId) ?? null
+  const selectedSceneObjectAtHand = Boolean(selectedSceneObject && sceneObjectsAtHand.some((prop) => prop.id === selectedSceneObject.id))
+  const selectedSceneObjectVerbs = selectedSceneObject ? sceneObjectVerbs(selectedSceneObject) : []
+  const sceneObjectByCell = new Map<string, TacticalProp>()
+  for (const prop of [...interactiveSceneObjects].sort((left, right) => left.zOrder - right.zOrder)) {
+    for (const cell of sceneObjectCells(prop)) sceneObjectByCell.set(boardPositionKey(cell.x, cell.y), prop)
+  }
   const movementLimit = combatActive ? remainingFeet : Number.POSITIVE_INFINITY
   const reachable = selected && active && movementAvailable
     ? new Set([...movementPaths.entries()].filter(([, route]) => route.costFeet <= movementLimit).map(([key]) => key))
@@ -1149,6 +1187,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       specialBlockReason: targetSpecialBlock,
     }) : null
     const cellKey = cell.x + ',' + cell.y
+    const sceneObject = sceneObjectByCell.get(cellKey)
     const canMoveHere = reachable.has(cellKey)
     const route = movementPaths.get(cellKey)
     const moveReason = active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null
@@ -1170,9 +1209,13 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         ? boardCellInDirectedCube(cell, active, blastCenter, blastRadius)
         : chebyshevFeet(blastCenter, cell) <= blastRadius))
     const inPersistentSpellArea = Boolean((state.mechanics?.active_effects ?? []).some((effect) => effect.center && chebyshevFeet(effect.center, cell) <= Number(effect.radius_feet ?? 0)))
-    const cellIsInteractive = (canMoveHere || canAimHere) && !occupied
+    // У объекта собственная кнопка поверх его печатного изображения. Клетка
+    // остаётся div, чтобы не вкладывать кнопку объекта в кнопку маршрута/цели.
+    const cellIsInteractive = Boolean(!sceneObject && (canMoveHere || canAimHere) && !occupied)
     const cellFeedback = visibleMapFeedback.filter((item) => item.x === cell.x && item.y === cell.y)
-    const cellLabel = canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}` : canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}` : canMoveHere ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}` : moveReason ?? undefined
+    const cellLabel = sceneObject
+      ? `Выбрать: ${sceneObjectLabel(sceneObject)}`
+      : canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}` : canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}` : canMoveHere ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}` : moveReason ?? undefined
     const enemyKind = enemy ? enemyVisualKind(enemy) : null
     const enemyHealth = enemy ? enemyHealthPresentation(enemy) : null
     const enemyCommandAllowed = Boolean(canWeaponTargetEnemy || canSpellTargetEnemy || canActionTargetEnemy || canThrowHere || canPointSpellHere)
@@ -1196,6 +1239,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       inPersistentSpellArea ? 'spell-terrain' : '',
       inBlastArea ? 'blast-area' : '',
       pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '',
+      sceneObject ? 'scene-object-target' : '',
+      sceneObject?.id === selectedSceneObjectId ? 'scene-object-selected' : '',
       occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : 'occupied-by-enemy' : '',
     ].filter(Boolean)
     const cellTitle = opportunityRisk && !canAimHere
@@ -1213,8 +1258,16 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       interactive: cellIsInteractive,
       ariaLabel: cellLabel,
       title: cellTitle,
-      onPointerEnter: () => { if (canAimHere) setAimCell({ x: cell.x, y: cell.y }); else if (canMoveHere) setHoveredMoveKey(cellKey) },
-      onPointerLeave: () => { if (canAimHere && !pendingCommand) setAimCell(null); if (hoveredMoveKey === cellKey) setHoveredMoveKey(null) },
+      onPointerEnter: () => {
+        if (sceneObject) setHoveredSceneObjectId(sceneObject.id)
+        if (canAimHere) setAimCell({ x: cell.x, y: cell.y })
+        else if (canMoveHere) setHoveredMoveKey(cellKey)
+      },
+      onPointerLeave: () => {
+        if (sceneObject) setHoveredSceneObjectId((current) => current === sceneObject.id ? null : current)
+        if (canAimHere && !pendingCommand) setAimCell(null)
+        if (hoveredMoveKey === cellKey) setHoveredMoveKey(null)
+      },
       onActivate: () => {
         if (!selected || (!canMoveHere && !canAimHere)) return
         if (canPointSpellHere) castAtCell(cell.x, cell.y)
@@ -1223,6 +1276,35 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         else setPendingMoveKey(cellKey)
       },
       children: <>
+        {sceneObject && <button
+          type="button"
+          className="scene-object-hotspot"
+          style={{
+            position: 'absolute',
+            inset: '12%',
+            zIndex: 3,
+            padding: 0,
+            border: sceneObject.id === selectedSceneObjectId ? '2px solid rgba(236, 187, 118, .92)' : '1px solid transparent',
+            borderRadius: '35%',
+            background: 'transparent',
+            boxShadow: sceneObject.id === selectedSceneObjectId ? '0 0 16px rgba(218, 137, 53, .78)' : 'none',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+          }}
+          aria-label={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
+          aria-pressed={sceneObject.id === selectedSceneObjectId}
+          title={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+          onPointerEnter={() => setHoveredSceneObjectId(sceneObject.id)}
+          onPointerLeave={() => setHoveredSceneObjectId((current) => current === sceneObject.id ? null : current)}
+          onFocus={() => setHoveredSceneObjectId(sceneObject.id)}
+          onBlur={() => setHoveredSceneObjectId((current) => current === sceneObject.id ? null : current)}
+          onClick={(event) => {
+            event.stopPropagation()
+            setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
+          }}
+        />}
         {routeStep && <span className="route-step-badge" aria-hidden="true">{routeStep}</span>}
         {/* След на клетке: лежит в плоскости доски, поэтому при любом повороте и
             наклоне точно совпадает с сеткой. Фигурка стоит стоймя и из-за этого
@@ -1347,6 +1429,14 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const highlightedDoor = doorsAtHand.find((door) => door.id === hoveredDoorId)
   if (highlightedDoor) {
     for (const cell of doorOverlayCells(highlightedDoor)) {
+      boardOverlay.push({ ...cell, kind: 'command-range' })
+    }
+  }
+  const highlightedSceneObject = sceneObjectsAtHand.find((prop) => (
+    prop.id === (hoveredSceneObjectId ?? selectedSceneObjectId)
+  ))
+  if (highlightedSceneObject) {
+    for (const cell of sceneObjectCells(highlightedSceneObject)) {
       boardOverlay.push({ ...cell, kind: 'command-range' })
     }
   }
@@ -1659,7 +1749,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           {/* Кнопки шага: вне боя это подтверждение выбранной цели и двери под
               рукой, в бою — ещё нокаут, смена оружия и завершение хода. Без
               содержимого блок не рисуется, и плитки занимают всю карточку. */}
-          {(combatActive || pendingCommand || doorsAtHand.length > 0) && <div className="hotbar-turn-controls">
+          {(combatActive || pendingCommand || doorsAtHand.length > 0 || selectedSceneObject) && <div className="hotbar-turn-controls">
             {/* Дверь рядом — единственное, что делается и вне боя: заперто это
                 или просто прикрыто, игрок видит по самой кнопке. */}
             {doorsAtHand.map((door) => {
@@ -1675,6 +1765,29 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                 ? <button {...hoverProps} key={door.id} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Запертая дверь на ${direction}. Проверка Силы (Атлетика), СЛ ${lockDc}. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь ({direction}, СЛ {lockDc})</span></button>
                 : <button {...hoverProps} key={door.id} className="door-control" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')} title={`${door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь на ${direction}: свободное взаимодействие`}><CombatIcon id={`door-${door.id}`} kind="swap" hint="открыть закрыть дверь проём" size={27} compact /><span>{door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь ({direction})</span></button>
             })}
+            {selectedSceneObject && selectedSceneObjectVerbs.map((intent) => {
+              const label = SCENE_OBJECT_VERB_LABELS[intent]
+              const unavailable = !selectedSceneObjectAtHand
+              const hoverProps = {
+                onPointerEnter: () => setHoveredSceneObjectId(selectedSceneObject.id),
+                onPointerLeave: () => setHoveredSceneObjectId((current) => current === selectedSceneObject.id ? null : current),
+                onFocus: () => setHoveredSceneObjectId(selectedSceneObject.id),
+                onBlur: () => setHoveredSceneObjectId((current) => current === selectedSceneObject.id ? null : current),
+              }
+              return <button
+                {...hoverProps}
+                type="button"
+                key={`${selectedSceneObject.id}:${intent}`}
+                className={`scene-object-control intent-${intent}`}
+                disabled={!canAct || tacticalBusy || unavailable}
+                onClick={() => selected && onOperateSceneObject(selected, selectedSceneObject.id, intent)}
+                title={unavailable ? 'Подойдите к объекту на соседнюю клетку' : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
+              >
+                <CombatIcon id={`scene-object-${intent}`} kind={intent === 'take' ? 'item' : intent === 'inspect' ? 'spellbook' : 'action'} hint={`${label} объект сцены`} size={27} compact />
+                <span>{label}</span>
+              </button>
+            })}
+            {selectedSceneObject && selectedSceneObjectVerbs.length === 0 && <button type="button" className="scene-object-control" disabled title="Сервер не открыл доступных действий для этого объекта"><span>Нет доступных действий</span></button>}
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
             {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
@@ -2616,7 +2729,7 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -2899,6 +3012,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onUseCombatAction={useCombatAction}
             onChangeWeapon={changeWeapon}
             onOperateDoor={operateDoor}
+            onOperateSceneObject={operateSceneObject}
             onFinishTurn={finishMapTurn}
             onFreeAction={submitAction}
             narrating={state.isNarrating}

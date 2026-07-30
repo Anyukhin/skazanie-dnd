@@ -75,3 +75,19 @@ test('гибель последнего героя ведёт к эпилогу 
   assert.match(text, /история завершилась поражением/iu)
   assert.doesNotMatch(text, /воскресить|заменить/iu)
 })
+
+test('взаимодействие со сценой попадает в летопись только из committed события', () => {
+  const hidden = combatNarration([], state)
+  const revealed = combatNarration([
+    event('SceneObjectOperated', { prop_id: 'prop-rune', kind: 'relic', intent: 'inspect' }),
+    event('SceneObjectKnowledgeRevealed', {
+      prop_id: 'prop-rune',
+      detail_key: 'relic:warning-glyph',
+      text: 'Надпись предупреждает не тревожить печать без нужды.',
+    }),
+  ], state)
+  assert.equal(hidden, '')
+  assert.match(revealed, /Надпись предупреждает/u)
+  assert.doesNotMatch(revealed, /relic:warning-glyph/u)
+  assert.equal(hasCombatNarrationEvent([event('SceneObjectKnowledgeRevealed')]), true)
+})

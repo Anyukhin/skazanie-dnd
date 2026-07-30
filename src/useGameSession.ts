@@ -4,7 +4,7 @@ import { fetchWithTimeout, generateItemImage, narrateWithAgent, rollDice, rollSh
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult, SceneObjectIntent } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -20,6 +20,7 @@ type TacticalCommand =
   | { command_type: 'UseCombatAction'; actor_id: string; action_id: string; target_id?: string; item_id?: string }
   | { command_type: 'ChangeWeapon'; actor_id: string; item_id: string }
   | { command_type: 'OperateDoor'; actor_id: string; door_id: string; intent: 'open' | 'close' | 'force' }
+  | { command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent }
   | { command_type: 'EndTurn'; actor_id: string }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
   | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
@@ -922,6 +923,21 @@ export function useGameSession() {
     void executeTacticalCommand({ command_type: 'OperateDoor', actor_id: playerId, door_id: doorId, intent }, label)
   }, [executeTacticalCommand])
 
+  const operateSceneObject = useCallback((actorId: string, propId: string, intent: SceneObjectIntent) => {
+    const label: Record<SceneObjectIntent, string> = {
+      inspect: 'Осмотреть объект сцены',
+      open: 'Открыть объект сцены',
+      take: 'Взять объект сцены',
+      use: 'Использовать объект сцены',
+    }
+    void executeTacticalCommand({
+      command_type: 'OperateSceneObject',
+      actor_id: actorId,
+      prop_id: propId,
+      intent,
+    }, label[intent])
+  }, [executeTacticalCommand])
+
   const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => {
     void executeTacticalCommand({
       command_type: 'UseCombatAction', actor_id: actorId, action_id: actionId,
@@ -1293,6 +1309,7 @@ export function useGameSession() {
     useCombatAction,
     changeWeapon,
     operateDoor,
+    operateSceneObject,
     finishMapTurn,
     resolveHeroDeath,
     equipItem,

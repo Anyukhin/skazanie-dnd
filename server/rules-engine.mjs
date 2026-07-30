@@ -142,6 +142,12 @@ import {
   validateCharacterImportCommand,
   validateLevelUpCommand,
 } from './character-lifecycle.mjs'
+import {
+  SCENE_INTERACTION_POLICY_ID,
+  sceneInteractionDefinition,
+  sceneObjectDistance,
+  sceneObjectLoot,
+} from './scene-interactions.mjs'
 
 export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // 4: карта сцены хранится слоями в `scene.map`, а `scene.cells` стал производной
@@ -149,7 +155,7 @@ export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // файловой миграции не требуется.
 // 5: новые HeroDied больше не меняют lifecycle напрямую; старые события
 // сохраняют прежнюю семантику при replay, а новые завершаются CampaignFailed.
-export const GAME_STATE_PROJECTOR_VERSION = 5
+export const GAME_STATE_PROJECTOR_VERSION = 6
 
 export const RULE_IDS = Object.freeze({
   abilityCheck: `${DEFAULT_RULESET_ID}:checks:ability-check`,
@@ -251,6 +257,7 @@ const COMMAND_RULES = Object.freeze({
   // и то и другое живёт в экономике хода. Проверку Силы команда добавляет себе
   // сама, когда до неё доходит дело.
   OperateDoor: [RULE_IDS.turns],
+  OperateSceneObject: [RULE_IDS.turns],
   StartCombat: [RULE_IDS.initiative],
   EndCombat: [RULE_IDS.initiative, RULE_IDS.turns],
   EndTurn: [RULE_IDS.turns],
@@ -303,7 +310,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
+  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -965,6 +972,25 @@ function normalizeProgression(input) {
   }
 }
 
+function normalizeSceneInteractions(input) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  return Object.fromEntries(Object.entries(source).slice(0, 2_000).flatMap(([propId, value]) => {
+    if (!propId || !value || typeof value !== 'object' || Array.isArray(value)) return []
+    return [[String(propId).slice(0, 120), {
+      state: String(value.state ?? 'idle').slice(0, 40),
+      inspected: value.inspected === true,
+      opened: value.opened === true,
+      taken: value.taken === true,
+      used: value.used === true,
+      loot_claimed: value.loot_claimed === true,
+      loot_revealed: value.loot_revealed === true,
+      trap_detected: value.trap_detected === true,
+      knowledge_ids: uniqueStrings(value.knowledge_ids).slice(0, 24),
+      last_actor_id: value.last_actor_id == null ? null : String(value.last_actor_id).slice(0, 120),
+    }]]
+  }))
+}
+
 function defaultMechanics() {
   return {
     schema_version: 1,
@@ -976,6 +1002,7 @@ function defaultMechanics() {
     concentration: {},
     positions: {},
     item_appraisals: {},
+    scene_interactions: {},
     encounter: null,
     active_effects: [],
     progression: { milestones: [], milestones_since_level: 0, milestones_per_level: MILESTONES_PER_LEVEL, level_up_available: false },
@@ -1073,6 +1100,7 @@ export function normalizeCampaignState(input = {}) {
   mechanics.concentration = clone(state.mechanics?.concentration ?? {})
   mechanics.positions = clone(state.mechanics?.positions ?? {})
   mechanics.item_appraisals = clone(state.mechanics?.item_appraisals ?? {})
+  mechanics.scene_interactions = normalizeSceneInteractions(state.mechanics?.scene_interactions)
   mechanics.enemy_knowledge = normalizeEnemyKnowledge(state.mechanics?.enemy_knowledge)
   mechanics.encounter = state.mechanics?.encounter && typeof state.mechanics.encounter === 'object'
     ? clone(state.mechanics.encounter)
@@ -1413,6 +1441,52 @@ function setSceneDoorState(state, doorId, doorState) {
 }
 
 /** Ставит предмет в клетку, заменяя прежний предмет той же клетки. */
+function setSceneObjectPropState(state, propId, propState) {
+  const map = ensureSceneTacticalMap(state)
+  if (!map) return state
+  const prop = map.props.find((candidate) => String(candidate.id) === String(propId ?? ''))
+  if (!prop) return state
+  prop.state = String(propState ?? '').slice(0, 40)
+  return writeSceneTacticalMap(state, map)
+}
+
+function sceneObjectState(state, prop, definition) {
+  const saved = state.mechanics.scene_interactions?.[String(prop.id)]
+  const projectedState = ['open', 'taken', 'used'].includes(String(prop.state)) ? String(prop.state) : ''
+  return saved ?? {
+    state: String(projectedState || definition.initialState || 'idle').slice(0, 40),
+    inspected: false,
+    opened: projectedState === 'open',
+    taken: projectedState === 'taken',
+    used: projectedState === 'used',
+    loot_claimed: projectedState === 'taken',
+    loot_revealed: projectedState === 'open' || projectedState === 'taken',
+    trap_detected: false,
+    knowledge_ids: [],
+    last_actor_id: null,
+  }
+}
+
+function updateSceneObjectInteraction(state, propId, updater) {
+  const id = String(propId ?? '').slice(0, 120)
+  if (!id) return null
+  const current = state.mechanics.scene_interactions[id] ?? {
+    state: 'idle',
+    inspected: false,
+    opened: false,
+    taken: false,
+    used: false,
+    loot_claimed: false,
+    loot_revealed: false,
+    trap_detected: false,
+    knowledge_ids: [],
+    last_actor_id: null,
+  }
+  const next = updater({ ...current, knowledge_ids: [...(current.knowledge_ids ?? [])] })
+  state.mechanics.scene_interactions[id] = next
+  return next
+}
+
 function setScenePropAt(state, x, y, assetId) {
   const map = ensureSceneTacticalMap(state)
   if (!map) return state
@@ -2240,6 +2314,11 @@ function normalizeCommand(input, state) {
     command.resolution = String(command.resolution ?? '')
     command.replacement_name = command.replacement_name == null ? '' : String(command.replacement_name).trim().slice(0, 120)
   }
+  if (command.command_type === 'OperateSceneObject') {
+    command.prop_id = String(command.prop_id ?? command.propId ?? '').slice(0, 120)
+    command.intent = String(command.intent ?? 'inspect')
+    command.approach = command.approach === 'force' ? 'force' : 'hand'
+  }
   command.expected_state_version = safeInteger(command.expected_state_version ?? command.expectedStateVersion, state.state_version)
   return command
 }
@@ -2248,7 +2327,7 @@ function needsActor(type) {
   return new Set(['DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
-    'UseCombatAction', 'MoveActor', 'EndCombat', 'EndTurn', 'StartRest', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
+    'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn', 'StartRest', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -2378,7 +2457,7 @@ function assertActorPermission(command, context, state) {
 
 function assertTurn(command, state, context = {}) {
   const combat = state.mechanics.combat
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'IdentifyEnemy', 'MoveActor', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'IdentifyEnemy', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   // Дополнительные лучи одного заклинания — часть уже совершённого действия,
   // а не новое применение: экономика хода за них не платит второй раз.
@@ -3150,6 +3229,15 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'AddCondition' && !String(command.condition || '').trim()) {
     throw new RulesValidationError('Не указано состояние', 'CONDITION_REQUIRED')
+  }
+  if (command.command_type === 'OperateSceneObject') {
+    if (!command.prop_id) throw new RulesValidationError('Не выбран объект сцены', 'SCENE_OBJECT_REQUIRED')
+    if (!['inspect', 'open', 'take', 'use'].includes(command.intent)) {
+      throw new RulesValidationError('Неизвестный способ взаимодействия с объектом сцены', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+    }
+    if (command.approach === 'force' && command.server_authoritative !== true && context.serverAuthoritativeCombat !== true) {
+      throw new RulesValidationError('Силовой подход выбирает только серверный разбор свободного действия', 'SCENE_OBJECT_FORCE_FORBIDDEN')
+    }
   }
   return command
 }
@@ -7210,6 +7298,195 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, []))
       break
     }
+    case 'OperateSceneObject': {
+      const map = ensureSceneTacticalMap(state)
+      if (!map) throw new RulesValidationError('Для объекта нужна тактическая карта', 'TACTICAL_MAP_REQUIRED')
+      const prop = map.props.find((candidate) => String(candidate.id) === command.prop_id)
+      if (!prop) throw new RulesValidationError('Такого объекта нет на карте', 'SCENE_OBJECT_NOT_FOUND')
+      if (prop.interactive !== true) throw new RulesValidationError('Этот объект не отмечен как интерактивный', 'SCENE_OBJECT_NOT_INTERACTIVE')
+      const definition = sceneInteractionDefinition({ mapSeed: map.seed, props: map.props, propId: prop.id })
+      if (!definition) throw new RulesValidationError('Для этого объекта нет серверного правила взаимодействия', 'SCENE_OBJECT_UNSUPPORTED')
+      if (!definition.verbs.includes(command.intent)) {
+        throw new RulesValidationError('Для этого объекта такое действие недоступно', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+      }
+      const at = actorPosition(state, command.actor_id)
+      if (!at) throw new RulesValidationError('Участник должен находиться на карте', 'MAP_POSITION_REQUIRED')
+      if (sceneObjectDistance(prop, at) > 1) {
+        throw new RulesValidationError('До объекта нужно дотянуться: встаньте вплотную', 'SCENE_OBJECT_OUT_OF_REACH')
+      }
+      const actor = findActor(state, command.actor_id)
+      if (!isLivingActor(actor)) throw new RulesValidationError('Взаимодействовать может только дееспособный участник', 'ACTOR_DEFEATED')
+      const interaction = sceneObjectState(state, prop, definition)
+      const inCombat = state.mechanics.combat.active
+      const economy = state.mechanics.combat.action_economy[command.actor_id]
+      if (inCombat && economy && economy.action === false) {
+        throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+      }
+      if (definition.kind === 'campfire' && command.intent === 'use' && inCombat) {
+        throw new RulesValidationError('Нельзя устраивать привал во время активного боя', 'REST_DURING_COMBAT')
+      }
+      const resolveSceneCheck = (checkDefinition) => {
+        const modifier = abilityModifier(actor?.abilities?.[checkDefinition.ability])
+          + skillProficiencyBonus(actor, checkDefinition.skill)
+        const check = diceService.rollCheck({
+          modifier,
+          difficulty: checkDefinition.dc,
+          purpose: checkDefinition.purpose,
+          actorId: command.actor_id,
+          visibility: command.visibility,
+        })
+        rolls.push(check)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'SceneObjectCheckResolved', {
+          prop_id: prop.id,
+          intent: command.intent,
+          approach: command.approach,
+          ability: checkDefinition.ability,
+          skill: checkDefinition.skill,
+          difficulty: checkDefinition.dc,
+          ...check,
+        }, []))
+        return check
+      }
+      const operated = () => events.push(eventFrom(command, 'SceneObjectOperated', {
+        prop_id: prop.id,
+        kind: definition.kind,
+        intent: command.intent,
+        approach: command.approach,
+        action_spent: inCombat,
+        policy_id: SCENE_INTERACTION_POLICY_ID,
+      }, []))
+
+      if (command.intent === 'inspect') {
+        if (interaction.inspected) throw new RulesValidationError('Этот объект уже осмотрен', 'SCENE_OBJECT_ALREADY_INSPECTED')
+        operated()
+        let success = true
+        let trapDetected = false
+        if (definition.kind === 'container' && definition.trap) {
+          const check = resolveSceneCheck(definition.trap.notice)
+          success = check.success
+          trapDetected = check.success
+        } else if (definition.check) {
+          success = resolveSceneCheck(definition.check).success
+        }
+        events.push(eventFrom(command, 'SceneObjectInspected', {
+          prop_id: prop.id,
+          kind: definition.kind,
+          success,
+          trap_detected: trapDetected,
+        }, []))
+        if (success && definition.detail) {
+          events.push(eventFrom(command, 'SceneObjectKnowledgeRevealed', {
+            prop_id: prop.id,
+            knowledge_id: `${prop.id}:${definition.detail.id}`,
+            detail_key: definition.detailKey,
+            text: definition.detail.text,
+          }, []))
+        }
+        break
+      }
+
+      if (command.intent === 'open') {
+        if (definition.kind !== 'container') throw new RulesValidationError('Открывать можно только контейнер', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+        if (interaction.opened || interaction.state === 'open' || interaction.state === 'taken') {
+          throw new RulesValidationError('Этот контейнер уже открыт', 'SCENE_OBJECT_ALREADY_OPEN')
+        }
+        operated()
+        let success = true
+        if (interaction.state === 'locked') {
+          const lockCheck = command.approach === 'force'
+            ? { ability: 'str', skill: 'athletics', dc: definition.lock?.dc ?? 12, purpose: 'scene-object:container:force' }
+            : definition.lock
+          success = resolveSceneCheck(lockCheck).success
+        } else if (command.approach === 'force') {
+          success = resolveSceneCheck({ ability: 'str', skill: 'athletics', dc: 10, purpose: 'scene-object:container:force' }).success
+        }
+        if (!success) {
+          events.push(eventFrom(command, 'SceneObjectStateChanged', {
+            prop_id: prop.id, state: interaction.state, previous_state: interaction.state, success: false,
+          }, []))
+          break
+        }
+        events.push(eventFrom(command, 'SceneObjectStateChanged', {
+          prop_id: prop.id, state: 'open', previous_state: interaction.state, success: true,
+        }, []))
+        events.push(eventFrom(command, 'SceneObjectLootRevealed', {
+          prop_id: prop.id,
+          reward_key: definition.rewardKey,
+          loot: sceneObjectLoot({ mapSeed: map.seed, prop }),
+          policy_id: SCENE_INTERACTION_POLICY_ID,
+        }, []))
+        if (definition.trap && !interaction.trap_detected) {
+          const damageRoll = diceService.roll(
+            definition.trap.damage.expression,
+            definition.trap.damage.purpose,
+            command.actor_id,
+            command.visibility ?? 'public',
+          )
+          rolls.push(damageRoll)
+          events.push(eventFrom(command, 'DieRolled', damageRoll, []))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', {
+            ...resolveDamagePayload(state, command.actor_id, damageRoll.total, definition.trap.damage.type),
+            prop_id: prop.id,
+            reason: 'scene-object-trap',
+          }, [command.actor_id]))
+        }
+        break
+      }
+
+      if (command.intent === 'take') {
+        if (interaction.loot_claimed || interaction.taken) {
+          throw new RulesValidationError('Находка из этого объекта уже забрана', 'SCENE_OBJECT_LOOT_ALREADY_CLAIMED')
+        }
+        if (definition.kind === 'container' && !interaction.opened && interaction.state !== 'open') {
+          throw new RulesValidationError('Сначала контейнер нужно открыть', 'SCENE_OBJECT_NOT_OPEN')
+        }
+        operated()
+        const loot = sceneObjectLoot({ mapSeed: map.seed, prop })
+        events.push(eventFrom(command, 'SceneObjectLootGranted', {
+          prop_id: prop.id,
+          reward_key: definition.rewardKey,
+          loot,
+          policy_id: SCENE_INTERACTION_POLICY_ID,
+        }, [command.actor_id]))
+        events.push(eventFrom(command, 'SceneObjectStateChanged', {
+          prop_id: prop.id, state: 'taken', previous_state: interaction.state, success: true,
+        }, []))
+        break
+      }
+
+      if (definition.kind === 'campfire') {
+        if (state.mechanics.resting[command.actor_id]) throw new RulesValidationError('Герой уже отдыхает', 'REST_ALREADY_STARTED')
+        operated()
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'RestStarted', {
+          kind: 'short', source_prop_id: prop.id,
+        }, [command.actor_id]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'RestCompleted', {
+          kind: 'short', source_prop_id: prop.id,
+        }, [command.actor_id]))
+        events.push(eventFrom(command, 'SceneObjectStateChanged', {
+          prop_id: prop.id, state: 'used', previous_state: interaction.state, success: true,
+        }, []))
+        break
+      }
+
+      if (interaction.used) throw new RulesValidationError('Эффект этого объекта уже использован', 'SCENE_OBJECT_ALREADY_USED')
+      if (!interaction.inspected) throw new RulesValidationError('Сначала объект нужно осмотреть', 'SCENE_OBJECT_NOT_INSPECTED')
+      operated()
+      if (definition.effect) {
+        const before = Math.max(0, safeInteger(state.mechanics.temporary_hp[command.actor_id], 0))
+        const after = Math.max(before, definition.effect.temporary_hp)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.temporaryHp), 'SceneObjectEffectApplied', {
+          prop_id: prop.id,
+          effect_id: definition.effect.id,
+          temporary_hp_before: before,
+          temporary_hp_after: after,
+        }, [command.actor_id]))
+      }
+      events.push(eventFrom(command, 'SceneObjectStateChanged', {
+        prop_id: prop.id, state: 'used', previous_state: interaction.state, success: true,
+      }, []))
+      break
+    }
     case 'CreateEncounter': {
       const encounterId = String(command.encounter.proposal_id).replace(/^encounter-proposal-/u, 'encounter-')
       const encounter = {
@@ -9521,6 +9798,78 @@ export function applyGameEvent(rawState, event) {
       spendCombatEconomy(state, event.actor_id, 'action')
       if (payload.success === true) setSceneDoorState(state, payload.door_id, 'broken')
       break
+    case 'SceneObjectOperated':
+      updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
+        ...current,
+        last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+      }))
+      if (payload.action_spent === true) spendCombatEconomy(state, event.actor_id, 'action')
+      break
+    case 'SceneObjectCheckResolved':
+      break
+    case 'SceneObjectInspected':
+      updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
+        ...current,
+        inspected: current.inspected || payload.success === true,
+        trap_detected: current.trap_detected || payload.trap_detected === true,
+        last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+      }))
+      break
+    case 'SceneObjectKnowledgeRevealed':
+      updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
+        ...current,
+        knowledge_ids: uniqueStrings([...(current.knowledge_ids ?? []), payload.knowledge_id]).slice(0, 24),
+        last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+      }))
+      break
+    case 'SceneObjectLootRevealed':
+      updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
+        ...current,
+        loot_revealed: true,
+        last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+      }))
+      break
+    case 'SceneObjectStateChanged': {
+      const next = updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
+        ...current,
+        state: String(payload.state ?? current.state).slice(0, 40),
+        opened: current.opened || payload.state === 'open',
+        taken: current.taken || payload.state === 'taken',
+        used: current.used || payload.state === 'used',
+        last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+      }))
+      if (next && payload.success !== false) setSceneObjectPropState(state, payload.prop_id, next.state)
+      break
+    }
+    case 'SceneObjectLootGranted': {
+      updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
+        ...current,
+        loot_claimed: true,
+        taken: true,
+        last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+      }))
+      const loot = Array.isArray(payload.loot) ? payload.loot : []
+      replaceActor(state, target, (actor) => {
+        const inventory = Array.isArray(actor.inventory) ? actor.inventory : []
+        const existingIds = new Set(inventory.map((item) => String(item?.id ?? '')))
+        return {
+          ...actor,
+          inventory: [...inventory, ...loot.filter((item) => item?.id && !existingIds.has(String(item.id))).map(clone)],
+        }
+      })
+      break
+    }
+    case 'SceneObjectEffectApplied':
+      updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
+        ...current,
+        used: true,
+        last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+      }))
+      state.mechanics.temporary_hp[target] = Math.max(
+        Math.max(0, safeInteger(state.mechanics.temporary_hp[target], 0)),
+        Math.max(0, safeInteger(payload.temporary_hp_after, 0)),
+      )
+      break
     case 'ObjectiveUpdated':
       if (state.scene) state.scene.objective = String(payload.objective || '')
       break
@@ -9698,6 +10047,16 @@ export function eventSummary(event, resolveName = (id) => id) {
   const payload = event.payload ?? {}
   const named = (id) => (id == null || id === '' ? id : resolveName(id))
   switch (event.event_type) {
+    case 'SceneObjectOperated': return `${named(event.actor_id) || 'Герой'} взаимодействует с объектом ${payload.prop_id}: ${payload.intent}`
+    case 'SceneObjectCheckResolved': return `${named(event.actor_id) || 'Герой'} проверяет объект ${payload.prop_id}: ${payload.success ? 'успех' : 'неудача'} (${payload.total}/${payload.difficulty})`
+    case 'SceneObjectInspected': return `${named(event.actor_id) || 'Герой'} осматривает объект ${payload.prop_id}`
+    case 'SceneObjectKnowledgeRevealed': return String(payload.text || `Открыта деталь объекта ${payload.prop_id}`)
+    case 'SceneObjectStateChanged': return payload.success === false
+      ? `Состояние объекта ${payload.prop_id} не изменилось`
+      : `Объект ${payload.prop_id}: ${payload.previous_state || 'idle'} → ${payload.state}`
+    case 'SceneObjectLootGranted': return `${named(event.actor_id) || 'Герой'} забирает находку из объекта ${payload.prop_id}`
+    case 'SceneObjectLootRevealed': return `В объекте ${payload.prop_id} обнаружена находка`
+    case 'SceneObjectEffectApplied': return `${named(event.actor_id) || 'Герой'} получает эффект объекта ${payload.prop_id}`
     case 'PartyDecisionOpened': return `Party decision opened: ${payload.interaction?.title || payload.interaction?.id}`
     case 'PartyVoteCast': return `${payload.hero_id || event.actor_id} voted for ${payload.option_id}`
     case 'PartyDecisionAbstained': return `${payload.hero_id || payload.voter_id || event.actor_id || 'Участник'} abstained (${payload.reason || 'abstain'})`

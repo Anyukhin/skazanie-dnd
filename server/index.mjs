@@ -210,7 +210,7 @@ function canUseHero(user, heroId, campaignId) {
 }
 
 const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'EndTurn', 'ResolveHeroDeath'])
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'OperateSceneObject', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
 const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
@@ -561,6 +561,17 @@ function sanitizePlayerCombatCommand(user, state, input) {
       ...base,
       door_id: String(input?.door_id ?? input?.doorId ?? '').slice(0, 120),
       intent: ['open', 'close', 'force'].includes(intent) ? intent : 'open',
+    }
+  }
+  if (type === 'OperateSceneObject') {
+    const intent = String(input?.intent ?? 'inspect')
+    return {
+      ...base,
+      prop_id: String(input?.prop_id ?? input?.propId ?? '').slice(0, 120),
+      intent: ['inspect', 'open', 'take', 'use'].includes(intent) ? intent : 'inspect',
+      // Силовой подход приходит только от серверного разбора свободного текста.
+      // Кнопка не может подменить обычное взаимодействие готовым исходом взлома.
+      approach: 'hand',
     }
   }
   if (type === 'MakeAreaAttack') return { ...base, item_id: String(input?.item_id || ''), to: { x: input?.to?.x, y: input?.to?.y } }

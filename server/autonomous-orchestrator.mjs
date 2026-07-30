@@ -37,6 +37,7 @@ import {
 } from './free-action-adjudication.mjs'
 import { planImprovisedEffect, resolveActionCost } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
+import { nearestSceneObjectCommand, sceneInteractionNarration } from './scene-interactions.mjs'
 
 const clone = (value) => structuredClone(value)
 
@@ -596,6 +597,45 @@ export class AutonomousCampaignOrchestrator {
         state: commit.state ?? loaded.state,
         state_version: commit.state_version ?? loaded.state_version,
         events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+    // Частая фраза про уже существующий реквизит не должна превращаться во
+    // второй, приблизительный путь импровизации. Текст выбирает только объект,
+    // глагол и способ; дальность, состояние, СЛ, бросок, награда и последствия
+    // снова проверяет та же OperateSceneObject, которой пользуются кнопки.
+    const sceneProps = Array.isArray(loaded.state.scene?.map?.props) ? loaded.state.scene.map.props : []
+    const sceneActor = findActor(loaded.state, actorId)
+    const sceneObjectCommand = nearestSceneObjectCommand({
+      props: sceneProps,
+      actorPosition: sceneActor ? { x: sceneActor.x, y: sceneActor.y } : null,
+      text,
+    })
+    if (sceneObjectCommand) {
+      const commit = await run([
+        declaration,
+        {
+          ...sceneObjectCommand,
+          actor_id: actorId,
+          server_authoritative: true,
+        },
+      ])
+      verifyDuplicate(commit)
+      const interactionEvents = commit.events ?? []
+      return {
+        kind: 'scene_interaction',
+        narration: sceneInteractionNarration(interactionEvents)
+          || 'Герой взаимодействует с объектом сцены; результат подтверждён правилами.',
+        suggestions: [nextHook(commit.state ?? loaded.state)],
+        turn_consumed: interactionEvents.some((event) => (
+          event.event_type === 'SceneObjectOperated' && event.payload?.action_spent === true
+        )),
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: interactionEvents,
         commands: commit.commands ?? [],
         rolls: commit.rolls ?? [],
         duplicate: Boolean(commit.duplicate),

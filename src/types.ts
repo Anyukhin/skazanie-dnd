@@ -619,6 +619,8 @@ export type TacticalDoor = {
   keyItemId: string | null
 }
 
+export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use'
+
 export type TacticalProp = {
   id: string
   assetId: string
@@ -637,6 +639,15 @@ export type TacticalProp = {
   hp: number
   interactive: boolean
   state: string
+  /** Разрешённая игроку часть серверного контракта взаимодействия. */
+  interaction?: {
+    kind: string
+    verbs: SceneObjectIntent[]
+    pointOfInterest: boolean
+  }
+  /** Переходные поля старой проекции; новых глаголов клиент из них не сочиняет. */
+  interactionKind?: string
+  interactionVerbs?: SceneObjectIntent[]
 }
 
 export type TacticalZone = {
