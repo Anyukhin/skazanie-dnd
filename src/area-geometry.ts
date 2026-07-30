@@ -96,11 +96,21 @@ export function areaCells(geometry: AreaGeometry): AreaPoint[] {
     const center = geometry.shape === 'sphere' || geometry.shape === 'cylinder'
       ? geometry.target ?? geometry.origin
       : geometry.origin
-    for (let y = center.y - cells; y <= center.y + cells; y += 1) {
-      for (let x = center.x - cells; x <= center.x + cells; x += 1) {
+    const directedCube = geometry.shape === 'cube'
+      && Boolean(geometry.target && key(geometry.target) !== key(geometry.origin))
+    // У ненаправленного куба sizeFeet — длина ребра, не радиус. Нечётное
+    // ребро центрируется обычно; у чётного лишняя строка/колонка уходит на
+    // восток и юг, то есть указанная клетка — северо-западная из центральных.
+    const cubeMinOffset = -Math.floor((cells - 1) / 2)
+    const minX = geometry.shape === 'cube' && !directedCube ? center.x + cubeMinOffset : center.x - cells
+    const minY = geometry.shape === 'cube' && !directedCube ? center.y + cubeMinOffset : center.y - cells
+    const maxX = geometry.shape === 'cube' && !directedCube ? minX + cells - 1 : center.x + cells
+    const maxY = geometry.shape === 'cube' && !directedCube ? minY + cells - 1 : center.y + cells
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
         const point = { x, y }
         if (geometry.shape === 'cone' && !coneContains(point, geometry.origin, geometry.target, cells)) continue
-        if (geometry.shape === 'cube' && geometry.target && key(geometry.target) !== key(geometry.origin)) {
+        if (directedCube) {
           if (!directedCubeContains(point, geometry.origin, geometry.target, Math.max(1, cells))) continue
         } else if (Math.max(Math.abs(x - center.x), Math.abs(y - center.y)) > cells) {
           continue
