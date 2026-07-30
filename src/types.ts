@@ -998,6 +998,13 @@ export type GameState = {
   partyMemberIds?: string[]
   partyDecisionPolicy?: PartyDecisionPolicy
   players: Player[]
+  presence?: {
+    transport: 'sse'
+    connected_users: number
+    connected_heroes: number
+    online_hero_ids: string[]
+    typing_actor_ids?: string[]
+  }
   enemies?: Enemy[]
   actors?: SummonedCreature[]
   merchants?: Merchant[]

@@ -85,10 +85,10 @@ import { characterCreationCatalog, createCharacterSlot } from './character-lifec
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
-// Кампания на одного игрока — поддерживаемый режим; четвёрка осталась верхней
-// границей, а не обязательным составом.
+// Кампания на одного игрока — поддерживаемый режим; пять мест покрывают
+// полный стол MVP, но не превращаются в обязательный состав.
 const MIN_PARTY_SLOTS = 1
-const MAX_PARTY_SLOTS = 4
+const MAX_PARTY_SLOTS = 5
 const port = Number(process.env.AGENT_PORT || 8787)
 const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
@@ -105,6 +105,8 @@ const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
 const campaignStreams = new Map()
+const campaignTyping = new Map()
+const TYPING_TTL_MS = 4_000
 let campaignStreamSequence = 0
 
 const diceService = new DiceService()
@@ -938,6 +940,11 @@ function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
   const connections = streamConnections(campaignId)
   const onlineHeroIds = connectedHeroIdsForCampaign(campaignId)
+  const now = Date.now()
+  const typing = campaignTyping.get(String(campaignId || '').toUpperCase()) ?? new Map()
+  for (const [userId, entry] of typing) {
+    if (Number(entry.expiresAt) <= now) typing.delete(userId)
+  }
   if ([...connections.values()].some((connection) => connection.controlsParty)) {
     for (const player of state.players ?? []) onlineHeroIds.add(String(player.id))
   }
@@ -952,6 +959,7 @@ function stateWithLivePresence(state, campaignId) {
       connected_users: new Set([...connections.values()].map((connection) => connection.userId)).size,
       connected_heroes: onlineHeroIds.size,
       online_hero_ids: [...onlineHeroIds].sort(),
+      typing_actor_ids: [...new Set([...typing.values()].map((entry) => String(entry.actorId)))].sort(),
     },
   }
 }
@@ -1702,6 +1710,27 @@ const server = createServer(async (req, res) => {
   }
 
   const parsedUrl = new URL(req.url || '/', 'http://skazanie.local')
+  const campaignTypingMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/presence\/typing$/)
+  if (campaignTypingMatch && req.method === 'PUT') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignTypingMatch[1].toUpperCase()
+    const room = await reconcileCampaignProjection(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    const body = await readBody(req)
+    const actorId = String(body.actor_id ?? '')
+    if (!canUseHero(user, actorId, campaignId)) {
+      return json(res, 403, { error: 'Индикатор ввода доступен только владельцу героя', code: 'ACTOR_FORBIDDEN' })
+    }
+    const key = String(user.id)
+    const typing = campaignTyping.get(campaignId) ?? new Map()
+    if (body.typing === true) typing.set(key, { actorId, expiresAt: Date.now() + TYPING_TTL_MS })
+    else typing.delete(key)
+    if (typing.size) campaignTyping.set(campaignId, typing)
+    else campaignTyping.delete(campaignId)
+    broadcastCampaignRoom(campaignId, room)
+    return json(res, 200, { ok: true, typing: body.typing === true, ttl_ms: TYPING_TTL_MS })
+  }
   const campaignStreamMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/stream$/)
   if (campaignStreamMatch && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
@@ -1914,7 +1943,7 @@ const server = createServer(async (req, res) => {
       if (!/^[A-Z0-9-]{3,24}$/.test(code)) return json(res, 400, { error: 'Код кампании должен содержать 3–24 латинских символа, цифры или дефис' })
       if (getRoom(code).state) return json(res, 409, { error: 'Кампания с таким кодом уже существует' })
       // Размер отряда выбирает создатель: кампания на одного игрока —
-      // законный режим, а не урезанная четвёрка. Верхняя граница остаётся 4.
+      // законный режим, а верхняя граница покрывает стол на пятерых.
       const requestedSlotCount = Number(body.bootstrap?.slotCount ?? body.bootstrap?.players?.length ?? 0)
       if (creator.role !== 'admin' && (!body.bootstrap || !Number.isFinite(requestedSlotCount)
         || requestedSlotCount < MIN_PARTY_SLOTS || requestedSlotCount > MAX_PARTY_SLOTS)) {
@@ -2819,8 +2848,13 @@ const server = createServer(async (req, res) => {
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       assertCampaignPlayable(room.state)
       const trustedState = room.state
-      const playerId = String(trustedState.activePlayerId || '')
+      const requestedPlayerId = String(body.actor_id ?? '')
+      const playerId = requestedPlayerId || String(trustedState.activePlayerId || '')
       if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
+      const combatActorId = String(trustedState.mechanics?.combat?.initiative?.[trustedState.mechanics?.combat?.active_index ?? 0]?.actor_id ?? '')
+      if (trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
+        return json(res, 409, { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' })
+      }
       if (trustedState.mechanics?.death?.campaign_status === 'party_defeated') {
         return json(res, 409, { error: 'Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя', code: 'WORLD_ENDED' })
       }

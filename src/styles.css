@@ -471,6 +471,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .roll-result.failure > strong { color: #b47a70; }.roll-result.failure em { color: #a66f66; background: rgba(145,75,67,.13); }
 .typing { display: flex; align-items: center; gap: 4px; margin: 3px 0 8px 39px; color: #6f6860; font-family: Spectral, serif; font-size: var(--fs-md); }
 .typing span { width: 4px; height: 4px; border-radius: 50%; background: #a67b4c; animation: typing 1.1s infinite; }.typing span:nth-child(2) { animation-delay: .15s; }.typing span:nth-child(3) { animation-delay: .3s; margin-right: 5px; }
+.typing.player-typing { color: #a89a88; }
+.typing.player-typing span { background: #6fa184; }
 .composer { padding: 7px 11px 10px; border-top: 1px solid var(--line); background: rgba(10,9,8,.28); }
 .dice-check { min-height: 94px; display: grid; grid-template-columns: minmax(150px, 1fr) 190px minmax(150px, 1fr); align-items: center; gap: 16px; padding: 9px 18px; border-top: 1px solid rgba(204,151,86,.22); background: radial-gradient(circle at 50% 100%, rgba(179,119,54,.14), transparent 48%), rgba(11,9,7,.58); }
 .dice-copy { display: grid; }.dice-copy > span { color: #a97943; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .16em; }.dice-copy strong { margin-top: 2px; color: #d8cdbf; font: 600 var(--fs-xl) Spectral, serif; }.dice-copy small { margin-top: 3px; color: #6e665e; font-size: var(--fs-sm); }
@@ -482,6 +484,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .d20-button > span { color: #d9b27d; font-size: var(--fs-md); font-weight: 700; letter-spacing: .04em; }.dice-check.resolving .d20-button { border-color: rgba(105,143,108,.28); background: rgba(62,83,64,.14); }.dice-check.resolving .d20-button > i { background: linear-gradient(150deg, #89a184, #405844); }.dice-check.resolving .d20-button > span { color: #8eaa8d; }
 .dice-check.rolling .d20-button > i { animation: diceRoll .46s linear infinite; }.dice-check.rolling .d20-button > span { animation: dicePulse .8s ease-in-out infinite; }
 .turn-wait { min-height: 84px; display: flex; align-items: center; justify-content: center; gap: 12px; border-top: 1px solid var(--line); background: rgba(10,9,8,.38); color: #7b7065; }.turn-wait > span { display: grid; }.turn-wait b { color: #aaa095; font: var(--fs-xs) Spectral, serif; }.turn-wait small { margin-top: 3px; color: #8d857b; font-size: var(--fs-sm); }
+.agent-voter-status { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 0 0; }
+.agent-voter-status > span { display: inline-grid; grid-template-columns: 7px auto; column-gap: 5px; align-items: center; padding: 4px 7px; border: 1px solid rgba(255,255,255,.08); border-radius: 4px; color: #a69b8f; font: 600 var(--fs-sm) Manrope, sans-serif; }
+.agent-voter-status > span i { width: 6px; height: 6px; border-radius: 50%; background: #8c8175; }
+.agent-voter-status > span small { grid-column: 2; color: #736b63; font-size: var(--fs-xs); font-weight: 500; }
+.agent-voter-status > span.voted { border-color: rgba(96,157,113,.34); color: #a9c8af; }.agent-voter-status > span.voted i { background: #6eaa7c; }
+.agent-voter-status > span.abstained { border-color: rgba(184,141,83,.28); }.agent-voter-status > span.abstained i { background: #ad8553; }
+.agent-voter-status > span.offline { opacity: .62; }.agent-voter-status > span.offline i { background: #805f5a; }
 .suggestions-row { min-height: 24px; display: flex; align-items: center; gap: 6px; margin-bottom: 5px; overflow-x: auto; scrollbar-width: none; }
 .suggestions-row button { height: 23px; padding: 0 9px; flex: 0 0 auto; border: 1px solid rgba(211,184,149,.1); border-radius: 12px; background: rgba(255,255,255,.025); color: #827a71; font-size: var(--fs-sm); cursor: pointer; }
 .suggestions-row button:hover { border-color: rgba(201,149,85,.3); color: #c39a68; }
@@ -520,6 +529,23 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .agent-abstain:hover { border-color: rgba(211,153,86,.4); color: #d2ab74; background: rgba(192,132,66,.08); }
 .agent-continue { grid-column: 1 / -1; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(103,161,113,.32); border-radius: 5px; background: rgba(65,125,78,.14); color: #b9d5bd; cursor: pointer; }
 .agent-interaction.resolved { grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.6fr); }
+.server-column .agent-interaction,
+.server-column .agent-interaction.resolved {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+.server-column .chat-interaction-slot { max-height: 330px; overflow-y: auto; }
+.server-column .agent-options { grid-template-columns: minmax(0, 1fr); }
+.server-column .agent-options button { align-items: flex-start; flex-direction: column; }
+.server-column .agent-options small { white-space: normal; }
+.server-column .chat-panel:has(.agent-interaction) {
+  grid-template-rows: auto minmax(0, 1fr) 0;
+}
+.server-column .chat-panel:has(.agent-interaction) .chat-interaction-slot {
+  min-height: 0;
+  max-height: none;
+}
+.server-column .chat-panel:has(.agent-interaction) .messages { overflow: hidden; }
 @media (max-width: 760px) { .agent-interaction, .agent-interaction.resolved { grid-template-columns: 1fr; } .agent-interaction { max-height: 210px; overflow-y: auto; } }
 
 .modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(5,4,3,.76); backdrop-filter: blur(7px); animation: fadeIn .18s; }
@@ -1021,6 +1047,24 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .hotbar-turn-controls { min-width: 94px; }
   .combat-hotbar .action-tile { width: 138px; min-width: 138px; height: 140px; }
   .map-legend { display: none; }
+}
+
+/* После вычета боковой панели рабочая ширина ноутбука меньше ширины viewport.
+   Сжимаем подписи колод раньше мобильного breakpoint, чтобы строка свободного
+   намерения и кнопка отправки никогда не схлопывались до нуля. */
+@media (max-width: 1500px) {
+  .rail-free-input { gap: 8px; }
+  .rail-free-input .hotbar-decks { gap: 4px; }
+  .rail-free-input .hotbar-decks button { width: 40px; padding: 0; justify-content: center; }
+  .rail-free-input .hotbar-decks button span { display: none; }
+  .rail-free-input > button { width: 48px; padding: 0; justify-content: center; font-size: 0; }
+}
+
+/* На ноутбуке высота важнее декоративной карточки героя: голосование, ожидание
+   броска и групповой typing живут в правой колонке и обязаны оставаться видимыми. */
+@media (max-height: 850px) and (min-width: 681px) {
+  .game-area { --rail: 230px; }
+  .server-column > .player-hud-stack { display: none; }
 }
 
 @media (max-width: 560px) {
@@ -1882,6 +1926,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .campaign-empty-screen { min-height: 100vh; display: grid; align-content: center; justify-items: center; gap: 14px; padding: 40px 20px; text-align: center; color: #a9a094; }
 .campaign-empty-screen h1 { font: 600 var(--fs-4xl) Spectral, serif; color: #e8dcc8; }
 .campaign-empty-screen p { max-width: 460px; line-height: 1.6; }
+.campaign-empty-screen .campaign-join-explanation { max-width: 520px; color: #b28c61; font: var(--fs-sm)/1.5 Manrope, sans-serif; }
 .campaign-empty-screen button { min-width: 220px; height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(255,255,255,.12); border-radius: 5px; background: rgba(255,255,255,.03); color: #cdc3b4; cursor: pointer; }
 .campaign-empty-screen button.primary { border-color: rgba(203,151,87,.32); background: linear-gradient(135deg, rgba(153,96,44,.18), rgba(91,60,36,.09)); color: #d2a268; }
 

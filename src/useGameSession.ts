@@ -531,11 +531,11 @@ export function useGameSession() {
     }
   }, [])
 
-  const submitAction = useCallback(async (text: string) => {
+  const submitAction = useCallback(async (text: string, actorId?: string) => {
     if (!text.trim() || state.isNarrating || state.pendingCheck) return
     busy.current = true
     const epoch = ++actionEpoch.current
-    const player = state.players.find((item) => item.id === state.activePlayerId) ?? state.players[0]
+    const player = state.players.find((item) => item.id === (actorId || state.activePlayerId)) ?? state.players[0]
     const pending: GameState = {
       ...state,
       isNarrating: true,
@@ -546,7 +546,7 @@ export function useGameSession() {
     let aiResult: AiTurnResult | null = null
     let authoritativeError: string | null = null
     try {
-      aiResult = await narrateWithAgent(pending, text.trim(), player.character)
+      aiResult = await narrateWithAgent(pending, text.trim(), player.character, undefined, undefined, player.id)
     } catch (error) {
       console.warn('AI fallback:', error instanceof Error ? error.message : error)
       authoritativeError = error instanceof Error ? error.message : 'Сервер отклонил действие'
@@ -657,7 +657,7 @@ export function useGameSession() {
     const player = state.players.find((item) => item.id === check.playerId) ?? state.players[0]
     let aiResult: AiTurnResult | null = null
     try {
-      aiResult = await narrateWithAgent(state, check.action, player.character, result)
+      aiResult = await narrateWithAgent(state, check.action, player.character, result, undefined, player.id)
     } catch (error) {
       mutate((current) => ({
         ...current,
@@ -789,12 +789,12 @@ export function useGameSession() {
     return result.roll
   }, [applyRemote])
 
-  const continueAgentInteraction = useCallback(() => {
+  const continueAgentInteraction = useCallback((playerId?: string) => {
     const interaction = state.agentInteraction
     if (!interaction || interaction.status !== 'resolved') return
     const winner = interaction.options.find((option) => option.id === interaction.resolvedOptionId)
     if (!winner) return
-    void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${interaction.title}: ${winner.label}. ${interaction.resolutionPrompt}`)
+    void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${interaction.title}: ${winner.label}. ${interaction.resolutionPrompt}`, playerId)
   }, [state.agentInteraction, submitAction])
 
   // Возвращает исход, а не только пишет его в tacticalError: вызывающему коду
