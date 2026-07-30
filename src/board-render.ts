@@ -3224,6 +3224,60 @@ export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile
 /** Единая точка подключения анимированных и длящихся эффектов к доске. */
 export type BoardEffectRenderer = (context: BoardContext2D, scene: BoardScene) => void
 
+export type BoardAreaEffect = {
+  cells?: readonly { x: number; y: number }[]
+  center?: { x: number; y: number }
+  radiusFeet?: number
+}
+
+function boardAreaEffectCells(effect: BoardAreaEffect) {
+  if (effect.cells?.length) return effect.cells
+  if (!effect.center) return []
+  const radius = Math.max(0, Math.floor((Number(effect.radiusFeet) || 0) / 5))
+  const cells: Array<{ x: number; y: number }> = []
+  for (let y = effect.center.y - radius; y <= effect.center.y + radius; y += 1) {
+    for (let x = effect.center.x - radius; x <= effect.center.x + radius; x += 1) cells.push({ x, y })
+  }
+  return cells
+}
+
+/**
+ * Динамическая штриховка для активных областей заклинаний. В отличие от
+ * `moveCost` в тайловом кэше эти клетки меняются событиями боя, поэтому
+ * рисуются через общий effect pipeline на каждом обновлении состояния.
+ */
+export function drawDifficultTerrainEffects(
+  context: BoardContext2D,
+  scene: BoardScene,
+  effects: readonly BoardAreaEffect[],
+) {
+  const size = scene.cellSize
+  const unique = new Map<string, { x: number; y: number }>()
+  for (const effect of effects) {
+    for (const point of boardAreaEffectCells(effect)) unique.set(`${point.x},${point.y}`, point)
+  }
+  context.fillStyle = 'rgba(103,73,44,.22)'
+  context.strokeStyle = 'rgba(244,205,132,.62)'
+  context.lineWidth = Math.max(1, size / 24)
+  for (const point of unique.values()) {
+    if (!cellAt(scene.map, point.x, point.y)?.revealed) continue
+    const left = point.x * size
+    const top = point.y * size
+    context.fillRect(left, top, size, size)
+    context.beginPath()
+    for (let offset = -size; offset < size * 2; offset += Math.max(5, size / 4)) {
+      const from = Math.max(0, offset)
+      const to = Math.min(size, offset + size)
+      context.moveTo(left + from, top + (size - (from - offset)))
+      context.lineTo(left + to, top + (size - (to - offset)))
+    }
+    context.stroke()
+    context.setLineDash([Math.max(2, size / 5), Math.max(2, size / 9)])
+    context.strokeRect(left + size / 18, top + size / 18, size - size / 9, size - size / 9)
+    context.setLineDash([])
+  }
+}
+
 export function drawBoardEffects(
   context: BoardContext2D,
   scene: BoardScene,

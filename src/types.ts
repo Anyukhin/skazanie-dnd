@@ -1239,6 +1239,7 @@ export type GameMechanics = Record<string, unknown> & {
     spell_id?: string
     source_actor?: string
     center?: { x: number; y: number }
+    cells?: Array<{ x: number; y: number }>
     radius_feet?: number
     area_shape?: string
     difficult_terrain?: boolean

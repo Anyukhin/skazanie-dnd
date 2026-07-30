@@ -197,6 +197,26 @@ test('единая точка эффектов сохраняет порядок
   assert.equal(context.ops.filter((item) => item.op === 'restore').length, 2)
 })
 
+test('активная трудная область штрихуется динамическим слоем и не раскрывает туман', () => {
+  const map = decoded(sampleMap())
+  const context = recordingContext()
+  const scene = { map, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+
+  render.drawDifficultTerrainEffects(context, scene, [
+    { center: { x: 1, y: 0 }, radiusFeet: 0 },
+    { cells: [{ x: 0, y: 0 }, { x: 0, y: 1 }] },
+  ])
+
+  const fills = context.ops.filter((item) => item.op === 'fillRect' && item.value === 'rgba(103,73,44,.22)')
+  assert.equal(fills.length, 3)
+  assert.ok(context.ops.some((item) => item.op === 'strokeRect' && item.value === 'rgba(244,205,132,.62)'))
+
+  setCell(map, 0, 1, { revealed: false })
+  const hiddenContext = recordingContext()
+  render.drawDifficultTerrainEffects(hiddenContext, scene, [{ cells: [{ x: 0, y: 1 }] }])
+  assert.equal(hiddenContext.ops.some((item) => item.op === 'fillRect'), false)
+})
+
 test('канонизация ребра на клиенте совпадает с серверной', () => {
   const pairs = [[1, 1, 2, 1], [2, 1, 1, 1], [1, 1, 1, 2], [1, 2, 1, 1], [0, 0, 0, 1], [3, 3, 4, 3]]
   for (const [ax, ay, bx, by] of pairs) {
