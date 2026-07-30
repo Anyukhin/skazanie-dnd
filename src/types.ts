@@ -1194,6 +1194,7 @@ export type GameMechanics = Record<string, unknown> & {
     concluded_at?: string | null
     archived_at?: string | null
     epilogue?: string | null
+    epilogue_fact_keys?: string[]
     changed_by?: string | null
   }
   death?: {

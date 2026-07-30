@@ -2514,15 +2514,14 @@ function ReactionPrompt({ actorName, sourceName, window, busy, beneficiaries, on
   </section></div>
 }
 
-function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve, onChooseCampaign, onExit }: {
+function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve, onContinueToEpilogue }: {
   heroes: Player[]
   partyDefeated: boolean
   busy: boolean
   error: string | null
   canResolve: (heroId: string) => boolean
   onResolve: (heroId: string, resolution: 'resurrect' | 'replace', replacementName?: string) => void
-  onChooseCampaign: () => void
-  onExit: () => void
+  onContinueToEpilogue: () => void
 }) {
   const [replacementNames, setReplacementNames] = useState<Record<string, string>>({})
   const [replacementOpen, setReplacementOpen] = useState<Record<string, boolean>>({})
@@ -2564,28 +2563,31 @@ function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve
       })}</div>}
 
       {(localError || error) && <div className="death-error">{localError || error}</div>}
-      {partyDefeated && <footer><div><button onClick={onChooseCampaign}><BookOpen size={16} />Другие кампании</button><button onClick={onExit}><LogOut size={16} />Выйти</button></div><small>Эту историю продолжить нельзя. Выберите другой мир или создайте новую кампанию.</small></footer>}
+      {partyDefeated && <footer><div><button onClick={onContinueToEpilogue}><BookOpen size={16} />К эпилогу</button></div><small>Сначала зафиксирована судьба героев; дальше — итог всей истории.</small></footer>}
     </section>
   </div>
 }
 
 function CampaignConclusionScreen({ status, epilogue, busy, canManage, onArchive, onChooseCampaign }: {
-  status: 'completed' | 'archived'
+  status: 'completed' | 'failed' | 'archived'
   epilogue?: string | null
   busy: boolean
   canManage: boolean
   onArchive: () => void
   onChooseCampaign: () => void
 }) {
+  const failed = status === 'failed'
   return <div className="death-screen-backdrop">
     <section className="death-screen" role="dialog" aria-modal="true" aria-label="Кампания завершена">
-      <span className="death-eyebrow">{status === 'archived' ? 'АРХИВ КАМПАНИИ' : 'ЭПИЛОГ'}</span>
-      <h1>История завершена</h1>
-      <p>{epilogue || 'Приключение завершилось, а его события сохранены в летописи кампании.'}</p>
+      <span className="death-eyebrow">{status === 'archived' ? 'АРХИВ КАМПАНИИ' : failed ? 'ПОРАЖЕНИЕ' : 'ЭПИЛОГ'}</span>
+      <h1>{failed ? 'История завершилась поражением' : 'История завершена'}</h1>
+      <p>{epilogue || (failed
+        ? 'Отряд пал, но его решения и последствия сохранены в летописи кампании.'
+        : 'Приключение завершилось, а его события сохранены в летописи кампании.')}</p>
       <footer>
         <div>
           <button onClick={onChooseCampaign}><BookOpen size={16} />Другие кампании</button>
-          {status === 'completed' && canManage && <button onClick={onArchive} disabled={busy}>Архивировать</button>}
+          {status !== 'archived' && canManage && <button onClick={onArchive} disabled={busy}>Архивировать</button>}
         </div>
         <small>Состояние, карта и журнал доступны для чтения.</small>
       </footer>
@@ -2636,6 +2638,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [replacementEditorId, setReplacementEditorId] = useState<string | null>(null)
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
+  const [reviewedPartyDefeat, setReviewedPartyDefeat] = useState<string | null>(null)
   const [uiScale, setUiScale] = useState(loadUiScale)
   const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') !== 'false')
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
@@ -2653,6 +2656,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const currentMembership = account.campaignMemberships?.find((membership) => membership.campaignId === state.sessionCode)
   const lifecycle = state.mechanics?.campaign_lifecycle
   const lifecycleStatus = lifecycle?.status ?? (partyDefeated ? 'failed' : 'active')
+  const partyDefeatReviewed = reviewedPartyDefeat === state.sessionCode
+  const showDeathScreen = fallenHeroes.length > 0 && (!partyDefeated || !partyDefeatReviewed)
+  const showConclusion = ['completed', 'failed', 'archived'].includes(lifecycleStatus)
+    && (fallenHeroes.length === 0 || (partyDefeated && partyDefeatReviewed))
   const pacing = state.autonomy?.pacing
   const pacingLabels = { breather: 'ПЕРЕДЫШКА', development: 'РАЗВИТИЕ', escalation: 'НАРАСТАНИЕ', climax: 'КУЛЬМИНАЦИЯ' } as const
   const lastTravel = state.autonomy?.travel_history?.at(-1)
@@ -2943,8 +2950,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         }}
       />}
       {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} onChoose={(actionId, beneficiaryId) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
-      {!campaignsOpen && (partyDefeated || fallenHeroes.length > 0) && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onChooseCampaign={() => setCampaignsOpen(true)} onExit={onLogout} />}
-      {!campaignsOpen && ['completed', 'archived'].includes(lifecycleStatus) && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
+      {!campaignsOpen && showDeathScreen && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
+      {!campaignsOpen && showConclusion && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'failed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
     </div>
   )
 }

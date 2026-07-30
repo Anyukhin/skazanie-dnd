@@ -67,6 +67,7 @@ function attackConditionReason(payload) {
 function tacticalNarration(events, state) {
   const meaningful = []
   const turns = []
+  const partyFailed = (events ?? []).some((event) => event?.event_type === 'CampaignFailed')
   for (const event of events ?? []) {
     const payload = event.payload ?? {}
     const actor = tacticalActorName(state, event.actor_id)
@@ -170,7 +171,9 @@ function tacticalNarration(events, state) {
     } else if (event.event_type === 'HitPointMaximumReduced') {
       meaningful.push(targetIsEnemy ? `Жизненные силы ${target} ослаблены.` : `Максимум ОЗ ${target} снижается: ${Number(payload.maximum_hp_before) || 0} → ${Number(payload.maximum_hp_after) || 0}.`)
     } else if (event.event_type === 'HeroDied') {
-      meaningful.push(`${target} погибает. Его судьбу нужно разрешить: воскресить героя или заменить новым.`)
+      meaningful.push(partyFailed
+        ? `${target} погибает. Последний герой отряда пал, и история завершилась поражением.`
+        : `${target} погибает. Его судьбу нужно разрешить: воскресить героя или заменить новым.`)
     } else if (event.event_type === 'HeroResurrected') {
       meaningful.push(`${target} возвращается к жизни с 1 ОЗ.`)
     } else if (event.event_type === 'HeroReplaced') {

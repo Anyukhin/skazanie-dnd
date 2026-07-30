@@ -66,3 +66,12 @@ test('пустой поток не даёт текста', () => {
   assert.equal(combatNarration([], state), '')
   assert.equal(combatNarrator.narrate([], state), null)
 })
+
+test('гибель последнего героя ведёт к эпилогу поражения, а не предлагает продолжить отряд', () => {
+  const text = combatNarration([
+    event('HeroDied', { hero_name: 'Лира' }, ['hero']),
+    event('CampaignFailed', { reason: 'party_final_death', epilogue: 'Отряд пал.' }),
+  ], state)
+  assert.match(text, /история завершилась поражением/iu)
+  assert.doesNotMatch(text, /воскресить|заменить/iu)
+})

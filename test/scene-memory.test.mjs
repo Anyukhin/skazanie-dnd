@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { answerKnownLore } from '../server/agent-router.mjs'
+import { buildCampaignArcPlan } from '../server/campaign-loop-policy.mjs'
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
@@ -62,6 +63,7 @@ test('legacy scene state deterministically seeds a location and current quest', 
   assert.equal(first.worldMemory.entities.length, 1)
   assert.equal(first.worldMemory.entities[0].name, 'Sunken Archive')
   assert.equal(first.worldMemory.quests.find((quest) => quest.id === 'quest:chapter:1').status, 'active')
+  assert.equal(first.worldMemory.quests.find((quest) => quest.id === 'quest:chapter:1').clock.max, 4)
   assert.deepEqual(second.worldMemory, first.worldMemory)
 })
 
@@ -153,4 +155,30 @@ test('квест главы выводится из обёрнутой цели 
 
   assert.equal(quest.title, 'Найти караван')
   assert.equal((quest.title.match(/Продолжить квест/gu) ?? []).length, 0)
+})
+
+test('one-evening uses a short chapter clock for the opening and following scenes', () => {
+  const state = normalizeCampaignState({
+    sessionCode: 'SCENE-EVENING',
+    campaignConcept: { arc: buildCampaignArcPlan('scene-evening') },
+    activePlayerId: 'hero',
+    partyMemberIds: ['hero'],
+    players: [{ id: 'hero', character: 'Ada', hp: 10, maxHp: 10, inventory: [] }],
+    scene: {
+      title: 'Old Gate', location: 'Old Gate', mood: 'Rain',
+      objective: 'Find the bell keeper', turn: 1,
+      cells: [{ x: 1, y: 1, type: 'floor', revealed: true }],
+    },
+    adventure: {
+      chapter: 1,
+      currentHook: 'The bell rings twice',
+      unresolvedThreads: [],
+      visitedLocations: ['Old Gate'],
+      history: [],
+    },
+  })
+
+  assert.equal(state.worldMemory.quests.find((quest) => quest.id === 'quest:chapter:1').clock.max, 2)
+  const next = advance(state).state
+  assert.equal(next.worldMemory.quests.find((quest) => quest.id === 'quest:chapter:2').clock.max, 2)
 })

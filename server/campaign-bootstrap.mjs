@@ -9,6 +9,7 @@ import { ensureSceneWorldMemory } from './scene-memory.mjs'
 import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
+import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v2.txt', import.meta.url)), 'utf8')
 
@@ -271,6 +272,14 @@ export class CampaignBootstrapper {
       } catch { /* A new campaign must still be playable when the provider is unavailable. */ }
     }
     const seed = createHash('sha256').update(JSON.stringify({ campaignCode, world, heroes: heroes.map((hero) => hero.id) })).digest('hex').slice(0, 24)
+    const arc = buildCampaignArcPlan(seed)
+    const campaignConcept = {
+      ...world,
+      worldSummary: opening.worldSummary,
+      worldHistory: opening.worldHistory,
+      generatedBy,
+      arc,
+    }
     // Через тот же выбор генератора, что и переходы Режиссёра: первая сцена
     // кампании — такая же локация, и таверна в её начале обязана быть таверной,
     // а не серой коробкой. Прежде здесь стоял прямой вызов процедурного
@@ -290,7 +299,7 @@ export class CampaignBootstrapper {
     const campaignWorldMap = createCampaignWorldMap({
       seed,
       campaignName: campaignName === 'Новая кампания' ? opening.campaignName : campaignName,
-      concept: { ...world, worldSummary: opening.worldSummary, worldHistory: opening.worldHistory },
+      concept: campaignConcept,
       source: opening.worldMap,
       startingLocation: opening.scene.location,
     })
@@ -311,6 +320,7 @@ export class CampaignBootstrapper {
     const starterNpcId = openingNpcs[0].id
     const sceneMemory = ensureSceneWorldMemory({}, {
       scene: { title: opening.scene.title, location: opening.scene.location, mood: opening.scene.mood, objective: opening.scene.objective },
+      campaignConcept,
       adventure: {
         chapter: 1, currentHook: opening.hook,
         visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [],
@@ -329,7 +339,7 @@ export class CampaignBootstrapper {
         summary: opening.scene.objective,
         status: 'active', visibility: 'party', entity_ids: [starterFactionId],
         objectives: [opening.scene.objective],
-        clock: { current: 0, max: 4, label: 'Прогресс расследования' },
+        clock: { current: 0, max: arc.target_scenes, label: 'Прогресс расследования' },
       }],
     }
     return {
@@ -338,7 +348,7 @@ export class CampaignBootstrapper {
       partyName: groupName === 'Новый отряд' ? opening.partyName : groupName,
       partyMemberIds: positionedHeroes.map((hero) => hero.id),
       partyDecisionPolicy: structuredClone(DEFAULT_PARTY_DECISION_POLICY),
-      campaignConcept: { ...world, worldSummary: opening.worldSummary, worldHistory: opening.worldHistory, generatedBy },
+      campaignConcept,
       worldMap: campaignWorldMap,
       worldMemory: initialWorldMemory,
       social: {

@@ -29,7 +29,7 @@ import {
   doorBlocksStep,
   tacticalMapFromLegacyCells,
 } from './tactical-map.mjs'
-import { campaignCanAutoComplete, normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
+import { campaignCanAutoComplete, lifecycleEventForAction, normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
 import { authorizeDirectorIntent } from './campaign-loop-policy.mjs'
 import { normalizePartyDecision, normalizePartyDecisionPolicy } from './party-decision.mjs'
 import {
@@ -147,7 +147,9 @@ export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // 4: карта сцены хранится слоями в `scene.map`, а `scene.cells` стал производной
 // read-моделью. Старые снимки переигрываются от нулевого, поэтому отдельной
 // файловой миграции не требуется.
-export const GAME_STATE_PROJECTOR_VERSION = 4
+// 5: новые HeroDied больше не меняют lifecycle напрямую; старые события
+// сохраняют прежнюю семантику при replay, а новые завершаются CampaignFailed.
+export const GAME_STATE_PROJECTOR_VERSION = 5
 
 export const RULE_IDS = Object.freeze({
   abilityCheck: `${DEFAULT_RULESET_ID}:checks:ability-check`,
@@ -3172,6 +3174,13 @@ function eventFrom(command, eventType, payload = {}, targets = command.target_id
   }
 }
 
+function heroDiedEventFrom(command, payload = {}, targets = command.target_ids) {
+  return {
+    ...eventFrom(command, 'HeroDied', payload, targets),
+    event_schema_version: 2,
+  }
+}
+
 function commandWithRules(command, ...ruleIds) {
   return { ...command, source_rule_ids: [...new Set([...command.source_rule_ids, ...ruleIds.filter(Boolean)])] }
 }
@@ -3417,7 +3426,7 @@ function deathSavingThrowAtTurnStart(state, command, actorIdValue, diceService) 
       method: 'three-death-save-successes',
     }, [actorIdValue]))
   } else if (failuresAfter >= 3) {
-    events.push(eventFrom(commandWithRules({ ...command, actor_id: actorIdValue }, RULE_IDS.zeroHp), 'HeroDied', {
+    events.push(heroDiedEventFrom(commandWithRules({ ...command, actor_id: actorIdValue }, RULE_IDS.zeroHp), {
       hero_name: String(actor?.character ?? actor?.name ?? actorIdValue),
       reason: 'three-death-save-failures',
     }, [actorIdValue]))
@@ -3448,7 +3457,7 @@ function zeroHitPointDamageConsequences(state, command, targetIdValue, payload, 
     ? applied - hpBefore >= actorMaxHp(target)
     : applied >= actorMaxHp(target)
   if (instantDeath) {
-    return [eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HeroDied', {
+    return [heroDiedEventFrom(commandWithRules(command, RULE_IDS.zeroHp), {
       hero_name: String(target?.character ?? target?.name ?? targetIdValue),
       reason: 'massive-damage',
       damage: applied,
@@ -3477,7 +3486,7 @@ function zeroHitPointDamageConsequences(state, command, targetIdValue, payload, 
     critical,
     reason: 'damage-at-zero-hit-points',
   }, [targetIdValue])]
-  if (failuresAfter >= 3) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HeroDied', {
+  if (failuresAfter >= 3) events.push(heroDiedEventFrom(commandWithRules(command, RULE_IDS.zeroHp), {
     hero_name: String(target?.character ?? target?.name ?? targetIdValue),
     reason: 'three-death-save-failures',
   }, [targetIdValue]))
@@ -5103,7 +5112,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           hp_after: hpAfter,
         }, [targetId]))
         if (maximumAfter === 0 && playerActor(state, targetId) && !isDeadHero(state, targetId)) {
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HeroDied', {
+          events.push(heroDiedEventFrom(commandWithRules(command, RULE_IDS.zeroHp), {
             hero_name: String(target?.character ?? target?.name ?? targetId),
             reason: 'hit-point-maximum-reduced-to-zero',
           }, [targetId]))
@@ -7208,6 +7217,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         id: encounterId,
         encounter_id: encounterId,
         status: 'staged',
+        created_in_chapter: Math.max(1, Number(state.adventure?.chapter) || 1),
         location: String(state.scene?.location ?? '').slice(0, 180),
         enemy_ids: command.encounter.enemies.map((enemy) => String(enemy.id)),
       }
@@ -8088,6 +8098,24 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     }
   }
 
+  if (resolveDepth === 0 && !events.some((event) => event.event_type === 'CampaignFailed')) {
+    const projected = replayEvents(state, events)
+    const newlyDefeated = state.mechanics?.death?.campaign_status !== 'party_defeated'
+      && projected.mechanics?.death?.campaign_status === 'party_defeated'
+    if (newlyDefeated) {
+      const failure = lifecycleEventForAction('fail', projected, {
+        actorId: 'system',
+        reason: 'party_final_death',
+        now: null,
+      })
+      events.push({
+        ...eventFrom(command, failure.event_type, failure.payload, []),
+        actor_id: 'system',
+        visibility: 'party',
+      })
+    }
+  }
+
   return { command, events, rolls }
 }
 
@@ -8279,8 +8307,11 @@ export function applyGameEvent(rawState, event) {
         ...state.mechanics.campaign_lifecycle,
         status: event.event_type === 'CampaignCompleted' ? 'completed' : 'failed',
         reason: String(payload.reason || (event.event_type === 'CampaignCompleted' ? 'completed' : 'failed')).slice(0, 240),
-        concluded_at: payload.occurred_at ?? event.occurred_at ?? null,
+        concluded_at: payload.occurred_at ?? event.occurred_at ?? event.created_at ?? null,
         epilogue: payload.epilogue == null ? state.mechanics.campaign_lifecycle.epilogue : String(payload.epilogue).slice(0, 8_000),
+        epilogue_fact_keys: Array.isArray(payload.epilogue_fact_keys)
+          ? payload.epilogue_fact_keys.map((key) => String(key).slice(0, 240)).filter(Boolean).slice(0, 64)
+          : state.mechanics.campaign_lifecycle.epilogue_fact_keys,
         changed_by: payload.changed_by ?? event.actor_id ?? null,
       }
       break
@@ -8647,12 +8678,17 @@ export function applyGameEvent(rawState, event) {
       const memberIds = state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId)
       if (memberIds.length && memberIds.every((id) => state.mechanics.death.heroes[id]?.status === 'dead')) {
         state.mechanics.death.campaign_status = 'party_defeated'
-        state.mechanics.campaign_lifecycle = {
-          ...state.mechanics.campaign_lifecycle,
-          status: 'failed',
-          reason: 'party_final_death',
-          concluded_at: event.occurred_at ?? event.created_at ?? null,
-          changed_by: 'system',
+        // События до v2 не сопровождались CampaignFailed. Эта узкая ветка
+        // нужна только для replay старых потоков; текущий Rules Engine всегда
+        // добавляет явный CampaignFailed в тот же атомарный batch.
+        if (event.event_schema_version == null || Number(event.event_schema_version) < 2) {
+          state.mechanics.campaign_lifecycle = {
+            ...state.mechanics.campaign_lifecycle,
+            status: 'failed',
+            reason: 'party_final_death',
+            concluded_at: event.occurred_at ?? event.created_at ?? null,
+            changed_by: 'system',
+          }
         }
       }
       break

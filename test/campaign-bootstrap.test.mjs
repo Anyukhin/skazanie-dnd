@@ -146,3 +146,23 @@ test('создание кампании без выбранных героев �
     /выберите от 1 до 12 героев/iu,
   )
 })
+
+test('bootstrap fixes a deterministic one-evening structure and matching quest budgets', async () => {
+  const input = {
+    code: 'EVENING-SEED',
+    name: 'Один вечер',
+    partyName: 'Свидетели',
+    world: { preset: 'Классическое фэнтези', premise: 'Колокол зовёт к старой башне.' },
+    players: [{ ...hero, id: 'evening-hero' }],
+  }
+  const first = await new CampaignBootstrapper().create(input)
+  const second = await new CampaignBootstrapper().create(input)
+
+  assert.deepEqual(first.campaignConcept.arc, second.campaignConcept.arc)
+  assert.equal(first.campaignConcept.arc.preset, 'one_evening')
+  assert.ok(first.campaignConcept.arc.target_scenes >= 3 && first.campaignConcept.arc.target_scenes <= 5)
+  const chapterQuest = first.worldMemory.quests.find((quest) => quest.id === 'quest:chapter:1')
+  const mainQuest = first.worldMemory.quests.find((quest) => !String(quest.id).startsWith('quest:chapter:'))
+  assert.equal(chapterQuest.clock.max, 2)
+  assert.equal(mainQuest.clock.max, first.campaignConcept.arc.target_scenes)
+})

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
+import { campaignArcPosition } from './campaign-loop-policy.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
@@ -125,6 +126,7 @@ export function fallbackDirectorIntent(state = {}) {
 }
 
 function publicDirectorBrief(state = {}, playerAction = '') {
+  const arc = campaignArcPosition(state)
   return {
     WORLD_STATE: {
       campaign_premise: campaignConceptForAgent(state),
@@ -138,6 +140,15 @@ function publicDirectorBrief(state = {}, playerAction = '') {
         tension: Math.max(0, Math.min(100, Number(state.autonomy?.pacing?.tension) || 0)),
         beat: Math.max(0, Number(state.autonomy?.pacing?.beat) || 0),
       },
+      ...(arc ? { arc: {
+        preset: arc.preset,
+        scene_number: arc.scene_number,
+        target_scenes: arc.target_scenes,
+        scene_beat: arc.scene_beat,
+        remaining_beats: arc.remaining_beats,
+        phase: arc.phase,
+        climax_required: arc.climax,
+      } } : {}),
       active_quests: (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active').slice(0, 12).map((quest) => ({
         id: clean(quest.id, 120), title: clean(quest.title, 160), objectives: (quest.objectives ?? []).map((item) => clean(item, 180)).slice(0, 8),
         clock: quest.clock ? { current: Number(quest.clock.current) || 0, max: Number(quest.clock.max) || 1 } : null,

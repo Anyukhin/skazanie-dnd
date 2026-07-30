@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { normalizeDirectorIntent, serverReputationDelta, serverRewardForEncounter } from './autonomous-campaign.mjs'
 import {
   assembleSocialNpc,
+  campaignArcPosition,
   completedDowntime,
   directorProgressFingerprint,
   pacingForDirectorIntent,
@@ -401,6 +402,7 @@ export class AutonomousCampaignOrchestrator {
       commands.push({ command_type: 'StartCombat', server_authoritative: true })
     }
     if (intent.type === 'end_scene') {
+      const arc = campaignArcPosition(loaded.state)
       const destination = intent.destination || `${loaded.state.scene?.location || 'Путь'} — следующая сцена`
       travel = planServerTravel(loaded.state, { campaignId, destination, idempotencyKey: key })
       travelStartedAt = Number(loaded.state.mechanics?.world_time?.elapsed_minutes) || 0
@@ -430,6 +432,14 @@ export class AutonomousCampaignOrchestrator {
         }, partyIds),
         actor_id: actorId || null,
       })
+      const mainQuest = arc
+        ? (loaded.state.worldMemory?.quests ?? []).find((quest) => (
+            !String(quest.id || '').startsWith('quest:chapter:')
+            && quest.status === 'active'
+            && quest.clock?.triggered !== true
+          ))
+        : null
+      if (mainQuest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: mainQuest.id, amount: 1 })
       commands.push({ command_type: 'AdvanceScene', scene_args: {
         title: destination,
         location: destination,
@@ -897,6 +907,11 @@ export class AutonomousCampaignOrchestrator {
     } })
     commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
     const consequences = await this.runCommands(campaignId, `${idempotencyKey}:consequences`, commands)
+    const questResolution = await this.resolveTriggeredQuests(
+      campaignId,
+      idempotencyKey,
+      consequences.events ?? [],
+    )
     let recovery = { events: [] }
     if (outcome === 'enemies_defeated') {
       let afterConsequences = await this.load(campaignId)
@@ -945,8 +960,21 @@ export class AutonomousCampaignOrchestrator {
       outcome: outcome === 'enemies_defeated' ? 'helpful' : 'harmful', severity: 'major',
       idempotencyKey: `${idempotencyKey}:witnesses`,
     })
+    const campaignCompletion = await this.completeCampaignIfReady(campaignId, idempotencyKey)
     const final = await this.load(campaignId)
-    return { events: [...outcomeCommit.events, ...consequences.events, ...recovery.events], reward, state: final.state, state_version: final.state_version, admin_commands: 0 }
+    return {
+      events: [
+        ...outcomeCommit.events,
+        ...consequences.events,
+        ...(questResolution?.events ?? []),
+        ...recovery.events,
+        ...(campaignCompletion?.events ?? []),
+      ],
+      reward,
+      state: final.state,
+      state_version: final.state_version,
+      admin_commands: 0,
+    }
   }
 
   async propagateWitnesses(campaignId, { sourceEventId = '', outcome = 'neutral', severity = 'minor', idempotencyKey = 'witnesses' } = {}) {

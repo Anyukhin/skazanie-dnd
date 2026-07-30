@@ -194,8 +194,17 @@ test('новый герой заменяет погибшего, а гибель
     players: [{ id: 'last', character: 'Последний герой', hp: 0, maxHp: 10, inventory: [] }],
   })
   const ending = resolveCommand({ command_type: 'ApplyDamage', actor_id: 'last', target_id: 'last', amount: 10, damage_type: 'force' }, doomed, { diceService: dice([]) })
+  assert.deepEqual(
+    ending.events.slice(-2).map((event) => event.event_type),
+    ['HeroDied', 'CampaignFailed'],
+  )
+  assert.equal(ending.events.filter((event) => event.event_type === 'CampaignFailed').length, 1)
+  assert.equal(ending.events.find((event) => event.event_type === 'HeroDied').event_schema_version, 2)
+  assert.match(ending.events.at(-1).payload.epilogue, /поражен|погиб|пал/iu)
   const endedWorld = ending.events.reduce(applyGameEvent, doomed)
   assert.equal(endedWorld.mechanics.death.campaign_status, 'party_defeated')
+  assert.equal(endedWorld.mechanics.campaign_lifecycle.status, 'failed')
+  assert.equal(endedWorld.mechanics.campaign_lifecycle.reason, 'party_final_death')
   assert.throws(
     () => resolveCommand({ command_type: 'ResolveHeroDeath', actor_id: 'last', resolution: 'resurrect' }, endedWorld, { diceService: dice([]) }),
     (error) => error instanceof RulesValidationError && error.code === 'CAMPAIGN_READ_ONLY',

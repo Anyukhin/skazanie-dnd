@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { campaignArcPlan } from './campaign-loop-policy.mjs'
 import { normalizeWorldMemory } from './world-memory.mjs'
 
 const clone = (value) => structuredClone(value)
@@ -52,7 +53,7 @@ export function questTitleFromObjective(value) {
   return title
 }
 
-function sceneQuest({ chapter, scene, adventure, locationId }) {
+function sceneQuest({ chapter, scene, adventure, locationId, clockMax = 4 }) {
   const objective = clean(scene?.objective, 300)
   const hook = clean(adventure?.currentHook, 1_000)
   return {
@@ -63,13 +64,14 @@ function sceneQuest({ chapter, scene, adventure, locationId }) {
     visibility: 'party',
     entity_ids: locationId ? [locationId] : [],
     objectives: objective ? [objective] : [],
-    clock: { current: 0, max: 4, label: 'Цель сцены', triggered: false },
+    clock: { current: 0, max: Math.max(1, Number(clockMax) || 4), label: 'Цель сцены', triggered: false },
   }
 }
 
 /** Migrates a campaign with only scene/adventure fields into the canonical memory model. */
 export function ensureSceneWorldMemory(input, state = {}) {
   const memory = normalizeWorldMemory(input)
+  const clockMax = campaignArcPlan(state)?.chapter_clock_max ?? 4
   const locationName = clean(state.scene?.location || state.scene?.title, 160)
   if (!locationName) return memory
 
@@ -79,7 +81,7 @@ export function ensureSceneWorldMemory(input, state = {}) {
   const chapter = chapterNumber(state.adventure?.chapter, 1)
   const questId = `quest:chapter:${chapter}`
   if (!memory.quests.some((quest) => quest.id === questId) && clean(state.scene?.objective, 300)) {
-    memory.quests.push(sceneQuest({ chapter, scene: state.scene, adventure: state.adventure, locationId: location.id }))
+    memory.quests.push(sceneQuest({ chapter, scene: state.scene, adventure: state.adventure, locationId: location.id, clockMax }))
   }
   return normalizeWorldMemory(memory)
 }
@@ -94,6 +96,7 @@ export function sceneWorldMemoryEventId(commandId) {
  */
 export function sceneWorldMemoryEvents(state, transition, { commandId = '', sourceEventId = '' } = {}) {
   const memory = ensureSceneWorldMemory(state.worldMemory, state)
+  const clockMax = campaignArcPlan(state)?.chapter_clock_max ?? 4
   const previousScene = state.scene ?? {}
   const nextScene = transition?.scene ?? {}
   const nextAdventure = transition?.adventure ?? {}
@@ -115,7 +118,7 @@ export function sceneWorldMemoryEvents(state, transition, { commandId = '', sour
 
   const previousQuestId = `quest:chapter:${previousChapter}`
   const previousQuest = memory.quests.find((quest) => quest.id === previousQuestId)
-    ?? sceneQuest({ chapter: previousChapter, scene: previousScene, adventure: state.adventure, locationId: previousLocation.id })
+    ?? sceneQuest({ chapter: previousChapter, scene: previousScene, adventure: state.adventure, locationId: previousLocation.id, clockMax })
   const previousStatus = outcome.status === 'abandoned' ? 'abandoned' : outcome.status === 'completed' ? 'completed' : 'active'
   add('QuestUpserted', { quest: {
     ...clone(previousQuest),
@@ -124,7 +127,7 @@ export function sceneWorldMemoryEvents(state, transition, { commandId = '', sour
   } })
 
   if (clean(nextScene.objective, 300)) {
-    const nextQuest = sceneQuest({ chapter: nextChapter, scene: nextScene, adventure: nextAdventure, locationId: nextLocation.id })
+    const nextQuest = sceneQuest({ chapter: nextChapter, scene: nextScene, adventure: nextAdventure, locationId: nextLocation.id, clockMax })
     add('QuestUpserted', { quest: nextQuest })
   }
 
