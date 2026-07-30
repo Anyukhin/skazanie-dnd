@@ -19,3 +19,15 @@ test('серверный clock доступен в room/SSE projection, а compa
   assert.match(serverSource, /turn_clock:\s*turnClock/u)
   assert.match(serverSource, /\/system-tick/u)
 })
+
+test('после listen сервер сначала принимает health-check и только затем будит фоновые часы', () => {
+  const listenIndex = serverSource.indexOf('server.listen(port, host')
+  const startupTimerIndex = serverSource.indexOf('const startupJobs = setTimeout', listenIndex)
+  const coordinatorIndex = serverSource.indexOf('combatTurnCoordinator.nudge(campaignId)', startupTimerIndex)
+  const startupEndIndex = serverSource.indexOf('startupJobs.unref()', coordinatorIndex)
+  assert.ok(listenIndex >= 0)
+  assert.ok(startupTimerIndex > listenIndex)
+  assert.ok(coordinatorIndex > startupTimerIndex)
+  assert.ok(startupEndIndex > coordinatorIndex)
+  assert.match(serverSource.slice(startupTimerIndex, startupEndIndex), /\}, 250\)/u)
+})

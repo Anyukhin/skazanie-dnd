@@ -3135,8 +3135,16 @@ const server = createServer((req, res) => {
 })
 
 await reconcileAllCampaignProjections()
-for (const campaignId of listRoomCodes()) {
-  combatTurnCoordinator.nudge(campaignId)
-  nudgeMerchantEconomyClock(campaignId)
-}
-server.listen(port, host, () => console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`))
+server.listen(port, host, () => {
+  console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`)
+  // После рестарта активной кампании NPC может потребовать заметного CPU ещё до
+  // первого await. Сначала даём HTTP принять health-check, затем возобновляем
+  // фоновые часы; игровое состояние и durable-дедлайны от этой паузы не меняются.
+  const startupJobs = setTimeout(() => {
+    for (const campaignId of listRoomCodes()) {
+      combatTurnCoordinator.nudge(campaignId)
+      nudgeMerchantEconomyClock(campaignId)
+    }
+  }, 250)
+  startupJobs.unref()
+})
