@@ -157,7 +157,9 @@ export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // сохраняют прежнюю семантику при replay, а новые завершаются CampaignFailed.
 // 6: состояние интерактивных объектов сцены сохраняется в mechanics и
 // одинаково восстанавливается из snapshot и полного replay.
-export const GAME_STATE_PROJECTOR_VERSION = 6
+// 7: начало хода и окна реакции проецируется в mechanics для durable таймера
+// без отдельного чтения всего журнала событий.
+export const GAME_STATE_PROJECTOR_VERSION = 7
 
 export const RULE_IDS = Object.freeze({
   abilityCheck: `${DEFAULT_RULESET_ID}:checks:ability-check`,
@@ -1153,6 +1155,12 @@ export function normalizeCampaignState(input = {}) {
     .filter(([id, readied]) => id && readied && typeof readied === 'object' && READIED_TRIGGERS[String(readied.trigger)]))
   mechanics.combat.group_initiative = mechanics.combat.group_initiative === true
   mechanics.combat.turn_completed = uniqueStrings(mechanics.combat.turn_completed)
+  if (mechanics.combat.turn_started_at != null) {
+    mechanics.combat.turn_started_at = String(mechanics.combat.turn_started_at)
+  } else delete mechanics.combat.turn_started_at
+  if (mechanics.combat.turn_started_event_id != null) {
+    mechanics.combat.turn_started_event_id = String(mechanics.combat.turn_started_event_id)
+  } else delete mechanics.combat.turn_started_event_id
   mechanics.combat.action_economy = Object.fromEntries(Object.entries(clone(mechanics.combat.action_economy ?? {})).map(([id, economy]) => [id, {
     ...actionEconomy(),
     ...(economy && typeof economy === 'object' ? economy : {}),
@@ -9593,7 +9601,11 @@ export function applyGameEvent(rawState, event) {
       break
     }
     case 'ReactionWindowOpened':
-      state.mechanics.combat.reaction_window = clone(payload)
+      state.mechanics.combat.reaction_window = {
+        ...clone(payload),
+        opened_at: event.created_at ?? null,
+        opened_event_id: event.event_id ?? null,
+      }
       break
     case 'ActionReadied':
       state.mechanics.combat.readied = { ...(state.mechanics.combat.readied ?? {}), [target]: clone(payload) }
@@ -9613,6 +9625,9 @@ export function applyGameEvent(rawState, event) {
           replaceActor(state, fleeingActorId, (actor) => ({ ...actor, alive: false }))
         }
         state.mechanics.combat.reaction_window = null
+        // После ответа на реакцию основной ход получает новый полный интервал.
+        state.mechanics.combat.turn_started_at = event.created_at ?? null
+        state.mechanics.combat.turn_started_event_id = event.event_id ?? null
       }
       break
     }
@@ -9738,7 +9753,15 @@ export function applyGameEvent(rawState, event) {
       }
       // Внутри групповой фазы отходивший запоминается, чтобы не пойти дважды.
       if (payload.group_phase === true && event.actor_id) {
+        const completedBefore = new Set((state.mechanics.combat.turn_completed ?? []).map(String))
+        const deadlineOwner = initiativeGroupIds(state).find((actorIdValue) => !completedBefore.has(actorIdValue))
         state.mechanics.combat.turn_completed = [...new Set([...(state.mechanics.combat.turn_completed ?? []).map(String), String(event.actor_id)])]
+        // Только владелец текущих часов открывает полный срок следующему.
+        // Завершивший ход вне очереди союзник не продлевает чужой дедлайн.
+        if (String(event.actor_id) === String(deadlineOwner ?? '')) {
+          state.mechanics.combat.turn_started_at = event.created_at ?? null
+          state.mechanics.combat.turn_started_event_id = event.event_id ?? null
+        }
       }
       appendBattleLog(state, event, {
         sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: safeInteger(payload.round, state.mechanics.combat.round),
@@ -9748,6 +9771,8 @@ export function applyGameEvent(rawState, event) {
     case 'TurnStarted':
       state.mechanics.combat.round = safeInteger(payload.round, state.mechanics.combat.round)
       state.mechanics.combat.active_index = safeInteger(payload.active_index, state.mechanics.combat.active_index)
+      state.mechanics.combat.turn_started_at = event.created_at ?? null
+      state.mechanics.combat.turn_started_event_id = event.event_id ?? null
       for (const [actorIdValue, conditions] of Object.entries(state.mechanics.conditions)) {
         state.mechanics.conditions[actorIdValue] = (conditions ?? []).filter((condition) => !(
           condition.duration === 'until-source-next-turn'

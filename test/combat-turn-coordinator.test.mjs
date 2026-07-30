@@ -74,6 +74,14 @@ function engine() {
   })
 }
 
+async function waitUntil(predicate, message) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (predicate()) return
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  assert.fail(message)
+}
+
 async function recordTurnStart(store, campaignId, state, actorId) {
   await store.initializeCampaign({ campaign_id: campaignId, initial_state: state })
   return store.commit({
@@ -120,6 +128,37 @@ test('серверный координатор сразу завершает х
   assert.ok(committedBatches.flat().some((event) => event.event_type === 'TurnEnded' && event.actor_id === 'wolf'))
   assert.deepEqual(coordinator.clockFor('NPC-PUSH')?.actor_ids, ['hero'])
   assert.equal(scheduled.at(-1)?.delay, 120_000)
+})
+
+test('координатор строит часы из проекции и не перечитывает журнал событий', async (t) => {
+  const nowMs = Date.parse('2026-07-30T12:00:10.000Z')
+  const state = fixture()
+  const store = testStore(t, state, () => new Date('2026-07-30T12:00:00.000Z'))
+  await recordTurnStart(store, 'PROJECTED-CLOCK', state, 'hero')
+  const projected = await store.load('PROJECTED-CLOCK')
+  assert.equal(projected.state.mechanics.combat.turn_started_at, '2026-07-30T12:00:00.000Z')
+  assert.equal(projected.state.mechanics.combat.turn_started_event_id, 'turn-event-1')
+
+  let eventLogReads = 0
+  store.getEvents = async () => {
+    eventLogReads += 1
+    throw new Error('Координатор не должен читать журнал')
+  }
+  const coordinator = new CombatTurnCoordinator({
+    eventStore: store,
+    rulesEngine: engine(),
+    timeoutMs: 120_000,
+    now: () => nowMs,
+    runNpcTurns: async () => ({ events: [] }),
+    setTimer: (_callback, delay) => ({ delay }),
+    clearTimer: () => {},
+  })
+  t.after(() => coordinator.close())
+
+  await coordinator.settleNow('PROJECTED-CLOCK')
+
+  assert.equal(eventLogReads, 0)
+  assert.equal(coordinator.clockFor('PROJECTED-CLOCK')?.started_at, '2026-07-30T12:00:00.000Z')
 })
 
 test('сервер без участия клиента завершает всю групповую фазу NPC', async (t) => {
@@ -195,6 +234,117 @@ test('истёкший дедлайн коммитит replay-safe авто-пр
   const replayed = await store.replay('TIMEOUT-REPLAY', { useSnapshots: false })
   assert.equal(replayed.state.mechanics.combat.active_index, 1)
   assert.equal(replayed.state.mechanics.combat.initiative[1].actor_id, 'wolf')
+})
+
+test('обычная ошибка авто-пропуска ставит отложенный retry и бой восстанавливается', async (t) => {
+  let storeClockMs = Date.parse('2026-07-30T12:00:00.000Z')
+  const state = fixture()
+  const store = testStore(t, state, () => new Date(storeClockMs))
+  await recordTurnStart(store, 'RETRY-AFTER-ERROR', state, 'hero')
+  storeClockMs += 30_000
+
+  const realEngine = engine()
+  let resolveAttempts = 0
+  const flakyEngine = {
+    resolvePlan(...args) {
+      resolveAttempts += 1
+      if (resolveAttempts === 1) throw new Error('временная ошибка диска')
+      return realEngine.resolvePlan(...args)
+    },
+  }
+  const timers = []
+  const errors = []
+  let resolveCommitted
+  const committed = new Promise((resolve) => { resolveCommitted = resolve })
+  const coordinator = new CombatTurnCoordinator({
+    eventStore: store,
+    rulesEngine: flakyEngine,
+    timeoutMs: 20_000,
+    retryBaseDelayMs: 100,
+    retryMaxDelayMs: 1_000,
+    now: () => storeClockMs,
+    runNpcTurns: async () => ({ events: [] }),
+    setTimer: (callback, delay) => {
+      const handle = { callback, delay }
+      timers.push(handle)
+      return handle
+    },
+    clearTimer: () => {},
+    onCommitted: () => resolveCommitted(),
+    onError: (error) => errors.push(error),
+  })
+  t.after(() => coordinator.close())
+
+  await coordinator.settleNow('RETRY-AFTER-ERROR')
+
+  assert.equal(resolveAttempts, 1)
+  assert.equal(errors.length, 1)
+  assert.equal(timers.length, 1)
+  assert.equal(timers[0].delay, 100)
+  assert.equal((await store.load('RETRY-AFTER-ERROR')).state.mechanics.combat.active_index, 0)
+
+  timers[0].callback()
+  await committed
+  await waitUntil(() => resolveAttempts === 2, 'отложенный retry не был исполнен')
+
+  const loaded = await store.load('RETRY-AFTER-ERROR')
+  assert.equal(loaded.state.mechanics.combat.active_index, 1)
+  assert.equal(errors.length, 1)
+})
+
+test('конфликт версий повторяется только по ограниченной экспоненциальной задержке', async (t) => {
+  let storeClockMs = Date.parse('2026-07-30T12:00:00.000Z')
+  const state = fixture()
+  const store = testStore(t, state, () => new Date(storeClockMs))
+  await recordTurnStart(store, 'CONFLICT-BACKOFF', state, 'hero')
+  storeClockMs += 30_000
+
+  let commitAttempts = 0
+  const conflictingStore = {
+    load: (...args) => store.load(...args),
+    async commit() {
+      commitAttempts += 1
+      throw Object.assign(new Error('устойчивый конфликт'), { code: 'STATE_VERSION_CONFLICT' })
+    },
+  }
+  const timers = []
+  const errors = []
+  const coordinator = new CombatTurnCoordinator({
+    eventStore: conflictingStore,
+    rulesEngine: engine(),
+    timeoutMs: 20_000,
+    retryBaseDelayMs: 100,
+    retryMaxDelayMs: 400,
+    retryBackoffSteps: 3,
+    now: () => storeClockMs,
+    runNpcTurns: async () => ({ events: [] }),
+    setTimer: (callback, delay) => {
+      const handle = { callback, delay }
+      timers.push(handle)
+      return handle
+    },
+    clearTimer: () => {},
+    onError: (error) => errors.push(error),
+  })
+  t.after(() => coordinator.close())
+
+  await coordinator.settleNow('CONFLICT-BACKOFF')
+  assert.equal(commitAttempts, 1)
+  assert.deepEqual(timers.map(({ delay }) => delay), [100])
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(commitAttempts, 1, 'конфликт не должен запускать горячий microtask-цикл')
+
+  for (const expectedLength of [2, 3, 4]) {
+    timers.at(-1).callback()
+    await waitUntil(
+      () => timers.length === expectedLength,
+      `не был поставлен retry №${expectedLength}`,
+    )
+  }
+
+  assert.equal(commitAttempts, 4)
+  assert.deepEqual(timers.map(({ delay }) => delay), [100, 200, 400, 400])
+  assert.deepEqual(errors, [], 'ожидаемые конфликты не засоряют журнал ошибок')
 })
 
 test('тайм-аут не замораживает бой на ещё не созданном месте героя', async (t) => {
@@ -293,6 +443,107 @@ test('истёкшее окно реакции автоматически отк
   assert.equal(events.some((event) => event.event_type === 'TurnEnded'), false)
   assert.equal((await store.load('REACTION-TIMEOUT')).state.mechanics.combat.reaction_window, null)
   assert.equal(committedBatches.flat().filter((event) => event.payload?.auto_declined === true).length, 1)
+})
+
+test('групповой тайм-аут завершает только владельца часов и даёт следующему полный срок', async (t) => {
+  let storeClockMs = Date.parse('2026-07-30T12:00:00.000Z')
+  const state = fixture({ group: true })
+  state.partyMemberIds.push('bard')
+  state.players.push({ ...state.players[0], id: 'bard', character: 'Бард' })
+  state.mechanics.combat.initiative.splice(1, 0, { actor_id: 'bard', total: 15 })
+  state.mechanics.combat.action_economy.bard = {
+    action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0,
+  }
+  const store = testStore(t, state, () => new Date(storeClockMs))
+  await recordTurnStart(store, 'GROUP-DEADLINES', state, 'hero')
+  storeClockMs += 25_000
+
+  const scheduled = []
+  const coordinator = new CombatTurnCoordinator({
+    eventStore: store,
+    rulesEngine: engine(),
+    timeoutMs: 20_000,
+    now: () => storeClockMs,
+    runNpcTurns: async () => ({ events: [] }),
+    setTimer: (callback, delay) => {
+      const handle = { callback, delay }
+      scheduled.push(handle)
+      return handle
+    },
+    clearTimer: () => {},
+  })
+  t.after(() => coordinator.close())
+
+  await coordinator.settleNow('GROUP-DEADLINES')
+
+  let loaded = await store.load('GROUP-DEADLINES')
+  assert.equal(loaded.state.mechanics.combat.active_index, 0)
+  assert.deepEqual(loaded.state.mechanics.combat.turn_completed, ['hero'])
+  assert.deepEqual(coordinator.clockFor('GROUP-DEADLINES')?.actor_ids, ['bard'])
+  assert.equal(coordinator.clockFor('GROUP-DEADLINES')?.started_at, '2026-07-30T12:00:25.000Z')
+  assert.equal(scheduled.at(-1)?.delay, 20_000)
+  let automaticEnds = (await store.getEvents('GROUP-DEADLINES'))
+    .filter((event) => event.event_type === 'TurnEnded' && event.payload.auto_skipped === true)
+  assert.deepEqual(automaticEnds.map((event) => event.actor_id), ['hero'])
+
+  storeClockMs += 25_000
+  await coordinator.settleNow('GROUP-DEADLINES')
+
+  loaded = await store.load('GROUP-DEADLINES')
+  assert.equal(loaded.state.mechanics.combat.initiative[loaded.state.mechanics.combat.active_index].actor_id, 'wolf')
+  automaticEnds = (await store.getEvents('GROUP-DEADLINES'))
+    .filter((event) => event.event_type === 'TurnEnded' && event.payload.auto_skipped === true)
+  assert.deepEqual(automaticEnds.map((event) => event.actor_id), ['hero', 'bard'])
+})
+
+test('завершение группового хода вне очереди не продлевает дедлайн текущего actor', () => {
+  const state = fixture({ group: true })
+  state.partyMemberIds.push('bard')
+  state.players.push({ ...state.players[0], id: 'bard', character: 'Бард' })
+  state.mechanics.combat.initiative.splice(1, 0, { actor_id: 'bard', total: 15 })
+  state.mechanics.combat.action_economy.bard = {
+    action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0,
+  }
+  const started = applyGameEvent(state, {
+    event_type: 'TurnStarted',
+    event_id: 'group-start',
+    created_at: '2026-07-30T12:00:00.000Z',
+    actor_id: 'hero',
+    target_ids: ['hero'],
+    payload: { round: 1, active_index: 0 },
+  })
+  const bardEnded = engine().resolvePlan({
+    proposed_commands: [{
+      command_type: 'EndTurn',
+      command_id: 'bard-finishes-first',
+      actor_id: 'bard',
+      server_authoritative: true,
+    }],
+  }, started, {
+    isAdmin: true,
+    serverAuthoritativeCombat: true,
+  }).events.find((event) => event.event_type === 'TurnEnded')
+  assert.equal(bardEnded?.payload.group_phase, true)
+  const after = applyGameEvent(started, {
+    ...bardEnded,
+    event_id: 'bard-ended',
+    created_at: '2026-07-30T12:00:30.000Z',
+  })
+
+  assert.deepEqual(after.mechanics.combat.turn_completed, ['bard'])
+  assert.deepEqual(activeTurnActorIds(after), ['hero'])
+  assert.deepEqual(combatTurnClock(after, [], {
+    timeoutMs: 60_000,
+    now: Date.parse('2026-07-30T12:00:30.000Z'),
+  }), {
+    actor_ids: ['hero'],
+    round: 1,
+    active_index: 0,
+    turn_id: 'event:group-start',
+    started_at: '2026-07-30T12:00:00.000Z',
+    deadline_at: '2026-07-30T12:01:00.000Z',
+    duration_ms: 60_000,
+  })
 })
 
 test('таймер групповой фазы показывает только тех, кто ещё не завершил ход', () => {
