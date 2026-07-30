@@ -2773,7 +2773,15 @@ export function validateCommand(input, rawState, context = {}) {
     }
   }
   const setupActor = state.players.find((actor) => actorId(actor) === String(command.actor_id ?? ''))
-  if (setupActor?.characterSetupRequired && command.command_type !== 'ImportCharacter') {
+  const serverTimeoutMaySkipSetupActor = setupActor?.characterSetupRequired
+    && command.command_type === 'EndTurn'
+    && command.server_authoritative === true
+    && command.auto_skip_reason === 'turn-timeout'
+    && context.isAdmin === true
+    && context.serverAuthoritativeCombat === true
+  if (setupActor?.characterSetupRequired
+    && command.command_type !== 'ImportCharacter'
+    && !serverTimeoutMaySkipSetupActor) {
     throw new RulesValidationError(
       'Сначала завершите создание этого героя',
       'CHARACTER_SETUP_REQUIRED',

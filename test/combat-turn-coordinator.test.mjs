@@ -196,6 +196,37 @@ test('истёкший дедлайн коммитит replay-safe авто-пр
   assert.equal(replayed.state.mechanics.combat.initiative[1].actor_id, 'wolf')
 })
 
+test('тайм-аут не замораживает бой на ещё не созданном месте героя', async (t) => {
+  let storeClockMs = Date.parse('2026-07-30T12:00:00.000Z')
+  const state = fixture()
+  state.players[0].characterSetupRequired = true
+  const store = testStore(t, state, () => new Date(storeClockMs))
+  await recordTurnStart(store, 'SETUP-TIMEOUT', state, 'hero')
+  storeClockMs += 30_000
+  const errors = []
+  const coordinator = new CombatTurnCoordinator({
+    eventStore: store,
+    rulesEngine: engine(),
+    timeoutMs: 20_000,
+    now: () => storeClockMs,
+    runNpcTurns: async () => ({ events: [] }),
+    onError: (error) => errors.push(error),
+  })
+  t.after(() => coordinator.close())
+
+  await coordinator.settleNow('SETUP-TIMEOUT')
+
+  assert.deepEqual(errors, [])
+  const events = await store.getEvents('SETUP-TIMEOUT')
+  assert.ok(events.some((event) => (
+    event.event_type === 'TurnEnded'
+    && event.actor_id === 'hero'
+    && event.payload.auto_skipped === true
+  )))
+  const loaded = await store.load('SETUP-TIMEOUT')
+  assert.equal(loaded.state.mechanics.combat.initiative[loaded.state.mechanics.combat.active_index].actor_id, 'wolf')
+})
+
 test('истёкшее окно реакции автоматически отклоняется и не замораживает ход NPC', async (t) => {
   let storeClockMs = Date.parse('2026-07-30T12:00:00.000Z')
   const state = fixture({ activeActor: 'wolf' })
