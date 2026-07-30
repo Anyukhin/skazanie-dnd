@@ -107,6 +107,21 @@
 распространением применимые права на generated output всё равно проверяются
 общим release gate.
 
+### Иллюстрации сцен
+
+Семнадцать файлов в `public/assets/scenes/` созданы 30 июля 2026 года
+встроенным ImageGen отдельными генерациями без внешних изображений-референсов.
+Задание требовало оригинальные широкие environment-иллюстрации семи базовых
+тем и трёх общих ситуаций: тёмное фэнтези, без персонажей, текста, рамок,
+логотипов, водяных знаков, сетки, игровых фигур и скрытых игровых подсказок.
+Общая основа и индивидуальный prompt каждого файла записаны в
+`docs/scene-art-pipeline.md`; SHA-256 и размеры итоговых 1280×512 WebP — в
+`data/asset-rights.json`.
+
+Эти записи подтверждают происхождение и идентичность файлов, но не меняют
+общий release gate: применимые права на generated output и лицензию проектного
+кода владелец проверяет до внешнего распространения.
+
 ## Structured dnd.su mechanics overrides
 
 `data/dndsu-spell-mechanics-overrides.json` contains only original short structured summaries of verified mechanics from the linked dnd.su cards. It does not copy full page text and exists to correct ambiguities in the automatic parser.

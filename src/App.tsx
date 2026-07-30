@@ -7,7 +7,7 @@ import {
   BrainCircuit, Check, Compass, SlidersHorizontal, Wifi, WifiOff,
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
-  Bot, PawPrint, Skull, WandSparkles, Globe2,
+  Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX,
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
@@ -30,6 +30,15 @@ import type { BoardOverlayCell } from './board-render'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
+import { boardMapArtForTheme, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
+import {
+  createAtmosphereAudio,
+  loadAtmosphereSettings,
+  normalizeAtmosphereMood,
+  saveAtmosphereSettings,
+  type AtmosphereAudio,
+  type AtmosphereSettings,
+} from './atmosphere-audio'
 
 // Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
 // а не отдельным разделом. Второго пути к ней быть не должно.
@@ -591,36 +600,12 @@ function EnemyGlyph({ kind }: { kind: EnemyVisualKind }) {
   return <Swords size={17} />
 }
 
-function boardVisualTheme(state: GameState) {
-  const materials = new Set(state.scene.cells.map((cell) => cell.material).filter(Boolean))
-  const patterns = new Set(state.scene.cells.map((cell) => cell.pattern).filter(Boolean))
-  if (patterns.has('cave-cluster') || patterns.has('crypt')) return 'map-theme-cave'
-  if (patterns.has('small-room') && materials.has('wood')) return 'map-theme-interior'
-  if (materials.has('grass')) return 'map-theme-wild'
-  if (materials.has('sand')) return 'map-theme-desert'
-  if (materials.has('marble')) return 'map-theme-temple'
-  if (materials.has('metal')) return 'map-theme-tech'
-  const signature = [state.scene.location, state.scene.theme, state.campaignConcept?.era, state.campaignConcept?.technologyLevel].filter(Boolean).join(' ').toLocaleLowerCase('ru')
-  if (/(станци|косм|орбит|кибер|техно|футур|звезд|sci.?fi|space|station)/u.test(signature)) return 'map-theme-tech'
-  if (/(лес|чащ|джунг|болот|природ|роща|forest|wild|jungle|swamp)/u.test(signature)) return 'map-theme-wild'
-  return 'map-theme-ruins'
-}
-
-const BOARD_MAP_LIBRARY = {
-  cave: { id: 'dyson-logos-cavern', url: '/assets/maps/library/dyson-logos/cave/dyson-logos-cavern.webp' },
-  dungeon: { id: 'dyson-logos-dungeon', url: '/assets/maps/library/dyson-logos/dungeon/dyson-logos-dungeon.webp' },
-  tavern: { id: 'dyson-logos-estate', url: '/assets/maps/library/dyson-logos/tavern/dyson-logos-estate.webp' },
-  temple: { id: 'dyson-logos-temple', url: '/assets/maps/library/dyson-logos/temple/dyson-logos-temple.webp' },
-  village: { id: 'dyson-logos-village', url: '/assets/maps/library/dyson-logos/village/dyson-logos-village.webp' },
-} as const
-
-function boardMapArt(state: GameState, visualTheme: string) {
-  const signature = `${state.scene.location} ${state.scene.theme}`.toLocaleLowerCase('ru')
-  if (/(таверн|трактир|корчм|постоял|inn|tavern|estate|усадьб|дом|зал)/u.test(signature)) return BOARD_MAP_LIBRARY.tavern
-  if (/(храм|святилищ|часовн|temple|shrine)/u.test(signature) || visualTheme === 'map-theme-temple') return BOARD_MAP_LIBRARY.temple
-  if (/(пещер|грот|каверн|cave|cavern)/u.test(signature) || visualTheme === 'map-theme-cave') return BOARD_MAP_LIBRARY.cave
-  if (/(деревн|посел|город|улиц|village|town|settlement)/u.test(signature) || visualTheme === 'map-theme-wild') return BOARD_MAP_LIBRARY.village
-  return BOARD_MAP_LIBRARY.dungeon
+function boardVisualTheme(theme: SceneVisualTheme) {
+  if (theme === 'building') return 'map-theme-interior'
+  if (theme === 'temple') return 'map-theme-temple'
+  if (theme === 'crypt' || theme === 'cave') return 'map-theme-cave'
+  if (theme === 'common') return 'map-theme-ruins'
+  return 'map-theme-wild'
 }
 
 function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onFinishTurn, onFreeAction, narrating, statusContent, children }: {
@@ -1004,8 +989,9 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     inspectedTarget?.team === 'enemy' ? inspectedTarget.id : null,
     selectedItem?.id ?? null,
   )
-  const visualTheme = boardVisualTheme(state)
-  const mapArt = boardMapArt(state, visualTheme)
+  const sceneTheme = resolveSceneTheme(state)
+  const visualTheme = boardVisualTheme(sceneTheme)
+  const mapArt = boardMapArtForTheme(sceneTheme)
 
   useEffect(() => {
     const defaultItem = combatItems.find((item) => item.equipped) ?? combatItems[0]
@@ -1828,7 +1814,20 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     </>
   )
 }
-function SceneHeader({ title, location, objective, turn, chapter, round, merchants, onOpenMerchant, onReset }: { title: string; location: string; objective: string; turn: number; chapter: number; round?: number; merchants: Merchant[]; onOpenMerchant: () => void; onReset: () => void }) {
+function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, scenicBackdrop, merchants, onOpenMerchant, onReset }: {
+  title: string
+  location: string
+  objective: string
+  turn: number
+  chapter: number
+  round?: number
+  illustration: SceneArt
+  illustrationKey: string
+  scenicBackdrop: boolean
+  merchants: Merchant[]
+  onOpenMerchant: () => void
+  onReset: () => void
+}) {
   const [objectiveExpanded, setObjectiveExpanded] = useState(false)
   const objectiveRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
@@ -1850,7 +1849,10 @@ function SceneHeader({ title, location, objective, turn, chapter, round, merchan
   // остаётся в боковом меню.
   const merchantLabel = merchants.length === 1 ? `Подойти к торговцу: ${merchants[0].name}` : `Торговцев рядом: ${merchants.length}`
   return (
-    <div className="scene-header">
+    <div className={`scene-header ${scenicBackdrop ? 'has-illustration' : ''}`}>
+      {scenicBackdrop && <span key={`${illustrationKey}:${illustration.id}`} className="scene-illustration" aria-hidden="true">
+        <img src={illustration.url} alt="" decoding="async" />
+      </span>}
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
       <div className="scene-title"><span>ГЛАВА {chapter}{round != null ? ` · РАУНД ${round}` : ''} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
@@ -2387,7 +2389,30 @@ function ToggleRow({ icon, title, description, value, onChange }: { icon: React.
   return <button className="setting-row" onClick={onChange}><span className="setting-icon">{icon}</span><span><b>{title}</b><small>{description}</small></span><i className={value ? 'on' : ''}><u /></i></button>
 }
 
-function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange }: { health: AiHealth | null; uiScale: number; autoAttackRoll: boolean; scenicBackdrop: boolean; combatAnimations: boolean; onUiScaleChange: (value: number) => void; onAutoAttackRollChange: (value: boolean) => void; onScenicBackdropChange: (value: boolean) => void; onCombatAnimationsChange: (value: boolean) => void }) {
+function AtmosphereRange({ label, description, value, onChange }: { label: string; description: string; value: number; onChange: (value: number) => void }) {
+  const percent = Math.round(value * 100)
+  return <label className="atmosphere-range">
+    <span><b>{label}</b><small>{description}</small></span>
+    <output>{percent}%</output>
+    <input type="range" min="0" max="100" step="1" value={percent} onInput={(event) => onChange(Number(event.currentTarget.value) / 100)} aria-label={`${label}, громкость`} />
+  </label>
+}
+
+function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange }: {
+  health: AiHealth | null
+  uiScale: number
+  autoAttackRoll: boolean
+  scenicBackdrop: boolean
+  combatAnimations: boolean
+  atmosphereSettings: AtmosphereSettings
+  onUiScaleChange: (value: number) => void
+  onAutoAttackRollChange: (value: boolean) => void
+  onScenicBackdropChange: (value: boolean) => void
+  onCombatAnimationsChange: (value: boolean) => void
+  onAmbientVolumeChange: (value: number) => void
+  onEffectsVolumeChange: (value: number) => void
+  onAtmosphereMutedChange: (value: boolean) => void
+}) {
   const [scaleInput, setScaleInput] = useState(String(uiScale))
 
   useEffect(() => setScaleInput(String(uiScale)), [uiScale])
@@ -2425,7 +2450,13 @@ function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, combatA
             </select>
             <span className="ui-scale-marks"><i>{UI_SCALE_MIN}%</i><i>100%</i><i>125%</i><i>{UI_SCALE_MAX}%</i></span>
           </label>
-          <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — окружение соответствует месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
+          <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — иллюстрация и окружение соответствуют месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
+          <div className="atmosphere-settings" role="group" aria-label="Звук и музыка">
+            <div className="atmosphere-settings-title"><Volume2 size={17} /><span><b>Звук и музыка</b><small>Процедурный фон и сигналы подтверждённых событий</small></span></div>
+            <AtmosphereRange label="Фоновая атмосфера" description="Музыка, ветер и гул текущего места" value={atmosphereSettings.ambientVolume} onChange={onAmbientVolumeChange} />
+            <AtmosphereRange label="Эффекты событий" description="Кости, удары, двери и важные исходы" value={atmosphereSettings.effectsVolume} onChange={onEffectsVolumeChange} />
+            <ToggleRow icon={atmosphereSettings.muted ? <VolumeX size={17} /> : <Volume2 size={17} />} title="Выключить весь звук" description="Настройки громкости сохранятся на этом устройстве" value={atmosphereSettings.muted} onChange={() => onAtmosphereMutedChange(!atmosphereSettings.muted)} />
+          </div>
           <ToggleRow icon={<Dices size={17} />} title="Автобросок при атаке" description="Включено — цель сразу атакуется; выключено — появляется отдельная кнопка кубика" value={autoAttackRoll} onChange={() => onAutoAttackRollChange(!autoAttackRoll)} />
           <ToggleRow icon={<Swords size={17} />} title="Боевые анимации" description="Движение, удары и состояния проигрываются поверх доски; клик пропускает текущую очередь" value={combatAnimations} onChange={() => onCombatAnimationsChange(!combatAnimations)} />
         </div>
@@ -2756,6 +2787,23 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') !== 'false')
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
   const [combatAnimations, setCombatAnimations] = useState(() => window.localStorage.getItem(COMBAT_ANIMATIONS_KEY) !== 'false')
+  const [atmosphereSettings, setAtmosphereSettings] = useState(loadAtmosphereSettings)
+  const atmosphereAudioRef = useRef<AtmosphereAudio | null>(null)
+  const latestNarratorMessage = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
+  const atmosphereCursor = useRef({
+    sessionCode: state.sessionCode,
+    visualBatchId: combatVisualBatch?.id ?? '',
+    dieRollId: state.lastDiceRoll?.id ?? '',
+    narratorMessageId: latestNarratorMessage?.id ?? '',
+  })
+  const sceneTheme = useMemo(() => resolveSceneTheme(state), [state.scene])
+  const sceneLocationKey = state.scene.location_id ?? state.scene.location
+  const sceneIllustration = useMemo(
+    () => sceneIllustrationForTheme(sceneTheme, sceneLocationKey),
+    [sceneLocationKey, sceneTheme],
+  )
+  const audioCombatActive = Boolean(state.mechanics?.combat?.active)
+  const audioFinale = ['completed', 'failed', 'archived'].includes(state.mechanics?.campaign_lifecycle?.status ?? '')
   const combatWasActive = useRef(false)
   const merchantLocation = useRef(state.scene.location)
   const joinAttempted = useRef(false)
@@ -2862,6 +2910,71 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   useEffect(() => { window.localStorage.setItem(SCENIC_BACKDROP_KEY, String(scenicBackdrop)) }, [scenicBackdrop])
   useEffect(() => { window.localStorage.setItem(COMBAT_ANIMATIONS_KEY, String(combatAnimations)) }, [combatAnimations])
   useEffect(() => {
+    const audio = createAtmosphereAudio({ settings: atmosphereSettings })
+    atmosphereAudioRef.current = audio
+    const removeUnlockListeners = () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+    const unlock = () => {
+      void audio.unlock().then((unlocked) => {
+        if (unlocked) removeUnlockListeners()
+      })
+    }
+    // Браузер разрешает Web Audio только после жеста. Никакого модального
+    // приглашения: первое обычное действие за столом мягко включает атмосферу.
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    return () => {
+      removeUnlockListeners()
+      if (atmosphereAudioRef.current === audio) atmosphereAudioRef.current = null
+      void audio.dispose()
+    }
+  }, [])
+  useEffect(() => {
+    const mood = normalizeAtmosphereMood(sceneTheme, {
+      combat: audioCombatActive,
+      finale: audioFinale,
+    })
+    atmosphereAudioRef.current?.setMood(mood, 1.8)
+  }, [audioCombatActive, audioFinale, sceneTheme])
+  useEffect(() => {
+    const cursor = atmosphereCursor.current
+    if (cursor.sessionCode !== state.sessionCode) {
+      atmosphereCursor.current = {
+        sessionCode: state.sessionCode,
+        visualBatchId: combatVisualBatch?.id ?? '',
+        dieRollId: state.lastDiceRoll?.id ?? '',
+        narratorMessageId: latestNarratorMessage?.id ?? '',
+      }
+      return
+    }
+    if (!combatVisualBatch?.id || cursor.visualBatchId === combatVisualBatch.id) return
+    cursor.visualBatchId = combatVisualBatch.id
+    // Batch уже отфильтрован сервером для зрителя; дополнительный барьер не
+    // позволяет звуком выдать GM/NPC-private событие при ошибочной проекции.
+    const visibleEvents = combatVisualBatch.events.filter((event) => (
+      event.visibility !== 'gm_only' && event.visibility !== 'npc_private'
+    ))
+    atmosphereAudioRef.current?.playEvents(visibleEvents)
+  }, [combatVisualBatch, latestNarratorMessage?.id, state.lastDiceRoll?.id, state.sessionCode])
+  useEffect(() => {
+    const cursor = atmosphereCursor.current
+    if (cursor.sessionCode !== state.sessionCode) return
+    const dieRollId = state.lastDiceRoll?.id ?? ''
+    if (!dieRollId || cursor.dieRollId === dieRollId) return
+    cursor.dieRollId = dieRollId
+    atmosphereAudioRef.current?.playEffect('dice')
+  }, [state.lastDiceRoll?.id, state.sessionCode])
+  useEffect(() => {
+    const cursor = atmosphereCursor.current
+    if (cursor.sessionCode !== state.sessionCode) return
+    const narratorMessageId = latestNarratorMessage?.id ?? ''
+    if (!narratorMessageId || cursor.narratorMessageId === narratorMessageId) return
+    cursor.narratorMessageId = narratorMessageId
+    atmosphereAudioRef.current?.playEffect('narration')
+  }, [latestNarratorMessage?.id, state.sessionCode])
+  useEffect(() => {
     const combatActive = Boolean(state.mechanics?.combat?.active)
     // Начавшийся бой закрывает и историю, и лавку: торговля посреди инициативы —
     // это окно поверх боя, за которым не видно ни карты, ни своего хода.
@@ -2900,6 +3013,21 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const openMerchant = () => {
     setMerchantOpen(true)
     if (window.innerWidth <= 680) setSidebarCollapsed(true)
+  }
+  const changeAmbientVolume = (value: number) => {
+    const next = atmosphereAudioRef.current?.setAmbientVolume(value)
+      ?? saveAtmosphereSettings({ ...atmosphereSettings, ambientVolume: value })
+    setAtmosphereSettings(next)
+  }
+  const changeEffectsVolume = (value: number) => {
+    const next = atmosphereAudioRef.current?.setEffectsVolume(value)
+      ?? saveAtmosphereSettings({ ...atmosphereSettings, effectsVolume: value })
+    setAtmosphereSettings(next)
+  }
+  const changeAtmosphereMuted = (muted: boolean) => {
+    const next = atmosphereAudioRef.current?.setMuted(muted)
+      ?? saveAtmosphereSettings({ ...atmosphereSettings, muted })
+    setAtmosphereSettings(next)
   }
   const activePlayer = partyPlayers.find((player) => player.id === selectedHeroId && accessibleHeroIds.includes(player.id)) ?? partyPlayers.find((player) => accessibleHeroIds.includes(player.id)) ?? partyPlayers[0] ?? state.players[0]
   // Без выбранной кампании игровую комнату рисовать нечем: раньше её место
@@ -3016,7 +3144,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onFinishTurn={finishMapTurn}
             onFreeAction={submitAction}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} turnName={turnActorName} combatActive={combatActive} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} onWhy={() => { void submitAction('/why') }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
@@ -3038,7 +3166,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} />}
+        {view === 'settings' && <SettingsView health={aiHealth} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
