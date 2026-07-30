@@ -51,9 +51,68 @@ test('предпросмотр строит кратчайший легальн�
 
   assert.deepEqual(route, {
     path: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
+    baseCostFeet: 15,
+    difficultTerrainFeet: 0,
     costFeet: 15,
   })
   assert.equal(paths.has('1,1'), false, 'занятая союзником клетка не входит в маршруты')
+})
+
+test('труднопроходимая область удваивает только затронутые шаги и объясняет стоимость', () => {
+  const current = state()
+  current.mechanics = {
+    active_effects: [{
+      id: 'web',
+      center: { x: 1, y: 0 },
+      radius_feet: 0,
+      difficult_terrain: true,
+    }],
+  }
+  const paths = tacticalUi.buildMovementPaths(current, current.players[0], 5)
+  const route = paths.get('2,0')
+
+  assert.deepEqual(route, {
+    path: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
+    baseCostFeet: 15,
+    difficultTerrainFeet: 5,
+    costFeet: 20,
+  })
+  assert.equal(tacticalUi.movementCostLabel(route), '20 фт (15 фт пути + 5 фт за трудную местность)')
+  assert.equal(
+    tacticalUi.movementCellReason(current, current.players[0], current.scene.cells.find((cell) => cell.x === 2 && cell.y === 0), 15, paths),
+    'Нужно 20 фт, осталось 15 фт',
+  )
+})
+
+test('клеточный moveCost карты также считается труднопроходимым без двойной доплаты', () => {
+  const current = state()
+  current.mechanics = {
+    active_effects: [{
+      id: 'mud',
+      center: { x: 1, y: 0 },
+      radius_feet: 0,
+      difficult_terrain: true,
+    }],
+  }
+  const map = {
+    width: 5,
+    height: 3,
+    layers: {
+      present: Uint8Array.from({ length: 15 }, () => 1),
+      passable: Uint8Array.from({ length: 15 }, () => 1),
+      revealed: Uint8Array.from({ length: 15 }, () => 1),
+      moveCost: Uint8Array.from({ length: 15 }, (_, index) => index === 1 ? 2 : 1),
+      surface: new Uint8Array(15),
+      material: new Uint8Array(15),
+      variant: new Uint8Array(15),
+      elevation: new Int8Array(15),
+      zoneId: new Uint8Array(15),
+    },
+    hazards: {}, edges: {}, doors: [], zones: [],
+  }
+  const route = tacticalUi.buildMovementPaths(current, current.players[0], 5, map).get('2,0')
+  assert.equal(route.costFeet, 20, 'одна клетка остаётся x2, даже если оба источника совпали')
+  assert.equal(route.difficultTerrainFeet, 5)
 })
 
 test('недоступные клетки получают конкретную причину', () => {

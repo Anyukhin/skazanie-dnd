@@ -1,0 +1,71 @@
+/*
+ * Визуально значимые состояния тактической доски держатся рядом с её canvas-
+ * слоем. Так они не смешиваются со стилями панелей и могут развиваться
+ * независимо от большого App.tsx.
+ */
+
+.board-frame .board-cell.blast-area {
+  z-index: 3;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(196, 77, 39, .38) 0 5px,
+    rgba(108, 38, 27, .18) 5px 10px
+  );
+  box-shadow:
+    inset 0 0 0 3px rgba(244, 145, 77, .88),
+    inset 0 0 26px rgba(221, 74, 38, .38),
+    0 0 12px rgba(215, 90, 47, .2);
+}
+
+/* Фишка подсвечивается независимо от стороны: союзник в огне не теряется. */
+.board-frame .board-cell.blast-area .map-token,
+.board-frame .board-cell.blast-area .enemy-token {
+  filter: brightness(1.2) saturate(1.18);
+  outline: 3px solid rgba(255, 184, 104, .94);
+  outline-offset: 3px;
+}
+
+.board-frame .map-token.active-turn,
+.board-frame .enemy-token.active-turn {
+  isolation: isolate;
+  outline: 3px solid rgba(255, 211, 132, .96);
+  outline-offset: 4px;
+  animation: tactical-active-turn-pulse 1.35s ease-in-out infinite;
+}
+
+.initiative-ribbon li.active .initiative-avatar-button {
+  border-width: 2px;
+  border-color: rgba(255, 209, 126, .96);
+  background: rgba(185, 116, 45, .32);
+  box-shadow:
+    0 0 0 3px rgba(206, 137, 61, .22),
+    0 0 24px rgba(222, 146, 63, .58);
+}
+
+.initiative-ribbon li.active .initiative-turn-dot {
+  width: 11px;
+  height: 11px;
+  background: #ffd081;
+  box-shadow: 0 0 13px rgba(255, 190, 93, .96);
+}
+
+.initiative-ribbon li.active .initiative-status-label.active {
+  border-color: rgba(255, 207, 125, .78);
+  background: #3a2514;
+  color: #ffe0ad;
+}
+
+@keyframes tactical-active-turn-pulse {
+  50% {
+    outline-color: rgba(255, 226, 163, .72);
+    outline-offset: 7px;
+    filter: brightness(1.16);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-frame .map-token.active-turn,
+  .board-frame .enemy-token.active-turn {
+    animation: none;
+  }
+}

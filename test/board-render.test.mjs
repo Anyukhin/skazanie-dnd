@@ -147,6 +147,56 @@ test('декодер читает слои сервера в ту же логи�
   assert.deepEqual(clientMap.zones.map((zone) => zone.id), ['hall', 'yard'])
 })
 
+test('труднопроходимая клетка и опасность получают разные читаемые слои canvas', () => {
+  const map = sampleMap()
+  setCell(map, 1, 0, { moveCost: 2 })
+  const clientMap = decoded(map)
+  const context = recordingContext()
+  const scene = { map: clientMap, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+
+  render.drawCellFeatures(context, scene, { tileX: 0, tileY: 0 })
+
+  const fire = render.hazardPresentation('hazard-fire')
+  assert.equal(fire.kind, 'fire')
+  assert.equal(fire.label, 'Огонь')
+  assert.ok(context.ops.some((item) => item.op === 'fillRect' && item.value === 'rgba(80,64,44,.16)'),
+    'трудная местность не получила подложку штриховки')
+  assert.ok(context.ops.some((item) => item.op === 'stroke' && item.value === 'rgba(235,211,157,.38)'),
+    'диагональная штриховка не нарисована')
+  assert.ok(context.ops.some((item) => item.op === 'fillRect' && item.value === fire.fill),
+    'опасность не получила заливку своего типа')
+  assert.ok(context.ops.some((item) => item.op === 'strokeRect' && item.value === fire.stroke),
+    'опасность не получила контур')
+  assert.ok(context.ops.some((item) => item.op === 'fillText' && item.text === 'ОГОНЬ'),
+    'крупная клетка опасности не подписана')
+})
+
+test('палитра опасностей различает типы и имеет безопасный общий вариант', () => {
+  const fire = render.hazardPresentation('hazard-fire')
+  const cold = render.hazardPresentation('ice-field')
+  const unknown = render.hazardPresentation('falling-rocks')
+  assert.notEqual(fire.fill, cold.fill)
+  assert.equal(cold.kind, 'cold')
+  assert.equal(unknown.kind, 'physical')
+  assert.equal(unknown.label, 'Опасность')
+})
+
+test('единая точка эффектов сохраняет порядок и изолирует состояние рендереров', () => {
+  const context = recordingContext()
+  const calls = []
+  render.drawBoardEffects(context, {
+    map: decoded(sampleMap()),
+    palette: render.DEFAULT_BOARD_PALETTE,
+    cellSize: 24,
+  }, [
+    () => calls.push('area'),
+    () => calls.push('animation'),
+  ])
+  assert.deepEqual(calls, ['area', 'animation'])
+  assert.equal(context.ops.filter((item) => item.op === 'save').length, 2)
+  assert.equal(context.ops.filter((item) => item.op === 'restore').length, 2)
+})
+
 test('канонизация ребра на клиенте совпадает с серверной', () => {
   const pairs = [[1, 1, 2, 1], [2, 1, 1, 1], [1, 1, 1, 2], [1, 2, 1, 1], [0, 0, 0, 1], [3, 3, 4, 3]]
   for (const [ax, ay, bx, by] of pairs) {

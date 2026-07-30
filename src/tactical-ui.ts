@@ -1,4 +1,4 @@
-import { doorBlocksStep } from './tactical-map-client'
+import { cellAt, doorBlocksStep } from './tactical-map-client'
 import type { BattleEvent, GameEvent, GameState, MapCell, MechanicsSupport, TacticalMap } from './types'
 
 export const boardPositionKey = (x: number, y: number) => `${x},${y}`
@@ -7,10 +7,46 @@ type BoardActor = { id: string; x: number; y: number }
 
 export type MovementPath = {
   path: Array<{ x: number; y: number }>
+  /** Стоимость обычных шагов без труднопроходимой местности. */
+  baseCostFeet: number
+  /** Доплата за труднопроходимые клетки; нужна подписи предпросмотра. */
+  difficultTerrainFeet: number
   costFeet: number
 }
 
 const isWalkable = (cell?: MapCell) => Boolean(cell?.revealed && (cell.type === 'floor' || cell.type === 'door'))
+
+type AreaEffectWithCells = NonNullable<NonNullable<GameState['mechanics']>['active_effects']>[number] & {
+  cells?: Array<{ x: number; y: number }>
+}
+
+function pointInAreaEffect(effect: AreaEffectWithCells, point: { x: number; y: number }) {
+  if (Array.isArray(effect.cells)) {
+    return effect.cells.some((cell) => Number(cell.x) === point.x && Number(cell.y) === point.y)
+  }
+  if (!effect.center) return false
+  const radiusCells = Math.max(0, Math.floor((Number(effect.radius_feet) || 0) / 5))
+  return Math.max(Math.abs(point.x - effect.center.x), Math.abs(point.y - effect.center.y)) <= radiusCells
+}
+
+/**
+ * Активные области зеркалят доплату Rules Engine перед MoveActor. Слой
+ * `moveCost` карты тоже показывается заранее: контракт уже объявляет 1/2, хотя
+ * серверное перемещение пока расходует только трудные области заклинаний.
+ */
+export function isDifficultTerrain(state: GameState, point: { x: number; y: number }, map?: TacticalMap | null) {
+  const mapCost = map ? Number(cellAt(map, point.x, point.y)?.moveCost) || 1 : 1
+  if (mapCost > 1) return true
+  return (state.mechanics?.active_effects ?? []).some((effect) => (
+    effect.difficult_terrain === true && pointInAreaEffect(effect as AreaEffectWithCells, point)
+  ))
+}
+
+export function movementCostLabel(route: MovementPath) {
+  return route.difficultTerrainFeet > 0
+    ? `${route.costFeet} фт (${route.baseCostFeet} фт пути + ${route.difficultTerrainFeet} фт за трудную местность)`
+    : `${route.costFeet} фт`
+}
 
 export function occupiedBoardPositions(state: GameState, exceptId?: string) {
   const occupied = new Set<string>()
@@ -63,7 +99,9 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
       path.unshift({ x, y })
       cursor = previous.get(cursor) ?? null
     }
-    result.set(destination, { path, costFeet: path.length * cellFeet })
+    const baseCostFeet = path.length * cellFeet
+    const difficultTerrainFeet = path.filter((step) => isDifficultTerrain(state, step, map)).length * cellFeet
+    result.set(destination, { path, baseCostFeet, difficultTerrainFeet, costFeet: baseCostFeet + difficultTerrainFeet })
   }
   return result
 }
