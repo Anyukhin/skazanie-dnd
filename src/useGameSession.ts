@@ -260,7 +260,6 @@ export function useGameSession() {
   const tacticalBusyRef = useRef(false)
   const merchantBusyRef = useRef(false)
   const freeRollBusy = useRef(false)
-  const systemTickBusy = useRef(false)
   const fullRoomBusy = useRef(false)
   const actionEpoch = useRef(0)
   const queuedRooms = useRef<Array<{ version: number; state: GameState }>>([])
@@ -314,7 +313,7 @@ export function useGameSession() {
   }, [])
 
   const flushQueuedRooms = useCallback(() => {
-    if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current || systemTickBusy.current) return
+    if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current) return
     const latest = queuedRooms.current
       .filter((candidate) => candidate.version > roomVersion.current)
       .reduce<{ version: number; state: GameState } | null>((current, candidate) => (
@@ -365,7 +364,7 @@ export function useGameSession() {
           void refreshFullRoom()
           return
         }
-        if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current || systemTickBusy.current) {
+        if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current) {
           queueRoomSnapshot(room)
           return
         }
@@ -479,24 +478,11 @@ export function useGameSession() {
         if (!active) return
         const resolved = roomWithSceneMap(received)
         if (!resolved) { void refreshFullRoom(); return }
-        let room = resolved as RoomSnapshot & { version: number }
-        const combat = room.state?.mechanics?.combat
-        const activeActorId = combat?.initiative?.[combat.active_index ?? 0]?.actor_id ?? room.state?.activePlayerId
-        const partyControlsTurn = room.state?.players?.some((player) => player.id === activeActorId)
-        if (combat?.active && activeActorId && !partyControlsTurn && !systemTickBusy.current) {
-          systemTickBusy.current = true
-          try {
-            const tickResponse = await fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/system-tick`, { method: 'POST' })
-            if (tickResponse.ok) room = await tickResponse.json() as RoomSnapshot & { version: number }
-          } finally {
-            systemTickBusy.current = false
-            flushQueuedRooms()
-          }
-        }
+        const room = resolved as RoomSnapshot & { version: number }
         // Пустую комнату больше не засеваем демо-миром: выдуманный отряд
         // уезжал на сервер и подменял «кампаний пока нет».
         if (room.state && room.version > roomVersion.current) {
-          if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current || systemTickBusy.current) {
+          if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current) {
             queueRoomSnapshot(room)
           } else {
             applyRoomSnapshot(room)

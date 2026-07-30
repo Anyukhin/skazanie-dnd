@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { eventSummary } from './rules-engine.mjs'
 import { DeterministicNarrationVerifier, assertNarrationBrief, buildDataOnlyContext } from './security.mjs'
-import { currentNarratorStyleInstruction } from './campaign-ai-context.mjs'
+import { currentNarratorGenerationParameters, currentNarratorStyleInstruction } from './campaign-ai-context.mjs'
 
 export const NARRATOR_PROMPT_VERSION = 'narrator/v4'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
@@ -682,6 +682,7 @@ export class Narrator {
         // снаружи остаётся только постоянная серверная фраза.
         const violations = lastVerification?.violations?.length ? lastVerification.violations : null
         const repair = violations ? `\n${REPAIR_INSTRUCTION}` : ''
+        const generation = currentNarratorGenerationParameters()
         let output
         try {
           output = await this.llmClient.completeJson({
@@ -696,7 +697,7 @@ export class Narrator {
                 })}${repair}`,
               },
             ],
-            temperature: 0.55,
+            ...generation,
             jsonExpected: 'object',
             signal: deadlineController?.signal,
           })

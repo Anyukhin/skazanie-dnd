@@ -5,6 +5,7 @@ import {
   findActor,
   hasClearTrajectory,
   incapacitatingConditionFor,
+  initiativeGroupIds,
   isEnemyActor,
   isLivingActor,
   normalizeCampaignState,
@@ -530,7 +531,12 @@ export async function runNpcTurnScheduler({
       return { state, state_version: loaded.state_version, turns, events }
     }
     if (combat.reaction_window) return { state, state_version: loaded.state_version, turns, events }
-    const currentId = String(combat.initiative[combat.active_index]?.actor_id ?? '')
+    const completed = new Set((combat.turn_completed ?? []).map(String))
+    const currentId = String(
+      (initiativeGroupIds(state).find((id) => !completed.has(String(id)))
+        ?? combat.initiative[combat.active_index]?.actor_id)
+      ?? '',
+    )
     const party = livingParty(state)
     const enemies = livingEnemies(state)
     const dying = unstableDyingParty(state)

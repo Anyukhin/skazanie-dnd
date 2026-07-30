@@ -1004,6 +1004,16 @@ export type GameState = {
     online_hero_ids: string[]
     typing_actor_ids?: string[]
   }
+  /** Серверный дедлайн текущей фазы боя; клиент только отображает его. */
+  turn_clock?: {
+    actor_ids: string[]
+    round: number
+    active_index: number
+    started_at: string
+    deadline_at: string
+    duration_ms: number
+    reaction_window_id?: string
+  } | null
   enemies?: Enemy[]
   actors?: SummonedCreature[]
   merchants?: Merchant[]

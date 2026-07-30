@@ -331,6 +331,15 @@ test('player combat API is server-authoritative, bounded, and durable across res
   assert.equal(startState.activePlayerId, 'hero')
   assert.ok((started.body.mechanics ?? []).length <= 20, 'start scheduling must be bounded')
   assert.ok((started.body.npc_turns ?? []).length <= 4, 'start scheduling must not loop NPC turns')
+  let clockRoom = null
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    clockRoom = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
+    assertStatus(clockRoom, 200, log)
+    if (clockRoom.body.state.turn_clock) break
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  assert.deepEqual(clockRoom.body.state.turn_clock.actor_ids, ['hero'])
+  assert.ok(Date.parse(clockRoom.body.state.turn_clock.deadline_at) > Date.parse(clockRoom.body.state.turn_clock.started_at))
 
   const beforeRejected = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
   assertStatus(beforeRejected, 200, log)

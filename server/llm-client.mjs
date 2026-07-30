@@ -105,6 +105,15 @@ function positiveInteger(value, fallback, label) {
   return number
 }
 
+function optionalNumberInRange(value, minimum, maximum, label) {
+  if (value == null) return null
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < minimum || number > maximum) {
+    throw new RangeError(`${label} должен быть числом от ${minimum} до ${maximum}`)
+  }
+  return number
+}
+
 function normalizeRequest(input, options = {}) {
   const request = Array.isArray(input)
     ? { ...options, messages: input }
@@ -269,6 +278,10 @@ export class RouterAIClient extends LLMClient {
       temperature: Number.isFinite(Number(request.temperature)) ? Number(request.temperature) : 0,
       max_tokens: positiveInteger(request.maxTokens ?? this.maxTokens, this.maxTokens, 'maxTokens'),
     }
+    const frequencyPenalty = optionalNumberInRange(request.frequencyPenalty ?? request.frequency_penalty, -2, 2, 'frequencyPenalty')
+    const presencePenalty = optionalNumberInRange(request.presencePenalty ?? request.presence_penalty, -2, 2, 'presencePenalty')
+    if (frequencyPenalty != null) body.frequency_penalty = frequencyPenalty
+    if (presencePenalty != null) body.presence_penalty = presencePenalty
     if (Array.isArray(request.tools) && request.tools.length) {
       body.tools = request.tools
       body.tool_choice = request.toolChoice ?? request.tool_choice ?? 'auto'

@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
-import { measureNarratorCraft } from '../eval/narrator-craft-metrics.mjs'
+import { NARRATOR_CLICHE_CATALOG, measureNarratorCraft } from '../eval/narrator-craft-metrics.mjs'
 import {
   NARRATOR_PROMPT_VERSION,
   Narrator,
@@ -97,7 +97,8 @@ test('сервер не сохраняет предложенные модель
 
   const systemPrompt = requests[0].messages[0].content
   assert.match(systemPrompt, /PROMPT_ID: narrator\/v4/u)
-  assert.match(systemPrompt, /не используй каталог клише/u)
+  assert.doesNotMatch(systemPrompt, /воздух густеет|повисает тишина|каталог клише/u)
+  assert.ok(NARRATOR_CLICHE_CATALOG.length >= 16, 'каталог остаётся в отдельной craft-проверке')
   assert.match(systemPrompt, /не называй видимые числа броска/u)
   assert.doesNotMatch(systemPrompt, /"suggestions"/u)
   assert.match(requests[0].messages[1].content, /"memory_focus"/u)

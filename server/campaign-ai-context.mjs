@@ -18,6 +18,15 @@ export const NARRATOR_STYLES = Object.freeze({
   },
 })
 
+// Творческие параметры Рассказчика живут рядом с моделью и стилем кампании,
+// а не внутри самого агента. RouterAI принимает оба штрафа в диапазоне
+// [-2, 2]; умеренные значения уменьшают самоповтор, не ломая связность прозы.
+export const NARRATOR_GENERATION_PARAMETERS = Object.freeze({
+  temperature: 0.8,
+  frequencyPenalty: 0.35,
+  presencePenalty: 0.2,
+})
+
 const campaignAiContext = new AsyncLocalStorage()
 
 export function normalizeNarratorStyle(value) {
@@ -46,4 +55,8 @@ export function currentCampaignModel() {
 export function currentNarratorStyleInstruction() {
   const settings = currentCampaignAiSettings()
   return settings ? NARRATOR_STYLES[settings.narratorStyle].instruction : ''
+}
+
+export function currentNarratorGenerationParameters() {
+  return NARRATOR_GENERATION_PARAMETERS
 }

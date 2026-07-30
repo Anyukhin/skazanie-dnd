@@ -1055,7 +1055,7 @@ function defaultMechanics() {
  * указателя в обе стороны, поэтому очередь не переставляется: меняется только
  * то, кому в этой точке разрешено действовать.
  */
-function initiativeGroupIds(state) {
+export function initiativeGroupIds(state) {
   const combat = state.mechanics.combat
   const order = combat.initiative ?? []
   if (!combat.group_initiative || !order.length) return []
@@ -5359,6 +5359,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'UseCombatAction': {
       const actor = findActor(state, command.actor_id)
       const reactionWindow = command.reaction_window ?? state.mechanics.combat.reaction_window
+      const automaticDeclinePayload = command.action_id === 'decline-reaction'
+        && command.server_authoritative === true
+        && context.serverAuthoritativeCombat === true
+        && String(command.auto_skip_reason ?? '') === 'turn-timeout'
+        ? { auto_declined: true, auto_decline_reason: 'turn-timeout' }
+        : {}
       const resumePendingSpell = () => {
         if (!reactionWindow?.pending_spell_command) return
         const resumedState = events.reduce(applyGameEvent, state)
@@ -5399,6 +5405,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           accepted,
           ...(accepted ? { action_id: 'indomitable' } : {}),
           deferred: queue.length > 0,
+          ...automaticDeclinePayload,
         }, [command.actor_id]))
         if (queue.length > 0) {
           const next = queue[0]
@@ -5475,7 +5482,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (reactionWindow.trigger === 'failed-saving-throw') {
           resolveIndomitableChoice(false)
         } else {
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: false }, [command.actor_id]))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', {
+            id: reactionWindow.id,
+            accepted: false,
+            ...automaticDeclinePayload,
+          }, [command.actor_id]))
           resumePendingSpell()
         }
         break
@@ -7630,6 +7641,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'EndTurn': {
       const combat = state.mechanics.combat
       if (!combat.active || !combat.initiative.length) throw new RulesValidationError('Бой не начат', 'COMBAT_NOT_ACTIVE')
+      const automaticSkip = command.server_authoritative === true
+        && context.serverAuthoritativeCombat === true
+        && String(command.auto_skip_reason ?? '') === 'turn-timeout'
+      const turnEndPayload = {
+        round: combat.round,
+        ...(automaticSkip ? { auto_skipped: true, auto_skip_reason: 'turn-timeout' } : {}),
+      }
       const endingActor = findActor(state, command.actor_id)
       const endingPosition = actorPosition(state, command.actor_id)
       for (const effect of (state.mechanics.active_effects ?? []).filter((candidate) => candidate.trigger_on_turn_end === true && positionInEffect(state, endingPosition, candidate))) {
@@ -7690,7 +7708,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const phaseDone = new Set([...(combat.turn_completed ?? []).map(String), command.actor_id])
       const phasePending = phase.filter((id) => !phaseDone.has(id) && isLivingActor(findActor(state, id)))
       if (phase.length && phasePending.length) {
-        events.push(eventFrom(command, 'TurnEnded', { round: combat.round, group_phase: true, phase_pending: phasePending }, [command.actor_id]))
+        events.push(eventFrom(command, 'TurnEnded', { ...turnEndPayload, group_phase: true, phase_pending: phasePending }, [command.actor_id]))
         break
       }
       // Фаза закрыта: указатель прыгает за её последнего участника.
@@ -7698,7 +7716,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const nextIndex = (Math.max(combat.active_index, lastOfPhase) + 1) % combat.initiative.length
       const nextRound = nextIndex <= combat.active_index ? combat.round + 1 : combat.round
       const nextId = combat.initiative[nextIndex].actor_id
-      events.push(eventFrom(command, 'TurnEnded', { round: combat.round }, [command.actor_id]))
+      events.push(eventFrom(command, 'TurnEnded', turnEndPayload, [command.actor_id]))
       events.push(eventFrom(command, 'TurnStarted', { round: nextRound, active_index: nextIndex }, [nextId]))
       // Заготовка живёт до начала собственного следующего хода: круг замкнулся —
       // несработавшая «Готовность» пропадает вместе с потраченным действием.

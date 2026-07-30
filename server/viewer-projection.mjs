@@ -555,7 +555,7 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   'enabled_rule_packs', 'enabled_house_rules', 'ruleset_locked_at', 'engine_mode',
   'players', 'entities', 'mapFeedback', 'rulings', 'activePlayerId', 'tacticalTurn',
   'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll',
-  'actors', 'economyLog', 'state_projector_version', 'presence', 'locationMaps',
+  'actors', 'economyLog', 'state_projector_version', 'presence', 'turn_clock', 'locationMaps',
 ])
 
 /**
