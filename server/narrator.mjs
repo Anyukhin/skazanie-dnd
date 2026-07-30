@@ -97,12 +97,6 @@ function sharedRootCount(leftValues, rightValues) {
   return count
 }
 
-/** Старое поле ответа намеренно игнорируется: следующий ход формулирует игрок. */
-export function narratorSuggestions(brief) {
-  assertNarrationBrief(brief)
-  return []
-}
-
 export function narratorMemoryFocus(brief) {
   const environment = brief.known_environment ?? {}
   const scene = environment.scene ?? {}

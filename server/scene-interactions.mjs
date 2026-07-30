@@ -4,10 +4,10 @@ import { serverEncounterLoot } from './loot-tables.mjs'
 export const SCENE_INTERACTION_POLICY_ID = 'skazanie:scene-interactions-v1'
 
 const CATALOG = Object.freeze([
-  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'crate', 'sarcophagus', 'urn', 'crypt_niche']), verbs: Object.freeze(['inspect', 'open', 'take']) }),
-  Object.freeze({ kind: 'relic', aliases: Object.freeze(['altar', 'rune', 'statue', 'roadside_shrine']), verbs: Object.freeze(['inspect', 'use']) }),
+  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'crate', 'sarcophagus', 'urn', 'crypt_niche', 'reliquary']), verbs: Object.freeze(['inspect', 'open', 'take']) }),
+  Object.freeze({ kind: 'relic', aliases: Object.freeze(['altar', 'rune', 'statue', 'roadside_shrine', 'brazier']), verbs: Object.freeze(['inspect', 'use']) }),
   Object.freeze({ kind: 'campfire', aliases: Object.freeze(['campfire']), verbs: Object.freeze(['inspect', 'use']) }),
-  Object.freeze({ kind: 'lore', aliases: Object.freeze(['bookshelf', 'table', 'fallen_log', 'tree_stump', 'boulder', 'rubble_heap', 'milestone']), verbs: Object.freeze(['inspect']) }),
+  Object.freeze({ kind: 'lore', aliases: Object.freeze(['bookshelf', 'table', 'fallen_log', 'tree_stump', 'boulder', 'rubble_heap', 'stalagmite', 'milestone']), verbs: Object.freeze(['inspect']) }),
   Object.freeze({ kind: 'corpse', aliases: Object.freeze(['bones', 'bone_pile', 'grave', 'corpse']), verbs: Object.freeze(['inspect', 'take']) }),
 ])
 
@@ -42,10 +42,12 @@ const ASSET_ALIASES_RU = Object.freeze({
   sarcophagus: Object.freeze(['саркофаг', 'саркофага', 'саркофаге']),
   urn: Object.freeze(['урна', 'урну', 'урне']),
   crypt_niche: Object.freeze(['ниша', 'нишу', 'нише']),
+  reliquary: Object.freeze(['ковчег', 'ковчега', 'ковчеге', 'реликварий']),
   altar: Object.freeze(['алтарь', 'алтаря']),
   rune: Object.freeze(['руна', 'руну', 'руне']),
   statue: Object.freeze(['статуя', 'статую', 'статуе']),
   roadside_shrine: Object.freeze(['святилище', 'святилища', 'святилище']),
+  brazier: Object.freeze(['жаровня', 'жаровню', 'жаровне', 'чаша с огнём']),
   campfire: Object.freeze(['костёр', 'костер', 'очаг']),
   bookshelf: Object.freeze(['полка', 'полку', 'шкаф', 'книги']),
   table: Object.freeze(['стол', 'стола', 'столе']),
@@ -53,6 +55,7 @@ const ASSET_ALIASES_RU = Object.freeze({
   tree_stump: Object.freeze(['пень', 'пня', 'пне']),
   boulder: Object.freeze(['валун', 'валуна', 'валуне', 'камень', 'камня', 'камне']),
   rubble_heap: Object.freeze(['завал', 'завала', 'завале', 'обломки']),
+  stalagmite: Object.freeze(['сталагмит', 'сталагмита', 'сталагмите', 'нарост']),
   milestone: Object.freeze(['верстовой столб', 'указатель', 'указателя']),
   bones: Object.freeze(['кости', 'останки', 'скелет']),
   bone_pile: Object.freeze(['кости', 'останки', 'скелет']),

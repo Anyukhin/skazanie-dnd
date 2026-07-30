@@ -18,13 +18,13 @@ export type SceneArt = Readonly<{
   url: string
 }>
 
-/** Пять существующих подложек Dyson Logos; каталог переехал сюда без изменений. */
+/** Пять собственных светлых top-down подложек тактической доски. */
 export const BOARD_MAP_LIBRARY = Object.freeze({
-  cave: Object.freeze({ id: 'dyson-logos-cavern', url: '/assets/maps/library/dyson-logos/cave/dyson-logos-cavern.webp' }),
-  dungeon: Object.freeze({ id: 'dyson-logos-dungeon', url: '/assets/maps/library/dyson-logos/dungeon/dyson-logos-dungeon.webp' }),
-  tavern: Object.freeze({ id: 'dyson-logos-estate', url: '/assets/maps/library/dyson-logos/tavern/dyson-logos-estate.webp' }),
-  temple: Object.freeze({ id: 'dyson-logos-temple', url: '/assets/maps/library/dyson-logos/temple/dyson-logos-temple.webp' }),
-  village: Object.freeze({ id: 'dyson-logos-village', url: '/assets/maps/library/dyson-logos/village/dyson-logos-village.webp' }),
+  cave: Object.freeze({ id: 'skazanie-cave-01', url: '/assets/maps/library/skazanie/cave-01.webp' }),
+  dungeon: Object.freeze({ id: 'skazanie-dungeon-01', url: '/assets/maps/library/skazanie/dungeon-01.webp' }),
+  tavern: Object.freeze({ id: 'skazanie-tavern-01', url: '/assets/maps/library/skazanie/tavern-01.webp' }),
+  temple: Object.freeze({ id: 'skazanie-temple-01', url: '/assets/maps/library/skazanie/temple-01.webp' }),
+  village: Object.freeze({ id: 'skazanie-village-01', url: '/assets/maps/library/skazanie/village-01.webp' }),
 })
 
 function themedArt(theme: SceneTheme, variant: 1 | 2): SceneArt {

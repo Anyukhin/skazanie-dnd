@@ -13,7 +13,6 @@ import {
   Narrator,
   deterministicNarration,
   narratorMemoryFocus,
-  narratorSuggestions,
 } from '../server/narrator.mjs'
 import { buildNarrationBrief } from '../server/security.mjs'
 
@@ -103,15 +102,6 @@ test('сервер не сохраняет предложенные модель
   assert.doesNotMatch(systemPrompt, /"suggestions"/u)
   assert.match(requests[0].messages[1].content, /"memory_focus"/u)
   assert.match(requests[0].messages[1].content, /Ада сохранила синюю нить как улику/u)
-})
-
-test('контекстные модельные suggestions игнорируются', () => {
-  const suggestions = [
-    'Спросить Миру о синей нити из пропавшего каравана',
-    'Ада: применить опыт проводницы к следу у синей нити',
-    'Сверить синюю нить с отметиной у Трактира «Пустой кубок»',
-  ]
-  assert.deepEqual(narratorSuggestions(craftBrief(), suggestions), [])
 })
 
 test('memory_focus выбирает N-2, обещание и прошлую встречу по явной связи сцены', () => {

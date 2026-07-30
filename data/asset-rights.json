@@ -1211,7 +1211,12 @@
     ["scenes/settlement-01.webp", "3d9b063cdb629f96e8d96f9786ae757c67e75779964c809c605fac31a4ec190d", 104582],
     ["scenes/settlement-02.webp", "12cc5229b063d2e01c1f5dae6141e24f2dc9272862baa1123e3f74aaa025cd1b", 136446],
     ["scenes/temple-01.webp", "2bb5b1aa95d7b60bf06002ad314e5a9602dbb462eb2ef446ce18211adee307da", 79556],
-    ["scenes/temple-02.webp", "d5e359142efa56e2f91cac9bf90e92980cc77060fd2e42c5a0c42698b5ef0172", 79528]
+    ["scenes/temple-02.webp", "d5e359142efa56e2f91cac9bf90e92980cc77060fd2e42c5a0c42698b5ef0172", 79528],
+    ["maps/library/skazanie/cave-01.webp", "af0d9e1aaf1e8c736e693d2aa434aab2755c18b50478897c85540e8015f3a4b1", 363314],
+    ["maps/library/skazanie/dungeon-01.webp", "59745eeee81cf737311497b26c25f7a6af212bd991090d646f990046d6618548", 332384],
+    ["maps/library/skazanie/tavern-01.webp", "e8a10e24d682d4c3c58e6b8ed0b953564aa8072de168a91d3f99218aa7f92a95", 371214],
+    ["maps/library/skazanie/temple-01.webp", "2c3b863da8a6f306d52d08c2ead660412728eb5597b28daf199d7efc3a255211", 336982],
+    ["maps/library/skazanie/village-01.webp", "14324d3c71f5a8b62e00d8107ebd66c0f00fa8c55c992764b6e15d49cba1b20e", 405352]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",

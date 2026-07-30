@@ -493,7 +493,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .agent-voter-status > span.voted { border-color: rgba(96,157,113,.34); color: #a9c8af; }.agent-voter-status > span.voted i { background: #6eaa7c; }
 .agent-voter-status > span.abstained { border-color: rgba(184,141,83,.28); }.agent-voter-status > span.abstained i { background: #ad8553; }
 .agent-voter-status > span.offline { opacity: .62; }.agent-voter-status > span.offline i { background: #805f5a; }
-.ideas-toggle .rotated { transform: rotate(90deg); }
 .input-row { display: grid; grid-template-columns: auto minmax(0, 1fr) 43px; gap: 8px; }
 .input-wrap { min-width: 0; display: flex; align-items: center; height: 43px; padding: 0 13px; border: 1px solid rgba(211,184,149,.13); border-radius: 5px; background: rgba(7,6,5,.38); }
 .input-wrap:focus-within { border-color: rgba(204,151,86,.42); box-shadow: 0 0 0 2px rgba(204,151,86,.06); }

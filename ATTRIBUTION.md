@@ -79,23 +79,6 @@
 
 Отсутствие такой записи является release blocker, а не подразумеваемым разрешением.
 
-### Карты Dyson Logos / Scarlet Heroes
-
-Пять карт в `public/assets/maps/library/dyson-logos` взяты из набора
-**South-East Asian-inspired maps by Dyson Logos [Scarlet Heroes]**:
-
-- автор: Dyson Logos;
-- издатель исходного art pack: Sine Nomine Publishing / Kevin Crawford;
-- источник: https://lpc.opengameart.org/content/south-east-asian-inspired-maps-by-dyson-logos-scarlet-heroes;
-- исходный архив: https://lpc.opengameart.org/sites/default/files/Dyson%20Logos.zip;
-- статус: public domain / CC0;
-- получено и преобразовано из TIFF в WebP: 25 июля 2026 года.
-
-Издатель сообщает, что приобрёл полные права на работы и выпустил art pack в
-общественное достояние для личного и коммерческого использования. Атрибуция не
-обязательна, но по просьбе издателя имя художника сохранено в путях и именах
-файлов.
-
 ### Атлас иконок действий
 
 `public/assets/ui/action-icons/action-atlas-v1.webp` создан 25 июля 2026 года

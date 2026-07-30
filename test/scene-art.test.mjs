@@ -55,13 +55,13 @@ function webpDimensions(bytes) {
   assert.fail(`неподдержанный WebP chunk ${chunk}`)
 }
 
-test('каталог владеет пятью прежними картами и всеми 17 иллюстрациями', () => {
+test('каталог владеет пятью собственными подложками и всеми 17 иллюстрациями', () => {
   assert.equal(Object.keys(BOARD_MAP_LIBRARY).length, 5)
-  assert.equal(BOARD_MAP_LIBRARY.cave.url, '/assets/maps/library/dyson-logos/cave/dyson-logos-cavern.webp')
-  assert.equal(BOARD_MAP_LIBRARY.dungeon.url, '/assets/maps/library/dyson-logos/dungeon/dyson-logos-dungeon.webp')
-  assert.equal(BOARD_MAP_LIBRARY.tavern.url, '/assets/maps/library/dyson-logos/tavern/dyson-logos-estate.webp')
-  assert.equal(BOARD_MAP_LIBRARY.temple.url, '/assets/maps/library/dyson-logos/temple/dyson-logos-temple.webp')
-  assert.equal(BOARD_MAP_LIBRARY.village.url, '/assets/maps/library/dyson-logos/village/dyson-logos-village.webp')
+  assert.equal(BOARD_MAP_LIBRARY.cave.url, '/assets/maps/library/skazanie/cave-01.webp')
+  assert.equal(BOARD_MAP_LIBRARY.dungeon.url, '/assets/maps/library/skazanie/dungeon-01.webp')
+  assert.equal(BOARD_MAP_LIBRARY.tavern.url, '/assets/maps/library/skazanie/tavern-01.webp')
+  assert.equal(BOARD_MAP_LIBRARY.temple.url, '/assets/maps/library/skazanie/temple-01.webp')
+  assert.equal(BOARD_MAP_LIBRARY.village.url, '/assets/maps/library/skazanie/village-01.webp')
 
   const sceneUrls = [
     ...SCENE_THEMES.flatMap((theme) => SCENE_ART_LIBRARY[theme].map((entry) => entry.url)),
@@ -71,13 +71,18 @@ test('каталог владеет пятью прежними картами �
   assert.equal(new Set(sceneUrls).size, 17)
   assert.ok(sceneUrls.every((url) => /^\/assets\/scenes\/(?:building|temple|crypt|cave|forest|road|settlement|common)-(?:01|02|night-road|camp|ruins)\.webp$/u.test(url)))
 
+  const boardUrls = Object.values(BOARD_MAP_LIBRARY).map((entry) => entry.url)
   const rights = JSON.parse(readFileSync(new URL('../data/asset-rights.json', import.meta.url), 'utf8'))
   const registered = new Map(rights.assets.map((tuple) => [tuple[0], tuple]))
-  for (const url of sceneUrls) {
+  for (const url of [...boardUrls, ...sceneUrls]) {
     const relative = url.replace(/^\/assets\//u, '')
     const file = new URL(`../public/assets/${relative}`, import.meta.url)
     const bytes = readFileSync(file)
-    assert.deepEqual(webpDimensions(bytes), { width: 1280, height: 512 }, relative)
+    assert.deepEqual(
+      webpDimensions(bytes),
+      url.includes('/maps/library/') ? { width: 1536, height: 1024 } : { width: 1280, height: 512 },
+      relative,
+    )
     const tuple = registered.get(relative)
     assert.ok(tuple, `${relative}: нет записи прав`)
     assert.equal(tuple[1], createHash('sha256').update(bytes).digest('hex'), `${relative}: неверный SHA-256`)

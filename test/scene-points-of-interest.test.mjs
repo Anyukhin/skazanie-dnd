@@ -16,9 +16,10 @@ import { SCENE_THEMES } from '../server/scene-themes.mjs'
 
 const DICTIONARY_ASSETS = Object.freeze([
   'chest', 'barrel', 'barrel_stack', 'crate', 'crate_stack', 'sarcophagus', 'urn', 'crypt_niche',
-  'altar', 'rune', 'statue', 'roadside_shrine',
+  'reliquary',
+  'altar', 'rune', 'statue', 'roadside_shrine', 'brazier',
   'campfire',
-  'bookshelf', 'table', 'table_round', 'table_long', 'table_small', 'fallen_log', 'tree_stump', 'boulder', 'rubble_heap', 'milestone',
+  'bookshelf', 'table', 'table_round', 'table_long', 'table_small', 'fallen_log', 'tree_stump', 'boulder', 'rubble_heap', 'stalagmite', 'milestone',
   'bones', 'bone_pile', 'grave', 'corpse',
 ])
 
@@ -142,6 +143,18 @@ test('все live-темы получают POI только в свежем out
       assert.ok(
         new Set(points.map((prop) => prop.assetId)).size >= 2,
         'лес должен получать разные интерактивные объекты из своей палитры',
+      )
+    }
+    if (theme.id === 'temple') {
+      assert.ok(
+        new Set(points.map((prop) => prop.assetId)).size >= 3,
+        'храм должен получать не меньше трёх разных интерактивных объектов',
+      )
+    }
+    if (theme.id === 'cave') {
+      assert.ok(
+        new Set(points.map((prop) => prop.assetId)).size >= 2,
+        'пещера должна получать не меньше двух разных интерактивных объектов',
       )
     }
   }
