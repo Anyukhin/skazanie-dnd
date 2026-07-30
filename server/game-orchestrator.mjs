@@ -430,9 +430,6 @@ function cachedNarration(trace, brief, knownRuleIds) {
   if (!verification.valid) return null
   return {
     narration: text,
-    suggestions: Array.isArray(cached.suggestions)
-      ? cached.suggestions.slice(0, 3).map((suggestion) => String(suggestion).slice(0, 120)).filter(Boolean)
-      : [],
     verification,
     prompt_version: String(cached.prompt_version || NARRATOR_PROMPT_VERSION),
     provider: String(cached.provider || 'cached-idempotent-replay'),
@@ -457,7 +454,6 @@ function deterministicMechanicsNarration(brief, knownRuleIds, resolveName) {
   const fallback = deterministicNarration(brief, resolveName)
   return {
     ...fallback,
-    suggestions: [],
     verification: verifyNarration(fallback.narration, brief, { knownRuleIds }),
     prompt_version: 'mechanics-log/v1',
     provider: 'deterministic-mechanics',
@@ -647,7 +643,6 @@ export class GameOrchestrator {
     const idempotentReplay = Boolean(freeAction.duplicate)
     const response = {
       narration,
-      suggestions: Array.isArray(freeAction.suggestions) ? freeAction.suggestions : [],
       effects: eventsToClientEffects(committedEvents, freeAction.rolls ?? []),
       provider: 'deterministic-free-action',
       model: 'server-policy',
@@ -691,7 +686,6 @@ export class GameOrchestrator {
         latency: this.now() - started,
         narration: {
           narration,
-          suggestions: response.suggestions,
           verification,
           prompt_version: 'free-action/v1',
           provider: response.provider,
@@ -727,7 +721,7 @@ export class GameOrchestrator {
         role: input.user?.role,
       })
       const explanation = turnExplanationForViewer(rawExplanation, input.user ?? {}, playerId, originalState)
-      return { narration: whyNarration(explanation, actorNameResolver(originalState)), suggestions: [], effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', engine_mode: mode, turn_id: explanation?.turn_id ?? null, state_version: originalState.state_version, explanation, turn_consumed: false }
+      return { narration: whyNarration(explanation, actorNameResolver(originalState)), effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', engine_mode: mode, turn_id: explanation?.turn_id ?? null, state_version: originalState.state_version, explanation, turn_consumed: false }
     }
 
     const viewer = { playerId, partyIds: input.partyIds ?? [], isPartyMember: true, role: input.user?.role }
@@ -846,7 +840,7 @@ export class GameOrchestrator {
 
     if (intent.requires_clarification || plan.clarification_required) {
       const narration = humanMissingInformation(intent.missing_information ?? plan.missing_information, authoritativeState)
-      const response = { narration, suggestions: [], effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], authoritative_state: authoritativeState, turn_consumed: false }
+      const response = { narration, effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], authoritative_state: authoritativeState, turn_consumed: false }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })
       return response
     }
@@ -1004,7 +998,6 @@ export class GameOrchestrator {
     const response = {
       narration: narration.narration,
       ...(narration.journal_author ? { journal_author: narration.journal_author } : {}),
-      suggestions: narration.suggestions,
       effects: eventsToClientEffects(committedEvents, engineResult.rolls),
       provider: narration.provider,
       model: 'orchestrated',
@@ -1049,7 +1042,6 @@ export class GameOrchestrator {
       token_usage: {},
       narration_result: narration ? {
         narration: narration.narration,
-        suggestions: narration.suggestions ?? [],
         verification: narration.verification ?? verification,
         prompt_version: narration.prompt_version ?? null,
         provider: narration.provider ?? null,

@@ -85,10 +85,10 @@ import { characterCreationCatalog, createCharacterSlot } from './character-lifec
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
-// Кампания на одного игрока — поддерживаемый режим; четвёрка осталась верхней
-// границей, а не обязательным составом.
+// Кампания на одного игрока — поддерживаемый режим; пять мест покрывают
+// полный стол MVP, но не превращаются в обязательный состав.
 const MIN_PARTY_SLOTS = 1
-const MAX_PARTY_SLOTS = 4
+const MAX_PARTY_SLOTS = 5
 const port = Number(process.env.AGENT_PORT || 8787)
 const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
@@ -105,6 +105,8 @@ const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
 const campaignStreams = new Map()
+const campaignTyping = new Map()
+const TYPING_TTL_MS = 4_000
 let campaignStreamSequence = 0
 
 const diceService = new DiceService()
@@ -210,7 +212,7 @@ function canUseHero(user, heroId, campaignId) {
 }
 
 const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'EndTurn', 'ResolveHeroDeath'])
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'OperateSceneObject', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
 const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
@@ -561,6 +563,17 @@ function sanitizePlayerCombatCommand(user, state, input) {
       ...base,
       door_id: String(input?.door_id ?? input?.doorId ?? '').slice(0, 120),
       intent: ['open', 'close', 'force'].includes(intent) ? intent : 'open',
+    }
+  }
+  if (type === 'OperateSceneObject') {
+    const intent = String(input?.intent ?? 'inspect')
+    return {
+      ...base,
+      prop_id: String(input?.prop_id ?? input?.propId ?? '').slice(0, 120),
+      intent: ['inspect', 'open', 'take', 'use'].includes(intent) ? intent : 'inspect',
+      // Силовой подход приходит только от серверного разбора свободного текста.
+      // Кнопка не может подменить обычное взаимодействие готовым исходом взлома.
+      approach: 'hand',
     }
   }
   if (type === 'MakeAreaAttack') return { ...base, item_id: String(input?.item_id || ''), to: { x: input?.to?.x, y: input?.to?.y } }
@@ -927,6 +940,7 @@ function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
   const connections = streamConnections(campaignId)
   const onlineHeroIds = connectedHeroIdsForCampaign(campaignId)
+  const typingActorIds = typingActorIdsForCampaign(campaignId)
   if ([...connections.values()].some((connection) => connection.controlsParty)) {
     for (const player of state.players ?? []) onlineHeroIds.add(String(player.id))
   }
@@ -941,8 +955,21 @@ function stateWithLivePresence(state, campaignId) {
       connected_users: new Set([...connections.values()].map((connection) => connection.userId)).size,
       connected_heroes: onlineHeroIds.size,
       online_hero_ids: [...onlineHeroIds].sort(),
+      typing_actor_ids: typingActorIds,
     },
   }
+}
+
+function typingActorIdsForCampaign(campaignId) {
+  const normalized = String(campaignId || '').toUpperCase()
+  const typing = campaignTyping.get(normalized) ?? new Map()
+  const now = Date.now()
+  for (const [userId, entry] of typing) {
+    if (Number(entry.expiresAt) <= now) typing.delete(userId)
+  }
+  if (typing.size) campaignTyping.set(normalized, typing)
+  else campaignTyping.delete(normalized)
+  return [...new Set([...typing.values()].map((entry) => String(entry.actorId)))].sort()
 }
 
 function writeCampaignStream(connection, event, payload) {
@@ -951,6 +978,14 @@ function writeCampaignStream(connection, event, payload) {
   connection.res.write(`event: ${event}\n`)
   connection.res.write(`data: ${JSON.stringify(payload)}\n\n`)
   return true
+}
+
+function broadcastCampaignTyping(campaignId) {
+  const normalized = String(campaignId || '').toUpperCase()
+  const typingActorIds = typingActorIdsForCampaign(normalized)
+  for (const connection of streamConnections(normalized).values()) {
+    writeCampaignStream(connection, 'presence', { typing_actor_ids: typingActorIds })
+  }
 }
 
 function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
@@ -1173,7 +1208,6 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
     worldMap: sceneEvent.payload.worldMap,
     transition: sceneEvent.payload.transition,
     arrival: sceneEvent.payload.arrival,
-    suggestions: sceneEvent.payload.suggestions ?? [],
     entrance: sceneEvent.payload.entrance,
   } : directorPlan.transition
   const merchantEvent = (result.mechanics ?? []).find((event) => event.event_type === 'MerchantCreated')
@@ -1181,7 +1215,6 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
   return {
     ...result,
     effects: { ...result.effects, scene: committedTransition },
-    suggestions: committedTransition.suggestions ?? result.suggestions ?? [],
     turn_consumed: true,
     action_kind: 'world',
     director_transition: {
@@ -1221,7 +1254,6 @@ async function replayDirectorSceneTransition({ campaignId, room, user, action, i
     worldMap: sceneEvent.payload.worldMap,
     transition: sceneEvent.payload.transition,
     arrival: sceneEvent.payload.arrival,
-    suggestions: sceneEvent.payload.suggestions ?? [],
     entrance: sceneEvent.payload.entrance,
   }
   const commerce = sceneEvent.payload.scene_commerce ?? {}
@@ -1229,7 +1261,6 @@ async function replayDirectorSceneTransition({ campaignId, room, user, action, i
   return {
     ...result,
     effects: { ...result.effects, scene: committedTransition },
-    suggestions: committedTransition.suggestions ?? result.suggestions ?? [],
     turn_consumed: true,
     action_kind: 'world',
     model: 'event-replay',
@@ -1355,7 +1386,6 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       ...(sceneChanged ? {
         adventure: engineState.adventure,
         worldMap: engineState.worldMap,
-        suggestions: engineState.suggestions ?? room.state.suggestions,
       } : {}),
       ...(sceneChanged || partyDecisionChanged ? { agentInteraction: engineState.agentInteraction ?? null } : {}),
       activePlayerId: engineState.activePlayerId ?? room.state.activePlayerId,
@@ -1691,6 +1721,27 @@ const server = createServer(async (req, res) => {
   }
 
   const parsedUrl = new URL(req.url || '/', 'http://skazanie.local')
+  const campaignTypingMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/presence\/typing$/)
+  if (campaignTypingMatch && req.method === 'PUT') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignTypingMatch[1].toUpperCase()
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    const body = await readBody(req)
+    const actorId = String(body.actor_id ?? '')
+    if (!canUseHero(user, actorId, campaignId)) {
+      return json(res, 403, { error: 'Индикатор ввода доступен только владельцу героя', code: 'ACTOR_FORBIDDEN' })
+    }
+    const key = String(user.id)
+    const typing = campaignTyping.get(campaignId) ?? new Map()
+    if (body.typing === true) typing.set(key, { actorId, expiresAt: Date.now() + TYPING_TTL_MS })
+    else typing.delete(key)
+    if (typing.size) campaignTyping.set(campaignId, typing)
+    else campaignTyping.delete(campaignId)
+    broadcastCampaignTyping(campaignId)
+    return json(res, 200, { ok: true, typing: body.typing === true, ttl_ms: TYPING_TTL_MS })
+  }
   const campaignStreamMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/stream$/)
   if (campaignStreamMatch && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
@@ -1903,7 +1954,7 @@ const server = createServer(async (req, res) => {
       if (!/^[A-Z0-9-]{3,24}$/.test(code)) return json(res, 400, { error: 'Код кампании должен содержать 3–24 латинских символа, цифры или дефис' })
       if (getRoom(code).state) return json(res, 409, { error: 'Кампания с таким кодом уже существует' })
       // Размер отряда выбирает создатель: кампания на одного игрока —
-      // законный режим, а не урезанная четвёрка. Верхняя граница остаётся 4.
+      // законный режим, а верхняя граница покрывает стол на пятерых.
       const requestedSlotCount = Number(body.bootstrap?.slotCount ?? body.bootstrap?.players?.length ?? 0)
       if (creator.role !== 'admin' && (!body.bootstrap || !Number.isFinite(requestedSlotCount)
         || requestedSlotCount < MIN_PARTY_SLOTS || requestedSlotCount > MAX_PARTY_SLOTS)) {
@@ -1928,7 +1979,7 @@ const server = createServer(async (req, res) => {
       const state = normalizeCampaignState(generatedState ?? body.state ?? {
         sessionCode: code,
         campaign: String(body.name || 'Новая кампания').slice(0, 120),
-        players: [], messages: [], activePlayerId: '', isNarrating: false, pendingCheck: null, suggestions: [],
+        players: [], messages: [], activePlayerId: '', isNarrating: false, pendingCheck: null,
         scene: { title: 'Начало', location: '', mood: '', objective: '', turn: 0, cells: [] },
       })
       state.sessionCode = code
@@ -2808,8 +2859,13 @@ const server = createServer(async (req, res) => {
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       assertCampaignPlayable(room.state)
       const trustedState = room.state
-      const playerId = String(trustedState.activePlayerId || '')
+      const requestedPlayerId = String(body.actor_id ?? '')
+      const playerId = requestedPlayerId || String(trustedState.activePlayerId || '')
       if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
+      const combatActorId = String(trustedState.mechanics?.combat?.initiative?.[trustedState.mechanics?.combat?.active_index ?? 0]?.actor_id ?? '')
+      if (trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
+        return json(res, 409, { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' })
+      }
       if (trustedState.mechanics?.death?.campaign_status === 'party_defeated') {
         return json(res, 409, { error: 'Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя', code: 'WORLD_ENDED' })
       }
@@ -2878,7 +2934,6 @@ const server = createServer(async (req, res) => {
       } else if (directorResolution?.type === 'narration') {
         result = {
           narration: directorResolution.narration,
-          suggestions: directorResolution.suggestions ?? [],
           effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
           provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
           state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
@@ -2888,7 +2943,7 @@ const server = createServer(async (req, res) => {
         executeTool('request_party_decision', directorInteraction, effects, trustedState)
         result = {
           narration: effects.interaction.description,
-          suggestions: [], effects,
+          effects,
           provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
           state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
         }

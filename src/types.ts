@@ -619,6 +619,8 @@ export type TacticalDoor = {
   keyItemId: string | null
 }
 
+export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use'
+
 export type TacticalProp = {
   id: string
   assetId: string
@@ -637,6 +639,15 @@ export type TacticalProp = {
   hp: number
   interactive: boolean
   state: string
+  /** Разрешённая игроку часть серверного контракта взаимодействия. */
+  interaction?: {
+    kind: string
+    verbs: SceneObjectIntent[]
+    pointOfInterest: boolean
+  }
+  /** Переходные поля старой проекции; новых глаголов клиент из них не сочиняет. */
+  interactionKind?: string
+  interactionVerbs?: SceneObjectIntent[]
 }
 
 export type TacticalZone = {
@@ -957,7 +968,6 @@ export type SceneTransition = {
   worldMap?: WorldMapState
   transition: string
   arrival: string
-  suggestions: string[]
   entrance: { x: number; y: number }
 }
 
@@ -987,6 +997,13 @@ export type GameState = {
   partyMemberIds?: string[]
   partyDecisionPolicy?: PartyDecisionPolicy
   players: Player[]
+  presence?: {
+    transport: 'sse'
+    connected_users: number
+    connected_heroes: number
+    online_hero_ids: string[]
+    typing_actor_ids?: string[]
+  }
   enemies?: Enemy[]
   actors?: SummonedCreature[]
   merchants?: Merchant[]
@@ -1004,7 +1021,6 @@ export type GameState = {
   agentInteraction?: AgentInteraction | null
   /** Optional so rooms saved before the dice tray was added remain valid. */
   lastDiceRoll?: DiceRollEvent | null
-  suggestions: string[]
   state_version?: number
   ruleset_id?: string
   ruleset_version?: string
@@ -1194,6 +1210,7 @@ export type GameMechanics = Record<string, unknown> & {
     concluded_at?: string | null
     archived_at?: string | null
     epilogue?: string | null
+    epilogue_fact_keys?: string[]
     changed_by?: string | null
   }
   death?: {
@@ -1264,7 +1281,6 @@ export type SuggestedAction = {
 
 export type AiTurnResult = {
   narration: string
-  suggestions: string[]
   provider: string
   model: string
   check?: { check_id?: string; label: string; modifier: number; difficulty: number; sides: 20 } | null

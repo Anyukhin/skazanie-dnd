@@ -39,7 +39,7 @@ test('переход архивирует сцену и не повторяет 
     title: 'Голоса на тракте', location: 'Северный тракт', mood: 'Холодный рассвет',
     objective: 'Найти исчезнувший обоз', transition: 'За дверью склепа тропа выводит героев к тракту.',
     arrival: 'В колеях лежит свежий иней.', hook: 'Печать совпадает со знаком на колесе.', theme: 'дорога',
-    danger: 'низкая', outcome: 'Печать архивариуса возвращена.', suggestions: ['Осмотреть колеи', 'Искать свидетелей'],
+    danger: 'низкая', outcome: 'Печать архивариуса возвращена.',
   }, state)
 
   assert.equal(result.adventure.chapter, 2)
@@ -47,7 +47,7 @@ test('переход архивирует сцену и не повторяет 
   assert.equal(result.scene.location, 'Северный тракт')
   assert.equal(result.scene.turn, 8)
   assert.deepEqual(result.entrance, { x: 1, y: 4 })
-  assert.deepEqual(result.suggestions, ['Осмотреть колеи', 'Искать свидетелей'])
+  assert.equal(Object.hasOwn(result, 'suggestions'), false)
 })
 
 test('переход безопасно ограничивает объём генерируемых моделью полей', () => {

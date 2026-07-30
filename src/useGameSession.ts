@@ -4,7 +4,7 @@ import { fetchWithTimeout, generateItemImage, narrateWithAgent, rollDice, rollSh
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult, SceneObjectIntent } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -20,6 +20,7 @@ type TacticalCommand =
   | { command_type: 'UseCombatAction'; actor_id: string; action_id: string; target_id?: string; item_id?: string }
   | { command_type: 'ChangeWeapon'; actor_id: string; item_id: string }
   | { command_type: 'OperateDoor'; actor_id: string; door_id: string; intent: 'open' | 'close' | 'force' }
+  | { command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent }
   | { command_type: 'EndTurn'; actor_id: string }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
   | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
@@ -230,7 +231,6 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
       adventure: authoritative.adventure,
       worldMap: authoritative.worldMap,
       entities: authoritative.entities,
-      suggestions: authoritative.suggestions ?? current.suggestions,
       agentInteraction: authoritative.agentInteraction ?? null,
       activePlayerId: authoritative.activePlayerId ?? current.activePlayerId,
       tacticalTurn: authoritative.tacticalTurn,
@@ -374,9 +374,32 @@ export function useGameSession() {
         console.warn('Realtime-событие комнаты отклонено:', error)
       }
     }
+    const receivePresence = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as { typing_actor_ids?: string[] }
+        const typingActorIds = Array.isArray(payload.typing_actor_ids) ? payload.typing_actor_ids.map(String) : []
+        setState((current) => {
+          const next = {
+            ...current,
+            presence: {
+              transport: 'sse' as const,
+              connected_users: current.presence?.connected_users ?? 0,
+              connected_heroes: current.presence?.connected_heroes ?? 0,
+              online_hero_ids: current.presence?.online_hero_ids ?? [],
+              typing_actor_ids: typingActorIds,
+            },
+          }
+          stateRef.current = next
+          return next
+        })
+      } catch (error) {
+        console.warn('Realtime-событие присутствия отклонено:', error)
+      }
+    }
     const closeSource = () => {
       if (!source) return
       source.removeEventListener('room', receive as EventListener)
+      source.removeEventListener('presence', receivePresence as EventListener)
       source.close()
       source = null
     }
@@ -415,6 +438,7 @@ export function useGameSession() {
       const nextSource = new EventSource(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/stream`)
       source = nextSource
       nextSource.addEventListener('room', receive as EventListener)
+      nextSource.addEventListener('presence', receivePresence as EventListener)
       nextSource.onopen = () => {
         retryDelay = 1_000
         opened = true
@@ -526,15 +550,14 @@ export function useGameSession() {
       pendingCheck: null,
       activePlayerId: base.activePlayerId,
       messages: narrationPersisted ? base.messages : [...base.messages, narratorMessage],
-      suggestions: aiResult?.suggestions?.length ? aiResult.suggestions : base.suggestions,
     }
   }, [])
 
-  const submitAction = useCallback(async (text: string) => {
+  const submitAction = useCallback(async (text: string, actorId?: string) => {
     if (!text.trim() || state.isNarrating || state.pendingCheck) return
     busy.current = true
     const epoch = ++actionEpoch.current
-    const player = state.players.find((item) => item.id === state.activePlayerId) ?? state.players[0]
+    const player = state.players.find((item) => item.id === (actorId || state.activePlayerId)) ?? state.players[0]
     const pending: GameState = {
       ...state,
       isNarrating: true,
@@ -545,7 +568,7 @@ export function useGameSession() {
     let aiResult: AiTurnResult | null = null
     let authoritativeError: string | null = null
     try {
-      aiResult = await narrateWithAgent(pending, text.trim(), player.character)
+      aiResult = await narrateWithAgent(pending, text.trim(), player.character, undefined, undefined, player.id)
     } catch (error) {
       console.warn('AI fallback:', error instanceof Error ? error.message : error)
       authoritativeError = error instanceof Error ? error.message : 'Сервер отклонил действие'
@@ -656,7 +679,7 @@ export function useGameSession() {
     const player = state.players.find((item) => item.id === check.playerId) ?? state.players[0]
     let aiResult: AiTurnResult | null = null
     try {
-      aiResult = await narrateWithAgent(state, check.action, player.character, result)
+      aiResult = await narrateWithAgent(state, check.action, player.character, result, undefined, player.id)
     } catch (error) {
       mutate((current) => ({
         ...current,
@@ -788,12 +811,12 @@ export function useGameSession() {
     return result.roll
   }, [applyRemote])
 
-  const continueAgentInteraction = useCallback(() => {
+  const continueAgentInteraction = useCallback((playerId?: string) => {
     const interaction = state.agentInteraction
     if (!interaction || interaction.status !== 'resolved') return
     const winner = interaction.options.find((option) => option.id === interaction.resolvedOptionId)
     if (!winner) return
-    void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${interaction.title}: ${winner.label}. ${interaction.resolutionPrompt}`)
+    void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${interaction.title}: ${winner.label}. ${interaction.resolutionPrompt}`, playerId)
   }, [state.agentInteraction, submitAction])
 
   // Возвращает исход, а не только пишет его в tacticalError: вызывающему коду
@@ -920,6 +943,21 @@ export function useGameSession() {
   const operateDoor = useCallback((playerId: string, doorId: string, intent: 'open' | 'close' | 'force') => {
     const label = intent === 'force' ? 'Выломать дверь' : intent === 'close' ? 'Закрыть дверь' : 'Открыть дверь'
     void executeTacticalCommand({ command_type: 'OperateDoor', actor_id: playerId, door_id: doorId, intent }, label)
+  }, [executeTacticalCommand])
+
+  const operateSceneObject = useCallback((actorId: string, propId: string, intent: SceneObjectIntent) => {
+    const label: Record<SceneObjectIntent, string> = {
+      inspect: 'Осмотреть объект сцены',
+      open: 'Открыть объект сцены',
+      take: 'Взять объект сцены',
+      use: 'Использовать объект сцены',
+    }
+    void executeTacticalCommand({
+      command_type: 'OperateSceneObject',
+      actor_id: actorId,
+      prop_id: propId,
+      intent,
+    }, label[intent])
   }, [executeTacticalCommand])
 
   const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => {
@@ -1293,6 +1331,7 @@ export function useGameSession() {
     useCombatAction,
     changeWeapon,
     operateDoor,
+    operateSceneObject,
     finishMapTurn,
     resolveHeroDeath,
     equipItem,

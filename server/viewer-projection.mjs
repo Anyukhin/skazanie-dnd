@@ -190,6 +190,17 @@ export function publicTacticalMapWithHashFor(value) {
   }
   map.props = map.props.filter((prop) => prop.footprint.some((cell) => revealedAt(cell.x, cell.y))
     || (prop.footprint.length === 0 && revealedAt(Math.floor(prop.x), Math.floor(prop.y))))
+  // Игроку нужна только affordance-часть интерактивного предмета. Ключи
+  // скрытой детали и награды остаются в авторитетной карте до подтверждённого
+  // события осмотра/открытия; иначе Рассказчик увидит тайник вместе с картой.
+  for (const prop of map.props) {
+    if (!prop.interaction) continue
+    prop.interaction = /** @type {any} */ ({
+      kind: prop.interaction.kind,
+      verbs: [...prop.interaction.verbs],
+      pointOfInterest: prop.interaction.pointOfInterest === true,
+    })
+  }
   for (const edge of edgeList(map)) {
     const neighbor = edgeNeighbor(edge)
     if (revealedAt(edge.x, edge.y) || revealedAt(neighbor.x, neighbor.y)) continue
@@ -197,7 +208,26 @@ export function publicTacticalMapWithHashFor(value) {
   }
   const visibleEdges = new Set(edgeList(map).map((edge) => `${edge.x},${edge.y},${edge.dir}`))
   map.doors = map.doors.filter((door) => visibleEdges.has(`${door.x},${door.y},${door.dir}`))
-  return { map: serializeTacticalMap(map), hash: tacticalMapHash(map) }
+  const projectedMap = serializeTacticalMap(map)
+  const projectedProps = /** @type {Array<Record<string, any>>} */ (
+    Array.isArray(projectedMap.props) ? projectedMap.props : []
+  )
+  const projectedPropById = new Map(projectedProps.map((prop) => [String(prop.id ?? ''), prop]))
+  // Авторитетный serializer ради map budget хранит полную metadata только у
+  // 2–4 POI, а обычным словарным объектам восстанавливает её из каталога.
+  // Публичная карта материализует affordance для каждого видимого предмета,
+  // но ни при каких условиях не переносит ключи детали и награды.
+  for (const prop of map.props) {
+    const projectedProp = projectedPropById.get(prop.id)
+    if (!projectedProp || !prop.interaction) continue
+    projectedProp.interactive = true
+    projectedProp.interaction = {
+      kind: prop.interaction.kind,
+      verbs: [...prop.interaction.verbs],
+      pointOfInterest: prop.interaction.pointOfInterest === true,
+    }
+  }
+  return { map: projectedMap, hash: tacticalMapHash(map) }
 }
 
 /**
@@ -524,7 +554,7 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   'campaignConcept', 'state_version', 'ruleset_id', 'ruleset_version',
   'enabled_rule_packs', 'enabled_house_rules', 'ruleset_locked_at', 'engine_mode',
   'players', 'entities', 'mapFeedback', 'rulings', 'activePlayerId', 'tacticalTurn',
-  'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll', 'suggestions',
+  'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll',
   'actors', 'economyLog', 'state_projector_version', 'presence', 'locationMaps',
 ])
 
@@ -723,7 +753,6 @@ export function sceneTransitionForViewer(transition) {
     worldMap: publicWorldMapFor(transition.worldMap),
     transition: text(transition.transition, 2_000),
     arrival: text(transition.arrival, 2_000),
-    suggestions: (Array.isArray(transition.suggestions) ? transition.suggestions : []).map((entry) => text(entry, 200)).filter(Boolean).slice(0, 3),
     entrance: {
       x: integer(transition.entrance?.x),
       y: integer(transition.entrance?.y),

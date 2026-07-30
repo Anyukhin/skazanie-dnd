@@ -110,8 +110,8 @@ export const SCENE_THEMES = Object.freeze([
     material: 'grass',
     match: /лес|чащ|рощ|бор|дубрав|пущ|тайг/iu,
     density: 11,
-    require: ['tree_oak', 'tree_spruce', 'tree_birch', 'fallen_log'],
-    prefer: ['tree_oak', 'tree_spruce', 'tree_birch', 'tree_pine', 'tree_dead', 'bush', 'shrub', 'boulder', 'fern'],
+    require: ['tree_oak', 'tree_spruce', 'tree_birch', 'fallen_log', 'campfire'],
+    prefer: ['tree_oak', 'tree_spruce', 'tree_birch', 'tree_pine', 'tree_dead', 'tree_stump', 'bush', 'shrub', 'boulder', 'fern', 'campfire'],
   },
   {
     id: 'road',

@@ -512,7 +512,7 @@ test('доска без поля map собирается из старых кл
   assert.equal(client.sceneTacticalMap({ cells: [] }), null)
 })
 
-test('печатные оверлеи рисуют координаты, компас, масштаб и только раскрытые подписи комнат', () => {
+test('печатные оверлеи не рисуют координаты, но сохраняют компас, масштаб и раскрытые подписи комнат', () => {
   const map = createTacticalMap({ width: 28, height: 4 })
   addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Общий зал' })
   addZone(map, { id: 'secret', kind: 'interior', material: 'stone', lightLevel: 'dark', label: 'Тайник' })
@@ -529,9 +529,6 @@ test('печатные оверлеи рисуют координаты, ком�
     ],
   }
   const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
-  assert.equal(render.coordinateColumnLabel(0), 'A')
-  assert.equal(render.coordinateColumnLabel(25), 'Z')
-  assert.equal(render.coordinateColumnLabel(26), 'AA')
   assert.deepEqual(
     render.revealedRoomLabelPlacements(scene.map).map((entry) => entry.label),
     ['Общий зал'],
@@ -541,8 +538,11 @@ test('печатные оверлеи рисуют координаты, ком�
   const context = recordingContext()
   render.drawMapDecorations(context, scene)
   const labels = context.ops.filter((item) => item.op === 'fillText').map((item) => item.text)
-  for (const expected of ['A', 'Z', 'AA', '1', 'Общий зал', 'С', '20 футов']) {
+  for (const expected of ['Общий зал', 'С', '20 футов']) {
     assert.ok(labels.includes(expected), `на печатной карте нет «${expected}»`)
+  }
+  for (const hidden of ['A', 'Z', 'AA', '1']) {
+    assert.equal(labels.includes(hidden), false, `шахматная координата «${hidden}» не должна рисоваться`)
   }
   assert.equal(labels.includes('Тайник'), false, 'туман не скрывает подпись тайной комнаты')
 })

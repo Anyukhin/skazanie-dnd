@@ -59,7 +59,7 @@ test('Narrator прерывает необязательное повество�
   assert.ok(Date.now() - startedAt < 500)
 })
 
-test('Narrator limits the number and size of model suggestions', async () => {
+test('Narrator ignores legacy model suggestions', async () => {
   const safeNarration = deterministicNarration(brief).narration
   const llmClient = {
     completeJson: async () => ({
@@ -69,9 +69,7 @@ test('Narrator limits the number and size of model suggestions', async () => {
   }
   const result = await new Narrator({ llmClient }).render(brief, { knownRuleIds: ['srd:test:damage'] })
   assert.equal(result.verification.valid, true)
-  assert.equal(result.suggestions.length, 3)
-  assert.equal(result.suggestions[0].length, 120)
-  assert.deepEqual(result.suggestions.slice(1), ['second', 'third'])
+  assert.equal(Object.hasOwn(result, 'suggestions'), false)
 })
 
 // Вторая попытка несёт Рассказчику перечень нарушений, а в нём — куски его же

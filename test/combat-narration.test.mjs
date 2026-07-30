@@ -66,3 +66,29 @@ test('пустой поток не даёт текста', () => {
   assert.equal(combatNarration([], state), '')
   assert.equal(combatNarrator.narrate([], state), null)
 })
+
+test('гибель последнего героя ведёт к эпилогу поражения, а не предлагает продолжить отряд', () => {
+  const text = combatNarration([
+    event('HeroDied', { hero_name: 'Лира' }, ['hero']),
+    event('CampaignFailed', { reason: 'party_final_death', epilogue: 'Отряд пал.' }),
+  ], state)
+  assert.match(text, /история завершилась поражением/iu)
+  assert.doesNotMatch(text, /воскресить|заменить/iu)
+})
+
+test('взаимодействие со сценой попадает в летопись только из committed события', () => {
+  const hidden = combatNarration([], state)
+  const revealed = combatNarration([
+    event('SceneObjectOperated', { prop_id: 'prop-rune', kind: 'relic', intent: 'inspect' }),
+    event('SceneObjectKnowledgeRevealed', {
+      prop_id: 'prop-rune',
+      detail_key: 'relic:warning-glyph',
+      text: 'Надпись предупреждает не тревожить печать без нужды.',
+    }),
+  ], state)
+  assert.equal(hidden, '')
+  assert.match(revealed, /Надпись предупреждает/u)
+  assert.doesNotMatch(revealed, /relic:warning-glyph/u)
+  assert.equal(hasCombatNarrationEvent([event('SceneObjectKnowledgeRevealed')]), true)
+  assert.equal(hasCombatNarrationEvent([event('SceneObjectLootRevealed')]), true)
+})

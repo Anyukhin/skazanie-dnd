@@ -13,7 +13,6 @@ import {
   Narrator,
   deterministicNarration,
   narratorMemoryFocus,
-  narratorSuggestions,
 } from '../server/narrator.mjs'
 import { buildNarrationBrief } from '../server/security.mjs'
 
@@ -78,7 +77,7 @@ function craftBrief() {
   })
 }
 
-test('сервер заменяет общие suggestions на крючок вперёд и личную идею', async () => {
+test('сервер не сохраняет предложенные моделью варианты действий', async () => {
   const brief = craftBrief()
   const requests = []
   const llmClient = {
@@ -94,27 +93,15 @@ test('сервер заменяет общие suggestions на крючок в�
 
   assert.equal(result.prompt_version, NARRATOR_PROMPT_VERSION)
   assert.equal(result.verification.valid, true)
-  assert.equal(result.suggestions.length, 2)
-  assert.ok(result.suggestions.every((entry) => entry.length <= 120))
-  assert.ok(result.suggestions.some((entry) => /Мир/u.test(entry) && /син|караван/u.test(entry)), result.suggestions)
-  assert.ok(result.suggestions.some((entry) => /Ада/u.test(entry) && /проводниц/u.test(entry)), result.suggestions)
-  assert.doesNotMatch(result.suggestions.join('\n'), /^(?:Осмотреться|Идти дальше|Продолжить)$/mu)
+  assert.equal(Object.hasOwn(result, 'suggestions'), false)
 
   const systemPrompt = requests[0].messages[0].content
-  assert.match(systemPrompt, /PROMPT_ID: narrator\/v3/u)
+  assert.match(systemPrompt, /PROMPT_ID: narrator\/v4/u)
   assert.match(systemPrompt, /не используй каталог клише/u)
   assert.match(systemPrompt, /не называй видимые числа броска/u)
+  assert.doesNotMatch(systemPrompt, /"suggestions"/u)
   assert.match(requests[0].messages[1].content, /"memory_focus"/u)
   assert.match(requests[0].messages[1].content, /Ада сохранила синюю нить как улику/u)
-})
-
-test('контекстные модельные suggestions сохраняются без потери двух ролей', () => {
-  const suggestions = [
-    'Спросить Миру о синей нити из пропавшего каравана',
-    'Ада: применить опыт проводницы к следу у синей нити',
-    'Сверить синюю нить с отметиной у Трактира «Пустой кубок»',
-  ]
-  assert.deepEqual(narratorSuggestions(craftBrief(), suggestions), suggestions.slice(0, 2))
 })
 
 test('memory_focus выбирает N-2, обещание и прошлую встречу по явной связи сцены', () => {

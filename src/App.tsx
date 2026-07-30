@@ -1,4 +1,4 @@
-import { cloneElement, useEffect, useMemo, useRef, useState } from 'react'
+import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen, ChevronDown, ChevronRight, Copy, Crown, DoorOpen,
   Dices, Flame, Footprints, Gem, History, Menu, MessageSquare,
@@ -7,9 +7,9 @@ import {
   BrainCircuit, Check, Compass, SlidersHorizontal, Wifi, WifiOff,
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
-  Bot, PawPrint, Skull, WandSparkles, Globe2,
+  Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SummonedCreature } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
@@ -30,6 +30,15 @@ import type { BoardOverlayCell } from './board-render'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
+import { boardMapArtForTheme, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
+import {
+  createAtmosphereAudio,
+  loadAtmosphereSettings,
+  normalizeAtmosphereMood,
+  saveAtmosphereSettings,
+  type AtmosphereAudio,
+  type AtmosphereSettings,
+} from './atmosphere-audio'
 
 // Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
 // а не отдельным разделом. Второго пути к ней быть не должно.
@@ -57,6 +66,12 @@ const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 150
 const UI_SCALE_PRESETS = [80, 90, 100, 110, 115, 125, 150]
 const BASE_ATTACK_ID = '__base-attack__'
+const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
+  inspect: 'Осмотреть',
+  open: 'Открыть',
+  take: 'Взять',
+  use: 'Использовать',
+}
 const SPELL_OPTION_LABELS: Record<string, string> = {
   approach: 'Подойди',
   drop: 'Брось',
@@ -106,6 +121,23 @@ function spellActionType(spell?: CombatSpell | null): CombatSpell['actionType'] 
 
 function chebyshevFeet(from: { x: number; y: number }, to: { x: number; y: number }) {
   return Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * CELL_FEET
+}
+
+function sceneObjectCells(prop: TacticalProp) {
+  return prop.footprint.length
+    ? prop.footprint
+    : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
+}
+
+function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
+  const projected = prop.interaction?.verbs ?? prop.interactionVerbs ?? []
+  return [...new Set(projected.filter((verb): verb is SceneObjectIntent => (
+    verb === 'inspect' || verb === 'open' || verb === 'take' || verb === 'use'
+  )))]
+}
+
+function sceneObjectLabel(prop: TacticalProp) {
+  return prop.interaction?.pointOfInterest ? 'Точка интереса' : 'Объект сцены'
 }
 
 function boardCellInCone(cell: { x: number; y: number }, origin: { x: number; y: number }, toward: { x: number; y: number }, rangeFeet: number) {
@@ -272,19 +304,19 @@ function stakesTitle(stakes: NonNullable<Message['stakes']>) {
   return `${both} · СЛ ${stakes.difficulty}${category ? ` · ${category}` : ''}`
 }
 
-function PlayerCard({ player, selected, turn, accessible, deathSaves, onClick }: { player: Player; selected: boolean; turn: boolean; accessible: boolean; deathSaves?: { successes: number; failures: number; stable: boolean }; onClick: () => void }) {
+function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, onClick }: { player: Player; selected: boolean; turn: boolean; accessible: boolean; typing: boolean; deathSaves?: { successes: number; failures: number; stable: boolean }; onClick: () => void }) {
   // Герой на 0 ОЗ выглядел точно как здоровый: движок помечал его `unconscious`
   // и вёл спасброски от смерти, а в списке отряда об этом не было ни слова.
   const downed = player.hp <= 0
   const downedLabel = deathSaves?.stable ? 'СТАБИЛИЗИРОВАН' : 'БЕЗ СОЗНАНИЯ'
   return (
-    <button className={`player-card ${selected ? 'active' : ''} ${accessible ? '' : 'locked'} ${downed ? 'downed' : ''}`} onClick={onClick} disabled={!accessible}>
+    <button className={`player-card ${selected ? 'active' : ''} ${accessible ? '' : 'locked'} ${downed ? 'downed' : ''}`} onClick={onClick} disabled={!accessible} title={accessible ? `${player.character}: ${player.online ? 'в сети' : 'не в сети'}${typing ? ', формулирует намерение' : ''}` : `${player.character}: этот герой закреплён за другим игроком`}>
       <div className="avatar portrait-avatar" style={{ '--avatar': player.color, backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition } as React.CSSProperties}>
-        <span className={`presence ${player.online ? 'online' : ''}`} />
+        <span className={`presence ${player.online ? 'online' : ''}`} aria-label={player.online ? 'В сети' : 'Не в сети'} />
       </div>
       <div className="player-meta">
         <div className="player-name-row"><strong>{player.character}</strong>{turn && <Crown size={12} />}{!accessible && <LockKeyhole size={11} />}</div>
-        <span>{player.role}</span>
+        <span>{player.role} · {typing ? 'печатает…' : player.online ? 'в сети' : 'не в сети'}</span>
         <div className="hp-line"><i style={{ width: `${Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100}%` }} /><small>{player.hp}/{player.maxHp}</small></div>
         {downed && <div className="downed-line" title={deathSaves ? `Спасброски от смерти: ${deathSaves.successes} успеха, ${deathSaves.failures} провала` : undefined}>
           <HeartCrack size={11} /><span>{downedLabel}</span>
@@ -299,8 +331,8 @@ function PlayerCard({ player, selected, turn, accessible, deathSaves, onClick }:
   )
 }
 
-function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, isAdmin, deathSavesByHero, onSelect, collapsed, onToggle, view, onNavigate, aiConnected }: {
-  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; isAdmin: boolean; deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>; onSelect: (id: string) => void; collapsed: boolean; onToggle: () => void; view: View; onNavigate: (view: View) => void; aiConnected: boolean
+function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, typingActorIds, isAdmin, deathSavesByHero, onSelect, collapsed, onToggle, view, onNavigate, aiConnected }: {
+  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; typingActorIds: string[]; isAdmin: boolean; deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>; onSelect: (id: string) => void; collapsed: boolean; onToggle: () => void; view: View; onNavigate: (view: View) => void; aiConnected: boolean
 }) {
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -332,7 +364,7 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, i
       <div className="sidebar-section">
         <div className="section-label"><span>ОТРЯД · {players.filter(p => p.online).length} В СЕТИ{players.some((p) => p.hp <= 0) ? ` · ${players.filter((p) => p.hp <= 0).length} ПАЛИ` : ''}</span><MoreHorizontal size={17} /></div>
         <div className="players-list">
-          {players.map((player) => <PlayerCard key={player.id} player={player} selected={player.id === selectedPlayerId} turn={player.id === turnPlayerId} accessible={accessibleHeroIds.includes(player.id)} deathSaves={deathSavesByHero?.[player.id]} onClick={() => onSelect(player.id)} />)}
+          {players.map((player) => <PlayerCard key={player.id} player={player} selected={player.id === selectedPlayerId} turn={player.id === turnPlayerId} accessible={accessibleHeroIds.includes(player.id)} typing={typingActorIds.includes(player.id)} deathSaves={deathSavesByHero?.[player.id]} onClick={() => onSelect(player.id)} />)}
         </div>
       </div>
       <div className="sidebar-bottom">
@@ -568,42 +600,19 @@ function EnemyGlyph({ kind }: { kind: EnemyVisualKind }) {
   return <Swords size={17} />
 }
 
-function boardVisualTheme(state: GameState) {
-  const materials = new Set(state.scene.cells.map((cell) => cell.material).filter(Boolean))
-  const patterns = new Set(state.scene.cells.map((cell) => cell.pattern).filter(Boolean))
-  if (patterns.has('cave-cluster') || patterns.has('crypt')) return 'map-theme-cave'
-  if (patterns.has('small-room') && materials.has('wood')) return 'map-theme-interior'
-  if (materials.has('grass')) return 'map-theme-wild'
-  if (materials.has('sand')) return 'map-theme-desert'
-  if (materials.has('marble')) return 'map-theme-temple'
-  if (materials.has('metal')) return 'map-theme-tech'
-  const signature = [state.scene.location, state.scene.theme, state.campaignConcept?.era, state.campaignConcept?.technologyLevel].filter(Boolean).join(' ').toLocaleLowerCase('ru')
-  if (/(станци|косм|орбит|кибер|техно|футур|звезд|sci.?fi|space|station)/u.test(signature)) return 'map-theme-tech'
-  if (/(лес|чащ|джунг|болот|природ|роща|forest|wild|jungle|swamp)/u.test(signature)) return 'map-theme-wild'
-  return 'map-theme-ruins'
+function boardVisualTheme(theme: SceneVisualTheme) {
+  if (theme === 'building') return 'map-theme-interior'
+  if (theme === 'temple') return 'map-theme-temple'
+  if (theme === 'crypt' || theme === 'cave') return 'map-theme-cave'
+  if (theme === 'common') return 'map-theme-ruins'
+  return 'map-theme-wild'
 }
 
-const BOARD_MAP_LIBRARY = {
-  cave: { id: 'dyson-logos-cavern', url: '/assets/maps/library/dyson-logos/cave/dyson-logos-cavern.webp' },
-  dungeon: { id: 'dyson-logos-dungeon', url: '/assets/maps/library/dyson-logos/dungeon/dyson-logos-dungeon.webp' },
-  tavern: { id: 'dyson-logos-estate', url: '/assets/maps/library/dyson-logos/tavern/dyson-logos-estate.webp' },
-  temple: { id: 'dyson-logos-temple', url: '/assets/maps/library/dyson-logos/temple/dyson-logos-temple.webp' },
-  village: { id: 'dyson-logos-village', url: '/assets/maps/library/dyson-logos/village/dyson-logos-village.webp' },
-} as const
-
-function boardMapArt(state: GameState, visualTheme: string) {
-  const signature = `${state.scene.location} ${state.scene.theme}`.toLocaleLowerCase('ru')
-  if (/(таверн|трактир|корчм|постоял|inn|tavern|estate|усадьб|дом|зал)/u.test(signature)) return BOARD_MAP_LIBRARY.tavern
-  if (/(храм|святилищ|часовн|temple|shrine)/u.test(signature) || visualTheme === 'map-theme-temple') return BOARD_MAP_LIBRARY.temple
-  if (/(пещер|грот|каверн|cave|cavern)/u.test(signature) || visualTheme === 'map-theme-cave') return BOARD_MAP_LIBRARY.cave
-  if (/(деревн|посел|город|улиц|village|town|settlement)/u.test(signature) || visualTheme === 'map-theme-wild') return BOARD_MAP_LIBRARY.village
-  return BOARD_MAP_LIBRARY.dungeon
-}
-
-function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onFinishTurn, onFreeAction, narrating, statusContent, children }: {
+function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onFinishTurn, onFreeAction, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
+  typingActorId: string
   canAct: boolean
   tacticalBusy: boolean
   tacticalError: string | null
@@ -620,15 +629,38 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => void
   onChangeWeapon: (actorId: string, itemId: string) => void
   onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => void
+  onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => void
   onFinishTurn: () => void
   onFreeAction: (text: string) => void
+  onTypingChange: (actorId: string, typing: boolean) => void
   narrating: boolean
   statusContent: React.ReactNode
   children?: React.ReactNode
 }) {
   const [freeText, setFreeText] = useState('')
   const freeInputRef = useRef<HTMLInputElement | null>(null)
+  const typingTimeoutRef = useRef<number | null>(null)
+  const typingActiveRef = useRef(false)
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
+  const publishTyping = useCallback((typing: boolean) => {
+    if (typingActiveRef.current === typing) return
+    typingActiveRef.current = typing
+    onTypingChange(typingActorId, typing)
+  }, [onTypingChange, typingActorId])
+  const updateFreeText = (value: string) => {
+    setFreeText(value)
+    if (typingTimeoutRef.current !== null) window.clearTimeout(typingTimeoutRef.current)
+    const typing = Boolean(value.trim()) && !narrating
+    publishTyping(typing)
+    if (typing) typingTimeoutRef.current = window.setTimeout(() => publishTyping(false), 1_500)
+  }
+  useEffect(() => () => {
+    if (typingTimeoutRef.current !== null) window.clearTimeout(typingTimeoutRef.current)
+    if (typingActiveRef.current) {
+      typingActiveRef.current = false
+      onTypingChange(typingActorId, false)
+    }
+  }, [onTypingChange, typingActorId])
   /* Размеры панелей задаёт игрок и они переживают перезагрузку: у кого-то
      широкий монитор и хочется больше карты, у кого-то — длинные описания.
      Значения храним в тех же единицах, что и CSS, и пишем на корень документа,
@@ -650,6 +682,8 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   })
   const [draggedTileId, setDraggedTileId] = useState<string | null>(null)
   const [hoveredDoorId, setHoveredDoorId] = useState<string | null>(null)
+  const [selectedSceneObjectId, setSelectedSceneObjectId] = useState<string | null>(null)
+  const [hoveredSceneObjectId, setHoveredSceneObjectId] = useState<string | null>(null)
   useEffect(() => {
     const root = document.documentElement.style
     if (railHeight) root.setProperty('--ui-rail-height', `${railHeight}px`)
@@ -732,6 +766,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const { columns: cellColumns, rows: cellRows } = mapGridDimensions(state.scene.cells)
   // Канон сцены — `scene.map`; старая проекция без него собирается из клеток.
   const boardMap = useMemo(() => sceneTacticalMap(state.scene), [state.scene])
+  useEffect(() => setSelectedSceneObjectId(null), [boardMap?.locationId])
   const columns = boardMap?.width ?? cellColumns
   const rows = boardMap?.height ?? cellRows
   const irregularMap = state.scene.cells.length < columns * rows
@@ -803,7 +838,6 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       }
     }
   }
-  const visibleSuggestions = (state.suggestions ?? []).map((suggestion) => suggestion.trim()).filter(Boolean).slice(0, 3)
   const combatItems = (activeHero?.inventory ?? []).map(inferredCombatItem).filter((item): item is NonNullable<typeof item> => Boolean(item && item.quantity > 0))
   const selectedItem = selectedItemId === BASE_ATTACK_ID ? undefined : combatItems.find((item) => item.id === selectedItemId)
   const weaponSelectionId = selectedItem?.id ?? BASE_ATTACK_ID
@@ -872,6 +906,17 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
   const doorsAtHand = active && boardMap
     ? doorsReachableFrom(boardMap, active.x, active.y).filter((door) => door.state !== 'broken')
     : []
+  const interactiveSceneObjects = (boardMap?.props ?? []).filter((prop) => prop.interactive)
+  const sceneObjectsAtHand = active
+    ? interactiveSceneObjects.filter((prop) => sceneObjectCells(prop).some((cell) => chebyshevFeet(active, cell) <= CELL_FEET))
+    : []
+  const selectedSceneObject = interactiveSceneObjects.find((prop) => prop.id === selectedSceneObjectId) ?? null
+  const selectedSceneObjectAtHand = Boolean(selectedSceneObject && sceneObjectsAtHand.some((prop) => prop.id === selectedSceneObject.id))
+  const selectedSceneObjectVerbs = selectedSceneObject ? sceneObjectVerbs(selectedSceneObject) : []
+  const sceneObjectByCell = new Map<string, TacticalProp>()
+  for (const prop of [...interactiveSceneObjects].sort((left, right) => left.zOrder - right.zOrder)) {
+    for (const cell of sceneObjectCells(prop)) sceneObjectByCell.set(boardPositionKey(cell.x, cell.y), prop)
+  }
   const movementLimit = combatActive ? remainingFeet : Number.POSITIVE_INFINITY
   const reachable = selected && active && movementAvailable
     ? new Set([...movementPaths.entries()].filter(([, route]) => route.costFeet <= movementLimit).map(([key]) => key))
@@ -966,8 +1011,9 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     inspectedTarget?.team === 'enemy' ? inspectedTarget.id : null,
     selectedItem?.id ?? null,
   )
-  const visualTheme = boardVisualTheme(state)
-  const mapArt = boardMapArt(state, visualTheme)
+  const sceneTheme = resolveSceneTheme(state)
+  const visualTheme = boardVisualTheme(sceneTheme)
+  const mapArt = boardMapArtForTheme(sceneTheme)
 
   useEffect(() => {
     const defaultItem = combatItems.find((item) => item.equipped) ?? combatItems[0]
@@ -1149,6 +1195,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       specialBlockReason: targetSpecialBlock,
     }) : null
     const cellKey = cell.x + ',' + cell.y
+    const sceneObject = sceneObjectByCell.get(cellKey)
     const canMoveHere = reachable.has(cellKey)
     const route = movementPaths.get(cellKey)
     const moveReason = active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null
@@ -1170,9 +1217,20 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         ? boardCellInDirectedCube(cell, active, blastCenter, blastRadius)
         : chebyshevFeet(blastCenter, cell) <= blastRadius))
     const inPersistentSpellArea = Boolean((state.mechanics?.active_effects ?? []).some((effect) => effect.center && chebyshevFeet(effect.center, cell) <= Number(effect.radius_feet ?? 0)))
-    const cellIsInteractive = (canMoveHere || canAimHere) && !occupied
+    // У объекта собственная hotspot-зона в соседнем слое поверх клетки. Клетка
+    // маршрута и предмет поэтому остаются двумя отдельными элементами, и оба
+    // доступны мышью и клавиатурой.
+    const cellIsInteractive = Boolean((canMoveHere || canAimHere) && !occupied)
     const cellFeedback = visibleMapFeedback.filter((item) => item.x === cell.x && item.y === cell.y)
-    const cellLabel = canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}` : canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}` : canMoveHere ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}` : moveReason ?? undefined
+    const cellLabel = canPointSpellHere
+      ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}`
+      : canThrowHere
+        ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}`
+        : canMoveHere
+          ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}`
+          : sceneObject
+            ? `Выбрать: ${sceneObjectLabel(sceneObject)}`
+            : moveReason ?? undefined
     const enemyKind = enemy ? enemyVisualKind(enemy) : null
     const enemyHealth = enemy ? enemyHealthPresentation(enemy) : null
     const enemyCommandAllowed = Boolean(canWeaponTargetEnemy || canSpellTargetEnemy || canActionTargetEnemy || canThrowHere || canPointSpellHere)
@@ -1187,7 +1245,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     if (moveUnavailable && !canAimHere && !cellInCommandRange) boardOverlay.push({ x: cell.x, y: cell.y, kind: 'move-unavailable' })
 
     const stateClasses = [
-      canMoveHere && !canAimHere ? 'move-target' : '',
+      canMoveHere && !canAimHere && previewMoveKey === cellKey ? 'move-target' : '',
       routeStep ? 'route-step' : '',
       previewMoveKey === cellKey ? 'route-destination' : '',
       opportunityRisk && !canAimHere ? 'opportunity-risk' : '',
@@ -1196,12 +1254,14 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       inPersistentSpellArea ? 'spell-terrain' : '',
       inBlastArea ? 'blast-area' : '',
       pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '',
+      sceneObject ? 'scene-object-target' : '',
+      sceneObject?.id === selectedSceneObjectId ? 'scene-object-selected' : '',
       occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : 'occupied-by-enemy' : '',
     ].filter(Boolean)
     const cellTitle = opportunityRisk && !canAimHere
       ? 'Опасная клетка: выход из ближнего боя вызовет атаку по возможности'
       : moveUnavailable ? moveReason ?? undefined : undefined
-    if (!stateClasses.length && !cellFeedback.length) {
+    if (!stateClasses.length && !cellFeedback.length && !cellIsInteractive) {
       if (cellTitle || cellLabel) boardHints.set(cellKey, { title: cellTitle, ariaLabel: cellLabel })
       continue
     }
@@ -1213,8 +1273,16 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       interactive: cellIsInteractive,
       ariaLabel: cellLabel,
       title: cellTitle,
-      onPointerEnter: () => { if (canAimHere) setAimCell({ x: cell.x, y: cell.y }); else if (canMoveHere) setHoveredMoveKey(cellKey) },
-      onPointerLeave: () => { if (canAimHere && !pendingCommand) setAimCell(null); if (hoveredMoveKey === cellKey) setHoveredMoveKey(null) },
+      onPointerEnter: () => {
+        if (sceneObject) setHoveredSceneObjectId(sceneObject.id)
+        if (canAimHere) setAimCell({ x: cell.x, y: cell.y })
+        else if (canMoveHere) setHoveredMoveKey(cellKey)
+      },
+      onPointerLeave: () => {
+        if (sceneObject) setHoveredSceneObjectId((current) => current === sceneObject.id ? null : current)
+        if (canAimHere && !pendingCommand) setAimCell(null)
+        if (hoveredMoveKey === cellKey) setHoveredMoveKey(null)
+      },
       onActivate: () => {
         if (!selected || (!canMoveHere && !canAimHere)) return
         if (canPointSpellHere) castAtCell(cell.x, cell.y)
@@ -1222,6 +1290,30 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
         else if (!combatActive || pendingMoveKey === cellKey) { onMove(selected, cell.x, cell.y); setPendingMoveKey(null) }
         else setPendingMoveKey(cellKey)
       },
+      hotspot: sceneObject ? <span
+          role="button"
+          tabIndex={0}
+          className="scene-object-hotspot"
+          data-selected={sceneObject.id === selectedSceneObjectId ? 'true' : undefined}
+          aria-label={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
+          aria-pressed={sceneObject.id === selectedSceneObjectId}
+          title={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+          onPointerEnter={() => setHoveredSceneObjectId(sceneObject.id)}
+          onPointerLeave={() => setHoveredSceneObjectId((current) => current === sceneObject.id ? null : current)}
+          onFocus={() => setHoveredSceneObjectId(sceneObject.id)}
+          onBlur={() => setHoveredSceneObjectId((current) => current === sceneObject.id ? null : current)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
+          }}
+          onClick={(event) => {
+            event.stopPropagation()
+            setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
+          }}
+        /> : undefined,
       children: <>
         {routeStep && <span className="route-step-badge" aria-hidden="true">{routeStep}</span>}
         {/* След на клетке: лежит в плоскости доски, поэтому при любом повороте и
@@ -1350,6 +1442,14 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
       boardOverlay.push({ ...cell, kind: 'command-range' })
     }
   }
+  const highlightedSceneObject = sceneObjectsAtHand.find((prop) => (
+    prop.id === (hoveredSceneObjectId ?? selectedSceneObjectId)
+  ))
+  if (highlightedSceneObject) {
+    for (const cell of sceneObjectCells(highlightedSceneObject)) {
+      boardOverlay.push({ ...cell, kind: 'command-range' })
+    }
+  }
 
   /* Плитки собираются в один список, чтобы их можно было переставлять:
      порядок хранится по герою и колоде и переживает перезагрузку. Пока замок
@@ -1431,10 +1531,10 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
               </li>
             })}</ol>
           </> : <div className="initiative-exploration-lead">
-            <span className="initiative-ribbon-label">ВЕДЁТ ОТРЯД</span>
+            <span className="initiative-ribbon-label">СВОБОДНАЯ СЦЕНА</span>
             <div className="initiative-active-chip exploration">
               <span className="initiative-active-avatar portrait" style={{ backgroundImage: `url(${activeHero?.portrait ?? ''})`, backgroundPosition: activeHero?.portraitPosition }} />
-              <span><strong>{activeName}</strong><small>{activeTurnLabel}</small></span>
+              <span><strong>Говорит любой герой</strong><small>Групповые решения — голосованием</small></span>
             </div>
           </div>}
         </section>
@@ -1573,11 +1673,11 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           event.preventDefault()
           if (narrating) return
           const text = freeText.trim()
-          if (pendingCommand) { confirmPreparedCommand(text || undefined); setFreeText(''); return }
-          if (selfCastReady) { confirmSelfCast(text || undefined); setFreeText(''); return }
+          if (pendingCommand) { confirmPreparedCommand(text || undefined); updateFreeText(''); return }
+          if (selfCastReady) { confirmSelfCast(text || undefined); updateFreeText(''); return }
           if (!text) return
           onFreeAction(text)
-          setFreeText('')
+          updateFreeText('')
         }}
       >
         <nav className="hotbar-decks" role="tablist" aria-label="Категории действий">
@@ -1589,29 +1689,19 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
             ['items', 'Предметы', <CombatIcon id="deck-items" kind="deck" hint="предметы зелья" size={21} compact />],
           ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button type="button" key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy || (deck === 'magic' && !spells.length)} title={label}>{icon}<span>{label}</span></button>)}
         </nav>
-        {visibleSuggestions.length > 0 && <div className="action-suggestions" aria-label="Подсказки рассказчика">
-          {visibleSuggestions.map((suggestion) => <button
-            type="button"
-            key={suggestion}
-            title={suggestion}
-            onClick={() => {
-              setFreeText(suggestion)
-              window.requestAnimationFrame(() => freeInputRef.current?.focus())
-            }}
-          >{suggestion}</button>)}
-        </div>}
         <div className="rail-input-shell">
           {preparedLabel && <span className={`prepared-chip ${awaitingTarget ? 'awaiting' : ''}`}><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
           <input
             ref={freeInputRef}
             value={freeText}
-            onChange={(event) => setFreeText(event.target.value)}
+            onChange={(event) => updateFreeText(event.target.value)}
             placeholder={preparedLabel ? 'Добавьте слова к действию — или отправьте как есть' : `Опишите действие ${activeName} так, как сказали бы за столом — Арбитр найдёт правило`}
             aria-label="Действие своими словами"
-            disabled={narrating}
+            disabled={narrating || (combatActive && !canAct)}
+            title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : 'Отправить намерение от имени выбранного героя'}
           />
         </div>
-        <button type="submit" disabled={narrating || ((!preparedLabel || awaitingTarget) && !freeText.trim())}><Send size={17} />Отправить</button>
+        <button type="submit" disabled={narrating || (combatActive && !canAct) || ((!preparedLabel || awaitingTarget) && !freeText.trim())} title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : awaitingTarget ? 'Сначала выберите цель на карте' : !preparedLabel && !freeText.trim() ? 'Сначала опишите действие' : 'Отправить действие'}><Send size={17} />Отправить</button>
       </form>
       {/* Панель одна на оба режима. Раньше вне боя вместо неё показывалась полоска
           «исследование», а колоды и плитки не рендерились вовсе: игрок не видел, чем
@@ -1659,7 +1749,7 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
           {/* Кнопки шага: вне боя это подтверждение выбранной цели и двери под
               рукой, в бою — ещё нокаут, смена оружия и завершение хода. Без
               содержимого блок не рисуется, и плитки занимают всю карточку. */}
-          {(combatActive || pendingCommand || doorsAtHand.length > 0) && <div className="hotbar-turn-controls">
+          {(combatActive || pendingCommand || doorsAtHand.length > 0 || selectedSceneObject) && <div className="hotbar-turn-controls">
             {/* Дверь рядом — единственное, что делается и вне боя: заперто это
                 или просто прикрыто, игрок видит по самой кнопке. */}
             {doorsAtHand.map((door) => {
@@ -1675,6 +1765,29 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
                 ? <button {...hoverProps} key={door.id} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Запертая дверь на ${direction}. Проверка Силы (Атлетика), СЛ ${lockDc}. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь ({direction}, СЛ {lockDc})</span></button>
                 : <button {...hoverProps} key={door.id} className="door-control" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')} title={`${door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь на ${direction}: свободное взаимодействие`}><CombatIcon id={`door-${door.id}`} kind="swap" hint="открыть закрыть дверь проём" size={27} compact /><span>{door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь ({direction})</span></button>
             })}
+            {selectedSceneObject && selectedSceneObjectVerbs.map((intent) => {
+              const label = SCENE_OBJECT_VERB_LABELS[intent]
+              const unavailable = !selectedSceneObjectAtHand
+              const hoverProps = {
+                onPointerEnter: () => setHoveredSceneObjectId(selectedSceneObject.id),
+                onPointerLeave: () => setHoveredSceneObjectId((current) => current === selectedSceneObject.id ? null : current),
+                onFocus: () => setHoveredSceneObjectId(selectedSceneObject.id),
+                onBlur: () => setHoveredSceneObjectId((current) => current === selectedSceneObject.id ? null : current),
+              }
+              return <button
+                {...hoverProps}
+                type="button"
+                key={`${selectedSceneObject.id}:${intent}`}
+                className={`scene-object-control intent-${intent}`}
+                disabled={!canAct || tacticalBusy || unavailable}
+                onClick={() => selected && onOperateSceneObject(selected, selectedSceneObject.id, intent)}
+                title={unavailable ? 'Подойдите к объекту на соседнюю клетку' : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
+              >
+                <CombatIcon id={`scene-object-${intent}`} kind={intent === 'take' ? 'item' : intent === 'inspect' ? 'spellbook' : 'action'} hint={`${label} объект сцены`} size={27} compact />
+                <span>{label}</span>
+              </button>
+            })}
+            {selectedSceneObject && selectedSceneObjectVerbs.length === 0 && <button type="button" className="scene-object-control" disabled title="Сервер не открыл доступных действий для этого объекта"><span>Нет доступных действий</span></button>}
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
             {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
@@ -1715,7 +1828,20 @@ function DungeonMap({ state, players, turnActorId, canAct, tacticalBusy, tactica
     </>
   )
 }
-function SceneHeader({ title, location, objective, turn, chapter, round, merchants, onOpenMerchant, onReset }: { title: string; location: string; objective: string; turn: number; chapter: number; round?: number; merchants: Merchant[]; onOpenMerchant: () => void; onReset: () => void }) {
+function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, scenicBackdrop, merchants, onOpenMerchant, onReset }: {
+  title: string
+  location: string
+  objective: string
+  turn: number
+  chapter: number
+  round?: number
+  illustration: SceneArt
+  illustrationKey: string
+  scenicBackdrop: boolean
+  merchants: Merchant[]
+  onOpenMerchant: () => void
+  onReset: () => void
+}) {
   const [objectiveExpanded, setObjectiveExpanded] = useState(false)
   const objectiveRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
@@ -1737,7 +1863,10 @@ function SceneHeader({ title, location, objective, turn, chapter, round, merchan
   // остаётся в боковом меню.
   const merchantLabel = merchants.length === 1 ? `Подойти к торговцу: ${merchants[0].name}` : `Торговцев рядом: ${merchants.length}`
   return (
-    <div className="scene-header">
+    <div className={`scene-header ${scenicBackdrop ? 'has-illustration' : ''}`}>
+      {scenicBackdrop && <span key={`${illustrationKey}:${illustration.id}`} className="scene-illustration" aria-hidden="true">
+        <img src={illustration.url} alt="" decoding="async" />
+      </span>}
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
       <div className="scene-title"><span>ГЛАВА {chapter}{round != null ? ` · РАУНД ${round}` : ''} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
@@ -1791,6 +1920,14 @@ function AgentInteractionCard({ interaction, players, playerId, canContinue, onV
   const quorum = interaction.requiredVotes ?? interaction.eligibleVoterIds?.length ?? interaction.eligibleActorIds?.length ?? players.filter((player) => player.online).length
   const activeVoters = interaction.activeVoterIds?.length ?? interaction.eligibleVoterIds?.length ?? interaction.eligibleActorIds?.length ?? players.filter((player) => player.online).length
   const ttlSeconds = Math.max(1, Math.round((interaction.policy?.decisionTtlMs ?? 120_000) / 1_000))
+  const eligibleActors = interaction.eligibleActorIds?.length ? interaction.eligibleActorIds : players.map((player) => player.id)
+  const participantByVoter = new Map<string, Player>()
+  for (const actorId of eligibleActors) {
+    const player = players.find((candidate) => candidate.id === actorId)
+    if (player) participantByVoter.set(interaction.voterByActorId?.[actorId] ?? actorId, player)
+  }
+  const votedVoters = new Set(Object.keys(interaction.votes).map((actorId) => interaction.voterByActorId?.[actorId] ?? actorId))
+  const abstainedVoters = new Set(interaction.abstainedVoterIds ?? [])
   return (
     <section className={['agent-interaction', 'agent-interaction--' + interaction.type, resolved ? 'resolved' : ''].join(' ')} aria-label="Групповое решение">
       <div className="agent-interaction__head">
@@ -1807,20 +1944,30 @@ function AgentInteractionCard({ interaction, players, playerId, canContinue, onV
         <div className="agent-options">
           {interaction.options.map((option) => {
             const votes = Object.values(interaction.votes).filter((vote) => vote === option.id).length
+            const voters = Object.entries(interaction.votes)
+              .filter(([, vote]) => vote === option.id)
+              .map(([actorId]) => players.find((player) => player.id === actorId)?.character ?? actorId)
             return <button key={option.id} className={[selected === option.id ? 'selected' : '', winner?.id === option.id ? 'winner' : ''].join(' ')} onClick={() => onVote(option.id)} disabled={resolved}>
-              <span>{option.label}</span><small>{votes} / {quorum} голосов</small>
+              <span>{option.label}</span><small>{votes} / {quorum} голосов{voters.length ? ` · ${voters.join(', ')}` : ''}</small>
             </button>
           })}
         </div>
       )}
+      {interaction.type !== 'roll' && <div className="agent-voter-status" aria-label="Состояние участников голосования">
+        {[...participantByVoter.entries()].map(([voterId, player]) => {
+          const status = votedVoters.has(voterId) ? 'voted' : abstainedVoters.has(voterId) ? 'abstained' : player.online ? 'waiting' : 'offline'
+          const label = status === 'voted' ? 'голос учтён' : status === 'abstained' ? 'воздержался' : status === 'offline' ? 'не в сети' : 'ждём голос'
+          return <span key={voterId} className={status}><i />{player.character}<small>{label}</small></span>
+        })}
+      </div>}
       {!resolved && interaction.type !== 'roll' && <button className="agent-abstain" onClick={onAbstain}>Воздержаться</button>}
-      {resolved && <button className="agent-continue" onClick={onContinue} disabled={!canContinue}><Sparkles size={14} />Продолжить историю: {winner?.label}</button>}
+      {resolved && <button className="agent-continue" onClick={onContinue} disabled={!canContinue} title={canContinue ? 'Передать подтверждённое решение Рассказчику' : 'Продолжить может владелец выбранного героя'}><Sparkles size={14} />Продолжить историю: {winner?.label}</button>}
     </section>
   )
 }
 
-function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, currentPlayerId, canAct, turnName, combatActive, onRoll, onCancelCheck, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, open, onToggle }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; pendingCheck: PendingCheck | null; interaction?: AgentInteraction | null; players: Player[]; currentPlayerId: string; canAct: boolean; turnName: string; combatActive: boolean; onRoll: () => void; onCancelCheck: () => void; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; open: boolean; onToggle: () => void
+function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, typingActorIds, currentPlayerId, canAct, turnName, combatActive, onRoll, onCancelCheck, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, open, onToggle }: {
+  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; pendingCheck: PendingCheck | null; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; turnName: string; combatActive: boolean; onRoll: () => void; onCancelCheck: () => void; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; open: boolean; onToggle: () => void
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -1924,6 +2071,7 @@ function ChatPanel({ messages, isNarrating, pendingCheck, interaction, players, 
             </div>
           </article>
         ))}
+        {typingActorIds.length > 0 && <div className="typing player-typing"><span /><span /><span /> {typingActorIds.map((actorId) => players.find((player) => player.id === actorId)?.character ?? actorId).join(', ')} формулирует намерение…</div>}
         {isNarrating && <div className="typing"><span /><span /><span /> Рассказчик меняет мир…</div>}
         <div ref={endRef} />
       </div>
@@ -2084,8 +2232,8 @@ function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onClos
           {step === 2 && <div className="hero-creator slot-creator">
             <div className="world-auto-note"><Users size={17} /><span><b>Сколько игроков сядет за стол?</b> Первое место всегда ваше, остальные заполнят приглашённые друзья при входе по ссылке. Пустых мест не останется.</span></div>
             <div className="slot-count-picker" role="group" aria-label="Число мест героев">
-              {[1, 2, 3, 4].map((count) => <button key={count} type="button" className={count === slotCount ? 'selected' : ''} aria-pressed={count === slotCount} onClick={() => setSlotCount(count)}>
-                <strong>{count}</strong><small>{count === 1 ? 'соло-кампания' : `${count} игрока`.replace('4 игрока', '4 игроков')}</small>
+              {[1, 2, 3, 4, 5].map((count) => <button key={count} type="button" className={count === slotCount ? 'selected' : ''} aria-pressed={count === slotCount} onClick={() => setSlotCount(count)}>
+                <strong>{count}</strong><small>{count === 1 ? 'соло-кампания' : `${count} ${count >= 5 ? 'игроков' : 'игрока'}`}</small>
               </button>)}
             </div>
             <div className="hero-library">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
@@ -2274,7 +2422,30 @@ function ToggleRow({ icon, title, description, value, onChange }: { icon: React.
   return <button className="setting-row" onClick={onChange}><span className="setting-icon">{icon}</span><span><b>{title}</b><small>{description}</small></span><i className={value ? 'on' : ''}><u /></i></button>
 }
 
-function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange }: { health: AiHealth | null; uiScale: number; autoAttackRoll: boolean; scenicBackdrop: boolean; combatAnimations: boolean; onUiScaleChange: (value: number) => void; onAutoAttackRollChange: (value: boolean) => void; onScenicBackdropChange: (value: boolean) => void; onCombatAnimationsChange: (value: boolean) => void }) {
+function AtmosphereRange({ label, description, value, onChange }: { label: string; description: string; value: number; onChange: (value: number) => void }) {
+  const percent = Math.round(value * 100)
+  return <label className="atmosphere-range">
+    <span><b>{label}</b><small>{description}</small></span>
+    <output>{percent}%</output>
+    <input type="range" min="0" max="100" step="1" value={percent} onInput={(event) => onChange(Number(event.currentTarget.value) / 100)} aria-label={`${label}, громкость`} />
+  </label>
+}
+
+function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange }: {
+  health: AiHealth | null
+  uiScale: number
+  autoAttackRoll: boolean
+  scenicBackdrop: boolean
+  combatAnimations: boolean
+  atmosphereSettings: AtmosphereSettings
+  onUiScaleChange: (value: number) => void
+  onAutoAttackRollChange: (value: boolean) => void
+  onScenicBackdropChange: (value: boolean) => void
+  onCombatAnimationsChange: (value: boolean) => void
+  onAmbientVolumeChange: (value: number) => void
+  onEffectsVolumeChange: (value: number) => void
+  onAtmosphereMutedChange: (value: boolean) => void
+}) {
   const [scaleInput, setScaleInput] = useState(String(uiScale))
 
   useEffect(() => setScaleInput(String(uiScale)), [uiScale])
@@ -2312,7 +2483,13 @@ function SettingsView({ health, uiScale, autoAttackRoll, scenicBackdrop, combatA
             </select>
             <span className="ui-scale-marks"><i>{UI_SCALE_MIN}%</i><i>100%</i><i>125%</i><i>{UI_SCALE_MAX}%</i></span>
           </label>
-          <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — окружение соответствует месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
+          <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — иллюстрация и окружение соответствуют месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
+          <div className="atmosphere-settings" role="group" aria-label="Звук и музыка">
+            <div className="atmosphere-settings-title"><Volume2 size={17} /><span><b>Звук и музыка</b><small>Процедурный фон и сигналы подтверждённых событий</small></span></div>
+            <AtmosphereRange label="Фоновая атмосфера" description="Музыка, ветер и гул текущего места" value={atmosphereSettings.ambientVolume} onChange={onAmbientVolumeChange} />
+            <AtmosphereRange label="Эффекты событий" description="Кости, удары, двери и важные исходы" value={atmosphereSettings.effectsVolume} onChange={onEffectsVolumeChange} />
+            <ToggleRow icon={atmosphereSettings.muted ? <VolumeX size={17} /> : <Volume2 size={17} />} title="Выключить весь звук" description="Настройки громкости сохранятся на этом устройстве" value={atmosphereSettings.muted} onChange={() => onAtmosphereMutedChange(!atmosphereSettings.muted)} />
+          </div>
           <ToggleRow icon={<Dices size={17} />} title="Автобросок при атаке" description="Включено — цель сразу атакуется; выключено — появляется отдельная кнопка кубика" value={autoAttackRoll} onChange={() => onAutoAttackRollChange(!autoAttackRoll)} />
           <ToggleRow icon={<Swords size={17} />} title="Боевые анимации" description="Движение, удары и состояния проигрываются поверх доски; клик пропускает текущую очередь" value={combatAnimations} onChange={() => onCombatAnimationsChange(!combatAnimations)} />
         </div>
@@ -2514,15 +2691,14 @@ function ReactionPrompt({ actorName, sourceName, window, busy, beneficiaries, on
   </section></div>
 }
 
-function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve, onChooseCampaign, onExit }: {
+function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve, onContinueToEpilogue }: {
   heroes: Player[]
   partyDefeated: boolean
   busy: boolean
   error: string | null
   canResolve: (heroId: string) => boolean
   onResolve: (heroId: string, resolution: 'resurrect' | 'replace', replacementName?: string) => void
-  onChooseCampaign: () => void
-  onExit: () => void
+  onContinueToEpilogue: () => void
 }) {
   const [replacementNames, setReplacementNames] = useState<Record<string, string>>({})
   const [replacementOpen, setReplacementOpen] = useState<Record<string, boolean>>({})
@@ -2564,28 +2740,31 @@ function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve
       })}</div>}
 
       {(localError || error) && <div className="death-error">{localError || error}</div>}
-      {partyDefeated && <footer><div><button onClick={onChooseCampaign}><BookOpen size={16} />Другие кампании</button><button onClick={onExit}><LogOut size={16} />Выйти</button></div><small>Эту историю продолжить нельзя. Выберите другой мир или создайте новую кампанию.</small></footer>}
+      {partyDefeated && <footer><div><button onClick={onContinueToEpilogue}><BookOpen size={16} />К эпилогу</button></div><small>Сначала зафиксирована судьба героев; дальше — итог всей истории.</small></footer>}
     </section>
   </div>
 }
 
 function CampaignConclusionScreen({ status, epilogue, busy, canManage, onArchive, onChooseCampaign }: {
-  status: 'completed' | 'archived'
+  status: 'completed' | 'failed' | 'archived'
   epilogue?: string | null
   busy: boolean
   canManage: boolean
   onArchive: () => void
   onChooseCampaign: () => void
 }) {
+  const failed = status === 'failed'
   return <div className="death-screen-backdrop">
     <section className="death-screen" role="dialog" aria-modal="true" aria-label="Кампания завершена">
-      <span className="death-eyebrow">{status === 'archived' ? 'АРХИВ КАМПАНИИ' : 'ЭПИЛОГ'}</span>
-      <h1>История завершена</h1>
-      <p>{epilogue || 'Приключение завершилось, а его события сохранены в летописи кампании.'}</p>
+      <span className="death-eyebrow">{status === 'archived' ? 'АРХИВ КАМПАНИИ' : failed ? 'ПОРАЖЕНИЕ' : 'ЭПИЛОГ'}</span>
+      <h1>{failed ? 'История завершилась поражением' : 'История завершена'}</h1>
+      <p>{epilogue || (failed
+        ? 'Отряд пал, но его решения и последствия сохранены в летописи кампании.'
+        : 'Приключение завершилось, а его события сохранены в летописи кампании.')}</p>
       <footer>
         <div>
           <button onClick={onChooseCampaign}><BookOpen size={16} />Другие кампании</button>
-          {status === 'completed' && canManage && <button onClick={onArchive} disabled={busy}>Архивировать</button>}
+          {status !== 'archived' && canManage && <button onClick={onArchive} disabled={busy}>Архивировать</button>}
         </div>
         <small>Состояние, карта и журнал доступны для чтения.</small>
       </footer>
@@ -2614,7 +2793,7 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -2636,10 +2815,28 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [replacementEditorId, setReplacementEditorId] = useState<string | null>(null)
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
+  const [reviewedPartyDefeat, setReviewedPartyDefeat] = useState<string | null>(null)
   const [uiScale, setUiScale] = useState(loadUiScale)
   const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') !== 'false')
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
   const [combatAnimations, setCombatAnimations] = useState(() => window.localStorage.getItem(COMBAT_ANIMATIONS_KEY) !== 'false')
+  const [atmosphereSettings, setAtmosphereSettings] = useState(loadAtmosphereSettings)
+  const atmosphereAudioRef = useRef<AtmosphereAudio | null>(null)
+  const latestNarratorMessage = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
+  const atmosphereCursor = useRef({
+    sessionCode: state.sessionCode,
+    visualBatchId: combatVisualBatch?.id ?? '',
+    dieRollId: state.lastDiceRoll?.id ?? '',
+    narratorMessageId: latestNarratorMessage?.id ?? '',
+  })
+  const sceneTheme = useMemo(() => resolveSceneTheme(state), [state.scene])
+  const sceneLocationKey = state.scene.location_id ?? state.scene.location
+  const sceneIllustration = useMemo(
+    () => sceneIllustrationForTheme(sceneTheme, sceneLocationKey),
+    [sceneLocationKey, sceneTheme],
+  )
+  const audioCombatActive = Boolean(state.mechanics?.combat?.active)
+  const audioFinale = ['completed', 'failed', 'archived'].includes(state.mechanics?.campaign_lifecycle?.status ?? '')
   const combatWasActive = useRef(false)
   const merchantLocation = useRef(state.scene.location)
   const joinAttempted = useRef(false)
@@ -2653,6 +2850,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const currentMembership = account.campaignMemberships?.find((membership) => membership.campaignId === state.sessionCode)
   const lifecycle = state.mechanics?.campaign_lifecycle
   const lifecycleStatus = lifecycle?.status ?? (partyDefeated ? 'failed' : 'active')
+  const partyDefeatReviewed = reviewedPartyDefeat === state.sessionCode
+  const showDeathScreen = fallenHeroes.length > 0 && (!partyDefeated || !partyDefeatReviewed)
+  const showConclusion = ['completed', 'failed', 'archived'].includes(lifecycleStatus)
+    && (fallenHeroes.length === 0 || (partyDefeated && partyDefeatReviewed))
   const pacing = state.autonomy?.pacing
   const pacingLabels = { breather: 'ПЕРЕДЫШКА', development: 'РАЗВИТИЕ', escalation: 'НАРАСТАНИЕ', climax: 'КУЛЬМИНАЦИЯ' } as const
   const lastTravel = state.autonomy?.travel_history?.at(-1)
@@ -2701,6 +2902,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     const requestedRoom = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
     if (!requestedRoom || isAdmin || joinAttempted.current) return
     joinAttempted.current = true
+    const existingMembership = account.campaignMemberships?.some((membership) => membership.campaignId === requestedRoom)
+    if (existingMembership) {
+      history.replaceState(null, '', `${location.pathname}?room=${encodeURIComponent(requestedRoom)}`)
+      void switchCampaign(requestedRoom)
+        .then(() => setCampaignsOpen(false))
+        .catch((error) => setJoinError(error instanceof Error ? error.message : 'Не удалось открыть кампанию'))
+      return
+    }
     void (async () => {
       try {
         const inviteToken = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('invite')
@@ -2721,7 +2930,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         setJoinError(error instanceof Error ? error.message : 'Не удалось присоединиться к кампании')
       }
     })()
-  }, [isAdmin, onAccountRefresh, switchCampaign])
+  }, [account.campaignMemberships, isAdmin, onAccountRefresh, switchCampaign])
   useEffect(() => {
     // Мастер открывается сам только для героя, закреплённого за этим аккаунтом.
     // У администратора accessibleHeroIds — весь отряд, и прежнее условие
@@ -2741,6 +2950,71 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   useEffect(() => { window.localStorage.setItem('skazanie-auto-attack-roll', String(autoAttackRoll)) }, [autoAttackRoll])
   useEffect(() => { window.localStorage.setItem(SCENIC_BACKDROP_KEY, String(scenicBackdrop)) }, [scenicBackdrop])
   useEffect(() => { window.localStorage.setItem(COMBAT_ANIMATIONS_KEY, String(combatAnimations)) }, [combatAnimations])
+  useEffect(() => {
+    const audio = createAtmosphereAudio({ settings: atmosphereSettings })
+    atmosphereAudioRef.current = audio
+    const removeUnlockListeners = () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+    const unlock = () => {
+      void audio.unlock().then((unlocked) => {
+        if (unlocked) removeUnlockListeners()
+      })
+    }
+    // Браузер разрешает Web Audio только после жеста. Никакого модального
+    // приглашения: первое обычное действие за столом мягко включает атмосферу.
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    return () => {
+      removeUnlockListeners()
+      if (atmosphereAudioRef.current === audio) atmosphereAudioRef.current = null
+      void audio.dispose()
+    }
+  }, [])
+  useEffect(() => {
+    const mood = normalizeAtmosphereMood(sceneTheme, {
+      combat: audioCombatActive,
+      finale: audioFinale,
+    })
+    atmosphereAudioRef.current?.setMood(mood, 1.8)
+  }, [audioCombatActive, audioFinale, sceneTheme])
+  useEffect(() => {
+    const cursor = atmosphereCursor.current
+    if (cursor.sessionCode !== state.sessionCode) {
+      atmosphereCursor.current = {
+        sessionCode: state.sessionCode,
+        visualBatchId: combatVisualBatch?.id ?? '',
+        dieRollId: state.lastDiceRoll?.id ?? '',
+        narratorMessageId: latestNarratorMessage?.id ?? '',
+      }
+      return
+    }
+    if (!combatVisualBatch?.id || cursor.visualBatchId === combatVisualBatch.id) return
+    cursor.visualBatchId = combatVisualBatch.id
+    // Batch уже отфильтрован сервером для зрителя; дополнительный барьер не
+    // позволяет звуком выдать GM/NPC-private событие при ошибочной проекции.
+    const visibleEvents = combatVisualBatch.events.filter((event) => (
+      event.visibility !== 'gm_only' && event.visibility !== 'npc_private'
+    ))
+    atmosphereAudioRef.current?.playEvents(visibleEvents)
+  }, [combatVisualBatch, latestNarratorMessage?.id, state.lastDiceRoll?.id, state.sessionCode])
+  useEffect(() => {
+    const cursor = atmosphereCursor.current
+    if (cursor.sessionCode !== state.sessionCode) return
+    const dieRollId = state.lastDiceRoll?.id ?? ''
+    if (!dieRollId || cursor.dieRollId === dieRollId) return
+    cursor.dieRollId = dieRollId
+    atmosphereAudioRef.current?.playEffect('dice')
+  }, [state.lastDiceRoll?.id, state.sessionCode])
+  useEffect(() => {
+    const cursor = atmosphereCursor.current
+    if (cursor.sessionCode !== state.sessionCode) return
+    const narratorMessageId = latestNarratorMessage?.id ?? ''
+    if (!narratorMessageId || cursor.narratorMessageId === narratorMessageId) return
+    cursor.narratorMessageId = narratorMessageId
+    atmosphereAudioRef.current?.playEffect('narration')
+  }, [latestNarratorMessage?.id, state.sessionCode])
   useEffect(() => {
     const combatActive = Boolean(state.mechanics?.combat?.active)
     // Начавшийся бой закрывает и историю, и лавку: торговля посреди инициативы —
@@ -2781,6 +3055,29 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     setMerchantOpen(true)
     if (window.innerWidth <= 680) setSidebarCollapsed(true)
   }
+  const changeAmbientVolume = (value: number) => {
+    const next = atmosphereAudioRef.current?.setAmbientVolume(value)
+      ?? saveAtmosphereSettings({ ...atmosphereSettings, ambientVolume: value })
+    setAtmosphereSettings(next)
+  }
+  const changeEffectsVolume = (value: number) => {
+    const next = atmosphereAudioRef.current?.setEffectsVolume(value)
+      ?? saveAtmosphereSettings({ ...atmosphereSettings, effectsVolume: value })
+    setAtmosphereSettings(next)
+  }
+  const changeAtmosphereMuted = (muted: boolean) => {
+    const next = atmosphereAudioRef.current?.setMuted(muted)
+      ?? saveAtmosphereSettings({ ...atmosphereSettings, muted })
+    setAtmosphereSettings(next)
+  }
+  const updateTypingPresence = useCallback((actorId: string, typing: boolean) => {
+    if (!state.sessionCode || !actorId) return
+    void fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/presence/typing`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor_id: actorId, typing }),
+    }).catch(() => undefined)
+  }, [state.sessionCode])
   const activePlayer = partyPlayers.find((player) => player.id === selectedHeroId && accessibleHeroIds.includes(player.id)) ?? partyPlayers.find((player) => accessibleHeroIds.includes(player.id)) ?? partyPlayers[0] ?? state.players[0]
   // Без выбранной кампании игровую комнату рисовать нечем: раньше её место
   // занимал демо-мир, и новый аккаунт попадал в чужую историю. Проверка стоит
@@ -2791,9 +3088,26 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         <main className="game-main">
           <div className="campaign-empty-screen">
             <ScrollText size={40} />
-            <h1>Кампания ещё не выбрана</h1>
-            <p>Создайте новый мир — рассказчик придумает его и напишет пролог — либо откройте кампанию, в которую вас пригласили.</p>
+            <h1>{joinError ? 'Не удалось занять место героя' : 'Кампания ещё не выбрана'}</h1>
+            <p>{joinError || 'Создайте новый мир — рассказчик придумает его и напишет пролог — либо откройте кампанию, в которую вас пригласили.'}</p>
+            {joinError && <small className="campaign-join-explanation">Если все герои уже разобраны, попросите владельца создать кампанию с дополнительным местом. Роль наблюдателя не выдаёт скрытых данных и пока не входит в MVP.</small>}
             <button className="primary" onClick={() => setCampaignsOpen(true)}><Plus size={16} />Кампании и группы</button>
+            <button onClick={onLogout}>Выйти из аккаунта</button>
+          </div>
+          {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onClose={() => setCampaignsOpen(false)} />}
+        </main>
+      </div>
+    )
+  }
+  if (!isAdmin && currentMembership && accessibleHeroIds.length === 0) {
+    return (
+      <div className="app no-campaign">
+        <main className="game-main">
+          <div className="campaign-empty-screen">
+            <Users size={40} />
+            <h1>Все герои разобраны</h1>
+            <p>Вы вошли в кампанию «{state.campaign}», но за вашим аккаунтом не закреплён герой. Игровые действия и скрытые сведения недоступны.</p>
+            <button className="primary" onClick={() => setCampaignsOpen(true)}><ScrollText size={16} />Кампании и группы</button>
             <button onClick={onLogout}>Выйти из аккаунта</button>
           </div>
           {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onClose={() => setCampaignsOpen(false)} />}
@@ -2828,13 +3142,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const reactionActorName = reactionActor && 'character' in reactionActor ? reactionActor.character : reactionActor?.name ?? 'Герой'
   const reactionSourceName = reactionSource && 'character' in reactionSource ? reactionSource.character : reactionSource?.name ?? 'Противник'
   const canAnswerReaction = Boolean(reactionWindow && lifecycleStatus === 'active' && (isAdmin || accessibleHeroIds.includes(reactionWindow.actor_id) || accessibleHeroIds.includes(reactionControllerId)))
+  const visibleTypingActorIds = (state.presence?.typing_actor_ids ?? []).filter((actorId) => actorId !== activePlayer.id)
 
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`} style={{
       '--ui-sidebar-width': `${Math.round(276 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>
-      <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
+      <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} typingActorIds={visibleTypingActorIds} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
       <main className="game-main">
         <header className="topbar">
           <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
@@ -2876,6 +3191,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             state={state}
             players={partyPlayers}
             turnActorId={mapActorId}
+            typingActorId={activePlayer.id}
             canAct={canAct}
             tacticalBusy={tacticalBusy}
             tacticalError={tacticalError}
@@ -2892,19 +3208,21 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onUseCombatAction={useCombatAction}
             onChangeWeapon={changeWeapon}
             onOperateDoor={operateDoor}
+            onOperateSceneObject={operateSceneObject}
             onFinishTurn={finishMapTurn}
-            onFreeAction={submitAction}
+            onFreeAction={(text) => { void submitAction(text, activePlayer.id) }}
+            onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} currentPlayerId={activePlayer.id} canAct={canAct} turnName={turnActorName} combatActive={combatActive} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueAgentInteraction} onWhy={() => { void submitAction('/why') }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} turnName={turnActorName} combatActive={combatActive} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
               <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
 
             </div>
           </DungeonMap>
         </div>}
-        {view === 'world-map' && <WorldMapView state={state} busy={state.isNarrating} onTravel={(action) => { void submitAction(action); navigate('room') }} />}
+        {view === 'world-map' && <WorldMapView state={state} busy={state.isNarrating} onTravel={(action) => { void submitAction(action, activePlayer.id); navigate('room') }} />}
         {view === 'journal' && <JournalView state={state} />}
         {view === 'characters' && <CharactersView players={partyPlayers} selectedId={activePlayer.id} turnId={turnActorId} accessibleHeroIds={accessibleHeroIds} onSelect={setSelectedHeroId} onEdit={setEditingPlayerId} />}
         {view === 'inventory' && <InventoryView
@@ -2917,7 +3235,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} />}
+        {view === 'settings' && <SettingsView health={aiHealth} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
@@ -2943,8 +3261,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         }}
       />}
       {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} onChoose={(actionId, beneficiaryId) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
-      {!campaignsOpen && (partyDefeated || fallenHeroes.length > 0) && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onChooseCampaign={() => setCampaignsOpen(true)} onExit={onLogout} />}
-      {!campaignsOpen && ['completed', 'archived'].includes(lifecycleStatus) && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
+      {!campaignsOpen && showDeathScreen && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
+      {!campaignsOpen && showConclusion && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'failed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
     </div>
   )
 }

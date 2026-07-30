@@ -248,7 +248,13 @@ test('карта в проекции игрока не выдаёт нераск
     }
   }
   const map = tacticalMapFromLegacyCells(cells)
-  addProp(map, { id: 'seen', assetId: 'table', x: 1.5, y: 0.5, footprint: [{ x: 1, y: 0 }] })
+  addProp(map, {
+    id: 'seen', assetId: 'table', x: 1.5, y: 0.5, footprint: [{ x: 1, y: 0 }],
+    interaction: {
+      kind: 'search', verbs: ['inspect'], pointOfInterest: true,
+      detailKey: 'secret-cache-under-table', rewardKey: 'server-loot-table:rope',
+    },
+  })
   addProp(map, { id: 'hidden', assetId: 'chest', x: 1.5, y: 2.5, footprint: [{ x: 1, y: 2 }] })
   setEdge(map, 0, 2, 1, 2, { kind: 'wall' })
   setEdge(map, 0, 0, 1, 0, { kind: 'wall' })
@@ -256,6 +262,11 @@ test('карта в проекции игрока не выдаёт нераск
 
   const projected = publicSceneFor({ title: 'Комната', cells, map: serializeTacticalMap(map) })
   assert.ok(projected.map, 'карта обязана попасть в проекцию')
+  assert.deepEqual(projected.map.props[0].interaction, {
+    kind: 'lore', verbs: ['inspect'], pointOfInterest: true,
+  }, 'проекция оставляет глаголы, но скрывает ключи детали и награды')
+  assert.equal(projected.map.props[0].interactive, true)
+  assert.doesNotMatch(JSON.stringify(projected), /secret-cache-under-table|server-loot-table:rope/u)
   const visible = deserializeTacticalMap(projected.map)
 
   assert.equal(cellAt(visible, 1, 0)?.material, 'wood', 'раскрытая клетка сохраняет материал')

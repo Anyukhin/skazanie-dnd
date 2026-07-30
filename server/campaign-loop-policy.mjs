@@ -15,6 +15,13 @@ const hashNumber = (value) => Number.parseInt(
 
 const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, Number(value) || 0))
 
+export const ONE_EVENING_ARC_VERSION = 'skazanie:campaign-arc-v1'
+export const ONE_EVENING_PRESET = 'one_evening'
+
+const ONE_EVENING_CHAPTER_CLOCK_MAX = 2
+const ONE_EVENING_FORCE_AFTER_BEATS = 2
+const ONE_EVENING_MAX_DIRECTOR_BEATS = 5
+
 const PHASE_BY_TENSION = Object.freeze([
   [75, 'climax'],
   [50, 'escalation'],
@@ -38,7 +45,38 @@ const PHASE_INTENT_TYPES = Object.freeze({
   climax: Object.freeze(['advance_quest_clock', 'end_scene', 'request_encounter']),
 })
 
+function phaseForEveningScene(sceneNumber, targetScenes) {
+  if (sceneNumber >= targetScenes) return 'climax'
+  if (sceneNumber === 1) return 'breather'
+  if (sceneNumber === targetScenes - 1) return 'escalation'
+  return 'development'
+}
+
+export function buildCampaignArcPlan(seed = '') {
+  const normalizedSeed = clean(seed, 240) || 'one-evening'
+  const targetScenes = 3 + (hashNumber(`${ONE_EVENING_ARC_VERSION}:${normalizedSeed}`) % 3)
+  return Object.freeze({
+    version: ONE_EVENING_ARC_VERSION,
+    preset: ONE_EVENING_PRESET,
+    seed: normalizedSeed,
+    target_scenes: targetScenes,
+    chapter_clock_max: ONE_EVENING_CHAPTER_CLOCK_MAX,
+    force_after_beats: ONE_EVENING_FORCE_AFTER_BEATS,
+    max_director_beats: ONE_EVENING_MAX_DIRECTOR_BEATS,
+    climax: 'combat',
+  })
+}
+
+export function campaignArcPlan(state = {}) {
+  const raw = state.campaignConcept?.arc
+  if (!raw || raw.version !== ONE_EVENING_ARC_VERSION || raw.preset !== ONE_EVENING_PRESET) return null
+  const canonical = buildCampaignArcPlan(raw.seed)
+  return raw.target_scenes === canonical.target_scenes ? canonical : null
+}
+
 function currentPhase(state = {}) {
+  const arc = campaignArcPosition(state)
+  if (arc) return arc.phase
   const stored = clean(state.autonomy?.pacing?.phase, 30)
   if (PHASE_INTENT_TYPES[stored]) return stored
   const tension = clamp(state.autonomy?.pacing?.tension, 0, 100)
@@ -52,12 +90,61 @@ function currentChapterIntents(state = {}) {
   return intents.slice(lastSceneEnd + 1)
 }
 
+function mainQuestFor(state = {}) {
+  const quests = state.worldMemory?.quests ?? []
+  return quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0] ?? null
+}
+
+function chapterQuestFor(state = {}, chapter = Math.max(1, Number(state.adventure?.chapter) || 1)) {
+  return (state.worldMemory?.quests ?? []).find((quest) => String(quest.id) === `quest:chapter:${chapter}`) ?? null
+}
+
+function encounterOutcomeRecorded(state = {}, encounter = state.mechanics?.encounter) {
+  if (!encounter?.id) return false
+  return (state.autonomy?.encounter_outcomes ?? []).some((entry) => entry.encounter_id === encounter.id)
+}
+
+export function campaignArcClimaxSatisfied(state = {}) {
+  const position = campaignArcPosition(state)
+  if (!position?.is_final) return false
+  const encounter = state.mechanics?.encounter
+  return Boolean(encounter
+    && encounter.status === 'ended'
+    && encounter.difficulty === 'hard'
+    && Number(encounter.created_in_chapter) === position.target_scenes
+    && encounterOutcomeRecorded(state, encounter))
+}
+
+export function campaignArcPosition(state = {}) {
+  const plan = campaignArcPlan(state)
+  if (!plan) return null
+  const sceneNumber = Math.max(1, Number(state.adventure?.chapter) || 1)
+  const boundedScene = Math.min(plan.target_scenes, sceneNumber)
+  const sceneBeat = currentChapterIntents(state).length
+  const chapterQuest = chapterQuestFor(state, sceneNumber)
+  const mainQuest = mainQuestFor(state)
+  return Object.freeze({
+    ...plan,
+    scene_number: sceneNumber,
+    bounded_scene_number: boundedScene,
+    scene_beat: sceneBeat,
+    remaining_beats: Math.max(0, plan.max_director_beats - sceneBeat),
+    phase: phaseForEveningScene(boundedScene, plan.target_scenes),
+    is_final: sceneNumber >= plan.target_scenes,
+    chapter_quest_id: chapterQuest?.id ?? null,
+    chapter_quest_status: chapterQuest?.status ?? null,
+    main_quest_id: mainQuest?.id ?? null,
+    main_quest_status: mainQuest?.status ?? null,
+  })
+}
+
 function firstOpenQuest(state = {}) {
   return (state.worldMemory?.quests ?? []).find((quest) => quest.status === 'active' && !quest.clock?.triggered) ?? null
 }
 
 function availableIntentTypes(state = {}) {
   const phase = currentPhase(state)
+  const arc = campaignArcPosition(state)
   const openQuest = firstOpenQuest(state)
   const encounter = state.mechanics?.encounter
   const encounterOutcomes = Array.isArray(state.autonomy?.encounter_outcomes) ? state.autonomy.encounter_outcomes : []
@@ -65,7 +152,7 @@ function availableIntentTypes(state = {}) {
     && encounterOutcomes.some((entry) => entry.encounter_id === encounter.id)
   const quests = state.worldMemory?.quests ?? []
   const chapter = Math.max(1, Number(state.adventure?.chapter) || 1)
-  const chapterQuest = quests.find((quest) => String(quest.id) === `quest:chapter:${chapter}`)
+  const chapterQuest = chapterQuestFor(state, chapter)
   const chapterQuestResolved = Boolean(chapterQuest && ['completed', 'failed'].includes(chapterQuest.status))
   const mainQuest = quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0]
   const mainQuestOpen = Boolean(mainQuest && ['active', 'hidden'].includes(mainQuest.status))
@@ -73,23 +160,30 @@ function availableIntentTypes(state = {}) {
   const peacefulSecondChapterExit = chapter === 2
     && encounterOutcomes.length > 0
     && chapterHistory.some((intent) => intent.type === 'advance_quest_clock')
-  const endSceneAvailable = encounterResolved
-    || peacefulSecondChapterExit
-    || (chapterQuestResolved && !mainQuestOpen)
+  const endSceneAvailable = arc
+    ? !arc.is_final && chapterQuestResolved
+    : encounterResolved
+      || peacefulSecondChapterExit
+      || (chapterQuestResolved && !mainQuestOpen)
   const phaseTypes = endSceneAvailable
     ? [...new Set([...PHASE_INTENT_TYPES[phase], 'end_scene'])]
     : PHASE_INTENT_TYPES[phase]
   const types = phaseTypes.filter((type) => {
     if (type === 'advance_quest_clock') return Boolean(openQuest)
     if (type === 'request_encounter') {
+      if (arc?.is_final && !chapterQuestResolved) return false
+      const replaceResolvedFinalEncounter = Boolean(arc?.is_final
+        && encounter?.status === 'ended'
+        && encounterOutcomeRecorded(state, encounter)
+        && !campaignArcClimaxSatisfied(state))
       return !state.mechanics?.combat?.active
-        && !encounter
+        && (!encounter || replaceResolvedFinalEncounter)
         && !(state.enemies ?? []).some((enemy) => enemy.alive !== false && Number(enemy.hp ?? 1) > 0)
     }
     if (type === 'end_scene') return !state.mechanics?.combat?.active && endSceneAvailable
     return true
   })
-  return { phase, openQuest, types }
+  return { phase, arc, chapterQuest, mainQuest, openQuest, types }
 }
 
 function intentForType(type, state, openQuest) {
@@ -151,11 +245,101 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}) {
   const lastOutcome = (state.autonomy?.director_outcomes ?? []).at(-1) ?? null
   const stalledType = lastOutcome?.state_changed === false ? clean(lastOutcome.intent_type, 40) : ''
   const blocked = new Set([lastType, stalledType].filter(Boolean))
+  const arc = availability.arc
+  if (arc && (arc.is_final || arc.scene_beat >= arc.force_after_beats)) {
+    const chapterQuest = availability.chapterQuest
+    const openingEncounterAvailable = arc.scene_number === 1
+      && !arc.is_final
+      && Number(chapterQuest?.clock?.current) >= 1
+      && !state.mechanics?.encounter
+      && !state.mechanics?.combat?.active
+    if (openingEncounterAvailable && proposed.type === 'request_encounter') {
+      return {
+        intent: normalizeDirectorIntent({
+          ...proposed,
+          difficulty: proposed.difficulty === 'hard' ? 'hard' : 'medium',
+        }),
+        proposed_intent: proposed,
+        replaced: proposed.difficulty === 'easy',
+        phase: availability.phase,
+        allowed_types: [...new Set([...availability.types, 'request_encounter'])],
+        reason: 'one_evening_opening_encounter',
+        policy: 'director-intent-policy-one-evening-v1',
+      }
+    }
+    if (chapterQuest?.status === 'active' && chapterQuest.clock?.triggered !== true) {
+      return {
+        intent: normalizeDirectorIntent({
+          type: 'advance_quest_clock',
+          quest_id: chapterQuest.id,
+          reason: 'Бюджет вечерней сцены требует разрешить её подтверждённую цель.',
+        }),
+        proposed_intent: proposed,
+        replaced: proposed.type !== 'advance_quest_clock' || proposed.quest_id !== chapterQuest.id,
+        phase: availability.phase,
+        allowed_types: availability.types,
+        reason: 'one_evening_scene_clock',
+        policy: 'director-intent-policy-one-evening-v1',
+      }
+    }
+    if (chapterQuest && ['completed', 'failed'].includes(chapterQuest.status)) {
+      if (!arc.is_final) {
+        const intent = intentForType('end_scene', state, availability.openQuest)
+        return {
+          intent,
+          proposed_intent: proposed,
+          replaced: proposed.type !== 'end_scene',
+          phase: availability.phase,
+          allowed_types: availability.types,
+          reason: 'one_evening_scene_transition',
+          policy: 'director-intent-policy-one-evening-v1',
+        }
+      }
+      if (!campaignArcClimaxSatisfied(state)
+        && availability.types.includes('request_encounter')
+        && !state.mechanics?.combat?.active) {
+        const theme = proposed.type === 'request_encounter' ? proposed.theme : 'beasts'
+        return {
+          intent: normalizeDirectorIntent({
+            type: 'request_encounter',
+            theme,
+            difficulty: 'hard',
+            reason: 'Финальная сцена вечерней кампании требует полноценного серверного боя.',
+          }),
+          proposed_intent: proposed,
+          replaced: proposed.type !== 'request_encounter' || proposed.difficulty !== 'hard',
+          phase: availability.phase,
+          allowed_types: availability.types,
+          reason: 'one_evening_climax_encounter',
+          policy: 'director-intent-policy-one-evening-v1',
+        }
+      }
+      const mainQuest = availability.mainQuest
+      if (campaignArcClimaxSatisfied(state) && mainQuest?.status === 'active' && mainQuest.clock?.triggered !== true) {
+        return {
+          intent: normalizeDirectorIntent({
+            type: 'advance_quest_clock',
+            quest_id: mainQuest.id,
+            reason: 'Подтверждённый исход кульминации разрешает главную нить.',
+          }),
+          proposed_intent: proposed,
+          replaced: proposed.type !== 'advance_quest_clock' || proposed.quest_id !== mainQuest.id,
+          phase: availability.phase,
+          allowed_types: availability.types,
+          reason: 'one_evening_main_thread',
+          policy: 'director-intent-policy-one-evening-v1',
+        }
+      }
+    }
+  }
   const allowed = availability.types.filter((type) => !blocked.has(type))
   const candidates = allowed.length ? allowed : availability.types
   const accepted = candidates.includes(proposed.type)
   const replacementType = accepted ? proposed.type : candidates[0] ?? 'continue_exploration'
-  const intent = accepted ? proposed : intentForType(replacementType, state, availability.openQuest)
+  let intent = accepted ? proposed : intentForType(replacementType, state, availability.openQuest)
+  if (arc?.is_final && intent.type === 'request_encounter' && intent.difficulty !== 'hard') {
+    intent = normalizeDirectorIntent({ ...intent, difficulty: 'hard' })
+  }
   return {
     intent,
     proposed_intent: proposed,
@@ -167,7 +351,7 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}) {
       : blocked.has(proposed.type)
         ? 'anti_stall_replacement'
         : 'phase_incompatible_replacement',
-    policy: 'director-intent-policy-v1',
+    policy: arc ? 'director-intent-policy-one-evening-v1' : 'director-intent-policy-v1',
   }
 }
 
@@ -196,10 +380,16 @@ export function directorProgressFingerprint(state = {}) {
 
 export function pacingForDirectorIntent(state = {}, intent = {}) {
   const previous = state.autonomy?.pacing ?? {}
+  const arc = campaignArcPosition(state)
   const before = clamp(previous.tension, 0, 100)
   const delta = PACING_DELTAS[intent.type] ?? 0
   const after = clamp(before + delta, 0, 100)
-  const phase = PHASE_BY_TENSION.find(([threshold]) => after >= threshold)?.[1] ?? 'breather'
+  const phase = arc
+    ? phaseForEveningScene(
+        Math.min(arc.target_scenes, arc.scene_number + (intent.type === 'end_scene' ? 1 : 0)),
+        arc.target_scenes,
+      )
+    : PHASE_BY_TENSION.find(([threshold]) => after >= threshold)?.[1] ?? 'breather'
   return {
     beat: Math.max(0, Number(previous.beat) || 0) + 1,
     phase,
@@ -207,7 +397,7 @@ export function pacingForDirectorIntent(state = {}, intent = {}) {
     tension_after: after,
     delta,
     intent_type: clean(intent.type, 40),
-    policy: 'campaign-pacing-v1',
+    policy: arc ? 'campaign-pacing-one-evening-v1' : 'campaign-pacing-v1',
   }
 }
 

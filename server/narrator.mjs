@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { eventSummary } from './rules-engine.mjs'
 import { DeterministicNarrationVerifier, assertNarrationBrief, buildDataOnlyContext } from './security.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v3'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v4'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
  * Порог пересечения 3-грамм с недавним текстом, выше которого нарация считается
@@ -20,7 +20,7 @@ export const NARRATOR_RECENT_TEXT_LIMIT = 3
 export const NARRATOR_RECENT_3GRAM_OVERLAP_MAX = 0.14
 /** Постоянный серверный текст: он и только он стоит снаружи блока данных. */
 const REPAIR_INSTRUCTION = 'Исправь нарушения предыдущего варианта: они перечислены в секции narration_violations.'
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v3.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v4.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 
 const sceneText = (value, maximum = 120) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -95,127 +95,6 @@ function sharedRootCount(leftValues, rightValues) {
   let count = 0
   for (const root of left) if (right.has(root)) count += 1
   return count
-}
-
-function touchesAny(value, contextValues) {
-  const own = suggestionRoots(value)
-  return (Array.isArray(contextValues) ? contextValues : []).some((contextValue) => {
-    for (const root of suggestionRoots(contextValue)) if (own.has(root)) return true
-    return false
-  })
-}
-
-function boundedSuggestion(value) {
-  const cleaned = sceneText(value, 500).replace(/[.;,\s]+$/gu, '')
-  if (cleaned.length <= 120) return cleaned
-  const shortened = cleaned.slice(0, 120)
-  const boundary = shortened.lastIndexOf(' ')
-  return (boundary >= 72 ? shortened.slice(0, boundary) : shortened).trim()
-}
-
-function uniqueSuggestions(values) {
-  const seen = new Set()
-  const result = []
-  for (const value of values) {
-    const suggestion = boundedSuggestion(value)
-    const key = suggestion.toLocaleLowerCase('ru')
-    if (!suggestion || seen.has(key)) continue
-    seen.add(key)
-    result.push(suggestion)
-    if (result.length >= 3) break
-  }
-  return result
-}
-
-function suggestionContext(brief) {
-  const environment = brief.known_environment ?? {}
-  const scene = environment.scene ?? {}
-  const story = environment.story_context ?? {}
-  const quests = Array.isArray(story.active_quests) ? story.active_quests : []
-  const threads = Array.isArray(story.active_threads) ? story.active_threads : []
-  const decisions = Array.isArray(story.recent_decisions) ? story.recent_decisions : []
-  const heroes = Array.isArray(story.heroes) ? story.heroes : []
-  const hero = heroes.find((entry) => entry?.is_viewer === true) ?? heroes[0] ?? null
-  const npcs = Array.isArray(story.present_npcs) ? story.present_npcs : []
-  const facts = Array.isArray(environment.world_memory?.facts) ? environment.world_memory.facts : []
-  const forwardValues = [
-    scene.objective,
-    ...quests.flatMap((quest) => [quest?.title, quest?.summary, ...(Array.isArray(quest?.objectives) ? quest.objectives : [])]),
-    ...threads.flatMap((thread) => [thread?.title, thread?.summary]),
-    ...facts.flatMap((fact) => [fact?.subject, fact?.summary]),
-  ].filter(Boolean)
-  const anchorValues = [
-    scene.location,
-    ...npcs.flatMap((npc) => [npc?.name, npc?.role]),
-    ...facts.map((fact) => fact?.subject),
-  ].filter(Boolean)
-  const specificValues = [
-    ...anchorValues,
-    ...forwardValues,
-    ...(Array.isArray(story.open_promises) ? story.open_promises.flatMap((promise) => [promise?.npc, promise?.text]) : []),
-  ].filter(Boolean)
-  const personalValues = hero
-    ? [
-        hero.name,
-        hero.class_name,
-        hero.background,
-        ...decisions.flatMap((entry) => [entry?.title, entry?.location, entry?.objective, entry?.outcome]),
-      ].filter(Boolean)
-    : []
-  return { scene, story, quests, threads, decisions, hero, npcs, facts, forwardValues, anchorValues, specificValues, personalValues }
-}
-
-function forwardFallback(context) {
-  const objective = sceneText(
-    context.quests[0]?.objectives?.[0]
-      || context.scene.objective
-      || context.threads[0]?.title
-      || context.quests[0]?.title,
-    72,
-  )
-  const npc = sceneText(context.npcs[0]?.name, 40)
-  const object = sceneText(context.facts[0]?.subject || context.scene.location, 52)
-  if (npc && objective) return `Уточнить у ${npc}: ${objective.charAt(0).toLocaleLowerCase('ru')}${objective.slice(1)}`
-  if (object && objective) return `Проверить ${object}: ${objective.charAt(0).toLocaleLowerCase('ru')}${objective.slice(1)}`
-  if (objective) return `Проверить зацепку к цели «${objective}»`
-  return ''
-}
-
-function personalFallback(context) {
-  const hero = context.hero
-  if (!hero?.name) return ''
-  const trait = sceneText(hero.background || hero.class_name, 50)
-  const target = sceneText(context.npcs[0]?.name || context.facts[0]?.subject || context.scene.location, 48)
-  const decision = sceneText(context.decisions.at(-1)?.outcome || context.decisions.at(-1)?.objective, 60)
-  if (trait && target) return `${hero.name}: применить опыт «${trait}» к зацепке у ${target}`
-  if (decision && target) return `${hero.name}: сопоставить ${target} с прежним решением «${decision}»`
-  if (target) return `${hero.name}: предложить свой способ проверить ${target}`
-  return `${hero.name}: предложить личный подход к цели сцены`
-}
-
-/**
- * Сервер сохраняет строковый контракт suggestions, но не полагается на то,
- * что модель сама выдержит две обязательные роли подсказок. Модельные варианты
- * сохраняются, если они привязаны к видимому контексту; отсутствующие крючок
- * и личная идея достраиваются только из того же NarrationBrief.
- */
-export function narratorSuggestions(brief, value = []) {
-  assertNarrationBrief(brief)
-  const model = uniqueSuggestions(Array.isArray(value) ? value : [])
-  const context = suggestionContext(brief)
-  const hasContext = context.specificValues.length > 0 || context.hero?.name
-  if (!hasContext) return model
-
-  const forward = model.find((entry) => touchesAny(entry, context.forwardValues)
-    && touchesAny(entry, context.anchorValues)) || forwardFallback(context)
-  const personal = model.find((entry) => entry !== forward
-    && touchesAny(entry, [context.hero?.name])
-    && touchesAny(entry, context.personalValues.filter((item) => item !== context.hero?.name))
-    && touchesAny(entry, context.anchorValues)) || personalFallback(context)
-  // Третья идея необязательна. Не пропускаем её только ради заполнения лимита:
-  // две проверенные роли полезнее трёх вариантов с расплывчатым или
-  // предполагающим ещё не подтверждённый предмет продолжением.
-  return uniqueSuggestions([forward, personal])
 }
 
 export function narratorMemoryFocus(brief) {
@@ -747,7 +626,6 @@ export function deterministicNarration(brief, resolveName, { recentNarrations = 
   }
   return {
     narration,
-    suggestions: narratorSuggestions(brief, []),
   }
 }
 
@@ -839,7 +717,7 @@ export class Narrator {
             provider: 'deterministic-provider-fallback',
           }
         }
-        const result = { narration: String(output?.narration || '').trim(), suggestions: narratorSuggestions(brief, output?.suggestions) }
+        const result = { narration: String(output?.narration || '').trim() }
         lastVerification = verifyNarratorCraft(
           result.narration,
           brief,

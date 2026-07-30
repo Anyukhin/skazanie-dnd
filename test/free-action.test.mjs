@@ -11,6 +11,7 @@ import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { IntentParser } from '../server/intent-parser.mjs'
 import { buildNarrationBrief, verifyNarration } from '../server/security.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { addProp, createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
 
 function hero(id, character = id) {
   return {
@@ -82,6 +83,53 @@ test('мусорный ввод не становится ruling или случ
   assert.equal(result.mechanics.some((event) => event.event_type === 'RulingRecorded'), false)
   assert.equal(result.mechanics.some((event) => event.event_type === 'AbilityCheckResolved'), false)
   assert.equal(result.turn_consumed, false)
+})
+
+test('свободный текст про объект сцены использует ту же OperateSceneObject, что кнопка', async () => {
+  const map = createTacticalMap({
+    width: 4,
+    height: 3,
+    seed: 'free-object-scene',
+    locationId: 'free-object-room',
+    fill: { passable: true, revealed: true, material: 'wood' },
+  })
+  addProp(map, {
+    id: 'prop-barrel',
+    assetId: 'barrel',
+    x: 1.5,
+    y: 0.5,
+    footprint: [{ x: 1, y: 0 }],
+  })
+  const initialState = campaign({
+    players: [
+      { ...hero('hero', 'Ада'), x: 0, y: 0 },
+      { ...hero('other', 'Бор'), x: 3, y: 2 },
+    ],
+    scene: {
+      title: 'Кладовая',
+      location: 'Старый трактир',
+      objective: 'Осмотреть кладовую',
+      cells: [],
+      map: serializeTacticalMap(map),
+    },
+    mechanics: { positions: { hero: { x: 0, y: 0 }, other: { x: 3, y: 2 } } },
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const input = actionInput('Разбить бочку топором', 'free-scene-object', initialState)
+  const first = await orchestrator.handle(input)
+  const second = await orchestrator.handle(input)
+
+  assert.equal(first.free_action_outcome, 'scene_interaction')
+  assert.ok(first.mechanics.some((event) => event.event_type === 'SceneObjectOperated'))
+  assert.ok(first.mechanics.some((event) => event.event_type === 'SceneObjectStateChanged'))
+  assert.equal(first.mechanics.some((event) => event.event_type === 'RulingRecorded'), false)
+  assert.equal(first.mechanics.some((event) => event.event_type === 'ObjectiveUpdated'), false)
+  assert.ok(first.mechanics.every((event) => (
+    event.event_type !== 'SceneObjectOperated' || event.payload.approach === 'force'
+  )))
+  assert.equal(second.idempotent_replay, true)
+  assert.deepEqual(second.mechanics, first.mechanics)
+  assert.equal((await eventStore.load('FREE-ACTION')).state.scene.map.props.find((prop) => prop.id === 'prop-barrel').state, 'open')
 })
 
 test('физически невозможное действие просит подтверждённый способ вместо нерелевантной проверки', async () => {

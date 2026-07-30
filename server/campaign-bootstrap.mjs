@@ -9,8 +9,9 @@ import { ensureSceneWorldMemory } from './scene-memory.mjs'
 import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
+import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v2.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v3.txt', import.meta.url)), 'utf8')
 
 /**
  * Создание кампании — не ход. Оно просит у модели на порядок больше текста
@@ -130,8 +131,9 @@ function startingVisualSpec(theme, world) {
 function fallbackOpening({ name, partyName, world, heroes, entropy }) {
   const theme = fallbackTheme(world, entropy)
   const location = world.startingLocation || theme.location
+  const unnamedPartySize = ['одного', 'двух', 'трёх', 'четырёх', 'пяти'][Math.max(1, Math.min(5, heroes.length)) - 1]
   const heroNames = heroes.every((hero) => hero.characterSetupRequired)
-    ? 'четырёх героев, которым игроки ещё дадут имена и прошлое'
+    ? `${unnamedPartySize} ${heroes.length === 1 ? 'героя, которому игрок ещё даст имя и прошлое' : 'героев, которым игроки ещё дадут имена и прошлое'}`
     : heroes.map((hero) => hero.character).join(', ')
   const era = world.era || 'необычной авторской эпохе'
   const genre = world.genre || world.preset || 'приключенческой истории'
@@ -161,7 +163,6 @@ function fallbackOpening({ name, partyName, world, heroes, entropy }) {
       goals: ['Защитить путников', 'Понять источник угрозы'],
       beliefs: ['Обещания важнее красивых слов'],
     }],
-    suggestions: ['Осмотреть место встречи', 'Поговорить с очевидцами', 'Сопоставить истории героев'],
   }
 }
 
@@ -227,7 +228,6 @@ function normalizeOpening(input, fallback) {
     },
     hook: clean(source.hook, 500) || fallback.hook,
     npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs),
-    suggestions: (Array.isArray(source.suggestions) ? source.suggestions : fallback.suggestions).map((item) => clean(item, 120)).filter(Boolean).slice(0, 3),
   }
 }
 
@@ -260,7 +260,7 @@ export class CampaignBootstrapper {
             // Вводные владельца и листы героев — свободный текст игроков. Они
             // уходят только внутри UNTRUSTED_DATA: предыстория героя не должна
             // уметь командовать автором кампании.
-            { role: 'user', content: buildDataOnlyContext({ campaign_setup: { campaign: campaignName, party: groupName, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) } }) },
+            { role: 'user', content: buildDataOnlyContext({ campaign_setup: { campaign: campaignName, party: groupName, party_size: heroes.length, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) } }) },
           ],
           temperature: 0.8,
           maxTokens: 3200,
@@ -271,6 +271,14 @@ export class CampaignBootstrapper {
       } catch { /* A new campaign must still be playable when the provider is unavailable. */ }
     }
     const seed = createHash('sha256').update(JSON.stringify({ campaignCode, world, heroes: heroes.map((hero) => hero.id) })).digest('hex').slice(0, 24)
+    const arc = buildCampaignArcPlan(seed)
+    const campaignConcept = {
+      ...world,
+      worldSummary: opening.worldSummary,
+      worldHistory: opening.worldHistory,
+      generatedBy,
+      arc,
+    }
     // Через тот же выбор генератора, что и переходы Режиссёра: первая сцена
     // кампании — такая же локация, и таверна в её начале обязана быть таверной,
     // а не серой коробкой. Прежде здесь стоял прямой вызов процедурного
@@ -290,7 +298,7 @@ export class CampaignBootstrapper {
     const campaignWorldMap = createCampaignWorldMap({
       seed,
       campaignName: campaignName === 'Новая кампания' ? opening.campaignName : campaignName,
-      concept: { ...world, worldSummary: opening.worldSummary, worldHistory: opening.worldHistory },
+      concept: campaignConcept,
       source: opening.worldMap,
       startingLocation: opening.scene.location,
     })
@@ -311,6 +319,7 @@ export class CampaignBootstrapper {
     const starterNpcId = openingNpcs[0].id
     const sceneMemory = ensureSceneWorldMemory({}, {
       scene: { title: opening.scene.title, location: opening.scene.location, mood: opening.scene.mood, objective: opening.scene.objective },
+      campaignConcept,
       adventure: {
         chapter: 1, currentHook: opening.hook,
         visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [],
@@ -329,7 +338,7 @@ export class CampaignBootstrapper {
         summary: opening.scene.objective,
         status: 'active', visibility: 'party', entity_ids: [starterFactionId],
         objectives: [opening.scene.objective],
-        clock: { current: 0, max: 4, label: 'Прогресс расследования' },
+        clock: { current: 0, max: arc.target_scenes, label: 'Прогресс расследования' },
       }],
     }
     return {
@@ -338,7 +347,7 @@ export class CampaignBootstrapper {
       partyName: groupName === 'Новый отряд' ? opening.partyName : groupName,
       partyMemberIds: positionedHeroes.map((hero) => hero.id),
       partyDecisionPolicy: structuredClone(DEFAULT_PARTY_DECISION_POLICY),
-      campaignConcept: { ...world, worldSummary: opening.worldSummary, worldHistory: opening.worldHistory, generatedBy },
+      campaignConcept,
       worldMap: campaignWorldMap,
       worldMemory: initialWorldMemory,
       social: {
@@ -359,7 +368,6 @@ export class CampaignBootstrapper {
       activePlayerId: positionedHeroes[0].id,
       tacticalTurn: { sceneTurn: 1, actorId: positionedHeroes[0].id, movementSpent: 0, actionUsed: false },
       isNarrating: false, pendingCheck: null, agentInteraction: null, lastDiceRoll: null,
-      suggestions: opening.suggestions,
       scene: { title: opening.scene.title, location: opening.scene.location, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells },
       adventure: { chapter: 1, currentHook: opening.hook, visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [] },
       messages: [{ id: `opening-${seed}`, speaker: 'narrator', author: 'Рассказчик', timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()), text: opening.openingNarration, turnConsumed: false }],

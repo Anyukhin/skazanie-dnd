@@ -1,5 +1,9 @@
 // @ts-check
 import { createHash } from 'node:crypto'
+import {
+  interactionMetadataForProp,
+  sceneInteractionMetadata,
+} from './scene-interactions.mjs'
 
 /**
  * Контракт тактической карты: клетки хранятся типизированными слоями, стены
@@ -122,6 +126,15 @@ export class TacticalMapError extends Error {
  */
 
 /**
+ * @typedef {object} TacticalPropInteraction
+ * @property {string} kind
+ * @property {string[]} verbs
+ * @property {boolean} pointOfInterest
+ * @property {string} detailKey
+ * @property {string} rewardKey
+ */
+
+/**
  * @typedef {object} TacticalProp
  * @property {string} id
  * @property {string} assetId
@@ -138,6 +151,7 @@ export class TacticalMapError extends Error {
  * @property {number} hp
  * @property {boolean} interactive
  * @property {string} state
+ * @property {TacticalPropInteraction|null} interaction
  */
 
 /**
@@ -686,6 +700,36 @@ export function setDoor(map, door) {
 export function addProp(map, prop) {
   const cover = String(prop.cover ?? 'none')
   if (!COVER_LEVELS.includes(cover)) throw new TacticalMapError(`Недопустимое укрытие предмета: ${cover}`, 'COVER_NOT_ALLOWED')
+  const storedInteraction = prop.interaction && typeof prop.interaction === 'object' && !Array.isArray(prop.interaction)
+    ? prop.interaction
+    : null
+  const generatedInteraction = interactionMetadataForProp(/** @type {any} */ ({
+    mapSeed: map.seed,
+    prop,
+    pointOfInterest: storedInteraction?.pointOfInterest === true,
+  }))
+  const sourceInteraction = storedInteraction && generatedInteraction
+    ? {
+        ...generatedInteraction,
+        // Повторно используем только ключи уже выбранного POI. Вид и глаголы
+        // всегда приходят из текущего server-owned каталога, а не из snapshot.
+        ...(boundedText(storedInteraction.detailKey, 120) ? { detailKey: storedInteraction.detailKey } : {}),
+        ...(boundedText(storedInteraction.rewardKey, 120) ? { rewardKey: storedInteraction.rewardKey } : {}),
+      }
+    : generatedInteraction
+  /** @type {TacticalPropInteraction|null} */
+  const interaction = sourceInteraction
+    ? {
+        kind: boundedText(sourceInteraction.kind, 40),
+        verbs: [...new Set((Array.isArray(sourceInteraction.verbs) ? sourceInteraction.verbs : [])
+          .map((verb) => boundedText(verb, 40))
+          .filter(Boolean))]
+          .slice(0, 8),
+        pointOfInterest: sourceInteraction.pointOfInterest === true,
+        detailKey: boundedText(sourceInteraction.detailKey, 120),
+        rewardKey: boundedText(sourceInteraction.rewardKey, 120),
+      }
+    : null
   /** @type {TacticalProp} */
   const record = {
     id: boundedText(prop.id, 120),
@@ -704,8 +748,9 @@ export function addProp(map, prop) {
     cover,
     destructible: prop.destructible === true,
     hp: boundedInteger(prop.hp, 0, 0, 1_000),
-    interactive: prop.interactive === true,
+    interactive: prop.interactive === true || interaction !== null,
     state: boundedText(prop.state, 40),
+    interaction,
   }
   if (!record.id) throw new TacticalMapError('У предмета должен быть идентификатор', 'PROP_ID_REQUIRED')
   map.props.push(record)
@@ -1058,8 +1103,22 @@ function compactProp(prop) {
   if (prop.cover !== 'none') result.cover = prop.cover
   if (prop.destructible) result.destructible = true
   if (prop.hp !== 0) result.hp = prop.hp
-  if (prop.interactive) result.interactive = true
+  // Для словарного реквизита interactive/kind/verbs восстанавливаются из
+  // server-owned каталога по assetId. Не дублируем их в авторитетном снимке:
+  // region-карта может содержать до двух тысяч предметов. У несистемного
+  // интерактивного prop флаг по-прежнему хранится явно.
+  if (prop.interactive && !prop.interaction) result.interactive = true
   if (prop.state) result.state = prop.state
+  // Полная скрытая metadata нужна в persistence только выбранным 2–4 POI.
+  // kind/verbs даже для них восстанавливаются по каталогу, поэтому сохраняем
+  // лишь маркер и ключи server-owned таблиц.
+  if (prop.interaction?.pointOfInterest) {
+    result.interaction = {
+      pointOfInterest: true,
+      detailKey: prop.interaction.detailKey,
+      rewardKey: prop.interaction.rewardKey,
+    }
+  }
   return result
 }
 
@@ -1469,6 +1528,19 @@ export function tacticalMapFromLegacyCells(cells, options = {}) {
       footprint: [{ x, y }],
       zOrder: 0,
     })
+  }
+  const generatedInteractions = sceneInteractionMetadata(/** @type {any} */ ({ mapSeed: map.seed, props: map.props }))
+  for (const prop of map.props) {
+    const interaction = generatedInteractions.get(prop.id)
+    if (!interaction) continue
+    prop.interactive = true
+    prop.interaction = {
+      kind: boundedText(interaction.kind, 40),
+      verbs: [...new Set(interaction.verbs.map((verb) => boundedText(verb, 40)).filter(Boolean))].slice(0, 8),
+      pointOfInterest: interaction.pointOfInterest === true,
+      detailKey: boundedText(interaction.detailKey, 120),
+      rewardKey: boundedText(interaction.rewardKey, 120),
+    }
   }
 
   recomputeBounds(map)

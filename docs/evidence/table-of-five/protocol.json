@@ -1,0 +1,107 @@
+{
+  "ok": true,
+  "campaign": "TABLE-FIVE",
+  "browsers": 5,
+  "storage": "temporary",
+  "serverRestarted": true,
+  "protocol": [
+    {
+      "stage": "intro-four",
+      "screenshots": [
+        "docs/evidence/table-of-five/01-intro-player-1.png",
+        "docs/evidence/table-of-five/01-intro-player-2.png",
+        "docs/evidence/table-of-five/01-intro-player-3.png",
+        "docs/evidence/table-of-five/01-intro-player-4.png"
+      ]
+    },
+    {
+      "stage": "late-join-five",
+      "screenshots": [
+        "docs/evidence/table-of-five/02-late-join-player-1.png",
+        "docs/evidence/table-of-five/02-late-join-player-2.png",
+        "docs/evidence/table-of-five/02-late-join-player-3.png",
+        "docs/evidence/table-of-five/02-late-join-player-4.png",
+        "docs/evidence/table-of-five/02-late-join-player-5.png"
+      ]
+    },
+    {
+      "stage": "all-seats-taken",
+      "result": "В кампании не осталось свободных героев"
+    },
+    {
+      "stage": "typing",
+      "screenshots": [
+        "docs/evidence/table-of-five/03-typing-player-1.png",
+        "docs/evidence/table-of-five/03-typing-player-2.png"
+      ]
+    },
+    {
+      "stage": "concurrent-intentions",
+      "statuses": [
+        200,
+        200
+      ]
+    },
+    {
+      "stage": "vote-open",
+      "screenshots": [
+        "docs/evidence/table-of-five/04-vote-player-1.png",
+        "docs/evidence/table-of-five/04-vote-player-2.png",
+        "docs/evidence/table-of-five/04-vote-player-3.png",
+        "docs/evidence/table-of-five/04-vote-player-4.png",
+        "docs/evidence/table-of-five/04-vote-player-5.png"
+      ]
+    },
+    {
+      "stage": "vote-voters",
+      "screenshots": [
+        "docs/evidence/table-of-five/04-voters-player-1.png"
+      ]
+    },
+    {
+      "stage": "vote-disconnect",
+      "requiredVotes": 3,
+      "abstainedVoterIds": [
+        "account:d67cae9b87437c92ffff0aa4"
+      ]
+    },
+    {
+      "stage": "combat",
+      "screenshots": [
+        "docs/evidence/table-of-five/05-combat-player-1.png",
+        "docs/evidence/table-of-five/05-combat-player-2.png",
+        "docs/evidence/table-of-five/05-combat-player-3.png",
+        "docs/evidence/table-of-five/05-combat-player-4.png",
+        "docs/evidence/table-of-five/05-combat-player-5.png"
+      ]
+    },
+    {
+      "stage": "restart-in-combat",
+      "screenshots": [
+        "docs/evidence/table-of-five/06-restart-player-1.png",
+        "docs/evidence/table-of-five/06-restart-player-4.png"
+      ]
+    },
+    {
+      "stage": "trade",
+      "screenshots": [
+        "docs/evidence/table-of-five/07-trade-player-1.png"
+      ]
+    },
+    {
+      "stage": "scene-transition",
+      "screenshots": [
+        "docs/evidence/table-of-five/08-transition-player-1.png",
+        "docs/evidence/table-of-five/08-transition-player-2.png",
+        "docs/evidence/table-of-five/08-transition-player-3.png",
+        "docs/evidence/table-of-five/08-transition-player-4.png",
+        "docs/evidence/table-of-five/08-transition-player-5.png"
+      ]
+    }
+  ],
+  "knownDeferred": [
+    "Обрыв во время открытого голосования по закреплённой policy считается воздержанием; повторно проголосовать в том же решении нельзя.",
+    "Отключившийся активный герой удерживает боевой ход до возвращения; автоматический пропуск требует отдельной продуктовой policy.",
+    "Приглашения одноразовые и закрепляют одно место: владелец создаёт отдельную ссылку для каждого гостя."
+  ]
+}

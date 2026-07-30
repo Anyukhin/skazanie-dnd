@@ -24,7 +24,6 @@ const CANONICAL_FIELDS = Object.freeze([
   'battleLog',
   'economyLog',
   'mapFeedback',
-  'suggestions',
   'lastDiceRoll',
   'state_version',
   'ruleset_id',

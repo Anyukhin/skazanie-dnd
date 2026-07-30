@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { normalizeDirectorIntent, serverReputationDelta, serverRewardForEncounter } from './autonomous-campaign.mjs'
 import {
   assembleSocialNpc,
+  campaignArcPosition,
   completedDowntime,
   directorProgressFingerprint,
   pacingForDirectorIntent,
@@ -36,6 +37,7 @@ import {
 } from './free-action-adjudication.mjs'
 import { planImprovisedEffect, resolveActionCost } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
+import { nearestSceneObjectCommand, sceneInteractionNarration } from './scene-interactions.mjs'
 
 const clone = (value) => structuredClone(value)
 
@@ -401,6 +403,7 @@ export class AutonomousCampaignOrchestrator {
       commands.push({ command_type: 'StartCombat', server_authoritative: true })
     }
     if (intent.type === 'end_scene') {
+      const arc = campaignArcPosition(loaded.state)
       const destination = intent.destination || `${loaded.state.scene?.location || 'Путь'} — следующая сцена`
       travel = planServerTravel(loaded.state, { campaignId, destination, idempotencyKey: key })
       travelStartedAt = Number(loaded.state.mechanics?.world_time?.elapsed_minutes) || 0
@@ -430,6 +433,14 @@ export class AutonomousCampaignOrchestrator {
         }, partyIds),
         actor_id: actorId || null,
       })
+      const mainQuest = arc
+        ? (loaded.state.worldMemory?.quests ?? []).find((quest) => (
+            !String(quest.id || '').startsWith('quest:chapter:')
+            && quest.status === 'active'
+            && quest.clock?.triggered !== true
+          ))
+        : null
+      if (mainQuest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: mainQuest.id, amount: 1 })
       commands.push({ command_type: 'AdvanceScene', scene_args: {
         title: destination,
         location: destination,
@@ -544,7 +555,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'rejected',
         narration: 'Сейчас действует другой участник. Действие не выполнено, и ваш ход не потрачен.',
-        suggestions: [],
         turn_consumed: false,
         rejected: true,
         admin_commands: 0,
@@ -563,7 +573,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'clarification',
         narration: 'Опишите действие подробнее: что делает герой, с чем или с кем и какого результата хочет добиться.',
-        suggestions: [nextHook(loaded.state)],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -580,12 +589,49 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'clarification',
         narration: 'Для такого действия нужен подтверждённый способ — конкретное заклинание, предмет или способность героя. Укажите его, и я проверю допустимый вариант.',
-        suggestions: [nextHook(loaded.state)],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
         state_version: commit.state_version ?? loaded.state_version,
         events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+    // Частая фраза про уже существующий реквизит не должна превращаться во
+    // второй, приблизительный путь импровизации. Текст выбирает только объект,
+    // глагол и способ; дальность, состояние, СЛ, бросок, награда и последствия
+    // снова проверяет та же OperateSceneObject, которой пользуются кнопки.
+    const sceneProps = Array.isArray(loaded.state.scene?.map?.props) ? loaded.state.scene.map.props : []
+    const sceneActor = findActor(loaded.state, actorId)
+    const sceneObjectCommand = nearestSceneObjectCommand({
+      props: sceneProps,
+      actorPosition: sceneActor ? { x: sceneActor.x, y: sceneActor.y } : null,
+      text,
+    })
+    if (sceneObjectCommand) {
+      const commit = await run([
+        declaration,
+        {
+          ...sceneObjectCommand,
+          actor_id: actorId,
+          server_authoritative: true,
+        },
+      ])
+      verifyDuplicate(commit)
+      const interactionEvents = commit.events ?? []
+      return {
+        kind: 'scene_interaction',
+        narration: sceneInteractionNarration(interactionEvents)
+          || 'Герой взаимодействует с объектом сцены; результат подтверждён правилами.',
+        turn_consumed: interactionEvents.some((event) => (
+          event.event_type === 'SceneObjectOperated' && event.payload?.action_spent === true
+        )),
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: interactionEvents,
         commands: commit.commands ?? [],
         rolls: commit.rolls ?? [],
         duplicate: Boolean(commit.duplicate),
@@ -614,7 +660,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'clarification',
         narration: `Этот способ уже не сработал, и обстановка с тех пор не изменилась. Нужен другой подход к препятствию «${reading.obstacle}».`,
-        suggestions: [objective],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -633,7 +678,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'counter_offer',
         narration: `Без подтверждённого средства так не выйдет: не хватает ${means.missing.join(', ')}. Но препятствие «${reading.obstacle}» можно взять проверкой — опишите, как герой к нему подступится.`,
-        suggestions: [objective],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -677,7 +721,6 @@ export class AutonomousCampaignOrchestrator {
         kind: 'auto_success',
         ruling,
         narration: `Это удаётся без броска — на кону ничего нет. Следующая цель отряда: «${objective}»`,
-        suggestions: [objective],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -699,7 +742,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'clarification',
         narration: `На этом ходу ${actionCost.slot} уже потрачено. Импровизация обойдётся в него же — попробуйте на следующем ходу или опишите что-то, что укладывается в оставшееся.`,
-        suggestions: [objective],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -777,7 +819,6 @@ export class AutonomousCampaignOrchestrator {
         : succeeded
           ? `Проверка пройдена. Следующая цель отряда: «${objective}»`
           : `Не вышло. ${consequence.summary} Следующая цель отряда: «${objective}»`,
-      suggestions: inCombat ? [] : [objective],
       turn_consumed: false,
       admin_commands: 0,
       state: consequenceCommit?.state ?? checkCommit.state ?? loaded.state,
@@ -897,6 +938,11 @@ export class AutonomousCampaignOrchestrator {
     } })
     commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
     const consequences = await this.runCommands(campaignId, `${idempotencyKey}:consequences`, commands)
+    const questResolution = await this.resolveTriggeredQuests(
+      campaignId,
+      idempotencyKey,
+      consequences.events ?? [],
+    )
     let recovery = { events: [] }
     if (outcome === 'enemies_defeated') {
       let afterConsequences = await this.load(campaignId)
@@ -945,8 +991,21 @@ export class AutonomousCampaignOrchestrator {
       outcome: outcome === 'enemies_defeated' ? 'helpful' : 'harmful', severity: 'major',
       idempotencyKey: `${idempotencyKey}:witnesses`,
     })
+    const campaignCompletion = await this.completeCampaignIfReady(campaignId, idempotencyKey)
     const final = await this.load(campaignId)
-    return { events: [...outcomeCommit.events, ...consequences.events, ...recovery.events], reward, state: final.state, state_version: final.state_version, admin_commands: 0 }
+    return {
+      events: [
+        ...outcomeCommit.events,
+        ...consequences.events,
+        ...(questResolution?.events ?? []),
+        ...recovery.events,
+        ...(campaignCompletion?.events ?? []),
+      ],
+      reward,
+      state: final.state,
+      state_version: final.state_version,
+      admin_commands: 0,
+    }
   }
 
   async propagateWitnesses(campaignId, { sourceEventId = '', outcome = 'neutral', severity = 'minor', idempotencyKey = 'witnesses' } = {}) {

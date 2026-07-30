@@ -79,23 +79,6 @@
 
 Отсутствие такой записи является release blocker, а не подразумеваемым разрешением.
 
-### Карты Dyson Logos / Scarlet Heroes
-
-Пять карт в `public/assets/maps/library/dyson-logos` взяты из набора
-**South-East Asian-inspired maps by Dyson Logos [Scarlet Heroes]**:
-
-- автор: Dyson Logos;
-- издатель исходного art pack: Sine Nomine Publishing / Kevin Crawford;
-- источник: https://lpc.opengameart.org/content/south-east-asian-inspired-maps-by-dyson-logos-scarlet-heroes;
-- исходный архив: https://lpc.opengameart.org/sites/default/files/Dyson%20Logos.zip;
-- статус: public domain / CC0;
-- получено и преобразовано из TIFF в WebP: 25 июля 2026 года.
-
-Издатель сообщает, что приобрёл полные права на работы и выпустил art pack в
-общественное достояние для личного и коммерческого использования. Атрибуция не
-обязательна, но по просьбе издателя имя художника сохранено в путях и именах
-файлов.
-
 ### Атлас иконок действий
 
 `public/assets/ui/action-icons/action-atlas-v1.webp` создан 25 июля 2026 года
@@ -106,6 +89,21 @@
 водяных знаков и копирования символов из референса. Перед публичным
 распространением применимые права на generated output всё равно проверяются
 общим release gate.
+
+### Иллюстрации сцен
+
+Семнадцать файлов в `public/assets/scenes/` созданы 30 июля 2026 года
+встроенным ImageGen отдельными генерациями без внешних изображений-референсов.
+Задание требовало оригинальные широкие environment-иллюстрации семи базовых
+тем и трёх общих ситуаций: тёмное фэнтези, без персонажей, текста, рамок,
+логотипов, водяных знаков, сетки, игровых фигур и скрытых игровых подсказок.
+Общая основа и индивидуальный prompt каждого файла записаны в
+`docs/scene-art-pipeline.md`; SHA-256 и размеры итоговых 1280×512 WebP — в
+`data/asset-rights.json`.
+
+Эти записи подтверждают происхождение и идентичность файлов, но не меняют
+общий release gate: применимые права на generated output и лицензию проектного
+кода владелец проверяет до внешнего распространения.
 
 ## Structured dnd.su mechanics overrides
 

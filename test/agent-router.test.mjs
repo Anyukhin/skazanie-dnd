@@ -1,7 +1,25 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { AGENT_ROLES, answerKnownLore, proposeAgentInteraction, resolvePartyDecision, roleAllowsWorldTools, selectAgentRole } from '../server/agent-router.mjs'
+import { NARRATOR_PROMPT_VERSION } from '../server/narrator.mjs'
+
+const PROMPT_OWNER_FILES = Object.freeze({
+  director: '../server/director-agent.mjs',
+  narrator: '../server/narrator.mjs',
+  map_architect: '../server/scene-architect.mjs',
+  action_adjudicator: '../server/action-adjudicator.mjs',
+})
+
+function loadedPromptId(role) {
+  if (role.id === 'narrator') return NARRATOR_PROMPT_VERSION
+  const ownerFile = PROMPT_OWNER_FILES[role.id]
+  assert.ok(ownerFile, `${role.id}: для модельной роли не объявлен владеющий модуль`)
+  const ownerSource = readFileSync(new URL(ownerFile, import.meta.url), 'utf8')
+  const match = ownerSource.match(/new URL\('\.\.\/prompts\/([^']+)\.txt'/u)
+  assert.ok(match, `${role.id}: владеющий модуль не загружает версионированный prompt`)
+  return match[1]
+}
 
 test('маршрутизатор отправляет вопросы о лоре Хранителю мира', () => {
   assert.equal(selectAgentRole('Что я знаю про легенду архивариуса?'), 'worldkeeper')
@@ -47,15 +65,14 @@ test('отряд может доверить развилку общему ку�
 
 test('каждый объявленный prompt_id указывает на существующий версионированный контракт', () => {
   assert.deepEqual(Object.keys(AGENT_ROLES), ['worldkeeper', 'director', 'game_master', 'narrator', 'map_architect', 'action_adjudicator'])
-  const expectedPromptIds = {
-    director: 'director/v1',
-    narrator: 'narrator/v3',
-    map_architect: 'map_architect/v1',
-    action_adjudicator: 'action_adjudicator/v1',
-  }
-  for (const role of Object.values(AGENT_ROLES)) {
-    if (!Object.hasOwn(role, 'prompt_id')) continue
-    assert.equal(role.prompt_id, expectedPromptIds[role.id], role.id)
+  const modelRoles = Object.values(AGENT_ROLES).filter((role) => Object.hasOwn(role, 'prompt_id'))
+  assert.deepEqual(
+    new Set(Object.keys(PROMPT_OWNER_FILES)),
+    new Set(modelRoles.map((role) => role.id)),
+    'каждая модельная роль должна иметь ровно один проверяемый владеющий модуль',
+  )
+  for (const role of modelRoles) {
+    assert.equal(role.prompt_id, loadedPromptId(role), `${role.id}: декларация разошлась с загружаемым prompt`)
     assert.equal(existsSync(new URL(`../prompts/${role.prompt_id}.txt`, import.meta.url)), true, role.id)
   }
 })

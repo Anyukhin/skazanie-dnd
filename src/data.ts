@@ -109,7 +109,6 @@ export const initialState: GameState = {
   isNarrating: false,
   pendingCheck: null,
   lastDiceRoll: null,
-  suggestions: ['Осторожно осмотреть воду', 'Изучить зеленоватый знак', 'Проверить механизм двери'],
   scene: {
     title: 'Затопленный архив',
     location: 'Подземелья монастыря Норвин',
@@ -161,7 +160,6 @@ export const emptyState: GameState = {
   enemies: [],
   tacticalTurn: { sceneTurn: 0, actorId: '', movementSpent: 0, actionUsed: false },
   activePlayerId: '',
-  suggestions: [],
   scene: { title: '', location: '', mood: '', objective: '', turn: 0, cells: [] },
   messages: [],
 }

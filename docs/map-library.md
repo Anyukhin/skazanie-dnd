@@ -12,30 +12,29 @@
 
 ## Текущий набор
 
-Используется единый public-domain / CC0 art pack
-[South-East Asian-inspired maps by Dyson Logos — Scarlet Heroes](https://lpc.opengameart.org/content/south-east-asian-inspired-maps-by-dyson-logos-scarlet-heroes).
-Исходный архив содержит пять работ одного художника:
+Используются пять собственных светлых фактур, созданных встроенным ImageGen.
+Каждый файл имеет размер 1536×1024 и строгий вид сверху без сетки, подписей,
+стен, дверей и перспективы:
 
-| Категория проекта | Исходная работа | Путь |
+| Категория проекта | Содержание | Путь |
 | --- | --- | --- |
-| `cave` | `DysonLogos_CAVERN.tif` | `public/assets/maps/library/dyson-logos/cave/dyson-logos-cavern.webp` |
-| `dungeon` | `DysonLogos_DUNGEON.tif` | `public/assets/maps/library/dyson-logos/dungeon/dyson-logos-dungeon.webp` |
-| `tavern` / интерьер | `DysonLogos_ESTATE.tif` | `public/assets/maps/library/dyson-logos/tavern/dyson-logos-estate.webp` |
-| `temple` | `DysonLogos_TEMPLE.tif` | `public/assets/maps/library/dyson-logos/temple/dyson-logos-temple.webp` |
-| `village` | `DysonLogos_VILLAGE.tif` | `public/assets/maps/library/dyson-logos/village/dyson-logos-village.webp` |
+| `cave` | светлый влажный известняк, минеральные отложения и лужи | `public/assets/maps/library/skazanie/cave-01.webp` |
+| `dungeon` | светлые каменные плиты, трещины, пыль и сырость | `public/assets/maps/library/skazanie/dungeon-01.webp` |
+| `tavern` / интерьер | светлые горизонтальные деревянные доски | `public/assets/maps/library/skazanie/tavern-01.webp` |
+| `temple` | кремовый мрамор, стёртая мозаика и слабые золотые следы | `public/assets/maps/library/skazanie/temple-01.webp` |
+| `village` | утоптанная земля, редкая трава и слабые следы колёс | `public/assets/maps/library/skazanie/village-01.webp` |
 
 Маршрутизация сначала анализирует название и тему сцены, затем использует
 визуальный тип доски. Таверны и дома получают `tavern`, храмы — `temple`,
 пещеры — `cave`, поселения и лесные открытые сцены — `village`, остальные
 руины и подземелья — `dungeon`.
 
-## Лицензия и происхождение
+## Права и происхождение
 
-Набор создан Dyson Logos для Scarlet Heroes. Sine Nomine Publishing сообщает,
-что приобрела полные права и выпустила art pack в общественное достояние для
-личного и коммерческого использования. Атрибуция не обязательна, но имя автора
-сохранено по просьбе издателя. Файлы загружены с OpenGameArt и преобразованы из
-TIFF в WebP 25 июля 2026 года; их hashes зарегистрированы в
+Набор создан 30 июля 2026 года встроенным ImageGen специально для проекта
+«Сказание», без использования внешних карт или референсов. Исходные изображения
+приведены к WebP с качеством 88. Точные задания и общие ограничения записаны в
+`docs/board-backdrop-prompts.md`, а SHA-256 и размеры — в
 `data/asset-rights.json`.
 
 При добавлении нового набора нельзя смешивать случайные стили внутри одной

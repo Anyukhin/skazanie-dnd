@@ -102,8 +102,10 @@ test('рассказчик получает вводные владельца и
   })
 
   const requestContext = untrustedPayload(llm.requests[0].messages[1].content, 'campaign_setup')
+  assert.equal(requestContext.party_size, 1)
   assert.equal(requestContext.heroes[0].backstory, hero.backstory)
   assert.equal(requestContext.world.premise, 'Первый контакт')
+  assert.match(llm.requests[0].messages[0].content, /campaign_setup\.party_size — точное число выбранных героев/u)
   assert.equal(state.campaignConcept.generatedBy, 'ai-storyteller')
   assert.equal(state.scene.title, 'Позывной из тишины')
   assert.match(state.messages[0].text, /корабля брата/iu)
@@ -145,4 +147,42 @@ test('создание кампании без выбранных героев �
     () => new CampaignBootstrapper().create({ code: 'EMPTY-1', name: 'Пусто', partyName: 'Никого', world: {}, players: [] }),
     /выберите от 1 до 12 героев/iu,
   )
+})
+
+test('локальный пролог называет фактическое число незаполненных мест от одного до пяти', async () => {
+  const forms = ['одного героя', 'двух героев', 'трёх героев', 'четырёх героев', 'пяти героев']
+  for (let count = 1; count <= 5; count += 1) {
+    const players = Array.from({ length: count }, (_, index) => ({
+      ...hero,
+      id: `slot-${count}-${index + 1}`,
+      character: `Герой ${index + 1}`,
+      characterSetupRequired: true,
+    }))
+    const state = await new CampaignBootstrapper().create({
+      code: `SLOTS-${count}`,
+      world: {},
+      players,
+    })
+    assert.match(state.messages[0].text, new RegExp(forms[count - 1], 'u'))
+  }
+})
+
+test('bootstrap fixes a deterministic one-evening structure and matching quest budgets', async () => {
+  const input = {
+    code: 'EVENING-SEED',
+    name: 'Один вечер',
+    partyName: 'Свидетели',
+    world: { preset: 'Классическое фэнтези', premise: 'Колокол зовёт к старой башне.' },
+    players: [{ ...hero, id: 'evening-hero' }],
+  }
+  const first = await new CampaignBootstrapper().create(input)
+  const second = await new CampaignBootstrapper().create(input)
+
+  assert.deepEqual(first.campaignConcept.arc, second.campaignConcept.arc)
+  assert.equal(first.campaignConcept.arc.preset, 'one_evening')
+  assert.ok(first.campaignConcept.arc.target_scenes >= 3 && first.campaignConcept.arc.target_scenes <= 5)
+  const chapterQuest = first.worldMemory.quests.find((quest) => quest.id === 'quest:chapter:1')
+  const mainQuest = first.worldMemory.quests.find((quest) => !String(quest.id).startsWith('quest:chapter:'))
+  assert.equal(chapterQuest.clock.max, 2)
+  assert.equal(mainQuest.clock.max, first.campaignConcept.arc.target_scenes)
 })

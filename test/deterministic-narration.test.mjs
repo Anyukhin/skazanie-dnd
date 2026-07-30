@@ -51,17 +51,16 @@ test('контракт отвергает неполного рассказчи�
     ['id', { ...valid, id: '' }],
     ['priority', { ...valid, priority: 'высокий' }],
     ['matches', { ...valid, matches: 'да' }],
-    ['suggestions', { ...valid, suggestions: [] }],
   ]) assert.throws(() => assertNarratorContract(broken), TypeError, `${field} должен проверяться`)
 
   assert.throws(() => registerDeterministicNarrator({ ...valid, id: 'scene' }), TypeError, 'повторный id обязан отвергаться')
 })
 
-test('рендер подставляет запасной текст и не выдумывает подсказок', () => {
+test('рендер подставляет запасной текст без отдельного списка действий', () => {
   const narrator = { id: 'y', priority: 1, promptVersion: 'y/v1', provider: 'y', matches: () => true, narrate: () => null }
   const rendered = renderDeterministicNarration(narrator, { events: [], state: {}, fallbackNarration: 'запас' })
   assert.equal(rendered.narration, 'запас')
-  assert.deepEqual(rendered.suggestions, [])
+  assert.equal(Object.hasOwn(rendered, 'suggestions'), false)
   assert.equal(rendered.prompt_version, 'y/v1')
   assert.equal(rendered.provider, 'y')
 })

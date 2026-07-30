@@ -1,5 +1,6 @@
 // @ts-check
 import { createHash } from 'node:crypto'
+import { sceneInteractionCatalogEntry } from './scene-interactions.mjs'
 import { SIZE_CLASSES } from './tactical-map.mjs'
 
 /**
@@ -358,6 +359,23 @@ export function generateDynamicSceneMap({ seed, theme = '', danger = 'средн
   // props still fill the map, while small feature budgets remain traversable by
   // the scene director and compatible with existing campaign maps.
   if (placed.length && !placed.some((cell) => cell.feature === 'stairs')) placed[placed.length - 1].feature = 'stairs'
+
+  // Интерактивность живёт на TacticalProp, а не на старой клетке. Здесь лишь
+  // гарантируем, что среди уже выделенного бюджета декора есть хотя бы два
+  // поддержанных словарём объекта (когда кроме обязательной лестницы для этого
+  // физически хватает мест). Типов feature не добавляем и размер бюджета не
+  // меняем: неподдержанный декор заменяется предметом из той же тематической
+  // палитры, а точные метаданные и 2–4 POI назначит tactical-map.
+  const supportedFeatures = [...new Set(features.filter((feature) => sceneInteractionCatalogEntry(feature)))]
+  let supportedPlaced = placed.filter((cell) => sceneInteractionCatalogEntry(cell.feature)).length
+  if (supportedFeatures.length && supportedPlaced < 2) {
+    const replaceable = placed.filter((cell) => cell.feature !== 'stairs' && !sceneInteractionCatalogEntry(cell.feature))
+    for (const cell of replaceable) {
+      cell.feature = supportedFeatures[supportedPlaced % supportedFeatures.length]
+      supportedPlaced += 1
+      if (supportedPlaced >= 2) break
+    }
+  }
 
   // Возвышенности. Правило высоты в Rules Engine существовало давно, но молчало:
   // генератор никогда не выставлял `elevation`, и все клетки лежали на нуле.
