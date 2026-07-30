@@ -848,6 +848,10 @@ export type BattleEvent = {
   path?: Array<{ x: number; y: number }>
   distanceFeet?: number
   roll?: { die?: number; modifier?: number; total: number; difficulty?: number; hit: boolean }
+  rollMode?: 'normal' | 'advantage' | 'disadvantage'
+  rollDice?: number[]
+  advantageReasons?: string[]
+  disadvantageReasons?: string[]
   /** Почему удар вышел таким. Признаки серверные; журнал боя видит вся партия. */
   packTactics?: boolean
   charge?: boolean
@@ -986,6 +990,17 @@ export type CampaignConcept = {
   worldSummary?: string
   worldHistory?: string
   generatedBy?: string
+  /** Стол заранее объявил, что развязка арки открывает следующую, а не финал. */
+  arc_chain?: boolean
+  arc?: { arc_number?: number; target_scenes?: number; preset?: string }
+  /** Закрытые арки этой кампании: номер, финальная сцена и эпилог. */
+  arc_history?: Array<{
+    arc_number?: number
+    final_chapter?: number
+    final_location?: string
+    epilogue?: string
+    concluded_at?: string | null
+  }>
 }
 
 export type GameState = {
@@ -1004,6 +1019,17 @@ export type GameState = {
     online_hero_ids: string[]
     typing_actor_ids?: string[]
   }
+  /** Серверный дедлайн текущей фазы боя; клиент только отображает его. */
+  turn_clock?: {
+    actor_ids: string[]
+    round: number
+    active_index: number
+    turn_id: string
+    started_at: string
+    deadline_at: string
+    duration_ms: number
+    reaction_window_id?: string
+  } | null
   enemies?: Enemy[]
   actors?: SummonedCreature[]
   merchants?: Merchant[]
@@ -1239,6 +1265,7 @@ export type GameMechanics = Record<string, unknown> & {
     spell_id?: string
     source_actor?: string
     center?: { x: number; y: number }
+    cells?: Array<{ x: number; y: number }>
     radius_feet?: number
     area_shape?: string
     difficult_terrain?: boolean

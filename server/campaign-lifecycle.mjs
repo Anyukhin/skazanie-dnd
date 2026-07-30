@@ -1,5 +1,5 @@
 import { reputationTier } from './reputation-policy.mjs'
-import { campaignArcClimaxSatisfied, campaignArcPlan } from './campaign-loop-policy.mjs'
+import { MAX_CAMPAIGN_ARCS, campaignArcClimaxSatisfied, campaignArcPlan } from './campaign-loop-policy.mjs'
 
 const STATUSES = new Set(['setup', 'active', 'paused', 'completed', 'failed', 'archived'])
 const TERMINAL = new Set(['completed', 'failed', 'archived'])
@@ -219,6 +219,30 @@ export function assertCampaignPlayable(state) {
 export function lifecycleEventForAction(action, state, { actorId, reason, now = new Date().toISOString() } = {}) {
   const lifecycle = normalizeCampaignLifecycle(state?.mechanics?.campaign_lifecycle, state?.mechanics?.death?.campaign_status)
   const normalizedAction = String(action || '').toLowerCase()
+  // Цепочка арок решается **заранее**, а не в момент кульминации: сервер
+  // закрывает арку автоматически, и спрашивать стол в этот момент уже поздно —
+  // финал успел бы наступить. Владелец объявляет намерение, пока кампания идёт.
+  if (['chain_arcs', 'conclude_after_arc'].includes(normalizedAction)) {
+    if (!['active', 'paused'].includes(lifecycle.status)) {
+      const error = new Error(`Продолжение кампании настраивается только в активной кампании, а не в "${lifecycle.status}"`)
+      error.code = 'INVALID_CAMPAIGN_TRANSITION'
+      throw error
+    }
+    return {
+      event_type: 'CampaignArcChainSet',
+      actor_id: actorId ?? null,
+      target_ids: [],
+      visibility: 'party',
+      source_rule_ids: [],
+      ruling_id: null,
+      payload: {
+        enabled: normalizedAction === 'chain_arcs',
+        reason: String(reason || normalizedAction).slice(0, 240),
+        changed_by: actorId ?? null,
+        occurred_at: now,
+      },
+    }
+  }
   const transitions = {
     activate: { from: ['setup'], to: 'active', event: 'CampaignActivated' },
     pause: { from: ['active'], to: 'paused', event: 'CampaignPaused' },
@@ -321,6 +345,52 @@ export function campaignCanAutoComplete(state = {}) {
   const mainQuest = quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0]
   if (!mainQuest || !['completed', 'failed'].includes(mainQuest.status)) return false
   return campaignArcPlan(state) ? campaignArcClimaxSatisfied(state) : true
+}
+
+/**
+ * Готова ли кампания сменить арку вместо того, чтобы закончиться. Условие то
+ * же самое, что и у финала: главная нить арки разрешена в подтверждённой
+ * кульминации. Отличается только выбор стола — закрыть кампанию или взять
+ * следующую арку теми же героями. Разные исходы одного момента, поэтому и
+ * предикат один: `campaignCanAutoComplete` плюс запас в цепочке.
+ */
+export function campaignCanAdvanceArc(state = {}) {
+  if (!campaignCanAutoComplete(state)) return false
+  const plan = campaignArcPlan(state)
+  // Цепочка держится на плане арки: без него сервер не знает ни номера текущей
+  // арки, ни того, чем закончилась предыдущая. Старое сохранение доигрывает
+  // как раньше и заканчивается финалом.
+  return Boolean(plan) && plan.arc_number < MAX_CAMPAIGN_ARCS
+}
+
+/**
+ * Что переезжает в следующую арку. Список именно перечисляется, а не выводится
+ * «всё, кроме»: молчаливый перенос неизвестного поля — это способ протащить в
+ * новую арку закрытую главу или чужой encounter.
+ */
+export function campaignArcCarryOver(state = {}) {
+  const facts = collectEpilogueFacts(state, { outcome: 'completed' })
+  const quests = Array.isArray(state?.worldMemory?.quests) ? state.worldMemory.quests : []
+  return {
+    heroes: facts.heroes.filter((hero) => hero.status === 'living').map((hero) => hero.hero_id).filter(Boolean),
+    fallen_heroes: facts.heroes.filter((hero) => hero.status === 'dead').map((hero) => hero.hero_id).filter(Boolean),
+    // Незакрытые нити и обещания — главная причина, по которой стол
+    // возвращается: «нас узнают в городе» держится именно на них.
+    open_quest_ids: quests
+      .filter((quest) => !RESOLVED_QUEST_STATUSES.has(clean(quest?.status, 30))
+        && !String(quest?.id ?? '').startsWith('quest:chapter:'))
+      .map((quest) => clean(quest.id, 120))
+      .filter(Boolean)
+      .slice(0, 64),
+    open_promise_npc_ids: [...new Set((Array.isArray(state?.social?.promises) ? state.social.promises : [])
+      .filter((promise) => !RESOLVED_PROMISE_STATUSES.has(clean(promise?.status, 30)))
+      .map((promise) => clean(promise?.npc_id, 120))
+      .filter(Boolean))].slice(0, 64),
+    reputation: facts.faction_reputations
+      .map((entry) => ({ faction_id: entry.faction_id, tier: entry.tier }))
+      .slice(0, 32),
+    visited_locations: facts.visited_locations.map((entry) => clean(entry?.name ?? entry, 180)).filter(Boolean).slice(0, 64),
+  }
 }
 
 export function buildEpilogueNarrationBrief(state = {}, outcomeOrOptions = undefined) {

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
-  DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardOverlay, drawMapDecorations,
+  DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
-  type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture, type PropAtlas,
+  type BoardEffectRenderer, type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture, type PropAtlas,
   type TerrainTiles, type TileSurface,
 } from './board-render'
 import {
@@ -13,6 +13,7 @@ import {
   type BoardPoint,
   type CombatAnimationCue,
 } from './combat-animation'
+import './tactical-board.css'
 
 /**
  * Тактическая доска. Местность (слои 1–7 плана) живёт на canvas и кэшируется
@@ -199,7 +200,7 @@ const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: nu
 
 export function TacticalBoard({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
-  battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
+  effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
 }: {
   map: TacticalMap | null
   columns: number
@@ -217,6 +218,8 @@ export function TacticalBoard({
    */
   cellHints?: Map<string, BoardCellHint>
   overlayCells: BoardOverlayCell[]
+  /** Один упорядоченный конвейер для всех canvas-эффектов над подсветкой команд. */
+  effectRenderers?: readonly BoardEffectRenderer[]
   decoration?: React.ReactNode
   battleLog?: BattleEvent[]
   visualBatch?: CombatVisualBatch | null
@@ -363,8 +366,9 @@ export function TacticalBoard({
       )
     }
     drawBoardOverlay(context, scene, overlayCells)
+    drawBoardEffects(context, scene, effectRenderers ?? [])
     drawMapDecorations(context, scene)
-  }, [map, columns, rows, cellPixels, zoom, terrain, artUrl, overlayCells, assetsVersion])
+  }, [map, columns, rows, cellPixels, zoom, terrain, artUrl, overlayCells, effectRenderers, assetsVersion])
 
   useEffect(() => { paint() }, [paint, pan.x, pan.y])
 

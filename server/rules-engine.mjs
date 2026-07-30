@@ -17,6 +17,7 @@ import {
 import {
   DOOR_STATES,
   addProp as addTacticalProp,
+  cellAt,
   deserializeTacticalMap,
   doorById,
   doorsReachableFrom,
@@ -29,8 +30,19 @@ import {
   doorBlocksStep,
   tacticalMapFromLegacyCells,
 } from './tactical-map.mjs'
-import { campaignCanAutoComplete, lifecycleEventForAction, normalizeCampaignLifecycle } from './campaign-lifecycle.mjs'
-import { authorizeDirectorIntent } from './campaign-loop-policy.mjs'
+import {
+  campaignArcCarryOver,
+  campaignCanAdvanceArc,
+  campaignCanAutoComplete,
+  lifecycleEventForAction,
+  normalizeCampaignLifecycle,
+} from './campaign-lifecycle.mjs'
+import {
+  MAX_CAMPAIGN_ARCS,
+  authorizeDirectorIntent,
+  buildCampaignArcPlan,
+  campaignArcPlan,
+} from './campaign-loop-policy.mjs'
 import { normalizePartyDecision, normalizePartyDecisionPolicy } from './party-decision.mjs'
 import {
   WORLD_MEMORY_COMMAND_TYPES,
@@ -157,7 +169,17 @@ export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // сохраняют прежнюю семантику при replay, а новые завершаются CampaignFailed.
 // 6: состояние интерактивных объектов сцены сохраняется в mechanics и
 // одинаково восстанавливается из snapshot и полного replay.
-export const GAME_STATE_PROJECTOR_VERSION = 6
+// 7: начало хода и окна реакции проецируется в mechanics для durable таймера
+// без отдельного чтения всего журнала событий, а продления срока за ответ на
+// реакцию считаются в пределах хода.
+export const GAME_STATE_PROJECTOR_VERSION = 7
+
+/**
+ * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
+ * означал бы, что прерванный игрок отвечает на реакцию за счёт собственного
+ * времени; без потолка автопропуск не гарантирует ничего.
+ */
+export const TURN_REACTION_EXTENSION_LIMIT = 2
 
 export const RULE_IDS = Object.freeze({
   abilityCheck: `${DEFAULT_RULESET_ID}:checks:ability-check`,
@@ -324,7 +346,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'LevelUp', 'ImportCharacter',
-  'CompleteCampaign',
+  'CompleteCampaign', 'AdvanceCampaignArc',
 ])
 
 const MERCHANT_LIFECYCLE_COMMAND_TYPES = new Set([
@@ -1055,7 +1077,7 @@ function defaultMechanics() {
  * указателя в обе стороны, поэтому очередь не переставляется: меняется только
  * то, кому в этой точке разрешено действовать.
  */
-function initiativeGroupIds(state) {
+export function initiativeGroupIds(state) {
   const combat = state.mechanics.combat
   const order = combat.initiative ?? []
   if (!combat.group_initiative || !order.length) return []
@@ -1153,6 +1175,20 @@ export function normalizeCampaignState(input = {}) {
     .filter(([id, readied]) => id && readied && typeof readied === 'object' && READIED_TRIGGERS[String(readied.trigger)]))
   mechanics.combat.group_initiative = mechanics.combat.group_initiative === true
   mechanics.combat.turn_completed = uniqueStrings(mechanics.combat.turn_completed)
+  // Счётчик живёт только внутри хода, в котором реакция действительно случилась:
+  // ноль — это его отсутствие, и лишнего поля в форме combat он не создаёт.
+  const reactionExtensions = Math.max(
+    0,
+    Math.min(TURN_REACTION_EXTENSION_LIMIT, safeInteger(mechanics.combat.turn_reaction_extensions, 0)),
+  )
+  if (reactionExtensions > 0) mechanics.combat.turn_reaction_extensions = reactionExtensions
+  else delete mechanics.combat.turn_reaction_extensions
+  if (mechanics.combat.turn_started_at != null) {
+    mechanics.combat.turn_started_at = String(mechanics.combat.turn_started_at)
+  } else delete mechanics.combat.turn_started_at
+  if (mechanics.combat.turn_started_event_id != null) {
+    mechanics.combat.turn_started_event_id = String(mechanics.combat.turn_started_event_id)
+  } else delete mechanics.combat.turn_started_event_id
   mechanics.combat.action_economy = Object.fromEntries(Object.entries(clone(mechanics.combat.action_economy ?? {})).map(([id, economy]) => [id, {
     ...actionEconomy(),
     ...(economy && typeof economy === 'object' ? economy : {}),
@@ -1611,8 +1647,16 @@ function occupiedPositions(state, exceptActorId = null) {
   return occupied
 }
 
-/** Returns the shortest orthogonal path, excluding the starting square. */
-export function shortestTacticalPath(state, actorIdValue, destination, { allowOccupiedDestination = false } = {}) {
+/**
+ * Returns the shortest orthogonal path, excluding the starting square.
+ * `stepCost` switches the search to a weighted path without changing the
+ * step-count semantics used by NPC planning and other existing callers.
+ */
+export function shortestTacticalPath(state, actorIdValue, destination, {
+  allowOccupiedDestination = false,
+  stepCost = null,
+  tacticalMap = undefined,
+} = {}) {
   const from = actorPosition(state, actorIdValue)
   const to = { x: Number(destination?.x), y: Number(destination?.y) }
   if (!from || !Number.isSafeInteger(to.x) || !Number.isSafeInteger(to.y)) return null
@@ -1624,22 +1668,78 @@ export function shortestTacticalPath(state, actorIdValue, destination, { allowOc
   // Закрытая и запертая дверь останавливают шаг. Карта может отсутствовать у
   // состояния, сохранённого до перехода на слои, — тогда путь считается по
   // клеткам, как раньше.
-  const map = sceneTacticalMap(state)
+  // Weighted search may inspect thousands of candidate steps. Decode the map
+  // once before the loop (or reuse the caller's decoded instance), never from
+  // the per-step cost predicate.
+  const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
   const start = positionKey(from)
   const target = positionKey(to)
-  const queue = [start]
   const previous = new Map([[start, null]])
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const current = queue[cursor]
-    if (current === target) break
-    const [x, y] = current.split(',').map(Number)
-    for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
-      const next = `${nextX},${nextY}`
-      if (previous.has(next) || !isWalkableCell(cells.get(next))) continue
-      if (occupied.has(next) && !(allowOccupiedDestination && next === target)) continue
-      if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
-      previous.set(next, current)
-      queue.push(next)
+  if (typeof stepCost !== 'function') {
+    const queue = [start]
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const current = queue[cursor]
+      if (current === target) break
+      const [x, y] = current.split(',').map(Number)
+      for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        const next = `${nextX},${nextY}`
+        if (previous.has(next) || !isWalkableCell(cells.get(next))) continue
+        if (occupied.has(next) && !(allowOccupiedDestination && next === target)) continue
+        if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
+        previous.set(next, current)
+        queue.push(next)
+      }
+    }
+  } else {
+    const costs = new Map([[start, 0]])
+    const frontier = [{ key: start, cost: 0 }]
+    const pushFrontier = (entry) => {
+      frontier.push(entry)
+      let child = frontier.length - 1
+      while (child > 0) {
+        const parent = Math.floor((child - 1) / 2)
+        if (frontier[parent].cost <= frontier[child].cost) break
+        ;[frontier[parent], frontier[child]] = [frontier[child], frontier[parent]]
+        child = parent
+      }
+    }
+    const popFrontier = () => {
+      const first = frontier[0]
+      const last = frontier.pop()
+      if (frontier.length && last) {
+        frontier[0] = last
+        let parent = 0
+        while (true) {
+          const left = parent * 2 + 1
+          const right = left + 1
+          let smallest = parent
+          if (left < frontier.length && frontier[left].cost < frontier[smallest].cost) smallest = left
+          if (right < frontier.length && frontier[right].cost < frontier[smallest].cost) smallest = right
+          if (smallest === parent) break
+          ;[frontier[parent], frontier[smallest]] = [frontier[smallest], frontier[parent]]
+          parent = smallest
+        }
+      }
+      return first
+    }
+
+    while (frontier.length) {
+      const current = popFrontier()
+      if (!current || current.cost !== costs.get(current.key)) continue
+      if (current.key === target) break
+      const [x, y] = current.key.split(',').map(Number)
+      for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        const next = `${nextX},${nextY}`
+        if (!isWalkableCell(cells.get(next))) continue
+        if (occupied.has(next) && !(allowOccupiedDestination && next === target)) continue
+        if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
+        const weight = Math.max(1, Number(stepCost({ x: nextX, y: nextY }, map)) || 1)
+        const nextCost = current.cost + weight
+        if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
+        costs.set(next, nextCost)
+        previous.set(next, current.key)
+        pushFrontier({ key: next, cost: nextCost })
+      }
     }
   }
   if (!previous.has(target)) return null
@@ -2773,7 +2873,15 @@ export function validateCommand(input, rawState, context = {}) {
     }
   }
   const setupActor = state.players.find((actor) => actorId(actor) === String(command.actor_id ?? ''))
-  if (setupActor?.characterSetupRequired && command.command_type !== 'ImportCharacter') {
+  const serverTimeoutMaySkipSetupActor = setupActor?.characterSetupRequired
+    && command.command_type === 'EndTurn'
+    && command.server_authoritative === true
+    && command.auto_skip_reason === 'turn-timeout'
+    && context.isAdmin === true
+    && context.serverAuthoritativeCombat === true
+  if (setupActor?.characterSetupRequired
+    && command.command_type !== 'ImportCharacter'
+    && !serverTimeoutMaySkipSetupActor) {
     throw new RulesValidationError(
       'Сначала завершите создание этого героя',
       'CHARACTER_SETUP_REQUIRED',
@@ -2796,6 +2904,23 @@ export function validateCommand(input, rawState, context = {}) {
     command.epilogue = String(command.epilogue || '').normalize('NFKC').trim().slice(0, 8_000)
     if (!command.epilogue) throw new RulesValidationError('Финал требует связного эпилога', 'CAMPAIGN_EPILOGUE_REQUIRED')
     command.reason = String(command.reason || 'main_thread_resolved_at_climax').slice(0, 240)
+    command.occurred_at = String(command.occurred_at || '').slice(0, 40)
+  }
+  if (command.command_type === 'AdvanceCampaignArc') {
+    // Тот же серверный контур, что и у финала: закрытие арки и закрытие
+    // кампании — два исхода одного подтверждённого момента, и решать, какой из
+    // них наступил, игровая команда не может.
+    if (context?.isDirector !== true) {
+      throw new RulesValidationError('Смена арки доступна только серверному контуру кампании', 'CAMPAIGN_ARC_FORBIDDEN')
+    }
+    if (!campaignCanAdvanceArc(state)) {
+      throw new RulesValidationError('Арка ещё не закрыта подтверждённой кульминацией', 'CAMPAIGN_ARC_NOT_READY')
+    }
+    command.epilogue = String(command.epilogue || '').normalize('NFKC').trim().slice(0, 8_000)
+    if (!command.epilogue) throw new RulesValidationError('Закрытие арки требует связного эпилога', 'CAMPAIGN_EPILOGUE_REQUIRED')
+    command.hook = String(command.hook || '').normalize('NFKC').trim().slice(0, 300)
+    if (!command.hook) throw new RulesValidationError('Следующая арка требует зацепки', 'CAMPAIGN_ARC_HOOK_REQUIRED')
+    command.reason = String(command.reason || 'arc_resolved_at_climax').slice(0, 240)
     command.occurred_at = String(command.occurred_at || '').slice(0, 40)
   }
   if (command.command_type === 'AdvanceScene') {
@@ -3247,7 +3372,7 @@ export function validateCommand(input, rawState, context = {}) {
     }
   }
 
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', 'CompleteCampaign', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -3810,6 +3935,38 @@ function positionInDirectedCube(position, origin, toward, edgeFeet) {
 
 function activeAreaEffectsAt(state, position) {
   return (state.mechanics.active_effects ?? []).filter((effect) => positionInEffect(state, position, effect))
+}
+
+/** Статическая и длящаяся труднопроходимость — одно правило и одна доплата. */
+function isDifficultTerrainAt(state, position, map) {
+  const mapCell = map ? cellAt(map, Number(position?.x), Number(position?.y)) : null
+  return Number(mapCell?.moveCost ?? 1) > 1
+    || activeAreaEffectsAt(state, position).some((effect) => effect.difficult_terrain === true)
+}
+
+/**
+ * Единственная формула стоимости шага. По ней считает и авторитетный
+ * `MoveActor`, и планировщик хода NPC: разойдясь, они выдают `SPEED_EXCEEDED`
+ * на собственном же плане, и бой встаёт на существе, которое «уже решило» идти.
+ *
+ * `state` ожидается нормализованным — функция вызывается на горячем пути и
+ * повторной нормализации не делает. Карта декодируется один раз здесь, а не в
+ * предикате: взвешенный поиск зовёт его тысячи раз.
+ */
+export function movementStepCostFor(state, actorIdValue, { tacticalMap } = {}) {
+  const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
+  const ignoresTerrain = ignoresDifficultTerrain(state, actorIdValue)
+  const crawling = conditionIdsFor(state, actorIdValue).has('prone')
+  const stepCost = (step, pathMap = map) => 5
+    + (!ignoresTerrain && isDifficultTerrainAt(state, step, pathMap) ? 5 : 0)
+    + (crawling ? 5 : 0)
+  return { map, stepCost, ignoresTerrain, crawling }
+}
+
+/** Во что обойдётся уже выбранный маршрут: та же формула, применённая к списку. */
+export function movementCostOfPath(state, actorIdValue, path, options = {}) {
+  const { stepCost } = movementStepCostFor(state, actorIdValue, options)
+  return (Array.isArray(path) ? path : []).reduce((total, step) => total + stepCost(step), 0)
 }
 
 /**
@@ -4784,6 +4941,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         ...(conditionModifiers.automaticCritical && critical && attack.kept !== 20 ? { automatic_critical: true } : {}),
         ...(conditionModifiers.advantage.length ? { condition_advantage: conditionModifiers.advantage } : {}),
         ...(conditionModifiers.disadvantage.length ? { condition_disadvantage: conditionModifiers.disadvantage } : {}),
+        ...(swing.advantageSources.length ? { advantage_sources: swing.advantageSources } : {}),
+        ...(swing.disadvantageSources.length ? { disadvantage_sources: swing.disadvantageSources } : {}),
         ...(cover.armorClassBonus > 0 ? { cover: cover.level, cover_bonus: cover.armorClassBonus, cover_blockers: cover.blockers, ...(cover.scenery ? { cover_scenery: cover.scenery } : {}) } : {}),
         ...(swing.highGround !== 'level' ? { high_ground: swing.highGround } : {}),
         range_feet: profile?.range_feet ?? null,
@@ -5359,6 +5518,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'UseCombatAction': {
       const actor = findActor(state, command.actor_id)
       const reactionWindow = command.reaction_window ?? state.mechanics.combat.reaction_window
+      const automaticDeclinePayload = command.action_id === 'decline-reaction'
+        && command.server_authoritative === true
+        && context.serverAuthoritativeCombat === true
+        && String(command.auto_skip_reason ?? '') === 'turn-timeout'
+        ? { auto_declined: true, auto_decline_reason: 'turn-timeout' }
+        : {}
       const resumePendingSpell = () => {
         if (!reactionWindow?.pending_spell_command) return
         const resumedState = events.reduce(applyGameEvent, state)
@@ -5399,6 +5564,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           accepted,
           ...(accepted ? { action_id: 'indomitable' } : {}),
           deferred: queue.length > 0,
+          ...automaticDeclinePayload,
         }, [command.actor_id]))
         if (queue.length > 0) {
           const next = queue[0]
@@ -5475,7 +5641,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (reactionWindow.trigger === 'failed-saving-throw') {
           resolveIndomitableChoice(false)
         } else {
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: false }, [command.actor_id]))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', {
+            id: reactionWindow.id,
+            accepted: false,
+            ...automaticDeclinePayload,
+          }, [command.actor_id]))
           resumePendingSpell()
         }
         break
@@ -7083,7 +7253,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (!isWalkableCell(cells.get(positionKey(to))) || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
           throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
         }
-        path = shortestTacticalPath(state, command.actor_id, to)
+        const { map, stepCost, ignoresTerrain, crawling } = movementStepCostFor(state, command.actor_id)
+        path = shortestTacticalPath(state, command.actor_id, to, { tacticalMap: map, stepCost })
         if (!path?.length) throw new RulesValidationError('До клетки назначения нет свободного пути', 'PATH_BLOCKED')
         if (!reactionMovement) {
           const movementConditions = state.mechanics.conditions[command.actor_id] ?? []
@@ -7110,10 +7281,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           }
         }
         distance = path.length * 5
-        const difficultSteps = ignoresDifficultTerrain(state, command.actor_id)
+        const difficultSteps = ignoresTerrain
           ? 0
-          : path.filter((step) => activeAreaEffectsAt(state, step).some((effect) => effect.difficult_terrain === true)).length
-        const crawlingSteps = conditionIdsFor(state, command.actor_id).has('prone') ? path.length : 0
+          : path.filter((step) => isDifficultTerrainAt(state, step, map)).length
+        const crawlingSteps = crawling ? path.length : 0
         movementCost = distance + difficultSteps * 5 + crawlingSteps * 5
         const speed = effectiveSpeedFeet(state, actor, command.actor_id)
         const movementBonus = Math.max(0, safeInteger(state.mechanics.combat.action_economy[command.actor_id]?.movement_bonus, 0))
@@ -7630,6 +7801,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'EndTurn': {
       const combat = state.mechanics.combat
       if (!combat.active || !combat.initiative.length) throw new RulesValidationError('Бой не начат', 'COMBAT_NOT_ACTIVE')
+      const automaticSkip = command.server_authoritative === true
+        && context.serverAuthoritativeCombat === true
+        && String(command.auto_skip_reason ?? '') === 'turn-timeout'
+      const turnEndPayload = {
+        round: combat.round,
+        ...(automaticSkip ? { auto_skipped: true, auto_skip_reason: 'turn-timeout' } : {}),
+      }
       const endingActor = findActor(state, command.actor_id)
       const endingPosition = actorPosition(state, command.actor_id)
       for (const effect of (state.mechanics.active_effects ?? []).filter((candidate) => candidate.trigger_on_turn_end === true && positionInEffect(state, endingPosition, candidate))) {
@@ -7690,7 +7868,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const phaseDone = new Set([...(combat.turn_completed ?? []).map(String), command.actor_id])
       const phasePending = phase.filter((id) => !phaseDone.has(id) && isLivingActor(findActor(state, id)))
       if (phase.length && phasePending.length) {
-        events.push(eventFrom(command, 'TurnEnded', { round: combat.round, group_phase: true, phase_pending: phasePending }, [command.actor_id]))
+        events.push(eventFrom(command, 'TurnEnded', { ...turnEndPayload, group_phase: true, phase_pending: phasePending }, [command.actor_id]))
         break
       }
       // Фаза закрыта: указатель прыгает за её последнего участника.
@@ -7698,7 +7876,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const nextIndex = (Math.max(combat.active_index, lastOfPhase) + 1) % combat.initiative.length
       const nextRound = nextIndex <= combat.active_index ? combat.round + 1 : combat.round
       const nextId = combat.initiative[nextIndex].actor_id
-      events.push(eventFrom(command, 'TurnEnded', { round: combat.round }, [command.actor_id]))
+      events.push(eventFrom(command, 'TurnEnded', turnEndPayload, [command.actor_id]))
       events.push(eventFrom(command, 'TurnStarted', { round: nextRound, active_index: nextIndex }, [nextId]))
       // Заготовка живёт до начала собственного следующего хода: круг замкнулся —
       // несработавшая «Готовность» пропадает вместе с потраченным действием.
@@ -8172,6 +8350,26 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         completion_policy: 'campaign-arc-completion-v1',
       }, []))
       break
+    case 'AdvanceCampaignArc': {
+      const closingArc = campaignArcPlan(state)
+      const nextArc = buildCampaignArcPlan(closingArc.seed, closingArc.arc_number + 1)
+      events.push(eventFrom(command, 'CampaignArcCompleted', {
+        reason: command.reason,
+        occurred_at: command.occurred_at || null,
+        epilogue: command.epilogue,
+        hook: command.hook,
+        closed_arc: {
+          arc_number: closingArc.arc_number,
+          target_scenes: closingArc.target_scenes,
+          final_chapter: Math.max(1, safeInteger(state.adventure?.chapter, 1)),
+          final_location: String(state.scene?.location ?? '').slice(0, 180),
+        },
+        next_arc: nextArc,
+        carried: campaignArcCarryOver(state),
+        arc_policy: 'campaign-arc-chain-v1',
+      }, []))
+      break
+    }
     case 'UpsertNpcSocialProfile':
     case 'RecordNpcSocialTurn':
     case 'ResolveNpcPromise': {
@@ -8636,6 +8834,51 @@ export function applyGameEvent(rawState, event) {
         changed_by: payload.changed_by ?? event.actor_id ?? null,
       }
       break
+    case 'CampaignArcChainSet':
+      state.campaignConcept = { ...(state.campaignConcept ?? {}), arc_chain: payload.enabled === true }
+      break
+    case 'CampaignArcCompleted': {
+      // Что переезжает — не перечисляется: герои, инвентарь, репутация, память
+      // мира, социальные профили и незакрытые нити просто остаются в состоянии.
+      // Перечисляется то, что **обязано** обнулиться, иначе новая арка начнётся
+      // с закрытой главой, чужим encounter и накопленным напряжением прошлой.
+      const nextArc = payload.next_arc && typeof payload.next_arc === 'object' ? clone(payload.next_arc) : null
+      if (nextArc) {
+        const history = Array.isArray(state.campaignConcept?.arc_history) ? state.campaignConcept.arc_history : []
+        state.campaignConcept = {
+          ...(state.campaignConcept ?? {}),
+          arc: nextArc,
+          arc_history: [...history, {
+            ...(payload.closed_arc && typeof payload.closed_arc === 'object' ? clone(payload.closed_arc) : {}),
+            epilogue: String(payload.epilogue ?? '').slice(0, 8_000),
+            concluded_at: payload.occurred_at ?? event.occurred_at ?? event.created_at ?? null,
+          }].slice(-MAX_CAMPAIGN_ARCS),
+        }
+      }
+      state.adventure = {
+        ...(state.adventure ?? {}),
+        chapter: 1,
+        history: [
+          ...(Array.isArray(state.adventure?.history) ? state.adventure.history : []),
+          { chapter: Math.max(1, safeInteger(payload.closed_arc?.final_chapter, 1)), summary: String(payload.epilogue ?? '').slice(0, 600) },
+        ].slice(-24),
+      }
+      // Главы прошлой арки закрыты вместе с ней: их часы больше ничего не
+      // измеряют, а Директор считает по ним фазу текущей сцены.
+      if (state.worldMemory?.quests) {
+        state.worldMemory.quests = state.worldMemory.quests.filter((quest) => !String(quest?.id ?? '').startsWith('quest:chapter:'))
+      }
+      state.mechanics.encounter = null
+      state.autonomy = {
+        ...(state.autonomy ?? {}),
+        pacing: { beat: 0, phase: 'breather', tension: 0, policy: 'campaign-pacing-one-evening-v1' },
+        director_history: [],
+        director_outcomes: [],
+        encounter_outcomes: [],
+      }
+      state.scene = { ...(state.scene ?? {}), objective: String(payload.hook ?? state.scene?.objective ?? '').slice(0, 300) }
+      break
+    }
     case 'CampaignArchived':
       state.mechanics.campaign_lifecycle = {
         ...state.mechanics.campaign_lifecycle,
@@ -9218,6 +9461,10 @@ export function applyGameEvent(rawState, event) {
           die: safeInteger(payload.kept, 0), modifier: safeInteger(payload.modifier, 0), total: safeInteger(payload.total, 0),
           difficulty: safeInteger(payload.armor_class, 10), hit: Boolean(payload.hit),
         },
+        rollMode: ['advantage', 'disadvantage'].includes(String(payload.mode)) ? String(payload.mode) : 'normal',
+        rollDice: (Array.isArray(payload.dice) ? payload.dice : []).map((die) => safeInteger(die, 0)).filter((die) => die > 0),
+        advantageReasons: (Array.isArray(payload.advantage_sources) ? payload.advantage_sources : []).map(String),
+        disadvantageReasons: (Array.isArray(payload.disadvantage_sources) ? payload.disadvantage_sources : []).map(String),
         damage: payload.hit ? null : 0,
         spellId: payload.spell_id ? String(payload.spell_id) : undefined,
         spellName: payload.spell_name ? String(payload.spell_name) : undefined,
@@ -9561,7 +9808,11 @@ export function applyGameEvent(rawState, event) {
       break
     }
     case 'ReactionWindowOpened':
-      state.mechanics.combat.reaction_window = clone(payload)
+      state.mechanics.combat.reaction_window = {
+        ...clone(payload),
+        opened_at: event.created_at ?? null,
+        opened_event_id: event.event_id ?? null,
+      }
       break
     case 'ActionReadied':
       state.mechanics.combat.readied = { ...(state.mechanics.combat.readied ?? {}), [target]: clone(payload) }
@@ -9581,6 +9832,17 @@ export function applyGameEvent(rawState, event) {
           replaceActor(state, fleeingActorId, (actor) => ({ ...actor, alive: false }))
         }
         state.mechanics.combat.reaction_window = null
+        // Ответ на реакцию прерывает ход, поэтому основной срок начинается
+        // заново. Но продлений на один ход не больше `TURN_REACTION_EXTENSION_LIMIT`:
+        // иначе существо, которое провоцирует атаки по возможности одну за
+        // другой, откладывало бы автопропуск бесконечно и таймер переставал бы
+        // что-либо гарантировать.
+        const used = safeInteger(state.mechanics.combat.turn_reaction_extensions, 0)
+        if (used < TURN_REACTION_EXTENSION_LIMIT) {
+          state.mechanics.combat.turn_reaction_extensions = used + 1
+          state.mechanics.combat.turn_started_at = event.created_at ?? null
+          state.mechanics.combat.turn_started_event_id = event.event_id ?? null
+        }
       }
       break
     }
@@ -9706,7 +9968,16 @@ export function applyGameEvent(rawState, event) {
       }
       // Внутри групповой фазы отходивший запоминается, чтобы не пойти дважды.
       if (payload.group_phase === true && event.actor_id) {
+        const completedBefore = new Set((state.mechanics.combat.turn_completed ?? []).map(String))
+        const deadlineOwner = initiativeGroupIds(state).find((actorIdValue) => !completedBefore.has(actorIdValue))
         state.mechanics.combat.turn_completed = [...new Set([...(state.mechanics.combat.turn_completed ?? []).map(String), String(event.actor_id)])]
+        // Только владелец текущих часов открывает полный срок следующему.
+        // Завершивший ход вне очереди союзник не продлевает чужой дедлайн.
+        if (String(event.actor_id) === String(deadlineOwner ?? '')) {
+          state.mechanics.combat.turn_started_at = event.created_at ?? null
+          state.mechanics.combat.turn_started_event_id = event.event_id ?? null
+          delete state.mechanics.combat.turn_reaction_extensions
+        }
       }
       appendBattleLog(state, event, {
         sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: safeInteger(payload.round, state.mechanics.combat.round),
@@ -9716,6 +9987,10 @@ export function applyGameEvent(rawState, event) {
     case 'TurnStarted':
       state.mechanics.combat.round = safeInteger(payload.round, state.mechanics.combat.round)
       state.mechanics.combat.active_index = safeInteger(payload.active_index, state.mechanics.combat.active_index)
+      state.mechanics.combat.turn_started_at = event.created_at ?? null
+      state.mechanics.combat.turn_started_event_id = event.event_id ?? null
+      // Новый ход — новый запас продлений: потолок ограничивает один ход, а не бой.
+      delete state.mechanics.combat.turn_reaction_extensions
       for (const [actorIdValue, conditions] of Object.entries(state.mechanics.conditions)) {
         state.mechanics.conditions[actorIdValue] = (conditions ?? []).filter((condition) => !(
           condition.duration === 'until-source-next-turn'

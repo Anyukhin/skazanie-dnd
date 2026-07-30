@@ -3082,6 +3082,113 @@ export function drawZoneLighting(context: BoardContext2D, scene: BoardScene, til
   context.restore()
 }
 
+export type HazardPresentation = {
+  kind: 'fire' | 'cold' | 'poison' | 'acid' | 'lightning' | 'arcane' | 'physical'
+  label: string
+  fill: string
+  stroke: string
+}
+
+const HAZARD_VISUALS: Record<HazardPresentation['kind'], Omit<HazardPresentation, 'kind' | 'label'>> = {
+  fire: { fill: 'rgba(173,57,31,.30)', stroke: 'rgba(244,139,72,.82)' },
+  cold: { fill: 'rgba(61,125,153,.28)', stroke: 'rgba(143,207,225,.82)' },
+  poison: { fill: 'rgba(87,119,52,.30)', stroke: 'rgba(159,197,91,.82)' },
+  acid: { fill: 'rgba(120,137,39,.32)', stroke: 'rgba(204,220,81,.84)' },
+  lightning: { fill: 'rgba(119,91,161,.28)', stroke: 'rgba(192,165,235,.84)' },
+  arcane: { fill: 'rgba(103,70,143,.28)', stroke: 'rgba(190,145,224,.82)' },
+  physical: { fill: 'rgba(126,65,48,.26)', stroke: 'rgba(208,127,94,.78)' },
+}
+
+const HAZARD_LABELS: Record<HazardPresentation['kind'], string> = {
+  fire: 'Огонь',
+  cold: 'Холод',
+  poison: 'Яд',
+  acid: 'Кислота',
+  lightning: 'Молния',
+  arcane: 'Магия',
+  physical: 'Опасность',
+}
+
+/** Тип и приглушённая палитра опасности выводятся из стабильного hazardId. */
+export function hazardPresentation(id: string): HazardPresentation {
+  const normalized = String(id).toLocaleLowerCase('ru')
+  const kind: HazardPresentation['kind'] = /fire|flame|burn|огн|плам/u.test(normalized) ? 'fire'
+    : /cold|frost|ice|лед|холод/u.test(normalized) ? 'cold'
+      : /poison|toxic|яд/u.test(normalized) ? 'poison'
+        : /acid|кисл/u.test(normalized) ? 'acid'
+          : /lightning|shock|electric|молн|элект/u.test(normalized) ? 'lightning'
+            : /magic|arcane|rune|маг|рун/u.test(normalized) ? 'arcane'
+              : 'physical'
+  return { kind, label: HAZARD_LABELS[kind], ...HAZARD_VISUALS[kind] }
+}
+
+const firstHazardCellCache = new WeakMap<TacticalMap, Map<string, string>>()
+
+function firstHazardCells(map: TacticalMap) {
+  const cached = firstHazardCellCache.get(map)
+  if (cached) return cached
+  const first = new Map<string, string>()
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const id = cellAt(map, x, y)?.hazardId
+      if (id && !first.has(id)) first.set(id, `${x},${y}`)
+    }
+  }
+  firstHazardCellCache.set(map, first)
+  return first
+}
+
+/**
+ * Статические признаки клетки поверх фактуры: штрих труднопроходимой
+ * местности и цвет/контур/подпись опасности. Они входят в тайловый кэш, потому
+ * что меняются только вместе с картой.
+ */
+export function drawCellFeatures(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
+  const frame = tileFrame(scene, tile)
+  const size = frame.size
+  const firstHazards = firstHazardCells(scene.map)
+  context.save()
+  for (let y = frame.minY; y <= frame.maxY; y += 1) {
+    for (let x = frame.minX; x <= frame.maxX; x += 1) {
+      const cell = cellAt(scene.map, x, y)
+      if (!cell?.revealed) continue
+      const left = (x - frame.minX) * size
+      const top = (y - frame.minY) * size
+      if (cell.moveCost > 1) {
+        context.fillStyle = 'rgba(80,64,44,.16)'
+        context.fillRect(left, top, size, size)
+        context.strokeStyle = 'rgba(235,211,157,.38)'
+        context.lineWidth = Math.max(1, size / 30)
+        context.beginPath()
+        for (let offset = -size; offset < size * 2; offset += Math.max(5, size / 4)) {
+          const from = Math.max(0, offset)
+          const to = Math.min(size, offset + size)
+          context.moveTo(left + from, top + (size - (from - offset)))
+          context.lineTo(left + to, top + (size - (to - offset)))
+        }
+        context.stroke()
+      }
+      if (!cell.hazardId) continue
+      const visual = hazardPresentation(cell.hazardId)
+      context.fillStyle = visual.fill
+      context.fillRect(left, top, size, size)
+      context.strokeStyle = visual.stroke
+      context.lineWidth = Math.max(1, size / 18)
+      context.setLineDash([Math.max(2, size / 6), Math.max(2, size / 10)])
+      context.strokeRect(left + size / 20, top + size / 20, size - size / 10, size - size / 10)
+      context.setLineDash([])
+      if (size >= 24 && firstHazards.get(cell.hazardId) === `${x},${y}`) {
+        context.fillStyle = visual.stroke
+        context.font = `700 ${Math.max(7, Math.min(11, size / 4))}px Manrope, sans-serif`
+        context.textAlign = 'center'
+        context.textBaseline = 'middle'
+        context.fillText(visual.label.toLocaleUpperCase('ru'), left + size / 2, top + size / 2, size * 0.88)
+      }
+    }
+  }
+  context.restore()
+}
+
 /** Слой 7: туман войны по `revealed`. */
 export function drawFog(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
@@ -3107,11 +3214,81 @@ export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile
   drawEdgeSegments(context, scene, tile)
   drawProps(context, scene, tile)
   drawZoneLighting(context, scene, tile)
+  drawCellFeatures(context, scene, tile)
   drawGrid(context, scene, tile)
   drawFog(context, scene, tile)
 }
 
 // --- динамический слой поверх местности ----------------------------------
+
+/** Единая точка подключения анимированных и длящихся эффектов к доске. */
+export type BoardEffectRenderer = (context: BoardContext2D, scene: BoardScene) => void
+
+export type BoardAreaEffect = {
+  cells?: readonly { x: number; y: number }[]
+  center?: { x: number; y: number }
+  radiusFeet?: number
+}
+
+function boardAreaEffectCells(effect: BoardAreaEffect) {
+  if (effect.cells?.length) return effect.cells
+  if (!effect.center) return []
+  const radius = Math.max(0, Math.floor((Number(effect.radiusFeet) || 0) / 5))
+  const cells: Array<{ x: number; y: number }> = []
+  for (let y = effect.center.y - radius; y <= effect.center.y + radius; y += 1) {
+    for (let x = effect.center.x - radius; x <= effect.center.x + radius; x += 1) cells.push({ x, y })
+  }
+  return cells
+}
+
+/**
+ * Динамическая штриховка для активных областей заклинаний. В отличие от
+ * `moveCost` в тайловом кэше эти клетки меняются событиями боя, поэтому
+ * рисуются через общий effect pipeline на каждом обновлении состояния.
+ */
+export function drawDifficultTerrainEffects(
+  context: BoardContext2D,
+  scene: BoardScene,
+  effects: readonly BoardAreaEffect[],
+) {
+  const size = scene.cellSize
+  const unique = new Map<string, { x: number; y: number }>()
+  for (const effect of effects) {
+    for (const point of boardAreaEffectCells(effect)) unique.set(`${point.x},${point.y}`, point)
+  }
+  context.fillStyle = 'rgba(103,73,44,.22)'
+  context.strokeStyle = 'rgba(244,205,132,.62)'
+  context.lineWidth = Math.max(1, size / 24)
+  for (const point of unique.values()) {
+    if (!cellAt(scene.map, point.x, point.y)?.revealed) continue
+    const left = point.x * size
+    const top = point.y * size
+    context.fillRect(left, top, size, size)
+    context.beginPath()
+    for (let offset = -size; offset < size * 2; offset += Math.max(5, size / 4)) {
+      const from = Math.max(0, offset)
+      const to = Math.min(size, offset + size)
+      context.moveTo(left + from, top + (size - (from - offset)))
+      context.lineTo(left + to, top + (size - (to - offset)))
+    }
+    context.stroke()
+    context.setLineDash([Math.max(2, size / 5), Math.max(2, size / 9)])
+    context.strokeRect(left + size / 18, top + size / 18, size - size / 9, size - size / 9)
+    context.setLineDash([])
+  }
+}
+
+export function drawBoardEffects(
+  context: BoardContext2D,
+  scene: BoardScene,
+  renderers: readonly BoardEffectRenderer[],
+) {
+  for (const render of renderers) {
+    context.save()
+    render(context, scene)
+    context.restore()
+  }
+}
 
 /**
  * Массовые подсветки. В DOM они дали бы узел на каждую клетку карты — ровно то,

@@ -6,6 +6,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import {
+  cellAt,
+  deserializeTacticalMap,
+  legacyCellsFromTacticalMap,
+  serializeTacticalMap,
+  setCell,
+  tacticalMapFromLegacyCells,
+} from '../server/tactical-map.mjs'
+
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
 async function freePort() {
@@ -105,6 +114,12 @@ function cells() {
   return result
 }
 
+function authoredSceneMap() {
+  const map = tacticalMapFromLegacyCells(cells(), { locationId: 'isolated-arena' })
+  setCell(map, 0, 0, { moveCost: 2 })
+  return { cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) }
+}
+
 function currentActor(state) {
   const combat = state?.mechanics?.combat
   return combat?.initiative?.[combat.active_index]?.actor_id ?? null
@@ -199,6 +214,7 @@ test('player combat API is server-authoritative, bounded, and durable across res
   const playerCookie = sessionCookie(registered)
   assert.ok(playerCookie)
 
+  const authoredScene = authoredSceneMap()
   const initialState = {
     sessionCode: 'AUTH-COMBAT',
     campaign: 'Authoritative combat integration',
@@ -254,7 +270,7 @@ test('player combat API is server-authoritative, bounded, and durable across res
       mood: 'Controlled',
       objective: 'Exercise the combat API',
       turn: 1,
-      cells: cells(),
+      ...authoredScene,
     },
     tacticalTurn: { sceneTurn: 1, actorId: 'hero', movementSpent: 0, actionUsed: false },
     adventure: { chapter: 1, history: [], visitedLocations: ['Isolated arena'] },
@@ -331,6 +347,15 @@ test('player combat API is server-authoritative, bounded, and durable across res
   assert.equal(startState.activePlayerId, 'hero')
   assert.ok((started.body.mechanics ?? []).length <= 20, 'start scheduling must be bounded')
   assert.ok((started.body.npc_turns ?? []).length <= 4, 'start scheduling must not loop NPC turns')
+  let clockRoom = null
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    clockRoom = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
+    assertStatus(clockRoom, 200, log)
+    if (clockRoom.body.state.turn_clock) break
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  assert.deepEqual(clockRoom.body.state.turn_clock.actor_ids, ['hero'])
+  assert.ok(Date.parse(clockRoom.body.state.turn_clock.deadline_at) > Date.parse(clockRoom.body.state.turn_clock.started_at))
 
   const beforeRejected = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
   assertStatus(beforeRejected, 200, log)
@@ -397,7 +422,19 @@ test('player combat API is server-authoritative, bounded, and durable across res
   assertStatus(adminMoved, 200, log)
   const adminMoveEvent = event(adminMoved.body, 'ActorMoved', 'hero')
   assert.equal(adminMoveEvent.payload.distance, 5)
-  assert.equal(adminMoveEvent.payload.movement_spent, 5)
+  assert.equal(adminMoveEvent.payload.movement_cost, 10)
+  assert.equal(adminMoveEvent.payload.movement_spent, 10)
+
+  const adminMoveReplay = await command(baseUrl, adminCookie, 'admin-authoritative-move-1', {
+    command_type: 'MoveActor',
+    actor_id: 'hero',
+    to: { x: 0, y: 0 },
+    distance: 0,
+  })
+  assertStatus(adminMoveReplay, 200, log)
+  assert.equal(adminMoveReplay.body.idempotent_replay, true)
+  assert.equal(event(adminMoveReplay.body, 'ActorMoved', 'hero').payload.movement_cost, 10)
+  assert.equal(adminMoveReplay.body.authoritative_state.state_version, adminMoved.body.authoritative_state.state_version)
 
   const movedBack = await command(baseUrl, playerCookie, 'player-authoritative-move-1', {
     command_type: 'MoveActor',
@@ -408,7 +445,7 @@ test('player combat API is server-authoritative, bounded, and durable across res
   assertStatus(movedBack, 200, log)
   const moveBackEvent = event(movedBack.body, 'ActorMoved', 'hero')
   assert.equal(moveBackEvent.payload.distance, 5)
-  assert.equal(moveBackEvent.payload.movement_spent, 10)
+  assert.equal(moveBackEvent.payload.movement_spent, 15)
 
   // Hostile client mechanics are present on purpose. A successful request must use the
   // trusted +7 / 1d6+2 profile and the target's real AC, never any value below.
@@ -528,6 +565,7 @@ test('player combat API is server-authoritative, bounded, and durable across res
   const roomAfterRestart = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
   assertStatus(roomAfterRestart, 200, log)
   assert.deepEqual(stableCombatProjection(roomAfterRestart.body.state), stableCombatProjection(finalState))
+  assert.equal(cellAt(deserializeTacticalMap(roomAfterRestart.body.state.scene.map), 0, 0)?.moveCost, 2)
 
   const replayed = await command(baseUrl, playerCookie, 'end-turn-with-npc-1', {
     command_type: 'EndTurn',

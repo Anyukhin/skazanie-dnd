@@ -396,6 +396,7 @@ function publicBattleEventFor(entry, state, actorId = '') {
       total: integer(result.roll.total, 0),
       hit: result.roll.hit === true,
     }
+    delete result.rollDice
   }
   return result
 }
@@ -555,7 +556,7 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   'enabled_rule_packs', 'enabled_house_rules', 'ruleset_locked_at', 'engine_mode',
   'players', 'entities', 'mapFeedback', 'rulings', 'activePlayerId', 'tacticalTurn',
   'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll',
-  'actors', 'economyLog', 'state_projector_version', 'presence', 'locationMaps',
+  'actors', 'economyLog', 'state_projector_version', 'presence', 'turn_clock', 'locationMaps',
 ])
 
 /**

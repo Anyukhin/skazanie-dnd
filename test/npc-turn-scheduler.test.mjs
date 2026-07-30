@@ -9,7 +9,7 @@ import { SRD_5_2_1_MONSTER_ALLOWLIST } from '../server/encounter-assembler.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { NpcControllerAgent, commandsForMoraleDecision } from '../server/npc-controller.mjs'
 import { NPC_BEHAVIOR_POLICIES, planNpcTurn, runNpcTurnScheduler } from '../server/npc-turn-scheduler.mjs'
-import { RULE_IDS, RulesEngine, RulesValidationError, applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
+import { RULE_IDS, RulesEngine, RulesValidationError, applyGameEvent, normalizeCampaignState, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
 import { DATA_ONLY_INSTRUCTION } from '../server/security.mjs'
 
 function cells(width = 9, height = 3) {
@@ -116,6 +116,37 @@ test('movement path and cumulative speed are enforced from authoritative state',
   assert.throws(() => resolveCommand({ command_type: 'MoveActor', actor_id: 'hero', to: { x: 5, y: 1 }, server_authoritative: true }, state, {
     diceService: dice([]), context: { serverAuthoritativeCombat: true },
   }), (error) => error instanceof RulesValidationError && error.code === 'SPEED_EXCEEDED')
+})
+
+test('план NPC оплачивает трудную местность и не падает на собственном SPEED_EXCEEDED', () => {
+  const state = fixture({
+    mechanics: {
+      active_effects: [{ id: 'mud', difficult_terrain: true, cells: [{ x: 2, y: 0 }, { x: 2, y: 1 }, { x: 2, y: 2 }] }],
+      combat: {
+        active: true, round: 1, active_index: 1,
+        initiative: [{ actor_id: 'hero', total: 20 }, { actor_id: 'wolf', total: 10 }],
+        action_economy: {
+          hero: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+          wolf: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+        },
+      },
+    },
+  })
+
+  const commands = planNpcTurn(state, 'wolf')
+  const move = commands.find((command) => command.command_type === 'MoveActor')
+  assert.ok(move, 'волк всё ещё идёт к герою, просто не дальше оплаченного')
+  // Скорость 10 футов: единственный шаг в грязь стоит 5 за шаг и 5 за местность.
+  assert.deepEqual(move.to, { x: 2, y: 1 })
+
+  const resolved = resolveCommands(
+    commands.map((command, index) => ({ ...command, server_authoritative: true, command_id: `plan:${index}` })),
+    state,
+    { diceService: boundedDice(), context: { isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true } },
+  )
+  const moved = resolved.events.find((event) => event.event_type === 'ActorMoved')
+  assert.equal(moved.payload.movement_cost, 10)
+  assert.equal(moved.payload.movement_spent, 10)
 })
 
 test('authoritative movement rejects unrevealed and unsupported terrain', () => {
@@ -1099,6 +1130,8 @@ test('pack tactics grants advantage and wolf bite can knock a hero prone', () =>
   const logged = [...after.battleLog].reverse().find((entry) => entry.type === 'attack')
   assert.equal(logged.actorKind, 'enemy')
   assert.equal(logged.packTactics, true, 'журнал боя обязан объяснять, почему удар вышел таким')
+  assert.equal(logged.rollMode, 'advantage')
+  assert.ok(logged.advantageReasons.includes('тактика стаи'))
   assert.equal(logged.actionName, 'Укус')
 })
 

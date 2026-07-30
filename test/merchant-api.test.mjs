@@ -463,12 +463,15 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   assert.equal(service.body.merchant_view.balance_cp, stableBalance - repairQuote.price_cp)
   assert.equal(service.body.authoritative_state.economyLog.at(-1).type, 'service')
 
-  const clock = await request(baseUrl, '/api/campaigns/SHOP-HTTP/system-tick', { method: 'POST', cookie: playerCookie })
-  assertStatus(clock, 200, log)
-  assert.equal(clock.body.economy_clock_events, 2)
   const afterClock = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
   assertStatus(afterClock, 200, log)
-  assert.equal(afterClock.body.merchant_view.merchant.stock.find((stock) => stock.stock_id === 'potion').quantity, 3)
+  assert.equal(afterClock.body.merchant_view.merchant.stock.find((stock) => stock.stock_id === 'potion').quantity, 2)
+  // Endpoint остаётся для совместимости, но UI больше не обязан будить сервер:
+  // clock уже продвинут фоновым server job. В этой фикстуре checkpoint наступил
+  // до покупки, поэтому следующий restock законно ждёт следующего интервала.
+  const clock = await request(baseUrl, '/api/campaigns/SHOP-HTTP/system-tick', { method: 'POST', cookie: playerCookie })
+  assertStatus(clock, 200, log)
+  assert.equal(clock.body.economy_clock_events, 0)
   const repeatedClock = await request(baseUrl, '/api/campaigns/SHOP-HTTP/system-tick', { method: 'POST', cookie: playerCookie })
   assertStatus(repeatedClock, 200, log)
   assert.equal(repeatedClock.body.economy_clock_events, 0)

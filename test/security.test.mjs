@@ -194,7 +194,7 @@ test('FakeLLM uses strict JSON, tool allowlist, tool-call limit and timeout', as
   await assert.rejects(stuck.complete({ messages }), LLMTimeoutError)
 })
 
-test('RouterAI adapter sends bounded JSON request and parses structured response', async () => {
+test('RouterAI adapter sends bounded JSON request with repetition penalties and parses structured response', async () => {
   let captured
   const client = new RouterAIClient({
     apiKey: 'test-key',
@@ -212,10 +212,35 @@ test('RouterAI adapter sends bounded JSON request and parses structured response
       }
     },
   })
-  assert.deepEqual(await client.completeJson({ messages }), { intent: 'look' })
+  assert.deepEqual(await client.completeJson({
+    messages,
+    temperature: 0.8,
+    frequencyPenalty: 0.35,
+    presencePenalty: 0.2,
+  }), { intent: 'look' })
   assert.match(captured.url, /\/chat\/completions$/)
   assert.equal(captured.options.headers.Authorization, 'Bearer test-key')
   assert.deepEqual(captured.body.response_format, { type: 'json_object' })
+  assert.equal(captured.body.temperature, 0.8)
+  assert.equal(captured.body.frequency_penalty, 0.35)
+  assert.equal(captured.body.presence_penalty, 0.2)
+})
+
+test('RouterAI adapter rejects repetition penalties outside the documented range', async () => {
+  const client = new RouterAIClient({
+    apiKey: 'test-key',
+    fetchImpl: async () => {
+      assert.fail('invalid request must be rejected before network I/O')
+    },
+  })
+  await assert.rejects(
+    client.completeJson({ messages, frequencyPenalty: 2.01 }),
+    (error) => error instanceof RangeError && /frequencyPenalty/u.test(error.message),
+  )
+  await assert.rejects(
+    client.completeJson({ messages, presence_penalty: -2.01 }),
+    (error) => error instanceof RangeError && /presencePenalty/u.test(error.message),
+  )
 })
 
 test('RouterAI adapter forwards per-model reasoning policy', async () => {

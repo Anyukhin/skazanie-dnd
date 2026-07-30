@@ -191,8 +191,13 @@ test('battle log hides the ability modifier of an enemy saving throw', () => {
       id: 'log-2', type: 'attack', actorId: 'hero', actorKind: 'player', targetId: 'goblin-secret',
       roll: { die: 12, modifier: 5, total: 17, difficulty: 15, hit: true },
     },
+    {
+      id: 'log-3', type: 'attack', actorId: 'goblin-secret', actorKind: 'enemy', targetId: 'hero',
+      roll: { die: 17, modifier: 4, total: 21, difficulty: 16, hit: true },
+      rollMode: 'advantage', rollDice: [8, 17], advantageReasons: ['тактика стаи'],
+    },
   ]
-  const [save, attack] = campaignStateForViewer(state, user, 'hero').battleLog
+  const [save, attack, enemyAttack] = campaignStateForViewer(state, user, 'hero').battleLog
   assert.equal(save.roll.modifier, undefined)
   assert.equal(save.roll.die, undefined)
   assert.equal(save.roll.total, 13)
@@ -201,6 +206,9 @@ test('battle log hides the ability modifier of an enemy saving throw', () => {
   assert.equal(attack.roll.modifier, 5)
   assert.equal(attack.roll.die, 12)
   assert.equal(attack.roll.difficulty, undefined)
+  assert.equal(enemyAttack.rollDice, undefined, 'кости NPC не должны раскрывать его модификатор')
+  assert.equal(enemyAttack.rollMode, 'advantage')
+  assert.deepEqual(enemyAttack.advantageReasons, ['тактика стаи'])
 })
 
 test('player event projection sanitizes SceneAdvanced and MerchantCreated payloads', () => {

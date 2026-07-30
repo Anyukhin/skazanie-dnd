@@ -22,6 +22,7 @@ import { classifyFreeActionKind } from './intent-parser.mjs'
 import {
   buildDeterministicEpilogue,
   buildEpilogueNarrationBrief,
+  campaignCanAdvanceArc,
   campaignCanAutoComplete,
 } from './campaign-lifecycle.mjs'
 import { questTitleFromObjective } from './scene-memory.mjs'
@@ -129,6 +130,24 @@ const questGoal = (quest) => clean(questTitleFromObjective(quest?.title), 180)
 function nextHook(state, reason = '') {
   const quest = openQuest(state)
   return clean(reason, 300) || (quest ? `Продолжить квест «${questGoal(quest)}»` : `Исследовать ${state.scene?.location || 'окрестности'} и найти новую зацепку`)
+}
+
+/**
+ * Зацепка следующей арки. Она не выдумывается: берётся первая незакрытая нить,
+ * затем неисполненное обещание, и только если не осталось ни того, ни другого —
+ * нейтральное продолжение. Именно это и делает вторую сессию продолжением, а не
+ * новой кампанией теми же фишками.
+ */
+function nextArcHook(state) {
+  const thread = (state.worldMemory?.threads ?? []).find((entry) => entry.status === 'active')
+  if (thread) return clean(`Вернуться к незакрытому: ${clean(thread.title, 180)}`, 300)
+  for (const npc of state.social?.npcs ?? []) {
+    const promise = (npc.promises ?? []).find((entry) => !['fulfilled', 'broken'].includes(String(entry?.status ?? '')))
+    if (promise) return clean(`Сдержать слово, данное ${clean(npc.name, 120)}: ${clean(promise.text, 160)}`, 300)
+  }
+  const quest = (state.worldMemory?.quests ?? []).find((entry) => entry.status === 'active')
+  if (quest) return clean(`Довести до конца: ${questGoal(quest)}`, 300)
+  return clean(`Новая дорога уводит отряд из ${clean(state.scene?.location, 120) || 'знакомых мест'}`, 300)
 }
 
 function questResolutionFor(quest = {}) {
@@ -297,6 +316,19 @@ export class AutonomousCampaignOrchestrator {
         epilogue = rendered.narration
         provider = rendered.provider
       } else provider = rendered.provider ?? provider
+    }
+    // Стол заранее объявил, что играет цепочку арок: тот же подтверждённый
+    // момент закрывает арку, а не кампанию. Эпилог уже написан — он становится
+    // эпилогом арки, и его же читает следующая как «в прошлый раз».
+    if (loaded.state.campaignConcept?.arc_chain === true && campaignCanAdvanceArc(loaded.state)) {
+      const committedArc = await this.runCommands(campaignId, `${idempotencyKey}:campaign-arc`, [{
+        command_type: 'AdvanceCampaignArc',
+        reason: 'arc_resolved_at_climax',
+        occurred_at: new Date(this.now()).toISOString(),
+        epilogue,
+        hook: nextArcHook(loaded.state),
+      }])
+      return { ...committedArc, epilogue_provider: provider, arc_advanced: true }
     }
     const committed = await this.runCommands(campaignId, `${idempotencyKey}:campaign-completion`, [{
       command_type: 'CompleteCampaign',

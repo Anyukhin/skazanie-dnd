@@ -4,7 +4,10 @@ import test from 'node:test'
 import { FakeLLM } from '../server/llm-client.mjs'
 import { Narrator, deterministicNarration } from '../server/narrator.mjs'
 import { buildNarrationBrief } from '../server/security.mjs'
-import { runWithCampaignAiSettings } from '../server/campaign-ai-context.mjs'
+import {
+  NARRATOR_GENERATION_PARAMETERS,
+  runWithCampaignAiSettings,
+} from '../server/campaign-ai-context.mjs'
 
 const brief = buildNarrationBrief({
   visible_events: [{ event_type: 'DamageApplied', payload: { applied_amount: 3, hp_before: 10, hp_after: 7 }, source_rule_ids: ['srd:test:damage'], visibility: 'public' }],
@@ -75,9 +78,11 @@ test('Narrator ignores legacy model suggestions', async () => {
 
 test('Narrator получает стиль текущей кампании через изолированный контекст запроса', async () => {
   let userPrompt = ''
+  let generation = null
   const llmClient = {
-    completeJson: async ({ messages }) => {
+    completeJson: async ({ messages, temperature, frequencyPenalty, presencePenalty }) => {
       userPrompt = messages.find((message) => message.role === 'user')?.content ?? ''
+      generation = { temperature, frequencyPenalty, presencePenalty }
       return { narration: deterministicNarration(brief).narration }
     },
   }
@@ -87,6 +92,7 @@ test('Narrator получает стиль текущей кампании че�
   )
   assert.equal(result.verification.valid, true)
   assert.match(userPrompt, /Сдержанный официальный русский/u)
+  assert.deepEqual(generation, NARRATOR_GENERATION_PARAMETERS)
 })
 
 // Вторая попытка несёт Рассказчику перечень нарушений, а в нём — куски его же

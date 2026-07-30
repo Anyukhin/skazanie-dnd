@@ -45,6 +45,7 @@ import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
+import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
 import { SceneArchitectAgent } from './scene-architect.mjs'
@@ -104,12 +105,14 @@ const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
 const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
 const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)
 const modelFailureCooldownMs = Number(process.env.DND_AI_FAILURE_COOLDOWN_MS || 120_000)
+const combatTurnTimeoutMs = Number(process.env.DND_COMBAT_TURN_TIMEOUT_MS || 120_000)
 const dailyTokenLimit = Number(process.env.DND_AI_DAILY_TOKEN_LIMIT || 2_000_000)
 const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
 const campaignStreams = new Map()
 const campaignTyping = new Map()
+const campaignEconomyJobs = new Map()
 const TYPING_TTL_MS = 4_000
 let campaignStreamSequence = 0
 
@@ -157,6 +160,21 @@ const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmC
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
 const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
+const combatTurnCoordinator = new CombatTurnCoordinator({
+  eventStore,
+  rulesEngine,
+  npcController,
+  timeoutMs: combatTurnTimeoutMs,
+  onCommitted: ({ campaignId, state, events }) => {
+    persistAuthoritativeProjection(campaignId, state, events)
+  },
+  onClockChanged: (campaignId) => {
+    broadcastCampaignRoom(campaignId)
+  },
+  onError: (error, campaignId) => {
+    console.error(`[Сказание] Не удалось автоматически продолжить бой ${campaignId}:`, error?.message || error)
+  },
+})
 
 function json(res, status, body) {
   const data = JSON.stringify(body)
@@ -945,6 +963,7 @@ function stateWithLivePresence(state, campaignId) {
   const connections = streamConnections(campaignId)
   const onlineHeroIds = connectedHeroIdsForCampaign(campaignId)
   const typingActorIds = typingActorIdsForCampaign(campaignId)
+  const turnClock = combatTurnClockForState(state, combatTurnCoordinator.clockFor(campaignId))
   if ([...connections.values()].some((connection) => connection.controlsParty)) {
     for (const player of state.players ?? []) onlineHeroIds.add(String(player.id))
   }
@@ -961,6 +980,7 @@ function stateWithLivePresence(state, campaignId) {
       online_hero_ids: [...onlineHeroIds].sort(),
       typing_actor_ids: typingActorIds,
     },
+    turn_clock: turnClock,
   }
 }
 
@@ -1014,8 +1034,39 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
   }
 }
 
+function nudgeMerchantEconomyClock(campaignId) {
+  const normalized = String(campaignId || '').toUpperCase()
+  if (!normalized) return
+  const entry = campaignEconomyJobs.get(normalized) ?? { running: false, pending: false }
+  entry.pending = true
+  campaignEconomyJobs.set(normalized, entry)
+  if (entry.running) return
+  entry.running = true
+  queueMicrotask(() => {
+    void (async () => {
+      while (entry.pending) {
+        entry.pending = false
+        const result = await runMerchantEconomyClock(normalized)
+        if (result.events.length) persistAuthoritativeProjection(normalized, result.state, result.events)
+      }
+    })()
+      .catch((error) => {
+        console.error(`[Сказание] Не удалось продвинуть экономические часы ${normalized}:`, error?.message || error)
+      })
+      .finally(() => {
+        entry.running = false
+        if (entry.pending) nudgeMerchantEconomyClock(normalized)
+        else campaignEconomyJobs.delete(normalized)
+      })
+  })
+}
+
 onRoomSaved((campaignId, room) => {
-  queueMicrotask(() => broadcastCampaignRoom(campaignId, room))
+  queueMicrotask(() => {
+    broadcastCampaignRoom(campaignId, room)
+    combatTurnCoordinator.nudge(campaignId)
+    nudgeMerchantEconomyClock(campaignId)
+  })
 })
 
 const costlyRequests = new Map()
@@ -3084,4 +3135,16 @@ const server = createServer((req, res) => {
 })
 
 await reconcileAllCampaignProjections()
-server.listen(port, host, () => console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`))
+server.listen(port, host, () => {
+  console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`)
+  // После рестарта активной кампании NPC может потребовать заметного CPU ещё до
+  // первого await. Сначала даём HTTP принять health-check, затем возобновляем
+  // фоновые часы; игровое состояние и durable-дедлайны от этой паузы не меняются.
+  const startupJobs = setTimeout(() => {
+    for (const campaignId of listRoomCodes()) {
+      combatTurnCoordinator.nudge(campaignId)
+      nudgeMerchantEconomyClock(campaignId)
+    }
+  }, 250)
+  startupJobs.unref()
+})

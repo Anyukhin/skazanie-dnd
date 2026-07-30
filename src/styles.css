@@ -257,9 +257,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .scene-merchant:hover { border-color: rgba(140,193,148,.75); background: rgba(37,55,41,.88); color: #c4e1c8; }
 .server-column { position: relative; grid-area: server; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow: hidden; }
 .server-column > .combat-context-panel { grid-row: 1; min-width: 0; min-height: 0; max-height: 34vh; overflow: auto; }
+.server-column > .rest-controls { grid-row: 1; }
 .server-column > .chat-panel { grid-row: 2; min-width: 0; min-height: 0; }
 .server-column > .chat-closed { grid-row: 2; position: static; inset: auto; width: 100%; justify-self: stretch; align-self: start; }
 .server-column > .player-hud-stack { grid-row: 3; }
+.rest-controls { padding: 11px; border: 1px solid rgba(204,151,86,.22); border-radius: 7px; background: rgba(21,17,13,.88); }
+.rest-controls > header { display: flex; align-items: center; gap: 8px; color: #bd8750; }
+.rest-controls > header span { display: grid; }
+.rest-controls > header small { color: #775b3e; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.rest-controls > header strong { color: #d2c0a9; font: 600 var(--fs-lg) Spectral, serif; }
+.rest-controls > p { margin: 6px 0 9px; color: #776e64; font-size: var(--fs-sm); }
+.rest-controls > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.rest-controls button { min-height: 32px; padding: 0 7px; border: 1px solid rgba(204,151,86,.26); border-radius: 5px; background: rgba(163,101,43,.1); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
+.rest-controls button:hover:not(:disabled) { border-color: rgba(224,174,111,.5); background: rgba(163,101,43,.18); }
+.rest-controls button:disabled { opacity: .38; cursor: default; }
 .map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
 .map-stage::before { content: ''; position: absolute; inset: 0; opacity: .12; background-image: repeating-linear-gradient(35deg, transparent 0 15px, rgba(255,255,255,.025) 16px 17px), repeating-linear-gradient(125deg, transparent 0 22px, rgba(0,0,0,.3) 23px 24px); }
 .map-stage.map-theme-tech { --map-floor: #53646a; --map-floor-alt: #5c6e73; --map-wall: #26373c; --map-grid-line: rgba(121,207,207,.2); background: radial-gradient(ellipse at 54% 43%, #3f6269 0%, #192a2f 58%, #080b0d 88%); }
@@ -377,6 +388,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    слева, легенда и подсказки управления по нижнему краю. Над самой картой не лежит
    ничего, что можно принять за часть местности. */
 .map-scale-plate { position: absolute; z-index: 8; left: 22px; top: 20px; padding: 7px 12px; border: 1px solid rgba(222,201,171,.16); border-radius: 6px; background: rgba(15,13,11,.86); color: #c6b9a6; font: 700 var(--fs-xs) Manrope, sans-serif; }
+.party-quest-hud { position: absolute; z-index: 13; left: 22px; top: 58px; width: min(330px, calc(100% - 44px)); border: 1px solid rgba(211,153,86,.3); border-radius: 8px; background: rgba(17,14,12,.92); box-shadow: 0 10px 28px rgba(0,0,0,.4); backdrop-filter: blur(9px); }
+.party-quest-hud > button { width: 100%; min-height: 48px; display: grid; grid-template-columns: 20px minmax(0,1fr) 16px; align-items: center; gap: 8px; padding: 8px 10px; border: 0; background: transparent; color: #b98853; text-align: left; cursor: pointer; }
+.party-quest-hud > button > span { min-width: 0; display: grid; gap: 2px; }
+.party-quest-hud > button small { color: #806344; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .1em; }
+.party-quest-hud > button strong { overflow: hidden; color: #ddc9ad; font: 600 var(--fs-md) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.party-quest-hud > button > svg:last-child { transition: transform .18s ease; }
+.party-quest-hud.expanded > button > svg:last-child { transform: rotate(180deg); }
+.party-quest-hud > div { max-height: min(43vh, 330px); overflow: auto; padding: 0 10px 10px; border-top: 1px solid rgba(255,255,255,.06); scrollbar-width: thin; }
+.party-quest-hud article { padding: 9px 2px; border-bottom: 1px solid rgba(255,255,255,.05); }
+.party-quest-hud article:last-child { border-bottom: 0; }
+.party-quest-hud article b { color: #d8c6ae; font: 600 var(--fs-md) Spectral, serif; }
+.party-quest-hud article p, .party-quest-hud article ul { margin: 4px 0 0; color: #9b9083; font: var(--fs-sm)/1.45 Spectral, serif; }
+.party-quest-hud article ul { padding-left: 17px; }
+.party-quest-hud article > small { display: block; margin-top: 6px; color: #b87f4d; font-size: var(--fs-xs); }
 /* Режим набран как все надписи-заголовки этого интерфейса: прописные, Manrope
    700, разрядка, приглушённое золото — тот же ряд, что «ГЛАВА · СЦЕНА» над ним
    и «ОТРЯД» в меню. Отличие одно: тонкие линии по бокам, как разделитель главы
@@ -615,6 +640,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .atmosphere-range output { align-self: center; color: #b88a56; font: 700 var(--fs-sm) Manrope, sans-serif; font-variant-numeric: tabular-nums; }
 .atmosphere-range input { grid-column: 1 / -1; width: 100%; accent-color: #a46d37; cursor: pointer; }
 .atmosphere-settings .setting-row { padding-bottom: 10px; border-bottom: 0; }
+.notification-permission { width: 100%; min-height: 54px; display: grid; grid-template-columns: 31px minmax(0, 1fr); align-items: center; gap: 10px; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: transparent; color: #8b765f; text-align: left; cursor: pointer; }
+.notification-permission > span { display: grid; gap: 2px; }
+.notification-permission b { color: #aaa095; font: var(--fs-lg) Spectral, serif; }
+.notification-permission small { color: #665e56; font-size: var(--fs-sm); line-height: 1.4; }
+.notification-permission.granted { color: #8eb698; }
+.notification-permission:disabled { opacity: .6; cursor: default; }
 
 @keyframes typing { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 @keyframes runeGlow { 50% { color: #9ac4a5; filter: drop-shadow(0 0 8px #6a9b79); } }
@@ -1648,6 +1679,10 @@ button.campaign-title:hover strong { color: #edc996; }
 .battle-roll-d20 small{font:700 8px/1 Manrope,sans-serif;letter-spacing:.08em;text-transform:uppercase}.battle-roll-d20 b{font:800 23px/1 Manrope,sans-serif;font-variant-numeric:tabular-nums}
 .battle-roll-summary{min-width:0;display:flex;align-items:center;gap:5px}.battle-roll-summary span{display:grid;place-items:center;min-width:38px}.battle-roll-summary small{color:#796b5d;font:700 7px/1.15 Manrope,sans-serif;letter-spacing:.06em}.battle-roll-summary b{color:#c9b49a;font:800 var(--fs-lg) Manrope,sans-serif;font-variant-numeric:tabular-nums}.battle-roll-summary .total b{color:#e4b872}.battle-roll-summary>i{color:#6f6255;font:normal var(--fs-xs) Manrope,sans-serif}
 .battle-roll-card>strong{color:#d68c80;font:800 var(--fs-xs) Manrope,sans-serif;letter-spacing:.08em}.battle-roll-card.success>strong{color:#91be98}
+.combat-turn-clock{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 9px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)}.combat-turn-clock small{color:#776b5f;font:700 var(--fs-xxs) Manrope,sans-serif;letter-spacing:.09em}.combat-turn-clock b{color:#d7ba8d;font:800 var(--fs-md) Manrope,sans-serif;font-variant-numeric:tabular-nums}.combat-turn-clock>span{grid-column:1/-1;height:3px;overflow:hidden;border-radius:2px;background:rgba(255,255,255,.06)}.combat-turn-clock>span i{display:block;height:100%;border-radius:inherit;background:#a97845;transition:width .25s linear}.combat-turn-clock.urgent b{color:#e18a78}.combat-turn-clock.urgent>span i{background:#bd5d4f}.combat-turn-clock.expired{opacity:.72}
+.battle-roll-reasons{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06);font-size:var(--fs-xs)}.battle-roll-reasons small{color:#8f6747;font-weight:800;letter-spacing:.08em}.battle-roll-reasons.disadvantage small{color:#a56e67}.battle-roll-reasons span{color:#b6a896}.battle-roll-reasons em{color:#766b60;font-style:normal;font-variant-numeric:tabular-nums}
+.battle-roll-token-callout{position:absolute;z-index:18;left:50%;bottom:calc(50% + clamp(24px,4.8cqw,42px));width:max-content;max-width:min(260px,42cqw);display:flex;align-items:baseline;flex-wrap:wrap;justify-content:center;gap:3px 6px;padding:6px 9px;border:1px solid rgba(173,77,66,.58);border-radius:7px;background:rgba(35,18,15,.96);color:#dec8b1;box-shadow:0 7px 20px rgba(0,0,0,.62);transform:translateX(-50%);pointer-events:none;animation:battle-roll-token-arrive .2s ease-out}.battle-roll-token-callout.success{border-color:rgba(91,157,105,.62);background:rgba(19,38,24,.96)}.battle-roll-token-callout b{color:#f0d1a1;font:800 clamp(10px,1.55cqw,14px) Manrope,sans-serif;font-variant-numeric:tabular-nums}.battle-roll-token-callout span{color:#aa9a88;font:600 clamp(8px,1.25cqw,12px) Manrope,sans-serif}.battle-roll-token-callout strong{color:#dc8c81;font:800 clamp(8px,1.25cqw,12px) Manrope,sans-serif;text-transform:uppercase}.battle-roll-token-callout.success strong{color:#9bc9a2}.battle-roll-token-callout small{flex-basis:100%;overflow:hidden;color:#bfaa8d;font:600 clamp(7px,1.1cqw,10px) Manrope,sans-serif;text-align:center;text-overflow:ellipsis;white-space:nowrap}
+@keyframes battle-roll-token-arrive{from{opacity:0;transform:translate(-50%,8px) scale(.88)}to{opacity:1;transform:translateX(-50%)}}
 @keyframes battle-roll-arrive{from{opacity:0;transform:translateY(-5px) scale(.98)}to{opacity:1;transform:none}}
 @media(max-width:980px){.battle-roll-card{grid-template-columns:48px minmax(0,1fr);gap:7px}.battle-roll-d20{width:46px;height:43px}.battle-roll-summary{flex-wrap:wrap;gap:2px 4px}.battle-roll-summary span{min-width:30px}.battle-roll-card>strong{grid-column:1/-1;text-align:right}}
 .combat-context-conditions{display:flex;flex-wrap:wrap;gap:4px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)}
