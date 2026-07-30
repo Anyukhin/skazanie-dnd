@@ -91,8 +91,9 @@ function lineCells(origin: AreaPoint, target: AreaPoint | undefined, lengthCells
  */
 export function areaCells(geometry: AreaGeometry): AreaPoint[] {
   const cellFeet = Math.max(1, Number(geometry.cellFeet) || 5)
-  const cells = Math.max(0, Math.floor(Math.max(0, Number(geometry.sizeFeet) || 0) / cellFeet))
-  if (cells <= 0) return []
+  const sizeFeet = Math.max(0, Number(geometry.sizeFeet) || 0)
+  if (sizeFeet <= 0) return []
+  const cells = Math.max(0, Math.floor(sizeFeet / cellFeet))
 
   let result: AreaPoint[] = []
   if (geometry.shape === 'line') {

@@ -1009,6 +1009,7 @@ export type GameState = {
     actor_ids: string[]
     round: number
     active_index: number
+    turn_id: string
     started_at: string
     deadline_at: string
     duration_ms: number

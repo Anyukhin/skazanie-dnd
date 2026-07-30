@@ -19,7 +19,7 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, type MovementPath } from './tactical-ui'
+import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
@@ -27,6 +27,7 @@ import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
 import { drawDifficultTerrainEffects, type BoardAreaEffect, type BoardEffectRenderer, type BoardOverlayCell } from './board-render'
+import { areaCells } from './area-geometry'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
@@ -138,33 +139,6 @@ function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
 
 function sceneObjectLabel(prop: TacticalProp) {
   return prop.interaction?.pointOfInterest ? 'Точка интереса' : 'Объект сцены'
-}
-
-function boardCellInCone(cell: { x: number; y: number }, origin: { x: number; y: number }, toward: { x: number; y: number }, rangeFeet: number) {
-  const directionX = toward.x - origin.x
-  const directionY = toward.y - origin.y
-  const targetX = cell.x - origin.x
-  const targetY = cell.y - origin.y
-  if ((!directionX && !directionY) || (!targetX && !targetY) || chebyshevFeet(origin, cell) > rangeFeet) return false
-  const dot = directionX * targetX + directionY * targetY
-  const cross = Math.abs(directionX * targetY - directionY * targetX)
-  return dot > 0 && cross * 2 <= dot
-}
-
-function boardCellInDirectedCube(cell: { x: number; y: number }, origin: { x: number; y: number }, toward: { x: number; y: number }, edgeFeet: number) {
-  const directionX = toward.x - origin.x
-  const directionY = toward.y - origin.y
-  if (!directionX && !directionY) return false
-  const targetX = cell.x - origin.x
-  const targetY = cell.y - origin.y
-  const cells = Math.max(1, Math.floor(edgeFeet / CELL_FEET))
-  const halfWidth = Math.floor((cells - 1) / 2)
-  if (Math.abs(directionX) >= Math.abs(directionY)) {
-    const forward = targetX * Math.sign(directionX)
-    return forward >= 1 && forward <= cells && Math.abs(targetY) <= halfWidth
-  }
-  const forward = targetY * Math.sign(directionY)
-  return forward >= 1 && forward <= cells && Math.abs(targetX) <= halfWidth
 }
 
 function hasClearBoardTrajectory(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
@@ -642,6 +616,28 @@ function PartyQuestHud({ state }: { state: GameState }) {
       </article>)}
     </div>}
   </section>
+}
+
+function CombatTurnClock({ clock }: { clock: GameState['turn_clock'] }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    setNow(Date.now())
+    if (!clock) return
+    const timer = window.setInterval(() => setNow(Date.now()), 250)
+    return () => window.clearInterval(timer)
+  }, [clock?.deadline_at, clock?.turn_id])
+  const presentation = turnClockPresentation(clock, now)
+  if (!presentation) return null
+  return <div
+    className={`combat-turn-clock ${presentation.urgent ? 'urgent' : ''} ${presentation.expired ? 'expired' : ''}`}
+    role="timer"
+    aria-live={presentation.urgent ? 'polite' : 'off'}
+    aria-label={`До автоматического пропуска хода ${presentation.label}`}
+  >
+    <small>{clock?.reaction_window_id ? 'ОТВЕТ НА РЕАКЦИЮ' : 'ДО АВТОПРОПУСКА'}</small>
+    <b>{presentation.label}</b>
+    <span aria-hidden="true"><i style={{ width: `${presentation.remainingRatio * 100}%` }} /></span>
+  </div>
 }
 
 function EnemyGlyph({ kind }: { kind: EnemyVisualKind }) {
@@ -1184,6 +1180,25 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     setPendingCommand(null)
   }
 
+  const previewBlastCenter = combatMode === 'magic' && selectedSpell?.target === 'point'
+    ? pendingPoint ?? aimCell
+    : projectileTarget
+  const previewBlastSizeFeet = combatMode === 'magic' ? spellAreaRadiusFeet : areaRadiusFeet
+  const previewBlastShape = combatMode === 'magic' ? selectedSpell?.areaShape ?? 'sphere' : 'sphere'
+  const previewBlastKeys = new Set(
+    previewBlastCenter && active && previewBlastSizeFeet > 0
+      ? areaCells({
+        shape: previewBlastShape,
+        origin: active,
+        target: previewBlastCenter,
+        originMode: selectedSpell?.areaOrigin ?? 'point',
+        sizeFeet: previewBlastSizeFeet,
+        cellFeet: CELL_FEET,
+        bounds: { minX: 0, minY: 0, maxX: columns - 1, maxY: rows - 1 },
+      }).map((point) => boardPositionKey(point.x, point.y))
+      : [],
+  )
+
   // Доска. Перебор клеток остаётся прежним: он занимает доли миллисекунды и
   // узким местом не является (`docs/tactical-map-plan.md`, раздел 7). Меняется
   // то, что из него выходит: местность рисует холст, массовые подсветки —
@@ -1253,13 +1268,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     const canPointSpellHere = Boolean(selected && combatMode === 'magic' && selectedSpell?.target === 'point' && spellEconomyReady && active && chebyshevFeet(active, cell) <= selectedSpellRange && hasClearBoardTrajectory(state, active, cell) && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && (!['summon', 'teleport'].includes(selectedSpellKind ?? '') || !occupied))
     const canSummonHere = Boolean(canPointSpellHere && selectedSpellKind === 'summon')
     const canAimHere = canThrowHere || canPointSpellHere
-    const blastCenter = combatMode === 'magic' && selectedSpell?.target === 'point' ? pendingPoint ?? aimCell : projectileTarget
-    const blastRadius = combatMode === 'magic' ? spellAreaRadiusFeet : areaRadiusFeet
-    const inBlastArea = Boolean(blastCenter && blastRadius && (selectedSpell?.areaShape === 'cone' && selectedSpell.areaOrigin === 'self' && active
-      ? boardCellInCone(cell, active, blastCenter, blastRadius)
-      : selectedSpell?.areaShape === 'cube' && selectedSpell.areaOrigin === 'self' && active
-        ? boardCellInDirectedCube(cell, active, blastCenter, blastRadius)
-        : chebyshevFeet(blastCenter, cell) <= blastRadius))
+    const inBlastArea = previewBlastKeys.has(cellKey)
     const inPersistentSpellArea = Boolean((state.mechanics?.active_effects ?? []).some((effect) => effect.center && chebyshevFeet(effect.center, cell) <= Number(effect.radius_feet ?? 0)))
     // У объекта собственная hotspot-зона в соседнем слое поверх клетки. Клетка
     // маршрута и предмет поэтому остаются двумя отдельными элементами, и оба
@@ -1666,6 +1675,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         <div className="server-resize" role="separator" aria-orientation="vertical" aria-label="Ширина правой колонки" onPointerDown={startServerResize} onDoubleClick={() => { setServerWidth(0); window.localStorage.removeItem(SERVER_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную" />
         {combatActive && <section className="combat-context-panel" aria-label="Текущее состояние боя" aria-live="polite">
           <header><div><small>СЕЙЧАС ХОДИТ · {activeTeam}</small><strong>{activeName}</strong></div><span><Heart size={13} />{activeHealth}</span></header>
+          <CombatTurnClock clock={state.turn_clock} />
           {visibleBattleRoll && <BattleRollCard event={visibleBattleRoll} context={visibleBattleRollContext} />}
           <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
           <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>

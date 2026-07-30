@@ -48,6 +48,25 @@ export function movementCostLabel(route: MovementPath) {
     : `${route.costFeet} фт`
 }
 
+export function turnClockPresentation(clock: GameState['turn_clock'], now = Date.now()) {
+  if (!clock) return null
+  const deadline = Date.parse(String(clock.deadline_at))
+  const durationMs = Math.max(1, Number(clock.duration_ms) || 1)
+  if (!Number.isFinite(deadline)) return null
+  const remainingMs = Math.max(0, deadline - Number(now))
+  const remainingSeconds = Math.ceil(remainingMs / 1_000)
+  const minutes = Math.floor(remainingSeconds / 60)
+  const seconds = remainingSeconds % 60
+  return {
+    remainingMs,
+    remainingSeconds,
+    label: `${minutes}:${String(seconds).padStart(2, '0')}`,
+    remainingRatio: Math.max(0, Math.min(1, remainingMs / durationMs)),
+    urgent: remainingSeconds <= 15,
+    expired: remainingMs === 0,
+  }
+}
+
 export function occupiedBoardPositions(state: GameState, exceptId?: string) {
   const occupied = new Set<string>()
   state.players.forEach((actor) => {

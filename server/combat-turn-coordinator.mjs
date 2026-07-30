@@ -52,10 +52,17 @@ export function combatTurnClock(rawState, events, {
   const startedMs = Date.parse(String(started?.created_at ?? ''))
   const safeStartedMs = Number.isFinite(startedMs) ? startedMs : Number(now)
   const durationMs = positiveTimeout(timeoutMs)
+  // Координаты round/index повторяются в каждом новом бою. Durable event_id
+  // отличает одинаковый состав и порядок инициативы в разных encounters и не
+  // даёт idempotency key второго боя вернуть commit первого.
+  const turnId = started?.event_id
+    ? `event:${started.event_id}`
+    : `legacy:${Number(combat.round) || 1}:${Number(combat.active_index) || 0}:${new Date(safeStartedMs).toISOString()}`
   return {
     actor_ids: actorIds,
     round: Number(combat.round) || 1,
     active_index: Number(combat.active_index) || 0,
+    turn_id: turnId,
     started_at: new Date(safeStartedMs).toISOString(),
     deadline_at: new Date(safeStartedMs + durationMs).toISOString(),
     duration_ms: durationMs,
@@ -63,7 +70,7 @@ export function combatTurnClock(rawState, events, {
   }
 }
 
-async function commitTimedOutTurn({ campaignId, eventStore, rulesEngine, loaded }) {
+async function commitTimedOutTurn({ campaignId, eventStore, rulesEngine, loaded, clock }) {
   const combat = loaded.state.mechanics.combat
   const actorIds = activeTurnActorIds(loaded.state)
   if (!actorIds.length) return { events: [], state: loaded.state, state_version: loaded.state_version }
@@ -72,9 +79,13 @@ async function commitTimedOutTurn({ campaignId, eventStore, rulesEngine, loaded 
   const reactionFingerprint = reactionWindowId
     ? createHash('sha256').update(reactionWindowId).digest('hex').slice(0, 20)
     : ''
+  const turnFingerprint = createHash('sha256')
+    .update(String(clock?.turn_id ?? `legacy:${combat.round}:${combat.active_index}`))
+    .digest('hex')
+    .slice(0, 20)
   const key = reactionWindowId
     ? `reaction-timeout:${keyPart(campaignId).slice(0, 40)}:${reactionFingerprint}`
-    : `turn-timeout:${keyPart(campaignId).slice(0, 40)}:r${combat.round}:i${combat.active_index}:${actorFingerprint}`
+    : `turn-timeout:${keyPart(campaignId).slice(0, 40)}:r${combat.round}:i${combat.active_index}:${actorFingerprint}:${turnFingerprint}`
   const plan = {
     proposed_commands: actorIds.map((actorId, index) => ({
       command_type: reactionWindowId ? 'UseCombatAction' : 'EndTurn',
@@ -210,6 +221,7 @@ export class CombatTurnCoordinator {
           eventStore: this.eventStore,
           rulesEngine: this.rulesEngine,
           loaded,
+          clock,
         })
         loaded = await this.eventStore.load(campaignId)
         if (committed.events?.length) {

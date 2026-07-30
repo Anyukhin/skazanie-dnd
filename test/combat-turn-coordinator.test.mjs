@@ -188,7 +188,7 @@ test('истёкший дедлайн коммитит replay-safe авто-пр
     .filter((event) => event.event_type === 'TurnEnded' && event.payload.auto_skipped === true)
   assert.equal(timeoutEvents.length, 1)
   assert.equal(timeoutEvents[0].payload.auto_skip_reason, 'turn-timeout')
-  assert.match(timeoutEvents[0].idempotency_key, /^turn-timeout:TIMEOUT-REPLAY:r1:i0:[a-f0-9]{20}$/u)
+  assert.match(timeoutEvents[0].idempotency_key, /^turn-timeout:TIMEOUT-REPLAY:r1:i0:[a-f0-9]{20}:[a-f0-9]{20}$/u)
   assert.equal(committedBatches.flat().filter((event) => event.payload?.auto_skipped === true).length, 1)
 
   const replayed = await store.replay('TIMEOUT-REPLAY', { useSnapshots: false })
@@ -285,8 +285,30 @@ test('таймер групповой фазы показывает только
     actor_ids: ['bard'],
     round: 1,
     active_index: 0,
+    turn_id: 'legacy:1:0:2026-07-30T12:00:00.000Z',
     started_at: '2026-07-30T12:00:00.000Z',
     deadline_at: '2026-07-30T12:01:30.000Z',
     duration_ms: 90_000,
   })
+})
+
+test('одинаковая инициатива в двух боях получает разные durable turn id', () => {
+  const state = fixture()
+  const common = {
+    event_type: 'TurnStarted',
+    created_at: '2026-07-30T12:00:00.000Z',
+    target_ids: ['hero'],
+  }
+  const first = combatTurnClock(state, [{ ...common, event_id: 'combat-one:turn-one' }], {
+    timeoutMs: 90_000,
+    now: Date.parse(common.created_at),
+  })
+  const second = combatTurnClock(state, [{ ...common, event_id: 'combat-two:turn-one' }], {
+    timeoutMs: 90_000,
+    now: Date.parse(common.created_at),
+  })
+
+  assert.equal(first?.round, second?.round)
+  assert.equal(first?.active_index, second?.active_index)
+  assert.notEqual(first?.turn_id, second?.turn_id)
 })

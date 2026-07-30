@@ -115,6 +115,31 @@ test('клеточный moveCost карты также считается тр�
   assert.equal(route.difficultTerrainFeet, 5)
 })
 
+test('серверный дедлайн превращается только в отображаемый обратный отсчёт', () => {
+  const clock = {
+    turn_id: 'event:turn-1',
+    actor_ids: ['hero'],
+    round: 1,
+    active_index: 0,
+    started_at: '2026-07-30T12:00:00.000Z',
+    deadline_at: '2026-07-30T12:02:00.000Z',
+    duration_ms: 120_000,
+  }
+  assert.deepEqual(tacticalUi.turnClockPresentation(clock, Date.parse('2026-07-30T12:01:45.100Z')), {
+    remainingMs: 14_900,
+    remainingSeconds: 15,
+    label: '0:15',
+    remainingRatio: 14_900 / 120_000,
+    urgent: true,
+    expired: false,
+  })
+  assert.equal(
+    tacticalUi.turnClockPresentation(clock, Date.parse('2026-07-30T12:03:00.000Z')).label,
+    '0:00',
+  )
+  assert.equal(tacticalUi.turnClockPresentation(null), null)
+})
+
 test('недоступные клетки получают конкретную причину', () => {
   const current = state()
   const actor = current.players[0]
