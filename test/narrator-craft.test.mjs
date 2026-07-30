@@ -7,7 +7,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
-import { NARRATOR_CLICHE_CATALOG, measureNarratorCraft } from '../eval/narrator-craft-metrics.mjs'
+import { measureNarratorCraft } from '../eval/narrator-craft-metrics.mjs'
+import { NARRATOR_CLICHE_CATALOG } from '../server/narrator-craft-quality.mjs'
 import {
   NARRATOR_PROMPT_VERSION,
   Narrator,
@@ -98,11 +99,33 @@ test('сервер не сохраняет предложенные модель
   const systemPrompt = requests[0].messages[0].content
   assert.match(systemPrompt, /PROMPT_ID: narrator\/v4/u)
   assert.doesNotMatch(systemPrompt, /воздух густеет|повисает тишина|каталог клише/u)
-  assert.ok(NARRATOR_CLICHE_CATALOG.length >= 16, 'каталог остаётся в отдельной craft-проверке')
+  assert.ok(NARRATOR_CLICHE_CATALOG.length >= 16, 'каталог принадлежит production craft-проверке')
   assert.match(systemPrompt, /не называй видимые числа броска/u)
   assert.doesNotMatch(systemPrompt, /"suggestions"/u)
   assert.match(requests[0].messages[1].content, /"memory_focus"/u)
   assert.match(requests[0].messages[1].content, /Ада сохранила синюю нить как улику/u)
+})
+
+test('production craft-guard отправляет клише из каталога в асинхронную repair-попытку', async () => {
+  const brief = craftBrief()
+  const safeNarration = deterministicNarration(brief).narration
+  const requests = []
+  const llmClient = {
+    completeJson: async (input) => {
+      requests.push(input)
+      return requests.length === 1
+        ? { narration: `Воздух густеет. ${safeNarration}` }
+        : { narration: safeNarration }
+    },
+  }
+
+  const result = await new Narrator({ llmClient, maxAttempts: 2 }).render(brief)
+
+  assert.equal(requests.length, 2)
+  assert.equal(result.narration, safeNarration)
+  assert.equal(result.verification.valid, true)
+  assert.match(requests[1].messages[1].content, /NARRATOR_CLICHE/u)
+  assert.match(requests[1].messages[1].content, /воздух густеет/iu)
 })
 
 test('memory_focus выбирает N-2, обещание и прошлую встречу по явной связи сцены', () => {

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { eventSummary } from './rules-engine.mjs'
 import { DeterministicNarrationVerifier, assertNarrationBrief, buildDataOnlyContext } from './security.mjs'
 import { currentNarratorGenerationParameters, currentNarratorStyleInstruction } from './campaign-ai-context.mjs'
+import { findNarratorCliches } from './narrator-craft-quality.mjs'
 
 export const NARRATOR_PROMPT_VERSION = 'narrator/v4'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
@@ -316,6 +317,10 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
   }
   if (MECHANICAL_NUMBER_PATTERN.test(text)) {
     add('VISIBLE_MECHANICAL_NUMBER', 'Повествование повторяет механическое число, уже показанное интерфейсом')
+  }
+  const cliche = findNarratorCliches(text)[0]
+  if (cliche) {
+    add('NARRATOR_CLICHE', `Повествование использует клише из production-каталога: «${cliche.label}»`, cliche.match)
   }
 
   const heroNames = (Array.isArray(story.heroes) ? story.heroes : []).map((hero) => hero?.name).filter(Boolean)
