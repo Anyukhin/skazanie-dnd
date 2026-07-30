@@ -7,7 +7,7 @@ import {
   BrainCircuit, Check, Compass, SlidersHorizontal, Wifi, WifiOff,
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
-  Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX,
+  Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
@@ -19,7 +19,7 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, type MovementPath } from './tactical-ui'
+import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
@@ -61,6 +61,7 @@ const TILE_LOCK_KEY = 'skazanie-tiles-locked-v1'
 const TILE_ORDER_KEY = 'skazanie-tile-order-v1'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
 const COMBAT_ANIMATIONS_KEY = 'skazanie-combat-animations-v1'
+const DEFAULT_DOCUMENT_TITLE = 'Сказание'
 const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 150
 const UI_SCALE_PRESETS = [80, 90, 100, 110, 115, 125, 150]
@@ -576,7 +577,19 @@ function useTransientNpcTactic(batch: CombatVisualBatch | null | undefined, batt
   return key && key === visibleKey ? latest : null
 }
 
-function BattleRollCard({ event }: { event: BattleEvent }) {
+type BattleRollContext = NonNullable<ReturnType<typeof battleRollContext>>
+
+function BattleRollReasons({ context }: { context: BattleRollContext | null }) {
+  if (!context || context.mode === 'normal') return null
+  const reasons = context.mode === 'advantage' ? context.advantageReasons : context.disadvantageReasons
+  return <div className={`battle-roll-reasons ${context.mode}`}>
+    <small>{context.mode === 'advantage' ? 'ПРЕИМУЩЕСТВО' : 'ПОМЕХА'}</small>
+    <span>{reasons.length > 0 ? reasons.join(' · ') : 'Причина не раскрыта сервером'}</span>
+    {context.dice.length === 2 && <em>кости {context.dice.join(' и ')}</em>}
+  </div>
+}
+
+function BattleRollCard({ event, context }: { event: BattleEvent; context: BattleRollContext | null }) {
   const roll = battleRollPresentation(event)
   if (!roll) return null
   return <div className={`battle-roll-card ${roll.success ? 'success' : 'failed'}`} role="status" aria-label={`Бросок d20: ${roll.natural} ${roll.modifierText}, итого ${roll.total}${roll.difficulty != null ? ` против ${roll.difficultyLabel} ${roll.difficulty}` : ''}. ${roll.success ? 'Успех' : event.type === 'attack' ? 'Промах' : 'Неудача'}`}>
@@ -588,7 +601,47 @@ function BattleRollCard({ event }: { event: BattleEvent }) {
       {roll.difficulty != null && <><i aria-hidden="true">против</i><span><small>{roll.difficultyLabel}</small><b>{roll.difficulty}</b></span></>}
     </div>
     <strong>{roll.success ? 'УСПЕХ' : event.type === 'attack' ? 'ПРОМАХ' : 'НЕУДАЧА'}</strong>
+    <BattleRollReasons context={context} />
   </div>
+}
+
+function BattleRollTokenCallout({ event, context }: { event: BattleEvent; context: BattleRollContext | null }) {
+  const roll = battleRollPresentation(event)
+  if (!roll) return null
+  const outcome = roll.success ? 'попадание' : 'промах'
+  const modeReasons = context?.mode === 'advantage'
+    ? context.advantageReasons
+    : context?.mode === 'disadvantage'
+      ? context.disadvantageReasons
+      : []
+  return <div className={`battle-roll-token-callout ${roll.success ? 'success' : 'failed'}`} role="status">
+    <b>{roll.natural} {roll.modifierText}</b>
+    <span>{roll.difficulty == null ? `= ${roll.total}` : `против ${roll.difficultyLabel} ${roll.difficulty}`}</span>
+    <strong>{outcome}</strong>
+    {context && context.mode !== 'normal' && <small>{context.mode === 'advantage' ? 'Преимущество' : 'Помеха'}{modeReasons.length ? `: ${modeReasons.join(', ')}` : ''}</small>}
+  </div>
+}
+
+function PartyQuestHud({ state }: { state: GameState }) {
+  const [expanded, setExpanded] = useState(false)
+  const quests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
+  if (quests.length === 0) return null
+  const primary = quests[0]
+  return <section className={`party-quest-hud ${expanded ? 'expanded' : ''}`} aria-label="Задачи отряда">
+    <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+      <ScrollText size={15} />
+      <span><small>ЗАДАЧИ ОТРЯДА · {quests.length}</small><strong>{primary.title}</strong></span>
+      <ChevronDown size={15} />
+    </button>
+    {expanded && <div>
+      {quests.map((quest) => <article key={quest.id}>
+        <b>{quest.title}</b>
+        {quest.summary && <p>{quest.summary}</p>}
+        {quest.objectives?.length ? <ul>{quest.objectives.slice(0, 4).map((objective) => <li key={objective}>{objective}</li>)}</ul> : null}
+        {quest.clock && quest.clock.max > 0 && <small>{localizedQuestClockLabel(quest.clock.label)} · {quest.clock.current}/{quest.clock.max}</small>}
+      </article>)}
+    </div>}
+  </section>
 }
 
 function EnemyGlyph({ kind }: { kind: EnemyVisualKind }) {
@@ -607,7 +660,7 @@ function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onFinishTurn, onFreeAction, onTypingChange, narrating, statusContent, children }: {
+function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onFinishTurn, onFreeAction, onRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -631,6 +684,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => void
   onFinishTurn: () => void
   onFreeAction: (text: string) => void
+  onRest: (kind: 'short' | 'long') => void
   onTypingChange: (actorId: string, typing: boolean) => void
   narrating: boolean
   statusContent: React.ReactNode
@@ -751,6 +805,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   const combatActive = Boolean(combat.active && combat.initiative?.length)
   const activeInitiativeIndex = Math.max(0, Number(combat.active_index) || 0)
   const visibleBattleRoll = useTransientBattleRoll(state.battleLog)
+  const visibleBattleRollContext = visibleBattleRoll ? battleRollContext(visualBatch?.events, visibleBattleRoll) : null
   const visibleNpcTactic = useTransientNpcTactic(visualBatch, state.battleLog)
   const activeHero = players.find((player) => player.id === turnActorId)
   const activeSummon = state.actors?.find((actor) => actor.id === turnActorId && actor.alive)
@@ -1407,6 +1462,9 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             {openTokenLabelId === summon.id && <span className="token-label">{summon.name}<small>{summon.hp} ОЗ · {remainingFeet} фт</small></span>}
           </button>
         })()}
+        {visibleBattleRoll && (visibleBattleRoll.targetId ?? visibleBattleRoll.actorId) === (enemy?.id ?? player?.id ?? summon?.id) && (
+          <BattleRollTokenCallout event={visibleBattleRoll} context={visibleBattleRollContext} />
+        )}
         {cellFeedback.map((item) => <span key={item.id} className={'map-feedback ' + item.kind}>{item.text}</span>)}
       </>,
     })
@@ -1521,6 +1579,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
       >
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
+      <PartyQuestHud state={state} />
       {npcTacticText && <div className="npc-tactic-banner" role="status" aria-live="polite"><Swords size={15} /><span>{npcTacticText}</span></div>}
       <TacticalBoard
         key={state.sessionCode}
@@ -1594,7 +1653,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         <div className="server-resize" role="separator" aria-orientation="vertical" aria-label="Ширина правой колонки" onPointerDown={startServerResize} onDoubleClick={() => { setServerWidth(0); window.localStorage.removeItem(SERVER_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную" />
         {combatActive && <section className="combat-context-panel" aria-label="Текущее состояние боя" aria-live="polite">
           <header><div><small>СЕЙЧАС ХОДИТ · {activeTeam}</small><strong>{activeName}</strong></div><span><Heart size={13} />{activeHealth}</span></header>
-          {visibleBattleRoll && <BattleRollCard event={visibleBattleRoll} />}
+          {visibleBattleRoll && <BattleRollCard event={visibleBattleRoll} context={visibleBattleRollContext} />}
           <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
           <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>
           {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}`}>
@@ -1629,6 +1688,14 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             <span><Footprints size={14} /><b>{previewRoute.costFeet} фт</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
             {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); onMove(selected, x, y); setPendingMoveKey(null) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
           </div>}
+        </section>}
+        {!combatActive && <section className="rest-controls" aria-label="Отдых">
+          <header><Flame size={15} /><span><small>ПЕРЕДЫШКА</small><strong>Отдых героя</strong></span></header>
+          <p>Время и восстановление рассчитает сервер.</p>
+          <div>
+            <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onRest('short')}>Короткий · 1 час</button>
+            <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onRest('long')}>Долгий · 8 часов</button>
+          </div>
         </section>}
         {children}
       </aside>
@@ -2395,7 +2462,7 @@ function AtmosphereRange({ label, description, value, onChange }: { label: strin
   </label>
 }
 
-function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange }: {
+function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, notificationPermission, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
   campaignAiBusy: boolean
@@ -2405,6 +2472,7 @@ function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiS
   scenicBackdrop: boolean
   combatAnimations: boolean
   atmosphereSettings: AtmosphereSettings
+  notificationPermission: NotificationPermission | 'unsupported'
   onCampaignAiChange: (patch: Partial<CampaignAiSettings>) => void
   onUiScaleChange: (value: number) => void
   onAutoAttackRollChange: (value: boolean) => void
@@ -2413,6 +2481,7 @@ function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiS
   onAmbientVolumeChange: (value: number) => void
   onEffectsVolumeChange: (value: number) => void
   onAtmosphereMutedChange: (value: boolean) => void
+  onRequestNotifications: () => void
 }) {
   const [scaleInput, setScaleInput] = useState(String(uiScale))
 
@@ -2481,6 +2550,23 @@ function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiS
             <AtmosphereRange label="Фоновая атмосфера" description="Музыка, ветер и гул текущего места" value={atmosphereSettings.ambientVolume} onChange={onAmbientVolumeChange} />
             <AtmosphereRange label="Эффекты событий" description="Кости, удары, двери и важные исходы" value={atmosphereSettings.effectsVolume} onChange={onEffectsVolumeChange} />
             <ToggleRow icon={atmosphereSettings.muted ? <VolumeX size={17} /> : <Volume2 size={17} />} title="Выключить весь звук" description="Настройки громкости сохранятся на этом устройстве" value={atmosphereSettings.muted} onChange={() => onAtmosphereMutedChange(!atmosphereSettings.muted)} />
+            <button
+              className={`notification-permission ${notificationPermission}`}
+              disabled={notificationPermission === 'unsupported' || notificationPermission === 'denied'}
+              onClick={onRequestNotifications}
+            >
+              {notificationPermission === 'granted' ? <Bell size={17} /> : <BellOff size={17} />}
+              <span>
+                <b>Системный сигнал своего хода</b>
+                <small>{notificationPermission === 'granted'
+                  ? 'Разрешён; при свёрнутой вкладке появится уведомление'
+                  : notificationPermission === 'denied'
+                    ? 'Запрещён в браузере; заголовок и звук продолжат работать'
+                    : notificationPermission === 'unsupported'
+                      ? 'Браузер не поддерживает Notification API; заголовок и звук продолжат работать'
+                      : 'Нажмите, чтобы запросить разрешение браузера'}</small>
+              </span>
+            </button>
           </div>
           <ToggleRow icon={<Dices size={17} />} title="Автобросок при атаке" description="Включено — цель сразу атакуется; выключено — появляется отдельная кнопка кубика" value={autoAttackRoll} onChange={() => onAutoAttackRollChange(!autoAttackRoll)} />
           <ToggleRow icon={<Swords size={17} />} title="Боевые анимации" description="Движение, удары и состояния проигрываются поверх доски; клик пропускает текущую очередь" value={combatAnimations} onChange={() => onCombatAnimationsChange(!combatAnimations)} />
@@ -2816,7 +2902,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
   const [combatAnimations, setCombatAnimations] = useState(() => window.localStorage.getItem(COMBAT_ANIMATIONS_KEY) !== 'false')
   const [atmosphereSettings, setAtmosphereSettings] = useState(loadAtmosphereSettings)
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => (
+    'Notification' in window ? Notification.permission : 'unsupported'
+  ))
   const atmosphereAudioRef = useRef<AtmosphereAudio | null>(null)
+  const normalDocumentTitle = useRef(document.title || DEFAULT_DOCUMENT_TITLE)
   const latestNarratorMessage = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
   const atmosphereCursor = useRef({
     sessionCode: state.sessionCode,
@@ -2865,6 +2955,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // закреплённый за аккаунтом: на этом различии держится мастер создания.
   const ownedHeroIds = (currentMembership?.heroIds ?? account.heroIds ?? []).filter((id) => partyIdSet.has(id))
   const [selectedHeroId, setSelectedHeroId] = useState(accessibleHeroIds[0])
+  const alertTurnActorId = currentTurnActorId(state)
+  const alertCombatActive = Boolean(state.mechanics?.combat?.active && state.mechanics.combat.initiative?.length)
+  const alertActorName = partyPlayers.find((player) => player.id === alertTurnActorId)?.character ?? 'герой'
+  const turnAlertCursor = useRef({ sessionCode: state.sessionCode, actorId: alertTurnActorId })
 
   const changeLifecycle = async (action: 'pause' | 'resume' | 'complete' | 'archive') => {
     setLifecycleBusy(true)
@@ -2982,6 +3076,16 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   useEffect(() => { window.localStorage.setItem(SCENIC_BACKDROP_KEY, String(scenicBackdrop)) }, [scenicBackdrop])
   useEffect(() => { window.localStorage.setItem(COMBAT_ANIMATIONS_KEY, String(combatAnimations)) }, [combatAnimations])
   useEffect(() => {
+    const restoreTitle = () => {
+      if (!document.hidden) document.title = normalDocumentTitle.current
+    }
+    document.addEventListener('visibilitychange', restoreTitle)
+    return () => {
+      document.removeEventListener('visibilitychange', restoreTitle)
+      document.title = normalDocumentTitle.current
+    }
+  }, [])
+  useEffect(() => {
     const audio = createAtmosphereAudio({ settings: atmosphereSettings })
     atmosphereAudioRef.current = audio
     const removeUnlockListeners = () => {
@@ -3003,6 +3107,41 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       void audio.dispose()
     }
   }, [])
+  useEffect(() => {
+    const cursor = turnAlertCursor.current
+    if (cursor.sessionCode !== state.sessionCode) {
+      cursor.sessionCode = state.sessionCode
+      cursor.actorId = alertTurnActorId
+      document.title = normalDocumentTitle.current
+      return
+    }
+    if (cursor.actorId === alertTurnActorId) return
+    cursor.actorId = alertTurnActorId
+    if (!alertCombatActive || !accessibleHeroIds.includes(alertTurnActorId)) {
+      if (document.hidden) document.title = normalDocumentTitle.current
+      return
+    }
+    if (!document.hidden) return
+
+    document.title = `⚔ Твой ход — ${alertActorName}`
+    // Web Audio мог остаться заблокированным, если игрок ещё не взаимодействовал
+    // со страницей. playEffect в таком случае просто ничего не проигрывает.
+    atmosphereAudioRef.current?.playEffect('level')
+    if (!('Notification' in window) || Notification.permission !== 'granted') return
+    try {
+      const notification = new Notification('Твой ход в «Сказании»', {
+        body: `${alertActorName} может действовать.`,
+        tag: `skazanie-turn:${state.sessionCode}`,
+      })
+      notification.onclick = () => {
+        window.focus()
+        notification.close()
+      }
+      window.setTimeout(() => notification.close(), 12_000)
+    } catch {
+      // Заголовок и звук остаются корректным fallback даже при сбое API ОС.
+    }
+  }, [accessibleHeroIds, alertActorName, alertCombatActive, alertTurnActorId, state.sessionCode])
   useEffect(() => {
     const mood = normalizeAtmosphereMood(sceneTheme, {
       combat: audioCombatActive,
@@ -3100,6 +3239,21 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     const next = atmosphereAudioRef.current?.setMuted(muted)
       ?? saveAtmosphereSettings({ ...atmosphereSettings, muted })
     setAtmosphereSettings(next)
+  }
+  const requestTurnNotifications = async () => {
+    if (!('Notification' in window)) {
+      setNotificationPermission('unsupported')
+      return
+    }
+    if (Notification.permission !== 'default') {
+      setNotificationPermission(Notification.permission)
+      return
+    }
+    try {
+      setNotificationPermission(await Notification.requestPermission())
+    } catch {
+      setNotificationPermission(Notification.permission)
+    }
   }
   const updateTypingPresence = useCallback((actorId: string, typing: boolean) => {
     if (!state.sessionCode || !actorId) return
@@ -3250,6 +3404,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onOperateSceneObject={operateSceneObject}
             onFinishTurn={finishMapTurn}
             onFreeAction={(text) => { void submitAction(text, activePlayer.id) }}
+            onRest={(kind) => { void submitAction(kind === 'long' ? 'Устроить долгий отдых' : 'Устроить короткий отдых', activePlayer.id) }}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
@@ -3274,7 +3429,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} />}
+        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>

@@ -126,3 +126,39 @@ test('карточка броска показывает натуральный 
   assert.equal(save.success, false)
   assert.equal(tacticalUi.battleRollPresentation({ id: 'move', type: 'move' }), null)
 })
+
+test('причины преимущества и помехи берутся только из подтверждённого события атаки', () => {
+  const shown = {
+    id: 'attack', type: 'attack', actorId: 'hero', targetId: 'enemy',
+    roll: { die: 17, modifier: 5, total: 22, difficulty: 15, hit: true },
+  }
+  const advantage = tacticalUi.battleRollContext([{
+    event_type: 'AttackResolved',
+    actor_id: 'hero',
+    target_ids: ['enemy'],
+    payload: {
+      kept: 17, total: 22, dice: [9, 17], mode: 'advantage',
+      condition_advantage: ['target:paralyzed'],
+      high_ground: 'higher',
+    },
+  }], shown)
+  assert.deepEqual(advantage, {
+    mode: 'advantage',
+    dice: [9, 17],
+    advantageReasons: ['цель парализована', 'позиция выше цели'],
+    disadvantageReasons: [],
+  })
+
+  const disadvantage = tacticalUi.battleRollContext([{
+    event_type: 'AttackResolved',
+    actor_id: 'hero',
+    target_ids: ['enemy'],
+    payload: {
+      kept: 4, total: 9, dice: [13, 4], mode: 'disadvantage',
+      condition_disadvantage: ['attacker:poisoned'],
+      long_range: true,
+    },
+  }], { ...shown, roll: { die: 4, modifier: 5, total: 9, difficulty: 15, hit: false } })
+  assert.deepEqual(disadvantage.disadvantageReasons, ['атакующий отравлен', 'дальний диапазон'])
+  assert.equal(tacticalUi.battleRollContext([], shown), null, 'клиент не должен додумывать причину без server event')
+})

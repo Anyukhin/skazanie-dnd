@@ -1,5 +1,5 @@
 import { doorBlocksStep } from './tactical-map-client'
-import type { BattleEvent, GameState, MapCell, MechanicsSupport, TacticalMap } from './types'
+import type { BattleEvent, GameEvent, GameState, MapCell, MechanicsSupport, TacticalMap } from './types'
 
 export const boardPositionKey = (x: number, y: number) => `${x},${y}`
 
@@ -119,6 +119,67 @@ export function battleRollPresentation(event: BattleEvent) {
     difficulty: event.roll.difficulty,
     difficultyLabel: event.type === 'attack' ? 'КД' : 'СЛ',
     success,
+  }
+}
+
+const TARGET_CONDITION_REASONS: Record<string, string> = {
+  blinded: 'цель ослеплена',
+  paralyzed: 'цель парализована',
+  petrified: 'цель окаменела',
+  prone: 'цель сбита с ног',
+  restrained: 'цель опутана',
+  stunned: 'цель оглушена',
+  unconscious: 'цель без сознания',
+}
+
+const ATTACKER_CONDITION_REASONS: Record<string, string> = {
+  blinded: 'атакующий ослеплён',
+  frightened: 'атакующий испуган',
+  poisoned: 'атакующий отравлен',
+  prone: 'атакующий сбит с ног',
+  restrained: 'атакующий опутан',
+}
+
+function conditionRollReason(value: unknown) {
+  const [side, condition] = String(value ?? '').split(':')
+  if (!condition) return ''
+  if (side === 'target') return TARGET_CONDITION_REASONS[condition] ?? `состояние цели: ${condition}`
+  if (side === 'attacker') return ATTACKER_CONDITION_REASONS[condition] ?? `состояние атакующего: ${condition}`
+  return String(value)
+}
+
+/**
+ * Объясняет показанный бросок только полями подтверждённого `AttackResolved`.
+ * Если сервер не прислал происхождение, клиент не достраивает преимущество
+ * самостоятельно из позиций или состояний.
+ */
+export function battleRollContext(events: readonly GameEvent[] | null | undefined, event: BattleEvent) {
+  if (event.type !== 'attack' || !event.roll) return null
+  const resolved = [...(events ?? [])].reverse().find((candidate) => {
+    if (candidate.event_type !== 'AttackResolved') return false
+    const payload = candidate.payload ?? {}
+    const targetId = String(candidate.target_ids?.[0] ?? payload.target_id ?? '')
+    return String(candidate.actor_id ?? '') === String(event.actorId ?? '')
+      && targetId === String(event.targetId ?? '')
+      && Number(payload.total) === Number(event.roll?.total)
+      && Number(payload.kept) === Number(event.roll?.die)
+  })
+  if (!resolved) return null
+  const payload = resolved.payload ?? {}
+  const mode = payload.mode === 'advantage' || payload.mode === 'disadvantage' ? payload.mode : 'normal'
+  const advantageReasons = (Array.isArray(payload.condition_advantage) ? payload.condition_advantage : [])
+    .map(conditionRollReason).filter(Boolean)
+  const disadvantageReasons = (Array.isArray(payload.condition_disadvantage) ? payload.condition_disadvantage : [])
+    .map(conditionRollReason).filter(Boolean)
+  if (payload.pack_tactics === true) advantageReasons.push('тактика стаи')
+  if (payload.high_ground === 'higher') advantageReasons.push('позиция выше цели')
+  if (payload.high_ground === 'lower') disadvantageReasons.push('позиция ниже цели')
+  if (payload.long_range === true) disadvantageReasons.push('дальний диапазон')
+  return {
+    mode,
+    dice: Array.isArray(payload.dice) ? payload.dice.map(Number).filter(Number.isFinite) : [],
+    advantageReasons: [...new Set(advantageReasons)],
+    disadvantageReasons: [...new Set(disadvantageReasons)],
   }
 }
 
