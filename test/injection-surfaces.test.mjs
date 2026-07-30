@@ -51,7 +51,7 @@ test('предыстория героя уходит автору кампани
   assert.ok(campaign)
   assert.ok(client.captured.messages, 'модель должна была быть вызвана')
   const [system, user] = client.captured.messages
-  assert.match(system.content, /PROMPT_ID: campaign_creator\/v2/)
+  assert.match(system.content, /PROMPT_ID: campaign_creator\/v3/)
   assert.match(system.content, /UNTRUSTED_DATA/)
   assertInsideUntrustedData(user.content, INJECTION)
 })
@@ -68,7 +68,7 @@ test('решение партии уходит картографу только
   assert.ok(plan)
   assert.ok(client.captured.messages, 'модель должна была быть вызвана')
   const [system, user] = client.captured.messages
-  assert.match(system.content, /PROMPT_ID: map_architect\/v2/)
+  assert.match(system.content, /PROMPT_ID: map_architect\/v3/)
   assert.match(system.content, /UNTRUSTED_DATA/)
   assertInsideUntrustedData(user.content, INJECTION)
 })
@@ -106,7 +106,7 @@ test('реплика героя уходит NPC-собеседнику толь
 })
 
 test('записанный world fact уходит рассказчику только внутри UNTRUSTED_DATA', async () => {
-  const client = captureClient({ narration: 'Ситуация ожидает решения.', suggestions: [] })
+  const client = captureClient({ narration: 'Ситуация ожидает решения.' })
   const narrator = new Narrator({ llmClient: client })
   await narrator.render({
     visible_events: [],

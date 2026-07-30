@@ -95,7 +95,6 @@ export function answerKnownLore(action, state = {}, options = {}) {
       : `Подтверждённый пункт назначения пока не открыт. Текущая задача: ${objective || 'исследовать обстановку и найти новую зацепку'}. Отряд находится здесь: ${location}. Сначала нужно осмотреть место, поговорить со свидетелями или найти запись, которая откроет конкретный маршрут.`
     return {
       narration,
-      suggestions: hasNamedDestination ? [`Следовать задаче: ${objective}`.slice(0, 120), 'Уточнить безопасный маршрут'] : ['Осмотреть место в поисках зацепки', 'Расспросить свидетеля о маршруте'],
       effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
       provider: 'AgentWorldkeeper',
       agent_context: { campaign_premise: campaignPremise },
@@ -123,7 +122,6 @@ export function answerKnownLore(action, state = {}, options = {}) {
     : 'В общей памяти отряда пока нет подтверждённых сведений об этом. Герой может расспросить свидетеля, изучить записи или исследовать место — сам вопрос не расходует ход.'
   return {
     narration,
-    suggestions: ['Уточнить, откуда это известно', 'Поискать записи или свидетеля'],
     effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
     provider: 'AgentWorldkeeper',
     agent_context: { campaign_premise: campaignPremise },
@@ -141,7 +139,7 @@ function resolvePartyDecisionLegacy(action, state = {}) {
   const selected = Array.isArray(card.options) ? card.options.find((item) => item?.id === card.resolvedOptionId)?.label : ''
   const decision = String(selected || text)
   if (!/(?:\u043F\u043E\u043A\u0438\u043D\u0443\u0442\u044C|\u0443\u0439\u0442\u0438|\u0438\u0434[\u0451\u0435]\u0442\s+\u0434\u0430\u043B\u044C\u0448\u0435|\u0432\u044B\u0431\u0440\u0430\u0442\u044C\u0441\u044F)/iu.test(decision)) {
-    return { type: 'narration', narration: '\u0413\u0440\u0443\u043F\u043F\u0430 \u043F\u0440\u0438\u043D\u044F\u043B\u0430 \u0440\u0435\u0448\u0435\u043D\u0438\u0435: ' + decision + '.', suggestions: ['\u0418\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u044C \u0434\u0430\u043B\u044C\u0448\u0435', '\u041E\u0431\u0441\u0443\u0434\u0438\u0442\u044C \u043D\u043E\u0432\u044B\u0439 \u043F\u043B\u0430\u043D'] }
+    return { type: 'narration', narration: '\u0413\u0440\u0443\u043F\u043F\u0430 \u043F\u0440\u0438\u043D\u044F\u043B\u0430 \u0440\u0435\u0448\u0435\u043D\u0438\u0435: ' + decision + '.' }
   }
   const from = String(state.scene?.location || state.scene?.title || '\u043F\u043E\u0434\u0437\u0435\u043C\u0435\u043B\u044C\u044F')
   const chapter = Math.max(1, Number(state.adventure?.chapter) || 1) + 1
@@ -167,12 +165,10 @@ export function resolvePartyDecision(action, state = {}) {
     return {
       type: 'narration',
       narration: `Остаться в текущей локации — решение группы. Конкретное направление исследования: ${direction}.`,
-      suggestions: [`Проверить: ${direction}`.slice(0, 100), 'Осмотреть ближайший неисследованный проход'],
     }
   }
   return {
     type: 'narration',
     narration: `Группа приняла решение: ${interpretation.decision}.`,
-    suggestions: ['Выполнить выбранный план', 'Уточнить первый совместный шаг'],
   }
 }

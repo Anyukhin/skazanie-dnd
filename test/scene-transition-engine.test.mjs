@@ -129,7 +129,6 @@ function sceneArgs() {
     outcome: 'Склеп остался позади.',
     objective_status: 'unresolved',
     carry_unresolved: true,
-    suggestions: ['Осмотреть ворота', 'Расспросить стражу', 'Найти рынок'],
     map: { layout: 'streets', width: 7, height: 7, openness: 0.68, water: 0, featureCount: 4 },
   }
 }
@@ -241,7 +240,7 @@ test('AdvanceScene детерминированно коммитит канон�
   for (const marker of PRIVATE_SECRET_MARKERS) assert.equal(serializedEvent.includes(marker), false)
   assert.equal(event.payload.transition, canonical.transition)
   assert.equal(event.payload.arrival, canonical.arrival)
-  assert.deepEqual(event.payload.suggestions, canonical.suggestions)
+  assert.equal(Object.hasOwn(event.payload, 'suggestions'), false)
   assert.equal(event.payload.theme, 'городские улицы')
   assert.equal(event.payload.danger, 'низкая')
   assert.equal(event.payload.scene_kind, 'settlement')
@@ -289,7 +288,7 @@ test('SceneAdvanced reducer очищает старую сцену, размещ
   assert.equal(next.tacticalTurn, undefined)
   assert.equal(next.agentInteraction, null)
   const sceneAdvanced = result.events.find((event) => event.event_type === 'SceneAdvanced')
-  assert.deepEqual(next.suggestions, sceneAdvanced.payload.suggestions)
+  assert.equal(Object.hasOwn(next, 'suggestions'), false)
 
   const expectedPositions = new Map(sceneAdvanced.payload.party_positions.map((position) => [position.actor_id, { x: position.x, y: position.y }]))
   assert.deepEqual(next.mechanics.positions, Object.fromEntries(expectedPositions))

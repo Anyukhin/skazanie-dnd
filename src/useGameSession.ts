@@ -231,7 +231,6 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
       adventure: authoritative.adventure,
       worldMap: authoritative.worldMap,
       entities: authoritative.entities,
-      suggestions: authoritative.suggestions ?? current.suggestions,
       agentInteraction: authoritative.agentInteraction ?? null,
       activePlayerId: authoritative.activePlayerId ?? current.activePlayerId,
       tacticalTurn: authoritative.tacticalTurn,
@@ -551,7 +550,6 @@ export function useGameSession() {
       pendingCheck: null,
       activePlayerId: base.activePlayerId,
       messages: narrationPersisted ? base.messages : [...base.messages, narratorMessage],
-      suggestions: aiResult?.suggestions?.length ? aiResult.suggestions : base.suggestions,
     }
   }, [])
 

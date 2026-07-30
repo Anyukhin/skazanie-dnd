@@ -4,10 +4,10 @@ import { serverEncounterLoot } from './loot-tables.mjs'
 export const SCENE_INTERACTION_POLICY_ID = 'skazanie:scene-interactions-v1'
 
 const CATALOG = Object.freeze([
-  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'barrel_stack', 'crate', 'crate_stack', 'sarcophagus', 'urn', 'crypt_niche']), verbs: Object.freeze(['inspect', 'open', 'take']) }),
+  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'crate', 'sarcophagus', 'urn', 'crypt_niche']), verbs: Object.freeze(['inspect', 'open', 'take']) }),
   Object.freeze({ kind: 'relic', aliases: Object.freeze(['altar', 'rune', 'statue', 'roadside_shrine']), verbs: Object.freeze(['inspect', 'use']) }),
   Object.freeze({ kind: 'campfire', aliases: Object.freeze(['campfire']), verbs: Object.freeze(['inspect', 'use']) }),
-  Object.freeze({ kind: 'lore', aliases: Object.freeze(['bookshelf', 'table', 'table_round', 'table_long', 'table_small', 'fallen_log', 'rubble_heap', 'milestone']), verbs: Object.freeze(['inspect']) }),
+  Object.freeze({ kind: 'lore', aliases: Object.freeze(['bookshelf', 'table', 'fallen_log', 'tree_stump', 'boulder', 'rubble_heap', 'milestone']), verbs: Object.freeze(['inspect']) }),
   Object.freeze({ kind: 'corpse', aliases: Object.freeze(['bones', 'bone_pile', 'grave', 'corpse']), verbs: Object.freeze(['inspect', 'take']) }),
 ])
 
@@ -50,6 +50,8 @@ const ASSET_ALIASES_RU = Object.freeze({
   bookshelf: Object.freeze(['полка', 'полку', 'шкаф', 'книги']),
   table: Object.freeze(['стол', 'стола', 'столе']),
   fallen_log: Object.freeze(['бревно', 'бревна', 'бревне']),
+  tree_stump: Object.freeze(['пень', 'пня', 'пне']),
+  boulder: Object.freeze(['валун', 'валуна', 'валуне', 'камень', 'камня', 'камне']),
   rubble_heap: Object.freeze(['завал', 'завала', 'завале', 'обломки']),
   milestone: Object.freeze(['верстовой столб', 'указатель', 'указателя']),
   bones: Object.freeze(['кости', 'останки', 'скелет']),
@@ -59,6 +61,17 @@ const ASSET_ALIASES_RU = Object.freeze({
 })
 
 const FALLBACK_ASSETS = Object.freeze(['chest', 'altar', 'campfire', 'bookshelf', 'bone_pile'])
+const ASSET_ALIAS_MATCHERS = Object.freeze(
+  CATALOG.flatMap((entry) => entry.aliases)
+    .sort((left, right) => right.length - left.length)
+    .map((alias) => {
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return Object.freeze({
+        alias,
+        pattern: new RegExp(`(?:^|[\\/_-])${escaped}(?:$|[\\/_-])`, 'u'),
+      })
+    }),
+)
 
 export function sceneInteractionFallbackAssets() {
   return [...FALLBACK_ASSETS]
@@ -78,12 +91,7 @@ function hashNumber(value) {
 
 function assetAlias(assetId) {
   const value = clean(assetId, 120).toLowerCase()
-  return CATALOG.flatMap((entry) => entry.aliases)
-    .sort((left, right) => right.length - left.length)
-    .find((alias) => {
-      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      return new RegExp(`(?:^|[\\/_-])${escaped}(?:$|[\\/_-])`, 'u').test(value)
-    }) ?? null
+  return ASSET_ALIAS_MATCHERS.find(({ pattern }) => pattern.test(value))?.alias ?? null
 }
 
 export function sceneInteractionCatalogEntry(assetId) {
@@ -132,7 +140,25 @@ export function sceneInteractionMetadata({ mapSeed = '', props = [] } = {}) {
   const desired = supported.length
     ? Math.min(supported.length, 2 + (hashNumber(`${clean(mapSeed)}:poi-count`) % 3))
     : 0
-  const selected = new Set(supported.slice(0, desired).map(({ prop }) => clean(prop.id, 120)))
+  const diverse = []
+  const selectedAssets = new Set()
+  for (const candidate of supported) {
+    const assetId = clean(candidate.prop.assetId, 120)
+    if (selectedAssets.has(assetId)) continue
+    diverse.push(candidate)
+    selectedAssets.add(assetId)
+    if (diverse.length >= desired) break
+  }
+  const selectedEntries = [...diverse]
+  const selectedIds = new Set(selectedEntries.map(({ prop }) => clean(prop.id, 120)))
+  for (const candidate of supported) {
+    if (selectedEntries.length >= desired) break
+    const propId = clean(candidate.prop.id, 120)
+    if (selectedIds.has(propId)) continue
+    selectedEntries.push(candidate)
+    selectedIds.add(propId)
+  }
+  const selected = new Set(selectedEntries.map(({ prop }) => clean(prop.id, 120)))
   return new Map(supported.map(({ prop }) => [
     clean(prop.id, 120),
     interactionMetadataForProp({ mapSeed, prop, pointOfInterest: selected.has(clean(prop.id, 120)) }),

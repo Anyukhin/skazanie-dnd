@@ -3131,18 +3131,6 @@ export function drawBoardOverlay(context: BoardContext2D, scene: BoardScene, cel
 
 // --- печатные оверлеи карты ---------------------------------------------
 
-/** Буквенная координата столбца: 0 → A, 25 → Z, 26 → AA. */
-export function coordinateColumnLabel(index: number) {
-  let value = Math.max(0, Math.floor(index)) + 1
-  let label = ''
-  while (value > 0) {
-    value -= 1
-    label = String.fromCharCode(65 + (value % 26)) + label
-    value = Math.floor(value / 26)
-  }
-  return label
-}
-
 export type RoomLabelPlacement = { zoneId: string; label: string; x: number; y: number; revealedCells: number }
 
 type ZoneBounds = { minX: number; minY: number; maxX: number; maxY: number; revealedCells: number }
@@ -3197,46 +3185,6 @@ export function revealedRoomLabelPlacements(map: TacticalMap): RoomLabelPlacemen
   }
   roomLabelCache.set(map, placements)
   return placements
-}
-
-function drawCoordinateFrame(context: BoardContext2D, scene: BoardScene) {
-  const { map, cellSize: size } = scene
-  const width = map.width * size
-  const height = map.height * size
-  const fontSize = Math.max(7, Math.min(13, size * 0.28))
-  const columnStep = Math.max(1, Math.ceil(fontSize * 1.6 / Math.max(1, size)))
-  const rowStep = Math.max(1, Math.ceil(fontSize * 2.2 / Math.max(1, size)))
-  const badge = 'rgba(232,214,174,.78)'
-  const ink = '#30271d'
-  context.save()
-  context.strokeStyle = 'rgba(48,39,29,.82)'
-  context.lineWidth = Math.max(1, size / 16)
-  context.strokeRect(0.5, 0.5, Math.max(0, width - 1), Math.max(0, height - 1))
-  context.font = `700 ${fontSize}px Manrope, sans-serif`
-  context.textAlign = 'center'
-  context.textBaseline = 'middle'
-  for (let x = 0; x < map.width; x += columnStep) {
-    const centerX = (x + 0.5) * size
-    const label = coordinateColumnLabel(x)
-    context.fillStyle = badge
-    context.fillRect(centerX - size * 0.24, 0, size * 0.48, fontSize * 1.18)
-    context.fillRect(centerX - size * 0.24, height - fontSize * 1.18, size * 0.48, fontSize * 1.18)
-    context.fillStyle = ink
-    context.fillText(label, centerX, fontSize * 0.55)
-    context.fillText(label, centerX, height - fontSize * 0.55)
-  }
-  for (let y = 0; y < map.height; y += rowStep) {
-    const centerY = (y + 0.5) * size
-    const label = String(y + 1)
-    const badgeWidth = Math.max(size * 0.48, fontSize * (label.length * 0.62 + 0.5))
-    context.fillStyle = badge
-    context.fillRect(0, centerY - fontSize * 0.59, badgeWidth, fontSize * 1.18)
-    context.fillRect(width - badgeWidth, centerY - fontSize * 0.59, badgeWidth, fontSize * 1.18)
-    context.fillStyle = ink
-    context.fillText(label, badgeWidth / 2, centerY)
-    context.fillText(label, width - badgeWidth / 2, centerY)
-  }
-  context.restore()
 }
 
 function drawCompass(context: BoardContext2D, scene: BoardScene) {

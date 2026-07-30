@@ -741,7 +741,6 @@ export function npcConversationNarration(events = [], state = {}) {
   return {
     narration: checkSummary + conversation.npc_reply,
     ...(npcName ? { journal_author: npcName } : {}),
-    suggestions: ['Продолжить разговор', 'Уточнить, откуда NPC это знает'],
     provider: 'NpcSocialController',
     prompt_version: 'npc_controller/social-v3',
     verification: { valid: true, violations: [] },

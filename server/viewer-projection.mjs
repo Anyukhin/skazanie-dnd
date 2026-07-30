@@ -554,7 +554,7 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   'campaignConcept', 'state_version', 'ruleset_id', 'ruleset_version',
   'enabled_rule_packs', 'enabled_house_rules', 'ruleset_locked_at', 'engine_mode',
   'players', 'entities', 'mapFeedback', 'rulings', 'activePlayerId', 'tacticalTurn',
-  'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll', 'suggestions',
+  'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll',
   'actors', 'economyLog', 'state_projector_version', 'presence', 'locationMaps',
 ])
 
@@ -753,7 +753,6 @@ export function sceneTransitionForViewer(transition) {
     worldMap: publicWorldMapFor(transition.worldMap),
     transition: text(transition.transition, 2_000),
     arrival: text(transition.arrival, 2_000),
-    suggestions: (Array.isArray(transition.suggestions) ? transition.suggestions : []).map((entry) => text(entry, 200)).filter(Boolean).slice(0, 3),
     entrance: {
       x: integer(transition.entrance?.x),
       y: integer(transition.entrance?.y),

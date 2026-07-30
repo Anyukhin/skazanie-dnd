@@ -165,6 +165,7 @@ export type BoardCellNode = {
   onActivate?: () => void
   onPointerEnter?: () => void
   onPointerLeave?: () => void
+  hotspot?: React.ReactNode
   children?: React.ReactNode
 }
 
@@ -868,6 +869,23 @@ export function TacticalBoard({
               title={hoverHint.title}
             />
           )}
+        </div>
+        <div
+          className="board-hotspots"
+          style={{
+            gridTemplateColumns: `repeat(${columns}, var(--cell))`,
+            gridTemplateRows: `repeat(${rows}, var(--cell))`,
+          }}
+        >
+          {cells.filter((node) => node.hotspot).map((node) => (
+            <div
+              key={`hotspot-${node.x}-${node.y}`}
+              className="board-hotspot-cell"
+              style={{ gridColumn: node.x + 1, gridRow: node.y + 1 }}
+            >
+              {node.hotspot}
+            </div>
+          ))}
         </div>
         <canvas ref={effectsCanvasRef} className="board-effects-canvas" aria-hidden="true" />
         {activeAnimation && (

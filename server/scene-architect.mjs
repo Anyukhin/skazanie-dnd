@@ -6,7 +6,7 @@ import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commer
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v2.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v3.txt', import.meta.url)), 'utf8')
 
 function clean(value, maximum = 240) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -136,7 +136,6 @@ function fallbackPlan({ action, state, decision, destinationHint }) {
     outcome: `Отряд покинул «${from}», не закрыв прежнюю сюжетную нить.`,
     objective_status: 'unresolved',
     carry_unresolved: true,
-    suggestions: map.theme === 'городские улицы' ? ['Расспросить горожан', 'Найти архив или храм', 'Осмотреть городские ворота'] : ['Осмотреться', 'Проверить ближайший путь', 'Обсудить следующий шаг'],
     map: { layout: map.layout, scale: map.scale, pattern: map.pattern, material: map.material, width: map.width, height: map.height, openness: map.openness, water: map.water, featureCount: map.featureCount },
   }
 }
@@ -162,7 +161,6 @@ function normalizePlan(value, fallback) {
     outcome: clean(source.outcome, 240) || fallback.outcome,
     objective_status: objectiveStatus.has(source.objective_status) ? source.objective_status : fallback.objective_status,
     carry_unresolved: source.carry_unresolved !== false,
-    suggestions: (Array.isArray(source.suggestions) ? source.suggestions : fallback.suggestions).map((item) => clean(item, 100)).filter(Boolean).slice(0, 3),
     map: {
       layout: layouts.has(mapSource.layout) ? mapSource.layout : fallback.map.layout,
       scale,

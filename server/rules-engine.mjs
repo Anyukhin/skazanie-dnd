@@ -334,7 +334,7 @@ const ENCOUNTER_LIFECYCLE_COMMAND_TYPES = new Set(['CreateEncounter'])
 
 const SCENE_ADVANCE_FIELDS = new Set([
   'title', 'location', 'location_id', 'mood', 'objective', 'transition', 'arrival', 'hook', 'theme', 'danger', 'seed',
-  'completed_objective', 'objective_status', 'outcome', 'carry_unresolved', 'suggestions', 'map',
+  'completed_objective', 'objective_status', 'outcome', 'carry_unresolved', 'map',
   'scene_kind', 'settlement_type',
 ])
 
@@ -982,9 +982,11 @@ function normalizeSceneInteractions(input) {
       state: String(value.state ?? 'idle').slice(0, 40),
       inspected: value.inspected === true,
       inspection_attempted: value.inspection_attempted === true || value.inspected === true,
+      inspection_attempted_by: uniqueStrings(value.inspection_attempted_by).slice(0, 120),
       opened: value.opened === true,
       taken: value.taken === true,
       used: value.used === true,
+      used_by: uniqueStrings(value.used_by).slice(0, 120),
       loot_claimed: value.loot_claimed === true,
       loot_revealed: value.loot_revealed === true,
       trap_detected: value.trap_detected === true,
@@ -1456,18 +1458,35 @@ function setSceneObjectPropState(state, propId, propState) {
 function sceneObjectState(state, prop, definition) {
   const saved = state.mechanics.scene_interactions?.[String(prop.id)]
   const projectedState = ['open', 'taken', 'used'].includes(String(prop.state)) ? String(prop.state) : ''
-  return saved ?? {
+  const base = {
     state: String(projectedState || definition.initialState || 'idle').slice(0, 40),
     inspected: false,
     inspection_attempted: false,
+    inspection_attempted_by: [],
     opened: projectedState === 'open',
     taken: projectedState === 'taken',
     used: projectedState === 'used',
+    used_by: [],
     loot_claimed: projectedState === 'taken',
     loot_revealed: projectedState === 'open' || projectedState === 'taken',
     trap_detected: false,
     knowledge_ids: [],
     last_actor_id: null,
+  }
+  if (!saved) return base
+  const lastActorId = String(saved.last_actor_id ?? '').slice(0, 120)
+  const attemptedBy = uniqueStrings(saved.inspection_attempted_by)
+  const usedBy = uniqueStrings(saved.used_by)
+  return {
+    ...base,
+    ...saved,
+    inspection_attempted_by: attemptedBy.length
+      ? attemptedBy
+      : saved.inspection_attempted && lastActorId ? [lastActorId] : [],
+    used_by: usedBy.length
+      ? usedBy
+      : definition.kind === 'campfire' && saved.used && lastActorId ? [lastActorId] : [],
+    knowledge_ids: uniqueStrings(saved.knowledge_ids),
   }
 }
 
@@ -1478,16 +1497,23 @@ function updateSceneObjectInteraction(state, propId, updater) {
     state: 'idle',
     inspected: false,
     inspection_attempted: false,
+    inspection_attempted_by: [],
     opened: false,
     taken: false,
     used: false,
+    used_by: [],
     loot_claimed: false,
     loot_revealed: false,
     trap_detected: false,
     knowledge_ids: [],
     last_actor_id: null,
   }
-  const next = updater({ ...current, knowledge_ids: [...(current.knowledge_ids ?? [])] })
+  const next = updater({
+    ...current,
+    inspection_attempted_by: uniqueStrings(current.inspection_attempted_by),
+    used_by: uniqueStrings(current.used_by),
+    knowledge_ids: uniqueStrings(current.knowledge_ids),
+  })
   state.mechanics.scene_interactions[id] = next
   return next
 }
@@ -7362,8 +7388,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, []))
 
       if (command.intent === 'inspect') {
-        if (interaction.inspection_attempted || interaction.inspected) {
-          throw new RulesValidationError('Этот объект уже осмотрен', 'SCENE_OBJECT_ALREADY_INSPECTED')
+        const attemptedByActor = interaction.inspection_attempted_by.includes(command.actor_id)
+          || (interaction.inspection_attempted && !interaction.inspection_attempted_by.length)
+        if (attemptedByActor) {
+          throw new RulesValidationError('Этот герой уже осматривал объект', 'SCENE_OBJECT_ALREADY_INSPECTED')
         }
         operated()
         let success = true
@@ -7464,7 +7492,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
 
       if (definition.kind === 'campfire') {
-        if (interaction.used) throw new RulesValidationError('Этот костёр уже использован для привала', 'SCENE_OBJECT_ALREADY_USED')
+        const usedByActor = interaction.used_by.includes(command.actor_id)
+          || (interaction.used && !interaction.used_by.length)
+        if (usedByActor) throw new RulesValidationError('Этот герой уже отдыхал у костра', 'SCENE_OBJECT_ALREADY_USED')
         if (state.mechanics.resting[command.actor_id]) throw new RulesValidationError('Герой уже отдыхает', 'REST_ALREADY_STARTED')
         operated()
         events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'RestStarted', {
@@ -7473,9 +7503,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'RestCompleted', {
           kind: 'short', source_prop_id: prop.id,
         }, [command.actor_id]))
-        events.push(eventFrom(command, 'SceneObjectStateChanged', {
-          prop_id: prop.id, state: 'used', previous_state: interaction.state, success: true,
-        }, []))
+        events.push(eventFrom(command, 'SceneObjectUseRecorded', {
+          prop_id: prop.id,
+          kind: definition.kind,
+          policy_id: SCENE_INTERACTION_POLICY_ID,
+        }, [command.actor_id]))
         break
       }
 
@@ -8742,7 +8774,7 @@ export function applyGameEvent(rawState, event) {
       state.mapFeedback = []
       delete state.tacticalTurn
       if (state.agentInteraction?.status === 'resolved') state.agentInteraction = null
-      state.suggestions = Array.isArray(payload.suggestions) ? payload.suggestions.map(String).slice(0, 3) : []
+      delete state.suggestions
       if (!partyIds.has(String(state.activePlayerId ?? ''))) state.activePlayerId = state.partyMemberIds[0] ?? ''
       break
     }
@@ -9823,8 +9855,19 @@ export function applyGameEvent(rawState, event) {
       updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
         ...current,
         inspection_attempted: true,
+        inspection_attempted_by: uniqueStrings([
+          ...(current.inspection_attempted_by ?? []),
+          event.actor_id,
+        ]),
         inspected: current.inspected || payload.success === true,
         trap_detected: current.trap_detected || payload.trap_detected === true,
+        last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+      }))
+      break
+    case 'SceneObjectUseRecorded':
+      updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
+        ...current,
+        used_by: uniqueStrings([...(current.used_by ?? []), event.actor_id]),
         last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
       }))
       break
@@ -10063,6 +10106,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'SceneObjectOperated': return `${named(event.actor_id) || 'Герой'} взаимодействует с объектом ${payload.prop_id}: ${payload.intent}`
     case 'SceneObjectCheckResolved': return `${named(event.actor_id) || 'Герой'} проверяет объект ${payload.prop_id}: ${payload.success ? 'успех' : 'неудача'} (${payload.total}/${payload.difficulty})`
     case 'SceneObjectInspected': return `${named(event.actor_id) || 'Герой'} осматривает объект ${payload.prop_id}`
+    case 'SceneObjectUseRecorded': return `${named(event.actor_id) || 'Герой'} использует объект ${payload.prop_id}`
     case 'SceneObjectKnowledgeRevealed': return String(payload.text || `Открыта деталь объекта ${payload.prop_id}`)
     case 'SceneObjectStateChanged': return payload.success === false
       ? `Состояние объекта ${payload.prop_id} не изменилось`

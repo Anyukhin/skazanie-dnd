@@ -529,9 +529,6 @@ test('печатные оверлеи не рисуют координаты, н
     ],
   }
   const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
-  assert.equal(render.coordinateColumnLabel(0), 'A')
-  assert.equal(render.coordinateColumnLabel(25), 'Z')
-  assert.equal(render.coordinateColumnLabel(26), 'AA')
   assert.deepEqual(
     render.revealedRoomLabelPlacements(scene.map).map((entry) => entry.label),
     ['Общий зал'],

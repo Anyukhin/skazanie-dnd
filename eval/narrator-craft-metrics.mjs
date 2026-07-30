@@ -31,10 +31,6 @@ export const NARRATOR_CRAFT_THRESHOLDS = Object.freeze({
   cliche_max_occurrences: 0,
   memory_min_pct: 90,
   voice_distinct_min_pct: 80,
-  suggestion_specific_min_pct: 90,
-  forward_coverage_min_pct: 100,
-  personal_coverage_min_pct: 100,
-  bounded_min_pct: 100,
 })
 
 function normalized(value) {
@@ -210,10 +206,6 @@ export function measureNarratorCraft(samples = []) {
     cliches: metrics.cliches.occurrences <= NARRATOR_CRAFT_THRESHOLDS.cliche_max_occurrences,
     memory: metrics.memory.recall_pct >= NARRATOR_CRAFT_THRESHOLDS.memory_min_pct,
     voices: metrics.voices.distinct_pct >= NARRATOR_CRAFT_THRESHOLDS.voice_distinct_min_pct,
-    suggestion_specific: metrics.suggestions.specific_pct >= NARRATOR_CRAFT_THRESHOLDS.suggestion_specific_min_pct,
-    forward_coverage: metrics.suggestions.forward_coverage_pct >= NARRATOR_CRAFT_THRESHOLDS.forward_coverage_min_pct,
-    personal_coverage: metrics.suggestions.personal_coverage_pct >= NARRATOR_CRAFT_THRESHOLDS.personal_coverage_min_pct,
-    bounded: metrics.suggestions.bounded_pct >= NARRATOR_CRAFT_THRESHOLDS.bounded_min_pct,
   }
   return {
     ...metrics,

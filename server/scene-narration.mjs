@@ -5,13 +5,6 @@ export function hasSceneEvent(events) {
   return (Array.isArray(events) ? events : []).some((event) => event?.event_type === 'SceneAdvanced')
 }
 
-export function sceneSuggestions(events) {
-  const event = [...(Array.isArray(events) ? events : [])].reverse()
-    .find((candidate) => candidate?.event_type === 'SceneAdvanced')
-  return (Array.isArray(event?.payload?.suggestions) ? event.payload.suggestions : [])
-    .map((suggestion) => clean(suggestion, 120)).filter(Boolean).slice(0, 3)
-}
-
 /** Narrates only facts already committed in SceneAdvanced/merchant events. */
 export function sceneNarration(events, state) {
   const event = [...(Array.isArray(events) ? events : [])].reverse()
@@ -33,6 +26,5 @@ export const sceneNarrator = registerDeterministicNarrator({
   provider: 'deterministic-scene',
   matches: hasSceneEvent,
   narrate: sceneNarration,
-  suggestions: sceneSuggestions,
 })
 

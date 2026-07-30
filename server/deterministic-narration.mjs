@@ -19,7 +19,6 @@
  * @property {number} priority               меньше — раньше; см. ниже
  * @property {(events: any[]) => boolean} matches   его ли это события
  * @property {(events: any[], state: any) => string | null} narrate
- * @property {((events: any[]) => string[]) | undefined} [suggestions]
  *
  * Все рассказчики здесь **не обращаются к модели**: текст собирается из уже
  * закоммиченных событий. Это и есть их назначение — там, где механика уже
@@ -70,9 +69,6 @@ export function assertNarratorContract(narrator) {
   for (const method of ['matches', 'narrate']) {
     if (typeof narrator[method] !== 'function') throw new TypeError(`${label}: метод ${method} обязателен`)
   }
-  if (narrator.suggestions != null && typeof narrator.suggestions !== 'function') {
-    throw new TypeError(`${label}: suggestions, если объявлен, обязан быть функцией`)
-  }
   return narrator
 }
 
@@ -87,11 +83,10 @@ export function deterministicNarratorFor(events) {
  * подставляется, когда рассказчик узнал события, но текста не собрал: молчание
  * игроку не показывают.
  */
-export function renderDeterministicNarration(narrator, { events, state, fallbackNarration = '', suggestions = null } = {}) {
+export function renderDeterministicNarration(narrator, { events, state, fallbackNarration = '' } = {}) {
   const narration = narrator.narrate(events, state) ?? fallbackNarration
   return {
     narration,
-    suggestions: suggestions ?? (narrator.suggestions ? narrator.suggestions(events) : []),
     prompt_version: narrator.promptVersion,
     provider: narrator.provider,
   }

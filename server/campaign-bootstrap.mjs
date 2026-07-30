@@ -11,7 +11,7 @@ import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v2.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v3.txt', import.meta.url)), 'utf8')
 
 /**
  * Создание кампании — не ход. Оно просит у модели на порядок больше текста
@@ -163,7 +163,6 @@ function fallbackOpening({ name, partyName, world, heroes, entropy }) {
       goals: ['Защитить путников', 'Понять источник угрозы'],
       beliefs: ['Обещания важнее красивых слов'],
     }],
-    suggestions: ['Осмотреть место встречи', 'Поговорить с очевидцами', 'Сопоставить истории героев'],
   }
 }
 
@@ -229,7 +228,6 @@ function normalizeOpening(input, fallback) {
     },
     hook: clean(source.hook, 500) || fallback.hook,
     npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs),
-    suggestions: (Array.isArray(source.suggestions) ? source.suggestions : fallback.suggestions).map((item) => clean(item, 120)).filter(Boolean).slice(0, 3),
   }
 }
 
@@ -262,7 +260,7 @@ export class CampaignBootstrapper {
             // Вводные владельца и листы героев — свободный текст игроков. Они
             // уходят только внутри UNTRUSTED_DATA: предыстория героя не должна
             // уметь командовать автором кампании.
-            { role: 'user', content: buildDataOnlyContext({ campaign_setup: { campaign: campaignName, party: groupName, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) } }) },
+            { role: 'user', content: buildDataOnlyContext({ campaign_setup: { campaign: campaignName, party: groupName, party_size: heroes.length, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) } }) },
           ],
           temperature: 0.8,
           maxTokens: 3200,
@@ -370,7 +368,6 @@ export class CampaignBootstrapper {
       activePlayerId: positionedHeroes[0].id,
       tacticalTurn: { sceneTurn: 1, actorId: positionedHeroes[0].id, movementSpent: 0, actionUsed: false },
       isNarrating: false, pendingCheck: null, agentInteraction: null, lastDiceRoll: null,
-      suggestions: opening.suggestions,
       scene: { title: opening.scene.title, location: opening.scene.location, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells },
       adventure: { chapter: 1, currentHook: opening.hook, visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [] },
       messages: [{ id: `opening-${seed}`, speaker: 'narrator', author: 'Рассказчик', timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()), text: opening.openingNarration, turnConsumed: false }],

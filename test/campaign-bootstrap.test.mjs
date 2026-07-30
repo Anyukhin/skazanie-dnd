@@ -102,8 +102,10 @@ test('рассказчик получает вводные владельца и
   })
 
   const requestContext = untrustedPayload(llm.requests[0].messages[1].content, 'campaign_setup')
+  assert.equal(requestContext.party_size, 1)
   assert.equal(requestContext.heroes[0].backstory, hero.backstory)
   assert.equal(requestContext.world.premise, 'Первый контакт')
+  assert.match(llm.requests[0].messages[0].content, /campaign_setup\.party_size — точное число выбранных героев/u)
   assert.equal(state.campaignConcept.generatedBy, 'ai-storyteller')
   assert.equal(state.scene.title, 'Позывной из тишины')
   assert.match(state.messages[0].text, /корабля брата/iu)

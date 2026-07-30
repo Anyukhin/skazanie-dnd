@@ -1208,7 +1208,6 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
     worldMap: sceneEvent.payload.worldMap,
     transition: sceneEvent.payload.transition,
     arrival: sceneEvent.payload.arrival,
-    suggestions: sceneEvent.payload.suggestions ?? [],
     entrance: sceneEvent.payload.entrance,
   } : directorPlan.transition
   const merchantEvent = (result.mechanics ?? []).find((event) => event.event_type === 'MerchantCreated')
@@ -1216,7 +1215,6 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
   return {
     ...result,
     effects: { ...result.effects, scene: committedTransition },
-    suggestions: committedTransition.suggestions ?? result.suggestions ?? [],
     turn_consumed: true,
     action_kind: 'world',
     director_transition: {
@@ -1256,7 +1254,6 @@ async function replayDirectorSceneTransition({ campaignId, room, user, action, i
     worldMap: sceneEvent.payload.worldMap,
     transition: sceneEvent.payload.transition,
     arrival: sceneEvent.payload.arrival,
-    suggestions: sceneEvent.payload.suggestions ?? [],
     entrance: sceneEvent.payload.entrance,
   }
   const commerce = sceneEvent.payload.scene_commerce ?? {}
@@ -1264,7 +1261,6 @@ async function replayDirectorSceneTransition({ campaignId, room, user, action, i
   return {
     ...result,
     effects: { ...result.effects, scene: committedTransition },
-    suggestions: committedTransition.suggestions ?? result.suggestions ?? [],
     turn_consumed: true,
     action_kind: 'world',
     model: 'event-replay',
@@ -1390,7 +1386,6 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       ...(sceneChanged ? {
         adventure: engineState.adventure,
         worldMap: engineState.worldMap,
-        suggestions: engineState.suggestions ?? room.state.suggestions,
       } : {}),
       ...(sceneChanged || partyDecisionChanged ? { agentInteraction: engineState.agentInteraction ?? null } : {}),
       activePlayerId: engineState.activePlayerId ?? room.state.activePlayerId,
@@ -1984,7 +1979,7 @@ const server = createServer(async (req, res) => {
       const state = normalizeCampaignState(generatedState ?? body.state ?? {
         sessionCode: code,
         campaign: String(body.name || 'Новая кампания').slice(0, 120),
-        players: [], messages: [], activePlayerId: '', isNarrating: false, pendingCheck: null, suggestions: [],
+        players: [], messages: [], activePlayerId: '', isNarrating: false, pendingCheck: null,
         scene: { title: 'Начало', location: '', mood: '', objective: '', turn: 0, cells: [] },
       })
       state.sessionCode = code
@@ -2939,7 +2934,6 @@ const server = createServer(async (req, res) => {
       } else if (directorResolution?.type === 'narration') {
         result = {
           narration: directorResolution.narration,
-          suggestions: directorResolution.suggestions ?? [],
           effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
           provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
           state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
@@ -2949,7 +2943,7 @@ const server = createServer(async (req, res) => {
         executeTool('request_party_decision', directorInteraction, effects, trustedState)
         result = {
           narration: effects.interaction.description,
-          suggestions: [], effects,
+          effects,
           provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
           state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
         }

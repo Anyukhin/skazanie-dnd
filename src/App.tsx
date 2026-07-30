@@ -1217,9 +1217,9 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         ? boardCellInDirectedCube(cell, active, blastCenter, blastRadius)
         : chebyshevFeet(blastCenter, cell) <= blastRadius))
     const inPersistentSpellArea = Boolean((state.mechanics?.active_effects ?? []).some((effect) => effect.center && chebyshevFeet(effect.center, cell) <= Number(effect.radius_feet ?? 0)))
-    // У объекта собственная hotspot-зона поверх печатного изображения. Когда
-    // та же клетка служит маршрутом или целью, клавиатурный фокус остаётся у
-    // клетки, а hotspot продолжает принимать точный клик по самому предмету.
+    // У объекта собственная hotspot-зона в соседнем слое поверх клетки. Клетка
+    // маршрута и предмет поэтому остаются двумя отдельными элементами, и оба
+    // доступны мышью и клавиатурой.
     const cellIsInteractive = Boolean((canMoveHere || canAimHere) && !occupied)
     const cellFeedback = visibleMapFeedback.filter((item) => item.x === cell.x && item.y === cell.y)
     const cellLabel = canPointSpellHere
@@ -1290,10 +1290,9 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         else if (!combatActive || pendingMoveKey === cellKey) { onMove(selected, cell.x, cell.y); setPendingMoveKey(null) }
         else setPendingMoveKey(cellKey)
       },
-      children: <>
-        {sceneObject && <span
+      hotspot: sceneObject ? <span
           role="button"
-          tabIndex={cellIsInteractive ? -1 : 0}
+          tabIndex={0}
           className="scene-object-hotspot"
           data-selected={sceneObject.id === selectedSceneObjectId ? 'true' : undefined}
           aria-label={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
@@ -1306,7 +1305,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
           onFocus={() => setHoveredSceneObjectId(sceneObject.id)}
           onBlur={() => setHoveredSceneObjectId((current) => current === sceneObject.id ? null : current)}
           onKeyDown={(event) => {
-            if (cellIsInteractive || (event.key !== 'Enter' && event.key !== ' ')) return
+            if (event.key !== 'Enter' && event.key !== ' ') return
             event.preventDefault()
             setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
           }}
@@ -1314,7 +1313,8 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             event.stopPropagation()
             setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
           }}
-        />}
+        /> : undefined,
+      children: <>
         {routeStep && <span className="route-step-badge" aria-hidden="true">{routeStep}</span>}
         {/* След на клетке: лежит в плоскости доски, поэтому при любом повороте и
             наклоне точно совпадает с сеткой. Фигурка стоит стоймя и из-за этого

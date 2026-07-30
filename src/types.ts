@@ -968,7 +968,6 @@ export type SceneTransition = {
   worldMap?: WorldMapState
   transition: string
   arrival: string
-  suggestions: string[]
   entrance: { x: number; y: number }
 }
 
@@ -1022,7 +1021,6 @@ export type GameState = {
   agentInteraction?: AgentInteraction | null
   /** Optional so rooms saved before the dice tray was added remain valid. */
   lastDiceRoll?: DiceRollEvent | null
-  suggestions: string[]
   state_version?: number
   ruleset_id?: string
   ruleset_version?: string
@@ -1283,7 +1281,6 @@ export type SuggestedAction = {
 
 export type AiTurnResult = {
   narration: string
-  suggestions: string[]
   provider: string
   model: string
   check?: { check_id?: string; label: string; modifier: number; difficulty: number; sides: 20 } | null

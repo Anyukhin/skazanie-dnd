@@ -555,7 +555,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'rejected',
         narration: 'Сейчас действует другой участник. Действие не выполнено, и ваш ход не потрачен.',
-        suggestions: [],
         turn_consumed: false,
         rejected: true,
         admin_commands: 0,
@@ -574,7 +573,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'clarification',
         narration: 'Опишите действие подробнее: что делает герой, с чем или с кем и какого результата хочет добиться.',
-        suggestions: [nextHook(loaded.state)],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -591,7 +589,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'clarification',
         narration: 'Для такого действия нужен подтверждённый способ — конкретное заклинание, предмет или способность героя. Укажите его, и я проверю допустимый вариант.',
-        suggestions: [nextHook(loaded.state)],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -628,7 +625,6 @@ export class AutonomousCampaignOrchestrator {
         kind: 'scene_interaction',
         narration: sceneInteractionNarration(interactionEvents)
           || 'Герой взаимодействует с объектом сцены; результат подтверждён правилами.',
-        suggestions: [nextHook(commit.state ?? loaded.state)],
         turn_consumed: interactionEvents.some((event) => (
           event.event_type === 'SceneObjectOperated' && event.payload?.action_spent === true
         )),
@@ -664,7 +660,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'clarification',
         narration: `Этот способ уже не сработал, и обстановка с тех пор не изменилась. Нужен другой подход к препятствию «${reading.obstacle}».`,
-        suggestions: [objective],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -683,7 +678,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'counter_offer',
         narration: `Без подтверждённого средства так не выйдет: не хватает ${means.missing.join(', ')}. Но препятствие «${reading.obstacle}» можно взять проверкой — опишите, как герой к нему подступится.`,
-        suggestions: [objective],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -727,7 +721,6 @@ export class AutonomousCampaignOrchestrator {
         kind: 'auto_success',
         ruling,
         narration: `Это удаётся без броска — на кону ничего нет. Следующая цель отряда: «${objective}»`,
-        suggestions: [objective],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -749,7 +742,6 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'clarification',
         narration: `На этом ходу ${actionCost.slot} уже потрачено. Импровизация обойдётся в него же — попробуйте на следующем ходу или опишите что-то, что укладывается в оставшееся.`,
-        suggestions: [objective],
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -827,7 +819,6 @@ export class AutonomousCampaignOrchestrator {
         : succeeded
           ? `Проверка пройдена. Следующая цель отряда: «${objective}»`
           : `Не вышло. ${consequence.summary} Следующая цель отряда: «${objective}»`,
-      suggestions: inCombat ? [] : [objective],
       turn_consumed: false,
       admin_commands: 0,
       state: consequenceCommit?.state ?? checkCommit.state ?? loaded.state,

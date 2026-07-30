@@ -19,6 +19,7 @@ import {
 import {
   interactionMetadataForProp,
   nearestSceneObjectCommand,
+  sceneInteractionCatalogEntry,
   sceneInteractionDefinition,
   sceneInteractionMetadata,
   sceneInteractionNarration,
@@ -187,6 +188,27 @@ test('свободный текст распознаёт силовое откр
   })
 })
 
+test('свободный текст находит составные варианты канонического предмета', () => {
+  for (const [assetId, text, intent] of [
+    ['table_small', 'Осмотреть стол', 'inspect'],
+    ['table_round', 'Осмотреть стол', 'inspect'],
+    ['barrel_stack', 'Разбить бочку топором', 'open'],
+    ['crate_stack', 'Открыть ящик', 'open'],
+  ]) {
+    assert.ok(sceneInteractionCatalogEntry(assetId), `${assetId}: вариант должен поддерживаться каталогом`)
+    assert.deepEqual(nearestSceneObjectCommand({
+      actorPosition: { x: 0, y: 0 },
+      text,
+      props: [{ id: `prop-${assetId}`, assetId, x: 1.5, y: 0.5, footprint: [{ x: 1, y: 0 }] }],
+    }), {
+      command_type: 'OperateSceneObject',
+      prop_id: `prop-${assetId}`,
+      intent,
+      approach: /разбить|топор/iu.test(text) ? 'force' : 'hand',
+    })
+  }
+})
+
 test('дистанция и server-only силовой подход проверяются до броска', () => {
   const far = sceneState({ propX: 4 })
   assert.throws(
@@ -260,6 +282,7 @@ test('неудачный осмотр фиксирует попытку, а ус
   const afterFailure = applyAll(initial, failed.events)
   assert.equal(afterFailure.mechanics.scene_interactions['prop-rune'].inspected, false)
   assert.equal(afterFailure.mechanics.scene_interactions['prop-rune'].inspection_attempted, true)
+  assert.deepEqual(afterFailure.mechanics.scene_interactions['prop-rune'].inspection_attempted_by, ['hero'])
   assert.equal(failed.events.some((event) => event.event_type === 'SceneObjectKnowledgeRevealed'), false)
   assert.throws(
     () => resolveCommand({
@@ -315,7 +338,8 @@ test('в бою объект тратит действие, вне боя кос
   )
   const afterRest = applyAll(campfire, rested.events)
   assert.equal(afterRest.mechanics.resting.hero, undefined)
-  assert.equal(afterRest.mechanics.scene_interactions['prop-campfire'].used, true)
+  assert.equal(afterRest.mechanics.scene_interactions['prop-campfire'].used, false)
+  assert.deepEqual(afterRest.mechanics.scene_interactions['prop-campfire'].used_by, ['hero'])
   assert.equal(sceneInteractionNarration(rested.events), 'У костра завершён короткий привал.')
   assert.throws(
     () => resolveCommand({
@@ -323,6 +347,51 @@ test('в бою объект тратит действие, вне боя кос
     }, afterRest, { diceService: dice([]) }),
     (error) => error instanceof RulesValidationError && error.code === 'SCENE_OBJECT_ALREADY_USED',
   )
+})
+
+test('другой герой может осмотреть тот же объект и отдохнуть у того же костра', () => {
+  const rune = sceneState({ assetId: 'rune' })
+  rune.partyMemberIds.push('hero-2')
+  rune.players.push({
+    ...rune.players[0],
+    id: 'hero-2',
+    x: 0,
+    y: 1,
+  })
+  rune.mechanics.positions['hero-2'] = { x: 0, y: 1 }
+  const firstInspection = resolveCommand({
+    command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: 'prop-rune', intent: 'inspect',
+  }, rune, { diceService: dice([1]) })
+  const afterFirstInspection = applyAll(rune, firstInspection.events)
+  const secondInspection = resolveCommand({
+    command_type: 'OperateSceneObject', actor_id: 'hero-2', prop_id: 'prop-rune', intent: 'inspect',
+  }, afterFirstInspection, { diceService: dice([20]) })
+  const afterSecondInspection = applyAll(afterFirstInspection, secondInspection.events)
+  assert.equal(afterSecondInspection.mechanics.scene_interactions['prop-rune'].inspected, true)
+  assert.deepEqual(
+    afterSecondInspection.mechanics.scene_interactions['prop-rune'].inspection_attempted_by,
+    ['hero', 'hero-2'],
+  )
+
+  const campfire = sceneState({ assetId: 'campfire' })
+  campfire.partyMemberIds.push('hero-2')
+  campfire.players.push({
+    ...campfire.players[0],
+    id: 'hero-2',
+    x: 0,
+    y: 1,
+  })
+  campfire.mechanics.positions['hero-2'] = { x: 0, y: 1 }
+  const firstRest = resolveCommand({
+    command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: 'prop-campfire', intent: 'use',
+  }, campfire, { diceService: dice([]) })
+  const afterFirstRest = applyAll(campfire, firstRest.events)
+  const secondRest = resolveCommand({
+    command_type: 'OperateSceneObject', actor_id: 'hero-2', prop_id: 'prop-campfire', intent: 'use',
+  }, afterFirstRest, { diceService: dice([]) })
+  const afterSecondRest = applyAll(afterFirstRest, secondRest.events)
+  assert.deepEqual(afterSecondRest.mechanics.scene_interactions['prop-campfire'].used_by, ['hero', 'hero-2'])
+  assert.deepEqual(replayEvents(campfire, [...firstRest.events, ...secondRest.events]), afterSecondRest)
 })
 
 test('FileEventStore не дублирует loot по тому же key и после reopen даёт тот же replay', async (t) => {

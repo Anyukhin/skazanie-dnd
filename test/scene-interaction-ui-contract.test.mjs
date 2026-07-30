@@ -3,9 +3,11 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const boardSource = await readFile(new URL('../src/TacticalBoard.tsx', import.meta.url), 'utf8')
 const sessionSource = await readFile(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const mapClientSource = await readFile(new URL('../src/tactical-map-client.ts', import.meta.url), 'utf8')
 const typesSource = await readFile(new URL('../src/types.ts', import.meta.url), 'utf8')
+const narratorPrompt = await readFile(new URL('../prompts/narrator/v4.txt', import.meta.url), 'utf8')
 
 test('клиент отправляет типизированную команду объекта сцены через общий путь тактических команд', () => {
   assert.match(sessionSource, /command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent/)
@@ -41,13 +43,18 @@ test('клик выбирает интерактивный prop, а его кн�
   assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| unavailable\}/u)
   assert.match(appSource, /sceneObjectsAtHand\.find/u)
   assert.match(appSource, /boardOverlay\.push\(\{ \.\.\.cell, kind: 'command-range' \}\)/u)
-  assert.match(appSource, /const cellIsInteractive = Boolean\(\(canMoveHere \|\| canAimHere\) && !occupied\)/u)
-  assert.match(appSource, /canMoveHere && !canAimHere && previewMoveKey === cellKey \? 'move-target'/u)
-  assert.match(appSource, /!stateClasses\.length && !cellFeedback\.length && !cellIsInteractive/u)
+  assert.match(boardSource, /hotspot\?: React\.ReactNode/u)
+  assert.match(boardSource, /className="board-hotspots"/u)
+  assert.match(appSource, /hotspot: sceneObject \? <span/u)
+  assert.match(appSource, /tabIndex=\{0\}/u)
+  assert.doesNotMatch(appSource, /tabIndex=\{cellIsInteractive \? -1 : 0\}/u)
   assert.doesNotMatch(appSource, /style=\{\{\s*position: 'absolute',\s*inset: '12%'/u)
 })
 
 test('свободное действие не подменяется готовыми подсказками рассказчика', () => {
   assert.doesNotMatch(appSource, /visibleSuggestions|action-suggestions|Подсказки рассказчика/u)
+  assert.doesNotMatch(sessionSource, /suggestions/u)
+  assert.doesNotMatch(typesSource, /suggestions/u)
+  assert.doesNotMatch(narratorPrompt, /"suggestions"/u)
   assert.match(appSource, /aria-label="Действие своими словами"/u)
 })

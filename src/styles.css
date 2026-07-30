@@ -277,6 +277,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .board-animation-skip { position: absolute; z-index: 10; top: 8px; right: 8px; min-height: 26px; padding: 0 9px; border: 1px solid rgba(224,188,139,.38); border-radius: 5px; background: rgba(20,16,13,.9); color: #dcc19c; font: 700 var(--fs-xs) Manrope, sans-serif; letter-spacing: .04em; transform: scale(var(--counter-scale, 1)); transform-origin: top right; box-shadow: 0 5px 14px rgba(0,0,0,.4); }
 .board-animation-skip:hover { border-color: rgba(230,180,111,.7); background: rgba(56,39,25,.94); color: #f0cca0; }
 .board-cells { position: absolute; inset: 0; display: grid; pointer-events: none; }
+.board-hotspots { position: absolute; inset: 0; z-index: 4; display: grid; pointer-events: none; }
+.board-hotspot-cell { position: relative; min-width: 0; pointer-events: none; }
 .board-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; }
 .board-cell.interactive, .board-cell.hover-probe { pointer-events: auto; }
 .board-cell .map-token, .board-cell .enemy-token, .board-cell .token-conditions { pointer-events: auto; }
@@ -491,10 +493,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .agent-voter-status > span.voted { border-color: rgba(96,157,113,.34); color: #a9c8af; }.agent-voter-status > span.voted i { background: #6eaa7c; }
 .agent-voter-status > span.abstained { border-color: rgba(184,141,83,.28); }.agent-voter-status > span.abstained i { background: #ad8553; }
 .agent-voter-status > span.offline { opacity: .62; }.agent-voter-status > span.offline i { background: #805f5a; }
-.suggestions-row { min-height: 24px; display: flex; align-items: center; gap: 6px; margin-bottom: 5px; overflow-x: auto; scrollbar-width: none; }
-.suggestions-row button { height: 23px; padding: 0 9px; flex: 0 0 auto; border: 1px solid rgba(211,184,149,.1); border-radius: 12px; background: rgba(255,255,255,.025); color: #827a71; font-size: var(--fs-sm); cursor: pointer; }
-.suggestions-row button:hover { border-color: rgba(201,149,85,.3); color: #c39a68; }
-.suggestions-row .ideas-toggle { display: flex; align-items: center; gap: 5px; border-color: transparent; background: transparent; padding-left: 3px; color: #a47d4e; }
 .ideas-toggle .rotated { transform: rotate(90deg); }
 .input-row { display: grid; grid-template-columns: auto minmax(0, 1fr) 43px; gap: 8px; }
 .input-wrap { min-width: 0; display: flex; align-items: center; height: 43px; padding: 0 13px; border: 1px solid rgba(211,184,149,.13); border-radius: 5px; background: rgba(7,6,5,.38); }
@@ -665,7 +663,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .messages { padding-left: 12px; padding-right: 12px; }
   .message-body p { font-size: var(--fs-lg); }
   .roll-result { min-width: 220px; }
-  .suggestions-row { max-width: calc(100vw - 35px); }
   .dice-check { grid-template-columns: 1fr 160px; gap: 9px; padding: 8px 10px; }.dice-check > p { display: none; }.d20-button { height: 65px; }
   .section-page { padding: 24px 15px 40px; }.journal-stats { overflow-x: auto; }.journal-stats > div { min-width: 130px; }.journal-layout { grid-template-columns: 1fr; }.chapter-list { position: static; }.chapter-list button:not(.active) { display: none; }.combat-journal { margin-left: 0; }.character-grid { grid-template-columns: 1fr 1fr; gap: 8px; }.character-art { height: 190px; }.character-info { padding-left: 10px; padding-right: 10px; }.character-stats { grid-template-columns: 1fr 1fr; }.character-stats span:last-child { display: none; }.settings-grid { grid-template-columns: 1fr; }.admin-user { grid-template-columns: 1fr; }.admin-hero-access { margin: 4px 0; }
 }
@@ -1147,7 +1144,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .message-meta strong { font-size: var(--fs-lg); }
 .message-meta time { font-size: var(--fs-sm); }
 .message-body p { font-size: var(--fs-xs); }
-.suggestions-row button { font-size: var(--fs-sm); }
 .input-wrap textarea { font-size: var(--fs-md); }
 .page-header > span { font-size: var(--fs-sm); }
 .page-header p { font-size: var(--fs-xs); }
@@ -1419,7 +1415,6 @@ button.campaign-title:hover strong { color: #edc996; }
 .demo-badge small,
 .session-code b,
 .message-meta time,
-.suggestions-row button,
 .journal-stats small,
 .chapter-list > span,
 .character-info > small,

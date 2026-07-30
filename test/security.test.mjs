@@ -309,21 +309,22 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
 // action_adjudicator добавлен 2026-07-27: он загружается server/action-adjudicator.mjs
 // с самого начала, все три требования выполняет, но в списке его не было — в
 // AGENTS.md §4 роль тоже отсутствовала, и расхождение держалось незамеченным.
-// campaign_creator и map_architect добавлены 2026-07-28: их v2 объявляют границу
+// campaign_creator и map_architect добавлены 2026-07-28: их актуальные версии объявляют границу
 // UNTRUSTED_DATA, а сборка сообщения переведена на buildDataOnlyContext —
 // прежний записанный пробел закрыт.
 test('loaded role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
   // Версия в списке обязана совпадать с той, которую роль действительно грузит:
-  // narrator и социальный контроллер перешли на v3, campaign_creator и
-  // map_architect — на v2 с границей UNTRUSTED_DATA, остальные на v1.
+  // narrator перешёл на v4, campaign_creator и map_architect — на v3,
+  // социальный контроллер — на v3 с границей UNTRUSTED_DATA,
+  // остальные на v1.
   const prompts = [
     ['npc_controller/v1', 'npc_controller/v1'],
     ['npc_controller/social_v3', 'npc_controller/social-v3'],
-    ['narrator/v3', 'narrator/v3'],
+    ['narrator/v4', 'narrator/v4'],
     ['director/v1', 'director/v1'],
     ['action_adjudicator/v1', 'action_adjudicator/v1'],
-    ['campaign_creator/v2', 'campaign_creator/v2'],
-    ['map_architect/v2', 'map_architect/v2'],
+    ['campaign_creator/v3', 'campaign_creator/v3'],
+    ['map_architect/v3', 'map_architect/v3'],
   ]
   for (const [fileId, promptId] of prompts) {
     const prompt = await readFile(new URL(`../prompts/${fileId}.txt`, import.meta.url), 'utf8')
@@ -352,7 +353,7 @@ test('контрактным списком покрыта каждая роль
   assert.equal(loaded.size, 7, `ожидались ровно семь ролей, читающих промпт, найдено ${loaded.size}`)
 
   const knownGaps = new Set([])
-  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v3', 'narrator/v3', 'director/v1', 'action_adjudicator/v1', 'campaign_creator/v2', 'map_architect/v2'])
+  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v3', 'narrator/v4', 'director/v1', 'action_adjudicator/v1', 'campaign_creator/v3', 'map_architect/v3'])
   const uncovered = [...loaded.keys()].filter((id) => !covered.has(id) && !knownGaps.has(id)).sort()
   assert.deepEqual(uncovered, [], 'роль грузит промпт, но не покрыта ни контрактным списком, ни записанным пробелом')
 })

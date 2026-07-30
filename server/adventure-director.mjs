@@ -346,8 +346,6 @@ export function createSceneTransition(input = {}, state = {}) {
     status: objectiveStatus,
   }
   const history = [...(Array.isArray(previousAdventure.history) ? previousAdventure.history : []), historyEntry].slice(-20)
-  const suggestions = (Array.isArray(input.suggestions) ? input.suggestions : [])
-    .map((item) => text(item, 100)).filter(Boolean).slice(0, 3)
   const unresolvedThreads = [...(Array.isArray(previousAdventure.unresolvedThreads) ? previousAdventure.unresolvedThreads : [])]
   if (input.carry_unresolved || objectiveStatus === 'unresolved') {
     unresolvedThreads.push(text(previousAdventure.currentHook || previousScene.objective, 240))
@@ -406,7 +404,6 @@ export function createSceneTransition(input = {}, state = {}) {
     },
     transition,
     arrival,
-    suggestions: suggestions.length ? suggestions : ['Осмотреться', 'Проверить ближайший проход', 'Обсудить дальнейший путь'],
     entrance: { x: 1, y: 4 },
   }
 }
