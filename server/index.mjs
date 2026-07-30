@@ -940,11 +940,7 @@ function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
   const connections = streamConnections(campaignId)
   const onlineHeroIds = connectedHeroIdsForCampaign(campaignId)
-  const now = Date.now()
-  const typing = campaignTyping.get(String(campaignId || '').toUpperCase()) ?? new Map()
-  for (const [userId, entry] of typing) {
-    if (Number(entry.expiresAt) <= now) typing.delete(userId)
-  }
+  const typingActorIds = typingActorIdsForCampaign(campaignId)
   if ([...connections.values()].some((connection) => connection.controlsParty)) {
     for (const player of state.players ?? []) onlineHeroIds.add(String(player.id))
   }
@@ -959,9 +955,21 @@ function stateWithLivePresence(state, campaignId) {
       connected_users: new Set([...connections.values()].map((connection) => connection.userId)).size,
       connected_heroes: onlineHeroIds.size,
       online_hero_ids: [...onlineHeroIds].sort(),
-      typing_actor_ids: [...new Set([...typing.values()].map((entry) => String(entry.actorId)))].sort(),
+      typing_actor_ids: typingActorIds,
     },
   }
+}
+
+function typingActorIdsForCampaign(campaignId) {
+  const normalized = String(campaignId || '').toUpperCase()
+  const typing = campaignTyping.get(normalized) ?? new Map()
+  const now = Date.now()
+  for (const [userId, entry] of typing) {
+    if (Number(entry.expiresAt) <= now) typing.delete(userId)
+  }
+  if (typing.size) campaignTyping.set(normalized, typing)
+  else campaignTyping.delete(normalized)
+  return [...new Set([...typing.values()].map((entry) => String(entry.actorId)))].sort()
 }
 
 function writeCampaignStream(connection, event, payload) {
@@ -970,6 +978,14 @@ function writeCampaignStream(connection, event, payload) {
   connection.res.write(`event: ${event}\n`)
   connection.res.write(`data: ${JSON.stringify(payload)}\n\n`)
   return true
+}
+
+function broadcastCampaignTyping(campaignId) {
+  const normalized = String(campaignId || '').toUpperCase()
+  const typingActorIds = typingActorIdsForCampaign(normalized)
+  for (const connection of streamConnections(normalized).values()) {
+    writeCampaignStream(connection, 'presence', { typing_actor_ids: typingActorIds })
+  }
 }
 
 function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
@@ -1714,7 +1730,7 @@ const server = createServer(async (req, res) => {
   if (campaignTypingMatch && req.method === 'PUT') {
     const user = requireUser(req, res); if (!user) return
     const campaignId = campaignTypingMatch[1].toUpperCase()
-    const room = await reconcileCampaignProjection(campaignId)
+    const room = getRoom(campaignId)
     if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
     if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
     const body = await readBody(req)
@@ -1728,7 +1744,7 @@ const server = createServer(async (req, res) => {
     else typing.delete(key)
     if (typing.size) campaignTyping.set(campaignId, typing)
     else campaignTyping.delete(campaignId)
-    broadcastCampaignRoom(campaignId, room)
+    broadcastCampaignTyping(campaignId)
     return json(res, 200, { ok: true, typing: body.typing === true, ttl_ms: TYPING_TTL_MS })
   }
   const campaignStreamMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/stream$/)

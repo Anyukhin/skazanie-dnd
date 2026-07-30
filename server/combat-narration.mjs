@@ -206,7 +206,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
   'KnockoutEnded', 'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
-  'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected',
+  'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',
   'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed', 'TurnEnded',

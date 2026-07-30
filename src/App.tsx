@@ -838,7 +838,6 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
       }
     }
   }
-  const visibleSuggestions = (state.suggestions ?? []).map((suggestion) => suggestion.trim()).filter(Boolean).slice(0, 3)
   const combatItems = (activeHero?.inventory ?? []).map(inferredCombatItem).filter((item): item is NonNullable<typeof item> => Boolean(item && item.quantity > 0))
   const selectedItem = selectedItemId === BASE_ATTACK_ID ? undefined : combatItems.find((item) => item.id === selectedItemId)
   const weaponSelectionId = selectedItem?.id ?? BASE_ATTACK_ID
@@ -1218,13 +1217,20 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         ? boardCellInDirectedCube(cell, active, blastCenter, blastRadius)
         : chebyshevFeet(blastCenter, cell) <= blastRadius))
     const inPersistentSpellArea = Boolean((state.mechanics?.active_effects ?? []).some((effect) => effect.center && chebyshevFeet(effect.center, cell) <= Number(effect.radius_feet ?? 0)))
-    // У объекта собственная кнопка поверх его печатного изображения. Клетка
-    // остаётся div, чтобы не вкладывать кнопку объекта в кнопку маршрута/цели.
-    const cellIsInteractive = Boolean(!sceneObject && (canMoveHere || canAimHere) && !occupied)
+    // У объекта собственная hotspot-зона поверх печатного изображения. Когда
+    // та же клетка служит маршрутом или целью, клавиатурный фокус остаётся у
+    // клетки, а hotspot продолжает принимать точный клик по самому предмету.
+    const cellIsInteractive = Boolean((canMoveHere || canAimHere) && !occupied)
     const cellFeedback = visibleMapFeedback.filter((item) => item.x === cell.x && item.y === cell.y)
-    const cellLabel = sceneObject
-      ? `Выбрать: ${sceneObjectLabel(sceneObject)}`
-      : canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}` : canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}` : canMoveHere ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}` : moveReason ?? undefined
+    const cellLabel = canPointSpellHere
+      ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}`
+      : canThrowHere
+        ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}`
+        : canMoveHere
+          ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}`
+          : sceneObject
+            ? `Выбрать: ${sceneObjectLabel(sceneObject)}`
+            : moveReason ?? undefined
     const enemyKind = enemy ? enemyVisualKind(enemy) : null
     const enemyHealth = enemy ? enemyHealthPresentation(enemy) : null
     const enemyCommandAllowed = Boolean(canWeaponTargetEnemy || canSpellTargetEnemy || canActionTargetEnemy || canThrowHere || canPointSpellHere)
@@ -1239,7 +1245,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     if (moveUnavailable && !canAimHere && !cellInCommandRange) boardOverlay.push({ x: cell.x, y: cell.y, kind: 'move-unavailable' })
 
     const stateClasses = [
-      canMoveHere && !canAimHere ? 'move-target' : '',
+      canMoveHere && !canAimHere && previewMoveKey === cellKey ? 'move-target' : '',
       routeStep ? 'route-step' : '',
       previewMoveKey === cellKey ? 'route-destination' : '',
       opportunityRisk && !canAimHere ? 'opportunity-risk' : '',
@@ -1255,7 +1261,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     const cellTitle = opportunityRisk && !canAimHere
       ? 'Опасная клетка: выход из ближнего боя вызовет атаку по возможности'
       : moveUnavailable ? moveReason ?? undefined : undefined
-    if (!stateClasses.length && !cellFeedback.length) {
+    if (!stateClasses.length && !cellFeedback.length && !cellIsInteractive) {
       if (cellTitle || cellLabel) boardHints.set(cellKey, { title: cellTitle, ariaLabel: cellLabel })
       continue
     }
@@ -1285,21 +1291,11 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         else setPendingMoveKey(cellKey)
       },
       children: <>
-        {sceneObject && <button
-          type="button"
+        {sceneObject && <span
+          role="button"
+          tabIndex={cellIsInteractive ? -1 : 0}
           className="scene-object-hotspot"
-          style={{
-            position: 'absolute',
-            inset: '12%',
-            zIndex: 3,
-            padding: 0,
-            border: sceneObject.id === selectedSceneObjectId ? '2px solid rgba(236, 187, 118, .92)' : '1px solid transparent',
-            borderRadius: '35%',
-            background: 'transparent',
-            boxShadow: sceneObject.id === selectedSceneObjectId ? '0 0 16px rgba(218, 137, 53, .78)' : 'none',
-            cursor: 'pointer',
-            pointerEvents: 'auto',
-          }}
+          data-selected={sceneObject.id === selectedSceneObjectId ? 'true' : undefined}
           aria-label={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
           aria-pressed={sceneObject.id === selectedSceneObjectId}
           title={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
@@ -1309,6 +1305,11 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
           onPointerLeave={() => setHoveredSceneObjectId((current) => current === sceneObject.id ? null : current)}
           onFocus={() => setHoveredSceneObjectId(sceneObject.id)}
           onBlur={() => setHoveredSceneObjectId((current) => current === sceneObject.id ? null : current)}
+          onKeyDown={(event) => {
+            if (cellIsInteractive || (event.key !== 'Enter' && event.key !== ' ')) return
+            event.preventDefault()
+            setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
+          }}
           onClick={(event) => {
             event.stopPropagation()
             setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
@@ -1688,17 +1689,6 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             ['items', 'Предметы', <CombatIcon id="deck-items" kind="deck" hint="предметы зелья" size={21} compact />],
           ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button type="button" key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy || (deck === 'magic' && !spells.length)} title={label}>{icon}<span>{label}</span></button>)}
         </nav>
-        {visibleSuggestions.length > 0 && <div className="action-suggestions" aria-label="Подсказки рассказчика">
-          {visibleSuggestions.map((suggestion) => <button
-            type="button"
-            key={suggestion}
-            title={suggestion}
-            onClick={() => {
-              updateFreeText(suggestion)
-              window.requestAnimationFrame(() => freeInputRef.current?.focus())
-            }}
-          >{suggestion}</button>)}
-        </div>}
         <div className="rail-input-shell">
           {preparedLabel && <span className={`prepared-chip ${awaitingTarget ? 'awaiting' : ''}`}><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
           <input
@@ -2243,7 +2233,7 @@ function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onClos
             <div className="world-auto-note"><Users size={17} /><span><b>Сколько игроков сядет за стол?</b> Первое место всегда ваше, остальные заполнят приглашённые друзья при входе по ссылке. Пустых мест не останется.</span></div>
             <div className="slot-count-picker" role="group" aria-label="Число мест героев">
               {[1, 2, 3, 4, 5].map((count) => <button key={count} type="button" className={count === slotCount ? 'selected' : ''} aria-pressed={count === slotCount} onClick={() => setSlotCount(count)}>
-                <strong>{count}</strong><small>{count === 1 ? 'соло-кампания' : `${count} игрока`.replace('4 игрока', '4 игроков')}</small>
+                <strong>{count}</strong><small>{count === 1 ? 'соло-кампания' : `${count} ${count >= 5 ? 'игроков' : 'игрока'}`}</small>
               </button>)}
             </div>
             <div className="hero-library">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
@@ -3152,13 +3142,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const reactionActorName = reactionActor && 'character' in reactionActor ? reactionActor.character : reactionActor?.name ?? 'Герой'
   const reactionSourceName = reactionSource && 'character' in reactionSource ? reactionSource.character : reactionSource?.name ?? 'Противник'
   const canAnswerReaction = Boolean(reactionWindow && lifecycleStatus === 'active' && (isAdmin || accessibleHeroIds.includes(reactionWindow.actor_id) || accessibleHeroIds.includes(reactionControllerId)))
+  const visibleTypingActorIds = (state.presence?.typing_actor_ids ?? []).filter((actorId) => actorId !== activePlayer.id)
 
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`} style={{
       '--ui-sidebar-width': `${Math.round(276 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>
-      <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} typingActorIds={state.presence?.typing_actor_ids ?? []} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
+      <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} typingActorIds={visibleTypingActorIds} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
       <main className="game-main">
         <header className="topbar">
           <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
@@ -3224,7 +3215,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             narrating={state.isNarrating}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={state.presence?.typing_actor_ids ?? []} currentPlayerId={activePlayer.id} canAct={canAct} turnName={turnActorName} combatActive={combatActive} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} pendingCheck={state.pendingCheck} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} turnName={turnActorName} combatActive={combatActive} onRoll={rollPendingCheck} onCancelCheck={cancelPendingCheck} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
               <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
 

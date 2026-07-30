@@ -235,19 +235,43 @@ test('запертый контейнер с ловушкой открывает
   assert.deepEqual(replayEvents(initial, [...opened.events, ...taken.events]), finalState)
 })
 
-test('неудачный осмотр не закрывает объект навсегда, успешный открывает только server detail', () => {
+test('ловушка при падении до нуля запускает те же последствия, что обычный урон', () => {
+  const seed = containerSeed()
+  const initial = sceneState({ seed })
+  initial.players[0].hp = 1
+  const opened = resolveCommand({
+    command_type: 'OperateSceneObject',
+    actor_id: 'hero',
+    prop_id: 'prop-chest',
+    intent: 'open',
+  }, initial, { diceService: dice([20, 3]) })
+  assert.ok(opened.events.some((event) => event.event_type === 'DamageApplied' && event.payload.hp_after === 0))
+  assert.ok(opened.events.some((event) => event.event_type === 'HitPointsReducedToZero'))
+  const after = applyAll(initial, opened.events)
+  assert.equal(after.players[0].hp, 0)
+  assert.ok(after.mechanics.conditions.hero.some((condition) => condition.id === 'unconscious'))
+})
+
+test('неудачный осмотр фиксирует попытку, а успешный открывает только server detail', () => {
   const initial = sceneState({ assetId: 'rune' })
   const failed = resolveCommand({
     command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: 'prop-rune', intent: 'inspect',
   }, initial, { diceService: dice([1]) })
   const afterFailure = applyAll(initial, failed.events)
   assert.equal(afterFailure.mechanics.scene_interactions['prop-rune'].inspected, false)
+  assert.equal(afterFailure.mechanics.scene_interactions['prop-rune'].inspection_attempted, true)
   assert.equal(failed.events.some((event) => event.event_type === 'SceneObjectKnowledgeRevealed'), false)
+  assert.throws(
+    () => resolveCommand({
+      command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: 'prop-rune', intent: 'inspect',
+    }, afterFailure, { diceService: dice([20]) }),
+    (error) => error instanceof RulesValidationError && error.code === 'SCENE_OBJECT_ALREADY_INSPECTED',
+  )
 
   const succeeded = resolveCommand({
     command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: 'prop-rune', intent: 'inspect',
-  }, afterFailure, { diceService: dice([20]) })
-  const afterSuccess = applyAll(afterFailure, succeeded.events)
+  }, initial, { diceService: dice([20]) })
+  const afterSuccess = applyAll(initial, succeeded.events)
   assert.equal(afterSuccess.mechanics.scene_interactions['prop-rune'].inspected, true)
   assert.ok(succeeded.events.some((event) => event.event_type === 'SceneObjectKnowledgeRevealed'))
   assert.equal(sceneInteractionNarration([]), '')
@@ -293,6 +317,12 @@ test('в бою объект тратит действие, вне боя кос
   assert.equal(afterRest.mechanics.resting.hero, undefined)
   assert.equal(afterRest.mechanics.scene_interactions['prop-campfire'].used, true)
   assert.equal(sceneInteractionNarration(rested.events), 'У костра завершён короткий привал.')
+  assert.throws(
+    () => resolveCommand({
+      command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: 'prop-campfire', intent: 'use',
+    }, afterRest, { diceService: dice([]) }),
+    (error) => error instanceof RulesValidationError && error.code === 'SCENE_OBJECT_ALREADY_USED',
+  )
 })
 
 test('FileEventStore не дублирует loot по тому же key и после reopen даёт тот же replay', async (t) => {

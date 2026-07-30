@@ -209,6 +209,19 @@ test('новый герой заменяет погибшего, а гибель
     () => resolveCommand({ command_type: 'ResolveHeroDeath', actor_id: 'last', resolution: 'resurrect' }, endedWorld, { diceService: dice([]) }),
     (error) => error instanceof RulesValidationError && error.code === 'CAMPAIGN_READ_ONLY',
   )
+
+  const setup = normalizeCampaignState({
+    partyMemberIds: ['last'],
+    players: [{ id: 'last', character: 'Последний герой', hp: 0, maxHp: 10, inventory: [] }],
+    mechanics: { campaign_lifecycle: { status: 'setup' } },
+  })
+  const setupDeath = resolveCommand(
+    { command_type: 'ApplyDamage', actor_id: 'last', target_id: 'last', amount: 10, damage_type: 'force' },
+    setup,
+    { diceService: dice([]) },
+  )
+  assert.ok(setupDeath.events.some((event) => event.event_type === 'HeroDied'))
+  assert.equal(setupDeath.events.some((event) => event.event_type === 'CampaignFailed'), false)
 })
 
 test('ресурсы нельзя потратить дважды или уйти ниже нуля', () => {

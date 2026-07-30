@@ -90,4 +90,5 @@ test('взаимодействие со сценой попадает в лет�
   assert.match(revealed, /Надпись предупреждает/u)
   assert.doesNotMatch(revealed, /relic:warning-glyph/u)
   assert.equal(hasCombatNarrationEvent([event('SceneObjectKnowledgeRevealed')]), true)
+  assert.equal(hasCombatNarrationEvent([event('SceneObjectLootRevealed')]), true)
 })

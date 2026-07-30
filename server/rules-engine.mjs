@@ -155,6 +155,8 @@ export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // файловой миграции не требуется.
 // 5: новые HeroDied больше не меняют lifecycle напрямую; старые события
 // сохраняют прежнюю семантику при replay, а новые завершаются CampaignFailed.
+// 6: состояние интерактивных объектов сцены сохраняется в mechanics и
+// одинаково восстанавливается из snapshot и полного replay.
 export const GAME_STATE_PROJECTOR_VERSION = 6
 
 export const RULE_IDS = Object.freeze({
@@ -979,6 +981,7 @@ function normalizeSceneInteractions(input) {
     return [[String(propId).slice(0, 120), {
       state: String(value.state ?? 'idle').slice(0, 40),
       inspected: value.inspected === true,
+      inspection_attempted: value.inspection_attempted === true || value.inspected === true,
       opened: value.opened === true,
       taken: value.taken === true,
       used: value.used === true,
@@ -1456,6 +1459,7 @@ function sceneObjectState(state, prop, definition) {
   return saved ?? {
     state: String(projectedState || definition.initialState || 'idle').slice(0, 40),
     inspected: false,
+    inspection_attempted: false,
     opened: projectedState === 'open',
     taken: projectedState === 'taken',
     used: projectedState === 'used',
@@ -1473,6 +1477,7 @@ function updateSceneObjectInteraction(state, propId, updater) {
   const current = state.mechanics.scene_interactions[id] ?? {
     state: 'idle',
     inspected: false,
+    inspection_attempted: false,
     opened: false,
     taken: false,
     used: false,
@@ -7357,7 +7362,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, []))
 
       if (command.intent === 'inspect') {
-        if (interaction.inspected) throw new RulesValidationError('Этот объект уже осмотрен', 'SCENE_OBJECT_ALREADY_INSPECTED')
+        if (interaction.inspection_attempted || interaction.inspected) {
+          throw new RulesValidationError('Этот объект уже осмотрен', 'SCENE_OBJECT_ALREADY_INSPECTED')
+        }
         operated()
         let success = true
         let trapDetected = false
@@ -7424,11 +7431,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           )
           rolls.push(damageRoll)
           events.push(eventFrom(command, 'DieRolled', damageRoll, []))
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', {
+          const damagePayload = {
             ...resolveDamagePayload(state, command.actor_id, damageRoll.total, definition.trap.damage.type),
             prop_id: prop.id,
             reason: 'scene-object-trap',
-          }, [command.actor_id]))
+          }
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', damagePayload, [command.actor_id]))
+          events.push(...zeroHitPointDamageConsequences(state, command, command.actor_id, damagePayload))
         }
         break
       }
@@ -7455,6 +7464,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
 
       if (definition.kind === 'campfire') {
+        if (interaction.used) throw new RulesValidationError('Этот костёр уже использован для привала', 'SCENE_OBJECT_ALREADY_USED')
         if (state.mechanics.resting[command.actor_id]) throw new RulesValidationError('Герой уже отдыхает', 'REST_ALREADY_STARTED')
         operated()
         events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'RestStarted', {
@@ -8375,11 +8385,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     }
   }
 
-  if (resolveDepth === 0 && !events.some((event) => event.event_type === 'CampaignFailed')) {
+  if (resolveDepth === 0
+    && events.some((event) => event.event_type === 'HeroDied')
+    && !events.some((event) => event.event_type === 'CampaignFailed')) {
     const projected = replayEvents(state, events)
     const newlyDefeated = state.mechanics?.death?.campaign_status !== 'party_defeated'
       && projected.mechanics?.death?.campaign_status === 'party_defeated'
-    if (newlyDefeated) {
+    if (newlyDefeated && projected.mechanics?.campaign_lifecycle?.status === 'active') {
       const failure = lifecycleEventForAction('fail', projected, {
         actorId: 'system',
         reason: 'party_final_death',
@@ -9810,6 +9822,7 @@ export function applyGameEvent(rawState, event) {
     case 'SceneObjectInspected':
       updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
         ...current,
+        inspection_attempted: true,
         inspected: current.inspected || payload.success === true,
         trap_detected: current.trap_detected || payload.trap_detected === true,
         last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),

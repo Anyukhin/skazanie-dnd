@@ -3317,7 +3317,6 @@ function drawRoomLabels(context: BoardContext2D, scene: BoardScene) {
  * следуют флагам серверного контракта.
  */
 export function drawMapDecorations(context: BoardContext2D, scene: BoardScene) {
-  drawCoordinateFrame(context, scene)
   if (scene.map.overlays.roomLabels.length) drawRoomLabels(context, scene)
   if (scene.map.overlays.compass) drawCompass(context, scene)
   if (scene.map.overlays.scaleBar) drawScaleBar(context, scene)

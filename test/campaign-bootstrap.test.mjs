@@ -147,6 +147,24 @@ test('создание кампании без выбранных героев �
   )
 })
 
+test('локальный пролог называет фактическое число незаполненных мест от одного до пяти', async () => {
+  const forms = ['одного героя', 'двух героев', 'трёх героев', 'четырёх героев', 'пяти героев']
+  for (let count = 1; count <= 5; count += 1) {
+    const players = Array.from({ length: count }, (_, index) => ({
+      ...hero,
+      id: `slot-${count}-${index + 1}`,
+      character: `Герой ${index + 1}`,
+      characterSetupRequired: true,
+    }))
+    const state = await new CampaignBootstrapper().create({
+      code: `SLOTS-${count}`,
+      world: {},
+      players,
+    })
+    assert.match(state.messages[0].text, new RegExp(forms[count - 1], 'u'))
+  }
+})
+
 test('bootstrap fixes a deterministic one-evening structure and matching quest budgets', async () => {
   const input = {
     code: 'EVENING-SEED',

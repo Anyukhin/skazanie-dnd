@@ -41,11 +41,13 @@ function integer(value, fallback, minimum, maximum) {
  *
  * @param {ReturnType<typeof legacyCellsFromTacticalMap>} cells
  * @param {string|number} seed
+ * @param {string[]} [themeAssets]
  */
-function ensureSceneInteractionFeatures(cells, seed) {
+function ensureSceneInteractionFeatures(cells, seed, themeAssets = []) {
   let supported = cells.filter((cell) => sceneInteractionCatalogEntry(cell.feature)).length
   if (supported >= 2) return cells
-  const fallbackAssets = sceneInteractionFallbackAssets()
+  const thematicAssets = [...new Set(themeAssets)].filter((assetId) => sceneInteractionCatalogEntry(assetId))
+  const fallbackAssets = thematicAssets.length ? thematicAssets : sceneInteractionFallbackAssets()
   const replaceable = cells
     .filter((cell) => (
       typeof cell.feature === 'string'
@@ -208,7 +210,11 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locat
       width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
       height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
     })
-    return ensureSceneInteractionFeatures(legacyCellsFromTacticalMap(built.map), seed)
+    return ensureSceneInteractionFeatures(
+      legacyCellsFromTacticalMap(built.map),
+      seed,
+      [...(matched.require ?? []), ...(matched.prefer ?? [])],
+    )
   }
   // Сейчас сюда не попадает ни одна сцена: `fallbackThemeFor` всегда возвращает
   // тему, а `live` стоит у всех семи. Ветка остаётся предохранителем на случай

@@ -131,8 +131,9 @@ function startingVisualSpec(theme, world) {
 function fallbackOpening({ name, partyName, world, heroes, entropy }) {
   const theme = fallbackTheme(world, entropy)
   const location = world.startingLocation || theme.location
+  const unnamedPartySize = ['одного', 'двух', 'трёх', 'четырёх', 'пяти'][Math.max(1, Math.min(5, heroes.length)) - 1]
   const heroNames = heroes.every((hero) => hero.characterSetupRequired)
-    ? 'четырёх героев, которым игроки ещё дадут имена и прошлое'
+    ? `${unnamedPartySize} ${heroes.length === 1 ? 'героя, которому игрок ещё даст имя и прошлое' : 'героев, которым игроки ещё дадут имена и прошлое'}`
     : heroes.map((hero) => hero.character).join(', ')
   const era = world.era || 'необычной авторской эпохе'
   const genre = world.genre || world.preset || 'приключенческой истории'

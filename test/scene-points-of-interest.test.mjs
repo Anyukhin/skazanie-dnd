@@ -15,11 +15,11 @@ import {
 import { SCENE_THEMES } from '../server/scene-themes.mjs'
 
 const DICTIONARY_ASSETS = Object.freeze([
-  'chest', 'barrel', 'crate',
-  'altar', 'rune', 'statue',
+  'chest', 'barrel', 'barrel_stack', 'crate', 'crate_stack', 'sarcophagus', 'urn', 'crypt_niche',
+  'altar', 'rune', 'statue', 'roadside_shrine',
   'campfire',
-  'bookshelf', 'table',
-  'bones', 'grave', 'corpse',
+  'bookshelf', 'table', 'table_round', 'table_long', 'table_small', 'fallen_log', 'rubble_heap', 'milestone',
+  'bones', 'bone_pile', 'grave', 'corpse',
 ])
 
 function generatedMap(seed, options = {}) {
@@ -131,5 +131,12 @@ test('все live-темы получают POI только в свежем out
     const map = tacticalMapFromLegacyCells(generatedCells, { seed })
     const points = map.props.filter((prop) => prop.interaction?.pointOfInterest)
     assert.ok(points.length >= 2 && points.length <= 4, `${theme.id}: получено ${points.length} POI`)
+    if (['crypt', 'cave', 'forest', 'road'].includes(theme.id)) {
+      const palette = new Set([...(theme.require ?? []), ...(theme.prefer ?? [])])
+      assert.ok(
+        points.some((prop) => palette.has(prop.assetId)),
+        `${theme.id}: хотя бы одна интерактивная точка должна происходить из тематической палитры`,
+      )
+    }
   }
 })

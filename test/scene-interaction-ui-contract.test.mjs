@@ -41,4 +41,13 @@ test('клик выбирает интерактивный prop, а его кн�
   assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| unavailable\}/u)
   assert.match(appSource, /sceneObjectsAtHand\.find/u)
   assert.match(appSource, /boardOverlay\.push\(\{ \.\.\.cell, kind: 'command-range' \}\)/u)
+  assert.match(appSource, /const cellIsInteractive = Boolean\(\(canMoveHere \|\| canAimHere\) && !occupied\)/u)
+  assert.match(appSource, /canMoveHere && !canAimHere && previewMoveKey === cellKey \? 'move-target'/u)
+  assert.match(appSource, /!stateClasses\.length && !cellFeedback\.length && !cellIsInteractive/u)
+  assert.doesNotMatch(appSource, /style=\{\{\s*position: 'absolute',\s*inset: '12%'/u)
+})
+
+test('свободное действие не подменяется готовыми подсказками рассказчика', () => {
+  assert.doesNotMatch(appSource, /visibleSuggestions|action-suggestions|Подсказки рассказчика/u)
+  assert.match(appSource, /aria-label="Действие своими словами"/u)
 })

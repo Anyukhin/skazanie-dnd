@@ -4,11 +4,11 @@ import { serverEncounterLoot } from './loot-tables.mjs'
 export const SCENE_INTERACTION_POLICY_ID = 'skazanie:scene-interactions-v1'
 
 const CATALOG = Object.freeze([
-  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'crate']), verbs: Object.freeze(['inspect', 'open', 'take']) }),
-  Object.freeze({ kind: 'relic', aliases: Object.freeze(['altar', 'rune', 'statue']), verbs: Object.freeze(['inspect', 'use']) }),
+  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'barrel_stack', 'crate', 'crate_stack', 'sarcophagus', 'urn', 'crypt_niche']), verbs: Object.freeze(['inspect', 'open', 'take']) }),
+  Object.freeze({ kind: 'relic', aliases: Object.freeze(['altar', 'rune', 'statue', 'roadside_shrine']), verbs: Object.freeze(['inspect', 'use']) }),
   Object.freeze({ kind: 'campfire', aliases: Object.freeze(['campfire']), verbs: Object.freeze(['inspect', 'use']) }),
-  Object.freeze({ kind: 'lore', aliases: Object.freeze(['bookshelf', 'table']), verbs: Object.freeze(['inspect']) }),
-  Object.freeze({ kind: 'corpse', aliases: Object.freeze(['bones', 'grave', 'corpse']), verbs: Object.freeze(['inspect', 'take']) }),
+  Object.freeze({ kind: 'lore', aliases: Object.freeze(['bookshelf', 'table', 'table_round', 'table_long', 'table_small', 'fallen_log', 'rubble_heap', 'milestone']), verbs: Object.freeze(['inspect']) }),
+  Object.freeze({ kind: 'corpse', aliases: Object.freeze(['bones', 'bone_pile', 'grave', 'corpse']), verbs: Object.freeze(['inspect', 'take']) }),
 ])
 
 const DETAIL_TABLE = Object.freeze({
@@ -39,18 +39,26 @@ const ASSET_ALIASES_RU = Object.freeze({
   chest: Object.freeze(['сундук', 'ларец']),
   barrel: Object.freeze(['бочка', 'бочку', 'бочке']),
   crate: Object.freeze(['ящик', 'ящика', 'ящике']),
+  sarcophagus: Object.freeze(['саркофаг', 'саркофага', 'саркофаге']),
+  urn: Object.freeze(['урна', 'урну', 'урне']),
+  crypt_niche: Object.freeze(['ниша', 'нишу', 'нише']),
   altar: Object.freeze(['алтарь', 'алтаря']),
   rune: Object.freeze(['руна', 'руну', 'руне']),
   statue: Object.freeze(['статуя', 'статую', 'статуе']),
+  roadside_shrine: Object.freeze(['святилище', 'святилища', 'святилище']),
   campfire: Object.freeze(['костёр', 'костер', 'очаг']),
   bookshelf: Object.freeze(['полка', 'полку', 'шкаф', 'книги']),
   table: Object.freeze(['стол', 'стола', 'столе']),
+  fallen_log: Object.freeze(['бревно', 'бревна', 'бревне']),
+  rubble_heap: Object.freeze(['завал', 'завала', 'завале', 'обломки']),
+  milestone: Object.freeze(['верстовой столб', 'указатель', 'указателя']),
   bones: Object.freeze(['кости', 'останки', 'скелет']),
+  bone_pile: Object.freeze(['кости', 'останки', 'скелет']),
   grave: Object.freeze(['могила', 'могилу', 'могиле']),
   corpse: Object.freeze(['труп', 'трупа', 'теле']),
 })
 
-const FALLBACK_ASSETS = Object.freeze(['chest', 'altar', 'campfire', 'bookshelf', 'bones'])
+const FALLBACK_ASSETS = Object.freeze(['chest', 'altar', 'campfire', 'bookshelf', 'bone_pile'])
 
 export function sceneInteractionFallbackAssets() {
   return [...FALLBACK_ASSETS]
@@ -70,9 +78,12 @@ function hashNumber(value) {
 
 function assetAlias(assetId) {
   const value = clean(assetId, 120).toLowerCase()
-  return CATALOG.flatMap((entry) => entry.aliases).find((alias) => (
-    value === alias || value.endsWith(`/${alias}`) || value.endsWith(`-${alias}`) || value.includes(`${alias}-`)
-  )) ?? null
+  return CATALOG.flatMap((entry) => entry.aliases)
+    .sort((left, right) => right.length - left.length)
+    .find((alias) => {
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp(`(?:^|[\\/_-])${escaped}(?:$|[\\/_-])`, 'u').test(value)
+    }) ?? null
 }
 
 export function sceneInteractionCatalogEntry(assetId) {

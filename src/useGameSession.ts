@@ -375,9 +375,32 @@ export function useGameSession() {
         console.warn('Realtime-событие комнаты отклонено:', error)
       }
     }
+    const receivePresence = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as { typing_actor_ids?: string[] }
+        const typingActorIds = Array.isArray(payload.typing_actor_ids) ? payload.typing_actor_ids.map(String) : []
+        setState((current) => {
+          const next = {
+            ...current,
+            presence: {
+              transport: 'sse' as const,
+              connected_users: current.presence?.connected_users ?? 0,
+              connected_heroes: current.presence?.connected_heroes ?? 0,
+              online_hero_ids: current.presence?.online_hero_ids ?? [],
+              typing_actor_ids: typingActorIds,
+            },
+          }
+          stateRef.current = next
+          return next
+        })
+      } catch (error) {
+        console.warn('Realtime-событие присутствия отклонено:', error)
+      }
+    }
     const closeSource = () => {
       if (!source) return
       source.removeEventListener('room', receive as EventListener)
+      source.removeEventListener('presence', receivePresence as EventListener)
       source.close()
       source = null
     }
@@ -416,6 +439,7 @@ export function useGameSession() {
       const nextSource = new EventSource(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/stream`)
       source = nextSource
       nextSource.addEventListener('room', receive as EventListener)
+      nextSource.addEventListener('presence', receivePresence as EventListener)
       nextSource.onopen = () => {
         retryDelay = 1_000
         opened = true

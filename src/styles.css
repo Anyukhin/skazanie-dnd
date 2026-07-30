@@ -742,9 +742,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    Отдельного ряда под колоды больше нет — панель стала ниже на его высоту. */
 .rail-free-input { min-width: 0; display: flex; align-items: center; gap: 12px; }
 .rail-free-input .hotbar-decks { flex: 0 0 auto; gap: 6px; }
-.action-suggestions { flex: 0 1 min(34vw, 420px); min-width: 94px; display: flex; gap: 5px; overflow-x: auto; padding: 3px 1px; scrollbar-width: thin; }
-.action-suggestions button { flex: 0 1 auto; min-width: 0; max-width: 190px; height: 34px; overflow: hidden; padding: 0 10px; border: 1px solid rgba(188,145,91,.28); border-radius: 17px; background: rgba(104,71,38,.13); color: #bba487; font: 600 var(--fs-sm) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.action-suggestions button:hover, .action-suggestions button:focus-visible { border-color: rgba(218,165,95,.62); background: rgba(144,91,39,.24); color: #e0bd8c; outline: none; }
 .rail-input-shell { flex: 1 1 0; min-width: 0; height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 6px 0 12px; border: 1px solid rgba(222,201,171,.16); border-radius: 9px; background: rgba(9,8,7,.72); }
 .rail-input-shell:focus-within { border-color: rgba(214,161,96,.6); }
 /* Ярлык выбранного действия живёт внутри поля: игрок видит, что уедет по
@@ -1214,6 +1211,9 @@ button.campaign-title:hover strong { color: #edc996; }
 .board-cell.move-target::after { content: ''; position: absolute; z-index: 1; width: 10px; height: 10px; border: 1px solid rgba(146,213,158,.72); border-radius: 50%; background: rgba(83,157,99,.18); box-shadow: 0 0 10px rgba(82,176,104,.55); }
 .board-cell.move-target.opportunity-risk { box-shadow: inset 0 0 0 2px rgba(216,92,70,.68), inset 0 0 22px rgba(165,48,35,.28); }
 .board-cell.move-target.opportunity-risk::after { content: '!'; display: grid; place-items: center; width: 15px; height: 15px; border-color: rgba(255,168,126,.88); background: rgba(139,37,28,.78); color: #ffe0c3; box-shadow: 0 0 12px rgba(224,66,42,.78); font: 800 var(--fs-md) Inter, sans-serif; }
+.scene-object-hotspot { position:absolute; inset:12%; z-index:3; padding:0; border:1px solid transparent; border-radius:35%; background:transparent; cursor:pointer; pointer-events:auto; }
+.scene-object-hotspot[data-selected="true"] { border:2px solid rgba(236,187,118,.92); box-shadow:0 0 16px rgba(218,137,53,.78); }
+.scene-object-hotspot:focus-visible { outline:2px solid rgba(236,187,118,.92); outline-offset:2px; }
 .board-cell.aim-target { cursor: crosshair; box-shadow: inset 0 0 0 1px rgba(213,151,74,.24); }
 .board-cell.aim-target:hover { box-shadow: inset 0 0 0 2px rgba(238,177,91,.65), inset 0 0 20px rgba(202,119,45,.18); }
 .board-cell.summon-target { box-shadow: inset 0 0 0 1px rgba(100,185,144,.38), inset 0 0 16px rgba(64,139,104,.12); }
@@ -1647,7 +1647,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .battle-roll-summary{min-width:0;display:flex;align-items:center;gap:5px}.battle-roll-summary span{display:grid;place-items:center;min-width:38px}.battle-roll-summary small{color:#796b5d;font:700 7px/1.15 Manrope,sans-serif;letter-spacing:.06em}.battle-roll-summary b{color:#c9b49a;font:800 var(--fs-lg) Manrope,sans-serif;font-variant-numeric:tabular-nums}.battle-roll-summary .total b{color:#e4b872}.battle-roll-summary>i{color:#6f6255;font:normal var(--fs-xs) Manrope,sans-serif}
 .battle-roll-card>strong{color:#d68c80;font:800 var(--fs-xs) Manrope,sans-serif;letter-spacing:.08em}.battle-roll-card.success>strong{color:#91be98}
 @keyframes battle-roll-arrive{from{opacity:0;transform:translateY(-5px) scale(.98)}to{opacity:1;transform:none}}
-@media(max-width:980px){.battle-roll-card{grid-template-columns:48px minmax(0,1fr);gap:7px}.battle-roll-d20{width:46px;height:43px}.battle-roll-summary{flex-wrap:wrap;gap:2px 4px}.battle-roll-summary span{min-width:30px}.battle-roll-card>strong{grid-column:1/-1;text-align:right}.action-suggestions{flex-basis:min(27vw,260px)}}
+@media(max-width:980px){.battle-roll-card{grid-template-columns:48px minmax(0,1fr);gap:7px}.battle-roll-d20{width:46px;height:43px}.battle-roll-summary{flex-wrap:wrap;gap:2px 4px}.battle-roll-summary span{min-width:30px}.battle-roll-card>strong{grid-column:1/-1;text-align:right}}
 .combat-context-conditions{display:flex;flex-wrap:wrap;gap:4px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)}
 .combat-context-conditions>span{display:flex;align-items:center;gap:4px;padding:3px 5px;border:1px solid rgba(93,153,109,.24);border-radius:3px;background:rgba(55,112,70,.08);color:#94b59a;font-size: var(--fs-sm)}.combat-context-conditions>span.partial{border-color:rgba(181,130,67,.3);color:#c5a16f}.combat-context-conditions>span.marker{border-style:dashed;border-color:rgba(139,124,108,.3);color:#a09588}.combat-context-conditions i{width:5px;height:5px;border-radius:50%;background:currentColor}.combat-context-conditions small{color:inherit;font-size: var(--fs-xs);opacity:.65}.combat-context-conditions>em{color:#655e57;font-size: var(--fs-sm);font-style:normal}
 .combat-context-command,.combat-last-result{display:grid;grid-template-columns:17px minmax(0,1fr);align-items:start;gap:6px;padding:8px 0;color:#b08250}.combat-context-command span,.combat-last-result span{display:grid;gap:2px}.combat-context-command small,.combat-last-result small{color:#756453;font-size: var(--fs-xs);letter-spacing:.1em}.combat-context-command strong{overflow:hidden;color:#cbb69c;font:600 var(--fs-lg) Spectral,serif;text-overflow:ellipsis;white-space:nowrap}
