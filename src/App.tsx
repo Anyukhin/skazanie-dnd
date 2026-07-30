@@ -19,7 +19,7 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, turnClockPresentation, type MovementPath } from './tactical-ui'
+import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
@@ -1183,14 +1183,15 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     : projectileTarget
   const previewBlastSizeFeet = combatMode === 'magic' ? spellAreaRadiusFeet : areaRadiusFeet
   const previewBlastShape = combatMode === 'magic' ? selectedSpell?.areaShape ?? 'sphere' : 'sphere'
-  const previewWalkableKeys = new Set(
-    state.scene.cells
-      .filter((cell) => cell.revealed !== false && (cell.type === 'floor' || cell.type === 'door'))
-      .map((cell) => boardPositionKey(cell.x, cell.y)),
-  )
-  const previewBlastKeys = new Set(
-    previewBlastCenter && active && previewBlastSizeFeet > 0
-      ? areaCells({
+  const previewBlastKeys = useMemo(() => {
+    if (!previewBlastCenter || !active || previewBlastSizeFeet <= 0) return new Set<string>()
+    const previewWalkableKeys = new Set(
+      state.scene.cells
+        .filter((cell) => cell.revealed !== false && (cell.type === 'floor' || cell.type === 'door'))
+        .map((cell) => boardPositionKey(cell.x, cell.y)),
+    )
+    return new Set(
+      areaCells({
         shape: previewBlastShape,
         origin: active,
         target: previewBlastCenter,
@@ -1199,9 +1200,12 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         cellFeet: CELL_FEET,
         bounds: { minX: 0, minY: 0, maxX: columns - 1, maxY: rows - 1 },
         isWalkable: (point) => previewWalkableKeys.has(boardPositionKey(point.x, point.y)),
-      }).map((point) => boardPositionKey(point.x, point.y))
-      : [],
-  )
+      }).map((point) => boardPositionKey(point.x, point.y)),
+    )
+  }, [
+    active?.id, active?.x, active?.y, columns, previewBlastCenter?.x, previewBlastCenter?.y,
+    previewBlastShape, previewBlastSizeFeet, rows, selectedSpell?.areaOrigin, state.scene.cells,
+  ])
 
   // Доска. Перебор клеток остаётся прежним: он занимает доли миллисекунды и
   // узким местом не является (`docs/tactical-map-plan.md`, раздел 7). Меняется
@@ -1712,7 +1716,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             <div><button onClick={() => { setPendingCommand(null); setAimCell(null); setInspectedTarget(null) }}><X size={13} />Отменить</button></div>
           </div>}
           {previewRoute && <div className={`movement-preview ${pendingMoveKey ? 'selected' : ''}`}>
-            <span><Footprints size={14} /><b>{previewRoute.costFeet} фт</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
+            <span><Footprints size={14} /><b>{movementCostLabel(previewRoute)}</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
             {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); onMove(selected, x, y); setPendingMoveKey(null) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
           </div>}
         </section>}

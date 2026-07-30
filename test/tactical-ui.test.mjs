@@ -53,6 +53,7 @@ test('предпросмотр строит кратчайший легальн�
     path: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
     baseCostFeet: 15,
     difficultTerrainFeet: 0,
+    crawlingFeet: 0,
     costFeet: 15,
   })
   assert.equal(paths.has('1,1'), false, 'занятая союзником клетка не входит в маршруты')
@@ -75,6 +76,7 @@ test('труднопроходимая область удваивает тол�
     path: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
     baseCostFeet: 15,
     difficultTerrainFeet: 5,
+    crawlingFeet: 0,
     costFeet: 20,
   })
   assert.equal(tacticalUi.movementCostLabel(route), '20 фт (15 фт пути + 5 фт за трудную местность)')
@@ -115,6 +117,38 @@ test('клеточный moveCost карты также считается тр�
   assert.equal(route.difficultTerrainFeet, 5)
 })
 
+test('предпросмотр учитывает ползание и Свободу перемещения по серверной формуле', () => {
+  const current = state()
+  current.mechanics = {
+    conditions: { hero: [{ id: 'prone' }] },
+    active_effects: [{
+      id: 'mud',
+      center: { x: 1, y: 0 },
+      radius_feet: 0,
+      difficult_terrain: true,
+    }],
+  }
+  const crawling = tacticalUi.buildMovementPaths(current, current.players[0], 5).get('2,0')
+  assert.deepEqual(crawling, {
+    path: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
+    baseCostFeet: 15,
+    difficultTerrainFeet: 5,
+    crawlingFeet: 15,
+    costFeet: 35,
+  })
+  assert.equal(
+    tacticalUi.movementCostLabel(crawling),
+    '35 фт (15 фт пути + 5 фт за трудную местность + 15 фт ползком)',
+  )
+
+  current.mechanics.conditions.hero.push({ id: 'freedom-of-movement' })
+  const free = tacticalUi.buildMovementPaths(current, current.players[0], 5).get('2,0')
+  assert.equal(free.difficultTerrainFeet, 0)
+  assert.equal(free.crawlingFeet, 15)
+  assert.equal(free.costFeet, 30)
+  assert.equal(tacticalUi.movementCostLabel(free), '30 фт (15 фт пути + 15 фт ползком)')
+})
+
 test('предпросмотр выбирает более длинный, но дешёвый путь вокруг трудной местности', () => {
   const current = state()
   current.scene.cells = Array.from({ length: 2 }, (_, y) => (
@@ -137,6 +171,7 @@ test('предпросмотр выбирает более длинный, но 
   assert.equal(route.costFeet, 30)
   assert.equal(route.baseCostFeet, 30)
   assert.equal(route.difficultTerrainFeet, 0)
+  assert.equal(route.crawlingFeet, 0)
   assert.ok(route.path.some((cell) => cell.y === 0))
 })
 

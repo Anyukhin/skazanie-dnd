@@ -17,6 +17,7 @@ import {
 import {
   DOOR_STATES,
   addProp as addTacticalProp,
+  cellAt,
   deserializeTacticalMap,
   doorById,
   doorsReachableFrom,
@@ -1619,8 +1620,12 @@ function occupiedPositions(state, exceptActorId = null) {
   return occupied
 }
 
-/** Returns the shortest orthogonal path, excluding the starting square. */
-export function shortestTacticalPath(state, actorIdValue, destination, { allowOccupiedDestination = false } = {}) {
+/**
+ * Returns the shortest orthogonal path, excluding the starting square.
+ * `stepCost` switches the search to a weighted path without changing the
+ * step-count semantics used by NPC planning and other existing callers.
+ */
+export function shortestTacticalPath(state, actorIdValue, destination, { allowOccupiedDestination = false, stepCost = null } = {}) {
   const from = actorPosition(state, actorIdValue)
   const to = { x: Number(destination?.x), y: Number(destination?.y) }
   if (!from || !Number.isSafeInteger(to.x) || !Number.isSafeInteger(to.y)) return null
@@ -1635,19 +1640,72 @@ export function shortestTacticalPath(state, actorIdValue, destination, { allowOc
   const map = sceneTacticalMap(state)
   const start = positionKey(from)
   const target = positionKey(to)
-  const queue = [start]
   const previous = new Map([[start, null]])
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const current = queue[cursor]
-    if (current === target) break
-    const [x, y] = current.split(',').map(Number)
-    for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
-      const next = `${nextX},${nextY}`
-      if (previous.has(next) || !isWalkableCell(cells.get(next))) continue
-      if (occupied.has(next) && !(allowOccupiedDestination && next === target)) continue
-      if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
-      previous.set(next, current)
-      queue.push(next)
+  if (typeof stepCost !== 'function') {
+    const queue = [start]
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const current = queue[cursor]
+      if (current === target) break
+      const [x, y] = current.split(',').map(Number)
+      for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        const next = `${nextX},${nextY}`
+        if (previous.has(next) || !isWalkableCell(cells.get(next))) continue
+        if (occupied.has(next) && !(allowOccupiedDestination && next === target)) continue
+        if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
+        previous.set(next, current)
+        queue.push(next)
+      }
+    }
+  } else {
+    const costs = new Map([[start, 0]])
+    const frontier = [{ key: start, cost: 0 }]
+    const pushFrontier = (entry) => {
+      frontier.push(entry)
+      let child = frontier.length - 1
+      while (child > 0) {
+        const parent = Math.floor((child - 1) / 2)
+        if (frontier[parent].cost <= frontier[child].cost) break
+        ;[frontier[parent], frontier[child]] = [frontier[child], frontier[parent]]
+        child = parent
+      }
+    }
+    const popFrontier = () => {
+      const first = frontier[0]
+      const last = frontier.pop()
+      if (frontier.length && last) {
+        frontier[0] = last
+        let parent = 0
+        while (true) {
+          const left = parent * 2 + 1
+          const right = left + 1
+          let smallest = parent
+          if (left < frontier.length && frontier[left].cost < frontier[smallest].cost) smallest = left
+          if (right < frontier.length && frontier[right].cost < frontier[smallest].cost) smallest = right
+          if (smallest === parent) break
+          ;[frontier[parent], frontier[smallest]] = [frontier[smallest], frontier[parent]]
+          parent = smallest
+        }
+      }
+      return first
+    }
+
+    while (frontier.length) {
+      const current = popFrontier()
+      if (!current || current.cost !== costs.get(current.key)) continue
+      if (current.key === target) break
+      const [x, y] = current.key.split(',').map(Number)
+      for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        const next = `${nextX},${nextY}`
+        if (!isWalkableCell(cells.get(next))) continue
+        if (occupied.has(next) && !(allowOccupiedDestination && next === target)) continue
+        if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
+        const weight = Math.max(1, Number(stepCost({ x: nextX, y: nextY })) || 1)
+        const nextCost = current.cost + weight
+        if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
+        costs.set(next, nextCost)
+        previous.set(next, current.key)
+        pushFrontier({ key: next, cost: nextCost })
+      }
     }
   }
   if (!previous.has(target)) return null
@@ -3828,6 +3886,14 @@ function activeAreaEffectsAt(state, position) {
   return (state.mechanics.active_effects ?? []).filter((effect) => positionInEffect(state, position, effect))
 }
 
+/** Статическая и длящаяся труднопроходимость — одно правило и одна доплата. */
+function isDifficultTerrainAt(state, position) {
+  const map = sceneTacticalMap(state)
+  const mapCell = map ? cellAt(map, Number(position?.x), Number(position?.y)) : null
+  return Number(mapCell?.moveCost ?? 1) > 1
+    || activeAreaEffectsAt(state, position).some((effect) => effect.difficult_terrain === true)
+}
+
 /**
  * Cells a wall occupies: a straight run from the caster toward the chosen point.
  * A wall is the one area whose shape a centre and a radius cannot express, so
@@ -4800,8 +4866,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         ...(conditionModifiers.automaticCritical && critical && attack.kept !== 20 ? { automatic_critical: true } : {}),
         ...(conditionModifiers.advantage.length ? { condition_advantage: conditionModifiers.advantage } : {}),
         ...(conditionModifiers.disadvantage.length ? { condition_disadvantage: conditionModifiers.disadvantage } : {}),
-        advantage_sources: swing.advantageSources,
-        disadvantage_sources: swing.disadvantageSources,
+        ...(swing.advantageSources.length ? { advantage_sources: swing.advantageSources } : {}),
+        ...(swing.disadvantageSources.length ? { disadvantage_sources: swing.disadvantageSources } : {}),
         ...(cover.armorClassBonus > 0 ? { cover: cover.level, cover_bonus: cover.armorClassBonus, cover_blockers: cover.blockers, ...(cover.scenery ? { cover_scenery: cover.scenery } : {}) } : {}),
         ...(swing.highGround !== 'level' ? { high_ground: swing.highGround } : {}),
         range_feet: profile?.range_feet ?? null,
@@ -7112,7 +7178,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (!isWalkableCell(cells.get(positionKey(to))) || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
           throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
         }
-        path = shortestTacticalPath(state, command.actor_id, to)
+        const ignoresTerrain = ignoresDifficultTerrain(state, command.actor_id)
+        const crawling = conditionIdsFor(state, command.actor_id).has('prone')
+        path = shortestTacticalPath(state, command.actor_id, to, {
+          stepCost: (step) => 5
+            + (!ignoresTerrain && isDifficultTerrainAt(state, step) ? 5 : 0)
+            + (crawling ? 5 : 0),
+        })
         if (!path?.length) throw new RulesValidationError('До клетки назначения нет свободного пути', 'PATH_BLOCKED')
         if (!reactionMovement) {
           const movementConditions = state.mechanics.conditions[command.actor_id] ?? []
@@ -7139,10 +7211,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           }
         }
         distance = path.length * 5
-        const difficultSteps = ignoresDifficultTerrain(state, command.actor_id)
+        const difficultSteps = ignoresTerrain
           ? 0
-          : path.filter((step) => activeAreaEffectsAt(state, step).some((effect) => effect.difficult_terrain === true)).length
-        const crawlingSteps = conditionIdsFor(state, command.actor_id).has('prone') ? path.length : 0
+          : path.filter((step) => isDifficultTerrainAt(state, step)).length
+        const crawlingSteps = crawling ? path.length : 0
         movementCost = distance + difficultSteps * 5 + crawlingSteps * 5
         const speed = effectiveSpeedFeet(state, actor, command.actor_id)
         const movementBonus = Math.max(0, safeInteger(state.mechanics.combat.action_economy[command.actor_id]?.movement_bonus, 0))

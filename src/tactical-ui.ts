@@ -11,6 +11,8 @@ export type MovementPath = {
   baseCostFeet: number
   /** Доплата за труднопроходимые клетки; нужна подписи предпросмотра. */
   difficultTerrainFeet: number
+  /** Доплата за ползание в состоянии prone. */
+  crawlingFeet: number
   costFeet: number
 }
 
@@ -30,9 +32,8 @@ function pointInAreaEffect(effect: AreaEffectWithCells, point: { x: number; y: n
 }
 
 /**
- * Активные области зеркалят доплату Rules Engine перед MoveActor. Слой
- * `moveCost` карты тоже показывается заранее: контракт уже объявляет 1/2, хотя
- * серверное перемещение пока расходует только трудные области заклинаний.
+ * Активные области и `moveCost` карты зеркалят единую доплату Rules Engine
+ * перед MoveActor. Совпавшие источники не складываются.
  */
 export function isDifficultTerrain(state: GameState, point: { x: number; y: number }, map?: TacticalMap | null) {
   const mapCost = map ? Number(cellAt(map, point.x, point.y)?.moveCost) || 1 : 1
@@ -43,8 +44,12 @@ export function isDifficultTerrain(state: GameState, point: { x: number; y: numb
 }
 
 export function movementCostLabel(route: MovementPath) {
-  return route.difficultTerrainFeet > 0
-    ? `${route.costFeet} фт (${route.baseCostFeet} фт пути + ${route.difficultTerrainFeet} фт за трудную местность)`
+  const surcharges = [
+    ...(route.difficultTerrainFeet > 0 ? [`${route.difficultTerrainFeet} фт за трудную местность`] : []),
+    ...(route.crawlingFeet > 0 ? [`${route.crawlingFeet} фт ползком`] : []),
+  ]
+  return surcharges.length
+    ? `${route.costFeet} фт (${route.baseCostFeet} фт пути + ${surcharges.join(' + ')})`
     : `${route.costFeet} фт`
 }
 
@@ -90,6 +95,9 @@ export function occupiedBoardPositions(state: GameState, exceptId?: string) {
 export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet = 5, map?: TacticalMap | null) {
   const cells = new Map(state.scene.cells.map((cell) => [boardPositionKey(cell.x, cell.y), cell]))
   const blocked = occupiedBoardPositions(state, actor.id)
+  const conditionIds = new Set((state.mechanics?.conditions?.[actor.id] ?? []).map((condition) => String(condition.id)))
+  const crawling = conditionIds.has('prone')
+  const ignoresDifficultTerrain = conditionIds.has('freedom-of-movement')
   const start = boardPositionKey(actor.x, actor.y)
   const costs = new Map<string, number>([[start, 0]])
   const previous = new Map<string, string | null>([[start, null]])
@@ -134,7 +142,8 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
       // Закрытая и запертая дверь останавливают шаг ровно так же, как на
       // сервере: иначе предпросмотр вёл бы маршрут сквозь запертую дверь.
       if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
-      const nextCost = current.cost + cellFeet * (isDifficultTerrain(state, { x: nextX, y: nextY }, map) ? 2 : 1)
+      const difficultTerrain = !ignoresDifficultTerrain && isDifficultTerrain(state, { x: nextX, y: nextY }, map)
+      const nextCost = current.cost + cellFeet * (1 + (difficultTerrain ? 1 : 0) + (crawling ? 1 : 0))
       if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
       costs.set(next, nextCost)
       previous.set(next, current.key)
@@ -153,9 +162,12 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
       cursor = previous.get(cursor) ?? null
     }
     const baseCostFeet = path.length * cellFeet
-    const costFeet = costs.get(destination) ?? baseCostFeet
-    const difficultTerrainFeet = Math.max(0, costFeet - baseCostFeet)
-    result.set(destination, { path, baseCostFeet, difficultTerrainFeet, costFeet })
+    const difficultTerrainFeet = ignoresDifficultTerrain
+      ? 0
+      : path.filter((step) => isDifficultTerrain(state, step, map)).length * cellFeet
+    const crawlingFeet = crawling ? path.length * cellFeet : 0
+    const costFeet = costs.get(destination) ?? baseCostFeet + difficultTerrainFeet + crawlingFeet
+    result.set(destination, { path, baseCostFeet, difficultTerrainFeet, crawlingFeet, costFeet })
   }
   return result
 }

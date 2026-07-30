@@ -3,6 +3,12 @@ import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
+  legacyCellsFromTacticalMap,
+  serializeTacticalMap,
+  setCell,
+  tacticalMapFromLegacyCells,
+} from '../server/tactical-map.mjs'
+import {
   RULE_IDS, RulesEngine, RulesValidationError, abilityModifier, applyGameEvent,
   hasClearTrajectory, normalizeCampaignState, replayEvents, resolveCommand, resolveCommands, validateCommand,
 } from '../server/rules-engine.mjs'
@@ -60,6 +66,8 @@ test('атака сравнивается с КД, а урон создаётс�
   assert.equal(result.events[0].event_type, 'AttackResolved')
   assert.equal(result.events[0].payload.total, 13)
   assert.equal(result.events[0].payload.hit, true)
+  assert.equal(Object.hasOwn(result.events[0].payload, 'advantage_sources'), false)
+  assert.equal(Object.hasOwn(result.events[0].payload, 'disadvantage_sources'), false)
   assert.equal(result.events.at(-1).event_type, 'DamageApplied')
   assert.equal(result.events.at(-1).payload.hp_after, 1)
 })
@@ -299,6 +307,42 @@ test('исследование не режется на боевые ходы, �
     ),
     (error) => error instanceof RulesValidationError && error.code === 'SPEED_EXCEEDED',
   )
+})
+
+test('MoveActor выбирает дешёвый путь по static moveCost и replay сохраняет расход', () => {
+  const cells = Array.from({ length: 2 }, (_, y) => (
+    Array.from({ length: 5 }, (_, x) => ({ x, y, type: 'floor', revealed: true }))
+  )).flat()
+  const map = tacticalMapFromLegacyCells(cells)
+  for (const x of [1, 2, 3]) setCell(map, x, 0, { moveCost: 2 })
+  const state = normalizeCampaignState({
+    partyMemberIds: ['hero'],
+    players: [{ id: 'hero', character: 'Адара', hp: 12, maxHp: 12, speed: 30, x: 0, y: 0, inventory: [] }],
+    scene: { cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map), turn: 1 },
+    mechanics: {
+      combat: {
+        active: true,
+        round: 1,
+        initiative: [{ actor_id: 'hero' }],
+        active_index: 0,
+        action_economy: { hero: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 } },
+      },
+    },
+  })
+
+  const result = resolveCommand(
+    { command_type: 'MoveActor', actor_id: 'hero', to: { x: 4, y: 0 }, server_authoritative: true },
+    state,
+    { diceService: dice([]), context: { allowedActorIds: ['hero'], serverAuthoritativeCombat: true } },
+  )
+  const movement = result.events.find((event) => event.event_type === 'ActorMoved')
+  assert.equal(movement.payload.distance, 30)
+  assert.equal(movement.payload.movement_cost, 30)
+  assert.ok(movement.payload.path.some((step) => step.y === 1), 'сервер обходит три дорогие клетки')
+
+  const replayed = replayEvents(state, result.events)
+  assert.deepEqual(replayed.mechanics.positions.hero, { x: 4, y: 0 })
+  assert.equal(replayed.mechanics.combat.action_economy.hero.movement_spent, 30)
 })
 
 function opportunityState({ heroHp = 12, disengaged = false } = {}) {
