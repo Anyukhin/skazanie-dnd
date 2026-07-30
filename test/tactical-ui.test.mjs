@@ -225,7 +225,7 @@ test('карточка броска показывает натуральный 
   assert.deepEqual(tacticalUi.battleRollPresentation({
     id: 'attack', type: 'attack', roll: { die: 14, modifier: 5, total: 19, difficulty: 16, hit: true },
   }), {
-    natural: 14, modifier: 5, modifierText: '+5', total: 19, difficulty: 16, difficultyLabel: 'КД', success: true,
+    natural: 14, modifier: 5, modifierText: '+5', total: 19, difficulty: 16, difficultyLabel: 'КД', success: true, outcome: 'попадание',
   })
   const save = tacticalUi.battleRollPresentation({
     id: 'save', type: 'spell-save', result: 'failure', roll: { die: 7, modifier: -1, total: 6, difficulty: 13, hit: false },
@@ -233,6 +233,12 @@ test('карточка броска показывает натуральный 
   assert.equal(save.modifierText, '−1')
   assert.equal(save.difficultyLabel, 'СЛ')
   assert.equal(save.success, false)
+  assert.equal(save.outcome, 'неудача')
+  assert.deepEqual(tacticalUi.battleRollPresentation({
+    id: 'npc', type: 'attack', roll: { total: 21, hit: true },
+  }), {
+    natural: null, modifier: null, modifierText: 'скрыт', total: 21, difficulty: undefined, difficultyLabel: 'КД', success: true, outcome: 'попадание',
+  })
   assert.equal(tacticalUi.battleRollPresentation({ id: 'move', type: 'move' }), null)
 })
 
@@ -270,4 +276,13 @@ test('причины преимущества и помехи берутся т�
   }], { ...shown, roll: { die: 4, modifier: 5, total: 9, difficulty: 15, hit: false } })
   assert.deepEqual(disadvantage.disadvantageReasons, ['атакующий отравлен', 'дальний диапазон'])
   assert.equal(tacticalUi.battleRollContext([], shown), null, 'клиент не должен додумывать причину без server event')
+
+  const durable = tacticalUi.battleRollContext([], {
+    ...shown,
+    rollMode: 'advantage',
+    rollDice: [9, 17],
+    advantageReasons: ['цель парализована', 'позиция выше цели'],
+    disadvantageReasons: [],
+  })
+  assert.deepEqual(durable, advantage, 'контекст из журнала обязан работать после SSE и replay без локального visualBatch')
 })

@@ -57,3 +57,23 @@ test('прямой магический урон и лечение не теря
   assert.equal(current.battleLog[1].healing, 4)
   assert.deepEqual([current.battleLog[1].hpBefore, current.battleLog[1].hpAfter], [12, 16])
 })
+
+test('журнал сохраняет серверное объяснение преимущества для SSE и replay', () => {
+  const current = apply(state(), 'AttackResolved', {
+    kept: 17,
+    modifier: 5,
+    total: 22,
+    dice: [9, 17],
+    mode: 'advantage',
+    armor_class: 15,
+    hit: true,
+    advantage_sources: ['цель парализована', 'позиция выше цели'],
+    disadvantage_sources: [],
+  })
+
+  const attack = current.battleLog.at(-1)
+  assert.equal(attack.rollMode, 'advantage')
+  assert.deepEqual(attack.rollDice, [9, 17])
+  assert.deepEqual(attack.advantageReasons, ['цель парализована', 'позиция выше цели'])
+  assert.deepEqual(attack.disadvantageReasons, [])
+})

@@ -65,7 +65,7 @@ test('конус совпадает с серверным углом и не в�
   assert.equal(keys(diagonal).includes('-1,1'), false, 'клетка позади направления не входит')
 })
 
-test('направленный куб имеет заданное ребро, а линия идёт к цели стабильными шагами', () => {
+test('направленный куб имеет заданное ребро, а self-линия идёт от заклинателя', () => {
   assert.deepEqual(keys(geometry.areaCells({
     shape: 'cube',
     origin: { x: 2, y: 2 },
@@ -81,6 +81,7 @@ test('направленный куб имеет заданное ребро, а
     shape: 'line',
     origin: { x: 1, y: 1 },
     target: { x: 5, y: 4 },
+    originMode: 'self',
     sizeFeet: 15,
   })), ['2,2', '3,3', '4,4'])
   assert.deepEqual(
@@ -88,6 +89,29 @@ test('направленный куб имеет заданное ребро, а
     [],
     'линия без направления не должна создавать область',
   )
+})
+
+test('point-линия совпадает с серверной стеной поперёк направления и пропускает стены', () => {
+  const blocked = new Set(['4,3'])
+  assert.deepEqual(keys(geometry.areaCells({
+    shape: 'line',
+    origin: { x: 1, y: 3 },
+    target: { x: 4, y: 3 },
+    originMode: 'point',
+    sizeFeet: 15,
+    isWalkable: (point) => !blocked.has(`${point.x},${point.y}`),
+  })), ['4,2', '4,4'])
+})
+
+test('self-линия останавливается перед первой непроходимой клеткой', () => {
+  assert.deepEqual(keys(geometry.areaCells({
+    shape: 'line',
+    origin: { x: 1, y: 1 },
+    target: { x: 5, y: 1 },
+    originMode: 'self',
+    sizeFeet: 30,
+    isWalkable: (point) => point.x < 4,
+  })), ['2,1', '3,1'])
 })
 
 test('point-cube трактует размер как серверный Chebyshev-радиус', () => {

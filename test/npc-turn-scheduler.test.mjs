@@ -1099,6 +1099,8 @@ test('pack tactics grants advantage and wolf bite can knock a hero prone', () =>
   const logged = [...after.battleLog].reverse().find((entry) => entry.type === 'attack')
   assert.equal(logged.actorKind, 'enemy')
   assert.equal(logged.packTactics, true, 'журнал боя обязан объяснять, почему удар вышел таким')
+  assert.equal(logged.rollMode, 'advantage')
+  assert.ok(logged.advantageReasons.includes('тактика стаи'))
   assert.equal(logged.actionName, 'Укус')
 })
 

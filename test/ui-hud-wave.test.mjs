@@ -35,6 +35,8 @@ test('предпросмотр области использует общий м
 test('сигнал своего хода уважает видимость вкладки и разрешение Notification API', () => {
   assert.match(appSource, /if \(!document\.hidden\) return/u)
   assert.match(appSource, /document\.title = `⚔ Твой ход/u)
+  assert.match(appSource, /document\.addEventListener\('visibilitychange', restoreTitle\)/u)
+  assert.match(appSource, /if \(!document\.hidden\) document\.title = normalDocumentTitle\.current/u)
   assert.match(appSource, /Notification\.permission !== 'granted'/u)
   assert.match(appSource, /Notification\.requestPermission\(\)/u)
   assert.match(appSource, /onClick=\{onRequestNotifications\}/u, 'разрешение запрашивается только явным действием в настройках')

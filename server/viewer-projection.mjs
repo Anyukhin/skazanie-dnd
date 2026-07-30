@@ -396,6 +396,7 @@ function publicBattleEventFor(entry, state, actorId = '') {
       total: integer(result.roll.total, 0),
       hit: result.roll.hit === true,
     }
+    delete result.rollDice
   }
   return result
 }

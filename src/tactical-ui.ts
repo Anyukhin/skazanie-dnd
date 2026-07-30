@@ -199,18 +199,20 @@ export function evaluateCombatTarget(check: CombatTargetCheck) {
 }
 
 export function battleRollPresentation(event: BattleEvent) {
-  if (!event.roll || event.roll.die == null) return null
-  const modifier = Number(event.roll.modifier) || 0
+  if (!event.roll) return null
+  const natural = event.roll.die == null ? null : Number(event.roll.die)
+  const modifier = natural == null ? null : Number(event.roll.modifier) || 0
   const isSave = event.type === 'spell-save' || event.type === 'concentration-save' || event.type === 'death-save'
   const success = isSave ? event.result === 'success' || event.result === 'stabilized' || event.result === 'revived' : event.roll.hit
   return {
-    natural: event.roll.die,
+    natural,
     modifier,
-    modifierText: modifier === 0 ? '±0' : `${modifier > 0 ? '+' : '−'}${Math.abs(modifier)}`,
+    modifierText: modifier == null ? 'скрыт' : modifier === 0 ? '±0' : `${modifier > 0 ? '+' : '−'}${Math.abs(modifier)}`,
     total: event.roll.total,
     difficulty: event.roll.difficulty,
     difficultyLabel: event.type === 'attack' ? 'КД' : 'СЛ',
     success,
+    outcome: event.type === 'attack' ? (success ? 'попадание' : 'промах') : (success ? 'успех' : 'неудача'),
   }
 }
 
@@ -247,6 +249,14 @@ function conditionRollReason(value: unknown) {
  */
 export function battleRollContext(events: readonly GameEvent[] | null | undefined, event: BattleEvent) {
   if (event.type !== 'attack' || !event.roll) return null
+  if (event.rollMode) {
+    return {
+      mode: event.rollMode,
+      dice: Array.isArray(event.rollDice) ? event.rollDice.map(Number).filter(Number.isFinite) : [],
+      advantageReasons: [...new Set((event.advantageReasons ?? []).map(String).filter(Boolean))],
+      disadvantageReasons: [...new Set((event.disadvantageReasons ?? []).map(String).filter(Boolean))],
+    }
+  }
   const resolved = [...(events ?? [])].reverse().find((candidate) => {
     if (candidate.event_type !== 'AttackResolved') return false
     const payload = candidate.payload ?? {}

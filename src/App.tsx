@@ -566,11 +566,10 @@ function BattleRollReasons({ context }: { context: BattleRollContext | null }) {
 function BattleRollCard({ event, context }: { event: BattleEvent; context: BattleRollContext | null }) {
   const roll = battleRollPresentation(event)
   if (!roll) return null
-  return <div className={`battle-roll-card ${roll.success ? 'success' : 'failed'}`} role="status" aria-label={`Бросок d20: ${roll.natural} ${roll.modifierText}, итого ${roll.total}${roll.difficulty != null ? ` против ${roll.difficultyLabel} ${roll.difficulty}` : ''}. ${roll.success ? 'Успех' : event.type === 'attack' ? 'Промах' : 'Неудача'}`}>
-    <div className="battle-roll-d20"><small>d20</small><b>{roll.natural}</b></div>
+  return <div className={`battle-roll-card ${roll.success ? 'success' : 'failed'}`} role="status" aria-label={`Бросок d20: ${roll.natural == null ? 'кости скрыты' : `${roll.natural} ${roll.modifierText}`}, итого ${roll.total}${roll.difficulty != null ? ` против ${roll.difficultyLabel} ${roll.difficulty}` : ''}. ${roll.outcome}`}>
+    {roll.natural != null && <div className="battle-roll-d20"><small>d20</small><b>{roll.natural}</b></div>}
     <div className="battle-roll-summary">
-      <span><small>МОДИФИКАТОР</small><b>{roll.modifierText}</b></span>
-      <i aria-hidden="true">=</i>
+      {roll.natural != null && <><span><small>МОДИФИКАТОР</small><b>{roll.modifierText}</b></span><i aria-hidden="true">=</i></>}
       <span className="total"><small>ИТОГ</small><b>{roll.total}</b></span>
       {roll.difficulty != null && <><i aria-hidden="true">против</i><span><small>{roll.difficultyLabel}</small><b>{roll.difficulty}</b></span></>}
     </div>
@@ -582,16 +581,15 @@ function BattleRollCard({ event, context }: { event: BattleEvent; context: Battl
 function BattleRollTokenCallout({ event, context }: { event: BattleEvent; context: BattleRollContext | null }) {
   const roll = battleRollPresentation(event)
   if (!roll) return null
-  const outcome = roll.success ? 'попадание' : 'промах'
   const modeReasons = context?.mode === 'advantage'
     ? context.advantageReasons
     : context?.mode === 'disadvantage'
       ? context.disadvantageReasons
       : []
   return <div className={`battle-roll-token-callout ${roll.success ? 'success' : 'failed'}`} role="status">
-    <b>{roll.natural} {roll.modifierText}</b>
-    <span>{roll.difficulty == null ? `= ${roll.total}` : `против ${roll.difficultyLabel} ${roll.difficulty}`}</span>
-    <strong>{outcome}</strong>
+    <b>{roll.natural == null ? `итого ${roll.total}` : `${roll.natural} ${roll.modifierText}`}</b>
+    <span>{roll.difficulty == null ? (roll.natural == null ? 'серверный результат' : `= ${roll.total}`) : `против ${roll.difficultyLabel} ${roll.difficulty}`}</span>
+    <strong>{roll.outcome}</strong>
     {context && context.mode !== 'normal' && <small>{context.mode === 'advantage' ? 'Преимущество' : 'Помеха'}{modeReasons.length ? `: ${modeReasons.join(', ')}` : ''}</small>}
   </div>
 }
@@ -1185,6 +1183,11 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     : projectileTarget
   const previewBlastSizeFeet = combatMode === 'magic' ? spellAreaRadiusFeet : areaRadiusFeet
   const previewBlastShape = combatMode === 'magic' ? selectedSpell?.areaShape ?? 'sphere' : 'sphere'
+  const previewWalkableKeys = new Set(
+    state.scene.cells
+      .filter((cell) => cell.revealed !== false && (cell.type === 'floor' || cell.type === 'door'))
+      .map((cell) => boardPositionKey(cell.x, cell.y)),
+  )
   const previewBlastKeys = new Set(
     previewBlastCenter && active && previewBlastSizeFeet > 0
       ? areaCells({
@@ -1195,6 +1198,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         sizeFeet: previewBlastSizeFeet,
         cellFeet: CELL_FEET,
         bounds: { minX: 0, minY: 0, maxX: columns - 1, maxY: rows - 1 },
+        isWalkable: (point) => previewWalkableKeys.has(boardPositionKey(point.x, point.y)),
       }).map((point) => boardPositionKey(point.x, point.y))
       : [],
   )

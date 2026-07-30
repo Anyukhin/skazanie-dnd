@@ -23,6 +23,8 @@ export type AreaGeometry = {
   sizeFeet: number
   cellFeet?: number
   bounds?: AreaBounds
+  /** Та же проверка проходимости, которую сервер применяет к клеткам луча/стены. */
+  isWalkable?: (point: AreaPoint) => boolean
 }
 
 export type AreaActor<TTeam extends string = 'ally' | 'enemy'> = AreaPoint & {
@@ -72,15 +74,39 @@ function directedCubeContains(point: AreaPoint, origin: AreaPoint, target: AreaP
   return forward >= 1 && forward <= edgeCells && Math.abs(x) <= halfWidth
 }
 
-function lineCells(origin: AreaPoint, target: AreaPoint | undefined, lengthCells: number) {
+function lineCells(
+  origin: AreaPoint,
+  target: AreaPoint | undefined,
+  lengthCells: number,
+  originMode: 'self' | 'point',
+  isWalkable: (point: AreaPoint) => boolean,
+) {
   const direction = directionFrom(origin, target)
   if (!direction) return []
   const stepX = Math.sign(direction.x)
   const stepY = Math.sign(direction.y)
-  return Array.from({ length: lengthCells }, (_, index) => ({
-    x: origin.x + stepX * (index + 1),
-    y: origin.y + stepY * (index + 1),
-  }))
+  if (originMode === 'self') {
+    const result: AreaPoint[] = []
+    for (let step = 1; step <= lengthCells; step += 1) {
+      const point = { x: origin.x + stepX * step, y: origin.y + stepY * step }
+      if (!isWalkable(point)) break
+      result.push(point)
+    }
+    return result
+  }
+
+  const acrossX = -stepY || 0
+  const acrossY = stepX || 0
+  const half = Math.floor(lengthCells / 2)
+  const result: AreaPoint[] = []
+  for (let offset = -half; offset <= half; offset += 1) {
+    const point = {
+      x: (target?.x ?? origin.x) + acrossX * offset,
+      y: (target?.y ?? origin.y) + acrossY * offset,
+    }
+    if (isWalkable(point)) result.push(point)
+  }
+  return result
 }
 
 /**
@@ -97,7 +123,13 @@ export function areaCells(geometry: AreaGeometry): AreaPoint[] {
 
   let result: AreaPoint[] = []
   if (geometry.shape === 'line') {
-    result = lineCells(geometry.origin, geometry.target, cells)
+    result = lineCells(
+      geometry.origin,
+      geometry.target,
+      cells,
+      geometry.originMode ?? 'point',
+      geometry.isWalkable ?? ((point) => inBounds(point, geometry.bounds)),
+    )
   } else {
     const selfCube = geometry.shape === 'cube' && geometry.originMode === 'self'
     const directedCube = selfCube
