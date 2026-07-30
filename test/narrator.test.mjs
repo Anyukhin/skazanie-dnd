@@ -4,6 +4,7 @@ import test from 'node:test'
 import { FakeLLM } from '../server/llm-client.mjs'
 import { Narrator, deterministicNarration } from '../server/narrator.mjs'
 import { buildNarrationBrief } from '../server/security.mjs'
+import { runWithCampaignAiSettings } from '../server/campaign-ai-context.mjs'
 
 const brief = buildNarrationBrief({
   visible_events: [{ event_type: 'DamageApplied', payload: { applied_amount: 3, hp_before: 10, hp_after: 7 }, source_rule_ids: ['srd:test:damage'], visibility: 'public' }],
@@ -70,6 +71,22 @@ test('Narrator ignores legacy model suggestions', async () => {
   const result = await new Narrator({ llmClient }).render(brief, { knownRuleIds: ['srd:test:damage'] })
   assert.equal(result.verification.valid, true)
   assert.equal(Object.hasOwn(result, 'suggestions'), false)
+})
+
+test('Narrator получает стиль текущей кампании через изолированный контекст запроса', async () => {
+  let userPrompt = ''
+  const llmClient = {
+    completeJson: async ({ messages }) => {
+      userPrompt = messages.find((message) => message.role === 'user')?.content ?? ''
+      return { narration: deterministicNarration(brief).narration }
+    },
+  }
+  const result = await runWithCampaignAiSettings(
+    { model: 'narrator-test', narratorStyle: 'formal' },
+    () => new Narrator({ llmClient }).render(brief, { knownRuleIds: ['srd:test:damage'] }),
+  )
+  assert.equal(result.verification.valid, true)
+  assert.match(userPrompt, /Сдержанный официальный русский/u)
 })
 
 // Вторая попытка несёт Рассказчику перечень нарушений, а в нём — куски его же

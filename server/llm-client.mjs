@@ -1,4 +1,5 @@
 import { LLMClient } from './contracts.mjs'
+import { currentCampaignModel } from './campaign-ai-context.mjs'
 
 const DEFAULT_TIMEOUT_MS = 45_000
 const DEFAULT_MAX_TOOL_CALLS = 8
@@ -364,7 +365,12 @@ export class FallbackLLMClient extends LLMClient {
   _candidates() {
     const now = this.now()
     const ready = this.clients.filter((client) => this._status(client).disabledUntil <= now)
-    return ready.length ? ready : [...this.clients].sort((left, right) => this._status(left).disabledUntil - this._status(right).disabledUntil)
+    const candidates = ready.length ? ready : [...this.clients].sort((left, right) => this._status(left).disabledUntil - this._status(right).disabledUntil)
+    const preferredModel = currentCampaignModel()
+    if (!preferredModel) return candidates
+    const preferredIndex = candidates.findIndex((client) => String(client.model ?? '') === preferredModel)
+    if (preferredIndex <= 0) return candidates
+    return [candidates[preferredIndex], ...candidates.slice(0, preferredIndex), ...candidates.slice(preferredIndex + 1)]
   }
 
   async complete(input, options = {}) {

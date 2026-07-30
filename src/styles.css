@@ -35,6 +35,11 @@
   --fs-5xl: calc(34px * var(--ui-readable-scale, 1));
 }
 
+html { scrollbar-color: #5c4633 #11100e; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #11100e; }
+::-webkit-scrollbar-thumb { border: 2px solid #11100e; border-radius: 999px; background: #5c4633; }
+::-webkit-scrollbar-thumb:hover { background: #806044; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; overflow: hidden; }
 button, textarea { font: inherit; }
@@ -58,12 +63,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .nav-item svg { flex: 0 0 auto; }
 .nav-item:hover { background: rgba(255,255,255,.035); color: #ddd3c5; }
 .nav-item.active { background: linear-gradient(90deg, rgba(195,139,75,.18), rgba(195,139,75,.035)); color: #dfb378; box-shadow: inset 2px 0 #cb9250; }
-.sidebar-section { padding: 17px 12px; min-height: 0; flex: 1; overflow-y: auto; }
+.sidebar-section { padding: 17px 12px; min-height: 0; flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #5c4633 transparent; }
 .section-label { height: 25px; padding: 0 8px 8px; display: flex; justify-content: space-between; align-items: center; color: #726b64; font-size: var(--fs-md); font-weight: 700; letter-spacing: .13em; white-space: nowrap; overflow: hidden; }
-.players-list { display: grid; gap: 6px; }
+.players-list { display: grid; grid-auto-rows: minmax(78px, auto); gap: 6px; max-height: calc(78px * 6 + 6px * 5); overflow-y: auto; padding-right: 3px; scrollbar-width: thin; scrollbar-color: #5c4633 transparent; }
 /* Не жёсткая высота, а нижняя граница: при увеличенном интерфейсе имя,
    роль и полоска здоровья перестали помещаться в 68px и подрезались. */
-.player-card { position: relative; min-height: 68px; border: 1px solid transparent; border-radius: 7px; padding: 8px; display: grid; grid-template-columns: 47px minmax(0,1fr) 20px; align-items: center; gap: 9px; background: transparent; cursor: pointer; text-align: left; overflow: hidden; transition: .18s; }
+.player-card { position: relative; min-height: 78px; border: 1px solid transparent; border-radius: 7px; padding: 9px; display: grid; grid-template-columns: 52px minmax(0,1fr) 20px; align-items: center; gap: 10px; background: transparent; cursor: pointer; text-align: left; overflow: hidden; transition: .18s; }
 .player-card:hover { background: rgba(255,255,255,.025); }
 .player-card.active { border-color: rgba(210,155,88,.25); background: rgba(185,126,62,.075); }
 .player-card.locked { opacity: .48; cursor: not-allowed; }.player-card.locked:hover { background: transparent; }.player-card.locked .player-name-row svg { color: #716861; }
@@ -78,9 +83,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .player-name-row strong { overflow: hidden; text-overflow: ellipsis; font-family: Spectral, serif; font-size: var(--fs-lg); color: #d9d0c4; }
 .player-name-row svg { color: var(--gold); }
 .player-meta > span { display: block; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); color: #756e67; white-space: nowrap; }
-.hp-line { position: relative; height: 3px; margin-top: 7px; background: #292521; border-radius: 2px; }
+.hp-line { position: relative; height: 5px; margin-top: 17px; background: #292521; border-radius: 3px; }
 .hp-line i { display: block; height: 100%; background: #8c554b; border-radius: inherit; }
-.hp-line small { display: none; }
+.hp-line small { position: absolute; right: 0; bottom: 7px; display: block; color: #a99d90; font: 600 var(--fs-sm) Manrope, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .armor-badge { align-self: center; display: grid; justify-items: center; gap: 1px; }
 .armor-icon { color: #625d57; }
 /* Множитель, а не единица: при увеличенном интерфейсе цифра в коробке высотой
@@ -200,6 +205,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    клетку 33 px — ровно ту, из-за которой бой и был тесным. Компактные значения по
    умолчанию, просторные — только когда ширины действительно хватает. */
 .game-area { --status: 60px; --server-column: var(--ui-server-column, 320px); --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--ui-rail-height, auto); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
+.pending-check-overlay { position: absolute; z-index: 45; top: calc(var(--status) + 14px); right: calc(var(--server-column) + 14px); width: min(520px, calc(100% - var(--server-column) - 28px)); pointer-events: auto; }
+.pending-check-overlay > summary { min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid rgba(204,151,86,.3); border-radius: 8px; background: rgba(12,10,8,.94); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; list-style: none; box-shadow: 0 12px 30px rgba(0,0,0,.36); }
+.pending-check-overlay > summary::-webkit-details-marker { display: none; }
+.pending-check-overlay > summary span { flex: 1; }
+.pending-check-overlay > summary svg:last-child { transition: transform .18s ease; }
+.pending-check-overlay[open] > summary { border-radius: 8px 8px 0 0; border-bottom-color: transparent; }
+.pending-check-overlay[open] > summary svg:last-child { transform: rotate(180deg); }
+.pending-check-overlay .dice-check { min-height: 0; grid-template-columns: minmax(0, 1fr) 180px; gap: 12px; padding: 12px; border: 1px solid rgba(204,151,86,.3); border-radius: 8px; background: radial-gradient(circle at 100% 100%, rgba(179,119,54,.18), transparent 50%), rgba(12,10,8,.94); box-shadow: 0 16px 42px rgba(0,0,0,.46); backdrop-filter: blur(10px); }
+.pending-check-overlay[open] .dice-check, .pending-check-overlay[open] .turn-wait { border-radius: 0 0 8px 8px; }
+.pending-check-overlay .dice-check > p { grid-column: 1 / -1; }
+.pending-check-overlay .turn-wait { min-height: 72px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: rgba(12,10,8,.94); box-shadow: 0 16px 42px rgba(0,0,0,.46); }
 @media (min-width: 1920px) {
   /* На широком экране другие умолчания, но заданный игроком размер остаётся
      главнее: раньше это правило жёстко ставило 420 и перетаскивание колонки в
@@ -647,7 +663,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .sidebar:not(.collapsed) .collapse-button { display: grid; }
   .sidebar:not(.collapsed) .main-nav { padding: 18px 13px; }.sidebar:not(.collapsed) .sidebar-section { padding: 17px 12px; }.sidebar:not(.collapsed) .sidebar-bottom { padding: 11px 13px 14px; }
   .sidebar:not(.collapsed) .nav-item { justify-content: flex-start; padding: 0 13px; }
-  .sidebar:not(.collapsed) .player-card { width: 100%; min-height: 68px; grid-template-columns: 47px minmax(0,1fr) 20px; padding: 8px; justify-items: initial; }
+  .sidebar:not(.collapsed) .player-card { width: 100%; min-height: 78px; grid-template-columns: 52px minmax(0,1fr) 20px; padding: 9px; justify-items: initial; }
   .sidebar:not(.collapsed) .demo-badge { justify-content: flex-start; padding: 8px 13px; }
   .game-main { height: 100dvh; }
   .topbar { height: 58px; flex-basis: 58px; padding: 0 12px; }
@@ -685,15 +701,15 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .spellbook-tools nav button { min-width: 44px; height: 40px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; color: #766c61; font: 700 var(--fs-sm) Manrope, sans-serif; }
 .spellbook-tools nav button.active { border-color: rgba(113,170,139,.44); background: rgba(55,121,89,.2); color: #a6d2bc; }
 .spellbook-tools > span { color: #70675e; font-size: var(--fs-sm); white-space: nowrap; }
-.spellbook-grid { display: grid; grid-template-columns: repeat(4, 1fr); align-content: start; gap: 10px; overflow: auto; padding: 14px; scrollbar-color: #66503a transparent; }
-.spellbook-grid article { position: relative; min-height: 104px; display: grid; grid-template-columns: 1fr 52px; border: 1px solid rgba(255,255,255,.07); border-radius: 6px; background: rgba(255,255,255,.018); color: #8e8377; }
+.spellbook-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 12px; overflow: auto; padding: 14px; scrollbar-color: #66503a transparent; }
+.spellbook-grid article { position: relative; min-height: 158px; display: grid; grid-template-columns: minmax(0, 1fr) 58px; overflow: hidden; border: 1px solid rgba(255,255,255,.07); border-radius: 6px; background: rgba(255,255,255,.018); color: #8e8377; }
 .spellbook-grid article.pinned { border-color: rgba(89,155,122,.36); background: rgba(47,105,78,.09); }
 .spellbook-grid article.unprepared { filter: saturate(.45); opacity: .68; }
-.spellbook-spell { min-width: 0; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; padding: 8px; text-align: left; }
-.spellbook-spell > span { min-width: 0; display: grid; gap: 2px; }
-.spellbook-spell strong { overflow: hidden; color: #d8c6ab; font: 600 var(--fs-2xl) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
-.spellbook-spell small { overflow: hidden; color: #8d857b; font: var(--fs-sm) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
-.spellbook-spell em { display: -webkit-box; overflow: hidden; color: #a89e92; font: normal var(--fs-sm)/1.35 Spectral, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.spellbook-spell { min-width: 0; display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 14px; padding: 12px; text-align: left; }
+.spellbook-spell > span { min-width: 0; display: grid; gap: 4px; }
+.spellbook-spell strong { overflow: hidden; color: #d8c6ab; font: 600 var(--fs-3xl) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.spellbook-spell small { overflow: hidden; color: #8d857b; font: var(--fs-md) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.spellbook-spell em { display: -webkit-box; overflow: hidden; color: #a89e92; font: normal var(--fs-md)/1.45 Spectral, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
 .spellbook-spell:disabled { opacity: .42; cursor: not-allowed; }
 .pin-spell { align-self: stretch; border-left: 1px solid rgba(255,255,255,.055) !important; color: #719d87 !important; }
 .spellbook-tag { position: absolute; top: 4px; left: 4px; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; background: #263b32; color: #9cc4af; font: normal 700 var(--fs-xs) Manrope, sans-serif; }
@@ -719,17 +735,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .rail-resize { position: absolute; z-index: 12; left: 0; right: 0; top: -3px; height: 9px; cursor: ns-resize; touch-action: none; }
 .rail-resize::after { content: ''; position: absolute; left: 50%; top: 3px; width: 46px; height: 3px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateX(-50%); transition: background .15s ease; }
 .rail-resize:hover::after { background: rgba(214,161,96,.55); }
-/* Ручка ширины сидит на правом краю карточки действий и видна всегда: три
-   насечки в пергаментном тоне на самой рамке. В промежутке между областями её
-   не было видно вовсе — тёмная полоска на тёмном фоне. */
-/* Ручка повторяет коробку карточки, а не ряд: карточка прижата к верху и её
-   середина ниже середины ряда — при выравнивании по ряду язычок съезжал вниз.
-   Сам язычок рисует `::before` по центру этой коробки. */
-.actions-resize { position: relative; grid-column: 2; grid-row: 1; justify-self: end; align-self: start; z-index: 12; width: 14px; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); display: grid; align-content: center; justify-items: center; gap: 3px; cursor: ew-resize; touch-action: none; }
-.actions-resize::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 54px; transform: translateY(-50%); border-left: 1px solid rgba(211,184,149,.14); border-radius: 0 8px 8px 0; background: rgba(30,26,22,.92); }
-.actions-resize i { position: relative; z-index: 1; width: 4px; height: 4px; border-radius: 50%; background: rgba(222,201,171,.45); }
-.actions-resize:hover::before { background: rgba(48,39,29,.95); }
-.actions-resize:hover i { background: #d7a866; }
 .server-resize { position: absolute; z-index: 12; top: 0; bottom: 0; left: -3px; width: 9px; cursor: ew-resize; touch-action: none; }
 .server-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 3px; height: 46px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateY(-50%); transition: background .15s ease; }
 .server-resize:hover::after { background: rgba(214,161,96,.55); }
@@ -816,7 +821,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    Описание к нему — речь о выбранном, и подложка ей не нужна: она читается
    как продолжение карточки, а не как второй ящик рядом. Перегородки между
    ними тоже нет — их разделяет промежуток. */
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) var(--ui-detail-width, clamp(340px, 32%, 600px)); gap: 10px; }
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(460px, 44%); gap: 10px; }
 /* Высота карточки закреплена ровно под два ряда плиток и не зависит от колоды:
    раньше она тянулась на весь ряд панели, плитки центрировались, и сверху и
    снизу оставалось по 19 пикселей пустоты. Число рядов считается от высоты
@@ -893,7 +898,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Мера строки, а не ширина колонки: колонка может быть широкой, когда колода
    короткая, но строка длиннее ~70 знаков уже не читается — глаз теряет начало
    следующей. Остаток колонки остаётся спокойным полем. */
-.hotbar-detail > * { max-width: 68ch; }
+.hotbar-detail > * { max-width: none; }
 /* Подтверждение стоит под описанием, а не отдельной колонкой посреди строки:
    игрок читает, что выбрал, и тут же соглашается. Ширину задаём явно — общее
    правило `.tactical-control button` растягивает кнопки на всю строку. */
@@ -1023,12 +1028,14 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .combat-hotbar.tactical-control { width: calc(100% - 32px); }
   /* Порядок колонок тот же, что на широком экране: колода с кнопками хода и
      описание. */
-  .hotbar-main { grid-template-columns: auto minmax(0, 1fr) minmax(260px, 420px); gap: 10px; }
+  .hotbar-main { grid-template-columns: auto minmax(0, 1fr) minmax(360px, 46%); gap: 10px; }
   .hotbar-turn-controls { min-width: 112px; }
   .player-hud-stack, .player-hud { display: none; }
 }
 
 @media (max-width: 820px) {
+  .pending-check-overlay { top: calc(var(--status) + 8px); right: 8px; left: 8px; width: auto; }
+  .pending-check-overlay .dice-check { grid-template-columns: minmax(0, 1fr) 150px; }
   .spellbook-panel { width: calc(100vw - 20px); height: calc(100vh - 80px); }
   .spellbook-grid { grid-template-columns: repeat(2, 1fr); }
   .spellbook-tools { align-items: stretch; flex-wrap: wrap; }
@@ -1162,6 +1169,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .ui-scale-range { grid-column: 1 / -1; width: 100%; margin: 4px 0 0; accent-color: #d09a59; cursor: pointer; }
 .ui-scale-setting select { grid-column: 1 / -1; height: 35px; padding: 0 34px 0 10px; border: 1px solid var(--line); border-radius: 5px; outline: 0; background: #171411; color: #9f9488; font-size: var(--fs-md); cursor: pointer; }
 .ui-scale-setting select:focus { border-color: rgba(201,149,85,.4); }
+.ui-scale-setting select:disabled { opacity: .52; cursor: not-allowed; }
 .ui-scale-marks { grid-column: 1 / -1; display: flex; justify-content: space-between; color: #8d857b; font-size: var(--fs-sm); }
 .ui-scale-marks i { font-style: normal; }
 

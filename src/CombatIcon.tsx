@@ -23,6 +23,7 @@ type CombatIconProps = {
   hint?: string
   size?: number
   compact?: boolean
+  priority?: boolean
 }
 
 const semanticIcons: Array<[RegExp, number]> = [
@@ -133,9 +134,9 @@ function iconRevealObserver() {
 }
 
 /** Показывать ли собственный рисунок: до попадания в область просмотра — нет. */
-function useRevealedIcon(enabled: boolean) {
+function useRevealedIcon(enabled: boolean, priority: boolean) {
   const holder = useRef<HTMLSpanElement>(null)
-  const [revealed, setRevealed] = useState(false)
+  const [revealed, setRevealed] = useState(enabled && priority)
 
   useEffect(() => {
     if (!enabled || revealed) return
@@ -163,7 +164,7 @@ function useRevealedIcon(enabled: boolean) {
   return { holder, revealed }
 }
 
-export function CombatIcon({ id, kind, hint = '', size, compact = false }: CombatIconProps) {
+export function CombatIcon({ id, kind, hint = '', size, compact = false, priority = false }: CombatIconProps) {
   // Своя картинка, если она есть; иначе прежняя клетка атласа. Набор наполняется
   // постепенно, поэтому запасной вариант обязателен — иначе интерфейс поедет на
   // полпути, когда нарисована половина каталога.
@@ -171,7 +172,7 @@ export function CombatIcon({ id, kind, hint = '', size, compact = false }: Comba
   const index = combatIconIndex(id, kind, hint)
   const column = index % 5
   const row = Math.floor(index / 5)
-  const { holder, revealed } = useRevealedIcon(own !== null)
+  const { holder, revealed } = useRevealedIcon(own !== null, priority)
   // Без size размер задаёт место, куда иконку поставили: слоту боевой панели нужно,
   // чтобы рисунок занимал его целиком, а слот меняет ширину вместе с экраном.
   // Запасное значение стоит в CSS, поэтому иконка нигде не схлопнется в ноль.

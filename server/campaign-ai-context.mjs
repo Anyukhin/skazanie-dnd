@@ -1,0 +1,49 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+export const NARRATOR_STYLES = Object.freeze({
+  neutral: {
+    id: 'neutral',
+    label: 'Нейтральный',
+    instruction: 'Нейтральный литературный русский: ясно, образно и без нарочитой канцелярской или шутливой интонации.',
+  },
+  formal: {
+    id: 'formal',
+    label: 'Официальный',
+    instruction: 'Сдержанный официальный русский: точные формулировки, серьёзный тон и минимум разговорных оборотов.',
+  },
+  ironic: {
+    id: 'ironic',
+    label: 'Ироничный',
+    instruction: 'Лёгкая доброжелательная ирония без пародии, унижения героев и нарушения подтверждённых фактов.',
+  },
+})
+
+const campaignAiContext = new AsyncLocalStorage()
+
+export function normalizeNarratorStyle(value) {
+  const id = String(value ?? '').trim().toLowerCase()
+  return Object.hasOwn(NARRATOR_STYLES, id) ? id : 'neutral'
+}
+
+export function runWithCampaignAiSettings(settings, operation) {
+  const value = settings && typeof settings === 'object'
+    ? {
+        model: String(settings.model ?? '').trim(),
+        narratorStyle: normalizeNarratorStyle(settings.narratorStyle),
+      }
+    : null
+  return campaignAiContext.run(value, operation)
+}
+
+export function currentCampaignAiSettings() {
+  return campaignAiContext.getStore() ?? null
+}
+
+export function currentCampaignModel() {
+  return currentCampaignAiSettings()?.model ?? ''
+}
+
+export function currentNarratorStyleInstruction() {
+  const settings = currentCampaignAiSettings()
+  return settings ? NARRATOR_STYLES[settings.narratorStyle].instruction : ''
+}

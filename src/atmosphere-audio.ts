@@ -52,6 +52,7 @@ type AmbientLayer = {
 type MoodProfile = {
   base: number
   harmony: number
+  color: number
   wave: OscillatorType
   pulse: number
   noise: number
@@ -59,16 +60,18 @@ type MoodProfile = {
 }
 
 const MOOD_PROFILES: Record<AtmosphereMood, MoodProfile> = Object.freeze({
-  building: { base: 82, harmony: 123, wave: 'triangle', pulse: 0.10, noise: 0.12, cutoff: 620 },
-  temple: { base: 110, harmony: 165, wave: 'sine', pulse: 0.07, noise: 0.05, cutoff: 980 },
-  crypt: { base: 46, harmony: 69, wave: 'sine', pulse: 0.05, noise: 0.15, cutoff: 340 },
-  cave: { base: 55, harmony: 83, wave: 'sine', pulse: 0.06, noise: 0.22, cutoff: 430 },
-  forest: { base: 98, harmony: 147, wave: 'sine', pulse: 0.12, noise: 0.24, cutoff: 1_250 },
-  road: { base: 73, harmony: 110, wave: 'triangle', pulse: 0.09, noise: 0.27, cutoff: 900 },
-  settlement: { base: 92, harmony: 138, wave: 'triangle', pulse: 0.15, noise: 0.18, cutoff: 1_100 },
-  combat: { base: 65, harmony: 98, wave: 'sawtooth', pulse: 2.25, noise: 0.16, cutoff: 720 },
-  finale: { base: 74, harmony: 148, wave: 'triangle', pulse: 0.32, noise: 0.10, cutoff: 1_400 },
+  building: { base: 82, harmony: 123, color: 98, wave: 'triangle', pulse: 0.10, noise: 0.018, cutoff: 620 },
+  temple: { base: 110, harmony: 165, color: 139, wave: 'sine', pulse: 0.07, noise: 0.012, cutoff: 980 },
+  crypt: { base: 46, harmony: 69, color: 55, wave: 'sine', pulse: 0.05, noise: 0.025, cutoff: 340 },
+  cave: { base: 55, harmony: 82, color: 65, wave: 'sine', pulse: 0.06, noise: 0.028, cutoff: 430 },
+  forest: { base: 98, harmony: 147, color: 123, wave: 'sine', pulse: 0.12, noise: 0.022, cutoff: 1_250 },
+  road: { base: 73, harmony: 110, color: 87, wave: 'triangle', pulse: 0.09, noise: 0.026, cutoff: 900 },
+  settlement: { base: 92, harmony: 138, color: 115, wave: 'triangle', pulse: 0.15, noise: 0.020, cutoff: 1_100 },
+  combat: { base: 65, harmony: 98, color: 77, wave: 'sawtooth', pulse: 2.25, noise: 0.024, cutoff: 720 },
+  finale: { base: 74, harmony: 111, color: 92, wave: 'triangle', pulse: 0.32, noise: 0.016, cutoff: 1_400 },
 })
+
+const AMBIENT_VOICE_LEVELS = [0.070, 0.050, 0.035] as const
 
 const EVENT_EFFECTS: Readonly<Record<string, AtmosphereEffect>> = Object.freeze({
   PublicDieRolled: 'dice',
@@ -258,7 +261,11 @@ export function createAtmosphereAudio(options: {
     layerGain.connect(ambientBus)
     const sources: AudioScheduledSourceNode[] = []
 
-    for (const [frequency, level] of [[profile.base, 0.055], [profile.harmony, 0.035]] as const) {
+    for (const [frequency, level] of [
+      [profile.base, AMBIENT_VOICE_LEVELS[0]],
+      [profile.harmony, AMBIENT_VOICE_LEVELS[1]],
+      [profile.color, AMBIENT_VOICE_LEVELS[2]],
+    ] as const) {
       const oscillator = track(context.createOscillator())
       const gain = context.createGain()
       oscillator.type = profile.wave
