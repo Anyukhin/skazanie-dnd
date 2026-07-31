@@ -45,6 +45,24 @@ function profileFor(item) {
   return {}
 }
 
+function chargeStateFor(item, profile) {
+  if (!profile?.charges) return null
+  const maximum = Math.max(0, integer(profile.charges.max, 0))
+  const requested = item?.charges?.current ?? profile.charges.current
+  return {
+    current: Math.max(0, Math.min(maximum, integer(requested, maximum))),
+    max: maximum,
+  }
+}
+
+function chargeStateFromEvent(payload) {
+  const maximum = Math.max(0, integer(payload?.max, 0))
+  return {
+    current: Math.max(0, Math.min(maximum, integer(payload?.after, 0))),
+    max: maximum,
+  }
+}
+
 function sameParty(state, id) {
   const ids = new Set((state.partyMemberIds?.length ? state.partyMemberIds : (state.players ?? []).map(actorId)).map(String))
   return ids.has(String(id))
@@ -148,8 +166,24 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
     const targetId = clean(command.target_id || ownerId)
     const target = player(state, targetId)
     if (!target || !sameParty(state, targetId)) throw new ItemLifecycleValidationError('Цель использования не входит в отряд', 'INVALID_ITEM_TARGET')
+    if (profile.use.target === 'self' && targetId !== ownerId) {
+      throw new ItemLifecycleValidationError('Этот предмет можно использовать только на себя', 'INVALID_ITEM_TARGET')
+    }
     if (profile.use.kind === 'ration' && state.mechanics?.combat?.active) {
       throw new ItemLifecycleValidationError('Паёк нельзя использовать во время боя', 'ITEM_USE_DURING_COMBAT')
+    }
+    const chargeCost = Math.max(0, integer(profile.use.charges_per_use, 0))
+    if (chargeCost > 0) {
+      const charges = chargeStateFor(item, profile)
+      if (!charges || charges.current < chargeCost) {
+        throw new ItemLifecycleValidationError('У предмета не осталось применений', 'ITEM_CHARGES_EXHAUSTED')
+      }
+      result.charge_spend = {
+        before: charges.current,
+        spent: chargeCost,
+        after: charges.current - chargeCost,
+        max: charges.max,
+      }
     }
     result.target_id = targetId
     result.target_ids = [targetId]
@@ -197,12 +231,16 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
       throw new ItemLifecycleValidationError('Некорректное количество предметов', 'INVALID_ITEM_QUANTITY')
     }
     const transferred = normalizeInventoryItem({ ...item, id: transferItemId(command, item, recipientId), quantity, equipped: false, attuned_to: null }, { preserveUnknown: true })
-    const mergeable = recipientInventory.some((candidate) => !candidate.equipped && !candidate.attuned_to
+    const stackable = profile.stackable !== false
+    if (!stackable && quantity !== 1) {
+      throw new ItemLifecycleValidationError('Этот предмет переносится только отдельным экземпляром', 'ITEM_NOT_STACKABLE')
+    }
+    const mergeable = stackable && recipientInventory.some((candidate) => !candidate.equipped && !candidate.attuned_to
       && inventoryStackKey(candidate) === inventoryStackKey(transferred))
-    const matchingQuantity = recipientInventory
+    const matchingQuantity = stackable ? recipientInventory
       .filter((candidate) => !candidate.equipped && !candidate.attuned_to
         && inventoryStackKey(candidate) === inventoryStackKey(transferred))
-      .reduce((total, candidate) => total + integer(candidate.quantity, 1), 0)
+      .reduce((total, candidate) => total + integer(candidate.quantity, 1), 0) : 0
     const inventoryLimit = recipientKind === 'npc' ? MAX_NPC_INVENTORY_ITEMS : 200
     if (!mergeable && recipientInventory.length >= inventoryLimit) {
       throw new ItemLifecycleValidationError(
@@ -221,6 +259,7 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
     result.recipient_kind = recipientKind
     result.quantity = quantity
     result.transferred_item = transferred
+    result.item_stackable = stackable
     result.target_ids = [ownerId, recipientId]
   }
 
@@ -254,7 +293,7 @@ export function itemLifecycleEvents(command) {
   if (command.command_type === 'EquipItem') {
     return [{
       event_type: command.equipped ? 'ItemEquipped' : 'ItemUnequipped',
-      payload: { item_id: command.item_id, equip_slot: command.equip_slot },
+      payload: { item_id: command.item_id, equip_slot: command.equip_slot, request_fingerprint: command.request_fingerprint ?? null },
       target_ids: [command.actor_id],
     }]
   }
@@ -268,6 +307,8 @@ export function itemLifecycleEvents(command) {
         recipient_kind: command.recipient_kind,
         quantity: command.quantity,
         item: clone(command.transferred_item),
+        stackable: command.item_stackable !== false,
+        request_fingerprint: command.request_fingerprint ?? null,
       },
       target_ids: [command.actor_id, command.recipient_id],
     }]
@@ -275,7 +316,7 @@ export function itemLifecycleEvents(command) {
   if (command.command_type === 'AttuneItem') {
     return [{
       event_type: 'ItemAttunementChanged',
-      payload: { item_id: command.item_id, actor_id: command.actor_id, attuned: command.attuned },
+      payload: { item_id: command.item_id, actor_id: command.actor_id, attuned: command.attuned, request_fingerprint: command.request_fingerprint ?? null },
       target_ids: [command.actor_id],
     }]
   }
@@ -322,7 +363,7 @@ export function applyItemLifecycleEventToPlayers(players, event) {
       }
       if (id === String(payload.to_actor_id)) {
         const incoming = normalizeInventoryItem(payload.item, { preserveUnknown: true })
-        const stackIndex = (actor.inventory ?? []).findIndex((item) => !item.equipped && !item.attuned_to
+        const stackIndex = payload.stackable === false ? -1 : (actor.inventory ?? []).findIndex((item) => !item.equipped && !item.attuned_to
           && inventoryStackKey(item) === inventoryStackKey(incoming))
         if (stackIndex < 0) return { ...actor, inventory: [...(actor.inventory ?? []), incoming] }
         return {
@@ -333,6 +374,18 @@ export function applyItemLifecycleEventToPlayers(players, event) {
         }
       }
       return actor
+    })
+  }
+  if (event.event_type === 'ItemChargesSpent') {
+    const ownerId = String(event.target_ids?.[0] ?? event.actor_id ?? '')
+    next = next.map((actor) => actorId(actor) !== ownerId ? actor : {
+      ...actor,
+      inventory: (actor.inventory ?? []).map((item) => String(item.id) === String(payload.item_id)
+        ? {
+            ...item,
+            charges: chargeStateFromEvent(payload),
+          }
+        : item),
     })
   }
   return next

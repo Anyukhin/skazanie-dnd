@@ -110,8 +110,9 @@ test('usable and attunable items are server-profiled and enforce attunement limi
     kind: 'healing',
     expression: '2d4+2',
     consumes: 1,
-    combat_action: 'action',
+    combat_action: 'bonus_action',
     range_feet: 5,
+    target: 'party',
   })
   assert.throws(() => validateItemLifecycleCommand({
     command_type: 'AttuneItem',
@@ -119,4 +120,50 @@ test('usable and attunable items are server-profiled and enforce attunement limi
     item_id: 'fourth',
     attuned: true,
   }, state([owner]), context(owner.id)), (error) => error.code === 'ATTUNEMENT_LIMIT_REACHED')
+})
+
+test('healer kits remain separate instances and charge replay reads only the event payload', () => {
+  const source = hero('hero-1', {
+    inventory: [{
+      id: 'source-kit',
+      catalog_id: 'srd_5_2_1:healers-kit',
+      name: 'Набор лекаря',
+      type: 'gear',
+      quantity: 1,
+      charges: { current: 7, max: 10 },
+    }],
+  })
+  const recipient = hero('hero-2', {
+    inventory: [{
+      id: 'recipient-kit',
+      catalog_id: 'srd_5_2_1:healers-kit',
+      name: 'Набор лекаря',
+      type: 'gear',
+      quantity: 1,
+      charges: { current: 7, max: 10 },
+    }],
+  })
+  const command = validateItemLifecycleCommand({
+    command_type: 'TransferItem',
+    command_id: 'separate-kits',
+    actor_id: source.id,
+    item_id: 'source-kit',
+    recipient_id: recipient.id,
+    quantity: 1,
+  }, state([source, recipient]), context(source.id))
+  const [transfer] = itemLifecycleEvents(command)
+  assert.equal(transfer.payload.stackable, false)
+  const transferred = applyItemLifecycleEventToPlayers([source, recipient], transfer)
+  assert.equal(transferred[1].inventory.length, 2)
+
+  const [charged] = applyItemLifecycleEventToPlayers([{
+    ...source,
+    inventory: [{ ...source.inventory[0], charges: { current: 99, max: 99 } }],
+  }], {
+    event_type: 'ItemChargesSpent',
+    actor_id: source.id,
+    target_ids: [source.id],
+    payload: { item_id: 'source-kit', after: 12, max: 4 },
+  })
+  assert.deepEqual(charged.inventory[0].charges, { current: 4, max: 4 })
 })

@@ -1,5 +1,6 @@
 // @ts-check
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
+import { itemViewerCapabilities } from './item-catalog.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
 import { reputationTier } from './reputation-policy.mjs'
@@ -579,6 +580,20 @@ function viewerFor(state, user, actorId) {
 }
 
 /**
+ * @param {Loose[]} players
+ * @returns {Loose[]}
+ */
+function playerItemsWithCapabilities(players) {
+  return (Array.isArray(players) ? players : []).map((player) => ({
+    ...player,
+    inventory: (Array.isArray(player?.inventory) ? player.inventory : []).map((item) => {
+      const capabilities = itemViewerCapabilities(item)
+      return capabilities ? { ...item, capabilities } : item
+    }),
+  }))
+}
+
+/**
  * Produces a non-admin campaign projection shared by room, command and narration
  * responses. It is deliberately stricter than the internal event-sourced state.
  *
@@ -615,6 +630,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     : visible.mechanics
   return {
     ...publicState,
+    players: playerItemsWithCapabilities(publicState.players),
     scene,
     adventure: publicAdventureFor(visible.adventure),
     worldMap: publicWorldMapFor(visible.worldMap ?? state.worldMap),

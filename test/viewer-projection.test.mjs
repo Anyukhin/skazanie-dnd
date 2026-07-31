@@ -101,6 +101,53 @@ test('player campaign projection hides private memory, fog features and remote m
   assert.doesNotMatch(projected.messages[0].text, /КД 15|ОЗ 11|→ 7/u)
 })
 
+test('player inventory projection derives safe catalog capabilities without hydrating snapshots', () => {
+  const raw = privateState()
+  raw.players[0].inventory = [
+    {
+      id: 'legacy-kit',
+      catalog_id: 'srd_5_2_1:healers-kit',
+      name: 'Старый набор лекаря',
+      type: 'gear',
+      quantity: 1,
+    },
+    {
+      id: 'legacy-weapon',
+      name: 'Старый клинок',
+      type: 'weapon',
+      quantity: 1,
+      combat: { kind: 'melee', ability: 'str', damage: '1d6', damageType: 'slashing', normalRange: 5 },
+    },
+    {
+      id: 'mislabelled-torch',
+      catalog_id: 'srd_5_2_1:torch',
+      name: 'Факел',
+      type: 'weapon',
+      quantity: 1,
+      combat: { kind: 'melee', damage: '99d99' },
+    },
+  ]
+
+  const projected = campaignStateForViewer(raw, user, 'hero')
+  const kit = projected.players[0].inventory.find((item) => item.id === 'legacy-kit')
+  const legacyWeapon = projected.players[0].inventory.find((item) => item.id === 'legacy-weapon')
+  const torch = projected.players[0].inventory.find((item) => item.id === 'mislabelled-torch')
+
+  assert.deepEqual(kit.capabilities.charges, { current: 10, max: 10 })
+  assert.deepEqual(kit.capabilities.use, {
+    kind: 'stabilize',
+    action_type: 'action',
+    target: 'party',
+    range_feet: 5,
+    charges_per_use: 1,
+  })
+  assert.equal(legacyWeapon.capabilities.equippable, true)
+  assert.equal(legacyWeapon.capabilities.equip_slot, 'main_hand')
+  assert.equal(torch.capabilities.equippable, false)
+  assert.equal(raw.players[0].inventory.some((item) => Object.hasOwn(item, 'capabilities')), false)
+  assert.equal(raw.players[0].inventory[0].charges, undefined)
+})
+
 test('enemy facts remain qualitative until an explicit server-side knowledge record reveals them', () => {
   const state = privateState()
   const hidden = campaignStateForViewer(state, user, 'hero').enemies[0]
