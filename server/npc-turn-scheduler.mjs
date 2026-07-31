@@ -1,3 +1,4 @@
+import { AuthoritativeExecutor } from './authoritative-executor.mjs'
 import {
   RulesValidationError,
   actorPosition,
@@ -494,23 +495,30 @@ function schedulerKey(campaignId, combat, actorIdValue, suffix = 'turn') {
 }
 
 async function commitPlan({ campaignId, eventStore, rulesEngine, loaded, commands, key }) {
-  const plan = {
-    proposed_commands: commands.map((command, index) => ({
-      ...command,
-      server_authoritative: true,
-      campaign_id: campaignId,
-      command_id: `${key}:${index + 1}`,
-    })),
-  }
-  const resolved = rulesEngine.resolvePlan(plan, loaded.state, { isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true })
-  if (!resolved.events.length) throw new RulesValidationError('NPC turn produced no events', 'NPC_TURN_EMPTY')
-  const committed = await eventStore.commit({
+  const proposed = commands.map((command, index) => ({
+    ...command,
+    server_authoritative: true,
     campaign_id: campaignId,
-    expected_state_version: loaded.state_version,
-    idempotency_key: key,
-    command_id: key,
-    events: resolved.events,
+    command_id: `${key}:${index + 1}`,
+  }))
+  // Шаг 4 плана `docs/agent-architecture-plan.md`: **объявленное изменение
+  // поведения**. Раньше чужой коммит, опередивший планировщик, ронял ход NPC
+  // целиком — ошибка 500 и потерянный ход, тогда как тот же конфликт у хода
+  // игрока переживался прозрачно. Теперь политика одна для обоих: исполнитель
+  // перечитывает состояние и повторяет план.
+  //
+  // Ключ по-прежнему собран из позиции в очереди инициативы, поэтому повтор
+  // после падения на середине очереди не создаёт второй ход NPC.
+  const executor = new AuthoritativeExecutor({ eventStore, rulesEngine })
+  const committed = await executor.executeCommands({
+    campaignId,
+    idempotencyKey: key,
+    commands: proposed,
+    context: { isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true },
   })
+  // На повторе ключа плана нет: события берутся из прежнего коммита.
+  const resolved = committed.resolved ?? { commands: proposed, events: committed.events ?? [], rolls: [] }
+  if (!resolved.events.length) throw new RulesValidationError('NPC turn produced no events', 'NPC_TURN_EMPTY')
   return { committed, resolved }
 }
 

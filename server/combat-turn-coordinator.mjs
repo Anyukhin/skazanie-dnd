@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import { AuthoritativeExecutor } from './authoritative-executor.mjs'
+
 import { initiativeGroupIds, isEnemyActor, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 
@@ -174,16 +176,21 @@ async function commitTimedOutTurn({ campaignId, eventStore, rulesEngine, loaded,
       auto_skip_reason: 'turn-timeout',
     })),
   }
-  const resolved = rulesEngine.resolvePlan(plan, loaded.state, {
-    isAdmin: true,
-    serverAuthoritativeCombat: true,
-  })
-  return eventStore.commit({
-    campaign_id: campaignId,
-    expected_state_version: loaded.state_version,
-    idempotency_key: key,
-    command_id: key,
-    events: resolved.events,
+  // Шаг 4 плана: часы боя получают ту же политику, что и ход игрока. Раньше
+  // чужой коммит между чтением и записью ронял авто-пропуск, и ход зависал до
+  // следующего тика. Ключ по-прежнему собран из координат хода, поэтому повтор
+  // после гонки или рестарта не пропускает ход второй раз.
+  // `maxAttempts: 1` намеренно: у координатора **свой** повтор — ограниченная
+  // экспоненциальная задержка по таймеру. Внутренний синхронный цикл исполнителя
+  // подменил бы её горячими попытками подряд, а тест
+  // `test/combat-turn-coordinator.test.mjs` прямо запрещает такой цикл.
+  // Унифицируется путь записи и обработка повторного ключа, а не политика ожидания.
+  const executor = new AuthoritativeExecutor({ eventStore, rulesEngine, maxAttempts: 1 })
+  return executor.executeCommands({
+    campaignId,
+    idempotencyKey: key,
+    commands: plan.proposed_commands,
+    context: { isAdmin: true, serverAuthoritativeCombat: true },
   })
 }
 

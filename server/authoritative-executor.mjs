@@ -151,6 +151,8 @@ export class AuthoritativeExecutor {
    *   actorIds?: string[],
    *   context?: Record<string, unknown>,
    * }} input
+   * @returns {Promise<Record<string, unknown>>} подтверждённый коммит плюс
+   *   `resolved` — разобранный план, если он считался в этом вызове
    */
   async executeCommands({
     campaignId,
@@ -190,7 +192,7 @@ export class AuthoritativeExecutor {
           command_id: key,
           events: resolved.events,
         })
-        return { ...committed, replayed: false }
+        return { ...committed, replayed: false, resolved }
       } catch (error) {
         lastError = error
         if (error?.code === 'STATE_VERSION_CONFLICT' && attempt < this.maxAttempts - 1) {
