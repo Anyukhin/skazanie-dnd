@@ -13,6 +13,7 @@ const CANONICAL_FIELDS = Object.freeze([
   'worldMemory',
   'worldMap',
   'social',
+  'npc_world',
   'mechanics',
   'rulings',
   'entities',

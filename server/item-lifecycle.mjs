@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto'
 
 import { inventoryStackKey, MAX_STOCK_QUANTITY, normalizeInventoryItem } from './merchant-economy.mjs'
+import {
+  MAX_NPC_INVENTORY_ITEMS,
+  MAX_NPC_INVENTORY_OWNERS,
+  npcInteractionTargetForViewer,
+  npcVitalFor,
+  normalizeNpcWorldState,
+} from './npc-positioning.mjs'
 
 export const ITEM_LIFECYCLE_COMMAND_TYPES = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
 export const MAX_ATTUNED_ITEMS = 3
@@ -162,32 +169,64 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
     if (item.equipped) throw new ItemLifecycleValidationError('Сначала снимите предмет', 'ITEM_EQUIPPED')
     if (item.attuned_to) throw new ItemLifecycleValidationError('Сначала разорвите настройку с предметом', 'ITEM_ATTUNED')
     const recipientId = clean(command.recipient_id || command.target_id)
-    const recipient = player(state, recipientId)
-    if (!recipient || recipientId === ownerId || !sameParty(state, recipientId)) {
-      throw new ItemLifecycleValidationError('Получатель должен быть другим героем отряда', 'INVALID_ITEM_RECIPIENT')
+    if (!recipientId || recipientId === ownerId) {
+      throw new ItemLifecycleValidationError('Получатель должен отличаться от владельца предмета', 'INVALID_ITEM_RECIPIENT')
+    }
+    const heroRecipient = player(state, recipientId)
+    let recipientKind = 'hero'
+    let recipientInventory = heroRecipient?.inventory ?? []
+    if (heroRecipient) {
+      if (!sameParty(state, recipientId)) {
+        throw new ItemLifecycleValidationError('Получатель должен быть другим героем отряда', 'INVALID_ITEM_RECIPIENT')
+      }
+    } else {
+      const npcTarget = npcInteractionTargetForViewer(state, recipientId)
+      if (!npcTarget) {
+        throw new ItemLifecycleValidationError('NPC должен быть видим и реально присутствовать в текущей сцене', 'NPC_ITEM_RECIPIENT_NOT_VISIBLE')
+      }
+      const npcProfile = npcTarget.npc
+      if (npcProfile.available === false) {
+        throw new ItemLifecycleValidationError('NPC сейчас недоступен для взаимодействия', 'NPC_ITEM_RECIPIENT_UNAVAILABLE')
+      }
+      if (npcVitalFor(state, recipientId).alive !== true) {
+        throw new ItemLifecycleValidationError('Нельзя передать предмет погибшему NPC', 'NPC_ITEM_RECIPIENT_DEAD')
+      }
+      recipientKind = 'npc'
+      const npcWorld = normalizeNpcWorldState(state.npc_world)
+      const hasNpcInventory = Object.hasOwn(npcWorld.inventories, recipientId)
+      recipientInventory = hasNpcInventory ? npcWorld.inventories[recipientId] : []
+      if (!hasNpcInventory
+        && Object.keys(npcWorld.inventories).length >= MAX_NPC_INVENTORY_OWNERS) {
+        throw new ItemLifecycleValidationError('Хранилище инвентарей NPC заполнено', 'NPC_INVENTORY_CAPACITY_EXCEEDED')
+      }
     }
     const quantity = integer(command.quantity, 1)
     if (quantity < 1 || quantity > integer(item.quantity, 1)) {
       throw new ItemLifecycleValidationError('Некорректное количество предметов', 'INVALID_ITEM_QUANTITY')
     }
     const transferred = normalizeInventoryItem({ ...item, id: transferItemId(command, item, recipientId), quantity, equipped: false, attuned_to: null }, { preserveUnknown: true })
-    const mergeable = (recipient.inventory ?? []).some((candidate) => !candidate.equipped && !candidate.attuned_to
+    const mergeable = recipientInventory.some((candidate) => !candidate.equipped && !candidate.attuned_to
       && inventoryStackKey(candidate) === inventoryStackKey(transferred))
-    const matchingQuantity = (recipient.inventory ?? [])
+    const matchingQuantity = recipientInventory
       .filter((candidate) => !candidate.equipped && !candidate.attuned_to
         && inventoryStackKey(candidate) === inventoryStackKey(transferred))
       .reduce((total, candidate) => total + integer(candidate.quantity, 1), 0)
-    if (!mergeable && (recipient.inventory ?? []).length >= 200) {
-      throw new ItemLifecycleValidationError('Инвентарь получателя заполнен', 'INVENTORY_CAPACITY_EXCEEDED')
+    const inventoryLimit = recipientKind === 'npc' ? MAX_NPC_INVENTORY_ITEMS : 200
+    if (!mergeable && recipientInventory.length >= inventoryLimit) {
+      throw new ItemLifecycleValidationError(
+        recipientKind === 'npc' ? 'Инвентарь NPC заполнен' : 'Инвентарь получателя заполнен',
+        recipientKind === 'npc' ? 'NPC_INVENTORY_CAPACITY_EXCEEDED' : 'INVENTORY_CAPACITY_EXCEEDED',
+      )
     }
     if (matchingQuantity + quantity > MAX_STOCK_QUANTITY) {
       throw new ItemLifecycleValidationError('Стопка предметов получателя превысит допустимый размер', 'ITEM_STACK_LIMIT_EXCEEDED')
     }
-    const projectedWeight = inventoryWeight(recipient) + transferred.weight * quantity
-    if (projectedWeight > carryingCapacity(recipient)) {
+    const projectedWeight = heroRecipient ? inventoryWeight(heroRecipient) + transferred.weight * quantity : 0
+    if (heroRecipient && projectedWeight > carryingCapacity(heroRecipient)) {
       throw new ItemLifecycleValidationError('Получатель превысит грузоподъёмность', 'CARRYING_CAPACITY_EXCEEDED')
     }
     result.recipient_id = recipientId
+    result.recipient_kind = recipientKind
     result.quantity = quantity
     result.transferred_item = transferred
     result.target_ids = [ownerId, recipientId]
@@ -234,6 +273,7 @@ export function itemLifecycleEvents(command) {
         item_id: command.item_id,
         from_actor_id: command.actor_id,
         to_actor_id: command.recipient_id,
+        recipient_kind: command.recipient_kind,
         quantity: command.quantity,
         item: clone(command.transferred_item),
       },

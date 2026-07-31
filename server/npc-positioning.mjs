@@ -1,10 +1,17 @@
 import { createHash } from 'node:crypto'
 
+import {
+  inventoryStackKey,
+  MAX_STOCK_QUANTITY,
+  normalizeInventoryItem,
+} from './merchant-economy.mjs'
 import { factionIdsForNpc } from './reputation-policy.mjs'
 import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 
 export const NPC_WORLD_POLICY_ID = 'skazanie:npc-world-v1'
 export const NPC_WORLD_COMMAND_TYPES = new Set(['PlaceNpc', 'MoveNpc', 'HarmNpc'])
+export const MAX_NPC_INVENTORY_OWNERS = 500
+export const MAX_NPC_INVENTORY_ITEMS = 100
 
 const STANCES = new Set(['neutral', 'guarded', 'frightened', 'hostile', 'fleeing', 'dead'])
 const MAX_PLACEMENTS = 5_000
@@ -61,6 +68,35 @@ function safeStance(value = {}) {
   }
 }
 
+function safeNpcInventory(value) {
+  const inventory = []
+  const stackIndexes = new Map()
+  for (const raw of Array.isArray(value) ? value : []) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const item = normalizeInventoryItem({
+      ...raw,
+      equipped: false,
+      attuned_to: null,
+    }, { preserveUnknown: true })
+    const stackKey = inventoryStackKey(item)
+    const existingIndex = stackIndexes.get(stackKey)
+    if (existingIndex != null) {
+      inventory[existingIndex] = {
+        ...inventory[existingIndex],
+        quantity: Math.min(
+          MAX_STOCK_QUANTITY,
+          integer(inventory[existingIndex].quantity, 1) + integer(item.quantity, 1),
+        ),
+      }
+      continue
+    }
+    if (inventory.length >= MAX_NPC_INVENTORY_ITEMS) continue
+    stackIndexes.set(stackKey, inventory.length)
+    inventory.push(item)
+  }
+  return inventory
+}
+
 export function normalizeNpcWorldState(input = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const placements = []
@@ -78,11 +114,24 @@ export function normalizeNpcWorldState(input = {}) {
   const stances = Object.fromEntries(Object.entries(source.stances ?? {}).slice(0, 500)
     .map(([npcId, value]) => [text(npcId, 120), safeStance(value)])
     .filter(([npcId]) => npcId))
+  const inventoryEntries = []
+  const inventoryIds = new Set()
+  for (const [rawNpcId, value] of Object.entries(source.inventories ?? {})) {
+    if (inventoryEntries.length >= MAX_NPC_INVENTORY_OWNERS) break
+    const npcId = text(rawNpcId, 120)
+    if (!npcId || inventoryIds.has(npcId)) continue
+    const inventory = safeNpcInventory(value)
+    if (!inventory.length) continue
+    inventoryIds.add(npcId)
+    inventoryEntries.push([npcId, inventory])
+  }
+  const inventories = Object.fromEntries(inventoryEntries)
   return {
-    schema_version: 1,
+    schema_version: 2,
     placements: placements.slice(-MAX_PLACEMENTS),
     vitals,
     stances,
+    inventories,
   }
 }
 
@@ -94,13 +143,16 @@ export function sceneLocationId(state = {}) {
   return text(state.scene?.location ?? state.scene?.title, 180)
 }
 
-function npcAtCurrentLocation(npc, state) {
-  if (npc?.available === false) return false
+function npcLocationMatchesCurrentScene(npc, state) {
   const currentId = comparable(sceneLocationId(state))
   const currentName = comparable(state.scene?.location ?? state.scene?.title)
   const location = comparable(npc?.location)
   if (!location) return false
   return location === currentId || location === currentName
+}
+
+function npcAtCurrentLocation(npc, state) {
+  return npc?.available !== false && npcLocationMatchesCurrentScene(npc, state)
 }
 
 export function presentSceneNpcs(state = {}) {
@@ -125,6 +177,19 @@ export function npcVitalFor(state = {}, npcId) {
   if (persisted) return persisted
   const npc = (state.social?.npcs ?? []).find((candidate) => String(candidate?.id) === String(npcId ?? ''))
   return initialNpcVital(npc)
+}
+
+/**
+ * Узкий public-presence gate для действий игрока с NPC. Он намеренно не
+ * раскрывает availability/vitals: вызывающий код вправе различить их только
+ * после того, как публичный профиль и пост текущей сцены уже доказаны.
+ */
+export function npcInteractionTargetForViewer(state = {}, npcId) {
+  const expectedNpcId = String(npcId ?? '')
+  const npc = (state.social?.npcs ?? []).find((candidate) => String(candidate?.id) === expectedNpcId) ?? null
+  if (!npc || npc.visibility === 'gm_only' || !npcLocationMatchesCurrentScene(npc, state)) return null
+  const placement = npcPlacementFor(state, expectedNpcId)
+  return placement ? { npc, placement } : null
 }
 
 export function initialNpcVital(npc = {}) {
@@ -634,6 +699,41 @@ export function applyNpcWorldEvent(input, event) {
       source_event_id: payload.source_event_id || event.event_id,
       propagation_depth: payload.propagation_depth,
     })
+  }
+  if (event?.event_type === 'ItemTransferred' && payload.recipient_kind === 'npc') {
+    const recipientId = text(payload.to_actor_id, 120)
+    const incoming = safeNpcInventory([{
+      ...(payload.item && typeof payload.item === 'object' ? payload.item : {}),
+      quantity: Math.max(1, integer(payload.quantity, 1)),
+      equipped: false,
+      attuned_to: null,
+    }])[0]
+    if (recipientId && incoming) {
+      const inventory = Object.hasOwn(world.inventories, recipientId)
+        ? world.inventories[recipientId]
+        : []
+      const stackKey = inventoryStackKey(incoming)
+      const stackIndex = inventory.findIndex((item) => inventoryStackKey(item) === stackKey)
+      if (stackIndex >= 0) {
+        world.inventories = {
+          ...world.inventories,
+          [recipientId]: inventory.map((item, index) => index === stackIndex
+          ? {
+              ...item,
+              quantity: Math.min(
+                MAX_STOCK_QUANTITY,
+                integer(item.quantity, 1) + integer(incoming.quantity, 1),
+              ),
+            }
+          : item),
+        }
+      } else if (inventory.length < MAX_NPC_INVENTORY_ITEMS) {
+        world.inventories = {
+          ...world.inventories,
+          [recipientId]: [...inventory, incoming],
+        }
+      }
+    }
   }
   return normalizeNpcWorldState(world)
 }
