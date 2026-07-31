@@ -1260,13 +1260,25 @@ function stableStringify(value) {
 }
 
 /**
+ * Хеш уже сериализованной карты. Проекция видимости сначала строит публичную
+ * транспортную форму, поэтому повторно кодировать из неё те же слои и рёбра
+ * через `TacticalMap` незачем.
+ *
+ * @param {unknown} value результат `serializeTacticalMap`
+ * @returns {string}
+ */
+export function serializedTacticalMapHash(value) {
+  return createHash('sha256').update(stableStringify(value)).digest('hex')
+}
+
+/**
  * Хеш содержимого карты. Используется как ключ кэша рендера и как адрес карты
  * в хранилище.
  * @param {TacticalMap} map
  * @returns {string}
  */
 export function tacticalMapHash(map) {
-  return createHash('sha256').update(stableStringify(serializeTacticalMap(map))).digest('hex')
+  return serializedTacticalMapHash(serializeTacticalMap(map))
 }
 
 // --- валидация -----------------------------------------------------------

@@ -21,6 +21,7 @@ import {
   reachableCells,
   recomputeBounds,
   serializeTacticalMap,
+  serializedTacticalMapHash,
   setCell,
   setDoor,
   setEdge,
@@ -314,6 +315,7 @@ test('хеш детерминирован и чувствителен к сод�
   const second = build()
   assert.equal(tacticalMapHash(first), tacticalMapHash(second))
   assert.equal(tacticalMapHash(deserializeTacticalMap(serializeTacticalMap(first))), tacticalMapHash(first))
+  assert.equal(serializedTacticalMapHash(serializeTacticalMap(first)), tacticalMapHash(first))
 
   const changedCell = build()
   const target = [...Array(changedCell.width).keys()]

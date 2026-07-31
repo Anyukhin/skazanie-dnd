@@ -9,7 +9,7 @@ import {
   SURFACES,
   deserializeTacticalMap,
   serializeTacticalMap,
-  tacticalMapHash,
+  serializedTacticalMapHash,
 } from './tactical-map.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
@@ -238,7 +238,7 @@ export function publicTacticalMapWithHashFor(value) {
       pointOfInterest: prop.interaction.pointOfInterest === true,
     }
   }
-  return { map: projectedMap, hash: tacticalMapHash(map) }
+  return { map: projectedMap, hash: serializedTacticalMapHash(projectedMap) }
 }
 
 /**

@@ -3937,11 +3937,36 @@ function activeAreaEffectsAt(state, position) {
   return (state.mechanics.active_effects ?? []).filter((effect) => positionInEffect(state, position, effect))
 }
 
+/**
+ * Взвешенный поиск проверяет десятки тысяч соседних клеток. Явные клетки
+ * длящихся областей не должны каждый раз линейно перебираться через
+ * `effect.cells.some`: индекс строится один раз на один расчёт маршрута.
+ */
+function difficultTerrainLookupFor(state) {
+  const cells = new Set()
+  const areas = []
+  for (const effect of state.mechanics.active_effects ?? []) {
+    if (effect?.difficult_terrain !== true) continue
+    if (Array.isArray(effect.cells)) {
+      for (const cell of effect.cells) {
+        const x = Number(cell?.x)
+        const y = Number(cell?.y)
+        if (Number.isSafeInteger(x) && Number.isSafeInteger(y)) cells.add(`${x},${y}`)
+      }
+    } else {
+      areas.push(effect)
+    }
+  }
+  return { cells, areas }
+}
+
 /** Статическая и длящаяся труднопроходимость — одно правило и одна доплата. */
-function isDifficultTerrainAt(state, position, map) {
+function isDifficultTerrainAt(state, position, map, lookup = null) {
   const mapCell = map ? cellAt(map, Number(position?.x), Number(position?.y)) : null
-  return Number(mapCell?.moveCost ?? 1) > 1
-    || activeAreaEffectsAt(state, position).some((effect) => effect.difficult_terrain === true)
+  if (Number(mapCell?.moveCost ?? 1) > 1) return true
+  if (!lookup) return activeAreaEffectsAt(state, position).some((effect) => effect.difficult_terrain === true)
+  if (lookup.cells.has(positionKey(position))) return true
+  return lookup.areas.some((effect) => positionInEffect(state, position, effect))
 }
 
 /**
@@ -3957,10 +3982,12 @@ export function movementStepCostFor(state, actorIdValue, { tacticalMap } = {}) {
   const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
   const ignoresTerrain = ignoresDifficultTerrain(state, actorIdValue)
   const crawling = conditionIdsFor(state, actorIdValue).has('prone')
+  const difficultTerrain = difficultTerrainLookupFor(state)
+  const difficultAt = (step, pathMap = map) => isDifficultTerrainAt(state, step, pathMap, difficultTerrain)
   const stepCost = (step, pathMap = map) => 5
-    + (!ignoresTerrain && isDifficultTerrainAt(state, step, pathMap) ? 5 : 0)
+    + (!ignoresTerrain && difficultAt(step, pathMap) ? 5 : 0)
     + (crawling ? 5 : 0)
-  return { map, stepCost, ignoresTerrain, crawling }
+  return { map, stepCost, difficultAt, ignoresTerrain, crawling }
 }
 
 /** Во что обойдётся уже выбранный маршрут: та же формула, применённая к списку. */
@@ -7253,7 +7280,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (!isWalkableCell(cells.get(positionKey(to))) || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
           throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
         }
-        const { map, stepCost, ignoresTerrain, crawling } = movementStepCostFor(state, command.actor_id)
+        const { map, stepCost, difficultAt, ignoresTerrain, crawling } = movementStepCostFor(state, command.actor_id)
         path = shortestTacticalPath(state, command.actor_id, to, { tacticalMap: map, stepCost })
         if (!path?.length) throw new RulesValidationError('До клетки назначения нет свободного пути', 'PATH_BLOCKED')
         if (!reactionMovement) {
@@ -7283,7 +7310,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         distance = path.length * 5
         const difficultSteps = ignoresTerrain
           ? 0
-          : path.filter((step) => isDifficultTerrainAt(state, step, map)).length
+          : path.filter((step) => difficultAt(step, map)).length
         const crawlingSteps = crawling ? path.length : 0
         movementCost = distance + difficultSteps * 5 + crawlingSteps * 5
         const speed = effectiveSpeedFeet(state, actor, command.actor_id)
