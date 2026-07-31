@@ -13,6 +13,11 @@ import {
   type BoardPoint,
   type CombatAnimationCue,
 } from './combat-animation'
+import {
+  createSpellEffectBudgetController,
+  createSpellEffectRenderer,
+  isSpellAnimationCue,
+} from './spell-effects'
 import './tactical-board.css'
 
 /**
@@ -28,6 +33,8 @@ import './tactical-board.css'
 
 /** Предел стороны холста: дальше браузеры отказываются выделять буфер. */
 const MAX_CANVAS_SIDE = 8192
+/** Reduced motion сохраняет статический акцент, но не растягивает пакет дольше 1,8 с. */
+const REDUCED_MOTION_SPELL_CUE_MS = 120
 
 /**
  * Манифест растровых штампов предметов. Собирается `pnpm props:atlas`; его
@@ -257,6 +264,8 @@ export function TacticalBoard({
   const hovered = useRef<string | null>(null)
   const animationActorsRef = useRef(animationActors ?? [])
   animationActorsRef.current = animationActors ?? []
+  const spellEffectBudgetRef = useRef<ReturnType<typeof createSpellEffectBudgetController> | null>(null)
+  if (!spellEffectBudgetRef.current) spellEffectBudgetRef.current = createSpellEffectBudgetController()
   const latestBattleLogRef = useRef(battleLog ?? [])
   latestBattleLogRef.current = battleLog ?? []
   const latestVisualBatchRef = useRef(visualBatch ?? null)
@@ -317,6 +326,19 @@ export function TacticalBoard({
     [terrainKeys, assetsVersion],
   )
 
+  const boardScene = useCallback((cellSize: number): BoardScene | null => {
+    if (!map) return null
+    return {
+      map,
+      palette: paletteRef.current,
+      cellSize,
+      terrain,
+      art: artUrl ? loadedArt.get(artUrl) ?? null : null,
+      artKey: artUrl ?? '',
+      propAtlas,
+    }
+  }, [map, terrain, artUrl])
+
   const paint = useCallback(() => {
     const canvas = canvasRef.current
     const frame = frameRef.current
@@ -330,15 +352,8 @@ export function TacticalBoard({
       canvas.width = columns * cellSize
       canvas.height = rows * cellSize
     }
-    const scene: BoardScene = {
-      map,
-      palette: paletteRef.current,
-      cellSize,
-      terrain,
-      art: artUrl ? loadedArt.get(artUrl) ?? null : null,
-      artKey: artUrl ?? '',
-      propAtlas,
-    }
+    const scene = boardScene(cellSize)
+    if (!scene) return
 
     // Видимое окно в координатах клеток: холст лежит внутри трансформированного
     // полотна, поэтому окно считается по фактическим экранным прямоугольникам.
@@ -368,7 +383,7 @@ export function TacticalBoard({
     drawBoardOverlay(context, scene, overlayCells)
     drawBoardEffects(context, scene, effectRenderers ?? [])
     drawMapDecorations(context, scene)
-  }, [map, columns, rows, cellPixels, zoom, terrain, artUrl, overlayCells, effectRenderers, assetsVersion])
+  }, [map, columns, rows, cellPixels, zoom, overlayCells, effectRenderers, assetsVersion, boardScene])
 
   useEffect(() => { paint() }, [paint, pan.x, pan.y])
 
@@ -464,7 +479,7 @@ export function TacticalBoard({
 
   const actorAt = (id: string) => animationActorsRef.current.find((actor) => actor.id === id)
 
-  const prepareEffectsContext = () => {
+  const prepareEffectsContext = useCallback(() => {
     const base = canvasRef.current
     const canvas = effectsCanvasRef.current
     if (!base || !canvas || !base.width || !base.height) return null
@@ -474,12 +489,16 @@ export function TacticalBoard({
     }
     const context = canvas.getContext('2d')
     if (!context) return null
+    const cellSize = base.width / Math.max(1, columns)
+    const scene = boardScene(cellSize)
+    if (!scene) return null
     return {
       canvas,
       context,
-      cellSize: base.width / Math.max(1, columns),
+      cellSize,
+      scene,
     }
-  }
+  }, [boardScene, columns])
 
   const screenPoint = (position: BoardPoint, cellSize: number) => ({
     x: (position.x + .5) * cellSize,
@@ -560,6 +579,7 @@ export function TacticalBoard({
     let frameHandle = 0
     let cancelled = false
     const startedAt = performance.now()
+    let previousFrameAt = startedAt
     const ghostIds = activeAnimation.kind === 'move' || activeAnimation.kind === 'strike'
       ? [activeAnimation.actorId]
       : []
@@ -574,12 +594,31 @@ export function TacticalBoard({
         setActiveAnimation(null)
         return
       }
-      const { canvas, context, cellSize } = prepared
-      const progress = Math.max(0, Math.min(1, (now - startedAt) / Math.max(1, activeAnimation.durationMs)))
+      const { canvas, context, cellSize, scene } = prepared
+      const spellCue = isSpellAnimationCue(activeAnimation)
+      const durationMs = spellCue && activeAnimation.motion === 'reduced'
+        ? Math.max(REDUCED_MOTION_SPELL_CUE_MS, activeAnimation.durationMs)
+        : Math.max(1, activeAnimation.durationMs)
+      const progress = Math.max(0, Math.min(1, (now - startedAt) / durationMs))
       const eased = 1 - Math.pow(1 - progress, 3)
+      const frameDurationMs = Math.max(0, now - previousFrameAt)
+      previousFrameAt = now
       context.clearRect(0, 0, canvas.width, canvas.height)
 
-      if (activeAnimation.kind === 'move') {
+      if (spellCue) {
+        const budget = spellEffectBudgetRef.current
+        drawBoardEffects(context, scene, [
+          createSpellEffectRenderer({
+            cue: activeAnimation,
+            progress,
+            actors: animationActorsRef.current,
+            detail: budget?.detail ?? activeAnimation.detail,
+            frameDurationMs,
+            reducedMotion: activeAnimation.motion === 'reduced',
+          }),
+        ])
+        budget?.recordFrame(frameDurationMs)
+      } else if (activeAnimation.kind === 'move') {
         const route = [activeAnimation.from, ...activeAnimation.path]
         const travel = eased * Math.max(1, route.length - 1)
         const index = Math.min(route.length - 2, Math.floor(travel))
@@ -688,7 +727,7 @@ export function TacticalBoard({
       cancelAnimationFrame(frameHandle)
       ghosted.forEach((element) => element.classList.remove('animation-ghosted'))
     }
-  }, [activeAnimation, clearEffectsCanvas, columns])
+  }, [activeAnimation, clearEffectsCanvas, prepareEffectsContext])
 
   const cellFromPoint = useCallback((clientX: number, clientY: number) => {
     const frame = frameRef.current
