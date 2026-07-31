@@ -721,6 +721,10 @@ const MAGIC_ITEMS = [
     mechanics_source_page: 216,
     provenance: provenance(216, { sourcePages: [206, 216], mechanicsSourcePage: 216 }),
   },
+  // Настройка здесь не потеряна: в редакции 2024 (SRD 5.2.1) Ring of Resistance
+  // её больше не требует — это отличие от 2014, где строка была
+  // «Ring, rare (requires attunement)». Все справочники по старой редакции
+  // говорят обратное, поэтому не «чините» это обратно без сверки со стр. 237.
   {
     catalog_id: 'srd_5_2_1:ring-of-fire-resistance',
     ...ITEM_CATALOG_SOURCE,
