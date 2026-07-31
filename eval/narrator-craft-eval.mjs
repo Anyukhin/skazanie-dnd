@@ -536,11 +536,11 @@ if (replayIndex >= 0) {
       network_calls: 0,
       implementation_sha256_normalized_lf: {
         narrator_module: normalizedTextSha256(new URL('../server/narrator.mjs', import.meta.url)),
-        narrator_prompt: normalizedTextSha256(new URL('../prompts/narrator/v5.txt', import.meta.url)),
+        narrator_prompt: normalizedTextSha256(new URL('../prompts/narrator/v6.txt', import.meta.url)),
         metrics_module: normalizedTextSha256(new URL('./narrator-craft-metrics.mjs', import.meta.url)),
         replay_runner: normalizedTextSha256(new URL(import.meta.url)),
       },
-      note: 'Источник хранит финальные production outputs: три provider model outputs и один прежний deterministic-fallback. Offline harness подаёт каждый текст как единственный candidate narrator/v5. Авторитетные нарушения по-прежнему дают deterministic-fallback, но художественные замечания не запускают repair: они записаны в async_feedback и предназначены для следующего хода.',
+      note: 'Источник хранит финальные production outputs: три provider model outputs и один прежний deterministic-fallback. Offline harness подаёт каждый текст как единственный candidate narrator/v6. Авторитетные нарушения по-прежнему дают deterministic-fallback, но художественные замечания не запускают repair: они записаны в async_feedback и предназначены для следующего хода.',
     },
     samples,
     metrics: measureNarratorCraft(samples),

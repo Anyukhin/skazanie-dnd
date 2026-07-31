@@ -11,7 +11,7 @@ import {
 import { findNarratorCliches } from './narrator-craft-quality.mjs'
 import { npcDossiersForNarrator } from './npc-social.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v5'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v6'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v1'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
@@ -30,8 +30,9 @@ export const NARRATOR_RECENT_3GRAM_OVERLAP_MAX = 0.14
 export const NARRATOR_CLICHE_REMINDER_LIMIT = 6
 export const NARRATOR_FEEDBACK_MEMORY_LIMIT = 128
 export const NARRATOR_ARC_RECAP_MEMORY_LIMIT = 128
+export const NARRATOR_STREAM_MAX_BYTES = 12 * 1024
 const NARRATOR_ARC_RECAP_OVERRIDE = Symbol('narrator-arc-recap-override')
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v5.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v6.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v1.json', import.meta.url))
 const fewShotDocument = JSON.parse(readFileSync(fewShotPath, 'utf8'))
@@ -199,7 +200,7 @@ function narratorPromptWithExamples(examples) {
   const fragments = examples.map((example, index) => (
     `${index + 1}. [${example.style}; ${example.moment}; ${example.tones.join(', ')}] ${example.text}`
   ))
-  const marker = '\nВерни только строгий JSON без markdown:'
+  const marker = '\nВерни только готовое повествование обычным текстом.'
   const exampleSection = `\nCURATED_STYLE_EXAMPLES (${NARRATOR_FEW_SHOT_VERSION}):\n${fragments.join('\n')}\n`
   return narratorPrompt.includes(marker)
     ? narratorPrompt.replace(marker, `${exampleSection}${marker}`)
@@ -1119,13 +1120,64 @@ export function deterministicNarration(brief, resolveName, { recentNarrations = 
   }
 }
 
+function completeSentencePrefix(value) {
+  const text = String(value ?? '')
+  let end = 0
+  for (const match of text.matchAll(/[.!?…](?:["»')\]]+)?(?=\s|$)/gu)) {
+    end = (match.index ?? 0) + match[0].length
+  }
+  return end ? text.slice(0, end).trim() : ''
+}
+
+function provisionalNarrationIsSafe(text, brief, verifier, knownRuleIds, recentNarrations) {
+  const verification = verifyNarratorCraft(
+    text,
+    brief,
+    verifier.verify(currentNarrationSegment(text, brief, recentNarrations), brief, { knownRuleIds }),
+    recentNarrations,
+  )
+  return verification.violations.every((violation) => violation.code === 'ARC_RECAP_OMITTED')
+}
+
+function narrationProgressBuffer({
+  brief,
+  verifier,
+  knownRuleIds,
+  recentNarrations,
+  onProgress,
+}) {
+  let raw = ''
+  let emitted = ''
+  let blocked = false
+  return (delta) => {
+    const next = `${raw}${String(delta ?? '')}`
+    if (Buffer.byteLength(next, 'utf8') > NARRATOR_STREAM_MAX_BYTES) {
+      const error = new Error(`Narration stream exceeds ${NARRATOR_STREAM_MAX_BYTES} bytes`)
+      error.code = 'NARRATION_STREAM_TOO_LARGE'
+      throw error
+    }
+    raw = next
+    if (blocked || typeof onProgress !== 'function') return
+    const prefix = completeSentencePrefix(raw)
+    if (!prefix || prefix === emitted) return
+    if (!provisionalNarrationIsSafe(prefix, brief, verifier, knownRuleIds, recentNarrations)) {
+      blocked = true
+      return
+    }
+    emitted = prefix
+    // Граница намеренно синхронная: непроверенный префикс не должен попасть в
+    // асинхронную транспортную очередь до возврата из этого вызова.
+    onProgress(prefix)
+  }
+}
+
 export class Narrator {
   constructor({
     llmClient = null,
     verifier = new DeterministicNarrationVerifier(),
     feedbackVerifier = verifyNarratorFeedback,
     asyncFeedback = true,
-    // Сохранён для совместимости с прежними точками сборки. Горячий путь v5
+    // Сохранён для совместимости с прежними точками сборки. Горячий путь v6
     // всегда делает ровно одну генерацию и не использует repair-attempt.
     maxAttempts: _legacyMaxAttempts = 1,
   } = {}) {
@@ -1243,6 +1295,7 @@ export class Narrator {
     style = 'Кратко и конкретно',
     timeoutMs = null,
     recentNarrations = [],
+    onProgress = null,
   } = {}) {
     assertNarrationBrief(brief)
     const campaignStyle = currentNarratorStyleInstruction()
@@ -1293,29 +1346,48 @@ export class Narrator {
     try {
       const avoidCliches = recentClicheReminders(recent)
       const generation = currentNarratorGenerationParameters()
-      let output
+      const request = {
+        messages: [
+          { role: 'system', content: narratorPromptWithExamples(examples) },
+          {
+            role: 'user',
+            content: buildDataOnlyContext({
+              narration_brief: briefForNarratorPrompt(brief),
+              style,
+              content_preferences: contentDirectives,
+              sensory_anchors: sensoryAnchors,
+              ...(npcDossiers.length ? { npc_dossiers: npcDossiers } : {}),
+              ...(arcRecap ? { previous_arc_recap: arcRecap } : {}),
+              ...(avoidCliches.length ? { avoid_repeated_phrases: avoidCliches } : {}),
+              ...(priorFeedback.length ? { previous_narration_feedback: priorFeedback } : {}),
+            }),
+          },
+        ],
+        ...generation,
+        signal: deadlineController?.signal,
+      }
+      let narration = ''
       try {
-        output = await this.llmClient.completeJson({
-          messages: [
-            { role: 'system', content: narratorPromptWithExamples(examples) },
-            {
-              role: 'user',
-              content: buildDataOnlyContext({
-                narration_brief: briefForNarratorPrompt(brief),
-                style,
-                content_preferences: contentDirectives,
-                sensory_anchors: sensoryAnchors,
-                ...(npcDossiers.length ? { npc_dossiers: npcDossiers } : {}),
-                ...(arcRecap ? { previous_arc_recap: arcRecap } : {}),
-                ...(avoidCliches.length ? { avoid_repeated_phrases: avoidCliches } : {}),
-                ...(priorFeedback.length ? { previous_narration_feedback: priorFeedback } : {}),
-              }),
-            },
-          ],
-          ...generation,
-          jsonExpected: 'object',
-          signal: deadlineController?.signal,
-        })
+        if (typeof this.llmClient.complete === 'function') {
+          const completion = await this.llmClient.complete({
+            ...request,
+            onDelta: narrationProgressBuffer({
+              brief,
+              verifier: this.verifier,
+              knownRuleIds,
+              recentNarrations: recent,
+              onProgress,
+            }),
+          })
+          narration = String(completion?.content ?? '').trim()
+        } else {
+          // Совместимость с узкими тестовыми fake-клиентами старого контракта.
+          const output = await this.llmClient.completeJson({
+            ...request,
+            jsonExpected: 'object',
+          })
+          narration = String(output?.narration ?? '').trim()
+        }
       } catch (error) {
         const fallback = deterministicNarration(brief, undefined, { recentNarrations: recent })
         return this._result({
@@ -1338,7 +1410,6 @@ export class Narrator {
           provider: 'deterministic-provider-fallback',
         })
       }
-      const narration = String(output?.narration || '').trim()
       const safetyVerification = verifyNarratorCraft(
         narration,
         brief,
