@@ -195,6 +195,11 @@ export function combatSpellFor(actor, spellId) {
   return spell?.prepared === false ? null : spell
 }
 
+export function canonicalCombatSpellFor(spellId) {
+  const spell = SPELLS_BY_ID.get(String(spellId ?? ''))
+  return spell ? clone(spell) : null
+}
+
 export function spellSlotMaximumsFor(actor) {
   const profile = casterProfile(actor)
   if (!profile) return {}

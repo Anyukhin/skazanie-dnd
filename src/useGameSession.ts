@@ -24,7 +24,7 @@ type TacticalCommand =
   | { command_type: 'EndTurn'; actor_id: string }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
   | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
-  | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string }
+  | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string; charges_to_spend?: number }
   | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
   | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
@@ -973,8 +973,14 @@ export function useGameSession() {
     void executeTacticalCommand({ command_type: 'EquipItem', actor_id: playerId, item_id: itemId, equipped }, equipped ? 'Экипировать предмет' : 'Снять предмет')
   }, [executeTacticalCommand])
 
-  const useItem = useCallback((playerId: string, itemId: string, targetId?: string) => {
-    void executeTacticalCommand({ command_type: 'UseItem', actor_id: playerId, item_id: itemId, ...(targetId ? { target_id: targetId } : {}) }, 'Использовать предмет')
+  const useItem = useCallback((playerId: string, itemId: string, targetId?: string, chargesToSpend?: number) => {
+    void executeTacticalCommand({
+      command_type: 'UseItem',
+      actor_id: playerId,
+      item_id: itemId,
+      ...(targetId ? { target_id: targetId } : {}),
+      ...(chargesToSpend == null ? {} : { charges_to_spend: chargesToSpend }),
+    }, 'Использовать предмет')
   }, [executeTacticalCommand])
 
   const transferItem = useCallback((playerId: string, itemId: string, recipientId: string, quantity = 1) => {

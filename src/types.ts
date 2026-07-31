@@ -343,9 +343,15 @@ export type InventoryItem = {
     use: {
       kind: string
       action_type: 'action' | 'bonus_action' | null
-      target: 'self' | 'party'
+      target: 'self' | 'party' | 'creature' | 'enemy'
       range_feet: number
       charges_per_use?: number
+      spell_id?: string
+      min_charges_to_spend?: number
+      max_charges_to_spend?: number
+      default_charges_to_spend?: number
+      requires_equipped?: boolean
+      combat_only?: boolean
     } | null
     charges: { current: number; max: number } | null
     recharge: ItemRechargeProfile | null

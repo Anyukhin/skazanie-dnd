@@ -366,6 +366,9 @@ function ItemModal({ item, isNew, onClose, onSave, onRemove }: { item: Inventory
 export function InventoryView({
   player,
   party,
+  enemyTargets = [],
+  combatActive = false,
+  combatItemTurnAvailable = false,
   busy = false,
   error,
   onEquip,
@@ -375,10 +378,13 @@ export function InventoryView({
 }: {
   player: Player
   party: Player[]
+  enemyTargets?: Array<{ id: string; label: string }>
+  combatActive?: boolean
+  combatItemTurnAvailable?: boolean
   busy?: boolean
   error?: string | null
   onEquip: (itemId: string, equipped: boolean) => void
-  onUse: (itemId: string, targetId?: string) => void
+  onUse: (itemId: string, targetId?: string, chargesToSpend?: number) => void
   onTransfer: (itemId: string, recipientId: string, quantity: number) => void
   onAttune: (itemId: string, attuned: boolean) => void
 }) {
@@ -386,9 +392,24 @@ export function InventoryView({
   const recipients = party.filter((candidate) => candidate.id !== player.id)
   const [recipientId, setRecipientId] = useState(recipients[0]?.id ?? '')
   const [useTargets, setUseTargets] = useState<Record<string, string>>({})
+  const [chargeSpends, setChargeSpends] = useState<Record<string, number>>({})
   const useTargetOptions = [player, ...party.filter((candidate) => candidate.id !== player.id)]
   const totalWeight = useMemo(() => player.inventory.reduce((sum, item) => sum + item.weight * item.quantity, 0), [player.inventory])
   const items = player.inventory.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()))
+  const enemyTargetFor = (itemId: string) => {
+    const selected = useTargets[itemId]
+    return enemyTargets.some((candidate) => candidate.id === selected) ? selected : enemyTargets[0]?.id
+  }
+  const chargesToSpendFor = (item: InventoryItem) => {
+    const use = item.capabilities?.use
+    const minimum = use?.min_charges_to_spend
+    const maximum = use?.max_charges_to_spend
+    if (minimum == null || maximum == null) return undefined
+    const availableMaximum = Math.min(maximum, item.capabilities?.charges?.current ?? 0)
+    if (availableMaximum < minimum) return minimum
+    const preferred = chargeSpends[item.id] ?? use?.default_charges_to_spend ?? minimum
+    return Math.max(minimum, Math.min(availableMaximum, preferred))
+  }
 
   return <section className="section-page inventory-page">
     <div className="inventory-head"><div><span>ЛИЧНЫЕ ВЕЩИ</span><h1>Инвентарь {player.character}</h1><p>Всё, что герой несёт с собой: снаряжение, находки и то, что пока не пригодилось.</p></div>
@@ -404,23 +425,55 @@ export function InventoryView({
       {item.capabilities?.charges && <div className="item-charge-state">Применения: <b>{item.capabilities.charges.current}/{item.capabilities.charges.max}</b></div>}
       <div className="item-actions">
         {item.capabilities?.equippable && <button disabled={busy} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Экипировать'}</button>}
-        {item.capabilities?.usable && item.capabilities.use?.target === 'party' && <label className="item-use-target">
+        {item.capabilities?.usable && ['party', 'enemy'].includes(item.capabilities.use?.target ?? '') && <label className="item-use-target">
           <span>Цель</span>
           <select
-            value={useTargets[item.id] ?? player.id}
+            value={item.capabilities.use?.target === 'enemy' ? enemyTargetFor(item.id) ?? '' : useTargets[item.id] ?? player.id}
             disabled={busy}
             aria-label={`Цель использования: ${item.name}`}
             onChange={(event) => setUseTargets((current) => ({ ...current, [item.id]: event.target.value }))}
           >
-            {useTargetOptions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.character}</option>)}
+            {(item.capabilities.use?.target === 'enemy'
+              ? enemyTargets
+              : useTargetOptions.map((candidate) => ({ id: candidate.id, label: candidate.character })))
+              .map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
+          </select>
+        </label>}
+        {item.capabilities?.usable && item.capabilities.use?.min_charges_to_spend != null && item.capabilities.use.max_charges_to_spend != null && <label className="item-charge-spend">
+          <span>Заряды</span>
+          <select
+            value={chargesToSpendFor(item)}
+            disabled={busy}
+            aria-label={`Заряды для использования: ${item.name}`}
+            onChange={(event) => setChargeSpends((current) => ({ ...current, [item.id]: Number(event.target.value) }))}
+          >
+            {Array.from(
+              { length: Math.max(0, Math.min(item.capabilities.use.max_charges_to_spend, item.capabilities.charges?.current ?? 0) - item.capabilities.use.min_charges_to_spend + 1) },
+              (_, index) => item.capabilities!.use!.min_charges_to_spend! + index,
+            ).map((charges) => <option key={charges} value={charges}>{charges}</option>)}
           </select>
         </label>}
         {item.capabilities?.usable && <button
-          disabled={busy || Boolean(item.capabilities.charges && item.capabilities.charges.current < (item.capabilities.use?.charges_per_use ?? 0))}
-          onClick={() => onUse(item.id, item.capabilities?.use?.target === 'party' ? (useTargets[item.id] ?? player.id) : player.id)}
+          disabled={busy
+            || Boolean(item.capabilities.use?.combat_only && (!combatActive || !combatItemTurnAvailable))
+            || Boolean(item.capabilities.use?.requires_equipped && !item.equipped)
+            || Boolean(item.capabilities.use?.target === 'enemy' && enemyTargets.length === 0)
+            || Boolean(item.capabilities.charges && item.capabilities.charges.current < (
+              chargesToSpendFor(item) ?? item.capabilities.use?.charges_per_use ?? 0
+            ))}
+          onClick={() => onUse(
+            item.id,
+            item.capabilities?.use?.target === 'enemy'
+              ? enemyTargetFor(item.id)
+              : item.capabilities?.use?.target === 'party'
+                ? (useTargets[item.id] ?? player.id)
+                : player.id,
+            chargesToSpendFor(item),
+          )}
         >
           Использовать · {item.capabilities.use?.action_type === 'bonus_action' ? 'бонус' : item.capabilities.use?.action_type === 'action' ? 'действие' : 'вне боя'}
         </button>}
+        {item.capabilities?.use?.requires_equipped && !item.equipped && <small className="item-use-hint">Экипируйте предмет до начала боя.</small>}
         {item.capabilities?.requires_attunement && <button disabled={busy} onClick={() => onAttune(item.id, item.attuned_to !== player.id)}>{item.attuned_to === player.id ? 'Разорвать настройку' : 'Настроиться'}</button>}
         {recipientId && !item.equipped && !item.attuned_to && <button disabled={busy} onClick={() => onTransfer(item.id, recipientId, 1)}>Передать 1</button>}
       </div>
