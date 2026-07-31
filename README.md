@@ -128,7 +128,10 @@ Vite покажет адрес интерфейса. При первом зап�
 ```env
 ROUTERAI_API_KEY=...
 ROUTERAI_BASE_URL=https://routerai.ru/api/v1
-DND_AI_MODEL=z-ai/glm-5.2
+# Первичная модель — по замеру 2026-07-31 (docs/model-benchmark-2026-07-31.md):
+# luna с добавкой формы не уступает GLM ни по одной метрике стола, быстрее и
+# в ~5 раз дешевле. GLM остаётся первым запасным.
+DND_AI_MODEL=openai/gpt-5.6-luna
 DND_AI_FALLBACK_MODELS=z-ai/glm-5.2,deepseek/deepseek-v4-flash,google/gemini-2.5-flash-lite,openai/gpt-4.1-nano
 DND_AI_MODEL_TIMEOUT_MS=9000
 DND_IMAGE_MODEL=openai/gpt-image-1
