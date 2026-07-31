@@ -228,7 +228,11 @@ const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmCli
 // Длинная форма — пролог и хроника арки — идёт через отдельную дешёвую модель:
 // замер показал, что Luna в длинной форме не уступает и стоит в разы меньше.
 // Модель меняется переменной DND_AI_LORE_MODEL; без ключа летописец молчит.
-const loreModel = process.env.DND_AI_LORE_MODEL ?? 'openai/gpt-5.6-luna'
+// Владелец согласовал бюджет до 50 кредитов за вечер (2026-07-31). Горячий путь
+// остаётся на дешёвой luna (~8 кредитов за вечер), а длинная форма — на
+// luna-pro: там задержка неважна, а качество текста — главное. Пролог и хроника
+// зовутся раз за кампанию и раз за арку, поэтому вклад в бюджет — копейки.
+const loreModel = process.env.DND_AI_LORE_MODEL ?? 'openai/gpt-5.6-luna-pro'
 const loreAuthor = new LoreAuthor({
   llmClient: apiKey ? new RouterAIClient({ model: loreModel, reasoning: reasoningProfileFor(loreModel), timeoutMs: 30_000 }) : null,
 })

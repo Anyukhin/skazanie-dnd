@@ -65,7 +65,7 @@ export class LoreAuthor {
    */
   async composePrologue(concept = {}) {
     return this.compose(
-      'Напиши пролог кампании на 250–400 слов: завязка, которую владелец зачитает игрокам перед первым вечером. Заверши моментом, где герои вступают в историю.',
+      'Напиши пролог кампании на 400–600 слов: завязка, которую владелец зачитает игрокам перед первым вечером. Заверши моментом, где герои вступают в историю.',
       {
         campaign: boundedText(concept.campaign, 160),
         world_summary: boundedText(concept.worldSummary, 2_000),
@@ -76,7 +76,7 @@ export class LoreAuthor {
           backstory: boundedText(hero.backstory, 400),
         })),
       },
-      1_200,
+      2_000,
     )
   }
 
@@ -88,14 +88,14 @@ export class LoreAuthor {
    */
   async composeArcChronicle(input = {}) {
     return this.compose(
-      'Напиши хронику завершённой арки на 300–500 слов: что случилось, чем обернулись решения героев, какие нити остались открытыми. Тон — летопись, не пересказ.',
+      'Напиши хронику завершённой арки на 500–800 слов: что случилось, чем обернулись решения героев, какие нити остались открытыми. Тон — летопись, не пересказ.',
       {
         arc_number: Number(input.arcNumber) || 1,
         epilogue: boundedText(input.epilogue, 2_000),
         world_facts: (Array.isArray(input.facts) ? input.facts : []).slice(0, 24),
         open_promises: (Array.isArray(input.promises) ? input.promises : []).slice(0, 12),
       },
-      1_600,
+      2_600,
     )
   }
 }
