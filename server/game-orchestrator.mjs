@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 
 import { Adjudicator } from './adjudicator.mjs'
-import { answerKnownLore } from './agent-router.mjs'
+import { answerKnownLore } from './player-request-router.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { IdempotencyConflictError } from './event-store.mjs'
 import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'

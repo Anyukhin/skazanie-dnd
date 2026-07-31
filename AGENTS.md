@@ -135,9 +135,9 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`.
 Не описывать их как «агентов».
 
-`server/agent-router.mjs` объявляет роли (`AGENT_ROLES`). `prompt_id` там стоит
+`server/player-request-router.mjs` объявляет роли маршрутизации ввода игрока (`PLAYER_REQUEST_ROLES`). `prompt_id` там стоит
 только у ролей, которые действительно исполняет модель, и **не читается ни одним
-модулем** — это метаданные, а не привязка; сторож — `test/agent-router.test.mjs`.
+модулем** — это метаданные, а не привязка; сторож — `test/player-request-router.test.mjs`.
 Роли `worldkeeper` и `game_master` объявлены без `prompt_id`: первую исполняет
 детерминированный `answerKnownLore` в том же файле, вторую — Rules Engine.
 
@@ -147,8 +147,11 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 
 **Домен NPC (не путать):** `npc-social.mjs` — модель профилей, обещаний и
 отношений; `npc-social-check.mjs` — навыковые проверки; `npc-turn-scheduler.mjs`
-— детерминированная боевая политика NPC (не LLM); `creative-director.mjs` —
-мораль и перелом боя (бегство, сдача).
+— детерминированная боевая политика NPC (не LLM); `npc-controller.mjs`
+(`NpcMoraleAgent`) — мораль и перелом боя (бегство, сдача), и ничего кроме:
+вне момента морали `decide()` возвращает `null`; `creative-director.mjs`
+(`CriticalNarrationCoordinator`) — только текст критического момента после
+commit, механики он не касается.
 
 ### Незакрытый долг — не расширять, пока не разобрано
 

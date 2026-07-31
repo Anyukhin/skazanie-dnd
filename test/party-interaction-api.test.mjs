@@ -132,7 +132,7 @@ test('агент открывает общее голосование, а неа
   assert.equal(transition.provider, 'deterministic-scene')
   assert.equal(transition.turn_consumed, true)
   assert.notEqual(transition.effects.scene.scene.location, '\u041D\u0438\u0436\u043D\u0438\u0439 \u0437\u0430\u043B')
-  assert.ok(transition.agent_trace.some((stage) => stage.agent === 'AgentCartographer'))
+  assert.ok(transition.agent_trace.some((stage) => stage.agent === 'scene_architect'))
   assert.equal(transition.effects.scene.adventure.chapter, 2)
   assert.ok(transition.effects.scene.scene.cells.length >= 16 * 16,
     'неопознанный выход обязан получить структурированный тематический fallback')
@@ -155,6 +155,6 @@ test('агент открывает общее голосование, а неа
   assert.equal(lab.transition.scene.cells.length, 20 * 20)
   assert.ok(lab.transition.scene.cells.filter((cell) => cell.type === 'door').length >= 4,
     'городская карта обязана содержать двери домов')
-  assert.deepEqual(lab.stages.map((stage) => stage.agent), ['AgentDirector', 'AgentCartographer', 'WorldEngine', 'AgentNarrator'])
+  assert.deepEqual(lab.stages.map((stage) => stage.agent), ['AgentDirector', 'scene_architect', 'WorldEngine', 'AgentNarrator'])
   assert.match(lab.transition.adventure.currentHook, /Печать архивариуса/u)
 })

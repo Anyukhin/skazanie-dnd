@@ -41,7 +41,7 @@ test('картограф без модели строит городскую к�
   const planned = await architect.plan({ action: `[РЕШЕНИЕ ГРУППЫ] ${decision}`, state: archiveState, decision, destinationHint: 'город' })
   const transition = createSceneTransition(planned.sceneArgs, archiveState)
 
-  assert.equal(planned.trace.agent, 'AgentCartographer')
+  assert.equal(planned.trace.agent, 'scene_architect')
   assert.equal(planned.sceneArgs.map.layout, 'streets')
   assert.equal(planned.sceneArgs.map.pattern, 'village')
   assert.equal(planned.sceneArgs.map.material, 'stone')

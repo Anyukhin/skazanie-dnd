@@ -6,6 +6,15 @@ import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commer
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 
+/**
+ * Один идентификатор роли на код и на новые трассы. Прежнее имя
+ * `AgentCartographer` остаётся в уже сохранённых трассах и читается
+ * совместимо: переписывать историю без миграции нельзя (шаг 8 плана,
+ * `docs/agent-architecture-plan.md`).
+ */
+export const SCENE_ARCHITECT_AGENT_ID = 'scene_architect'
+export const LEGACY_SCENE_ARCHITECT_AGENT_ID = 'AgentCartographer'
+
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v3.txt', import.meta.url)), 'utf8')
 
 function clean(value, maximum = 240) {
@@ -186,7 +195,7 @@ export class SceneArchitectAgent {
     if (!this.llmClient) return {
       sceneArgs: fallback,
       shopIntent: fallbackShopIntent,
-      trace: { agent: 'AgentCartographer', mode: 'deterministic-fallback', reason: 'LLM is not configured' },
+      trace: { agent: SCENE_ARCHITECT_AGENT_ID, mode: 'deterministic-fallback', reason: 'LLM is not configured' },
     }
     try {
       const planningBrief = buildDirectorPlanningBrief(state)
@@ -205,13 +214,13 @@ export class SceneArchitectAgent {
       return {
         sceneArgs,
         shopIntent: normalizeSceneShopIntent(result?.shop_intent, sceneArgs),
-        trace: { agent: 'AgentCartographer', mode: 'model', model: this.llmClient.model ?? null },
+        trace: { agent: SCENE_ARCHITECT_AGENT_ID, mode: 'model', model: this.llmClient.model ?? null },
       }
     } catch (error) {
       return {
         sceneArgs: fallback,
         shopIntent: fallbackShopIntent,
-        trace: { agent: 'AgentCartographer', mode: 'deterministic-fallback', reason: error instanceof Error ? error.message : 'unknown error' },
+        trace: { agent: SCENE_ARCHITECT_AGENT_ID, mode: 'deterministic-fallback', reason: error instanceof Error ? error.message : 'unknown error' },
       }
     }
   }

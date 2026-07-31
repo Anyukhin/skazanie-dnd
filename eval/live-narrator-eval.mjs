@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { performance } from 'node:perf_hooks'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { CreativeDirector } from '../server/creative-director.mjs'
+import { CriticalNarrationCoordinator } from '../server/creative-director.mjs'
 import { FallbackLLMClient, RouterAIClient } from '../server/llm-client.mjs'
 import { Narrator } from '../server/narrator.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
@@ -325,7 +325,7 @@ function npcState() {
 const client = productionChainClient()
 const narrator = new Narrator({ llmClient: client })
 const npcController = new NpcSocialController({ llmClient: client })
-const creativeDirector = new CreativeDirector({ narrator })
+const creativeDirector = new CriticalNarrationCoordinator({ narrator })
 const sceneArchitect = new SceneArchitectAgent({ llmClient: client })
 const bootstrapper = new CampaignBootstrapper({ llmClient: client })
 

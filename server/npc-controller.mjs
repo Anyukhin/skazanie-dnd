@@ -75,7 +75,7 @@ function publicBrief(state, enemy) {
   }
 }
 
-export class NpcControllerAgent {
+export class NpcMoraleAgent {
   constructor({ llmClient = null } = {}) {
     this.llmClient = llmClient
   }
