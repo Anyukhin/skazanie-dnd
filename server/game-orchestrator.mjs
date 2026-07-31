@@ -491,14 +491,25 @@ function availableNpcNames(state) {
     .slice(0, 6)
 }
 
-function humanMissingInformation(values, state) {
+function humanMissingInformation(values, state, intent = {}) {
   const labels = {
     message: 'само действие',
     target_id: 'цель действия',
     npc_id: 'имя собеседника',
     available_npc: 'доступного собеседника',
+    ambiguous_npc: 'конкретного собеседника',
   }
   const missing = [...new Set((Array.isArray(values) ? values : []).map(String).filter(Boolean))]
+  if (missing.includes('ambiguous_npc')) {
+    const candidates = (intent.target_candidates ?? []).map((candidate) => {
+      const name = String(candidate?.name ?? '').trim()
+      const role = String(candidate?.role ?? '').trim()
+      return role ? `${name} (${role})` : name
+    }).filter(Boolean).slice(0, 6)
+    return candidates.length
+      ? `По описанию подходят несколько собеседников: ${candidates.join(', ')}. Назовите одного из них.`
+      : 'По описанию подходят несколько собеседников. Назовите конкретного NPC.'
+  }
   if (missing.includes('npc_id') || missing.includes('available_npc')) {
     const names = availableNpcNames(state)
     return names.length
@@ -758,7 +769,10 @@ export class GameOrchestrator {
     if (!input.commands && intent.intent === 'social' && this.npcSocialController) {
       const socialNpcIds = new Set((originalState.social?.npcs ?? []).map((npc) => String(npc.id)))
       const npcId = (intent.targets ?? []).map(String).find((candidate) => socialNpcIds.has(candidate))
-      if (!npcId) {
+      if (intent.requires_clarification) {
+        // Резолвер уже нашёл неоднозначность и сохранил кандидатов для полезного уточнения.
+        socialRequest = null
+      } else if (!npcId) {
         intent.requires_clarification = true
         intent.missing_information = ['npc_id']
       } else socialRequest = { npcId }
@@ -839,7 +853,7 @@ export class GameOrchestrator {
 
 
     if (intent.requires_clarification || plan.clarification_required) {
-      const narration = humanMissingInformation(intent.missing_information ?? plan.missing_information, authoritativeState)
+      const narration = humanMissingInformation(intent.missing_information ?? plan.missing_information, authoritativeState, intent)
       const response = { narration, effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], authoritative_state: authoritativeState, turn_consumed: false }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })
       return response

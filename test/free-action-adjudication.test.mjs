@@ -3,13 +3,19 @@ import test from 'node:test'
 
 import {
   attemptFingerprint,
+  bindFreeActionReadingToState,
+  contextualResolutionFor,
   failForwardFor,
+  interpretFreeAction,
   previousFailedAttempt,
+  resolveCorpseSearch,
+  resolveInventoryTransfer,
   resolutionModeFor,
   situationFingerprint,
   stakesFor,
   verifyMeans,
 } from '../server/free-action-adjudication.mjs'
+import { normalizeCampaignState } from '../server/rules-engine.mjs'
 
 test('ведущий не требует броска, когда на кону ничего нет', () => {
   assert.equal(resolutionModeFor({ plausibility: 'trivial', risk: 'none' }).mode, 'auto_success')
@@ -28,6 +34,99 @@ test('режим и СЛ выбираются серверной таблице�
 
   // Смертельный риск поднимает сложность даже для правдоподобного действия.
   assert.equal(resolutionModeFor({ plausibility: 'plausible', risk: 'deadly' }).difficulty_category, 'hard')
+})
+
+test('контекст сцены сдвигает только серверную категорию СЛ', () => {
+  const easyState = normalizeCampaignState({
+    players: [{
+      id: 'hero', characterClass: 'rogue', level: 1,
+      abilities: { str: 10, dex: 16, con: 10, int: 10, wis: 12, cha: 10 },
+      classSkillProficiencies: ['stealth'], inventory: [],
+    }],
+    scene: { location: 'Двор', cells: [{ x: 0, y: 0, type: 'floor' }], map: { props: [{ id: 'cart' }] } },
+  })
+  const text = 'Прячусь за телегой'
+  const reading = bindFreeActionReadingToState(easyState, 'hero', text, interpretFreeAction(text))
+  const easy = contextualResolutionFor(easyState, 'hero', reading, text)
+  assert.equal(easy.difficulty, 10)
+  assert.deepEqual(easy.difficulty_factors, ['scene_cover'])
+
+  const hardState = normalizeCampaignState({
+    ...easyState,
+    scene: { ...easyState.scene, mood: 'Пожар, дым и хаос' },
+    mechanics: { ...easyState.mechanics, combat: { ...easyState.mechanics.combat, active: true } },
+  })
+  const hardReading = bindFreeActionReadingToState(hardState, 'hero', 'Крадусь по открытому двору в дыму', interpretFreeAction('Крадусь по открытому двору в дыму'))
+  const hard = contextualResolutionFor(hardState, 'hero', hardReading, 'Крадусь по открытому двору в дыму')
+  assert.equal(hard.difficulty, 20)
+  assert.deepEqual(hard.difficulty_factors, ['combat_pressure', 'environmental_pressure'])
+})
+
+test('профиль владения и expertise привязываются к листу, а не к подсказке модели', () => {
+  const state = normalizeCampaignState({
+    players: [{
+      id: 'hero', characterClass: 'rogue', level: 1,
+      abilities: { str: 10, dex: 16, con: 10, int: 10, wis: 12, cha: 10 },
+      classSkillProficiencies: ['stealth'],
+      skillExpertiseIds: ['stealth'],
+      inventory: [],
+    }],
+  })
+  const reading = bindFreeActionReadingToState(state, 'hero', 'Крадусь вдоль стены', {
+    ...interpretFreeAction('Крадусь вдоль стены'),
+    proficiency: 'none',
+  })
+  assert.equal(reading.skill, 'stealth')
+  assert.equal(reading.proficiency, 'expertise')
+  assert.equal(reading.proficiency_bonus, 4)
+})
+
+test('передача строит только команду владельца, а попытка взять чужое не мутирует мир', () => {
+  const state = normalizeCampaignState({
+    partyMemberIds: ['hero', 'ally'],
+    players: [
+      {
+        id: 'hero', character: 'Ада', characterClass: 'fighter', level: 1,
+        abilities: { str: 12, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+        classSkillProficiencies: [], inventory: [{ id: 'rope', name: 'Верёвка', type: 'tool', quantity: 2 }],
+      },
+      {
+        id: 'ally', character: 'Бор', characterClass: 'fighter', level: 1,
+        abilities: { str: 12, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+        classSkillProficiencies: [], inventory: [{ id: 'torch', name: 'Факел', type: 'tool', quantity: 1 }],
+      },
+    ],
+  })
+  const giveText = 'Передаю Бору верёвку'
+  const giveReading = bindFreeActionReadingToState(state, 'hero', giveText, interpretFreeAction(giveText))
+  const give = resolveInventoryTransfer(state, 'hero', giveText, giveReading)
+  assert.equal(give.status, 'command')
+  assert.deepEqual(give.command, {
+    command_type: 'TransferItem',
+    actor_id: 'hero',
+    recipient_id: 'ally',
+    item_id: 'rope',
+    quantity: 1,
+  })
+
+  const takeText = 'Беру у Бора факел'
+  const takeReading = bindFreeActionReadingToState(state, 'hero', takeText, interpretFreeAction(takeText))
+  const take = resolveInventoryTransfer(state, 'hero', takeText, takeReading)
+  assert.equal(take.status, 'clarification')
+  assert.match(take.narration, /владелец/u)
+})
+
+test('обыск тела без server-owned contents блокируется до проверки', () => {
+  const state = normalizeCampaignState({
+    players: [{ id: 'hero', character: 'Ада', inventory: [] }],
+    enemies: [{ id: 'goblin', name: 'Гоблин', hp: 0, maxHp: 7, alive: false }],
+  })
+  const text = 'Обыскиваю тело гоблина'
+  const reading = bindFreeActionReadingToState(state, 'hero', text, interpretFreeAction(text))
+  const result = resolveCorpseSearch(state, text, reading)
+  assert.equal(result.status, 'clarification')
+  assert.equal(result.server_owned_contents, false)
+  assert.match(result.narration, /не буду выдумывать/u)
 })
 
 test('невозможное без средства ведёт к встречному предложению, а не к броску', () => {
@@ -67,6 +166,7 @@ test('провал всегда несёт последствие — сцена
   }
   assert.equal(failForwardFor('serious').advances_quest_clock, true)
   assert.equal(failForwardFor('none').advances_quest_clock, false)
+  assert.equal(failForwardFor('minor', 'exposure').consequence_type, 'exposure')
 })
 
 test('ставки объявляются до броска и молчат там, где броска нет', () => {
