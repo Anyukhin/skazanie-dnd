@@ -125,6 +125,22 @@ class MeteredModel extends RouterAIClient {
   }
 }
 
+/**
+ * `DND_AI_REASONING_EFFORT` задаёт уровень явно: `off` — выключить,
+ * `low`/`medium`/`high`/`max` — попросить провайдера. Без переменной сохраняется
+ * прежнее поведение: у GLM и DeepSeek reasoning выключен (это их продакшн-режим
+ * в горячем пути хода), у остальных моделей параметр не отправляется.
+ *
+ * @param {string} modelId
+ * @returns {{ enabled: false } | { effort: string } | null}
+ */
+function reasoningForModel(modelId) {
+  const requested = String(process.env.DND_AI_REASONING_EFFORT ?? '').trim().toLowerCase()
+  if (requested === 'off') return { enabled: false }
+  if (requested) return { effort: requested }
+  return ['z-ai/glm-5.2', 'deepseek/deepseek-v4-flash'].includes(modelId) ? { enabled: false } : null
+}
+
 function productionChainClient() {
   const primary = process.env.DND_AI_MODEL ?? 'deepseek/deepseek-v4-flash'
   const fallbacks = String(process.env.DND_AI_FALLBACK_MODELS ?? '').split(',').map((id) => id.trim()).filter(Boolean)
@@ -133,9 +149,10 @@ function productionChainClient() {
     clients: [primary, ...fallbacks].map((modelId) => new MeteredModel({
       model: modelId,
       timeoutMs,
-      reasoning: ['z-ai/glm-5.2', 'deepseek/deepseek-v4-flash'].includes(modelId)
-        ? { enabled: false }
-        : null,
+      // Уровень рассуждения — часть замера, а не умолчание провайдера. Без
+      // него сравнение получается нечестным: у GLM в продакшне reasoning
+      // выключен явно, а модель без параметра работает на своём умолчании.
+      reasoning: reasoningForModel(modelId),
     })),
     probeTimeoutMs: Number(process.env.DND_AI_PROBE_TIMEOUT_MS) || 15_000,
     failureCooldownMs: Number(process.env.DND_AI_FAILURE_COOLDOWN_MS) || 120_000,
@@ -620,6 +637,7 @@ const report = {
   label: LABEL,
   date: new Date().toISOString(),
   primary_model: process.env.DND_AI_MODEL ?? 'deepseek/deepseek-v4-flash',
+  reasoning_effort: process.env.DND_AI_REASONING_EFFORT ?? 'по умолчанию модели',
   model_timeout_ms: Number(process.env.DND_AI_MODEL_TIMEOUT_MS) || 9_000,
   live_calls: meter.calls,
   tokens: meter.usage,
