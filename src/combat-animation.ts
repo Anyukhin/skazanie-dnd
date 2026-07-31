@@ -1,5 +1,5 @@
 import type { BattleEvent, GameEvent } from './types'
-import { spellVisualProfile, systemPrefersReducedMotion, type MagicSchool, type SpellEffectDetail } from './spell-effects'
+import { spellIdFromEffect, spellVisualProfile, systemPrefersReducedMotion, type MagicSchool, type SpellEffectDetail } from './spell-effects'
 
 export type BoardPoint = { x: number; y: number }
 
@@ -192,11 +192,6 @@ function uniqueIds(value: unknown) {
 
 function motionFor(options: CombatAnimationOptions) {
   return (options.reducedMotion ?? systemPrefersReducedMotion()) ? 'reduced' as const : 'full' as const
-}
-
-function spellIdFromEffect(value: unknown) {
-  const effectId = String(value ?? '')
-  return effectId.includes(':') ? effectId.slice(0, effectId.indexOf(':')) : effectId
 }
 
 function spellCueFromCast(event: GameEvent): SpellAnimationCue | null {

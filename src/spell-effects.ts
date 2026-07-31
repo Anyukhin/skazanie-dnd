@@ -180,6 +180,13 @@ const AURA_SPELLS: Record<string, number> = {
 
 const normalizeId = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase('en-US')
 
+/** Вынимает id заклинания и из `web:<command>`, и из старого `spell:web`. */
+export function spellIdFromEffect(value: unknown) {
+  const effectId = normalizeId(value)
+  const normalized = effectId.startsWith('spell:') ? effectId.slice('spell:'.length) : effectId
+  return normalized.includes(':') ? normalized.slice(0, normalized.indexOf(':')) : normalized
+}
+
 export function normalizeMagicSchool(value: unknown): MagicSchool {
   const normalized = String(value ?? '').trim().toLocaleLowerCase('ru').replace(/ё/gu, 'е')
   return SCHOOL_ALIASES[normalized] ?? 'evocation'
@@ -310,6 +317,18 @@ export type SpellEffectRenderInput = {
 export type PersistentSpellEffect =
   | {
       id: string
+      kind: 'area'
+      actorId?: string
+      spellId: string
+      school?: MagicSchool
+      center?: BoardPoint
+      cells?: BoardPoint[]
+      shape: AreaShape
+      originMode?: 'self' | 'point'
+      sizeFeet: number
+    }
+  | {
+      id: string
       kind: 'aura'
       actorId: string
       spellId: string
@@ -323,6 +342,84 @@ export type PersistentSpellEffect =
       spellId?: string
       school?: MagicSchool
     }
+
+type ProjectedSpellArea = {
+  id: string
+  effect_id?: string
+  spell_id?: string
+  source_actor?: string
+  center?: BoardPoint
+  cells?: BoardPoint[]
+  radius_feet?: number
+  area_shape?: string
+}
+
+type ProjectedConcentration = Record<string, { effect_id?: string } | undefined>
+
+function projectedAreaShape(value: unknown): AreaShape | undefined {
+  return value === 'cylinder' || value === 'cone' || value === 'cube' || value === 'line'
+    ? value
+    : value === 'sphere' ? value : undefined
+}
+
+/**
+ * Переводит текущую авторитетную проекцию в постоянный слой доски. Одноразовый
+ * `SpellAreaCreated` остаётся в очереди, а эта модель переживает reconnect.
+ */
+export function persistentSpellEffectsFromProjection(
+  activeEffects: readonly ProjectedSpellArea[],
+  concentration: ProjectedConcentration,
+): PersistentSpellEffect[] {
+  const result: PersistentSpellEffect[] = []
+  const effectsById = new Map(activeEffects.map((effect) => [String(effect.effect_id ?? effect.id), effect]))
+  for (const effect of activeEffects) {
+    const spellId = normalizeId(effect.spell_id ?? spellIdFromEffect(effect.effect_id ?? effect.id))
+    if (!spellId) continue
+    const projectedShape = projectedAreaShape(effect.area_shape)
+    const profile = spellVisualProfile(spellId, {
+      areaShape: projectedShape,
+      radius: Math.max(0, Number(effect.radius_feet) || 0),
+    })
+    if (profile.kind === 'aura' && effect.source_actor) {
+      result.push({
+        id: `persistent:aura:${effect.id}`,
+        kind: 'aura',
+        actorId: effect.source_actor,
+        spellId,
+        school: profile.school,
+        radiusFeet: Math.max(5, Number(effect.radius_feet) || profile.radiusFeet || 5),
+      })
+      continue
+    }
+    if (effect.center || effect.cells?.length) {
+      result.push({
+        id: `persistent:area:${effect.id}`,
+        kind: 'area',
+        actorId: effect.source_actor,
+        spellId,
+        school: profile.school,
+        center: effect.center,
+        cells: effect.cells,
+        shape: projectedShape ?? profile.areaShape ?? 'sphere',
+        originMode: profile.areaOrigin,
+        sizeFeet: Math.max(5, Number(effect.radius_feet) || profile.sizeFeet || 5),
+      })
+    }
+  }
+  for (const [actorId, focus] of Object.entries(concentration)) {
+    const effectId = String(focus?.effect_id ?? '')
+    const activeEffect = effectsById.get(effectId)
+    const spellId = normalizeId(activeEffect?.spell_id ?? spellIdFromEffect(effectId))
+    if (!actorId || !spellId) continue
+    result.push({
+      id: `persistent:concentration:${actorId}:${effectId}`,
+      kind: 'concentration',
+      actorId,
+      spellId,
+    })
+  }
+  return result
+}
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, Number(value) || 0))
 const pointKey = (value: BoardPoint) => `${value.x},${value.y}`
@@ -674,6 +771,34 @@ export function createPersistentSpellEffectsRenderer(
   return (context, scene) => {
     for (const effect of effects) {
       const profile = spellVisualProfile(effect.spellId ?? '', { school: effect.school })
+      if (effect.kind === 'area') {
+        const carrier = actorPoint(actors, effect.actorId)
+        const cue: Extract<SpellAnimationCue, { kind: 'burst' }> = {
+          id: effect.id,
+          kind: 'burst',
+          actorId: effect.actorId ?? '',
+          targetIds: [],
+          spellId: effect.spellId,
+          school: effect.school ?? profile.school,
+          origin: carrier ?? effect.center,
+          center: effect.center,
+          cells: effect.cells,
+          shape: effect.shape,
+          originMode: effect.originMode,
+          sizeFeet: effect.sizeFeet,
+          durationMs: 1,
+          motion: 'reduced',
+          detail: options.detail,
+        }
+        drawBurst(context, scene, cue, {
+          cue,
+          progress: .68,
+          actors,
+          detail: options.detail,
+          reducedMotion: true,
+        }, options.detail ?? (options.reducedMotion ? 'minimal' : 'reduced'))
+        continue
+      }
       const cue: Extract<SpellAnimationCue, { kind: 'aura' }> = {
         id: effect.id,
         kind: 'aura',

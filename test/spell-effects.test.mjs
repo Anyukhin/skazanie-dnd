@@ -268,6 +268,51 @@ test('постоянный renderer показывает радиус ауры �
   assert.ok(context.ops.some((operation) => operation.op === 'fillText' && operation.text === 'К'))
 })
 
+test('проекция сохраняет точные клетки области, ауру и актуальную концентрацию', () => {
+  assert.equal(effects.spellIdFromEffect('spell:web'), 'web')
+  assert.equal(effects.spellIdFromEffect('aura-of-life:command-1'), 'aura-of-life')
+  const projected = effects.persistentSpellEffectsFromProjection([
+    {
+      id: 'web-area',
+      effect_id: 'web:command-1',
+      spell_id: 'web',
+      source_actor: 'mage',
+      center: { x: 3, y: 3 },
+      cells: [{ x: 2, y: 2 }, { x: 3, y: 2 }],
+      radius_feet: 20,
+      area_shape: 'cube',
+    },
+    {
+      id: 'life-aura',
+      effect_id: 'aura-of-life:command-2',
+      spell_id: 'aura-of-life',
+      source_actor: 'cleric',
+      center: { x: 4, y: 4 },
+      radius_feet: 30,
+    },
+  ], {
+    mage: { effect_id: 'spell:web' },
+    cleric: { effect_id: 'aura-of-life:command-2' },
+  })
+  const area = projected.find((effect) => effect.kind === 'area')
+  assert.deepEqual(area?.cells, [{ x: 2, y: 2 }, { x: 3, y: 2 }])
+  assert.equal(area?.shape, 'cube')
+  assert.ok(projected.some((effect) => effect.kind === 'aura' && effect.radiusFeet === 30))
+  assert.deepEqual(
+    projected.filter((effect) => effect.kind === 'concentration').map((effect) => effect.spellId),
+    ['web', 'aura-of-life'],
+  )
+
+  const context = recordingContext()
+  const renderer = effects.createPersistentSpellEffectsRenderer(
+    projected.filter((effect) => effect.kind === 'area'),
+    [actor('mage', 1, 1)],
+    { detail: 'reduced', reducedMotion: false },
+  )
+  render.drawBoardEffects(context, scene(), [renderer])
+  assert.equal(context.ops.filter((operation) => operation.op === 'strokeRect').length, 2)
+})
+
 test('пакет не превышает 1,8 с и деградирует до доступной детализации', () => {
   const cues = Array.from({ length: 20 }, (_, index) => ({
     id: `impact-${index}`,

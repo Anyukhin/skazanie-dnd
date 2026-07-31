@@ -28,6 +28,11 @@ import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
 import { drawDifficultTerrainEffects, type BoardAreaEffect, type BoardEffectRenderer, type BoardOverlayCell } from './board-render'
 import { areaCells } from './area-geometry'
+import {
+  createPersistentSpellEffectsRenderer,
+  persistentSpellEffectsFromProjection,
+  systemPrefersReducedMotion,
+} from './spell-effects'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
@@ -927,17 +932,31 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   const movementAvailable = !combatActive || economy?.movement !== false
   const movementPaths = active ? buildMovementPaths(state, active, CELL_FEET, boardMap) : new Map<string, MovementPath>()
   const boardEffectRenderers = useMemo<BoardEffectRenderer[]>(() => {
-    const effects: BoardAreaEffect[] = (state.mechanics?.active_effects ?? [])
+    const activeEffects = state.mechanics?.active_effects ?? []
+    const effects: BoardAreaEffect[] = activeEffects
       .filter((effect) => effect.difficult_terrain === true)
       .map((effect) => ({
         ...(effect.cells?.length ? { cells: effect.cells } : {}),
         ...(effect.center ? { center: effect.center } : {}),
         radiusFeet: effect.radius_feet,
       }))
-    return effects.length
+    const renderers: BoardEffectRenderer[] = effects.length
       ? [(context, scene) => drawDifficultTerrainEffects(context, scene, effects)]
       : []
-  }, [state.mechanics?.active_effects])
+    const persistentSpells = persistentSpellEffectsFromProjection(
+      activeEffects,
+      state.mechanics?.concentration ?? {},
+    )
+    if (persistentSpells.length) {
+      const reducedMotion = systemPrefersReducedMotion()
+      renderers.push(createPersistentSpellEffectsRenderer(
+        persistentSpells,
+        animationActors,
+        { detail: reducedMotion ? 'minimal' : 'reduced', reducedMotion },
+      ))
+    }
+    return renderers
+  }, [state.mechanics?.active_effects, state.mechanics?.concentration, players, state.enemies, state.actors])
   /* Двери, до которых активный участник дотягивается рукой. Открыть или закрыть
      дверь — свободное взаимодействие, выломать — действие; какое именно из них
      доступно, решает состояние полотна. */
