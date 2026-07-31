@@ -11,6 +11,7 @@ import { FileEventStore } from '../server/event-store.mjs'
 import { MapStore } from '../server/map-store.mjs'
 import { projectionHash } from '../server/projection-integrity.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
  * Эксплуатационная проверка: сервер убивают посреди работы, пока по нему идут
@@ -107,7 +108,7 @@ function storeFor(storage) {
   })
 }
 
-test('сервер переживает убийства посреди конкурентных запросов и не теряет ни одной команды', { timeout: 180_000 }, async (t) => {
+test('сервер переживает убийства посреди конкурентных запросов и не теряет ни одной команды', { timeout: runnerTimeout(180_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-soak-'))
   let logs = ''
   let child = null

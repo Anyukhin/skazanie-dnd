@@ -7,6 +7,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const SSE_PAYLOAD_KEYS = ['message_id', 'phase', 'replace', 'replayed', 'text']
@@ -227,7 +228,7 @@ function finishStream(res, text = '') {
   res.end('data: [DONE]\n\n')
 }
 
-test('HTTP/SSE повествование изолировано, восстанавливается и завершается канонически', { timeout: 90_000 }, async (t) => {
+test('HTTP/SSE повествование изолировано, восстанавливается и завершается канонически', { timeout: runnerTimeout(90_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-narration-stream-api-'))
   let logs = ''
   let child = null

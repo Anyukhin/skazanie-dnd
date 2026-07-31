@@ -5,6 +5,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 async function freePort() {
   const probe = createNetServer()
@@ -66,7 +67,7 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}
 
 const sessionCookie = (result) => result.response.headers.get('set-cookie')?.split(';')[0] ?? ''
 
-test('стол на пятерых получает пять слотов, отдельные герои и эфемерный typing', { timeout: 60_000 }, async (t) => {
+test('стол на пятерых получает пять слотов, отдельные герои и эфемерный typing', { timeout: runnerTimeout(60_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-table-five-'))
   let logs = ''
   const port = await freePort()

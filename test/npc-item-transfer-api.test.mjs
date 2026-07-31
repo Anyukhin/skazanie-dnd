@@ -1,3 +1,4 @@
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -168,7 +169,7 @@ function initialState() {
   }
 }
 
-test('HTTP TransferItem передаёт предмет видимому NPC с ACL, idempotency и приватным restart projection', { timeout: 60_000 }, async (t) => {
+test('HTTP TransferItem передаёт предмет видимому NPC с ACL, idempotency и приватным restart projection', { timeout: runnerTimeout(60_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-npc-transfer-api-'))
   let logs = ''
   let child = null

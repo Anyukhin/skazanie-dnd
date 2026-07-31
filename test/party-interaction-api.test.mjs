@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 async function waitForHealth(baseUrl, child) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
@@ -21,7 +22,7 @@ function cookie(response) {
   return response.headers.get('set-cookie')?.split(';')[0]
 }
 
-test('агент открывает общее голосование, а неактивный игрок может проголосовать без расхода хода', { timeout: 60_000 }, async (t) => {
+test('агент открывает общее голосование, а неактивный игрок может проголосовать без расхода хода', { timeout: runnerTimeout(60_000) }, async (t) => {
   const port = 30_000 + Math.floor(Math.random() * 10_000)
   const baseUrl = 'http://127.0.0.1:' + port
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-party-'))

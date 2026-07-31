@@ -1,3 +1,4 @@
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createServer as createHttpServer } from 'node:http'
@@ -111,7 +112,7 @@ function npc(id, overrides = {}) {
   }
 }
 
-test('NPC portrait API enforces auth/visibility, caches generation and rate-limits only cache misses', { timeout: 40_000 }, async (t) => {
+test('NPC portrait API enforces auth/visibility, caches generation and rate-limits only cache misses', { timeout: runnerTimeout(40_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-npc-portrait-api-'))
   let logs = ''
   let child = null

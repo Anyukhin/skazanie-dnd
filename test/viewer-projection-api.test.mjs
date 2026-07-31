@@ -5,6 +5,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 async function freePort() {
   const probe = createNetServer()
@@ -38,7 +39,7 @@ async function waitForHealth(baseUrl, child, logs) {
   throw new Error(`Server did not start\n${logs()}`)
 }
 
-test('non-admin room and Director response cannot expose private world memory', { timeout: 30_000 }, async (t) => {
+test('non-admin room and Director response cannot expose private world memory', { timeout: runnerTimeout(30_000) }, async (t) => {
   const port = await freePort()
   const baseUrl = `http://127.0.0.1:${port}`
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-viewer-api-'))

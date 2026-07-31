@@ -5,6 +5,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 async function freePort() {
   const probe = createNetServer()
@@ -114,7 +115,7 @@ async function command(baseUrl, cookieValue, actorId, document, key) {
   })
 }
 
-test('каждый игрок заполняет свой серверный слот через replayable ImportCharacter', { timeout: 60_000 }, async (t) => {
+test('каждый игрок заполняет свой серверный слот через replayable ImportCharacter', { timeout: runnerTimeout(60_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-character-creation-'))
   let logs = ''
   let child = null

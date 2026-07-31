@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 async function freePort() {
   const probe = createNetServer()
@@ -214,7 +215,7 @@ function lifecycleCommand(key, commandType, fields = {}) {
   }
 }
 
-test('HTTP item commands enforce ACL, semantic idempotency, stale writes and a single last charge', { timeout: 60_000 }, async (t) => {
+test('HTTP item commands enforce ACL, semantic idempotency, stale writes and a single last charge', { timeout: runnerTimeout(60_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-item-effects-api-'))
   let logs = ''
   let child = null

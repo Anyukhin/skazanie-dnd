@@ -5,6 +5,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
@@ -76,7 +77,7 @@ function assertStatus(result, expected, log) {
   assert.ok(result.body && typeof result.body === 'object')
 }
 
-test('enforce Director atomically advances scene and assembles a durable catalog shop', { timeout: 50_000 }, async (t) => {
+test('enforce Director atomically advances scene and assembles a durable catalog shop', { timeout: runnerTimeout(50_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-director-shop-api-'))
   const setupToken = 'director-shop-setup-token'
   let logs = ''

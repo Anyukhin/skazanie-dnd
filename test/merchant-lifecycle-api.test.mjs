@@ -5,6 +5,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
@@ -86,7 +87,7 @@ function stateVersion(result) {
   return Number(result.body?.authoritative_state?.state_version ?? result.body?.state_version)
 }
 
-test('admin merchant lifecycle API is enforce-only, event-sourced, idempotent, projected and rate-limited', { timeout: 50_000 }, async (t) => {
+test('admin merchant lifecycle API is enforce-only, event-sourced, idempotent, projected and rate-limited', { timeout: runnerTimeout(50_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-merchant-lifecycle-api-'))
   const setupToken = 'merchant-lifecycle-setup-token'
   let logs = ''

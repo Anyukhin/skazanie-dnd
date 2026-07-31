@@ -1,3 +1,4 @@
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -179,7 +180,7 @@ function itemFingerprint(chargesToSpend) {
   })).digest('hex')
 }
 
-test('HTTP жезла защищает поля и charges_to_spend idempotency, включая retry после уничтожения', { timeout: 60_000 }, async (t) => {
+test('HTTP жезла защищает поля и charges_to_spend idempotency, включая retry после уничтожения', { timeout: runnerTimeout(60_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-wand-api-'))
   let logs = ''
   let child = null
