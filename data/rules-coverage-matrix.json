@@ -41,9 +41,9 @@
       "id": "equipment",
       "mandatory_for_release": true,
       "coverage": "partial",
-      "expected_count": 106,
+      "expected_count": 107,
       "runtime_count_source": "ITEM_CATALOG",
-      "notes": "Единый manifest из 97 базовых и девяти магических предметов; безопасный торговый allowlist остаётся отдельным поднабором из 12 позиций."
+      "notes": "Единый manifest из 97 базовых и десяти магических предметов; безопасный торговый allowlist остаётся отдельным поднабором из 12 позиций."
     },
     {
       "id": "feats",

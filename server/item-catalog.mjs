@@ -722,6 +722,44 @@ const MAGIC_ITEMS = [
     provenance: provenance(216, { sourcePages: [206, 216], mechanicsSourcePage: 216 }),
   },
   {
+    catalog_id: 'srd_5_2_1:ring-of-fire-resistance',
+    ...ITEM_CATALOG_SOURCE,
+    display_name: 'Кольцо сопротивления (огонь)',
+    name: 'Кольцо сопротивления (огонь)',
+    manifest_section: 'magic-item',
+    description: 'Пока вы носите это гранатовое кольцо, вы получаете сопротивление урону огнём.',
+    category: 'ring',
+    type: 'other',
+    rarity: 'редкий',
+    price_cp: 400_000,
+    base_price_cp: 400_000,
+    weight: 0,
+    lifecycle: { equippable: true, equip_slot: 'ring-fire-resistance', transferable: true, stackable: false },
+    equip: { slot: 'ring-fire-resistance' },
+    use: null,
+    activation: null,
+    attunement: { required: false },
+    charges: null,
+    recharge: null,
+    crafting: { implemented: false, hooks: [] },
+    passive_effects: [{
+      schema_version: 1,
+      effect_id: 'srd_5_2_1:ring-of-fire-resistance:resistance',
+      group: 'srd_5_2_1:ring-of-fire-resistance',
+      requires_equipped: true,
+      requires_attunement: false,
+      damage_resistances: ['fire'],
+    }],
+    magic_item: { category: 'ring', rarity: 'rare', variant: 'fire', value_formula: '4,000 gp (Rare magic item)' },
+    mechanics_status: 'partial',
+    limitation: 'Сопротивление огненному урону исполняется общим серверным damage pipeline только для надетого кольца. Прочие девять вариантов Кольца сопротивления пока не представлены отдельными catalog-записями.',
+    availability: availability('srd_5_2_1:ring-of-fire-resistance'),
+    source_page: 237,
+    source_pages: [101, 205, 237],
+    mechanics_source_page: 237,
+    provenance: provenance(237, { sourcePages: [101, 205, 237], mechanicsSourcePage: 237 }),
+  },
+  {
     catalog_id: 'srd_5_2_1:adamantine-chain-mail',
     ...ITEM_CATALOG_SOURCE,
     display_name: 'Адамантиновая кольчуга',
@@ -900,8 +938,8 @@ const ENTRIES = [
   ...MAGIC_ITEMS,
 ]
 
-if (ENTRIES.length !== 106) {
-  throw new Error(`Item catalog manifest must contain 106 entries, got ${ENTRIES.length}`)
+if (ENTRIES.length !== 107) {
+  throw new Error(`Item catalog manifest must contain 107 entries, got ${ENTRIES.length}`)
 }
 
 const entriesById = Object.fromEntries(ENTRIES.map((entry) => [entry.catalog_id, entry]))
