@@ -333,10 +333,12 @@ test('в бою объект тратит действие, вне боя кос
     command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: 'prop-campfire', intent: 'use',
   }, campfire, { diceService: dice([]) })
   assert.deepEqual(
-    rested.events.filter((event) => ['RestStarted', 'RestCompleted'].includes(event.event_type)).map((event) => event.event_type),
-    ['RestStarted', 'RestCompleted'],
+    rested.events.filter((event) => ['RestStarted', 'TimeAdvanced', 'RestCompleted'].includes(event.event_type)).map((event) => event.event_type),
+    ['RestStarted', 'TimeAdvanced', 'RestCompleted'],
   )
   const afterRest = applyAll(campfire, rested.events)
+  assert.equal(afterRest.mechanics.world_time.elapsed_minutes, 60)
+  assert.equal(afterRest.players[0].hp, campfire.players[0].hp, 'костёр не лечит без расхода кости хитов')
   assert.equal(afterRest.mechanics.resting.hero, undefined)
   assert.equal(afterRest.mechanics.scene_interactions['prop-campfire'].used, false)
   assert.deepEqual(afterRest.mechanics.scene_interactions['prop-campfire'].used_by, ['hero'])

@@ -278,10 +278,11 @@ test('слишком большой aggregate отклоняется до пер
   )
 })
 
-test('оба producer-path TimeAdvanced используют один resolver перезарядки', () => {
+test('все producer-path TimeAdvanced используют один resolver перезарядки', () => {
   const source = readFileSync(new URL('../server/rules-engine.mjs', import.meta.url), 'utf8')
   assert.match(source, /actionType === 'long_cast'[\s\S]{0,350}appendTimeAdvance\(/u)
-  assert.match(source, /case 'AdvanceTime'[\s\S]{0,350}appendTimeAdvance\(/u)
+  assert.match(source, /case 'AdvanceTime'[\s\S]{0,350}appendWorldTimeConsequences\(/u)
+  assert.match(source, /if \(definition\.kind === 'campfire'\)[\s\S]{0,1600}appendWorldTimeConsequences\(/u)
   assert.equal([...source.matchAll(/'TimeAdvanced'/gu)].length, 3, 'producer не должен обходить общий appendTimeAdvance')
 })
 

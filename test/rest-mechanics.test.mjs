@@ -5,6 +5,8 @@ import { Adjudicator } from '../server/adjudicator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
   RULE_IDS,
+  applyGameEvent,
+  hitPointDicePoolForActor,
   normalizeCampaignState,
   resolveCommands,
   validateCommand,
@@ -75,7 +77,7 @@ test('долгий отдых лечит и восстанавливает до�
     { command_type: 'CompleteRest', actor_id: 'wizard', kind: 'long', source_rule_ids: [RULE_IDS.resource] },
   ]
   const result = resolveCommands(commands, state, { diceService, context: { allowedActorIds: ['wizard'] } })
-  assert.deepEqual(result.events.map((event) => event.event_type), ['RestStarted', 'TimeAdvanced', 'ConcentrationEnded', 'RestCompleted'])
+  assert.deepEqual(result.events.map((event) => event.event_type), ['RestStarted', 'TimeAdvanced', 'ConcentrationEnded', 'HitPointDiceRestored', 'RestCompleted'])
   assert.equal(result.state.players[0].hp, 14)
   assert.equal(result.state.mechanics.temporary_hp.wizard, 0)
   assert.equal(result.state.mechanics.resources.wizard.spell_slots_1.current, 4)
@@ -99,4 +101,160 @@ test('нельзя мгновенно завершить не начатый о�
     () => validateCommand({ command_type: 'StartRest', actor_id: 'fighter', kind: 'long' }, combat, { allowedActorIds: ['fighter'] }),
     (error) => error.code === 'REST_DURING_COMBAT',
   )
+})
+
+test('короткий отдых тратит кости хитов по одной и лечит по броску с Телосложением', () => {
+  const state = fighterState()
+  const localDice = new DiceService({
+    rng: new SequenceDiceRng([6, 10]),
+    idFactory: (() => { let id = 0; return () => `hit-die-roll-${++id}` })(),
+  })
+  const result = resolveCommands([
+    { command_type: 'StartRest', actor_id: 'fighter', kind: 'short' },
+    { command_type: 'AdvanceTime', amount: 60, unit: 'minute' },
+    { command_type: 'SpendHitPointDie', actor_id: 'fighter' },
+    { command_type: 'SpendHitPointDie', actor_id: 'fighter' },
+    { command_type: 'CompleteRest', actor_id: 'fighter', kind: 'short' },
+  ], state, { diceService: localDice, context: { allowedActorIds: ['fighter'] } })
+
+  assert.deepEqual(result.events.map((event) => event.event_type), [
+    'RestStarted', 'TimeAdvanced',
+    'HitPointDieSpent', 'HealingApplied',
+    'HitPointDieSpent', 'HealingApplied',
+    'RestCompleted',
+  ])
+  assert.equal(result.events[0].event_schema_version, 2)
+  assert.equal(result.events[0].payload.started_at_minutes, 0)
+  assert.equal(result.events.at(-1).payload.duration_minutes, 60)
+  assert.deepEqual(result.state.mechanics.hit_point_dice.fighter, {
+    schema_version: 1, maximum: 2, spent: 2, die_size: 10,
+  })
+  assert.equal(result.state.players[0].hp, 18)
+  assert.equal(result.events[2].payload.formula, '1d10+2')
+  assert.equal(result.events[2].payload.applied_healing, 8)
+  assert.equal(result.events[4].payload.applied_healing, 3)
+  const replayed = result.events.reduce((current, event) => applyGameEvent(current, event), state)
+  assert.equal(replayed.players[0].hp, result.state.players[0].hp)
+  assert.deepEqual(replayed.mechanics.hit_point_dice.fighter, result.state.mechanics.hit_point_dice.fighter)
+})
+
+test('кость хитов нельзя тратить до 60 минут, при полных хитах или без оставшихся костей', () => {
+  const started = resolveCommands([
+    { command_type: 'StartRest', actor_id: 'fighter', kind: 'short' },
+  ], fighterState(), { diceService, context: { allowedActorIds: ['fighter'] } }).state
+  assert.throws(
+    () => validateCommand({ command_type: 'SpendHitPointDie', actor_id: 'fighter' }, started, { allowedActorIds: ['fighter'] }),
+    (error) => error.code === 'REST_DURATION_INSUFFICIENT',
+  )
+  assert.throws(
+    () => validateCommand({ command_type: 'CompleteRest', actor_id: 'fighter', kind: 'short' }, started, { allowedActorIds: ['fighter'] }),
+    (error) => error.code === 'REST_DURATION_INSUFFICIENT',
+  )
+  assert.throws(
+    () => validateCommand({ command_type: 'CompleteRest', actor_id: 'fighter', kind: 'short', rest_id: 'forged' }, started, { allowedActorIds: ['fighter'] }),
+    (error) => error.code === 'REST_ID_MISMATCH',
+  )
+
+  const eligible = resolveCommands([
+    { command_type: 'AdvanceTime', amount: 60, unit: 'minute' },
+  ], started, { diceService, context: { allowedActorIds: ['fighter'] } }).state
+  const fullHp = normalizeCampaignState({ ...eligible, players: [{ ...eligible.players[0], hp: 18 }] })
+  assert.throws(
+    () => validateCommand({ command_type: 'SpendHitPointDie', actor_id: 'fighter' }, fullHp, { allowedActorIds: ['fighter'] }),
+    (error) => error.code === 'HIT_POINTS_ALREADY_FULL',
+  )
+  const emptyPool = normalizeCampaignState({
+    ...eligible,
+    mechanics: { ...eligible.mechanics, hit_point_dice: { fighter: { schema_version: 1, maximum: 2, spent: 2, die_size: 10 } } },
+  })
+  assert.throws(
+    () => validateCommand({ command_type: 'SpendHitPointDie', actor_id: 'fighter' }, emptyPool, { allowedActorIds: ['fighter'] }),
+    (error) => error.code === 'HIT_POINT_DICE_EXHAUSTED',
+  )
+})
+
+test('долгий отдых восстанавливает все потраченные кости хитов событием из payload', () => {
+  const state = fighterState({
+    mechanics: {
+      resources: { fighter: {} },
+      hit_point_dice: { fighter: { schema_version: 1, maximum: 2, spent: 2, die_size: 10 } },
+    },
+  })
+  const result = resolveCommands([
+    { command_type: 'StartRest', actor_id: 'fighter', kind: 'long' },
+    { command_type: 'AdvanceTime', amount: 480, unit: 'minute' },
+    { command_type: 'CompleteRest', actor_id: 'fighter', kind: 'long' },
+  ], state, { diceService, context: { allowedActorIds: ['fighter'] } })
+  const restored = result.events.find((event) => event.event_type === 'HitPointDiceRestored')
+  assert.equal(restored.payload.restored, 2)
+  assert.equal(result.state.mechanics.hit_point_dice.fighter.spent, 0)
+})
+
+test('размер кости хитов определяется классом, а неизвестный класс получает d8', () => {
+  const expected = new Map([
+    ['barbarian', 12],
+    ['fighter', 10], ['paladin', 10], ['ranger', 10],
+    ['bard', 8], ['cleric', 8], ['druid', 8], ['monk', 8], ['rogue', 8], ['warlock', 8],
+    ['sorcerer', 6], ['wizard', 6],
+    ['inventor', 8],
+  ])
+  const state = normalizeCampaignState({
+    players: [...expected.keys()].map((characterClass) => ({
+      id: characterClass,
+      characterClass,
+      level: 3,
+      hp: 10,
+      maxHp: 10,
+      abilities: { con: 10 },
+      inventory: [],
+    })),
+  })
+
+  for (const [actorId, dieSize] of expected) {
+    assert.deepEqual(hitPointDicePoolForActor(state, actorId), {
+      schema_version: 1,
+      maximum: 3,
+      spent: 0,
+      die_size: dieSize,
+    })
+  }
+})
+
+test('лечение костью хитов не опускается ниже одного при отрицательном Телосложении', () => {
+  const state = normalizeCampaignState({
+    players: [{
+      id: 'sorcerer', characterClass: 'sorcerer', level: 1,
+      hp: 2, maxHp: 8, abilities: { con: 1 }, inventory: [],
+    }],
+  })
+  const localDice = new DiceService({ rng: new SequenceDiceRng([1]) })
+  const result = resolveCommands([
+    { command_type: 'StartRest', actor_id: 'sorcerer', kind: 'short' },
+    { command_type: 'AdvanceTime', amount: 60, unit: 'minute' },
+    { command_type: 'SpendHitPointDie', actor_id: 'sorcerer' },
+  ], state, { diceService: localDice, context: { allowedActorIds: ['sorcerer'] } })
+
+  const spent = result.events.find((event) => event.event_type === 'HitPointDieSpent')
+  assert.equal(spent.payload.formula, '1d6-5')
+  assert.equal(spent.payload.healing_total, 1)
+  assert.equal(spent.payload.applied_healing, 1)
+  assert.equal(result.state.players[0].hp, 3)
+})
+
+test('редьюсер Hit Dice отклоняет события без версии и с неизвестной версией', () => {
+  const state = fighterState()
+  const payload = {
+    schema_version: 1,
+    pool_after: { schema_version: 1, maximum: 2, spent: 1, die_size: 10 },
+  }
+  const baseEvent = {
+    event_type: 'HitPointDieSpent',
+    actor_id: 'fighter',
+    target_ids: ['fighter'],
+    payload,
+  }
+
+  assert.equal(applyGameEvent(state, baseEvent).mechanics.hit_point_dice.fighter, undefined)
+  assert.equal(applyGameEvent(state, { ...baseEvent, event_schema_version: 99 }).mechanics.hit_point_dice.fighter, undefined)
+  assert.deepEqual(applyGameEvent(state, { ...baseEvent, event_schema_version: 1 }).mechanics.hit_point_dice.fighter, payload.pool_after)
 })

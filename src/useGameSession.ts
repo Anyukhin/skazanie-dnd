@@ -4,7 +4,7 @@ import { fetchWithTimeout, generateItemImage, narrateWithAgent, rollDice, rollSh
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult, SceneObjectIntent } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -864,6 +864,39 @@ export function useGameSession() {
     }
   }, [applyRemote])
 
+  const executeRestCommand = useCallback(async (command: RestCommand, message: string): Promise<{ ok: boolean; error?: string }> => {
+    if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
+    const current = stateRef.current
+    const requestId = commandId()
+    tacticalBusyRef.current = true
+    setTacticalBusy(true)
+    setTacticalError(null)
+    try {
+      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
+        body: JSON.stringify({
+          command: { ...command, expected_state_version: current.state_version ?? 0 },
+          message,
+        }),
+      }, 25_000, 'Сервер не успел завершить отдых. Не повторяйте команду: результат мог сохраниться.')
+      const result = await response.json().catch(() => null) as TacticalCommandResult | null
+      if (!response.ok || !result?.authoritative_state) {
+        throw new Error(result?.error || `Сервер отклонил команду отдыха (${response.status})`)
+      }
+      if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
+      applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, result, requestId))
+      return { ok: true }
+    } catch (error) {
+      const text = error instanceof Error ? error.message : 'Не удалось выполнить команду отдыха'
+      setTacticalError(text)
+      return { ok: false, error: text }
+    } finally {
+      tacticalBusyRef.current = false
+      setTacticalBusy(false)
+    }
+  }, [applyRemote])
+
   const executeCharacterBuild = useCallback(async (commands: CharacterBuildCommand[]) => {
     const current = stateRef.current
     const requestId = commandId()
@@ -897,6 +930,18 @@ export function useGameSession() {
   const startCombat = useCallback((playerId: string) => {
     void executeTacticalCommand({ command_type: 'StartCombat', actor_id: playerId }, 'Начать бой')
   }, [executeTacticalCommand])
+
+  const startRest = useCallback((playerId: string, kind: 'short' | 'long') => {
+    void executeRestCommand({ command_type: 'StartRest', actor_id: playerId, kind }, kind === 'long' ? 'Устроить долгий отдых' : 'Начать короткий отдых')
+  }, [executeRestCommand])
+
+  const spendHitPointDie = useCallback((playerId: string) => {
+    void executeRestCommand({ command_type: 'SpendHitPointDie', actor_id: playerId }, 'Потратить одну кость хитов')
+  }, [executeRestCommand])
+
+  const completeRest = useCallback((playerId: string) => {
+    void executeRestCommand({ command_type: 'CompleteRest', actor_id: playerId }, 'Завершить короткий отдых')
+  }, [executeRestCommand])
 
   const movePlayer = useCallback((playerId: string, x: number, y: number) => {
     void executeTacticalCommand({ command_type: 'MoveActor', actor_id: playerId, to: { x, y } }, `Переместить героя на клетку ${x}, ${y}`)
@@ -1316,6 +1361,9 @@ export function useGameSession() {
     continueAgentInteraction,
     selectPlayer,
     startCombat,
+    startRest,
+    spendHitPointDie,
+    completeRest,
     movePlayer,
     attackEnemy,
     throwAreaItem,

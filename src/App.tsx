@@ -654,7 +654,7 @@ function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onFinishTurn, onFreeAction, onRest, onTypingChange, narrating, statusContent, children }: {
+function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onFinishTurn, onFreeAction, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -678,7 +678,9 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => void
   onFinishTurn: () => void
   onFreeAction: (text: string) => void
-  onRest: (kind: 'short' | 'long') => void
+  onStartRest: (kind: 'short' | 'long') => void
+  onSpendHitPointDie: () => void
+  onCompleteRest: () => void
   onTypingChange: (actorId: string, typing: boolean) => void
   narrating: boolean
   statusContent: React.ReactNode
@@ -802,6 +804,18 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   const visibleBattleRollContext = visibleBattleRoll ? battleRollContext(visualBatch?.events, visibleBattleRoll) : null
   const visibleNpcTactic = useTransientNpcTactic(visualBatch, state.battleLog)
   const activeHero = players.find((player) => player.id === turnActorId)
+  const activeRest = activeHero ? state.mechanics?.resting?.[activeHero.id] : undefined
+  const hitPointDice = activeHero ? state.mechanics?.hit_point_dice?.[activeHero.id] : undefined
+  const hitPointDiceRemaining = hitPointDice ? Math.max(0, hitPointDice.maximum - hitPointDice.spent) : 0
+  const hitPointDieBlockedReason = !activeHero
+    ? 'Отдых доступен только герою.'
+    : activeHero.hp <= 0
+      ? 'Без хитов нельзя тратить кости хитов.'
+      : activeHero.hp >= activeHero.maxHp
+        ? 'У героя уже полные хиты.'
+        : hitPointDiceRemaining <= 0
+          ? 'Все кости хитов потрачены.'
+          : null
   const activeSummon = state.actors?.find((actor) => actor.id === turnActorId && actor.alive)
   const activeEnemy = state.enemies?.find((enemy) => enemy.id === turnActorId && enemy.alive)
   const activeTurnLabel = !combatActive ? 'ИДЁТ СВОБОДНО' : activeEnemy ? 'ХОД ПРОТИВНИКА' : activeSummon ? 'ХОД ПРИЗЫВА' : 'ХОД ИГРОКА'
@@ -1722,11 +1736,29 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         </section>}
         {!combatActive && <section className="rest-controls" aria-label="Отдых">
           <header><Flame size={15} /><span><small>ПЕРЕДЫШКА</small><strong>Отдых героя</strong></span></header>
-          <p>Время и восстановление рассчитает сервер.</p>
-          <div>
-            <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onRest('short')}>Короткий · 1 час</button>
-            <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onRest('long')}>Долгий · 8 часов</button>
-          </div>
+          {!activeRest
+            ? <>
+                <p>Короткий отдых откроет поштучный расход костей хитов. Долгий пройдёт атомарно.</p>
+                <div>
+                  <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onStartRest('short')}>Короткий · 1 час</button>
+                  <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onStartRest('long')}>Долгий · 8 часов</button>
+                </div>
+              </>
+            : activeRest.reason === 'knockout'
+              ? <p>Герой приходит в себя. Время восстановления рассчитывает сервер.</p>
+            : activeRest.kind !== 'short' || activeRest.schema_version !== 2
+              ? <p>Отдых уже начат. Его длительность и завершение определяет сервер.</p>
+            : <>
+                <p>Короткий отдых идёт. Кости хитов: {hitPointDiceRemaining}/{hitPointDice?.maximum ?? 0} · d{hitPointDice?.die_size ?? 8}. {hitPointDieBlockedReason ?? 'Можно потратить одну кость и снова оценить состояние.'}</p>
+                <div>
+                  <button
+                    disabled={!canAct || narrating || Boolean(state.pendingCheck) || Boolean(hitPointDieBlockedReason)}
+                    title={hitPointDieBlockedReason ?? `Бросить 1d${hitPointDice?.die_size ?? 8} и добавить модификатор Телосложения`}
+                    onClick={onSpendHitPointDie}
+                  >Потратить 1d{hitPointDice?.die_size ?? 8}</button>
+                  <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={onCompleteRest}>Завершить отдых</button>
+                </div>
+              </>}
         </section>}
         {children}
       </aside>
@@ -2903,7 +2935,7 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -3442,7 +3474,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onOperateSceneObject={operateSceneObject}
             onFinishTurn={finishMapTurn}
             onFreeAction={(text) => { void submitAction(text, activePlayer.id) }}
-            onRest={(kind) => { void submitAction(kind === 'long' ? 'Устроить долгий отдых' : 'Устроить короткий отдых', activePlayer.id) }}
+            onStartRest={(kind) => startRest(activePlayer.id, kind)}
+            onSpendHitPointDie={() => spendHitPointDie(activePlayer.id)}
+            onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}

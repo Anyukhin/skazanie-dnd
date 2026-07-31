@@ -2,10 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { Adjudicator } from '../server/adjudicator.mjs'
-import { IntentParser } from '../server/intent-parser.mjs'
-
 const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const sessionSource = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const stylesSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 
 test('главный экран показывает серверные задачи и явные действия отдыха', () => {
@@ -15,27 +13,22 @@ test('главный экран показывает серверные зада
   assert.match(stylesSource, /\.party-quest-hud\s*\{/u)
 
   assert.match(appSource, /className="rest-controls"/u)
-  assert.match(appSource, /Устроить короткий отдых/u)
-  assert.match(appSource, /Устроить долгий отдых/u)
+  assert.match(appSource, /onStartRest\('short'\)/u)
+  assert.match(appSource, /onStartRest\('long'\)/u)
+  assert.match(appSource, /onSpendHitPointDie/u)
+  assert.match(appSource, /onCompleteRest/u)
+  assert.match(appSource, /activeRest\.reason === 'knockout'/u)
+  assert.match(appSource, /activeRest\.kind !== 'short' \|\| activeRest\.schema_version !== 2/u)
   assert.match(appSource, /!combatActive && <section className="rest-controls"/u)
 })
 
-test('фраза долгого отдыха из HUD проходит parser и adjudicator до StartRest long', async () => {
-  const intent = await new IntentParser().parse({
-    message: 'Устроить долгий отдых',
-    playerId: 'hero',
-    visibleState: { players: [{ id: 'hero', name: 'Ада' }] },
-  })
-  const plan = await new Adjudicator().createPlan({
-    intent,
-    state: { players: [{ id: 'hero', name: 'Ада' }] },
-    retrievedRules: { results: [], confidence: 1 },
-  })
-
-  assert.equal(intent.intent, 'rest')
-  assert.equal(plan.proposed_commands[0]?.command_type, 'StartRest')
-  assert.equal(plan.proposed_commands[0]?.actor_id, 'hero')
-  assert.equal(plan.proposed_commands[0]?.kind, 'long')
+test('HUD отдыха использует типизированный HTTP-путь без клиентской формулы и длительности', () => {
+  assert.match(sessionSource, /command: RestCommand/u)
+  assert.match(sessionSource, /command_type: 'StartRest'/u)
+  assert.match(sessionSource, /command_type: 'SpendHitPointDie'/u)
+  assert.match(sessionSource, /command_type: 'CompleteRest'/u)
+  assert.match(sessionSource, /\/api\/campaigns\/\$\{encodeURIComponent\(current\.sessionCode\)\}\/commands/u)
+  assert.doesNotMatch(sessionSource, /SpendHitPointDie[^\n]+(?:formula|amount|duration|rest_id)/u)
 })
 
 test('подтверждённый бросок разбирается возле фишки и не вычисляется из карты', () => {
