@@ -48,10 +48,29 @@ runNode(['--test', join('test', performanceFile)])
 // Замер 2026-08-01 на 16 ядрах: последовательный прогон ~5,5 мин,
 // параллельный — 257 с (~4,3 мин), весь корпус зелёный: 1676/1676 + MVP 1/1. Пороги, лимиты и состав корпуса не меняются.
 const sharedRunner = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
+
+/**
+ * Один повтор MVP-сценария — только на общем раннере. Сценарий играет
+ * настоящий бой без сида, и партия имеет право проиграть: за 2026-07-31 этот
+ * файл дал пять ложных красных на разных ветках (проигрыши, тайм-ауты,
+ * `fetch failed` на загруженном раннере). Один повтор превращает редкую
+ * неудачу в шум, но два подряд — по-прежнему падение: настоящий регресс боя
+ * не проскочит. Локально повторов нет — там прогон тихий и быстрый, и
+ * стохастику полезно видеть.
+ */
+function runLongScenario() {
+  const args = ['--test', join('test', longRunningFile)]
+  if (!sharedRunner) { runNode(args); return }
+  const first = spawnSync(process.execPath, args, { cwd: rootDir, env: process.env, stdio: 'inherit' })
+  if (first.status === 0) return
+  console.error('MVP-сценарий упал на общем раннере — один повтор (см. комментарий выше)')
+  runNode(args)
+}
+
 const enoughCores = (cpus()?.length ?? 0) >= 8
 if (sharedRunner || !enoughCores) {
   runNode(['--test', '--test-concurrency=4', ...functionalFiles])
-  runNode(['--test', join('test', longRunningFile)])
+  runLongScenario()
 } else {
   // MVP стартует первым и работает, пока идёт функциональный корпус; его
   // вывод буферизуется и печатается после — иначе TAP двух процессов
