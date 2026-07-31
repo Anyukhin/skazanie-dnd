@@ -209,7 +209,9 @@ test('новый committed-текст показывается целиком п
 })
 
 test('stream preview заменяет текст целым snapshot и не показывает replay/aborted/replaced', () => {
-  assert.match(appSource, /narrationPreview\?: NarrationPreviewSnapshot \| null/u)
+  assert.match(appSource, /import type \{ NarrationPreview \} from '\.\/ai-client'/u)
+  assert.match(appSource, /merchantNarration, narrationPreview, clearTacticalError/u)
+  assert.doesNotMatch(appSource, /as typeof gameSession/u)
   assert.match(appSource, /visibleNarrationPreview\?\.text \?\? cinematicNarration\?\.text/u)
   assert.match(appSource, /narrationPreview\.replayed !== true/u)
   assert.match(appSource, /narrationPreview\.phase !== 'aborted'/u)
@@ -231,7 +233,8 @@ test('NPC-досье читает viewer-safe разговоры, отношен
   assert.match(appSource, /promise\.npc_id === dossierSceneNpc\.id && promise\.status === 'open'/u)
   assert.match(appSource, /Обращаюсь к \$\{dossierSceneNpc\.name\}/u)
   assert.match(appSource, /onNpcAction\(addressed, dossierSceneNpc\.id\)/u)
-  assert.match(appSource, /onNpcAction=\{\(text, npcId\) => submitActionWithNpc\(text, activePlayer\.id, npcId\)\}/u)
+  assert.match(appSource, /onNpcAction=\{\(text, npcId\) => submitAction\(text, activePlayer\.id, npcId\)\}/u)
+  assert.doesNotMatch(appSource, /submitActionWithNpc/u)
   assert.match(appSource, /Адресат закрепляется отдельно как <code>npc_id<\/code>/u)
   assert.doesNotMatch(appSource, /submitAction\([^)]*npc_id/u)
 })
