@@ -106,21 +106,54 @@ export class FileTraceStore {
   }
 }
 
+/**
+ * Версия схемы трассы. `v2` добавляет сквозной `proposal_id` и честные версии
+ * промптов из реестра; `v1` остаётся читаемым — сохранённые трассы не
+ * переписываются (шаг 8 `docs/agent-architecture-plan.md`).
+ */
+export const TURN_TRACE_SCHEMA_VERSION = 'turn-trace/v2'
+
+/**
+ * Приводит сохранённую трассу к форме v2 **на чтении**, не трогая файл. Так
+ * `/why` одинаково отвечает и по старым кампаниям, и по новым.
+ *
+ * @param {Record<string, any> | null} trace
+ * @returns {Record<string, any> | null}
+ */
+export function migrateTraceToV2(trace) {
+  if (!trace || typeof trace !== 'object') return trace
+  if (String(trace.schema_version ?? '') === TURN_TRACE_SCHEMA_VERSION) return trace
+  return {
+    ...trace,
+    schema_version: TURN_TRACE_SCHEMA_VERSION,
+    migrated_from: String(trace.schema_version ?? 'turn-trace/v1'),
+    // У старых трасс сквозного идентификатора нет вовсе. Выдумывать его нельзя:
+    // `/why` обязано отличать «предложение неизвестно» от «предложения не было».
+    proposal_id: trace.proposal_id ?? null,
+  }
+}
+
 export function buildTurnExplanation(trace, viewer = null) {
   if (!trace) return null
+  const record = migrateTraceToV2(trace)
   const visible = (value, fallback) => viewer
     ? projectVisibleState(value, viewer) ?? fallback
     : value
   return {
-    turn_id: trace.turn_id,
-    engine_mode: trace.engine_mode,
-    rules_used: trace.retrieved_rule_ids ?? [],
-    commands: visible(trace.validated_commands ?? [], []),
-    rolls: visible(trace.rolls ?? [], []),
-    events: visible(trace.events ?? [], []),
-    ruling: visible(trace.ruling ?? null, null),
-    state_version_before: trace.state_version_before,
-    state_version_after: trace.state_version_after,
-    verification: trace.verification_result ?? {},
+    turn_id: record.turn_id,
+    schema_version: record.schema_version,
+    // Сквозной идентификатор предложения связывает то, что предложил агент, с
+    // тем, что оставила политика и подтвердил сервер. У старых трасс его нет —
+    // тогда здесь честный null, а не выдуманное значение.
+    proposal_id: record.proposal_id ?? null,
+    engine_mode: record.engine_mode,
+    rules_used: record.retrieved_rule_ids ?? [],
+    commands: visible(record.validated_commands ?? [], []),
+    rolls: visible(record.rolls ?? [], []),
+    events: visible(record.events ?? [], []),
+    ruling: visible(record.ruling ?? null, null),
+    state_version_before: record.state_version_before,
+    state_version_after: record.state_version_after,
+    verification: record.verification_result ?? {},
   }
 }
