@@ -49,14 +49,14 @@ function dice(values) {
   })
 }
 
-test('manifest содержит ровно согласованные 99 записей и полную provenance', () => {
+test('manifest содержит ровно согласованные 100 записей и полную provenance', () => {
   const entries = Object.values(ITEM_CATALOG)
-  assert.equal(entries.length, 99)
-  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 99)
+  assert.equal(entries.length, 100)
+  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 100)
   assert.deepEqual(
     Object.fromEntries(['weapon', 'armor', 'ammunition', 'artisan-tool', 'other-tool', 'practical-gear', 'magic-item']
       .map((section) => [section, entries.filter((entry) => entry.manifest_section === section).length])),
-    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 2 },
+    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 3 },
   )
   assert.deepEqual(ITEM_MECHANICS_STATUSES, ['verified', 'partial', 'ruling-only'])
   assert.deepEqual(ITEM_AVAILABILITY_CHANNELS, ['shop', 'loot', 'crafting'])
@@ -122,6 +122,33 @@ test('manifest содержит ровно согласованные 99 зап�
   assert.equal(ring.lifecycle.equip_slot, 'ring-protection')
   assert.deepEqual(ring.source_pages, [101, 205, 237])
   assert.deepEqual(ring.availability, { shop: false, loot: false, crafting: false })
+  const wand = ITEM_CATALOG['srd_5_2_1:wand-of-magic-missiles']
+  assert.equal(wand.price_cp, 40_000)
+  assert.equal(wand.weight, 0)
+  assert.equal(wand.type, 'other')
+  assert.equal(wand.category, 'wand')
+  assert.equal(wand.rarity, 'необычный')
+  assert.equal(wand.magic_item.rarity, 'uncommon')
+  assert.equal(wand.mechanics_status, 'partial')
+  assert.equal(wand.attunement.required, false)
+  assert.equal(wand.lifecycle.equip_slot, 'main_hand')
+  assert.deepEqual(wand.charges, { current: 7, max: 7 })
+  assert.deepEqual(wand.recharge, { schema_version: 1, trigger: 'dawn', formula: '1d6+1' })
+  assert.deepEqual(wand.use, {
+    kind: 'cast_spell',
+    spell_id: 'magic-missile',
+    min_charges_to_spend: 1,
+    max_charges_to_spend: 3,
+    default_charges_to_spend: 1,
+    combat_action: 'action',
+    combat_only: true,
+    requires_equipped: true,
+    requires_line_of_sight: true,
+    range_feet: 120,
+    target: 'enemy',
+  })
+  assert.deepEqual(wand.source_pages, [145, 205, 250])
+  assert.deepEqual(wand.availability, { shop: false, loot: false, crafting: false })
 })
 
 test('shop, loot и crafting используют отдельные fail-closed allowlist', () => {
@@ -144,6 +171,9 @@ test('shop, loot и crafting используют отдельные fail-closed
   assert.equal(ITEM_SHOP_CATALOG_IDS.includes('srd_5_2_1:ring-of-protection'), false)
   assert.equal(ITEM_LOOT_CATALOG_IDS.includes('srd_5_2_1:ring-of-protection'), false)
   assert.equal(ITEM_CRAFTING_CATALOG_IDS.includes('srd_5_2_1:ring-of-protection'), false)
+  assert.equal(ITEM_SHOP_CATALOG_IDS.includes('srd_5_2_1:wand-of-magic-missiles'), false)
+  assert.equal(ITEM_LOOT_CATALOG_IDS.includes('srd_5_2_1:wand-of-magic-missiles'), false)
+  assert.equal(ITEM_CRAFTING_CATALOG_IDS.includes('srd_5_2_1:wand-of-magic-missiles'), false)
 
   const shop = assembleShop({
     location: 'Рыночная площадь',

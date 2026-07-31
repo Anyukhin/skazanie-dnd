@@ -13,6 +13,7 @@ import {
 export const ITEM_LIFECYCLE_COMMAND_TYPES = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
 export const MAX_ATTUNED_ITEMS = 3
 export const MAX_ACTIVE_ITEM_EFFECT_BONUS = 100
+export const ITEM_DESTROYED_EVENT_SCHEMA_VERSION = 1
 
 export class ItemLifecycleValidationError extends Error {
   constructor(message, code = 'ITEM_LIFECYCLE_INVALID') {
@@ -82,7 +83,7 @@ function assertPlainCommand(command) {
   }
   const common = [
     'command_type', 'command_id', 'campaign_id', 'actor_id', 'target_id', 'target_ids',
-    'item_id', 'quantity', 'equipped', 'attuned', 'recipient_id',
+    'item_id', 'quantity', 'equipped', 'attuned', 'recipient_id', 'charges_to_spend',
     'merchant_id', 'stock_id', 'action_id',
     'expected_state_version', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility', 'request_fingerprint',
     'server_authoritative',
@@ -205,15 +206,43 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
   if (command.command_type === 'UseItem') {
     if (!profile.use) throw new ItemLifecycleValidationError('У предмета нет серверного профиля использования', 'ITEM_NOT_USABLE')
     const targetId = clean(command.target_id || ownerId)
-    const target = player(state, targetId)
-    if (!target || !sameParty(state, targetId)) throw new ItemLifecycleValidationError('Цель использования не входит в отряд', 'INVALID_ITEM_TARGET')
+    const creatureTarget = ['creature', 'enemy'].includes(profile.use.target)
+    const target = creatureTarget
+      ? [...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])]
+        .find((candidate) => actorId(candidate) === targetId) ?? null
+      : player(state, targetId)
+    const enemyTarget = (state.enemies ?? []).some((candidate) => actorId(candidate) === targetId)
+    if (!target || (profile.use.target === 'enemy' && !enemyTarget) || (!creatureTarget && !sameParty(state, targetId))) {
+      throw new ItemLifecycleValidationError(
+        creatureTarget ? 'Цель использования не является допустимым противником' : 'Цель использования не входит в отряд',
+        'INVALID_ITEM_TARGET',
+      )
+    }
     if (profile.use.target === 'self' && targetId !== ownerId) {
       throw new ItemLifecycleValidationError('Этот предмет можно использовать только на себя', 'INVALID_ITEM_TARGET')
+    }
+    if (profile.use.combat_only === true && state.mechanics?.combat?.active !== true) {
+      throw new ItemLifecycleValidationError('Этот предмет можно использовать только в бою', 'COMBAT_NOT_ACTIVE')
+    }
+    if (profile.use.requires_equipped === true && item.equipped !== true) {
+      throw new ItemLifecycleValidationError('Чтобы использовать этот предмет, его нужно держать экипированным', 'ITEM_NOT_EQUIPPED')
     }
     if (profile.use.kind === 'ration' && state.mechanics?.combat?.active) {
       throw new ItemLifecycleValidationError('Паёк нельзя использовать во время боя', 'ITEM_USE_DURING_COMBAT')
     }
-    const chargeCost = Math.max(0, integer(profile.use.charges_per_use, 0))
+    const minimumChargeCost = Math.max(0, integer(profile.use.min_charges_to_spend, 0))
+    const maximumChargeCost = Math.max(minimumChargeCost, integer(profile.use.max_charges_to_spend, minimumChargeCost))
+    const variableChargeCost = maximumChargeCost > 0
+    const requestedChargeCost = integer(command.charges_to_spend, Number.NaN)
+    if (variableChargeCost && (!Number.isSafeInteger(requestedChargeCost)
+      || requestedChargeCost < minimumChargeCost
+      || requestedChargeCost > maximumChargeCost)) {
+      throw new ItemLifecycleValidationError(
+        `Нужно потратить от ${minimumChargeCost} до ${maximumChargeCost} зарядов`,
+        'INVALID_ITEM_CHARGE_SPEND',
+      )
+    }
+    const chargeCost = variableChargeCost ? requestedChargeCost : Math.max(0, integer(profile.use.charges_per_use, 0))
     if (chargeCost > 0) {
       const charges = chargeStateFor(item, profile)
       if (!charges || charges.current < chargeCost) {
@@ -226,6 +255,7 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
         max: charges.max,
       }
     }
+    if (variableChargeCost) result.charges_to_spend = chargeCost
     result.target_id = targetId
     result.target_ids = [targetId]
     result.use_profile = profile.use
@@ -436,6 +466,17 @@ export function applyItemLifecycleEventToPlayers(players, event) {
             charges: chargeStateFromEvent(payload),
           }
         : item),
+    })
+  }
+  if (
+    event.event_type === 'ItemDestroyed'
+    && Number(event.event_schema_version) === ITEM_DESTROYED_EVENT_SCHEMA_VERSION
+    && Number(payload.schema_version) === ITEM_DESTROYED_EVENT_SCHEMA_VERSION
+  ) {
+    const ownerId = String(payload.owner_id ?? event.target_ids?.[0] ?? event.actor_id ?? '')
+    next = next.map((actor) => actorId(actor) !== ownerId ? actor : {
+      ...actor,
+      inventory: (actor.inventory ?? []).filter((item) => String(item.id) !== String(payload.item_id)),
     })
   }
   return next

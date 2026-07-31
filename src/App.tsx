@@ -4071,10 +4071,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'inventory' && <InventoryView
           player={activePlayer}
           party={partyPlayers}
+          enemyTargets={(state.enemies ?? []).filter((candidate) => candidate.alive && (candidate.hp == null || candidate.hp > 0)).map((candidate) => ({ id: candidate.id, label: candidate.name }))}
+          combatActive={combatActive}
+          combatItemTurnAvailable={canAct && turnActorId === activePlayer.id}
           busy={tacticalBusy}
           error={tacticalError}
           onEquip={(itemId, equipped) => equipItem(activePlayer.id, itemId, equipped)}
-          onUse={(itemId, targetId) => useItem(activePlayer.id, itemId, targetId)}
+          onUse={(itemId, targetId, chargesToSpend) => useItem(activePlayer.id, itemId, targetId, chargesToSpend)}
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
         />}

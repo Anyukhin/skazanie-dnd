@@ -132,6 +132,7 @@ import {
   appraiseItem,
 } from './item-appraisal.mjs'
 import {
+  canonicalCombatSpellFor,
   combatSpellFor,
   combatSpellsFor,
   isPartySummon,
@@ -155,6 +156,7 @@ import {
 } from './character-build.mjs'
 import {
   ITEM_LIFECYCLE_COMMAND_TYPES,
+  ITEM_DESTROYED_EVENT_SCHEMA_VERSION,
   ItemLifecycleValidationError,
   activeItemEffectTotals,
   applyItemLifecycleEventToPlayers,
@@ -2781,6 +2783,9 @@ function assertTurn(command, state, context = {}) {
         ? 'action'
         : null
     const economy = combat.action_economy[command.actor_id]
+    if (resource === 'action' && command.use_profile?.kind === 'cast_spell' && economy?.surged_action_only) {
+      throw new RulesValidationError('Дополнительное действие от Всплеска действий нельзя потратить на магию', 'ACTION_SURGE_MAGIC_FORBIDDEN')
+    }
     if (resource && economy?.[resource] === false) {
       throw new RulesValidationError(
         resource === 'bonus_action'
@@ -2971,10 +2976,14 @@ export function validateCommand(input, rawState, context = {}) {
       if (distance == null || distance > Math.max(0, safeInteger(command.use_profile?.range_feet, 0))) {
         throw new RulesValidationError('Цель находится слишком далеко для использования предмета', 'ITEM_TARGET_OUT_OF_RANGE')
       }
+      if (command.use_profile?.requires_line_of_sight === true && distance > 5) {
+        assertClearTrajectory(state, actorPosition(state, command.actor_id), actorPosition(state, command.target_id))
+      }
     }
     if (command.command_type === 'UseItem') {
       const target = findActor(state, command.target_id)
-      if (!target || isDeadHero(state, command.target_id) || target.alive === false) {
+      if (!target || isDeadHero(state, command.target_id) || target.alive === false
+        || (command.use_profile?.kind === 'cast_spell' && !isLivingActor(target))) {
         throw new RulesValidationError('Предмет можно использовать только на живую цель', 'ITEM_TARGET_DEAD')
       }
       if (command.use_profile?.kind === 'stabilize') {
@@ -4936,6 +4945,71 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     })
   }
 
+  const appendMagicMissileResolution = ({
+    sourceCommand,
+    spell,
+    target,
+    slotLevel,
+    damageType,
+    sourceItem = null,
+  }) => {
+    const resolvedTargetId = actorId(target)
+    const resolvedSlotLevel = Math.max(spell.level, safeInteger(slotLevel, spell.level))
+    const projectileCount = Math.max(1, safeInteger(spell.projectileCount, 3)
+      + Math.max(0, resolvedSlotLevel - spell.level) * Math.max(0, safeInteger(spell.upcastProjectilesPerLevel, 1)))
+    const protectedByShield = conditionIdsFor(state, resolvedTargetId).has('shielded')
+    const missileRoll = diceService.roll(
+      String(spell.damage || '1d4+1'),
+      `spell_damage:${spell.id}`,
+      sourceCommand.actor_id,
+      sourceCommand.visibility ?? 'public',
+    )
+    rolls.push(missileRoll)
+    events.push(eventFrom(sourceCommand, 'DieRolled', { ...missileRoll, projectile_count: projectileCount }, []))
+    const payload = resolveDamagePayload(
+      state,
+      resolvedTargetId,
+      protectedByShield ? 0 : missileRoll.total * projectileCount,
+      damageType,
+    )
+    const sourceMetadata = sourceItem ? {
+      source_type: 'magic-item',
+      source_item_id: sourceItem.id,
+      source_item_name: sourceItem.name,
+    } : {}
+    events.push(eventFrom(commandWithRules(sourceCommand, RULE_IDS.damage), 'DamageApplied', {
+      ...payload,
+      ...sourceMetadata,
+      spell_id: spell.id,
+      projectile_count: projectileCount,
+      damage_per_projectile: missileRoll.total,
+      blocked_by_shield: protectedByShield,
+      automatic_hit: true,
+    }, [resolvedTargetId]))
+    if (!protectedByShield && !isEnemyActor(state, resolvedTargetId) && payload.hp_after > 0
+      && state.mechanics.combat.action_economy[resolvedTargetId]?.reaction !== false) {
+      const shield = combatSpellsFor(target).find((candidate) => candidate.id === 'shield' && candidate.prepared !== false)
+      const shieldSlot = shield ? chooseSpellSlot(state, resolvedTargetId, shield) : null
+      if (shield && shieldSlot) {
+        const option = { id: 'cast:shield', name: shield.name, description: shield.description, resource: shieldSlot.resource, slot_level: shieldSlot.level, cost: 1, spell_id: shield.id }
+        events.push(eventFrom(commandWithRules(sourceCommand, RULE_IDS.reaction), 'ReactionWindowOpened', {
+          id: `reaction:${sourceCommand.command_id}:magic-missile`,
+          trigger: 'magic-missile-targeted',
+          actor_id: resolvedTargetId,
+          source_actor_id: sourceCommand.actor_id,
+          target_id: resolvedTargetId,
+          action_ids: [option.id],
+          action_options: [option],
+          damage: { ...payload, ...sourceMetadata, spell_id: spell.id },
+          trigger_roll: null,
+        }, [resolvedTargetId]))
+      }
+    }
+    if (payload.hp_after === 0) {
+      events.push(eventFrom(commandWithRules(sourceCommand, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [resolvedTargetId]))
+    }
+  }
+
   const rollAmount = (purpose, fallback = 0) => {
     if (!command.expression) return Math.max(0, Math.floor(Number(command.amount ?? fallback) || 0))
     const roll = diceService.roll(command.expression, purpose, command.actor_id, command.visibility ?? 'public')
@@ -6770,42 +6844,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }
 
         if (spell.automaticHit === true && spell.projectileCount) {
-          const target = affected[0]
-          const resolvedTargetId = actorId(target)
-          const slotLevel = Math.max(spell.level, safeInteger(command.slot_level, spell.level))
-          const projectileCount = Math.max(1, safeInteger(spell.projectileCount, 3) + Math.max(0, slotLevel - spell.level) * Math.max(0, safeInteger(spell.upcastProjectilesPerLevel, 1)))
-          const protectedByShield = conditionIdsFor(state, resolvedTargetId).has('shielded')
-          const missileRoll = diceService.roll(String(spell.damage || '1d4+1'), `spell_damage:${spell.id}`, command.actor_id, command.visibility ?? 'public')
-          rolls.push(missileRoll)
-          events.push(eventFrom(command, 'DieRolled', { ...missileRoll, projectile_count: projectileCount }, []))
-          const payload = resolveDamagePayload(state, resolvedTargetId, protectedByShield ? 0 : missileRoll.total * projectileCount, damageType)
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', {
-            ...payload,
-            spell_id: spell.id,
-            projectile_count: projectileCount,
-            damage_per_projectile: missileRoll.total,
-            blocked_by_shield: protectedByShield,
-            automatic_hit: true,
-          }, [resolvedTargetId]))
-          if (!protectedByShield && !isEnemyActor(state, resolvedTargetId) && payload.hp_after > 0 && state.mechanics.combat.action_economy[resolvedTargetId]?.reaction !== false) {
-            const shield = combatSpellsFor(target).find((candidate) => candidate.id === 'shield' && candidate.prepared !== false)
-            const shieldSlot = shield ? chooseSpellSlot(state, resolvedTargetId, shield) : null
-            if (shield && shieldSlot) {
-              const option = { id: 'cast:shield', name: shield.name, description: shield.description, resource: shieldSlot.resource, slot_level: shieldSlot.level, cost: 1, spell_id: shield.id }
-              events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowOpened', {
-                id: `reaction:${command.command_id}:magic-missile`,
-                trigger: 'magic-missile-targeted',
-                actor_id: resolvedTargetId,
-                source_actor_id: command.actor_id,
-                target_id: resolvedTargetId,
-                action_ids: [option.id],
-                action_options: [option],
-                damage: { ...payload, spell_id: spell.id },
-                trigger_roll: null,
-              }, [resolvedTargetId]))
-            }
-          }
-          if (payload.hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [resolvedTargetId]))
+          appendMagicMissileResolution({
+            sourceCommand: command,
+            spell,
+            target: affected[0],
+            slotLevel: command.slot_level,
+            damageType,
+          })
         } else if (spell.hitPointPoolDice) {
           const poolExpression = spellHpPoolExpression(spell.hitPointPoolDice || '5d8', spell.hitPointPoolUpcastDice || '2d8', spell.level, command.slot_level)
           const poolRoll = diceService.roll(poolExpression, `spell_pool:${spell.id}`, command.actor_id, command.visibility ?? 'public')
@@ -8843,14 +8888,54 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const actor = findActor(state, command.actor_id)
       const item = inventoryItem(actor, command.item_id)
       const use = command.use_profile
+      const castsSpell = use.kind === 'cast_spell'
       events.push(eventFrom(command, 'ItemUsed', {
         item_id: item.id,
         item_name: item.name,
         kind: use.kind,
         target_id: command.target_id,
-        combat_action: use.combat_action,
+        combat_action: castsSpell ? null : use.combat_action,
+        ...(castsSpell ? {
+          declared_combat_action: use.combat_action,
+          charges_to_spend: command.charges_to_spend,
+        } : {}),
         request_fingerprint: command.request_fingerprint ?? null,
       }, [command.target_id]))
+      if (castsSpell) {
+        const spell = canonicalCombatSpellFor(use.spell_id)
+        if (!spell || spell.id !== 'magic-missile' || spell.automaticHit !== true || !spell.projectileCount) {
+          throw new RulesValidationError('Серверный профиль заклинания предмета недоступен', 'ITEM_SPELL_NOT_AVAILABLE')
+        }
+        assertMechanicsSupported(spell, 'заклинания предмета')
+        const source = {
+          kind: 'magic-item',
+          item_id: item.id,
+          item_name: item.name,
+          catalog_id: item.catalog_id ?? null,
+        }
+        events.push(eventFrom(command, 'SpellCast', {
+          spell_id: spell.id,
+          name: spell.name,
+          kind: spell.kind,
+          action_type: use.combat_action,
+          level: spell.level,
+          slot_level: command.charges_to_spend,
+          range_feet: use.range_feet,
+          concentration: false,
+          source_url: spell.sourceUrl,
+          spell_option: null,
+          damage_type: spell.damageType ?? spell.damageTypes?.[0] ?? 'force',
+          source,
+        }, [command.target_id]))
+        appendMagicMissileResolution({
+          sourceCommand: command,
+          spell,
+          target: findActor(state, command.target_id),
+          slotLevel: command.charges_to_spend,
+          damageType: spell.damageType ?? spell.damageTypes?.[0] ?? 'force',
+          sourceItem: item,
+        })
+      }
       if (use.kind === 'healing') {
         const roll = diceService.roll(use.expression, `item:${item.id}:healing`, command.actor_id, command.visibility ?? 'party')
         rolls.push(roll)
@@ -8889,9 +8974,40 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           spent: command.charge_spend.spent,
           after: command.charge_spend.after,
           max: command.charge_spend.max,
-          reason: use.kind === 'stabilize' ? 'healers-kit-stabilization' : 'item-use',
+          reason: use.kind === 'stabilize' ? 'healers-kit-stabilization'
+            : castsSpell ? 'wand-of-magic-missiles-cast'
+              : 'item-use',
           request_fingerprint: command.request_fingerprint ?? null,
         }, [command.actor_id]))
+        if (castsSpell && command.charge_spend.after === 0) {
+          const destructionRoll = diceService.roll('1d20', `item:last-charge:${item.id}`, command.actor_id, command.visibility ?? 'party')
+          rolls.push(destructionRoll)
+          const natural = safeInteger(destructionRoll.dice?.[0], 0)
+          events.push(eventFrom(command, 'DieRolled', {
+            ...destructionRoll,
+            item_id: item.id,
+            item_name: item.name,
+            last_charge: true,
+            natural,
+          }, []))
+          if (natural === 1) {
+            const payload = {
+              schema_version: ITEM_DESTROYED_EVENT_SCHEMA_VERSION,
+              owner_id: command.actor_id,
+              item_id: item.id,
+              item_name: item.name,
+              catalog_id: item.catalog_id ?? null,
+              reason: 'last-charge-natural-1',
+              trigger_roll_id: destructionRoll.roll_id,
+              natural,
+              request_fingerprint: command.request_fingerprint ?? null,
+            }
+            events.push({
+              ...eventFrom(command, 'ItemDestroyed', payload, [command.actor_id]),
+              event_schema_version: ITEM_DESTROYED_EVENT_SCHEMA_VERSION,
+            })
+          }
+        }
       }
       break
     }
@@ -9965,6 +10081,7 @@ export function applyGameEvent(rawState, event) {
     case 'ItemTransferred':
     case 'ItemAttunementChanged':
     case 'ItemChargesSpent':
+    case 'ItemDestroyed':
       state.players = applyItemLifecycleEventToPlayers(state.players, event)
       if (event.event_type === 'ItemTransferred' && payload.recipient_kind === 'npc') {
         state.npc_world = applyNpcWorldEvent(state.npc_world, event)

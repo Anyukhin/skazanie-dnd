@@ -293,7 +293,10 @@ function itemCommandFingerprint(command) {
     item_id: String(command?.item_id ?? ''),
     ...(type === 'EquipItem' ? { equipped: command?.equipped !== false } : {}),
     ...(type === 'AttuneItem' ? { attuned: command?.attuned !== false } : {}),
-    ...(type === 'UseItem' ? { target_id: String(command?.target_id ?? command?.actor_id ?? '') } : {}),
+    ...(type === 'UseItem' ? {
+      target_id: String(command?.target_id ?? command?.actor_id ?? ''),
+      charges_to_spend: Number(command?.charges_to_spend ?? 0),
+    } : {}),
     ...(type === 'TransferItem' ? {
       recipient_id: String(command?.recipient_id ?? ''),
       quantity: Number(command?.quantity ?? 1),
@@ -748,6 +751,20 @@ function sanitizePlayerItemCommand(user, state, input) {
   if (!PLAYER_ITEM_COMMANDS.has(type)) {
     throw commandPolicyError('Команда не относится к действиям с предметами', 'PLAYER_COMMAND_FORBIDDEN')
   }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'item_id', 'itemId',
+    'target_id', 'targetId',
+    'recipient_id', 'recipientId',
+    'quantity', 'equipped', 'attuned',
+    'expected_state_version', 'expectedStateVersion',
+    'charges_to_spend', 'chargesToSpend',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда предмета содержит запрещённые поля: ${unexpected.join(', ')}`, 'ITEM_COMMAND_UNKNOWN_FIELD')
+  }
   const actor = String(input?.actor_id ?? input?.actorId ?? '')
   if (!actor || !canUseHero(user, actor, state.sessionCode)) {
     throw commandPolicyError('Действовать с предметами можно только от имени своего героя', 'ACTOR_FORBIDDEN')
@@ -755,9 +772,7 @@ function sanitizePlayerItemCommand(user, state, input) {
   const owner = (state.players ?? []).find((candidate) => String(candidate.id) === actor)
   if (!owner) throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
   const itemId = String(input?.item_id ?? input?.itemId ?? '').trim().slice(0, 120)
-  if (!itemId || !(owner.inventory ?? []).some((item) => String(item.id) === itemId)) {
-    throw commandPolicyError('Предмет не найден у героя', 'ITEM_NOT_FOUND')
-  }
+  if (!itemId) throw commandPolicyError('Предмет не найден у героя', 'ITEM_NOT_FOUND')
   const expected = input?.expected_state_version ?? input?.expectedStateVersion
   const base = {
     command_type: type,
@@ -770,7 +785,13 @@ function sanitizePlayerItemCommand(user, state, input) {
   if (type === 'AttuneItem') return withFingerprint({ ...base, attuned: input?.attuned !== false })
   if (type === 'UseItem') {
     const targetId = String(input?.target_id ?? input?.targetId ?? actor).trim().slice(0, 120)
-    return withFingerprint({ ...base, target_id: targetId || actor, server_authoritative: true })
+    const requestedCharges = input?.charges_to_spend ?? input?.chargesToSpend
+    return withFingerprint({
+      ...base,
+      target_id: targetId || actor,
+      ...(requestedCharges == null ? {} : { charges_to_spend: Number(requestedCharges) }),
+      server_authoritative: true,
+    })
   }
   const recipientId = String(input?.recipient_id ?? input?.recipientId ?? input?.target_id ?? input?.targetId ?? '').trim().slice(0, 120)
   return withFingerprint({
@@ -1455,6 +1476,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       'ItemUsed',
       'ItemConsumed',
       'ItemChargesSpent',
+      'ItemDestroyed',
       'ItemDawnRechargeResolved',
       'ItemTransferred',
       'ItemAttunementChanged',

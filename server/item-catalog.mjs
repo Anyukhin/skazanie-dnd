@@ -577,6 +577,51 @@ const MAGIC_ITEMS = [
     mechanics_source_page: 237,
     provenance: provenance(237, { sourcePages: [101, 205, 237], mechanicsSourcePage: 237 }),
   },
+  {
+    catalog_id: 'srd_5_2_1:wand-of-magic-missiles',
+    ...ITEM_CATALOG_SOURCE,
+    display_name: 'Жезл волшебных стрел',
+    name: 'Жезл волшебных стрел',
+    manifest_section: 'magic-item',
+    description: 'Пока вы держите этот жезл, вы можете потратить от 1 до 3 зарядов, чтобы наложить Волшебную стрелу: один заряд создаёт версию 1-го круга, каждый дополнительный повышает круг на 1.',
+    category: 'wand',
+    type: 'other',
+    rarity: 'необычный',
+    price_cp: 40_000,
+    base_price_cp: 40_000,
+    weight: 0,
+    lifecycle: { equippable: true, equip_slot: 'main_hand', transferable: true, stackable: false },
+    equip: { slot: 'main_hand' },
+    use: {
+      kind: 'cast_spell',
+      spell_id: 'magic-missile',
+      min_charges_to_spend: 1,
+      max_charges_to_spend: 3,
+      default_charges_to_spend: 1,
+      combat_action: 'action',
+      combat_only: true,
+      requires_equipped: true,
+      requires_line_of_sight: true,
+      range_feet: 120,
+      target: 'enemy',
+    },
+    attunement: { required: false },
+    charges: { current: 7, max: 7 },
+    recharge: { schema_version: ITEM_RECHARGE_SCHEMA_VERSION, trigger: 'dawn', formula: '1d6+1' },
+    crafting: { implemented: false, hooks: [] },
+    magic_item: {
+      category: 'wand',
+      rarity: 'uncommon',
+      value_formula: '400 gp (Uncommon magic item)',
+    },
+    mechanics_status: 'partial',
+    limitation: 'Сервер исполняет Волшебную стрелу по одной вражеской цели, используя один бросок 1к4 + 1 для всех дротиков, заряды, разрушение и рассветную перезарядку. Counterspell для заклинания без компонентов из предмета не открывается; автоматический Shield NPC и доставание жезла в бою пока не моделируются.',
+    availability: availability('srd_5_2_1:wand-of-magic-missiles'),
+    source_page: 250,
+    source_pages: [145, 205, 250],
+    mechanics_source_page: 250,
+    provenance: provenance(250, { sourcePages: [145, 205, 250], mechanicsSourcePage: 250 }),
+  },
 ]
 
 const ENTRIES = [
@@ -589,8 +634,8 @@ const ENTRIES = [
   ...MAGIC_ITEMS,
 ]
 
-if (ENTRIES.length !== 99) {
-  throw new Error(`Item catalog manifest must contain 99 entries, got ${ENTRIES.length}`)
+if (ENTRIES.length !== 100) {
+  throw new Error(`Item catalog manifest must contain 100 entries, got ${ENTRIES.length}`)
 }
 
 const entriesById = Object.fromEntries(ENTRIES.map((entry) => [entry.catalog_id, entry]))
@@ -765,6 +810,12 @@ export function itemViewerCapabilities(item = {}) {
         target: entry.use.target ?? 'self',
         range_feet: entry.use.range_feet ?? 0,
         ...(entry.use.charges_per_use ? { charges_per_use: entry.use.charges_per_use } : {}),
+        ...(entry.use.spell_id ? { spell_id: entry.use.spell_id } : {}),
+        ...(entry.use.min_charges_to_spend ? { min_charges_to_spend: entry.use.min_charges_to_spend } : {}),
+        ...(entry.use.max_charges_to_spend ? { max_charges_to_spend: entry.use.max_charges_to_spend } : {}),
+        ...(entry.use.default_charges_to_spend ? { default_charges_to_spend: entry.use.default_charges_to_spend } : {}),
+        ...(entry.use.requires_equipped === true ? { requires_equipped: true } : {}),
+        ...(entry.use.combat_only === true ? { combat_only: true } : {}),
       }
     : null
   return clone({
