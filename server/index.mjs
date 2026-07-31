@@ -45,6 +45,7 @@ import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from 
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
+import { reasoningProfileFor } from './model-style-profiles.mjs'
 import { PostCommitCoordinator } from './post-commit-coordinator.mjs'
 import {
   AuthoritativeExecutor,
@@ -158,7 +159,7 @@ const llmClient = new FallbackLLMClient({
   clients: [model, ...fallbackModels].map((modelId) => new MeteredLLMClient({
     client: new RouterAIClient({
       apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
-      reasoning: ['z-ai/glm-5.2', 'deepseek/deepseek-v4-flash'].includes(modelId) ? { enabled: false } : null,
+      reasoning: reasoningProfileFor(modelId),
     }),
     ledger: usageLedger,
   })),

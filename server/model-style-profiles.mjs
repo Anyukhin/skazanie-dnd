@@ -46,3 +46,23 @@ export function promptForModel(basePrompt, llmClient) {
   const addendum = styleAddendumFor(llmClient?.model)
   return addendum ? `${basePrompt}\n${addendum}` : basePrompt
 }
+
+/**
+ * Горячий путь хода работает без «размышлений» у всех известных моделей: у
+ * GLM и DeepSeek это было всегда, у Luna замер 2026-07-31 показал, что с
+ * добавкой формы reasoning не даёт качества, а хвост задержки без него
+ * исчезает (медиана 3,3 с и максимум 5,4 с против 7,3 и 9,2 с). Незнакомая
+ * модель остаётся на умолчании провайдера.
+ *
+ * @param {string | null | undefined} modelId
+ * @returns {{ enabled: false } | null}
+ */
+export function reasoningProfileFor(modelId) {
+  const known = new Set([
+    'z-ai/glm-5.2',
+    'deepseek/deepseek-v4-flash',
+    'openai/gpt-5.6-luna',
+    'openai/gpt-5.6-luna-pro',
+  ])
+  return known.has(String(modelId ?? '')) ? { enabled: false } : null
+}
