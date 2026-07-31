@@ -13,7 +13,12 @@ import {
 import { normalizeCampaignState } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
-const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+// Интерфейс разделён по задаче 0: часть экранов вынесена из App.tsx.
+// Сторож читает весь корпус интерфейса, иначе проверка молча перестала бы
+// что-либо охранять после переезда компонента.
+const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/app-shared.tsx']
+  .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
+  .join('\n')
 const stylesSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/types.ts', import.meta.url), 'utf8')
 
