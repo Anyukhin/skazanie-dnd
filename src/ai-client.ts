@@ -13,6 +13,22 @@ export class RequestTimeoutError extends Error {
   }
 }
 
+export class ApiRequestError extends Error {
+  readonly status: number
+  readonly code?: string
+
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+    this.code = code
+  }
+}
+
+export function isStateVersionConflictError(error: unknown): error is ApiRequestError {
+  return error instanceof ApiRequestError && error.code === 'STATE_VERSION_CONFLICT'
+}
+
 export async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -64,8 +80,8 @@ export async function narrateWithAgent(state: GameState, action: string, _player
     }),
   }, 48_000, 'Рассказчик не ответил вовремя. Попробуйте обновить состояние кампании.')
   if (!response.ok) {
-    const details = await response.json().catch(() => ({})) as { error?: string }
-    throw new Error(details.error || `Ошибка рассказчика: ${response.status}`)
+    const details = await response.json().catch(() => ({})) as { error?: string; code?: string }
+    throw new ApiRequestError(details.error || `Ошибка рассказчика: ${response.status}`, response.status, details.code)
   }
   return response.json() as Promise<AiTurnResult>
 }
@@ -87,8 +103,8 @@ export async function rollSharedDie(sessionCode: string, playerId: string, sides
     body: JSON.stringify({ playerId, sides }),
   })
   if (!response.ok) {
-    const details = await response.json().catch(() => ({})) as { error?: string }
-    throw new Error(details.error || 'Кость укатилась со стола')
+    const details = await response.json().catch(() => ({})) as { error?: string; code?: string }
+    throw new ApiRequestError(details.error || 'Кость укатилась со стола', response.status, details.code)
   }
   return response.json() as Promise<SharedDiceRollResponse>
 }

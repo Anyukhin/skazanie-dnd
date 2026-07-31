@@ -16,7 +16,7 @@ import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
-import { useGameSession, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
+import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
 import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
@@ -667,18 +667,18 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   combatAnimations: boolean
   visualBatch: CombatVisualBatch | null
   onClearTacticalError: () => void
-  onStartCombat: () => void
-  onMove: (actorId: string, x: number, y: number) => void
-  onAttack: (actorId: string, enemyId: string, itemId?: string, knockOut?: boolean, note?: string) => void
-  onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => void
-  onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean; note?: string })) => void
-  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => void
-  onChangeWeapon: (actorId: string, itemId: string) => void
-  onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => void
-  onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => void
-  onFinishTurn: () => void
-  onFreeAction: (text: string) => void
-  onRest: (kind: 'short' | 'long') => void
+  onStartCombat: () => Promise<CommandOutcome>
+  onMove: (actorId: string, x: number, y: number) => Promise<CommandOutcome>
+  onAttack: (actorId: string, enemyId: string, itemId?: string, knockOut?: boolean, note?: string) => Promise<CommandOutcome>
+  onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => Promise<CommandOutcome>
+  onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
+  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => Promise<CommandOutcome>
+  onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
+  onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => Promise<CommandOutcome>
+  onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => Promise<CommandOutcome>
+  onFinishTurn: () => Promise<CommandOutcome>
+  onFreeAction: (text: string) => Promise<CommandOutcome>
+  onRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
   onTypingChange: (actorId: string, typing: boolean) => void
   narrating: boolean
   statusContent: React.ReactNode
@@ -990,10 +990,15 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   const selfCastSpell = combatMode === 'magic' && selectedSpell?.target === 'self' && spellEconomyReady ? selectedSpell : null
   const selfUseAction = combatMode === 'action' && selectedCombatAction?.target === 'self' && selectedActionEconomyReady ? selectedCombatAction : null
   const selfCastReady = Boolean(selected && !tacticalBusy && (selfCastSpell || selfUseAction))
-  const confirmSelfCast = (note?: string) => {
-    if (!selected) return
-    if (selfCastSpell) onCastSpell(selected, selfCastSpell.id, { targetId: selected, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(note ? { note } : {}) })
-    else if (selfUseAction) onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
+  const confirmSelfCast = async (note?: string): Promise<CommandOutcome | null> => {
+    if (!selected) return null
+    const outcome = selfCastSpell
+      ? await onCastSpell(selected, selfCastSpell.id, { targetId: selected, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(note ? { note } : {}) })
+      : selfUseAction
+        ? await onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
+        : null
+    if (outcome?.ok) setCombatMode('weapon')
+    return outcome
   }
   /* Выбор надо уметь снять. Вне боя плитка базовой атаки закрыта, и без этой
      кнопки подтверждение висело бы до следующего выбранного заклинания. */
@@ -1164,18 +1169,20 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   })()
   const clearPrepared = () => { setPendingCommand(null); setCombatMode('weapon') }
 
-  const confirmPreparedCommand = (note?: string) => {
-    if (!selected || !pendingCommand) return
-    if (pendingCommand.kind === 'target') onAttack(selected, pendingCommand.targetId, selectedItem?.id, knockOut && knockoutEligible, note)
-    else if (pendingCommand.kind === 'area' && selectedItem) onAreaAttack(selected, selectedItem.id, pendingCommand.x, pendingCommand.y, note)
+  const confirmPreparedCommand = async (note?: string): Promise<CommandOutcome | null> => {
+    if (!selected || !pendingCommand) return null
+    let outcome: CommandOutcome | null = null
+    if (pendingCommand.kind === 'target') outcome = await onAttack(selected, pendingCommand.targetId, selectedItem?.id, knockOut && knockoutEligible, note)
+    else if (pendingCommand.kind === 'area' && selectedItem) outcome = await onAreaAttack(selected, selectedItem.id, pendingCommand.x, pendingCommand.y, note)
     else if (pendingCommand.kind === 'spell-target' && selectedSpell) {
-      onCastSpell(selected, selectedSpell.id, { targetId: pendingCommand.targetId, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(knockOut && knockoutEligible ? { knockOut: true } : {}), ...(note ? { note } : {}) })
+      outcome = await onCastSpell(selected, selectedSpell.id, { targetId: pendingCommand.targetId, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(knockOut && knockoutEligible ? { knockOut: true } : {}), ...(note ? { note } : {}) })
     } else if (pendingCommand.kind === 'spell-point' && selectedSpell) {
-      onCastSpell(selected, selectedSpell.id, { x: pendingCommand.x, y: pendingCommand.y, ...(note ? { note } : {}) })
+      outcome = await onCastSpell(selected, selectedSpell.id, { x: pendingCommand.x, y: pendingCommand.y, ...(note ? { note } : {}) })
     } else if (pendingCommand.kind === 'action-target' && selectedCombatAction) {
-      onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
+      outcome = await onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
     }
-    setPendingCommand(null)
+    if (outcome?.ok) setPendingCommand(null)
+    return outcome
   }
 
   const previewBlastCenter = combatMode === 'magic' && selectedSpell?.target === 'point'
@@ -1348,7 +1355,11 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
         if (!selected || (!canMoveHere && !canAimHere)) return
         if (canPointSpellHere) castAtCell(cell.x, cell.y)
         else if (canThrowHere) chooseArea(cell.x, cell.y)
-        else if (!combatActive || pendingMoveKey === cellKey) { onMove(selected, cell.x, cell.y); setPendingMoveKey(null) }
+        else if (!combatActive || pendingMoveKey === cellKey) {
+          void onMove(selected, cell.x, cell.y).then((outcome) => {
+            if (outcome.ok) setPendingMoveKey(null)
+          })
+        }
         else setPendingMoveKey(cellKey)
       },
       hotspot: sceneObject ? <span
@@ -1717,7 +1728,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
           </div>}
           {previewRoute && <div className={`movement-preview ${pendingMoveKey ? 'selected' : ''}`}>
             <span><Footprints size={14} /><b>{movementCostLabel(previewRoute)}</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
-            {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); onMove(selected, x, y); setPendingMoveKey(null) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
+            {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); void onMove(selected, x, y).then((outcome) => { if (outcome.ok) setPendingMoveKey(null) }) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
           </div>}
         </section>}
         {!combatActive && <section className="rest-controls" aria-label="Отдых">
@@ -1742,15 +1753,23 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
           больше нет, а слова игрока уезжают вместе с командой. */}
       <form
         className="rail-free-input"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault()
           if (narrating) return
           const text = freeText.trim()
-          if (pendingCommand) { confirmPreparedCommand(text || undefined); updateFreeText(''); return }
-          if (selfCastReady) { confirmSelfCast(text || undefined); updateFreeText(''); return }
+          if (pendingCommand) {
+            const outcome = await confirmPreparedCommand(text || undefined)
+            if (outcome?.ok) updateFreeText('')
+            return
+          }
+          if (selfCastReady) {
+            const outcome = await confirmSelfCast(text || undefined)
+            if (outcome?.ok) updateFreeText('')
+            return
+          }
           if (!text) return
-          onFreeAction(text)
-          updateFreeText('')
+          const outcome = await onFreeAction(text)
+          if (outcome.ok) updateFreeText('')
         }}
       >
         <nav className="hotbar-decks" role="tablist" aria-label="Категории действий">
@@ -3440,8 +3459,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onOperateDoor={operateDoor}
             onOperateSceneObject={operateSceneObject}
             onFinishTurn={finishMapTurn}
-            onFreeAction={(text) => { void submitAction(text, activePlayer.id) }}
-            onRest={(kind) => { void submitAction(kind === 'long' ? 'Устроить долгий отдых' : 'Устроить короткий отдых', activePlayer.id) }}
+            onFreeAction={(text) => submitAction(text, activePlayer.id)}
+            onRest={(kind) => submitAction(kind === 'long' ? 'Устроить долгий отдых' : 'Устроить короткий отдых', activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
