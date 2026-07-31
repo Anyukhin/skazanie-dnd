@@ -2,6 +2,7 @@ import type {
   TacticalCell, TacticalDoorState, TacticalEdge, TacticalEdgeKind, TacticalMap, TacticalMaterial,
   TacticalProp, TacticalSurface,
 } from './types'
+import { areaCells, type AreaShape } from './area-geometry'
 import { cellAt, doorStates, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
 
 /**
@@ -3168,6 +3169,23 @@ export function drawCellFeatures(context: BoardContext2D, scene: BoardScene, til
         }
         context.stroke()
       }
+      if (cell.elevation !== 0) {
+        const upward = cell.elevation > 0
+        context.strokeStyle = upward ? 'rgba(238,207,148,.62)' : 'rgba(131,174,190,.58)'
+        context.fillStyle = upward ? 'rgba(238,207,148,.88)' : 'rgba(160,202,216,.84)'
+        context.lineWidth = Math.max(1, size / 28)
+        context.beginPath()
+        context.moveTo(left + size * .08, top + size * .24)
+        context.lineTo(left + size * .23, top + size * .09)
+        context.lineTo(left + size * .38, top + size * .24)
+        context.stroke()
+        if (size >= 22) {
+          context.font = `700 ${Math.max(7, Math.min(10, size / 4.4))}px Manrope, sans-serif`
+          context.textAlign = 'left'
+          context.textBaseline = 'top'
+          context.fillText(`${cell.elevation > 0 ? '+' : ''}${cell.elevation} фт`, left + size * .08, top + size * .3, size * .82)
+        }
+      }
       if (!cell.hazardId) continue
       const visual = hazardPresentation(cell.hazardId)
       context.fillStyle = visual.fill
@@ -3225,20 +3243,34 @@ export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile
 export type BoardEffectRenderer = (context: BoardContext2D, scene: BoardScene) => void
 
 export type BoardAreaEffect = {
+  id?: string
   cells?: readonly { x: number; y: number }[]
   center?: { x: number; y: number }
   radiusFeet?: number
+  areaShape?: AreaShape
+  spellId?: string
+  label?: string
+  sourceActor?: string
+  ownerLabel?: string
+  concentration?: boolean
+  difficultTerrain?: boolean
 }
 
-function boardAreaEffectCells(effect: BoardAreaEffect) {
+export function boardAreaEffectCells(effect: BoardAreaEffect, map?: TacticalMap) {
   if (effect.cells?.length) return effect.cells
   if (!effect.center) return []
-  const radius = Math.max(0, Math.floor((Number(effect.radiusFeet) || 0) / 5))
-  const cells: Array<{ x: number; y: number }> = []
-  for (let y = effect.center.y - radius; y <= effect.center.y + radius; y += 1) {
-    for (let x = effect.center.x - radius; x <= effect.center.x + radius; x += 1) cells.push({ x, y })
-  }
-  return cells
+  const sizeFeet = Math.max(0, Number(effect.radiusFeet) || 0)
+  if (sizeFeet === 0) return [effect.center]
+  return areaCells({
+    shape: effect.areaShape ?? 'sphere',
+    origin: effect.center,
+    target: effect.center,
+    sizeFeet,
+    ...(map ? {
+      bounds: { minX: 0, minY: 0, maxX: map.width - 1, maxY: map.height - 1 },
+      isWalkable: (point) => Boolean(cellAt(map, point.x, point.y)),
+    } : {}),
+  })
 }
 
 /**
@@ -3254,7 +3286,7 @@ export function drawDifficultTerrainEffects(
   const size = scene.cellSize
   const unique = new Map<string, { x: number; y: number }>()
   for (const effect of effects) {
-    for (const point of boardAreaEffectCells(effect)) unique.set(`${point.x},${point.y}`, point)
+    for (const point of boardAreaEffectCells(effect, scene.map)) unique.set(`${point.x},${point.y}`, point)
   }
   context.fillStyle = 'rgba(103,73,44,.22)'
   context.strokeStyle = 'rgba(244,205,132,.62)'
@@ -3275,6 +3307,95 @@ export function drawDifficultTerrainEffects(
     context.setLineDash([Math.max(2, size / 5), Math.max(2, size / 9)])
     context.strokeRect(left + size / 18, top + size / 18, size - size / 9, size - size / 9)
     context.setLineDash([])
+  }
+}
+
+type LingeringSpellVisual = {
+  fill: string
+  stroke: string
+  label: string
+}
+
+function lingeringSpellVisual(effect: BoardAreaEffect): LingeringSpellVisual {
+  const signature = `${effect.spellId ?? ''} ${effect.label ?? ''}`.toLocaleLowerCase('ru')
+  if (/web|паутин/u.test(signature)) {
+    return { fill: 'rgba(122,106,142,.16)', stroke: 'rgba(203,184,221,.78)', label: effect.label || 'Паутина' }
+  }
+  if (/ice|лед|cold|холод/u.test(signature)) {
+    return { fill: 'rgba(82,126,145,.18)', stroke: 'rgba(159,207,221,.8)', label: effect.label || 'Ледяная область' }
+  }
+  if (/hypnotic|гипно|charm|очар/u.test(signature)) {
+    return { fill: 'rgba(143,94,139,.16)', stroke: 'rgba(221,166,211,.8)', label: effect.label || 'Гипнотический узор' }
+  }
+  if (/fire|огн|flame|плам/u.test(signature)) {
+    return { fill: 'rgba(153,83,50,.17)', stroke: 'rgba(231,157,102,.82)', label: effect.label || 'Огненная область' }
+  }
+  return { fill: 'rgba(97,113,128,.15)', stroke: 'rgba(190,202,207,.72)', label: effect.label || 'Длящийся эффект' }
+}
+
+/**
+ * Контуры событийных областей заклинаний. Каждая область сохраняет собственный
+ * цвет, подпись владельца и знак концентрации, поэтому две наложенные зоны не
+ * превращаются в одну безымянную штриховку. Геометрию даёт общий `areaCells`.
+ */
+export function drawLingeringSpellEffects(
+  context: BoardContext2D,
+  scene: BoardScene,
+  effects: readonly BoardAreaEffect[],
+) {
+  drawDifficultTerrainEffects(context, scene, effects.filter((effect) => effect.difficultTerrain))
+  const size = scene.cellSize
+  for (const effect of effects) {
+    const visual = lingeringSpellVisual(effect)
+    const cells = boardAreaEffectCells(effect, scene.map)
+      .filter((point) => cellAt(scene.map, point.x, point.y)?.revealed)
+    if (!cells.length) continue
+    const occupied = new Set(cells.map((point) => `${point.x},${point.y}`))
+    context.fillStyle = visual.fill
+    for (const point of cells) context.fillRect(point.x * size, point.y * size, size, size)
+
+    context.beginPath()
+    for (const point of cells) {
+      const left = point.x * size
+      const top = point.y * size
+      if (!occupied.has(`${point.x},${point.y - 1}`)) {
+        context.moveTo(left, top)
+        context.lineTo(left + size, top)
+      }
+      if (!occupied.has(`${point.x + 1},${point.y}`)) {
+        context.moveTo(left + size, top)
+        context.lineTo(left + size, top + size)
+      }
+      if (!occupied.has(`${point.x},${point.y + 1}`)) {
+        context.moveTo(left + size, top + size)
+        context.lineTo(left, top + size)
+      }
+      if (!occupied.has(`${point.x - 1},${point.y}`)) {
+        context.moveTo(left, top + size)
+        context.lineTo(left, top)
+      }
+    }
+    context.strokeStyle = visual.stroke
+    context.lineWidth = Math.max(2, size / 15)
+    context.setLineDash([Math.max(4, size / 3), Math.max(3, size / 7)])
+    context.stroke()
+    context.setLineDash([])
+
+    if (size < 20) continue
+    const anchor = cells.find((point) => point.x === effect.center?.x && point.y === effect.center?.y) ?? cells[0]
+    const owner = String(effect.ownerLabel ?? effect.sourceActor ?? '').trim()
+    const heading = `${visual.label}${effect.concentration ? ' · К' : ''}`.toLocaleUpperCase('ru')
+    const x = (anchor.x + .5) * size
+    const y = (anchor.y + .5) * size
+    context.fillStyle = visual.stroke
+    context.font = `800 ${Math.max(7, Math.min(11, size / 4.2))}px Manrope, sans-serif`
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.fillText(heading, x, y - (owner ? size * .1 : 0), size * 1.8)
+    if (owner) {
+      context.font = `600 ${Math.max(6, Math.min(9, size / 5))}px Manrope, sans-serif`
+      context.fillText(`Источник: ${owner}`, x, y + size * .15, size * 1.8)
+    }
   }
 }
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { campaignStateForViewer, mechanicsForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
 
 const user = { role: 'player', heroIds: ['hero'] }
 
@@ -101,6 +101,86 @@ test('player campaign projection hides private memory, fog features and remote m
   assert.doesNotMatch(projected.messages[0].text, /КД 15|ОЗ 11|→ 7/u)
 })
 
+test('player inventory projection derives safe catalog capabilities without hydrating snapshots', () => {
+  const raw = privateState()
+  raw.players[0].inventory = [
+    {
+      id: 'legacy-kit',
+      catalog_id: 'srd_5_2_1:healers-kit',
+      name: 'Старый набор лекаря',
+      type: 'gear',
+      quantity: 1,
+    },
+    {
+      id: 'legacy-weapon',
+      name: 'Старый клинок',
+      type: 'weapon',
+      quantity: 1,
+      combat: { kind: 'melee', ability: 'str', damage: '1d6', damageType: 'slashing', normalRange: 5 },
+    },
+    {
+      id: 'mislabelled-torch',
+      catalog_id: 'srd_5_2_1:torch',
+      name: 'Факел',
+      type: 'weapon',
+      quantity: 1,
+      combat: { kind: 'melee', damage: '99d99' },
+      requires_attunement: true,
+    },
+    {
+      id: 'legacy-ring',
+      catalog_id: 'srd_5_2_1:ring-of-protection',
+      name: 'Кольцо защиты',
+      type: 'other',
+      quantity: 1,
+      mechanics_status: 'verified',
+      limitation: 'Поддельное ограничение',
+    },
+    {
+      id: 'homebrew-attunement',
+      name: 'Домашний талисман',
+      type: 'other',
+      quantity: 1,
+      requires_attunement: true,
+    },
+  ]
+
+  const projected = campaignStateForViewer(raw, user, 'hero')
+  const kit = projected.players[0].inventory.find((item) => item.id === 'legacy-kit')
+  const legacyWeapon = projected.players[0].inventory.find((item) => item.id === 'legacy-weapon')
+  const torch = projected.players[0].inventory.find((item) => item.id === 'mislabelled-torch')
+  const ring = projected.players[0].inventory.find((item) => item.id === 'legacy-ring')
+  const homebrew = projected.players[0].inventory.find((item) => item.id === 'homebrew-attunement')
+
+  assert.deepEqual(kit.capabilities.charges, { current: 10, max: 10 })
+  assert.deepEqual(kit.capabilities.use, {
+    kind: 'stabilize',
+    action_type: 'action',
+    target: 'party',
+    range_feet: 5,
+    charges_per_use: 1,
+  })
+  assert.equal(legacyWeapon.capabilities.equippable, true)
+  assert.equal(legacyWeapon.capabilities.equip_slot, 'main_hand')
+  assert.equal(torch.capabilities.equippable, false)
+  assert.equal(torch.capabilities.requires_attunement, false)
+  assert.equal(torch.capabilities.mechanics_status, 'partial')
+  assert.equal(typeof torch.capabilities.limitation, 'string')
+  assert.equal(ring.capabilities.equippable, true)
+  assert.equal(ring.capabilities.equip_slot, 'ring-protection')
+  assert.equal(ring.capabilities.requires_attunement, true)
+  assert.equal(ring.capabilities.mechanics_status, 'partial')
+  assert.match(ring.capabilities.limitation, /Short Rest/u)
+  assert.doesNotMatch(ring.capabilities.limitation, /Поддельное/u)
+  assert.equal(homebrew.capabilities.requires_attunement, true)
+  assert.equal(homebrew.capabilities.equippable, false)
+  assert.equal(Object.hasOwn(homebrew.capabilities, 'mechanics_status'), false)
+  assert.equal(Object.hasOwn(legacyWeapon.capabilities, 'mechanics_status'), false)
+  assert.equal(Object.hasOwn(legacyWeapon.capabilities, 'limitation'), false)
+  assert.equal(raw.players[0].inventory.some((item) => Object.hasOwn(item, 'capabilities')), false)
+  assert.equal(raw.players[0].inventory[0].charges, undefined)
+})
+
 test('enemy facts remain qualitative until an explicit server-side knowledge record reveals them', () => {
   const state = privateState()
   const hidden = campaignStateForViewer(state, user, 'hero').enemies[0]
@@ -151,6 +231,44 @@ test('combat event projection removes enemy HP, armor class and initiative modif
   assert.deepEqual(events[0].payload, { target_id: 'goblin-secret', applied_amount: 4 })
   assert.equal(events[1].payload.armor_class, undefined)
   assert.deepEqual(events[2].payload.initiative[1], { actor_id: 'goblin-secret' })
+})
+
+test('magic-item combat outcomes do not disclose an enemy inventory', () => {
+  const state = privateState()
+  const hiddenSource = {
+    effect_id: 'hidden-effect', item_id: 'hidden-instance', item_name: 'Секретный предмет',
+    catalog_id: 'srd_5_2_1:hidden-magic-item',
+  }
+  const raw = [
+    {
+      event_type: 'DamageApplied', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public',
+      payload: { target_id: 'goblin-secret', resistant: true, applied_amount: 3, item_resistance_sources: [hiddenSource] },
+    },
+    {
+      event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public',
+      payload: { target_id: 'goblin-secret', hit: true, critical_prevented: true, critical_protection_sources: [hiddenSource] },
+    },
+    {
+      event_type: 'SpellImmunityResolved', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public',
+      payload: { target_id: 'goblin-secret', spell_id: 'magic-missile', item_immunity_sources: [hiddenSource] },
+    },
+    {
+      event_type: 'DamageApplied', actor_id: 'goblin-secret', target_ids: ['hero'], visibility: 'public',
+      payload: { target_id: 'hero', applied_amount: 7, item_damage_rider: true, ...hiddenSource },
+    },
+  ]
+  const projected = mechanicsForViewer(raw, user, 'hero', state)
+
+  assert.equal(projected[0].payload.resistant, true)
+  assert.equal(projected[0].payload.item_resistance_sources, undefined)
+  assert.equal(projected[1].payload.critical_prevented, true)
+  assert.equal(projected[1].payload.critical_protection_sources, undefined)
+  assert.equal(projected[2].payload.spell_id, 'magic-missile')
+  assert.equal(projected[2].payload.item_immunity_sources, undefined)
+  assert.equal(projected[3].payload.item_damage_rider, true)
+  assert.equal(projected[3].payload.catalog_id, undefined)
+  assert.doesNotMatch(JSON.stringify(projected), /hidden-instance|hidden-effect|hidden-magic-item|Секретный предмет/u)
+  assert.match(JSON.stringify(mechanicsForViewer(raw, { role: 'admin' }, 'hero', state)), /hidden-magic-item/u)
 })
 
 // Спасбросок врага — единственный бросок, который делает враг, но инициирует
@@ -225,9 +343,92 @@ test('player event projection sanitizes SceneAdvanced and MerchantCreated payloa
   assert.doesNotMatch(JSON.stringify(events), /никогда|канцлер|контрабанда/u)
 })
 
-test('admin projection remains the trusted object', () => {
+test('reward projection keeps coin transcript but hides frozen stat blocks and per-enemy XP', () => {
   const state = privateState()
-  assert.equal(campaignStateForViewer(state, { role: 'admin' }, 'hero'), state)
+  const raw = [
+    {
+      event_type: 'EncounterOutcomeRecorded',
+      visibility: 'party',
+      payload: {
+        encounter_id: 'encounter-secret',
+        outcome: 'enemies_defeated',
+        plan: { enemies: [{ enemy_id: 'goblin-secret', stat_block_id: 'srd:secret-goblin', xp: 9_999 }] },
+        prepared_reward: { secret_seed: 'never-project' },
+      },
+    },
+    {
+      event_type: 'EncounterCoinsRolled',
+      visibility: 'party',
+      payload: {
+        encounter_id: 'encounter-secret',
+        total_cp: 12,
+        rolls: [{
+          roll_id: 'coin-roll', expression: '1d6', dice: [3], total: 3, amount_cp: 12,
+          enemy_id: 'goblin-secret', stat_block_id: 'srd:secret-goblin', xp: 100, xp_units: 4,
+        }],
+      },
+    },
+  ]
+  const projected = mechanicsForViewer(raw, user, 'hero', state)
+  assert.equal(projected[0].payload.plan, undefined)
+  assert.equal(projected[0].payload.prepared_reward, undefined)
+  assert.deepEqual(projected[1].payload.rolls, [{
+    roll_id: 'coin-roll', expression: '1d6', dice: [3], total: 3, amount_cp: 12,
+  }])
+  assert.doesNotMatch(JSON.stringify(projected), /secret-goblin|9_999|never-project/u)
+  assert.equal(mechanicsForViewer(raw, { role: 'admin' }, 'hero', state)[0].payload.plan.enemies[0].xp, 9_999)
+})
+
+test('Hit Dice pools stay private to their hero in event and explanation projections', () => {
+  const state = privateState()
+  const raw = [
+    {
+      event_type: 'HitPointDieSpent', actor_id: 'fighter', target_ids: ['fighter'], visibility: 'public',
+      payload: {
+        applied_healing: 7,
+        pool_before: { schema_version: 1, maximum: 4, spent: 1, die_size: 10 },
+        pool_after: { schema_version: 1, maximum: 4, spent: 2, die_size: 10 },
+      },
+    },
+    {
+      event_type: 'HitPointDiceRestored', actor_id: 'fighter', target_ids: ['fighter'], visibility: 'public',
+      payload: {
+        restored: 2,
+        pool_before: { schema_version: 1, maximum: 4, spent: 2, die_size: 10 },
+        pool_after: { schema_version: 1, maximum: 4, spent: 0, die_size: 10 },
+      },
+    },
+  ]
+
+  const otherHero = mechanicsForViewer(raw, user, 'hero', state)
+  assert.equal(otherHero[0].payload.applied_healing, 7)
+  for (const event of otherHero) {
+    assert.equal(event.payload.pool_before, undefined)
+    assert.equal(event.payload.pool_after, undefined)
+    assert.equal(event.payload.restored, undefined)
+  }
+  assert.doesNotMatch(JSON.stringify(turnExplanationForViewer({ events: raw }, user, 'hero', state)), /pool_before|pool_after|restored/u)
+
+  const owner = mechanicsForViewer(raw, { role: 'player', heroIds: ['fighter'] }, 'fighter', state)
+  assert.equal(owner[0].payload.pool_after.spent, 2)
+  assert.equal(owner[1].payload.restored, 2)
+  assert.equal(mechanicsForViewer(raw, { role: 'admin' }, 'hero', state)[0].payload.pool_after.spent, 2)
+})
+
+test('admin projection retains trusted state and also receives item capabilities', () => {
+  const state = privateState()
+  state.players[0].inventory = [{
+    id: 'ring',
+    catalog_id: 'srd_5_2_1:ring-of-protection',
+    name: 'Кольцо защиты',
+    type: 'other',
+    quantity: 1,
+  }]
+  const projected = campaignStateForViewer(state, { role: 'admin' }, 'hero')
+  assert.notEqual(projected, state)
+  assert.equal(projected.adventure, state.adventure)
+  assert.equal(projected.players[0].inventory[0].capabilities.requires_attunement, true)
+  assert.equal(state.players[0].inventory[0].capabilities, undefined)
 })
 
 test('turn result projection covers authoritative state, mechanics and effects.scene', () => {

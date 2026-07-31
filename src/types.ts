@@ -308,6 +308,12 @@ export type CombatSpell = {
   action_type?: 'action' | 'bonus_action' | 'reaction'
 }
 
+export type ItemRechargeProfile = {
+  schema_version: 1
+  trigger: 'dawn'
+  formula: '1d6+1'
+}
+
 export type InventoryItem = {
   id: string
   catalog_id?: string
@@ -319,6 +325,7 @@ export type InventoryItem = {
   quantity: number
   weight: number
   equipped: boolean
+  activated?: boolean
   requires_attunement?: boolean
   attuned_to?: string | null
   rarity: 'обычный' | 'необычный' | 'редкий' | 'очень редкий' | 'легендарный' | 'сюжетный'
@@ -329,6 +336,38 @@ export type InventoryItem = {
   imagePrompt?: string
   imageStatus?: 'ready' | 'queued' | 'generating' | 'failed'
   charges?: { current: number; max: number }
+  recharge?: ItemRechargeProfile
+  capabilities?: {
+    equippable: boolean
+    equip_slot: string | null
+    usable: boolean
+    use: {
+      kind: string
+      action_type: 'action' | 'bonus_action' | null
+      target: 'self' | 'party' | 'creature' | 'enemy'
+      range_feet: number
+      charges_per_use?: number
+      spell_id?: string
+      min_charges_to_spend?: number
+      max_charges_to_spend?: number
+      default_charges_to_spend?: number
+      requires_equipped?: boolean
+      combat_only?: boolean
+    } | null
+    activatable?: boolean
+    activation?: {
+      schema_version: 1
+      action_type: 'bonus_action' | null
+      requires_equipped: boolean
+      requires_attunement: boolean
+    } | null
+    activated?: boolean
+    charges: { current: number; max: number } | null
+    recharge: ItemRechargeProfile | null
+    requires_attunement: boolean
+    mechanics_status?: 'verified' | 'partial' | 'ruling-only'
+    limitation?: string
+  }
   combat?: {
     kind: 'melee' | 'ranged' | 'thrown-area'
     ability?: 'str' | 'dex'
@@ -867,6 +906,7 @@ export type BattleEvent = {
   failures?: number
   result?: string
   modifierSources?: string[]
+  itemSavingThrowBonus?: number
   auraSourceId?: string
   auraBonus?: number
   indomitableBonus?: number
@@ -1067,6 +1107,16 @@ export type GameState = {
   entities?: Array<Record<string, unknown>>
   adventure?: AdventureState
   worldMemory?: WorldMemoryProjection
+  /**
+   * Optional viewer-safe contract introduced by server PR #18. Coordinates
+   * are authoritative; raw HP, goals and beliefs are deliberately absent.
+   */
+  scene_npcs?: SceneNpcProjection[]
+  /**
+   * Уже отфильтрованная сервером социальная проекция. Клиент не читает
+   * persistence-профили напрямую и не пытается повторять visibility policy.
+   */
+  social?: SocialProjection
   autonomy?: {
     schema_version?: number
     pacing?: {
@@ -1105,6 +1155,71 @@ export type GameState = {
 }
 
 export type ReputationTier = 'reviled' | 'distrusted' | 'unknown' | 'respected' | 'honoured'
+
+export type SceneNpcStance = 'neutral' | 'friendly' | 'wary' | 'hostile' | 'panicked'
+
+export type SceneNpcProjection = {
+  id: string
+  name: string
+  role: string
+  location_id: string
+  x: number
+  y: number
+  anchor_prop_id: string | null
+  /** Unknown future values render with the neutral fallback, never as enemies. */
+  stance: SceneNpcStance | (string & {})
+  alive: boolean
+  health_status: 'unharmed' | 'hurt' | 'bloodied' | 'dead'
+}
+
+export type SocialProjection = {
+  schema_version?: number
+  npcs?: Array<{
+    id: string
+    name: string
+    role?: string
+    location?: string
+    public_summary?: string
+    voice?: string
+    available?: boolean
+    tags?: string[]
+    inventory?: Array<{ id: string; name: string; quantity: number; description?: string }>
+  }>
+  relationship_tiers?: Record<string, Record<string, 'hostile' | 'unfriendly' | 'neutral' | 'friendly' | 'trusted'>>
+  conversations?: Array<{
+    id: string
+    npc_id: string
+    hero_id: string
+    player_message: string
+    npc_reply: string
+    stance: 'friendly' | 'neutral' | 'guarded' | 'hostile'
+    disclosed_fact_ids: string[]
+    disclosed_claim_ids: string[]
+    visibility: 'party' | 'specific_player'
+    check?: {
+      check_id: string
+      npc_id: string
+      skill: 'persuasion' | 'deception' | 'intimidation' | 'insight'
+      ability: string
+      roll_id: string
+      total: number
+      modifier: number
+      success: boolean
+      degree: 'strong_success' | 'success' | 'failure' | 'severe_failure'
+    }
+  }>
+  promises?: Array<{
+    id: string
+    npc_id: string
+    hero_id: string
+    direction: 'npc_to_party' | 'party_to_npc'
+    text: string
+    due_hint?: string
+    status: 'open' | 'fulfilled' | 'broken' | 'cancelled'
+    visibility: 'party' | 'specific_player'
+    source_conversation_id?: string
+  }>
+}
 
 /**
  * Память мира в проекции игрока. Сервер уже отфильтровал её по видимости и по
@@ -1257,7 +1372,18 @@ export type GameMechanics = Record<string, unknown> & {
   }
   encounter?: (EncounterProposal & { id?: string; encounter_id?: string; status?: 'staged' | 'active' | 'ended'; enemy_ids?: string[]; outcome?: string }) | null
   resources?: Record<string, Record<string, { current: number; max: number }>>
-  resting?: Record<string, { kind: 'short' | 'long'; reason?: 'knockout'; recovery_minutes_remaining?: number }>
+  hit_point_dice?: Record<string, { schema_version: 1; maximum: number; spent: number; die_size: 6 | 8 | 10 | 12 }>
+  resting?: Record<string, {
+    kind: 'short' | 'long'
+    schema_version?: 2
+    policy_id?: string
+    rest_id?: string
+    started_at_minutes?: number
+    minimum_duration_minutes?: number
+    reason?: 'knockout'
+    recovery_minutes_remaining?: number
+  }>
+  concentration?: Record<string, { effect_id?: string; source_rule_ids?: string[] }>
   conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null }>>
   active_effects?: Array<{
     id: string
@@ -1288,6 +1414,11 @@ export type GameMechanics = Record<string, unknown> & {
     level_up_available: boolean
   }
 }
+
+export type RestCommand =
+  | { command_type: 'StartRest'; actor_id: string; kind: 'short' | 'long' }
+  | { command_type: 'SpendHitPointDie'; actor_id: string }
+  | { command_type: 'CompleteRest'; actor_id: string }
 
 export type CampaignSummary = {
   code: string

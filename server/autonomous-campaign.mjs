@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 
 import { ENCOUNTER_THEMES } from './encounter-assembler.mjs'
-import { serverEncounterLoot } from './loot-tables.mjs'
 
 export { serverEncounterLoot } from './loot-tables.mjs'
+export { freezeEncounterOutcomePlan, serverRewardForEncounter } from './encounter-rewards.mjs'
 
 export const DIRECTOR_INTENT_VERSION = 'skazanie:director-intent-v1'
 export const DIRECTOR_INTENT_TYPES = Object.freeze([
@@ -143,30 +143,11 @@ export function normalizeAutonomyState(input = {}) {
  * по `encounter_id`: разные встречи дают разное, а replay того же события даёт
  * тот же предмет.
  *
- * Все `catalog_id` обязаны существовать в `SRD_EQUIPMENT_CATALOG`
- * (`server/merchant-economy.mjs`): иначе торговец не узнает выданную вещь и
- * оценит её политикой вместо каталожной цены. Сторож ссылочной целостности —
- * `test/encounter-reward.test.mjs`.
+ * Все `catalog_id` обязаны существовать в `ITEM_CATALOG` и входить в явный
+ * loot allowlist (`server/item-catalog.mjs`): иначе добыча не может быть
+ * материализована авторитетно. Сторож ссылочной целостности —
+ * `test/encounter-loot-tables.test.mjs`.
  */
-export function serverRewardForEncounter(state = {}, outcome = 'enemies_defeated') {
-  const encounter = state.mechanics?.encounter ?? {}
-  const encounterId = clean(encounter.id ?? encounter.encounter_id, 120)
-  const enemies = state.enemies ?? []
-  const projectedEnemyXp = enemies.reduce((total, enemy) => total + Math.max(0, Number(enemy.provenance?.xp ?? enemy.xp) || 0), 0)
-  // EncounterAssembler owns both values. max() accepts legacy projections
-  // without paying twice when both the proposal and actors carry the XP.
-  const assembledEncounterXp = Math.max(0, Number(encounter.xp_spent ?? encounter.threat?.spent_xp) || 0)
-  const xp = outcome === 'enemies_defeated'
-    ? Math.max(projectedEnemyXp, assembledEncounterXp)
-    : 0
-  const difficulty = DIFFICULTIES.has(encounter.difficulty) ? encounter.difficulty : 'medium'
-  const theme = clean(encounter.theme, 40)
-  const loot = outcome === 'enemies_defeated'
-    ? serverEncounterLoot({ theme, difficulty, encounterId })
-    : []
-  return { encounter_id: encounterId, outcome, xp, progression: xp > 0 ? 'xp' : 'milestone', milestone: xp > 0 ? null : 'encounter-resolved', loot }
-}
-
 export function serverReputationDelta({ severity = 'minor', outcome = 'neutral' } = {}) {
   const table = { helpful: { minor: 2, major: 5 }, harmful: { minor: -2, major: -5 }, neutral: { minor: 0, major: 0 } }
   return table[outcome]?.[severity] ?? 0

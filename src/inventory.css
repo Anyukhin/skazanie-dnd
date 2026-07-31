@@ -63,6 +63,13 @@
 .inventory-recipient select option{background:#171411;color:#c5b49e}
 @media(max-width:680px){.inventory-toolbar{align-items:stretch;gap:8px}.inventory-toolbar>label:first-child,.inventory-toolbar .inventory-recipient{width:100%;max-width:none;flex:1 1 100%}.inventory-toolbar .inventory-recipient{grid-template-columns:auto minmax(0,1fr)}}
 
+.item-charge-state{padding:0 12px 8px;color:#8f806f;font-size:var(--fs-xs)}
+.item-charge-state b{color:#c8a36f}
+.item-mechanics-limitation{margin:0;padding:0 12px 8px;color:#a98760;font:var(--fs-xs)/1.4 Spectral,serif}.item-mechanics-limitation b{color:#c49a68}
+.item-use-target,.item-charge-spend{display:flex;align-items:center;gap:6px;color:#8f806f;font-size:var(--fs-xs)}
+.item-use-target select,.item-charge-spend select{min-width:120px;border:1px solid var(--line);border-radius:4px;background:#171411;color:#c5b49e}
+.item-use-hint{color:#9d7651;font:var(--fs-xxs)/1.35 Spectral,serif}
+
 /* Give the character sheet a roomier desktop workspace without changing mobile fullscreen. */
 @media(min-width:681px){.character-editor{width:min(1240px,100%);height:min(960px,calc(100dvh - 36px));grid-template-rows:132px 48px 1fr 64px}.editor-head{gap:20px;padding:18px 24px}.editor-avatar{width:90px;height:90px}.editor-head h2{font-size:var(--fs-4xl)}.editor-head p{font-size:var(--fs-sm)}.editor-actions>button{height:35px;padding:0 11px;font-size:var(--fs-sm)}.editor-tabs{padding:0 22px}.editor-tabs button{padding:0 16px;font-size:var(--fs-sm)}.editor-content{padding:24px}.sheet-section{gap:14px}.sheet-field{gap:6px}.sheet-field>span{font-size:var(--fs-xs)}.sheet-field input,.sheet-field select{height:38px;font-size:var(--fs-sm)}.sheet-field textarea{font-size:var(--fs-sm)}.ability-editor{gap:10px;margin:22px 0}.ability-editor label{padding:11px}.currency-editor{gap:12px;padding:15px}.editor-footer{padding:0 24px}.editor-footer p,.editor-footer button{font-size:var(--fs-sm)}.editor-footer button{height:38px;padding:0 15px}}
 

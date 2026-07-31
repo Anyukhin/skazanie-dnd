@@ -24,6 +24,7 @@
     "server/dynamic-map.mjs",
     "server/graph-layout.mjs",
     "server/map-store.mjs",
+    "server/npc-portraits.mjs",
     "server/prop-placement.mjs",
     "server/reveal-delta.mjs",
     "server/scene-graph.mjs",

@@ -60,7 +60,18 @@ test('совместимый API создаёт кампанию, исполня
       { id: 'hero', character: 'Герой', hp: 10, maxHp: 10, armor: 14, abilities: { str: 14, dex: 12, con: 12, int: 10, wis: 10, cha: 10 }, proficiency: 2, inventory: [], online: true },
       { id: 'goblin', character: 'Гоблин', hp: 8, maxHp: 8, armor: 12, abilities: { str: 8, dex: 14, con: 10, int: 8, wis: 8, cha: 8 }, proficiency: 2, inventory: [], online: true },
     ],
-    scene: { title: 'Зал', location: '', mood: '', objective: '', turn: 0, cells: [] },
+    scene: { title: 'Зал', location: 'Hall', mood: '', objective: '', turn: 0, cells: [] },
+    social: {
+      npcs: [
+        { id: 'marta', name: 'Marta', role: 'keeper', location: 'Hall', public_summary: 'Keeps the hall.', voice: 'Calm.', visibility: 'party', available: true },
+        { id: 'borin', name: 'Borin', role: 'guard', location: 'Hall', public_summary: 'Guards the hall.', voice: 'Brief.', visibility: 'party', available: true },
+        { id: 'far-npc', name: 'Far NPC', role: 'scout', location: 'Road', public_summary: 'Walks the road.', voice: 'Quiet.', visibility: 'party', available: true },
+        { id: 'unavailable-npc', name: 'Unavailable NPC', role: 'scribe', location: 'Hall', public_summary: 'Is occupied.', voice: 'Quiet.', visibility: 'party', available: false },
+      ],
+      relationships: {},
+      conversations: [],
+      promises: [],
+    },
     ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], engine_mode: 'enforce', state_version: 0,
   }
   const created = await fetch(`${baseUrl}/api/campaigns`, { method: 'POST', headers, body: JSON.stringify({ code: 'API-TEST', name: 'API test', state }) })
@@ -119,6 +130,45 @@ test('совместимый API создаёт кампанию, исполня
   assert.equal(compatibleResult.turn_consumed, false)
   assert.doesNotMatch(compatibleResult.narration, /999/)
   assert.match(compatibleResult.narration, /8 → 5/)
+
+  const explicitSocialBody = {
+    campaignId: 'API-TEST',
+    action: 'Hello there.',
+    actor_id: 'hero',
+    npc_id: 'marta',
+    idempotency_key: 'api-explicit-social',
+  }
+  const explicitSocial = await fetch(`${baseUrl}/api/narrate`, {
+    method: 'POST', headers, body: JSON.stringify(explicitSocialBody),
+  })
+  const explicitSocialText = await explicitSocial.text()
+  assert.equal(explicitSocial.status, 200, explicitSocialText)
+  const explicitSocialResult = JSON.parse(explicitSocialText)
+  assert.equal(explicitSocialResult.action_kind, 'social')
+  assert.equal(explicitSocialResult.mechanics.some((event) => event.payload?.conversation?.npc_id === 'marta'), true)
+
+  const explicitReplay = await fetch(`${baseUrl}/api/narrate`, {
+    method: 'POST', headers, body: JSON.stringify(explicitSocialBody),
+  })
+  assert.equal(explicitReplay.status, 200)
+  const explicitReplayResult = await explicitReplay.json()
+  assert.equal(explicitReplayResult.idempotent_replay, true)
+  assert.equal(explicitReplayResult.turn_id, explicitSocialResult.turn_id)
+
+  for (const [label, body, status, code] of [
+    ['different npc', { ...explicitSocialBody, npc_id: 'borin' }, 409, 'IDEMPOTENCY_CONFLICT'],
+    ['different message', { ...explicitSocialBody, action: 'A different request.' }, 409, 'IDEMPOTENCY_CONFLICT'],
+    ['forged npc', { ...explicitSocialBody, idempotency_key: 'forged-npc', npc_id: 'missing-npc' }, 400, 'NPC_NOT_VISIBLE'],
+    ['wrong location', { ...explicitSocialBody, idempotency_key: 'far-npc', npc_id: 'far-npc' }, 400, 'NPC_WRONG_LOCATION'],
+    ['unavailable', { ...explicitSocialBody, idempotency_key: 'unavailable-npc', npc_id: 'unavailable-npc' }, 400, 'NPC_UNAVAILABLE'],
+    ['invalid id', { ...explicitSocialBody, idempotency_key: 'invalid-npc', npc_id: 'x'.repeat(121) }, 400, 'NPC_ID_INVALID'],
+  ]) {
+    const response = await fetch(`${baseUrl}/api/narrate`, {
+      method: 'POST', headers, body: JSON.stringify(body),
+    })
+    assert.equal(response.status, status, label)
+    assert.equal((await response.json()).code, code, label)
+  }
 
   const unknown = await fetch(`${baseUrl}/api/does-not-exist`, { headers: { Cookie: cookie } })
   assert.equal(unknown.status, 404)

@@ -1,6 +1,22 @@
 import { createHash } from 'node:crypto'
 
-import { normalizeDirectorIntent, serverReputationDelta, serverRewardForEncounter } from './autonomous-campaign.mjs'
+import { normalizeDirectorIntent, serverReputationDelta } from './autonomous-campaign.mjs'
+import {
+  ENCOUNTER_COINS_POLICY_ID,
+  ENCOUNTER_LOOT_POLICY_ID,
+  ENCOUNTER_REWARD_POLICY_ID,
+  ENCOUNTER_REWARDS_DISTRIBUTED_EVENT_SCHEMA_VERSION,
+  SERVER_LOOT_GENERATED_EVENT_SCHEMA_VERSION,
+  assertEncounterDistributionPreconditions,
+  assertEncounterRewardRecipients,
+  distributeEncounterRewards,
+  encounterCompletionStageKey,
+  encounterRewardResponse,
+  freezeEncounterOutcomePlan,
+  frozenEncounterOutcomePlanFromEvent,
+  lootForEncounterOutcome,
+  rollEncounterCoins,
+} from './encounter-rewards.mjs'
 import {
   assembleSocialNpc,
   campaignArcPosition,
@@ -28,10 +44,13 @@ import {
 import { questTitleFromObjective } from './scene-memory.mjs'
 import {
   attemptFingerprint,
+  bindFreeActionReadingToState,
+  contextualResolutionFor,
   failForwardFor,
   interpretFreeAction,
   previousFailedAttempt,
-  resolutionModeFor,
+  resolveCorpseSearch,
+  resolveInventoryTransfer,
   situationFingerprint,
   stakesFor,
   verifyMeans,
@@ -41,6 +60,7 @@ import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { nearestSceneObjectCommand, sceneInteractionNarration } from './scene-interactions.mjs'
 
 const clone = (value) => structuredClone(value)
+const encounterCompletionLocks = new Map()
 
 /** Порядок отряда: сначала явный список, иначе порядок героев в состоянии. */
 export function partyOrderIds(state) {
@@ -225,6 +245,53 @@ export class AutonomousCampaignOrchestrator {
       command_id: idempotencyKey,
       events: events.map((entry) => ({ ...entry, campaign_id: campaignId })),
     })
+  }
+
+  async commitEventsWithRetry(campaignId, idempotencyKey, events, {
+    maximumAttempts = 3,
+    validateState = null,
+  } = {}) {
+    const prepared = events.map((entry) => ({ ...entry, campaign_id: campaignId }))
+    const acceptsStoredStage = (stored) => {
+      if (!stored || stored.events?.length !== prepared.length) return false
+      return prepared.every((expected, index) => {
+        const actual = stored.events[index]
+        const expectedEncounterId = String(expected.payload?.encounter_id ?? '')
+        const actualEncounterId = String(actual?.payload?.encounter_id ?? '')
+        const expectedPolicy = expected.payload?.provenance?.policy ?? expected.payload?.policy ?? null
+        const actualPolicy = actual?.payload?.provenance?.policy ?? actual?.payload?.policy ?? null
+        return actual?.event_type === expected.event_type
+          && (!expectedEncounterId || actualEncounterId === expectedEncounterId)
+          && (!expectedPolicy || actualPolicy === expectedPolicy)
+          && (expected.event_schema_version == null
+            || Number(actual.event_schema_version) === Number(expected.event_schema_version))
+      })
+    }
+    for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
+      const duplicate = await this.eventStore.getByIdempotencyKey?.(campaignId, idempotencyKey)
+      if (duplicate) {
+        if (!acceptsStoredStage(duplicate)) throw new Error(`Stored encounter reward stage ${idempotencyKey} has an incompatible contract`)
+        return { ...duplicate, duplicate: true }
+      }
+      const loaded = await this.load(campaignId)
+      if (validateState) await validateState(loaded.state)
+      try {
+        return await this.eventStore.commit({
+          campaign_id: campaignId,
+          expected_state_version: loaded.state_version,
+          idempotency_key: idempotencyKey,
+          command_id: idempotencyKey,
+          events: prepared,
+        })
+      } catch (error) {
+        if (error?.code === 'IDEMPOTENCY_CONFLICT') {
+          const stored = await this.eventStore.getByIdempotencyKey?.(campaignId, idempotencyKey)
+          if (acceptsStoredStage(stored)) return { ...stored, duplicate: true }
+        }
+        if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === maximumAttempts - 1) throw error
+      }
+    }
+    throw new Error('Encounter reward stage exhausted its retry budget')
   }
 
   async runCommands(campaignId, idempotencyKey, commands, context = {}) {
@@ -558,7 +625,7 @@ export class AutonomousCampaignOrchestrator {
       if (!actualCommands.length) return { state: loaded.state, state_version: loaded.state_version, events: [], commands: [], rolls: [], duplicate: false }
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          return await this.runCommands(campaignId, idempotencyKey, actualCommands)
+          return await this.runCommands(campaignId, idempotencyKey, actualCommands, { allowedActorIds: [actorId] })
         } catch (error) {
           if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
         }
@@ -674,13 +741,76 @@ export class AutonomousCampaignOrchestrator {
     // Смысл задумки понимает агент, если он есть; всё остальное — СЛ, бросок,
     // сверка средств, цена хода и последствие — остаётся за сервером.
     const deterministicReading = interpretFreeAction(text)
-    const reading = this.actionAdjudicator
+    const proposedReading = this.actionAdjudicator
       ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
       : deterministicReading
+    const reading = bindFreeActionReadingToState(loaded.state, actorId, text, proposedReading)
+    if (reading.reference_ambiguities.length) {
+      return {
+        kind: 'clarification',
+        narration: reading.reference_ambiguities.includes('item_id')
+          ? 'В действии подходят несколько предметов. Назовите конкретную вещь.'
+          : 'В действии подходят несколько целей. Назовите конкретного участника.',
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
+    const corpseSearch = resolveCorpseSearch(loaded.state, text, reading)
+    if (corpseSearch) {
+      return {
+        kind: 'clarification',
+        narration: corpseSearch.narration,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
+    const inventoryTransfer = resolveInventoryTransfer(loaded.state, actorId, text, reading)
+    if (inventoryTransfer?.status === 'clarification') {
+      return {
+        kind: 'clarification',
+        narration: inventoryTransfer.narration,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
+    if (inventoryTransfer?.status === 'command') {
+      const commit = await run([declaration, inventoryTransfer.command])
+      verifyDuplicate(commit)
+      return {
+        kind: 'item_transfer',
+        narration: inventoryTransfer.narration,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
     const means = verifyMeans(loaded.state, actorId, reading.required_means)
     const resolution = means.satisfied
-      ? resolutionModeFor(reading)
-      : resolutionModeFor({ ...reading, plausibility: 'impossible_without_means' })
+      ? contextualResolutionFor(loaded.state, actorId, reading, text)
+      : contextualResolutionFor(loaded.state, actorId, { ...reading, plausibility: 'impossible_without_means' }, text)
     const attempt = attemptFingerprint({ actorId, approach: reading.approach_summary, obstacle: reading.obstacle })
     const repeated = previousFailedAttempt(loaded.state, attempt)
     const objective = boundedObjective(loaded.state, text)
@@ -721,7 +851,14 @@ export class AutonomousCampaignOrchestrator {
       }
     }
 
-    const stakes = stakesFor({ ability: reading.ability, skill: reading.skill, resolution, risk: reading.risk })
+    const stakes = stakesFor({
+      ability: reading.ability,
+      skill: reading.skill,
+      resolution,
+      risk: reading.risk,
+      proficiency: reading.proficiency,
+      consequence_type: reading.consequence_type,
+    })
     const ruling = {
       id: `ruling-${digest({ campaignId, text })}`,
       status: 'applied',
@@ -732,6 +869,13 @@ export class AutonomousCampaignOrchestrator {
       consequence: objective,
       world_change: true,
       stakes,
+      interpretation: {
+        target_id: reading.target_id || null,
+        item_id: reading.item_id || null,
+        skill: reading.skill,
+        proficiency: reading.proficiency,
+        consequence_type: reading.consequence_type,
+      },
       provenance: {
         source: 'free-action-adjudication',
         action_fingerprint: digest(text),
@@ -801,7 +945,7 @@ export class AutonomousCampaignOrchestrator {
         command_type: 'MakeAbilityCheck',
         actor_id: actorId,
         ability: reading.ability,
-        proficient: false,
+        skill: reading.skill,
         difficulty: resolution.difficulty,
         difficulty_category: resolution.difficulty_category,
       },
@@ -809,7 +953,7 @@ export class AutonomousCampaignOrchestrator {
     verifyDuplicate(checkCommit)
     const checkEvent = (checkCommit.events ?? []).find((entry) => entry.event_type === 'AbilityCheckResolved')
     const succeeded = checkEvent?.payload?.success === true
-    const consequence = failForwardFor(reading.risk)
+    const consequence = failForwardFor(reading.risk, reading.consequence_type)
     const outcomeRuling = { ...ruling, outcome: succeeded ? 'success' : 'failure' }
     // Внутри раунда время не идёт и цель отряда не переписывается: ход занимает
     // секунды, а «следующая цель» посреди боя ломала бы сцену.
@@ -909,49 +1053,162 @@ export class AutonomousCampaignOrchestrator {
   }
 
   async completeEncounter({ campaignId, outcome = 'enemies_defeated', idempotencyKey = 'encounter-completion' }) {
+    const loaded = await this.load(campaignId)
+    const encounterId = String(loaded.state.mechanics?.encounter?.id ?? loaded.state.mechanics?.encounter?.encounter_id ?? '')
+    if (!encounterId) throw new Error('Encounter completion requires an active encounter record')
+    const lockKey = `${campaignId}\u0000${encounterId}`
+    const previous = encounterCompletionLocks.get(lockKey)
+    if (previous) {
+      await previous
+      return this.completeEncounterUnlocked({ campaignId, outcome, idempotencyKey })
+    }
+    const operation = this.completeEncounterUnlocked({ campaignId, outcome, idempotencyKey })
+    encounterCompletionLocks.set(lockKey, operation)
+    try {
+      return await operation
+    } finally {
+      if (encounterCompletionLocks.get(lockKey) === operation) encounterCompletionLocks.delete(lockKey)
+    }
+  }
+
+  async completeEncounterUnlocked({ campaignId, outcome = 'enemies_defeated' }) {
     let loaded = await this.load(campaignId)
+    const encounterId = String(loaded.state.mechanics?.encounter?.id ?? loaded.state.mechanics?.encounter?.encounter_id ?? '')
+    const baseKey = `encounter-completion:${encounterId}`
     if (loaded.state.mechanics.combat.active) {
       const activeId = String(loaded.state.mechanics.combat.initiative[loaded.state.mechanics.combat.active_index]?.actor_id ?? loaded.state.players[0]?.id ?? '')
-      await this.runCommands(campaignId, `${idempotencyKey}:end-combat`, [{ command_type: 'EndCombat', actor_id: activeId, reason: outcome }])
+      await this.runCommands(campaignId, `${baseKey}:end-combat`, [{ command_type: 'EndCombat', actor_id: activeId, reason: outcome }])
       loaded = await this.load(campaignId)
     }
-    const reward = serverRewardForEncounter(loaded.state, outcome)
-    const duplicate = await this.eventStore.getByIdempotencyKey?.(campaignId, `${idempotencyKey}:outcome`)
-    if (duplicate) return { ...duplicate, state: (await this.load(campaignId)).state }
-    const completionEvents = [event(`${idempotencyKey}:outcome`, 'EncounterOutcomeRecorded', {
-      ...reward,
-      provenance: { source: 'server-reward-policy', policy: 'encounter-reward-v1' },
-    })]
-    if (reward.xp > 0) completionEvents.push(event(`${idempotencyKey}:xp`, 'ExperienceAwarded', {
-      encounter_id: reward.encounter_id,
-      total_xp: reward.xp,
-      recipients: loaded.state.partyMemberIds,
-      provenance: { source: 'server-reward-policy' },
-    }, loaded.state.partyMemberIds))
-    else completionEvents.push(event(`${idempotencyKey}:milestone`, 'MilestoneAwarded', { milestone: reward.milestone, encounter_id: reward.encounter_id }))
-    completionEvents.push(event(`${idempotencyKey}:loot`, 'ServerLootGenerated', {
-      encounter_id: reward.encounter_id,
-      loot: reward.loot,
-      provenance: { source: 'server-loot-table', policy: 'encounter-loot-v1' },
+
+    const outcomeKey = encounterCompletionStageKey(encounterId, 'outcome')
+    const transitionKey = encounterCompletionStageKey(encounterId, 'transition')
+    let outcomeCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, outcomeKey)
+    let plan
+    let prepared
+    if (outcomeCommit) {
+      const outcomeEvent = outcomeCommit.events.find((entry) => entry.event_type === 'EncounterOutcomeRecorded')
+      plan = frozenEncounterOutcomePlanFromEvent(outcomeEvent)
+      prepared = clone(outcomeEvent.payload?.prepared_reward)
+      if (!prepared?.coins || !Array.isArray(prepared?.loot) || !prepared?.distribution) {
+        throw new Error('Frozen encounter reward preparation is missing')
+      }
+      const finalized = await this.eventStore.getByIdempotencyKey?.(campaignId, transitionKey)
+      if (finalized) {
+        const final = await this.load(campaignId)
+        return {
+          events: [],
+          reward: encounterRewardResponse({ plan, ...prepared }),
+          state: final.state,
+          state_version: final.state_version,
+          admin_commands: 0,
+          duplicate: true,
+        }
+      }
+    } else {
+      plan = freezeEncounterOutcomePlan(loaded.state, outcome)
+      const coins = rollEncounterCoins(plan, this.rulesEngine.diceService)
+      const loot = lootForEncounterOutcome(plan)
+      const distribution = distributeEncounterRewards(loaded.state, { plan, coins, loot })
+      prepared = { coins, loot, distribution }
+      const outcomeEvent = event(outcomeKey, 'EncounterOutcomeRecorded', {
+        encounter_id: plan.encounter_id,
+        outcome: plan.outcome,
+        plan,
+        prepared_reward: prepared,
+        provenance: { source: 'server-reward-policy', policy: ENCOUNTER_REWARD_POLICY_ID },
+      })
+      outcomeCommit = await this.commitEventsWithRetry(campaignId, outcomeKey, [outcomeEvent])
+    }
+    const committedOutcomeEvent = outcomeCommit.events.find((entry) => entry.event_type === 'EncounterOutcomeRecorded')
+    plan = frozenEncounterOutcomePlanFromEvent(committedOutcomeEvent)
+    prepared = clone(committedOutcomeEvent.payload?.prepared_reward)
+    if (!prepared?.coins || !Array.isArray(prepared?.loot) || !prepared?.distribution) {
+      throw new Error('Committed frozen encounter reward preparation is missing')
+    }
+
+    const emitted = []
+    const collect = (commit) => {
+      if (commit && !commit.duplicate) emitted.push(...(commit.events ?? []))
+      return commit
+    }
+    collect(outcomeCommit)
+
+    const xpKey = encounterCompletionStageKey(encounterId, 'xp')
+    const xpEvent = plan.rewards_eligible
+      ? event(xpKey, 'ExperienceAwarded', {
+          encounter_id: plan.encounter_id,
+          total_xp: plan.total_xp,
+          recipients: plan.recipients,
+          unassigned_xp: plan.recipients.length ? 0 : plan.total_xp,
+          plan_version: plan.version,
+          provenance: { source: 'server-reward-policy', policy: ENCOUNTER_REWARD_POLICY_ID },
+        }, plan.recipients)
+      : event(xpKey, 'EncounterRewardStageSkipped', {
+          encounter_id: plan.encounter_id,
+          stage: 'xp',
+          reason: 'outcome-not-rewardable',
+        })
+    collect(await this.commitEventsWithRetry(campaignId, xpKey, [xpEvent], {
+      validateState: plan.rewards_eligible
+        ? (state) => assertEncounterRewardRecipients(state, plan.recipients)
+        : null,
     }))
-    completionEvents.push(event(`${idempotencyKey}:transition`, 'TransitionUnlocked', {
-      transition_id: `transition-${reward.encounter_id || digest(idempotencyKey)}`,
-      status: 'available',
-      hook: nextHook(loaded.state),
+
+    const coinsKey = encounterCompletionStageKey(encounterId, 'coins')
+    const coinsEvent = plan.rewards_eligible
+      ? {
+          ...event(coinsKey, 'EncounterCoinsRolled', {
+            schema_version: 1,
+            ...prepared.coins,
+            provenance: { source: 'server-coin-policy', policy: ENCOUNTER_COINS_POLICY_ID },
+          }),
+          event_schema_version: 1,
+        }
+      : event(coinsKey, 'EncounterRewardStageSkipped', {
+          encounter_id: plan.encounter_id,
+          stage: 'coins',
+          reason: 'outcome-not-rewardable',
+        })
+    collect(await this.commitEventsWithRetry(campaignId, coinsKey, [coinsEvent]))
+
+    const lootKey = encounterCompletionStageKey(encounterId, 'loot')
+    const lootEvent = plan.rewards_eligible
+      ? {
+          ...event(lootKey, 'ServerLootGenerated', {
+            schema_version: SERVER_LOOT_GENERATED_EVENT_SCHEMA_VERSION,
+            encounter_id: plan.encounter_id,
+            loot: prepared.loot,
+            provenance: { source: 'server-loot-table', policy: ENCOUNTER_LOOT_POLICY_ID },
+          }),
+          event_schema_version: SERVER_LOOT_GENERATED_EVENT_SCHEMA_VERSION,
+        }
+      : event(lootKey, 'EncounterRewardStageSkipped', {
+          encounter_id: plan.encounter_id,
+          stage: 'loot',
+          reason: 'outcome-not-rewardable',
+        })
+    collect(await this.commitEventsWithRetry(campaignId, lootKey, [lootEvent]))
+
+    const distributionKey = encounterCompletionStageKey(encounterId, 'distribution')
+    const distributionEvent = plan.rewards_eligible
+      ? {
+          ...event(distributionKey, 'EncounterRewardsDistributed', prepared.distribution, plan.recipients),
+          event_schema_version: ENCOUNTER_REWARDS_DISTRIBUTED_EVENT_SCHEMA_VERSION,
+        }
+      : event(distributionKey, 'EncounterRewardStageSkipped', {
+          encounter_id: plan.encounter_id,
+          stage: 'distribution',
+          reason: 'outcome-not-rewardable',
+        })
+    collect(await this.commitEventsWithRetry(campaignId, distributionKey, [distributionEvent], {
+      validateState: plan.rewards_eligible
+        ? (state) => assertEncounterDistributionPreconditions(state, prepared.distribution)
+        : null,
     }))
-    const outcomeCommit = await this.commitEvents(campaignId, `${idempotencyKey}:outcome`, completionEvents)
 
     loaded = await this.load(campaignId)
-    const ownerId = lootOwnerId(loaded.state)
-    const commands = reward.loot.map((item, index) => ({ command_type: 'GrantItem', actor_id: ownerId, item: {
-      id: `loot-${reward.encounter_id}-${index + 1}`,
-      catalog_id: item.catalog_id,
-      name: item.name,
-      quantity: item.quantity,
-      // Тип приходит из таблицы добычи: прежде щит и меч попадали в инвентарь
-      // «расходником», и интерфейс предлагал их выпить.
-      type: item.type ?? 'consumable', rarity: 'обычный', weight: 0, equipped: false,
-    } }))
+    const commands = []
     const quest = openQuest(loaded.state)
     if (quest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })
     let subject = currentSubject(loaded.state)
@@ -960,23 +1217,25 @@ export class AutonomousCampaignOrchestrator {
       commands.push({ command_type: 'UpsertWorldEntity', entity: subject })
     }
     commands.push({ command_type: 'RecordWorldFact', fact: {
-      id: `fact-${reward.encounter_id || digest(idempotencyKey)}-outcome`,
+      id: `fact-${plan.encounter_id || digest(baseKey)}-outcome`,
       subject_id: subject.id,
       predicate: 'encounter_outcome',
-      object: outcome,
-      summary: `Встреча завершилась исходом: ${outcome}.`,
+      object: plan.outcome,
+      summary: `Встреча завершилась исходом: ${plan.outcome}.`,
       visibility: 'party',
       source_event_ids: outcomeCommit.events.map((entry) => entry.event_id).filter(Boolean),
     } })
     commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
-    const consequences = await this.runCommands(campaignId, `${idempotencyKey}:consequences`, commands)
+    const consequences = await this.runCommands(campaignId, `${baseKey}:consequences`, commands)
+    if (!consequences.duplicate) emitted.push(...(consequences.events ?? []))
     const questResolution = await this.resolveTriggeredQuests(
       campaignId,
-      idempotencyKey,
+      baseKey,
       consequences.events ?? [],
     )
-    let recovery = { events: [] }
-    if (outcome === 'enemies_defeated') {
+    if (questResolution && !questResolution.duplicate) emitted.push(...(questResolution.events ?? []))
+
+    if (plan.outcome === 'enemies_defeated') {
       let afterConsequences = await this.load(campaignId)
       const survivors = (state) => {
         const partyIds = new Set((state.partyMemberIds ?? []).map(String))
@@ -984,16 +1243,15 @@ export class AutonomousCampaignOrchestrator {
           partyIds.has(String(hero.id)) && state.mechanics?.death?.heroes?.[hero.id]?.status !== 'dead'
         ))
       }
-      // A long rest gives nothing to a hero who is still at 0 hit points, so the
-      // party first waits out the stable hero's 1d4-hour recovery.  Without this
-      // the whole advance fails with REST_ACTOR_INCAPACITATED after any fight
-      // that ended with someone down.
-      let stableRecoveryMinutes = 0
-      if (survivors(afterConsequences.state).some((hero) => Number(hero.hp) === 0)) {
+      const stableRecoveryKey = `${baseKey}:stable-recovery`
+      const existingStableRecovery = await this.eventStore.getByIdempotencyKey?.(campaignId, stableRecoveryKey)
+      let stableRecoveryMinutes = existingStableRecovery ? STABLE_RECOVERY_MINUTES : 0
+      if (!existingStableRecovery && survivors(afterConsequences.state).some((hero) => Number(hero.hp) === 0)) {
         stableRecoveryMinutes = STABLE_RECOVERY_MINUTES
-        await this.runCommands(campaignId, `${idempotencyKey}:stable-recovery`, [
+        const stableRecovery = await this.runCommands(campaignId, stableRecoveryKey, [
           { command_type: 'AdvanceTime', amount: stableRecoveryMinutes, unit: 'minute' },
         ])
+        if (!stableRecovery.duplicate) emitted.push(...(stableRecovery.events ?? []))
         afterConsequences = await this.load(campaignId)
       }
       const restingHeroes = survivors(afterConsequences.state).filter((hero) => Number(hero.hp) > 0)
@@ -1008,35 +1266,50 @@ export class AutonomousCampaignOrchestrator {
           { command_type: 'AdvanceTime', amount: 480, unit: 'minute' },
           ...restingHeroes.map((hero) => ({ command_type: 'CompleteRest', actor_id: String(hero.id), kind: 'long' })),
         ]
-        recovery = await this.runCommands(campaignId, `${idempotencyKey}:recovery`, recoveryCommands)
-        const downtimeCommit = await this.commitEvents(campaignId, `${idempotencyKey}:downtime`, [
-          event(`${idempotencyKey}:downtime`, 'DowntimeResolved', {
+        const recovery = await this.runCommands(campaignId, `${baseKey}:recovery`, recoveryCommands)
+        if (!recovery.duplicate) emitted.push(...(recovery.events ?? []))
+        const downtimeKey = `${baseKey}:downtime`
+        const downtimeCommit = await this.commitEventsWithRetry(campaignId, downtimeKey, [
+          event(downtimeKey, 'DowntimeResolved', {
             ...downtime,
             provenance: { source: 'server-downtime-policy' },
           }, downtime.participant_ids),
         ])
-        recovery = { ...recovery, events: [...recovery.events, ...downtimeCommit.events] }
+        collect(downtimeCommit)
       }
     }
+
     await this.propagateWitnesses(campaignId, {
       sourceEventId: outcomeCommit.events.find((entry) => entry.event_type === 'EncounterOutcomeRecorded')?.event_id,
-      outcome: outcome === 'enemies_defeated' ? 'helpful' : 'harmful', severity: 'major',
-      idempotencyKey: `${idempotencyKey}:witnesses`,
+      outcome: plan.outcome === 'enemies_defeated' ? 'helpful' : 'harmful',
+      severity: 'major',
+      idempotencyKey: `${baseKey}:witnesses`,
     })
-    const campaignCompletion = await this.completeCampaignIfReady(campaignId, idempotencyKey)
+    const campaignCompletion = await this.completeCampaignIfReady(campaignId, baseKey)
+    if (campaignCompletion && !campaignCompletion.duplicate) emitted.push(...(campaignCompletion.events ?? []))
+
+    const beforeTransition = await this.load(campaignId)
+    const transition = {
+      transition_id: `transition-${plan.encounter_id || digest(baseKey)}`,
+      status: 'available',
+      hook: nextHook(beforeTransition.state),
+    }
+    collect(await this.commitEventsWithRetry(campaignId, transitionKey, [
+      event(transitionKey, 'TransitionUnlocked', {
+        encounter_id: plan.encounter_id,
+        transition,
+        provenance: { source: 'server-reward-policy', policy: ENCOUNTER_REWARD_POLICY_ID },
+      }),
+    ]))
+
     const final = await this.load(campaignId)
     return {
-      events: [
-        ...outcomeCommit.events,
-        ...consequences.events,
-        ...(questResolution?.events ?? []),
-        ...recovery.events,
-        ...(campaignCompletion?.events ?? []),
-      ],
-      reward,
+      events: emitted,
+      reward: encounterRewardResponse({ plan, ...prepared }),
       state: final.state,
       state_version: final.state_version,
       admin_commands: 0,
+      duplicate: emitted.length === 0,
     }
   }
 

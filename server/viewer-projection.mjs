@@ -1,18 +1,18 @@
 // @ts-check
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
+import { itemViewerCapabilities } from './item-catalog.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
+import { sceneNpcsForViewer } from './npc-positioning.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
+import { hitPointDicePoolForActor } from './rules-engine.mjs'
 import {
+  MATERIALS,
   SIZE_CLASSES,
-  cellAt,
+  SURFACES,
   deserializeTacticalMap,
-  edgeList,
-  edgeNeighbor,
   serializeTacticalMap,
-  setCell,
-  setEdge,
-  tacticalMapHash,
+  serializedTacticalMapHash,
 } from './tactical-map.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
@@ -121,8 +121,12 @@ export function publicWorldMapFor(worldMap = {}) {
   }
 }
 
+const PUBLIC_CELL_TYPES = new Set(['wall', 'floor', 'water', 'door'])
+const PUBLIC_CELL_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
+const PUBLIC_CELL_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
+
 /**
- * Сужает клетку до публичной формы. `feature`, материал и вариант тайла
+ * Сужает клетки до публичной формы. `feature`, материал и вариант тайла
  * отдаются **только** с раскрытой клетки — это часть модели видимости, а не
  * косметика; сторож — `test/viewer-projection.test.mjs`.
  *
@@ -135,26 +139,42 @@ export function publicWorldMapFor(worldMap = {}) {
  * скрывает обстановку, но не планировку. Сделать его настоящим — продуктовое
  * изменение, а не правка проекции.
  *
- * @param {Loose} [cell]
- * @returns {SceneCell}
+ * Цикл намеренно предвыделяет результат и назначает необязательные поля
+ * напрямую: условные object spread создавали до шести временных объектов на
+ * каждую из 10 000 клеток карты `region`.
+ *
+ * @param {unknown} value
+ * @returns {SceneCell[]}
  */
-function publicCellFor(cell = {}) {
-  const revealed = cell.revealed === true
-  const material = String(cell.material ?? '')
-  const pattern = String(cell.pattern ?? '')
-  const allowedMaterials = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
-  const allowedPatterns = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
-  return {
-    x: integer(cell.x),
-    y: integer(cell.y),
-    type: /** @type {SceneCellType} */ (['wall', 'floor', 'water', 'door'].includes(String(cell.type)) ? String(cell.type) : 'floor'),
-    revealed,
-    ...(revealed && allowedMaterials.has(material) ? { material: /** @type {SceneCellMaterial} */ (material) } : {}),
-    ...(allowedPatterns.has(pattern) ? { pattern: /** @type {SceneCellPattern} */ (pattern) } : {}),
-    ...(revealed && Number.isSafeInteger(Number(cell.variant)) ? { variant: Math.max(0, Math.min(5, Number(cell.variant))) } : {}),
-    ...(typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask) ? { edge_mask: cell.edge_mask } : {}),
-    ...(revealed && cell.feature != null ? { feature: text(cell.feature, 40) } : {}),
+function publicCellsFor(value) {
+  const cells = Array.isArray(value) ? value : []
+  const length = Math.min(cells.length, SIZE_CLASSES.region.maxCells)
+  /** @type {SceneCell[]} */
+  const output = new Array(length)
+  for (let index = 0; index < length; index += 1) {
+    const cell = cells[index] && typeof cells[index] === 'object' ? cells[index] : {}
+    const revealed = cell.revealed === true
+    const rawType = String(cell.type ?? '')
+    /** @type {SceneCell} */
+    const projected = {
+      x: integer(cell.x),
+      y: integer(cell.y),
+      type: /** @type {SceneCellType} */ (PUBLIC_CELL_TYPES.has(rawType) ? rawType : 'floor'),
+      revealed,
+    }
+    const material = String(cell.material ?? '')
+    if (revealed && PUBLIC_CELL_MATERIALS.has(material)) {
+      projected.material = /** @type {SceneCellMaterial} */ (material)
+    }
+    const pattern = String(cell.pattern ?? '')
+    if (PUBLIC_CELL_PATTERNS.has(pattern)) projected.pattern = /** @type {SceneCellPattern} */ (pattern)
+    const variant = Number(cell.variant)
+    if (revealed && Number.isSafeInteger(variant)) projected.variant = Math.max(0, Math.min(5, variant))
+    if (typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask)) projected.edge_mask = cell.edge_mask
+    if (revealed && cell.feature != null) projected.feature = text(cell.feature, 40)
+    output[index] = projected
   }
+  return output
 }
 
 /**
@@ -179,14 +199,22 @@ export function publicTacticalMapWithHashFor(value) {
   } catch {
     return null
   }
+  const revealedBits = map.layers.revealed
+  const stoneCode = MATERIALS.indexOf('stone')
+  const emptySurfaceCode = SURFACES.indexOf('none')
   /** @param {number} x @param {number} y */
-  const revealedAt = (x, y) => cellAt(map, x, y)?.revealed === true
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const cell = cellAt(map, x, y)
-      if (!cell || cell.revealed) continue
-      setCell(map, x, y, { material: 'stone', variant: 0, surface: 'none', hazardId: null })
-    }
+  const revealedAt = (x, y) => {
+    if (x < 0 || y < 0 || x >= map.width || y >= map.height) return false
+    const index = y * map.width + x
+    return (revealedBits[index >> 3] & (1 << (index & 7))) !== 0
+  }
+  const cellCount = map.width * map.height
+  for (let index = 0; index < cellCount; index += 1) {
+    if ((revealedBits[index >> 3] & (1 << (index & 7))) !== 0) continue
+    map.layers.material[index] = stoneCode
+    map.layers.variant[index] = 0
+    map.layers.surface[index] = emptySurfaceCode
+    delete map.hazards[String(index)]
   }
   map.props = map.props.filter((prop) => prop.footprint.some((cell) => revealedAt(cell.x, cell.y))
     || (prop.footprint.length === 0 && revealedAt(Math.floor(prop.x), Math.floor(prop.y))))
@@ -201,12 +229,16 @@ export function publicTacticalMapWithHashFor(value) {
       pointOfInterest: prop.interaction.pointOfInterest === true,
     })
   }
-  for (const edge of edgeList(map)) {
-    const neighbor = edgeNeighbor(edge)
-    if (revealedAt(edge.x, edge.y) || revealedAt(neighbor.x, neighbor.y)) continue
-    setEdge(map, edge.x, edge.y, neighbor.x, neighbor.y, { kind: 'none' })
+  const visibleEdges = new Set()
+  for (const [key, edge] of Object.entries(map.edges)) {
+    const neighborX = edge.x + (edge.dir === 'e' ? 1 : 0)
+    const neighborY = edge.y + (edge.dir === 's' ? 1 : 0)
+    if (revealedAt(edge.x, edge.y) || revealedAt(neighborX, neighborY)) {
+      visibleEdges.add(`${edge.x},${edge.y},${edge.dir}`)
+    } else {
+      delete map.edges[key]
+    }
   }
-  const visibleEdges = new Set(edgeList(map).map((edge) => `${edge.x},${edge.y},${edge.dir}`))
   map.doors = map.doors.filter((door) => visibleEdges.has(`${door.x},${door.y},${door.dir}`))
   const projectedMap = serializeTacticalMap(map)
   const projectedProps = /** @type {Array<Record<string, any>>} */ (
@@ -227,7 +259,7 @@ export function publicTacticalMapWithHashFor(value) {
       pointOfInterest: prop.interaction.pointOfInterest === true,
     }
   }
-  return { map: projectedMap, hash: tacticalMapHash(map) }
+  return { map: projectedMap, hash: serializedTacticalMapHash(projectedMap) }
 }
 
 /**
@@ -250,7 +282,7 @@ export function publicSceneFor(scene = {}) {
     mood: text(scene.mood, 500),
     objective: text(scene.objective, 500),
     turn: Math.max(0, integer(scene.turn, 0)),
-    cells: (Array.isArray(scene.cells) ? scene.cells : []).map(publicCellFor).slice(0, SIZE_CLASSES.region.maxCells),
+    cells: publicCellsFor(scene.cells),
     ...(projected ? { map: projected.map, map_hash: projected.hash } : {}),
     ...(scene.theme == null ? {} : { theme: text(scene.theme, 120) }),
     ...(scene.danger == null ? {} : { danger: text(scene.danger, 40) }),
@@ -548,7 +580,10 @@ function publicAutonomyFor(autonomy) {
  */
 export const PROJECTED_STATE_KEYS = Object.freeze([
   // Своя публичная форма.
-  'scene', 'adventure', 'worldMap', 'worldMemory', 'social', 'merchants',
+  'scene', 'adventure', 'worldMap', 'worldMemory', 'social', 'merchants', 'scene_npcs',
+  // Внутренний реестр точных HP и всех location posts наружу не копируется:
+  // вместо него ниже собирается bounded `scene_npcs` только текущей сцены.
+  'npc_world',
   'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
   // Отдаются как есть: общий контекст отряда без скрытого.
   'sessionCode', 'campaign', 'partyName', 'partyMemberIds', 'partyDecisionPolicy',
@@ -575,6 +610,20 @@ function viewerFor(state, user, actorId) {
 }
 
 /**
+ * @param {Loose[]} players
+ * @returns {Loose[]}
+ */
+function playerItemsWithCapabilities(players) {
+  return (Array.isArray(players) ? players : []).map((player) => ({
+    ...player,
+    inventory: (Array.isArray(player?.inventory) ? player.inventory : []).map((item) => {
+      const capabilities = itemViewerCapabilities(item)
+      return capabilities ? { ...item, capabilities } : item
+    }),
+  }))
+}
+
+/**
  * Produces a non-admin campaign projection shared by room, command and narration
  * responses. It is deliberately stricter than the internal event-sourced state.
  *
@@ -585,10 +634,30 @@ function viewerFor(state, user, actorId) {
  */
 export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
-  if (user?.role === 'admin') return state
-  const visible = projectVisibleState(state, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}
-  const { locationMaps: _locationMaps, ...publicState } = visible
-  const scene = publicSceneFor(visible.scene ?? state.scene)
+  if (user?.role === 'admin') return {
+    ...state,
+    players: playerItemsWithCapabilities(state.players),
+    mechanics: {
+      ...(state.mechanics ?? {}),
+      hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
+    },
+  }
+  // `locationMaps` содержит ещё одну полную копию каждой тактической карты, а
+  // `scene` ниже всё равно пересобирается строгим whitelist-проектором.
+  // Не копируем одни и те же 10 000 клеток рекурсивно, чтобы тут же заменить
+  // результат их публичной формой.
+  const {
+    locationMaps: _privateLocationMaps,
+    scene: _privateScene,
+    ...projectableState
+  } = state
+  const visible = projectVisibleState(projectableState, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}
+  // `npc_world` — внутренний реестр точных HP, постов и инвентарей NPC. Он
+  // обязан исчезнуть из публичной проекции целиком; сторож — проверка
+  // `authoritative_state.npc_world === undefined` в
+  // `test/npc-item-transfer-api.test.mjs`.
+  const { locationMaps: _locationMaps, npc_world: _npcWorld, ...publicState } = visible
+  const scene = publicSceneFor(state.scene)
   const location = scene.location
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
     .filter((/** @type {Loose} */ merchant) => merchant.available !== false && merchantIsAtLocation(merchant, state?.scene ?? location))
@@ -599,6 +668,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       const { enemy_knowledge: _enemyKnowledge, ...publicMechanics } = visible.mechanics
       return {
       ...publicMechanics,
+      ...(actorId ? { hit_point_dice: { [actorId]: hitPointDicePoolForActor(state, actorId) } } : { hit_point_dice: {} }),
       encounter: publicEncounterFor(visible.mechanics.encounter),
       ...(visible.mechanics.combat && typeof visible.mechanics.combat === 'object' ? {
         combat: {
@@ -611,6 +681,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     : visible.mechanics
   return {
     ...publicState,
+    players: playerItemsWithCapabilities(publicState.players),
     scene,
     adventure: publicAdventureFor(visible.adventure),
     worldMap: publicWorldMapFor(visible.worldMap ?? state.worldMap),
@@ -625,6 +696,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       isPartyMember: true,
       state,
     }),
+    scene_npcs: sceneNpcsForViewer(state),
     merchants,
     enemies,
     mechanics,
@@ -661,18 +733,49 @@ function eventForViewer(event, user, actorId, state = {}) {
       enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId)),
     }
   }
+  if (visible.event_type === 'EncounterOutcomeRecorded') {
+    delete payload.plan
+    delete payload.prepared_reward
+  }
+  if (visible.event_type === 'EncounterCoinsRolled') {
+    payload.rolls = (Array.isArray(payload.rolls) ? payload.rolls : []).map((/** @type {Loose} */ roll) => ({
+      roll_id: text(roll?.roll_id, 160),
+      expression: text(roll?.expression, 40),
+      dice: (Array.isArray(roll?.dice) ? roll.dice : []).map((/** @type {unknown} */ value) => integer(value, 0)).slice(0, 12),
+      total: integer(roll?.total, 0),
+      amount_cp: integer(roll?.amount_cp, 0),
+    }))
+  }
+  if (visible.event_type === 'NpcPlaced') delete payload.vitality
+  if (visible.event_type === 'NpcHarmed') {
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
+  }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
+  if (['HitPointDieSpent', 'HitPointDiceRestored'].includes(String(visible.event_type))
+    && String(visible.actor_id ?? '') !== String(actorId)
+    && !targetIds.includes(String(actorId))) {
+    for (const key of ['pool_before', 'pool_after', 'restored']) delete payload[key]
+  }
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   const enemyTargetId = targetIds.find((/** @type {string} */ id) => enemyIds.has(id)) ?? (enemyIds.has(String(payload.target_id ?? '')) ? String(payload.target_id) : '')
   const enemyActor = enemyIds.has(String(visible.actor_id ?? ''))
   if (enemyTargetId && !exactEnemyHealthKnown(state, enemyTargetId, actorId)) {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'armor_class']) delete payload[key]
   }
+  // Игрок видит сам исход (сопротивление, иммунитет или отменённый крит), но
+  // закрытый инвентарь противника не становится каталогом предметов через
+  // публичную механику события. Полный provenance остаётся у администратора.
+  if (enemyTargetId) {
+    for (const key of ['item_resistance_sources', 'item_immunity_sources', 'critical_protection_sources']) delete payload[key]
+  }
   if (visible.event_type === 'CombatStarted') {
     payload.initiative = publicInitiativeFor(payload.initiative, state, actorId)
   }
   if (enemyActor) {
-    for (const key of ['modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression']) delete payload[key]
+    for (const key of [
+      'modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression',
+      'item_id', 'item_name', 'catalog_id', 'effect_id',
+    ]) delete payload[key]
   }
   // Спасбросок и проверку бросает цель, а не тот, кто записан действующим лицом:
   // у SpellSavingThrowResolved actor_id — это заклинатель-герой. Формула
@@ -710,6 +813,16 @@ export function mechanicsForViewer(events, user, actorId = '', state = {}) {
 }
 
 /**
+ * @param {Loose} roll
+ * @param {Loose | null | undefined} user
+ * @returns {boolean}
+ */
+function rollVisibleFor(roll, user) {
+  if (user?.role === 'admin') return true
+  return !['gm_only', 'npc_private'].includes(String(roll?.visibility ?? 'public'))
+}
+
+/**
  * @param {Loose | null | undefined} explanation
  * @param {Loose | null | undefined} user
  * @param {string} [actorId]
@@ -729,7 +842,7 @@ export function turnExplanationForViewer(explanation, user, actorId = '', state 
         ...(command?.target_id == null ? {} : { target_id: text(command.target_id, 120) }),
       }
     }),
-    rolls: (Array.isArray(explanation.rolls) ? explanation.rolls : []).map((roll) => {
+    rolls: (Array.isArray(explanation.rolls) ? explanation.rolls : []).filter((roll) => rollVisibleFor(roll, user)).map((roll) => {
       if (!enemyIds.has(String(roll?.actor_id ?? roll?.actorId ?? ''))) return roll
       return {
         roll_id: text(roll?.roll_id ?? roll?.id, 160),
@@ -776,7 +889,9 @@ export function turnResultForViewer(result, user, actorId = '') {
     : visible.effects
   if (effects?.scene) effects.scene = sceneTransitionForViewer(effects.scene)
   const enemyIds = new Set((result.authoritative_state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
-  if (effects?.roll && enemyIds.has(String(effects.roll.actor_id ?? ''))) {
+  if (effects?.roll && !rollVisibleFor(effects.roll, user)) {
+    delete effects.roll
+  } else if (effects?.roll && enemyIds.has(String(effects.roll.actor_id ?? ''))) {
     effects.roll = {
       roll_id: text(effects.roll.roll_id, 160),
       actor_id: text(effects.roll.actor_id, 120),
@@ -789,6 +904,9 @@ export function turnResultForViewer(result, user, actorId = '') {
     ...publicResult,
     effects,
     mechanics: mechanicsForViewer(result.mechanics, user, actorId, result.authoritative_state),
+    ...(Array.isArray(result.rolls) ? {
+      rolls: result.rolls.filter((roll) => rollVisibleFor(roll, user)),
+    } : {}),
     ...(Array.isArray(visible.visible_state_changes) ? {
       visible_state_changes: mechanicsForViewer(visible.visible_state_changes, user, actorId, result.authoritative_state),
     } : {}),

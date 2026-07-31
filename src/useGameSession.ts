@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emptyState } from './data'
-import { fetchWithTimeout, generateItemImage, narrateWithAgent, rollDice, rollSharedDie } from './ai-client'
+import {
+  ApiRequestError,
+  fetchWithTimeout,
+  generateItemImage,
+  isStateVersionConflictError,
+  narrateWithAgent,
+  publishNarrationPreview,
+  rollDice,
+  rollSharedDie,
+} from './ai-client'
+import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RollResult, SceneObjectIntent } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -24,9 +34,10 @@ type TacticalCommand =
   | { command_type: 'EndTurn'; actor_id: string }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
   | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
-  | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string }
+  | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string; charges_to_spend?: number }
   | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
   | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
+  | { command_type: 'ActivateItem'; actor_id: string; item_id: string; activated: boolean }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -60,6 +71,10 @@ type TacticalCommandResult = {
   code?: string
 }
 
+export type CommandOutcome =
+  | { ok: true }
+  | { ok: false; error: string; conflict?: boolean }
+
 type MerchantCommand =
   | { command_type: 'BargainWithMerchant'; actor_id: string }
   | { command_type: 'BuyItem'; actor_id: string; stock_id: string; quantity: number }
@@ -81,6 +96,11 @@ export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'off
 type RoomSnapshot = {
   version?: number
   state?: GameState | null
+}
+
+type ApiErrorDetails = {
+  error?: string
+  code?: string
 }
 
 export type ShopAssemblyOptions = {
@@ -109,6 +129,42 @@ type EncounterAssemblyResult = TacticalCommandResult & {
 let localCommandSequence = 0
 const commandId = () => globalThis.crypto?.randomUUID?.() ?? `command-${Date.now()}-${++localCommandSequence}`
 const clock = () => new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date())
+const NARRATION_PREVIEW_TEXT_MAX_BYTES = 12 * 1024
+const NARRATION_PREVIEW_EVENT_MAX_BYTES = 16 * 1024
+const NARRATION_PREVIEW_PHASES = new Set<NarrationPreviewPhase>([
+  'start', 'streaming', 'complete', 'replaced', 'aborted',
+])
+
+function parseNarrationPreview(value: string): NarrationPreview | null {
+  if (new TextEncoder().encode(value).byteLength > NARRATION_PREVIEW_EVENT_MAX_BYTES) return null
+  const payload = JSON.parse(value) as {
+    message_id?: unknown
+    text?: unknown
+    phase?: unknown
+    replayed?: unknown
+  }
+  const messageId = typeof payload.message_id === 'string' ? payload.message_id : ''
+  const text = typeof payload.text === 'string' ? payload.text : ''
+  const phase = typeof payload.phase === 'string' ? payload.phase as NarrationPreviewPhase : null
+  if (!/^[A-Za-z0-9._:-]{1,120}$/u.test(messageId) || !phase || !NARRATION_PREVIEW_PHASES.has(phase)) return null
+  if (new TextEncoder().encode(text).byteLength > NARRATION_PREVIEW_TEXT_MAX_BYTES) return null
+  return {
+    messageId,
+    text,
+    phase,
+    replayed: payload.replayed === true,
+  }
+}
+
+function apiRequestError(response: Response, details: ApiErrorDetails | null, fallback: string) {
+  return new ApiRequestError(details?.error || fallback, response.status, details?.code)
+}
+
+function stateVersionConflictMessage(refreshed: boolean) {
+  return refreshed
+    ? 'Другой игрок уже изменил состояние кампании. Состояние обновлено — проверьте изменения и повторите действие. Ваш ввод сохранён.'
+    : 'Другой игрок уже изменил состояние кампании. Не удалось обновить его автоматически — обновите страницу и повторите действие. Ваш ввод сохранён.'
+}
 
 function stateForPersistence(state: GameState): GameState {
   return { ...state, engine_mode: 'enforce', ...(state.isNarrating ? { isNarrating: false } : {}) }
@@ -243,6 +299,7 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
 export function useGameSession() {
   const [state, setState] = useState<GameState>(loadState)
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
+  const [narrationPreview, setNarrationPreview] = useState<NarrationPreview | null>(null)
   const [tacticalBusy, setTacticalBusy] = useState(false)
   const [tacticalError, setTacticalError] = useState<string | null>(null)
   const [merchantBusy, setMerchantBusy] = useState(false)
@@ -260,7 +317,7 @@ export function useGameSession() {
   const tacticalBusyRef = useRef(false)
   const merchantBusyRef = useRef(false)
   const freeRollBusy = useRef(false)
-  const fullRoomBusy = useRef(false)
+  const fullRoomRequest = useRef<Promise<boolean> | null>(null)
   const actionEpoch = useRef(0)
   const queuedRooms = useRef<Array<{ version: number; state: GameState }>>([])
   const persistLocal = useCallback((next: GameState) => {
@@ -280,6 +337,11 @@ export function useGameSession() {
 
   const applyRoomSnapshot = useCallback((room: RoomSnapshot) => {
     if (!room.state) return
+    setNarrationPreview((current) => (
+      current && room.state?.messages?.some((message) => message.id === current.messageId)
+        ? null
+        : current
+    ))
     roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
     applyRemote(room.state)
   }, [applyRemote])
@@ -288,21 +350,41 @@ export function useGameSession() {
    * Карта сцены не собралась из кэша — значит обновление потеряно. Единственный
    * правильный ответ: запросить комнату целиком и получить карту без дельты.
    */
-  const refreshFullRoom = useCallback(async () => {
-    if (fullRoomBusy.current) return
-    fullRoomBusy.current = true
-    try {
-      const response = await fetch(roomUrl(stateRef.current.sessionCode))
-      if (!response.ok) return
-      const room = roomWithSceneMap(await response.json() as RoomSnapshot & { version?: number })
-      if (!room?.state) return
-      if (Number(room.version) > roomVersion.current) applyRoomSnapshot(room)
-    } catch (error) {
-      console.warn('Не удалось перезапросить карту сцены целиком:', error)
-    } finally {
-      fullRoomBusy.current = false
-    }
+  const refreshFullRoom = useCallback((force = false): Promise<boolean> => {
+    if (fullRoomRequest.current) return fullRoomRequest.current
+    const request = (async () => {
+      try {
+        const response = await fetch(roomUrl(stateRef.current.sessionCode))
+        if (!response.ok) return false
+        const room = roomWithSceneMap(await response.json() as RoomSnapshot & { version?: number })
+        if (!room?.state) return false
+        if (force || Number(room.version) > roomVersion.current) applyRoomSnapshot(room)
+        return true
+      } catch (error) {
+        console.warn('Не удалось перезапросить состояние кампании целиком:', error)
+        return false
+      }
+    })()
+    fullRoomRequest.current = request
+    void request.finally(() => {
+      if (fullRoomRequest.current === request) fullRoomRequest.current = null
+    })
+    return request
   }, [applyRoomSnapshot])
+
+  const normalizeCommandError = useCallback(async (error: unknown): Promise<Error> => {
+    if (!isStateVersionConflictError(error)) {
+      return error instanceof Error ? error : new Error('Сервер отклонил действие')
+    }
+    const refreshed = await refreshFullRoom(true)
+    return new ApiRequestError(stateVersionConflictMessage(refreshed), error.status, error.code)
+  }, [refreshFullRoom])
+
+  const responseCommandError = useCallback(async (
+    response: Response,
+    details: ApiErrorDetails | null,
+    fallback: string,
+  ) => normalizeCommandError(apiRequestError(response, details, fallback)), [normalizeCommandError])
 
   const queueRoomSnapshot = useCallback((room: RoomSnapshot) => {
     if (!room.state) return
@@ -395,10 +477,27 @@ export function useGameSession() {
         console.warn('Realtime-событие присутствия отклонено:', error)
       }
     }
+    const receiveNarration = (event: MessageEvent<string>) => {
+      try {
+        const preview = parseNarrationPreview(event.data)
+        if (!preview) return
+        publishNarrationPreview(state.sessionCode, preview)
+        setNarrationPreview(() => (
+          stateRef.current.messages.some((message) => message.id === preview.messageId)
+            ? null
+            : preview
+        ))
+      } catch (error) {
+        console.warn('Потоковое повествование отклонено:', error)
+      }
+    }
     const closeSource = () => {
       if (!source) return
       source.removeEventListener('room', receive as EventListener)
       source.removeEventListener('presence', receivePresence as EventListener)
+      source.removeEventListener('narration.start', receiveNarration as EventListener)
+      source.removeEventListener('narration.chunk', receiveNarration as EventListener)
+      source.removeEventListener('narration.complete', receiveNarration as EventListener)
       source.close()
       source = null
     }
@@ -438,6 +537,9 @@ export function useGameSession() {
       source = nextSource
       nextSource.addEventListener('room', receive as EventListener)
       nextSource.addEventListener('presence', receivePresence as EventListener)
+      nextSource.addEventListener('narration.start', receiveNarration as EventListener)
+      nextSource.addEventListener('narration.chunk', receiveNarration as EventListener)
+      nextSource.addEventListener('narration.complete', receiveNarration as EventListener)
       nextSource.onopen = () => {
         retryDelay = 1_000
         opened = true
@@ -458,6 +560,7 @@ export function useGameSession() {
   // Пакет анимации принадлежит одной кампании. При смене комнаты это состояние
   // представления сбрасывается, чтобы не проиграть последний ход чужого стола.
   useEffect(() => { setCombatVisualBatch(null) }, [state.sessionCode])
+  useEffect(() => { setNarrationPreview(null) }, [state.sessionCode])
 
   useEffect(() => {
     if (!busy.current && !tacticalBusy && !merchantBusy && !directorBusy) flushQueuedRooms()
@@ -539,9 +642,12 @@ export function useGameSession() {
     }
   }, [])
 
-  const submitAction = useCallback(async (text: string, actorId?: string) => {
-    if (!text.trim() || state.isNarrating || state.pendingCheck) return
+  const submitAction = useCallback(async (text: string, actorId?: string, npcId?: string): Promise<CommandOutcome> => {
+    if (!text.trim() || state.isNarrating || state.pendingCheck) {
+      return { ok: false, error: 'Сейчас нельзя отправить это действие.' }
+    }
     busy.current = true
+    setTacticalError(null)
     const epoch = ++actionEpoch.current
     const player = state.players.find((item) => item.id === (actorId || state.activePlayerId)) ?? state.players[0]
     const pending: GameState = {
@@ -552,29 +658,46 @@ export function useGameSession() {
     commit(pending)
 
     let aiResult: AiTurnResult | null = null
-    let authoritativeError: string | null = null
+    let authoritativeError: Error | null = null
     try {
-      aiResult = await narrateWithAgent(pending, text.trim(), player.character, undefined, undefined, player.id)
+      aiResult = await narrateWithAgent(
+        pending,
+        text.trim(),
+        player.character,
+        undefined,
+        undefined,
+        player.id,
+        { npcId, onNarrationPreview: setNarrationPreview },
+      )
     } catch (error) {
       console.warn('AI fallback:', error instanceof Error ? error.message : error)
-      authoritativeError = error instanceof Error ? error.message : 'Сервер отклонил действие'
+      authoritativeError = await normalizeCommandError(error)
     }
-    if (epoch !== actionEpoch.current) { busy.current = false; return }
+    if (epoch !== actionEpoch.current) {
+      busy.current = false
+      return { ok: false, error: 'Действие было отменено.' }
+    }
     if (authoritativeError) {
+      const message = authoritativeError.message
+      const conflict = isStateVersionConflictError(authoritativeError)
+      if (conflict) setTacticalError(message)
       mutate((current) => ({
         ...current,
         isNarrating: false,
         messages: [...current.messages, {
           id: `${Date.now()}-server-rejection`, speaker: 'system', author: 'Правила игры',
           timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
-          text: authoritativeError,
+          text: message,
           turnConsumed: false,
         }],
       }))
       busy.current = false
-      return
+      return { ok: false, error: message, ...(conflict ? { conflict: true } : {}) }
     }
     if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
+    if (aiResult?.narration_message_id) {
+      setNarrationPreview((current) => current?.messageId === aiResult?.narration_message_id ? null : current)
+    }
     if (aiResult?.mechanics?.length) {
       setCombatVisualBatch({
         id: `narrate:${aiResult.turn_id ?? aiResult.state_version ?? Date.now()}`,
@@ -596,7 +719,7 @@ export function useGameSession() {
         }],
       }))
       busy.current = false
-      return
+      return { ok: true }
     }
 
     mutate((current) => finishTurn(current, text, aiResult!))
@@ -623,7 +746,8 @@ export function useGameSession() {
         }))
       })
     }
-  }, [commit, finishTurn, mutate, state])
+    return { ok: true }
+  }, [commit, finishTurn, mutate, normalizeCommandError, state])
 
   const rollPendingCheck = useCallback(async () => {
     const check = state.pendingCheck
@@ -667,14 +791,19 @@ export function useGameSession() {
     try {
       aiResult = await narrateWithAgent(state, check.action, player.character, result, undefined, player.id)
     } catch (error) {
+      const normalized = await normalizeCommandError(error)
+      const conflict = isStateVersionConflictError(normalized)
+      if (conflict) setTacticalError(normalized.message)
       mutate((current) => ({
         ...current,
         isNarrating: false,
-        pendingCheck: current.pendingCheck ? { ...current.pendingCheck, status: 'ready' } : null,
+        // Полный refresh при конфликте заменяет оптимистическое состояние.
+        // Возвращаем исходную проверку, чтобы повтор не требовал заново вводить действие.
+        pendingCheck: { ...check, status: 'ready' },
         messages: [...current.messages, {
           id: `${Date.now()}-resolution-error`, speaker: 'system', author: 'Правила игры',
           timestamp: clock(),
-          text: error instanceof Error ? error.message : 'Сервер не смог разрешить проверку.',
+          text: normalized.message,
           turnConsumed: false,
         }],
       }))
@@ -704,7 +833,7 @@ export function useGameSession() {
         players: current.players.map((owner) => owner.id === item.ownerId ? { ...owner, inventory: owner.inventory.map((existing) => existing.id === item.id ? { ...existing, imageStatus: 'failed' } : existing) } : owner),
       })))
     }
-  }, [finishTurn, mutate, state])
+  }, [finishTurn, mutate, normalizeCommandError, state])
 
   const cancelPendingCheck = useCallback(() => {
     actionEpoch.current += 1
@@ -752,14 +881,15 @@ export function useGameSession() {
           idempotency_key: commandId(),
         }),
       })
-      const result = await response.json() as { version?: number; state?: GameState; error?: string }
-      if (!response.ok || !result.state) throw new Error(result.error || 'Не удалось записать голос')
+      const result = await response.json() as { version?: number; state?: GameState; error?: string; code?: string }
+      if (!response.ok) throw await responseCommandError(response, result, 'Не удалось записать голос')
+      if (!result.state) throw new Error('Сервер не вернул состояние после голосования')
       roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
       applyRemote(result.state)
     } catch (error) {
       setDirectorError(error instanceof Error ? error.message : 'Не удалось записать голос')
     }
-  }, [applyRemote])
+  }, [applyRemote, responseCommandError])
 
   const abstainAgentInteraction = useCallback(async (playerId: string) => {
     const current = stateRef.current
@@ -772,14 +902,15 @@ export function useGameSession() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actor_id: playerId, abstain: true, idempotency_key: commandId() }),
       })
-      const result = await response.json() as { version?: number; state?: GameState; error?: string }
-      if (!response.ok || !result.state) throw new Error(result.error || 'Не удалось воздержаться')
+      const result = await response.json() as { version?: number; state?: GameState; error?: string; code?: string }
+      if (!response.ok) throw await responseCommandError(response, result, 'Не удалось воздержаться')
+      if (!result.state) throw new Error('Сервер не вернул состояние после отказа от голоса')
       roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
       applyRemote(result.state)
     } catch (error) {
       setDirectorError(error instanceof Error ? error.message : 'Не удалось воздержаться')
     }
-  }, [applyRemote])
+  }, [applyRemote, responseCommandError])
 
   const rollAgentInteraction = useCallback(async (playerId: string): Promise<DiceRollEvent> => {
     const current = stateRef.current
@@ -790,12 +921,18 @@ export function useGameSession() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ actor_id: playerId, idempotency_key: commandId() }),
     })
-    const result = await response.json() as { version?: number; state?: GameState; roll?: DiceRollEvent; error?: string }
-    if (!response.ok || !result.state || !result.roll) throw new Error(result.error || 'Не удалось выполнить общий бросок')
-    roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
-    applyRemote(result.state)
-    return result.roll
-  }, [applyRemote])
+    const result = await response.json() as { version?: number; state?: GameState; roll?: DiceRollEvent; error?: string; code?: string }
+    try {
+      if (!response.ok) throw await responseCommandError(response, result, 'Не удалось выполнить общий бросок')
+      if (!result.state || !result.roll) throw new Error('Сервер не вернул результат общего броска')
+      roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
+      applyRemote(result.state)
+      return result.roll
+    } catch (error) {
+      setDirectorError(error instanceof Error ? error.message : 'Не удалось выполнить общий бросок')
+      throw error
+    }
+  }, [applyRemote, responseCommandError])
 
   const continueAgentInteraction = useCallback((playerId?: string) => {
     const interaction = state.agentInteraction
@@ -808,7 +945,7 @@ export function useGameSession() {
   // Возвращает исход, а не только пишет его в tacticalError: вызывающему коду
   // (мастеру создания персонажа) нужно отличить отказ сервера от успеха, иначе
   // он закрывает себя и теряет черновик при 400.
-  const executeTacticalCommand = useCallback(async (command: TacticalCommand, message: string): Promise<{ ok: boolean; error?: string }> => {
+  const executeTacticalCommand = useCallback(async (command: TacticalCommand, message: string): Promise<CommandOutcome> => {
     if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
     const current = stateRef.current
     const combatActorId = currentCombatActorId(current)
@@ -828,7 +965,7 @@ export function useGameSession() {
         body: JSON.stringify({ command, idempotency_key: requestId, message }),
       }, 25_000, 'Сервер слишком долго обрабатывает действие. Не повторяйте его сразу: результат мог сохраниться и появиться после синхронизации.')
       const result = await response.json().catch(() => null) as TacticalCommandResult | null
-      if (!response.ok) throw new Error(result?.error || `Сервер отклонил команду (${response.status})`)
+      if (!response.ok) throw await responseCommandError(response, result, `Сервер отклонил команду (${response.status})`)
 
       let authoritative = result?.authoritative_state
       let version = result?.room_version
@@ -857,12 +994,44 @@ export function useGameSession() {
     } catch (error) {
       const text = error instanceof Error ? error.message : 'Не удалось выполнить команду на сервере'
       setTacticalError(text)
-      return { ok: false, error: text }
+      return { ok: false, error: text, ...(isStateVersionConflictError(error) ? { conflict: true } : {}) }
     } finally {
       tacticalBusyRef.current = false
       setTacticalBusy(false)
     }
-  }, [applyRemote])
+  }, [applyRemote, responseCommandError])
+
+  const executeRestCommand = useCallback(async (command: RestCommand, message: string): Promise<CommandOutcome> => {
+    if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
+    const current = stateRef.current
+    const requestId = commandId()
+    tacticalBusyRef.current = true
+    setTacticalBusy(true)
+    setTacticalError(null)
+    try {
+      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
+        body: JSON.stringify({
+          command: { ...command, expected_state_version: current.state_version ?? 0 },
+          message,
+        }),
+      }, 25_000, 'Сервер не успел завершить отдых. Не повторяйте команду: результат мог сохраниться.')
+      const result = await response.json().catch(() => null) as TacticalCommandResult | null
+      if (!response.ok) throw await responseCommandError(response, result, `Сервер отклонил команду отдыха (${response.status})`)
+      if (!result?.authoritative_state) throw new Error(result?.error || 'Сервер не вернул состояние после команды отдыха')
+      if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
+      applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, result, requestId))
+      return { ok: true }
+    } catch (error) {
+      const text = error instanceof Error ? error.message : 'Не удалось выполнить команду отдыха'
+      setTacticalError(text)
+      return { ok: false, error: text, ...(isStateVersionConflictError(error) ? { conflict: true } : {}) }
+    } finally {
+      tacticalBusyRef.current = false
+      setTacticalBusy(false)
+    }
+  }, [applyRemote, responseCommandError])
 
   const executeCharacterBuild = useCallback(async (commands: CharacterBuildCommand[]) => {
     const current = stateRef.current
@@ -881,25 +1050,36 @@ export function useGameSession() {
         }),
       })
       const result = await response.json().catch(() => null) as TacticalCommandResult | null
-      if (!response.ok || !result?.authoritative_state) {
-        throw new Error(result?.error || `Сервер отклонил изменение персонажа (${response.status})`)
-      }
+      if (!response.ok) throw await responseCommandError(response, result, `Сервер отклонил изменение персонажа (${response.status})`)
+      if (!result?.authoritative_state) throw new Error('Сервер не вернул состояние после изменения персонажа')
       if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
       applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, result, requestId))
     } catch (error) {
       setTacticalError(error instanceof Error ? error.message : 'Не удалось сохранить развитие персонажа')
       throw error
     }
-  }, [applyRemote])
+  }, [applyRemote, responseCommandError])
 
   const selectPlayer = useCallback((playerId: string) => commit({ ...state, activePlayerId: playerId }), [commit, state])
 
   const startCombat = useCallback((playerId: string) => {
-    void executeTacticalCommand({ command_type: 'StartCombat', actor_id: playerId }, 'Начать бой')
+    return executeTacticalCommand({ command_type: 'StartCombat', actor_id: playerId }, 'Начать бой')
   }, [executeTacticalCommand])
 
+  const startRest = useCallback((playerId: string, kind: 'short' | 'long') => {
+    return executeRestCommand({ command_type: 'StartRest', actor_id: playerId, kind }, kind === 'long' ? 'Устроить долгий отдых' : 'Начать короткий отдых')
+  }, [executeRestCommand])
+
+  const spendHitPointDie = useCallback((playerId: string) => {
+    return executeRestCommand({ command_type: 'SpendHitPointDie', actor_id: playerId }, 'Потратить одну кость хитов')
+  }, [executeRestCommand])
+
+  const completeRest = useCallback((playerId: string) => {
+    return executeRestCommand({ command_type: 'CompleteRest', actor_id: playerId }, 'Завершить короткий отдых')
+  }, [executeRestCommand])
+
   const movePlayer = useCallback((playerId: string, x: number, y: number) => {
-    void executeTacticalCommand({ command_type: 'MoveActor', actor_id: playerId, to: { x, y } }, `Переместить героя на клетку ${x}, ${y}`)
+    return executeTacticalCommand({ command_type: 'MoveActor', actor_id: playerId, to: { x, y } }, `Переместить героя на клетку ${x}, ${y}`)
   }, [executeTacticalCommand])
 
   /* Слова игрока едут вместе с командой: подтверждение теперь одно на всё —
@@ -907,28 +1087,28 @@ export function useGameSession() {
      тем же запросом, а не отдельной репликой после. */
   const attackEnemy = useCallback((playerId: string, enemyId: string, itemId?: string, knockOut = false, note?: string) => {
     const base = knockOut ? 'Нокаутировать выбранную цель' : 'Атаковать выбранную цель'
-    void executeTacticalCommand({ command_type: 'MakeAttack', actor_id: playerId, target_id: enemyId, ...(itemId ? { item_id: itemId } : {}), ...(knockOut ? { knock_out: true } : {}) } as TacticalCommand, note ? `${base}. ${note}` : base)
+    return executeTacticalCommand({ command_type: 'MakeAttack', actor_id: playerId, target_id: enemyId, ...(itemId ? { item_id: itemId } : {}), ...(knockOut ? { knock_out: true } : {}) } as TacticalCommand, note ? `${base}. ${note}` : base)
   }, [executeTacticalCommand])
 
   const throwAreaItem = useCallback((playerId: string, itemId: string, x: number, y: number, note?: string) => {
     const base = `Бросить предмет в клетку ${x}, ${y}`
-    void executeTacticalCommand({ command_type: 'MakeAreaAttack', actor_id: playerId, item_id: itemId, to: { x, y } }, note ? `${base}. ${note}` : base)
+    return executeTacticalCommand({ command_type: 'MakeAreaAttack', actor_id: playerId, item_id: itemId, to: { x, y } }, note ? `${base}. ${note}` : base)
   }, [executeTacticalCommand])
 
   const castSpell = useCallback((actorId: string, spellId: string, target: ({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean; note?: string }) => {
     const command: TacticalCommand = 'targetId' in target
       ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, target_id: target.targetId, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
       : { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, to: { x: target.x, y: target.y }, ...(target.spellOption ? { spell_option: target.spellOption } : {}) }
-    void executeTacticalCommand(command, target.note ? `Сотворить выбранное заклинание. ${target.note}` : 'Сотворить выбранное заклинание')
+    return executeTacticalCommand(command, target.note ? `Сотворить выбранное заклинание. ${target.note}` : 'Сотворить выбранное заклинание')
   }, [executeTacticalCommand])
 
   const changeWeapon = useCallback((playerId: string, itemId: string) => {
-    void executeTacticalCommand({ command_type: 'ChangeWeapon', actor_id: playerId, item_id: itemId }, 'Сменить оружие')
+    return executeTacticalCommand({ command_type: 'ChangeWeapon', actor_id: playerId, item_id: itemId }, 'Сменить оружие')
   }, [executeTacticalCommand])
 
   const operateDoor = useCallback((playerId: string, doorId: string, intent: 'open' | 'close' | 'force') => {
     const label = intent === 'force' ? 'Выломать дверь' : intent === 'close' ? 'Закрыть дверь' : 'Открыть дверь'
-    void executeTacticalCommand({ command_type: 'OperateDoor', actor_id: playerId, door_id: doorId, intent }, label)
+    return executeTacticalCommand({ command_type: 'OperateDoor', actor_id: playerId, door_id: doorId, intent }, label)
   }, [executeTacticalCommand])
 
   const operateSceneObject = useCallback((actorId: string, propId: string, intent: SceneObjectIntent) => {
@@ -938,7 +1118,7 @@ export function useGameSession() {
       take: 'Взять объект сцены',
       use: 'Использовать объект сцены',
     }
-    void executeTacticalCommand({
+    return executeTacticalCommand({
       command_type: 'OperateSceneObject',
       actor_id: actorId,
       prop_id: propId,
@@ -947,7 +1127,7 @@ export function useGameSession() {
   }, [executeTacticalCommand])
 
   const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => {
-    void executeTacticalCommand({
+    return executeTacticalCommand({
       command_type: 'UseCombatAction', actor_id: actorId, action_id: actionId,
       ...(targetId ? { target_id: targetId } : {}),
       ...(itemId ? { item_id: itemId } : {}),
@@ -957,11 +1137,11 @@ export function useGameSession() {
 
   const finishMapTurn = useCallback(() => {
     const current = stateRef.current
-    void executeTacticalCommand({ command_type: 'EndTurn', actor_id: currentCombatActorId(current) }, 'Завершить ход')
+    return executeTacticalCommand({ command_type: 'EndTurn', actor_id: currentCombatActorId(current) }, 'Завершить ход')
   }, [executeTacticalCommand])
 
   const resolveHeroDeath = useCallback((playerId: string, resolution: 'resurrect' | 'replace', replacementName?: string) => {
-    void executeTacticalCommand({
+    return executeTacticalCommand({
       command_type: 'ResolveHeroDeath',
       actor_id: playerId,
       resolution,
@@ -970,19 +1150,29 @@ export function useGameSession() {
   }, [executeTacticalCommand])
 
   const equipItem = useCallback((playerId: string, itemId: string, equipped: boolean) => {
-    void executeTacticalCommand({ command_type: 'EquipItem', actor_id: playerId, item_id: itemId, equipped }, equipped ? 'Экипировать предмет' : 'Снять предмет')
+    return executeTacticalCommand({ command_type: 'EquipItem', actor_id: playerId, item_id: itemId, equipped }, equipped ? 'Экипировать предмет' : 'Снять предмет')
   }, [executeTacticalCommand])
 
-  const useItem = useCallback((playerId: string, itemId: string, targetId?: string) => {
-    void executeTacticalCommand({ command_type: 'UseItem', actor_id: playerId, item_id: itemId, ...(targetId ? { target_id: targetId } : {}) }, 'Использовать предмет')
+  const useItem = useCallback((playerId: string, itemId: string, targetId?: string, chargesToSpend?: number) => {
+    return executeTacticalCommand({
+      command_type: 'UseItem',
+      actor_id: playerId,
+      item_id: itemId,
+      ...(targetId ? { target_id: targetId } : {}),
+      ...(chargesToSpend == null ? {} : { charges_to_spend: chargesToSpend }),
+    }, 'Использовать предмет')
   }, [executeTacticalCommand])
 
   const transferItem = useCallback((playerId: string, itemId: string, recipientId: string, quantity = 1) => {
-    void executeTacticalCommand({ command_type: 'TransferItem', actor_id: playerId, item_id: itemId, recipient_id: recipientId, quantity }, 'Передать предмет союзнику')
+    return executeTacticalCommand({ command_type: 'TransferItem', actor_id: playerId, item_id: itemId, recipient_id: recipientId, quantity }, 'Передать предмет союзнику')
   }, [executeTacticalCommand])
 
   const attuneItem = useCallback((playerId: string, itemId: string, attuned: boolean) => {
-    void executeTacticalCommand({ command_type: 'AttuneItem', actor_id: playerId, item_id: itemId, attuned }, attuned ? 'Настроиться на предмет' : 'Разорвать настройку')
+    return executeTacticalCommand({ command_type: 'AttuneItem', actor_id: playerId, item_id: itemId, attuned }, attuned ? 'Настроиться на предмет' : 'Разорвать настройку')
+  }, [executeTacticalCommand])
+
+  const activateItem = useCallback((playerId: string, itemId: string, activated: boolean) => {
+    void executeTacticalCommand({ command_type: 'ActivateItem', actor_id: playerId, item_id: itemId, activated }, activated ? 'Зажечь магический клинок' : 'Погасить магический клинок')
   }, [executeTacticalCommand])
 
   const importCharacter = useCallback(async (playerId: string, source: string) => {
@@ -1081,11 +1271,7 @@ export function useGameSession() {
         body: JSON.stringify({ idempotency_key: requestId, command: { ...command, expected_state_version: expectedStateVersion } }),
       })
       const result = await response.json().catch(() => null) as MerchantCommandResult | null
-      if (response.status === 409) {
-        setMerchantView(null)
-        throw new Error('Котировки устарели: кто-то уже изменил деньги или склад. Обновите цены перед новой попыткой.')
-      }
-      if (!response.ok) throw new Error(result?.error || `Торговец отклонил действие (${response.status})`)
+      if (!response.ok) throw await responseCommandError(response, result, `Торговец отклонил действие (${response.status})`)
       if (!result?.authoritative_state) throw new Error('Сервер не вернул итоговое состояние сделки')
       if (!result.merchant_view) throw new Error('Сервер не вернул обновлённые котировки торговца')
       if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
@@ -1101,7 +1287,7 @@ export function useGameSession() {
       merchantBusyRef.current = false
       setMerchantBusy(false)
     }
-  }, [applyRemote, merchantView])
+  }, [applyRemote, merchantView, responseCommandError])
 
   const bargainWithMerchant = useCallback((merchantId: string, actorId: string) => executeMerchantCommand(merchantId, {
     command_type: 'BargainWithMerchant', actor_id: actorId,
@@ -1132,11 +1318,11 @@ export function useGameSession() {
       body: JSON.stringify({ command: { ...command, expected_state_version: current.state_version ?? 0 } }),
     })
     const result = await response.json().catch(() => null) as MerchantLifecycleResult | null
-    if (!response.ok) throw new Error(result?.error || `Сервер отклонил изменение торговца (${response.status})`)
+    if (!response.ok) throw await responseCommandError(response, result, `Сервер отклонил изменение торговца (${response.status})`)
     if (!result?.authoritative_state) throw new Error('Сервер не вернул состояние после изменения торговца')
     if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
     applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, {}, requestId))
-  }, [applyRemote])
+  }, [applyRemote, responseCommandError])
 
   const assembleMerchant = useCallback(async ({ settlementType, theme, budgetCp }: ShopAssemblyOptions) => {
     const current = stateRef.current
@@ -1153,12 +1339,12 @@ export function useGameSession() {
       }),
     })
     const result = await response.json().catch(() => null) as MerchantLifecycleResult | null
-    if (!response.ok) throw new Error(result?.error || `ShopAssembler отклонил запрос (${response.status})`)
+    if (!response.ok) throw await responseCommandError(response, result, `ShopAssembler отклонил запрос (${response.status})`)
     if (!result?.authoritative_state || !result.shop_proposal?.merchant) throw new Error('Сервер не вернул созданного торговца')
     if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
     applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, {}, requestId))
     return result.shop_proposal.merchant
-  }, [applyRemote])
+  }, [applyRemote, responseCommandError])
 
   const assembleEncounter = useCallback(async ({ difficulty, theme }: EncounterAssemblyOptions) => {
     const current = stateRef.current
@@ -1175,12 +1361,12 @@ export function useGameSession() {
       }),
     })
     const result = await response.json().catch(() => null) as EncounterAssemblyResult | null
-    if (!response.ok) throw new Error(result?.error || `EncounterAssembler отклонил запрос (${response.status})`)
+    if (!response.ok) throw await responseCommandError(response, result, `EncounterAssembler отклонил запрос (${response.status})`)
     if (!result?.authoritative_state || !result.encounter_proposal) throw new Error('Сервер не вернул собранное столкновение')
     if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
     applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, result, requestId))
     return result.encounter_proposal
-  }, [applyRemote])
+  }, [applyRemote, responseCommandError])
 
   const moveMerchant = useCallback((merchantId: string, location: string, locationId?: string) => executeMerchantLifecycleCommand({
     command_type: 'MoveMerchant', merchant_id: merchantId, location, ...(locationId ? { location_id: locationId } : {}),
@@ -1203,8 +1389,9 @@ export function useGameSession() {
         headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
         body: JSON.stringify({ idempotency_key: requestId, player_action: 'Продолжить приключение' }),
       })
-      const result = await response.json().catch(() => null) as { state?: GameState; state_version?: number; intent?: { type?: string }; error?: string } | null
-      if (!response.ok || !result?.state) throw new Error(result?.error || `Director не смог продолжить приключение (${response.status})`)
+      const result = await response.json().catch(() => null) as { state?: GameState; state_version?: number; intent?: { type?: string }; error?: string; code?: string } | null
+      if (!response.ok) throw await responseCommandError(response, result, `Director не смог продолжить приключение (${response.status})`)
+      if (!result?.state) throw new Error('Director не вернул состояние кампании')
       applyRemote(result.state)
       return result.intent ?? null
     } catch (error) {
@@ -1215,7 +1402,7 @@ export function useGameSession() {
       directorBusyRef.current = false
       setDirectorBusy(false)
     }
-  }, [applyRemote])
+  }, [applyRemote, responseCommandError])
 
   // Раньше сюда подставлялся демо-мир целиком: реальная кампания получала
   // «Затопленный архив», чужого стража и три вымышленные реплики. Теперь это
@@ -1289,6 +1476,7 @@ export function useGameSession() {
 
   return {
     state,
+    narrationPreview,
     connectionState,
     tacticalBusy,
     tacticalError,
@@ -1310,6 +1498,9 @@ export function useGameSession() {
     continueAgentInteraction,
     selectPlayer,
     startCombat,
+    startRest,
+    spendHitPointDie,
+    completeRest,
     movePlayer,
     attackEnemy,
     throwAreaItem,
@@ -1324,6 +1515,7 @@ export function useGameSession() {
     useItem,
     transferItem,
     attuneItem,
+    activateItem,
     importCharacter,
     levelUpCharacter,
     switchCampaign,

@@ -217,6 +217,64 @@ test('активная трудная область штрихуется дин
   assert.equal(hiddenContext.ops.some((item) => item.op === 'fillRect'), false)
 })
 
+test('длящаяся область показывает собственный контур, владельца и концентрацию', () => {
+  const map = decoded(sampleMap())
+  const context = recordingContext()
+  const scene = { map, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+
+  render.drawLingeringSpellEffects(context, scene, [{
+    id: 'spell:web:hero',
+    spellId: 'web',
+    center: { x: 1, y: 1 },
+    radiusFeet: 5,
+    sourceActor: 'hero',
+    ownerLabel: 'Ада',
+    concentration: true,
+    difficultTerrain: true,
+  }])
+
+  assert.ok(context.ops.some((item) => item.op === 'fillRect' && item.value === 'rgba(122,106,142,.16)'),
+    'паутина не получила собственную спокойную палитру')
+  assert.ok(context.ops.some((item) => item.op === 'stroke' && item.value === 'rgba(203,184,221,.78)'),
+    'внешний контур области не нарисован')
+  assert.ok(context.ops.some((item) => item.op === 'fillText' && item.text === 'ПАУТИНА · К'),
+    'концентрация не отмечена рядом с названием зоны')
+  assert.ok(context.ops.some((item) => item.op === 'fillText' && item.text === 'Источник: Ада'),
+    'владелец эффекта не показан')
+  assert.ok(context.ops.some((item) => item.op === 'fillRect' && item.value === 'rgba(103,73,44,.22)'),
+    'трудная местность внутри области должна сохранить штриховку')
+})
+
+test('геометрия длящейся области берётся из areaCells и ограничивается картой', () => {
+  const map = decoded(sampleMap())
+  const cells = render.boardAreaEffectCells({
+    center: { x: 0, y: 0 },
+    radiusFeet: 5,
+    areaShape: 'sphere',
+  }, map)
+  assert.deepEqual(cells, [
+    { x: 0, y: 0 }, { x: 1, y: 0 },
+    { x: 0, y: 1 }, { x: 1, y: 1 },
+  ])
+  assert.deepEqual(
+    render.boardAreaEffectCells({ cells: [{ x: 3, y: 2 }] }, map),
+    [{ x: 3, y: 2 }],
+    'явные клетки стены/линии важнее восстановленной геометрии',
+  )
+})
+
+test('ступень высоты подписана прямо на раскрытой клетке', () => {
+  const map = sampleMap()
+  setCell(map, 4, 0, { elevation: 5, revealed: true })
+  const context = recordingContext()
+  render.drawCellFeatures(context, {
+    map: decoded(map),
+    palette: render.DEFAULT_BOARD_PALETTE,
+    cellSize: 32,
+  }, { tileX: 0, tileY: 0 })
+  assert.ok(context.ops.some((item) => item.op === 'fillText' && item.text === '+5 фт'))
+})
+
 test('канонизация ребра на клиенте совпадает с серверной', () => {
   const pairs = [[1, 1, 2, 1], [2, 1, 1, 1], [1, 1, 1, 2], [1, 2, 1, 1], [0, 0, 0, 1], [3, 3, 4, 3]]
   for (const [ax, ay, bx, by] of pairs) {

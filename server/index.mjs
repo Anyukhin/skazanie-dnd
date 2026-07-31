@@ -36,10 +36,12 @@ import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrat
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
+import { CampaignNarrationStream } from './narration-stream.mjs'
 import { CreativeDirector } from './creative-director.mjs'
 import { combatNarration as tacticalNarration } from './combat-narration.mjs'
 import { NpcControllerAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
+import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
@@ -69,6 +71,7 @@ import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer }
 import { compactStateForTransport } from './reveal-transport.mjs'
 import { isPartySummon } from './combat-spells.mjs'
 import { assertCampaignPlayable, lifecycleEventForAction } from './campaign-lifecycle.mjs'
+import { campaignRewindEvent, planCampaignControl } from './campaign-controls.mjs'
 import {
   assertDirectorTransitionResult,
   buildDirectorTransitionCommands,
@@ -86,6 +89,11 @@ import {
 } from './party-decision.mjs'
 import { compareProjection } from './projection-integrity.mjs'
 import { characterCreationCatalog, createCharacterSlot } from './character-lifecycle.mjs'
+import {
+  NPC_PORTRAIT_GENERATION_LIMIT,
+  NpcPortraitService,
+  visibleNpcPortraitProfile,
+} from './npc-portraits.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -110,20 +118,31 @@ const dailyTokenLimit = Number(process.env.DND_AI_DAILY_TOKEN_LIMIT || 2_000_000
 const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
+const usageLedger = new DurableUsageLedger({
+  storageFile: join(storageDir, 'engine', 'llm-usage.json'),
+  dailyTokenLimit,
+})
+const npcPortraitService = new NpcPortraitService({
+  storageDir,
+  imageModel,
+  apiKey,
+  baseUrl,
+  usageLedger,
+})
 const campaignStreams = new Map()
 const campaignTyping = new Map()
 const campaignEconomyJobs = new Map()
 const TYPING_TTL_MS = 4_000
 let campaignStreamSequence = 0
+const campaignNarrationStream = new CampaignNarrationStream({
+  connectionsFor: (campaignId) => streamConnections(campaignId).values(),
+  write: (connection, event, payload) => writeCampaignStream(connection, event, payload),
+})
 
 const diceService = new DiceService()
 const rollRegistry = new RollRegistry({
   diceService,
   storageFile: join(storageDir, 'engine', 'roll-registry.json'),
-})
-const usageLedger = new DurableUsageLedger({
-  storageFile: join(storageDir, 'engine', 'llm-usage.json'),
-  dailyTokenLimit,
 })
 const llmClient = new FallbackLLMClient({
   clients: [model, ...fallbackModels].map((modelId) => new MeteredLLMClient({
@@ -235,9 +254,10 @@ function canUseHero(user, heroId, campaignId) {
 
 const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
 const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'OperateSceneObject', 'EndTurn', 'ResolveHeroDeath'])
+const PLAYER_REST_COMMANDS = new Set(['StartRest', 'SpendHitPointDie', 'CompleteRest'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
-const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
+const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem'])
 const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
@@ -265,6 +285,90 @@ function merchantCommandFingerprint(command) {
     ...(type === 'PurchaseMerchantService' ? { service_id: String(command?.service_id ?? '') } : {}),
   }
   return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+function itemCommandFingerprint(command) {
+  const type = commandType(command)
+  const semantic = {
+    type,
+    actor_id: String(command?.actor_id ?? ''),
+    item_id: String(command?.item_id ?? ''),
+    ...(type === 'EquipItem' ? { equipped: command?.equipped !== false } : {}),
+    ...(type === 'AttuneItem' ? { attuned: command?.attuned !== false } : {}),
+    ...(type === 'ActivateItem' ? { activated: command?.activated === true } : {}),
+    ...(type === 'UseItem' ? {
+      target_id: String(command?.target_id ?? command?.actor_id ?? ''),
+      charges_to_spend: Number(command?.charges_to_spend ?? 0),
+    } : {}),
+    ...(type === 'TransferItem' ? {
+      recipient_id: String(command?.recipient_id ?? ''),
+      quantity: Number(command?.quantity ?? 1),
+    } : {}),
+  }
+  return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+function restCommandFingerprint(command) {
+  const type = commandType(command)
+  return createHash('sha256').update(JSON.stringify({
+    type,
+    actor_id: String(command?.actor_id ?? ''),
+    ...(type === 'StartRest' ? { kind: command?.kind === 'long' ? 'long' : 'short' } : {}),
+    ...(type !== 'StartRest' ? { rest_id: String(command?.rest_id ?? '') } : {}),
+  })).digest('hex')
+}
+
+const REST_PRIMARY_EVENT_TYPES = new Set(['RestStarted', 'HitPointDieSpent', 'RestCompleted'])
+
+async function assertRestIdempotency(campaignId, idempotencyKey, command) {
+  const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+  if (!duplicate) return
+  const primaryEvents = (duplicate.events ?? [])
+    .filter((event) => REST_PRIMARY_EVENT_TYPES.has(event.event_type))
+  if (commandType(command) !== 'StartRest' && !command.rest_id) {
+    const restIds = new Set(primaryEvents.map((event) => event.payload?.rest_id).filter(Boolean).map(String))
+    if (restIds.size === 1) {
+      command.rest_id = [...restIds][0]
+      command.request_fingerprint = restCommandFingerprint(command)
+    }
+  }
+  const fingerprints = new Set(primaryEvents
+    .map((event) => event.payload?.request_fingerprint)
+    .filter(Boolean)
+    .map(String))
+  if (fingerprints.size !== 1 || !fingerprints.has(restCommandFingerprint(command))) {
+    throw commandPolicyError('Этот ключ идемпотентности уже использован для другого действия отдыха', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+function assertRestResultFingerprint(result, command) {
+  const expected = restCommandFingerprint(command)
+  const event = (result?.mechanics ?? []).find((candidate) => REST_PRIMARY_EVENT_TYPES.has(candidate?.event_type))
+  if (!event || String(event.payload?.request_fingerprint ?? '') !== expected) {
+    throw commandPolicyError('Результат отдыха не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+const ITEM_PRIMARY_EVENT_TYPES = new Set(['ItemEquipped', 'ItemUnequipped', 'ItemTransferred', 'ItemAttunementChanged', 'ItemUsed', 'MagicItemActivationChanged'])
+
+async function assertItemIdempotency(campaignId, idempotencyKey, command) {
+  const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+  if (!duplicate) return
+  const fingerprints = new Set((duplicate.events ?? [])
+    .filter((event) => ITEM_PRIMARY_EVENT_TYPES.has(event.event_type))
+    .map((event) => event.payload?.request_fingerprint)
+    .filter(Boolean)
+    .map(String))
+  if (fingerprints.size !== 1 || !fingerprints.has(itemCommandFingerprint(command))) {
+    throw commandPolicyError('Этот ключ идемпотентности уже использован для другого действия с предметом', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+function assertItemResultFingerprint(result, command) {
+  const event = (result?.mechanics ?? []).find((candidate) => ITEM_PRIMARY_EVENT_TYPES.has(candidate?.event_type))
+  if (!event || String(event.payload?.request_fingerprint ?? '') !== itemCommandFingerprint(command)) {
+    throw commandPolicyError('Результат действия с предметом не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
+  }
 }
 
 function characterBuildFingerprint(command) {
@@ -634,6 +738,66 @@ function sanitizePlayerCombatCommand(user, state, input) {
   return base
 }
 
+function sanitizePlayerRestCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_REST_COMMANDS.has(type)) throw commandPolicyError('Команда не относится к отдыху', 'PLAYER_COMMAND_FORBIDDEN')
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'expected_state_version', 'expectedStateVersion',
+    ...(type === 'StartRest' ? ['kind'] : []),
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда отдыха содержит запрещённые поля: ${unexpected.join(', ')}`, 'REST_COMMAND_UNKNOWN_FIELD')
+  }
+  if (type === 'StartRest' && Object.hasOwn(input ?? {}, 'kind') && !['short', 'long'].includes(input.kind)) {
+    throw commandPolicyError('Вид отдыха должен быть short или long', 'REST_KIND_INVALID')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Отдыхать можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  }
+  if (!(state.players ?? []).some((candidate) => String(candidate.id) === actor)) {
+    throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const command = {
+    command_type: type,
+    actor_id: actor,
+    ...(type === 'StartRest' ? { kind: input?.kind === 'long' ? 'long' : 'short' } : {}),
+    ...(type !== 'StartRest' && state.mechanics?.resting?.[actor]?.rest_id
+      ? { rest_id: String(state.mechanics.resting[actor].rest_id) }
+      : {}),
+    ...(expected == null ? {} : { expected_state_version: expected }),
+    server_authoritative: true,
+  }
+  return { ...command, request_fingerprint: restCommandFingerprint(command) }
+}
+
+function expandPlayerRestCommand(command) {
+  if (commandType(command) !== 'StartRest') return [command]
+  const duration = command.kind === 'long' ? 480 : 60
+  const fingerprint = command.request_fingerprint
+  return [
+    command,
+    {
+      command_type: 'AdvanceTime',
+      amount: duration,
+      unit: 'minute',
+      server_authoritative: true,
+      request_fingerprint: fingerprint,
+    },
+    ...(command.kind === 'long' ? [{
+      command_type: 'CompleteRest',
+      actor_id: command.actor_id,
+      kind: 'long',
+      server_authoritative: true,
+      request_fingerprint: fingerprint,
+    }] : []),
+  ]
+}
+
 function sanitizePlayerCharacterCommand(user, state, input) {
   const type = commandType(input)
   if (!PLAYER_CHARACTER_COMMANDS.has(type) && !PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) {
@@ -691,6 +855,20 @@ function sanitizePlayerItemCommand(user, state, input) {
   if (!PLAYER_ITEM_COMMANDS.has(type)) {
     throw commandPolicyError('Команда не относится к действиям с предметами', 'PLAYER_COMMAND_FORBIDDEN')
   }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'item_id', 'itemId',
+    'target_id', 'targetId',
+    'recipient_id', 'recipientId',
+    'quantity', 'equipped', 'attuned', 'activated',
+    'expected_state_version', 'expectedStateVersion',
+    'charges_to_spend', 'chargesToSpend',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда предмета содержит запрещённые поля: ${unexpected.join(', ')}`, 'ITEM_COMMAND_UNKNOWN_FIELD')
+  }
   const actor = String(input?.actor_id ?? input?.actorId ?? '')
   if (!actor || !canUseHero(user, actor, state.sessionCode)) {
     throw commandPolicyError('Действовать с предметами можно только от имени своего героя', 'ACTOR_FORBIDDEN')
@@ -698,9 +876,7 @@ function sanitizePlayerItemCommand(user, state, input) {
   const owner = (state.players ?? []).find((candidate) => String(candidate.id) === actor)
   if (!owner) throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
   const itemId = String(input?.item_id ?? input?.itemId ?? '').trim().slice(0, 120)
-  if (!itemId || !(owner.inventory ?? []).some((item) => String(item.id) === itemId)) {
-    throw commandPolicyError('Предмет не найден у героя', 'ITEM_NOT_FOUND')
-  }
+  if (!itemId) throw commandPolicyError('Предмет не найден у героя', 'ITEM_NOT_FOUND')
   const expected = input?.expected_state_version ?? input?.expectedStateVersion
   const base = {
     command_type: type,
@@ -708,18 +884,31 @@ function sanitizePlayerItemCommand(user, state, input) {
     item_id: itemId,
     ...(expected == null ? {} : { expected_state_version: expected }),
   }
-  if (type === 'EquipItem') return { ...base, equipped: input?.equipped !== false }
-  if (type === 'AttuneItem') return { ...base, attuned: input?.attuned !== false }
+  const withFingerprint = (command) => ({ ...command, request_fingerprint: itemCommandFingerprint(command) })
+  if (type === 'EquipItem') return withFingerprint({ ...base, equipped: input?.equipped !== false })
+  if (type === 'AttuneItem') return withFingerprint({ ...base, attuned: input?.attuned !== false })
+  if (type === 'ActivateItem') {
+    if (typeof input?.activated !== 'boolean') {
+      throw commandPolicyError('Нужно явно выбрать включение или выключение предмета', 'INVALID_ITEM_ACTIVATION')
+    }
+    return withFingerprint({ ...base, activated: input.activated, server_authoritative: true })
+  }
   if (type === 'UseItem') {
     const targetId = String(input?.target_id ?? input?.targetId ?? actor).trim().slice(0, 120)
-    return { ...base, target_id: targetId || actor, server_authoritative: true }
+    const requestedCharges = input?.charges_to_spend ?? input?.chargesToSpend
+    return withFingerprint({
+      ...base,
+      target_id: targetId || actor,
+      ...(requestedCharges == null ? {} : { charges_to_spend: Number(requestedCharges) }),
+      server_authoritative: true,
+    })
   }
   const recipientId = String(input?.recipient_id ?? input?.recipientId ?? input?.target_id ?? input?.targetId ?? '').trim().slice(0, 120)
-  return {
+  return withFingerprint({
     ...base,
     recipient_id: recipientId,
     quantity: Number(input?.quantity ?? 1),
-  }
+  })
 }
 
 function sanitizeMerchantCommand(user, state, input, routeMerchantId = null) {
@@ -875,6 +1064,41 @@ function canAccessRoom(user, room) {
   return (user.heroIds ?? []).some((id) => memberIds.includes(String(id)))
 }
 
+function explicitNarrationNpcId(state, user, playerId, rawNpcId) {
+  if (rawNpcId == null || rawNpcId === '') return ''
+  if (typeof rawNpcId !== 'string') {
+    throw commandPolicyError('npc_id должен быть строковым идентификатором', 'NPC_ID_INVALID')
+  }
+  const npcId = rawNpcId.trim()
+  if (!npcId || npcId.length > 120 || !/^[A-Za-z0-9._:-]+$/u.test(npcId)) {
+    throw commandPolicyError('npc_id должен содержать от 1 до 120 безопасных символов', 'NPC_ID_INVALID')
+  }
+  const social = ensureNpcSocialState(state.social, state)
+  const visibleSocial = npcSocialForViewer(social, {
+    playerId,
+    isAdmin: user?.role === 'admin',
+    isPartyMember: true,
+    state,
+  })
+  if (!visibleSocial.npcs.some((npc) => String(npc.id) === npcId)) {
+    throw commandPolicyError('Выбранный собеседник не виден этому игроку', 'NPC_NOT_VISIBLE')
+  }
+  const persisted = social.npcs.find((npc) => String(npc.id) === npcId)
+  const profile = persisted ? npcProfileAtWorldTime(persisted, state) : null
+  if (!profile || profile.available === false) {
+    throw commandPolicyError('Выбранный собеседник сейчас недоступен', 'NPC_UNAVAILABLE')
+  }
+  if (state.mechanics?.combat?.active) {
+    throw commandPolicyError('Развёрнутый разговор недоступен во время боя', 'NPC_SOCIAL_BLOCKED_IN_COMBAT')
+  }
+  const sceneLocation = String(state.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  const npcLocation = String(profile.location ?? '').trim().toLocaleLowerCase('ru')
+  if (sceneLocation && npcLocation && sceneLocation !== npcLocation) {
+    throw commandPolicyError('Выбранный собеседник находится в другой локации', 'NPC_WRONG_LOCATION')
+  }
+  return npcId
+}
+
 function streamConnections(campaignId) {
   const normalized = String(campaignId || '').toUpperCase()
   if (!campaignStreams.has(normalized)) campaignStreams.set(normalized, new Map())
@@ -958,6 +1182,12 @@ function viewerStateFor(state, user, actorId) {
   return withCombatForecast(campaignStateForViewer(state, user, actorId), state, actorId)
 }
 
+function ownedViewerActorId(state, user, campaignId) {
+  return campaignHeroIds(user, campaignId)
+    .map(String)
+    .find((id) => state?.players?.some((player) => String(player.id) === id)) ?? ''
+}
+
 function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
   const connections = streamConnections(campaignId)
@@ -997,11 +1227,11 @@ function typingActorIdsForCampaign(campaignId) {
 }
 
 function writeCampaignStream(connection, event, payload) {
-  if (connection.closed || connection.res.destroyed) return false
-  connection.res.write(`id: ${++campaignStreamSequence}\n`)
-  connection.res.write(`event: ${event}\n`)
-  connection.res.write(`data: ${JSON.stringify(payload)}\n\n`)
-  return true
+  if (connection.closed || connection.res.destroyed) return null
+  const frame = `id: ${++campaignStreamSequence}\nevent: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
+  const ready = connection.res.write(frame)
+  if (!ready) connection.narrationBackpressured = true
+  return ready
 }
 
 function broadcastCampaignTyping(campaignId) {
@@ -1030,7 +1260,10 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
       updatedAt: room.updatedAt,
       state: compacted.state,
     })
-    if (written) connection.mapHash = compacted.hash
+    // `ServerResponse.write()` возвращает false уже после постановки кадра в
+    // очередь. Хеш можно продвинуть даже при backpressure: этот room-кадр не
+    // потерян и будет записан Node после `drain`.
+    if (written !== null) connection.mapHash = compacted.hash
   }
 }
 
@@ -1351,6 +1584,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     const merchantInventoryChanged = eventTypes.has('MerchantPurchaseCompleted')
       || eventTypes.has('MerchantSaleCompleted')
       || eventTypes.has('MerchantServicePurchased')
+      || eventTypes.has('EncounterRewardsDistributed')
     const characterImported = eventTypes.has('CharacterImported')
     const refreshInventory = forceProjectorRefresh || merchantInventoryChanged || [
       'ItemGranted',
@@ -1358,8 +1592,12 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       'ItemUnequipped',
       'ItemUsed',
       'ItemConsumed',
+      'ItemChargesSpent',
+      'ItemDestroyed',
+      'ItemDawnRechargeResolved',
       'ItemTransferred',
       'ItemAttunementChanged',
+      'MagicItemActivationChanged',
     ].some((type) => eventTypes.has(type)) || characterImported
     const characterBuildChanged = eventTypes.has('CharacterChoicesUpdated') || eventTypes.has('SpellSelectionsUpdated')
       || eventTypes.has('CharacterLeveledUp') || eventTypes.has('CharacterImported')
@@ -1372,6 +1610,13 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
         hp: authoritative.hp,
         ...(forceProjectorRefresh || eventTypes.has('ExperienceAwarded') ? { experience: authoritative.experience } : {}),
         ...(refreshInventory ? { inventory: authoritative.inventory } : {}),
+        ...(refreshInventory ? {
+          armor: authoritative.armor,
+          speed: authoritative.speed,
+          proficiency: authoritative.proficiency,
+          characterSheet: authoritative.characterSheet,
+          inventoryLoad: authoritative.inventoryLoad,
+        } : {}),
         ...(forceProjectorRefresh || merchantInventoryChanged || characterImported ? { currency: authoritative.currency } : {}),
         ...(forceProjectorRefresh || characterBuildChanged ? {
           level: authoritative.level,
@@ -1706,6 +1951,38 @@ function serveGenerated(req, res) {
   createReadStream(file).pipe(res)
 }
 
+function serveNpcPortrait(req, res, portrait) {
+  if (portrait.kind === 'static') {
+    res.writeHead(302, {
+      Location: portrait.url,
+      'Cache-Control': 'private, no-store',
+      Vary: 'Cookie',
+      'X-NPC-Portrait-Source': portrait.source,
+      'X-NPC-Portrait-Role': portrait.role,
+      'X-NPC-Portrait-Reason': portrait.reason,
+    })
+    return res.end()
+  }
+  const validators = {
+    ETag: portrait.etag,
+    'Cache-Control': 'private, max-age=3600',
+    Vary: 'Cookie',
+    'X-NPC-Portrait-Source': portrait.source,
+    'X-NPC-Portrait-Cache': portrait.cacheHit ? 'hit' : 'miss',
+  }
+  if (String(req.headers['if-none-match'] || '') === portrait.etag) {
+    res.writeHead(304, validators)
+    return res.end()
+  }
+  const stats = statSync(portrait.filePath)
+  res.writeHead(200, {
+    ...validators,
+    'Content-Type': portrait.contentType,
+    'Content-Length': stats.size,
+  })
+  return createReadStream(portrait.filePath).pipe(res)
+}
+
 const server = createServer((req, res) => {
   const requestPath = new URL(req.url || '/', 'http://skazanie.local').pathname
   const campaignPathMatch = requestPath.match(/^\/api\/(?:campaigns|rooms)\/([A-Za-z0-9-]+)/)
@@ -1784,6 +2061,41 @@ const server = createServer((req, res) => {
   }
 
   const parsedUrl = new URL(req.url || '/', 'http://skazanie.local')
+  const npcPortraitMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/npcs\/([^/]+)\/portrait$/)
+  if (npcPortraitMatch && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = npcPortraitMatch[1].toUpperCase()
+    let npcId = ''
+    try { npcId = decodeURIComponent(npcPortraitMatch[2]) }
+    catch { return json(res, 400, { error: 'Некорректный npc_id', code: 'INVALID_NPC_ID' }) }
+    if (!npcId || npcId.length > 120) return json(res, 400, { error: 'Некорректный npc_id', code: 'INVALID_NPC_ID' })
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    try {
+      const authoritative = await latestCampaignState(campaignId, room.state)
+      const actorId = campaignHeroIds(user, campaignId).map(String)
+        .find((id) => authoritative.players?.some((player) => String(player.id) === id)) ?? ''
+      const projected = viewerStateFor(authoritative, user, actorId)
+      const profile = visibleNpcPortraitProfile(projected, npcId)
+      if (!profile) return json(res, 404, { error: 'NPC не найден', code: 'NPC_NOT_VISIBLE' })
+      const portrait = await npcPortraitService.resolve({
+        campaignId,
+        profile,
+        projectedState: projected,
+        allowGeneration: () => !exceedsRate(`npc-portrait:${user.id}`, NPC_PORTRAIT_GENERATION_LIMIT),
+      })
+      if (portrait.kind === 'rate_limited') {
+        return json(res, 429, {
+          error: 'Слишком много запросов генерации портретов. Подождите немного и повторите попытку',
+          code: 'NPC_PORTRAIT_RATE_LIMITED',
+        })
+      }
+      return serveNpcPortrait(req, res, portrait)
+    } catch {
+      return json(res, 502, { error: 'Не удалось подготовить портрет NPC', code: 'NPC_PORTRAIT_FAILED' })
+    }
+  }
   const campaignTypingMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/presence\/typing$/)
   if (campaignTypingMatch && req.method === 'PUT') {
     const user = requireUser(req, res); if (!user) return
@@ -1825,8 +2137,21 @@ const server = createServer((req, res) => {
     // Администратор ведёт весь отряд, но за его аккаунтом герои не закреплены,
     // поэтому heroIds пуст и присутствие показывало «0 в сети».
     const controlsParty = user?.role === 'admin'
-    const connection = { id: connectionId, userId: String(user.id), user, heroIds, actorId, controlsParty, res, closed: false, mapHash: '' }
+    const connection = {
+      id: connectionId,
+      userId: String(user.id),
+      user,
+      heroIds,
+      actorId,
+      controlsParty,
+      res,
+      closed: false,
+      mapHash: '',
+      narrationBackpressured: false,
+    }
     streamConnections(campaignId).set(connectionId, connection)
+    const drain = () => campaignNarrationStream.drain(connection)
+    res.on('drain', drain)
     const heartbeat = setInterval(() => {
       if (!connection.closed && !res.destroyed) res.write(`: heartbeat ${Date.now()}\n\n`)
     }, 20_000)
@@ -1834,6 +2159,7 @@ const server = createServer((req, res) => {
       if (connection.closed) return
       connection.closed = true
       clearInterval(heartbeat)
+      res.off('drain', drain)
       streamConnections(campaignId).delete(connectionId)
       queueMicrotask(() => {
         void reconcilePartyDecisionPresence(campaignId)
@@ -1843,6 +2169,9 @@ const server = createServer((req, res) => {
     }
     req.once('close', close)
     req.once('aborted', close)
+    // При переподключении достаточно последнего полного снимка каждого
+    // незавершённого текста; сырьевые дельты и механика здесь не хранятся.
+    campaignNarrationStream.replay(campaignId, connection)
     broadcastCampaignRoom(campaignId)
     return
   }
@@ -2132,8 +2461,7 @@ const server = createServer((req, res) => {
         : room.state.players.map((hero) => String(hero.id))
       const assigned = new Set(listCampaignMemberships(campaignId).flatMap((item) => item.heroIds ?? []).map(String))
       const requested = Array.isArray(body.hero_ids) ? [...new Set(body.hero_ids.map(String))] : []
-      if (requested.length > 1) return json(res, 400, { error: 'Одна ссылка закрепляет ровно одно место героя' })
-      const heroIds = requested.length ? requested : partyIds.filter((heroId) => !assigned.has(heroId)).slice(0, 1)
+      const heroIds = requested.length ? requested : partyIds.filter((heroId) => !assigned.has(heroId))
       if (!heroIds.length) return json(res, 409, { error: 'В кампании не осталось свободных героев' })
       if (heroIds.some((heroId) => !partyIds.includes(heroId) || assigned.has(heroId))) {
         return json(res, 409, { error: 'Приглашение содержит недоступного или уже назначенного героя' })
@@ -2143,6 +2471,7 @@ const server = createServer((req, res) => {
         createdBy: user.id,
         heroIds,
         expiresInMs: body.expires_in_ms,
+        multiUse: true,
       })
       return json(res, 201, {
         campaign_id: campaignId,
@@ -2172,7 +2501,74 @@ const server = createServer((req, res) => {
       }
       const updated = userForToken(cookies(req).skazanie_session) ?? user
       return json(res, 200, { code: campaignId, hero_ids: redeemed.membership.heroIds, user: updated, duplicate: redeemed.duplicate })
-    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось присоединиться к кампании' }) }
+    } catch (error) {
+      const status = error?.code === 'CAMPAIGN_FULL' ? 409 : 400
+      return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось присоединиться к кампании' })
+    }
+  }
+
+  const campaignControlMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/controls$/)
+  if (campaignControlMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignControlMatch[1].toUpperCase()
+    try {
+      const room = getRoom(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      const membership = campaignMembershipFor(user.id, campaignId)
+      if (user.role !== 'admin' && membership?.role !== 'owner') {
+        return json(res, 403, { error: 'Откатывать ход или сцену может только владелец кампании' })
+      }
+      const body = await readBody(req)
+      const action = String(body.action ?? '').trim()
+      const idempotencyKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').trim().slice(0, 200)
+      if (!idempotencyKey) return json(res, 400, { error: 'Нужен idempotency_key', code: 'IDEMPOTENCY_KEY_REQUIRED' })
+      let committed = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+      const committedAction = String(committed?.events?.[0]?.payload?.action ?? '').trim()
+      if (committed && committedAction !== action) {
+        const error = new Error('Этот idempotency_key уже использован для другого действия кампании')
+        error.code = 'IDEMPOTENCY_CONFLICT'
+        throw error
+      }
+      if (!committed) {
+        const loaded = await eventStore.load(campaignId)
+        const events = await eventStore.getEvents(campaignId, { upToVersion: loaded.state_version })
+        const plan = planCampaignControl({ action, events, currentVersion: loaded.state_version })
+        const target = await eventStore.load(campaignId, { atVersion: plan.targetVersion })
+        const rewindEvent = campaignRewindEvent({
+          action,
+          targetState: target.state,
+          currentState: loaded.state,
+          targetVersion: plan.targetVersion,
+          actorId: user.id,
+        })
+        rewindEvent.event_id = `campaign-control:${createHash('sha256').update(`${campaignId}\0${idempotencyKey}`).digest('hex').slice(0, 24)}`
+        committed = await eventStore.commit({
+          campaignId,
+          expectedStateVersion: loaded.state_version,
+          idempotencyKey,
+          commandId: `campaign-control:${idempotencyKey}`,
+          events: [rewindEvent],
+          forceSnapshot: true,
+        })
+      }
+      const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events, null, { forceProjectorRefresh: true })
+      const responseState = projected?.state ?? committed.state
+      const actorId = campaignHeroIds(user, campaignId).find((id) => responseState.players?.some((player) => String(player.id) === String(id))) ?? ''
+      return json(res, 200, {
+        campaign_id: campaignId,
+        action,
+        target_version: committed.events[0]?.payload?.target_version ?? null,
+        duplicate: committed.duplicate,
+        version: projected?.version ?? room.version,
+        state: viewerStateFor(responseState, user, actorId),
+      })
+    } catch (error) {
+      const status = ['NOTHING_TO_REWIND', 'NOTHING_TO_REPLAY', 'STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code) ? 409 : 400
+      return json(res, status, {
+        error: error instanceof Error ? error.message : 'Не удалось изменить состояние кампании',
+        code: error?.code,
+      })
+    }
   }
 
   const campaignLifecycleMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/lifecycle$/)
@@ -2288,15 +2684,17 @@ const server = createServer((req, res) => {
       const duplicate = await eventStore.getByIdempotencyKey(campaignId, `${key}:intent`)
       if (duplicate) {
         const current = await autonomousCampaign.load(campaignId)
-        return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: viewerStateFor(current.state, user, current.state.activePlayerId) })
+        return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: viewerStateFor(current.state, user, ownedViewerActorId(current.state, user, campaignId)) })
       }
       let loaded = await autonomousCampaign.load(campaignId)
       assertCampaignPlayable(loaded.state)
       const encounter = loaded.state.mechanics?.encounter
-      const outcomeRecorded = encounter?.id && (loaded.state.autonomy?.encounter_outcomes ?? []).some((entry) => entry.encounter_id === encounter.id)
+      const rewardFinalized = encounter?.id
+        ? await eventStore.getByIdempotencyKey(campaignId, `encounter-completion:${encounter.id}:transition`)
+        : null
       const events = []
       let reward = null
-      if (encounter?.status === 'ended' && !outcomeRecorded) {
+      if (encounter?.status === 'ended' && !rewardFinalized) {
         const completion = await autonomousCampaign.completeEncounter({ campaignId, outcome: encounter.outcome || 'enemies_defeated', idempotencyKey: `${key}:completion` })
         events.push(...(completion.events ?? []))
         reward = completion.reward
@@ -2323,7 +2721,7 @@ const server = createServer((req, res) => {
       return json(res, 200, {
         intent: result.intent, director_trace: decision.trace, reward,
         state_version: authoritative.state_version, admin_commands: 0,
-        state: viewerStateFor(authoritative.state, user, authoritative.state.activePlayerId),
+        state: viewerStateFor(authoritative.state, user, ownedViewerActorId(authoritative.state, user, campaignId)),
       })
     } catch (error) {
       return json(res, error?.code === 'DIRECTOR_INTENT_NOT_ALLOWED' || error?.code === 'DIRECTOR_MECHANICS_FORBIDDEN' ? 400 : 409, { error: error instanceof Error ? error.message : 'Director не смог продолжить приключение', code: error?.code })
@@ -2627,14 +3025,21 @@ const server = createServer((req, res) => {
       let commands = Array.isArray(body.commands) ? body.commands : body.command ? [body.command] : []
       if (!commands.length) return json(res, 400, { error: 'Нужна command или commands' })
       const authoritativeBefore = await latestCampaignState(commandMatch[1], room.state)
+      const requestedRestCommands = commands.filter((command) => PLAYER_REST_COMMANDS.has(commandType(command)))
+      if (requestedRestCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Отдых принимается одной семантической командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
       commands = commands.map((command) => {
         const type = commandType(command)
+        if (PLAYER_REST_COMMANDS.has(type)) return sanitizePlayerRestCommand(user, authoritativeBefore, command)
         if (PLAYER_MERCHANT_COMMANDS.has(type)) return sanitizeMerchantCommand(user, authoritativeBefore, command)
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
         if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, authoritativeBefore, command)
         return PLAYER_COMBAT_COMMANDS.has(type) ? { ...command, server_authoritative: true } : command
       })
+      const semanticRestCommand = commands.find((command) => PLAYER_REST_COMMANDS.has(commandType(command))) ?? null
+      if (semanticRestCommand) commands = expandPlayerRestCommand(semanticRestCommand)
       const actor = String(commands[0]?.actor_id || room.state.activePlayerId || '')
       const commandActor = [...(room.state.players ?? []), ...(room.state.actors ?? [])].find((candidate) => String(candidate.id ?? candidate.actor_id) === actor)
       const controller = String(commandActor?.controllerId ?? commandActor?.controller_id ?? commandActor?.ownerId ?? commandActor?.owner_id ?? '')
@@ -2654,6 +3059,7 @@ const server = createServer((req, res) => {
       const characterCommands = commands.filter((command) => PLAYER_CHARACTER_COMMANDS.has(commandType(command)))
       const characterLifecycleCommands = commands.filter((command) => PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(commandType(command)))
       const itemCommands = commands.filter((command) => PLAYER_ITEM_COMMANDS.has(commandType(command)))
+      const restCommands = semanticRestCommand ? [semanticRestCommand] : []
       const reactionActorId = String(room.state.mechanics?.combat?.reaction_window?.actor_id ?? '')
       const resolvesReaction = commands.some((command) => commandType(command) === 'UseCombatAction' && String(command.actor_id ?? '') === reactionActorId)
       if (merchantCommands.length) {
@@ -2672,9 +3078,15 @@ const server = createServer((req, res) => {
       if (itemCommands.length && commands.length !== 1) {
         throw commandPolicyError('Действие с предметом должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
+      if (itemCommands.length) {
+        await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])
+      }
+      if (restCommands.length) await assertRestIdempotency(commandMatch[1], idempotencyKey, restCommands[0])
       let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]) })
       if (merchantCommands.length) assertMerchantResultFingerprint(result, merchantCommands[0])
       if (characterCommands.length) assertCharacterBuildResultFingerprint(result, characterCommands)
+      if (itemCommands.length) assertItemResultFingerprint(result, itemCommands[0])
+      if (restCommands.length) assertRestResultFingerprint(result, restCommands[0])
       if (result.authoritative_state) {
         const originalVersion = Number(result.state_version ?? result.authoritative_state.state_version ?? 0)
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))
@@ -2949,6 +3361,7 @@ const server = createServer((req, res) => {
   }
   if (req.url === '/api/narrate' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
+    let narrationTransport = null
     try {
       const body = await readBody(req)
       if (Object.hasOwn(body, 'state') || Object.hasOwn(body, 'player')
@@ -2975,6 +3388,7 @@ const server = createServer((req, res) => {
       const requestedPlayerId = String(body.actor_id ?? '')
       const playerId = requestedPlayerId || String(trustedState.activePlayerId || '')
       if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
+      const explicitNpcId = explicitNarrationNpcId(trustedState, user, playerId, body.npc_id)
       const combatActorId = String(trustedState.mechanics?.combat?.initiative?.[trustedState.mechanics?.combat?.active_index ?? 0]?.actor_id ?? '')
       if (trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
         return json(res, 409, { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' })
@@ -2988,6 +3402,29 @@ const server = createServer((req, res) => {
       if (exceedsRate(`narrate:${user.id}`, 40)) return json(res, 429, { error: 'Слишком много ходов за короткое время' })
       const mode = 'enforce'
       const idempotencyKey = String(body.idempotencyKey || body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
+      const streamMessageId = narrationMessageId(idempotencyKey)
+      narrationTransport = {
+        campaignId,
+        messageId: streamMessageId,
+        started: false,
+        finished: false,
+        lastProgress: '',
+      }
+      const startNarration = () => {
+        const payload = campaignNarrationStream.start(campaignId, {
+          messageId: streamMessageId,
+        })
+        narrationTransport.started = true
+        return payload
+      }
+      const progressNarration = (text) => {
+        const payload = campaignNarrationStream.progress(campaignId, {
+          messageId: streamMessageId,
+          text,
+        })
+        narrationTransport.lastProgress = payload?.text ?? String(text)
+        return payload
+      }
       let verifiedRoll = null
       if (body.roll?.roll_id) {
         verifiedRoll = rollRegistry.consume(body.roll.roll_id, { campaignId, actorId: playerId, idempotencyKey })
@@ -2998,7 +3435,7 @@ const server = createServer((req, res) => {
       const action = String(body.action || '').trim().slice(0, 2_000)
       let directorResolution = null
       let directorReplay = null
-      if (mode === 'enforce') {
+      if (mode === 'enforce' && !explicitNpcId) {
         const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
         const duplicateScene = (duplicate?.events ?? []).find((event) => event.event_type === 'SceneAdvanced')
         if (duplicateScene) {
@@ -3029,7 +3466,7 @@ const server = createServer((req, res) => {
           throw commandPolicyError('Нет завершённого решения группы для перехода сцены', 'PARTY_DECISION_REQUIRED')
         }
       }
-      const directorInteraction = mode === 'enforce' && !directorResolution && !directorReplay
+      const directorInteraction = mode === 'enforce' && !explicitNpcId && !directorResolution && !directorReplay
         ? proposeAgentInteraction(action, trustedState)
         : null
 
@@ -3079,12 +3516,24 @@ const server = createServer((req, res) => {
             playerName: player?.character ?? player?.name ?? body.player,
             message: action,
             idempotencyKey,
+            npcId: explicitNpcId,
             verifiedRoll,
             user,
             allowedActorIds: campaignHeroIds(user, campaignId),
+            onNarrationStart: startNarration,
+            onNarrationProgress: progressNarration,
           })
         }
       })
+      if (result.idempotent_replay) {
+        const persistedNarration = (getRoom(campaignId).state?.messages ?? [])
+          .find((message) => String(message.id) === streamMessageId)
+        if (persistedNarration?.text) {
+          // Повтор обязан вернуть тот же канонический текст, который уже лежит
+          // в летописи, даже если старый trace отсутствует или был обновлён.
+          result = { ...result, narration: String(persistedNarration.text) }
+        }
+      }
       const interactionProjection = await persistInteractionProjection(campaignId, result.effects?.interaction)
       // Служебные команды (`/why`) — не часть истории отряда: реплику игрока не
       // сохраняем, а ответ подписываем разбором правил, а не Рассказчиком.
@@ -3113,8 +3562,14 @@ const server = createServer((req, res) => {
       // ходе, чью проекцию уже успел записать кто-то другой (тогда
       // persistAuthoritativeProjection выходит раньше, чем дойдёт до messages).
       const journaled = appendRoomJournal(campaignId, [playerEntry, narrationEntry].filter(Boolean))
+      const canonicalNarration = journalNarrationId
+        ? String((journaled?.state?.messages ?? [])
+            .find((message) => String(message.id) === journalNarrationId)
+            ?.text ?? result.narration)
+        : result.narration
       const responsePayload = {
         ...result,
+        narration: canonicalNarration,
         ...(journalNarrationId ? { narration_message_id: journalNarrationId } : {}),
         ...(result.authoritative_state ? { authoritative_state: journaled?.state ?? projected?.state ?? result.authoritative_state } : {}),
         // Narration can outlive a concurrent room PUT. Returning the snapshot
@@ -3122,10 +3577,45 @@ const server = createServer((req, res) => {
         // locking cursor backwards and make it lose the completed turn.
         room_version: getRoom(campaignId).version,
       }
+      if (journalNarrationId) {
+        const finalText = String(responsePayload.narration ?? '')
+        const phase = narrationTransport.lastProgress
+          && !finalText.startsWith(narrationTransport.lastProgress)
+          ? 'replaced'
+          : 'complete'
+        try {
+          campaignNarrationStream.complete(campaignId, {
+            messageId: journalNarrationId,
+            text: finalText,
+            phase,
+            replayed: Boolean(result.idempotent_replay),
+          })
+        } catch (error) {
+          console.warn('[Сказание] Не удалось завершить необязательный поток повествования:', error?.code ?? error?.name)
+        } finally {
+          narrationTransport.finished = true
+        }
+      } else if (narrationTransport.started) {
+        try {
+          campaignNarrationStream.abort(campaignId, {
+            messageId: streamMessageId,
+          })
+        } catch { /* Пустой SSE-финал не подменяет авторитетный HTTP-ответ. */ }
+        narrationTransport.finished = true
+      }
+      if (res.destroyed || res.writableEnded) return
       return json(res, 200, turnResultForViewer(responsePayload, user, playerId))
     }
     catch (error) {
+      if (narrationTransport?.started && !narrationTransport.finished) {
+        try {
+          campaignNarrationStream.abort(narrationTransport.campaignId, {
+            messageId: narrationTransport.messageId,
+          })
+        } catch { /* Ошибка SSE не подменяет исход авторитетного запроса. */ }
+      }
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'PARTY_DECISION_ALREADY_CONSUMED'].includes(error?.code) ? 409 : error?.code === 'ROLL_ALREADY_USED' || error?.code === 'ROLL_FORBIDDEN' ? 400 : error?.code?.startsWith('LLM_') ? 502 : 400
+      if (res.destroyed || res.writableEnded) return
       return json(res, status, { error: error instanceof Error ? error.message : 'Ошибка игрового оркестратора', code: error?.code })
     }
   }

@@ -251,7 +251,13 @@ export function upsertCampaignMembership({ campaignId, userId, role = 'player', 
   })
 }
 
-export function createCampaignInvite({ campaignId, createdBy, heroIds = [], expiresInMs = 7 * 24 * 60 * 60 * 1000 }) {
+export function createCampaignInvite({
+  campaignId,
+  createdBy,
+  heroIds = [],
+  expiresInMs = 7 * 24 * 60 * 60 * 1000,
+  multiUse = false,
+}) {
   const normalized = normalizeCampaignId(campaignId)
   return withAuthLock(() => {
     const db = readAuth()
@@ -265,6 +271,8 @@ export function createCampaignInvite({ campaignId, createdBy, heroIds = [], expi
       tokenHash: tokenHash(token),
       role: 'player',
       heroIds: normalizeHeroIds(heroIds),
+      multiUse: Boolean(multiUse),
+      redemptions: [],
       createdBy,
       createdAt: Date.now(),
       expiresAt: Date.now() + Math.max(60_000, Math.min(Number(expiresInMs) || 0, 30 * 24 * 60 * 60 * 1000)),
@@ -285,6 +293,34 @@ export function redeemCampaignInvite({ campaignId, token, userId }) {
     const invite = db.invites.find((item) => item.campaignId === normalized && item.tokenHash === tokenHash(String(token || '')))
     if (!invite || invite.revokedAt) throw new Error('Приглашение недействительно')
     if (invite.expiresAt <= Date.now()) throw new Error('Срок действия приглашения истёк')
+    if (invite.multiUse) {
+      const existing = db.memberships.find((item) => item.campaignId === normalized && item.userId === userId && item.status !== 'revoked')
+      const previousRedemption = (Array.isArray(invite.redemptions) ? invite.redemptions : [])
+        .find((redemption) => redemption.userId === userId)
+      if (previousRedemption && existing) return { membership: structuredClone(existing), duplicate: true }
+      if (previousRedemption) throw new Error('Это приглашение уже использовано вашим аккаунтом')
+      if (existing) throw new Error('Вы уже состоите в этой кампании')
+      const assignedElsewhere = new Set(db.memberships
+        .filter((item) => item.campaignId === normalized && item.status !== 'revoked')
+        .flatMap((item) => item.heroIds ?? []))
+      const heroId = invite.heroIds.find((candidate) => !assignedElsewhere.has(candidate))
+      if (!heroId) {
+        throw Object.assign(new Error('В кампании не осталось свободных героев'), { code: 'CAMPAIGN_FULL' })
+      }
+      const membership = {
+        campaignId: normalized,
+        userId,
+        role: invite.role,
+        heroIds: [heroId],
+        status: 'active',
+        joinedAt: Date.now(),
+      }
+      db.memberships.push(membership)
+      invite.redemptions = Array.isArray(invite.redemptions) ? invite.redemptions : []
+      invite.redemptions.push({ userId, heroId, redeemedAt: Date.now() })
+      atomicWrite(authFile, db)
+      return { membership: structuredClone(membership), duplicate: false }
+    }
     if (invite.usedAt && invite.usedBy !== userId) throw new Error('Приглашение уже использовано')
     const existing = db.memberships.find((item) => item.campaignId === normalized && item.userId === userId)
     if (invite.usedAt && invite.usedBy === userId && existing) return { membership: structuredClone(existing), duplicate: true }

@@ -362,6 +362,9 @@ for (const scenario of SCENARIOS) {
     }
     const latency = Math.round(performance.now() - started)
     const checks = result ? scenario.judge(result) : {}
+    const asyncFeedback = result?.narration && ['narrator', 'critical'].includes(scenario.kind)
+      ? await narrator.awaitFeedback(result.narration)
+      : null
     rows.push({
       scenario: scenario.id, run, latency_ms: latency, error,
       checks,
@@ -372,6 +375,7 @@ for (const scenario of SCENARIOS) {
       provider: result?.provider ?? null,
       chain: meter.log.slice(logBefore),
       ...(result?.verification && !result.verification.valid ? { violations: result.verification.violations } : {}),
+      ...(asyncFeedback ? { async_feedback: asyncFeedback } : {}),
     })
   }
 }

@@ -167,7 +167,7 @@ test('каждый игрок заполняет свой серверный с�
     body: {},
   })
   assert.equal(invite.status, 201, invite.text)
-  assert.deepEqual(invite.body.hero_ids, ['slot-2'])
+  assert.deepEqual(invite.body.hero_ids, ['slot-2', 'slot-3', 'slot-4'])
   const joined = await request(baseUrl, '/api/campaigns/CREATE-HERO/join', {
     method: 'POST',
     cookie: guestCookie,

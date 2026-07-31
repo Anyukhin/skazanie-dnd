@@ -40,3 +40,24 @@ test('deterministic Worldkeeper receives the same premise contract without treat
   assert.equal(result.agent_context.campaign_premise.boundaries, 'PG-13')
   assert.doesNotMatch(result.narration, /A lost road/u)
 })
+
+test('shared campaign premise передаёт только три последних эпилога арок в bounded-форме', () => {
+  const state = {
+    adventure: { chapter: 1 },
+    campaignConcept: {
+      arc: { arc_number: 5 },
+      arc_history: Array.from({ length: 4 }, (_, index) => ({
+        arc_number: index + 1,
+        title: `Арка ${index + 1}`,
+        epilogue: `${'Итог '.repeat(300)}${index + 1}`,
+        private_solution: 'не передавать',
+      })),
+    },
+  }
+  const premise = campaignConceptForAgent(state)
+  assert.equal(premise.current_arc_number, 5)
+  assert.equal(premise.current_chapter, 1)
+  assert.deepEqual(premise.arc_history.map((entry) => entry.arc_number), [2, 3, 4])
+  assert.ok(premise.arc_history.every((entry) => entry.epilogue.length <= 1_200))
+  assert.doesNotMatch(JSON.stringify(premise), /private_solution/u)
+})

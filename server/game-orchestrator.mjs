@@ -101,7 +101,7 @@ function narrationQuestClock(clock) {
   return { label: memoryText(clock.label, 80), current: Math.max(0, Number(clock.current) || 0), max }
 }
 
-export function narrationStoryContext(state, viewer = {}) {
+export function narrationStoryContext(state, viewer = {}, events = []) {
   const memory = state.worldMemory ?? {}
   const active_quests = (memory.quests ?? [])
     .filter((quest) => quest.status === 'active' && partyVisibleRecord(quest))
@@ -225,6 +225,30 @@ export function narrationStoryContext(state, viewer = {}) {
       stance: memoryText(entry.stance, 40),
     }))
     .filter((entry) => entry.npc && entry.npc_reply)
+  const currentConversationEvent = [...(Array.isArray(events) ? events : [])]
+    .reverse()
+    .find((event) => event?.event_type === 'NpcConversationRecorded' && event.payload?.conversation?.npc_id)
+  const currentConversationId = memoryText(currentConversationEvent?.payload?.conversation?.id, 120)
+  const currentNpcId = memoryText(currentConversationEvent?.payload?.conversation?.npc_id, 120)
+  const currentProfile = currentNpcId && presentIds.has(currentNpcId)
+    ? viewerProfiles.get(currentNpcId)
+    : null
+  const priorDossier = (Array.isArray(currentProfile?.dossier) ? currentProfile.dossier : [])
+    .filter((entry) => String(entry?.provenance?.source_conversation_id ?? '') !== currentConversationId)
+  const npc_dossiers = currentProfile && priorDossier.length
+    ? [{
+        npc_id: currentNpcId,
+        name: memoryText(currentProfile.name, 120),
+        relationship: {
+          tier: viewerSocial.relationship_tiers?.[currentNpcId]?.[viewerId]
+            ?? relationshipTier(viewerSocial.relationships?.[currentNpcId]?.[viewerId] ?? 0),
+          provenance: { source_event_ids: [] },
+        },
+        interactions: priorDossier,
+        promises: (viewerSocial.promises ?? [])
+          .filter((promise) => promise.status === 'open' && String(promise.npc_id) === currentNpcId),
+      }]
+    : []
   return {
     active_quests,
     active_threads,
@@ -234,6 +258,7 @@ export function narrationStoryContext(state, viewer = {}) {
     present_npcs,
     open_promises,
     recent_interactions,
+    npc_dossiers,
   }
 }
 
@@ -418,6 +443,63 @@ function structuredCommandTurnId(campaignId, idempotencyKey) {
   return `turn-${digest}`
 }
 
+export function narrationRequestFingerprint({
+  campaignId = '',
+  playerId = '',
+  message = '',
+  npcId = '',
+} = {}) {
+  return createHash('sha256')
+    .update(String(campaignId).toUpperCase())
+    .update('\0')
+    .update(String(playerId))
+    .update('\0')
+    .update(String(message).normalize('NFKC').replace(/\s+/gu, ' ').trim())
+    .update('\0')
+    .update(String(npcId))
+    .digest('hex')
+}
+
+function assertNarrationRequestIdempotency(duplicate, trace, {
+  campaignId,
+  idempotencyKey,
+  playerId,
+  message,
+  npcId,
+}) {
+  if (!duplicate) return
+  const requestFingerprint = narrationRequestFingerprint({
+    campaignId,
+    playerId,
+    message,
+    npcId,
+  })
+  if (trace?.request_fingerprint) {
+    if (String(trace.request_fingerprint) !== requestFingerprint) {
+      throw new IdempotencyConflictError(campaignId, idempotencyKey)
+    }
+    return
+  }
+  // Traces created before request fingerprints existed cannot distinguish an
+  // omitted target from an old inferred social target. Preserve that replay
+  // path, but never let a new explicit target bind to a different old event.
+  if (!npcId) return
+  const conversation = (duplicate.events ?? [])
+    .find((event) => event?.event_type === 'NpcConversationRecorded')
+    ?.payload?.conversation
+  const replayFingerprint = conversation
+    ? narrationRequestFingerprint({
+        campaignId,
+        playerId: conversation.hero_id,
+        message: conversation.player_message,
+        npcId: conversation.npc_id,
+      })
+    : ''
+  if (!replayFingerprint || replayFingerprint !== requestFingerprint) {
+    throw new IdempotencyConflictError(campaignId, idempotencyKey)
+  }
+}
+
 function cachedNarration(trace, brief, knownRuleIds) {
   const cached = trace?.narration_result
   const text = typeof cached?.narration === 'string' ? cached.narration.trim() : ''
@@ -491,14 +573,25 @@ function availableNpcNames(state) {
     .slice(0, 6)
 }
 
-function humanMissingInformation(values, state) {
+function humanMissingInformation(values, state, intent = {}) {
   const labels = {
     message: 'само действие',
     target_id: 'цель действия',
     npc_id: 'имя собеседника',
     available_npc: 'доступного собеседника',
+    ambiguous_npc: 'конкретного собеседника',
   }
   const missing = [...new Set((Array.isArray(values) ? values : []).map(String).filter(Boolean))]
+  if (missing.includes('ambiguous_npc')) {
+    const candidates = (intent.target_candidates ?? []).map((candidate) => {
+      const name = String(candidate?.name ?? '').trim()
+      const role = String(candidate?.role ?? '').trim()
+      return role ? `${name} (${role})` : name
+    }).filter(Boolean).slice(0, 6)
+    return candidates.length
+      ? `По описанию подходят несколько собеседников: ${candidates.join(', ')}. Назовите одного из них.`
+      : 'По описанию подходят несколько собеседников. Назовите конкретного NPC.'
+  }
   if (missing.includes('npc_id') || missing.includes('available_npc')) {
     const names = availableNpcNames(state)
     return names.length
@@ -552,6 +645,7 @@ export class GameOrchestrator {
     this.narrator = narrator
     this.npcSocialController = npcSocialController
     this.unknownActionHandler = unknownActionHandler ?? new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, now })
+    this.narrationInflight = new Map()
     this.idFactory = idFactory
     this.now = now
   }
@@ -617,7 +711,7 @@ export class GameOrchestrator {
       ...(noWorldChangeConstraint(plan) ? ['no-unconfirmed-world-changes'] : []),
       ...(Array.isArray(freeAction.narration_constraints) ? freeAction.narration_constraints : []),
     ]
-    const storyContext = narrationStoryContext(state, viewer)
+    const storyContext = narrationStoryContext(state, viewer, publicCommittedEvents)
     const brief = buildNarrationBrief({
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),
@@ -697,21 +791,51 @@ export class GameOrchestrator {
   }
 
   async handle(input) {
+    const originalState = normalizeCampaignState(input.state ?? {})
+    const campaignId = String(input.campaignId ?? input.campaign_id ?? originalState.sessionCode ?? originalState.campaign_id ?? '')
+    const playerId = String(input.playerId ?? input.player_id ?? originalState.activePlayerId ?? '')
+    const message = String(input.message ?? input.action ?? '').trim().slice(0, 2000)
+    const idempotencyKey = String(input.idempotencyKey ?? input.idempotency_key ?? '')
+    const npcId = String(input.npcId ?? input.npc_id ?? '').trim().slice(0, 120)
+    const coalesces = !input.commands && message !== '/why' && input.why !== true && Boolean(campaignId && idempotencyKey)
+    if (!coalesces) return this._handle(input)
+
+    const key = `${campaignId}\u001f${idempotencyKey}`
+    const requestFingerprint = narrationRequestFingerprint({ campaignId, playerId, message, npcId })
+    const existing = this.narrationInflight.get(key)
+    if (existing) {
+      if (existing.requestFingerprint !== requestFingerprint) {
+        throw new IdempotencyConflictError(campaignId, idempotencyKey)
+      }
+      const result = await existing.promise
+      return { ...result, idempotent_replay: true }
+    }
+
+    const entry = { requestFingerprint, promise: null }
+    entry.promise = this._handle(input)
+    this.narrationInflight.set(key, entry)
+    try {
+      return await entry.promise
+    } finally {
+      if (this.narrationInflight.get(key) === entry) this.narrationInflight.delete(key)
+    }
+  }
+
+  async _handle(input) {
     const started = this.now()
     const originalState = normalizeCampaignState(input.state ?? {})
     const campaignId = String(input.campaignId ?? input.campaign_id ?? originalState.sessionCode ?? originalState.campaign_id ?? '')
     const playerId = String(input.playerId ?? input.player_id ?? originalState.activePlayerId ?? '')
     const message = String(input.message ?? input.action ?? '').trim().slice(0, 2000)
     const idempotencyKey = String(input.idempotencyKey ?? input.idempotency_key ?? this.idFactory())
+    const explicitNpcId = String(input.npcId ?? input.npc_id ?? '').trim().slice(0, 120)
     const directorCapability = input.commandCapability === DIRECTOR_COMMAND_CAPABILITY
     const rulesContext = {
       allowedActorIds: input.allowedActorIds ?? [playerId],
       isAdmin: input.user?.role === 'admin',
       isDirector: directorCapability,
     }
-    let turnId = Array.isArray(input.commands)
-      ? structuredCommandTurnId(campaignId, idempotencyKey)
-      : this.idFactory()
+    let turnId = structuredCommandTurnId(campaignId, idempotencyKey)
     const mode = 'enforce'
 
     if (message === '/why' || input.why === true) {
@@ -726,7 +850,7 @@ export class GameOrchestrator {
 
     const viewer = { playerId, partyIds: input.partyIds ?? [], isPartyMember: true, role: input.user?.role }
     const visibleState = campaignStateForViewer(originalState, input.user ?? {}, playerId) ?? {}
-    visibleState.social = npcSocialForViewer(originalState.social, {
+    visibleState.social = npcSocialForViewer(ensureNpcSocialState(originalState.social, originalState), {
       playerId,
       isAdmin: input.user?.role === 'admin',
       isPartyMember: true,
@@ -739,7 +863,9 @@ export class GameOrchestrator {
       role: input.user?.role,
     }
     const worldkeeperState = { ...visibleState, worldMemory: originalState.worldMemory }
-    const loreAnswer = input.commands ? null : answerKnownLore(message, worldkeeperState, { viewer: worldkeeperViewer })
+    const loreAnswer = input.commands || explicitNpcId
+      ? null
+      : answerKnownLore(message, worldkeeperState, { viewer: worldkeeperViewer })
     if (loreAnswer) {
       const loreIntent = {
         actor_id: playerId, intent: 'known_lore_query', approach: 'deterministic',
@@ -751,14 +877,47 @@ export class GameOrchestrator {
       this.saveTrace({ turnId, campaignId, mode, intent: loreIntent, retrievalQueries: [], retrievedRules: { results: [], confidence: 1, count: 0 }, plan: lorePlan, stateBefore: originalState.state_version, stateAfter: originalState.state_version, verification: { valid: true }, latency: this.now() - started })
       return response
     }
-    const intent = input.commands
+    const loaded = await this.eventStore.load(campaignId)
+    const authoritativeState = normalizeCampaignState(loaded.state)
+    const duplicate = typeof this.eventStore.getByIdempotencyKey === 'function'
+      ? await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+      : null
+    const requestFingerprint = narrationRequestFingerprint({
+      campaignId,
+      playerId,
+      message,
+      npcId: explicitNpcId,
+    })
+    const requestTrace = duplicate && this.traceStore && typeof this.traceStore.get === 'function'
+      ? this.traceStore.get(campaignId, turnId)
+      : null
+    assertNarrationRequestIdempotency(duplicate, requestTrace, {
+      campaignId,
+      idempotencyKey,
+      playerId,
+      message,
+      npcId: explicitNpcId,
+    })
+    let intent = input.commands
       ? { actor_id: playerId, intent: 'structured_commands', approach: 'api', targets: [], mentioned_entities: [], missing_information: [], requires_clarification: false, confidence: 1, raw_message: message }
       : await this.intentParser.parse({ message, playerId, visibleState })
+    if (!input.commands && explicitNpcId) {
+      intent = {
+        ...intent,
+        intent: 'social',
+        targets: [explicitNpcId],
+        missing_information: [],
+        requires_clarification: false,
+      }
+    }
     let socialRequest = null
     if (!input.commands && intent.intent === 'social' && this.npcSocialController) {
-      const socialNpcIds = new Set((originalState.social?.npcs ?? []).map((npc) => String(npc.id)))
+      const socialNpcIds = new Set((visibleState.social?.npcs ?? []).map((npc) => String(npc.id)))
       const npcId = (intent.targets ?? []).map(String).find((candidate) => socialNpcIds.has(candidate))
-      if (!npcId) {
+      if (intent.requires_clarification) {
+        // Резолвер уже нашёл неоднозначность и сохранил кандидатов для полезного уточнения.
+        socialRequest = null
+      } else if (!npcId) {
         intent.requires_clarification = true
         intent.missing_information = ['npc_id']
       } else socialRequest = { npcId }
@@ -770,6 +929,18 @@ export class GameOrchestrator {
     const freeActionRequest = !input.commands && ['improvised_action', 'unknown'].includes(intent.intent)
     let plan = input.commands
       ? { rule_ids: [...new Set(input.commands.flatMap((command) => command.source_rule_ids ?? []))], proposed_commands: input.commands, roll_requests: [], ruling_required: false, ruling_draft: null, narration_constraints: [], confidence: 1 }
+      : intent.requires_clarification
+        ? {
+            rule_ids: [],
+            proposed_commands: [],
+            roll_requests: [],
+            ruling_required: false,
+            ruling_draft: null,
+            narration_constraints: [],
+            confidence: intent.confidence,
+            clarification_required: true,
+            missing_information: intent.missing_information,
+          }
       : socialRequest
         ? {
             rule_ids: [],
@@ -793,11 +964,6 @@ export class GameOrchestrator {
         : await this.adjudicator.createPlan({ intent, state: originalState, retrievedRules })
     plan = { ...plan, proposed_commands: validateAllowedCommands(plan.proposed_commands ?? []).map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${idempotencyKey}:${index + 1}` })) }
 
-    const loaded = await this.eventStore.load(campaignId)
-    const authoritativeState = normalizeCampaignState(loaded.state)
-    const duplicate = typeof this.eventStore.getByIdempotencyKey === 'function'
-      ? await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
-      : null
     if (freeActionRequest) {
       turnId = structuredCommandTurnId(campaignId, idempotencyKey)
       const freeAction = await this.unknownActionHandler.handleUnknownAction({
@@ -839,7 +1005,7 @@ export class GameOrchestrator {
 
 
     if (intent.requires_clarification || plan.clarification_required) {
-      const narration = humanMissingInformation(intent.missing_information ?? plan.missing_information, authoritativeState)
+      const narration = humanMissingInformation(intent.missing_information ?? plan.missing_information, authoritativeState, intent)
       const response = { narration, effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], authoritative_state: authoritativeState, turn_consumed: false }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })
       return response
@@ -911,6 +1077,7 @@ export class GameOrchestrator {
 
     let engineResult
     let committed
+    let replayedCommit = Boolean(duplicate)
     if (duplicate) {
       committed = duplicate
       engineResult = { commands: plan.proposed_commands, events: duplicate.events, rolls: duplicate.events.filter((event) => event.event_type === 'DieRolled').map((event) => event.payload), state: duplicate.state }
@@ -935,6 +1102,7 @@ export class GameOrchestrator {
           if (!(error instanceof IdempotencyConflictError) && error?.code !== 'IDEMPOTENCY_CONFLICT') throw error
           committed = await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
           if (!committed) throw error
+          replayedCommit = true
           break
         }
       }
@@ -950,7 +1118,7 @@ export class GameOrchestrator {
       rolls: [...precedingRolls, ...(engineResult.rolls ?? [])],
     }
     const changes = visibleChanges(committedEvents)
-    const storyContext = narrationStoryContext(committed.state, viewer)
+    const storyContext = narrationStoryContext(committed.state, viewer, publicCommittedEvents)
     const brief = buildNarrationBrief({
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),
@@ -967,9 +1135,9 @@ export class GameOrchestrator {
       viewer,
     })
     const resolvedRuleIds = [...new Set([...(plan.rule_ids ?? []), ...committedEvents.flatMap((event) => event.source_rule_ids ?? [])])]
-    const idempotentReplay = Boolean(duplicate || committed.duplicate)
+    const idempotentReplay = Boolean(replayedCommit || committed.duplicate)
     const replayTrace = idempotentReplay && this.traceStore && typeof this.traceStore.get === 'function'
-      ? this.traceStore.get(campaignId, turnId)
+      ? requestTrace ?? this.traceStore.get(campaignId, turnId)
       : null
     const storedSocialNarration = npcConversationNarration(committedEvents, committed.state)
     const resolveActorName = actorNameResolver(committed.state)
@@ -984,6 +1152,24 @@ export class GameOrchestrator {
       ?? storedSocialNarration
       ?? deterministicReplayNarration(brief, resolvedRuleIds, resolveActorName)
     const structuredMechanics = Array.isArray(input.commands) && !deterministicNarrator
+    const streamsModelNarration = !idempotentReplay
+      && !deterministicResponse
+      && !storedSocialNarration
+      && !structuredMechanics
+    if (streamsModelNarration && typeof input.onNarrationStart === 'function') {
+      // Этот callback расположен строго после успешного commit. Ошибка
+      // необязательного транспорта не может откатить уже принятый ход.
+      try {
+        input.onNarrationStart({ stateVersion: committed.state_version })
+      } catch { /* Поток не является авторитетным результатом хода. */ }
+    }
+    const onNarrationProgress = typeof input.onNarrationProgress === 'function'
+      ? (text) => {
+          try {
+            input.onNarrationProgress(text, { stateVersion: committed.state_version })
+          } catch { /* Поток не является авторитетным результатом хода. */ }
+        }
+      : null
     const narration = idempotentReplay
       ? cachedNarration(replayTrace, brief, resolvedRuleIds) ?? replayFallback
       : deterministicResponse
@@ -993,6 +1179,7 @@ export class GameOrchestrator {
           : await this.narrator.render(brief, {
               knownRuleIds: resolvedRuleIds,
               recentNarrations: this.recentNarrationsFor(campaignId),
+              onProgress: onNarrationProgress,
             }))
     if (!idempotentReplay) this.rememberNarration(campaignId, narration.narration)
     const response = {
@@ -1014,17 +1201,18 @@ export class GameOrchestrator {
       ...(storedSocialNarration ? { turn_consumed: true, action_kind: 'social' } : {}),
     }
     if (!idempotentReplay) {
-      this.saveTrace({ turnId, campaignId, idempotencyKey, mode, intent, retrievalQueries, retrievedRules, plan, engineResult: { ...engineResult, events: committedEvents }, stateBefore: authoritativeState.state_version, stateAfter: committed.state_version, verification: narration.verification, latency: this.now() - started, narration, ruling: plan.ruling_draft })
+      this.saveTrace({ turnId, campaignId, idempotencyKey, requestFingerprint, mode, intent, retrievalQueries, retrievedRules, plan, engineResult: { ...engineResult, events: committedEvents }, stateBefore: authoritativeState.state_version, stateAfter: committed.state_version, verification: narration.verification, latency: this.now() - started, narration, ruling: plan.ruling_draft })
     }
     return response
   }
 
-  saveTrace({ turnId, campaignId, idempotencyKey = null, mode, intent, retrievalQueries, retrievedRules, plan, engineResult = {}, stateBefore, stateAfter, verification = {}, latency, narration = null, ruling = null }) {
+  saveTrace({ turnId, campaignId, idempotencyKey = null, requestFingerprint = null, mode, intent, retrievalQueries, retrievedRules, plan, engineResult = {}, stateBefore, stateAfter, verification = {}, latency, narration = null, ruling = null }) {
     if (!this.traceStore) return null
     return this.traceStore.save({
       turn_id: turnId,
       campaign_id: campaignId,
       idempotency_key: idempotencyKey,
+      request_fingerprint: requestFingerprint,
       engine_mode: mode,
       prompt_versions: { intent_parser: 'intent_parser/v1', adjudicator: 'adjudicator/v1', narrator: narration?.prompt_version ?? null, verifier: 'verifier/v1' },
       model_identifiers: modelIdentifiers(narration),

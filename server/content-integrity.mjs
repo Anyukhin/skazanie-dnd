@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { combatClassCatalogInfo } from './combat-actions.mjs'
 import { spellCatalogInfo } from './combat-spells.mjs'
 import { SRD_5_2_1_MONSTER_ALLOWLIST } from './encounter-assembler.mjs'
-import { SRD_EQUIPMENT_CATALOG } from './merchant-economy.mjs'
+import { ITEM_CATALOG, ITEM_SHOP_CATALOG_IDS } from './item-catalog.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -169,7 +169,8 @@ function runtimeCoverageCounts(rootDir, rulePack) {
     subclasses: actions.classes.reduce((total, entry) => total + entry.subclasses.length, 0),
     spells: spellCatalogInfo().count,
     monsters: Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length,
-    equipment: Object.keys(SRD_EQUIPMENT_CATALOG).length,
+    equipment: Object.keys(ITEM_CATALOG).length,
+    commerce_equipment: ITEM_SHOP_CATALOG_IDS.length,
     feats: 0,
     glossary: rulePack.glossary.length,
   }
@@ -240,6 +241,10 @@ export async function verifyContentIntegrity({ rootDir = projectRoot } = {}) {
       rule_pack: rulePack.summary,
       rule_references: ruleReferences,
       compatibility_catalogs: compatibility,
+      item_catalog: {
+        entries: counts.equipment,
+        shop_entries: counts.commerce_equipment,
+      },
       coverage,
     },
     release: {

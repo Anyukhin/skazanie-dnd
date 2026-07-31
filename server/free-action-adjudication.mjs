@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { DIFFICULTY_CLASSES } from './adjudicator.mjs'
+import { findActor, skillProficiencyForActor } from './rules-engine.mjs'
 
 /**
  * Серверное судейство свободного действия — то, что живой ведущий решает в уме.
@@ -18,8 +19,20 @@ const digest = (value) => createHash('sha256').update(JSON.stringify(value)).dig
 export const PLAUSIBILITY_LEVELS = Object.freeze(['trivial', 'plausible', 'strenuous', 'impossible_without_means'])
 export const RISK_LEVELS = Object.freeze(['none', 'minor', 'serious', 'deadly'])
 export const RESOLUTION_MODES = Object.freeze(['auto_success', 'check', 'counter_offer'])
+export const FREE_ACTION_SKILLS = Object.freeze([
+  'acrobatics', 'animal-handling', 'arcana', 'athletics', 'deception',
+  'history', 'insight', 'intimidation', 'investigation', 'medicine', 'nature',
+  'perception', 'performance', 'persuasion', 'religion', 'sleight-of-hand',
+  'stealth', 'survival',
+])
+export const FREE_ACTION_PROFICIENCY_LEVELS = Object.freeze(['none', 'proficient', 'expertise'])
+export const FREE_ACTION_CONSEQUENCE_TYPES = Object.freeze(['time', 'noise', 'exposure', 'lost_opportunity'])
 
 const inEnum = (values, value, fallback) => (values.includes(String(value)) ? String(value) : fallback)
+const canonicalSkill = (value) => {
+  const normalized = clean(value, 60).toLocaleLowerCase('en').replace(/_/gu, '-')
+  return inEnum(FREE_ACTION_SKILLS, normalized, 'perception')
+}
 
 /**
  * Шаг 3 брифа: ведущий не требует броска, когда на кону ничего нет. Незапертую дверь
@@ -74,7 +87,7 @@ export function normalizeFreeActionReading(input = {}, fallbackText = '') {
     goal_summary: clean(input.goal_summary, 200) || value.slice(0, 200),
     approach_summary: clean(input.approach_summary, 200) || value.slice(0, 200),
     ability: inEnum(['str', 'dex', 'con', 'int', 'wis', 'cha'], input.ability, 'wis'),
-    skill: clean(input.skill, 60) || 'perception',
+    skill: canonicalSkill(input.skill),
     plausibility: inEnum(PLAUSIBILITY_LEVELS, input.plausibility, 'plausible'),
     risk: inEnum(RISK_LEVELS, input.risk, 'minor'),
     obstacle: clean(input.obstacle, 120) || value.slice(0, 120),
@@ -86,6 +99,10 @@ export function normalizeFreeActionReading(input = {}, fallbackText = '') {
     effect: clean(input.effect, 40) || 'none',
     effect_target: clean(input.effect_target, 120),
     hazard: clean(input.hazard, 40),
+    target_id: clean(input.target_id, 120),
+    item_id: clean(input.item_id, 120),
+    proficiency: inEnum(FREE_ACTION_PROFICIENCY_LEVELS, input.proficiency, 'none'),
+    consequence_type: inEnum(FREE_ACTION_CONSEQUENCE_TYPES, input.consequence_type, 'time'),
     source: clean(input.source, 60) || 'deterministic-default',
   }
 }
@@ -93,6 +110,13 @@ export function normalizeFreeActionReading(input = {}, fallbackText = '') {
 export function interpretFreeAction(text = '') {
   const value = clean(text, 1_000)
   const match = APPROACH_PATTERNS.find((pattern) => pattern.test.test(value)) ?? null
+  const consequenceType = ['stealth', 'deception'].includes(match?.skill)
+    ? 'exposure'
+    : ['persuasion', 'intimidation'].includes(match?.skill)
+      ? 'lost_opportunity'
+      : /(крич|лома|выбива|поджиг|зажиг)/iu.test(value)
+        ? 'noise'
+        : 'time'
   return normalizeFreeActionReading({
     ability: match?.ability,
     skill: match?.skill,
@@ -102,8 +126,269 @@ export function interpretFreeAction(text = '') {
     // Детерминированная таблица механических следствий не назначает: она не
     // понимает, что именно в сцене можно опрокинуть. Это работа агента.
     effect: 'none',
+    consequence_type: consequenceType,
     source: match ? 'deterministic-pattern' : 'deterministic-default',
   }, value)
+}
+
+function normalizedWords(value) {
+  return clean(value, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+    .match(/\p{L}[\p{L}\p{M}0-9-]*/gu) ?? []
+}
+
+function wordStem(value) {
+  const word = String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  if (!/^[а-я]{3,}$/u.test(word)) return word
+  for (const suffix of ['иями', 'ями', 'ами', 'ого', 'ему', 'ому', 'ыми', 'ими', 'ах', 'ях', 'ой', 'ей', 'ом', 'ем', 'а', 'я', 'у', 'ю', 'е', 'ы', 'и']) {
+    if (word.endsWith(suffix) && word.length - suffix.length >= 3) return word.slice(0, -suffix.length)
+  }
+  return word
+}
+
+function mentionsReference(text, values) {
+  const message = normalizedWords(text)
+  return (Array.isArray(values) ? values : []).some((value) => {
+    const words = normalizedWords(value)
+    return words.length > 0 && words.every((word) => message.some((candidate) => (
+      candidate === word || wordStem(candidate) === wordStem(word)
+    )))
+  })
+}
+
+function currentSocialActors(state) {
+  const location = clean(state?.scene?.location, 180).toLocaleLowerCase('ru')
+  return (state?.social?.npcs ?? []).filter((npc) => {
+    const npcLocation = clean(npc?.location, 180).toLocaleLowerCase('ru')
+    return npc?.available !== false && (!location || !npcLocation || location === npcLocation)
+  })
+}
+
+function referenceNames(actor) {
+  return [
+    actor?.id,
+    actor?.name,
+    actor?.character,
+    actor?.label,
+    actor?.role,
+    ...(Array.isArray(actor?.aliases) ? actor.aliases : []),
+    ...(Array.isArray(actor?.tags) ? actor.tags.filter((tag) => !String(tag).includes(':')) : []),
+  ].map((value) => clean(value, 160)).filter(Boolean)
+}
+
+function itemReferenceNames(item) {
+  return [item?.id, item?.catalog_id, item?.name, item?.label]
+    .map((value) => clean(value, 160)).filter(Boolean)
+}
+
+function actionTargets(state) {
+  return [...new Map([
+    ...(state?.players ?? []),
+    ...(state?.actors ?? []),
+    ...(state?.enemies ?? []),
+    ...currentSocialActors(state),
+  ].map((actor) => [String(actor?.id ?? ''), actor]).filter(([id]) => id)).values()]
+}
+
+/**
+ * Модель может назвать только ID из переданного брифа. Сервер повторно
+ * связывает их с текущим состоянием, выводит отсутствующие ссылки из текста и
+ * всегда перезаписывает уровень владения значением из листа героя.
+ */
+export function bindFreeActionReadingToState(state = {}, actorId = '', text = '', input = {}) {
+  const reading = normalizeFreeActionReading(input, text)
+  const targets = actionTargets(state).filter((actor) => String(actor?.id) !== String(actorId))
+  const allowedTarget = targets.find((actor) => String(actor?.id) === reading.target_id) ?? null
+  const mentionedTargets = allowedTarget ? [allowedTarget] : targets.filter((actor) => mentionsReference(text, referenceNames(actor)))
+  const actor = findActor(state, actorId)
+  const inventory = Array.isArray(actor?.inventory) ? actor.inventory : []
+  const allowedItem = inventory.find((item) => String(item?.id) === reading.item_id) ?? null
+  const mentionedItems = allowedItem ? [allowedItem] : inventory.filter((item) => mentionsReference(text, itemReferenceNames(item)))
+  const proficiency = skillProficiencyForActor(actor, reading.skill)
+  const ambiguities = [
+    ...(mentionedTargets.length > 1 ? ['target_id'] : []),
+    ...(mentionedItems.length > 1 ? ['item_id'] : []),
+  ]
+  return {
+    ...reading,
+    target_id: mentionedTargets.length === 1 ? String(mentionedTargets[0].id) : '',
+    item_id: mentionedItems.length === 1 ? String(mentionedItems[0].id) : '',
+    proficiency: proficiency.expertise ? 'expertise' : proficiency.proficient ? 'proficient' : 'none',
+    proficiency_bonus: proficiency.bonus,
+    reference_ambiguities: ambiguities,
+  }
+}
+
+const DIFFICULTY_ORDER = Object.freeze(['easy', 'medium', 'hard'])
+
+/**
+ * СЛ остаётся серверной: модель сообщает только смысл/риск. Контекст сдвигает
+ * категорию максимум на одну ступень за каждую подтверждённую причину.
+ */
+export function contextualResolutionFor(state = {}, actorId = '', reading = {}, text = '') {
+  const base = resolutionModeFor(reading)
+  if (base.mode !== 'check') return { ...base, difficulty_factors: [] }
+  let index = DIFFICULTY_ORDER.indexOf(base.difficulty_category)
+  const factors = []
+  const actor = findActor(state, actorId)
+  const item = (actor?.inventory ?? []).find((entry) => String(entry?.id) === String(reading.item_id ?? ''))
+  if (item) {
+    index -= 1
+    factors.push('confirmed_item')
+  }
+  const hasCover = reading.skill === 'stealth'
+    && /(телег|бочк|укрыт|занавес|тень|колонн|ящик)/iu.test(text)
+    && (state?.scene?.map?.props?.length > 0 || state?.scene?.cells?.length > 0)
+  if (hasCover) {
+    index -= 1
+    factors.push('scene_cover')
+  }
+  if (state?.mechanics?.combat?.active) {
+    index += 1
+    factors.push('combat_pressure')
+  }
+  const environmentalPressure = `${text} ${state?.scene?.mood ?? ''}`
+  if (/(шторм|бур[яе]|пожар|обвал|скольз|темнот|дым|хаос|движущ)/iu.test(environmentalPressure)) {
+    index += 1
+    factors.push('environmental_pressure')
+  }
+  if (/(незаперт|прост\w+\s+задач|без\s+спешк|много\s+времен)/iu.test(text)) {
+    index -= 1
+    factors.push('favorable_conditions')
+  }
+  const difficulty_category = DIFFICULTY_ORDER[Math.max(0, Math.min(DIFFICULTY_ORDER.length - 1, index))]
+  return {
+    ...base,
+    difficulty_category,
+    difficulty: DIFFICULTY_CLASSES[difficulty_category],
+    difficulty_factors: factors,
+  }
+}
+
+const TRANSFER_GIVE = /(?<![\p{L}\p{M}])(переда\p{L}*|отда\p{L}*|даю|дам|вруча\p{L}*|give|hand)(?![\p{L}\p{M}])/iu
+const TRANSFER_TAKE = /(?<![\p{L}\p{M}])(беру|возьму|забира\p{L}*|получа\p{L}*|take|get)(?![\p{L}\p{M}])/iu
+const INVENTORY_NOUN = /(предмет|вещ|вер[её]в|меч|кинжал|лук|факел|зель|ключ|карта|свиток|па[её]к|ration|rope|item)/iu
+
+function partyActors(state, actorId) {
+  return (state?.players ?? []).filter((actor) => String(actor?.id) !== String(actorId))
+}
+
+function mentionedPartyActors(state, actorId, text, requestedId = '') {
+  const candidates = partyActors(state, actorId)
+  const requested = candidates.find((actor) => String(actor?.id) === String(requestedId ?? ''))
+  if (requested) return [requested]
+  const mentioned = candidates.filter((actor) => mentionsReference(text, referenceNames(actor)))
+  if (mentioned.length) return mentioned
+  return /(?:товарищ|союзник|другому\s+герою|напарник)/iu.test(text) && candidates.length === 1 ? candidates : []
+}
+
+function mentionedInventoryItems(inventory, text, requestedId = '') {
+  const requested = (inventory ?? []).find((item) => String(item?.id) === String(requestedId ?? ''))
+  if (requested) return [requested]
+  return (inventory ?? []).filter((item) => mentionsReference(text, itemReferenceNames(item)))
+}
+
+/**
+ * Возвращает существующую авторитетную TransferItem либо уточнение. Чужой
+ * инвентарь никогда не становится actor_id команды от лица запрашивающего
+ * игрока: «беру у товарища» требует действия владельца вещи.
+ */
+export function resolveInventoryTransfer(state = {}, actorId = '', text = '', reading = {}) {
+  const give = TRANSFER_GIVE.test(text)
+  const take = TRANSFER_TAKE.test(text)
+  if (!give && !take) return null
+  const actor = findActor(state, actorId)
+  if (!actor) return { status: 'clarification', narration: 'Герой для передачи предмета не найден.' }
+  const targets = mentionedPartyActors(state, actorId, text, reading.target_id)
+  const ownItems = mentionedInventoryItems(actor.inventory ?? [], text, reading.item_id)
+  if (!ownItems.length && !INVENTORY_NOUN.test(text)) return null
+  if (targets.length !== 1) {
+    return {
+      status: 'clarification',
+      narration: targets.length > 1
+        ? `Уточните получателя: подходят ${targets.map((target) => target.character ?? target.name ?? target.id).join(', ')}.`
+        : 'Уточните, какому герою нужно передать предмет.',
+    }
+  }
+  const target = targets[0]
+  if (take && !give) {
+    const sourceItems = mentionedInventoryItems(target.inventory ?? [], text)
+    return {
+      status: 'clarification',
+      narration: sourceItems.length === 1
+        ? `Эта вещь принадлежит герою ${target.character ?? target.name ?? target.id}. Передачу должен подтвердить её владелец своим действием.`
+        : sourceItems.length > 1
+          ? 'У владельца найдено несколько подходящих вещей. Пусть он явно укажет, что передаёт.'
+          : 'У указанного героя нет однозначно названного предмета для передачи.',
+    }
+  }
+  if (ownItems.length !== 1) {
+    return {
+      status: 'clarification',
+      narration: ownItems.length > 1
+        ? `Уточните предмет: подходят ${ownItems.map((item) => item.name ?? item.id).join(', ')}.`
+        : 'У героя нет однозначно названного предмета для передачи.',
+    }
+  }
+  if (state?.mechanics?.combat?.active) {
+    return { status: 'clarification', narration: 'Передавать предметы между инвентарями во время боя нельзя.' }
+  }
+  const item = ownItems[0]
+  if (item.equipped) return { status: 'clarification', narration: 'Сначала снимите передаваемый предмет.' }
+  if (item.attuned_to) return { status: 'clarification', narration: 'Сначала разорвите настройку с передаваемым предметом.' }
+  const requestedQuantity = Number(/(?:^|\s)(\d{1,3})(?=\s|$)/u.exec(text)?.[1] ?? 1)
+  const available = Math.max(1, Number(item.quantity) || 1)
+  if (!Number.isSafeInteger(requestedQuantity) || requestedQuantity < 1 || requestedQuantity > available) {
+    return { status: 'clarification', narration: `Доступное количество предмета: ${available}.` }
+  }
+  return {
+    status: 'command',
+    command: {
+      command_type: 'TransferItem',
+      actor_id: String(actorId),
+      recipient_id: String(target.id),
+      item_id: String(item.id),
+      quantity: requestedQuantity,
+    },
+    narration: `${actor.character ?? actor.name ?? actor.id} передаёт ${item.name ?? 'предмет'} герою ${target.character ?? target.name ?? target.id}.`,
+  }
+}
+
+const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман)|(?:труп|тел[оаеу]|останки|карман)[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu
+
+/**
+ * Пока у тела нет явного server-owned контейнера, поиск не подменяется
+ * проверкой Внимательности и не создаёт выдуманную добычу.
+ */
+export function resolveCorpseSearch(state = {}, text = '', reading = {}) {
+  if (!CORPSE_SEARCH.test(text)) return null
+  const corpses = [
+    ...(state?.enemies ?? []).filter((actor) => actor?.alive === false || Number(actor?.hp ?? 1) <= 0),
+    ...(state?.entities ?? []).filter((entity) => ['corpse', 'body', 'remains'].includes(String(entity?.kind ?? ''))),
+  ]
+  const requested = corpses.find((corpse) => String(corpse?.id) === String(reading.target_id ?? ''))
+  const mentioned = requested ? [requested] : corpses.filter((corpse) => mentionsReference(text, referenceNames(corpse)))
+  const candidates = mentioned.length ? mentioned : corpses.length === 1 ? corpses : []
+  if (candidates.length !== 1) {
+    return {
+      status: 'clarification',
+      narration: candidates.length > 1
+        ? `Уточните, чьё тело обыскивает герой: ${candidates.map((corpse) => corpse.name ?? corpse.id).join(', ')}.`
+        : 'Укажите конкретное тело, которое герой хочет обыскать.',
+      server_owned_contents: false,
+    }
+  }
+  const corpse = candidates[0]
+  const contents = Array.isArray(corpse?.search_contents) ? corpse.search_contents
+    : Array.isArray(corpse?.corpse_contents) ? corpse.corpse_contents
+      : null
+  return {
+    status: 'clarification',
+    narration: contents
+      ? 'У тела есть описанное содержимое, но оно ещё не оформлено как авторитетный контейнер. Нужна отдельная серверная команда извлечения.'
+      : 'У этого тела нет заданного сервером содержимого. Я не буду выдумывать находку или бросать проверку вместо неё.',
+    server_owned_contents: Array.isArray(contents),
+    corpse_id: String(corpse.id ?? ''),
+  }
 }
 
 function actorMeans(state = {}, actorId = '') {
@@ -146,25 +431,48 @@ const FAIL_FORWARD = Object.freeze({
   deadly: Object.freeze({ minutes: 30, advances_quest_clock: true, escalates: true, summary: 'Риск оправдался худшим образом: опасность стала явной и близкой.' }),
 })
 
-export function failForwardFor(risk = 'minor') {
+const CONSEQUENCE_SUMMARIES = Object.freeze({
+  time: 'Попытка отняла время, а ситуация успела измениться.',
+  noise: 'Попытка выдала героя шумом и привлекла нежелательное внимание.',
+  exposure: 'Герой раскрыл своё положение и потерял безопасную возможность.',
+  lost_opportunity: 'Собеседник или обстоятельства больше не дают прежней возможности.',
+})
+
+export function failForwardFor(risk = 'minor', consequenceType = 'time') {
   const stake = inEnum(RISK_LEVELS, risk, 'minor')
-  return { risk: stake, ...FAIL_FORWARD[stake] }
+  const type = inEnum(FREE_ACTION_CONSEQUENCE_TYPES, consequenceType, 'time')
+  return {
+    risk: stake,
+    consequence_type: type,
+    ...FAIL_FORWARD[stake],
+    summary: `${CONSEQUENCE_SUMMARIES[type]} ${FAIL_FORWARD[stake].summary}`,
+  }
 }
 
 /**
  * Шаг 4 брифа: ставки объявляются до броска. Живой ведущий говорит «Атлетика, СЛ 15;
  * сорвёшься — потеряешь время и наделаешь шума» прежде, чем кубик брошен.
  */
-export function stakesFor({ ability = '', skill = '', resolution = {}, risk = 'minor' } = {}) {
+export function stakesFor({
+  ability = '',
+  skill = '',
+  resolution = {},
+  risk = 'minor',
+  proficiency = 'none',
+  consequence_type = 'time',
+} = {}) {
   if (resolution.mode !== 'check') return null
-  const consequence = failForwardFor(risk)
+  const consequence = failForwardFor(risk, consequence_type)
   return {
     ability: clean(ability, 20),
-    skill: clean(skill, 60),
+    skill: canonicalSkill(skill),
+    proficiency: inEnum(FREE_ACTION_PROFICIENCY_LEVELS, proficiency, 'none'),
     difficulty: resolution.difficulty,
     difficulty_category: resolution.difficulty_category,
+    difficulty_factors: [...new Set(Array.isArray(resolution.difficulty_factors) ? resolution.difficulty_factors.map((factor) => clean(factor, 60)).filter(Boolean) : [])].slice(0, 8),
+    consequence_type: consequence.consequence_type,
     on_failure: consequence.summary,
-    policy: 'free-action-stakes-v1',
+    policy: 'free-action-stakes-v2',
   }
 }
 

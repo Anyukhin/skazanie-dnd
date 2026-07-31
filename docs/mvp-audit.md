@@ -82,6 +82,7 @@
 | `POST /api/narrate` | Доверенный room state → verified roll → `GameOrchestrator` → выбранный режим |
 | `POST /api/items/generate-image` | Аутентифицированная, rate-limited генерация файла |
 | `GET /generated/items/:file` | Аутентифицированная выдача сгенерированного файла из configured storage |
+| `GET /api/campaigns/:id/npcs/:npcId/portrait` | Authenticated viewer-visible NPC → static role portrait либо rate-limited generated WebP из hashed persistent cache |
 
 Неизвестный путь `/api/*` возвращает JSON 404 и не проваливается в SPA.
 
@@ -98,7 +99,7 @@
 | `PUT /api/rooms/:code` | Замена совместимого room state | REFACTOR выполнен частично: non-admin не может перезаписать боевую механику в `enforce`, но narrative state и admin divergence всё ещё возможны |
 | `persistAuthoritativeProjection` | Копирует HP/enemies/mechanics/items/movement/tactical turn/battle log/map feedback и выбранные scene/rulings из event state в room JSON | Нужный strangler adapter, но event commit и room save не образуют одну транзакцию; conflict projection не откатывает уже записанные события |
 | `POST /api/rooms/:code/dice` | Записывает `lastDiceRoll` и room version | RNG унифицирован через `DiceService`, однако запись остаётся вне event stream |
-| image generation | Записывает файл в `storage/generated/items` | Изолированный побочный эффект; теперь путь следует `DND_STORAGE_DIR`, а чтение и генерация требуют auth |
+| image generation | Записывает файл в `storage/generated/items` либо hashed `storage/generated/npcs` | Изолированный побочный эффект; путь следует `DND_STORAGE_DIR`, а generated NPC portrait выдаётся только после auth, campaign ACL и viewer-visible profile check |
 | auth repository | Меняет `auth.json` и сессии | Допустимая отдельная bounded context; не является игровым event stream |
 
 ## Классификация KEEP / WRAP / REFACTOR / REPLACE / MISSING

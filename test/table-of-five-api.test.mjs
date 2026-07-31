@@ -108,17 +108,31 @@ test('стол на пятерых получает пять слотов, от�
   assert.equal(created.body.state.players.length, 5)
   assert.deepEqual(created.body.user.campaignMemberships[0].heroIds, ['hero-slot-1'])
 
+  const invite = await request(baseUrl, '/api/campaigns/TABLE-FIVE/invites', {
+    method: 'POST', cookie: accounts[0], body: {},
+  })
+  assert.equal(invite.status, 201, invite.text)
+  assert.deepEqual(invite.body.hero_ids, ['hero-slot-2', 'hero-slot-3', 'hero-slot-4', 'hero-slot-5'])
+
   for (let index = 1; index < 5; index += 1) {
-    const invite = await request(baseUrl, '/api/campaigns/TABLE-FIVE/invites', {
-      method: 'POST', cookie: accounts[0], body: {},
-    })
-    assert.equal(invite.status, 201, invite.text)
     const joined = await request(baseUrl, '/api/campaigns/TABLE-FIVE/join', {
       method: 'POST', cookie: accounts[index], body: { invite_token: invite.body.token },
     })
     assert.equal(joined.status, 200, joined.text)
     assert.deepEqual(joined.body.hero_ids, [`hero-slot-${index + 1}`])
   }
+
+  const duplicateJoin = await request(baseUrl, '/api/campaigns/TABLE-FIVE/join', {
+    method: 'POST', cookie: accounts[1], body: { invite_token: invite.body.token },
+  })
+  assert.equal(duplicateJoin.status, 200, duplicateJoin.text)
+  assert.equal(duplicateJoin.body.duplicate, true)
+
+  const fullInvite = await request(baseUrl, '/api/campaigns/TABLE-FIVE/join', {
+    method: 'POST', cookie: accounts[5], body: { invite_token: invite.body.token },
+  })
+  assert.equal(fullInvite.status, 409, fullInvite.text)
+  assert.match(fullInvite.body.error, /не осталось свободных героев/u)
 
   const noSeat = await request(baseUrl, '/api/campaigns/TABLE-FIVE/invites', {
     method: 'POST', cookie: accounts[0], body: {},

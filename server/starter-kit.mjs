@@ -1,32 +1,22 @@
+import { materializeCatalogItem } from './item-catalog.mjs'
+
 const STARTING_GOLD = 20
 
 const WEAPONS = Object.freeze({
   dagger: Object.freeze({
     catalog_id: 'srd_5_2_1:dagger',
-    base_price_cp: 200,
-    name: 'Кинжал',
-    weight: 1,
     description: 'Надёжный дорожный клинок из стартового снаряжения героя.',
     properties: '1к4 колющего урона · фехтовальное · лёгкое.',
-    combat: Object.freeze({ kind: 'melee', ability: 'dex', damage: '1d4', damageType: 'piercing', normalRange: 5 }),
   }),
   longsword: Object.freeze({
     catalog_id: 'srd_5_2_1:longsword',
-    base_price_cp: 1_500,
-    name: 'Длинный меч',
-    weight: 3,
     description: 'Сбалансированный строевой клинок из стартового снаряжения героя.',
     properties: '1к8 рубящего урона · универсальное (1к10).',
-    combat: Object.freeze({ kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 }),
   }),
   shortbow: Object.freeze({
     catalog_id: 'srd_5_2_1:shortbow',
-    base_price_cp: 2_500,
-    name: 'Короткий лук',
-    weight: 2,
     description: 'Компактный охотничий лук из стартового снаряжения героя.',
     properties: '1к6 колющего урона · дальность 80/320 фт · боеприпас · двуручное.',
-    combat: Object.freeze({ kind: 'ranged', ability: 'dex', damage: '1d6', damageType: 'piercing', normalRange: 80, longRange: 320, twoHanded: true, ammunition: true }),
   }),
 })
 
@@ -36,17 +26,11 @@ const WEAPONS = Object.freeze({
 const ARMOUR = Object.freeze({
   leather: Object.freeze({
     catalog_id: 'srd_5_2_1:leather-armor',
-    base_price_cp: 1_000,
-    name: 'Кожаный доспех',
-    weight: 10,
     description: 'Лёгкий дорожный доспех из стартового снаряжения героя.',
     properties: 'КД 11 + модификатор Ловкости · лёгкий доспех.',
   }),
   shield: Object.freeze({
     catalog_id: 'srd_5_2_1:shield',
-    base_price_cp: 1_000,
-    name: 'Щит',
-    weight: 6,
     description: 'Окованный щит из стартового снаряжения героя.',
     properties: '+2 к КД · занимает одну руку.',
   }),
@@ -75,32 +59,30 @@ function abilityScoresAreBlank(abilities = {}) {
 }
 
 function starterWeapon(heroId, weaponKey) {
-  const weapon = WEAPONS[weaponKey] ?? WEAPONS.dagger
-  return {
+  const template = WEAPONS[weaponKey] ?? WEAPONS.dagger
+  return materializeCatalogItem(template.catalog_id, {
     id: `${heroId}-starter-${weaponKey}`.slice(0, 120),
-    ...structuredClone(weapon),
-    type: 'weapon',
+    ...structuredClone(template),
     quantity: 1,
     equipped: true,
     rarity: 'обычный',
     image: '',
     imageStatus: 'ready',
-  }
+  })
 }
 
 function starterGear(heroId, gearKey) {
-  const gear = ARMOUR[gearKey]
-  if (!gear) return null
-  return {
+  const template = ARMOUR[gearKey]
+  if (!template) return null
+  return materializeCatalogItem(template.catalog_id, {
     id: `${heroId}-starter-${gearKey}`.slice(0, 120),
-    ...structuredClone(gear),
-    type: 'armor',
+    ...structuredClone(template),
     quantity: 1,
     equipped: true,
     rarity: 'обычный',
     image: '',
     imageStatus: 'ready',
-  }
+  })
 }
 
 /** Supplies only missing first-session essentials; imported, already-built

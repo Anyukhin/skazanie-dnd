@@ -10,10 +10,9 @@
  *     eval/narrator-craft-baseline.json eval/narrator-craft-after.json
  *
  * Safety-output текущего production Narrator можно переиграть на сохранённых
- * финальных production outputs без сети. Исходный after смешанный: три ответа
- * провайдера и один deterministic fallback. Если guard просит новый модельный
- * ответ, replay честно проходит ветку недоступного repair-output и измеряет
- * deterministic-provider-fallback, а не качество несохранённой модели:
+ * финальных production outputs без сети. v5 не делает repair-вызов: первый
+ * безопасный вариант остаётся текстом хода, а художественный verdict пишется
+ * отдельно в `async_feedback`:
  *   node eval/narrator-craft-eval.mjs --replay \
  *     eval/narrator-craft-after.json \
  *     --output eval/narrator-craft-production-after.json
@@ -444,11 +443,7 @@ if (replayIndex >= 0) {
 
     async completeJson() {
       this.calls += 1
-      if (this.calls > 1) {
-        const error = new Error('В исходном отчёте нет сохранённого repair-output')
-        error.code = 'OFFLINE_REPLAY_REPAIR_OUTPUT_UNAVAILABLE'
-        throw error
-      }
+      if (this.calls > 1) throw new Error('Narrator v5 не должен делать второй provider-вызов')
       return {
         narration: String(this.sample?.text ?? ''),
         suggestions: Array.isArray(this.sample?.suggestions) ? [...this.sample.suggestions] : [],
@@ -462,11 +457,12 @@ if (replayIndex >= 0) {
       throw new Error(`В исходном отчёте нет narrator-сценария ${scenario.id}`)
     }
     const client = new SavedFinalOutputReplayClient(sourceSample)
-    const narrator = new Narrator({ llmClient: client, maxAttempts: 2 })
+    const narrator = new Narrator({ llmClient: client })
     const result = await narrator.render(scenario.brief, {
       knownRuleIds: ['srd:ability-check'],
       recentNarrations,
     })
+    const asyncFeedback = await narrator.awaitFeedback(result.narration)
     samples.push({
       id: scenario.id,
       kind: 'narrator',
@@ -479,6 +475,7 @@ if (replayIndex >= 0) {
       provider: result.provider,
       prompt_version: result.prompt_version,
       verification: result.verification,
+      async_feedback: asyncFeedback,
       replay_source: {
         stage: 'saved-final-production-output-as-offline-candidate',
         source_output_kind: sourceOutputKind(sourceSample),
@@ -506,14 +503,14 @@ if (replayIndex >= 0) {
   }
 
   const report = {
-    schema_version: 2,
-    label: textOption('--label', 'production-safety-output-after-offline-replay'),
+    schema_version: 3,
+    label: textOption('--label', 'production-single-pass-after-offline-replay'),
     date: new Date().toISOString(),
     live_calls: 0,
     tokens: { input: 0, output: 0 },
     provider_log: [],
     provenance: {
-      method: 'offline-replay-current-production-safety-path',
+      method: 'offline-replay-current-production-single-pass-path',
       source_path: sourcePathArgument.replaceAll('\\', '/'),
       source_sha256: sha256(sourceBytes),
       source_json_sha256: sha256(JSON.stringify(sourceReport)),
@@ -523,7 +520,7 @@ if (replayIndex >= 0) {
       source_live_calls: sourceReport.live_calls ?? null,
       source_tokens: sourceReport.tokens ?? null,
       replay_prompt_version: NARRATOR_PROMPT_VERSION,
-      replay_max_attempts: 2,
+      replay_max_attempts: 1,
       source_outputs_are_final_production_outputs: true,
       source_narrator_output_mix: sourceOutputMix,
       source_all_final_outputs_ngram_jaccard_pct: sourceReport.metrics?.ngram_overlap?.pairwise_jaccard_pct ?? null,
@@ -539,11 +536,11 @@ if (replayIndex >= 0) {
       network_calls: 0,
       implementation_sha256_normalized_lf: {
         narrator_module: normalizedTextSha256(new URL('../server/narrator.mjs', import.meta.url)),
-        narrator_prompt: normalizedTextSha256(new URL('../prompts/narrator/v3.txt', import.meta.url)),
+        narrator_prompt: normalizedTextSha256(new URL('../prompts/narrator/v6.txt', import.meta.url)),
         metrics_module: normalizedTextSha256(new URL('./narrator-craft-metrics.mjs', import.meta.url)),
         replay_runner: normalizedTextSha256(new URL(import.meta.url)),
       },
-      note: 'Источник хранит финальные production outputs: три принятых provider model outputs и один уже готовый deterministic-fallback. Offline harness повторно подаёт каждый сохранённый финальный output как candidate текущему guard; это safety replay, а не точное восстановление прежней provider lineage. Когда нужен новый repair, отсутствие несохранённого ответа приводит к настоящему deterministic-provider-fallback. Метрики отчёта описывают финальный safety-output этой offline-ветки, а не качество model repair или narrator/v3.',
+      note: 'Источник хранит финальные production outputs: три provider model outputs и один прежний deterministic-fallback. Offline harness подаёт каждый текст как единственный candidate narrator/v6. Авторитетные нарушения по-прежнему дают deterministic-fallback, но художественные замечания не запускают repair: они записаны в async_feedback и предназначены для следующего хода.',
     },
     samples,
     metrics: measureNarratorCraft(samples),
@@ -574,6 +571,7 @@ for (const scenario of NARRATOR_CASES) {
     knownRuleIds: ['srd:ability-check'],
     recentNarrations,
   })
+  const asyncFeedback = await narrator.awaitFeedback(result.narration)
   samples.push({
     id: scenario.id,
     kind: 'narrator',
@@ -586,6 +584,7 @@ for (const scenario of NARRATOR_CASES) {
     provider: result.provider,
     prompt_version: result.prompt_version,
     verification: result.verification,
+    async_feedback: asyncFeedback,
     latency_ms: Math.round(performance.now() - started),
   })
   recentNarrations.push(result.narration)

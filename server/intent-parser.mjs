@@ -3,6 +3,7 @@ import { classifyNpcSocialCheck } from './npc-social-check.mjs'
 const FREE_ACTION_PATTERNS = Object.freeze([
   ['physically_impossible', /(взлет\w*|взлета\w*|парю\w*|телепорт\w*|останавлива\w*\s+время|дыш\w*\s+под\s+водой|становлюсь\s+невидим\w*|путешеств\w*\s+во\s+времени|fly\b|teleport\w*|stop\s+time|breathe\s+underwater)/iu],
   ['bounded_scene_action', /(подпира\w*|баррикад\w*|поджига\w*|зажига\w*|зову\w*\s+страж|крич\w*\s+страж|связыва\w*|прячу\w*\s+след\w*|заслоня\w*)/iu],
+  ['corpse_search', /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман)|(?:труп|тел[оаеу]|останки|карман)[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu],
 ])
 
 // Шаблоны намерений тоже привязаны к началу слова: без границы `долг` ловил
@@ -15,6 +16,7 @@ const INTENT_PATTERNS = [
   ['saving_throw', new RegExp(`${W}(спасброс|saving\\s*throw|save)`, 'iu')],
   ['improvised_action', FREE_ACTION_PATTERNS[0][1]],
   ['improvised_action', FREE_ACTION_PATTERNS[1][1]],
+  ['improvised_action', FREE_ACTION_PATTERNS[2][1]],
   ['ability_check', new RegExp(`${W}(провер|пытаюсь|исслед|осматр|осмотр|крадусь|взлом|убежд|выбираюсь|выплыв|плыву|тону|утоп|check|swim|drown)`, 'iu')],
   ['healing', new RegExp(`${W}(леч|исцел|восстанов\\p{L}*\\s+хит|heal)`, 'iu')],
   ['damage', /(получает?\s+урон|нанести\s+урон|damage)/iu],
@@ -36,6 +38,15 @@ function normalizedText(value) {
   return String(value ?? '').normalize('NFKC').trim().slice(0, 2000)
 }
 
+function uniqueActorsById(candidates) {
+  const actors = new Map()
+  for (const actor of candidates) {
+    const id = String(actor?.id ?? '')
+    if (id && !actors.has(id)) actors.set(id, actor)
+  }
+  return [...actors.values()]
+}
+
 function visibleActors(visibleState) {
   const candidates = [
     ...(Array.isArray(visibleState?.players) ? visibleState.players : []),
@@ -43,12 +54,17 @@ function visibleActors(visibleState) {
     ...(Array.isArray(visibleState?.social?.npcs) ? visibleState.social.npcs : []),
     ...(Array.isArray(visibleState?.merchants) ? visibleState.merchants : []),
   ]
-  return [...new Map(candidates.map((actor) => [String(actor?.id ?? ''), actor])
-    .filter(([id]) => id)).values()]
+  return uniqueActorsById(candidates)
 }
 
 function namesFor(actor) {
-  return [actor?.id, actor?.name, actor?.character, actor?.label].map((value) => String(value ?? '').trim()).filter(Boolean)
+  return [
+    actor?.id,
+    actor?.name,
+    actor?.character,
+    actor?.label,
+    ...(Array.isArray(actor?.aliases) ? actor.aliases : []),
+  ].map((value) => String(value ?? '').trim()).filter(Boolean)
 }
 
 function wordTokens(value) {
@@ -57,11 +73,14 @@ function wordTokens(value) {
 
 function sameNameToken(left, right) {
   if (left === right) return true
-  // Bounded Russian-case fallback: Мира → Миру, Марта → Марте. We only
-  // compare alphabetic words of 4+ letters and remove one ending letter;
-  // IDs and short/common fragments still require an exact match.
-  if (!/^[а-яё]{4,}$/u.test(left) || !/^[а-яё]{4,}$/u.test(right)) return false
-  return left.slice(0, -1) === right.slice(0, -1)
+  if (!/^[а-яё]{3,}$/u.test(left) || !/^[а-яё]{3,}$/u.test(right)) return false
+  const stem = (value) => {
+    for (const suffix of ['иями', 'ями', 'ами', 'ого', 'ему', 'ому', 'ыми', 'ими', 'ах', 'ях', 'ой', 'ей', 'ом', 'ем', 'а', 'я', 'у', 'ю', 'е', 'ы', 'и']) {
+      if (value.endsWith(suffix) && value.length - suffix.length >= 3) return value.slice(0, -suffix.length)
+    }
+    return value
+  }
+  return stem(left) === stem(right)
 }
 
 function mentionsName(message, name) {
@@ -75,6 +94,65 @@ function mentionsName(message, name) {
 function mentionedActors(message, state) {
   const lower = message.toLocaleLowerCase('ru')
   return visibleActors(state).filter((actor) => namesFor(actor).some((name) => mentionsName(lower, name)))
+}
+
+const ROLE_ALIASES = Object.freeze({
+  merchant: ['торговец', 'торговц', 'лавочник', 'продавец', 'продавц'],
+  innkeeper: ['трактирщик', 'хозяин трактира', 'хозяйка трактира'],
+  guard: ['стражник', 'страж', 'охранник'],
+  healer: ['лекарь', 'целитель'],
+  blacksmith: ['кузнец'],
+})
+
+function socialAliasesFor(actor) {
+  const role = String(actor?.role ?? '').trim()
+  const tags = (Array.isArray(actor?.tags) ? actor.tags : [])
+    .map((value) => String(value ?? '').trim())
+    .filter((value) => value && !value.includes(':'))
+  const translated = [...new Set([role, ...tags].flatMap((value) => (
+    ROLE_ALIASES[value.toLocaleLowerCase('ru')] ?? []
+  )))]
+  return [...new Set([
+    ...namesFor(actor),
+    role,
+    ...tags,
+    ...translated,
+  ].map((value) => String(value ?? '').trim()).filter(Boolean))]
+}
+
+function presentSocialActors(visibleState) {
+  const location = String(visibleState?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  const candidates = [
+    ...(Array.isArray(visibleState?.social?.npcs) ? visibleState.social.npcs : []),
+    ...(Array.isArray(visibleState?.merchants) ? visibleState.merchants : []),
+  ]
+  return uniqueActorsById(candidates)
+    .filter((actor) => actor?.available !== false)
+    .filter((actor) => {
+      const actorLocation = String(actor?.location ?? '').trim().toLocaleLowerCase('ru')
+      return !location || !actorLocation || actorLocation === location
+    })
+}
+
+/**
+ * Сопоставление собеседника ограничено видимой текущей сценой. Точное имя или
+ * явный alias имеют приоритет над ролью; одинаковая роль у двух NPC остаётся
+ * неоднозначной и не превращается в молчаливый выбор первого.
+ */
+export function resolvePresentSocialActors(message, visibleState) {
+  const lower = normalizedText(message).toLocaleLowerCase('ru')
+  const scored = presentSocialActors(visibleState).map((actor) => {
+    const properNames = namesFor(actor)
+    const roleAliases = socialAliasesFor(actor).filter((alias) => !properNames.includes(alias))
+    const score = properNames.some((name) => mentionsName(lower, name))
+      ? 2
+      : roleAliases.some((alias) => mentionsName(lower, alias))
+        ? 1
+        : 0
+    return { actor, score }
+  }).filter((entry) => entry.score > 0)
+  const best = Math.max(0, ...scored.map((entry) => entry.score))
+  return scored.filter((entry) => entry.score === best).map((entry) => entry.actor)
 }
 
 /**
@@ -108,10 +186,15 @@ export class IntentParser {
     const socialSkill = classifyNpcSocialCheck(text)
     const freeActionKind = classifyFreeActionKind(text)
     const intent = socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
-    const mentioned = mentionedActors(text, visibleState)
+    const socialTargets = intent === 'social' ? resolvePresentSocialActors(text, visibleState) : []
+    const mentioned = intent === 'social' && socialTargets.length ? socialTargets : mentionedActors(text, visibleState)
     const targets = mentioned.map((actor) => String(actor.id)).filter((id) => id !== String(playerId ?? ''))
     const requiresTarget = intent === 'attack' || intent === 'damage'
-    const missing = requiresTarget && !targets.length ? ['target_id'] : []
+    const ambiguousSocialTarget = intent === 'social' && socialTargets.length > 1
+    const missing = [
+      ...(requiresTarget && !targets.length ? ['target_id'] : []),
+      ...(ambiguousSocialTarget ? ['ambiguous_npc'] : []),
+    ]
     const number = /(?:^|\s)(\d{1,3})(?:\s|$)/.exec(text)?.[1]
     return {
       actor_id: String(playerId ?? ''),
@@ -125,6 +208,13 @@ export class IntentParser {
       requires_clarification: missing.length > 0,
       confidence: intent === 'improvised_action' ? 0.45 : missing.length ? 0.55 : 0.86,
       free_action_kind: intent === 'improvised_action' ? freeActionKind : null,
+      ...(ambiguousSocialTarget ? {
+        target_candidates: socialTargets.map((actor) => ({
+          id: String(actor.id),
+          name: String(actor.name ?? actor.id),
+          role: String(actor.role ?? ''),
+        })),
+      } : {}),
     }
   }
 }

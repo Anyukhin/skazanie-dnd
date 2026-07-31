@@ -16,7 +16,7 @@ const state = normalizeCampaignState({
   players: [{ id: 'hero', character: 'Ада', hp: 10, maxHp: 10, armor: 14, abilities: { str: 14 }, inventory: [] }, { id: 'goblin', character: 'Гоблин', hp: 8, maxHp: 8, armor: 12, abilities: { dex: 12 }, inventory: [] }],
 })
 
-async function setup(values = [], { narrator = new Narrator() } = {}) {
+async function setup(values = [], { narrator = new Narrator(), ...orchestratorOptions } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-orchestrator-'))
   const dice = new DiceService({ rng: new SequenceDiceRng(values), idFactory: (() => { let id = 0; return () => `roll-${++id}` })() })
   const eventStore = new FileEventStore({ rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState, idFactory: (() => { let id = 0; return () => `id-${++id}` })() })
@@ -28,10 +28,146 @@ async function setup(values = [], { narrator = new Narrator() } = {}) {
     traceStore,
     narrator,
     idFactory: (() => { let id = 0; return () => `turn-${++id}` })(),
+    ...orchestratorOptions,
   })
   await eventStore.initializeCampaign({ campaign_id: 'TEST-ROOM', initial_state: state })
   return { orchestrator, eventStore, traceStore, rulesEngine }
 }
+
+function proseRulingOptions(narrator) {
+  return {
+    narrator,
+    intentParser: {
+      parse: async ({ message, playerId }) => ({
+        actor_id: playerId,
+        intent: 'custom_ruling',
+        approach: 'test',
+        targets: [],
+        mentioned_entities: [],
+        missing_information: [],
+        requires_clarification: false,
+        confidence: 1,
+        raw_message: message,
+      }),
+    },
+    adjudicator: {
+      createPlan: async () => ({
+        rule_ids: [],
+        proposed_commands: [{
+          command_type: 'RecordRuling',
+          actor_id: 'hero',
+          ruling_id: 'stream-ruling',
+          ruling: { id: 'stream-ruling', question: 'Что изменилось?', selected_interpretation: 'Ничего.' },
+        }],
+        roll_requests: [],
+        ruling_required: false,
+        ruling_draft: null,
+        narration_constraints: [],
+        confidence: 1,
+      }),
+    },
+  }
+}
+
+test('поток Narrator начинается только после commit, а replay не запускает второй stream', async () => {
+  let eventStore
+  let narratorCalls = 0
+  const order = []
+  const narration = 'Пока ничего не меняется.'
+  let releaseNarrator
+  const startCommitted = new Promise((resolve) => { releaseNarrator = resolve })
+  const narrator = {
+    render: async (_brief, { onProgress }) => {
+      narratorCalls += 1
+      await startCommitted
+      onProgress(narration)
+      return {
+        narration,
+        verification: { valid: true, violations: [] },
+        prompt_version: 'narrator/v6',
+        provider: 'TestNarrator',
+      }
+    },
+  }
+  const prepared = await setup([], proseRulingOptions(narrator))
+  eventStore = prepared.eventStore
+  let committedBeforeStream = false
+  const commit = eventStore.commit.bind(eventStore)
+  eventStore.commit = async (request) => {
+    const result = await commit(request)
+    committedBeforeStream = true
+    return result
+  }
+  const input = {
+    state,
+    playerId: 'hero',
+    message: 'Проверяю обстановку',
+    idempotencyKey: 'stream-after-commit',
+    onNarrationStart: () => {
+      assert.equal(committedBeforeStream, true, 'до narration.start механика уже должна быть committed')
+      order.push('start')
+      releaseNarrator()
+    },
+    onNarrationProgress: () => order.push('chunk'),
+  }
+
+  const first = await prepared.orchestrator.handle(input)
+  const replay = await prepared.orchestrator.handle(input)
+
+  assert.deepEqual(order, ['start', 'chunk'])
+  assert.equal(first.idempotent_replay, false)
+  assert.equal(replay.idempotent_replay, true)
+  assert.equal(replay.narration, first.narration)
+  assert.equal(narratorCalls, 1)
+})
+
+test('одинаковые параллельные prose-запросы делят один commit и один Narrator', async () => {
+  let releaseProvider
+  let providerStarted
+  const providerGate = new Promise((resolve) => { releaseProvider = resolve })
+  const started = new Promise((resolve) => { providerStarted = resolve })
+  let narratorCalls = 0
+  let streamStarts = 0
+  const narration = 'Проверенный итог остаётся неизменным.'
+  const narrator = {
+    render: async () => {
+      narratorCalls += 1
+      providerStarted()
+      await providerGate
+      return {
+        narration,
+        verification: { valid: true, violations: [] },
+        prompt_version: 'narrator/v6',
+        provider: 'TestNarrator',
+      }
+    },
+  }
+  const { orchestrator } = await setup([], proseRulingOptions(narrator))
+  const input = {
+    state,
+    playerId: 'hero',
+    message: 'Проверяю обстановку',
+    idempotencyKey: 'parallel-stream',
+    onNarrationStart: () => { streamStarts += 1 },
+  }
+
+  const firstPromise = orchestrator.handle(input)
+  await started
+  const secondPromise = orchestrator.handle({ ...input })
+  await assert.rejects(
+    orchestrator.handle({ ...input, message: 'Другое действие' }),
+    (error) => error?.code === 'IDEMPOTENCY_CONFLICT',
+  )
+  releaseProvider()
+  const [first, replay] = await Promise.all([firstPromise, secondPromise])
+
+  assert.equal(narratorCalls, 1)
+  assert.equal(streamStarts, 1)
+  assert.equal(first.idempotent_replay, false)
+  assert.equal(replay.idempotent_replay, true)
+  assert.equal(replay.narration, first.narration)
+  assert.equal(replay.state_version, first.state_version)
+})
 
 test('enforce коммитит события один раз и повторный idempotency_key безопасен', async () => {
   const deterministic = new Narrator()
