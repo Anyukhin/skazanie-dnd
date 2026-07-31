@@ -1067,6 +1067,16 @@ export type GameState = {
   entities?: Array<Record<string, unknown>>
   adventure?: AdventureState
   worldMemory?: WorldMemoryProjection
+  /**
+   * Optional viewer-safe contract introduced by server PR #18. Coordinates
+   * are authoritative; raw HP, goals and beliefs are deliberately absent.
+   */
+  scene_npcs?: SceneNpcProjection[]
+  /**
+   * Уже отфильтрованная сервером социальная проекция. Клиент не читает
+   * persistence-профили напрямую и не пытается повторять visibility policy.
+   */
+  social?: SocialProjection
   autonomy?: {
     schema_version?: number
     pacing?: {
@@ -1105,6 +1115,71 @@ export type GameState = {
 }
 
 export type ReputationTier = 'reviled' | 'distrusted' | 'unknown' | 'respected' | 'honoured'
+
+export type SceneNpcStance = 'neutral' | 'friendly' | 'wary' | 'hostile' | 'panicked'
+
+export type SceneNpcProjection = {
+  id: string
+  name: string
+  role: string
+  location_id: string
+  x: number
+  y: number
+  anchor_prop_id: string | null
+  /** Unknown future values render with the neutral fallback, never as enemies. */
+  stance: SceneNpcStance | (string & {})
+  alive: boolean
+  health_status: 'unharmed' | 'hurt' | 'bloodied' | 'dead'
+}
+
+export type SocialProjection = {
+  schema_version?: number
+  npcs?: Array<{
+    id: string
+    name: string
+    role?: string
+    location?: string
+    public_summary?: string
+    voice?: string
+    available?: boolean
+    tags?: string[]
+    inventory?: Array<{ id: string; name: string; quantity: number; description?: string }>
+  }>
+  relationship_tiers?: Record<string, Record<string, 'hostile' | 'unfriendly' | 'neutral' | 'friendly' | 'trusted'>>
+  conversations?: Array<{
+    id: string
+    npc_id: string
+    hero_id: string
+    player_message: string
+    npc_reply: string
+    stance: 'friendly' | 'neutral' | 'guarded' | 'hostile'
+    disclosed_fact_ids: string[]
+    disclosed_claim_ids: string[]
+    visibility: 'party' | 'specific_player'
+    check?: {
+      check_id: string
+      npc_id: string
+      skill: 'persuasion' | 'deception' | 'intimidation' | 'insight'
+      ability: string
+      roll_id: string
+      total: number
+      modifier: number
+      success: boolean
+      degree: 'strong_success' | 'success' | 'failure' | 'severe_failure'
+    }
+  }>
+  promises?: Array<{
+    id: string
+    npc_id: string
+    hero_id: string
+    direction: 'npc_to_party' | 'party_to_npc'
+    text: string
+    due_hint?: string
+    status: 'open' | 'fulfilled' | 'broken' | 'cancelled'
+    visibility: 'party' | 'specific_player'
+    source_conversation_id?: string
+  }>
+}
 
 /**
  * Память мира в проекции игрока. Сервер уже отфильтровал её по видимости и по

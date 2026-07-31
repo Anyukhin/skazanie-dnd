@@ -35,6 +35,7 @@ export type AtmosphereAudio = {
   unlock(): Promise<boolean>
   isUnlocked(): boolean
   setMood(mood: AtmosphereMood, fadeSeconds?: number): void
+  setWaiting(waiting: boolean): void
   playEffect(effect: AtmosphereEffect): void
   playEvents(events: readonly (string | AtmosphereEvent)[]): void
   setAmbientVolume(volume: number): AtmosphereSettings
@@ -217,6 +218,7 @@ export function createAtmosphereAudio(options: {
   let effectsBus: GainNode | null = null
   let currentLayer: AmbientLayer | null = null
   let desiredMood: AtmosphereMood = 'building'
+  let waiting = false
   let disposed = false
   const activeSources = new Set<AudioScheduledSourceNode>()
 
@@ -231,14 +233,14 @@ export function createAtmosphereAudio(options: {
     return source
   }
 
-  const updateBuses = (at = context?.currentTime ?? 0) => {
+  const updateBuses = (at = context?.currentTime ?? 0, glideSeconds = 0.025) => {
     if (!ambientBus || !effectsBus) return
-    const ambient = settings.muted ? 0 : settings.ambientVolume
+    const ambient = settings.muted ? 0 : settings.ambientVolume * (waiting ? 0.62 : 1)
     const effects = settings.muted ? 0 : settings.effectsVolume
     ambientBus.gain.cancelScheduledValues(at)
     effectsBus.gain.cancelScheduledValues(at)
-    ambientBus.gain.setTargetAtTime(ambient, at, 0.025)
-    effectsBus.gain.setTargetAtTime(effects, at, 0.025)
+    ambientBus.gain.setTargetAtTime(ambient, at, glideSeconds)
+    effectsBus.gain.setTargetAtTime(effects, at, glideSeconds)
   }
 
   const noiseBuffer = (seconds: number): AudioBuffer | null => {
@@ -435,6 +437,13 @@ export function createAtmosphereAudio(options: {
       if (desiredMood === mood && currentLayer) return
       desiredMood = mood
       if (context) startAmbientLayer(mood, fadeSeconds)
+    },
+    setWaiting(value) {
+      const next = value === true
+      if (waiting === next) return
+      waiting = next
+      updateBuses(context?.currentTime ?? 0, 0.45)
+      if (waiting) playEffect('narration')
     },
     playEffect,
     playEvents(events) {
