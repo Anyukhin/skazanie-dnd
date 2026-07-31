@@ -127,15 +127,36 @@ function normalizePassiveEffects(value) {
     if (!effectId || !group) return []
     const armorClassBonus = clampInteger(candidate.armor_class_bonus, 0, 100, 0)
     const savingThrowBonus = clampInteger(candidate.saving_throw_bonus, 0, 100, 0)
-    if (armorClassBonus === 0 && savingThrowBonus === 0) return []
+    const damageResistances = [...new Set((Array.isArray(candidate.damage_resistances) ? candidate.damage_resistances : [])
+      .slice(0, 32).map((entry) => cleanText(entry, 40).toLowerCase()).filter(Boolean))].sort()
+    const spellImmunities = [...new Set((Array.isArray(candidate.spell_immunities) ? candidate.spell_immunities : [])
+      .slice(0, 32).map((entry) => cleanText(entry, 80).toLowerCase()).filter(Boolean))].sort()
+    const riderSource = candidate.weapon_damage_rider && typeof candidate.weapon_damage_rider === 'object' && !Array.isArray(candidate.weapon_damage_rider)
+      ? candidate.weapon_damage_rider
+      : null
+    const riderExpression = cleanText(riderSource?.expression, 40).toLowerCase().replace(/\s+/gu, '')
+    const riderDamageType = cleanText(riderSource?.damage_type, 40).toLowerCase()
+    const weaponDamageRider = /^([1-9]|1\d|20)d(4|6|8|10|12)$/u.test(riderExpression) && riderDamageType
+      ? { expression: riderExpression, damage_type: riderDamageType, critical_doubles: riderSource.critical_doubles === true }
+      : null
+    const preventsCriticalHits = candidate.prevents_critical_hits === true
+    const initiativeAdvantage = candidate.initiative_advantage === true
+    if (armorClassBonus === 0 && savingThrowBonus === 0 && !damageResistances.length && !spellImmunities.length
+      && !preventsCriticalHits && !initiativeAdvantage && !weaponDamageRider) return []
     return [{
       schema_version: 1,
       effect_id: effectId,
       group,
       requires_equipped: candidate.requires_equipped === true,
       requires_attunement: candidate.requires_attunement === true,
+      ...(candidate.requires_activated === true ? { requires_activated: true } : {}),
       armor_class_bonus: armorClassBonus,
       saving_throw_bonus: savingThrowBonus,
+      ...(damageResistances.length ? { damage_resistances: damageResistances } : {}),
+      ...(spellImmunities.length ? { spell_immunities: spellImmunities } : {}),
+      ...(preventsCriticalHits ? { prevents_critical_hits: true } : {}),
+      ...(initiativeAdvantage ? { initiative_advantage: true } : {}),
+      ...(weaponDamageRider ? { weapon_damage_rider: weaponDamageRider } : {}),
     }]
   })
 }
@@ -211,6 +232,7 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     quantity: clampInteger(source.quantity, 1, MAX_STOCK_QUANTITY, 1),
     weight: Number.isFinite(Number(source.weight)) ? Math.max(0, Number(source.weight)) : 0,
     equipped: source.equipped === true,
+    ...(source.activated === true ? { activated: true } : {}),
     rarity: normalizeItemRarity(source.rarity),
     description: cleanText(source.description, 1_000),
     properties: cleanText(source.properties, 500),

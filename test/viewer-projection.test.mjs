@@ -233,6 +233,44 @@ test('combat event projection removes enemy HP, armor class and initiative modif
   assert.deepEqual(events[2].payload.initiative[1], { actor_id: 'goblin-secret' })
 })
 
+test('magic-item combat outcomes do not disclose an enemy inventory', () => {
+  const state = privateState()
+  const hiddenSource = {
+    effect_id: 'hidden-effect', item_id: 'hidden-instance', item_name: 'Секретный предмет',
+    catalog_id: 'srd_5_2_1:hidden-magic-item',
+  }
+  const raw = [
+    {
+      event_type: 'DamageApplied', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public',
+      payload: { target_id: 'goblin-secret', resistant: true, applied_amount: 3, item_resistance_sources: [hiddenSource] },
+    },
+    {
+      event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public',
+      payload: { target_id: 'goblin-secret', hit: true, critical_prevented: true, critical_protection_sources: [hiddenSource] },
+    },
+    {
+      event_type: 'SpellImmunityResolved', actor_id: 'hero', target_ids: ['goblin-secret'], visibility: 'public',
+      payload: { target_id: 'goblin-secret', spell_id: 'magic-missile', item_immunity_sources: [hiddenSource] },
+    },
+    {
+      event_type: 'DamageApplied', actor_id: 'goblin-secret', target_ids: ['hero'], visibility: 'public',
+      payload: { target_id: 'hero', applied_amount: 7, item_damage_rider: true, ...hiddenSource },
+    },
+  ]
+  const projected = mechanicsForViewer(raw, user, 'hero', state)
+
+  assert.equal(projected[0].payload.resistant, true)
+  assert.equal(projected[0].payload.item_resistance_sources, undefined)
+  assert.equal(projected[1].payload.critical_prevented, true)
+  assert.equal(projected[1].payload.critical_protection_sources, undefined)
+  assert.equal(projected[2].payload.spell_id, 'magic-missile')
+  assert.equal(projected[2].payload.item_immunity_sources, undefined)
+  assert.equal(projected[3].payload.item_damage_rider, true)
+  assert.equal(projected[3].payload.catalog_id, undefined)
+  assert.doesNotMatch(JSON.stringify(projected), /hidden-instance|hidden-effect|hidden-magic-item|Секретный предмет/u)
+  assert.match(JSON.stringify(mechanicsForViewer(raw, { role: 'admin' }, 'hero', state)), /hidden-magic-item/u)
+})
+
 // Спасбросок врага — единственный бросок, который делает враг, но инициирует
 // герой: actor_id события — заклинатель, а бросает цель. Оба сторожа
 // проверяли «враг — действующее лицо», поэтому модификатор характеристики

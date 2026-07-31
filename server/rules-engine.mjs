@@ -160,6 +160,7 @@ import {
   ITEM_DESTROYED_EVENT_SCHEMA_VERSION,
   ItemLifecycleValidationError,
   activeItemEffectTotals,
+  activeItemMechanicEffects,
   applyItemLifecycleEventToPlayers,
   carryingCapacity,
   derivedEquipmentArmorClass,
@@ -167,6 +168,7 @@ import {
   inventoryWeight,
   itemLifecycleEvents,
   validateItemLifecycleCommand,
+  weaponDamageRidersForItem,
 } from './item-lifecycle.mjs'
 import {
   CHARACTER_LIFECYCLE_COMMAND_TYPES,
@@ -188,6 +190,7 @@ import {
 } from './scene-interactions.mjs'
 
 export const DEFAULT_RULESET_ID = 'srd_5_2_1'
+const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // 4: карта сцены хранится слоями в `scene.map`, а `scene.cells` стал производной
 // read-моделью. Старые снимки переигрываются от нулевого, поэтому отдельной
 // файловой миграции не требуется.
@@ -359,6 +362,7 @@ const COMMAND_RULES = Object.freeze({
   UseItem: [RULE_IDS.actions],
   TransferItem: [],
   AttuneItem: [],
+  ActivateItem: [RULE_IDS.actions],
   LevelUp: [RULE_IDS.resource],
   ImportCharacter: [RULE_IDS.resource],
 })
@@ -379,7 +383,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
   ...NPC_WORLD_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
-  'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'LevelUp', 'ImportCharacter',
+  'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
 ])
 
@@ -2509,7 +2513,7 @@ function needsActor(type) {
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn', 'StartRest', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
-    'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
+    'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
 
 function canonicalSkillId(value) {
@@ -2679,7 +2683,7 @@ function assertActorPermission(command, context, state) {
 
 function assertTurn(command, state, context = {}) {
   const combat = state.mechanics.combat
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'IdentifyEnemy', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   // Дополнительные лучи одного заклинания — часть уже совершённого действия,
   // а не новое применение: экономика хода за них не платит второй раз.
@@ -2794,6 +2798,11 @@ function assertTurn(command, state, context = {}) {
           : 'Действие на этом ходу уже потрачено',
         resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : 'ACTION_SPENT',
       )
+    }
+  } else if (command.command_type === 'ActivateItem') {
+    const economy = combat.action_economy[command.actor_id]
+    if (economy?.bonus_action === false) {
+      throw new RulesValidationError('Бонусное действие на этом ходу уже потрачено', 'BONUS_ACTION_SPENT')
     }
   } else if (['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon'].includes(command.command_type)) {
     const economy = combat.action_economy[command.actor_id]
@@ -3669,6 +3678,14 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
   if (!actor) throw new RulesValidationError('Цель урона не найдена', 'TARGET_NOT_FOUND')
   const raw = Math.max(0, Math.floor(Number(rawAmount) || 0))
   const defenses = defenseFor(state, targetId)
+  const itemResistanceSources = activeItemMechanicEffects(actor)
+    .filter((effect) => effect.damage_resistances.includes(String(damageType).toLowerCase()))
+    .map((effect) => ({
+      effect_id: effect.effect_id,
+      item_id: effect.item_id,
+      item_name: effect.item_name,
+      catalog_id: effect.catalog_id,
+    }))
   // Неуязвимость от состояния — не то же, что сопротивление: сфера Отилюка
   // отсекает урон целиком, а не делит его пополам.
   const conditionImmunity = [...conditionIdsFor(state, targetId)].some((condition) => CONDITION_EFFECTS[condition]?.immuneToAllDamage === true)
@@ -3682,7 +3699,7 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
     const effect = CONDITION_EFFECTS[condition]
     return effect?.resistsAllDamage === true || (effect?.resistsDamageTypes ?? []).includes(damageType)
   })
-  const resistant = defenses.resistances.includes(damageType) || ragingResistance || uncannyResistance || absorbingResistance || bladeWardResistance || conditionResistance || Boolean(auraOfLife)
+  const resistant = defenses.resistances.includes(damageType) || itemResistanceSources.length > 0 || ragingResistance || uncannyResistance || absorbingResistance || bladeWardResistance || conditionResistance || Boolean(auraOfLife)
   const vulnerable = defenses.vulnerabilities.includes(damageType)
   let afterDefense = immune ? 0 : raw
   if (!immune && resistant && !vulnerable) afterDefense = Math.floor(afterDefense / 2)
@@ -3702,6 +3719,7 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
     immune,
     resistant,
     vulnerable,
+    ...(itemResistanceSources.length ? { item_resistance_sources: itemResistanceSources } : {}),
     ...(auraOfLife ? { aura_of_life_source: auraOfLife.source_id } : {}),
     ...(resistanceCantripReduction > 0 ? {
       resistance_cantrip_reduction: resistanceCantripReduction,
@@ -4959,6 +4977,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     const projectileCount = Math.max(1, safeInteger(spell.projectileCount, 3)
       + Math.max(0, resolvedSlotLevel - spell.level) * Math.max(0, safeInteger(spell.upcastProjectilesPerLevel, 1)))
     const protectedByShield = conditionIdsFor(state, resolvedTargetId).has('shielded')
+    const itemImmunitySources = activeItemMechanicEffects(target)
+      .filter((effect) => effect.spell_immunities.includes(String(spell.id).toLowerCase()))
+      .map((effect) => ({
+        effect_id: effect.effect_id,
+        item_id: effect.item_id,
+        item_name: effect.item_name,
+        catalog_id: effect.catalog_id,
+      }))
     const missileRoll = diceService.roll(
       String(spell.damage || '1d4+1'),
       `spell_damage:${spell.id}`,
@@ -4967,17 +4993,34 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     )
     rolls.push(missileRoll)
     events.push(eventFrom(sourceCommand, 'DieRolled', { ...missileRoll, projectile_count: projectileCount }, []))
+    const sourceMetadata = sourceItem ? {
+      source_type: 'magic-item',
+      source_item_id: sourceItem.id,
+      source_item_name: sourceItem.name,
+    } : {}
+    if (itemImmunitySources.length) {
+      events.push({
+        ...eventFrom(commandWithRules(sourceCommand, RULE_IDS.resistance), 'SpellImmunityResolved', {
+          schema_version: MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION,
+          spell_id: spell.id,
+          damage_type: damageType,
+          projectile_count: projectileCount,
+          damage_per_projectile: missileRoll.total,
+          prevented_raw_amount: missileRoll.total * projectileCount,
+          automatic_hit: true,
+          item_immunity_sources: itemImmunitySources,
+          ...sourceMetadata,
+        }, [resolvedTargetId]),
+        event_schema_version: MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION,
+      })
+      return
+    }
     const payload = resolveDamagePayload(
       state,
       resolvedTargetId,
       protectedByShield ? 0 : missileRoll.total * projectileCount,
       damageType,
     )
-    const sourceMetadata = sourceItem ? {
-      source_type: 'magic-item',
-      source_item_id: sourceItem.id,
-      source_item_name: sourceItem.name,
-    } : {}
     events.push(eventFrom(commandWithRules(sourceCommand, RULE_IDS.damage), 'DamageApplied', {
       ...payload,
       ...sourceMetadata,
@@ -5228,7 +5271,16 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // A melee hit on a creature that cannot move or react is a critical hit
       // regardless of the die, so every rider damage roll below scales off
       // `critical` rather than off the natural 20.
-      const critical = attack.kept === 20 || (hit && conditionModifiers.automaticCritical)
+      const criticalBeforeProtection = attack.kept === 20 || (hit && conditionModifiers.automaticCritical)
+      // Adamantine must intercept the critical before any damage expression or
+      // rider is doubled.  The exact worn instance is recorded in the attack
+      // event so replay and narration never need to consult a future catalog.
+      const criticalProtectionSources = criticalBeforeProtection
+        ? activeItemMechanicEffects(target)
+          .filter((effect) => effect.prevents_critical_hits)
+          .map((effect) => ({ effect_id: effect.effect_id, item_id: effect.item_id, item_name: effect.item_name, catalog_id: effect.catalog_id }))
+        : []
+      const critical = criticalBeforeProtection && criticalProtectionSources.length === 0
       rolls.push(attack)
       // Отражения: удар может уйти в двойника. Число двойников хранится прямо в
       // идентификаторе состояния, поэтому уменьшение — это снятие одного и
@@ -5252,6 +5304,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const attackCommand = commandWithRules(command, RULE_IDS.armorClass, advantage || disadvantage ? RULE_IDS.advantage : null, critical ? RULE_IDS.criticalHit : null)
       const configuredDamageExpression = profile?.damage_expression ?? command.damage_expression
       const damageType = profile?.damage_type ?? String(command.damage_type || 'untyped')
+      const itemDamageRiders = selectedProfile
+        ? weaponDamageRidersForItem(actor, selectedProfile.item.id, { selectedCountsAsEquipped: true })
+        : []
       let damageOutcome = null
       // Перехваченный двойником удар не считается попаданием по цели: никакого
       // урона, никаких последствий попадания.
@@ -5265,6 +5320,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         hit: landed,
         ...(interceptedByImage ? { mirror_image_intercepted: true, mirror_images_before: mirrorImages } : {}),
         critical,
+        ...(criticalBeforeProtection && !critical ? {
+          critical_prevented: true,
+          natural_critical: attack.kept === 20,
+          critical_protection_sources: criticalProtectionSources,
+        } : {}),
         ...(conditionModifiers.automaticCritical && critical && attack.kept !== 20 ? { automatic_critical: true } : {}),
         ...(conditionModifiers.advantage.length ? { condition_advantage: conditionModifiers.advantage } : {}),
         ...(conditionModifiers.disadvantage.length ? { condition_disadvantage: conditionModifiers.disadvantage } : {}),
@@ -5314,6 +5374,21 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const divineFavor = actorConditions.has('divine-favor')
         const divineFavorRoll = divineFavor ? diceService.roll(critical ? '2d4' : '1d4', 'spell:divine-favor:damage', command.actor_id, command.visibility ?? 'public') : null
         if (divineFavorRoll) { rolls.push(divineFavorRoll); events.push(eventFrom(command, 'DieRolled', { ...divineFavorRoll, damage_type: 'radiant' }, [])) }
+        const itemRiderRolls = itemDamageRiders.map((rider) => {
+          const expression = critical && rider.critical_doubles ? criticalDamageExpression(rider.expression) : rider.expression
+          const roll = diceService.roll(expression, `item_damage:${rider.effect_id}`, command.actor_id, command.visibility ?? 'public')
+          rolls.push(roll)
+          events.push(eventFrom(command, 'DieRolled', {
+            ...roll,
+            item_id: rider.item_id,
+            item_name: rider.item_name,
+            catalog_id: rider.catalog_id,
+            effect_id: rider.effect_id,
+            damage_type: rider.damage_type,
+            item_damage_rider: true,
+          }, []))
+          return { rider, roll }
+        })
         const rageBonus = actorConditions.has('raging') && (profile?.range_feet ?? 5) <= 5 ? (safeInteger(actor?.level, 1) >= 9 ? 3 : 2) : 0
         // Лишние кости от зачарований. Как и у Божественного благоволения, на
         // критическом попадании кость удваивается, а тип берётся от оружия.
@@ -5408,14 +5483,19 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             pendingCondition = { id: String(chargeTrait.condition), duration: chargeTrait.duration ?? null }
           }
         }
-        let payload = resolveDamagePayload(state, targetId, raw, damageType)
-        const knockedOut = command.knock_out === true && profile?.kind === 'melee' && payload.hp_before > 0 && payload.hp_after === 0
-        if (knockedOut) payload = {
-          ...payload,
-          hp_after: 1,
-          applied_amount: Math.max(0, payload.hp_before - 1),
-          knocked_out: true,
+        const canKnockOut = command.knock_out === true && profile?.kind === 'melee'
+        let knockedOut = false
+        const applyKnockoutChoice = (resolvedPayload) => {
+          if (!canKnockOut || resolvedPayload.hp_before <= 0 || resolvedPayload.hp_after !== 0) return resolvedPayload
+          knockedOut = true
+          return {
+            ...resolvedPayload,
+            hp_after: 1,
+            applied_amount: Math.max(0, resolvedPayload.hp_before - 1),
+            knocked_out: true,
+          }
         }
+        let payload = applyKnockoutChoice(resolveDamagePayload(state, targetId, raw, damageType))
         if (payload.hp_after === 0 && monsterTraitFor(target, 'undead-fortitude') && damageType !== 'radiant' && attack.kept !== 20) {
           const difficulty = 5 + payload.applied_amount
           const fortitude = rollSavingThrowCheck(state, diceService, targetId, { ability: 'con', modifier: abilityModifier(target?.abilities?.con), difficulty, purpose: 'undead_fortitude', visibility: command.visibility })
@@ -5425,10 +5505,47 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }
         events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.damage, payload.immune || payload.resistant || payload.vulnerable ? RULE_IDS.resistance : null, payload.temporary_hp_absorbed ? RULE_IDS.temporaryHp : null), 'DamageApplied', payload, [targetId]))
         let finalPayload = payload
-        if (secondaryDamage?.amount > 0 && payload.hp_after > 0) {
-          const afterPrimary = replayEvents(state, events)
-          const secondaryPayload = resolveDamagePayload(afterPrimary, targetId, secondaryDamage.amount, secondaryDamage.type)
-          events.push(eventFrom(commandWithRules(
+        const damageComponents = [{
+          damage_type: payload.damage_type,
+          raw_amount: payload.raw_amount,
+          applied_amount: payload.applied_amount,
+          temporary_hp_absorbed: payload.temporary_hp_absorbed,
+          source: 'weapon',
+        }]
+        let afterDamageState = replayEvents(state, events)
+        for (const { rider, roll } of itemRiderRolls) {
+          const riderPayload = applyKnockoutChoice(resolveDamagePayload(afterDamageState, targetId, roll.total, rider.damage_type))
+          const riderEvent = eventFrom(commandWithRules(
+            attackCommand,
+            RULE_IDS.damage,
+            riderPayload.immune || riderPayload.resistant || riderPayload.vulnerable ? RULE_IDS.resistance : null,
+            riderPayload.temporary_hp_absorbed ? RULE_IDS.temporaryHp : null,
+          ), 'DamageApplied', {
+            ...riderPayload,
+            item_id: rider.item_id,
+            item_name: rider.item_name,
+            catalog_id: rider.catalog_id,
+            effect_id: rider.effect_id,
+            item_damage_rider: true,
+            critical_doubled: critical && rider.critical_doubles,
+          }, [targetId])
+          events.push(riderEvent)
+          afterDamageState = applyGameEvent(afterDamageState, riderEvent)
+          finalPayload = riderPayload
+          damageComponents.push({
+            damage_type: riderPayload.damage_type,
+            raw_amount: riderPayload.raw_amount,
+            applied_amount: riderPayload.applied_amount,
+            temporary_hp_absorbed: riderPayload.temporary_hp_absorbed,
+            source: 'magic-item',
+            item_id: rider.item_id,
+            catalog_id: rider.catalog_id,
+            effect_id: rider.effect_id,
+          })
+        }
+        if (secondaryDamage?.amount > 0 && finalPayload.hp_after > 0) {
+          const secondaryPayload = applyKnockoutChoice(resolveDamagePayload(afterDamageState, targetId, secondaryDamage.amount, secondaryDamage.type))
+          const secondaryEvent = eventFrom(commandWithRules(
             attackCommand,
             RULE_IDS.damage,
             secondaryPayload.immune || secondaryPayload.resistant || secondaryPayload.vulnerable ? RULE_IDS.resistance : null,
@@ -5437,23 +5554,29 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             ...secondaryPayload,
             action_id: secondaryDamage.action_id,
             secondary_damage: true,
-          }, [targetId]))
+          }, [targetId])
+          events.push(secondaryEvent)
+          afterDamageState = applyGameEvent(afterDamageState, secondaryEvent)
           finalPayload = secondaryPayload
-          damageOutcome = {
-            ...secondaryPayload,
-            damage_type: payload.damage_type === secondaryPayload.damage_type ? payload.damage_type : 'mixed',
-            damage_components: [
-              { damage_type: payload.damage_type, raw_amount: payload.raw_amount, applied_amount: payload.applied_amount },
-              { damage_type: secondaryPayload.damage_type, raw_amount: secondaryPayload.raw_amount, applied_amount: secondaryPayload.applied_amount },
-            ],
-            raw_amount: payload.raw_amount + secondaryPayload.raw_amount,
-            applied_amount: payload.applied_amount + secondaryPayload.applied_amount,
-            temporary_hp_before: payload.temporary_hp_before,
-            temporary_hp_absorbed: payload.temporary_hp_absorbed + secondaryPayload.temporary_hp_absorbed,
-            hp_before: payload.hp_before,
-          }
-        } else {
-          damageOutcome = payload
+          damageComponents.push({
+            damage_type: secondaryPayload.damage_type,
+            raw_amount: secondaryPayload.raw_amount,
+            applied_amount: secondaryPayload.applied_amount,
+            temporary_hp_absorbed: secondaryPayload.temporary_hp_absorbed,
+            source: 'secondary',
+            action_id: secondaryDamage.action_id,
+          })
+        }
+        damageOutcome = damageComponents.length === 1 ? payload : {
+          ...finalPayload,
+          damage_type: new Set(damageComponents.map((component) => component.damage_type)).size === 1 ? payload.damage_type : 'mixed',
+          damage_components: damageComponents,
+          raw_amount: damageComponents.reduce((sum, component) => sum + component.raw_amount, 0),
+          applied_amount: damageComponents.reduce((sum, component) => sum + component.applied_amount, 0),
+          temporary_hp_before: payload.temporary_hp_before,
+          temporary_hp_absorbed: damageComponents.reduce((sum, component) => sum + safeInteger(component.temporary_hp_absorbed, 0), 0),
+          hp_before: payload.hp_before,
+          hp_after: finalPayload.hp_after,
         }
         if (knockedOut) events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.zeroHp, RULE_IDS.conditions, RULE_IDS.resource), 'CreatureKnockedOut', {
           condition: 'unconscious',
@@ -5486,7 +5609,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (pendingCondition && finalPayload.hp_after > 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: pendingCondition.id, duration: pendingCondition.duration, source_actor: command.actor_id, action_id: profile?.id ?? null }, [targetId]))
         if (targetConditions.has('uncanny-dodge')) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'uncanny-dodge' }, [targetId]))
         if (steadyAim) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'steady-aim' }, [command.actor_id]))
-        events.push(...zeroHitPointDamageConsequences(state, attackCommand, targetId, finalPayload, { critical }))
+        events.push(...zeroHitPointDamageConsequences(state, attackCommand, targetId, damageOutcome, { critical }))
       }
       if (landed && pendingWeaponHitMatches && pendingWeaponHitCondition && pendingWeaponHitSpell) {
         const effectId = pendingWeaponHitCondition.effect_id ?? state.mechanics.concentration[command.actor_id]?.effect_id ?? null
@@ -8164,7 +8287,16 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const modifier = Number.isSafeInteger(Number(actor?.initiativeBonus))
           ? Math.max(-30, Math.min(30, Number(actor.initiativeBonus)))
           : abilityModifier(actor?.abilities?.dex)
-        const roll = diceService.rollD20({ modifier, purpose: 'initiative', actorId: id, visibility: 'public' })
+        const initiativeItemSources = activeItemMechanicEffects(actor)
+          .filter((effect) => effect.initiative_advantage)
+          .map((effect) => ({ effect_id: effect.effect_id, item_id: effect.item_id, item_name: effect.item_name, catalog_id: effect.catalog_id }))
+        const roll = diceService.rollD20({
+          modifier,
+          purpose: 'initiative',
+          actorId: id,
+          advantage: initiativeItemSources.length > 0,
+          visibility: 'public',
+        })
         rolls.push(roll)
         entries.push({
           actor_id: id,
@@ -8173,6 +8305,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           roll: roll.kept,
           dice: clone(roll.dice),
           roll_id: roll.roll_id,
+          ...(initiativeItemSources.length ? {
+            mode: 'advantage',
+            advantage_sources: initiativeItemSources,
+          } : {}),
         })
       }
       const initiative = sortedInitiative(entries)
@@ -8879,9 +9015,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     }
     case 'EquipItem':
     case 'TransferItem':
-    case 'AttuneItem': {
+    case 'AttuneItem':
+    case 'ActivateItem': {
       for (const itemEvent of itemLifecycleEvents(command)) {
-        events.push(eventFrom(command, itemEvent.event_type, itemEvent.payload, itemEvent.target_ids))
+        const resolvedItemEvent = eventFrom(command, itemEvent.event_type, itemEvent.payload, itemEvent.target_ids)
+        events.push(itemEvent.event_schema_version
+          ? { ...resolvedItemEvent, event_schema_version: itemEvent.event_schema_version }
+          : resolvedItemEvent)
       }
       break
     }
@@ -10083,11 +10223,15 @@ export function applyGameEvent(rawState, event) {
     case 'ItemAttunementChanged':
     case 'ItemChargesSpent':
     case 'ItemDestroyed':
+    case 'MagicItemActivationChanged':
       state.players = applyItemLifecycleEventToPlayers(state.players, event)
       if (event.event_type === 'ItemTransferred' && payload.recipient_kind === 'npc') {
         state.npc_world = applyNpcWorldEvent(state.npc_world, event)
       }
       refreshPlayerDerivedState(state, targets)
+      if (event.event_type === 'MagicItemActivationChanged' && payload.combat_action) {
+        spendCombatEconomy(state, event.actor_id, payload.combat_action)
+      }
       break
     case 'ItemDawnRechargeResolved':
       state.players = applyItemDawnRechargeToPlayers(state.players, event)
@@ -11032,15 +11176,19 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'DieRolled': return `Бросок ${payload.expression || 'кости'}: ${safeInteger(payload.total, 0)}`
     case 'DamageApplied': return payload.death_ward_triggered
       ? `Урон: ${payload.applied_amount}; Death Ward удерживает цель на 1 HP`
+      : payload.item_damage_rider
+        ? `${payload.item_name || 'Магический предмет'} наносит дополнительно ${payload.applied_amount} урона (${payload.damage_type})`
       : payload.resistance_cantrip_reduction
         ? `Урон снижен Resistance на ${payload.resistance_cantrip_reduction}; HP ${payload.hp_before} → ${payload.hp_after}`
         : `Урон: ${payload.applied_amount}; HP ${payload.hp_before} → ${payload.hp_after}`
+    case 'SpellImmunityResolved': return `${payload.item_immunity_sources?.[0]?.item_name || 'Магический предмет'} полностью защищает от заклинания ${payload.spell_id}`
     case 'HealingApplied': return `Лечение: ${payload.applied_amount}; HP ${payload.hp_before} → ${payload.hp_after}`
     case 'HitPointMaximumReduced': return `Максимум HP снижен: ${payload.maximum_hp_before} → ${payload.maximum_hp_after}`
     case 'HitPointMaximumReductionPrevented': return `Aura of Life предотвращает снижение максимума HP`
-    case 'AttackResolved': return `Атака ${payload.hit ? 'попала' : 'не попала'}: ${payload.total} против КД ${payload.armor_class}`
+    case 'AttackResolved': return `Атака ${payload.hit ? 'попала' : 'не попала'}: ${payload.total} против КД ${payload.armor_class}${payload.critical_prevented ? '; критическое попадание стало обычным' : ''}`
     case 'AreaAttackResolved': return `${payload.item_name || 'Снаряд'} поражает область радиусом ${payload.radius_feet} фт.`
     case 'EquipmentChanged': return `${payload.item_name || 'Оружие'} экипировано`
+    case 'MagicItemActivationChanged': return `${payload.activated ? 'Активирован' : 'Выключен'} магический предмет ${payload.item_id}`
     case 'CombatActionUsed': return `${named(event.actor_id) || 'Участник'} использует ${payload.name || payload.action_id || 'боевое действие'}`
     case 'MerchantBargainResolved': return payload.success ? 'Торговец согласился изменить условия сделки' : 'Торговец отказался уступать в цене'
     case 'MerchantItemAppraised': return `Торговец оценил предмет «${payload.item_name ?? payload.item_id}» в ${payload.base_unit_price_cp ?? 0} мм`

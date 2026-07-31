@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
+import type { NarrationPreview } from './ai-client'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
@@ -62,14 +63,6 @@ import {
 // Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
 // а не отдельным разделом. Второго пути к ней быть не должно.
 type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'settings' | 'admin' | 'agent-lab'
-
-type NarrationPreviewSnapshot = {
-  messageId: string
-  text: string
-  phase: 'start' | 'streaming' | 'complete' | 'replaced' | 'aborted'
-  replayed?: boolean
-  roomVersion?: number
-}
 
 /** Слава приходит с сервера ступенями, а не числом: показываем то же словом. */
 const REPUTATION_TIER_LABELS: Record<ReputationTier, string> = {
@@ -3399,18 +3392,7 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const gameSession = useGameSession()
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = gameSession
-  // Структурный optional-доступ сохраняет сборку на stacked-base до вливания
-  // stream-ветки. Её public contract возвращает full-replacement snapshot, не delta.
-  const narrationPreview = (gameSession as typeof gameSession & {
-    narrationPreview?: NarrationPreviewSnapshot | null
-  }).narrationPreview ?? null
-  const submitActionWithNpc = submitAction as (
-    text: string,
-    actorId?: string,
-    npcId?: string,
-  ) => Promise<CommandOutcome>
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, narrationPreview, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -4051,7 +4033,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onOpenMerchant={openMerchant}
             onFinishTurn={finishMapTurn}
             onFreeAction={(text) => submitAction(text, activePlayer.id)}
-            onNpcAction={(text, npcId) => submitActionWithNpc(text, activePlayer.id, npcId)}
+            onNpcAction={(text, npcId) => submitAction(text, activePlayer.id, npcId)}
             onTransferItem={(itemId, npcId, quantity) => transferItem(activePlayer.id, itemId, npcId, quantity)}
             onRest={(kind) => submitAction(kind === 'long' ? 'Устроить долгий отдых' : 'Устроить короткий отдых', activePlayer.id)}
             onTypingChange={updateTypingPresence}
@@ -4074,12 +4056,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           enemyTargets={(state.enemies ?? []).filter((candidate) => candidate.alive && (candidate.hp == null || candidate.hp > 0)).map((candidate) => ({ id: candidate.id, label: candidate.name }))}
           combatActive={combatActive}
           combatItemTurnAvailable={canAct && turnActorId === activePlayer.id}
+          combatBonusActionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.bonus_action !== false}
           busy={tacticalBusy}
           error={tacticalError}
           onEquip={(itemId, equipped) => equipItem(activePlayer.id, itemId, equipped)}
           onUse={(itemId, targetId, chargesToSpend) => useItem(activePlayer.id, itemId, targetId, chargesToSpend)}
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
+          onActivate={(itemId, activated) => activateItem(activePlayer.id, itemId, activated)}
         />}
         {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}

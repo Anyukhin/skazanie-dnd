@@ -748,11 +748,20 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (enemyTargetId && !exactEnemyHealthKnown(state, enemyTargetId, actorId)) {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'armor_class']) delete payload[key]
   }
+  // Игрок видит сам исход (сопротивление, иммунитет или отменённый крит), но
+  // закрытый инвентарь противника не становится каталогом предметов через
+  // публичную механику события. Полный provenance остаётся у администратора.
+  if (enemyTargetId) {
+    for (const key of ['item_resistance_sources', 'item_immunity_sources', 'critical_protection_sources']) delete payload[key]
+  }
   if (visible.event_type === 'CombatStarted') {
     payload.initiative = publicInitiativeFor(payload.initiative, state, actorId)
   }
   if (enemyActor) {
-    for (const key of ['modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression']) delete payload[key]
+    for (const key of [
+      'modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression',
+      'item_id', 'item_name', 'catalog_id', 'effect_id',
+    ]) delete payload[key]
   }
   // Спасбросок и проверку бросает цель, а не тот, кто записан действующим лицом:
   // у SpellSavingThrowResolved actor_id — это заклинатель-герой. Формула

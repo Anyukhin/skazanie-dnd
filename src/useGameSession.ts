@@ -37,6 +37,7 @@ type TacticalCommand =
   | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string; charges_to_spend?: number }
   | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
   | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
+  | { command_type: 'ActivateItem'; actor_id: string; item_id: string; activated: boolean }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -1126,6 +1127,10 @@ export function useGameSession() {
     return executeTacticalCommand({ command_type: 'AttuneItem', actor_id: playerId, item_id: itemId, attuned }, attuned ? 'Настроиться на предмет' : 'Разорвать настройку')
   }, [executeTacticalCommand])
 
+  const activateItem = useCallback((playerId: string, itemId: string, activated: boolean) => {
+    void executeTacticalCommand({ command_type: 'ActivateItem', actor_id: playerId, item_id: itemId, activated }, activated ? 'Зажечь магический клинок' : 'Погасить магический клинок')
+  }, [executeTacticalCommand])
+
   const importCharacter = useCallback(async (playerId: string, source: string) => {
     let document: unknown
     try {
@@ -1463,6 +1468,7 @@ export function useGameSession() {
     useItem,
     transferItem,
     attuneItem,
+    activateItem,
     importCharacter,
     levelUpCharacter,
     switchCampaign,
