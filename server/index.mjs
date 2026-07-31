@@ -40,6 +40,7 @@ import { CreativeDirector } from './creative-director.mjs'
 import { combatNarration as tacticalNarration } from './combat-narration.mjs'
 import { NpcControllerAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
+import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
@@ -873,6 +874,41 @@ function canAccessRoom(user, room) {
     ? room.state.partyMemberIds.map(String)
     : playerIds
   return (user.heroIds ?? []).some((id) => memberIds.includes(String(id)))
+}
+
+function explicitNarrationNpcId(state, user, playerId, rawNpcId) {
+  if (rawNpcId == null || rawNpcId === '') return ''
+  if (typeof rawNpcId !== 'string') {
+    throw commandPolicyError('npc_id должен быть строковым идентификатором', 'NPC_ID_INVALID')
+  }
+  const npcId = rawNpcId.trim()
+  if (!npcId || npcId.length > 120 || !/^[A-Za-z0-9._:-]+$/u.test(npcId)) {
+    throw commandPolicyError('npc_id должен содержать от 1 до 120 безопасных символов', 'NPC_ID_INVALID')
+  }
+  const social = ensureNpcSocialState(state.social, state)
+  const visibleSocial = npcSocialForViewer(social, {
+    playerId,
+    isAdmin: user?.role === 'admin',
+    isPartyMember: true,
+    state,
+  })
+  if (!visibleSocial.npcs.some((npc) => String(npc.id) === npcId)) {
+    throw commandPolicyError('Выбранный собеседник не виден этому игроку', 'NPC_NOT_VISIBLE')
+  }
+  const persisted = social.npcs.find((npc) => String(npc.id) === npcId)
+  const profile = persisted ? npcProfileAtWorldTime(persisted, state) : null
+  if (!profile || profile.available === false) {
+    throw commandPolicyError('Выбранный собеседник сейчас недоступен', 'NPC_UNAVAILABLE')
+  }
+  if (state.mechanics?.combat?.active) {
+    throw commandPolicyError('Развёрнутый разговор недоступен во время боя', 'NPC_SOCIAL_BLOCKED_IN_COMBAT')
+  }
+  const sceneLocation = String(state.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  const npcLocation = String(profile.location ?? '').trim().toLocaleLowerCase('ru')
+  if (sceneLocation && npcLocation && sceneLocation !== npcLocation) {
+    throw commandPolicyError('Выбранный собеседник находится в другой локации', 'NPC_WRONG_LOCATION')
+  }
+  return npcId
 }
 
 function streamConnections(campaignId) {
@@ -2975,6 +3011,7 @@ const server = createServer((req, res) => {
       const requestedPlayerId = String(body.actor_id ?? '')
       const playerId = requestedPlayerId || String(trustedState.activePlayerId || '')
       if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
+      const explicitNpcId = explicitNarrationNpcId(trustedState, user, playerId, body.npc_id)
       const combatActorId = String(trustedState.mechanics?.combat?.initiative?.[trustedState.mechanics?.combat?.active_index ?? 0]?.actor_id ?? '')
       if (trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
         return json(res, 409, { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' })
@@ -2998,7 +3035,7 @@ const server = createServer((req, res) => {
       const action = String(body.action || '').trim().slice(0, 2_000)
       let directorResolution = null
       let directorReplay = null
-      if (mode === 'enforce') {
+      if (mode === 'enforce' && !explicitNpcId) {
         const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
         const duplicateScene = (duplicate?.events ?? []).find((event) => event.event_type === 'SceneAdvanced')
         if (duplicateScene) {
@@ -3029,7 +3066,7 @@ const server = createServer((req, res) => {
           throw commandPolicyError('Нет завершённого решения группы для перехода сцены', 'PARTY_DECISION_REQUIRED')
         }
       }
-      const directorInteraction = mode === 'enforce' && !directorResolution && !directorReplay
+      const directorInteraction = mode === 'enforce' && !explicitNpcId && !directorResolution && !directorReplay
         ? proposeAgentInteraction(action, trustedState)
         : null
 
@@ -3079,6 +3116,7 @@ const server = createServer((req, res) => {
             playerName: player?.character ?? player?.name ?? body.player,
             message: action,
             idempotencyKey,
+            npcId: explicitNpcId,
             verifiedRoll,
             user,
             allowedActorIds: campaignHeroIds(user, campaignId),

@@ -59,6 +59,7 @@ export class FileTraceStore {
       turn_id: input.turn_id || randomUUID(),
       campaign_id: input.campaign_id,
       idempotency_key: input.idempotency_key ?? null,
+      request_fingerprint: input.request_fingerprint ?? null,
       engine_mode: 'enforce',
       prompt_versions: input.prompt_versions ?? {},
       model_identifiers: input.model_identifiers ?? {},

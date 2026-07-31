@@ -539,7 +539,7 @@ export function useGameSession() {
     }
   }, [])
 
-  const submitAction = useCallback(async (text: string, actorId?: string) => {
+  const submitAction = useCallback(async (text: string, actorId?: string, npcId?: string) => {
     if (!text.trim() || state.isNarrating || state.pendingCheck) return
     busy.current = true
     const epoch = ++actionEpoch.current
@@ -554,7 +554,15 @@ export function useGameSession() {
     let aiResult: AiTurnResult | null = null
     let authoritativeError: string | null = null
     try {
-      aiResult = await narrateWithAgent(pending, text.trim(), player.character, undefined, undefined, player.id)
+      aiResult = await narrateWithAgent(
+        pending,
+        text.trim(),
+        player.character,
+        undefined,
+        undefined,
+        player.id,
+        { npcId },
+      )
     } catch (error) {
       console.warn('AI fallback:', error instanceof Error ? error.message : error)
       authoritativeError = error instanceof Error ? error.message : 'Сервер отклонил действие'

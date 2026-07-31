@@ -51,7 +51,19 @@ function newIdempotencyKey() {
   return globalThis.crypto.randomUUID()
 }
 
-export async function narrateWithAgent(state: GameState, action: string, _player: string, roll?: RollResult, idempotencyKey = newIdempotencyKey(), actorId?: string): Promise<AiTurnResult> {
+export interface NarrateOptions {
+  npcId?: string
+}
+
+export async function narrateWithAgent(
+  state: GameState,
+  action: string,
+  _player: string,
+  roll?: RollResult,
+  idempotencyKey = newIdempotencyKey(),
+  actorId?: string,
+  options: NarrateOptions = {},
+): Promise<AiTurnResult> {
   const response = await fetchWithTimeout('/api/narrate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -60,6 +72,7 @@ export async function narrateWithAgent(state: GameState, action: string, _player
       campaign_id: state.sessionCode,
       idempotency_key: idempotencyKey,
       ...(actorId ? { actor_id: actorId } : {}),
+      ...(options.npcId ? { npc_id: options.npcId } : {}),
       ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
     }),
   }, 48_000, 'Рассказчик не ответил вовремя. Попробуйте обновить состояние кампании.')
