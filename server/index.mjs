@@ -285,6 +285,45 @@ function merchantCommandFingerprint(command) {
   return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
 }
 
+function itemCommandFingerprint(command) {
+  const type = commandType(command)
+  const semantic = {
+    type,
+    actor_id: String(command?.actor_id ?? ''),
+    item_id: String(command?.item_id ?? ''),
+    ...(type === 'EquipItem' ? { equipped: command?.equipped !== false } : {}),
+    ...(type === 'AttuneItem' ? { attuned: command?.attuned !== false } : {}),
+    ...(type === 'UseItem' ? { target_id: String(command?.target_id ?? command?.actor_id ?? '') } : {}),
+    ...(type === 'TransferItem' ? {
+      recipient_id: String(command?.recipient_id ?? ''),
+      quantity: Number(command?.quantity ?? 1),
+    } : {}),
+  }
+  return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+const ITEM_PRIMARY_EVENT_TYPES = new Set(['ItemEquipped', 'ItemUnequipped', 'ItemTransferred', 'ItemAttunementChanged', 'ItemUsed'])
+
+async function assertItemIdempotency(campaignId, idempotencyKey, command) {
+  const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+  if (!duplicate) return
+  const fingerprints = new Set((duplicate.events ?? [])
+    .filter((event) => ITEM_PRIMARY_EVENT_TYPES.has(event.event_type))
+    .map((event) => event.payload?.request_fingerprint)
+    .filter(Boolean)
+    .map(String))
+  if (fingerprints.size !== 1 || !fingerprints.has(itemCommandFingerprint(command))) {
+    throw commandPolicyError('Этот ключ идемпотентности уже использован для другого действия с предметом', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+function assertItemResultFingerprint(result, command) {
+  const event = (result?.mechanics ?? []).find((candidate) => ITEM_PRIMARY_EVENT_TYPES.has(candidate?.event_type))
+  if (!event || String(event.payload?.request_fingerprint ?? '') !== itemCommandFingerprint(command)) {
+    throw commandPolicyError('Результат действия с предметом не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
 function characterBuildFingerprint(command) {
   const semantic = commandType(command) === 'SetCharacterChoices'
     ? {
@@ -726,18 +765,19 @@ function sanitizePlayerItemCommand(user, state, input) {
     item_id: itemId,
     ...(expected == null ? {} : { expected_state_version: expected }),
   }
-  if (type === 'EquipItem') return { ...base, equipped: input?.equipped !== false }
-  if (type === 'AttuneItem') return { ...base, attuned: input?.attuned !== false }
+  const withFingerprint = (command) => ({ ...command, request_fingerprint: itemCommandFingerprint(command) })
+  if (type === 'EquipItem') return withFingerprint({ ...base, equipped: input?.equipped !== false })
+  if (type === 'AttuneItem') return withFingerprint({ ...base, attuned: input?.attuned !== false })
   if (type === 'UseItem') {
     const targetId = String(input?.target_id ?? input?.targetId ?? actor).trim().slice(0, 120)
-    return { ...base, target_id: targetId || actor, server_authoritative: true }
+    return withFingerprint({ ...base, target_id: targetId || actor, server_authoritative: true })
   }
   const recipientId = String(input?.recipient_id ?? input?.recipientId ?? input?.target_id ?? input?.targetId ?? '').trim().slice(0, 120)
-  return {
+  return withFingerprint({
     ...base,
     recipient_id: recipientId,
     quantity: Number(input?.quantity ?? 1),
-  }
+  })
 }
 
 function sanitizeMerchantCommand(user, state, input, routeMerchantId = null) {
@@ -1414,6 +1454,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       'ItemUnequipped',
       'ItemUsed',
       'ItemConsumed',
+      'ItemChargesSpent',
       'ItemTransferred',
       'ItemAttunementChanged',
     ].some((type) => eventTypes.has(type)) || characterImported
@@ -2812,9 +2853,13 @@ const server = createServer((req, res) => {
       if (itemCommands.length && commands.length !== 1) {
         throw commandPolicyError('Действие с предметом должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
+      if (itemCommands.length) {
+        await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])
+      }
       let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]) })
       if (merchantCommands.length) assertMerchantResultFingerprint(result, merchantCommands[0])
       if (characterCommands.length) assertCharacterBuildResultFingerprint(result, characterCommands)
+      if (itemCommands.length) assertItemResultFingerprint(result, itemCommands[0])
       if (result.authoritative_state) {
         const originalVersion = Number(result.state_version ?? result.authoritative_state.state_version ?? 0)
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))

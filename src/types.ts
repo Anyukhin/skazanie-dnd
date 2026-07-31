@@ -329,6 +329,20 @@ export type InventoryItem = {
   imagePrompt?: string
   imageStatus?: 'ready' | 'queued' | 'generating' | 'failed'
   charges?: { current: number; max: number }
+  capabilities?: {
+    equippable: boolean
+    equip_slot: string | null
+    usable: boolean
+    use: {
+      kind: string
+      action_type: 'action' | 'bonus_action' | null
+      target: 'self' | 'party'
+      range_feet: number
+      charges_per_use?: number
+    } | null
+    charges: { current: number; max: number } | null
+    requires_attunement: boolean
+  }
   combat?: {
     kind: 'melee' | 'ranged' | 'thrown-area'
     ability?: 'str' | 'dex'

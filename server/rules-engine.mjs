@@ -1939,11 +1939,16 @@ function itemAttackProfile(state, actor, itemId) {
   if (!item || !combat || !['melee', 'ranged'].includes(combat.kind)) return null
   const ability = combat.ability === 'dex' ? 'dex' : 'str'
   const abilityBonus = abilityModifier(actor?.abilities?.[ability])
+  const attackBonus = safeInteger(combat.attackBonus, 0)
+  const damageBonus = safeInteger(combat.damageBonus, 0)
   let damage
-  try { damage = diceExpression(combat.damage, abilityBonus, combat.kind === 'ranged' ? 8 : 8) } catch { damage = `1d8${abilityBonus >= 0 ? '+' : ''}${abilityBonus}` }
+  try { damage = diceExpression(combat.damage, abilityBonus + damageBonus, combat.kind === 'ranged' ? 8 : 8) } catch {
+    const fallbackBonus = abilityBonus + damageBonus
+    damage = `1d8${fallbackBonus >= 0 ? '+' : ''}${fallbackBonus}`
+  }
   return {
     item,
-    modifier: abilityBonus + Math.max(0, safeInteger(actor?.proficiency, 0)),
+    modifier: abilityBonus + Math.max(0, safeInteger(actor?.proficiency, 0)) + attackBonus,
     damage_expression: damage,
     damage_type: String(combat.damageType || 'piercing').slice(0, 40),
     range_feet: Math.max(5, Math.min(600, safeInteger(combat.longRange ?? combat.normalRange, 5))),
@@ -2763,7 +2768,22 @@ function assertTurn(command, state, context = {}) {
       const label = resource === 'bonus_action' ? 'Бонусное действие' : resource === 'reaction' ? 'Реакция' : 'Действие'
       throw new RulesValidationError(`${label} на этом ходу уже потрачено`, resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : resource === 'reaction' ? 'REACTION_SPENT' : 'ACTION_SPENT')
     }
-  } else if (['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'UseItem'].includes(command.command_type)) {
+  } else if (command.command_type === 'UseItem') {
+    const resource = command.use_profile?.combat_action === 'bonus_action'
+      ? 'bonus_action'
+      : command.use_profile?.combat_action === 'action'
+        ? 'action'
+        : null
+    const economy = combat.action_economy[command.actor_id]
+    if (resource && economy?.[resource] === false) {
+      throw new RulesValidationError(
+        resource === 'bonus_action'
+          ? 'Бонусное действие на этом ходу уже потрачено'
+          : 'Действие на этом ходу уже потрачено',
+        resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : 'ACTION_SPENT',
+      )
+    }
+  } else if (['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon'].includes(command.command_type)) {
     const economy = combat.action_economy[command.actor_id]
     if (command.command_type === 'MakeAttack' && command.monster_ability === 'multiattack') {
       const actor = findActor(state, command.actor_id)
@@ -2940,10 +2960,28 @@ export function validateCommand(input, rawState, context = {}) {
       }
       throw error
     }
-    if (command.command_type === 'UseItem' && state.mechanics.combat.active && command.target_id !== command.actor_id) {
+    if (command.command_type === 'UseItem' && command.target_id !== command.actor_id) {
       const distance = distanceBetweenActors(state, command.actor_id, command.target_id)
       if (distance == null || distance > Math.max(0, safeInteger(command.use_profile?.range_feet, 0))) {
         throw new RulesValidationError('Цель находится слишком далеко для использования предмета', 'ITEM_TARGET_OUT_OF_RANGE')
+      }
+    }
+    if (command.command_type === 'UseItem') {
+      const target = findActor(state, command.target_id)
+      if (!target || isDeadHero(state, command.target_id) || target.alive === false) {
+        throw new RulesValidationError('Предмет можно использовать только на живую цель', 'ITEM_TARGET_DEAD')
+      }
+      if (command.use_profile?.kind === 'stabilize') {
+        const tracker = state.mechanics.death.saving_throws[String(command.target_id)]
+        if (actorHp(target) > 0) {
+          throw new RulesValidationError('Стабилизация нужна только герою с 0 хитов', 'ITEM_TARGET_NOT_DYING')
+        }
+        if (tracker?.stable === true) {
+          throw new RulesValidationError('Герой уже стабилен', 'ITEM_TARGET_STABLE')
+        }
+        if (!isDyingHero(state, command.target_id)) {
+          throw new RulesValidationError('Цель нельзя стабилизировать', 'ITEM_TARGET_NOT_DYING')
+        }
       }
     }
   }
@@ -8760,6 +8798,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         kind: use.kind,
         target_id: command.target_id,
         combat_action: use.combat_action,
+        request_fingerprint: command.request_fingerprint ?? null,
       }, [command.target_id]))
       if (use.kind === 'healing') {
         const roll = diceService.roll(use.expression, `item:${item.id}:healing`, command.actor_id, command.visibility ?? 'party')
@@ -8777,11 +8816,30 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           item_name: item.name,
         }, [command.target_id]))
       }
+      if (use.kind === 'stabilize') {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HeroStabilized', {
+          method: 'healers-kit',
+          item_id: item.id,
+          item_name: item.name,
+        }, [command.target_id]))
+      }
       if (safeInteger(use.consumes, 0) > 0) {
         events.push(eventFrom(command, 'ItemConsumed', {
           item_id: item.id,
           item_name: item.name,
           quantity: safeInteger(use.consumes, 1),
+        }, [command.actor_id]))
+      }
+      if (command.charge_spend) {
+        events.push(eventFrom(command, 'ItemChargesSpent', {
+          item_id: item.id,
+          item_name: item.name,
+          before: command.charge_spend.before,
+          spent: command.charge_spend.spent,
+          after: command.charge_spend.after,
+          max: command.charge_spend.max,
+          reason: use.kind === 'stabilize' ? 'healers-kit-stabilization' : 'item-use',
+          request_fingerprint: command.request_fingerprint ?? null,
         }, [command.actor_id]))
       }
       break
@@ -9846,6 +9904,7 @@ export function applyGameEvent(rawState, event) {
     case 'ItemUnequipped':
     case 'ItemTransferred':
     case 'ItemAttunementChanged':
+    case 'ItemChargesSpent':
       state.players = applyItemLifecycleEventToPlayers(state.players, event)
       if (event.event_type === 'ItemTransferred' && payload.recipient_kind === 'npc') {
         state.npc_world = applyNpcWorldEvent(state.npc_world, event)

@@ -278,6 +278,9 @@ function gearEntry({
   price,
   description,
   use = null,
+  charges = null,
+  stackable = true,
+  mechanicsStatus = null,
   limitation,
   mechanicsSourcePage = null,
 }) {
@@ -296,15 +299,15 @@ function gearEntry({
     price_cp: price,
     base_price_cp: price,
     weight,
-    lifecycle: { equippable: false, equip_slot: null, transferable: true, stackable: true },
+    lifecycle: { equippable: false, equip_slot: null, transferable: true, stackable },
     equip: null,
     combat: null,
     use,
     attunement: { required: false },
-    charges: null,
+    charges,
     recharge: null,
     crafting: { implemented: false, hooks: [] },
-    mechanics_status: partial ? 'partial' : 'ruling-only',
+    mechanics_status: mechanicsStatus ?? (partial ? 'partial' : 'ruling-only'),
     limitation,
     availability: availability(catalogId),
     source_page: 95,
@@ -429,19 +432,94 @@ const GEAR = [
   { id: 'crowbar', name: 'Лом', weight: 5, price: 200, description: 'Прочный рычаг для силовой работы.', limitation: 'Ситуативное преимущество требует ruling.' },
   { id: 'explorers-pack', name: 'Набор путешественника', weight: 55, price: 1_000, description: 'Собранный комплект обычного дорожного снаряжения.', limitation: 'Содержимое набора не разворачивается в отдельные предметы автоматически.' },
   { id: 'grappling-hook', name: 'Крюк-кошка', weight: 4, price: 200, description: 'Металлический крюк для закрепления верёвки.', limitation: 'Бросок и закрепление требуют ruling.' },
-  { id: 'healers-kit', name: 'Набор лекаря', weight: 3, price: 500, description: 'Набор перевязочных материалов для первой помощи.', limitation: 'Заряды и стабилизация набором не реализованы.' },
+  {
+    id: 'healers-kit',
+    name: 'Набор лекаря',
+    weight: 3,
+    price: 500,
+    description: 'Набор перевязочных материалов для первой помощи. Одно из десяти применений стабилизирует живого героя с 0 хитов без проверки Мудрости (Медицина).',
+    use: { kind: 'stabilize', consumes: 0, charges_per_use: 1, combat_action: 'action', range_feet: 5, target: 'party' },
+    charges: { current: 10, max: 10 },
+    stackable: false,
+    mechanicsStatus: 'verified',
+    limitation: 'Стабилизация, десять применений и расход действия исполняются Rules Engine; лечение хитов набор не выполняет.',
+  },
   { id: 'holy-water', name: 'Святая вода', type: 'consumable', weight: 1, price: 2_500, description: 'Склянка освящённой воды.', limitation: 'Бросок и особый урон по типам существ не реализованы.' },
   { id: 'hunting-trap', name: 'Охотничий капкан', weight: 25, price: 500, description: 'Механический капкан для удержания цели.', limitation: 'Установка, спасбросок, урон и удержание не реализованы.' },
   { id: 'lantern-hooded', name: 'Закрытый фонарь', weight: 2, price: 500, description: 'Фонарь с заслонкой для управления светом.', limitation: 'Топливо и световой радиус не связаны с картой.' },
   { id: 'manacles', name: 'Кандалы', weight: 6, price: 200, description: 'Металлические оковы для существа подходящего размера.', limitation: 'Надевание, побег и прочность не реализованы.' },
   { id: 'oil-flask', name: 'Масло, фляга', type: 'consumable', weight: 1, price: 10, description: 'Фляга обычного горючего масла.', limitation: 'Разлив, поджигание и продолжительный урон не реализованы.' },
   { id: 'poison-basic', name: 'Простой яд', type: 'consumable', weight: 0, price: 10_000, description: 'Доза простого яда для нанесения на оружие или боеприпас.', limitation: 'Нанесение, длительность и спасбросок не реализованы.' },
-  { id: 'potion-of-healing', name: 'Зелье лечения', type: 'consumable', weight: 0.5, price: 5_000, description: 'Выпитое зелье восстанавливает 2к4 + 2 хита.', use: { kind: 'healing', expression: '2d4+2', consumes: 1, combat_action: 'action', range_feet: 5 }, limitation: 'Лечение исполнимо, но сохранена legacy Action вместо Bonus Action SRD 5.2.1.', mechanicsSourcePage: 99 },
-  { id: 'rations-one-day', name: 'Сухой паёк, 1 день', type: 'consumable', weight: 2, price: 50, description: 'Запас непортящейся еды на один день пути.', use: { kind: 'ration', consumes: 1, combat_action: null, range_feet: 0 }, limitation: 'Расход исполним, но голод и malnutrition не моделируются.' },
+  {
+    id: 'potion-of-healing',
+    name: 'Зелье лечения',
+    type: 'consumable',
+    weight: 0.5,
+    price: 5_000,
+    description: 'Выпитое зелье восстанавливает 2к4 + 2 хита.',
+    use: { kind: 'healing', expression: '2d4+2', consumes: 1, combat_action: 'bonus_action', range_feet: 5, target: 'party' },
+    mechanicsStatus: 'verified',
+    limitation: 'Лечение 2к4 + 2, расход бонусного действия и одной порции исполняются Rules Engine.',
+    mechanicsSourcePage: 99,
+  },
+  { id: 'rations-one-day', name: 'Сухой паёк, 1 день', type: 'consumable', weight: 2, price: 50, description: 'Запас непортящейся еды на один день пути.', use: { kind: 'ration', consumes: 1, combat_action: null, range_feet: 0, target: 'self' }, limitation: 'Расход исполним, но голод и malnutrition не моделируются.' },
   { id: 'rope-hempen-50-feet', name: 'Пеньковая верёвка, 50 футов', weight: 5, price: 100, description: 'Пятьдесят футов прочной пеньковой верёвки.', limitation: 'Связывание, прочность и лазание требуют ruling.' },
   { id: 'torch', name: 'Факел', weight: 1, price: 1, description: 'Переносной источник обычного огня и света.', limitation: 'Время горения, свет и импровизированная атака не автоматизированы.' },
   { id: 'waterskin', name: 'Бурдюк', weight: 5, price: 20, description: 'Полный дорожный бурдюк с водой.', limitation: 'Вода, вместимость и обезвоживание не моделируются.' },
 ]
+
+const MAGIC_ITEMS = [{
+  catalog_id: 'srd_5_2_1:longsword-plus-1',
+  ...ITEM_CATALOG_SOURCE,
+  display_name: 'Длинный меч +1',
+  name: 'Длинный меч +1',
+  manifest_section: 'magic-item',
+  description: 'Магически усиленный длинный меч. Атаки этим оружием получают +1 к броску атаки и +1 к броску урона.',
+  category: 'weapon',
+  type: 'weapon',
+  price_cp: 41_500,
+  base_price_cp: 41_500,
+  weight: 3,
+  lifecycle: { equippable: true, equip_slot: 'main_hand', transferable: true, stackable: false },
+  equip: { slot: 'main_hand' },
+  combat: {
+    kind: 'melee',
+    ability: 'str',
+    damage: '1d8',
+    damageType: 'slashing',
+    normalRange: 5,
+    attackBonus: 1,
+    damageBonus: 1,
+  },
+  use: null,
+  attunement: { required: false },
+  charges: null,
+  recharge: null,
+  crafting: { implemented: false, hooks: [] },
+  weapon: {
+    group: 'martial-melee',
+    damage: '1d8',
+    damage_type: 'slashing',
+    properties: ['versatile-1d10'],
+    mastery: 'sap',
+    normal_range_feet: 5,
+    long_range_feet: null,
+  },
+  magic_item: {
+    category: 'weapon',
+    rarity: 'uncommon',
+    bonus: 1,
+    base_item_catalog_id: 'srd_5_2_1:longsword',
+    value_formula: '400 gp (Uncommon magic item) + 15 gp (Longsword)',
+  },
+  mechanics_status: 'partial',
+  limitation: 'Бонус +1 к атаке и урону исполняется сервером; versatile, mastery Sap и полная смена хвата ещё не автоматизированы.',
+  availability: availability('srd_5_2_1:longsword-plus-1'),
+  source_page: 253,
+  source_pages: [91, 206, 253],
+  mechanics_source_page: 253,
+  provenance: provenance(253, { sourcePages: [91, 206, 253], mechanicsSourcePage: 253 }),
+}]
 
 const ENTRIES = [
   ...WEAPONS.map(weaponEntry),
@@ -450,10 +528,11 @@ const ENTRIES = [
   ...TOOLS.map(toolEntry),
   ...OTHER_TOOLS.map(toolEntry),
   ...GEAR.map(gearEntry),
+  ...MAGIC_ITEMS,
 ]
 
-if (ENTRIES.length !== 97) {
-  throw new Error(`Item catalog manifest must contain 97 entries, got ${ENTRIES.length}`)
+if (ENTRIES.length !== 98) {
+  throw new Error(`Item catalog manifest must contain 98 entries, got ${ENTRIES.length}`)
 }
 
 const entriesById = Object.fromEntries(ENTRIES.map((entry) => [entry.catalog_id, entry]))
@@ -503,6 +582,8 @@ export function itemLifecycleProfile(catalogId) {
   const entry = catalogItem(catalogId)
   if (!entry) return null
   return clone({
+    equippable: entry.lifecycle?.equippable === true,
+    stackable: entry.lifecycle?.stackable !== false,
     ...(entry.equip?.slot ? { equip_slot: entry.equip.slot } : {}),
     ...(entry.equip?.armor?.kind === 'armor' ? {
       armor: {
@@ -513,6 +594,8 @@ export function itemLifecycleProfile(catalogId) {
     } : {}),
     ...(entry.equip?.armor?.kind === 'shield' ? { armor_bonus: entry.equip.armor.armorClassBonus } : {}),
     ...(entry.use ? { use: entry.use } : {}),
+    ...(entry.charges ? { charges: entry.charges } : {}),
+    requires_attunement: entry.attunement?.required === true,
   })
 }
 
@@ -540,7 +623,18 @@ const INSTANCE_FIELDS = new Set([
   'appraisal_policy_id',
   'price_provenance',
   'price_source_version',
+  'charges',
 ])
+
+function catalogChargeState(entry, source) {
+  if (!entry?.charges) return null
+  const maximum = Math.max(0, Number(entry.charges.max) || 0)
+  const requested = source?.charges?.current ?? entry.charges.current
+  return {
+    current: Math.max(0, Math.min(maximum, Number.isSafeInteger(Number(requested)) ? Number(requested) : maximum)),
+    max: maximum,
+  }
+}
 
 export function materializeCatalogItem(catalogId, instance = {}) {
   const entry = catalogItem(catalogId)
@@ -561,7 +655,7 @@ export function materializeCatalogItem(catalogId, instance = {}) {
     base_price_cp: entry.base_price_cp,
     mechanics_status: entry.mechanics_status,
     ...(entry.combat ? { combat: clone(entry.combat) } : {}),
-    ...(entry.charges ? { charges: clone(entry.charges) } : {}),
+    ...(entry.charges ? { charges: catalogChargeState(entry, source) } : {}),
     ...(entry.attunement.required ? { requires_attunement: true } : {}),
   }
 }
@@ -570,4 +664,41 @@ export function hydrateCatalogItem(input = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const catalogId = String(source.catalog_id ?? source.catalogId ?? '').trim()
   return catalogItem(catalogId) ? materializeCatalogItem(catalogId, source) : clone(source)
+}
+
+export function itemViewerCapabilities(item = {}) {
+  const entry = catalogItem(item?.catalog_id ?? item?.catalogId)
+  if (!entry) {
+    const equipSlot = item?.type === 'weapon' && item?.combat
+      ? 'main_hand'
+      : item?.type === 'armor'
+        ? 'body'
+        : null
+    if (!equipSlot) return null
+    return {
+      equippable: true,
+      equip_slot: equipSlot,
+      usable: false,
+      use: null,
+      charges: null,
+      requires_attunement: false,
+    }
+  }
+  const use = entry.use
+    ? {
+        kind: entry.use.kind,
+        action_type: entry.use.combat_action,
+        target: entry.use.target ?? 'self',
+        range_feet: entry.use.range_feet ?? 0,
+        ...(entry.use.charges_per_use ? { charges_per_use: entry.use.charges_per_use } : {}),
+      }
+    : null
+  return clone({
+    equippable: entry.lifecycle?.equippable === true,
+    equip_slot: entry.lifecycle?.equip_slot ?? null,
+    usable: Boolean(use),
+    use,
+    charges: catalogChargeState(entry, item),
+    requires_attunement: entry.attunement?.required === true,
+  })
 }

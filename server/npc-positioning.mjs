@@ -713,7 +713,9 @@ export function applyNpcWorldEvent(input, event) {
         ? world.inventories[recipientId]
         : []
       const stackKey = inventoryStackKey(incoming)
-      const stackIndex = inventory.findIndex((item) => inventoryStackKey(item) === stackKey)
+      const stackIndex = payload.stackable === false
+        ? -1
+        : inventory.findIndex((item) => inventoryStackKey(item) === stackKey)
       if (stackIndex >= 0) {
         world.inventories = {
           ...world.inventories,

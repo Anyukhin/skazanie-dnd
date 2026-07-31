@@ -48,14 +48,14 @@ function dice(values) {
   })
 }
 
-test('manifest содержит ровно согласованные 97 записей и полную provenance', () => {
+test('manifest содержит ровно согласованные 98 записей и полную provenance', () => {
   const entries = Object.values(ITEM_CATALOG)
-  assert.equal(entries.length, 97)
-  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 97)
+  assert.equal(entries.length, 98)
+  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 98)
   assert.deepEqual(
-    Object.fromEntries(['weapon', 'armor', 'ammunition', 'artisan-tool', 'other-tool', 'practical-gear']
+    Object.fromEntries(['weapon', 'armor', 'ammunition', 'artisan-tool', 'other-tool', 'practical-gear', 'magic-item']
       .map((section) => [section, entries.filter((entry) => entry.manifest_section === section).length])),
-    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23 },
+    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 1 },
   )
   assert.deepEqual(ITEM_MECHANICS_STATUSES, ['verified', 'partial', 'ruling-only'])
   assert.deepEqual(ITEM_AVAILABILITY_CHANNELS, ['shop', 'loot', 'crafting'])
@@ -73,7 +73,6 @@ test('manifest содержит ровно согласованные 97 зап�
     assert.match(catalogId, /^srd_5_2_1:[a-z0-9]+(?:-[a-z0-9]+)*$/u)
     assert.ok(Object.isFrozen(entry))
     assert.ok(ITEM_MECHANICS_STATUSES.includes(entry.mechanics_status))
-    assert.notEqual(entry.mechanics_status, 'verified')
     assert.ok(entry.limitation.length > 0)
     assert.ok(Number.isSafeInteger(entry.price_cp) && entry.price_cp >= 0)
     assert.equal(entry.base_price_cp, entry.price_cp)
@@ -102,6 +101,14 @@ test('manifest содержит ровно согласованные 97 зап�
   assert.equal(ITEM_CATALOG['srd_5_2_1:tinkers-tools'].source_page, 94)
   assert.deepEqual(ITEM_CATALOG['srd_5_2_1:potion-of-healing'].source_pages, [95, 99])
   assert.equal(ITEM_CATALOG['srd_5_2_1:potion-of-healing'].mechanics_source_page, 99)
+  assert.deepEqual(
+    entries.filter((entry) => entry.mechanics_status === 'verified').map((entry) => entry.catalog_id).sort(),
+    ['srd_5_2_1:healers-kit', 'srd_5_2_1:potion-of-healing'],
+  )
+  assert.deepEqual(ITEM_CATALOG['srd_5_2_1:longsword-plus-1'].source_pages, [91, 206, 253])
+  assert.equal(ITEM_CATALOG['srd_5_2_1:longsword-plus-1'].price_cp, 41_500)
+  assert.equal(ITEM_CATALOG['srd_5_2_1:longsword-plus-1'].magic_item.bonus, 1)
+  assert.equal(ITEM_CATALOG['srd_5_2_1:longsword-plus-1'].attunement.required, false)
 })
 
 test('shop, loot и crafting используют отдельные fail-closed allowlist', () => {
@@ -118,6 +125,9 @@ test('shop, loot и crafting используют отдельные fail-closed
   }
   assert.equal(ITEM_SHOP_CATALOG_IDS.includes('srd_5_2_1:pistol'), false)
   assert.equal(ITEM_LOOT_CATALOG_IDS.includes('srd_5_2_1:pistol'), false)
+  assert.equal(ITEM_SHOP_CATALOG_IDS.includes('srd_5_2_1:longsword-plus-1'), false)
+  assert.equal(ITEM_LOOT_CATALOG_IDS.includes('srd_5_2_1:longsword-plus-1'), false)
+  assert.equal(ITEM_CRAFTING_CATALOG_IDS.includes('srd_5_2_1:longsword-plus-1'), false)
 
   const shop = assembleShop({
     location: 'Рыночная площадь',
@@ -195,6 +205,17 @@ test('materialization делает известную механику авто�
     combat: { kind: 'ruling' },
   }
   assert.deepEqual(hydrateCatalogItem(custom), custom)
+
+  const usedKit = materializeCatalogItem('srd_5_2_1:healers-kit', {
+    id: 'used-kit',
+    charges: { current: 3, max: 999 },
+  })
+  assert.deepEqual(usedKit.charges, { current: 3, max: 10 })
+  assert.equal(itemProfileFor(usedKit).stackable, false)
+  assert.deepEqual(
+    materializeCatalogItem('srd_5_2_1:healers-kit', { charges: { current: 99 } }).charges,
+    { current: 10, max: 10 },
+  )
 })
 
 test('legacy normalization не меняет replay-поля без явной hydration', () => {
@@ -384,13 +405,15 @@ test('купленные броня, вес и профили использов
     kind: 'healing',
     expression: '2d4+2',
     consumes: 1,
-    combat_action: 'action',
+    combat_action: 'bonus_action',
     range_feet: 5,
+    target: 'party',
   })
   assert.deepEqual(itemProfileFor(rations).use, {
     kind: 'ration',
     consumes: 1,
     combat_action: null,
     range_feet: 0,
+    target: 'self',
   })
 })
