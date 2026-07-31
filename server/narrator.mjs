@@ -9,6 +9,7 @@ import {
   currentNarratorStyleInstruction,
 } from './campaign-ai-context.mjs'
 import { findNarratorCliches } from './narrator-craft-quality.mjs'
+import { npcDossiersForNarrator } from './npc-social.mjs'
 
 export const NARRATOR_PROMPT_VERSION = 'narrator/v5'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v1'
@@ -454,19 +455,65 @@ export function narratorMemoryFocus(brief) {
 
 function briefForNarratorPrompt(brief) {
   const focus = narratorMemoryFocus(brief)
-  if (!focus) return brief
-  const { score: _score, order: _order, ...promptFocus } = focus
   const environment = brief.known_environment ?? {}
-  return {
+  const story = environment.story_context ?? {}
+  const { npc_dossiers: _rawNpcDossiers, ...promptStory } = story
+  const viewerHeroes = (Array.isArray(story.heroes) ? story.heroes : []).filter((hero) => hero?.is_viewer)
+  const viewerIds = new Set(viewerHeroes.map((hero) => String(hero?.id ?? '')).filter(Boolean))
+  const viewerNames = new Set(viewerHeroes.map((hero) => sceneText(hero?.name, 120).toLocaleLowerCase('ru')).filter(Boolean))
+  const visibleSocialRecord = (record) => {
+    if (['gm_only', 'gmOnly', 'npc_private', 'npcPrivate'].includes(String(record?.visibility ?? ''))) return false
+    if (record?.visibility !== 'specific_player') return true
+    return viewerIds.has(String(record?.hero_id ?? ''))
+      || viewerNames.has(sceneText(record?.hero, 120).toLocaleLowerCase('ru'))
+  }
+  const promptBrief = {
     ...brief,
     known_environment: {
       ...environment,
       story_context: {
-        ...(environment.story_context ?? {}),
-        memory_focus: promptFocus,
+        ...promptStory,
+        present_npcs: (Array.isArray(story.present_npcs) ? story.present_npcs : []).map((npc) => ({
+          id: sceneText(npc?.id, 120),
+          name: sceneText(npc?.name, 120),
+          role: sceneText(npc?.role, 120),
+          public_summary: sceneText(npc?.public_summary, 300),
+          voice: sceneText(npc?.voice, 200),
+          speech_profile: {
+            pace: sceneText(npc?.speech_profile?.pace, 100),
+            lexicon: sceneText(npc?.speech_profile?.lexicon, 180),
+            mannerism: sceneText(npc?.speech_profile?.mannerism, 180),
+          },
+          relationship: sceneText(npc?.relationship, 40),
+        })),
+        open_promises: (Array.isArray(story.open_promises) ? story.open_promises : [])
+          .filter(visibleSocialRecord)
+          .map((promise) => ({
+            id: sceneText(promise?.id, 120),
+            npc: sceneText(promise?.npc, 120),
+            hero_id: sceneText(promise?.hero_id, 120),
+            direction: sceneText(promise?.direction, 40),
+            text: sceneText(promise?.text, 280),
+            due_hint: sceneText(promise?.due_hint, 160),
+            source_conversation_id: sceneText(promise?.source_conversation_id, 120),
+          })),
+        recent_interactions: (Array.isArray(story.recent_interactions) ? story.recent_interactions : [])
+          .filter(visibleSocialRecord)
+          .map((interaction) => ({
+            npc: sceneText(interaction?.npc, 120),
+            hero: sceneText(interaction?.hero, 120),
+            hero_id: sceneText(interaction?.hero_id, 120),
+            player_message: sceneText(interaction?.player_message, 240),
+            npc_reply: sceneText(interaction?.npc_reply, 320),
+            stance: sceneText(interaction?.stance, 40),
+          })),
       },
     },
   }
+  if (!focus) return promptBrief
+  const { score: _score, order: _order, ...promptFocus } = focus
+  promptBrief.known_environment.story_context.memory_focus = promptFocus
+  return promptBrief
 }
 
 function memoryFocusIsRecalled(narration, focus) {
@@ -1210,6 +1257,7 @@ export class Narrator {
     brief = withArcRecapOverride(brief, arcRecap)
     const sensoryAnchors = sensoryAnchorsFor(brief)
     const contentDirectives = narratorContentDirectives(brief)
+    const npcDossiers = npcDossiersForNarrator(brief)
     const examples = selectNarratorFewShotExamples(brief)
     if (!this.llmClient) {
       const fallback = deterministicNarration(brief, undefined, { recentNarrations: recent })
@@ -1257,6 +1305,7 @@ export class Narrator {
                 style,
                 content_preferences: contentDirectives,
                 sensory_anchors: sensoryAnchors,
+                ...(npcDossiers.length ? { npc_dossiers: npcDossiers } : {}),
                 ...(arcRecap ? { previous_arc_recap: arcRecap } : {}),
                 ...(avoidCliches.length ? { avoid_repeated_phrases: avoidCliches } : {}),
                 ...(priorFeedback.length ? { previous_narration_feedback: priorFeedback } : {}),

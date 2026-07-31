@@ -11,6 +11,10 @@ import {
   sensoryAnchorsFor,
 } from '../server/narrator.mjs'
 import { campaignConceptForAgent } from '../server/agent-context.mjs'
+import {
+  NPC_NARRATOR_DOSSIER_LIMITS,
+  npcDossiersForNarrator,
+} from '../server/npc-social.mjs'
 import { buildNarrationBrief } from '../server/security.mjs'
 
 function experienceBrief() {
@@ -277,4 +281,228 @@ test('первый обычный ход новой арки получает re
   const second = await narrator.render(laterBrief)
   assert.equal(second.provider, 'Object')
   assert.doesNotMatch(second.narration, /В прошлый раз/iu)
+})
+
+function npcDossierBrief({
+  currentConversation = null,
+  interactions = [],
+  promises = [],
+  dossiers = [],
+  relationship = 'neutral',
+} = {}) {
+  return buildNarrationBrief({
+    visible_events: currentConversation
+      ? [{
+          event_type: 'NpcConversationRecorded',
+          payload: { conversation: currentConversation },
+          target_ids: ['npc:marta', 'hero:ada'],
+          visibility: 'party',
+        }]
+      : [],
+    visible_state_changes: [],
+    known_environment: {
+      scene: { id: 'scene:market', location: 'Рыночная площадь' },
+      campaign_premise: {},
+      story_context: {
+        heroes: [{ id: 'hero:ada', name: 'Ада', is_viewer: true }],
+        present_npcs: [{
+          id: 'npc:marta',
+          name: 'Марта',
+          relationship,
+          beliefs: ['PRIVATE_BELIEF'],
+          rumors: ['PRIVATE_RUMOR'],
+        }, {
+          id: 'npc:other',
+          name: 'Орвин',
+          relationship: 'trusted',
+        }],
+        active_quests: [],
+        active_threads: [],
+        recent_summaries: [],
+        recent_decisions: [],
+        open_promises: promises,
+        recent_interactions: interactions,
+        npc_dossiers: dossiers,
+      },
+    },
+    permitted_npc_reactions: [],
+    narration_constraints: [],
+  })
+}
+
+test('NPC dossier distinguishes first meeting from return and reaches Narrator with provenance', async () => {
+  const currentConversation = {
+    npc_id: 'npc:marta',
+    hero_id: 'hero:ada',
+    player_message: 'Мы прежде встречались?',
+    npc_reply: 'Нет, я бы вас запомнила.',
+  }
+  const firstMeeting = npcDossierBrief({
+    currentConversation,
+    interactions: [{
+      npc: 'Марта',
+      hero: 'Ада',
+      player_message: currentConversation.player_message,
+      npc_reply: currentConversation.npc_reply,
+      stance: 'neutral',
+    }],
+  })
+  assert.deepEqual(npcDossiersForNarrator(firstMeeting), [])
+
+  const returning = npcDossierBrief({
+    relationship: 'friendly',
+    interactions: [{
+      npc: 'Марта',
+      hero: 'Ада',
+      player_message: 'Спрячьте реестр до рассвета.',
+      npc_reply: 'Он будет под третьей половицей.',
+      stance: 'guarded',
+    }, {
+      npc: 'Марта',
+      hero: 'Чужой герой',
+      hero_id: 'hero:other',
+      player_message: 'PRIVATE_OTHER_HERO_MESSAGE',
+      npc_reply: 'PRIVATE_OTHER_HERO_REPLY',
+      stance: 'guarded',
+      visibility: 'specific_player',
+    }],
+    promises: [{
+      id: 'promise:ledger',
+      npc: 'Марта',
+      direction: 'npc_to_party',
+      text: 'Марта сохранит реестр до рассвета.',
+      due_hint: 'до рассвета',
+      source_conversation_id: 'conversation:ledger',
+    }],
+    dossiers: [{
+      npc_id: 'npc:marta',
+      name: 'Марта',
+      relationship: {
+        tier: 'friendly',
+        provenance: { source_event_ids: ['event:relationship:1'] },
+      },
+      interactions: [{
+        id: 'interaction:conversation:ledger',
+        hero_id: 'hero:ada',
+        summary: 'Герой попросил спрятать реестр. Марта согласилась убрать его под третью половицу.',
+        stance: 'guarded',
+        epistemic_status: 'contains_unverified_claims',
+        disclosed_claims: [{
+          id: 'claim:ledger-owner',
+          truth_status: 'verified',
+        }],
+        provenance: {
+          source_conversation_id: 'conversation:ledger',
+          source_event_ids: ['event:conversation:ledger'],
+        },
+      }, {
+        id: 'interaction:conversation:private',
+        hero_id: 'hero:other',
+        summary: 'PRIVATE_OTHER_HERO_DOSSIER',
+        visibility: 'specific_player',
+        provenance: {
+          source_conversation_id: 'conversation:private',
+          source_event_ids: ['event:conversation:private'],
+        },
+      }],
+      promises: [{
+        id: 'promise:ledger',
+        direction: 'npc_to_party',
+        text: 'Марта сохранит реестр до рассвета.',
+        due_hint: 'до рассвета',
+        source_conversation_id: 'conversation:ledger',
+      }],
+      beliefs: ['PRIVATE_DOSSIER_BELIEF'],
+      rumors: ['PRIVATE_DOSSIER_RUMOR'],
+    }],
+  })
+  const dossiers = npcDossiersForNarrator(returning)
+  assert.equal(dossiers.length, 1)
+  assert.equal(dossiers[0].name, 'Марта')
+  assert.equal(dossiers[0].relationship.tier, 'friendly')
+  assert.equal(dossiers[0].interactions[0].epistemic_status, 'contains_unverified_claims')
+  assert.deepEqual(dossiers[0].interactions[0].disclosed_claims, [{
+    id: 'claim:ledger-owner',
+    truth_status: 'unknown',
+  }])
+  assert.equal(dossiers[0].promises[0].provenance.source_id, 'promise:ledger')
+  assert.equal(dossiers[0].interactions[0].provenance.source_kind, 'NpcConversationRecorded')
+  assert.deepEqual(dossiers[0].interactions[0].provenance.source_event_ids, ['event:conversation:ledger'])
+  assert.doesNotMatch(
+    JSON.stringify(dossiers),
+    /PRIVATE_BELIEF|PRIVATE_RUMOR|PRIVATE_DOSSIER|PRIVATE_OTHER_HERO/u,
+  )
+
+  const requests = []
+  const narrator = new Narrator({
+    llmClient: {
+      completeJson: async (input) => {
+        requests.push(input)
+        return deterministicNarration(returning)
+      },
+    },
+  })
+  await narrator.render(returning)
+  const promptData = requests[0].messages[1].content
+  assert.match(promptData, /UNTRUSTED_DATA:npc_dossiers/u)
+  assert.match(promptData, /NpcConversationRecorded|contains_unverified_claims/u)
+  assert.doesNotMatch(
+    promptData,
+    /PRIVATE_BELIEF|PRIVATE_RUMOR|PRIVATE_DOSSIER|PRIVATE_OTHER_HERO/u,
+  )
+})
+
+test('Narrator NPC dossier is deterministically bounded and deduplicated to the current return', () => {
+  const interactions = Array.from({ length: 12 }, (_, index) => ({
+    id: `interaction:${index % 5}`,
+    hero_id: 'hero:ada',
+    summary: `Разговор ${index % 5}`,
+    stance: 'friendly',
+    visibility: index === 10 ? 'gm_only' : 'party',
+    beliefs: ['PRIVATE_BELIEF'],
+    provenance: {
+      source_conversation_id: `conversation:${index % 5}`,
+      source_event_ids: [`event:conversation:${index % 5}`],
+    },
+  }))
+  const promises = Array.from({ length: 5 }, (_, index) => ({
+    id: `promise:${index % 3}`,
+    direction: 'npc_to_party',
+    text: `Обещание ${index % 3}`,
+    source_conversation_id: `conversation:${index % 3}`,
+  }))
+  const brief = npcDossierBrief({
+    interactions: [{ npc: 'Марта', player_message: 'Не использовать как досье' }],
+    promises: [{ id: 'recent:promise', npc: 'Марта', text: 'Не использовать как досье' }],
+    relationship: 'trusted',
+    dossiers: [{
+      npc_id: 'npc:other',
+      name: 'Орвин',
+      relationship: {
+        tier: 'trusted',
+        provenance: { source_event_ids: ['event:relationship:orvin'] },
+      },
+      interactions,
+      promises,
+    }, {
+      npc_id: 'npc:marta',
+      name: 'Марта',
+      relationship: { tier: 'friendly' },
+      interactions: [{
+        id: 'interaction:marta',
+        summary: 'Эта запись не должна попасть из-за лимита NPC.',
+        provenance: { source_conversation_id: 'conversation:marta' },
+      }],
+    }],
+  })
+  const first = npcDossiersForNarrator(brief)
+  const second = npcDossiersForNarrator(structuredClone(brief))
+
+  assert.deepEqual(second, first)
+  assert.equal(first.length, NPC_NARRATOR_DOSSIER_LIMITS.npcs)
+  assert.equal(first[0].name, 'Орвин', 'берётся NPC самой свежей повторной встречи, а не все присутствующие')
+  assert.ok(first[0].interactions.length <= NPC_NARRATOR_DOSSIER_LIMITS.interactions)
+  assert.ok(first[0].promises.length <= NPC_NARRATOR_DOSSIER_LIMITS.promises)
+  assert.ok(JSON.stringify(first).length < 4_000)
+  assert.doesNotMatch(JSON.stringify(first), /PRIVATE_BELIEF/u)
 })

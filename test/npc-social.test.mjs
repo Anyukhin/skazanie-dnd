@@ -8,7 +8,13 @@ import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
-import { npcProfileAtWorldTime, npcSocialForViewer, promiseDueOffsetMinutes, relationshipTier } from '../server/npc-social.mjs'
+import {
+  NPC_DOSSIER_PROFILE_LIMIT,
+  npcProfileAtWorldTime,
+  npcSocialForViewer,
+  promiseDueOffsetMinutes,
+  relationshipTier,
+} from '../server/npc-social.mjs'
 import { buildNpcSocialCheckPolicy, classifyNpcSocialCheck, npcSocialCheckOutcome } from '../server/npc-social-check.mjs'
 import { mechanicsForViewer } from '../server/viewer-projection.mjs'
 import {
@@ -182,6 +188,91 @@ test('a server-confirmed social turn is event sourced and replayable with relati
   assert.equal(replayed.social.relationships.marta.hero, 4)
   assert.equal(replayed.social.conversations[0].npc_reply, 'Bring me the ledger and I will help.')
   assert.equal(replayed.social.promises[0].status, 'open')
+  assert.equal(replayed.social.npcs[0].dossier.length, 1)
+  assert.deepEqual(replayed.social.npcs[0].dossier[0].provenance, {
+    source_kind: 'NpcConversationRecorded',
+    source_conversation_id: 'conversation:one',
+    source_event_ids: [result.events[0].event_id],
+  })
+})
+
+test('NPC dossier is bounded, deduplicated, visibility-safe and survives replay plus arc carry-over', () => {
+  const initial = campaign()
+  const privateConversation = {
+    event_id: 'event:private-conversation',
+    event_type: 'NpcConversationRecorded',
+    payload: {
+      conversation: {
+        id: 'conversation:private',
+        npc_id: 'marta',
+        hero_id: 'hero',
+        player_message: 'Что говорят о герцоге?',
+        npc_reply: 'Я слышала обвинение, но не знаю, правда ли это.',
+        stance: 'guarded',
+        disclosed_fact_ids: [],
+        disclosed_claim_ids: ['claim:duke-rumor'],
+        visibility: 'specific_player',
+      },
+    },
+    target_ids: ['marta', 'hero'],
+    visibility: 'specific_player',
+  }
+  const once = applyGameEvent(initial, privateConversation)
+  const twice = applyGameEvent(once, privateConversation)
+  assert.deepEqual(twice.social.npcs[0].dossier, once.social.npcs[0].dossier)
+  assert.deepEqual(once.social.npcs[0].dossier[0].disclosed_claims, [{
+    id: 'claim:duke-rumor',
+    truth_status: 'unknown',
+  }])
+  assert.equal(once.social.npcs[0].dossier[0].epistemic_status, 'contains_unverified_claims')
+
+  let accumulated = twice
+  for (let index = 0; index < NPC_DOSSIER_PROFILE_LIMIT + 4; index += 1) {
+    accumulated = applyGameEvent(accumulated, {
+      event_id: `event:dossier:${index}`,
+      event_type: 'NpcConversationRecorded',
+      payload: {
+        conversation: {
+          id: `conversation:dossier:${index}`,
+          npc_id: 'marta',
+          hero_id: 'hero',
+          player_message: `Вопрос ${index}`,
+          npc_reply: `Ответ ${index}`,
+          stance: index % 2 ? 'friendly' : 'neutral',
+          disclosed_fact_ids: [],
+          disclosed_claim_ids: [],
+          visibility: 'party',
+        },
+      },
+      target_ids: ['marta', 'hero'],
+      visibility: 'party',
+    })
+  }
+  assert.equal(accumulated.social.npcs[0].dossier.length, NPC_DOSSIER_PROFILE_LIMIT)
+  assert.equal(new Set(accumulated.social.npcs[0].dossier.map((entry) => entry.id)).size, NPC_DOSSIER_PROFILE_LIMIT)
+
+  const heroView = npcSocialForViewer(once.social, { playerId: 'hero', isPartyMember: true })
+  const rogueView = npcSocialForViewer(once.social, { playerId: 'rogue', isPartyMember: true })
+  assert.equal(heroView.npcs[0].dossier.length, 1)
+  assert.equal(rogueView.npcs[0].dossier.length, 0)
+  assert.doesNotMatch(JSON.stringify(heroView.npcs[0].dossier), /hidden crown|duke is a traitor/iu)
+
+  const transitioned = applyGameEvent(accumulated, {
+    event_id: 'event:arc:completed',
+    event_type: 'CampaignArcCompleted',
+    payload: {
+      closed_arc: { arc_number: 1, final_chapter: 1 },
+      next_arc: { arc_number: 2 },
+      epilogue: 'Первая арка завершена.',
+      hook: 'Новая дорога зовёт.',
+    },
+    visibility: 'party',
+  })
+  assert.deepEqual(transitioned.social.npcs[0].dossier, accumulated.social.npcs[0].dossier)
+  assert.deepEqual(
+    normalizeCampaignState(transitioned).social.npcs[0].dossier,
+    normalizeCampaignState(accumulated).social.npcs[0].dossier,
+  )
 })
 
 test('players cannot forge NPC turns and the social validator rejects unknown fact disclosure', () => {
