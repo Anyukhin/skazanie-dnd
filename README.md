@@ -189,6 +189,7 @@ pnpm migrate
 - `POST /api/campaigns/:id/invites` — owner/admin создаёт одну семидневную ссылку для всех ещё свободных слотов стола; сырой token возвращается только при создании;
 - `POST /api/campaigns/:id/join` — идемпотентное присоединение по общему `invite_token`; под блокировкой хранилища сервер выдаёт аккаунту один свободный слот, а права и герой сохраняются в campaign-scoped membership;
 - `GET|POST /api/campaigns/:id/lifecycle` — чтение и event-sourced переходы `active ↔ paused → completed|failed → archived`; terminal/archive блокируют игровую запись, завершение создаёт детерминированный эпилог;
+- `POST /api/campaigns/:id/controls` — owner/admin выполняет `rewind_turn` или `replay_scene` с обязательным idempotency key; сервер добавляет `CampaignRewound` с целевым состоянием, не переписывая журнал и не позволяя откат через смену арки или финал;
 - `POST /api/campaigns/:id/system-tick` — совместимый диагностический запуск coordinator; в обычной игре сервер продолжает durable NPC-ходы и пополнение магазинов сам, а `GET /api/rooms/:id` остаётся чистым чтением;
 - `POST /api/campaigns/:id/party-decisions/:decisionId/votes` — event-sourced решение с одним голосом на аккаунт, явным воздержанием, пересчётом кворума при отключении и детерминированным исходом по TTL; legacy-кампании без membership используют голос героя;
 - `POST /api/campaigns/:id/party-decisions/:decisionId/roll` — один серверный общий d20 и event-sourced исход решения;
