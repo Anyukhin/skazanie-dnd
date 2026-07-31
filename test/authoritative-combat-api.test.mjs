@@ -1,3 +1,4 @@
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -7,7 +8,6 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import {
-import { runnerTimeout } from './shared-runner-timeout.mjs'
   cellAt,
   deserializeTacticalMap,
   legacyCellsFromTacticalMap,

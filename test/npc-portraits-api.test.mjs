@@ -1,3 +1,4 @@
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createServer as createHttpServer } from 'node:http'
@@ -7,7 +8,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import {
-import { runnerTimeout } from './shared-runner-timeout.mjs'
   NPC_PORTRAIT_GENERATION_LIMIT,
   NPC_PORTRAIT_ROLE_ASSETS,
 } from '../server/npc-portraits.mjs'

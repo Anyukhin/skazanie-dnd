@@ -1,3 +1,4 @@
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -12,7 +13,6 @@ import { FileEventStore } from '../server/event-store.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
 import { MapStore } from '../server/map-store.mjs'
 import {
-import { runnerTimeout } from './shared-runner-timeout.mjs'
   GAME_STATE_PROJECTOR_VERSION,
   applyGameEvent,
   normalizeCampaignState,
