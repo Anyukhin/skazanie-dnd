@@ -24,7 +24,8 @@ test('desktop chronicle follows new events only while the reader remains at the 
 })
 
 test('the combat context does not render a second copy of the latest chronicle event', async () => {
-  const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+  .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
   assert.doesNotMatch(appSource, /<BattleResultCard\b/)
   assert.doesNotMatch(appSource, /ПОСЛЕДНИЙ РЕЗУЛЬТАТ/)
 })

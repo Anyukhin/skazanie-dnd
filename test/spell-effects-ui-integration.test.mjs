@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const boardSource = await readFile(new URL('../src/TacticalBoard.tsx', import.meta.url), 'utf8')
-const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+  .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
 const typesSource = await readFile(new URL('../src/types.ts', import.meta.url), 'utf8')
 
 test('TacticalBoard рисует подтверждённые spell cues в RAF через общий canvas-слой', () => {

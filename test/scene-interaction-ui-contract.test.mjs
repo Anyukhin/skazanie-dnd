@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+  .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
 const boardSource = await readFile(new URL('../src/TacticalBoard.tsx', import.meta.url), 'utf8')
 const sessionSource = await readFile(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const mapClientSource = await readFile(new URL('../src/tactical-map-client.ts', import.meta.url), 'utf8')

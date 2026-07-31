@@ -26,7 +26,8 @@ test('a requested room suppresses only the automatic campaign picker', () => {
 
 test('desktop hero cards show server speed, while the objective remains fully expandable', async () => {
   const [appSource, styles] = await Promise.all([
-    readFile(new URL('../src/App.tsx', import.meta.url), 'utf8'),
+    Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+      .map((path) => readFile(new URL(path, import.meta.url), 'utf8'))).then((parts) => parts.join('\n')),
     readFile(new URL('../src/styles.css', import.meta.url), 'utf8'),
   ])
   assert.match(appSource, /player\.speed\} фт<\/b><small>СКОРОСТЬ/)
