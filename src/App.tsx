@@ -45,6 +45,16 @@ import {
   type AtmosphereAudio,
   type AtmosphereSettings,
 } from './atmosphere-audio'
+import {
+  NEWBIE_GUIDE_DISMISSED_KEY,
+  confirmedLevelUps,
+  factionDisplayName,
+  levelUpSeenKey,
+  reputationImpactForTier,
+  sceneNpcsAt,
+  visibleNpcStance,
+  type ConfirmedLevelUp,
+} from './player-experience'
 
 // Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
 // а не отдельным разделом. Второго пути к ней быть не должно.
@@ -58,6 +68,14 @@ const REPUTATION_TIER_LABELS: Record<ReputationTier, string> = {
   respected: 'уважают',
   honoured: 'чтут',
 }
+
+const NPC_STANCE_LABELS = {
+  neutral: 'нейтрально',
+  friendly: 'дружелюбно',
+  wary: 'настороженно',
+  hostile: 'враждебно',
+  panicked: 'в панике',
+} as const
 
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
@@ -602,23 +620,123 @@ function BattleRollTokenCallout({ event, context }: { event: BattleEvent; contex
 function PartyQuestHud({ state }: { state: GameState }) {
   const [expanded, setExpanded] = useState(false)
   const quests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
-  if (quests.length === 0) return null
-  const primary = quests[0]
+  const threads = (state.worldMemory?.threads ?? []).filter((thread) => (
+    !['closed', 'completed', 'resolved'].includes(thread.status ?? 'active')
+  ))
+  // Это уже `npcSocialForViewer`: specific-player и скрытые обещания сервер
+  // отрезал до HTTP/SSE. На клиенте нет второго visibility-фильтра и нет
+  // чтения persistence-состояния.
+  const promises = (state.social?.promises ?? []).filter((promise) => promise.status === 'open')
+  const npcNames = new Map((state.social?.npcs ?? []).map((npc) => [npc.id, npc.name]))
+  const reputation = state.autonomy?.reputation_standing ?? []
+  if (quests.length === 0 && threads.length === 0 && promises.length === 0 && reputation.length === 0) return null
+  const primary = promises[0]?.text ?? threads[0]?.title ?? quests[0]?.title ?? 'Состояние отряда'
+  const signalCount = quests.length + threads.length + promises.length
   return <section className={`party-quest-hud ${expanded ? 'expanded' : ''}`} aria-label="Задачи отряда">
     <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
       <ScrollText size={15} />
-      <span><small>ЗАДАЧИ ОТРЯДА · {quests.length}</small><strong>{primary.title}</strong></span>
+      <span>
+        <small>ЗАДАЧИ {quests.length} · ОБЕЩАНИЯ {promises.length} · НИТИ {threads.length}</small>
+        <strong>{primary}</strong>
+      </span>
       <ChevronDown size={15} />
     </button>
+    {reputation.length > 0 && <p className="party-reputation-rule">
+      <Crown size={13} />
+      <span>Слава меняет цены до ±10% и СЛ разговоров до ±3</span>
+    </p>}
     {expanded && <div>
-      {quests.map((quest) => <article key={quest.id}>
-        <b>{quest.title}</b>
-        {quest.summary && <p>{quest.summary}</p>}
-        {quest.objectives?.length ? <ul>{quest.objectives.slice(0, 4).map((objective) => <li key={objective}>{objective}</li>)}</ul> : null}
-        {quest.clock && quest.clock.max > 0 && <small>{localizedQuestClockLabel(quest.clock.label)} · {quest.clock.current}/{quest.clock.max}</small>}
-      </article>)}
+      {promises.length > 0 && <section className="party-signal-group">
+        <h3>Открытые обещания</h3>
+        {promises.map((promise) => <article key={promise.id} className="promise">
+          <b>{npcNames.get(promise.npc_id) ?? 'Знакомый персонаж'}</b>
+          <p>{promise.text}</p>
+          <small>{promise.direction === 'party_to_npc' ? 'Обещал отряд' : 'Обещано отряду'}{promise.due_hint ? ` · ${promise.due_hint}` : ''}</small>
+        </article>)}
+      </section>}
+      {threads.length > 0 && <section className="party-signal-group">
+        <h3>Незакрытые нити</h3>
+        {threads.map((thread) => <article key={thread.id} className="thread">
+          <b>{thread.title}</b>
+          {thread.summary && <p>{thread.summary}</p>}
+        </article>)}
+      </section>}
+      {quests.length > 0 && <section className="party-signal-group">
+        <h3>Активные задачи</h3>
+        {quests.map((quest) => <article key={quest.id}>
+          <b>{quest.title}</b>
+          {quest.summary && <p>{quest.summary}</p>}
+          {quest.objectives?.length ? <ul>{quest.objectives.slice(0, 4).map((objective) => <li key={objective}>{objective}</li>)}</ul> : null}
+          {quest.clock && quest.clock.max > 0 && <small>{localizedQuestClockLabel(quest.clock.label)} · {quest.clock.current}/{quest.clock.max}</small>}
+        </article>)}
+      </section>}
+      {reputation.length > 0 && <section className="party-signal-group reputation-impact">
+        <h3>Как слава влияет на правила</h3>
+        <p>Показывается только публичная ступень — скрытый счёт репутации остаётся у сервера.</p>
+        <dl>{reputation.map((entry) => {
+          const impact = reputationImpactForTier(entry.tier)
+          const price = impact.pricePercent === 0 ? 'цены без поправки' : impact.pricePercent < 0 ? `цены дешевле на ${Math.abs(impact.pricePercent)}%` : `цены дороже на ${impact.pricePercent}%`
+          const dc = impact.socialDcShift === 0 ? 'СЛ без поправки' : impact.socialDcShift < 0 ? `СЛ ниже на ${Math.abs(impact.socialDcShift)}` : `СЛ выше на ${impact.socialDcShift}`
+          return <div key={entry.faction_id} className={entry.tier}>
+            <dt>{factionDisplayName(entry.faction_id)}<small>{REPUTATION_TIER_LABELS[entry.tier]}</small></dt>
+            <dd>{price} · {dc}</dd>
+          </div>
+        })}</dl>
+      </section>}
+      {signalCount === 0 && <p className="party-signals-empty">Открытых задач, обещаний и нитей сейчас нет.</p>}
     </div>}
   </section>
+}
+
+function NewbieGuide({ onDismiss }: { onDismiss: () => void }) {
+  return <aside className="newbie-guide" role="dialog" aria-modal="false" aria-labelledby="newbie-guide-title">
+    <header>
+      <HelpCircle size={21} />
+      <span><small>ПЕРВЫЕ ШАГИ</small><strong id="newbie-guide-title">Можно говорить обычными фразами</strong></span>
+      <button type="button" onClick={onDismiss} aria-label="Закрыть шпаргалку"><X size={16} /></button>
+    </header>
+    <ul>
+      <li>«Осматриваю алтарь и ищу следы»</li>
+      <li>«Спрашиваю стражника о закрытых воротах»</li>
+      <li>«Передаю зелье раненому союзнику»</li>
+      <li>«Прячусь за телегой и стреляю»</li>
+    </ul>
+    <p><Target size={15} /><span><b>Кликайте по клеткам, фишкам и предметам:</b> карта покажет доступное действие и цель до отправки.</span></p>
+    <footer><button type="button" onClick={onDismiss}>Понятно</button></footer>
+  </aside>
+}
+
+function CampaignPausedNotice({ canManage, busy, onResume }: { canManage: boolean; busy: boolean; onResume: () => void }) {
+  return <section className="campaign-paused-notice" role="status" aria-live="polite">
+    <LockKeyhole size={24} />
+    <span>
+      <small>КАМПАНИЯ НА ПАУЗЕ</small>
+      <strong>Игровые действия временно остановлены</strong>
+      <p>{canManage ? 'Вы можете продолжить кампанию тем же серверным управлением жизненным циклом.' : 'Продолжить игру может владелец кампании.'}</p>
+    </span>
+    {canManage && <button type="button" disabled={busy} onClick={onResume}><LockOpen size={15} />Продолжить</button>}
+  </section>
+}
+
+function LevelUpScreen({ levelUp, canOpenSheet, onOpenSheet, onClose }: {
+  levelUp: ConfirmedLevelUp
+  canOpenSheet: boolean
+  onOpenSheet: () => void
+  onClose: () => void
+}) {
+  return <div className="level-up-backdrop" role="dialog" aria-modal="true" aria-labelledby="level-up-title">
+    <section className="level-up-screen">
+      <div className="level-up-rays" aria-hidden="true" />
+      <Crown size={52} aria-hidden="true" />
+      <small>ПОДТВЕРЖДЕНО СЕРВЕРОМ</small>
+      <h1 id="level-up-title">Новый уровень!</h1>
+      <p><strong>{levelUp.character}</strong> теперь {levelUp.level}-го уровня.</p>
+      <div>
+        {canOpenSheet && <button type="button" onClick={onOpenSheet}><Sparkles size={16} />Открыть лист героя</button>}
+        <button type="button" className="quiet" onClick={onClose}>{canOpenSheet ? 'Позже' : 'Продолжить'}</button>
+      </div>
+    </section>
+  </div>
 }
 
 function CombatTurnClock({ clock, actorName }: { clock: GameState['turn_clock']; actorName?: string }) {
@@ -659,7 +777,7 @@ function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onFinishTurn, onFreeAction, onRest, onTypingChange, narrating, statusContent, children }: {
+function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onOpenMerchant, onFinishTurn, onFreeAction, onRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -681,6 +799,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
   onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => Promise<CommandOutcome>
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => Promise<CommandOutcome>
+  onOpenMerchant: (merchantId: string) => void
   onFinishTurn: () => Promise<CommandOutcome>
   onFreeAction: (text: string) => Promise<CommandOutcome>
   onRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
@@ -812,6 +931,15 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   const activeTurnLabel = !combatActive ? 'ИДЁТ СВОБОДНО' : activeEnemy ? 'ХОД ПРОТИВНИКА' : activeSummon ? 'ХОД ПРИЗЫВА' : 'ХОД ИГРОКА'
   const active: BoardCombatant | undefined = activeHero ?? activeSummon
   const activeName = activeHero?.character ?? activeSummon?.name ?? activeEnemy?.name ?? 'участник боя'
+  const sceneLocationId = state.scene.location_id ?? boardMap?.locationId ?? ''
+  const combatActorIds = new Set([
+    ...players.map((player) => player.id),
+    ...(state.enemies ?? []).map((enemy) => enemy.id),
+    ...(state.actors ?? []).map((actor) => actor.id),
+  ])
+  // PR #18 отдаёт только viewer-safe scene_npcs. Без этого optional-контракта
+  // клиент не рисует spawn-point как персонажа и не угадывает координаты.
+  const sceneNpcs = sceneNpcsAt(state.scene_npcs ?? [], sceneLocationId, { columns, rows }, combatActorIds)
   const actorNameById = (id?: string) => {
     if (!id) return ''
     return players.find((player) => player.id === id)?.character
@@ -839,6 +967,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     ...players.map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.character, color: player.color, kind: 'hero' as const })),
     ...(state.enemies ?? []).map((enemy) => ({ id: enemy.id, x: enemy.x, y: enemy.y, label: enemy.name, color: '#c86c5d', kind: 'enemy' as const })),
     ...(state.actors ?? []).map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, color: '#70a78b', kind: 'summon' as const })),
+    ...sceneNpcs.filter((npc) => npc.alive).map((npc) => ({ id: npc.id, x: npc.x, y: npc.y, label: npc.name, color: '#9d8f72', kind: 'neutral' as const })),
   ]
   const animatedBattleLog = useMemo(() => {
     const recentIds = new Set((state.battleLog ?? []).slice(-12).map((event) => event.id))
@@ -1248,6 +1377,12 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     const player = players.find((item) => item.x === cell.x && item.y === cell.y && item.hp > 0)
     const enemy = state.enemies?.find((item) => item.x === cell.x && item.y === cell.y && item.alive)
     const summon = state.actors?.find((item) => item.x === cell.x && item.y === cell.y && item.alive)
+    const sceneNpc = !player && !enemy && !summon
+      ? sceneNpcs.find((item) => item.x === cell.x && item.y === cell.y)
+      : undefined
+    const sceneNpcStance = visibleNpcStance(sceneNpc?.stance ?? 'neutral')
+    const sceneNpcMerchant = sceneNpc ? state.merchants?.find((merchant) => merchant.id === sceneNpc.id) : undefined
+    const sceneNpcMenuId = sceneNpc ? `scene-npc:${sceneNpc.id}` : ''
     const attackDistanceFeet = enemy && active
       ? chebyshevFeet(active, enemy)
       : Number.POSITIVE_INFINITY
@@ -1295,7 +1430,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     const routeStep = previewRouteSteps.get(cellKey)
     const opportunityRisk = Boolean(canMoveHere && opportunityThreats.some((threat) => chebyshevFeet(threat, cell) > CELL_FEET))
     const canThrowHere = Boolean(combatActive && selected && combatMode === 'weapon' && actionReady && selectedItem?.combat?.kind === 'thrown-area' && active && chebyshevFeet(active, cell) <= normalRangeFeet && hasClearBoardTrajectory(state, active, cell) && cell.revealed && cell.type !== 'wall')
-    const occupied = Boolean(player || enemy || summon)
+    const occupied = Boolean(player || enemy || summon || sceneNpc)
     const commandRangeVisible = Boolean(selected && targetRangeFeet > 0 && (combatActive || spellEconomyReady))
     const cellInCommandRange = Boolean(commandRangeVisible && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && chebyshevFeet(active, cell) <= targetRangeFeet && (targetRangeFeet <= CELL_FEET || hasClearBoardTrajectory(state, active, cell)))
     const moveUnavailable = Boolean(selected && movementAvailable && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && !occupied && !canMoveHere && moveReason)
@@ -1343,7 +1478,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
       pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '',
       sceneObject ? 'scene-object-target' : '',
       sceneObject?.id === selectedSceneObjectId ? 'scene-object-selected' : '',
-      occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : 'occupied-by-enemy' : '',
+      occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : sceneNpc ? 'occupied-by-neutral' : 'occupied-by-enemy' : '',
     ].filter(Boolean)
     const cellTitle = opportunityRisk && !canAimHere
       ? 'Опасная клетка: выход из ближнего боя вызовет атаку по возможности'
@@ -1442,6 +1577,36 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             {enemyConditions.length > 0 && <span className="token-conditions">{enemyConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
           </button>
         )}
+        {sceneNpc && cell.revealed && <>
+          <button
+            type="button"
+            className={`map-token neutral-token stance-${sceneNpcStance} ${sceneNpc.alive ? '' : 'dead'} ${openTokenLabelId === sceneNpcMenuId ? 'label-open' : ''}`}
+            data-actor-id={sceneNpc.id}
+            data-token-role="neutral"
+            aria-expanded={openTokenLabelId === sceneNpcMenuId}
+            aria-label={`${sceneNpc.name}, ${sceneNpc.role || 'персонаж'}. Отношение: ${NPC_STANCE_LABELS[sceneNpcStance]}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              setOpenTokenLabelId((current) => current === sceneNpcMenuId ? null : sceneNpcMenuId)
+            }}
+          >
+            <span className="neutral-token-mark" aria-hidden="true">{sceneNpc.name.slice(0, 2).toLocaleUpperCase('ru')}</span>
+            <span className="neutral-nameplate">{sceneNpc.name}</span>
+          </button>
+          {openTokenLabelId === sceneNpcMenuId && <div className="neutral-token-menu" role="group" aria-label={`Действия с ${sceneNpc.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+            <span><b>{sceneNpc.name}</b><small>{sceneNpc.role || 'Персонаж'} · {NPC_STANCE_LABELS[sceneNpcStance]}</small></span>
+            {sceneNpcMerchant
+              ? <button
+                  type="button"
+                  disabled={combatActive || !sceneNpc.alive || !sceneNpcMerchant.available}
+                  title={combatActive ? 'Торговля недоступна во время боя' : !sceneNpc.alive || !sceneNpcMerchant.available ? 'Торговец сейчас недоступен' : 'Открыть существующее серверное окно торговли'}
+                  onClick={() => onOpenMerchant(sceneNpc.id)}
+                ><Store size={13} />Торговать</button>
+              : <em>Разговор с конкретным NPC появится после server-owned команды диалога.</em>}
+          </div>}
+        </>}
         {player && cell.revealed && (() => {
           const healingDistance = active ? chebyshevFeet(active, player) : Number.POSITIVE_INFINITY
           // `combatActive` здесь больше нет: вне боя мирное заклинание на союзника
@@ -2945,6 +3110,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [merchantOpen, setMerchantOpen] = useState(false)
+  const [preferredMerchantId, setPreferredMerchantId] = useState<string | null>(null)
   const requestedRoomAtEntry = useRef(new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? '')
   const [campaignsOpen, setCampaignsOpen] = useState(() => shouldAutoOpenCampaignModal({
     heroCount: account.heroIds.length,
@@ -2966,6 +3132,15 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
   const [reviewedPartyDefeat, setReviewedPartyDefeat] = useState<string | null>(null)
+  const [newbieGuideOpen, setNewbieGuideOpen] = useState(() => (
+    window.localStorage.getItem(NEWBIE_GUIDE_DISMISSED_KEY) !== 'true'
+  ))
+  const [levelUpCelebration, setLevelUpCelebration] = useState<ConfirmedLevelUp | null>(null)
+  const levelUpCursor = useRef({
+    sessionCode: state.sessionCode,
+    ready: state.campaign !== 'Загрузка кампании…',
+    levels: Object.fromEntries(state.players.map((player) => [player.id, player.level])),
+  })
   const [uiScale, setUiScale] = useState(loadUiScale)
   const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') !== 'false')
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
@@ -3274,6 +3449,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     if (merchantLocation.current !== location) {
       merchantLocation.current = location
       setMerchantOpen(false)
+      setPreferredMerchantId(null)
     }
   }, [state.scene.location])
   useEffect(() => {
@@ -3284,6 +3460,30 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     setEditingPlayerId(replacementEditorId)
     setReplacementEditorId(null)
   }, [replacementEditorId, state.state_version])
+  useEffect(() => {
+    const ready = Boolean(state.sessionCode && state.campaign !== 'Загрузка кампании…')
+    const levels = Object.fromEntries(state.players.map((player) => [player.id, player.level]))
+    const cursor = levelUpCursor.current
+    if (cursor.sessionCode !== state.sessionCode || !ready || !cursor.ready) {
+      levelUpCursor.current = { sessionCode: state.sessionCode, ready, levels }
+      if (cursor.sessionCode !== state.sessionCode) setLevelUpCelebration(null)
+      return
+    }
+
+    const visibleEvents = (combatVisualBatch?.events ?? []).filter((event) => (
+      event.visibility !== 'gm_only' && event.visibility !== 'npc_private'
+    ))
+    const confirmed = confirmedLevelUps(cursor.levels, state.players, visibleEvents)
+    levelUpCursor.current = { sessionCode: state.sessionCode, ready, levels }
+    const unseen = confirmed.find((entry) => (
+      window.localStorage.getItem(levelUpSeenKey(state.sessionCode, entry.playerId, entry.level)) !== 'true'
+    ))
+    if (!unseen) return
+    // Запоминаем показ при открытии: повторный SSE snapshot и reload не должны
+    // превращать одно серверное повышение в несколько празднований.
+    window.localStorage.setItem(levelUpSeenKey(state.sessionCode, unseen.playerId, unseen.level), 'true')
+    setLevelUpCelebration(unseen)
+  }, [combatVisualBatch?.id, state.campaign, state.players, state.sessionCode])
 
   const navigate = (next: View) => {
     setView(next)
@@ -3291,7 +3491,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }
   // Лавка не меняет раздел: она ложится поверх того, что игрок и так смотрит.
   // Узкое меню при этом сворачивается — иначе на телефоне оно перекроет окно.
-  const openMerchant = () => {
+  const openMerchant = (merchantId?: string) => {
+    setPreferredMerchantId(merchantId ?? null)
     setMerchantOpen(true)
     if (window.innerWidth <= 680) setSidebarCollapsed(true)
   }
@@ -3372,6 +3573,12 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }
 
   const availableMerchants = (state.merchants ?? []).filter((merchant) => merchant.available && merchantIsAtLocation(merchant, state.scene))
+  const preferredMerchant = preferredMerchantId
+    ? availableMerchants.find((merchant) => merchant.id === preferredMerchantId)
+    : undefined
+  const merchantScreenMerchants = preferredMerchant
+    ? [preferredMerchant, ...availableMerchants.filter((merchant) => merchant.id !== preferredMerchant.id)]
+    : availableMerchants
   const combatActive = Boolean(state.mechanics?.combat?.active && state.mechanics.combat.initiative?.length)
   const turnActorId = currentTurnActorId(state)
   const turnPlayer = partyPlayers.find((player) => player.id === turnActorId)
@@ -3438,11 +3645,21 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
               ? <button className="invite-button" onClick={() => { void changeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
               : <button className="invite-button" onClick={() => { void changeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>)}
             {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => setInviteOpen(true)}><Users size={17} />Пригласить</button>}
+            <button className="newbie-guide-button" onClick={() => setNewbieGuideOpen(true)} aria-label="Открыть шпаргалку новичка" aria-pressed={newbieGuideOpen} title="Шпаргалка новичка"><HelpCircle size={17} /></button>
             <div className="account-chip"><span>{account.name}<small>{activePlayer.character}</small></span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
           </div>
         </header>
         {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'}`}>
           {(directorError || joinError || lifecycleError) && <div className="admin-error director-error">{directorError || joinError || lifecycleError}</div>}
+          {lifecycleStatus === 'paused' && <CampaignPausedNotice
+            canManage={canManageLifecycle}
+            busy={lifecycleBusy}
+            onResume={() => { void changeLifecycle('resume') }}
+          />}
+          {newbieGuideOpen && <NewbieGuide onDismiss={() => {
+            window.localStorage.setItem(NEWBIE_GUIDE_DISMISSED_KEY, 'true')
+            setNewbieGuideOpen(false)
+          }} />}
           {/* Свободный бросок переехал из правой колонки в угол карты: он нужен
               в любой момент, а карточка с подписями занимала место рядом с
               состоянием героя. */}
@@ -3477,12 +3694,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onChangeWeapon={changeWeapon}
             onOperateDoor={operateDoor}
             onOperateSceneObject={operateSceneObject}
+            onOpenMerchant={openMerchant}
             onFinishTurn={finishMapTurn}
             onFreeAction={(text) => submitAction(text, activePlayer.id)}
             onRest={(kind) => submitAction(kind === 'long' ? 'Устроить долгий отдых' : 'Устроить короткий отдых', activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={openMerchant} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
@@ -3508,7 +3726,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
-      {merchantOpen && <MerchantScreen merchants={availableMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantOpen(false)} />}
+      {merchantOpen && <MerchantScreen merchants={merchantScreenMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantOpen(false)} />}
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
       {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onClose={() => setCampaignsOpen(false)} />}
       {creatingPlayerId && aiHealth?.characterCreation && <CharacterCreationWizard
@@ -3532,6 +3750,15 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} onChoose={(actionId, beneficiaryId) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
       {!campaignsOpen && showDeathScreen && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
       {!campaignsOpen && showConclusion && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'failed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
+      {!campaignsOpen && !showDeathScreen && !showConclusion && levelUpCelebration && <LevelUpScreen
+        levelUp={levelUpCelebration}
+        canOpenSheet={isAdmin || accessibleHeroIds.includes(levelUpCelebration.playerId)}
+        onOpenSheet={() => {
+          setEditingPlayerId(levelUpCelebration.playerId)
+          setLevelUpCelebration(null)
+        }}
+        onClose={() => setLevelUpCelebration(null)}
+      />}
     </div>
   )
 }

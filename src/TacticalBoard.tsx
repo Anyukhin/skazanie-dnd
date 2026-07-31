@@ -186,7 +186,7 @@ export type BoardAnimationActor = {
   y: number
   label: string
   color?: string
-  kind: 'hero' | 'enemy' | 'summon'
+  kind: 'hero' | 'enemy' | 'summon' | 'neutral'
 }
 
 type BoardConditionState = Record<string, Array<{ id: string }>>
@@ -523,7 +523,7 @@ export function TacticalBoard({
     const actor = actorAt(actorId)
     const center = screenPoint(position, cellSize)
     const radius = Math.max(7, cellSize * .29)
-    const color = actor?.color || (actor?.kind === 'enemy' ? '#bd6256' : actor?.kind === 'summon' ? '#70a78b' : '#d6a55a')
+    const color = actor?.color || (actor?.kind === 'enemy' ? '#bd6256' : actor?.kind === 'summon' ? '#70a78b' : actor?.kind === 'neutral' ? '#9d8f72' : '#d6a55a')
     context.save()
     context.globalAlpha = alpha
     context.beginPath()
