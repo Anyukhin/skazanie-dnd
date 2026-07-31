@@ -1,15 +1,18 @@
 import { createHash } from 'node:crypto'
 
+import {
+  ITEM_CATALOG_SCHEMA_VERSION,
+  ITEM_CATALOG_SOURCE,
+  SRD_EQUIPMENT_CATALOG,
+  hydrateCatalogItem as hydrateCatalogRecord,
+  materializeCatalogItem,
+} from './item-catalog.mjs'
 import { reputationStandingFor } from './reputation-policy.mjs'
 
 export const ECONOMY_POLICY_ID = 'skazanie:economy:merchant-policy-v1'
 export const ECONOMY_CATALOG_VERSION = 'srd_5_2_1'
-export const ECONOMY_CATALOG_SOURCE = Object.freeze({
-  source_url: 'https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf',
-  source_version: 'SRD 5.2.1',
-  source_sha256: '8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87',
-  license: 'CC-BY-4.0',
-})
+export const ECONOMY_CATALOG_SOURCE = ITEM_CATALOG_SOURCE
+export { SRD_EQUIPMENT_CATALOG }
 
 // The canonical representation uses platinum as its largest denomination.
 // Keep the total cap aligned with the 9,000,000 PP per-field cap so round trips
@@ -73,35 +76,6 @@ export function merchantIsAtLocation(merchantLocation, sceneLocation) {
   const merchant = locationReference(merchantLocation)
   return (!merchant.id && !merchant.key) || locationsMatch(merchantLocation, sceneLocation)
 }
-
-/**
- * Server-owned SRD 5.2.1 equipment prices, expressed in copper pieces.
- * A campaign snapshot may describe or stock these items, but it cannot change
- * their catalog price by editing base_price_cp.
- */
-function catalogEntry(catalogId, basePriceCp, sourcePage) {
-  return Object.freeze({
-    catalog_id: catalogId,
-    base_price_cp: basePriceCp,
-    ...ECONOMY_CATALOG_SOURCE,
-    source_page: sourcePage,
-  })
-}
-
-export const SRD_EQUIPMENT_CATALOG = Object.freeze({
-  'srd_5_2_1:dagger': catalogEntry('srd_5_2_1:dagger', 200, 91),
-  'srd_5_2_1:longsword': catalogEntry('srd_5_2_1:longsword', 1_500, 91),
-  'srd_5_2_1:longbow': catalogEntry('srd_5_2_1:longbow', 5_000, 91),
-  'srd_5_2_1:shortbow': catalogEntry('srd_5_2_1:shortbow', 2_500, 91),
-  'srd_5_2_1:leather-armor': catalogEntry('srd_5_2_1:leather-armor', 1_000, 92),
-  'srd_5_2_1:shield': catalogEntry('srd_5_2_1:shield', 1_000, 92),
-  'srd_5_2_1:explorers-pack': catalogEntry('srd_5_2_1:explorers-pack', 1_000, 95),
-  'srd_5_2_1:potion-of-healing': catalogEntry('srd_5_2_1:potion-of-healing', 5_000, 95),
-  'srd_5_2_1:rations-one-day': catalogEntry('srd_5_2_1:rations-one-day', 50, 95),
-  'srd_5_2_1:rope-hempen-50-feet': catalogEntry('srd_5_2_1:rope-hempen-50-feet', 100, 95),
-  'srd_5_2_1:torch': catalogEntry('srd_5_2_1:torch', 1, 95),
-  'srd_5_2_1:arrows-20': catalogEntry('srd_5_2_1:arrows-20', 100, 95),
-})
 
 function clone(value) {
   return structuredClone(value)
@@ -178,9 +152,14 @@ export function inventoryStackKey(input = {}) {
   return `${(catalogId || 'custom').slice(0, 80)}:${digest}`
 }
 
-/** Server-side inventory shape shared by imported state and commerce events. */
-export function normalizeInventoryItem(input = {}, { idFallback = 'item', preserveUnknown = false } = {}) {
-  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+/**
+ * Server-side inventory shape shared by imported state and replay.
+ * Catalog hydration is deliberately opt-in: replay of old event payloads must
+ * not acquire new fields merely because the manifest grew.
+ */
+export function normalizeInventoryItem(input = {}, { idFallback = 'item', preserveUnknown = false, hydrateCatalog = false } = {}) {
+  const original = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  const source = hydrateCatalog ? hydrateCatalogRecord(original) : original
   const catalogId = cleanId(source.catalog_id ?? source.catalogId)
   const resolvedPrice = resolveCatalogBasePriceCp({ ...source, catalog_id: catalogId })
   const maxCharges = clampInteger(source.charges?.max, 0, 1_000_000, 0)
@@ -188,6 +167,12 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     ...(preserveUnknown ? clone(source) : {}),
     id: cleanId(source.item_id ?? source.id, idFallback),
     ...(catalogId ? { catalog_id: catalogId } : {}),
+    ...(source.catalog_schema_version == null ? {} : {
+      catalog_schema_version: cleanText(source.catalog_schema_version, 120, ITEM_CATALOG_SCHEMA_VERSION),
+    }),
+    ...(source.mechanics_status == null ? {} : {
+      mechanics_status: cleanText(source.mechanics_status, 40),
+    }),
     name: cleanText(source.name, 120, 'Предмет'),
     type: normalizeItemType(source.type),
     quantity: clampInteger(source.quantity, 1, MAX_STOCK_QUANTITY, 1),
@@ -525,11 +510,22 @@ export function createStarterMerchant({ location = '', location_id = '', locatio
       description: 'Каталожная SRD-цена с ограниченной политикой конкретного торговца.',
     },
     stock: [
-      { stock_id: 'starter-healing-potion', catalog_id: 'srd_5_2_1:potion-of-healing', name: 'Зелье лечения', type: 'consumable', quantity: 3, base_price_cp: 5_000, description: 'Восстанавливает 2к4 + 2 хита.' },
-      { stock_id: 'starter-hempen-rope', catalog_id: 'srd_5_2_1:rope-hempen-50-feet', name: 'Пеньковая верёвка, 50 футов', type: 'tool', quantity: 4, base_price_cp: 100 },
-      { stock_id: 'starter-rations', catalog_id: 'srd_5_2_1:rations-one-day', name: 'Сухой паёк, 1 день', type: 'consumable', quantity: 12, base_price_cp: 50 },
-      { stock_id: 'starter-torch', catalog_id: 'srd_5_2_1:torch', name: 'Факел', type: 'tool', quantity: 10, base_price_cp: 1 },
-      { stock_id: 'starter-arrows', catalog_id: 'srd_5_2_1:arrows-20', name: 'Стрелы, 20 штук', type: 'other', quantity: 5, base_price_cp: 100, properties: 'Боеприпасы для лука; не являются самостоятельным оружием.' },
+      materializeCatalogItem('srd_5_2_1:potion-of-healing', {
+        stock_id: 'starter-healing-potion', quantity: 3, description: 'Восстанавливает 2к4 + 2 хита.',
+      }),
+      materializeCatalogItem('srd_5_2_1:rope-hempen-50-feet', {
+        stock_id: 'starter-hempen-rope', quantity: 4,
+      }),
+      materializeCatalogItem('srd_5_2_1:rations-one-day', {
+        stock_id: 'starter-rations', quantity: 12,
+      }),
+      materializeCatalogItem('srd_5_2_1:torch', {
+        stock_id: 'starter-torch', quantity: 10,
+      }),
+      materializeCatalogItem('srd_5_2_1:arrows-20', {
+        stock_id: 'starter-arrows', quantity: 5,
+        properties: 'Боеприпасы для лука; не являются самостоятельным оружием.',
+      }),
     ],
     services: [{
       service_id: 'starter-courier',
@@ -803,12 +799,13 @@ export function quoteMerchantSellUnit(merchant, actorId, item, appraisal = null,
 
 export function inventoryItemFromStock(stockEntry) {
   const source = stockEntry && typeof stockEntry === 'object' && !Array.isArray(stockEntry) ? stockEntry : {}
-  return normalizeInventoryItem({
+  const materialized = materializeCatalogItem(source.catalog_id ?? source.catalogId, {
     ...source,
     id: source.item_id ?? source.id ?? source.catalog_id ?? source.stock_id,
     quantity: 1,
     equipped: false,
-  }, { idFallback: 'item', preserveUnknown: false })
+  })
+  return normalizeInventoryItem(materialized, { idFallback: 'item', preserveUnknown: false })
 }
 
 export function sellability(item, appraisal = null) {

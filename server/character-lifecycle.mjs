@@ -21,6 +21,7 @@ import {
   spellSelectionRulesFor,
   spellSlotMaximumsFor,
 } from './combat-spells.mjs'
+import { ITEM_ARMOR_PROFILES } from './item-catalog.mjs'
 import { withStarterKit } from './starter-kit.mjs'
 
 /**
@@ -80,10 +81,7 @@ export const DERIVED_CHARACTER_POLICY = Object.freeze({
 const MAX_LEVEL = 12
 const MAX_EXPERIENCE = 2_000_000_000
 const DEFAULT_BASE_SPEED = 30
-const DEFAULT_ARMOR_PROFILES = Object.freeze({
-  'srd_5_2_1:leather-armor': Object.freeze({ kind: 'armor', armorClassBase: 11, dexterityCap: null, speedPenalty: 0 }),
-  'srd_5_2_1:shield': Object.freeze({ kind: 'shield', armorClassBonus: 2, speedPenalty: 0 }),
-})
+const DEFAULT_ARMOR_PROFILES = ITEM_ARMOR_PROFILES
 const HIT_DICE = Object.freeze({
   barbarian: 12,
   bard: 8,

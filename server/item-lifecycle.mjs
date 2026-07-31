@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { itemLifecycleProfile } from './item-catalog.mjs'
 import { inventoryStackKey, MAX_STOCK_QUANTITY, normalizeInventoryItem } from './merchant-economy.mjs'
 import {
   MAX_NPC_INVENTORY_ITEMS,
@@ -20,17 +21,6 @@ export class ItemLifecycleValidationError extends Error {
   }
 }
 
-const ITEM_PROFILES = Object.freeze({
-  'srd_5_2_1:dagger': { equip_slot: 'main_hand' },
-  'srd_5_2_1:longsword': { equip_slot: 'main_hand' },
-  'srd_5_2_1:longbow': { equip_slot: 'main_hand' },
-  'srd_5_2_1:shortbow': { equip_slot: 'main_hand' },
-  'srd_5_2_1:leather-armor': { equip_slot: 'body', armor: { base: 11, dexterity: true } },
-  'srd_5_2_1:shield': { equip_slot: 'off_hand', armor_bonus: 2 },
-  'srd_5_2_1:potion-of-healing': { use: { kind: 'healing', expression: '2d4+2', consumes: 1, combat_action: 'action', range_feet: 5 } },
-  'srd_5_2_1:rations-one-day': { use: { kind: 'ration', consumes: 1, combat_action: null, range_feet: 0 } },
-})
-
 const clean = (value, maximum = 120) => String(value ?? '').normalize('NFKC').trim().slice(0, maximum)
 const integer = (value, fallback = 0) => Number.isSafeInteger(Number(value)) ? Number(value) : fallback
 const clone = (value) => structuredClone(value)
@@ -48,7 +38,7 @@ function itemFor(actor, id) {
 }
 
 function profileFor(item) {
-  const catalog = ITEM_PROFILES[String(item?.catalog_id ?? item?.catalogId ?? '')]
+  const catalog = itemLifecycleProfile(String(item?.catalog_id ?? item?.catalogId ?? ''))
   if (catalog) return clone(catalog)
   if (item?.type === 'weapon' && item?.combat) return { equip_slot: 'main_hand' }
   if (item?.type === 'armor') return { equip_slot: 'body' }
@@ -115,7 +105,9 @@ export function derivedEquipmentArmorClass(actor) {
     if (!item?.equipped) continue
     const profile = profileFor(item)
     if (profile.armor) {
-      const dexterityBonus = profile.armor.dexterity ? dexterity : 0
+      const dexterityBonus = profile.armor.dexterity
+        ? profile.armor.dexterity_cap == null ? dexterity : Math.min(dexterity, Number(profile.armor.dexterity_cap) || 0)
+        : 0
       body = Math.max(body ?? 0, profile.armor.base + dexterityBonus)
     }
     bonus += Number(profile.armor_bonus) || 0

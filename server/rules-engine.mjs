@@ -117,6 +117,7 @@ import {
   trustedItemAppraisalFor,
   trustedStockAppraisalFor,
 } from './merchant-economy.mjs'
+import { materializeCatalogItem } from './item-catalog.mjs'
 import {
   reputationPriceBps,
   reputationStandingFor,
@@ -695,10 +696,9 @@ function normalizeLifecycleStockEntry(input, merchantId, index = 0) {
   const catalog = resolveCatalogPrice({ catalog_id: catalogId })
   if (!catalog) throw new RulesValidationError(`Товар ${catalogId} отсутствует в серверном каталоге`, 'CATALOG_ITEM_REQUIRED')
   const quantity = lifecycleInteger(source.quantity, 1, MAX_STOCK_QUANTITY, 1, 'INVALID_QUANTITY', 'Количество товара')
-  const normalizedItem = normalizeInventoryItem({
+  const normalizedItem = normalizeInventoryItem(materializeCatalogItem(catalogId, {
     id: `${merchantId}:${stockId}`.slice(0, 120),
-    catalog_id: catalogId,
-    name: lifecycleText(source.name, 120, { fallback: catalogId, code: 'INVALID_MERCHANT_STOCK', label: 'Название товара' }),
+    name: lifecycleText(source.name, 120, { code: 'INVALID_MERCHANT_STOCK', label: 'Название товара' }),
     type: lifecycleText(source.type, 40, { fallback: 'other', code: 'INVALID_MERCHANT_STOCK', label: 'Тип товара' }),
     quantity,
     weight: source.weight,
@@ -706,10 +706,11 @@ function normalizeLifecycleStockEntry(input, merchantId, index = 0) {
     description: lifecycleText(source.description, 1_000, { code: 'INVALID_MERCHANT_STOCK', label: 'Описание товара' }),
     properties: lifecycleText(source.properties, 500, { code: 'INVALID_MERCHANT_STOCK', label: 'Свойства товара' }),
     equipped: false,
-  }, { idFallback: `${merchantId}-stock-${index + 1}`, preserveUnknown: false })
+  }), { idFallback: `${merchantId}-stock-${index + 1}`, preserveUnknown: false })
   return {
     stock_id: stockId,
     catalog_id: catalogId,
+    catalog_schema_version: normalizedItem.catalog_schema_version,
     name: normalizedItem.name,
     type: normalizedItem.type,
     quantity,
@@ -718,6 +719,8 @@ function normalizeLifecycleStockEntry(input, merchantId, index = 0) {
     rarity: normalizedItem.rarity,
     description: normalizedItem.description,
     properties: normalizedItem.properties,
+    mechanics_status: normalizedItem.mechanics_status,
+    ...(normalizedItem.combat ? { combat: normalizedItem.combat } : {}),
     equipped: false,
   }
 }

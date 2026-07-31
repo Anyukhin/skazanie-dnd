@@ -137,7 +137,7 @@ test('покупка атомарно списывает деньги, пере�
   const purchase = result.events.find((event) => event.event_type === 'MerchantPurchaseCompleted')
   assert.equal(purchase.payload.unit_price_cp, 5_500)
   assert.equal(purchase.payload.item.name, 'Зелье лечения')
-  assert.equal(purchase.payload.item.weight, 0)
+  assert.equal(purchase.payload.item.weight, 0.5)
   assert.equal(purchase.payload.item.rarity, 'обычный')
   assert.equal(typeof purchase.payload.item.description, 'string')
   assert.equal(typeof purchase.payload.item.properties, 'string')

@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { serverEncounterLoot, serverRewardForEncounter } from '../server/autonomous-campaign.mjs'
 import { ENCOUNTER_THEMES } from '../server/encounter-assembler.mjs'
-import { SRD_EQUIPMENT_CATALOG } from '../server/merchant-economy.mjs'
+import { ITEM_CATALOG, ITEM_LOOT_CATALOG_IDS } from '../server/item-catalog.mjs'
 
 /**
  * Сторож ссылочной целостности. Он же ловит дефект, который жил в таблице до
@@ -17,7 +17,8 @@ test('каждый предмет добычи существует в ката�
       for (const encounterId of ['e-1', 'e-2', 'e-3', 'e-4', 'e-5']) {
         for (const item of serverEncounterLoot({ theme, difficulty, encounterId })) {
           assert.ok(
-            Object.hasOwn(SRD_EQUIPMENT_CATALOG, item.catalog_id),
+            Object.hasOwn(ITEM_CATALOG, item.catalog_id)
+              && ITEM_LOOT_CATALOG_IDS.includes(item.catalog_id),
             `${theme}/${difficulty}: предмета ${item.catalog_id} нет в каталоге`,
           )
           assert.ok(item.name, `${theme}/${difficulty}: у предмета нет имени`)

@@ -13,6 +13,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   assert.equal(report.integrity.rule_pack.rule_count, 23)
   assert.equal(report.integrity.compatibility_catalogs.spells, 439)
   assert.equal(report.integrity.compatibility_catalogs.classes, 12)
+  assert.deepEqual(report.integrity.item_catalog, { entries: 97, shop_entries: 12 })
+  assert.equal(report.integrity.coverage.find((entry) => entry.id === 'equipment').count, 97)
   assert.equal(report.integrity.assets, 1214)
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
