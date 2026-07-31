@@ -53,6 +53,52 @@ function newIdempotencyKey() {
 
 export interface NarrateOptions {
   npcId?: string
+  onNarrationPreview?: (preview: NarrationPreview) => void
+}
+
+export type NarrationPreviewPhase = 'start' | 'streaming' | 'complete' | 'replaced' | 'aborted'
+
+export interface NarrationPreview {
+  messageId: string
+  text: string
+  phase: NarrationPreviewPhase
+  replayed?: boolean
+}
+
+type NarrationPreviewListener = (preview: NarrationPreview) => void
+const narrationPreviewListeners = new Map<string, Set<NarrationPreviewListener>>()
+
+function narrationPreviewCampaignId(value: string) {
+  return String(value || '').toUpperCase()
+}
+
+function subscribeNarrationPreview(campaignId: string, listener: NarrationPreviewListener) {
+  const key = narrationPreviewCampaignId(campaignId)
+  const listeners = narrationPreviewListeners.get(key) ?? new Set()
+  listeners.add(listener)
+  narrationPreviewListeners.set(key, listeners)
+  return () => {
+    listeners.delete(listener)
+    if (!listeners.size) narrationPreviewListeners.delete(key)
+  }
+}
+
+export function publishNarrationPreview(campaignId: string, preview: NarrationPreview) {
+  for (const listener of narrationPreviewListeners.get(narrationPreviewCampaignId(campaignId)) ?? []) {
+    listener(preview)
+  }
+}
+
+async function expectedNarrationMessageId(idempotencyKey: string): Promise<string | null> {
+  if (!globalThis.crypto?.subtle) return null
+  const digest = await globalThis.crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(idempotencyKey),
+  )
+  const hex = [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('')
+  return `narration-${hex.slice(0, 20)}`
 }
 
 export async function narrateWithAgent(
@@ -64,23 +110,57 @@ export async function narrateWithAgent(
   actorId?: string,
   options: NarrateOptions = {},
 ): Promise<AiTurnResult> {
-  const response = await fetchWithTimeout('/api/narrate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action,
-      campaign_id: state.sessionCode,
-      idempotency_key: idempotencyKey,
-      ...(actorId ? { actor_id: actorId } : {}),
-      ...(options.npcId ? { npc_id: options.npcId } : {}),
-      ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
-    }),
-  }, 48_000, 'Рассказчик не ответил вовремя. Попробуйте обновить состояние кампании.')
-  if (!response.ok) {
-    const details = await response.json().catch(() => ({})) as { error?: string }
-    throw new Error(details.error || `Ошибка рассказчика: ${response.status}`)
+  const previewState: { current: NarrationPreview | null } = { current: null }
+  const expectedMessageId = options.onNarrationPreview
+    ? await expectedNarrationMessageId(idempotencyKey)
+    : null
+  const unsubscribe = options.onNarrationPreview && expectedMessageId
+    ? subscribeNarrationPreview(state.sessionCode, (preview) => {
+        if (preview.messageId !== expectedMessageId) return
+        previewState.current = preview
+        options.onNarrationPreview?.(preview)
+      })
+    : () => {}
+  try {
+    const response = await fetchWithTimeout('/api/narrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        campaign_id: state.sessionCode,
+        idempotency_key: idempotencyKey,
+        ...(actorId ? { actor_id: actorId } : {}),
+        ...(options.npcId ? { npc_id: options.npcId } : {}),
+        ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
+      }),
+    }, 48_000, 'Рассказчик не ответил вовремя. Попробуйте обновить состояние кампании.')
+    if (!response.ok) {
+      const details = await response.json().catch(() => ({})) as { error?: string }
+      throw new Error(details.error || `Ошибка рассказчика: ${response.status}`)
+    }
+    const result = await response.json() as AiTurnResult
+    if (options.onNarrationPreview && expectedMessageId
+      && result.narration_message_id === expectedMessageId) {
+      const finalText = String(result.narration ?? '')
+      const phase: NarrationPreviewPhase = previewState.current?.text
+        && !finalText.startsWith(previewState.current.text)
+        ? 'replaced'
+        : 'complete'
+      const finalPreview: NarrationPreview = {
+        messageId: expectedMessageId,
+        text: finalText,
+        phase,
+        replayed: Boolean(result.idempotent_replay),
+      }
+      if (previewState.current?.phase !== phase || previewState.current?.text !== finalText
+        || Boolean(previewState.current?.replayed) !== Boolean(finalPreview.replayed)) {
+        options.onNarrationPreview(finalPreview)
+      }
+    }
+    return result
+  } finally {
+    unsubscribe()
   }
-  return response.json() as Promise<AiTurnResult>
 }
 
 export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'label' | 'modifier' | 'difficulty' | 'playerId'>, campaignId: string): Promise<RollResult> {

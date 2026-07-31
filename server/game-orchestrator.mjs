@@ -634,6 +634,7 @@ export class GameOrchestrator {
     this.narrator = narrator
     this.npcSocialController = npcSocialController
     this.unknownActionHandler = unknownActionHandler ?? new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, now })
+    this.narrationInflight = new Map()
     this.idFactory = idFactory
     this.now = now
   }
@@ -779,6 +780,37 @@ export class GameOrchestrator {
   }
 
   async handle(input) {
+    const originalState = normalizeCampaignState(input.state ?? {})
+    const campaignId = String(input.campaignId ?? input.campaign_id ?? originalState.sessionCode ?? originalState.campaign_id ?? '')
+    const playerId = String(input.playerId ?? input.player_id ?? originalState.activePlayerId ?? '')
+    const message = String(input.message ?? input.action ?? '').trim().slice(0, 2000)
+    const idempotencyKey = String(input.idempotencyKey ?? input.idempotency_key ?? '')
+    const npcId = String(input.npcId ?? input.npc_id ?? '').trim().slice(0, 120)
+    const coalesces = !input.commands && message !== '/why' && input.why !== true && Boolean(campaignId && idempotencyKey)
+    if (!coalesces) return this._handle(input)
+
+    const key = `${campaignId}\u001f${idempotencyKey}`
+    const requestFingerprint = narrationRequestFingerprint({ campaignId, playerId, message, npcId })
+    const existing = this.narrationInflight.get(key)
+    if (existing) {
+      if (existing.requestFingerprint !== requestFingerprint) {
+        throw new IdempotencyConflictError(campaignId, idempotencyKey)
+      }
+      const result = await existing.promise
+      return { ...result, idempotent_replay: true }
+    }
+
+    const entry = { requestFingerprint, promise: null }
+    entry.promise = this._handle(input)
+    this.narrationInflight.set(key, entry)
+    try {
+      return await entry.promise
+    } finally {
+      if (this.narrationInflight.get(key) === entry) this.narrationInflight.delete(key)
+    }
+  }
+
+  async _handle(input) {
     const started = this.now()
     const originalState = normalizeCampaignState(input.state ?? {})
     const campaignId = String(input.campaignId ?? input.campaign_id ?? originalState.sessionCode ?? originalState.campaign_id ?? '')
@@ -1031,6 +1063,7 @@ export class GameOrchestrator {
 
     let engineResult
     let committed
+    let replayedCommit = Boolean(duplicate)
     if (duplicate) {
       committed = duplicate
       engineResult = { commands: plan.proposed_commands, events: duplicate.events, rolls: duplicate.events.filter((event) => event.event_type === 'DieRolled').map((event) => event.payload), state: duplicate.state }
@@ -1055,6 +1088,7 @@ export class GameOrchestrator {
           if (!(error instanceof IdempotencyConflictError) && error?.code !== 'IDEMPOTENCY_CONFLICT') throw error
           committed = await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
           if (!committed) throw error
+          replayedCommit = true
           break
         }
       }
@@ -1087,7 +1121,7 @@ export class GameOrchestrator {
       viewer,
     })
     const resolvedRuleIds = [...new Set([...(plan.rule_ids ?? []), ...committedEvents.flatMap((event) => event.source_rule_ids ?? [])])]
-    const idempotentReplay = Boolean(duplicate || committed.duplicate)
+    const idempotentReplay = Boolean(replayedCommit || committed.duplicate)
     const replayTrace = idempotentReplay && this.traceStore && typeof this.traceStore.get === 'function'
       ? requestTrace ?? this.traceStore.get(campaignId, turnId)
       : null
@@ -1104,6 +1138,24 @@ export class GameOrchestrator {
       ?? storedSocialNarration
       ?? deterministicReplayNarration(brief, resolvedRuleIds, resolveActorName)
     const structuredMechanics = Array.isArray(input.commands) && !deterministicNarrator
+    const streamsModelNarration = !idempotentReplay
+      && !deterministicResponse
+      && !storedSocialNarration
+      && !structuredMechanics
+    if (streamsModelNarration && typeof input.onNarrationStart === 'function') {
+      // Этот callback расположен строго после успешного commit. Ошибка
+      // необязательного транспорта не может откатить уже принятый ход.
+      try {
+        input.onNarrationStart({ stateVersion: committed.state_version })
+      } catch { /* Поток не является авторитетным результатом хода. */ }
+    }
+    const onNarrationProgress = typeof input.onNarrationProgress === 'function'
+      ? (text) => {
+          try {
+            input.onNarrationProgress(text, { stateVersion: committed.state_version })
+          } catch { /* Поток не является авторитетным результатом хода. */ }
+        }
+      : null
     const narration = idempotentReplay
       ? cachedNarration(replayTrace, brief, resolvedRuleIds) ?? replayFallback
       : deterministicResponse
@@ -1113,6 +1165,7 @@ export class GameOrchestrator {
           : await this.narrator.render(brief, {
               knownRuleIds: resolvedRuleIds,
               recentNarrations: this.recentNarrationsFor(campaignId),
+              onProgress: onNarrationProgress,
             }))
     if (!idempotentReplay) this.rememberNarration(campaignId, narration.narration)
     const response = {
