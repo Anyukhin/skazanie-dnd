@@ -2926,6 +2926,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [heroWizardDismissed, setHeroWizardDismissed] = useState(false)
   const [replacementEditorId, setReplacementEditorId] = useState<string | null>(null)
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
+  const [campaignControlBusy, setCampaignControlBusy] = useState(false)
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
   const [reviewedPartyDefeat, setReviewedPartyDefeat] = useState<string | null>(null)
   const [uiScale, setUiScale] = useState(loadUiScale)
@@ -3008,6 +3009,29 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       setLifecycleError(reason instanceof Error ? reason.message : 'Не удалось изменить состояние кампании')
     } finally {
       setLifecycleBusy(false)
+    }
+  }
+
+  const runCampaignControl = async (action: 'rewind_turn' | 'replay_scene') => {
+    const question = action === 'rewind_turn'
+      ? 'Откатить последний ход целиком? Журнал останется неизменным, но состояние вернётся к началу хода.'
+      : 'Переиграть текущую сцену с самого начала? Все ходы, находки и последствия внутри неё будут отменены новым событием.'
+    if (!window.confirm(question)) return
+    setCampaignControlBusy(true)
+    setLifecycleError(null)
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/controls`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, idempotency_key: `${action}:${crypto.randomUUID()}` }),
+      })
+      const body = await response.json().catch(() => null) as { error?: string; version?: number; state?: GameState } | null
+      if (!response.ok || !body?.state) throw new Error(body?.error || 'Не удалось применить инструмент ведущего')
+      await switchCampaign(state.sessionCode, { version: body.version, state: body.state })
+    } catch (reason) {
+      setLifecycleError(reason instanceof Error ? reason.message : 'Не удалось применить инструмент ведущего')
+    } finally {
+      setCampaignControlBusy(false)
     }
   }
 
@@ -3393,6 +3417,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             ><span>СЛАВА</span><b>{reputationStanding.filter((entry) => entry.tier !== 'unknown').length || '—'}</b></div>}
             {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => { void changeLifecycle('pause') }} disabled={lifecycleBusy}>Пауза</button>}
             {canManageLifecycle && lifecycleStatus === 'paused' && <button className="invite-button" onClick={() => { void changeLifecycle('resume') }} disabled={lifecycleBusy}>Продолжить</button>}
+            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button className="invite-button" onClick={() => { void runCampaignControl('rewind_turn') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу последней серверной команды"><RotateCcw size={15} />Откатить ход</button>}
+            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button className="invite-button" onClick={() => { void runCampaignControl('replay_scene') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу текущей сцены"><History size={15} />Переиграть сцену</button>}
             {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button className="invite-button" onClick={() => { if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) void changeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить</button>}
             {/* Выбор объявляется заранее: развязку арки сервер закрывает сам, и
                 в этот момент спрашивать стол уже поздно. */}

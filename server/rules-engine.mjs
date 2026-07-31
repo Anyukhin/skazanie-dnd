@@ -8791,6 +8791,12 @@ export function applyGameEvent(rawState, event) {
     imported.state_version = Number.isSafeInteger(event.state_version_after) ? event.state_version_after : 1
     return imported
   }
+  if (event?.event_type === 'CampaignRewound' && event.payload?.state && typeof event.payload.state === 'object') {
+    const imported = normalizeCampaignState(event.payload.state)
+    const currentVersion = Number.isSafeInteger(rawState?.state_version) ? rawState.state_version : 0
+    imported.state_version = Number.isSafeInteger(event.state_version_after) ? event.state_version_after : currentVersion + 1
+    return imported
+  }
   const state = normalizeCampaignState(rawState)
   const targets = uniqueStrings(event.target_ids)
   const target = targets[0] ?? event.actor_id

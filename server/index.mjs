@@ -69,6 +69,7 @@ import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer }
 import { compactStateForTransport } from './reveal-transport.mjs'
 import { isPartySummon } from './combat-spells.mjs'
 import { assertCampaignPlayable, lifecycleEventForAction } from './campaign-lifecycle.mjs'
+import { campaignRewindEvent, planCampaignControl } from './campaign-controls.mjs'
 import {
   assertDirectorTransitionResult,
   buildDirectorTransitionCommands,
@@ -2173,6 +2174,70 @@ const server = createServer((req, res) => {
       const updated = userForToken(cookies(req).skazanie_session) ?? user
       return json(res, 200, { code: campaignId, hero_ids: redeemed.membership.heroIds, user: updated, duplicate: redeemed.duplicate })
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось присоединиться к кампании' }) }
+  }
+
+  const campaignControlMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/controls$/)
+  if (campaignControlMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignControlMatch[1].toUpperCase()
+    try {
+      const room = getRoom(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      const membership = campaignMembershipFor(user.id, campaignId)
+      if (user.role !== 'admin' && membership?.role !== 'owner') {
+        return json(res, 403, { error: 'Откатывать ход или сцену может только владелец кампании' })
+      }
+      const body = await readBody(req)
+      const action = String(body.action ?? '').trim()
+      const idempotencyKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').trim().slice(0, 200)
+      if (!idempotencyKey) return json(res, 400, { error: 'Нужен idempotency_key', code: 'IDEMPOTENCY_KEY_REQUIRED' })
+      let committed = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+      const committedAction = String(committed?.events?.[0]?.payload?.action ?? '').trim()
+      if (committed && committedAction !== action) {
+        const error = new Error('Этот idempotency_key уже использован для другого действия кампании')
+        error.code = 'IDEMPOTENCY_CONFLICT'
+        throw error
+      }
+      if (!committed) {
+        const loaded = await eventStore.load(campaignId)
+        const events = await eventStore.getEvents(campaignId, { upToVersion: loaded.state_version })
+        const plan = planCampaignControl({ action, events, currentVersion: loaded.state_version })
+        const target = await eventStore.load(campaignId, { atVersion: plan.targetVersion })
+        const rewindEvent = campaignRewindEvent({
+          action,
+          targetState: target.state,
+          currentState: loaded.state,
+          targetVersion: plan.targetVersion,
+          actorId: user.id,
+        })
+        rewindEvent.event_id = `campaign-control:${createHash('sha256').update(`${campaignId}\0${idempotencyKey}`).digest('hex').slice(0, 24)}`
+        committed = await eventStore.commit({
+          campaignId,
+          expectedStateVersion: loaded.state_version,
+          idempotencyKey,
+          commandId: `campaign-control:${idempotencyKey}`,
+          events: [rewindEvent],
+          forceSnapshot: true,
+        })
+      }
+      const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events, null, { forceProjectorRefresh: true })
+      const responseState = projected?.state ?? committed.state
+      const actorId = campaignHeroIds(user, campaignId).find((id) => responseState.players?.some((player) => String(player.id) === String(id))) ?? ''
+      return json(res, 200, {
+        campaign_id: campaignId,
+        action,
+        target_version: committed.events[0]?.payload?.target_version ?? null,
+        duplicate: committed.duplicate,
+        version: projected?.version ?? room.version,
+        state: viewerStateFor(responseState, user, actorId),
+      })
+    } catch (error) {
+      const status = ['NOTHING_TO_REWIND', 'NOTHING_TO_REPLAY', 'STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code) ? 409 : 400
+      return json(res, status, {
+        error: error instanceof Error ? error.message : 'Не удалось изменить состояние кампании',
+        code: error?.code,
+      })
+    }
   }
 
   const campaignLifecycleMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/lifecycle$/)
