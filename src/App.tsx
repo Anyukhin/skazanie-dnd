@@ -813,7 +813,7 @@ function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onRest, onTypingChange, narrating, statusContent, children }: {
+function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onTransferItem, onRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -839,6 +839,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   onFinishTurn: () => Promise<CommandOutcome>
   onFreeAction: (text: string) => Promise<CommandOutcome>
   onNpcAction: (text: string, npcId: string) => Promise<CommandOutcome>
+  onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
   onRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
   onTypingChange: (actorId: string, typing: boolean) => void
   narrating: boolean
@@ -851,8 +852,10 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   const typingActiveRef = useRef(false)
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
   const [linkedParticipantIds, setLinkedParticipantIds] = useState<string[]>([])
-  const [npcDossier, setNpcDossier] = useState<{ npcId: string; mode: 'talk' | 'inspect' } | null>(null)
+  const [npcDossier, setNpcDossier] = useState<{ npcId: string; mode: 'talk' | 'inspect' | 'transfer' } | null>(null)
   const [npcDialogueText, setNpcDialogueText] = useState('')
+  const [selectedGiftItemId, setSelectedGiftItemId] = useState('')
+  const [giftQuantity, setGiftQuantity] = useState(1)
   const npcDialogueInputRef = useRef<HTMLInputElement | null>(null)
   const publishTyping = useCallback((typing: boolean) => {
     if (typingActiveRef.current === typing) return
@@ -1028,6 +1031,14 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   const dossierPromises = dossierSceneNpc
     ? (state.social?.promises ?? []).filter((promise) => promise.npc_id === dossierSceneNpc.id && promise.status === 'open')
     : []
+  const giftSender = players.find((player) => player.id === typingActorId)
+  const transferableGiftItems = (giftSender?.inventory ?? []).filter((item) => (
+    Number(item.quantity ?? 0) > 0
+    && !item.equipped
+    && !item.attuned_to
+  ))
+  const selectedGiftItem = transferableGiftItems.find((item) => item.id === selectedGiftItemId) ?? null
+  const selectedGiftAvailable = Math.max(0, Math.floor(Number(selectedGiftItem?.quantity ?? 0)))
   const dossierCanTalk = Boolean(
     dossierSceneNpc?.alive
     && dossierSocialNpc?.available !== false
@@ -1035,9 +1046,19 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     && canAct
     && !narrating,
   )
+  const dossierCanReceiveGift = Boolean(
+    dossierSceneNpc?.alive
+    && dossierSocialNpc?.available !== false
+    && !combatActive
+    && canAct
+    && !narrating
+    && !tacticalBusy,
+  )
   useEffect(() => {
     setNpcDossier(null)
     setNpcDialogueText('')
+    setSelectedGiftItemId('')
+    setGiftQuantity(1)
   }, [sceneLocationId])
   useEffect(() => {
     if (npcDossier?.mode !== 'talk') return
@@ -1439,9 +1460,11 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     previewBlastShape, previewBlastSizeFeet, rows, selectedSpell?.areaOrigin, state.scene.cells,
   ])
 
-  const openNpcDossier = (npcId: string, mode: 'talk' | 'inspect') => {
+  const openNpcDossier = (npcId: string, mode: 'talk' | 'inspect' | 'transfer') => {
     setOpenTokenLabelId(null)
     setNpcDialogueText('')
+    setSelectedGiftItemId(mode === 'transfer' ? transferableGiftItems[0]?.id ?? '' : '')
+    setGiftQuantity(1)
     setNpcDossier({ npcId, mode })
   }
 
@@ -1454,6 +1477,20 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     const addressed = `Обращаюсь к ${dossierSceneNpc.name}${dossierSceneNpc.role ? ` (${dossierSceneNpc.role})` : ''}: ${text}`
     const outcome = await onNpcAction(addressed, dossierSceneNpc.id)
     if (outcome.ok) setNpcDialogueText('')
+  }
+
+  const submitNpcGift = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!dossierSceneNpc || !selectedGiftItem || !dossierCanReceiveGift) return
+    if (!Number.isInteger(giftQuantity) || giftQuantity < 1 || giftQuantity > selectedGiftAvailable) return
+    // Инвентарь получателя намеренно не запрашивается и не меняется на
+    // клиенте: итоговый снимок после server-owned TransferItem придёт сам.
+    const outcome = await onTransferItem(selectedGiftItem.id, dossierSceneNpc.id, giftQuantity)
+    if (outcome.ok) {
+      setNpcDossier(null)
+      setSelectedGiftItemId('')
+      setGiftQuantity(1)
+    }
   }
 
   // Доска. Перебор клеток остаётся прежним: он занимает доли миллисекунды и
@@ -1476,6 +1513,16 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
       : undefined
     const sceneNpcStance = visibleNpcStance(sceneNpc?.stance ?? 'neutral')
     const sceneNpcMerchant = sceneNpc ? state.merchants?.find((merchant) => merchant.id === sceneNpc.id) : undefined
+    const sceneNpcSocial = sceneNpc ? state.social?.npcs?.find((npc) => npc.id === sceneNpc.id) : undefined
+    const sceneNpcGiftBlocked = Boolean(
+      combatActive
+      || !sceneNpc?.alive
+      || sceneNpcSocial?.available === false
+      || narrating
+      || tacticalBusy
+      || !canAct
+      || transferableGiftItems.length === 0
+    )
     const sceneNpcMenuId = sceneNpc ? `scene-npc:${sceneNpc.id}` : ''
     const attackDistanceFeet = enemy && active
       ? chebyshevFeet(active, enemy)
@@ -1698,7 +1745,26 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
               onClick={() => openNpcDossier(sceneNpc.id, 'talk')}
             ><MessageSquare size={13} />Заговорить</button>
             <button type="button" onClick={() => openNpcDossier(sceneNpc.id, 'inspect')} title="Открыть публичное досье, не расходуя действие"><BookOpen size={13} />Осмотреть</button>
-            <button type="button" disabled title="Серверная TransferItem пока принимает получателем только героя"><Send size={13} />Передать предмет</button>
+            <button
+              type="button"
+              disabled={sceneNpcGiftBlocked}
+              title={combatActive
+                ? 'Передача недоступна во время боя'
+                : !sceneNpc.alive
+                  ? 'Этому персонажу нельзя передать предмет'
+                  : sceneNpcSocial?.available === false
+                    ? 'Персонаж сейчас недоступен'
+                    : narrating
+                      ? 'Дождитесь ответа Рассказчика'
+                      : tacticalBusy
+                        ? 'Дождитесь завершения текущего действия'
+                        : !canAct
+                          ? 'Сейчас этот герой не может действовать'
+                          : transferableGiftItems.length === 0
+                            ? 'Нет свободных предметов для передачи'
+                            : 'Выбрать предмет и количество'}
+              onClick={() => openNpcDossier(sceneNpc.id, 'transfer')}
+            ><Send size={13} />Передать предмет</button>
             {sceneNpcMerchant
               ? <button
                   type="button"
@@ -2014,19 +2080,54 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             </section>
           </div>
           <footer>
-            <form onSubmit={submitNpcDialogue}>
-              <input
-                ref={npcDialogueInputRef}
-                value={npcDialogueText}
-                onChange={(event) => setNpcDialogueText(event.target.value)}
-                disabled={!dossierCanTalk}
-                placeholder={dossierCanTalk ? `Сказать ${dossierSceneNpc.name}…` : combatActive ? 'Разговор недоступен во время боя' : 'Собеседник сейчас недоступен'}
-                aria-label={`Реплика для ${dossierSceneNpc.name}`}
-              />
-              <button type="submit" disabled={!dossierCanTalk || !npcDialogueText.trim()}><Send size={15} />Сказать</button>
-            </form>
-            <small>Адресат закрепляется отдельно как <code>npc_id</code>; полное имя и роль остаются в читаемой реплике.</small>
-            {dossierMerchant && <button
+            {npcDossier?.mode === 'transfer'
+              ? <form className="npc-gift-picker" onSubmit={submitNpcGift}>
+                  <label>
+                    <span>ПРЕДМЕТ ИЗ ИНВЕНТАРЯ {giftSender?.character?.toLocaleUpperCase('ru') ?? 'ГЕРОЯ'}</span>
+                    <select
+                      value={selectedGiftItemId}
+                      disabled={!dossierCanReceiveGift || transferableGiftItems.length === 0}
+                      aria-label={`Предмет для ${dossierSceneNpc.name}`}
+                      onChange={(event) => {
+                        setSelectedGiftItemId(event.target.value)
+                        setGiftQuantity(1)
+                      }}
+                    >
+                      {transferableGiftItems.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.quantity} шт.</option>)}
+                    </select>
+                  </label>
+                  <label className="npc-gift-quantity">
+                    <span>КОЛИЧЕСТВО</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={selectedGiftAvailable}
+                      step={1}
+                      value={giftQuantity}
+                      disabled={!dossierCanReceiveGift || !selectedGiftItem}
+                      aria-label="Количество передаваемых предметов"
+                      onChange={(event) => setGiftQuantity(Math.max(1, Math.min(selectedGiftAvailable, Math.floor(Number(event.target.value) || 1))))}
+                    />
+                  </label>
+                  <button type="submit" disabled={!dossierCanReceiveGift || !selectedGiftItem || giftQuantity > selectedGiftAvailable}><Send size={15} />Передать</button>
+                  {transferableGiftItems.length === 0 && <em>Нет свободных предметов: экипированные и настроенные вещи передавать нельзя.</em>}
+                  {tacticalError && <p className="npc-gift-error">{tacticalError}</p>}
+                </form>
+              : <>
+                  <form onSubmit={submitNpcDialogue}>
+                    <input
+                      ref={npcDialogueInputRef}
+                      value={npcDialogueText}
+                      onChange={(event) => setNpcDialogueText(event.target.value)}
+                      disabled={!dossierCanTalk}
+                      placeholder={dossierCanTalk ? `Сказать ${dossierSceneNpc.name}…` : combatActive ? 'Разговор недоступен во время боя' : 'Собеседник сейчас недоступен'}
+                      aria-label={`Реплика для ${dossierSceneNpc.name}`}
+                    />
+                    <button type="submit" disabled={!dossierCanTalk || !npcDialogueText.trim()}><Send size={15} />Сказать</button>
+                  </form>
+                  <small>Адресат закрепляется отдельно как <code>npc_id</code>; полное имя и роль остаются в читаемой реплике.</small>
+                </>}
+            {dossierMerchant && npcDossier?.mode !== 'transfer' && <button
               className="npc-dialog-trade"
               type="button"
               disabled={combatActive || !dossierSceneNpc.alive || !dossierMerchant.available}
@@ -3950,6 +4051,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onFinishTurn={finishMapTurn}
             onFreeAction={(text) => submitAction(text, activePlayer.id)}
             onNpcAction={(text, npcId) => submitActionWithNpc(text, activePlayer.id, npcId)}
+            onTransferItem={(itemId, npcId, quantity) => transferItem(activePlayer.id, itemId, npcId, quantity)}
             onRest={(kind) => submitAction(kind === 'long' ? 'Устроить долгий отдых' : 'Устроить короткий отдых', activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}

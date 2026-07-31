@@ -155,7 +155,7 @@ test('merchant token открывает существующий MerchantScreen 
   assert.match(appSource, /merchantScreenMerchants/u)
   assert.match(appSource, /<MerchantScreen merchants=\{merchantScreenMerchants\}/u)
   assert.match(appSource, /Торговля недоступна во время боя/u)
-  assert.match(appSource, /Серверная TransferItem пока принимает получателем только героя/u)
+  assert.match(appSource, /onClick=\{\(\) => openNpcDossier\(sceneNpc\.id, 'transfer'\)\}/u)
 })
 
 test('сводка NPC берётся из синхронизируемого battleLog и прекращается после действия героя', () => {
@@ -234,6 +234,19 @@ test('NPC-досье читает viewer-safe разговоры, отношен
   assert.match(appSource, /onNpcAction=\{\(text, npcId\) => submitActionWithNpc\(text, activePlayer\.id, npcId\)\}/u)
   assert.match(appSource, /Адресат закрепляется отдельно как <code>npc_id<\/code>/u)
   assert.doesNotMatch(appSource, /submitAction\([^)]*npc_id/u)
+})
+
+test('подарок NPC выбирается из свободного инвентаря героя и подтверждается сервером', () => {
+  assert.match(appSource, /onTransferItem: \(itemId: string, npcId: string, quantity: number\) => Promise<CommandOutcome>/u)
+  assert.match(appSource, /Number\(item\.quantity \?\? 0\) > 0[\s\S]*&& !item\.equipped[\s\S]*&& !item\.attuned_to/u)
+  assert.match(appSource, /const dossierCanReceiveGift = Boolean\([\s\S]*dossierSceneNpc\?\.alive[\s\S]*dossierSocialNpc\?\.available !== false[\s\S]*!combatActive[\s\S]*!narrating[\s\S]*!tacticalBusy/u)
+  assert.match(appSource, /min=\{1\}[\s\S]*max=\{selectedGiftAvailable\}/u)
+  assert.match(appSource, /onTransferItem\(selectedGiftItem\.id, dossierSceneNpc\.id, giftQuantity\)/u)
+  assert.match(appSource, /if \(outcome\.ok\) \{\s*setNpcDossier\(null\)/u)
+  assert.match(appSource, /onTransferItem=\{\(itemId, npcId, quantity\) => transferItem\(activePlayer\.id, itemId, npcId, quantity\)\}/u)
+  assert.match(appSource, /\{tacticalError && <p className="npc-gift-error">\{tacticalError\}<\/p>\}/u)
+  assert.doesNotMatch(appSource, /\bprompt\(/u)
+  assert.doesNotMatch(appSource, /npc_world/u)
 })
 
 test('NPC-досье загружает authenticated same-origin портрет и имеет нейтральный fallback', () => {
