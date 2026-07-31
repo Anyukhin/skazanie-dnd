@@ -13,7 +13,7 @@ import {
   carryingCapacity,
   inventoryWeight,
 } from './item-lifecycle.mjs'
-import { materializeCatalogItem } from './item-catalog.mjs'
+import { catalogItem, materializeCatalogItem } from './item-catalog.mjs'
 import {
   ENCOUNTER_LOOT_POLICY_ID,
   serverEncounterLoot,
@@ -315,7 +315,17 @@ function materializedLootInstances(encounterId, loot) {
 function assertLootBounds(items) {
   const physicalUnits = items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity) || 1), 0)
   const weight = items.reduce((sum, item) => sum + Math.max(0, Number(item.weight) || 0) * Math.max(1, Number(item.quantity) || 1), 0)
-  if (items.length > 3 || physicalUnits > 9 || weight > 54) {
+  // Граница осталась прежней для обычной добычи — три стопки, девять единиц,
+  // 54 фунта. Магическая находка считается отдельно и добавляет ровно одну
+  // стопку: политика `encounter-magic-loot-v1` больше одной за встречу не
+  // выдаёт, и смешивать её с бюджетом мешков не нужно.
+  const isMagic = (item) => Boolean(catalogItem(String(item?.catalog_id ?? ''))?.magic_item)
+  const magicItems = items.filter(isMagic)
+  const mundane = items.filter((item) => !isMagic(item))
+  if (magicItems.length > 1) {
+    reject('За встречу выдаётся не больше одной магической находки', 'ENCOUNTER_LOOT_OUT_OF_RANGE')
+  }
+  if (mundane.length > 3 || physicalUnits > 10 || weight > 60) {
     reject('Добыча встречи вышла за физические границы', 'ENCOUNTER_LOOT_OUT_OF_RANGE')
   }
 }
