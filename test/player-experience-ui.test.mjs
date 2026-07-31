@@ -155,5 +155,84 @@ test('merchant token открывает существующий MerchantScreen 
   assert.match(appSource, /merchantScreenMerchants/u)
   assert.match(appSource, /<MerchantScreen merchants=\{merchantScreenMerchants\}/u)
   assert.match(appSource, /Торговля недоступна во время боя/u)
-  assert.match(appSource, /Разговор с конкретным NPC появится после server-owned команды диалога/u)
+  assert.match(appSource, /Серверная TransferItem пока принимает получателем только героя/u)
+})
+
+test('сводка NPC берётся из синхронизируемого battleLog и прекращается после действия героя', () => {
+  const enemyMove = { id: 'e1', type: 'move', actorKind: 'enemy', actorId: 'goblin', targetId: 'hero' }
+  const enemyAttack = { id: 'e2', type: 'attack', actorKind: 'enemy', actorId: 'goblin', targetId: 'hero', damage: 3 }
+  const heroAttack = { id: 'p1', type: 'attack', actorKind: 'player', actorId: 'hero', targetId: 'goblin', damage: 5 }
+  assert.deepEqual(experience.latestNpcTurnEvents([heroAttack, enemyMove, enemyAttack]).map((event) => event.id), ['e1', 'e2'])
+  assert.deepEqual(experience.latestNpcTurnEvents([enemyMove, enemyAttack, heroAttack]), [])
+  assert.match(appSource, /latestNpcTurnEvents\(state\.battleLog \?\? \[\]\)/u)
+  assert.match(appSource, /ПОКА ВЫ ЖДАЛИ/u)
+})
+
+test('прогноз последствий показывает server-owned шанс, ожидаемый урон и причины преимущества', () => {
+  assert.match(appSource, /inspectedForecast\.hit_chance/u)
+  assert.match(appSource, /inspectedForecast\.average_damage/u)
+  assert.match(appSource, /inspectedForecast\.advantage_sources\.map/u)
+  assert.match(appSource, /inspectedForecast\.disadvantage_sources\.map/u)
+  assert.match(appSource, /Прогноз[^]*?Все числа уже пришли с сервера/u)
+})
+
+test('боевая хроника и фишки связываются только по участникам committed-события', () => {
+  const participants = experience.battleEventParticipantIds({
+    id: 'battle:1', type: 'attack', actorId: 'hero', targetId: 'goblin',
+    participantIds: ['hero', 'witness'],
+  })
+  assert.deepEqual(participants, ['hero', 'goblin', 'witness'])
+  assert.match(appSource, /battleEventParticipantIds\(event\)/u)
+  assert.match(appSource, /setLinkedParticipantIds\(participantIds\)/u)
+  assert.match(appSource, /linkedParticipantIds\.includes\(enemy\.id\)/u)
+  assert.match(stylesSource, /\.journal-linked/u)
+})
+
+test('история урона использует только записанный battleLog и не восстанавливает скрытые ОЗ', () => {
+  const history = experience.recentDamageForTarget([
+    { id: 'one', type: 'attack', actorId: 'hero', targetId: 'goblin', damage: 4, damageType: 'slashing', round: 1 },
+    { id: 'miss', type: 'attack', actorId: 'hero', targetId: 'goblin', damage: 0, round: 1 },
+    { id: 'other', type: 'attack', actorId: 'goblin', targetId: 'hero', damage: 2, round: 1 },
+    { id: 'two', type: 'spell-damage', actorId: 'mage', targetId: 'goblin', damage: 7, round: 2 },
+  ], 'goblin')
+  assert.deepEqual(history.map((entry) => [entry.id, entry.amount]), [['two', 7], ['one', 4]])
+  assert.match(appSource, /recentDamageForTarget\(state\.battleLog \?\? \[\], inspectedTarget\.id\)/u)
+  assert.match(appSource, /ИСТОРИЯ УРОНА/u)
+})
+
+test('новый committed-текст показывается целиком поверх сцены и остаётся в журнале', () => {
+  assert.match(appSource, /setCinematicNarration\(latestNarratorMessage\)/u)
+  assert.match(appSource, /<p>\{cinematicNarration\.text\}<\/p>/u)
+  assert.match(appSource, /Сохранено в журнале кампании/u)
+  assert.match(appSource, /state\.messages\.map/u)
+  assert.match(stylesSource, /\.cinematic-narration/u)
+})
+
+test('ожидание генерации меняет свет и аудиошину без десятого профиля', () => {
+  assert.match(appSource, /atmosphereAudioRef\.current\?\.setWaiting\(state\.isNarrating\)/u)
+  assert.match(appSource, /state\.isNarrating \? 'is-narrating' : ''/u)
+  assert.match(stylesSource, /\.game-area\.is-narrating \.map-atmosphere-one/u)
+})
+
+test('NPC-досье читает viewer-safe разговоры, отношение и обещания, но честно не заявляет явный npc_id', () => {
+  assert.match(typesSource, /conversations\?: Array<\{/u)
+  assert.match(appSource, /state\.social\?\.relationship_tiers\?\.\[dossierSceneNpc\.id\]\?\.\[typingActorId\]/u)
+  assert.match(appSource, /state\.social\?\.conversations \?\? \[\]/u)
+  assert.match(appSource, /conversation\.npc_id === dossierSceneNpc\.id/u)
+  assert.match(appSource, /promise\.npc_id === dossierSceneNpc\.id && promise\.status === 'open'/u)
+  assert.match(appSource, /Обращаюсь к \$\{dossierSceneNpc\.name\}/u)
+  assert.match(appSource, /onNpcAction\(addressed, dossierSceneNpc\.id\)/u)
+  assert.match(appSource, /onNpcAction=\{\(text\) => submitAction\(text, activePlayer\.id\)\}/u)
+  assert.match(appSource, /Явное поле <code>npc_id<\/code> ещё требует серверного контракта/u)
+  assert.doesNotMatch(appSource, /submitAction\([^)]*npc_id/u)
+})
+
+test('NPC-досье загружает authenticated same-origin портрет и имеет нейтральный fallback', () => {
+  const portraitComponent = appSource.match(/function NpcPortrait\([\s\S]*?\n\}/u)?.[0] ?? ''
+  assert.match(portraitComponent, /\/api\/campaigns\/\$\{encodeURIComponent\(campaignId\)\}\/npcs\/\$\{encodeURIComponent\(npcId\)\}\/portrait/u)
+  assert.match(portraitComponent, /<img src=\{portraitUrl\} alt=\{`Портрет: \$\{name\}`\}/u)
+  assert.match(portraitComponent, /onError=\{\(\) => setFailed\(true\)\}/u)
+  assert.match(portraitComponent, /Нейтральный портрет-заглушка/u)
+  assert.doesNotMatch(portraitComponent, /base64|localStorage/u)
+  assert.match(appSource, /<NpcPortrait campaignId=\{state\.sessionCode\} npcId=\{dossierSceneNpc\.id\}/u)
 })

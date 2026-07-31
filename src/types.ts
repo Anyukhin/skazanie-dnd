@@ -1145,7 +1145,29 @@ export type SocialProjection = {
     tags?: string[]
     inventory?: Array<{ id: string; name: string; quantity: number; description?: string }>
   }>
-  relationship_tiers?: Record<string, Record<string, 'hostile' | 'wary' | 'neutral' | 'friendly' | 'trusted'>>
+  relationship_tiers?: Record<string, Record<string, 'hostile' | 'unfriendly' | 'neutral' | 'friendly' | 'trusted'>>
+  conversations?: Array<{
+    id: string
+    npc_id: string
+    hero_id: string
+    player_message: string
+    npc_reply: string
+    stance: 'friendly' | 'neutral' | 'guarded' | 'hostile'
+    disclosed_fact_ids: string[]
+    disclosed_claim_ids: string[]
+    visibility: 'party' | 'specific_player'
+    check?: {
+      check_id: string
+      npc_id: string
+      skill: 'persuasion' | 'deception' | 'intimidation' | 'insight'
+      ability: string
+      roll_id: string
+      total: number
+      modifier: number
+      success: boolean
+      degree: 'strong_success' | 'success' | 'failure' | 'severe_failure'
+    }
+  }>
   promises?: Array<{
     id: string
     npc_id: string

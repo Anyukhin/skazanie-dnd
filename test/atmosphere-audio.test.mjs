@@ -37,13 +37,20 @@ test('настройки разделяют ambient/effects, сохраняют�
   for (const api of [
     'loadAtmosphereSettings', 'saveAtmosphereSettings', 'createAtmosphereAudio',
     'normalizeAtmosphereMood', 'atmosphereEffectForEvent', 'atmosphereEffectsForEvents',
-    'setAmbientVolume', 'setEffectsVolume', 'setMuted', 'getSettings', 'dispose',
+    'setWaiting', 'setAmbientVolume', 'setEffectsVolume', 'setMuted', 'getSettings', 'dispose',
   ]) assert.match(source, new RegExp(`\\b${api}\\b`, 'u'), `нет API ${api}`)
   assert.match(source, /ambientVolume/u)
   assert.match(source, /effectsVolume/u)
   assert.match(source, /localStorage/u)
   assert.match(source, /catch\s*\{/u)
   assert.match(source, /await context\.close\(\)/u)
+})
+
+test('ожидание генерации приглушает текущий профиль и возвращает его без десятого mood', () => {
+  assert.match(source, /ambientVolume \* \(waiting \? 0\.62 : 1\)/u)
+  assert.match(source, /setWaiting\(value\)/u)
+  assert.match(source, /updateBuses\(context\?\.currentTime \?\? 0, 0\.45\)/u)
+  assert.match(source, /if \(waiting\) playEffect\('narration'\)/u)
 })
 
 test('event mapping отличает hit/miss и не раскрывает скрытую ловушку', () => {
