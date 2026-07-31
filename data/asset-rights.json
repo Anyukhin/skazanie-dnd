@@ -1216,7 +1216,15 @@
     ["maps/library/skazanie/dungeon-01.webp", "59745eeee81cf737311497b26c25f7a6af212bd991090d646f990046d6618548", 332384],
     ["maps/library/skazanie/tavern-01.webp", "e8a10e24d682d4c3c58e6b8ed0b953564aa8072de168a91d3f99218aa7f92a95", 371214],
     ["maps/library/skazanie/temple-01.webp", "2c3b863da8a6f306d52d08c2ead660412728eb5597b28daf199d7efc3a255211", 336982],
-    ["maps/library/skazanie/village-01.webp", "14324d3c71f5a8b62e00d8107ebd66c0f00fa8c55c992764b6e15d49cba1b20e", 405352]
+    ["maps/library/skazanie/village-01.webp", "14324d3c71f5a8b62e00d8107ebd66c0f00fa8c55c992764b6e15d49cba1b20e", 405352],
+    ["npcs/roles/merchant.png", "f2cf9dd2d7c17a2b015f1eca64b0b6ea6205003fae832ee22728703005228a05", 176587],
+    ["npcs/roles/guard.png", "b73121af26a04bf26d5cf1e071de0499e6c2b12a56f7bcbf4a46ee6b87ffe747", 168664],
+    ["npcs/roles/noble.png", "550fa5104722008a6dcdfe4b439556a51070eea1959f968d55d5d8c5b45c84ea", 164237],
+    ["npcs/roles/scholar.png", "d542d9bbc0ac2d7dbeea0faaf1d57a4373592484d6fa0168d2a7b70de1122c4c", 179927],
+    ["npcs/roles/priest.png", "b4fe808b16b194b1f4b8222cb48fd97f48e61c918fc415bfda74528e3c5a56ed", 186651],
+    ["npcs/roles/artisan.png", "447cf00ced561f96d725dc08f40ef3a1899540be522e6fec5ab48a1c3cae751f", 182606],
+    ["npcs/roles/traveler.png", "0a3b064ec59b55623f47ecbbc984a7c16a6087e7733ff58558c629ab1901ef2a", 186199],
+    ["npcs/roles/commoner.png", "171f951f5c38a93e6a56037f49ed7f0721a2a66e570e770ab25a1ad066f3e255", 186303]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",

@@ -252,7 +252,8 @@ X-Idempotency-Key: turn-damage-42
 - `storage/rooms/*.json` — временная server-owned compatibility read-модель; публичная полная запись запрещена;
 - `storage/engine/` — immutable event batches, metadata и snapshots;
 - `storage/turn-traces/` — редактированные traces авторитетных ходов;
-- `storage/generated/` — runtime-generated изображения;
+- `storage/generated/items/` — runtime-generated изображения предметов;
+- `storage/generated/npcs/` — hashed persistent cache портретов важных NPC;
 - `data/rule_packs/srd_5_2_1/` — Rule Pack;
 - `prompts/*/v1.txt` — версионированные prompts ролей.
 
