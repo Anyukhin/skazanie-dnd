@@ -190,7 +190,9 @@ export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // реакцию считаются в пределах хода.
 // 8: мирные NPC получили событийные посты, vitality и stance. Старый снимок
 // обязан переиграться, иначе `NpcPlaced`/`NpcHarmed` не попадут в read-модель.
-export const GAME_STATE_PROJECTOR_VERSION = 8
+// 9: server-only `npc_world`, включая событийные инвентари NPC, участвует в
+// canonical projection hash и восстанавливается в room read-модель из replay.
+export const GAME_STATE_PROJECTOR_VERSION = 9
 
 /**
  * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
@@ -3070,6 +3072,9 @@ export function validateCommand(input, rawState, context = {}) {
   }
   for (const id of command.target_ids) {
     if (['RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', ...NPC_SOCIAL_COMMAND_TYPES].includes(command.command_type)) break
+    if (command.command_type === 'TransferItem'
+      && command.recipient_kind === 'npc'
+      && String(id) === String(command.recipient_id)) continue
     if (!findActor(state, id)) throw new RulesValidationError(`Цель ${id} не найдена`, 'TARGET_NOT_FOUND')
   }
   assertActorPermission(command, context, state)
@@ -9839,6 +9844,9 @@ export function applyGameEvent(rawState, event) {
     case 'ItemTransferred':
     case 'ItemAttunementChanged':
       state.players = applyItemLifecycleEventToPlayers(state.players, event)
+      if (event.event_type === 'ItemTransferred' && payload.recipient_kind === 'npc') {
+        state.npc_world = applyNpcWorldEvent(state.npc_world, event)
+      }
       refreshPlayerDerivedState(state, targets)
       break
     case 'ItemUsed':
