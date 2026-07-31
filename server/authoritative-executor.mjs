@@ -225,7 +225,8 @@ export class AuthoritativeExecutor {
   async commitDerived({
     campaignId,
     idempotencyKey,
-    events = [],
+    events = null,
+    deriveEvents = null,
     producerCapability,
     derivedFrom = [],
   } = {}) {
@@ -238,38 +239,54 @@ export class AuthoritativeExecutor {
         'PRODUCER_CAPABILITY_REQUIRED',
       )
     }
-    if (!Array.isArray(events) || !events.length) {
-      throw new AuthoritativeExecutorError('Пустой набор событий не коммитится', 'EMPTY_EVENT_SET')
-    }
-    for (const event of events) {
-      const type = String(event?.event_type ?? '')
-      if (!allowed.has(type)) {
-        throw new AuthoritativeExecutorError(
-          `Событие ${type || '(без типа)'} не разрешено этому производителю`,
-          'DERIVED_EVENT_NOT_ALLOWED',
-        )
+    /**
+     * Проверка содержимого — на каждой попытке, а не один раз: `deriveEvents`
+     * пересобирает события против свежего состояния.
+     *
+     * @param {Array<Record<string, unknown>>} candidate
+     */
+    const assertAllowed = (candidate) => {
+      if (!Array.isArray(candidate) || !candidate.length) {
+        throw new AuthoritativeExecutorError('Пустой набор событий не коммитится', 'EMPTY_EVENT_SET')
       }
-      const owned = rulesEngineOwnedKeyIn(event?.payload)
-      if (owned) {
-        throw new AuthoritativeExecutorError(
-          `Производное событие ${type} трогает «${owned}» — этим владеет Rules Engine`,
-          'DERIVED_EVENT_TOUCHES_RULES_STATE',
-        )
+      for (const event of candidate) {
+        const type = String(event?.event_type ?? '')
+        if (!allowed.has(type)) {
+          throw new AuthoritativeExecutorError(
+            `Событие ${type || '(без типа)'} не разрешено этому производителю`,
+            'DERIVED_EVENT_NOT_ALLOWED',
+          )
+        }
+        const owned = rulesEngineOwnedKeyIn(event?.payload)
+        if (owned) {
+          throw new AuthoritativeExecutorError(
+            `Производное событие ${type} трогает «${owned}» — этим владеет Rules Engine`,
+            'DERIVED_EVENT_TOUCHES_RULES_STATE',
+          )
+        }
       }
     }
+    if (!deriveEvents) assertAllowed(events)
 
     const duplicate = await this.eventStore.getByIdempotencyKey?.(campaignId, key)
     if (duplicate) return { ...duplicate, replayed: true }
 
     for (let attempt = 0; attempt < this.maxAttempts; attempt += 1) {
       const loaded = await this.eventStore.load(campaignId)
+      // Пересобирать события против свежего состояния обязательно: голос,
+      // истечение и сверка присутствия зависят от того, кто ещё в комнате.
+      // Повторить старый набор после чужого коммита значит записать решение,
+      // посчитанное по устаревшему составу.
+      const prepared = deriveEvents ? await deriveEvents(loaded.state, loaded) : events
+      if (deriveEvents && (!Array.isArray(prepared) || !prepared.length)) return null
+      if (deriveEvents) assertAllowed(prepared)
       try {
         const committed = await this.eventStore.commit({
           campaign_id: campaignId,
           expected_state_version: loaded.state_version,
           idempotency_key: key,
           command_id: key,
-          events: events.map((event) => ({
+          events: prepared.map((event) => ({
             ...event,
             campaign_id: campaignId,
             ...(derivedFrom.length ? { source_event_ids: [...derivedFrom].map(String).slice(0, 32) } : {}),
@@ -301,7 +318,7 @@ export class AuthoritativeExecutor {
    *   capability: symbol,
    * }} input
    */
-  async commitControl({ campaignId, idempotencyKey, event, capability } = {}) {
+  async commitControl({ campaignId, idempotencyKey, event, capability, forceSnapshot = false } = {}) {
     assertCapability(capability, CAMPAIGN_CONTROL_CAPABILITY, 'Управление кампанией')
     const key = String(idempotencyKey ?? '')
     if (!key) throw new AuthoritativeExecutorError('Нужен идемпотентный ключ', 'IDEMPOTENCY_KEY_REQUIRED')
@@ -320,6 +337,7 @@ export class AuthoritativeExecutor {
       idempotency_key: key,
       command_id: key,
       events: [{ ...event, campaign_id: campaignId }],
+      ...(forceSnapshot ? { forceSnapshot: true } : {}),
     })
     return { ...committed, replayed: false }
   }
