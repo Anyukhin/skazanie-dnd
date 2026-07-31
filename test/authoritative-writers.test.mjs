@@ -24,8 +24,9 @@ const KNOWN_WRITERS = Object.freeze({
   // Командные писатели: план → resolvePlan → commit.
   'game-orchestrator.mjs': 2,
   'autonomous-orchestrator.mjs': 3,
-  'npc-turn-scheduler.mjs': 1,
-  'combat-turn-coordinator.mjs': 1,
+  // Переведены на общий исполнитель шагом 4: прямых записей больше нет.
+  'npc-turn-scheduler.mjs': 0,
+  'combat-turn-coordinator.mjs': 0,
   // Производные писатели: события без прохода через Rules Engine.
   'index.mjs': 9,
 })

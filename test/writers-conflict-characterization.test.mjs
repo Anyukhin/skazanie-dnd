@@ -10,9 +10,9 @@ import { runNpcTurnScheduler } from '../server/npc-turn-scheduler.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 
 /**
- * Шаг 0 плана `docs/agent-architecture-plan.md`: зафиксировать **сегодняшнее**
- * поведение писателей при гонке версий и повторе ключа — как факт, а не как
- * норму. Реестр писателей стережёт `test/authoritative-writers.test.mjs`; здесь
+ * Шаг 0 плана `docs/agent-architecture-plan.md` фиксировал поведение писателей
+ * при гонке версий и повторе ключа. Шаг 4 переводит их на общий исполнитель,
+ * и ожидания меняются вместе с кодом — явно, а не «чтобы позеленело». Реестр писателей стережёт `test/authoritative-writers.test.mjs`; здесь
  * проверяется, что именно происходит, когда чужой коммит опередил свой.
  *
  * Расхождение, ради которого тест написан: ход игрока переживает конфликт
@@ -117,26 +117,34 @@ function racingStore(store, campaignId) {
   })
 }
 
-test('планировщик NPC сегодня не переживает конфликт версии — это фиксируется, а не одобряется', async (t) => {
+test('планировщик NPC переживает конфликт версии так же, как ход игрока', async (t) => {
+  // **Изменение поведения, объявленное шагом 4 плана.** До перевода на общий
+  // исполнитель чужой коммит, опередивший планировщик, ронял ход NPC целиком:
+  // ошибка 500 и потерянный ход, тогда как тот же конфликт у хода игрока
+  // переживался прозрачно. Тест переписан вместе с переводом, а не подогнан
+  // под зелёный: прежнее ожидание было зафиксировано как факт в PR #34.
   const store = await storeFor(t, 'WRITER-RACE', fixture())
   const raced = racingStore(store, 'WRITER-RACE')
 
-  await assert.rejects(
-    () => runNpcTurnScheduler({
-      campaignId: 'WRITER-RACE',
-      eventStore: raced,
-      rulesEngine: new RulesEngine({ diceService: dice([15, 3]) }),
-      npcController: { decide: async () => ({ disposition: 'fight', provider: 'test' }) },
-    }),
-    (error) => String(error?.code || error?.message).includes('STATE_VERSION_CONFLICT'),
-    'ожидался проброс конфликта версии: у планировщика нет ни retry, ни перечитывания по ключу',
-  )
+  const result = await runNpcTurnScheduler({
+    campaignId: 'WRITER-RACE',
+    eventStore: raced,
+    // Повтор пересобирает план против нового состояния, поэтому и бросает
+    // заново — как это делает ход игрока. Последовательности хватает на две
+    // попытки.
+    rulesEngine: new RulesEngine({ diceService: dice([15, 3, 15, 3]) }),
+    npcController: { decide: async () => ({ disposition: 'fight', provider: 'test' }) },
+  })
 
-  // Ход NPC при этом потерян: чужой коммит прошёл, а событий боя не появилось.
-  const loaded = await store.load('WRITER-RACE')
-  const combatEvents = (loaded.events ?? []).filter((event) => event.event_type !== 'ObjectiveUpdated')
-  assert.equal(combatEvents.length, 0,
-    'если события хода появились — планировщик научился переживать гонку, это шаг 4 плана')
+  assert.ok(result.turns.length > 0, 'ход NPC обязан дойти до журнала несмотря на чужой коммит')
+  // Журнал читается через `getEvents`: `load` отдаёт только состояние, и
+  // проверка «событий нет» на его результате была бы верна всегда.
+  const journal = await store.getEvents('WRITER-RACE')
+  const combatEvents = journal.filter((event) => event.event_type !== 'ObjectiveUpdated')
+  assert.ok(combatEvents.length > 0, 'события хода NPC обязаны быть в журнале')
+  // Чужой коммит при этом не потерян: журнал append-only, обе записи на месте.
+  assert.ok(journal.some((event) => event.event_type === 'ObjectiveUpdated'),
+    'повтор не должен затирать чужой коммит')
 })
 
 test('повтор того же ключа отдаёт прежний коммит, а не второй ход NPC', async (t) => {
