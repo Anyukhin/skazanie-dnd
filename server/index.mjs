@@ -199,6 +199,9 @@ const authoritativeExecutor = new AuthoritativeExecutor({ eventStore })
  */
 const postCommitCoordinator = new PostCommitCoordinator({
   deps: {
+    continueCombat: ({ campaignId, advanceNpc = true }) => runNpcTurnScheduler({
+      campaignId, eventStore, rulesEngine, npcController, advanceNpc,
+    }),
     completeEncounter: async ({ campaignId, stageKey }) => {
       const current = await autonomousCampaign.load(campaignId)
       const encounter = current.state.mechanics?.encounter
@@ -1616,6 +1619,30 @@ async function replayDirectorSceneTransition({ campaignId, room, user, action, i
   }
 }
 
+
+/**
+ * Шаг 7, третье подключение: продолжение боя — стадия координатора, а не три
+ * прямых вызова планировщика по маршрутам. Решение «активен ли бой» принимает
+ * стадия по авторитетному состоянию; идемпотентность запусков живёт в Event
+ * Store на ключах позиции, поэтому повтор после гонки или рестарта безопасен.
+ *
+ * @param {string} campaignId
+ * @param {{ advanceNpc?: boolean }} [options]
+ * @returns {Promise<{ turns: any[], events: any[] }>}
+ */
+async function settleCombatContinuation(campaignId, { advanceNpc = true } = {}) {
+  const loaded = await eventStore.load(campaignId)
+  const run = await postCommitCoordinator.run({
+    campaignId,
+    state: loaded.state,
+    events: [],
+    commitKey: `combat-continuation:${campaignId}`,
+    stages: ['combat-continuation'],
+    context: { advanceNpc },
+  })
+  return run.results?.['combat-continuation'] ?? { turns: [], events: [] }
+}
+
 function persistAuthoritativeProjection(campaignId, engineState, events = [], journalMessage = null, { forceProjectorRefresh = false } = {}) {
   const proposedStateVersion = Number(engineState?.state_version ?? -1)
   if (!Number.isSafeInteger(proposedStateVersion)) return null
@@ -2853,7 +2880,7 @@ const server = createServer((req, res) => {
       })
       assertEncounterResultFingerprint(result, command)
       const originalVersion = Number(result.state_version ?? result.authoritative_state?.state_version ?? 0)
-      const scheduler = await runNpcTurnScheduler({ campaignId, eventStore, rulesEngine, npcController, advanceNpc: true })
+      const scheduler = await settleCombatContinuation(campaignId)
       const latest = await eventStore.load(campaignId)
       const subsequentEvents = latest.state_version > originalVersion
         ? await eventStore.getEvents(campaignId, { after_version: originalVersion, up_to_version: latest.state_version })
@@ -3034,8 +3061,7 @@ const server = createServer((req, res) => {
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))
           || (types.has('UseItem') && Boolean(result.authoritative_state.mechanics?.combat?.active))
         const scheduler = shouldSettleCombat
-          ? await runNpcTurnScheduler({
-            campaignId: commandMatch[1], eventStore, rulesEngine, npcController,
+          ? await settleCombatContinuation(commandMatch[1], {
             advanceNpc: types.has('StartCombat') || types.has('EndTurn') || resolvesReaction,
           })
           : { turns: [], events: [] }
@@ -3113,13 +3139,7 @@ const server = createServer((req, res) => {
         room = getRoom(campaignId)
       }
       if (latest.state.mechanics?.combat?.active) {
-        const scheduler = await runNpcTurnScheduler({
-          campaignId,
-          eventStore,
-          rulesEngine,
-          npcController,
-          advanceNpc: true,
-        })
+        const scheduler = await settleCombatContinuation(campaignId)
         if (scheduler.events.length) {
           const advanced = await eventStore.load(campaignId)
           persistAuthoritativeProjection(campaignId, advanced.state, scheduler.events)
