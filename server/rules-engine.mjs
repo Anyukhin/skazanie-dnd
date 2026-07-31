@@ -65,6 +65,22 @@ import {
   npcSocialEvents,
   validateNpcSocialCommand,
 } from './npc-social.mjs'
+import {
+  NPC_WORLD_COMMAND_TYPES,
+  NPC_WORLD_POLICY_ID,
+  NpcWorldValidationError,
+  applyNpcWorldEvent,
+  initialNpcVital,
+  npcCombatStanceEventDrafts,
+  npcHarmEventDrafts,
+  npcMissCollateralTarget,
+  npcPlacementFor,
+  npcTargetsWithinArea,
+  placedSceneNpcTargets,
+  normalizeNpcWorldState,
+  planSceneNpcPlacementEvents,
+  validateNpcWorldCommand,
+} from './npc-positioning.mjs'
 import { assembleEncounter } from './encounter-assembler.mjs'
 import {
   ECONOMY_CATALOG_VERSION,
@@ -172,7 +188,9 @@ export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // 7: начало хода и окна реакции проецируется в mechanics для durable таймера
 // без отдельного чтения всего журнала событий, а продления срока за ответ на
 // реакцию считаются в пределах хода.
-export const GAME_STATE_PROJECTOR_VERSION = 7
+// 8: мирные NPC получили событийные посты, vitality и stance. Старый снимок
+// обязан переиграться, иначе `NpcPlaced`/`NpcHarmed` не попадут в read-модель.
+export const GAME_STATE_PROJECTOR_VERSION = 8
 
 /**
  * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
@@ -320,6 +338,9 @@ const COMMAND_RULES = Object.freeze({
   UpsertNpcSocialProfile: [],
   RecordNpcSocialTurn: [],
   ResolveNpcPromise: [],
+  PlaceNpc: [],
+  MoveNpc: [],
+  HarmNpc: [RULE_IDS.damage],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -344,6 +365,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'UpsertNarrativeThread', 'AdvanceNarrativeThreadClock',
   'RecordNpcBelief', 'RecordRumor', 'ResolveEpistemicClaim', 'RecordNarrativeSummary',
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
+  ...NPC_WORLD_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1292,6 +1314,7 @@ export function normalizeCampaignState(input = {}) {
   rememberCurrentSceneMap(state)
   state.worldMemory = ensureSceneWorldMemory(state.worldMemory, state)
   state.social = ensureNpcSocialState(state.social, state)
+  state.npc_world = normalizeNpcWorldState(state.npc_world)
   state.autonomy = normalizeAutonomyState(state.autonomy)
   state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
   if (state.agentInteraction && typeof state.agentInteraction === 'object' && !Array.isArray(state.agentInteraction)) {
@@ -2441,6 +2464,13 @@ function normalizeCommand(input, state) {
     command.party_decision = command.party_decision ?? command.partyDecision
     delete command.partyDecision
   }
+  if (NPC_WORLD_COMMAND_TYPES.has(command.command_type)) {
+    command.actor_id = null
+    command.target_id = null
+    command.target_ids = []
+    command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
+    delete command.npcId
+  }
   if (command.command_type === 'ResolveHeroDeath') {
     command.resolution = String(command.resolution ?? '')
     command.replacement_name = command.replacement_name == null ? '' : String(command.replacement_name).trim().slice(0, 120)
@@ -2871,6 +2901,16 @@ export function validateCommand(input, rawState, context = {}) {
       Object.assign(command, validateNpcSocialCommand(command, state, context))
     } catch (error) {
       if (error instanceof NpcSocialValidationError) {
+        throw new RulesValidationError(error.message, error.code)
+      }
+      throw error
+    }
+  }
+  if (NPC_WORLD_COMMAND_TYPES.has(command.command_type)) {
+    try {
+      Object.assign(command, validateNpcWorldCommand(command, state, context))
+    } catch (error) {
+      if (error instanceof NpcWorldValidationError) {
         throw new RulesValidationError(error.message, error.code)
       }
       throw error
@@ -3414,7 +3454,7 @@ export function validateCommand(input, rawState, context = {}) {
     }
   }
 
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -3458,6 +3498,18 @@ function eventFrom(command, eventType, payload = {}, targets = command.target_id
     ruling_id: command.ruling_id,
     visibility: command.visibility ?? 'public',
   }
+}
+
+function npcWorldEventsFrom(command, drafts) {
+  return (Array.isArray(drafts) ? drafts : []).map((draft) => {
+    const event = eventFrom(
+      { ...command, visibility: draft.visibility ?? command.visibility },
+      draft.event_type,
+      draft.payload,
+      draft.target_ids,
+    )
+    return draft.event_id ? { ...event, event_id: draft.event_id } : event
+  })
 }
 
 function heroDiedEventFrom(command, payload = {}, targets = command.target_ids) {
@@ -4156,6 +4208,32 @@ function spellTargetsAt(state, command, spell) {
     const at = actorPosition(state, actorId(actor))
     return at && Math.max(Math.abs(at.x - to.x), Math.abs(at.y - to.y)) * 5 <= radius
   })
+}
+
+function npcSpellTargetsAt(state, command, spell) {
+  if (!['area-save', 'area-damage'].includes(spell.kind)) return []
+  const candidates = placedSceneNpcTargets(state)
+  if (spell.target === 'self') {
+    const center = actorPosition(state, command.actor_id)
+    const radius = Math.max(0, safeInteger(spell.radius, 5))
+    return center ? candidates.filter(({ placement }) => Math.max(Math.abs(placement.x - center.x), Math.abs(placement.y - center.y)) * 5 <= radius) : []
+  }
+  if (spell.target !== 'point') return []
+  const to = { x: Number(command.to?.x), y: Number(command.to?.y) }
+  const radius = Math.max(0, Math.min(600, safeInteger(spell.radius, 5)))
+  if (spell.areaShape === 'cone' && spell.areaOrigin === 'self') {
+    const origin = actorPosition(state, command.actor_id)
+    return origin ? candidates.filter(({ placement }) => positionInCone(placement, origin, to, radius)) : []
+  }
+  if (spell.areaShape === 'cube' && spell.areaOrigin === 'self') {
+    const origin = actorPosition(state, command.actor_id)
+    return origin ? candidates.filter(({ placement }) => positionInDirectedCube(placement, origin, to, radius)) : []
+  }
+  if (spell.areaShape === 'line') {
+    const wall = new Set(wallCells(state, command, spell).map(positionKey))
+    return candidates.filter(({ placement }) => wall.has(positionKey(placement)))
+  }
+  return candidates.filter(({ placement }) => Math.max(Math.abs(placement.x - to.x), Math.abs(placement.y - to.y)) * 5 <= radius)
 }
 
 function conditionIdsFor(state, id) {
@@ -5006,7 +5084,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Перехваченный двойником удар не считается попаданием по цели: никакого
       // урона, никаких последствий попадания.
       const landed = hit && !interceptedByImage
-      events.push(eventFrom(attackCommand, 'AttackResolved', {
+      const attackResolvedEventId = `attack-resolved:${String(command.command_id).slice(0, 96)}`
+      events.push({
+        ...eventFrom(attackCommand, 'AttackResolved', {
         ...attack,
         target_id: targetId,
         armor_class: armorClass,
@@ -5034,7 +5114,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         trajectory: actorAt && targetAt ? lineCells(actorAt, targetAt) : [],
         long_range: Boolean(longRange),
         reaction_attack: command.reaction_attack === true,
-      }, [targetId]))
+        }, [targetId]),
+        event_id: attackResolvedEventId,
+      })
       if (selectedProfile && !selectedProfile.item.equipped) events.splice(events.length - 1, 0, eventFrom(attackCommand, 'EquipmentChanged', { item_id: selectedProfile.item.id, item_name: selectedProfile.item.name, equipped: true, timing: 'before_attack', turns_spent: 0 }, [command.actor_id]))
       if (actorConditions.has('disadvantage-next-attack')) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'disadvantage-next-attack' }, [command.actor_id]))
       if (actorConditions.has('disadvantage-next-weapon-attack')) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'disadvantage-next-weapon-attack' }, [command.actor_id]))
@@ -5345,6 +5427,32 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }, [command.actor_id]))
         if (pendingWeaponHit.endConcentrationOnHit && effectId) events.push(eventFrom(commandWithRules(command, RULE_IDS.concentration), 'ConcentrationEnded', { reason: 'next-weapon-hit-resolved', effect_id: effectId }, [command.actor_id]))
       }
+      if (!hit && !interceptedByImage && targetAt && (configuredDamageExpression || command.damage_amount != null)) {
+        const collateral = npcMissCollateralTarget(state, {
+          targetPosition: targetAt,
+          attackTotal: attack.total,
+          armorClass,
+        })
+        if (collateral) {
+          const collateralRoll = configuredDamageExpression
+            ? diceService.roll(configuredDamageExpression, 'npc_miss_collateral_damage', command.actor_id, command.visibility ?? 'public')
+            : null
+          if (collateralRoll) {
+            rolls.push(collateralRoll)
+            events.push(eventFrom(command, 'DieRolled', collateralRoll, []))
+          }
+          const amount = collateralRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))
+          events.push(...npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(replayEvents(state, events), {
+            npcId: collateral.npc.id,
+            amount,
+            damageType,
+            sourceEventId: attackResolvedEventId,
+            sourceActorId: command.actor_id,
+            trigger: 'miss-collateral',
+            commandId: `${command.command_id}:miss-collateral`,
+          })))
+        }
+      }
       if (!command.reaction_attack && !isEnemyActor(state, targetId) && isLivingActor(target) && (!damageOutcome || damageOutcome.hp_after > 0)) {
         let reactionActorId = targetId
         const actionOptions = reactionOptionsAfterAttack(state, target, {
@@ -5401,8 +5509,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const at = actorPosition(state, actorId(candidate))
         return at && Math.max(Math.abs(at.x - to.x), Math.abs(at.y - to.y)) * 5 <= radiusFeet
       })())
-      events.push(eventFrom(command, 'AreaAttackResolved', { item_id: item.id, item_name: item.name, from, to, trajectory, radius_feet: radiusFeet, damage_expression: combat.damage, damage_type: combat.damageType, affected_ids: affected.map(actorId) }, affected.map(actorId)))
-      const damageRoll = affected.length ? diceService.roll(combat.damage, 'area_damage', command.actor_id, command.visibility ?? 'public') : null
+      const npcAffected = npcTargetsWithinArea(state, to, radiusFeet)
+      const affectedIds = [...affected.map(actorId), ...npcAffected.map(({ npc }) => String(npc.id))]
+      const areaEventId = `area-attack:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(command, 'AreaAttackResolved', { item_id: item.id, item_name: item.name, from, to, trajectory, radius_feet: radiusFeet, damage_expression: combat.damage, damage_type: combat.damageType, affected_ids: affectedIds }, affectedIds),
+        event_id: areaEventId,
+      })
+      const damageRoll = affectedIds.length ? diceService.roll(combat.damage, 'area_damage', command.actor_id, command.visibility ?? 'public') : null
       if (damageRoll) { rolls.push(damageRoll); events.push(eventFrom(command, 'DieRolled', damageRoll, [])) }
       for (const target of affected) {
         const targetIdValue = actorId(target)
@@ -5420,6 +5534,39 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }, [targetIdValue]))
         const raw = saved && combat.halfOnSave ? Math.floor(damageRoll.total / 2) : saved ? 0 : damageRoll.total
         events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...resolveDamagePayload(state, targetIdValue, raw, String(combat.damageType || 'fire')), save_total: save.total, save_dc: safeInteger(combat.saveDc, 12), saved }, [targetIdValue]))
+      }
+      let npcDamageState = replayEvents(state, events)
+      for (const { npc } of npcAffected) {
+        const npcId = String(npc.id)
+        const save = diceService.rollD20({
+          modifier: 0,
+          purpose: `npc_area_save:${combat.saveAbility || 'dex'}`,
+          actorId: npcId,
+          visibility: command.visibility,
+        })
+        const saved = savingThrowSucceeded(save, safeInteger(combat.saveDc, 12))
+        rolls.push(save)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'NpcSavingThrowResolved', {
+          ...save,
+          npc_id: npcId,
+          ability: combat.saveAbility || 'dex',
+          difficulty: safeInteger(combat.saveDc, 12),
+          saved,
+          source_event_id: areaEventId,
+          policy_id: NPC_WORLD_POLICY_ID,
+        }, [npcId]))
+        const raw = saved && combat.halfOnSave ? Math.floor(damageRoll.total / 2) : saved ? 0 : damageRoll.total
+        const harmEvents = npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(npcDamageState, {
+          npcId,
+          amount: raw,
+          damageType: String(combat.damageType || 'fire'),
+          sourceEventId: areaEventId,
+          sourceActorId: command.actor_id,
+          trigger: 'area-attack',
+          commandId: `${command.command_id}:${npcId}`,
+        }))
+        events.push(...harmEvents)
+        npcDamageState = harmEvents.reduce(applyGameEvent, npcDamageState)
       }
       events.push(eventFrom(command, 'ItemConsumed', { item_id: item.id, item_name: item.name, quantity: 1 }, [command.actor_id]))
       break
@@ -6391,6 +6538,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }
         const affected = spellTargetsAt(state, command, spell)
         const affectedIds = affected.map(actorId)
+        const npcAffected = npcSpellTargetsAt(state, command, spell)
+        const allAffectedIds = [...affectedIds, ...npcAffected.map(({ npc }) => String(npc.id))]
         const woundedTarget = affected[0] && actorHp(affected[0]) < actorMaxHp(affected[0])
         const baseDamageExpression = woundedTarget && spell.damageIfTargetWounded ? spell.damageIfTargetWounded : spell.damage
         const damageExpression = scaledSpellDice({ ...spell, damage: baseDamageExpression }, actor, command.slot_level) ?? (['attack', 'save', 'area-save', 'damage', 'area-damage'].includes(spell.kind) && baseDamageExpression ? `${Math.max(1, spell.level + 1)}d6` : null)
@@ -6406,7 +6555,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           : selectedDamageType ?? spell.damageType ?? spell.damageTypes?.[0] ?? 'force'
         const effectiveRange = metamagic.has('metamagic-distant') && spell.range > 0 ? spell.range * 2 : spell.range
         const effectiveActionType = metamagic.has('metamagic-quickened') && spell.actionType === 'action' ? 'bonus_action' : spell.actionType
-        events.push(eventFrom(command, 'SpellCast', {
+        const spellCastEventId = `spell-cast:${String(command.command_id).slice(0, 100)}`
+        events.push({
+          ...eventFrom(command, 'SpellCast', {
           spell_id: spell.id,
           name: spell.name,
           kind: spell.kind,
@@ -6418,7 +6569,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           source_url: spell.sourceUrl,
           spell_option: command.spell_option ?? null,
           damage_type: damageType,
-        }, affectedIds.length ? affectedIds : command.target_ids))
+          }, allAffectedIds.length ? allAffectedIds : command.target_ids),
+          event_id: spellCastEventId,
+        })
         for (const condition of ['metamagic-careful', 'metamagic-distant', 'metamagic-empowered', 'metamagic-extended', 'metamagic-heightened', 'metamagic-quickened', 'metamagic-seeking', 'metamagic-subtle', 'metamagic-transmuted', 'metamagic-twinned']) {
           if (metamagic.has(condition)) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition }, [command.actor_id]))
         }
@@ -6860,7 +7013,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             ? affected.filter((candidate) => actorId(candidate) !== command.actor_id && !isEnemyActor(state, actorId(candidate))).slice(0, carefulLimit).map(actorId)
             : [])
           let sharedDamageRoll = null
-          if (damageExpression && affected.length) {
+          if (damageExpression && (affected.length || npcAffected.length)) {
             sharedDamageRoll = diceService.roll(damageExpression, `spell_damage:${spell.id}`, command.actor_id, command.visibility ?? 'public')
             rolls.push(sharedDamageRoll)
             events.push(eventFrom(command, 'DieRolled', sharedDamageRoll, []))
@@ -6870,7 +7023,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           // порция катится своей костью и приходит отдельным событием.
           let bonusDamageRoll = null
           const bonusDamageType = String(spell.bonusDamageType ?? 'untyped')
-          if (spell.bonusDamage && affected.length) {
+          if (spell.bonusDamage && (affected.length || npcAffected.length)) {
             bonusDamageRoll = diceService.roll(String(spell.bonusDamage), `spell_damage:${spell.id}:${bonusDamageType}`, command.actor_id, command.visibility ?? 'public')
             rolls.push(bonusDamageRoll)
             events.push(eventFrom(command, 'DieRolled', bonusDamageRoll, []))
@@ -7050,8 +7203,49 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               }
             }
           }
+          let npcSpellState = replayEvents(state, events)
+          for (const { npc } of npcAffected) {
+            if (!sharedDamageRoll && !bonusDamageRoll) continue
+            const npcId = String(npc.id)
+            const save = diceService.rollD20({
+              modifier: 0,
+              purpose: `npc_spell_save:${spell.id}:${saveAbility}`,
+              actorId: npcId,
+              disadvantage: metamagic.has('metamagic-heightened'),
+              visibility: command.visibility,
+            })
+            const saved = savingThrowSucceeded(save, spellSaveDc)
+            rolls.push(save)
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'NpcSavingThrowResolved', {
+              ...save,
+              npc_id: npcId,
+              spell_id: spell.id,
+              ability: saveAbility,
+              difficulty: spellSaveDc,
+              saved,
+              source_event_id: spellCastEventId,
+              policy_id: NPC_WORLD_POLICY_ID,
+            }, [npcId]))
+            const baseAmount = sharedDamageRoll
+              ? (saved ? (spell.halfOnSave ? Math.floor(sharedDamageRoll.total / 2) : 0) : sharedDamageRoll.total)
+              : 0
+            const bonusAmount = bonusDamageRoll
+              ? (saved ? (spell.halfOnSave ? Math.floor(bonusDamageRoll.total / 2) : 0) : bonusDamageRoll.total)
+              : 0
+            const harmEvents = npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(npcSpellState, {
+              npcId,
+              amount: baseAmount + bonusAmount,
+              damageType: bonusDamageRoll ? 'mixed' : damageType,
+              sourceEventId: spellCastEventId,
+              sourceActorId: command.actor_id,
+              trigger: 'area-spell',
+              commandId: `${command.command_id}:${npcId}`,
+            }))
+            events.push(...harmEvents)
+            npcSpellState = harmEvents.reduce(applyGameEvent, npcSpellState)
+          }
         } else if (['damage', 'area-damage'].includes(spell.kind)) {
-          if (damageExpression && affected.length) {
+          if (damageExpression && (affected.length || npcAffected.length)) {
             const damageRoll = diceService.roll(damageExpression, `spell_damage:${spell.id}`, command.actor_id, command.visibility ?? 'public')
             rolls.push(damageRoll)
             events.push(eventFrom(command, 'DieRolled', damageRoll, []))
@@ -7060,6 +7254,21 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               const payload = resolveDamagePayload(state, resolvedTargetId, damageRoll.total, damageType)
               events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, spell_id: spell.id }, [resolvedTargetId]))
               if (payload.hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [resolvedTargetId]))
+            }
+            let npcSpellState = replayEvents(state, events)
+            for (const { npc } of npcAffected) {
+              const npcId = String(npc.id)
+              const harmEvents = npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(npcSpellState, {
+                npcId,
+                amount: damageRoll.total,
+                damageType,
+                sourceEventId: spellCastEventId,
+                sourceActorId: command.actor_id,
+                trigger: 'area-spell',
+                commandId: `${command.command_id}:${npcId}`,
+              }))
+              events.push(...harmEvents)
+              npcSpellState = harmEvents.reduce(applyGameEvent, npcSpellState)
             }
           }
         } else if (spell.kind === 'healing' && spell.selfDamage) {
@@ -7849,7 +8058,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Групповая инициатива включается только явно — командой или настройкой
       // кампании. Умолчание остаётся индивидуальным, как в редакции.
       const groupInitiative = command.group_initiative === true || state.campaign?.rules?.group_initiative === true
-      events.push(eventFrom(command, 'CombatStarted', { round: 1, initiative, active_index: initiative.length ? 0 : -1, party_ids: partyIds, enemy_ids: enemyIds, ...(groupInitiative ? { group_initiative: true } : {}), ...(surprised.length ? { surprised } : {}) }, participantIds))
+      const combatStartedEventId = `combat-started:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(command, 'CombatStarted', { round: 1, initiative, active_index: initiative.length ? 0 : -1, party_ids: partyIds, enemy_ids: enemyIds, ...(groupInitiative ? { group_initiative: true } : {}), ...(surprised.length ? { surprised } : {}) }, participantIds),
+        event_id: combatStartedEventId,
+      })
+      events.push(...npcWorldEventsFrom(command, npcCombatStanceEventDrafts(state, {
+        sourceEventId: combatStartedEventId,
+        participantIds,
+      })))
       for (const surprisedId of surprised) {
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
           condition: 'surprised', duration: 'until-own-turn-end', passive_perception: passivePerception(findActor(state, surprisedId)),
@@ -8240,6 +8457,50 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, []))
       break
     }
+    case 'PlaceNpc': {
+      const npc = state.social.npcs.find((candidate) => String(candidate.id) === command.npc_id)
+      events.push(eventFrom(command, 'NpcPlaced', {
+        npc_id: command.npc_id,
+        npc_name: String(npc?.name ?? command.npc_id).slice(0, 160),
+        npc_role: String(npc?.role ?? '').slice(0, 160),
+        location_id: command.location_id,
+        x: command.to.x,
+        y: command.to.y,
+        anchor_prop_id: command.anchor_prop_id ?? '',
+        placement_reason: 'system-command',
+        vitality: initialNpcVital(npc),
+        policy_id: NPC_WORLD_POLICY_ID,
+      }, [command.npc_id]))
+      break
+    }
+    case 'MoveNpc': {
+      const npc = state.social.npcs.find((candidate) => String(candidate.id) === command.npc_id)
+      const before = npcPlacementFor(state, command.npc_id, command.location_id)
+      events.push(eventFrom(command, 'NpcMoved', {
+        npc_id: command.npc_id,
+        npc_name: String(npc?.name ?? command.npc_id).slice(0, 160),
+        npc_role: String(npc?.role ?? '').slice(0, 160),
+        location_id: command.location_id,
+        from: before ? { x: before.x, y: before.y } : null,
+        x: command.to.x,
+        y: command.to.y,
+        anchor_prop_id: command.anchor_prop_id ?? '',
+        placement_reason: 'system-command',
+        policy_id: NPC_WORLD_POLICY_ID,
+      }, [command.npc_id]))
+      break
+    }
+    case 'HarmNpc':
+      events.push(...npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(state, {
+        npcId: command.npc_id,
+        amount: command.amount,
+        damageType: command.damage_type,
+        sourceEventId: command.source_event_id,
+        sourceActorId: command.source_actor_id,
+        trigger: command.trigger,
+        commandId: command.command_id,
+      })))
+      break
     case 'AdvanceScene': {
       if (command.party_decision) {
         const currentDecision = state.agentInteraction
@@ -8269,6 +8530,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         request_fingerprint: command.request_fingerprint,
       }, partyPositions.map((position) => position.actor_id)), event_id: sceneEventId }
       events.push(sceneEvent)
+      const transitionedState = applyGameEvent(state, sceneEvent)
+      events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(transitionedState)))
       for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId })) {
         events.push(eventFrom({ ...command, visibility: memoryEvent.visibility }, memoryEvent.event_type, memoryEvent.payload, memoryEvent.target_ids))
       }
@@ -10392,6 +10655,13 @@ export function applyGameEvent(rawState, event) {
     case 'NarrativeSummaryRecorded':
       state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
       break
+    case 'NpcPlaced':
+    case 'NpcMoved':
+    case 'NpcHarmed':
+    case 'NpcDied':
+    case 'NpcStanceChanged':
+      state.npc_world = applyNpcWorldEvent(state.npc_world, event)
+      break
     case 'RulingRecorded':
       state.rulings = [...(Array.isArray(state.rulings) ? state.rulings : []), clone(payload.ruling)]
       break
@@ -10476,6 +10746,11 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'NpcRelationshipTierChanged': return `NPC relationship tier changed: ${payload.tier_before} -> ${payload.tier_after}`
     case 'NpcPromiseRecorded': return `NPC promise recorded: ${payload.promise?.text || payload.promise?.id}`
     case 'NpcPromiseResolved': return `NPC promise ${payload.promise_id} resolved as ${payload.status}`
+    case 'NpcPlaced': return `${payload.npc_name || payload.npc_id} занимает пост в сцене`
+    case 'NpcMoved': return `${payload.npc_name || payload.npc_id} меняет пост в сцене`
+    case 'NpcHarmed': return `${payload.npc_name || payload.npc_id} получает урон`
+    case 'NpcDied': return `${payload.npc_name || payload.npc_id} погибает`
+    case 'NpcStanceChanged': return `${payload.npc_name || payload.npc_id}: стойка ${payload.stance}`
     case 'WorldEntityUpserted': return `World entity updated: ${payload.entity?.name || payload.entity?.id}`
     case 'WorldFactRecorded': return `World fact recorded: ${payload.fact?.summary || payload.fact?.object || payload.fact?.id}`
     case 'WorldFactRevealed': return `Fact ${payload.fact_id} revealed to ${(event.target_ids ?? []).length} heroes`
