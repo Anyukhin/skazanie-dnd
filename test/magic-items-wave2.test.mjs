@@ -116,7 +116,15 @@ test('единый catalog содержит шесть новых закрыты
     assert.equal(entry.weight, weight, key)
     assert.equal(entry.lifecycle.equip_slot, slot, key)
     assert.equal(entry.attunement.required, attunement, key)
-    assert.deepEqual(entry.availability, { shop: false, loot: false, crafting: false }, key)
+    // Огненный язык — единственный из шести, кто закрыт и от случайной находки:
+    // активация бонусным действием требует объяснения игроку, поэтому он
+    // остаётся наградой за сюжет.
+    assert.deepEqual(entry.availability, {
+      shop: false,
+      loot: false,
+      magic_loot: key !== 'flame-tongue-longsword',
+      crafting: false,
+    }, key)
     assert.equal(entry.mechanics_status, 'partial', key)
     assert.ok(Object.isFrozen(entry), key)
     const instance = materializeCatalogItem(id(key), {

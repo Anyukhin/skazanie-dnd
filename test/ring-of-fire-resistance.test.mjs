@@ -83,7 +83,7 @@ test('Кольцо сопротивления (огонь) имеет точны
   assert.equal(entry.magic_item.variant, 'fire')
   assert.equal(entry.source_page, 237)
   assert.equal(entry.attunement.required, false)
-  assert.deepEqual(entry.availability, { shop: false, loot: false, crafting: false })
+  assert.deepEqual(entry.availability, { shop: false, loot: false, magic_loot: true, crafting: false })
   assert.equal(entry.mechanics_status, 'partial')
   assert.match(entry.limitation, /общим серверным damage pipeline/u)
 

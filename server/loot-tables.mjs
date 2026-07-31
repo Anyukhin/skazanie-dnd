@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto'
 
 import {
   ITEM_LOOT_CATALOG_IDS,
+  ITEM_MAGIC_LOOT_CATALOG_IDS,
   catalogItem,
   materializeCatalogItem,
 } from './item-catalog.mjs'
 
 export const ENCOUNTER_LOOT_POLICY_ID = 'encounter-loot-v2'
+export const ENCOUNTER_MAGIC_LOOT_POLICY_ID = 'encounter-magic-loot-v1'
 
 const PREFIX = 'srd_5_2_1:'
 const id = (slug) => `${PREFIX}${slug}`
@@ -62,6 +64,54 @@ function chooseForTier(pool, tierIndex, used) {
     if (found) return found
   }
   return null
+}
+
+const MAGIC_LOOT_IDS = new Set(ITEM_MAGIC_LOOT_CATALOG_IDS)
+
+/**
+ * Порог редкости и шанс находки. Политика сервера, а не таблица SRD, и записана
+ * так, чтобы её можно было прочитать целиком:
+ *
+ * - до 200 XP за встречу магии нет вовсе — иначе первая же стычка с крысами
+ *   выдаёт кольцо, и прогресс перестаёт что-либо значить;
+ * - `uncommon` открывается с 200 XP и выпадает примерно в четверти встреч;
+ * - `rare` открывается с 700 XP и выпадает примерно в восьмой части.
+ *
+ * Больше одного магического предмета за встречу не выдаётся никогда.
+ */
+const MAGIC_LOOT_TIERS = Object.freeze([
+  Object.freeze({ rarity: 'rare', minimumXp: 700, chance: 12 }),
+  Object.freeze({ rarity: 'uncommon', minimumXp: 200, chance: 25 }),
+])
+
+function magicRarityOf(catalogId) {
+  return String(catalogItem(catalogId)?.magic_item?.rarity ?? '')
+}
+
+/**
+ * Находка выводится **детерминированно** из идентификатора встречи: тот же бой
+ * после replay или падения даёт тот же предмет, а payload события всё равно
+ * несёт материализованную вещь целиком, поэтому будущая версия каталога не
+ * меняет старую награду.
+ *
+ * @param {{ encounterId?: string, totalXp?: number }} input
+ * @returns {Array<Record<string, unknown>>} ноль или один предмет
+ */
+export function serverEncounterMagicLoot({ encounterId = '', totalXp = 0 } = {}) {
+  const xp = Math.max(0, Number(totalXp) || 0)
+  const digest = createHash('sha256').update(`magic-loot:${encounterId}`).digest('hex')
+  const roll = Number.parseInt(digest.slice(0, 8), 16) % 100
+  const tier = MAGIC_LOOT_TIERS.find((candidate) => xp >= candidate.minimumXp && roll < candidate.chance)
+  if (!tier) return []
+  const pool = [...MAGIC_LOOT_IDS].filter((catalogId) => magicRarityOf(catalogId) === tier.rarity).sort()
+  if (!pool.length) return []
+  const pick = Number.parseInt(digest.slice(8, 16), 16) % pool.length
+  const catalogId = pool[pick]
+  const item = catalogItem(catalogId)
+  if (!item || !['verified', 'partial'].includes(item.mechanics_status)) {
+    throw new Error(`Catalog item ${catalogId} is not mechanically eligible for magic loot`)
+  }
+  return [materializeCatalogItem(catalogId, { quantity: 1, equipped: false })]
 }
 
 export function serverEncounterLoot({ theme = 'generic', difficulty = 'medium', encounterId = '' } = {}) {
