@@ -5,7 +5,7 @@ import test from 'node:test'
 // Интерфейс разделён по задаче 0: часть экранов вынесена из App.tsx.
 // Сторож читает весь корпус интерфейса, иначе проверка молча перестала бы
 // что-либо охранять после переезда компонента.
-const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/app-shared.tsx']
+const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
   .join('\n')
 const sessionSource = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')

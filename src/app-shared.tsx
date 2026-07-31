@@ -1,4 +1,4 @@
-import type { GameState } from './types'
+import type { CombatMechanics, GameState, Player, ReputationTier, SummonedCreature } from './types'
 
 
 /**
@@ -110,5 +110,45 @@ export const clampUiScale = (value: number) => Math.min(UI_SCALE_MAX, Math.max(U
 
 export function canonicalLocationKey(value: unknown) {
   return String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 180).toLocaleLowerCase('ru')
+}
+
+/**
+ * Разделяют доска и корень приложения: тип участника доски, набор вредящих
+ * школ, причина блокировки траектории и текущее состояние боя.
+ */
+export type BoardCombatant = Player | SummonedCreature
+export function boardTrajectoryBlockReason(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
+  const cells = new Map(state.scene.cells.map((cell) => [`${cell.x},${cell.y}`, cell]))
+  let x = from.x
+  let y = from.y
+  const dx = Math.abs(to.x - x)
+  const sx = x < to.x ? 1 : -1
+  const dy = -Math.abs(to.y - y)
+  const sy = y < to.y ? 1 : -1
+  let error = dx + dy
+  while (x !== to.x || y !== to.y) {
+    const twice = 2 * error
+    if (twice >= dy) { error += dy; x += sx }
+    if (twice <= dx) { error += dx; y += sy }
+    if (x === to.x && y === to.y) return null
+    const cell = cells.get(`${x},${y}`)
+    if (!cell) return `Траектория выходит за край карты у клетки ${x + 1}:${y + 1}`
+    if (cell.type === 'wall') return `Линию огня перекрывает стена в клетке ${x + 1}:${y + 1}`
+  }
+  return null
+}
+
+export function combatState(state: GameState): CombatMechanics {
+  return state.mechanics?.combat ?? {}
+}
+
+export const HARMFUL_SPELL_KINDS = new Set(['attack', 'damage', 'area-damage', 'save', 'area-save', 'debuff'])
+
+export const REPUTATION_TIER_LABELS: Record<ReputationTier, string> = {
+  reviled: 'ненавидят',
+  distrusted: 'не доверяют',
+  unknown: 'не знают',
+  respected: 'уважают',
+  honoured: 'чтут',
 }
 

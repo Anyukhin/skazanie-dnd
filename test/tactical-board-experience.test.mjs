@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const app = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+  .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
+  .join('\n')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 
 test('тактические модификаторы видны на самой цели и объясняют блокировку', () => {

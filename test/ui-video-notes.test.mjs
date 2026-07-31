@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+  .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
+  .join('\n')
 const stylesSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 const inventorySource = readFileSync(new URL('../src/InventoryViews.tsx', import.meta.url), 'utf8')
 const inventoryStyles = readFileSync(new URL('../src/inventory.css', import.meta.url), 'utf8')
