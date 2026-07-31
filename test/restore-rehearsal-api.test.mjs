@@ -13,6 +13,7 @@ import {
   verifyStorageBackup,
 } from '../server/backup-service.mjs'
 import { auditLegacyCutover } from '../server/cutover-audit.mjs'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
  * Репетиция восстановления.
@@ -95,7 +96,7 @@ const hero = (id, name) => ({
   abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 10 }, inventory: [],
 })
 
-test('из архива поднимается та же играбельная кампания, а не только те же файлы', { timeout: 180_000 }, async (t) => {
+test('из архива поднимается та же играбельная кампания, а не только те же файлы', { timeout: runnerTimeout(180_000) }, async (t) => {
   const live = mkdtempSync(join(tmpdir(), 'skazanie-rehearsal-live-'))
   const vault = mkdtempSync(join(tmpdir(), 'skazanie-rehearsal-vault-'))
   const restored = join(mkdtempSync(join(tmpdir(), 'skazanie-rehearsal-restored-')), 'storage')

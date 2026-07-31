@@ -5,6 +5,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 async function freePort() {
   const probe = createNetServer()
@@ -98,7 +99,7 @@ function restCommand(baseUrl, cookieValue, key, command) {
   })
 }
 
-test('HTTP-отдых санитизирует поля, защищает героя и идемпотентно тратит кости хитов', { timeout: 60_000 }, async (t) => {
+test('HTTP-отдых санитизирует поля, защищает героя и идемпотентно тратит кости хитов', { timeout: runnerTimeout(60_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-hit-dice-api-'))
   let logs = ''
   let child = null

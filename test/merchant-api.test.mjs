@@ -5,6 +5,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
@@ -86,7 +87,7 @@ async function merchantCommand(baseUrl, session, merchantId, sessionCookie, idem
   })
 }
 
-test('merchant API is authoritative, stale-safe, idempotent and durable across restart', { timeout: 40_000 }, async (t) => {
+test('merchant API is authoritative, stale-safe, idempotent and durable across restart', { timeout: runnerTimeout(40_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-merchant-api-'))
   const setupToken = 'merchant-api-setup-token'
   let logs = ''

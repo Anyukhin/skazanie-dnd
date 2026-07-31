@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 async function waitForHealth(baseUrl, child) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
@@ -17,7 +18,7 @@ async function waitForHealth(baseUrl, child) {
   throw new Error('Тестовый сервер не запустился')
 }
 
-test('совместимый API создаёт кампанию, исполняет enforce-команду, ищет правила и объясняет /why', { timeout: 20_000 }, async (t) => {
+test('совместимый API создаёт кампанию, исполняет enforce-команду, ищет правила и объясняет /why', { timeout: runnerTimeout(20_000) }, async (t) => {
   const port = 20_000 + Math.floor(Math.random() * 10_000)
   const baseUrl = `http://127.0.0.1:${port}`
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-api-'))

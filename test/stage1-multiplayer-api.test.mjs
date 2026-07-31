@@ -8,6 +8,7 @@ import test from 'node:test'
 
 import { FileEventStore } from '../server/event-store.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 async function freePort() {
   const probe = createNetServer()
@@ -167,7 +168,7 @@ function characterDocument(character) {
   }
 }
 
-test('этап 1: два игрока получают SSE presence, коммитят без lost update, а projection восстанавливается после restart', { timeout: 60_000 }, async (t) => {
+test('этап 1: два игрока получают SSE presence, коммитят без lost update, а projection восстанавливается после restart', { timeout: runnerTimeout(60_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-stage1-'))
   let logs = ''
   let child = null

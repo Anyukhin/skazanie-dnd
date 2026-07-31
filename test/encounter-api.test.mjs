@@ -5,6 +5,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
@@ -122,7 +123,7 @@ async function assemble(baseUrl, session, body) {
   })
 }
 
-test('encounter assembly HTTP endpoint is privileged, strict, idempotent and restart-durable', { timeout: 30_000 }, async (t) => {
+test('encounter assembly HTTP endpoint is privileged, strict, idempotent and restart-durable', { timeout: runnerTimeout(30_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-encounter-api-'))
   const setupToken = 'encounter-api-setup-token'
   let logs = ''

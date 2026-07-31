@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import {
+import { runnerTimeout } from './shared-runner-timeout.mjs'
   cellAt,
   deserializeTacticalMap,
   legacyCellsFromTacticalMap,
@@ -171,7 +172,7 @@ async function command(baseUrl, cookie, idempotencyKey, value) {
   })
 }
 
-test('player combat API is server-authoritative, bounded, and durable across restart', { timeout: 30_000 }, async (t) => {
+test('player combat API is server-authoritative, bounded, and durable across restart', { timeout: runnerTimeout(30_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-authoritative-combat-'))
   const setupToken = 'authoritative-combat-setup-token'
   let logs = ''

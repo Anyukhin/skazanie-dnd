@@ -5,6 +5,7 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
  * Игра с друзьями по сети держится на одном обещании: каждый видит свой мир.
@@ -114,7 +115,7 @@ function hero(id, name) {
 
 const SECRET = 'ТАЙНА-ТОЛЬКО-ДЛЯ-ПЕРВОГО-ГЕРОЯ'
 
-test('живой поток отдаёт каждому игроку только его знание', { timeout: 90_000 }, async (t) => {
+test('живой поток отдаёт каждому игроку только его знание', { timeout: runnerTimeout(90_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-stream-isolation-'))
   let logs = ''
   let child = null

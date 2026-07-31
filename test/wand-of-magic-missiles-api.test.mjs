@@ -12,6 +12,7 @@ import { FileEventStore } from '../server/event-store.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
 import { MapStore } from '../server/map-store.mjs'
 import {
+import { runnerTimeout } from './shared-runner-timeout.mjs'
   GAME_STATE_PROJECTOR_VERSION,
   applyGameEvent,
   normalizeCampaignState,
@@ -179,7 +180,7 @@ function itemFingerprint(chargesToSpend) {
   })).digest('hex')
 }
 
-test('HTTP жезла защищает поля и charges_to_spend idempotency, включая retry после уничтожения', { timeout: 60_000 }, async (t) => {
+test('HTTP жезла защищает поля и charges_to_spend idempotency, включая retry после уничтожения', { timeout: runnerTimeout(60_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-wand-api-'))
   let logs = ''
   let child = null
