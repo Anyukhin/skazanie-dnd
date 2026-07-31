@@ -45,6 +45,15 @@ import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from 
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
+import {
+  AuthoritativeExecutor,
+  CAMPAIGN_CONTROL_CAPABILITY,
+  CAMPAIGN_LIFECYCLE_CAPABILITY,
+  ECONOMY_CLOCK_CAPABILITY,
+  PARTY_DECISION_CAPABILITY,
+  PRESENCE_CAPABILITY,
+  PUBLIC_DICE_CAPABILITY,
+} from './authoritative-executor.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
@@ -170,6 +179,13 @@ const eventStore = new FileEventStore({
   snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
   mapStore,
 })
+
+/**
+ * Шаг 5 плана `docs/agent-architecture-plan.md`: производные события больше не
+ * пишутся прямо в журнал. Все девять путей этого модуля идут через общий
+ * исполнитель, а разрешает их явная таблица и неподделываемая capability.
+ */
+const authoritativeExecutor = new AuthoritativeExecutor({ eventStore })
 const traceStore = new FileTraceStore({ rootDir: join(storageDir, 'turn-traces') })
 const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
 const creativeDirector = new CriticalNarrationCoordinator({ narrator })
@@ -1677,91 +1693,75 @@ async function reconcileAllCampaignProjections() {
 async function persistInteractionProjection(campaignId, interaction) {
   if (!interaction || typeof interaction !== 'object' || Array.isArray(interaction)) return null
   const idempotencyKey = `party-decision-open:${String(interaction.id ?? '').slice(0, 120)}`
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const loaded = await eventStore.load(campaignId)
-    if (loaded.state.agentInteraction) {
-      if (String(loaded.state.agentInteraction.id) !== String(interaction.id)) return null
-      return persistAuthoritativeProjection(campaignId, loaded.state, [], null, { forceProjectorRefresh: true })
-    }
-    const partyMembers = new Set((loaded.state.partyMemberIds?.length
-      ? loaded.state.partyMemberIds
-      : loaded.state.players?.map((player) => player.id) ?? []).map(String))
-    const connected = connectedHeroIdsForCampaign(campaignId)
-    const eligibleHeroIds = (connected.size
-      ? [...connected]
-      : (loaded.state.players ?? []).filter((player) => player.online).map((player) => String(player.id)))
-      .filter((candidate) => partyMembers.has(String(candidate)))
-    if (!eligibleHeroIds.length) eligibleHeroIds.push(...partyMembers)
-    const voterSnapshot = partyVoterSnapshot(campaignId, loaded.state, eligibleHeroIds)
-    try {
-      const committed = await eventStore.commit({
-        campaign_id: campaignId,
-        expected_state_version: loaded.state_version,
-        idempotency_key: idempotencyKey,
-        command_id: idempotencyKey,
-        events: [partyDecisionOpenedEvent(interaction, null, {
-          eligibleHeroIds,
-          eligibleVoterIds: voterSnapshot.eligibleVoterIds,
-          voterByHeroId: voterSnapshot.voterByHeroId,
-          policy: loaded.state.partyDecisionPolicy,
-        })],
-      })
-      return persistAuthoritativeProjection(campaignId, committed.state, committed.events)
-    } catch (error) {
-      if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
-    }
+  const loaded = await eventStore.load(campaignId)
+  if (loaded.state.agentInteraction) {
+    if (String(loaded.state.agentInteraction.id) !== String(interaction.id)) return null
+    return persistAuthoritativeProjection(campaignId, loaded.state, [], null, { forceProjectorRefresh: true })
   }
-  return null
+  const partyMembers = new Set((loaded.state.partyMemberIds?.length
+    ? loaded.state.partyMemberIds
+    : loaded.state.players?.map((player) => player.id) ?? []).map(String))
+  const connected = connectedHeroIdsForCampaign(campaignId)
+  const eligibleHeroIds = (connected.size
+    ? [...connected]
+    : (loaded.state.players ?? []).filter((player) => player.online).map((player) => String(player.id)))
+    .filter((candidate) => partyMembers.has(String(candidate)))
+  if (!eligibleHeroIds.length) eligibleHeroIds.push(...partyMembers)
+  const voterSnapshot = partyVoterSnapshot(campaignId, loaded.state, eligibleHeroIds)
+  // Ключ от идентификатора решения: повтор открытия того же голосования отдаёт
+  // прежний коммит, а не заводит второе.
+  const committed = await authoritativeExecutor.commitDerived({
+    campaignId,
+    idempotencyKey,
+    events: [partyDecisionOpenedEvent(interaction, null, {
+      eligibleHeroIds,
+      eligibleVoterIds: voterSnapshot.eligibleVoterIds,
+      voterByHeroId: voterSnapshot.voterByHeroId,
+      policy: loaded.state.partyDecisionPolicy,
+    })],
+    producerCapability: PARTY_DECISION_CAPABILITY,
+  })
+  return persistAuthoritativeProjection(campaignId, committed.state, committed.events)
 }
 
 async function expirePartyDecisionIfNeeded(campaignId, now = Date.now()) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const loaded = await eventStore.load(campaignId)
-    const expiration = partyDecisionExpiryEvents(loaded.state, { now })
-    if (!expiration.events.length) return null
-    const interactionId = String(loaded.state.agentInteraction?.id ?? '')
-    const expiresAt = String(loaded.state.agentInteraction?.expiresAt ?? '')
-    try {
-      return await eventStore.commit({
-        campaign_id: campaignId,
-        expected_state_version: loaded.state_version,
-        idempotency_key: `party-decision-expire:${interactionId}:${expiresAt}`,
-        command_id: `party-decision-expire:${interactionId}:${expiresAt}`,
-        events: expiration.events,
-      })
-    } catch (error) {
-      if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
-    }
-  }
-  return null
+  const loaded = await eventStore.load(campaignId)
+  const interactionId = String(loaded.state.agentInteraction?.id ?? '')
+  const expiresAt = String(loaded.state.agentInteraction?.expiresAt ?? '')
+  if (!partyDecisionExpiryEvents(loaded.state, { now }).events.length) return null
+  // События пересобираются на каждой попытке против свежего состояния: повторить
+  // старый набор после чужого коммита значит записать истечение, посчитанное по
+  // устаревшему составу голосующих. Ключ прежний — от решения и срока.
+  return authoritativeExecutor.commitDerived({
+    campaignId,
+    idempotencyKey: `party-decision-expire:${interactionId}:${expiresAt}`,
+    deriveEvents: (state) => partyDecisionExpiryEvents(state, { now }).events,
+    producerCapability: PARTY_DECISION_CAPABILITY,
+  })
 }
 
 async function reconcilePartyDecisionPresence(campaignId) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const loaded = await eventStore.load(campaignId)
-    const interaction = loaded.state.agentInteraction
-    if (!interaction || interaction.status !== 'open' || loaded.state.partyDecisionPolicy?.disconnectAction !== 'abstain') return null
-    const connectedHeroIds = connectedHeroIdsForCampaign(campaignId)
-    const activeVoterIds = partyDecisionActiveVoterIds(interaction, [...connectedHeroIds])
-    const presence = partyDecisionPresenceEvents(loaded.state, { activeVoterIds })
-    if (!presence.events.length) return null
-    const id = String(interaction.id)
-    const activeKey = activeVoterIds.slice().sort().join(',') || 'none'
-    try {
-      const committed = await eventStore.commit({
-        campaign_id: campaignId,
-        expected_state_version: loaded.state_version,
-        idempotency_key: `party-decision-presence:${id}:${activeKey}`,
-        command_id: `party-decision-presence:${id}:${activeKey}`,
-        events: presence.events,
-      })
-      persistAuthoritativeProjection(campaignId, committed.state, committed.events)
-      return committed
-    } catch (error) {
-      if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
-    }
-  }
-  return null
+  const loaded = await eventStore.load(campaignId)
+  const interaction = loaded.state.agentInteraction
+  if (!interaction || interaction.status !== 'open' || loaded.state.partyDecisionPolicy?.disconnectAction !== 'abstain') return null
+  const connectedHeroIds = connectedHeroIdsForCampaign(campaignId)
+  const activeVoterIds = partyDecisionActiveVoterIds(interaction, [...connectedHeroIds])
+  const presence = partyDecisionPresenceEvents(loaded.state, { activeVoterIds })
+  if (!presence.events.length) return null
+  const id = String(interaction.id)
+  const activeKey = activeVoterIds.slice().sort().join(',') || 'none'
+  // Ключ прежний — от состава голосующих, поэтому одна и та же сверка не
+  // повторяется. Уход голосующего умеет только закрыть его голос и разрешить
+  // решение; ничего из владений Rules Engine эти события не трогают.
+  const committed = await authoritativeExecutor.commitDerived({
+    campaignId,
+    idempotencyKey: `party-decision-presence:${id}:${activeKey}`,
+    deriveEvents: (state) => partyDecisionPresenceEvents(state, { activeVoterIds }).events,
+    producerCapability: PRESENCE_CAPABILITY,
+  })
+  if (!committed) return null
+  persistAuthoritativeProjection(campaignId, committed.state, committed.events)
+  return committed
 }
 
 async function runMerchantEconomyClock(campaignId) {
@@ -1796,6 +1796,15 @@ async function runMerchantEconomyClock(campaignId) {
     if (!events.length) return { state: loaded.state, events: [], plans: [] }
     try {
       const worldMinute = Number(loaded.state.mechanics?.world_time?.elapsed_minutes ?? 0)
+      // Последний прямой писатель этого модуля, и он остаётся таким осознанно.
+      // Один коммит несёт и события пополнения лавки (их считает Rules Engine,
+      // они меняют её склад), и событие часов. Через `commitDerived` первые не
+      // пройдут — инвариант производного входа это запрещает, — а разнести их
+      // на два коммита значит потерять атомарность: между ними кампания
+      // окажется с продвинутыми часами и непополненной лавкой.
+      //
+      // Правильное разделение требует типизированной команды пополнения в Rules
+      // Engine; это записано в плане (`docs/agent-architecture-plan.md`, шаг 5).
       const committed = await eventStore.commit({
         campaign_id: campaignId,
         expected_state_version: loaded.state_version,
@@ -2093,7 +2102,7 @@ const server = createServer((req, res) => {
       if (!canUseHero(user, heroId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту', code: 'ACTOR_FORBIDDEN' })
       const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
       let committed = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
-      for (let attempt = 0; !committed && attempt < 3; attempt += 1) {
+      if (!committed) {
         const loaded = await eventStore.load(campaignId)
         const partyMembers = new Set((loaded.state.partyMemberIds?.length
           ? loaded.state.partyMemberIds
@@ -2103,29 +2112,21 @@ const server = createServer((req, res) => {
           ? [...connected]
           : (loaded.state.players ?? []).filter((player) => player.online).map((player) => String(player.id)))
           .filter((candidate) => partyMembers.has(String(candidate)))
-        const vote = body.abstain === true
-          ? resolvePartyAbstain(loaded.state, {
-            interactionId: partyVoteMatch[2],
-            heroId,
-          })
-          : resolvePartyVote(loaded.state, {
-            interactionId: partyVoteMatch[2],
-            heroId,
-            optionId: body.option_id,
-            eligibleHeroIds: eligible,
-          })
-        try {
-          committed = await eventStore.commit({
-            campaign_id: campaignId,
-            expected_state_version: loaded.state_version,
-            idempotency_key: idempotencyKey,
-            command_id: idempotencyKey,
-            events: vote.events,
-          })
-          break
-        } catch (error) {
-          if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
-        }
+        committed = await authoritativeExecutor.commitDerived({
+          campaignId,
+          idempotencyKey,
+          // Пересобирается против свежего состояния: кворум и разрешение зависят
+          // от того, кто ещё в комнате на момент записи.
+          deriveEvents: (state) => (body.abstain === true
+            ? resolvePartyAbstain(state, { interactionId: partyVoteMatch[2], heroId })
+            : resolvePartyVote(state, {
+              interactionId: partyVoteMatch[2],
+              heroId,
+              optionId: body.option_id,
+              eligibleHeroIds: eligible,
+            })).events,
+          producerCapability: PARTY_DECISION_CAPABILITY,
+        })
       }
       const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events)
       const latestRoom = projected ?? getRoom(campaignId)
@@ -2157,25 +2158,23 @@ const server = createServer((req, res) => {
       }
       const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
       let committed = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
-      for (let attempt = 0; !committed && attempt < 3; attempt += 1) {
+      if (!committed) {
         const loaded = await eventStore.load(campaignId)
+        // Бросок делает серверный DiceService, а не клиент. Он решает только
+        // исход голосования и не трогает ничего из владений Rules Engine —
+        // производный вход это проверяет по содержимому payload.
         const rolled = diceService.roll('1d20', 'party_decision', heroId, 'party')
         const resolution = resolvePartyRoll(loaded.state, {
           interactionId: partyRollMatch[2],
           heroId,
           roll: rolled,
         })
-        try {
-          committed = await eventStore.commit({
-            campaign_id: campaignId,
-            expected_state_version: loaded.state_version,
-            idempotency_key: idempotencyKey,
-            command_id: idempotencyKey,
-            events: resolution.events,
-          })
-        } catch (error) {
-          if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
-        }
+        committed = await authoritativeExecutor.commitDerived({
+          campaignId,
+          idempotencyKey,
+          events: resolution.events,
+          producerCapability: PARTY_DECISION_CAPABILITY,
+        })
       }
       const resolutionEvent = committed.events.find((event) => event.event_type === 'PartyDecisionResolved')
       const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events)
@@ -2447,12 +2446,14 @@ const server = createServer((req, res) => {
           actorId: user.id,
         })
         rewindEvent.event_id = `campaign-control:${createHash('sha256').update(`${campaignId}\0${idempotencyKey}`).digest('hex').slice(0, 24)}`
-        committed = await eventStore.commit({
+        // Откат — владельческая операция над журналом, а не производное
+        // событие: он по определению переписывает состояние целиком. Поэтому
+        // отдельный вход и отдельная capability.
+        committed = await authoritativeExecutor.commitControl({
           campaignId,
-          expectedStateVersion: loaded.state_version,
           idempotencyKey,
-          commandId: `campaign-control:${idempotencyKey}`,
-          events: [rewindEvent],
+          event: rewindEvent,
+          capability: CAMPAIGN_CONTROL_CAPABILITY,
           forceSnapshot: true,
         })
       }
@@ -2528,13 +2529,12 @@ const server = createServer((req, res) => {
           },
         })
       }
-      const committed = duplicate ?? await eventStore.commit({
-          campaignId,
-          expectedStateVersion: loaded.state_version,
-          idempotencyKey,
-          commandId: `campaign-lifecycle:${idempotencyKey}`,
-          events: lifecycleEvents,
-        })
+      const committed = duplicate ?? await authoritativeExecutor.commitDerived({
+        campaignId,
+        idempotencyKey,
+        events: lifecycleEvents,
+        producerCapability: CAMPAIGN_LIFECYCLE_CAPABILITY,
+      })
       const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events)
       const actorId = campaignHeroIds(user, campaignId).find((id) => committed.state.players?.some((player) => String(player.id) === String(id))) ?? ''
       return json(res, 200, {
@@ -3145,12 +3145,11 @@ const server = createServer((req, res) => {
         playerName: String(player.character || player.name || 'Игрок').slice(0, 80),
         rolledAt: Date.now(),
       }
-      const loaded = await eventStore.load(roomDiceMatch[1])
-      const committed = await eventStore.commit({
-        campaign_id: roomDiceMatch[1],
-        expected_state_version: loaded.state_version,
-        idempotency_key: `public-die:${roll.id}`,
-        command_id: `public-die-${roll.id}`,
+      // Единственный путь, у которого повтора не было вовсе: конфликт версии
+      // просто терял внеигровой бросок. Теперь политика общая.
+      const committed = await authoritativeExecutor.commitDerived({
+        campaignId: roomDiceMatch[1],
+        idempotencyKey: `public-die:${roll.id}`,
         events: [{
           event_type: 'PublicDieRolled',
           actor_id: playerId,
@@ -3160,6 +3159,7 @@ const server = createServer((req, res) => {
           ruling_id: null,
           visibility: 'public',
         }],
+        producerCapability: PUBLIC_DICE_CAPABILITY,
       })
       const projected = persistAuthoritativeProjection(roomDiceMatch[1], committed.state, committed.events, null, { forceProjectorRefresh: true })
       if (!projected) return json(res, 409, { error: 'Не удалось обновить публичную проекцию броска' })
