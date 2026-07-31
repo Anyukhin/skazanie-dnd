@@ -26,7 +26,7 @@ import { AgentLabView } from './AgentLabView'
 import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
-import { drawDifficultTerrainEffects, type BoardAreaEffect, type BoardEffectRenderer, type BoardOverlayCell } from './board-render'
+import { drawLingeringSpellEffects, type BoardAreaEffect, type BoardEffectRenderer, type BoardOverlayCell } from './board-render'
 import { areaCells } from './area-geometry'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
@@ -141,7 +141,7 @@ function sceneObjectLabel(prop: TacticalProp) {
   return prop.interaction?.pointOfInterest ? 'Точка интереса' : 'Объект сцены'
 }
 
-function hasClearBoardTrajectory(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
+function boardTrajectoryBlockReason(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
   const cells = new Map(state.scene.cells.map((cell) => [`${cell.x},${cell.y}`, cell]))
   let x = from.x
   let y = from.y
@@ -154,11 +154,16 @@ function hasClearBoardTrajectory(state: GameState, from: { x: number; y: number 
     const twice = 2 * error
     if (twice >= dy) { error += dy; x += sx }
     if (twice <= dx) { error += dx; y += sy }
-    if (x === to.x && y === to.y) return true
+    if (x === to.x && y === to.y) return null
     const cell = cells.get(`${x},${y}`)
-    if (!cell || cell.type === 'wall') return false
+    if (!cell) return `Траектория выходит за край карты у клетки ${x + 1}:${y + 1}`
+    if (cell.type === 'wall') return `Линию огня перекрывает стена в клетке ${x + 1}:${y + 1}`
   }
-  return true
+  return null
+}
+
+function hasClearBoardTrajectory(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
+  return boardTrajectoryBlockReason(state, from, to) == null
 }
 
 function reachableBoardCells(state: GameState, actor: BoardCombatant, remainingFeet: number) {
@@ -447,6 +452,39 @@ function enemyHealthPresentation(enemy: Enemy) {
        полоски), поэтому оно остаётся в подписи под токеном и в aria-label. */
     barLabel: exact ? `${enemy.hp}/${enemy.maxHp}` : '',
   }
+}
+
+type PresentedCondition = ReturnType<typeof conditionPresentation>
+
+const TOKEN_CONDITION_GLYPHS: Record<string, string> = {
+  paralyzed: '✦',
+  restrained: '⌁',
+  prone: '▰',
+  frightened: '!',
+}
+
+const TOKEN_CONDITION_PRIORITY = ['paralyzed', 'restrained', 'prone', 'frightened']
+
+function TokenConditionIcons({ conditions }: { conditions: PresentedCondition[] }) {
+  const ordered = [...conditions].sort((left, right) => {
+    const leftPriority = TOKEN_CONDITION_PRIORITY.indexOf(left.id)
+    const rightPriority = TOKEN_CONDITION_PRIORITY.indexOf(right.id)
+    return (leftPriority < 0 ? 99 : leftPriority) - (rightPriority < 0 ? 99 : rightPriority)
+  })
+  if (!ordered.length) return null
+  return <span className="token-conditions" aria-label="Состояния фишки">
+    {ordered.slice(0, 4).map((condition) => (
+      <i
+        key={condition.id}
+        className={condition.status}
+        data-condition={condition.id}
+        aria-label={condition.label}
+        title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}
+      >
+        {TOKEN_CONDITION_GLYPHS[condition.id] ?? condition.label.slice(0, 1)}
+      </i>
+    ))}
+  </span>
 }
 
 /* Отметка над клеткой живёт ровно столько, сколько нужно, чтобы её прочитать.
@@ -928,16 +966,25 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
   const movementPaths = active ? buildMovementPaths(state, active, CELL_FEET, boardMap) : new Map<string, MovementPath>()
   const boardEffectRenderers = useMemo<BoardEffectRenderer[]>(() => {
     const effects: BoardAreaEffect[] = (state.mechanics?.active_effects ?? [])
-      .filter((effect) => effect.difficult_terrain === true)
+      .filter((effect) => Boolean(effect.center || effect.cells?.length))
       .map((effect) => ({
+        id: effect.id,
         ...(effect.cells?.length ? { cells: effect.cells } : {}),
         ...(effect.center ? { center: effect.center } : {}),
         radiusFeet: effect.radius_feet,
+        areaShape: (['sphere', 'cylinder', 'cone', 'cube', 'line'].includes(String(effect.area_shape))
+          ? effect.area_shape
+          : 'sphere') as BoardAreaEffect['areaShape'],
+        spellId: effect.spell_id,
+        sourceActor: effect.source_actor,
+        ownerLabel: effect.source_actor ? actorNameById(effect.source_actor) : undefined,
+        concentration: effect.concentration === true,
+        difficultTerrain: effect.difficult_terrain === true,
       }))
     return effects.length
-      ? [(context, scene) => drawDifficultTerrainEffects(context, scene, effects)]
+      ? [(context, scene) => drawLingeringSpellEffects(context, scene, effects)]
       : []
-  }, [state.mechanics?.active_effects])
+  }, [state.mechanics?.active_effects, state.players, state.enemies, state.actors])
   /* Двери, до которых активный участник дотягивается рукой. Открыть или закрыть
      дверь — свободное взаимодействие, выломать — действие; какое именно из них
      доступно, решает состояние полотна. */
@@ -1226,7 +1273,11 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
       ? chebyshevFeet(active, enemy)
       : Number.POSITIVE_INFINITY
     const spellDistanceFeet = enemy && active ? chebyshevFeet(active, enemy) : Number.POSITIVE_INFINITY
-    const clearTrajectory = Boolean(enemy && active && hasClearBoardTrajectory(state, active, enemy))
+    const trajectoryBlockReason = enemy && active ? boardTrajectoryBlockReason(state, active, enemy) : null
+    const clearTrajectory = Boolean(enemy && active && trajectoryBlockReason == null)
+    const enemyForecast = enemy
+      ? selectedAttackForecast(state.combatForecast?.targets, enemy.id, selectedItem?.id ?? null)
+      : null
     const enemyInWeaponRange = attackDistanceFeet >= CELL_FEET && attackDistanceFeet <= attackRangeFeet && (attackRangeFeet <= CELL_FEET || clearTrajectory)
     const enemyInSpellRange = spellDistanceFeet <= selectedSpellRange && (selectedSpellRange <= CELL_FEET || clearTrajectory)
     const canWeaponTargetEnemy = Boolean(combatActive && selected && combatMode === 'weapon' && weaponAttackReady && enemyInWeaponRange && selectedItem?.combat?.kind !== 'thrown-area' && !needsWeaponChange)
@@ -1296,9 +1347,14 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     const enemyHealth = enemy ? enemyHealthPresentation(enemy) : null
     const enemyCommandAllowed = Boolean(canWeaponTargetEnemy || canSpellTargetEnemy || canActionTargetEnemy || canThrowHere || canPointSpellHere)
     const enemyTargetReason = enemyCommandAllowed
-      ? attackDistanceFeet > normalRangeFeet && combatMode === 'weapon' ? 'Допустимая цель · дальний диапазон с помехой' : 'Допустимая цель'
-      : enemyTargetCheck?.reason ?? 'Выбранная команда не подходит для этой цели'
+      ? enemyForecast?.cover_bonus
+        ? `Допустимая цель · ${enemyForecast.cover_label ?? 'укрытие'} +${enemyForecast.cover_bonus} к КД`
+        : attackDistanceFeet > normalRangeFeet && combatMode === 'weapon' ? 'Допустимая цель · дальний диапазон с помехой' : 'Допустимая цель'
+      : trajectoryBlockReason ?? enemyTargetCheck?.reason ?? 'Выбранная команда не подходит для этой цели'
     const enemyConditions = enemy ? (state.mechanics?.conditions?.[enemy.id] ?? []).map(conditionPresentation) : []
+    const enemyHighGround = enemyForecast?.advantage_sources.includes('позиция выше цели')
+      ? 'higher'
+      : enemyForecast?.disadvantage_sources.includes('позиция ниже цели') ? 'lower' : null
 
     // Область команды и недоступный маршрут накрывают почти всю карту, поэтому
     // они рисуются на холсте: в разметке это был бы узел на каждую клетку.
@@ -1381,15 +1437,26 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             наклоне точно совпадает с сеткой. Фигурка стоит стоймя и из-за этого
             перспективно смещается — позиционную правду несёт именно этот след. */}
         {occupied && cell.revealed && <span className="cell-footprint" aria-hidden="true" />}
-        {/* Полоска врага лежит рядом с токеном, а не внутри него: у токена
-            `clip-path` под силуэт щита, и всё, что выходит за него, срезается —
-            проверено на макете, внутри кнопки полоска не видна вовсе.
-
-            Показываем её только там, где движок отдал точные числа: за столом
-            запас сил противника не объявляют, его узнают действием — осмотром,
-            знанием о твари, репликой Рассказчика. Пока знание не получено,
-            ступень состояния тоже молчит: по ней читалось то же самое. */}
+        {/* Точное здоровье остаётся полоской с числами только после раскрытия.
+            До раскрытия используется предельно скупое кольцо качественной
+            ступени: без цифр и текста, чтобы не вернуть перегрузку фишек,
+            из-за которой здоровье убрали в PR #7. */}
+        {enemy && cell.revealed && enemyHealth && !enemyHealth.exact && enemyHealth.status !== 'unharmed' && (
+          <span className="enemy-health-ring" data-status={enemyHealth.status} aria-hidden="true" />
+        )}
         {enemy && cell.revealed && enemyHealth?.exact && <TokenHealthBar fill={enemyHealth.fill} label={enemyHealth.barLabel} className={`enemy-health ${enemyHealth.status}`} />}
+        {enemy && cell.revealed && (enemyForecast?.cover_bonus || enemyHighGround || trajectoryBlockReason) && (
+          <span className="token-tactical-badges" aria-label="Тактические модификаторы цели">
+            {enemyForecast && enemyForecast.cover_bonus > 0 && (
+              <i className="cover" title={`${enemyForecast.cover_label ?? 'Укрытие'}: +${enemyForecast.cover_bonus} к КД. Союзники и реквизит на линии дают лучшее, а не суммарное укрытие.`}>
+                {enemyForecast.cover_bonus >= 5 ? '¾' : '½'} +{enemyForecast.cover_bonus}
+              </i>
+            )}
+            {enemyHighGround === 'higher' && <i className="advantage" title="Стрелок выше цели минимум на 5 футов: преимущество">↑</i>}
+            {enemyHighGround === 'lower' && <i className="disadvantage" title="Стрелок ниже цели минимум на 5 футов: помеха">↓</i>}
+            {trajectoryBlockReason && <i className="blocked" title={trajectoryBlockReason}>×</i>}
+          </span>
+        )}
         {enemy && cell.revealed && (
           <button
             className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${enemy.id === turnActorId ? 'active-turn' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
@@ -1409,7 +1476,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             <span className="enemy-emblem">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
             <span className="enemy-nameplate">{enemy.name}</span>
             {enemyHealth?.exact && <small className="enemy-health-value">{enemyHealth.label}</small>}
-            {enemyConditions.length > 0 && <span className="token-conditions">{enemyConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
+            <TokenConditionIcons conditions={enemyConditions} />
           </button>
         )}
         {player && cell.revealed && (() => {
@@ -1449,7 +1516,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             aria-disabled={!canHeal && !canAid && !canThrowHere}
             title={playerTargetReason}
           >
-            {playerConditions.length > 0 && <span className="token-conditions">{playerConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
+            <TokenConditionIcons conditions={playerConditions} />
             {openTokenLabelId === player.id && <span className="token-label">{player.character}<small>{player.hp} ОЗ · {combatActive ? `${remainingFeet} фт` : 'свободный ход'}</small></span>}
           </button>
         })()}
@@ -1487,7 +1554,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
             title={summonTargetReason}
           >
             <Sparkles size={15} />
-            {summonConditions.length > 0 && <span className="token-conditions">{summonConditions.slice(0, 3).map((condition) => <i key={condition.id} className={condition.status} title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}>{condition.label.slice(0, 1)}</i>)}</span>}
+            <TokenConditionIcons conditions={summonConditions} />
             {openTokenLabelId === summon.id && <span className="token-label">{summon.name}<small>{summon.hp} ОЗ · {remainingFeet} фт</small></span>}
           </button>
         })()}
@@ -1638,9 +1705,21 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
       {/* Режим стоит над полем по центру: он описывает то, что происходит на
           карте, и читается раньше, чем взгляд уходит к панели действий. */}
       {!combatActive && <div className="map-mode-plate" role="status">Исследование</div>}
-      <div className="map-legend">
-        <span><i className="legend-dot party" />Отряд</span><span><i className="legend-dot summon" />Призыв</span><span><i className="legend-dot danger" />Враг · параметры скрыты</span><span><i className="legend-dot interest" />Интерес</span>
-      </div>
+      <details className="map-legend">
+        <summary><HelpCircle size={13} />Легенда доски</summary>
+        <div>
+          <span><i className="legend-dot party" />Отряд</span>
+          <span><i className="legend-dot summon" />Призыв</span>
+          <span><i className="legend-dot danger" />Враг · параметры скрыты</span>
+          <span><i className="legend-dot interest" />Интерес</span>
+          <span><i className="legend-swatch difficult" />Штриховка · трудная местность</span>
+          <span><i className="legend-swatch hazard" />Пунктир · опасность</span>
+          <span><i className="legend-swatch spell" />Контур · длящееся заклинание</span>
+          <span><i className="legend-mark concentration">К</i>Концентрация владельца</span>
+          <span><i className="legend-mark elevation">+5</i>Высота в футах</span>
+          <span><i className="legend-mark cover">½</i>Укрытие от линии огня</span>
+        </div>
+      </details>
       {/* Остаток хода стоит у нижней кромки стола, а не над панелью действий:
           «хватит ли на ещё один шаг» спрашивают, глядя на карту, и ответ теперь
           лежит на той же линии взгляда. Плашка не перехватывает указатель —
