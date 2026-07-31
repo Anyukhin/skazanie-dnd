@@ -2460,8 +2460,7 @@ const server = createServer((req, res) => {
         : room.state.players.map((hero) => String(hero.id))
       const assigned = new Set(listCampaignMemberships(campaignId).flatMap((item) => item.heroIds ?? []).map(String))
       const requested = Array.isArray(body.hero_ids) ? [...new Set(body.hero_ids.map(String))] : []
-      if (requested.length > 1) return json(res, 400, { error: 'Одна ссылка закрепляет ровно одно место героя' })
-      const heroIds = requested.length ? requested : partyIds.filter((heroId) => !assigned.has(heroId)).slice(0, 1)
+      const heroIds = requested.length ? requested : partyIds.filter((heroId) => !assigned.has(heroId))
       if (!heroIds.length) return json(res, 409, { error: 'В кампании не осталось свободных героев' })
       if (heroIds.some((heroId) => !partyIds.includes(heroId) || assigned.has(heroId))) {
         return json(res, 409, { error: 'Приглашение содержит недоступного или уже назначенного героя' })
@@ -2471,6 +2470,7 @@ const server = createServer((req, res) => {
         createdBy: user.id,
         heroIds,
         expiresInMs: body.expires_in_ms,
+        multiUse: true,
       })
       return json(res, 201, {
         campaign_id: campaignId,
@@ -2500,7 +2500,10 @@ const server = createServer((req, res) => {
       }
       const updated = userForToken(cookies(req).skazanie_session) ?? user
       return json(res, 200, { code: campaignId, hero_ids: redeemed.membership.heroIds, user: updated, duplicate: redeemed.duplicate })
-    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось присоединиться к кампании' }) }
+    } catch (error) {
+      const status = error?.code === 'CAMPAIGN_FULL' ? 409 : 400
+      return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось присоединиться к кампании' })
+    }
   }
 
   const campaignLifecycleMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/lifecycle$/)
