@@ -108,7 +108,7 @@ test('единый catalog содержит шесть новых закрыты
     'vicious-longsword': [401_500, 3, 'main_hand', false],
     'flame-tongue-longsword': [401_500, 3, 'main_hand', true],
   }
-  assert.equal(Object.keys(ITEM_CATALOG).length, 106)
+  assert.equal(Object.keys(ITEM_CATALOG).length, 107)
   for (const [key, [price, weight, slot, attunement]] of Object.entries(expected)) {
     const entry = ITEM_CATALOG[id(key)]
     assert.ok(entry, key)

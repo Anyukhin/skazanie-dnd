@@ -49,14 +49,14 @@ function dice(values) {
   })
 }
 
-test('manifest содержит ровно согласованные 106 записей и полную provenance', () => {
+test('manifest содержит ровно согласованные 107 записей и полную provenance', () => {
   const entries = Object.values(ITEM_CATALOG)
-  assert.equal(entries.length, 106)
-  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 106)
+  assert.equal(entries.length, 107)
+  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 107)
   assert.deepEqual(
     Object.fromEntries(['weapon', 'armor', 'ammunition', 'artisan-tool', 'other-tool', 'practical-gear', 'magic-item']
       .map((section) => [section, entries.filter((entry) => entry.manifest_section === section).length])),
-    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 9 },
+    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 10 },
   )
   assert.deepEqual(ITEM_MECHANICS_STATUSES, ['verified', 'partial', 'ruling-only'])
   assert.deepEqual(ITEM_AVAILABILITY_CHANNELS, ['shop', 'loot', 'crafting'])
@@ -122,6 +122,17 @@ test('manifest содержит ровно согласованные 106 зап
   assert.equal(ring.lifecycle.equip_slot, 'ring-protection')
   assert.deepEqual(ring.source_pages, [101, 205, 237])
   assert.deepEqual(ring.availability, { shop: false, loot: false, crafting: false })
+  const fireResistanceRing = ITEM_CATALOG['srd_5_2_1:ring-of-fire-resistance']
+  assert.equal(fireResistanceRing.price_cp, 400_000)
+  assert.equal(fireResistanceRing.weight, 0)
+  assert.equal(fireResistanceRing.category, 'ring')
+  assert.equal(fireResistanceRing.rarity, 'редкий')
+  assert.equal(fireResistanceRing.magic_item.rarity, 'rare')
+  assert.equal(fireResistanceRing.magic_item.variant, 'fire')
+  assert.equal(fireResistanceRing.attunement.required, false)
+  assert.equal(fireResistanceRing.lifecycle.equip_slot, 'ring-fire-resistance')
+  assert.deepEqual(fireResistanceRing.source_pages, [101, 205, 237])
+  assert.deepEqual(fireResistanceRing.availability, { shop: false, loot: false, crafting: false })
   const wand = ITEM_CATALOG['srd_5_2_1:wand-of-magic-missiles']
   assert.equal(wand.price_cp, 40_000)
   assert.equal(wand.weight, 0)
