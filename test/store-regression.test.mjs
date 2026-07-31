@@ -81,7 +81,7 @@ test('два параллельных createSession не теряют сесси
   assert.equal(auth.sessions.length, 2)
 })
 
-test('campaign invites are scoped, single-use and idempotent for the same account', async () => {
+test('legacy campaign invites remain scoped, single-use and idempotent for the same account', async () => {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-membership-'))
   process.env.DND_STORAGE_DIR = root
   const store = await import(`../server/store.mjs?membership=${Date.now()}`)
@@ -101,4 +101,39 @@ test('campaign invites are scoped, single-use and idempotent for the same accoun
   )
   assert.deepEqual(store.campaignMembershipFor(owner.id, 'CAMP-A').heroIds, ['hero'])
   assert.deepEqual(store.campaignMembershipFor(intruder.id, 'CAMP-B').heroIds, ['hero'])
+})
+
+test('one table invite atomically assigns one free hero to each account', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-table-invite-'))
+  process.env.DND_STORAGE_DIR = root
+  const store = await import(`../server/store.mjs?table-invite=${Date.now()}`)
+  const owner = await store.registerUser({ name: 'Owner', email: 'owner@table-invite.test', password: 'secure-owner-password' })
+  const firstGuest = await store.registerUser({ name: 'First', email: 'first@table-invite.test', password: 'secure-first-password' })
+  const secondGuest = await store.registerUser({ name: 'Second', email: 'second@table-invite.test', password: 'secure-second-password' })
+  const extraGuest = await store.registerUser({ name: 'Extra', email: 'extra@table-invite.test', password: 'secure-extra-password' })
+
+  store.upsertCampaignMembership({ campaignId: 'TABLE-A', userId: owner.id, role: 'owner', heroIds: ['hero-1'] })
+  const issued = store.createCampaignInvite({
+    campaignId: 'TABLE-A',
+    createdBy: owner.id,
+    heroIds: ['hero-2', 'hero-3'],
+    multiUse: true,
+  })
+
+  assert.deepEqual(
+    store.redeemCampaignInvite({ campaignId: 'TABLE-A', token: issued.token, userId: firstGuest.id }).membership.heroIds,
+    ['hero-2'],
+  )
+  assert.equal(
+    store.redeemCampaignInvite({ campaignId: 'TABLE-A', token: issued.token, userId: firstGuest.id }).duplicate,
+    true,
+  )
+  assert.deepEqual(
+    store.redeemCampaignInvite({ campaignId: 'TABLE-A', token: issued.token, userId: secondGuest.id }).membership.heroIds,
+    ['hero-3'],
+  )
+  assert.throws(
+    () => store.redeemCampaignInvite({ campaignId: 'TABLE-A', token: issued.token, userId: extraGuest.id }),
+    /не осталось свободных героев/u,
+  )
 })
