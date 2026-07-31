@@ -308,6 +308,10 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   turns.push(...combat.turns.map((entry, index) => ({ key: `combat-${index + 1}`, intent: 'combat-turn' })))
   const completed = await autonomy.completeEncounter({ campaignId: 'AUTONOMY-30', outcome: 'enemies_defeated', idempotencyKey: 'turn-completion' })
   turns.push({ key: 'turn-completion', intent: 'encounter-completion', version: completed.state_version })
+  const repeatedCompletion = await autonomy.completeEncounter({ campaignId: 'AUTONOMY-30', outcome: 'enemies_defeated', idempotencyKey: 'different-client-key' })
+  assert.equal(repeatedCompletion.duplicate, true)
+  assert.deepEqual(repeatedCompletion.reward, completed.reward)
+  assert.equal(repeatedCompletion.state_version, completed.state_version)
   await autonomy.registerNpcSchedule('AUTONOMY-30', { npcId: 'marta', entries: [{ at_minutes: 540, action: 'move', location: 'North Gate', summary: 'Marta begins her patrol.' }], idempotencyKey: 'turn-schedule' })
   turns.push({ key: 'turn-schedule', intent: 'npc-schedule' })
   const advanced = await autonomy.advanceTime('AUTONOMY-30', { amount: 60, unit: 'minute', idempotencyKey: 'turn-time' })
@@ -325,9 +329,15 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   const loaded = await eventStore.load('AUTONOMY-30')
   const eventTypes = (await eventStore.getEvents('AUTONOMY-30')).map((event) => event.event_type)
   assert.ok(turns.length >= 30)
-  for (const required of ['SceneAdvanced', 'AbilityCheckResolved', 'NpcPromiseResolved', 'EncounterCreated', 'CombatStarted', 'AttackResolved', 'EncounterEnded', 'EncounterOutcomeRecorded', 'ServerLootGenerated', 'ItemGranted', 'QuestClockAdvanced', 'WorldFactRecorded', 'TransitionUnlocked', 'NpcScheduleRegistered', 'CampaignPacingAdvanced', 'TravelResolved', 'DowntimeResolved']) {
+  for (const required of ['SceneAdvanced', 'AbilityCheckResolved', 'NpcPromiseResolved', 'EncounterCreated', 'CombatStarted', 'AttackResolved', 'EncounterEnded', 'EncounterOutcomeRecorded', 'ExperienceAwarded', 'EncounterCoinsRolled', 'ServerLootGenerated', 'EncounterRewardsDistributed', 'QuestClockAdvanced', 'WorldFactRecorded', 'TransitionUnlocked', 'NpcScheduleRegistered', 'CampaignPacingAdvanced', 'TravelResolved', 'DowntimeResolved']) {
     assert.ok(eventTypes.includes(required), `missing event ${required}`)
   }
+  for (const exactlyOnce of ['EncounterOutcomeRecorded', 'ExperienceAwarded', 'EncounterCoinsRolled', 'ServerLootGenerated', 'EncounterRewardsDistributed', 'TransitionUnlocked']) {
+    assert.equal(eventTypes.filter((type) => type === exactlyOnce).length, 1, `${exactlyOnce} must be committed exactly once`)
+  }
+  assert.equal(completed.reward.allocations.reduce((sum, allocation) => sum + allocation.coins_cp, 0), completed.reward.coins)
+  assert.equal(completed.reward.allocations.flatMap((allocation) => allocation.items).length + completed.reward.unassigned.items.length,
+    completed.reward.loot.reduce((sum, item) => sum + item.quantity, 0))
   assert.ok(eventTypes.filter((type) => type === 'AbilityCheckResolved').length >= 3)
   assert.equal(loaded.state.social.promises.find((promise) => promise.id === 'promise-ledger').status, 'fulfilled')
   assert.equal(loaded.state.social.npcs.find((npc) => npc.id === 'marta').location, 'North Gate')
@@ -348,8 +358,6 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   const restarted = await reopened.load('AUTONOMY-30')
   assert.deepEqual(restarted.state, loaded.state)
 
-  const duplicate = await autonomy.completeEncounter({ campaignId: 'AUTONOMY-30', outcome: 'enemies_defeated', idempotencyKey: 'turn-completion' })
-  assert.deepEqual(duplicate.state, loaded.state)
   assert.equal(turns.some((turn) => /admin/iu.test(turn.intent)), false)
   assert.ok(rulesEngine)
 })

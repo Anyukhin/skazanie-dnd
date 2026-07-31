@@ -305,6 +305,42 @@ test('player event projection sanitizes SceneAdvanced and MerchantCreated payloa
   assert.doesNotMatch(JSON.stringify(events), /никогда|канцлер|контрабанда/u)
 })
 
+test('reward projection keeps coin transcript but hides frozen stat blocks and per-enemy XP', () => {
+  const state = privateState()
+  const raw = [
+    {
+      event_type: 'EncounterOutcomeRecorded',
+      visibility: 'party',
+      payload: {
+        encounter_id: 'encounter-secret',
+        outcome: 'enemies_defeated',
+        plan: { enemies: [{ enemy_id: 'goblin-secret', stat_block_id: 'srd:secret-goblin', xp: 9_999 }] },
+        prepared_reward: { secret_seed: 'never-project' },
+      },
+    },
+    {
+      event_type: 'EncounterCoinsRolled',
+      visibility: 'party',
+      payload: {
+        encounter_id: 'encounter-secret',
+        total_cp: 12,
+        rolls: [{
+          roll_id: 'coin-roll', expression: '1d6', dice: [3], total: 3, amount_cp: 12,
+          enemy_id: 'goblin-secret', stat_block_id: 'srd:secret-goblin', xp: 100, xp_units: 4,
+        }],
+      },
+    },
+  ]
+  const projected = mechanicsForViewer(raw, user, 'hero', state)
+  assert.equal(projected[0].payload.plan, undefined)
+  assert.equal(projected[0].payload.prepared_reward, undefined)
+  assert.deepEqual(projected[1].payload.rolls, [{
+    roll_id: 'coin-roll', expression: '1d6', dice: [3], total: 3, amount_cp: 12,
+  }])
+  assert.doesNotMatch(JSON.stringify(projected), /secret-goblin|9_999|never-project/u)
+  assert.equal(mechanicsForViewer(raw, { role: 'admin' }, 'hero', state)[0].payload.plan.enemies[0].xp, 9_999)
+})
+
 test('admin projection retains trusted state and also receives item capabilities', () => {
   const state = privateState()
   state.players[0].inventory = [{

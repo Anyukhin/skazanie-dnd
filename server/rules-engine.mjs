@@ -82,6 +82,7 @@ import {
   validateNpcWorldCommand,
 } from './npc-positioning.mjs'
 import { assembleEncounter } from './encounter-assembler.mjs'
+import { applyEncounterRewardsDistribution } from './encounter-rewards.mjs'
 import {
   ECONOMY_CATALOG_VERSION,
   ECONOMY_POLICY_ID,
@@ -10859,6 +10860,11 @@ export function applyGameEvent(rawState, event) {
       }
       break
     }
+    case 'EncounterRewardsDistributed': {
+      const recipientIds = applyEncounterRewardsDistribution(state, event)
+      if (recipientIds.length) refreshPlayerDerivedState(state, recipientIds)
+      break
+    }
     case 'ExperienceAwarded': {
       const recipientIds = uniqueStrings(Array.isArray(payload.recipients) ? payload.recipients : targets)
       const playerIds = new Set(state.players.map(actorId))
@@ -11015,6 +11021,10 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'SceneAdvanced': return `Сцена перемещена из ${payload.location_before || 'прежней локации'} в ${payload.location_after || payload.scene?.location || 'новую локацию'}`
     case 'EncounterCreated': return `Создано столкновение: ${(payload.encounter?.enemies ?? []).map((enemy) => enemy.name).join(', ')}`
     case 'EncounterEnded': return `Столкновение завершено: ${payload.reason || payload.outcome || 'resolved'}`
+    case 'EncounterOutcomeRecorded': return `Исход встречи подтверждён сервером: ${payload.outcome || 'resolved'}`
+    case 'EncounterCoinsRolled': return `С противников собрано ${safeInteger(payload.total_cp, 0)} мм`
+    case 'ServerLootGenerated': return `Найдена добыча: ${(payload.loot ?? []).map((item) => `${item.name} ×${item.quantity ?? 1}`).join(', ') || 'нет предметов'}`
+    case 'EncounterRewardsDistributed': return `Награда распределена между ${(payload.allocations ?? []).map((allocation) => named(allocation.recipient_id)).join(', ') || 'никем; всё осталось нераспределённым'}`
     case 'CombatStarted': return `Бой начался; инициатива определена для ${(event.target_ids ?? []).length} участников`
     case 'ActorMoved': return `${named(event.actor_id) || 'Участник'} перемещается на ${safeInteger(payload.distance, 0)} фт.`
     case 'TurnEnded': return `${named(event.actor_id) || 'Участник'} завершает ход`
