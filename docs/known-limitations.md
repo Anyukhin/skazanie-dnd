@@ -1461,9 +1461,15 @@ replay, а не доводка этапа.
   трёх стилей Рассказчика, но не может добавить произвольного провайдера из UI.
   Настройка request-scoped, применяется к `/api/narrate` и сохраняется отдельным
   файлом кампании; она не меняет механику и не входит в event replay.
-- Narration/image generation имеют in-memory per-user limits, но они сбрасываются после restart, не работают между процессами и не учитывают token/cost budget.
+- Narration/image generation имеют in-memory per-user limits, но они сбрасываются после restart, не работают между процессами и не учитывают token/cost budget. Это относится и к lazy-генерации портретов NPC; сам generated cache переживает restart.
 - Auth rate limit in-memory и основан на socket IP; proxy может объединить нескольких пользователей.
 - Generated items требуют аутентификации.
+- Backend портретов NPC проверяет campaign ACL и ищет профиль только в
+  viewer projection. В model prompt попадают лишь публичные `name`, `role` и
+  `public_summary`; goals, beliefs и GM-only поля отбрасываются. Важными пока
+  считаются merchant, NPC с видимым разговором/open promise/ненулевым
+  relationship либо явным important-тегом. UI ещё не запрашивает endpoint,
+  поэтому backlog #69 остаётся открытым.
 - NarrationBrief, visibility projection, Verifier и trace redaction активны.
 - Explanation route проверяет доступ и применяет viewer-specific projection к командам, броскам и событиям; новые типы trace payload нужно явно добавлять в allowlist.
 - `x-forwarded-proto`/trusted proxy configuration требует отдельной production проверки.

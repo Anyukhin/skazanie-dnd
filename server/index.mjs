@@ -86,6 +86,11 @@ import {
 } from './party-decision.mjs'
 import { compareProjection } from './projection-integrity.mjs'
 import { characterCreationCatalog, createCharacterSlot } from './character-lifecycle.mjs'
+import {
+  NPC_PORTRAIT_GENERATION_LIMIT,
+  NpcPortraitService,
+  visibleNpcPortraitProfile,
+} from './npc-portraits.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -110,6 +115,12 @@ const dailyTokenLimit = Number(process.env.DND_AI_DAILY_TOKEN_LIMIT || 2_000_000
 const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
+const npcPortraitService = new NpcPortraitService({
+  storageDir,
+  imageModel,
+  apiKey,
+  baseUrl,
+})
 const campaignStreams = new Map()
 const campaignTyping = new Map()
 const campaignEconomyJobs = new Map()
@@ -1706,6 +1717,38 @@ function serveGenerated(req, res) {
   createReadStream(file).pipe(res)
 }
 
+function serveNpcPortrait(req, res, portrait) {
+  if (portrait.kind === 'static') {
+    res.writeHead(302, {
+      Location: portrait.url,
+      'Cache-Control': 'private, no-store',
+      Vary: 'Cookie',
+      'X-NPC-Portrait-Source': portrait.source,
+      'X-NPC-Portrait-Role': portrait.role,
+      'X-NPC-Portrait-Reason': portrait.reason,
+    })
+    return res.end()
+  }
+  const validators = {
+    ETag: portrait.etag,
+    'Cache-Control': 'private, max-age=3600',
+    Vary: 'Cookie',
+    'X-NPC-Portrait-Source': portrait.source,
+    'X-NPC-Portrait-Cache': portrait.cacheHit ? 'hit' : 'miss',
+  }
+  if (String(req.headers['if-none-match'] || '') === portrait.etag) {
+    res.writeHead(304, validators)
+    return res.end()
+  }
+  const stats = statSync(portrait.filePath)
+  res.writeHead(200, {
+    ...validators,
+    'Content-Type': portrait.contentType,
+    'Content-Length': stats.size,
+  })
+  return createReadStream(portrait.filePath).pipe(res)
+}
+
 const server = createServer((req, res) => {
   const requestPath = new URL(req.url || '/', 'http://skazanie.local').pathname
   const campaignPathMatch = requestPath.match(/^\/api\/(?:campaigns|rooms)\/([A-Za-z0-9-]+)/)
@@ -1784,6 +1827,41 @@ const server = createServer((req, res) => {
   }
 
   const parsedUrl = new URL(req.url || '/', 'http://skazanie.local')
+  const npcPortraitMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/npcs\/([^/]+)\/portrait$/)
+  if (npcPortraitMatch && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = npcPortraitMatch[1].toUpperCase()
+    let npcId = ''
+    try { npcId = decodeURIComponent(npcPortraitMatch[2]) }
+    catch { return json(res, 400, { error: 'Некорректный npc_id', code: 'INVALID_NPC_ID' }) }
+    if (!npcId || npcId.length > 120) return json(res, 400, { error: 'Некорректный npc_id', code: 'INVALID_NPC_ID' })
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    try {
+      const authoritative = await latestCampaignState(campaignId, room.state)
+      const actorId = campaignHeroIds(user, campaignId).map(String)
+        .find((id) => authoritative.players?.some((player) => String(player.id) === id)) ?? ''
+      const projected = viewerStateFor(authoritative, user, actorId)
+      const profile = visibleNpcPortraitProfile(projected, npcId)
+      if (!profile) return json(res, 404, { error: 'NPC не найден', code: 'NPC_NOT_VISIBLE' })
+      const portrait = await npcPortraitService.resolve({
+        campaignId,
+        profile,
+        projectedState: projected,
+        allowGeneration: () => !exceedsRate(`npc-portrait:${user.id}`, NPC_PORTRAIT_GENERATION_LIMIT),
+      })
+      if (portrait.kind === 'rate_limited') {
+        return json(res, 429, {
+          error: 'Слишком много запросов генерации портретов. Подождите немного и повторите попытку',
+          code: 'NPC_PORTRAIT_RATE_LIMITED',
+        })
+      }
+      return serveNpcPortrait(req, res, portrait)
+    } catch {
+      return json(res, 502, { error: 'Не удалось подготовить портрет NPC', code: 'NPC_PORTRAIT_FAILED' })
+    }
+  }
   const campaignTypingMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/presence\/typing$/)
   if (campaignTypingMatch && req.method === 'PUT') {
     const user = requireUser(req, res); if (!user) return
