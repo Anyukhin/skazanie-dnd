@@ -237,7 +237,7 @@ const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
 const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'OperateSceneObject', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
-const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
+const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem'])
 const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
@@ -275,6 +275,7 @@ function itemCommandFingerprint(command) {
     item_id: String(command?.item_id ?? ''),
     ...(type === 'EquipItem' ? { equipped: command?.equipped !== false } : {}),
     ...(type === 'AttuneItem' ? { attuned: command?.attuned !== false } : {}),
+    ...(type === 'ActivateItem' ? { activated: command?.activated === true } : {}),
     ...(type === 'UseItem' ? {
       target_id: String(command?.target_id ?? command?.actor_id ?? ''),
       charges_to_spend: Number(command?.charges_to_spend ?? 0),
@@ -287,7 +288,7 @@ function itemCommandFingerprint(command) {
   return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
 }
 
-const ITEM_PRIMARY_EVENT_TYPES = new Set(['ItemEquipped', 'ItemUnequipped', 'ItemTransferred', 'ItemAttunementChanged', 'ItemUsed'])
+const ITEM_PRIMARY_EVENT_TYPES = new Set(['ItemEquipped', 'ItemUnequipped', 'ItemTransferred', 'ItemAttunementChanged', 'ItemUsed', 'MagicItemActivationChanged'])
 
 async function assertItemIdempotency(campaignId, idempotencyKey, command) {
   const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
@@ -739,7 +740,7 @@ function sanitizePlayerItemCommand(user, state, input) {
     'item_id', 'itemId',
     'target_id', 'targetId',
     'recipient_id', 'recipientId',
-    'quantity', 'equipped', 'attuned',
+    'quantity', 'equipped', 'attuned', 'activated',
     'expected_state_version', 'expectedStateVersion',
     'charges_to_spend', 'chargesToSpend',
   ])
@@ -765,6 +766,12 @@ function sanitizePlayerItemCommand(user, state, input) {
   const withFingerprint = (command) => ({ ...command, request_fingerprint: itemCommandFingerprint(command) })
   if (type === 'EquipItem') return withFingerprint({ ...base, equipped: input?.equipped !== false })
   if (type === 'AttuneItem') return withFingerprint({ ...base, attuned: input?.attuned !== false })
+  if (type === 'ActivateItem') {
+    if (typeof input?.activated !== 'boolean') {
+      throw commandPolicyError('Нужно явно выбрать включение или выключение предмета', 'INVALID_ITEM_ACTIVATION')
+    }
+    return withFingerprint({ ...base, activated: input.activated, server_authoritative: true })
+  }
   if (type === 'UseItem') {
     const targetId = String(input?.target_id ?? input?.targetId ?? actor).trim().slice(0, 120)
     const requestedCharges = input?.charges_to_spend ?? input?.chargesToSpend
@@ -1425,6 +1432,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       'ItemDawnRechargeResolved',
       'ItemTransferred',
       'ItemAttunementChanged',
+      'MagicItemActivationChanged',
     ].some((type) => eventTypes.has(type)) || characterImported
     const characterBuildChanged = eventTypes.has('CharacterChoicesUpdated') || eventTypes.has('SpellSelectionsUpdated')
       || eventTypes.has('CharacterLeveledUp') || eventTypes.has('CharacterImported')

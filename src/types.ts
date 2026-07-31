@@ -325,6 +325,7 @@ export type InventoryItem = {
   quantity: number
   weight: number
   equipped: boolean
+  activated?: boolean
   requires_attunement?: boolean
   attuned_to?: string | null
   rarity: 'обычный' | 'необычный' | 'редкий' | 'очень редкий' | 'легендарный' | 'сюжетный'
@@ -353,6 +354,14 @@ export type InventoryItem = {
       requires_equipped?: boolean
       combat_only?: boolean
     } | null
+    activatable?: boolean
+    activation?: {
+      schema_version: 1
+      action_type: 'bonus_action' | null
+      requires_equipped: boolean
+      requires_attunement: boolean
+    } | null
+    activated?: boolean
     charges: { current: number; max: number } | null
     recharge: ItemRechargeProfile | null
     requires_attunement: boolean

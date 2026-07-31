@@ -135,6 +135,10 @@ function initialState() {
             id: 'ring-protection',
             quantity: 1,
           }),
+          materializeCatalogItem('srd_5_2_1:flame-tongue-longsword', {
+            id: 'flame-tongue',
+            quantity: 1,
+          }),
         ],
       },
       fallenHero('ally-a', 1, 0),
@@ -277,6 +281,64 @@ test('HTTP item commands enforce ACL, semantic idempotency, stale writes and a s
   })
   assert.equal(forbidden.status, 403, `${forbidden.text}\n${logs}`)
 
+  const forgedActivation = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST',
+    cookie: ownerCookie,
+    key: 'flame-forged',
+    body: {
+      idempotency_key: 'flame-forged',
+      command: {
+        command_type: 'ActivateItem', actor_id: 'medic', item_id: 'flame-tongue', activated: true,
+        passive_effects: [{ damage: '999d999' }],
+      },
+    },
+  })
+  assert.equal(forgedActivation.status, 400, `${forgedActivation.text}\n${logs}`)
+  assert.equal(forgedActivation.body.code, 'ITEM_COMMAND_UNKNOWN_FIELD')
+
+  const flameEquip = lifecycleCommand('flame-equip', 'EquipItem', { item_id: 'flame-tongue', equipped: true })
+  const flameEquipped = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST', cookie: ownerCookie, ...flameEquip,
+  })
+  assert.equal(flameEquipped.status, 200, `${flameEquipped.text}\n${logs}`)
+  const flameAttune = lifecycleCommand('flame-attune', 'AttuneItem', { item_id: 'flame-tongue', attuned: true })
+  const flameAttuned = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST', cookie: ownerCookie, ...flameAttune,
+  })
+  assert.equal(flameAttuned.status, 200, `${flameAttuned.text}\n${logs}`)
+
+  const flameActivation = lifecycleCommand('flame-activate', 'ActivateItem', { item_id: 'flame-tongue', activated: true })
+  const foreignActivation = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST', cookie: foreignCookie, key: 'flame-foreign', body: { ...flameActivation.body, idempotency_key: 'flame-foreign' },
+  })
+  assert.equal(foreignActivation.status, 403, `${foreignActivation.text}\n${logs}`)
+  const flameActivated = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST', cookie: ownerCookie, ...flameActivation,
+  })
+  assert.equal(flameActivated.status, 200, `${flameActivated.text}\n${logs}`)
+  assert.deepEqual(flameActivated.body.mechanics.map((event) => event.event_type), ['MagicItemActivationChanged'])
+  assert.equal(flameActivated.body.mechanics[0].event_schema_version, 1)
+  assert.equal(flameActivated.body.mechanics[0].payload.activated, true, JSON.stringify(flameActivated.body.mechanics[0]))
+  assert.equal(flameActivated.body.mechanics[0].payload.request_fingerprint.length, 64)
+  const projectedFlame = flameActivated.body.authoritative_state.players[0].inventory.find((item) => item.id === 'flame-tongue')
+  assert.equal(projectedFlame.activated, true, JSON.stringify(projectedFlame))
+  assert.equal(projectedFlame.capabilities.activated, true)
+  assert.equal(projectedFlame.capabilities.activation.action_type, 'bonus_action')
+
+  const flameReplay = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST', cookie: ownerCookie, ...flameActivation,
+  })
+  assert.equal(flameReplay.status, 200, `${flameReplay.text}\n${logs}`)
+  assert.equal(flameReplay.body.idempotent_replay, true)
+  const flameCollision = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST',
+    cookie: ownerCookie,
+    key: 'flame-activate',
+    body: { idempotency_key: 'flame-activate', command: { command_type: 'ActivateItem', actor_id: 'medic', item_id: 'flame-tongue', activated: false } },
+  })
+  assert.equal(flameCollision.status, 409, `${flameCollision.text}\n${logs}`)
+  assert.equal(flameCollision.body.code, 'IDEMPOTENCY_CONFLICT')
+
   const equipCommand = lifecycleCommand('ring-equip', 'EquipItem', { equipped: true })
   const equipped = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
     method: 'POST',
@@ -412,12 +474,17 @@ test('HTTP item commands enforce ACL, semantic idempotency, stale writes and a s
   )
   const durableMedic = durableState.players.find((player) => player.id === 'medic')
   const durableRing = durableMedic.inventory.find((item) => item.id === 'ring-protection')
+  const durableFlame = durableMedic.inventory.find((item) => item.id === 'flame-tongue')
   assert.equal(durableRing.equipped, true)
   assert.equal(durableRing.attuned_to, 'medic')
   assert.equal(durableRing.passive_effects[0].armor_class_bonus, 1)
   assert.equal(durableRing.capabilities.requires_attunement, true)
   assert.equal(durableMedic.characterSheet.armor_class.item_effect_bonus, 1)
   assert.equal(durableMedic.armor, 12)
+  assert.equal(durableFlame.equipped, true)
+  assert.equal(durableFlame.attuned_to, 'medic')
+  assert.equal(durableFlame.activated, true)
+  assert.equal(durableFlame.capabilities.activated, true)
 
   const durableAttuneReplay = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
     method: 'POST',

@@ -49,14 +49,14 @@ function dice(values) {
   })
 }
 
-test('manifest содержит ровно согласованные 100 записей и полную provenance', () => {
+test('manifest содержит ровно согласованные 106 записей и полную provenance', () => {
   const entries = Object.values(ITEM_CATALOG)
-  assert.equal(entries.length, 100)
-  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 100)
+  assert.equal(entries.length, 106)
+  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 106)
   assert.deepEqual(
     Object.fromEntries(['weapon', 'armor', 'ammunition', 'artisan-tool', 'other-tool', 'practical-gear', 'magic-item']
       .map((section) => [section, entries.filter((entry) => entry.manifest_section === section).length])),
-    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 3 },
+    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 9 },
   )
   assert.deepEqual(ITEM_MECHANICS_STATUSES, ['verified', 'partial', 'ruling-only'])
   assert.deepEqual(ITEM_AVAILABILITY_CHANNELS, ['shop', 'loot', 'crafting'])

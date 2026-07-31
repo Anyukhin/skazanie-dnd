@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import { itemLifecycleProfile } from './item-catalog.mjs'
+import { catalogItem, itemLifecycleProfile } from './item-catalog.mjs'
 import { inventoryStackKey, MAX_STOCK_QUANTITY, normalizeInventoryItem } from './merchant-economy.mjs'
 import {
   MAX_NPC_INVENTORY_ITEMS,
@@ -10,10 +10,11 @@ import {
   normalizeNpcWorldState,
 } from './npc-positioning.mjs'
 
-export const ITEM_LIFECYCLE_COMMAND_TYPES = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
+export const ITEM_LIFECYCLE_COMMAND_TYPES = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem'])
 export const MAX_ATTUNED_ITEMS = 3
 export const MAX_ACTIVE_ITEM_EFFECT_BONUS = 100
 export const ITEM_DESTROYED_EVENT_SCHEMA_VERSION = 1
+export const MAGIC_ITEM_ACTIVATION_EVENT_SCHEMA_VERSION = 1
 
 export class ItemLifecycleValidationError extends Error {
   constructor(message, code = 'ITEM_LIFECYCLE_INVALID') {
@@ -84,6 +85,7 @@ function assertPlainCommand(command) {
   const common = [
     'command_type', 'command_id', 'campaign_id', 'actor_id', 'target_id', 'target_ids',
     'item_id', 'quantity', 'equipped', 'attuned', 'recipient_id', 'charges_to_spend',
+    'activated',
     'merchant_id', 'stock_id', 'action_id',
     'expected_state_version', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility', 'request_fingerprint',
     'server_authoritative',
@@ -152,6 +154,124 @@ export function activeItemEffectTotals(actor) {
     saving_throw_bonus: savingThrowBonus,
     active_groups: [...groups.keys()].sort(),
   }
+}
+
+function normalizedWeaponDamageRider(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const expression = clean(input.expression, 40).toLowerCase().replace(/\s+/gu, '')
+  if (!/^([1-9]|1\d|20)d(4|6|8|10|12)$/u.test(expression)) return null
+  const damageType = clean(input.damage_type, 40).toLowerCase()
+  if (!damageType) return null
+  return {
+    expression,
+    damage_type: damageType,
+    critical_doubles: input.critical_doubles === true,
+  }
+}
+
+function normalizedPassiveEffectContract(effect) {
+  if (!effect || typeof effect !== 'object' || Array.isArray(effect) || integer(effect.schema_version, 0) !== 1) return null
+  const effectId = clean(effect.effect_id)
+  const group = clean(effect.group)
+  if (!effectId || !group) return null
+  const rider = normalizedWeaponDamageRider(effect.weapon_damage_rider)
+  return {
+    schema_version: 1,
+    effect_id: effectId,
+    group,
+    requires_equipped: effect.requires_equipped === true,
+    requires_attunement: effect.requires_attunement === true,
+    requires_activated: effect.requires_activated === true,
+    armor_class_bonus: Math.min(MAX_ACTIVE_ITEM_EFFECT_BONUS, Math.max(0, integer(effect.armor_class_bonus, 0))),
+    saving_throw_bonus: Math.min(MAX_ACTIVE_ITEM_EFFECT_BONUS, Math.max(0, integer(effect.saving_throw_bonus, 0))),
+    damage_resistances: uniqueCleanStrings(effect.damage_resistances),
+    spell_immunities: uniqueCleanStrings(effect.spell_immunities),
+    prevents_critical_hits: effect.prevents_critical_hits === true,
+    initiative_advantage: effect.initiative_advantage === true,
+    weapon_damage_rider: rider,
+  }
+}
+
+function trustedItemPassiveEffects(item) {
+  const catalogId = clean(item?.catalog_id ?? item?.catalogId)
+  const entry = catalogId ? catalogItem(catalogId) : null
+  if (!entry || !Array.isArray(item?.passive_effects) || !Array.isArray(entry.passive_effects)) return []
+  const canonicalById = new Map(entry.passive_effects.slice(0, 32)
+    .map((effect) => normalizedPassiveEffectContract(effect))
+    .filter(Boolean)
+    .map((effect) => [effect.effect_id, effect]))
+  return item.passive_effects.slice(0, 32)
+    .map((effect) => normalizedPassiveEffectContract(effect))
+    .filter((effect) => effect && JSON.stringify(effect) === JSON.stringify(canonicalById.get(effect.effect_id)))
+}
+
+/**
+ * Расширенные эффекты известных предметов. В отличие от исторического
+ * числового stamp-контракта выше, этот путь не исполняет эффекты произвольного
+ * объекта без известного catalog_id. Сама семантика всё равно читается из
+ * сохранённого экземпляра, а не из текущей записи каталога: будущая правка
+ * manifest не переписывает replay уже выданного предмета.
+ */
+export function activeItemMechanicEffects(actor, { selectedItemId = null, selectedCountsAsEquipped = false } = {}) {
+  const ownerId = actorId(actor)
+  const result = []
+  for (const item of actor?.inventory ?? []) {
+    if (!item || integer(item.quantity, 1) <= 0) continue
+    const catalogId = clean(item.catalog_id ?? item.catalogId)
+    if (!catalogId) continue
+    const selected = selectedItemId != null && String(item.id) === String(selectedItemId)
+    const consideredEquipped = item.equipped === true || (selected && selectedCountsAsEquipped)
+    for (const effect of trustedItemPassiveEffects(item)) {
+      const effectId = clean(effect.effect_id)
+      const group = clean(effect.group)
+      if (!effectId || !group) continue
+      if (effect.requires_equipped === true && !consideredEquipped) continue
+      if (effect.requires_attunement === true && (!ownerId || String(item.attuned_to ?? '') !== ownerId)) continue
+      if (effect.requires_activated === true && item.activated !== true) continue
+      const rider = normalizedWeaponDamageRider(effect.weapon_damage_rider)
+      result.push({
+        schema_version: 1,
+        effect_id: effectId,
+        group,
+        item_id: clean(item.id),
+        item_name: clean(item.name),
+        catalog_id: catalogId,
+        damage_resistances: uniqueCleanStrings(effect.damage_resistances),
+        spell_immunities: uniqueCleanStrings(effect.spell_immunities),
+        prevents_critical_hits: effect.prevents_critical_hits === true,
+        initiative_advantage: effect.initiative_advantage === true,
+        ...(rider ? { weapon_damage_rider: rider } : {}),
+      })
+    }
+  }
+  return result
+}
+
+function uniqueCleanStrings(values) {
+  return [...new Set((Array.isArray(values) ? values : []).slice(0, 32)
+    .map((value) => clean(value, 80).toLowerCase())
+    .filter(Boolean))].sort()
+}
+
+export function weaponDamageRidersForItem(actor, itemId, { selectedCountsAsEquipped = false } = {}) {
+  const item = itemFor(actor, itemId)
+  if (!item || item?.type !== 'weapon' || profileFor(item).equip_slot !== 'main_hand') return []
+  const seenGroups = new Set()
+  return activeItemMechanicEffects(actor, { selectedItemId: itemId, selectedCountsAsEquipped })
+    .filter((effect) => effect.item_id === String(itemId) && effect.weapon_damage_rider)
+    .filter((effect) => {
+      if (seenGroups.has(effect.group)) return false
+      seenGroups.add(effect.group)
+      return true
+    })
+    .map((effect) => ({
+      effect_id: effect.effect_id,
+      group: effect.group,
+      item_id: effect.item_id,
+      item_name: effect.item_name,
+      catalog_id: effect.catalog_id,
+      ...effect.weapon_damage_rider,
+    }))
 }
 
 export function derivedEquipmentArmorClass(actor, { includeItemEffects = true } = {}) {
@@ -358,6 +478,27 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
     }
     result.attuned = attuned
   }
+  if (command.command_type === 'ActivateItem') {
+    const activation = profile.activation
+    if (!activation || integer(activation.schema_version, 0) !== MAGIC_ITEM_ACTIVATION_EVENT_SCHEMA_VERSION) {
+      throw new ItemLifecycleValidationError('Этот предмет нельзя активировать', 'ITEM_NOT_ACTIVATABLE')
+    }
+    if (typeof command.activated !== 'boolean') {
+      throw new ItemLifecycleValidationError('Нужно явно выбрать включение или выключение предмета', 'INVALID_ITEM_ACTIVATION')
+    }
+    if (activation.requires_equipped === true && item.equipped !== true) {
+      throw new ItemLifecycleValidationError('Чтобы активировать предмет, его нужно держать экипированным', 'ITEM_NOT_EQUIPPED')
+    }
+    if (activation.requires_attunement === true && String(item.attuned_to ?? '') !== ownerId) {
+      throw new ItemLifecycleValidationError('Для активации нужна настройка на предмет', 'ITEM_NOT_ATTUNED')
+    }
+    if (item.activated === command.activated) {
+      throw new ItemLifecycleValidationError('Предмет уже находится в выбранном состоянии', 'ITEM_ACTIVATION_UNCHANGED')
+    }
+    result.activated = command.activated
+    result.activation_profile = clone(activation)
+    result.activation_before = item.activated === true
+  }
   return result
 }
 
@@ -400,6 +541,23 @@ export function itemLifecycleEvents(command) {
       target_ids: [command.actor_id],
     }]
   }
+  if (command.command_type === 'ActivateItem') {
+    return [{
+      event_type: 'MagicItemActivationChanged',
+      event_schema_version: MAGIC_ITEM_ACTIVATION_EVENT_SCHEMA_VERSION,
+      payload: {
+        schema_version: MAGIC_ITEM_ACTIVATION_EVENT_SCHEMA_VERSION,
+        owner_id: command.actor_id,
+        item_id: command.item_id,
+        activation_id: command.activation_profile.activation_id,
+        activated_before: command.activation_before === true,
+        activated: command.activated === true,
+        combat_action: command.activation_profile.combat_action ?? null,
+        request_fingerprint: command.request_fingerprint ?? null,
+      },
+      target_ids: [command.actor_id],
+    }]
+  }
   return []
 }
 
@@ -412,8 +570,8 @@ export function applyItemLifecycleEventToPlayers(players, event) {
     next = next.map((actor) => actorId(actor) !== ownerId ? actor : {
       ...actor,
       inventory: (actor.inventory ?? []).map((item) => {
-        if (String(item.id) === String(payload.item_id)) return { ...item, equipped }
-        if (equipped && profileFor(item).equip_slot === payload.equip_slot) return { ...item, equipped: false }
+        if (String(item.id) === String(payload.item_id)) return { ...item, equipped, ...(!equipped ? { activated: false } : {}) }
+        if (equipped && profileFor(item).equip_slot === payload.equip_slot) return { ...item, equipped: false, activated: false }
         return item
       }),
     })
@@ -423,7 +581,7 @@ export function applyItemLifecycleEventToPlayers(players, event) {
     next = next.map((actor) => actorId(actor) !== ownerId ? actor : {
       ...actor,
       inventory: (actor.inventory ?? []).map((item) => String(item.id) === String(payload.item_id)
-        ? { ...item, attuned_to: payload.attuned ? ownerId : null }
+        ? { ...item, attuned_to: payload.attuned ? ownerId : null, ...(!payload.attuned ? { activated: false } : {}) }
         : item),
     })
   }
@@ -477,6 +635,19 @@ export function applyItemLifecycleEventToPlayers(players, event) {
     next = next.map((actor) => actorId(actor) !== ownerId ? actor : {
       ...actor,
       inventory: (actor.inventory ?? []).filter((item) => String(item.id) !== String(payload.item_id)),
+    })
+  }
+  if (
+    event.event_type === 'MagicItemActivationChanged'
+    && Number(event.event_schema_version) === MAGIC_ITEM_ACTIVATION_EVENT_SCHEMA_VERSION
+    && Number(payload.schema_version) === MAGIC_ITEM_ACTIVATION_EVENT_SCHEMA_VERSION
+  ) {
+    const ownerId = String(payload.owner_id ?? event.target_ids?.[0] ?? event.actor_id ?? '')
+    next = next.map((actor) => actorId(actor) !== ownerId ? actor : {
+      ...actor,
+      inventory: (actor.inventory ?? []).map((item) => String(item.id) === String(payload.item_id)
+        ? { ...item, activated: payload.activated === true }
+        : item),
     })
   }
   return next

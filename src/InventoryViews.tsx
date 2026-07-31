@@ -369,24 +369,28 @@ export function InventoryView({
   enemyTargets = [],
   combatActive = false,
   combatItemTurnAvailable = false,
+  combatBonusActionAvailable = true,
   busy = false,
   error,
   onEquip,
   onUse,
   onTransfer,
   onAttune,
+  onActivate,
 }: {
   player: Player
   party: Player[]
   enemyTargets?: Array<{ id: string; label: string }>
   combatActive?: boolean
   combatItemTurnAvailable?: boolean
+  combatBonusActionAvailable?: boolean
   busy?: boolean
   error?: string | null
   onEquip: (itemId: string, equipped: boolean) => void
   onUse: (itemId: string, targetId?: string, chargesToSpend?: number) => void
   onTransfer: (itemId: string, recipientId: string, quantity: number) => void
   onAttune: (itemId: string, attuned: boolean) => void
+  onActivate: (itemId: string, activated: boolean) => void
 }) {
   const [query, setQuery] = useState('')
   const recipients = party.filter((candidate) => candidate.id !== player.id)
@@ -474,6 +478,24 @@ export function InventoryView({
           Использовать · {item.capabilities.use?.action_type === 'bonus_action' ? 'бонус' : item.capabilities.use?.action_type === 'action' ? 'действие' : 'вне боя'}
         </button>}
         {item.capabilities?.use?.requires_equipped && !item.equipped && <small className="item-use-hint">Экипируйте предмет до начала боя.</small>}
+        {item.capabilities?.activatable && <button
+          disabled={busy
+            || Boolean(item.capabilities.activation?.requires_equipped && !item.equipped)
+            || Boolean(item.capabilities.activation?.requires_attunement && item.attuned_to !== player.id)
+            || Boolean(combatActive && (!combatItemTurnAvailable || !combatBonusActionAvailable))}
+          title={item.capabilities.activation?.requires_equipped && !item.equipped
+            ? 'Сначала экипируйте предмет.'
+            : item.capabilities.activation?.requires_attunement && item.attuned_to !== player.id
+              ? 'Сначала настройтесь на предмет.'
+              : combatActive && !combatItemTurnAvailable
+                ? 'Активировать предмет можно только в свой ход.'
+                : combatActive && !combatBonusActionAvailable
+                  ? 'Бонусное действие уже потрачено.'
+                  : undefined}
+          onClick={() => onActivate(item.id, !(item.capabilities?.activated ?? item.activated === true))}
+        >
+          {(item.capabilities.activated ?? item.activated === true) ? 'Погасить' : 'Зажечь'}{combatActive ? ' · бонус' : ''}
+        </button>}
         {item.capabilities?.requires_attunement && <button disabled={busy} onClick={() => onAttune(item.id, item.attuned_to !== player.id)}>{item.attuned_to === player.id ? 'Разорвать настройку' : 'Настроиться'}</button>}
         {recipientId && !item.equipped && !item.attuned_to && <button disabled={busy} onClick={() => onTransfer(item.id, recipientId, 1)}>Передать 1</button>}
       </div>
