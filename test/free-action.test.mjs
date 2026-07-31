@@ -162,6 +162,38 @@ test('разумное импровизированное действие по�
   assert.equal(result.turn_consumed, false)
 })
 
+test('свободная проверка использует реальную expertise листа и контекстную СЛ', async () => {
+  const initialState = campaign({
+    players: [{
+      ...hero('hero', 'Ада'),
+      characterClass: 'rogue',
+      level: 1,
+      abilities: { str: 10, dex: 16, con: 10, int: 10, wis: 10, cha: 10 },
+      classSkillProficiencies: ['stealth'],
+      skillExpertiseIds: ['stealth'],
+    }, hero('other', 'Бор')],
+    scene: {
+      title: 'Двор',
+      location: 'Старый трактир',
+      objective: 'Пробраться незаметно',
+      cells: [{ x: 0, y: 0, type: 'floor', revealed: true }],
+    },
+  })
+  const { orchestrator } = await setup(initialState)
+  const result = await orchestrator.handle(actionInput('Прячусь за телегой и жду у ворот', 'free-stealth-expertise', initialState))
+  const check = result.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')
+
+  assert.equal(result.free_action_outcome, 'check_success')
+  assert.equal(check.payload.skill, 'stealth')
+  assert.equal(check.payload.proficient, true)
+  assert.equal(check.payload.expertise, true)
+  assert.equal(check.payload.proficiency_bonus, 4)
+  assert.equal(check.payload.modifier, 7)
+  assert.equal(check.payload.difficulty, 10)
+  assert.equal(result.stakes.proficiency, 'expertise')
+  assert.deepEqual(result.stakes.difficulty_factors, ['scene_cover'])
+})
+
 test('свободное действие вне очереди фиксирует отказ, но не меняет цель и не тратит ход', async () => {
   const initialState = campaign({
     activePlayerId: 'other',
@@ -204,6 +236,106 @@ test('повтор свободного действия с тем же idempote
   assert.deepEqual(replay.state, afterSecond.state)
 })
 
+test('свободный текст передаёт собственный предмет через TransferItem и переживает replay/idempotency', async () => {
+  const initialState = campaign({
+    players: [
+      {
+        ...hero('hero', 'Ада'),
+        characterClass: 'fighter',
+        level: 1,
+        classSkillProficiencies: [],
+        inventory: [{ id: 'rope', name: 'Верёвка', type: 'tool', quantity: 2, weight: 1 }],
+      },
+      {
+        ...hero('other', 'Бор'),
+        characterClass: 'fighter',
+        level: 1,
+        classSkillProficiencies: [],
+        inventory: [],
+      },
+    ],
+    partyMemberIds: ['hero', 'other'],
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const input = actionInput('Передаю Бору верёвку', 'free-transfer', initialState)
+  const first = await orchestrator.handle(input)
+  const second = await orchestrator.handle(input)
+  const persisted = await eventStore.load('FREE-ACTION')
+  const replay = await eventStore.replay('FREE-ACTION')
+
+  assert.equal(first.free_action_outcome, 'item_transfer')
+  assert.deepEqual(first.mechanics.map((event) => event.event_type), ['ActionDeclared', 'ItemTransferred'])
+  assert.equal(first.authoritative_state.players.find((entry) => entry.id === 'hero').inventory[0].quantity, 1)
+  assert.equal(first.authoritative_state.players.find((entry) => entry.id === 'other').inventory[0].quantity, 1)
+  assert.equal(second.idempotent_replay, true)
+  assert.equal(second.state_version, first.state_version)
+  assert.deepEqual(replay.state, persisted.state)
+})
+
+test('свободный текст не даёт взять чужую вещь и не пишет даже декларацию до согласия владельца', async () => {
+  const initialState = campaign({
+    players: [
+      { ...hero('hero', 'Ада'), inventory: [] },
+      { ...hero('other', 'Бор'), inventory: [{ id: 'rope', name: 'Верёвка', type: 'tool', quantity: 1, weight: 1 }] },
+    ],
+    partyMemberIds: ['hero', 'other'],
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const before = await eventStore.load('FREE-ACTION')
+  const result = await orchestrator.handle(actionInput('Беру у Бора верёвку', 'free-take-forbidden', initialState))
+  const after = await eventStore.load('FREE-ACTION')
+
+  assert.equal(result.free_action_outcome, 'clarification')
+  assert.match(result.narration, /владелец/u)
+  assert.deepEqual(result.mechanics, [])
+  assert.equal(result.turn_consumed, false)
+  assert.equal(after.state_version, before.state_version)
+  assert.deepEqual(after.state.players, before.state.players)
+})
+
+test('неоднозначные предмет или союзник требуют уточнения без мутации', async () => {
+  const initialState = campaign({
+    players: [
+      {
+        ...hero('hero', 'Ада'),
+        inventory: [
+          { id: 'rope-a', name: 'Верёвка', type: 'tool', quantity: 1 },
+          { id: 'rope-b', name: 'Верёвочная лестница', type: 'tool', quantity: 1 },
+        ],
+      },
+      hero('other', 'Бор'),
+      hero('third', 'Вика'),
+    ],
+    partyMemberIds: ['hero', 'other', 'third'],
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const before = await eventStore.load('FREE-ACTION')
+  const result = await orchestrator.handle(actionInput('Передаю товарищу верёвку', 'free-transfer-ambiguous', initialState))
+  const after = await eventStore.load('FREE-ACTION')
+
+  assert.equal(result.free_action_outcome, 'clarification')
+  assert.deepEqual(result.mechanics, [])
+  assert.equal(after.state_version, before.state_version)
+  assert.deepEqual(after.state.players, before.state.players)
+})
+
+test('обыск тела без серверного содержимого не бросает кубик и не меняет состояние', async () => {
+  const initialState = campaign({
+    enemies: [{ id: 'goblin', name: 'Гоблин', hp: 0, maxHp: 7, armor: 12, alive: false }],
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const before = await eventStore.load('FREE-ACTION')
+  const result = await orchestrator.handle(actionInput('Осматриваю и обыскиваю тело гоблина', 'free-search-corpse', initialState))
+  const after = await eventStore.load('FREE-ACTION')
+
+  assert.equal(result.free_action_outcome, 'clarification')
+  assert.match(result.narration, /нет заданного сервером содержимого|не буду выдумывать/u)
+  assert.deepEqual(result.mechanics, [])
+  assert.equal(result.mechanics.some((event) => event.event_type === 'DieRolled'), false)
+  assert.equal(after.state_version, before.state_version)
+  assert.deepEqual(after.state, before.state)
+})
+
 test('таблица сложности выбирает только серверные значения 10, 15 и 20', async () => {
   const state = campaign()
   const adjudicator = new Adjudicator()
@@ -213,6 +345,40 @@ test('таблица сложности выбирает только серве
   assert.equal((await make({ actor_id: 'hero', intent: 'ability_check', approach: 'strength', difficulty_category: 'hard', raw_message: 'проверяю дверь' })).proposed_commands[0].difficulty, 20)
   assert.equal((await make({ actor_id: 'hero', intent: 'ability_check', approach: 'strength', difficulty_category: '999', raw_message: 'проверяю дверь' })).proposed_commands[0].difficulty, 15)
   assert.equal((await make({ actor_id: 'hero', intent: 'saving_throw', approach: 'constitution', raw_message: 'спасбросок от ловушки' })).proposed_commands[0].difficulty, 15)
+})
+
+test('обычный ability_check тоже передаёт навык, а Rules Engine заново считает expertise', async () => {
+  const state = campaign({
+    players: [{
+      ...hero('hero', 'Ада'),
+      characterClass: 'rogue',
+      level: 1,
+      abilities: { str: 10, dex: 16, con: 10, int: 10, wis: 10, cha: 10 },
+      classSkillProficiencies: ['stealth'],
+      skillExpertiseIds: ['stealth'],
+    }, hero('other', 'Бор')],
+  })
+  const plan = await new Adjudicator().createPlan({
+    intent: {
+      actor_id: 'hero',
+      intent: 'ability_check',
+      approach: 'stealth',
+      difficulty_category: 'medium',
+      raw_message: 'Крадусь вдоль стены',
+      confidence: 1,
+    },
+    state,
+    retrievedRules: { results: [], confidence: 1 },
+  })
+  assert.equal(plan.proposed_commands[0].skill, 'stealth')
+  assert.equal(plan.proposed_commands[0].expertise, true)
+  const resolved = new RulesEngine({
+    diceService: new DiceService({ rng: new SequenceDiceRng([10]) }),
+  }).resolvePlan(plan, state, { allowedActorIds: ['hero'] })
+  const check = resolved.events.find((event) => event.event_type === 'AbilityCheckResolved')
+  assert.equal(check.payload.modifier, 7)
+  assert.equal(check.payload.expertise, true)
+  assert.equal(check.payload.proficiency_bonus, 4)
 })
 
 test('Verifier блокирует утверждение изменения мира без подтверждённого события', () => {
@@ -237,4 +403,41 @@ test('IntentParser отделяет невозможный полёт от пр�
   })
   assert.equal(intent.intent, 'improvised_action')
   assert.equal(intent.free_action_kind, 'physically_impossible')
+})
+
+test('IntentParser разрешает присутствующего NPC по роли и aliases, но не выбирает из двух молча', async () => {
+  const parser = new IntentParser()
+  const visibleState = {
+    scene: { location: 'Трактир' },
+    social: {
+      npcs: [
+        { id: 'mira', name: 'Мира', role: 'innkeeper', tags: ['хозяйка'], location: 'Трактир', available: true },
+        { id: 'far', name: 'Торн', role: 'guard', tags: ['стражник'], location: 'Застава', available: true },
+      ],
+    },
+  }
+  const byRole = await parser.parse({ message: 'Спрашиваю трактирщика о караване', playerId: 'hero', visibleState })
+  assert.equal(byRole.intent, 'social')
+  assert.deepEqual(byRole.targets, ['mira'])
+  assert.equal(byRole.requires_clarification, false)
+
+  const byAlias = await parser.parse({ message: 'Говорю с хозяйкой', playerId: 'hero', visibleState })
+  assert.deepEqual(byAlias.targets, ['mira'])
+
+  const ambiguous = await parser.parse({
+    message: 'Спрашиваю стражника о воротах',
+    playerId: 'hero',
+    visibleState: {
+      ...visibleState,
+      social: {
+        npcs: [
+          { id: 'guard-a', name: 'Арн', role: 'guard', location: 'Трактир', available: true },
+          { id: 'guard-b', name: 'Бел', role: 'guard', location: 'Трактир', available: true },
+        ],
+      },
+    },
+  })
+  assert.equal(ambiguous.requires_clarification, true)
+  assert.deepEqual(ambiguous.missing_information, ['ambiguous_npc'])
+  assert.deepEqual(ambiguous.targets.sort(), ['guard-a', 'guard-b'])
 })

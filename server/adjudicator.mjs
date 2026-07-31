@@ -1,4 +1,4 @@
-import { RULE_IDS, abilityModifier, findActor } from './rules-engine.mjs'
+import { RULE_IDS, abilityModifier, findActor, skillProficiencyForActor } from './rules-engine.mjs'
 
 export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
 export const DIFFICULTY_CATEGORIES = Object.freeze(Object.keys(DIFFICULTY_CLASSES))
@@ -23,6 +23,18 @@ function attackProfile(actor) {
 
 function abilityForApproach(approach) {
   return ({ strength: 'str', stealth: 'dex', arcana: 'int', perception: 'wis', persuasion: 'cha', intimidation: 'cha' })[approach] ?? 'wis'
+}
+
+function skillForApproach(approach) {
+  return ({
+    strength: 'athletics',
+    stealth: 'stealth',
+    arcana: 'arcana',
+    perception: 'perception',
+    persuasion: 'persuasion',
+    intimidation: 'intimidation',
+    investigation: 'investigation',
+  })[String(approach ?? '')] ?? ''
 }
 
 function difficultyCategoryFromValue(value) {
@@ -75,10 +87,27 @@ export class Adjudicator {
         const difficulty_category = difficultyCategoryFor(intent, state)
         const difficulty = difficultyClassFor(difficulty_category)
         const ability = abilityForApproach(intent.approach)
+        const skill = skillForApproach(intent.approach)
+        const proficiency = skill ? skillProficiencyForActor(actor, skill) : null
         return {
           ...base,
           rule_ids: retrievedIds(retrievedRules, [RULE_IDS.abilityCheck]),
-          proposed_commands: [{ command_type: 'MakeAbilityCheck', actor_id: intent.actor_id, ability, proficient: false, difficulty, difficulty_category, source_rule_ids: retrievedIds(retrievedRules, [RULE_IDS.abilityCheck]) }],
+          proposed_commands: [{
+            command_type: 'MakeAbilityCheck',
+            actor_id: intent.actor_id,
+            ability,
+            ...(skill ? { skill } : {}),
+            // Поля нужны для trace/preview; Rules Engine повторно вычисляет их
+            // по листу и не доверяет предложению плана.
+            ...(proficiency ? {
+              proficient: proficiency.proficient,
+              expertise: proficiency.expertise,
+              proficiency_bonus: proficiency.bonus,
+            } : {}),
+            difficulty,
+            difficulty_category,
+            source_rule_ids: retrievedIds(retrievedRules, [RULE_IDS.abilityCheck]),
+          }],
           roll_requests: [{ expression: '1d20', purpose: `ability_check:${ability}`, actor_id: intent.actor_id }],
           confidence: 0.74,
         }

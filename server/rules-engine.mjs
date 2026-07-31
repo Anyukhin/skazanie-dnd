@@ -2463,8 +2463,50 @@ function needsActor(type) {
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
 
+function canonicalSkillId(value) {
+  return String(value ?? '').trim().toLocaleLowerCase('en').replace(/_/gu, '-')
+}
+
+function listedSkill(values, skill) {
+  const requested = canonicalSkillId(skill)
+  return (Array.isArray(values) ? values : []).some((value) => canonicalSkillId(value) === requested)
+}
+
+/**
+ * Единственный серверный источник бонуса владения для проверок навыка.
+ * Команда и модель могут назвать навык, но не могут выдать герою владение:
+ * оно читается из нормализованного листа. Необязательные expertise-поля
+ * поддерживают импортированные/legacy-листы без изменения обязательной схемы.
+ */
+export function skillProficiencyForActor(actor, skill) {
+  const id = canonicalSkillId(skill)
+  const sheetEntry = actor?.characterSheet?.skills?.[id]
+    ?? actor?.characterSheet?.skills?.[id.replace(/-/gu, '_')]
+    ?? null
+  const expertise = [
+    actor?.skillExpertiseIds,
+    actor?.expertiseSkillIds,
+    actor?.skillExpertise,
+    actor?.expertiseSkills,
+    actor?.characterSheet?.skill_expertise,
+  ].some((values) => listedSkill(values, id))
+    || sheetEntry?.expertise === true
+  const proficient = expertise
+    || sheetEntry?.proficient === true
+    || isSkillProficient(actor, id)
+  const proficiency = Math.max(0, safeInteger(actor?.proficiency, 0))
+  const multiplier = expertise ? 2 : proficient ? 1 : 0
+  return {
+    skill: id,
+    proficient,
+    expertise,
+    multiplier,
+    bonus: proficiency * multiplier,
+  }
+}
+
 function skillProficiencyBonus(actor, skill) {
-  return isSkillProficient(actor, skill) ? Math.max(0, safeInteger(actor?.proficiency, 0)) : 0
+  return skillProficiencyForActor(actor, skill).bonus
 }
 
 function targetFor(command) {
@@ -4706,11 +4748,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       break
     case 'MakeAbilityCheck': {
       const actor = findActor(state, command.actor_id)
-      const skill = String(command.skill || '').toLowerCase()
+      const skill = canonicalSkillId(command.skill)
       const ability = String(skillAbility(skill) || command.ability || 'str').toLowerCase()
+      const skillProficiency = skill ? skillProficiencyForActor(actor, skill) : null
       let modifier = Number.isSafeInteger(Number(command.modifier))
         ? Number(command.modifier)
-        : abilityModifier(actor?.abilities?.[ability]) + (skill ? skillProficiencyBonus(actor, skill) : command.proficient ? safeInteger(actor?.proficiency, 0) : 0)
+        : abilityModifier(actor?.abilities?.[ability]) + (skillProficiency?.bonus ?? (command.proficient ? safeInteger(actor?.proficiency, 0) : 0))
       if (conditionIdsFor(state, command.actor_id).has('guidance-d4')) {
         const guidance = diceService.roll('1d4', 'spell:guidance', command.actor_id, command.visibility ?? 'public')
         rolls.push(guidance)
@@ -4725,6 +4768,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       rolls.push(roll)
       events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
         ability, ...(skill ? { skill } : {}), ...roll,
+        ...(skillProficiency ? {
+          proficient: skillProficiency.proficient,
+          expertise: skillProficiency.expertise,
+          proficiency_bonus: skillProficiency.bonus,
+        } : {}),
         ...(checkPenalty ? { check_disadvantage_condition: checkPenalty } : {}),
         ...(checkBoost ? { check_advantage_condition: checkBoost } : {}),
         ...(command.social_check ? { social_check: {

@@ -53,6 +53,7 @@ Live presence показывает online/offline и кратковременн�
 |---|---|---|---|---|---|
 | Dice expression parser | частично | да | да | unit | Отдельной полной grammar rule в corpus нет |
 | Проверка характеристики | да | да | да, enforce | unit | Special checks и полный UI flow не моделируются |
+| Свободное действие | частично | да для bounded resolution | да, `/api/narrate` | unit + orchestration + replay/idempotency | `ActionAdjudicator` v2 предлагает только закрытые категории, а сервер заново связывает цель, предмет, proficiency/expertise и последствие с authoritative state, выбирает контекстную СЛ 10/15/20 и делает бросок. Роли/aliases NPC разрешаются только среди присутствующих; своя вещь передаётся союзнику через `TransferItem`. Неоднозначность, попытка забрать чужую вещь и обыск тела без server-owned содержимого не создают событий и не расходуют ход. Произвольные физические эффекты и контейнерный перенос добычи из произвольного трупа не реализованы |
 | Спасбросок | да | да | да, enforce | unit | Generic ability save; сложные триггеры не оркестрованы |
 | Бросок атаки | да | да | да, enforce UI/API | unit + authoritative HTTP | Профиль выводится сервером; безоружный PC fallback использует `1 + STR`, а EncounterAssembler projection содержит именные action profiles и phased multiattack; monster spellcasting не поддержан |
 | Класс доспеха | да | да | да, enforce | unit + authoritative HTTP | Берётся из server actor; клиентский override игнорируется, но полной derivation AC из экипировки нет |

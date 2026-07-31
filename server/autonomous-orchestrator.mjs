@@ -28,10 +28,13 @@ import {
 import { questTitleFromObjective } from './scene-memory.mjs'
 import {
   attemptFingerprint,
+  bindFreeActionReadingToState,
+  contextualResolutionFor,
   failForwardFor,
   interpretFreeAction,
   previousFailedAttempt,
-  resolutionModeFor,
+  resolveCorpseSearch,
+  resolveInventoryTransfer,
   situationFingerprint,
   stakesFor,
   verifyMeans,
@@ -558,7 +561,7 @@ export class AutonomousCampaignOrchestrator {
       if (!actualCommands.length) return { state: loaded.state, state_version: loaded.state_version, events: [], commands: [], rolls: [], duplicate: false }
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          return await this.runCommands(campaignId, idempotencyKey, actualCommands)
+          return await this.runCommands(campaignId, idempotencyKey, actualCommands, { allowedActorIds: [actorId] })
         } catch (error) {
           if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
         }
@@ -674,13 +677,76 @@ export class AutonomousCampaignOrchestrator {
     // Смысл задумки понимает агент, если он есть; всё остальное — СЛ, бросок,
     // сверка средств, цена хода и последствие — остаётся за сервером.
     const deterministicReading = interpretFreeAction(text)
-    const reading = this.actionAdjudicator
+    const proposedReading = this.actionAdjudicator
       ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
       : deterministicReading
+    const reading = bindFreeActionReadingToState(loaded.state, actorId, text, proposedReading)
+    if (reading.reference_ambiguities.length) {
+      return {
+        kind: 'clarification',
+        narration: reading.reference_ambiguities.includes('item_id')
+          ? 'В действии подходят несколько предметов. Назовите конкретную вещь.'
+          : 'В действии подходят несколько целей. Назовите конкретного участника.',
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
+    const corpseSearch = resolveCorpseSearch(loaded.state, text, reading)
+    if (corpseSearch) {
+      return {
+        kind: 'clarification',
+        narration: corpseSearch.narration,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
+    const inventoryTransfer = resolveInventoryTransfer(loaded.state, actorId, text, reading)
+    if (inventoryTransfer?.status === 'clarification') {
+      return {
+        kind: 'clarification',
+        narration: inventoryTransfer.narration,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
+    if (inventoryTransfer?.status === 'command') {
+      const commit = await run([declaration, inventoryTransfer.command])
+      verifyDuplicate(commit)
+      return {
+        kind: 'item_transfer',
+        narration: inventoryTransfer.narration,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
     const means = verifyMeans(loaded.state, actorId, reading.required_means)
     const resolution = means.satisfied
-      ? resolutionModeFor(reading)
-      : resolutionModeFor({ ...reading, plausibility: 'impossible_without_means' })
+      ? contextualResolutionFor(loaded.state, actorId, reading, text)
+      : contextualResolutionFor(loaded.state, actorId, { ...reading, plausibility: 'impossible_without_means' }, text)
     const attempt = attemptFingerprint({ actorId, approach: reading.approach_summary, obstacle: reading.obstacle })
     const repeated = previousFailedAttempt(loaded.state, attempt)
     const objective = boundedObjective(loaded.state, text)
@@ -721,7 +787,14 @@ export class AutonomousCampaignOrchestrator {
       }
     }
 
-    const stakes = stakesFor({ ability: reading.ability, skill: reading.skill, resolution, risk: reading.risk })
+    const stakes = stakesFor({
+      ability: reading.ability,
+      skill: reading.skill,
+      resolution,
+      risk: reading.risk,
+      proficiency: reading.proficiency,
+      consequence_type: reading.consequence_type,
+    })
     const ruling = {
       id: `ruling-${digest({ campaignId, text })}`,
       status: 'applied',
@@ -732,6 +805,13 @@ export class AutonomousCampaignOrchestrator {
       consequence: objective,
       world_change: true,
       stakes,
+      interpretation: {
+        target_id: reading.target_id || null,
+        item_id: reading.item_id || null,
+        skill: reading.skill,
+        proficiency: reading.proficiency,
+        consequence_type: reading.consequence_type,
+      },
       provenance: {
         source: 'free-action-adjudication',
         action_fingerprint: digest(text),
@@ -801,7 +881,7 @@ export class AutonomousCampaignOrchestrator {
         command_type: 'MakeAbilityCheck',
         actor_id: actorId,
         ability: reading.ability,
-        proficient: false,
+        skill: reading.skill,
         difficulty: resolution.difficulty,
         difficulty_category: resolution.difficulty_category,
       },
@@ -809,7 +889,7 @@ export class AutonomousCampaignOrchestrator {
     verifyDuplicate(checkCommit)
     const checkEvent = (checkCommit.events ?? []).find((entry) => entry.event_type === 'AbilityCheckResolved')
     const succeeded = checkEvent?.payload?.success === true
-    const consequence = failForwardFor(reading.risk)
+    const consequence = failForwardFor(reading.risk, reading.consequence_type)
     const outcomeRuling = { ...ruling, outcome: succeeded ? 'success' : 'failure' }
     // Внутри раунда время не идёт и цель отряда не переписывается: ход занимает
     // секунды, а «следующая цель» посреди боя ломала бы сцену.

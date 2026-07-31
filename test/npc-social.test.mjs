@@ -409,6 +409,89 @@ test('orchestrator commits NPC dialogue once and replays the stored reply withou
   assert.equal((await eventStore.load('NPC-SOCIAL')).state.social.conversations.length, 1)
 })
 
+test('orchestrator с реальным parser обращается к присутствующему NPC по роли', async () => {
+  const initial = campaign()
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-role-resolution-'))
+  const eventStore = new FileEventStore({
+    rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+  })
+  await eventStore.initializeCampaign({
+    campaign_id: 'NPC-SOCIAL',
+    initial_state: initial,
+    ruleset_id: initial.ruleset_id,
+    ruleset_version: initial.ruleset_version,
+    enabled_rule_packs: initial.enabled_rule_packs,
+    enabled_house_rules: initial.enabled_house_rules,
+  })
+  const fallback = new NpcSocialController()
+  let selectedNpcId = null
+  const orchestrator = new GameOrchestrator({
+    npcSocialController: {
+      respond: async (input) => {
+        selectedNpcId = input.npcId
+        return fallback.respond(input)
+      },
+    },
+    narrator: { render: async () => { throw new Error('Социальную реплику не должен переписывать Narrator') } },
+    rulesEngine: new RulesEngine({ diceService: dice() }),
+    eventStore,
+    idFactory: () => 'social-role-turn',
+  })
+  const result = await orchestrator.handle({
+    state: initial,
+    campaignId: 'NPC-SOCIAL',
+    playerId: 'hero',
+    message: '\u0413\u043e\u0432\u043e\u0440\u044e \u0442\u043e\u0440\u0433\u043e\u0432\u0446\u0443: \u0434\u043e\u0431\u0440\u044b\u0439 \u0434\u0435\u043d\u044c.',
+    idempotencyKey: 'social-by-role',
+  })
+
+  assert.equal(selectedNpcId, 'marta')
+  assert.equal(result.action_kind, 'social')
+  assert.ok(result.mechanics.some((event) => event.event_type === 'NpcConversationRecorded'))
+  assert.equal((await eventStore.load('NPC-SOCIAL')).state.social.conversations[0].npc_id, 'marta')
+})
+
+test('двое присутствующих NPC с одной ролью дают clarification без броска и мутации', async () => {
+  const initial = campaign()
+  initial.social.npcs.push({
+    ...initial.social.npcs[0],
+    id: 'olga',
+    name: 'Ольга',
+  })
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-role-ambiguity-'))
+  const eventStore = new FileEventStore({
+    rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+  })
+  await eventStore.initializeCampaign({
+    campaign_id: 'NPC-SOCIAL',
+    initial_state: initial,
+    ruleset_id: initial.ruleset_id,
+    ruleset_version: initial.ruleset_version,
+    enabled_rule_packs: initial.enabled_rule_packs,
+    enabled_house_rules: initial.enabled_house_rules,
+  })
+  const before = await eventStore.load('NPC-SOCIAL')
+  const orchestrator = new GameOrchestrator({
+    npcSocialController: { respond: async () => { throw new Error('Неоднозначный NPC не должен вызывать контроллер') } },
+    rulesEngine: new RulesEngine({ diceService: dice([20]) }),
+    eventStore,
+    idFactory: () => 'social-ambiguous-turn',
+  })
+  const result = await orchestrator.handle({
+    state: initial,
+    campaignId: 'NPC-SOCIAL',
+    playerId: 'hero',
+    message: '\u0413\u043e\u0432\u043e\u0440\u044e \u0442\u043e\u0440\u0433\u043e\u0432\u0446\u0443: \u0434\u043e\u0431\u0440\u044b\u0439 \u0434\u0435\u043d\u044c.',
+    idempotencyKey: 'social-ambiguous',
+  })
+  const after = await eventStore.load('NPC-SOCIAL')
+
+  assert.match(result.narration, /несколько собеседников/u)
+  assert.deepEqual(result.mechanics, [])
+  assert.equal(result.turn_consumed, false)
+  assert.equal(after.state_version, before.state_version)
+})
+
 test('social check classifier and policy choose a server-owned skill, ability and DC', () => {
   assert.equal(classifyNpcSocialCheck('\u0443\u0431\u0435\u0436\u0434\u0430\u044e \u041c\u0430\u0440\u0442\u0443 \u043f\u043e\u043c\u043e\u0447\u044c.'), 'persuasion')
   assert.equal(classifyNpcSocialCheck('\u043e\u0431\u043c\u0430\u043d\u044b\u0432\u0430\u044e \u041c\u0430\u0440\u0442\u0443.'), 'deception')

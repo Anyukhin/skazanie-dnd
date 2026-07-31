@@ -126,7 +126,7 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 | `server/narrator.mjs` | `prompts/narrator/v1.txt` | текст после commit |
 | `server/scene-architect.mjs` | `prompts/map_architect/v1.txt` | новые области |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v1.txt` | исходная ситуация кампании |
-| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v1.txt` | прочтение свободного действия |
+| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v2.txt` | прочтение свободного действия |
 
 Больше промпты не загружает никто; ролей семь, и столько же файлов в `prompts/`.
 Сторож соответствия — `test/security.test.mjs`. **Детерминированные модули без LLM:**

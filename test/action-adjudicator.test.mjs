@@ -14,6 +14,7 @@ function scene() {
       id: 'hero', character: 'Аster', characterClass: 'fighter', level: 1, hp: 20, maxHp: 20, armor: 15, speed: 30, x: 0, y: 0,
       abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 12, cha: 8 },
       classSkillProficiencies: ['athletics', 'perception'],
+      skillExpertiseIds: ['perception'],
       preparedSpellIds: ['sacred-flame'],
       inventory: [{ id: 'rope', name: 'Верёвка', quantity: 1, equipped: false }],
     }],
@@ -37,6 +38,7 @@ test('бриф даёт агенту лист, сцену, участников 
   const brief = adjudicationBrief(scene(), 'hero', 'Опрокидываю жаровню')
   assert.equal(brief.hero.id, 'hero')
   assert.deepEqual(brief.hero.skill_proficiencies, ['athletics', 'perception'])
+  assert.deepEqual(brief.hero.skill_expertise, ['perception'])
   assert.equal(brief.turn_economy.in_combat, true)
   assert.equal(brief.turn_economy.bonus_action_available, false)
   assert.deepEqual(brief.participants.map((entry) => entry.side), ['party', 'enemy'])
@@ -60,6 +62,10 @@ test('предложение агента принимается только п
     effect: 'hazard_damage',
     effect_target: 'ogre',
     hazard: 'fire',
+    target_id: 'ogre',
+    item_id: 'rope',
+    proficiency: 'expertise',
+    consequence_type: 'noise',
   })
   const reading = await adjudicator.read(scene(), 'hero', 'Опрокидываю жаровню', interpretFreeAction('Опрокидываю жаровню'))
   assert.equal(reading.ability, 'str')
@@ -67,6 +73,11 @@ test('предложение агента принимается только п
   assert.equal(reading.plausibility, 'strenuous')
   assert.equal(reading.effect, 'hazard_damage')
   assert.equal(reading.hazard, 'fire')
+  assert.equal(reading.target_id, 'ogre')
+  assert.equal(reading.item_id, 'rope')
+  assert.equal(reading.proficiency, 'proficient', 'уровень берётся из листа, а не из ответа модели')
+  assert.equal(reading.proficiency_bonus, 2)
+  assert.equal(reading.consequence_type, 'noise')
   assert.equal(reading.source, 'agent-adjudicator')
 })
 
@@ -81,6 +92,10 @@ test('агент не может назначить СЛ, исход, свой �
     difficulty: 5,
     success: true,
     damage: '99d99',
+    target_id: 'hidden-dragon',
+    item_id: 'wish-scroll',
+    proficiency: 'triple',
+    consequence_type: 'instant_death',
   })
   const reading = await adjudicator.read(scene(), 'hero', 'Убиваю огра взглядом', interpretFreeAction('Убиваю огра взглядом'))
 
@@ -90,6 +105,10 @@ test('агент не может назначить СЛ, исход, свой �
   assert.equal(reading.action_cost, 'action', 'выдуманный слот трактуется как самый дорогой')
   assert.equal(reading.effect, 'none', 'эффекта вне каталога не существует')
   assert.equal(reading.hazard, '', 'опасности вне таблицы не существует')
+  assert.equal(reading.target_id, 'ogre', 'forged ID отброшен, но реальная цель надёжно выведена из текста')
+  assert.equal(reading.item_id, '')
+  assert.equal(reading.proficiency, 'expertise', 'сервер восстанавливает реальную expertise Внимательности')
+  assert.equal(reading.consequence_type, 'time')
   for (const forbidden of ['difficulty', 'success', 'damage']) {
     assert.equal(Object.hasOwn(reading, forbidden), false, `поле ${forbidden} не должно доходить до движка`)
   }
@@ -108,5 +127,9 @@ test('без ключа модели арбитр вообще не вмешив
   const text = 'Подпираю створку ворот обломком бревна'
   const fallback = interpretFreeAction(text)
   const reading = await new ActionAdjudicator({ llmClient: null }).read(scene(), 'hero', text, fallback)
-  assert.deepEqual(reading, fallback)
+  assert.equal(reading.source, fallback.source)
+  assert.equal(reading.skill, 'athletics')
+  assert.equal(reading.proficiency, 'proficient')
+  assert.equal(reading.proficiency_bonus, 2)
+  assert.deepEqual(reading.reference_ambiguities, [])
 })
