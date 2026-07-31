@@ -9,7 +9,7 @@ export const ITEM_CATALOG_SOURCE = Object.freeze({
 })
 
 export const ITEM_MECHANICS_STATUSES = Object.freeze(['verified', 'partial', 'ruling-only'])
-export const ITEM_AVAILABILITY_CHANNELS = Object.freeze(['shop', 'loot', 'crafting'])
+export const ITEM_AVAILABILITY_CHANNELS = Object.freeze(['shop', 'loot', 'magic_loot', 'crafting'])
 export const ITEM_RECHARGE_SCHEMA_VERSION = 1
 
 const SHOP_IDS = new Set([
@@ -25,6 +25,28 @@ const SHOP_IDS = new Set([
   'srd_5_2_1:rope-hempen-50-feet',
   'srd_5_2_1:torch',
   'srd_5_2_1:arrows-20',
+])
+
+/**
+ * Магическая добыча открыта **отдельным** списком, а не редкостью и не фактом
+ * наличия записи в каталоге. Добавить предмет в manifest — не значит выдать его
+ * партии: сюда попадают только вещи с исполненной серверной механикой, которые
+ * не ломают бой одним появлением.
+ *
+ * Жезл и Огненный язык сюда намеренно не входят: у первого расходуемые заряды и
+ * уничтожение на натуральной единице, у второго — активация бонусным действием.
+ * Оба требуют объяснения игроку, поэтому остаются наградой за сюжет, а не
+ * случайной находкой.
+ */
+const MAGIC_LOOT_IDS = new Set([
+  'srd_5_2_1:longsword-plus-1',
+  'srd_5_2_1:cloak-of-protection',
+  'srd_5_2_1:brooch-of-shielding',
+  'srd_5_2_1:adamantine-chain-mail',
+  'srd_5_2_1:weapon-of-warning-longsword',
+  'srd_5_2_1:ring-of-protection',
+  'srd_5_2_1:ring-of-fire-resistance',
+  'srd_5_2_1:vicious-longsword',
 ])
 
 const LOOT_IDS = new Set([
@@ -93,6 +115,7 @@ function availability(catalogId) {
   return {
     shop: SHOP_IDS.has(catalogId),
     loot: LOOT_IDS.has(catalogId),
+    magic_loot: MAGIC_LOOT_IDS.has(catalogId),
     crafting: false,
   }
 }
@@ -508,6 +531,10 @@ const MAGIC_ITEMS = [
     ...ITEM_CATALOG_SOURCE,
     display_name: 'Длинный меч +1',
     name: 'Длинный меч +1',
+    // Единственная магическая запись, у которой не было видимой редкости:
+    // остальные девять её несут, а игрок обязан отличать находку от обычного
+    // меча до того, как разберётся в бонусах.
+    rarity: 'необычный',
     manifest_section: 'magic-item',
     description: 'Магически усиленный длинный меч. Атаки этим оружием получают +1 к броску атаки и +1 к броску урона.',
     category: 'weapon',
@@ -956,6 +983,13 @@ export const ITEM_CATALOG = deepFreeze(entriesById)
 export const ITEM_SHOP_CATALOG_IDS = deepFreeze(
   Object.keys(ITEM_CATALOG).filter((catalogId) => (
     ITEM_CATALOG[catalogId].availability.shop
+    && ITEM_CATALOG[catalogId].mechanics_status !== 'ruling-only'
+  )),
+)
+
+export const ITEM_MAGIC_LOOT_CATALOG_IDS = deepFreeze(
+  Object.keys(ITEM_CATALOG).filter((catalogId) => (
+    ITEM_CATALOG[catalogId].availability.magic_loot
     && ITEM_CATALOG[catalogId].mechanics_status !== 'ruling-only'
   )),
 )

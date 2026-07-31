@@ -17,6 +17,7 @@ import { materializeCatalogItem } from './item-catalog.mjs'
 import {
   ENCOUNTER_LOOT_POLICY_ID,
   serverEncounterLoot,
+  serverEncounterMagicLoot,
 } from './loot-tables.mjs'
 
 export const ENCOUNTER_OUTCOME_PLAN_VERSION = 'skazanie:encounter-outcome-plan:v1'
@@ -256,11 +257,20 @@ export function rollEncounterCoins(plan, diceService) {
 
 export function lootForEncounterOutcome(plan) {
   if (!plan?.rewards_eligible) return deepFreeze([])
-  return deepFreeze(serverEncounterLoot({
-    theme: plan.theme,
-    difficulty: plan.difficulty,
-    encounterId: plan.encounter_id,
-  }))
+  // Магическая находка идёт тем же путём, что и обычная добыча: она попадает в
+  // тот же frozen payload, делится тем же порядком и переживает replay без
+  // повторного обращения к каталогу.
+  return deepFreeze([
+    ...serverEncounterLoot({
+      theme: plan.theme,
+      difficulty: plan.difficulty,
+      encounterId: plan.encounter_id,
+    }),
+    ...serverEncounterMagicLoot({
+      encounterId: plan.encounter_id,
+      totalXp: plan.total_xp,
+    }),
+  ])
 }
 
 export function serverRewardForEncounter(state = {}, outcome = null) {

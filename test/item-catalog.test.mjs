@@ -59,7 +59,9 @@ test('manifest содержит ровно согласованные 107 зап
     { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 10 },
   )
   assert.deepEqual(ITEM_MECHANICS_STATUSES, ['verified', 'partial', 'ruling-only'])
-  assert.deepEqual(ITEM_AVAILABILITY_CHANNELS, ['shop', 'loot', 'crafting'])
+  // Магическая добыча — отдельный канал доступности: запись в manifest сама
+  // по себе не открывает вещь ни в лавке, ни в обычной добыче, ни в находке.
+  assert.deepEqual(ITEM_AVAILABILITY_CHANNELS, ['shop', 'loot', 'magic_loot', 'crafting'])
   assert.equal(ITEM_CATALOG_SCHEMA_VERSION, 'skazanie:item-catalog:v1')
   assert.deepEqual(ITEM_CATALOG_SOURCE, {
     source_url: 'https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf',
@@ -121,7 +123,7 @@ test('manifest содержит ровно согласованные 107 зап
   assert.equal(ring.attunement.required, true)
   assert.equal(ring.lifecycle.equip_slot, 'ring-protection')
   assert.deepEqual(ring.source_pages, [101, 205, 237])
-  assert.deepEqual(ring.availability, { shop: false, loot: false, crafting: false })
+  assert.deepEqual(ring.availability, { shop: false, loot: false, magic_loot: true, crafting: false })
   const fireResistanceRing = ITEM_CATALOG['srd_5_2_1:ring-of-fire-resistance']
   assert.equal(fireResistanceRing.price_cp, 400_000)
   assert.equal(fireResistanceRing.weight, 0)
@@ -132,7 +134,7 @@ test('manifest содержит ровно согласованные 107 зап
   assert.equal(fireResistanceRing.attunement.required, false)
   assert.equal(fireResistanceRing.lifecycle.equip_slot, 'ring-fire-resistance')
   assert.deepEqual(fireResistanceRing.source_pages, [101, 205, 237])
-  assert.deepEqual(fireResistanceRing.availability, { shop: false, loot: false, crafting: false })
+  assert.deepEqual(fireResistanceRing.availability, { shop: false, loot: false, magic_loot: true, crafting: false })
   const wand = ITEM_CATALOG['srd_5_2_1:wand-of-magic-missiles']
   assert.equal(wand.price_cp, 40_000)
   assert.equal(wand.weight, 0)
@@ -159,7 +161,7 @@ test('manifest содержит ровно согласованные 107 зап
     target: 'enemy',
   })
   assert.deepEqual(wand.source_pages, [145, 205, 250])
-  assert.deepEqual(wand.availability, { shop: false, loot: false, crafting: false })
+  assert.deepEqual(wand.availability, { shop: false, loot: false, magic_loot: false, crafting: false })
 })
 
 test('shop, loot и crafting используют отдельные fail-closed allowlist', () => {
