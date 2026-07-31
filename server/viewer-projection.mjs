@@ -735,6 +735,16 @@ export function mechanicsForViewer(events, user, actorId = '', state = {}) {
 }
 
 /**
+ * @param {Loose} roll
+ * @param {Loose | null | undefined} user
+ * @returns {boolean}
+ */
+function rollVisibleFor(roll, user) {
+  if (user?.role === 'admin') return true
+  return !['gm_only', 'npc_private'].includes(String(roll?.visibility ?? 'public'))
+}
+
+/**
  * @param {Loose | null | undefined} explanation
  * @param {Loose | null | undefined} user
  * @param {string} [actorId]
@@ -754,7 +764,7 @@ export function turnExplanationForViewer(explanation, user, actorId = '', state 
         ...(command?.target_id == null ? {} : { target_id: text(command.target_id, 120) }),
       }
     }),
-    rolls: (Array.isArray(explanation.rolls) ? explanation.rolls : []).map((roll) => {
+    rolls: (Array.isArray(explanation.rolls) ? explanation.rolls : []).filter((roll) => rollVisibleFor(roll, user)).map((roll) => {
       if (!enemyIds.has(String(roll?.actor_id ?? roll?.actorId ?? ''))) return roll
       return {
         roll_id: text(roll?.roll_id ?? roll?.id, 160),
@@ -801,7 +811,9 @@ export function turnResultForViewer(result, user, actorId = '') {
     : visible.effects
   if (effects?.scene) effects.scene = sceneTransitionForViewer(effects.scene)
   const enemyIds = new Set((result.authoritative_state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
-  if (effects?.roll && enemyIds.has(String(effects.roll.actor_id ?? ''))) {
+  if (effects?.roll && !rollVisibleFor(effects.roll, user)) {
+    delete effects.roll
+  } else if (effects?.roll && enemyIds.has(String(effects.roll.actor_id ?? ''))) {
     effects.roll = {
       roll_id: text(effects.roll.roll_id, 160),
       actor_id: text(effects.roll.actor_id, 120),
@@ -814,6 +826,9 @@ export function turnResultForViewer(result, user, actorId = '') {
     ...publicResult,
     effects,
     mechanics: mechanicsForViewer(result.mechanics, user, actorId, result.authoritative_state),
+    ...(Array.isArray(result.rolls) ? {
+      rolls: result.rolls.filter((roll) => rollVisibleFor(roll, user)),
+    } : {}),
     ...(Array.isArray(visible.visible_state_changes) ? {
       visible_state_changes: mechanicsForViewer(visible.visible_state_changes, user, actorId, result.authoritative_state),
     } : {}),

@@ -10,6 +10,7 @@ export const ITEM_CATALOG_SOURCE = Object.freeze({
 
 export const ITEM_MECHANICS_STATUSES = Object.freeze(['verified', 'partial', 'ruling-only'])
 export const ITEM_AVAILABILITY_CHANNELS = Object.freeze(['shop', 'loot', 'crafting'])
+export const ITEM_RECHARGE_SCHEMA_VERSION = 1
 
 const SHOP_IDS = new Set([
   'srd_5_2_1:dagger',
@@ -53,6 +54,18 @@ function deepFreeze(value) {
 
 function clone(value) {
   return structuredClone(value)
+}
+
+export function normalizeItemRechargeProfile(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  if (Number(input.schema_version) !== ITEM_RECHARGE_SCHEMA_VERSION) return null
+  if (String(input.trigger ?? '').trim().toLowerCase() !== 'dawn') return null
+  if (String(input.formula ?? '').trim().toLowerCase().replace(/\s+/g, '') !== '1d6+1') return null
+  return {
+    schema_version: ITEM_RECHARGE_SCHEMA_VERSION,
+    trigger: 'dawn',
+    formula: '1d6+1',
+  }
 }
 
 function availability(catalogId) {
@@ -640,8 +653,16 @@ export function itemLifecycleProfile(catalogId) {
     ...(entry.equip?.armor?.kind === 'shield' ? { armor_bonus: entry.equip.armor.armorClassBonus } : {}),
     ...(entry.use ? { use: entry.use } : {}),
     ...(entry.charges ? { charges: entry.charges } : {}),
+    ...(normalizeItemRechargeProfile(entry.recharge) ? { recharge: normalizeItemRechargeProfile(entry.recharge) } : {}),
     requires_attunement: entry.attunement?.required === true,
   })
+}
+
+export function itemRechargeProfile(catalogId) {
+  const entry = catalogItem(catalogId)
+  const recharge = normalizeItemRechargeProfile(entry?.recharge)
+  const maximum = Math.max(0, Number(entry?.charges?.max) || 0)
+  return recharge && maximum > 0 ? clone(recharge) : null
 }
 
 export const ITEM_ARMOR_PROFILES = deepFreeze(Object.fromEntries(
@@ -703,6 +724,7 @@ export function materializeCatalogItem(catalogId, instance = {}) {
     ...(entry.combat ? { combat: clone(entry.combat) } : {}),
     ...(entry.passive_effects ? { passive_effects: clone(entry.passive_effects) } : {}),
     ...(entry.charges ? { charges: catalogChargeState(entry, source) } : {}),
+    ...(normalizeItemRechargeProfile(entry.recharge) ? { recharge: normalizeItemRechargeProfile(entry.recharge) } : {}),
     ...(entry.attunement.required ? { requires_attunement: true } : {}),
   }
 }
@@ -722,13 +744,17 @@ export function itemViewerCapabilities(item = {}) {
         ? 'body'
         : null
     const requiresAttunement = item?.requires_attunement === true
-    if (!equipSlot && !requiresAttunement) return null
+    const recharge = normalizeItemRechargeProfile(item?.recharge)
+    const maximum = Math.max(0, Number(item?.charges?.max) || 0)
+    const current = Math.max(0, Math.min(maximum, Number.isSafeInteger(Number(item?.charges?.current)) ? Number(item.charges.current) : maximum))
+    if (!equipSlot && !requiresAttunement && (!recharge || maximum <= 0)) return null
     return {
       equippable: Boolean(equipSlot),
       equip_slot: equipSlot,
       usable: false,
       use: null,
-      charges: null,
+      charges: recharge && maximum > 0 ? { current, max: maximum } : null,
+      recharge: recharge && maximum > 0 ? recharge : null,
       requires_attunement: requiresAttunement,
     }
   }
@@ -747,6 +773,7 @@ export function itemViewerCapabilities(item = {}) {
     usable: Boolean(use),
     use,
     charges: catalogChargeState(entry, item),
+    recharge: normalizeItemRechargeProfile(entry.recharge),
     requires_attunement: entry.attunement?.required === true,
     mechanics_status: entry.mechanics_status,
     limitation: entry.limitation,
