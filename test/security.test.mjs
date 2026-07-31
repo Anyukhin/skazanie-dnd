@@ -12,6 +12,7 @@ import {
   strictJsonParse,
 } from '../server/llm-client.mjs'
 import { currentCampaignModel, runWithCampaignAiSettings } from '../server/campaign-ai-context.mjs'
+import { PROMPT_DESCRIPTORS } from '../server/prompt-descriptors.mjs'
 import {
   DATA_ONLY_INSTRUCTION,
   SecurityValidationError,
@@ -402,7 +403,10 @@ test('контрактным списком покрыта каждая роль
   assert.equal(loaded.size, 7, `ожидались ровно семь ролей, читающих промпт, найдено ${loaded.size}`)
 
   const knownGaps = new Set([])
-  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v3', 'narrator/v6', 'director/v1', 'action_adjudicator/v2', 'campaign_creator/v3', 'map_architect/v3'])
+  // Список ролей больше не дублируется здесь: он дважды расходился с кодом при
+  // слиянии веток. Источник — реестр рядом с загрузчиками, а его сверяет с
+  // диском `test/prompt-descriptors.test.mjs`.
+  const covered = new Set(PROMPT_DESCRIPTORS.map((descriptor) => descriptor.promptId))
   const uncovered = [...loaded.keys()].filter((id) => !covered.has(id) && !knownGaps.has(id)).sort()
   assert.deepEqual(uncovered, [], 'роль грузит промпт, но не покрыта ни контрактным списком, ни записанным пробелом')
 })
