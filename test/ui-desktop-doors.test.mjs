@@ -22,7 +22,8 @@ test('hovering a door highlights precisely the two cells joined by its edge', ()
 })
 
 test('door controls connect hover and focus to the board overlay and expose lock DC in the label', async () => {
-  const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+  .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
   assert.match(appSource, /onPointerEnter: \(\) => setHoveredDoorId\(door\.id\)/)
   assert.match(appSource, /onFocus: \(\) => setHoveredDoorId\(door\.id\)/)
   assert.match(appSource, /doorOverlayCells\(highlightedDoor\)/)

@@ -5,7 +5,8 @@ import test from 'node:test'
 const [serverSource, sessionSource, appSource] = await Promise.all([
   readFile(new URL('../server/index.mjs', import.meta.url), 'utf8'),
   readFile(new URL('../src/useGameSession.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/App.tsx', import.meta.url), 'utf8'),
+  Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+      .map((path) => readFile(new URL(path, import.meta.url), 'utf8'))).then((parts) => parts.join('\n')),
 ])
 
 test('typing обновляет отдельное presence-событие без полного reconcile комнаты', () => {

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 // Часть экранов вынесена из App.tsx по задаче 0 — сторож читает весь корпус.
-const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/app-shared.tsx']
+const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
   .join('\n')
 const sessionSource = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')

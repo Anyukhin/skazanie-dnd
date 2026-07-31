@@ -20,7 +20,8 @@ test('attack details exist only for a hovered or selected server target', () => 
 
 test('wide hotbar lays out title, chips and two-column detail at the requested thresholds', async () => {
   const [appSource, styles] = await Promise.all([
-    readFile(new URL('../src/App.tsx', import.meta.url), 'utf8'),
+    Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+      .map((path) => readFile(new URL(path, import.meta.url), 'utf8'))).then((parts) => parts.join('\n')),
     readFile(new URL('../src/styles.css', import.meta.url), 'utf8'),
   ])
   assert.match(appSource, /selectedAttackForecast\(\s*state\.combatForecast\?\.targets,/)
@@ -32,6 +33,7 @@ test('wide hotbar lays out title, chips and two-column detail at the requested t
 })
 
 test('the exploration controls wrapper cannot render without its start-combat button', async () => {
-  const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+  .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
   assert.match(appSource, /\{showStartCombat && !combatActive && <div className="hotbar-controls-row">[\s\S]*?<button className="exploration-start-combat"[\s\S]*?<\/div>\}/)
 })

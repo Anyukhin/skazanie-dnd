@@ -6,7 +6,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
-const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+  .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
+  .join('\n')
 const sessionSource = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const clientSource = readFileSync(new URL('../src/ai-client.ts', import.meta.url), 'utf8')
 
