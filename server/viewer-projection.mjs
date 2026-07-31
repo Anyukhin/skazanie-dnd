@@ -633,7 +633,7 @@ function playerItemsWithCapabilities(players) {
  */
 export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
-  if (user?.role === 'admin') return state
+  if (user?.role === 'admin') return { ...state, players: playerItemsWithCapabilities(state.players) }
   // `locationMaps` содержит ещё одну полную копию каждой тактической карты, а
   // `scene` ниже всё равно пересобирается строгим whitelist-проектором.
   // Не копируем одни и те же 10 000 клеток рекурсивно, чтобы тут же заменить

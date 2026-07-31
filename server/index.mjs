@@ -1469,6 +1469,13 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
         hp: authoritative.hp,
         ...(forceProjectorRefresh || eventTypes.has('ExperienceAwarded') ? { experience: authoritative.experience } : {}),
         ...(refreshInventory ? { inventory: authoritative.inventory } : {}),
+        ...(refreshInventory ? {
+          armor: authoritative.armor,
+          speed: authoritative.speed,
+          proficiency: authoritative.proficiency,
+          characterSheet: authoritative.characterSheet,
+          inventoryLoad: authoritative.inventoryLoad,
+        } : {}),
         ...(forceProjectorRefresh || merchantInventoryChanged || characterImported ? { currency: authoritative.currency } : {}),
         ...(forceProjectorRefresh || characterBuildChanged ? {
           level: authoritative.level,

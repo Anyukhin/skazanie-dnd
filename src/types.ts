@@ -342,6 +342,8 @@ export type InventoryItem = {
     } | null
     charges: { current: number; max: number } | null
     requires_attunement: boolean
+    mechanics_status?: 'verified' | 'partial' | 'ruling-only'
+    limitation?: string
   }
   combat?: {
     kind: 'melee' | 'ranged' | 'thrown-area'
@@ -881,6 +883,7 @@ export type BattleEvent = {
   failures?: number
   result?: string
   modifierSources?: string[]
+  itemSavingThrowBonus?: number
   auraSourceId?: string
   auraBonus?: number
   indomitableBonus?: number

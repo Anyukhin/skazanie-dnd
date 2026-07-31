@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { materializeCatalogItem } from '../server/item-catalog.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 
 function dice(values = []) {
@@ -13,12 +14,12 @@ function dice(values = []) {
   })
 }
 
-function fixture({ casterClass = 'wizard', casterHp = 20, temporaryHp = 0, paladinConditions = [], immune = false } = {}) {
+function fixture({ casterClass = 'wizard', casterHp = 20, temporaryHp = 0, paladinConditions = [], immune = false, casterRing = false } = {}) {
   return normalizeCampaignState({
     sessionCode: 'CONCENTRATION-SAVES',
     partyMemberIds: ['caster', 'paladin'],
     players: [
-      { id: 'caster', character: 'Мира', characterClass: casterClass, level: 6, hp: casterHp, maxHp: 20, armor: 13, proficiency: 3, abilities: { str: 8, dex: 14, con: casterClass === 'fighter' ? 14 : 10, int: 16, wis: 12, cha: 10 }, x: 1, y: 2, inventory: [] },
+      { id: 'caster', character: 'Мира', characterClass: casterClass, level: 6, hp: casterHp, maxHp: 20, armor: 13, proficiency: 3, abilities: { str: 8, dex: 14, con: casterClass === 'fighter' ? 14 : 10, int: 16, wis: 12, cha: 10 }, x: 1, y: 2, inventory: casterRing ? [{ ...materializeCatalogItem('srd_5_2_1:ring-of-protection', { id: 'caster-ring' }), equipped: true, attuned_to: 'caster' }] : [] },
       { id: 'paladin', character: 'Сиэль', characterClass: 'paladin', level: 6, hp: 38, maxHp: 38, armor: 18, proficiency: 3, abilities: { str: 16, dex: 10, con: 14, int: 10, wis: 12, cha: 18 }, x: 1, y: 1, inventory: [] },
     ],
     enemies: [{ id: 'enemy', name: 'Культист', hp: 20, maxHp: 20, armor: 12, abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, x: 2, y: 2, alive: true }],
@@ -36,22 +37,24 @@ function fixture({ casterClass = 'wizard', casterHp = 20, temporaryHp = 0, palad
 const applyAll = (state, events) => events.reduce((current, event) => applyGameEvent(current, event), state)
 
 test('урон автоматически вызывает save концентрации, а Аура защиты может сохранить эффект', () => {
-  const state = fixture()
+  const state = fixture({ casterRing: true })
   const result = resolveCommand({ command_type: 'ApplyDamage', actor_id: 'enemy', target_id: 'caster', amount: 8, damage_type: 'fire' }, state, { diceService: dice([6]) })
   const required = result.events.find((event) => event.event_type === 'ConcentrationCheckRequired')
   const save = result.events.find((event) => event.event_type === 'ConcentrationSavingThrowResolved')
   assert.deepEqual({ difficulty: required.payload.difficulty, damage: required.payload.damage }, { difficulty: 10, damage: 8 })
-  assert.equal(save.payload.modifier, 4)
-  assert.equal(save.payload.total, 10)
+  assert.equal(save.payload.modifier, 5)
+  assert.equal(save.payload.total, 11)
   assert.equal(save.payload.saved, true)
   assert.equal(save.payload.proficient, false)
   assert.equal(save.payload.aura_of_protection_source, 'paladin')
+  assert.equal(save.payload.item_saving_throw_bonus, 1)
   assert.ok(save.source_rule_ids.includes('srd_5_2_1:spells:concentration'))
   assert.ok(save.source_rule_ids.includes('srd_5_2_1:classes:paladin-aura-of-protection'))
   const after = applyAll(state, result.events)
   assert.equal(after.mechanics.concentration.caster.effect_id, 'spell:web')
   assert.equal(after.battleLog.at(-1).type, 'concentration-save')
   assert.equal(after.battleLog.at(-1).auraBonus, 4)
+  assert.equal(after.battleLog.at(-1).itemSavingThrowBonus, 1)
   assert.deepEqual(replayEvents(state, result.events), after)
 })
 

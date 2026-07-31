@@ -400,6 +400,7 @@ export function InventoryView({
     {items.length ? <div className="inventory-grid">{items.map((item) => <article className="inventory-card" key={item.id}>
       <div className="inventory-art"><ItemImage item={item} />{item.equipped && <span><Check size={11} />НАДЕТО</span>}{item.quantity > 1 && <b>×{item.quantity}</b>}</div>
       <div className="inventory-card-info"><small>{itemTypeNames[item.type]}</small><strong>{item.name}</strong><p>{item.description}</p><em className={`rarity ${item.rarity.replace(' ', '-')}`}>{item.rarity}</em></div>
+      {item.capabilities?.mechanics_status && item.capabilities.mechanics_status !== 'verified' && item.capabilities.limitation && <p className="item-mechanics-limitation"><b>Ограничение:</b> {item.capabilities.limitation}</p>}
       {item.capabilities?.charges && <div className="item-charge-state">Применения: <b>{item.capabilities.charges.current}/{item.capabilities.charges.max}</b></div>}
       <div className="item-actions">
         {item.capabilities?.equippable && <button disabled={busy} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Экипировать'}</button>}
@@ -420,7 +421,7 @@ export function InventoryView({
         >
           Использовать · {item.capabilities.use?.action_type === 'bonus_action' ? 'бонус' : item.capabilities.use?.action_type === 'action' ? 'действие' : 'вне боя'}
         </button>}
-        {item.requires_attunement && <button disabled={busy} onClick={() => onAttune(item.id, item.attuned_to !== player.id)}>{item.attuned_to === player.id ? 'Разорвать настройку' : 'Настроиться'}</button>}
+        {item.capabilities?.requires_attunement && <button disabled={busy} onClick={() => onAttune(item.id, item.attuned_to !== player.id)}>{item.attuned_to === player.id ? 'Разорвать настройку' : 'Настроиться'}</button>}
         {recipientId && !item.equipped && !item.attuned_to && <button disabled={busy} onClick={() => onTransfer(item.id, recipientId, 1)}>Передать 1</button>}
       </div>
     </article>)}</div> : <div className="empty-inventory"><Backpack size={31} /><h3>Ничего не найдено</h3><p>Измените запрос или получите предмет в игре.</p></div>}

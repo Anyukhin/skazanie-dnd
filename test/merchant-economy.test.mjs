@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { materializeCatalogItem } from '../server/item-catalog.mjs'
 import {
   ECONOMY_POLICY_ID,
   DEFAULT_MERCHANT_PURSE_CP,
@@ -196,6 +197,27 @@ test('продажа использует SRD half-cost, блокирует equi
   assert.equal(sale.payload.merchant_purse_after_cp, DEFAULT_MERCHANT_PURSE_CP - 100)
   assert.equal(replayEvents(state, result.events).merchants[0].purse_cp, next.merchants[0].purse_cp)
   assert.equal(next.economyLog.at(-1).type, 'sale')
+})
+
+test('настроенный предмет не получает цену продажи и отклоняется до выплаты', () => {
+  const base = merchantState()
+  const ring = {
+    ...materializeCatalogItem('srd_5_2_1:ring-of-protection', { id: 'attuned-ring' }),
+    equipped: false,
+    attuned_to: 'hero',
+  }
+  const state = merchantState({
+    players: [{ ...base.players[0], inventory: [...base.players[0].inventory, ring] }],
+    merchants: [{ ...base.merchants[0], purse_cp: 1_000_000 }],
+  })
+  const quote = merchantViewFor(state, 'marten', 'hero').sell_quotes.find((candidate) => candidate.item_id === ring.id)
+  assert.equal(quote.can_sell, false)
+  assert.match(quote.reason, /разорвите настройку/u)
+  assert.equal(quote.max_quantity, 0)
+  assert.throws(
+    () => resolveCommand({ command_type: 'SellItem', actor_id: 'hero', merchant_id: 'marten', item_id: ring.id, quantity: 1 }, state, { diceService: dice([]) }),
+    (error) => error.code === 'ITEM_ATTUNED',
+  )
 })
 
 test('merchant purse ограничивает sell quote и отклоняет выплату без частичного изменения состояния', () => {

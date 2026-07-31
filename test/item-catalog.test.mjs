@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 
 import { deriveArmorClass } from '../server/character-lifecycle.mjs'
@@ -17,7 +18,7 @@ import {
   materializeCatalogItem,
 } from '../server/item-catalog.mjs'
 import { inventoryWeight, itemProfileFor } from '../server/item-lifecycle.mjs'
-import { inventoryItemFromStock, normalizeInventoryItem } from '../server/merchant-economy.mjs'
+import { inventoryItemFromStock, inventoryStackKey, normalizeInventoryItem } from '../server/merchant-economy.mjs'
 import { serverEncounterLoot } from '../server/loot-tables.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 import { assembleShop } from '../server/shop-assembler.mjs'
@@ -48,14 +49,14 @@ function dice(values) {
   })
 }
 
-test('manifest содержит ровно согласованные 98 записей и полную provenance', () => {
+test('manifest содержит ровно согласованные 99 записей и полную provenance', () => {
   const entries = Object.values(ITEM_CATALOG)
-  assert.equal(entries.length, 98)
-  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 98)
+  assert.equal(entries.length, 99)
+  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 99)
   assert.deepEqual(
     Object.fromEntries(['weapon', 'armor', 'ammunition', 'artisan-tool', 'other-tool', 'practical-gear', 'magic-item']
       .map((section) => [section, entries.filter((entry) => entry.manifest_section === section).length])),
-    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 1 },
+    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 2 },
   )
   assert.deepEqual(ITEM_MECHANICS_STATUSES, ['verified', 'partial', 'ruling-only'])
   assert.deepEqual(ITEM_AVAILABILITY_CHANNELS, ['shop', 'loot', 'crafting'])
@@ -109,6 +110,18 @@ test('manifest содержит ровно согласованные 98 зап�
   assert.equal(ITEM_CATALOG['srd_5_2_1:longsword-plus-1'].price_cp, 41_500)
   assert.equal(ITEM_CATALOG['srd_5_2_1:longsword-plus-1'].magic_item.bonus, 1)
   assert.equal(ITEM_CATALOG['srd_5_2_1:longsword-plus-1'].attunement.required, false)
+  const ring = ITEM_CATALOG['srd_5_2_1:ring-of-protection']
+  assert.equal(ring.price_cp, 400_000)
+  assert.equal(ring.weight, 0)
+  assert.equal(ring.type, 'other')
+  assert.equal(ring.category, 'ring')
+  assert.equal(ring.rarity, 'редкий')
+  assert.equal(ring.magic_item.rarity, 'rare')
+  assert.equal(ring.mechanics_status, 'partial')
+  assert.equal(ring.attunement.required, true)
+  assert.equal(ring.lifecycle.equip_slot, 'ring-protection')
+  assert.deepEqual(ring.source_pages, [101, 205, 237])
+  assert.deepEqual(ring.availability, { shop: false, loot: false, crafting: false })
 })
 
 test('shop, loot и crafting используют отдельные fail-closed allowlist', () => {
@@ -128,6 +141,9 @@ test('shop, loot и crafting используют отдельные fail-closed
   assert.equal(ITEM_SHOP_CATALOG_IDS.includes('srd_5_2_1:longsword-plus-1'), false)
   assert.equal(ITEM_LOOT_CATALOG_IDS.includes('srd_5_2_1:longsword-plus-1'), false)
   assert.equal(ITEM_CRAFTING_CATALOG_IDS.includes('srd_5_2_1:longsword-plus-1'), false)
+  assert.equal(ITEM_SHOP_CATALOG_IDS.includes('srd_5_2_1:ring-of-protection'), false)
+  assert.equal(ITEM_LOOT_CATALOG_IDS.includes('srd_5_2_1:ring-of-protection'), false)
+  assert.equal(ITEM_CRAFTING_CATALOG_IDS.includes('srd_5_2_1:ring-of-protection'), false)
 
   const shop = assembleShop({
     location: 'Рыночная площадь',
@@ -216,6 +232,41 @@ test('materialization делает известную механику авто�
     materializeCatalogItem('srd_5_2_1:healers-kit', { charges: { current: 99 } }).charges,
     { current: 10, max: 10 },
   )
+
+  const ring = materializeCatalogItem('srd_5_2_1:ring-of-protection', {
+    id: 'forged-ring',
+    type: 'weapon',
+    rarity: 'сюжетный',
+    passive_effects: [{
+      schema_version: 1,
+      effect_id: 'forged',
+      group: 'forged',
+      armor_class_bonus: 99,
+      saving_throw_bonus: 99,
+    }],
+  })
+  assert.equal(ring.type, 'other')
+  assert.equal(ring.rarity, 'редкий')
+  assert.equal(ring.requires_attunement, true)
+  assert.deepEqual(ring.passive_effects, ITEM_CATALOG['srd_5_2_1:ring-of-protection'].passive_effects)
+  assert.deepEqual(normalizeInventoryItem(ring).passive_effects, ring.passive_effects)
+
+  const sanitized = normalizeInventoryItem({
+    id: 'custom-effect',
+    passive_effects: [
+      { schema_version: 2, effect_id: 'future', group: 'future', armor_class_bonus: 1 },
+      { schema_version: 1, effect_id: 'safe', group: 'safe', armor_class_bonus: 999, saving_throw_bonus: -1 },
+    ],
+  }, { preserveUnknown: true })
+  assert.deepEqual(sanitized.passive_effects, [{
+    schema_version: 1,
+    effect_id: 'safe',
+    group: 'safe',
+    requires_equipped: false,
+    requires_attunement: false,
+    armor_class_bonus: 100,
+    saving_throw_bonus: 0,
+  }])
 })
 
 test('legacy normalization не меняет replay-поля без явной hydration', () => {
@@ -244,6 +295,40 @@ test('legacy normalization не меняет replay-поля без явной h
   const replayState = normalizeCampaignState({ players: [{ id: 'hero', hp: 1, maxHp: 1, inventory: [legacy] }] })
   assert.equal(replayState.players[0].inventory[0].catalog_schema_version, undefined)
   assert.deepEqual(replayState.players[0].inventory[0].combat, legacy.combat)
+
+  const mundane = {
+    id: 'legacy-mundane',
+    name: 'Legacy',
+    type: 'other',
+    weight: 0,
+    rarity: 'обычный',
+    description: '',
+    properties: '',
+  }
+  const legacyDescriptorInput = {
+    catalog_id: null,
+    base_price_cp: 0,
+    name: 'Legacy',
+    type: 'other',
+    weight: 0,
+    rarity: 'обычный',
+    description: '',
+    properties: '',
+    combat: null,
+    charges: null,
+    requires_attunement: null,
+    attuned_to: null,
+    sellable: null,
+    quest_item: null,
+    price_provenance: null,
+    appraisal_policy_id: null,
+  }
+  const legacyDescriptor = Object.fromEntries(
+    Object.keys(legacyDescriptorInput).sort().map((key) => [key, legacyDescriptorInput[key]]),
+  )
+  const legacyDigest = createHash('sha256').update(JSON.stringify(legacyDescriptor)).digest('hex').slice(0, 32)
+  assert.equal(inventoryStackKey(mundane), `custom:${legacyDigest}`)
+  assert.equal(normalizeInventoryItem(mundane).stack_key, `custom:${legacyDigest}`)
 })
 
 test('купленный лук получает runtime-профиль и проходит реальную серверную атаку с replay', () => {
