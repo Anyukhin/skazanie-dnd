@@ -218,7 +218,8 @@ function parseJsonFact(fact) {
 }
 
 export class AutonomousCampaignOrchestrator {
-  constructor({ eventStore, rulesEngine, narrator = null, actionAdjudicator = null, now = () => Date.now() } = {}) {
+  constructor({
+    loreAuthor = null, eventStore, rulesEngine, narrator = null, actionAdjudicator = null, now = () => Date.now() } = {}) {
     if (!eventStore || !rulesEngine) throw new TypeError('AutonomousCampaignOrchestrator requires eventStore and rulesEngine')
     this.eventStore = eventStore
     this.rulesEngine = rulesEngine
@@ -226,6 +227,7 @@ export class AutonomousCampaignOrchestrator {
     // Без арбитра свободное действие читает детерминированная таблица: игра
     // обязана оставаться играбельной без ключа модели.
     this.actionAdjudicator = actionAdjudicator
+    this.loreAuthor = loreAuthor
     this.now = now
   }
 
@@ -388,11 +390,23 @@ export class AutonomousCampaignOrchestrator {
     // момент закрывает арку, а не кампанию. Эпилог уже написан — он становится
     // эпилогом арки, и его же читает следующая как «в прошлый раз».
     if (loaded.state.campaignConcept?.arc_chain === true && campaignCanAdvanceArc(loaded.state)) {
+      // Хроника арки — развёрнутый рассказ летописца поверх сухого эпилога.
+      // Пишется до коммита, потому что едет в payload события: replay не должен
+      // зависеть от доступности провайдера. Пустая хроника легальна.
+      const chronicle = this.loreAuthor
+        ? await this.loreAuthor.composeArcChronicle({
+          arcNumber: Number(loaded.state.campaignConcept?.arc?.arc_number) || 1,
+          epilogue,
+          facts: (loaded.state.worldMemory?.facts ?? []).slice(-24),
+          promises: (loaded.state.social?.promises ?? []).filter((entry) => entry?.status === 'open').slice(0, 12),
+        })
+        : ''
       const committedArc = await this.runCommands(campaignId, `${idempotencyKey}:campaign-arc`, [{
         command_type: 'AdvanceCampaignArc',
         reason: 'arc_resolved_at_climax',
         occurred_at: new Date(this.now()).toISOString(),
         epilogue,
+        ...(chronicle ? { chronicle } : {}),
         hook: nextArcHook(loaded.state),
       }])
       return { ...committedArc, epilogue_provider: provider, arc_advanced: true }

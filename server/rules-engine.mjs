@@ -9174,6 +9174,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         reason: command.reason,
         occurred_at: command.occurred_at || null,
         epilogue: command.epilogue,
+        // Хроника летописца необязательна и едет в payload целиком: replay не
+        // зовёт провайдера и не зависит от его доступности.
+        ...(command.chronicle ? { chronicle: String(command.chronicle).slice(0, 12_000) } : {}),
         hook: command.hook,
         closed_arc: {
           arc_number: closingArc.arc_number,
@@ -9769,6 +9772,7 @@ export function applyGameEvent(rawState, event) {
           arc_history: [...history, {
             ...(payload.closed_arc && typeof payload.closed_arc === 'object' ? clone(payload.closed_arc) : {}),
             epilogue: String(payload.epilogue ?? '').slice(0, 8_000),
+            ...(payload.chronicle ? { chronicle: String(payload.chronicle).slice(0, 12_000) } : {}),
             concluded_at: payload.occurred_at ?? event.occurred_at ?? event.created_at ?? null,
           }].slice(-MAX_CAMPAIGN_ARCS),
         }

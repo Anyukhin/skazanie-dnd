@@ -1,0 +1,575 @@
+{
+  "schema_version": 1,
+  "label": "lunapro-final1",
+  "date": "2026-07-31T20:09:16.313Z",
+  "primary_model": "openai/gpt-5.6-luna-pro",
+  "reasoning_effort": "off",
+  "model_timeout_ms": 45000,
+  "live_calls": 6,
+  "tokens": {
+    "input": 60471,
+    "output": 9417
+  },
+  "provider_log": [
+    {
+      "model": "openai/gpt-5.6-luna-pro",
+      "ok": true,
+      "latency_ms": 10269
+    },
+    {
+      "model": "openai/gpt-5.6-luna-pro",
+      "ok": true,
+      "latency_ms": 11523
+    },
+    {
+      "model": "openai/gpt-5.6-luna-pro",
+      "ok": true,
+      "latency_ms": 10458
+    },
+    {
+      "model": "openai/gpt-5.6-luna-pro",
+      "ok": true,
+      "latency_ms": 10630
+    },
+    {
+      "model": "openai/gpt-5.6-luna-pro",
+      "ok": true,
+      "latency_ms": 7215
+    },
+    {
+      "model": "openai/gpt-5.6-luna-pro",
+      "ok": true,
+      "latency_ms": 8306
+    }
+  ],
+  "samples": [
+    {
+      "id": "decision-n-minus-2",
+      "kind": "narrator",
+      "text": "У Северных ворот ничего не меняется: люди говорят вполголоса, а в воздухе держится смесь дорожной пыли и горячего железа. Внимание Ады не даёт нового видимого следа, но прежняя улика остаётся перед отрядом — Рен перевязал сломанную печать синей нитью у каменного льва, и именно такую нить нашли на засове. Старые ворота молчат под бледным небом, оставляя отряду решать, как связать эту память с исчезнувшим караваном.",
+      "memory_anchors": [
+        "син(?:яя|ей|юю)?\\s+нит",
+        "каменн(?:ый|ого)\\s+льв",
+        "не\\s+броса.{0,20}след"
+      ],
+      "specific_anchors": [
+        "мир[аеуыой]?",
+        "борин(?:а|у|ом)?",
+        "карава",
+        "северн.{0,24}ворот",
+        "син(?:яя|ей|юю|ей)?\\s+нит",
+        "медн(?:ая|ой|ую)\\s+круж",
+        "каменн(?:ый|ого|ому)\\s+льв",
+        "сгоревш(?:ая|ей|ую)\\s+мельниц",
+        "начальник.{0,16}страж",
+        "трет(?:ий|ьего)\\s+колокол"
+      ],
+      "forward_anchors": [
+        "карава",
+        "северн.{0,24}ворот",
+        "сгоревш.{0,16}мельниц",
+        "стар(?:ая|ой|ую)\\s+застав",
+        "след"
+      ],
+      "personal_anchors": [
+        "ад[аеуыой]?",
+        "проводниц",
+        "следопыт",
+        "решени",
+        "син(?:яя|ей|юю)?\\s+нит"
+      ],
+      "provider": "FallbackLLMClient",
+      "prompt_version": "narrator/v6",
+      "verification": {
+        "valid": true,
+        "violations": [],
+        "narration": "У Северных ворот ничего не меняется: люди говорят вполголоса, а в воздухе держится смесь дорожной пыли и горячего железа. Внимание Ады не даёт нового видимого следа, но прежняя улика остаётся перед отрядом — Рен перевязал сломанную печать синей нитью у каменного льва, и именно такую нить нашли на засове. Старые ворота молчат под бледным небом, оставляя отряду решать, как связать эту память с исчезнувшим караваном.",
+        "feedback_mode": "async-next-turn",
+        "feedback_pending": true,
+        "style_example_ids": [
+          "neutral-action-grounded-1",
+          "neutral-action-warm-1",
+          "neutral-combat-tense-1"
+        ]
+      },
+      "async_feedback": {
+        "valid": true,
+        "violations": [],
+        "content_alignment": {
+          "tone": "insufficient-evidence",
+          "themes": "not-configured",
+          "boundaries": "not-configured"
+        }
+      },
+      "latency_ms": 10299
+    },
+    {
+      "id": "open-promise",
+      "kind": "narrator",
+      "text": "Ада успешно разбирается в том, что удалось установить, и синяя нить у каменного льва остаётся связанной с засовом Северных ворот — слишком точный след, чтобы его отбрасывать. В трактире пахнет дымом очага с пряной горечью, половицы скрипят под редкими шагами, а обещанная Мирой карта старых троп всё ещё должна быть под медной кружкой.",
+      "memory_anchors": [
+        "медн(?:ая|ой|ую)\\s+круж",
+        "обеща.{0,28}карт",
+        "карт.{0,28}обеща"
+      ],
+      "specific_anchors": [
+        "мир[аеуыой]?",
+        "борин(?:а|у|ом)?",
+        "карава",
+        "северн.{0,24}ворот",
+        "син(?:яя|ей|юю|ей)?\\s+нит",
+        "медн(?:ая|ой|ую)\\s+круж",
+        "каменн(?:ый|ого|ому)\\s+льв",
+        "сгоревш(?:ая|ей|ую)\\s+мельниц",
+        "начальник.{0,16}страж",
+        "трет(?:ий|ьего)\\s+колокол"
+      ],
+      "forward_anchors": [
+        "карава",
+        "северн.{0,24}ворот",
+        "сгоревш.{0,16}мельниц",
+        "стар(?:ая|ой|ую)\\s+застав",
+        "след"
+      ],
+      "personal_anchors": [
+        "ад[аеуыой]?",
+        "проводниц",
+        "следопыт",
+        "решени",
+        "син(?:яя|ей|юю)?\\s+нит"
+      ],
+      "provider": "FallbackLLMClient",
+      "prompt_version": "narrator/v6",
+      "verification": {
+        "valid": true,
+        "violations": [],
+        "narration": "Ада успешно разбирается в том, что удалось установить, и синяя нить у каменного льва остаётся связанной с засовом Северных ворот — слишком точный след, чтобы его отбрасывать. В трактире пахнет дымом очага с пряной горечью, половицы скрипят под редкими шагами, а обещанная Мирой карта старых троп всё ещё должна быть под медной кружкой.",
+        "feedback_mode": "async-next-turn",
+        "feedback_pending": true,
+        "feedback_applied": [
+          {
+            "valid": true,
+            "violations": [],
+            "content_alignment": {
+              "tone": "insufficient-evidence",
+              "themes": "not-configured",
+              "boundaries": "not-configured"
+            }
+          }
+        ],
+        "style_example_ids": [
+          "neutral-action-grounded-1",
+          "neutral-action-warm-1",
+          "neutral-combat-tense-1"
+        ]
+      },
+      "async_feedback": {
+        "valid": true,
+        "violations": [],
+        "content_alignment": {
+          "tone": "insufficient-evidence",
+          "themes": "not-configured",
+          "boundaries": "not-configured"
+        }
+      },
+      "latency_ms": 11533
+    },
+    {
+      "id": "past-meeting",
+      "kind": "narrator",
+      "text": "Ада сумела донести свою мысль, но у Северных ворот это пока не вызвало заметного движения: люди по-прежнему говорят вполголоса, а бледное небо висит над крышами. В воздухе смешались дорожная пыль и горячее железо; на деревянных перилах осела сухая пыль. Как и прежде, не забыта синяя нить у каменного льва — улика, которую Ада настояла сохранить.",
+      "memory_anchors": [
+        "трет(?:ий|ьего)\\s+колокол",
+        "борин.{0,32}журнал",
+        "начальник.{0,20}страж"
+      ],
+      "specific_anchors": [
+        "мир[аеуыой]?",
+        "борин(?:а|у|ом)?",
+        "карава",
+        "северн.{0,24}ворот",
+        "син(?:яя|ей|юю|ей)?\\s+нит",
+        "медн(?:ая|ой|ую)\\s+круж",
+        "каменн(?:ый|ого|ому)\\s+льв",
+        "сгоревш(?:ая|ей|ую)\\s+мельниц",
+        "начальник.{0,16}страж",
+        "трет(?:ий|ьего)\\s+колокол"
+      ],
+      "forward_anchors": [
+        "карава",
+        "северн.{0,24}ворот",
+        "сгоревш.{0,16}мельниц",
+        "стар(?:ая|ой|ую)\\s+застав",
+        "след"
+      ],
+      "personal_anchors": [
+        "ад[аеуыой]?",
+        "проводниц",
+        "следопыт",
+        "решени",
+        "син(?:яя|ей|юю)?\\s+нит"
+      ],
+      "provider": "FallbackLLMClient",
+      "prompt_version": "narrator/v6",
+      "verification": {
+        "valid": true,
+        "violations": [],
+        "narration": "Ада сумела донести свою мысль, но у Северных ворот это пока не вызвало заметного движения: люди по-прежнему говорят вполголоса, а бледное небо висит над крышами. В воздухе смешались дорожная пыль и горячее железо; на деревянных перилах осела сухая пыль. Как и прежде, не забыта синяя нить у каменного льва — улика, которую Ада настояла сохранить.",
+        "feedback_mode": "async-next-turn",
+        "feedback_pending": true,
+        "feedback_applied": [
+          {
+            "valid": true,
+            "violations": [],
+            "content_alignment": {
+              "tone": "insufficient-evidence",
+              "themes": "not-configured",
+              "boundaries": "not-configured"
+            }
+          }
+        ],
+        "style_example_ids": [
+          "neutral-action-grounded-1",
+          "neutral-action-warm-1",
+          "neutral-combat-tense-1"
+        ]
+      },
+      "async_feedback": {
+        "valid": false,
+        "violations": [
+          {
+            "code": "LINKED_MEMORY_OMITTED",
+            "message": "Рассказчик пропустил наиболее тесно связанную видимую деталь прошлого",
+            "match": "Борин"
+          }
+        ],
+        "content_alignment": {
+          "tone": "insufficient-evidence",
+          "themes": "not-configured",
+          "boundaries": "not-configured"
+        }
+      },
+      "latency_ms": 10459
+    },
+    {
+      "id": "forward-hook",
+      "kind": "narrator",
+      "text": "Попытка Ады не даёт надёжного ответа: свежие колеи в золе расплываются среди обломков, и направление телеги остаётся неясным. В памяти снова всплывает сухая фраза Борина: «После третьего колокола журнал заполнял сам начальник стражи» — теперь она звучит особенно тяжело рядом с историей о старой заставе. У пола тянет сухим сквозняком, а где-то в стороне тихо скрипит дерево.",
+      "memory_anchors": [],
+      "specific_anchors": [
+        "мир[аеуыой]?",
+        "борин(?:а|у|ом)?",
+        "карава",
+        "северн.{0,24}ворот",
+        "син(?:яя|ей|юю|ей)?\\s+нит",
+        "медн(?:ая|ой|ую)\\s+круж",
+        "каменн(?:ый|ого|ому)\\s+льв",
+        "сгоревш(?:ая|ей|ую)\\s+мельниц",
+        "начальник.{0,16}страж",
+        "трет(?:ий|ьего)\\s+колокол"
+      ],
+      "forward_anchors": [
+        "карава",
+        "северн.{0,24}ворот",
+        "сгоревш.{0,16}мельниц",
+        "стар(?:ая|ой|ую)\\s+застав",
+        "след"
+      ],
+      "personal_anchors": [
+        "ад[аеуыой]?",
+        "проводниц",
+        "следопыт",
+        "решени",
+        "син(?:яя|ей|юю)?\\s+нит"
+      ],
+      "provider": "FallbackLLMClient",
+      "prompt_version": "narrator/v6",
+      "verification": {
+        "valid": true,
+        "violations": [],
+        "narration": "Попытка Ады не даёт надёжного ответа: свежие колеи в золе расплываются среди обломков, и направление телеги остаётся неясным. В памяти снова всплывает сухая фраза Борина: «После третьего колокола журнал заполнял сам начальник стражи» — теперь она звучит особенно тяжело рядом с историей о старой заставе. У пола тянет сухим сквозняком, а где-то в стороне тихо скрипит дерево.",
+        "feedback_mode": "async-next-turn",
+        "feedback_pending": true,
+        "feedback_applied": [
+          {
+            "valid": false,
+            "violations": [
+              {
+                "code": "LINKED_MEMORY_OMITTED",
+                "message": "Рассказчик пропустил наиболее тесно связанную видимую деталь прошлого",
+                "match": "Борин"
+              }
+            ],
+            "content_alignment": {
+              "tone": "insufficient-evidence",
+              "themes": "not-configured",
+              "boundaries": "not-configured"
+            }
+          }
+        ],
+        "style_example_ids": [
+          "neutral-action-grounded-1",
+          "neutral-action-warm-1",
+          "neutral-combat-tense-1"
+        ]
+      },
+      "async_feedback": {
+        "valid": false,
+        "violations": [
+          {
+            "code": "LINKED_MEMORY_OMITTED",
+            "message": "Рассказчик пропустил наиболее тесно связанную видимую деталь прошлого",
+            "match": "Каменный лев"
+          }
+        ],
+        "content_alignment": {
+          "tone": "insufficient-evidence",
+          "themes": "not-configured",
+          "boundaries": "not-configured"
+        }
+      },
+      "latency_ms": 10632
+    },
+    {
+      "id": "voice-mira",
+      "kind": "npc",
+      "text": "Ну-ка, после третьего колокола ворота открыл начальник стражи. Я сама не видела его у засовов, но на заставе это знают все: приказ прошёл через него, а такие вещи на Северных воротах зря не шепчут. Двадцать лет встречаю путников с тракта — когда стража молчит, обычно дело нечисто.",
+      "suggestions": [],
+      "voice_pair": "gates-dialogue",
+      "voice_markers": [
+        "ну-ка",
+        "милок",
+        "дорожн.{0,12}слов",
+        "прибаут"
+      ],
+      "provider": "FallbackLLMClient",
+      "latency_ms": 7221
+    },
+    {
+      "id": "voice-borin",
+      "kind": "npc",
+      "text": "В журнале ворот отмечено: после третьего колокола их открыл начальник стражи. Заметьте, запись сделана его рукой и стоит рядом с отметкой дежурного, так что это не пересказ у костра, а свидетельство, которому здесь привыкли доверять.",
+      "suggestions": [],
+      "voice_pair": "gates-dialogue",
+      "voice_markers": [
+        "заметьте",
+        "полагаю",
+        "следует",
+        "однако"
+      ],
+      "provider": "FallbackLLMClient",
+      "latency_ms": 8307
+    }
+  ],
+  "metrics": {
+    "ngram_overlap": {
+      "n": 3,
+      "narrator_samples": 4,
+      "pairwise_jaccard_pct": 1.24
+    },
+    "cliches": {
+      "occurrences": 0,
+      "per_1000_tokens": 0,
+      "tokens": 310,
+      "catalog": [
+        {
+          "id": "air-thickens",
+          "label": "воздух густеет",
+          "source": "обязательный пример из брифа S",
+          "count": 0
+        },
+        {
+          "id": "silence-hangs",
+          "label": "повисает тишина",
+          "source": "обязательный пример из брифа S",
+          "count": 0
+        },
+        {
+          "id": "moment-freeze",
+          "label": "на мгновение замирает",
+          "source": "на мгновение замирает",
+          "count": 0
+        },
+        {
+          "id": "eyes-flash",
+          "label": "в глазах мелькает",
+          "source": "в глазах мелькает узнавание",
+          "count": 0
+        },
+        {
+          "id": "pulls-together",
+          "label": "берёт себя в руки",
+          "source": "быстро берёт себя в руки",
+          "count": 0
+        },
+        {
+          "id": "legs-buckle",
+          "label": "ноги подкашиваются",
+          "source": "ноги подкашиваются",
+          "count": 0
+        },
+        {
+          "id": "world-swims",
+          "label": "мир плывёт",
+          "source": "мир плывёт",
+          "count": 0
+        },
+        {
+          "id": "air-smells",
+          "label": "в воздухе пахнет",
+          "source": "в воздухе пахнет пылью и дымом",
+          "count": 0
+        },
+        {
+          "id": "sun-declines",
+          "label": "солнце клонится к закату",
+          "source": "солнце клонится к закату",
+          "count": 0
+        },
+        {
+          "id": "crimson-sky",
+          "label": "багровые тона",
+          "source": "окрашивая небо в багровые тона",
+          "count": 0
+        },
+        {
+          "id": "cuts-through-din",
+          "label": "перекрывает гул",
+          "source": "голос перекрывает гул трактира",
+          "count": 0
+        },
+        {
+          "id": "last-lunge",
+          "label": "в последнем рывке",
+          "source": "извернувшись в последнем рывке",
+          "count": 0
+        },
+        {
+          "id": "wariness-melts",
+          "label": "настороженность тает",
+          "source": "Мирина настороженность тает",
+          "count": 0
+        },
+        {
+          "id": "casts-a-glance",
+          "label": "бросает взгляд",
+          "source": "бросает взгляд на Северные ворота",
+          "count": 0
+        },
+        {
+          "id": "thought-spins",
+          "label": "в голове крутится",
+          "source": "в голове крутится та же синяя нить",
+          "count": 0
+        },
+        {
+          "id": "silence-stands",
+          "label": "тишина стоит такая",
+          "source": "тишина стоит такая, будто телега растворилась",
+          "count": 0
+        },
+        {
+          "id": "threads-one-knot",
+          "label": "нити одного узла",
+          "source": "две нити одного узла",
+          "count": 0
+        }
+      ]
+    },
+    "memory": {
+      "eligible": 3,
+      "recalled": 2,
+      "recall_pct": 66.67,
+      "rows": [
+        {
+          "id": "decision-n-minus-2",
+          "recalled": true
+        },
+        {
+          "id": "open-promise",
+          "recalled": true
+        },
+        {
+          "id": "past-meeting",
+          "recalled": false
+        }
+      ]
+    },
+    "voices": {
+      "eligible_pairs": 1,
+      "distinct_pairs": 1,
+      "distinct_pct": 100,
+      "rows": [
+        {
+          "pair": "gates-dialogue",
+          "ids": [
+            "voice-mira",
+            "voice-borin"
+          ],
+          "own_markers": [
+            true,
+            true
+          ],
+          "lexical_distance_pct": 82.35,
+          "distinct": true
+        }
+      ]
+    },
+    "suggestions": {
+      "total": 0,
+      "specific": 0,
+      "specific_pct": 0,
+      "forward_turns": 0,
+      "forward_coverage_pct": 0,
+      "personal_turns": 0,
+      "personal_coverage_pct": 0,
+      "bounded_turns": 4,
+      "bounded_pct": 100,
+      "rows": [
+        {
+          "id": "decision-n-minus-2",
+          "suggestions": [],
+          "specific": [],
+          "forward": false,
+          "personal": false
+        },
+        {
+          "id": "open-promise",
+          "suggestions": [],
+          "specific": [],
+          "forward": false,
+          "personal": false
+        },
+        {
+          "id": "past-meeting",
+          "suggestions": [],
+          "specific": [],
+          "forward": false,
+          "personal": false
+        },
+        {
+          "id": "forward-hook",
+          "suggestions": [],
+          "specific": [],
+          "forward": false,
+          "personal": false
+        }
+      ]
+    },
+    "quality_gate": {
+      "thresholds": {
+        "ngram_overlap_max_pct": 5,
+        "cliche_max_occurrences": 0,
+        "memory_min_pct": 90,
+        "voice_distinct_min_pct": 80
+      },
+      "checks": {
+        "ngram_overlap": true,
+        "cliches": true,
+        "memory": false,
+        "voices": true
+      },
+      "passed": false
+    }
+  }
+}

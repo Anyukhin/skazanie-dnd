@@ -45,6 +45,8 @@ import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from 
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
+import { LoreAuthor } from './lore-author.mjs'
+import { reasoningProfileFor } from './model-style-profiles.mjs'
 import { PostCommitCoordinator } from './post-commit-coordinator.mjs'
 import {
   AuthoritativeExecutor,
@@ -158,7 +160,7 @@ const llmClient = new FallbackLLMClient({
   clients: [model, ...fallbackModels].map((modelId) => new MeteredLLMClient({
     client: new RouterAIClient({
       apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
-      reasoning: ['z-ai/glm-5.2', 'deepseek/deepseek-v4-flash'].includes(modelId) ? { enabled: false } : null,
+      reasoning: reasoningProfileFor(modelId),
     }),
     ledger: usageLedger,
   })),
@@ -223,9 +225,20 @@ const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
 const creativeDirector = new CriticalNarrationCoordinator({ narrator })
 const npcController = new NpcMoraleAgent({ llmClient: apiKey ? llmClient : null })
 const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmClient : null })
-const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null })
+// Длинная форма — пролог и хроника арки — идёт через отдельную дешёвую модель:
+// замер показал, что Luna в длинной форме не уступает и стоит в разы меньше.
+// Модель меняется переменной DND_AI_LORE_MODEL; без ключа летописец молчит.
+// Владелец согласовал бюджет до 50 кредитов за вечер (2026-07-31). Горячий путь
+// остаётся на дешёвой luna (~8 кредитов за вечер), а длинная форма — на
+// luna-pro: там задержка неважна, а качество текста — главное. Пролог и хроника
+// зовутся раз за кампанию и раз за арку, поэтому вклад в бюджет — копейки.
+const loreModel = process.env.DND_AI_LORE_MODEL ?? 'openai/gpt-5.6-luna-pro'
+const loreAuthor = new LoreAuthor({
+  llmClient: apiKey ? new RouterAIClient({ model: loreModel, reasoning: reasoningProfileFor(loreModel), timeoutMs: 30_000 }) : null,
+})
+const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null, loreAuthor })
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
-const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator })
+const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
 const combatTurnCoordinator = new CombatTurnCoordinator({
   eventStore,
