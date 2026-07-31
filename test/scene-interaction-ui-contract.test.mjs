@@ -7,7 +7,7 @@ const boardSource = await readFile(new URL('../src/TacticalBoard.tsx', import.me
 const sessionSource = await readFile(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const mapClientSource = await readFile(new URL('../src/tactical-map-client.ts', import.meta.url), 'utf8')
 const typesSource = await readFile(new URL('../src/types.ts', import.meta.url), 'utf8')
-const narratorPrompt = await readFile(new URL('../prompts/narrator/v4.txt', import.meta.url), 'utf8')
+const narratorPrompt = await readFile(new URL('../prompts/narrator/v5.txt', import.meta.url), 'utf8')
 
 test('клиент отправляет типизированную команду объекта сцены через общий путь тактических команд', () => {
   assert.match(sessionSource, /command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent/)
