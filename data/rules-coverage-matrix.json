@@ -41,7 +41,7 @@
       "id": "equipment",
       "mandatory_for_release": true,
       "coverage": "partial",
-      "expected_count": 98,
+      "expected_count": 99,
       "runtime_count_source": "ITEM_CATALOG",
       "notes": "Единый manifest первой волны; безопасный торговый allowlist остаётся отдельным поднабором из 12 позиций."
     },

@@ -65,6 +65,7 @@
 
 .item-charge-state{padding:0 12px 8px;color:#8f806f;font-size:var(--fs-xs)}
 .item-charge-state b{color:#c8a36f}
+.item-mechanics-limitation{margin:0;padding:0 12px 8px;color:#a98760;font:var(--fs-xs)/1.4 Spectral,serif}.item-mechanics-limitation b{color:#c49a68}
 .item-use-target{display:flex;align-items:center;gap:6px;color:#8f806f;font-size:var(--fs-xs)}
 .item-use-target select{min-width:120px;border:1px solid var(--line);border-radius:4px;background:#171411;color:#c5b49e}
 

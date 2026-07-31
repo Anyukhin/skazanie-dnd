@@ -125,6 +125,23 @@ test('player inventory projection derives safe catalog capabilities without hydr
       type: 'weapon',
       quantity: 1,
       combat: { kind: 'melee', damage: '99d99' },
+      requires_attunement: true,
+    },
+    {
+      id: 'legacy-ring',
+      catalog_id: 'srd_5_2_1:ring-of-protection',
+      name: 'Кольцо защиты',
+      type: 'other',
+      quantity: 1,
+      mechanics_status: 'verified',
+      limitation: 'Поддельное ограничение',
+    },
+    {
+      id: 'homebrew-attunement',
+      name: 'Домашний талисман',
+      type: 'other',
+      quantity: 1,
+      requires_attunement: true,
     },
   ]
 
@@ -132,6 +149,8 @@ test('player inventory projection derives safe catalog capabilities without hydr
   const kit = projected.players[0].inventory.find((item) => item.id === 'legacy-kit')
   const legacyWeapon = projected.players[0].inventory.find((item) => item.id === 'legacy-weapon')
   const torch = projected.players[0].inventory.find((item) => item.id === 'mislabelled-torch')
+  const ring = projected.players[0].inventory.find((item) => item.id === 'legacy-ring')
+  const homebrew = projected.players[0].inventory.find((item) => item.id === 'homebrew-attunement')
 
   assert.deepEqual(kit.capabilities.charges, { current: 10, max: 10 })
   assert.deepEqual(kit.capabilities.use, {
@@ -144,6 +163,20 @@ test('player inventory projection derives safe catalog capabilities without hydr
   assert.equal(legacyWeapon.capabilities.equippable, true)
   assert.equal(legacyWeapon.capabilities.equip_slot, 'main_hand')
   assert.equal(torch.capabilities.equippable, false)
+  assert.equal(torch.capabilities.requires_attunement, false)
+  assert.equal(torch.capabilities.mechanics_status, 'partial')
+  assert.equal(typeof torch.capabilities.limitation, 'string')
+  assert.equal(ring.capabilities.equippable, true)
+  assert.equal(ring.capabilities.equip_slot, 'ring-protection')
+  assert.equal(ring.capabilities.requires_attunement, true)
+  assert.equal(ring.capabilities.mechanics_status, 'partial')
+  assert.match(ring.capabilities.limitation, /Short Rest/u)
+  assert.doesNotMatch(ring.capabilities.limitation, /Поддельное/u)
+  assert.equal(homebrew.capabilities.requires_attunement, true)
+  assert.equal(homebrew.capabilities.equippable, false)
+  assert.equal(Object.hasOwn(homebrew.capabilities, 'mechanics_status'), false)
+  assert.equal(Object.hasOwn(legacyWeapon.capabilities, 'mechanics_status'), false)
+  assert.equal(Object.hasOwn(legacyWeapon.capabilities, 'limitation'), false)
   assert.equal(raw.players[0].inventory.some((item) => Object.hasOwn(item, 'capabilities')), false)
   assert.equal(raw.players[0].inventory[0].charges, undefined)
 })
@@ -272,9 +305,20 @@ test('player event projection sanitizes SceneAdvanced and MerchantCreated payloa
   assert.doesNotMatch(JSON.stringify(events), /никогда|канцлер|контрабанда/u)
 })
 
-test('admin projection remains the trusted object', () => {
+test('admin projection retains trusted state and also receives item capabilities', () => {
   const state = privateState()
-  assert.equal(campaignStateForViewer(state, { role: 'admin' }, 'hero'), state)
+  state.players[0].inventory = [{
+    id: 'ring',
+    catalog_id: 'srd_5_2_1:ring-of-protection',
+    name: 'Кольцо защиты',
+    type: 'other',
+    quantity: 1,
+  }]
+  const projected = campaignStateForViewer(state, { role: 'admin' }, 'hero')
+  assert.notEqual(projected, state)
+  assert.equal(projected.adventure, state.adventure)
+  assert.equal(projected.players[0].inventory[0].capabilities.requires_attunement, true)
+  assert.equal(state.players[0].inventory[0].capabilities, undefined)
 })
 
 test('turn result projection covers authoritative state, mechanics and effects.scene', () => {

@@ -306,3 +306,178 @@ test('longsword +1 adds exactly one to the authoritative attack and damage profi
   assert.equal(magicalDamage.payload.raw_amount, ordinaryDamage.payload.raw_amount + 1)
   assert.deepEqual(replayEvents(magicalState, magical.events), applyAll(magicalState, magical.events))
 })
+
+test('GrantItem stamps known passive effects and ignores forged catalog mechanics', () => {
+  const initial = normalizeCampaignState({
+    players: [{
+      id: 'hero',
+      character: 'Страж',
+      characterClass: 'fighter',
+      level: 1,
+      hp: 12,
+      maxHp: 12,
+      armor: 12,
+      abilities: { str: 12, dex: 14, con: 12, int: 10, wis: 10, cha: 10 },
+      inventory: [],
+    }],
+  })
+  const result = resolveCommand({
+    command_type: 'GrantItem',
+    command_id: 'grant-ring',
+    actor_id: 'hero',
+    item: {
+      id: 'ring',
+      catalog_id: 'srd_5_2_1:ring-of-protection',
+      equipped: true,
+      attuned_to: 'hero',
+      passive_effects: [{
+        schema_version: 1,
+        effect_id: 'forged',
+        group: 'forged',
+        armor_class_bonus: 99,
+        saving_throw_bonus: 99,
+      }],
+    },
+  }, initial, { diceService: dice([]), context: { isAdmin: true } })
+  const grantedEvent = result.events.find((event) => event.event_type === 'ItemGranted')
+  const granted = grantedEvent.payload.item
+  assert.equal(grantedEvent.event_schema_version, 2)
+  assert.deepEqual(granted.passive_effects, materializeCatalogItem('srd_5_2_1:ring-of-protection').passive_effects)
+  assert.equal(granted.requires_attunement, true)
+  assert.equal(granted.rarity, 'редкий')
+  const after = applyAll(initial, result.events)
+  assert.equal(after.players[0].inventory[0].equipped, true)
+  assert.equal(after.players[0].inventory[0].attuned_to, 'hero')
+  assert.equal(after.players[0].characterSheet.armor_class.item_effect_bonus, 1)
+  assert.equal(after.players[0].armor, 13)
+  assert.deepEqual(replayEvents(initial, result.events), after)
+
+  const legacyItem = {
+    id: 'legacy-ring',
+    catalog_id: 'srd_5_2_1:ring-of-protection',
+    name: 'Старое кольцо',
+    type: 'other',
+    quantity: 1,
+    equipped: true,
+    attuned_to: 'hero',
+  }
+  const legacyEvent = {
+    event_type: 'ItemGranted',
+    actor_id: 'hero',
+    target_ids: ['hero'],
+    payload: { item: legacyItem },
+  }
+  const legacyInitial = structuredClone(initial)
+  legacyInitial.players[0].armor = 99
+  const legacyAfter = applyGameEvent(legacyInitial, legacyEvent)
+  assert.deepEqual(legacyAfter.players[0].inventory[0], legacyItem)
+  assert.equal(legacyAfter.players[0].characterSheet.armor_class.item_effect_bonus, 0)
+  assert.equal(legacyAfter.players[0].armor, 99)
+  assert.deepEqual(replayEvents(legacyInitial, [legacyEvent]), legacyAfter)
+})
+
+test('Equip → Attune → normalize/replay applies Ring of Protection AC once for every base formula', () => {
+  const ring = materializeCatalogItem('srd_5_2_1:ring-of-protection', { id: 'ring', quantity: 1 })
+  const initial = normalizeCampaignState({
+    partyMemberIds: ['hero'],
+    players: [{
+      id: 'hero',
+      character: 'Страж',
+      characterClass: 'fighter',
+      level: 1,
+      hp: 20,
+      maxHp: 20,
+      armor: 99,
+      proficiency: 2,
+      abilities: { str: 12, dex: 14, con: 12, int: 10, wis: 10, cha: 10 },
+      inventory: [
+        { ...materializeCatalogItem('srd_5_2_1:leather-armor', { id: 'leather' }), equipped: true },
+        ring,
+      ],
+    }],
+    enemies: [{
+      id: 'foe',
+      name: 'Противник',
+      hp: 20,
+      maxHp: 20,
+      armor: 12,
+      alive: true,
+      abilities: { str: 10, dex: 10 },
+      action_profiles: [{ id: 'claw', kind: 'melee', attack_modifier: 0, damage_amount: 1, damage_type: 'slashing', range_feet: 5 }],
+    }],
+    mechanics: { combat: { active: false } },
+  })
+  const equip = resolveCommand({
+    command_type: 'EquipItem',
+    command_id: 'equip-ring',
+    actor_id: 'hero',
+    item_id: 'ring',
+    equipped: true,
+  }, initial, { diceService: dice([]), context: { allowedActorIds: ['hero'] } })
+  const equipped = applyAll(initial, equip.events)
+  assert.equal(equipped.players[0].armor, 13)
+  assert.equal(equipped.players[0].characterSheet.armor_class.item_effect_bonus, 0)
+
+  const attune = resolveCommand({
+    command_type: 'AttuneItem',
+    command_id: 'attune-ring',
+    actor_id: 'hero',
+    item_id: 'ring',
+    attuned: true,
+  }, equipped, { diceService: dice([]), context: { allowedActorIds: ['hero'] } })
+  const lifecycleEvents = [...equip.events, ...attune.events]
+  const attuned = applyAll(equipped, attune.events)
+  assert.equal(attuned.players[0].armor, 14)
+  assert.equal(attuned.players[0].characterSheet.armor_class.item_effect_bonus, 1)
+  assert.deepEqual(replayEvents(initial, lifecycleEvents), attuned)
+
+  const normalized = normalizeCampaignState(attuned)
+  assert.deepEqual(normalized.players[0].inventory.find((item) => item.id === 'ring').passive_effects, ring.passive_effects)
+  const targetArmorClass = (configure = () => {}) => {
+    const combat = structuredClone(normalized)
+    combat.players[0].x = 0
+    combat.players[0].y = 0
+    combat.enemies[0].x = 1
+    combat.enemies[0].y = 0
+    combat.scene = {
+      turn: 1,
+      cells: [
+        { x: 0, y: 0, type: 'floor', revealed: true },
+        { x: 1, y: 0, type: 'floor', revealed: true },
+      ],
+    }
+    combat.mechanics.positions = { hero: { x: 0, y: 0 }, foe: { x: 1, y: 0 } }
+    combat.mechanics.conditions = {}
+    combat.mechanics.combat = {
+      active: true,
+      round: 1,
+      active_index: 0,
+      initiative: [{ actor_id: 'foe' }, { actor_id: 'hero' }],
+      action_economy: { foe: { action: true, bonus_action: true } },
+    }
+    configure(combat)
+    const result = resolveCommand({
+      command_type: 'MakeAttack',
+      actor_id: 'foe',
+      target_id: 'hero',
+      action_id: 'claw',
+      server_authoritative: true,
+    }, combat, {
+      diceService: dice([10]),
+      context: { isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true },
+    })
+    return result.events.find((event) => event.event_type === 'AttackResolved').payload.armor_class
+  }
+
+  assert.equal(targetArmorClass(), 14, 'equipment base 13 + item 1')
+  assert.equal(targetArmorClass((state) => {
+    state.mechanics.conditions.hero = [{ id: 'mage-armor' }]
+  }), 16, 'Mage Armor 15 + item 1')
+  assert.equal(targetArmorClass((state) => {
+    state.mechanics.conditions.hero = [{ id: 'barkskin' }]
+  }), 17, 'floor 16 + item 1')
+  assert.equal(targetArmorClass((state) => {
+    state.players[0].armor = 18
+    state.players[0].characterSheet = null
+  }), 19, 'listed base 18 + item 1')
+})

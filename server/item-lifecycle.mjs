@@ -12,6 +12,7 @@ import {
 
 export const ITEM_LIFECYCLE_COMMAND_TYPES = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem'])
 export const MAX_ATTUNED_ITEMS = 3
+export const MAX_ACTIVE_ITEM_EFFECT_BONUS = 100
 
 export class ItemLifecycleValidationError extends Error {
   constructor(message, code = 'ITEM_LIFECYCLE_INVALID') {
@@ -40,9 +41,12 @@ function itemFor(actor, id) {
 function profileFor(item) {
   const catalog = itemLifecycleProfile(String(item?.catalog_id ?? item?.catalogId ?? ''))
   if (catalog) return clone(catalog)
-  if (item?.type === 'weapon' && item?.combat) return { equip_slot: 'main_hand' }
-  if (item?.type === 'armor') return { equip_slot: 'body' }
-  return {}
+  const profile = {
+    requires_attunement: item?.requires_attunement === true,
+  }
+  if (item?.type === 'weapon' && item?.combat) return { ...profile, equip_slot: 'main_hand' }
+  if (item?.type === 'armor') return { ...profile, equip_slot: 'body' }
+  return profile
 }
 
 function chargeStateFor(item, profile) {
@@ -115,7 +119,41 @@ export function inventoryLoadFor(actor) {
   }
 }
 
-export function derivedEquipmentArmorClass(actor) {
+export function activeItemEffectTotals(actor) {
+  const ownerId = actorId(actor)
+  const groups = new Map()
+  for (const item of actor?.inventory ?? []) {
+    if (!item || integer(item.quantity, 1) <= 0 || !Array.isArray(item.passive_effects)) continue
+    for (const effect of item.passive_effects.slice(0, 32)) {
+      if (!effect || integer(effect.schema_version, 0) !== 1) continue
+      const group = clean(effect.group)
+      if (!group || !clean(effect.effect_id)) continue
+      if (effect.requires_equipped === true && item.equipped !== true) continue
+      if (effect.requires_attunement === true && (!ownerId || String(item.attuned_to ?? '') !== ownerId)) continue
+      const armorClassBonus = Math.min(MAX_ACTIVE_ITEM_EFFECT_BONUS, Math.max(0, integer(effect.armor_class_bonus, 0)))
+      const savingThrowBonus = Math.min(MAX_ACTIVE_ITEM_EFFECT_BONUS, Math.max(0, integer(effect.saving_throw_bonus, 0)))
+      if (armorClassBonus === 0 && savingThrowBonus === 0) continue
+      const current = groups.get(group) ?? { armor_class_bonus: 0, saving_throw_bonus: 0 }
+      groups.set(group, {
+        armor_class_bonus: Math.max(current.armor_class_bonus, armorClassBonus),
+        saving_throw_bonus: Math.max(current.saving_throw_bonus, savingThrowBonus),
+      })
+    }
+  }
+  let armorClassBonus = 0
+  let savingThrowBonus = 0
+  for (const effect of groups.values()) {
+    armorClassBonus = Math.min(MAX_ACTIVE_ITEM_EFFECT_BONUS, armorClassBonus + effect.armor_class_bonus)
+    savingThrowBonus = Math.min(MAX_ACTIVE_ITEM_EFFECT_BONUS, savingThrowBonus + effect.saving_throw_bonus)
+  }
+  return {
+    armor_class_bonus: armorClassBonus,
+    saving_throw_bonus: savingThrowBonus,
+    active_groups: [...groups.keys()].sort(),
+  }
+}
+
+export function derivedEquipmentArmorClass(actor, { includeItemEffects = true } = {}) {
   const dexterity = Math.floor(((Number(actor?.abilities?.dex) || 10) - 10) / 2)
   let body = null
   let bonus = 0
@@ -130,7 +168,10 @@ export function derivedEquipmentArmorClass(actor) {
     }
     bonus += Number(profile.armor_bonus) || 0
   }
-  return body == null && bonus === 0 ? null : Math.max(0, body ?? 10 + dexterity) + bonus
+  const itemBonus = includeItemEffects ? activeItemEffectTotals(actor).armor_class_bonus : 0
+  return body == null && bonus === 0 && itemBonus === 0
+    ? null
+    : Math.max(0, body ?? 10 + dexterity) + bonus + itemBonus
 }
 
 export function validateItemLifecycleCommand(command, state, context = {}) {
@@ -266,11 +307,20 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
   if (command.command_type === 'AttuneItem') {
     if (state.mechanics?.combat?.active) throw new ItemLifecycleValidationError('Настройка на предмет выполняется вне боя', 'ITEM_ATTUNE_DURING_COMBAT')
     const attuned = command.attuned !== false
-    if (attuned && item.requires_attunement !== true) {
+    if (attuned && profile.requires_attunement !== true) {
       throw new ItemLifecycleValidationError('Этот предмет не требует настройки', 'ITEM_NOT_ATTUNABLE')
     }
     if (attuned && item.attuned_to && item.attuned_to !== ownerId) {
       throw new ItemLifecycleValidationError('Предмет уже настроен на другого героя', 'ITEM_ALREADY_ATTUNED')
+    }
+    const catalogId = clean(item.catalog_id ?? item.catalogId)
+    const duplicate = attuned && catalogId
+      ? (owner.inventory ?? []).find((candidate) => String(candidate.id) !== itemId
+        && clean(candidate.catalog_id ?? candidate.catalogId) === catalogId
+        && String(candidate.attuned_to ?? '') === ownerId)
+      : null
+    if (duplicate) {
+      throw new ItemLifecycleValidationError('Нельзя настроиться на несколько копий одного и того же предмета', 'DUPLICATE_ITEM_ATTUNEMENT')
     }
     const current = (owner.inventory ?? []).filter((candidate) => candidate.attuned_to === ownerId && candidate.id !== itemId).length
     if (attuned && current >= MAX_ATTUNED_ITEMS) {

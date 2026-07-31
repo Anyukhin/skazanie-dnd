@@ -115,6 +115,29 @@ function normalizeItemRarity(value) {
   return INVENTORY_ITEM_RARITIES.has(rarity) ? rarity : 'обычный'
 }
 
+function normalizePassiveEffects(value) {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 32).flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return []
+    if (clampInteger(candidate.schema_version, 0, 1_000, 0) !== 1) return []
+    const effectId = cleanId(candidate.effect_id)
+    const group = cleanId(candidate.group)
+    if (!effectId || !group) return []
+    const armorClassBonus = clampInteger(candidate.armor_class_bonus, 0, 100, 0)
+    const savingThrowBonus = clampInteger(candidate.saving_throw_bonus, 0, 100, 0)
+    if (armorClassBonus === 0 && savingThrowBonus === 0) return []
+    return [{
+      schema_version: 1,
+      effect_id: effectId,
+      group,
+      requires_equipped: candidate.requires_equipped === true,
+      requires_attunement: candidate.requires_attunement === true,
+      armor_class_bonus: armorClassBonus,
+      saving_throw_bonus: savingThrowBonus,
+    }]
+  })
+}
+
 function stableValue(value) {
   if (Array.isArray(value)) return value.map(stableValue)
   if (!value || typeof value !== 'object') return value
@@ -130,6 +153,7 @@ export function inventoryStackKey(input = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const catalogId = cleanId(source.catalog_id ?? source.catalogId)
   const basePriceCp = resolveCatalogBasePriceCp(source)
+  const passiveEffects = normalizePassiveEffects(source.passive_effects)
   const descriptor = stableValue({
     catalog_id: catalogId || null,
     base_price_cp: basePriceCp,
@@ -140,6 +164,7 @@ export function inventoryStackKey(input = {}) {
     description: cleanText(source.description, 1_000),
     properties: cleanText(source.properties, 500),
     combat: source.combat && typeof source.combat === 'object' ? source.combat : null,
+    ...(passiveEffects.length ? { passive_effects: passiveEffects } : {}),
     charges: source.charges && typeof source.charges === 'object' ? source.charges : null,
     requires_attunement: source.requires_attunement === true ? true : null,
     attuned_to: source.attuned_to == null ? null : cleanId(source.attuned_to),
@@ -163,6 +188,7 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
   const catalogId = cleanId(source.catalog_id ?? source.catalogId)
   const resolvedPrice = resolveCatalogBasePriceCp({ ...source, catalog_id: catalogId })
   const maxCharges = clampInteger(source.charges?.max, 0, 1_000_000, 0)
+  const passiveEffects = normalizePassiveEffects(source.passive_effects)
   const item = {
     ...(preserveUnknown ? clone(source) : {}),
     id: cleanId(source.item_id ?? source.id, idFallback),
@@ -186,6 +212,7 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     ...(source.imagePrompt == null ? {} : { imagePrompt: cleanText(source.imagePrompt, 1_000) }),
     ...(source.imageStatus == null ? {} : { imageStatus: cleanText(source.imageStatus, 40) }),
     ...(source.combat && typeof source.combat === 'object' ? { combat: clone(source.combat) } : {}),
+    ...(passiveEffects.length ? { passive_effects: passiveEffects } : {}),
     ...(source.charges && typeof source.charges === 'object' ? {
       charges: { current: clampInteger(source.charges.current, 0, maxCharges, 0), max: maxCharges },
     } : {}),
@@ -197,6 +224,7 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     ...(source.appraisal_policy_id == null ? {} : { appraisal_policy_id: cleanText(source.appraisal_policy_id, 120) }),
     ...(resolvedPrice > 0 ? { base_price_cp: resolvedPrice } : {}),
   }
+  if (!passiveEffects.length) delete item.passive_effects
   item.stack_key = inventoryStackKey(item)
   return item
 }
@@ -811,6 +839,7 @@ export function inventoryItemFromStock(stockEntry) {
 export function sellability(item, appraisal = null) {
   if (!item || typeof item !== 'object') return { can_sell: false, reason: 'Предмет не найден' }
   if (item.equipped) return { can_sell: false, reason: 'Сначала снимите предмет' }
+  if (item.attuned_to) return { can_sell: false, reason: 'Сначала разорвите настройку с предметом' }
   if (item.quest_item === true || item.sellable === false || String(item.type || '').toLowerCase() === 'quest' || String(item.rarity || '').toLocaleLowerCase('ru') === 'сюжетный') {
     return { can_sell: false, reason: 'Сюжетный предмет нельзя продать' }
   }

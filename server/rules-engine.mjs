@@ -151,6 +151,7 @@ import {
 import {
   ITEM_LIFECYCLE_COMMAND_TYPES,
   ItemLifecycleValidationError,
+  activeItemEffectTotals,
   applyItemLifecycleEventToPlayers,
   carryingCapacity,
   derivedEquipmentArmorClass,
@@ -3237,7 +3238,10 @@ export function validateCommand(input, rawState, context = {}) {
       if (safeInteger(item.quantity, 1) < command.quantity) throw new RulesValidationError('В инвентаре недостаточно предметов', 'INSUFFICIENT_ITEMS')
       const appraisal = trustedItemAppraisalFor(state, actor.id, item)
       const allowed = sellability(item, appraisal)
-      if (!allowed.can_sell) throw new RulesValidationError(allowed.reason, item.equipped ? 'ITEM_EQUIPPED' : 'ITEM_NOT_SELLABLE')
+      if (!allowed.can_sell) {
+        const code = item.equipped ? 'ITEM_EQUIPPED' : item.attuned_to ? 'ITEM_ATTUNED' : 'ITEM_NOT_SELLABLE'
+        throw new RulesValidationError(allowed.reason, code)
+      }
       const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id))
       if (!quote) throw new RulesValidationError('Для предмета не задана серверная цена', 'PRICE_UNAVAILABLE')
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
@@ -3253,7 +3257,12 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'GrantItem') {
     const actor = findActor(state, command.actor_id)
-    const item = normalizeInventoryItem(command.item ?? {}, { idFallback: `grant:${command.command_id}`, preserveUnknown: true })
+    const source = command.item ?? {}
+    const catalogId = String(source.catalog_id ?? source.catalogId ?? '').trim()
+    const item = normalizeInventoryItem(
+      catalogId ? materializeCatalogItem(catalogId, source) : source,
+      { idFallback: `grant:${command.command_id}`, preserveUnknown: true },
+    )
     if (inventoryWeight(actor) + Math.max(0, Number(item.weight) || 0) * Math.max(1, safeInteger(item.quantity, 1)) > carryingCapacity(actor)) {
       throw new RulesValidationError('Награда превысит грузоподъёмность героя', 'CARRYING_CAPACITY_EXCEEDED')
     }
@@ -3565,6 +3574,13 @@ function heroDiedEventFrom(command, payload = {}, targets = command.target_ids) 
   }
 }
 
+function itemGrantedEventFrom(command, payload = {}, targets = command.target_ids) {
+  return {
+    ...eventFrom(command, 'ItemGranted', payload, targets),
+    event_schema_version: 2,
+  }
+}
+
 function commandWithRules(command, ...ruleIds) {
   return { ...command, source_rule_ids: [...new Set([...command.source_rule_ids, ...ruleIds.filter(Boolean)])] }
 }
@@ -3585,14 +3601,21 @@ function actorMaxHp(actor) {
 
 function effectiveArmorClass(state, actor, id) {
   const conditions = conditionIdsFor(state, id)
+  const itemBonus = activeItemEffectTotals(actor).armor_class_bonus
   const listedArmor = Math.max(0, safeInteger(actor?.armor ?? actor?.armorClass, 10))
+  const sheetArmor = actor?.characterSheet?.armor_class
+  const sheetValue = Math.max(0, safeInteger(sheetArmor?.value, 0))
+  const sheetItemBonus = Math.max(0, safeInteger(sheetArmor?.item_effect_bonus, 0))
+  const itemStampedInSheet = itemBonus > 0 && sheetItemBonus === itemBonus
+  const listedBase = listedArmor - (itemStampedInSheet && listedArmor === sheetValue ? itemBonus : 0)
+  const sheetBase = sheetValue - (itemStampedInSheet ? itemBonus : 0)
   const mageArmor = conditions.has('mage-armor') ? 13 + abilityModifier(actor?.abilities?.dex) : 0
-  const equipmentArmor = derivedEquipmentArmorClass(actor) ?? 0
+  const equipmentArmor = derivedEquipmentArmorClass(actor, { includeItemEffects: false }) ?? 0
   // Пороги не складываются ни между собой, ни с доспехом: берётся наибольший,
-  // и уже к нему добавляются надбавки вроде Щита или Щита веры.
+  // и уже к нему один раз добавляются предметные и условные надбавки.
   let floor = 0
   for (const condition of conditions) floor = Math.max(floor, safeInteger(CONDITION_EFFECTS[condition]?.armorClassFloor, 0))
-  return Math.max(listedArmor, mageArmor, equipmentArmor, floor) + conditionArmorClassBonus(state, id)
+  return Math.max(listedBase, sheetBase, mageArmor, equipmentArmor, floor) + itemBonus + conditionArmorClassBonus(state, id)
 }
 
 function spellHpPoolExpression(baseExpression, upcastExpression, spellLevel, slotLevel) {
@@ -3765,9 +3788,10 @@ function deathSavingThrowAtTurnStart(state, command, actorIdValue, diceService) 
         eventFrom(commandWithRules({ ...command, actor_id: actorIdValue }, RULE_IDS.zeroHp, RULE_IDS.savingThrow), 'DeathSavingThrowRolled', {
           ...roll,
           ...auraOfProtectionPayload(auraProtection.aura),
+          ...itemSavingThrowPayload(auraProtection.itemSavingThrowBonus),
           natural_roll: natural,
           advantage,
-          modifier_sources: [...(auraProtection.aura ? ['aura-of-protection'] : []), ...(conditionIds.has('bless-d4') ? ['bless'] : []), ...(conditionIds.has('bane-d4') ? ['bane'] : [])],
+          modifier_sources: [...(auraProtection.itemSavingThrowBonus > 0 ? ['item-passive-effect'] : []), ...(auraProtection.aura ? ['aura-of-protection'] : []), ...(conditionIds.has('bless-d4') ? ['bless'] : []), ...(conditionIds.has('bane-d4') ? ['bane'] : [])],
           success: true,
           successes_before: tracker.successes,
           successes_after: 0,
@@ -3793,9 +3817,10 @@ function deathSavingThrowAtTurnStart(state, command, actorIdValue, diceService) 
   const events = [...modifierEvents, eventFrom(commandWithRules({ ...command, actor_id: actorIdValue }, RULE_IDS.zeroHp, RULE_IDS.savingThrow), 'DeathSavingThrowRolled', {
     ...roll,
     ...auraOfProtectionPayload(auraProtection.aura),
+    ...itemSavingThrowPayload(auraProtection.itemSavingThrowBonus),
     natural_roll: natural,
     advantage,
-    modifier_sources: [...(auraProtection.aura ? ['aura-of-protection'] : []), ...(conditionIds.has('bless-d4') ? ['bless'] : []), ...(conditionIds.has('bane-d4') ? ['bane'] : [])],
+    modifier_sources: [...(auraProtection.itemSavingThrowBonus > 0 ? ['item-passive-effect'] : []), ...(auraProtection.aura ? ['aura-of-protection'] : []), ...(conditionIds.has('bless-d4') ? ['bless'] : []), ...(conditionIds.has('bane-d4') ? ['bane'] : [])],
     success,
     successes_before: tracker.successes,
     successes_after: Math.min(2, successesAfter),
@@ -4611,9 +4636,11 @@ function activeAuraOfProtection(state, targetId) {
 
 function savingThrowModifierWithAura(state, targetId, baseModifier) {
   const aura = activeAuraOfProtection(state, targetId)
+  const itemEffects = activeItemEffectTotals(findActor(state, targetId))
   return {
-    modifier: safeInteger(baseModifier, 0) + (aura?.bonus ?? 0),
+    modifier: safeInteger(baseModifier, 0) + (aura?.bonus ?? 0) + itemEffects.saving_throw_bonus,
     aura,
+    itemSavingThrowBonus: itemEffects.saving_throw_bonus,
   }
 }
 
@@ -4623,6 +4650,10 @@ function auraOfProtectionPayload(aura) {
     aura_of_protection_bonus: aura.bonus,
     aura_of_protection_radius_feet: aura.radius_feet,
   } : {}
+}
+
+function itemSavingThrowPayload(bonus) {
+  return bonus > 0 ? { item_saving_throw_bonus: bonus } : {}
 }
 
 const CLASS_SAVING_THROW_PROFICIENCIES = Object.freeze({
@@ -4670,6 +4701,7 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
       actorId: targetId,
     }),
     ...auraOfProtectionPayload(auraProtection.aura),
+    ...itemSavingThrowPayload(auraProtection.itemSavingThrowBonus),
     ...(advantageCondition ? { save_advantage_condition: advantageCondition } : {}),
     ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
     ...(disadvantageCondition ? { save_disadvantage_condition: disadvantageCondition } : {}),
@@ -4684,6 +4716,7 @@ function rollSavingThrowCheck(state, diceService, targetId, options = {}) {
   return {
     ...diceService.rollCheck({ ...options, advantage: options.advantage === true || bloodiedFrenzy, modifier: auraProtection.modifier, actorId: targetId }),
     ...auraOfProtectionPayload(auraProtection.aura),
+    ...itemSavingThrowPayload(auraProtection.itemSavingThrowBonus),
     ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
     ...(autoFailed ? { success: false, auto_failed: true, auto_failed_condition: autoFailed } : {}),
   }
@@ -4944,7 +4977,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `saving_throw:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(saveBoost) || bloodiedFrenzy, disadvantage: Boolean(command.disadvantage) || Boolean(savePenalty), visibility: command.visibility })
       rolls.push(roll)
       events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || savePenalty || saveBoost || bloodiedFrenzy ? RULE_IDS.advantage : null), 'SavingThrowResolved', {
-        ability, ...roll, ...auraOfProtectionPayload(auraProtection.aura),
+        ability, ...roll, ...auraOfProtectionPayload(auraProtection.aura), ...itemSavingThrowPayload(auraProtection.itemSavingThrowBonus),
         ...(savePenalty ? { save_disadvantage_condition: savePenalty } : {}),
         ...(saveBoost ? { save_advantage_condition: saveBoost } : {}),
         ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
@@ -8676,7 +8709,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'GrantItem': {
       const item = clone(command.item ?? {})
       if (!item.id) item.id = randomUUID()
-      events.push(eventFrom(command, 'ItemGranted', { item }, [command.actor_id]))
+      events.push(itemGrantedEventFrom(command, { item }, [command.actor_id]))
       break
     }
     case 'UpsertWorldEntity':
@@ -9553,6 +9586,9 @@ export function applyGameEvent(rawState, event) {
         type: 'death-save', actorId: target, roll: { die: safeInteger(payload.natural_roll, 0), modifier: safeInteger(payload.modifier, 0), total: safeInteger(payload.total, 0), difficulty: 10, hit: payload.success === true },
         successes: safeInteger(payload.successes_after, 0), failures: safeInteger(payload.failures_after, 0), result: String(payload.result ?? ''),
         modifierSources: uniqueStrings(payload.modifier_sources),
+        ...(payload.item_saving_throw_bonus ? {
+          itemSavingThrowBonus: Math.max(1, safeInteger(payload.item_saving_throw_bonus, 1)),
+        } : {}),
         ...(payload.aura_of_protection_source ? {
           auraSourceId: String(payload.aura_of_protection_source),
           auraBonus: Math.max(1, safeInteger(payload.aura_of_protection_bonus, 1)),
@@ -9771,6 +9807,9 @@ export function applyGameEvent(rawState, event) {
         result: payload.saved === true ? 'success' : 'failure',
         automaticSuccess: payload.automatic_success === true,
         immunity: payload.immunity ? String(payload.immunity) : null,
+        ...(payload.item_saving_throw_bonus ? {
+          itemSavingThrowBonus: Math.max(1, safeInteger(payload.item_saving_throw_bonus, 1)),
+        } : {}),
       })
       break
     case 'ConcentrationSavingThrowResolved':
@@ -9778,6 +9817,9 @@ export function applyGameEvent(rawState, event) {
         type: 'concentration-save', actorId: target,
         roll: { die: safeInteger(payload.kept, 0), modifier: safeInteger(payload.modifier, 0), total: safeInteger(payload.total, 0), difficulty: safeInteger(payload.difficulty, 10), hit: payload.saved === true },
         result: payload.saved === true ? 'success' : 'failure',
+        ...(payload.item_saving_throw_bonus ? {
+          itemSavingThrowBonus: Math.max(1, safeInteger(payload.item_saving_throw_bonus, 1)),
+        } : {}),
         ...(payload.aura_of_protection_source ? {
           auraSourceId: String(payload.aura_of_protection_source),
           auraBonus: Math.max(1, safeInteger(payload.aura_of_protection_bonus, 1)),
@@ -10598,6 +10640,7 @@ export function applyGameEvent(rawState, event) {
     }
     case 'ItemGranted':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: [...(Array.isArray(actor.inventory) ? actor.inventory : []), clone(payload.item)] }))
+      if (Number(event.event_schema_version) >= 2) refreshPlayerDerivedState(state, [target])
       break
     case 'SpellSelectionsUpdated':
       replaceActor(state, target, (actor) => ({
@@ -10836,9 +10879,9 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'MerchantMoved': return `Торговец ${payload.merchant_id} перемещён в ${payload.location_after}`
     case 'MerchantAvailabilityChanged': return `Торговец ${payload.merchant_id} ${payload.available_after ? 'доступен' : 'недоступен'}`
     case 'AbilityCheckResolved': return `Проверка ${payload.ability}: ${payload.total} против СЛ ${payload.difficulty}`
-    case 'SavingThrowResolved': return `Спасбросок ${payload.ability}: ${payload.total} против СЛ ${payload.difficulty}${payload.aura_of_protection_bonus ? ` (Аура защиты +${payload.aura_of_protection_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
-    case 'SpellSavingThrowResolved': return `Спасбросок от ${payload.spell_id || 'заклинания'}: ${payload.total} против СЛ ${payload.difficulty} — ${payload.saved ? 'успех' : 'провал'}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
-    case 'ConcentrationSavingThrowResolved': return `Концентрация: ${payload.total} против СЛ ${payload.difficulty} — ${payload.saved ? 'сохранена' : 'потеряна'}${payload.aura_of_protection_bonus ? ` (Аура защиты +${payload.aura_of_protection_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
+    case 'SavingThrowResolved': return `Спасбросок ${payload.ability}: ${payload.total} против СЛ ${payload.difficulty}${payload.item_saving_throw_bonus ? ` (предмет +${payload.item_saving_throw_bonus})` : ''}${payload.aura_of_protection_bonus ? ` (Аура защиты +${payload.aura_of_protection_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
+    case 'SpellSavingThrowResolved': return `Спасбросок от ${payload.spell_id || 'заклинания'}: ${payload.total} против СЛ ${payload.difficulty} — ${payload.saved ? 'успех' : 'провал'}${payload.item_saving_throw_bonus ? ` (предмет +${payload.item_saving_throw_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
+    case 'ConcentrationSavingThrowResolved': return `Концентрация: ${payload.total} против СЛ ${payload.difficulty} — ${payload.saved ? 'сохранена' : 'потеряна'}${payload.item_saving_throw_bonus ? ` (предмет +${payload.item_saving_throw_bonus})` : ''}${payload.aura_of_protection_bonus ? ` (Аура защиты +${payload.aura_of_protection_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
     case 'ConcentrationEnded': return `Концентрация прекращена: ${payload.reason || 'эффект завершён'}`
     case 'ResourceSpent': return `${payload.resource}: ${payload.before} → ${payload.after}`
     case 'EnemyKnowledgeRevealed': return `${resolveName(payload.enemy_id)} опознан: отряд знает точные ОЗ и КД`
@@ -10848,7 +10891,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     // видел «hero выбывает из боя» вместо имени героя. Это самые заметные
     // события партии, и запасной текст рассказчика строится именно из них.
     case 'HitPointsReducedToZero': return `${named((event.target_ids ?? [])[0]) || 'Цель'} выбывает из боя`
-    case 'DeathSavingThrowRolled': return `Спасбросок от смерти ${named((event.target_ids ?? [])[0]) || 'героя'}: ${payload.natural_roll} — ${payload.result}${payload.aura_of_protection_bonus ? ` (Аура защиты +${payload.aura_of_protection_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
+    case 'DeathSavingThrowRolled': return `Спасбросок от смерти ${named((event.target_ids ?? [])[0]) || 'героя'}: ${payload.natural_roll} — ${payload.result}${payload.item_saving_throw_bonus ? ` (предмет +${payload.item_saving_throw_bonus})` : ''}${payload.aura_of_protection_bonus ? ` (Аура защиты +${payload.aura_of_protection_bonus})` : ''}${payload.indomitable_bonus ? ` (Несгибаемый +${payload.indomitable_bonus}; исходный итог ${payload.indomitable_original_total})` : ''}`
     case 'DeathSaveFailureRecorded': return `${named((event.target_ids ?? [])[0]) || 'Герой'} получает ${payload.failure_increment || 1} провал спасброска от смерти из-за урона`
     case 'HeroStabilized': return `${payload.hero_name || named((event.target_ids ?? [])[0]) || 'Герой'} стабилизирован`
     case 'CreatureKnockedOut': return `${named((event.target_ids ?? [])[0]) || 'Существо'} нокаутировано и начинает короткий отдых`

@@ -19,6 +19,7 @@ import {
   resolveLevelUp,
   validateLevelUpCommand,
 } from '../server/character-lifecycle.mjs'
+import { materializeCatalogItem } from '../server/item-catalog.mjs'
 
 function fighter(overrides = {}) {
   return {
@@ -50,6 +51,27 @@ test('derived sheet computes ability modifiers, class saves, skill proficiency, 
   assert.equal(sheet.armor_class.value, 15, '11 + DEX + shield, not client armor=99')
   assert.equal(sheet.speed.value, 30, 'not client speed=99')
   assert.equal(sheet.hit_points.value, 36)
+})
+
+test('derived sheet exposes one stamped item bonus in AC and every saving throw', () => {
+  const ring = {
+    ...materializeCatalogItem('srd_5_2_1:ring-of-protection', { id: 'ring' }),
+    equipped: true,
+    attuned_to: 'fighter',
+  }
+  const active = deriveCharacterSheet(fighter({ inventory: [ring] }))
+  assert.equal(active.armor_class.value, 13)
+  assert.equal(active.armor_class.item_effect_bonus, 1)
+  for (const save of Object.values(active.saving_throws)) {
+    assert.equal(save.item_effect_bonus, 1)
+  }
+  assert.equal(active.saving_throws.str.total, 6)
+  assert.equal(active.saving_throws.wis.total, 2)
+
+  const inactive = deriveCharacterSheet(fighter({ inventory: [{ ...ring, attuned_to: null }] }))
+  assert.equal(inactive.armor_class.value, 12)
+  assert.equal(inactive.armor_class.item_effect_bonus, 0)
+  assert.equal(inactive.saving_throws.str.total, 5)
 })
 
 test('barbarian and monk use their class unarmored AC formulas', () => {

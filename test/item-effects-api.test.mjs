@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { materializeCatalogItem } from '../server/item-catalog.mjs'
+
 async function freePort() {
   const probe = createNetServer()
   await new Promise((resolve, reject) => {
@@ -104,6 +106,8 @@ function initialState() {
       {
         id: 'medic',
         character: 'Лекарь',
+        characterClass: 'cleric',
+        level: 1,
         hp: 18,
         maxHp: 18,
         armor: 15,
@@ -127,6 +131,10 @@ function initialState() {
             quantity: 1,
             charges: { current: 1, max: 10 },
           },
+          materializeCatalogItem('srd_5_2_1:ring-of-protection', {
+            id: 'ring-protection',
+            quantity: 1,
+          }),
         ],
       },
       fallenHero('ally-a', 1, 0),
@@ -183,6 +191,21 @@ function itemCommand(key, itemId, targetId, expectedStateVersion) {
     body: {
       idempotency_key: key,
       command,
+    },
+  }
+}
+
+function lifecycleCommand(key, commandType, fields = {}) {
+  return {
+    key,
+    body: {
+      idempotency_key: key,
+      command: {
+        command_type: commandType,
+        actor_id: 'medic',
+        item_id: 'ring-protection',
+        ...fields,
+      },
     },
   }
 }
@@ -253,6 +276,51 @@ test('HTTP item commands enforce ACL, semantic idempotency, stale writes and a s
     body: { ...firstCommand.body, idempotency_key: 'item-forbidden' },
   })
   assert.equal(forbidden.status, 403, `${forbidden.text}\n${logs}`)
+
+  const equipCommand = lifecycleCommand('ring-equip', 'EquipItem', { equipped: true })
+  const equipped = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST',
+    cookie: ownerCookie,
+    ...equipCommand,
+  })
+  assert.equal(equipped.status, 200, `${equipped.text}\n${logs}`)
+  assert.deepEqual(equipped.body.mechanics.map((event) => event.event_type), ['ItemEquipped'])
+  const equippedRing = equipped.body.authoritative_state.players[0].inventory
+    .find((item) => item.id === 'ring-protection')
+  assert.equal(equippedRing.equipped, true)
+  assert.equal(equippedRing.capabilities.requires_attunement, true)
+  assert.equal(equipped.body.authoritative_state.players[0].characterSheet.armor_class.item_effect_bonus, 0)
+
+  const equipReplay = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST',
+    cookie: ownerCookie,
+    ...equipCommand,
+  })
+  assert.equal(equipReplay.status, 200, `${equipReplay.text}\n${logs}`)
+  assert.equal(equipReplay.body.idempotent_replay, true)
+
+  const attuneCommand = lifecycleCommand('ring-attune', 'AttuneItem', { attuned: true })
+  const attuned = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST',
+    cookie: ownerCookie,
+    ...attuneCommand,
+  })
+  assert.equal(attuned.status, 200, `${attuned.text}\n${logs}`)
+  assert.deepEqual(attuned.body.mechanics.map((event) => event.event_type), ['ItemAttunementChanged'])
+  const attunedMedic = attuned.body.authoritative_state.players[0]
+  const attunedRing = attunedMedic.inventory.find((item) => item.id === 'ring-protection')
+  assert.equal(attunedRing.attuned_to, 'medic')
+  assert.equal(attunedRing.passive_effects[0].saving_throw_bonus, 1)
+  assert.equal(attunedMedic.characterSheet.armor_class.item_effect_bonus, 1)
+  assert.equal(attunedMedic.armor, 12)
+
+  const attuneReplay = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST',
+    cookie: ownerCookie,
+    ...attuneCommand,
+  })
+  assert.equal(attuneReplay.status, 200, `${attuneReplay.text}\n${logs}`)
+  assert.equal(attuneReplay.body.idempotent_replay, true)
 
   const first = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
     method: 'POST',
@@ -342,6 +410,22 @@ test('HTTP item commands enforce ACL, semantic idempotency, stale writes and a s
     ['ally-b', 'ally-c'].filter((id) => durableState.mechanics.death.saving_throws[id].stable === true).length,
     1,
   )
+  const durableMedic = durableState.players.find((player) => player.id === 'medic')
+  const durableRing = durableMedic.inventory.find((item) => item.id === 'ring-protection')
+  assert.equal(durableRing.equipped, true)
+  assert.equal(durableRing.attuned_to, 'medic')
+  assert.equal(durableRing.passive_effects[0].armor_class_bonus, 1)
+  assert.equal(durableRing.capabilities.requires_attunement, true)
+  assert.equal(durableMedic.characterSheet.armor_class.item_effect_bonus, 1)
+  assert.equal(durableMedic.armor, 12)
+
+  const durableAttuneReplay = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
+    method: 'POST',
+    cookie: ownerCookie,
+    ...attuneCommand,
+  })
+  assert.equal(durableAttuneReplay.status, 200, `${durableAttuneReplay.text}\n${logs}`)
+  assert.equal(durableAttuneReplay.body.idempotent_replay, true)
 
   const durableReplay = await request(baseUrl, '/api/campaigns/ITEM-EFFECTS-API/commands', {
     method: 'POST',

@@ -468,58 +468,103 @@ const GEAR = [
   { id: 'waterskin', name: 'Бурдюк', weight: 5, price: 20, description: 'Полный дорожный бурдюк с водой.', limitation: 'Вода, вместимость и обезвоживание не моделируются.' },
 ]
 
-const MAGIC_ITEMS = [{
-  catalog_id: 'srd_5_2_1:longsword-plus-1',
-  ...ITEM_CATALOG_SOURCE,
-  display_name: 'Длинный меч +1',
-  name: 'Длинный меч +1',
-  manifest_section: 'magic-item',
-  description: 'Магически усиленный длинный меч. Атаки этим оружием получают +1 к броску атаки и +1 к броску урона.',
-  category: 'weapon',
-  type: 'weapon',
-  price_cp: 41_500,
-  base_price_cp: 41_500,
-  weight: 3,
-  lifecycle: { equippable: true, equip_slot: 'main_hand', transferable: true, stackable: false },
-  equip: { slot: 'main_hand' },
-  combat: {
-    kind: 'melee',
-    ability: 'str',
-    damage: '1d8',
-    damageType: 'slashing',
-    normalRange: 5,
-    attackBonus: 1,
-    damageBonus: 1,
-  },
-  use: null,
-  attunement: { required: false },
-  charges: null,
-  recharge: null,
-  crafting: { implemented: false, hooks: [] },
-  weapon: {
-    group: 'martial-melee',
-    damage: '1d8',
-    damage_type: 'slashing',
-    properties: ['versatile-1d10'],
-    mastery: 'sap',
-    normal_range_feet: 5,
-    long_range_feet: null,
-  },
-  magic_item: {
+const MAGIC_ITEMS = [
+  {
+    catalog_id: 'srd_5_2_1:longsword-plus-1',
+    ...ITEM_CATALOG_SOURCE,
+    display_name: 'Длинный меч +1',
+    name: 'Длинный меч +1',
+    manifest_section: 'magic-item',
+    description: 'Магически усиленный длинный меч. Атаки этим оружием получают +1 к броску атаки и +1 к броску урона.',
     category: 'weapon',
-    rarity: 'uncommon',
-    bonus: 1,
-    base_item_catalog_id: 'srd_5_2_1:longsword',
-    value_formula: '400 gp (Uncommon magic item) + 15 gp (Longsword)',
+    type: 'weapon',
+    price_cp: 41_500,
+    base_price_cp: 41_500,
+    weight: 3,
+    lifecycle: { equippable: true, equip_slot: 'main_hand', transferable: true, stackable: false },
+    equip: { slot: 'main_hand' },
+    combat: {
+      kind: 'melee',
+      ability: 'str',
+      damage: '1d8',
+      damageType: 'slashing',
+      normalRange: 5,
+      attackBonus: 1,
+      damageBonus: 1,
+    },
+    use: null,
+    attunement: { required: false },
+    charges: null,
+    recharge: null,
+    crafting: { implemented: false, hooks: [] },
+    weapon: {
+      group: 'martial-melee',
+      damage: '1d8',
+      damage_type: 'slashing',
+      properties: ['versatile-1d10'],
+      mastery: 'sap',
+      normal_range_feet: 5,
+      long_range_feet: null,
+    },
+    magic_item: {
+      category: 'weapon',
+      rarity: 'uncommon',
+      bonus: 1,
+      base_item_catalog_id: 'srd_5_2_1:longsword',
+      value_formula: '400 gp (Uncommon magic item) + 15 gp (Longsword)',
+    },
+    mechanics_status: 'partial',
+    limitation: 'Бонус +1 к атаке и урону исполняется сервером; versatile, mastery Sap и полная смена хвата ещё не автоматизированы.',
+    availability: availability('srd_5_2_1:longsword-plus-1'),
+    source_page: 253,
+    source_pages: [91, 206, 253],
+    mechanics_source_page: 253,
+    provenance: provenance(253, { sourcePages: [91, 206, 253], mechanicsSourcePage: 253 }),
   },
-  mechanics_status: 'partial',
-  limitation: 'Бонус +1 к атаке и урону исполняется сервером; versatile, mastery Sap и полная смена хвата ещё не автоматизированы.',
-  availability: availability('srd_5_2_1:longsword-plus-1'),
-  source_page: 253,
-  source_pages: [91, 206, 253],
-  mechanics_source_page: 253,
-  provenance: provenance(253, { sourcePages: [91, 206, 253], mechanicsSourcePage: 253 }),
-}]
+  {
+    catalog_id: 'srd_5_2_1:ring-of-protection',
+    ...ITEM_CATALOG_SOURCE,
+    display_name: 'Кольцо защиты',
+    name: 'Кольцо защиты',
+    manifest_section: 'magic-item',
+    description: 'Пока вы носите это кольцо и настроены на него, вы получаете +1 к КД и всем спасброскам.',
+    category: 'ring',
+    type: 'other',
+    rarity: 'редкий',
+    price_cp: 400_000,
+    base_price_cp: 400_000,
+    weight: 0,
+    lifecycle: { equippable: true, equip_slot: 'ring-protection', transferable: true, stackable: false },
+    equip: { slot: 'ring-protection' },
+    use: null,
+    attunement: { required: true },
+    charges: null,
+    recharge: null,
+    crafting: { implemented: false, hooks: [] },
+    passive_effects: [{
+      schema_version: 1,
+      effect_id: 'srd_5_2_1:ring-of-protection:protection',
+      group: 'srd_5_2_1:ring-of-protection',
+      requires_equipped: true,
+      requires_attunement: true,
+      armor_class_bonus: 1,
+      saving_throw_bonus: 1,
+    }],
+    magic_item: {
+      category: 'ring',
+      rarity: 'rare',
+      bonus: 1,
+      value_formula: '4,000 gp (Rare magic item)',
+    },
+    mechanics_status: 'partial',
+    limitation: 'Числовые бонусы +1 к КД и спасброскам исполняются сервером. Общая настройка упрощена: отдельный Short Rest для неё пока не моделируется.',
+    availability: availability('srd_5_2_1:ring-of-protection'),
+    source_page: 237,
+    source_pages: [101, 205, 237],
+    mechanics_source_page: 237,
+    provenance: provenance(237, { sourcePages: [101, 205, 237], mechanicsSourcePage: 237 }),
+  },
+]
 
 const ENTRIES = [
   ...WEAPONS.map(weaponEntry),
@@ -531,8 +576,8 @@ const ENTRIES = [
   ...MAGIC_ITEMS,
 ]
 
-if (ENTRIES.length !== 98) {
-  throw new Error(`Item catalog manifest must contain 98 entries, got ${ENTRIES.length}`)
+if (ENTRIES.length !== 99) {
+  throw new Error(`Item catalog manifest must contain 99 entries, got ${ENTRIES.length}`)
 }
 
 const entriesById = Object.fromEntries(ENTRIES.map((entry) => [entry.catalog_id, entry]))
@@ -654,7 +699,9 @@ export function materializeCatalogItem(catalogId, instance = {}) {
     properties: String(source.properties ?? '').trim() || entry.description,
     base_price_cp: entry.base_price_cp,
     mechanics_status: entry.mechanics_status,
+    ...(entry.rarity ? { rarity: entry.rarity } : {}),
     ...(entry.combat ? { combat: clone(entry.combat) } : {}),
+    ...(entry.passive_effects ? { passive_effects: clone(entry.passive_effects) } : {}),
     ...(entry.charges ? { charges: catalogChargeState(entry, source) } : {}),
     ...(entry.attunement.required ? { requires_attunement: true } : {}),
   }
@@ -674,14 +721,15 @@ export function itemViewerCapabilities(item = {}) {
       : item?.type === 'armor'
         ? 'body'
         : null
-    if (!equipSlot) return null
+    const requiresAttunement = item?.requires_attunement === true
+    if (!equipSlot && !requiresAttunement) return null
     return {
-      equippable: true,
+      equippable: Boolean(equipSlot),
       equip_slot: equipSlot,
       usable: false,
       use: null,
       charges: null,
-      requires_attunement: false,
+      requires_attunement: requiresAttunement,
     }
   }
   const use = entry.use
@@ -700,5 +748,7 @@ export function itemViewerCapabilities(item = {}) {
     use,
     charges: catalogChargeState(entry, item),
     requires_attunement: entry.attunement?.required === true,
+    mechanics_status: entry.mechanics_status,
+    limitation: entry.limitation,
   })
 }

@@ -604,7 +604,7 @@ function playerItemsWithCapabilities(players) {
  */
 export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
-  if (user?.role === 'admin') return state
+  if (user?.role === 'admin') return { ...state, players: playerItemsWithCapabilities(state.players) }
   const visible = projectVisibleState(state, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}
   const { locationMaps: _locationMaps, npc_world: _npcWorld, ...publicState } = visible
   const scene = publicSceneFor(visible.scene ?? state.scene)

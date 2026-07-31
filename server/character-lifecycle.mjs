@@ -22,6 +22,7 @@ import {
   spellSlotMaximumsFor,
 } from './combat-spells.mjs'
 import { ITEM_ARMOR_PROFILES } from './item-catalog.mjs'
+import { activeItemEffectTotals } from './item-lifecycle.mjs'
 import { withStarterKit } from './starter-kit.mjs'
 
 /**
@@ -452,11 +453,13 @@ export function deriveArmorClass(actor, { abilities = normalizedAbilityScores(ac
     .sort((left, right) => left.catalogId.localeCompare(right.catalogId)).slice(0, 1)
   const armorDexterity = bodyArmor ? Math.min(dexterityModifier, bodyArmor.dexterityCap ?? dexterityModifier) : 0
   const shieldBonus = shields.reduce((sum, entry) => sum + integer(entry.profile.armorClassBonus, `armor profile ${entry.catalogId}.armorClassBonus`, { minimum: 0, maximum: 10 }), 0)
+  const itemEffectBonus = activeItemEffectTotals(actor).armor_class_bonus
   return {
-    value: (bodyArmor ? bodyArmor.base + armorDexterity : unarmoredBase) + shieldBonus,
+    value: (bodyArmor ? bodyArmor.base + armorDexterity : unarmoredBase) + shieldBonus + itemEffectBonus,
     base: bodyArmor ? bodyArmor.base : unarmoredBase,
     dexterityModifier: bodyArmor ? armorDexterity : dexterityModifier,
     shieldBonus,
+    item_effect_bonus: itemEffectBonus,
     source: bodyArmor ? 'equipped_server_profile' : classKey === 'barbarian' || classKey === 'monk' ? 'class_unarmored_defense' : 'unarmored',
     armorCatalogId: bodyArmor?.catalogId ?? null,
     shieldCatalogIds: shields.map((entry) => entry.catalogId),
@@ -492,6 +495,7 @@ export function deriveCharacterSheet(actor, options = {}) {
   const abilities = normalizedAbilityScores(actor?.abilities)
   const proficiencyBonus = proficiencyBonusForLevel(level)
   const canonical = canonicalCharacterChoices({ ...actor, characterClass, level, abilities })
+  const itemEffects = activeItemEffectTotals(canonical)
   const savingThrowProficiencies = new Set(savingThrowProficienciesFor(canonical))
   const skills = Object.fromEntries(SKILL_IDS.map((id) => {
     const ability = skillAbility(id)
@@ -512,7 +516,8 @@ export function deriveCharacterSheet(actor, options = {}) {
       modifier,
       proficient,
       proficiencyBonus: proficient ? proficiencyBonus : 0,
-      total: modifier + (proficient ? proficiencyBonus : 0),
+      item_effect_bonus: itemEffects.saving_throw_bonus,
+      total: modifier + (proficient ? proficiencyBonus : 0) + itemEffects.saving_throw_bonus,
     }]
   }))
   const hitPoints = deriveMaximumHitPoints(canonical, { level, abilities })
