@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { answerKnownLore } from '../server/agent-router.mjs'
+import { answerKnownLore } from '../server/player-request-router.mjs'
 import { buildCampaignArcPlan } from '../server/campaign-loop-policy.mjs'
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'

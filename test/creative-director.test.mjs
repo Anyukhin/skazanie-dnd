@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { CRITICAL_NARRATION_TIMEOUT_MS, CreativeDirector, criticalMomentFor } from '../server/creative-director.mjs'
+import { CRITICAL_NARRATION_TIMEOUT_MS, CriticalNarrationCoordinator, criticalMomentFor } from '../server/creative-director.mjs'
 
 const state = {
   scene: { title: 'Зал', location: 'Крепость', mood: 'Гулкий камень', objective: 'Выстоять' },
@@ -12,7 +12,7 @@ const state = {
 
 test('creative director is completely bypassed for movement and ordinary attacks', async () => {
   let calls = 0
-  const director = new CreativeDirector({ narrator: { render: async () => { calls += 1; return { narration: 'unexpected' } } } })
+  const director = new CriticalNarrationCoordinator({ narrator: { render: async () => { calls += 1; return { narration: 'unexpected' } } } })
   const events = [
     { event_type: 'ActorMoved', actor_id: 'hero', target_ids: ['hero'], payload: { distance: 10 }, visibility: 'public' },
     { event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['guard'], payload: { total: 14, armor_class: 12, hit: true }, visibility: 'public' },
@@ -24,7 +24,7 @@ test('creative director is completely bypassed for movement and ordinary attacks
 
 test('enemy death invokes creative narration only after the mechanical event is committed', async () => {
   let calls = 0
-  const director = new CreativeDirector({ narrator: { render: async (brief, options) => {
+  const director = new CriticalNarrationCoordinator({ narrator: { render: async (brief, options) => {
     calls += 1
     assert.equal(brief.known_environment.critical_moment.kind, 'enemy_defeated')
     assert.equal(options.timeoutMs, CRITICAL_NARRATION_TIMEOUT_MS)
@@ -39,7 +39,7 @@ test('enemy death invokes creative narration only after the mechanical event is 
 
 test('hero fall is not narrated as death, while committed HeroDied is final', async () => {
   const styles = []
-  const director = new CreativeDirector({ narrator: { render: async (_brief, options) => {
+  const director = new CriticalNarrationCoordinator({ narrator: { render: async (_brief, options) => {
     styles.push(options.style)
     return { narration: 'Переломный момент.', provider: 'fake-agent', verification: { valid: true }, suggestions: [] }
   } } })

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { campaignConceptForAgent } from '../server/agent-context.mjs'
-import { AGENT_ROLES, answerKnownLore } from '../server/agent-router.mjs'
+import { PLAYER_REQUEST_ROLES, answerKnownLore } from '../server/player-request-router.mjs'
 
 test('shared campaign premise is bounded for every creative role and excludes unrelated private state', () => {
   const state = {
@@ -17,7 +17,7 @@ test('shared campaign premise is bounded for every creative role and excludes un
     secretGmNotes: 'Never expose this.',
   }
   const premise = campaignConceptForAgent(state)
-  for (const role of Object.values(AGENT_ROLES)) {
+  for (const role of Object.values(PLAYER_REQUEST_ROLES)) {
     assert.equal(premise.premise, 'A vanished road returns each new moon.', role.id)
     assert.equal(premise.tone, 'Hopeful mystery', role.id)
     assert.equal(premise.boundaries, 'No sexual violence; fade to black.', role.id)

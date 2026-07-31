@@ -7,7 +7,7 @@ import test from 'node:test'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { SRD_5_2_1_MONSTER_ALLOWLIST } from '../server/encounter-assembler.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
-import { NpcControllerAgent, commandsForMoraleDecision } from '../server/npc-controller.mjs'
+import { NpcMoraleAgent, commandsForMoraleDecision } from '../server/npc-controller.mjs'
 import { NPC_BEHAVIOR_POLICIES, planNpcTurn, runNpcTurnScheduler } from '../server/npc-turn-scheduler.mjs'
 import { RULE_IDS, RulesEngine, RulesValidationError, applyGameEvent, normalizeCampaignState, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
 import { DATA_ONLY_INSTRUCTION } from '../server/security.mjs'
@@ -232,7 +232,7 @@ test('NPC creative controller is called once at the morale threshold and the ser
 })
 
 test('deterministic NPC morale keeps undead fighting and makes beasts flee', async () => {
-  const controller = new NpcControllerAgent()
+  const controller = new NpcMoraleAgent()
   for (const [kind, expected] of [['волк', 'flee'], ['зомби', 'fight']]) {
     const state = fixture({ campaign_id: `NPC-MORALE-${expected}`, sessionCode: `NPC-MORALE-${expected}` })
     state.enemies[0] = { ...state.enemies[0], name: kind, kind, hp: 5, maxHp: 20 }
@@ -246,7 +246,7 @@ test('deterministic NPC morale keeps undead fighting and makes beasts flee', asy
 test('NPC controller ignores forged identity and bounds creative output', async () => {
   const state = fixture({ campaign_id: 'NPC-UNTRUSTED', sessionCode: 'NPC-UNTRUSTED' })
   state.enemies[0] = { ...state.enemies[0], name: 'волк', kind: 'зверь', hp: 5, maxHp: 20 }
-  const controller = new NpcControllerAgent({
+  const controller = new NpcMoraleAgent({
     llmClient: {
       async completeJson() {
         return { npc_id: 'hero', disposition: 'surrender', reaction: `line one\n${'x'.repeat(400)}`, confidence: 4 }
@@ -271,7 +271,7 @@ test('NPC morale brief is delimited and player-supplied names cannot forge the d
   state.players[0] = { ...state.players[0], character: forged }
   state.enemies[0] = { ...state.enemies[0], name: 'волк', kind: 'зверь', hp: 5, maxHp: 20 }
   let userContent = null
-  const controller = new NpcControllerAgent({
+  const controller = new NpcMoraleAgent({
     llmClient: {
       async completeJson({ messages }) {
         userContent = messages.find((message) => message.role === 'user')?.content ?? ''

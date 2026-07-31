@@ -37,9 +37,9 @@ import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream } from './narration-stream.mjs'
-import { CreativeDirector } from './creative-director.mjs'
+import { CriticalNarrationCoordinator } from './creative-director.mjs'
 import { combatNarration as tacticalNarration } from './combat-narration.mjs'
-import { NpcControllerAgent } from './npc-controller.mjs'
+import { NpcMoraleAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
 import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
 import { RollRegistry } from './roll-registry.mjs'
@@ -50,8 +50,8 @@ import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
-import { SceneArchitectAgent } from './scene-architect.mjs'
-import { proposeAgentInteraction, resolvePartyDecision } from './agent-router.mjs'
+import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect.mjs'
+import { proposeAgentInteraction, resolvePartyDecision } from './player-request-router.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { ActionAdjudicator } from './action-adjudicator.mjs'
@@ -172,8 +172,8 @@ const eventStore = new FileEventStore({
 })
 const traceStore = new FileTraceStore({ rootDir: join(storageDir, 'turn-traces') })
 const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
-const creativeDirector = new CreativeDirector({ narrator })
-const npcController = new NpcControllerAgent({ llmClient: apiKey ? llmClient : null })
+const creativeDirector = new CriticalNarrationCoordinator({ narrator })
+const npcController = new NpcMoraleAgent({ llmClient: apiKey ? llmClient : null })
 const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmClient : null })
 const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null })
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
@@ -3352,7 +3352,7 @@ const server = createServer((req, res) => {
         transition,
         stages: [
           { agent: 'AgentDirector', status: 'completed', output: { intent: 'advance_scene', decision: resolved.decision, destinationHint: resolved.destinationHint } },
-          { agent: 'AgentCartographer', status: 'completed', output: { ...planned.trace, scene: planned.sceneArgs } },
+          { agent: SCENE_ARCHITECT_AGENT_ID, status: 'completed', output: { ...planned.trace, scene: planned.sceneArgs } },
           { agent: 'WorldEngine', status: 'completed', output: { cells: transition.scene.cells.length, width: Math.max(...transition.scene.cells.map((cell) => cell.x)) + 1, height: Math.max(...transition.scene.cells.map((cell) => cell.y)) + 1, entrance: transition.entrance } },
           { agent: 'AgentNarrator', status: 'completed', output: { narration: `${transition.transition} ${transition.arrival}` } },
         ],

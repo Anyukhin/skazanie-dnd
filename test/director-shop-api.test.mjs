@@ -199,7 +199,7 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   assert.equal(replay.body.idempotent_replay, true)
   assert.equal(replay.body.model, 'event-replay')
   assert.equal(replay.body.agent_trace.some((stage) => stage.agent === 'EventReplay'), true)
-  assert.equal(replay.body.agent_trace.some((stage) => stage.agent === 'AgentCartographer'), false)
+  assert.equal(replay.body.agent_trace.some((stage) => stage.agent === 'scene_architect'), false)
   assert.equal(replay.body.state_version, cityVersion)
   assert.equal(replay.body.authoritative_state.merchants.length, 1)
   assert.deepEqual(replay.body.mechanics.map((event) => event.event_type), [

@@ -6,9 +6,18 @@ import './agent-lab.css'
 type LabStage = { agent: string; status: string; output: Record<string, unknown> | null }
 type LabResult = { dry_run: boolean; transition: SceneTransition | null; stages: LabStage[]; narration?: string }
 
+/**
+ * Трассы старых кампаний хранят прежнее имя роли, новые — единый
+ * `scene_architect`. Переписывать историю нельзя, поэтому интерфейс читает оба.
+ */
+function isSceneArchitect(agent: string) {
+  return agent === 'scene_architect' || agent === 'AgentCartographer'
+}
+
 const agentLabels: Record<string, string> = {
   AgentDirector: 'Режиссёр',
-  AgentCartographer: 'Картограф',
+  AgentCartographer: 'Архитектор сцены',
+  scene_architect: 'Архитектор сцены',
   WorldEngine: 'Движок мира',
   AgentNarrator: 'Рассказчик',
 }
@@ -70,7 +79,7 @@ export function AgentLabView({ state }: { state: GameState }) {
         {result && <>
           <div className="lab-pipeline">
             {result.stages.map((stage, index) => <div className="lab-stage-wrap" key={`${stage.agent}:${index}`}>
-              <article className="lab-stage"><span>{stage.agent === 'AgentCartographer' ? <Map size={17} /> : stage.agent === 'AgentNarrator' ? <Sparkles size={17} /> : <BrainCircuit size={17} />}</span><div><small>ШАГ {index + 1}</small><b>{agentLabels[stage.agent] ?? stage.agent}</b><p>{stage.agent === 'AgentDirector' ? 'Понял фактический выбор группы' : stage.agent === 'AgentCartographer' ? 'Спроектировал новую сцену и карту' : stage.agent === 'WorldEngine' ? 'Создал валидное игровое поле' : 'Связал переход повествованием'}</p></div></article>
+              <article className="lab-stage"><span>{isSceneArchitect(stage.agent) ? <Map size={17} /> : stage.agent === 'AgentNarrator' ? <Sparkles size={17} /> : <BrainCircuit size={17} />}</span><div><small>ШАГ {index + 1}</small><b>{agentLabels[stage.agent] ?? stage.agent}</b><p>{stage.agent === 'AgentDirector' ? 'Понял фактический выбор группы' : isSceneArchitect(stage.agent) ? 'Спроектировал новую сцену и карту' : stage.agent === 'WorldEngine' ? 'Создал валидное игровое поле' : 'Связал переход повествованием'}</p></div></article>
               {index < result.stages.length - 1 && <ArrowRight className="lab-arrow" size={16} />}
             </div>)}
           </div>

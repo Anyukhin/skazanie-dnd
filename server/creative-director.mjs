@@ -77,9 +77,9 @@ function publicEnvironment(state, trigger) {
  * called only after the rules engine has committed a bounded critical event;
  * narration can decorate that fact but cannot alter HP, rolls or positions.
  */
-export class CreativeDirector {
+export class CriticalNarrationCoordinator {
   constructor({ narrator } = {}) {
-    if (!narrator) throw new TypeError('CreativeDirector requires narrator')
+    if (!narrator) throw new TypeError('CriticalNarrationCoordinator requires narrator')
     this.narrator = narrator
   }
 

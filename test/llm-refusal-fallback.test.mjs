@@ -15,7 +15,7 @@ import { ActionAdjudicator } from '../server/action-adjudicator.mjs'
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { DirectorAgent } from '../server/director-agent.mjs'
 import { Narrator } from '../server/narrator.mjs'
-import { NpcControllerAgent } from '../server/npc-controller.mjs'
+import { NpcMoraleAgent } from '../server/npc-controller.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
 import { interpretFreeAction } from '../server/free-action-adjudication.mjs'
 import { normalizeCampaignState } from '../server/rules-engine.mjs'
@@ -95,8 +95,8 @@ const ROLES = [
     strip: ({ intent }) => ({ intent }),
   },
   {
-    name: 'NpcControllerAgent',
-    call: (client) => new NpcControllerAgent({ llmClient: client }).decide({ state: state(), enemyId: 'wolf' }),
+    name: 'NpcMoraleAgent',
+    call: (client) => new NpcMoraleAgent({ llmClient: client }).decide({ state: state(), enemyId: 'wolf' }),
     strip: ({ provider: _provider, provider_error: _error, ...rest }) => rest,
   },
   {

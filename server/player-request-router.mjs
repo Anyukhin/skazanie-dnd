@@ -8,7 +8,7 @@ import { campaignConceptForAgent } from './agent-context.mjs'
  * `worldkeeper` — это `answerKnownLore` ниже, `game_master` — Rules Engine.
  * Промпты для них удалены 2026-07-26, потому что их никто не загружал.
  */
-export const AGENT_ROLES = Object.freeze({
+export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: 'director/v1', purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
