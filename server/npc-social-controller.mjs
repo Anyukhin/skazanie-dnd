@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { ensureNpcSocialState, npcProfileAtWorldTime, relationshipTier } from './npc-social.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
+import { promptForModel } from './model-style-profiles.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
@@ -211,7 +212,7 @@ export class NpcSocialController {
     try {
       const result = await this.llmClient.completeJson({
         messages: [
-          { role: 'system', content: prompt },
+          { role: 'system', content: promptForModel(prompt, this.llmClient) },
           { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, String(playerId), message, checkOutcome) }) },
         ],
         temperature: 0.7,

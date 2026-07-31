@@ -9,6 +9,7 @@ import {
   currentNarratorStyleInstruction,
 } from './campaign-ai-context.mjs'
 import { findNarratorCliches } from './narrator-craft-quality.mjs'
+import { promptForModel } from './model-style-profiles.mjs'
 import { npcDossiersForNarrator } from './npc-social.mjs'
 
 export const NARRATOR_PROMPT_VERSION = 'narrator/v6'
@@ -1565,7 +1566,7 @@ export class Narrator {
       const generation = currentNarratorGenerationParameters()
       const request = {
         messages: [
-          { role: 'system', content: narratorPromptWithExamples(examples) },
+          { role: 'system', content: promptForModel(narratorPromptWithExamples(examples), this.llmClient) },
           {
             role: 'user',
             content: buildDataOnlyContext({
