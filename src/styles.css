@@ -530,13 +530,25 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @keyframes npc-tactic-arrive { from { opacity: 0; transform: translate(-50%, -5px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .map-mode-plate::before, .map-mode-plate::after { content: ''; width: 46px; height: 1px; background: linear-gradient(90deg, transparent, rgba(198,161,105,.55)); }
 .map-mode-plate::after { background: linear-gradient(90deg, rgba(198,161,105,.55), transparent); }
-.map-legend { position: absolute; z-index: 8; left: 24px; bottom: 22px; display: flex; gap: 16px; padding: 9px 13px; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.78); color: #8d857b; font: var(--fs-xs) Manrope, sans-serif; }
+.map-legend { position: absolute; z-index: 8; left: 24px; bottom: 22px; max-width: min(360px, calc(100% - 48px)); padding: 0; border: 1px solid rgba(222,201,171,.14); border-radius: 8px; background: rgba(15,13,11,.86); color: #a1988c; font: var(--fs-xs) Manrope, sans-serif; backdrop-filter: blur(8px); }
+.map-legend summary { display: flex; align-items: center; gap: 7px; padding: 9px 13px; color: #b99c73; font-weight: 700; letter-spacing: .04em; cursor: pointer; list-style: none; }
+.map-legend summary::-webkit-details-marker { display: none; }
+.map-legend summary::after { content: '▾'; margin-left: auto; color: #766b5e; transition: transform .15s ease; }
+.map-legend:not([open]) summary::after { transform: rotate(-90deg); }
+.map-legend > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; padding: 0 13px 11px; border-top: 1px solid rgba(222,201,171,.1); }
 /* Нижнюю строку стола в бою занимает остаток хода, и легенда встаёт над ней:
    вместе они шире поля (533 + 473 при ~900 доступных) и наезжали друг на друга. */
 .map-stage:has(.map-economy) .map-legend { bottom: 90px; }
 .map-legend span { display: flex; align-items: center; gap: 7px; }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
 .legend-dot.party { background: #c9985b; }.legend-dot.summon { background: #70a78b; }.legend-dot.danger { background: #994a45; }.legend-dot.interest { background: #5f8f78; }
+.legend-swatch { flex: 0 0 16px; width: 16px; height: 12px; border: 1px solid rgba(214,190,151,.5); border-radius: 2px; }
+.legend-swatch.difficult { background: repeating-linear-gradient(135deg, rgba(235,211,157,.56) 0 1px, rgba(80,64,44,.2) 1px 4px); }
+.legend-swatch.hazard { border-style: dashed; border-color: rgba(205,116,81,.72); background: rgba(128,54,39,.22); }
+.legend-swatch.spell { border: 2px dashed rgba(203,184,221,.78); background: rgba(122,106,142,.16); }
+.legend-mark { flex: 0 0 17px; width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid rgba(210,180,136,.38); border-radius: 50%; color: #d1b78d; font: 800 9px/1 Manrope, sans-serif; font-style: normal; }
+.legend-mark.elevation { width: 24px; border-radius: 3px; color: #e9cc98; }
+.legend-mark.cover { border-color: rgba(136,176,193,.48); color: #a9cedb; }
 .zoom-control { position: absolute; z-index: 9; right: 27px; top: 88px; display: flex; align-items: center; height: 36px; border: 1px solid var(--line); border-radius: 4px; background: rgba(15,13,11,.78); backdrop-filter: blur(10px); }
 .zoom-control button { width: 36px; min-width: 36px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: #817970; cursor: pointer; }
 .zoom-control button:hover { color: #ddd2c4; }
@@ -1422,6 +1434,10 @@ button.campaign-title:hover strong { color: #edc996; }
    клетки: половина высоты токена вниз плюс зазор. Ширина — ширина токена плюс
    те же 12px по краям, что у героя. Кликам не мешает. */
 .map-token-hp.enemy-health { left: 50%; right: auto; bottom: auto; top: calc(50% + clamp(34px, 5.9cqw, 48px) / 2 + 2px); z-index: 6; width: calc(clamp(31px, 5.4cqw, 44px) + 12px); transform: translateX(-50%); pointer-events: none; }
+.enemy-health-ring { position: absolute; z-index: 4; left: 50%; top: 50%; width: calc(clamp(31px, 5.4cqw, 44px) + 8px); height: calc(clamp(34px, 5.9cqw, 48px) + 8px); border: 2px solid rgba(185,139,70,.62); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 7px rgba(185,139,70,.22); }
+.enemy-health-ring[data-status="bloodied"] { border-color: rgba(191,104,62,.72); box-shadow: 0 0 8px rgba(191,104,62,.28); }
+.enemy-health-ring[data-status="critical"] { border-color: rgba(201,83,69,.88); box-shadow: 0 0 10px rgba(201,83,69,.36); }
+.enemy-health-ring[data-status="defeated"] { border-color: rgba(121,111,103,.5); filter: grayscale(1); }
 .enemy-health.unharmed i { background: #6d9068; }
 .enemy-health.wounded i { background: #b98b46; }
 .enemy-health.bloodied i { background: #b0703f; }
@@ -1799,9 +1815,14 @@ button.campaign-title:hover strong { color: #edc996; }
 .enemy-token.initiative-focus,.map-token.initiative-focus{filter:brightness(1.18);box-shadow:0 0 0 4px rgba(236,187,118,.96),0 0 34px rgba(218,137,53,.92);animation:initiative-focus-pulse 1.2s ease-in-out infinite}
 .board-cell.command-center{box-shadow:inset 0 0 0 3px rgba(238,176,91,.96),inset 0 0 28px rgba(205,118,39,.5)}.board-cell.command-center::after{content:'◎';position:absolute;z-index:4;display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(248,203,139,.88);border-radius:50%;background:rgba(117,63,26,.72);color:#ffe0b1;font:700 var(--fs-sm) Manrope,sans-serif;box-shadow:0 0 16px rgba(226,135,54,.82)}
 .enemy-token[aria-disabled="true"],.map-token[aria-disabled="true"]{cursor:help}
+.token-tactical-badges{position:absolute;z-index:10;left:calc(50% + 19px);bottom:calc(50% + 11px);display:flex;align-items:center;gap:3px;opacity:0;transform:translateY(2px);transition:opacity .14s ease,transform .14s ease;pointer-events:none}
+.board-cell:hover>.token-tactical-badges,.board-cell:focus-within>.token-tactical-badges{opacity:1;transform:translateY(0)}
+.token-tactical-badges i{min-width:18px;height:18px;display:grid;place-items:center;padding:0 4px;border:1px solid rgba(137,179,195,.52);border-radius:9px;background:rgba(18,27,31,.92);color:#abd2df;font:800 9px/1 Manrope,sans-serif;font-style:normal;white-space:nowrap;box-shadow:0 2px 7px #000}
+.token-tactical-badges .advantage{border-color:rgba(104,167,116,.58);background:rgba(25,51,31,.94);color:#b8daba;font-size:13px}.token-tactical-badges .disadvantage{border-color:rgba(185,119,83,.62);background:rgba(58,33,24,.94);color:#e0ae91;font-size:13px}.token-tactical-badges .blocked{border-color:rgba(190,76,67,.68);background:rgba(65,24,22,.95);color:#efaaa4;font-size:13px}
 .token-conditions{position:absolute;z-index:8;left:50%;top:calc(100% + 8px);display:flex;gap:2px;transform:translateX(-50%);pointer-events:auto}
 .token-conditions i{width:13px;height:13px;display:grid;place-items:center;border:1px solid rgba(117,155,121,.5);border-radius:50%;background:#203126;color:#b9d6bc;font:700 var(--fs-xxs) Manrope,sans-serif;font-style:normal;box-shadow:0 2px 4px #000}
 .token-conditions i.partial{border-color:rgba(190,141,72,.58);background:#3b2c1d;color:#dbc08d}.token-conditions i.marker{border-style:dashed;border-color:rgba(145,127,109,.62);background:#2b2824;color:#b5a99a}
+.token-conditions i[data-condition="paralyzed"]{border-color:rgba(192,158,221,.75);background:#382748;color:#ead9f4}.token-conditions i[data-condition="restrained"]{border-color:rgba(194,164,112,.72);background:#493821;color:#ead5ad}.token-conditions i[data-condition="prone"]{border-radius:3px;border-color:rgba(153,177,191,.7);background:#283941;color:#c9dde6}.token-conditions i[data-condition="frightened"]{border-color:rgba(205,101,91,.78);background:#522824;color:#f1b1aa}
 /* Полоска героя и призыва теперь с числами и вдвое толще: значки состояний
    уезжают ниже, иначе они ложатся прямо на цифры. У врага полоска прежняя. */
 .map-token .token-conditions{top:calc(100% + 16px)}
