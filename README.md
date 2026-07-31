@@ -106,7 +106,7 @@ Vite покажет адрес интерфейса. При первом зап�
 ```env
 ROUTERAI_API_KEY=...
 ROUTERAI_BASE_URL=https://routerai.ru/api/v1
-DND_AI_MODEL=anthropic/claude-haiku-4.5
+DND_AI_MODEL=z-ai/glm-5.2
 DND_AI_FALLBACK_MODELS=z-ai/glm-5.2,deepseek/deepseek-v4-flash,google/gemini-2.5-flash-lite,openai/gpt-4.1-nano
 DND_AI_MODEL_TIMEOUT_MS=9000
 DND_IMAGE_MODEL=openai/gpt-image-1
