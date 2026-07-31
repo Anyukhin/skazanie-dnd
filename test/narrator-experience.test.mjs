@@ -9,6 +9,7 @@ import {
   narratorContentDirectives,
   selectNarratorFewShotExamples,
   sensoryAnchorsFor,
+  verifyNarratorFeedback,
 } from '../server/narrator.mjs'
 import { campaignConceptForAgent } from '../server/agent-context.mjs'
 import {
@@ -159,6 +160,118 @@ test('явное нарушение content boundaries блокируется д
     .some((entry) => entry.code === 'CONTENT_BOUNDARY_VIOLATION'))
 })
 
+test('post-hoc verdict находит только сильное противоречие настроенному тону', () => {
+  const brief = experienceBrief()
+  brief.known_environment.campaign_premise.tone = 'мрачный и скорбный'
+  brief.known_environment.campaign_premise.themes = ''
+  brief.known_environment.campaign_premise.boundaries = ''
+  const feedback = verifyNarratorFeedback(
+    'Беззаботный праздничный смех звучит весело; всё кажется радостным и лёгким.',
+    brief,
+    { sensoryAnchors: {} },
+  )
+
+  assert.equal(feedback.valid, false)
+  assert.deepEqual(feedback.content_alignment, {
+    tone: 'violation',
+    themes: 'not-configured',
+    boundaries: 'not-configured',
+  })
+  const violation = feedback.violations.find((entry) => entry.code === 'NARRATOR_TONE_MISMATCH')
+  assert.ok(violation)
+  assert.match(violation.match, /беззабот|празднич/iu)
+})
+
+test('post-hoc verdict ловит явный отказ от заявленных тем', () => {
+  const brief = experienceBrief()
+  brief.known_environment.campaign_premise.tone = ''
+  brief.known_environment.campaign_premise.boundaries = ''
+  const feedback = verifyNarratorFeedback(
+    'Пора забыть прошлое: долг ничего не значит, а доверие бессмысленно. Теперь важны лишь богатство и власть.',
+    brief,
+    { sensoryAnchors: {} },
+  )
+
+  assert.equal(feedback.valid, false)
+  assert.equal(feedback.content_alignment.themes, 'violation')
+  const violation = feedback.violations.find((entry) => entry.code === 'NARRATOR_THEME_UNALIGNED')
+  assert.ok(violation)
+  assert.match(violation.match, /забыть прошлое|долг ничего не значит|доверие бессмысленно/iu)
+  assert.match(violation.message, /верни их в повествование/iu)
+})
+
+test('согласованные русские и английские маркеры тона и тем проходят', () => {
+  const cases = [
+    {
+      tone: 'тёплая загадка без мрачного пафоса',
+      themes: 'память, долг и доверие',
+      narration: 'Тёплый свет хранит память о старом долге, а доверие между спутниками становится крепче.',
+    },
+    {
+      tone: 'hopeful mystery',
+      themes: 'memory, duty, and trust',
+      narration: 'A hopeful light keeps the memory of their duty alive, while trust guards the hidden mystery.',
+    },
+  ]
+  for (const item of cases) {
+    const brief = experienceBrief()
+    brief.known_environment.campaign_premise = { ...item, boundaries: '' }
+    const feedback = verifyNarratorFeedback(item.narration, brief, { sensoryAnchors: {} })
+    assert.equal(feedback.valid, true, JSON.stringify(feedback))
+    assert.equal(feedback.content_alignment.tone, 'passed')
+    assert.equal(feedback.content_alignment.themes, 'passed')
+  }
+})
+
+test('не настроенные поля и короткое нейтральное действие не получают ложный mismatch', () => {
+  const noConfig = experienceBrief()
+  noConfig.known_environment.campaign_premise = { tone: '', themes: '', boundaries: '' }
+  const emptyFeedback = verifyNarratorFeedback('Дверь открывается.', noConfig, { sensoryAnchors: {} })
+  assert.deepEqual(emptyFeedback.content_alignment, {
+    tone: 'not-configured',
+    themes: 'not-configured',
+    boundaries: 'not-configured',
+  })
+  assert.equal(emptyFeedback.valid, true)
+
+  const configured = experienceBrief()
+  configured.known_environment.campaign_premise = {
+    tone: 'мрачный и скорбный',
+    themes: 'память, долг и доверие',
+    boundaries: '',
+  }
+  const shortFeedback = verifyNarratorFeedback('Дверь открывается.', configured, { sensoryAnchors: {} })
+  assert.equal(shortFeedback.valid, true)
+  assert.equal(shortFeedback.content_alignment.tone, 'insufficient-evidence')
+  assert.equal(shortFeedback.content_alignment.themes, 'insufficient-evidence')
+  assert.equal(shortFeedback.violations.some((entry) => /TONE|THEME/u.test(entry.code)), false)
+
+  const generic = experienceBrief()
+  generic.known_environment.campaign_premise = {
+    tone: '',
+    themes: 'история про выбор и отношения между героями',
+    boundaries: '',
+  }
+  const genericFeedback = verifyNarratorFeedback('Между героями открывается дверь.', generic, { sensoryAnchors: {} })
+  assert.equal(genericFeedback.content_alignment.themes, 'insufficient-evidence')
+  assert.equal(genericFeedback.violations.some((entry) => entry.code === 'NARRATOR_THEME_UNALIGNED'), false)
+})
+
+test('post-hoc alignment не ослабляет fail-closed content boundaries', () => {
+  const brief = experienceBrief()
+  brief.known_environment.campaign_premise.tone = ''
+  brief.known_environment.campaign_premise.themes = ''
+  const feedback = verifyNarratorFeedback(
+    'Пленника подвергают пыткам, подробно описывая каждую рану.',
+    brief,
+    { sensoryAnchors: {} },
+  )
+
+  assert.equal(feedback.valid, false)
+  assert.equal(feedback.content_alignment.boundaries, 'violation')
+  assert.ok(feedback.violations.some((entry) => entry.code === 'CONTENT_BOUNDARY_VIOLATION'))
+})
+
 test('сенсорные якоря стабильны для локации и переиспользуются в fallback и prompt', async () => {
   const brief = experienceBrief()
   const first = sensoryAnchorsFor(brief)
@@ -219,6 +332,42 @@ test('художественный verifier не задерживает теку
   const second = await secondPromise
   assert.equal(providerCalls, 2)
   assert.equal(second.verification.feedback_applied[0].violations[0].code, 'STYLE_FEEDBACK')
+})
+
+test('точный tone verdict и cue попадают в следующий prompt без второй генерации текущего хода', async () => {
+  const brief = experienceBrief()
+  brief.known_environment.campaign_premise = {
+    tone: 'мрачный и скорбный',
+    themes: '',
+    boundaries: '',
+  }
+  const offTone = 'Беззаботный праздничный смех звучит весело; всё кажется радостным и лёгким.'
+  const requests = []
+  const narrator = new Narrator({
+    llmClient: {
+      completeJson: async (input) => {
+        requests.push(input)
+        return {
+          narration: requests.length === 1
+            ? offTone
+            : 'Мрачная тишина хранит скорбное эхо недавнего выбора.',
+        }
+      },
+    },
+  })
+
+  const first = await narrator.render(brief)
+  assert.equal(first.narration, offTone)
+  assert.equal(requests.length, 1, 'post-hoc verdict не запускает repair текущего ответа')
+
+  const second = await narrator.render(brief, { recentNarrations: [first.narration] })
+  assert.equal(requests.length, 2)
+  assert.ok(second.verification.feedback_applied[0].violations
+    .some((entry) => entry.code === 'NARRATOR_TONE_MISMATCH'))
+  const nextPrompt = requests[1].messages[1].content
+  assert.match(nextPrompt, /UNTRUSTED_DATA:previous_narration_feedback/u)
+  assert.match(nextPrompt, /NARRATOR_TONE_MISMATCH/u)
+  assert.match(nextPrompt, /беззабот|празднич/iu)
 })
 
 test('первое повествование второй арки получает recap из arc_history', async () => {
