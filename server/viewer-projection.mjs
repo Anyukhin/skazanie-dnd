@@ -118,8 +118,12 @@ export function publicWorldMapFor(worldMap = {}) {
   }
 }
 
+const PUBLIC_CELL_TYPES = new Set(['wall', 'floor', 'water', 'door'])
+const PUBLIC_CELL_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
+const PUBLIC_CELL_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
+
 /**
- * Сужает клетку до публичной формы. `feature`, материал и вариант тайла
+ * Сужает клетки до публичной формы. `feature`, материал и вариант тайла
  * отдаются **только** с раскрытой клетки — это часть модели видимости, а не
  * косметика; сторож — `test/viewer-projection.test.mjs`.
  *
@@ -132,29 +136,43 @@ export function publicWorldMapFor(worldMap = {}) {
  * скрывает обстановку, но не планировку. Сделать его настоящим — продуктовое
  * изменение, а не правка проекции.
  *
- * @param {Loose} [cell]
- * @returns {SceneCell}
+ * Цикл намеренно предвыделяет результат и назначает необязательные поля
+ * напрямую: условные object spread создавали до шести временных объектов на
+ * каждую из 10 000 клеток карты `region`.
+ *
+ * @param {unknown} value
+ * @returns {SceneCell[]}
  */
-function publicCellFor(cell = {}) {
-  const revealed = cell.revealed === true
-  const material = String(cell.material ?? '')
-  const pattern = String(cell.pattern ?? '')
-  return {
-    x: integer(cell.x),
-    y: integer(cell.y),
-    type: /** @type {SceneCellType} */ (PUBLIC_CELL_TYPES.has(String(cell.type)) ? String(cell.type) : 'floor'),
-    revealed,
-    ...(revealed && PUBLIC_CELL_MATERIALS.has(material) ? { material: /** @type {SceneCellMaterial} */ (material) } : {}),
-    ...(PUBLIC_CELL_PATTERNS.has(pattern) ? { pattern: /** @type {SceneCellPattern} */ (pattern) } : {}),
-    ...(revealed && Number.isSafeInteger(Number(cell.variant)) ? { variant: Math.max(0, Math.min(5, Number(cell.variant))) } : {}),
-    ...(typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask) ? { edge_mask: cell.edge_mask } : {}),
-    ...(revealed && cell.feature != null ? { feature: text(cell.feature, 40) } : {}),
+function publicCellsFor(value) {
+  const cells = Array.isArray(value) ? value : []
+  const length = Math.min(cells.length, SIZE_CLASSES.region.maxCells)
+  /** @type {SceneCell[]} */
+  const output = new Array(length)
+  for (let index = 0; index < length; index += 1) {
+    const cell = cells[index] && typeof cells[index] === 'object' ? cells[index] : {}
+    const revealed = cell.revealed === true
+    const rawType = String(cell.type ?? '')
+    /** @type {SceneCell} */
+    const projected = {
+      x: integer(cell.x),
+      y: integer(cell.y),
+      type: /** @type {SceneCellType} */ (PUBLIC_CELL_TYPES.has(rawType) ? rawType : 'floor'),
+      revealed,
+    }
+    const material = String(cell.material ?? '')
+    if (revealed && PUBLIC_CELL_MATERIALS.has(material)) {
+      projected.material = /** @type {SceneCellMaterial} */ (material)
+    }
+    const pattern = String(cell.pattern ?? '')
+    if (PUBLIC_CELL_PATTERNS.has(pattern)) projected.pattern = /** @type {SceneCellPattern} */ (pattern)
+    const variant = Number(cell.variant)
+    if (revealed && Number.isSafeInteger(variant)) projected.variant = Math.max(0, Math.min(5, variant))
+    if (typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask)) projected.edge_mask = cell.edge_mask
+    if (revealed && cell.feature != null) projected.feature = text(cell.feature, 40)
+    output[index] = projected
   }
+  return output
 }
-
-const PUBLIC_CELL_TYPES = new Set(['wall', 'floor', 'water', 'door'])
-const PUBLIC_CELL_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
-const PUBLIC_CELL_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
 
 /**
  * Карта, отфильтрованная по видимости. Нераскрытая клетка остаётся в сетке —
@@ -261,7 +279,7 @@ export function publicSceneFor(scene = {}) {
     mood: text(scene.mood, 500),
     objective: text(scene.objective, 500),
     turn: Math.max(0, integer(scene.turn, 0)),
-    cells: (Array.isArray(scene.cells) ? scene.cells : []).map(publicCellFor).slice(0, SIZE_CLASSES.region.maxCells),
+    cells: publicCellsFor(scene.cells),
     ...(projected ? { map: projected.map, map_hash: projected.hash } : {}),
     ...(scene.theme == null ? {} : { theme: text(scene.theme, 120) }),
     ...(scene.danger == null ? {} : { danger: text(scene.danger, 40) }),
