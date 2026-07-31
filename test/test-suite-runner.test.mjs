@@ -10,4 +10,8 @@ test('долгий MVP и performance-бюджеты исключены из п�
   assert.match(runner, /runNode\(\['--test', '--test-concurrency=4', \.\.\.functionalFiles\]\)/u)
   assert.match(runner, /runNode\(\['--test', join\('test', longRunningFile\)\]\)/u)
   assert.match(runner, /runNode\(\['--test', join\('test', performanceFile\)\]\)/u)
+  assert.ok(
+    runner.indexOf("join('test', performanceFile)") < runner.indexOf("join('test', longRunningFile)"),
+    'performance-бюджеты должны измеряться до долгого HTTP/MVP-сценария',
+  )
 })

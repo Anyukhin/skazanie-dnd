@@ -36,5 +36,8 @@ function runNode(args) {
 // Функциональный корпус остаётся параллельным, а оба чувствительных файла
 // получают собственные процессы; лимиты и performance-пороги не меняются.
 runNode(['--test', '--test-concurrency=4', ...functionalFiles])
-runNode(['--test', join('test', longRunningFile)])
+// Измеряем бюджеты до долгого MVP-сценария: тот поднимает и останавливает несколько
+// HTTP-процессов в течение 5–8 минут и на shared runner оставляет замеры зависимыми
+// от накопленного CPU throttling. Пороги и число прогонов остаются прежними.
 runNode(['--test', join('test', performanceFile)])
+runNode(['--test', join('test', longRunningFile)])
