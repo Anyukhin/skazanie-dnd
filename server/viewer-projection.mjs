@@ -615,13 +615,18 @@ function viewerFor(state, user, actorId) {
 export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return state
-  // `locationMaps` содержит ещё одну полную копию каждой тактической карты и
-  // всё равно никогда не уходит игроку. Не копируем десятки тысяч клеток лишь
-  // затем, чтобы удалить ключ после рекурсивной проекции.
-  const { locationMaps: _privateLocationMaps, ...projectableState } = state
+  // `locationMaps` содержит ещё одну полную копию каждой тактической карты, а
+  // `scene` ниже всё равно пересобирается строгим whitelist-проектором.
+  // Не копируем одни и те же 10 000 клеток рекурсивно, чтобы тут же заменить
+  // результат их публичной формой.
+  const {
+    locationMaps: _privateLocationMaps,
+    scene: _privateScene,
+    ...projectableState
+  } = state
   const visible = projectVisibleState(projectableState, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}
   const { locationMaps: _locationMaps, ...publicState } = visible
-  const scene = publicSceneFor(visible.scene ?? state.scene)
+  const scene = publicSceneFor(state.scene)
   const location = scene.location
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
     .filter((/** @type {Loose} */ merchant) => merchant.available !== false && merchantIsAtLocation(merchant, state?.scene ?? location))
