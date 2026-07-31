@@ -14,6 +14,7 @@ import {
   publicNpcPortraitProfile,
   visibleNpcPortraitProfile,
 } from '../server/npc-portraits.mjs'
+import { DurableUsageLedger } from '../server/usage-ledger.mjs'
 
 const WEBP = Buffer.from('524946460400000057454250', 'hex')
 
@@ -154,6 +155,109 @@ test('значимый NPC генерируется один раз и чита�
   assert.equal(afterRestart.cacheHit, true)
 })
 
+test('usage ledger учитывает успешную и ошибочную генерацию, но не cache hit и static portrait', async (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'npc-portrait-usage-'))
+  t.after(() => rmSync(storage, { recursive: true, force: true }))
+  const ledgerFile = join(storage, 'engine', 'usage.json')
+  const ledger = new DurableUsageLedger({
+    storageFile: ledgerFile,
+    dailyTokenLimit: 20_000,
+    now: () => Date.parse('2026-07-31T12:00:00.000Z'),
+  })
+  let calls = 0
+  let failNext = false
+  const reservedDuringProvider = []
+  const service = new NpcPortraitService({
+    storageDir: storage,
+    imageModel: 'test/image-metered',
+    apiKey: 'configured',
+    usageLedger: ledger,
+    generator: async () => {
+      calls += 1
+      reservedDuringProvider.push(ledger.report().reserved_tokens)
+      if (failNext) {
+        const error = new Error('provider failed')
+        error.code = 'IMAGE_PROVIDER_FAILED'
+        throw error
+      }
+      return {
+        bytes: WEBP,
+        usage: {
+          input_tokens: 5,
+          output_tokens: 7,
+          total_tokens: 12,
+          cost: 0.014,
+        },
+      }
+    },
+  })
+  const minor = profile({ id: 'npc:minor', role: 'village baker' })
+  const important = profile({ id: 'npc:important', tags: ['important'] })
+  assert.ok(minor)
+  assert.ok(important)
+
+  const staticResult = await service.resolve({
+    campaignId: 'CAMP',
+    profile: minor,
+    projectedState: projected(minor),
+  })
+  assert.equal(staticResult.kind, 'static')
+  assert.equal(ledger.report().requests, 0)
+
+  const generated = await service.resolve({
+    campaignId: 'CAMP',
+    profile: important,
+    projectedState: projected(important),
+  })
+  assert.equal(generated.kind, 'generated')
+  assert.equal(generated.cacheHit, false)
+  assert.deepEqual(ledger.report(), {
+    day: '2026-07-31',
+    daily_token_limit: 20_000,
+    committed_tokens: 12,
+    reserved_tokens: 0,
+    input_tokens: 5,
+    output_tokens: 7,
+    provider_cost: 0.014,
+    requests: 1,
+    completed_requests: 1,
+    failed_requests: 0,
+  })
+
+  const cached = await service.resolve({
+    campaignId: 'CAMP',
+    profile: important,
+    projectedState: projected(important),
+  })
+  assert.equal(cached.kind, 'generated')
+  assert.equal(cached.cacheHit, true)
+  assert.equal(calls, 1)
+  assert.equal(ledger.report().requests, 1)
+
+  failNext = true
+  const failed = await service.resolve({
+    campaignId: 'FAIL',
+    profile: important,
+    projectedState: projected(important),
+  })
+  assert.equal(failed.kind, 'static')
+  assert.equal(failed.reason, 'generation_failed')
+  assert.equal(calls, 2)
+  const failedReport = ledger.report()
+  assert.equal(failedReport.completed_requests, 1)
+  assert.equal(failedReport.failed_requests, 1)
+  assert.equal(failedReport.reserved_tokens, 0)
+  assert.equal(failedReport.provider_cost, 0.014)
+  assert.ok(reservedDuringProvider.every((tokens) => tokens > 0))
+
+  const persisted = JSON.parse(readFileSync(ledgerFile, 'utf8'))
+  const entries = Object.values(persisted.requests)
+  assert.deepEqual(entries.map((entry) => entry.scope), ['npc-portrait', 'npc-portrait'])
+  assert.deepEqual(entries.map((entry) => entry.model), ['test/image-metered', 'test/image-metered'])
+  assert.equal(entries[1].error_code, 'IMAGE_PROVIDER_FAILED')
+  assert.doesNotMatch(JSON.stringify(persisted), /Осторожная торговка|server-owned prompt/u)
+})
+
 test('одновременные запросы одного NPC делят одну генерацию, а rate limit проверяется только на cache miss', async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'npc-portrait-concurrent-'))
   t.after(() => rmSync(storage, { recursive: true, force: true }))
@@ -208,7 +312,11 @@ test('RouterAI generator получает server-owned image contract через
     apiKey: 'fake-key',
     fetchImpl: async (url, options) => {
       request = { url, options }
-      return new Response(JSON.stringify({ data: [{ b64_json: WEBP.toString('base64') }] }), {
+      return new Response(JSON.stringify({
+        data: [{ b64_json: WEBP.toString('base64') }],
+        usage: { input_tokens: 4, output_tokens: 8, total_tokens: 12 },
+        cost: 0.025,
+      }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       })
@@ -216,6 +324,12 @@ test('RouterAI generator получает server-owned image contract через
   })
   const generated = await generator({ prompt: 'server prompt', model: 'image/model' })
   assert.equal(generated.bytes.equals(WEBP), true)
+  assert.deepEqual(generated.usage, {
+    input_tokens: 4,
+    output_tokens: 8,
+    total_tokens: 12,
+    cost: 0.025,
+  })
   assert.equal(request.url, 'https://images.example/v1/images')
   assert.equal(request.options.headers.Authorization, 'Bearer fake-key')
   const body = JSON.parse(request.options.body)

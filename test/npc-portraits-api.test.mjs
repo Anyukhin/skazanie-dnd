@@ -128,7 +128,11 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
       body: JSON.parse(raw),
     })
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    return res.end(JSON.stringify({ data: [{ b64_json: WEBP.toString('base64') }] }))
+    return res.end(JSON.stringify({
+      data: [{ b64_json: WEBP.toString('base64') }],
+      usage: { input_tokens: 4, output_tokens: 8, total_tokens: 12 },
+      cost: 0.025,
+    }))
   })
   await new Promise((resolve, reject) => { provider.once('error', reject); provider.listen(0, '127.0.0.1', resolve) })
   const providerAddress = provider.address()
@@ -274,6 +278,9 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
   assert.equal(minor.headers.get('location'), NPC_PORTRAIT_ROLE_ASSETS.guard)
   assert.equal(minor.headers.get('x-npc-portrait-source'), 'static')
   assert.equal(imageRequests.length, 0)
+  const usageBeforeGeneration = await json(await request(baseUrl, '/api/admin/usage', { cookie: adminCookie }))
+  assert.equal(usageBeforeGeneration.usage.completed_requests, 0)
+  assert.equal(usageBeforeGeneration.usage.provider_cost, 0)
 
   const generated = await request(baseUrl, importantPath, { cookie: playerCookie, redirect: 'manual' })
   assert.equal(generated.status, 200, logs)
@@ -294,6 +301,10 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
   assert.equal(cached.status, 200)
   assert.equal(cached.headers.get('x-npc-portrait-cache'), 'hit')
   assert.equal(imageRequests.length, 1)
+  const usageAfterCacheHit = await json(await request(baseUrl, '/api/admin/usage', { cookie: adminCookie }))
+  assert.equal(usageAfterCacheHit.usage.completed_requests, 1)
+  assert.equal(usageAfterCacheHit.usage.committed_tokens, 12)
+  assert.equal(usageAfterCacheHit.usage.provider_cost, 0.025)
   const etag = cached.headers.get('etag')
   assert.ok(etag)
   const notModified = await request(baseUrl, importantPath, {

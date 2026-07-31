@@ -115,11 +115,16 @@ const dailyTokenLimit = Number(process.env.DND_AI_DAILY_TOKEN_LIMIT || 2_000_000
 const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
+const usageLedger = new DurableUsageLedger({
+  storageFile: join(storageDir, 'engine', 'llm-usage.json'),
+  dailyTokenLimit,
+})
 const npcPortraitService = new NpcPortraitService({
   storageDir,
   imageModel,
   apiKey,
   baseUrl,
+  usageLedger,
 })
 const campaignStreams = new Map()
 const campaignTyping = new Map()
@@ -131,10 +136,6 @@ const diceService = new DiceService()
 const rollRegistry = new RollRegistry({
   diceService,
   storageFile: join(storageDir, 'engine', 'roll-registry.json'),
-})
-const usageLedger = new DurableUsageLedger({
-  storageFile: join(storageDir, 'engine', 'llm-usage.json'),
-  dailyTokenLimit,
 })
 const llmClient = new FallbackLLMClient({
   clients: [model, ...fallbackModels].map((modelId) => new MeteredLLMClient({

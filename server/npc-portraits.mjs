@@ -5,6 +5,7 @@ import { join, resolve, sep } from 'node:path'
 
 export const NPC_PORTRAIT_GENERATION_LIMIT = 6
 export const NPC_PORTRAIT_MAX_BYTES = 8 * 1024 * 1024
+const NPC_PORTRAIT_ESTIMATED_OUTPUT_TOKENS = 1_024
 
 export const NPC_PORTRAIT_ROLE_ASSETS = Object.freeze({
   merchant: '/assets/npcs/roles/merchant.png',
@@ -72,6 +73,21 @@ const IMPORTANT_TAGS = new Set([
 
 /**
  * @typedef {StaticNpcPortrait | GeneratedNpcPortrait | RateLimitedNpcPortrait} NpcPortraitResult
+ */
+
+/**
+ * @typedef {{
+ *   bytes: Buffer,
+ *   usage?: Record<string, unknown>,
+ * }} NpcPortraitGeneration
+ */
+
+/**
+ * @typedef {{
+ *   reserve(input: {requestId: string, estimatedTokens: number, scope: string, model: string}): {request_id: string},
+ *   settle(requestId: string, usage?: Record<string, unknown>): unknown,
+ *   fail(requestId: string, errorCode?: string): unknown,
+ * }} NpcPortraitUsageLedger
  */
 
 /**
@@ -242,7 +258,7 @@ export function npcPortraitCacheLocation(cacheRoot, campaignId, npcId) {
  *   apiKey: string,
  *   timeoutMs?: number,
  * }} options
- * @returns {(input: {prompt: string, model: string}) => Promise<{bytes: Buffer}>}
+ * @returns {(input: {prompt: string, model: string}) => Promise<NpcPortraitGeneration>}
  */
 export function createRouterNpcPortraitGenerator({
   fetchImpl = fetch,
@@ -279,7 +295,17 @@ export function createRouterNpcPortraitGenerator({
     if (!isWebp(bytes) || bytes.length > NPC_PORTRAIT_MAX_BYTES) {
       throw new Error('Генератор портретов вернул файл неподдерживаемого формата')
     }
-    return { bytes }
+    const providerUsage = payload?.usage && typeof payload.usage === 'object' && !Array.isArray(payload.usage)
+      ? payload.usage
+      : {}
+    const providerCost = payload?.cost ?? providerUsage.cost ?? providerUsage.total_cost
+    return {
+      bytes,
+      usage: {
+        ...providerUsage,
+        ...(providerCost == null ? {} : { cost: providerCost }),
+      },
+    }
   }
 }
 
@@ -291,7 +317,8 @@ export class NpcPortraitService {
    *   apiKey?: string,
    *   baseUrl?: string,
    *   fetchImpl?: typeof fetch,
-   *   generator?: (input: {prompt: string, model: string}) => Promise<{bytes: Buffer}>,
+   *   generator?: (input: {prompt: string, model: string}) => Promise<NpcPortraitGeneration>,
+   *   usageLedger?: NpcPortraitUsageLedger | null,
    * }} options
    */
   constructor({
@@ -301,6 +328,7 @@ export class NpcPortraitService {
     baseUrl = '',
     fetchImpl = fetch,
     generator,
+    usageLedger = null,
   }) {
     this.cacheRoot = resolve(storageDir, 'generated', 'npcs')
     this.imageModel = text(imageModel, 160)
@@ -310,6 +338,7 @@ export class NpcPortraitService {
       baseUrl,
       apiKey,
     })
+    this.usageLedger = usageLedger
     /** @type {Map<string, Promise<GeneratedNpcPortrait>>} */
     this.inflight = new Map()
   }
@@ -388,10 +417,29 @@ export class NpcPortraitService {
    * @returns {Promise<GeneratedNpcPortrait>}
    */
   async generateAndCache(location, profile) {
-    const generated = await this.generator({
-      prompt: buildNpcPortraitPrompt(profile),
+    const prompt = buildNpcPortraitPrompt(profile)
+    const reservation = this.usageLedger?.reserve({
+      requestId: `npc-portrait:${randomUUID()}`,
+      estimatedTokens: Buffer.byteLength(prompt, 'utf8') + NPC_PORTRAIT_ESTIMATED_OUTPUT_TOKENS,
+      scope: 'npc-portrait',
       model: this.imageModel,
     })
+    /** @type {NpcPortraitGeneration} */
+    let generated
+    try {
+      generated = await this.generator({ prompt, model: this.imageModel })
+    } catch (error) {
+      if (reservation) {
+        const errorCode = error && typeof error === 'object' && 'code' in error
+          ? error.code
+          : error instanceof Error
+            ? error.name
+            : 'IMAGE_PROVIDER_ERROR'
+        this.usageLedger?.fail(reservation.request_id, text(errorCode, 80) || 'IMAGE_PROVIDER_ERROR')
+      }
+      throw error
+    }
+    if (reservation) this.usageLedger?.settle(reservation.request_id, generated.usage ?? {})
     if (!Buffer.isBuffer(generated?.bytes) || !isWebp(generated.bytes) || generated.bytes.length > NPC_PORTRAIT_MAX_BYTES) {
       throw new Error('Генератор портретов вернул неподдерживаемый файл')
     }
