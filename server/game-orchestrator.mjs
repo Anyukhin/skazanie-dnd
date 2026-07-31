@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import { Adjudicator } from './adjudicator.mjs'
 import { answerKnownLore } from './player-request-router.mjs'
+import { PROMPT_DESCRIPTORS } from './prompt-descriptors.mjs'
+import { TURN_TRACE_SCHEMA_VERSION } from './trace-store.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { IdempotencyConflictError } from './event-store.mjs'
 import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'
@@ -604,6 +606,37 @@ function humanMissingInformation(values, state, intent = {}) {
 function noWorldChangeConstraint(plan) {
   return plan?.ruling_draft?.world_change === false
     || (Array.isArray(plan?.narration_constraints) && plan.narration_constraints.includes('no-unconfirmed-world-changes'))
+}
+
+/**
+ * Идентификатор предложения — сквозной ключ объяснения хода. Он детерминирован:
+ * повтор того же хода по тому же ключу идемпотентности даёт то же значение,
+ * поэтому `/why` по повтору показывает ту же цепочку, а не новую.
+ *
+ * @param {string} campaignId
+ * @param {string} seed
+ * @returns {string}
+ */
+function proposalIdFor(campaignId, seed) {
+  return `proposal:${createHash('sha256').update(`${campaignId} ${seed}`).digest('hex').slice(0, 20)}`
+}
+
+/**
+ * Честные версии промптов хода. Роли без загружаемого промпта помечаются
+ * `null`, а не выдуманным ярлыком: разбор намерения ведут детерминированные
+ * регулярки без промпта вовсе, а отдельного `verifier`-промпта в проекте нет.
+ *
+ * @param {Record<string, any> | null} narration
+ * @returns {Record<string, string | null>}
+ */
+function turnPromptVersions(narration) {
+  const byRole = new Map(PROMPT_DESCRIPTORS.map((descriptor) => [descriptor.role, descriptor.promptId]))
+  return {
+    intent_parser: null,
+    action_adjudicator: byRole.get('action_adjudicator') ?? null,
+    narrator: narration?.prompt_version ?? byRole.get('narrator') ?? null,
+    verifier: null,
+  }
 }
 
 export class GameOrchestrator {
@@ -1209,12 +1242,21 @@ export class GameOrchestrator {
   saveTrace({ turnId, campaignId, idempotencyKey = null, requestFingerprint = null, mode, intent, retrievalQueries, retrievedRules, plan, engineResult = {}, stateBefore, stateAfter, verification = {}, latency, narration = null, ruling = null }) {
     if (!this.traceStore) return null
     return this.traceStore.save({
+      schema_version: TURN_TRACE_SCHEMA_VERSION,
       turn_id: turnId,
       campaign_id: campaignId,
       idempotency_key: idempotencyKey,
       request_fingerprint: requestFingerprint,
+      // Сквозной идентификатор предложения: одно значение проходит через
+      // предложение агента, решение политики, команды, события и повествование.
+      // Выводится из ключа идемпотентности, поэтому повтор того же хода даёт тот
+      // же идентификатор, а не новый.
+      proposal_id: proposalIdFor(campaignId, idempotencyKey ?? turnId),
       engine_mode: mode,
-      prompt_versions: { intent_parser: 'intent_parser/v1', adjudicator: 'adjudicator/v1', narrator: narration?.prompt_version ?? null, verifier: 'verifier/v1' },
+      // Версии промптов берутся из реестра рядом с загрузчиками, а не из
+      // литералов. Прежние `intent_parser/v1`, `adjudicator/v1` и `verifier/v1`
+      // были ярлыками несуществующих файлов — долг, отмеченный в AGENTS.md.
+      prompt_versions: turnPromptVersions(narration),
       model_identifiers: modelIdentifiers(narration),
       intent,
       retrieval_queries: retrievalQueries,
