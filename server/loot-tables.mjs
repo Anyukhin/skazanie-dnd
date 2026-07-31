@@ -1,19 +1,28 @@
 import { createHash } from 'node:crypto'
 
+import { ITEM_LOOT_CATALOG_IDS, materializeCatalogItem } from './item-catalog.mjs'
+
 /**
  * Единая server-owned таблица предметной добычи. Все catalog_id существуют
- * в SRD_EQUIPMENT_CATALOG; генеративная модель содержимое находки не назначает.
+ * в item catalog и явно разрешены для loot; генеративная модель содержимое
+ * находки не назначает.
  */
+const LOOT_IDS = new Set(ITEM_LOOT_CATALOG_IDS)
+function lootItem(catalogId) {
+  if (!LOOT_IDS.has(catalogId)) throw new Error(`Catalog item ${catalogId} is not loot-eligible`)
+  return materializeCatalogItem(catalogId)
+}
+
 const LOOT_ITEMS = Object.freeze({
-  torch: { catalog_id: 'srd_5_2_1:torch', name: 'Факел', type: 'tool' },
-  rations: { catalog_id: 'srd_5_2_1:rations-one-day', name: 'Сухой паёк, 1 день', type: 'consumable' },
-  rope: { catalog_id: 'srd_5_2_1:rope-hempen-50-feet', name: 'Пеньковая верёвка, 50 футов', type: 'tool' },
-  arrows: { catalog_id: 'srd_5_2_1:arrows-20', name: 'Стрелы, 20 штук', type: 'other' },
-  dagger: { catalog_id: 'srd_5_2_1:dagger', name: 'Кинжал', type: 'weapon' },
-  shield: { catalog_id: 'srd_5_2_1:shield', name: 'Щит', type: 'armor' },
-  leather: { catalog_id: 'srd_5_2_1:leather-armor', name: 'Кожаный доспех', type: 'armor' },
-  longsword: { catalog_id: 'srd_5_2_1:longsword', name: 'Длинный меч', type: 'weapon' },
-  potion: { catalog_id: 'srd_5_2_1:potion-of-healing', name: 'Зелье лечения', type: 'consumable' },
+  torch: lootItem('srd_5_2_1:torch'),
+  rations: lootItem('srd_5_2_1:rations-one-day'),
+  rope: lootItem('srd_5_2_1:rope-hempen-50-feet'),
+  arrows: lootItem('srd_5_2_1:arrows-20'),
+  dagger: lootItem('srd_5_2_1:dagger'),
+  shield: lootItem('srd_5_2_1:shield'),
+  leather: lootItem('srd_5_2_1:leather-armor'),
+  longsword: lootItem('srd_5_2_1:longsword'),
+  potion: lootItem('srd_5_2_1:potion-of-healing'),
 })
 
 const LOOT_BY_THEME = Object.freeze({

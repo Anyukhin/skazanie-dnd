@@ -143,10 +143,10 @@ export function normalizeAutonomyState(input = {}) {
  * по `encounter_id`: разные встречи дают разное, а replay того же события даёт
  * тот же предмет.
  *
- * Все `catalog_id` обязаны существовать в `SRD_EQUIPMENT_CATALOG`
- * (`server/merchant-economy.mjs`): иначе торговец не узнает выданную вещь и
- * оценит её политикой вместо каталожной цены. Сторож ссылочной целостности —
- * `test/encounter-reward.test.mjs`.
+ * Все `catalog_id` обязаны существовать в `ITEM_CATALOG` и входить в явный
+ * loot allowlist (`server/item-catalog.mjs`): иначе добыча не может быть
+ * материализована авторитетно. Сторож ссылочной целостности —
+ * `test/encounter-loot-tables.test.mjs`.
  */
 export function serverRewardForEncounter(state = {}, outcome = 'enemies_defeated') {
   const encounter = state.mechanics?.encounter ?? {}

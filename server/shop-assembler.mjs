@@ -1,11 +1,15 @@
 import { createHash } from 'node:crypto'
 
 import {
-  ECONOMY_CATALOG_SOURCE,
   ECONOMY_CATALOG_VERSION,
-  SRD_EQUIPMENT_CATALOG,
   normalizeMerchant,
 } from './merchant-economy.mjs'
+import {
+  ITEM_CATALOG_SOURCE,
+  ITEM_SHOP_CATALOG_IDS,
+  catalogItem,
+  materializeCatalogItem,
+} from './item-catalog.mjs'
 
 export const SHOP_PROPOSAL_VERSION = 'skazanie:shop-proposal-v2'
 
@@ -29,10 +33,8 @@ const SETTLEMENTS = deepFreeze({
 
 export const SHOP_SETTLEMENT_TYPES = Object.freeze(Object.keys(SETTLEMENTS))
 
-const ALL_CATALOG_IDS = Object.freeze(Object.keys(SRD_EQUIPMENT_CATALOG))
-
 const THEMES = deepFreeze({
-  general: ALL_CATALOG_IDS,
+  general: ITEM_SHOP_CATALOG_IDS,
   provisions: [
     'srd_5_2_1:explorers-pack',
     'srd_5_2_1:potion-of-healing',
@@ -60,23 +62,6 @@ const THEMES = deepFreeze({
 })
 
 export const SHOP_THEMES = Object.freeze(Object.keys(THEMES))
-
-// Presentation metadata is server-owned. The authoritative price is always
-// copied separately from SRD_EQUIPMENT_CATALOG below.
-const ITEM_PRESENTATION = deepFreeze({
-  'srd_5_2_1:dagger': { name: 'Кинжал', type: 'weapon', properties: 'Простое рукопашное оружие.' },
-  'srd_5_2_1:longsword': { name: 'Длинный меч', type: 'weapon', properties: 'Воинское рукопашное оружие.' },
-  'srd_5_2_1:longbow': { name: 'Длинный лук', type: 'weapon', properties: 'Воинское дальнобойное оружие.' },
-  'srd_5_2_1:shortbow': { name: 'Короткий лук', type: 'weapon', properties: 'Простое дальнобойное оружие.' },
-  'srd_5_2_1:leather-armor': { name: 'Кожаный доспех', type: 'armor', properties: 'Лёгкий доспех.' },
-  'srd_5_2_1:shield': { name: 'Щит', type: 'armor', properties: 'Защитное снаряжение.' },
-  'srd_5_2_1:explorers-pack': { name: 'Набор путешественника', type: 'tool', properties: 'Комплект дорожного снаряжения.' },
-  'srd_5_2_1:potion-of-healing': { name: 'Зелье лечения', type: 'consumable', properties: 'Восстанавливает 2к4 + 2 хита.' },
-  'srd_5_2_1:rations-one-day': { name: 'Сухой паёк, 1 день', type: 'consumable', properties: 'Дорожная пища на один день.' },
-  'srd_5_2_1:rope-hempen-50-feet': { name: 'Пеньковая верёвка, 50 футов', type: 'tool', properties: 'Пятьдесят футов пеньковой верёвки.' },
-  'srd_5_2_1:torch': { name: 'Факел', type: 'tool', properties: 'Обычный источник света.' },
-  'srd_5_2_1:arrows-20': { name: 'Стрелы, 20 штук', type: 'other', properties: 'Боеприпасы для лука.' },
-})
 
 const PERSONAS = deepFreeze([
   {
@@ -246,7 +231,7 @@ function validateInput(input) {
 function desiredStock(validated, assemblySeed) {
   if (validated.director_intent) return validated.director_intent.stock
   const affordable = THEMES[validated.theme].filter((catalogId) => (
-    SRD_EQUIPMENT_CATALOG[catalogId].base_price_cp <= validated.budget_cp
+    catalogItem(catalogId).base_price_cp <= validated.budget_cp
   ))
   const selected = deterministicOrder(affordable, assemblySeed, 'default-catalog')
     .slice(0, validated.settlement.max_skus)
@@ -264,7 +249,7 @@ function allocateStock(desired, budgetCp, assemblySeed) {
 
   // Give every affordable requested SKU one unit before distributing extras.
   for (const catalogId of order) {
-    const unit = SRD_EQUIPMENT_CATALOG[catalogId].base_price_cp
+    const unit = catalogItem(catalogId).base_price_cp
     if (unit <= remaining) {
       allocated.set(catalogId, 1)
       remaining -= unit
@@ -276,7 +261,7 @@ function allocateStock(desired, budgetCp, assemblySeed) {
     for (const catalogId of order) {
       const target = byId.get(catalogId).quantity
       const current = allocated.get(catalogId)
-      const unit = SRD_EQUIPMENT_CATALOG[catalogId].base_price_cp
+      const unit = catalogItem(catalogId).base_price_cp
       if (current < target && unit <= remaining) {
         allocated.set(catalogId, current + 1)
         remaining -= unit
@@ -294,22 +279,15 @@ function allocateStock(desired, budgetCp, assemblySeed) {
 }
 
 function stockEntry(catalogId, quantity, merchantId) {
-  const catalog = SRD_EQUIPMENT_CATALOG[catalogId]
-  const presentation = ITEM_PRESENTATION[catalogId]
+  const catalog = catalogItem(catalogId)
   const shortId = catalogId.split(':').at(-1).replace(/[^a-z0-9-]/giu, '-').slice(0, 70)
-  return {
+  return materializeCatalogItem(catalogId, {
     stock_id: `${merchantId}-${shortId}`.slice(0, 120),
-    catalog_id: catalogId,
-    name: presentation.name,
-    type: presentation.type,
     quantity,
     rarity: 'обычный',
-    description: '',
-    properties: presentation.properties,
-    base_price_cp: catalog.base_price_cp,
     price_provenance: 'catalog',
     price_source_version: catalog.source_version,
-  }
+  })
 }
 
 export class ShopAssembler {
@@ -388,8 +366,8 @@ export class ShopAssembler {
       seed_fingerprint: assemblySeed.slice(0, 16),
       catalog: {
         id: ECONOMY_CATALOG_VERSION,
-        source_version: ECONOMY_CATALOG_SOURCE.source_version,
-        source_sha256: ECONOMY_CATALOG_SOURCE.source_sha256,
+        source_version: ITEM_CATALOG_SOURCE.source_version,
+        source_sha256: ITEM_CATALOG_SOURCE.source_sha256,
       },
       constraints: {
         settlement_type: validated.settlement_type,
