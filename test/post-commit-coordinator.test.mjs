@@ -133,3 +133,35 @@ test('координатор работает только с подтвержд
     'без событий остаётся только проекция: рассказывать нечего')
   assert.ok(result.skipped.includes('narration'))
 })
+
+test('маршрут может отдать координатору подмножество стадий', async () => {
+  const order = []
+  const coordinator = new PostCommitCoordinator({ deps: trackingDeps(order) })
+  const state = { mechanics: { encounter: { id: 'enc-11', status: 'ended' }, combat: { active: false } } }
+
+  const run = await coordinator.run({
+    campaignId: 'SUBSET',
+    state,
+    events: [{ event_id: 'e5', event_type: 'EncounterRewardsDistributed' }],
+    commitKey: 'commit-5',
+    stages: ['encounter-completion'],
+  })
+
+  assert.deepEqual(run.ran, ['encounter-completion'],
+    'подключение идёт по одной стадии за раз — так шаг 7 остаётся проверяемым')
+  assert.deepEqual(order, ['encounter-completion'], 'остальные стадии не выполняются вовсе')
+})
+
+test('результат стадии возвращается вызывающему', async () => {
+  const coordinator = new PostCommitCoordinator({
+    deps: { completeEncounter: async () => ({ reward: { xp: 120 }, events: [{ event_type: 'ExperienceAwarded' }] }) },
+  })
+  const run = await coordinator.run({
+    campaignId: 'RESULT',
+    state: { mechanics: { encounter: { id: 'enc-12', status: 'ended' }, combat: { active: false } } },
+    events: [],
+    stages: ['encounter-completion'],
+  })
+  assert.equal(run.results['encounter-completion'].reward.xp, 120,
+    'маршрут обязан получить награду обратно, иначе он не сможет её показать')
+})

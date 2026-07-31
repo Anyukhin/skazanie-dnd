@@ -45,6 +45,7 @@ import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from 
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
+import { PostCommitCoordinator } from './post-commit-coordinator.mjs'
 import {
   AuthoritativeExecutor,
   CAMPAIGN_CONTROL_CAPABILITY,
@@ -186,6 +187,37 @@ const eventStore = new FileEventStore({
  * исполнитель, а разрешает их явная таблица и неподделываемая capability.
  */
 const authoritativeExecutor = new AuthoritativeExecutor({ eventStore })
+
+/**
+ * Шаг 7 плана `docs/agent-architecture-plan.md`, первое подключение.
+ *
+ * Координатор владеет последовательностью последствий после коммита. Его
+ * встроенный набор выполненных стадий — оптимизация в пределах процесса;
+ * durable-гарантия остаётся прежней и лежит в Event Store: завершение встречи
+ * ключуется `encounter-completion:<id>:transition`, и повтор после рестарта
+ * отсекается там, а не здесь.
+ */
+const postCommitCoordinator = new PostCommitCoordinator({
+  deps: {
+    completeEncounter: async ({ campaignId, stageKey }) => {
+      const current = await autonomousCampaign.load(campaignId)
+      const encounter = current.state.mechanics?.encounter
+      if (!encounter?.id || encounter.status !== 'ended') return null
+      if (await eventStore.getByIdempotencyKey(campaignId, stageKey)) return null
+      return autonomousCampaign.completeEncounter({
+        campaignId,
+        outcome: encounter.outcome || 'enemies_defeated',
+        idempotencyKey: stageKey,
+      })
+    },
+    persistProjection: ({ campaignId, state, events, journalMessage = null }) => (
+      persistAuthoritativeProjection(campaignId, state, events, journalMessage)
+    ),
+  },
+  onError: (error, stage) => {
+    console.error(`[Сказание] Стадия ${stage} после коммита не выполнена:`, error)
+  },
+})
 const traceStore = new FileTraceStore({ rootDir: join(storageDir, 'turn-traces') })
 const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
 const creativeDirector = new CriticalNarrationCoordinator({ narrator })
@@ -2593,14 +2625,19 @@ const server = createServer((req, res) => {
       }
       let loaded = await autonomousCampaign.load(campaignId)
       assertCampaignPlayable(loaded.state)
-      const encounter = loaded.state.mechanics?.encounter
-      const rewardFinalized = encounter?.id
-        ? await eventStore.getByIdempotencyKey(campaignId, `encounter-completion:${encounter.id}:transition`)
-        : null
       const events = []
       let reward = null
-      if (encounter?.status === 'ended' && !rewardFinalized) {
-        const completion = await autonomousCampaign.completeEncounter({ campaignId, outcome: encounter.outcome || 'enemies_defeated', idempotencyKey: `${key}:completion` })
+      // Завершение встречи — одноразовое последствие, и решает это координатор,
+      // а не маршрут: он же владеет ключом `encounter-completion:<id>:transition`.
+      const completionRun = await postCommitCoordinator.run({
+        campaignId,
+        state: loaded.state,
+        events: [],
+        commitKey: key,
+        stages: ['encounter-completion'],
+      })
+      if (completionRun.results?.['encounter-completion']) {
+        const completion = completionRun.results['encounter-completion']
         events.push(...(completion.events ?? []))
         reward = completion.reward
         loaded = await autonomousCampaign.load(campaignId)
