@@ -63,6 +63,14 @@ import {
 // а не отдельным разделом. Второго пути к ней быть не должно.
 type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'settings' | 'admin' | 'agent-lab'
 
+type NarrationPreviewSnapshot = {
+  messageId: string
+  text: string
+  phase: 'start' | 'streaming' | 'complete' | 'replaced' | 'aborted'
+  replayed?: boolean
+  roomVersion?: number
+}
+
 /** Слава приходит с сервера ступенями, а не числом: показываем то же словом. */
 const REPUTATION_TIER_LABELS: Record<ReputationTier, string> = {
   reviled: 'ненавидят',
@@ -1441,9 +1449,8 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
     event.preventDefault()
     const text = npcDialogueText.trim()
     if (!text || !dossierSceneNpc || !dossierCanTalk) return
-    // `/api/narrate` пока не принимает отдельный npc_id. Полное имя и роль
-    // делают обращение однозначным для существующего server-owned resolver,
-    // но backlog 41/42 остаётся открытым до явного поля контракта.
+    // Имя и роль остаются в читаемом тексте/legacy fallback, а npcId уходит
+    // отдельным аргументом нового server-owned контракта через App adapter.
     const addressed = `Обращаюсь к ${dossierSceneNpc.name}${dossierSceneNpc.role ? ` (${dossierSceneNpc.role})` : ''}: ${text}`
     const outcome = await onNpcAction(addressed, dossierSceneNpc.id)
     if (outcome.ok) setNpcDialogueText('')
@@ -2018,7 +2025,7 @@ function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tactic
               />
               <button type="submit" disabled={!dossierCanTalk || !npcDialogueText.trim()}><Send size={15} />Сказать</button>
             </form>
-            <small>Адресат указывается полным именем и ролью. Явное поле <code>npc_id</code> ещё требует серверного контракта.</small>
+            <small>Адресат закрепляется отдельно как <code>npc_id</code>; полное имя и роль остаются в читаемой реплике.</small>
             {dossierMerchant && <button
               className="npc-dialog-trade"
               type="button"
@@ -3290,7 +3297,18 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
+  const gameSession = useGameSession()
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = gameSession
+  // Структурный optional-доступ сохраняет сборку на stacked-base до вливания
+  // stream-ветки. Её public contract возвращает full-replacement snapshot, не delta.
+  const narrationPreview = (gameSession as typeof gameSession & {
+    narrationPreview?: NarrationPreviewSnapshot | null
+  }).narrationPreview ?? null
+  const submitActionWithNpc = submitAction as (
+    text: string,
+    actorId?: string,
+    npcId?: string,
+  ) => Promise<CommandOutcome>
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -3322,6 +3340,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   ))
   const [levelUpCelebration, setLevelUpCelebration] = useState<ConfirmedLevelUp | null>(null)
   const [cinematicNarration, setCinematicNarration] = useState<Message | null>(null)
+  const [dismissedNarrationPreviewId, setDismissedNarrationPreviewId] = useState('')
   const levelUpCursor = useRef({
     sessionCode: state.sessionCode,
     ready: state.campaign !== 'Загрузка кампании…',
@@ -3338,6 +3357,15 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const atmosphereAudioRef = useRef<AtmosphereAudio | null>(null)
   const normalDocumentTitle = useRef(document.title || DEFAULT_DOCUMENT_TITLE)
   const latestNarratorMessage = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
+  const visibleNarrationPreview = narrationPreview
+    && narrationPreview.replayed !== true
+    && narrationPreview.phase !== 'aborted'
+    && narrationPreview.phase !== 'replaced'
+    && narrationPreview.messageId !== dismissedNarrationPreviewId
+    ? narrationPreview
+    : null
+  const cinematicNarrationId = visibleNarrationPreview?.messageId ?? cinematicNarration?.id ?? ''
+  const cinematicNarrationText = visibleNarrationPreview?.text ?? cinematicNarration?.text ?? ''
   const cinematicNarrationCursor = useRef({
     sessionCode: state.sessionCode,
     narratorMessageId: latestNarratorMessage?.id ?? '',
@@ -3635,13 +3663,17 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     }
     if (!latestNarratorMessage || cursor.narratorMessageId === latestNarratorMessage.id) return
     cursor.narratorMessageId = latestNarratorMessage.id
+    if (narrationPreview?.messageId === latestNarratorMessage.id) {
+      setCinematicNarration(null)
+      return
+    }
     setCinematicNarration(latestNarratorMessage)
     const duration = Math.min(12_000, Math.max(5_200, latestNarratorMessage.text.length * 32))
     const handle = window.setTimeout(() => {
       setCinematicNarration((current) => current?.id === latestNarratorMessage.id ? null : current)
     }, duration)
     return () => window.clearTimeout(handle)
-  }, [latestNarratorMessage?.id, state.sessionCode])
+  }, [latestNarratorMessage?.id, narrationPreview?.messageId, state.sessionCode])
   useEffect(() => {
     const combatActive = Boolean(state.mechanics?.combat?.active)
     // Начавшийся бой закрывает и историю, и лавку: торговля посреди инициативы —
@@ -3872,10 +3904,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             window.localStorage.setItem(NEWBIE_GUIDE_DISMISSED_KEY, 'true')
             setNewbieGuideOpen(false)
           }} />}
-          {cinematicNarration && <section key={cinematicNarration.id} className="cinematic-narration" role="status" aria-live="polite">
-            <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => setCinematicNarration(null)} aria-label="Скрыть текст сцены"><X size={15} /></button></header>
-            <p>{cinematicNarration.text}</p>
-            <small><ScrollText size={13} />Сохранено в журнале кампании</small>
+          {cinematicNarrationId && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
+            <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => {
+              if (visibleNarrationPreview) setDismissedNarrationPreviewId(visibleNarrationPreview.messageId)
+              else setCinematicNarration(null)
+            }} aria-label="Скрыть текст сцены"><X size={15} /></button></header>
+            <p>{cinematicNarrationText || 'Сцена складывается…'}</p>
+            <small><ScrollText size={13} />{visibleNarrationPreview?.phase === 'streaming' || visibleNarrationPreview?.phase === 'start' ? 'Текст приходит от Рассказчика…' : 'Сохранено в журнале кампании'}</small>
           </section>}
           {/* Свободный бросок переехал из правой колонки в угол карты: он нужен
               в любой момент, а карточка с подписями занимала место рядом с
@@ -3914,7 +3949,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onOpenMerchant={openMerchant}
             onFinishTurn={finishMapTurn}
             onFreeAction={(text) => submitAction(text, activePlayer.id)}
-            onNpcAction={(text) => submitAction(text, activePlayer.id)}
+            onNpcAction={(text, npcId) => submitActionWithNpc(text, activePlayer.id, npcId)}
             onRest={(kind) => submitAction(kind === 'long' ? 'Устроить долгий отдых' : 'Устроить короткий отдых', activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}

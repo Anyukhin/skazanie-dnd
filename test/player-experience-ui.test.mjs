@@ -202,10 +202,19 @@ test('история урона использует только записан
 
 test('новый committed-текст показывается целиком поверх сцены и остаётся в журнале', () => {
   assert.match(appSource, /setCinematicNarration\(latestNarratorMessage\)/u)
-  assert.match(appSource, /<p>\{cinematicNarration\.text\}<\/p>/u)
+  assert.match(appSource, /<p>\{cinematicNarrationText \|\| 'Сцена складывается…'\}<\/p>/u)
   assert.match(appSource, /Сохранено в журнале кампании/u)
   assert.match(appSource, /state\.messages\.map/u)
   assert.match(stylesSource, /\.cinematic-narration/u)
+})
+
+test('stream preview заменяет текст целым snapshot и не показывает replay/aborted/replaced', () => {
+  assert.match(appSource, /narrationPreview\?: NarrationPreviewSnapshot \| null/u)
+  assert.match(appSource, /visibleNarrationPreview\?\.text \?\? cinematicNarration\?\.text/u)
+  assert.match(appSource, /narrationPreview\.replayed !== true/u)
+  assert.match(appSource, /narrationPreview\.phase !== 'aborted'/u)
+  assert.match(appSource, /narrationPreview\.phase !== 'replaced'/u)
+  assert.doesNotMatch(appSource, /cinematicNarrationText\s*\+=|narrationPreview\.text\.slice/u)
 })
 
 test('ожидание генерации меняет свет и аудиошину без десятого профиля', () => {
@@ -214,7 +223,7 @@ test('ожидание генерации меняет свет и аудиош�
   assert.match(stylesSource, /\.game-area\.is-narrating \.map-atmosphere-one/u)
 })
 
-test('NPC-досье читает viewer-safe разговоры, отношение и обещания, но честно не заявляет явный npc_id', () => {
+test('NPC-досье читает viewer-safe разговоры, отношение и обещания и передаёт npc_id отдельно', () => {
   assert.match(typesSource, /conversations\?: Array<\{/u)
   assert.match(appSource, /state\.social\?\.relationship_tiers\?\.\[dossierSceneNpc\.id\]\?\.\[typingActorId\]/u)
   assert.match(appSource, /state\.social\?\.conversations \?\? \[\]/u)
@@ -222,8 +231,8 @@ test('NPC-досье читает viewer-safe разговоры, отношен
   assert.match(appSource, /promise\.npc_id === dossierSceneNpc\.id && promise\.status === 'open'/u)
   assert.match(appSource, /Обращаюсь к \$\{dossierSceneNpc\.name\}/u)
   assert.match(appSource, /onNpcAction\(addressed, dossierSceneNpc\.id\)/u)
-  assert.match(appSource, /onNpcAction=\{\(text\) => submitAction\(text, activePlayer\.id\)\}/u)
-  assert.match(appSource, /Явное поле <code>npc_id<\/code> ещё требует серверного контракта/u)
+  assert.match(appSource, /onNpcAction=\{\(text, npcId\) => submitActionWithNpc\(text, activePlayer\.id, npcId\)\}/u)
+  assert.match(appSource, /Адресат закрепляется отдельно как <code>npc_id<\/code>/u)
   assert.doesNotMatch(appSource, /submitAction\([^)]*npc_id/u)
 })
 
