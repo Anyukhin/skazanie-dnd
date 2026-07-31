@@ -682,6 +682,19 @@ function eventForViewer(event, user, actorId, state = {}) {
       enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId)),
     }
   }
+  if (visible.event_type === 'EncounterOutcomeRecorded') {
+    delete payload.plan
+    delete payload.prepared_reward
+  }
+  if (visible.event_type === 'EncounterCoinsRolled') {
+    payload.rolls = (Array.isArray(payload.rolls) ? payload.rolls : []).map((/** @type {Loose} */ roll) => ({
+      roll_id: text(roll?.roll_id, 160),
+      expression: text(roll?.expression, 40),
+      dice: (Array.isArray(roll?.dice) ? roll.dice : []).map((/** @type {unknown} */ value) => integer(value, 0)).slice(0, 12),
+      total: integer(roll?.total, 0),
+      amount_cp: integer(roll?.amount_cp, 0),
+    }))
+  }
   if (visible.event_type === 'NpcPlaced') delete payload.vitality
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]

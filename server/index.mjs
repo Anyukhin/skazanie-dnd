@@ -1412,6 +1412,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     const merchantInventoryChanged = eventTypes.has('MerchantPurchaseCompleted')
       || eventTypes.has('MerchantSaleCompleted')
       || eventTypes.has('MerchantServicePurchased')
+      || eventTypes.has('EncounterRewardsDistributed')
     const characterImported = eventTypes.has('CharacterImported')
     const refreshInventory = forceProjectorRefresh || merchantInventoryChanged || [
       'ItemGranted',
@@ -2364,10 +2365,12 @@ const server = createServer((req, res) => {
       let loaded = await autonomousCampaign.load(campaignId)
       assertCampaignPlayable(loaded.state)
       const encounter = loaded.state.mechanics?.encounter
-      const outcomeRecorded = encounter?.id && (loaded.state.autonomy?.encounter_outcomes ?? []).some((entry) => entry.encounter_id === encounter.id)
+      const rewardFinalized = encounter?.id
+        ? await eventStore.getByIdempotencyKey(campaignId, `encounter-completion:${encounter.id}:transition`)
+        : null
       const events = []
       let reward = null
-      if (encounter?.status === 'ended' && !outcomeRecorded) {
+      if (encounter?.status === 'ended' && !rewardFinalized) {
         const completion = await autonomousCampaign.completeEncounter({ campaignId, outcome: encounter.outcome || 'enemies_defeated', idempotencyKey: `${key}:completion` })
         events.push(...(completion.events ?? []))
         reward = completion.reward

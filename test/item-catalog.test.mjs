@@ -153,7 +153,7 @@ test('manifest содержит ровно согласованные 100 зап
 
 test('shop, loot и crafting используют отдельные fail-closed allowlist', () => {
   assert.deepEqual([...ITEM_SHOP_CATALOG_IDS].sort(), Object.keys(SHOP_PRICES).sort())
-  assert.equal(ITEM_LOOT_CATALOG_IDS.length, 9)
+  assert.equal(ITEM_LOOT_CATALOG_IDS.length, 30)
   assert.deepEqual(ITEM_CRAFTING_CATALOG_IDS, [])
   assert.deepEqual(catalogIdsFor('shop').sort(), [...ITEM_SHOP_CATALOG_IDS].sort())
   assert.deepEqual(catalogIdsFor('loot').sort(), [...ITEM_LOOT_CATALOG_IDS].sort())

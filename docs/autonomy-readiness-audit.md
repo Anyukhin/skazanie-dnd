@@ -14,7 +14,7 @@
 - Поля механики (`hp`, `dc`, броски, цены, количества, XP, координаты, урон, инициатива и reputation delta) отклоняются до исполнения.
 - Встреча собирается существующим `EncounterAssembler` через `CreateEncounter`, затем сервер автоматически выполняет `StartCombat`; admin endpoint не используется.
 - Автономная тактика героев и NPC проходит через обычные typed combat commands и `RulesEngine`.
-- Завершение создаёт `EncounterOutcomeRecorded`, `ExperienceAwarded` либо `MilestoneAwarded`, `ServerLootGenerated`, `ItemGranted`, `QuestClockAdvanced`, `WorldFactRecorded` и `TransitionUnlocked`.
+- Завершение замораживает reward plan в `EncounterOutcomeRecorded`, затем каноническими стадиями создаёт `ExperienceAwarded` либо skip, `EncounterCoinsRolled`, `ServerLootGenerated`, атомарный `EncounterRewardsDistributed`, последствия/память мира и только последним — `TransitionUnlocked`.
 - После победы безопасная передышка записывается как `DowntimeResolved`; время и участники выводятся серверной политикой.
 - Репутационная дельта выбирается таблицей сервера; `WitnessConsequencePropagated` ограничен непосредственными фракциями свидетелей (membership хранится безопасным тегом `faction:<id>`).
 - Условия promises хранятся каноническими world facts и разрешаются `ResolveNpcPromise`; статус `open` обеспечивает однократное применение. Дедлайны продолжают обрабатываться существующим `AdvanceTime`.
