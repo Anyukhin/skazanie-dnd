@@ -1455,6 +1455,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       'ItemUsed',
       'ItemConsumed',
       'ItemChargesSpent',
+      'ItemDawnRechargeResolved',
       'ItemTransferred',
       'ItemAttunementChanged',
     ].some((type) => eventTypes.has(type)) || characterImported

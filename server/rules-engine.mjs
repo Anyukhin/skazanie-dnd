@@ -119,6 +119,11 @@ import {
 } from './merchant-economy.mjs'
 import { materializeCatalogItem } from './item-catalog.mjs'
 import {
+  ITEM_DAWN_RECHARGE_EVENT_SCHEMA_VERSION,
+  applyItemDawnRechargeToPlayers,
+  resolveItemDawnRecharge,
+} from './item-dawn-recharge.mjs'
+import {
   reputationPriceBps,
   reputationStandingFor,
 } from './reputation-policy.mjs'
@@ -4886,6 +4891,19 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
   const resistanceCantripUses = new Set()
   let nestedConsequencesResolved = false
 
+  const appendTimeAdvance = (sourceCommand, amount, unit, elapsedMinutes) => {
+    events.push(eventFrom(sourceCommand, 'TimeAdvanced', { amount, unit, elapsed_minutes: elapsedMinutes }, []))
+    if (elapsedMinutes <= 0) return
+    const recharge = resolveItemDawnRecharge(state, elapsedMinutes, diceService)
+    rolls.push(...recharge.rolls)
+    if (recharge.payload) {
+      events.push({
+        ...eventFrom({ ...sourceCommand, visibility: 'gm_only' }, 'ItemDawnRechargeResolved', recharge.payload, recharge.payload.items.map((item) => item.owner_id)),
+        event_schema_version: ITEM_DAWN_RECHARGE_EVENT_SCHEMA_VERSION,
+      })
+    }
+  }
+
   const damageTurnKey = (sourceState) => {
     const combat = sourceState.mechanics.combat
     if (!combat?.active) return `command:${command.command_id}`
@@ -6539,7 +6557,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (!state.mechanics.combat.active && spell?.actionType === 'long_cast') {
           const minutes = castingTimeMinutes(spell.castingTime)
           if (minutes > 0) {
-            events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'TimeAdvanced', { amount: minutes, unit: 'minute', elapsed_minutes: minutes }, []))
+            appendTimeAdvance(commandWithRules(command, RULE_IDS.resource), minutes, 'minute', minutes)
           }
         }
         if (!command.counterspell_bypassed) {
@@ -8641,7 +8659,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const amount = Math.max(0, Number(command.amount) || 0)
       const unit = String(command.unit || 'minute')
       const elapsedMinutes = durationInMinutes(amount, unit)
-      events.push(eventFrom(command, 'TimeAdvanced', { amount, unit, elapsed_minutes: elapsedMinutes }, []))
+      appendTimeAdvance(command, amount, unit, elapsedMinutes)
       if (elapsedMinutes <= 0) break
       for (const socialEvent of npcPromiseDeadlineEvents(state, elapsedMinutes)) {
         events.push(eventFrom({ ...command, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
@@ -9952,6 +9970,9 @@ export function applyGameEvent(rawState, event) {
         state.npc_world = applyNpcWorldEvent(state.npc_world, event)
       }
       refreshPlayerDerivedState(state, targets)
+      break
+    case 'ItemDawnRechargeResolved':
+      state.players = applyItemDawnRechargeToPlayers(state.players, event)
       break
     case 'ItemUsed':
       if (payload.combat_action) spendCombatEconomy(state, event.actor_id, payload.combat_action)

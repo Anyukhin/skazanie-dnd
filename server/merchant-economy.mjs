@@ -4,8 +4,10 @@ import {
   ITEM_CATALOG_SCHEMA_VERSION,
   ITEM_CATALOG_SOURCE,
   SRD_EQUIPMENT_CATALOG,
+  catalogItem,
   hydrateCatalogItem as hydrateCatalogRecord,
   materializeCatalogItem,
+  normalizeItemRechargeProfile,
 } from './item-catalog.mjs'
 import { reputationStandingFor } from './reputation-policy.mjs'
 
@@ -154,6 +156,7 @@ export function inventoryStackKey(input = {}) {
   const catalogId = cleanId(source.catalog_id ?? source.catalogId)
   const basePriceCp = resolveCatalogBasePriceCp(source)
   const passiveEffects = normalizePassiveEffects(source.passive_effects)
+  const recharge = normalizeItemRechargeProfile(source.recharge)
   const descriptor = stableValue({
     catalog_id: catalogId || null,
     base_price_cp: basePriceCp,
@@ -165,6 +168,7 @@ export function inventoryStackKey(input = {}) {
     properties: cleanText(source.properties, 500),
     combat: source.combat && typeof source.combat === 'object' ? source.combat : null,
     ...(passiveEffects.length ? { passive_effects: passiveEffects } : {}),
+    ...(recharge ? { recharge } : {}),
     charges: source.charges && typeof source.charges === 'object' ? source.charges : null,
     requires_attunement: source.requires_attunement === true ? true : null,
     attuned_to: source.attuned_to == null ? null : cleanId(source.attuned_to),
@@ -189,6 +193,9 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
   const resolvedPrice = resolveCatalogBasePriceCp({ ...source, catalog_id: catalogId })
   const maxCharges = clampInteger(source.charges?.max, 0, 1_000_000, 0)
   const passiveEffects = normalizePassiveEffects(source.passive_effects)
+  const recharge = catalogId && catalogItem(catalogId)
+    ? normalizeItemRechargeProfile(catalogItem(catalogId)?.recharge)
+    : normalizeItemRechargeProfile(source.recharge)
   const item = {
     ...(preserveUnknown ? clone(source) : {}),
     id: cleanId(source.item_id ?? source.id, idFallback),
@@ -216,6 +223,7 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     ...(source.charges && typeof source.charges === 'object' ? {
       charges: { current: clampInteger(source.charges.current, 0, maxCharges, 0), max: maxCharges },
     } : {}),
+    ...(recharge ? { recharge } : {}),
     ...(source.requires_attunement === true ? { requires_attunement: true } : {}),
     ...(source.attuned_to == null ? {} : { attuned_to: cleanId(source.attuned_to) }),
     ...(source.sellable === false ? { sellable: false } : {}),
@@ -225,6 +233,7 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     ...(resolvedPrice > 0 ? { base_price_cp: resolvedPrice } : {}),
   }
   if (!passiveEffects.length) delete item.passive_effects
+  if (!recharge) delete item.recharge
   item.stack_key = inventoryStackKey(item)
   return item
 }

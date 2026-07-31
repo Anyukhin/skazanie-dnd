@@ -308,6 +308,12 @@ export type CombatSpell = {
   action_type?: 'action' | 'bonus_action' | 'reaction'
 }
 
+export type ItemRechargeProfile = {
+  schema_version: 1
+  trigger: 'dawn'
+  formula: '1d6+1'
+}
+
 export type InventoryItem = {
   id: string
   catalog_id?: string
@@ -329,6 +335,7 @@ export type InventoryItem = {
   imagePrompt?: string
   imageStatus?: 'ready' | 'queued' | 'generating' | 'failed'
   charges?: { current: number; max: number }
+  recharge?: ItemRechargeProfile
   capabilities?: {
     equippable: boolean
     equip_slot: string | null
@@ -341,6 +348,7 @@ export type InventoryItem = {
       charges_per_use?: number
     } | null
     charges: { current: number; max: number } | null
+    recharge: ItemRechargeProfile | null
     requires_attunement: boolean
     mechanics_status?: 'verified' | 'partial' | 'ruling-only'
     limitation?: string
