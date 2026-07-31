@@ -115,7 +115,13 @@ export class Adjudicator {
           proposed_commands: [
             { command_type: 'StartRest', actor_id: intent.actor_id, kind, source_rule_ids: [RULE_IDS.resource] },
             { command_type: 'AdvanceTime', amount: minutes, unit: 'minute', source_rule_ids: [RULE_IDS.resource] },
-            { command_type: 'CompleteRest', actor_id: intent.actor_id, kind, source_rule_ids: [RULE_IDS.resource] },
+            {
+              command_type: 'CompleteRest',
+              actor_id: intent.actor_id,
+              kind,
+              ...(kind === 'short' ? { hit_dice: 1 } : {}),
+              source_rule_ids: [RULE_IDS.resource],
+            },
           ],
           confidence: 0.9,
         }

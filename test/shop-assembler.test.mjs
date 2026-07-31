@@ -67,6 +67,18 @@ test('автоматическая сборка соблюдает бюджет,
   }
 })
 
+test('автоматическая общая лавка не создаёт карточки без русской презентации', () => {
+  for (const seed of ['catalog-expansion-a', 'catalog-expansion-b', 'catalog-expansion-c']) {
+    const proposal = assembleShop(baseInput({ seed, settlement_type: 'city', budget_cp: 100_000 }))
+    for (const item of proposal.merchant.stock) {
+      assert.ok(Object.hasOwn(SRD_EQUIPMENT_CATALOG, item.catalog_id))
+      assert.match(item.name, /\S/u)
+      assert.match(item.type, /\S/u)
+      assert.match(item.properties, /\S/u)
+    }
+  }
+})
+
 test('bounded director intent выбирает только catalog stock и общую ценовую поправку', () => {
   const proposal = assembleShop(baseInput({
     settlement_type: 'city',

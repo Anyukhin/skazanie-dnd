@@ -160,6 +160,7 @@ import {
   sceneObjectDistance,
   sceneObjectLoot,
 } from './scene-interactions.mjs'
+import { magicItemDefinitionFor } from './loot-tables.mjs'
 
 export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 // 4: карта сцены хранится слоями в `scene.map`, а `scene.cells` стал производной
@@ -288,6 +289,7 @@ const COMMAND_RULES = Object.freeze({
   AdvanceTime: [RULE_IDS.resource],
   StartRest: [RULE_IDS.resource],
   CompleteRest: [RULE_IDS.resource],
+  AwardCurrency: [RULE_IDS.economyCoins],
   StartConcentration: [RULE_IDS.concentration],
   EndConcentration: [RULE_IDS.concentration],
   CreateEncounter: [],
@@ -335,7 +337,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
   'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
-  'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
+  'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'AwardCurrency',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
   'AdvanceScene',
@@ -1262,6 +1264,17 @@ export function normalizeCampaignState(input = {}) {
   for (const actor of listActors(state)) {
     const id = actorId(actor)
     mechanics.resources[id] ??= {}
+    if (playerIds.has(id)) {
+      const maximum = Math.max(1, Math.min(12, safeInteger(actor?.level, 1)))
+      const stored = mechanics.resources[id].hit_dice
+      mechanics.resources[id].hit_dice = {
+        current: stored
+          ? Math.max(0, Math.min(maximum, safeInteger(stored.current, maximum)))
+          : maximum,
+        max: maximum,
+        sides: hitDieSidesFor(actor),
+      }
+    }
     for (const [resource, maximum] of Object.entries(spellSlotMaximumsFor(actor))) {
       if (!mechanics.resources[id][resource]) mechanics.resources[id][resource] = { current: maximum, max: maximum }
     }
@@ -1305,6 +1318,77 @@ export function normalizeCampaignState(input = {}) {
 export function abilityModifier(score) {
   const safe = safeInteger(score, 10)
   return Math.floor((safe - 10) / 2)
+}
+
+function magicItemIsActive(actor, item, definition) {
+  const ownerId = actorId(actor)
+  if (!definition || Number(item?.quantity ?? 1) < 1) return false
+  if (definition.activation === 'equipped') return item?.equipped === true
+  if (definition.activation === 'attuned') return String(item?.attuned_to ?? '') === ownerId
+  if (definition.activation === 'equipped_attuned') {
+    return item?.equipped === true && String(item?.attuned_to ?? '') === ownerId
+  }
+  return false
+}
+
+function activeMagicItems(actor) {
+  return (Array.isArray(actor?.inventory) ? actor.inventory : []).flatMap((item) => {
+    const definition = magicItemDefinitionFor(item)
+    return magicItemIsActive(actor, item, definition) ? [{ item, definition, effects: definition.effects ?? {} }] : []
+  })
+}
+
+function magicItemsWithEffect(actor, effect) {
+  return activeMagicItems(actor).filter((entry) => Object.hasOwn(entry.effects, effect))
+}
+
+function magicNumericBonus(actor, effect, predicate = () => true) {
+  return magicItemsWithEffect(actor, effect)
+    .filter(predicate)
+    .reduce((total, entry) => total + safeInteger(entry.effects[effect], 0), 0)
+}
+
+function effectiveAbilityScore(actor, ability) {
+  const normalized = String(ability ?? '').toLowerCase()
+  const effect = {
+    str: 'strength_score',
+    con: 'constitution_score',
+    int: 'intelligence_score',
+  }[normalized]
+  const base = safeInteger(actor?.abilities?.[normalized], 10)
+  if (!effect) return base
+  return magicItemsWithEffect(actor, effect).reduce(
+    (score, entry) => Math.max(score, safeInteger(entry.effects[effect], score)),
+    base,
+  )
+}
+
+function hitDieSidesFor(actor) {
+  return {
+    barbarian: 12,
+    fighter: 10,
+    paladin: 10,
+    ranger: 10,
+    bard: 8,
+    cleric: 8,
+    druid: 8,
+    monk: 8,
+    rogue: 8,
+    warlock: 8,
+    sorcerer: 6,
+    wizard: 6,
+  }[characterClassKey(actor)] ?? 8
+}
+
+function magicEffectPayload(entry, effect, trigger, extra = {}) {
+  return {
+    item_id: String(entry.item?.id ?? ''),
+    catalog_id: String(entry.definition.catalog_id),
+    item_name: String(entry.definition.name),
+    effect,
+    trigger,
+    ...extra,
+  }
 }
 
 export function isEnemyActor(state, id) {
@@ -1910,12 +1994,24 @@ function itemAttackProfile(state, actor, itemId) {
   const combat = item?.combat
   if (!item || !combat || !['melee', 'ranged'].includes(combat.kind)) return null
   const ability = combat.ability === 'dex' ? 'dex' : 'str'
-  const abilityBonus = abilityModifier(actor?.abilities?.[ability])
+  const abilityBonus = abilityModifier(effectiveAbilityScore(actor, ability))
+  const definition = magicItemDefinitionFor(item)
+  const selectedMagicActive = definition && (
+    definition.activation === 'equipped'
+    || definition.activation === 'equipped_attuned' && String(item.attuned_to ?? '') === actorId(actor)
+    || magicItemIsActive(actor, item, definition)
+  )
+  const selectedMagic = selectedMagicActive ? { item, definition, effects: definition.effects ?? {} } : null
+  const attackBonus = selectedMagic ? safeInteger(selectedMagic.effects.attack_bonus, 0) : 0
+  const weaponDamageBonus = selectedMagic ? safeInteger(selectedMagic.effects.weapon_damage_bonus, 0) : 0
+  const rangedDamageItems = combat.kind === 'ranged' ? magicItemsWithEffect(actor, 'ranged_weapon_damage_bonus') : []
+  const rangedDamageBonus = rangedDamageItems.reduce((total, entry) => total + safeInteger(entry.effects.ranged_weapon_damage_bonus, 0), 0)
   let damage
-  try { damage = diceExpression(combat.damage, abilityBonus, combat.kind === 'ranged' ? 8 : 8) } catch { damage = `1d8${abilityBonus >= 0 ? '+' : ''}${abilityBonus}` }
+  const damageModifier = abilityBonus + weaponDamageBonus + rangedDamageBonus
+  try { damage = diceExpression(combat.damage, damageModifier, combat.kind === 'ranged' ? 8 : 8) } catch { damage = `1d8${damageModifier >= 0 ? '+' : ''}${damageModifier}` }
   return {
     item,
-    modifier: abilityBonus + Math.max(0, safeInteger(actor?.proficiency, 0)),
+    modifier: abilityBonus + Math.max(0, safeInteger(actor?.proficiency, 0)) + attackBonus,
     damage_expression: damage,
     damage_type: String(combat.damageType || 'piercing').slice(0, 40),
     range_feet: Math.max(5, Math.min(600, safeInteger(combat.longRange ?? combat.normalRange, 5))),
@@ -1924,6 +2020,8 @@ function itemAttackProfile(state, actor, itemId) {
     // Характеристика удара нужна не только для модификатора: «Луч ослабления»
     // режет вдвое именно силовые атаки, и без этого поля правило не выразить.
     ability,
+    selected_magic: selectedMagic,
+    ranged_damage_items: rangedDamageItems,
   }
 }
 
@@ -2415,6 +2513,10 @@ function normalizeCommand(input, state) {
   }
   command.action_id = command.action_id == null && command.actionId == null ? null : String(command.action_id ?? command.actionId).slice(0, 120)
   command.quantity = safeInteger(command.quantity, 1)
+  if (command.hit_dice != null || command.hitDice != null) {
+    command.hit_dice = safeInteger(command.hit_dice ?? command.hitDice, -1)
+    delete command.hitDice
+  }
   command.request_fingerprint = command.request_fingerprint == null ? null : String(command.request_fingerprint).slice(0, 128)
   if (['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'].includes(command.command_type) || MERCHANT_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
     if (!command.house_rule_id) command.house_rule_id = ECONOMY_POLICY_ID
@@ -2458,7 +2560,7 @@ function needsActor(type) {
   return new Set(['DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
-    'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn', 'StartRest', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
+    'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn', 'StartRest', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem', 'AwardCurrency',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3025,6 +3127,41 @@ export function validateCommand(input, rawState, context = {}) {
     if (command.command_type === 'CompleteRest' && activeRest?.kind !== kind) {
       throw new RulesValidationError('Тип завершённого отдыха не совпадает с начатым', 'REST_KIND_MISMATCH')
     }
+    if (command.command_type === 'CompleteRest' && kind === 'short') {
+      const actor = findActor(state, command.actor_id)
+      const pool = state.mechanics.resources[command.actor_id]?.hit_dice ?? { current: 0, max: 0 }
+      // Legacy CompleteRest не выбирал кости хитов: отсутствие поля означает
+      // «не тратить». Основной rest-intent передаёт явное число, а API может
+      // позволить игроку выбрать от нуля до остатка.
+      const requested = command.hit_dice == null ? 0 : command.hit_dice
+      if (!Number.isSafeInteger(requested) || requested < 0) {
+        throw new RulesValidationError('Число костей хитов должно быть неотрицательным целым', 'HIT_DICE_INVALID')
+      }
+      if (requested > safeInteger(pool.current, 0)) {
+        throw new RulesValidationError('У героя недостаточно костей хитов', 'HIT_DICE_INSUFFICIENT')
+      }
+      command.hit_dice = requested
+    }
+  }
+
+  if (command.command_type === 'AwardCurrency') {
+    if (context.isDirector !== true && context.isAdmin !== true) {
+      throw new RulesValidationError('Монеты награды выдаёт только сервер', 'CURRENCY_AWARD_FORBIDDEN')
+    }
+    if (!playerActor(state, command.actor_id)) {
+      throw new RulesValidationError('Монеты награды можно выдать только герою группы', 'CURRENCY_RECIPIENT_INVALID')
+    }
+    command.currency = normalizeCurrency(command.currency)
+    const amountCp = currencyToCopper(command.currency)
+    if (amountCp < 1) throw new RulesValidationError('Награда монетами должна быть положительной', 'CURRENCY_AWARD_EMPTY')
+    const actor = playerActor(state, command.actor_id)
+    const beforeCp = currencyToCopper(actor.currency)
+    if (beforeCp + amountCp > MAX_CURRENCY_CP) {
+      throw new RulesValidationError('Кошелёк героя не может вместить столько монет', 'CURRENCY_LIMIT_EXCEEDED')
+    }
+    command.currency_before = normalizeCurrency(actor.currency)
+    command.currency_after = copperToCurrency(beforeCp + amountCp)
+    command.amount_cp = amountCp
   }
 
   if (command.command_type === 'StartCombat' && state.mechanics.combat.active) {
@@ -3452,7 +3589,9 @@ function effectiveArmorClass(state, actor, id) {
   // и уже к нему добавляются надбавки вроде Щита или Щита веры.
   let floor = 0
   for (const condition of conditions) floor = Math.max(floor, safeInteger(CONDITION_EFFECTS[condition]?.armorClassFloor, 0))
-  return Math.max(listedArmor, mageArmor, equipmentArmor, floor) + conditionArmorClassBonus(state, id)
+  return Math.max(listedArmor, mageArmor, equipmentArmor, floor)
+    + conditionArmorClassBonus(state, id)
+    + magicNumericBonus(actor, 'armor_class_bonus')
 }
 
 function spellHpPoolExpression(baseExpression, upcastExpression, spellLevel, slotLevel) {
@@ -3504,7 +3643,9 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
     const effect = CONDITION_EFFECTS[condition]
     return effect?.resistsAllDamage === true || (effect?.resistsDamageTypes ?? []).includes(damageType)
   })
-  const resistant = defenses.resistances.includes(damageType) || ragingResistance || uncannyResistance || absorbingResistance || bladeWardResistance || conditionResistance || Boolean(auraOfLife)
+  const magicResistanceItems = magicItemsWithEffect(actor, 'damage_resistance')
+    .filter((entry) => String(entry.effects.damage_resistance) === String(damageType))
+  const resistant = defenses.resistances.includes(damageType) || ragingResistance || uncannyResistance || absorbingResistance || bladeWardResistance || conditionResistance || magicResistanceItems.length > 0 || Boolean(auraOfLife)
   const vulnerable = defenses.vulnerabilities.includes(damageType)
   let afterDefense = immune ? 0 : raw
   if (!immune && resistant && !vulnerable) afterDefense = Math.floor(afterDefense / 2)
@@ -3523,6 +3664,11 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
     applied_amount: applied,
     immune,
     resistant,
+    ...(magicResistanceItems.length ? {
+      magic_item_resistance: true,
+      magic_item_ids: magicResistanceItems.map((entry) => String(entry.item.id)),
+      magic_item_catalog_ids: magicResistanceItems.map((entry) => String(entry.definition.catalog_id)),
+    } : {}),
     vulnerable,
     ...(auraOfLife ? { aura_of_life_source: auraOfLife.source_id } : {}),
     ...(resistanceCantripReduction > 0 ? {
@@ -4443,11 +4589,21 @@ function activeAuraOfProtection(state, targetId) {
   return candidates.sort((left, right) => right.bonus - left.bonus || left.source_id.localeCompare(right.source_id))[0] ?? null
 }
 
-function savingThrowModifierWithAura(state, targetId, baseModifier) {
+function savingThrowModifierWithAura(state, targetId, baseModifier, ability = null) {
   const aura = activeAuraOfProtection(state, targetId)
+  const actor = findActor(state, targetId)
+  const normalizedAbility = ability == null ? null : String(ability).toLowerCase()
+  const abilityDelta = normalizedAbility
+    ? abilityModifier(effectiveAbilityScore(actor, normalizedAbility)) - abilityModifier(actor?.abilities?.[normalizedAbility])
+    : 0
+  const magicItems = magicItemsWithEffect(actor, 'saving_throw_bonus')
+  const magicBonus = magicItems.reduce((total, entry) => total + safeInteger(entry.effects.saving_throw_bonus, 0), 0)
   return {
-    modifier: safeInteger(baseModifier, 0) + (aura?.bonus ?? 0),
+    modifier: safeInteger(baseModifier, 0) + abilityDelta + magicBonus + (aura?.bonus ?? 0),
     aura,
+    magicItems,
+    magicBonus,
+    abilityDelta,
   }
 }
 
@@ -4457,6 +4613,15 @@ function auraOfProtectionPayload(aura) {
     aura_of_protection_bonus: aura.bonus,
     aura_of_protection_radius_feet: aura.radius_feet,
   } : {}
+}
+
+function magicSavingThrowPayload(result) {
+  return result?.magicItems?.length ? {
+    magic_item_bonus: result.magicBonus,
+    magic_item_ids: result.magicItems.map((entry) => String(entry.item?.id ?? '')).filter(Boolean),
+    magic_item_catalog_ids: result.magicItems.map((entry) => String(entry.definition.catalog_id)),
+    ...(result.abilityDelta ? { magic_ability_modifier_delta: result.abilityDelta } : {}),
+  } : result?.abilityDelta ? { magic_ability_modifier_delta: result.abilityDelta } : {}
 }
 
 const CLASS_SAVING_THROW_PROFICIENCIES = Object.freeze({
@@ -4487,7 +4652,7 @@ function bloodiedFrenzySaveAdvantage(state, targetId) {
  * transcript and replay stay identical, and only the outcome is forced.
  */
 function rollSavingThrowD20(state, diceService, targetId, options = {}) {
-  const auraProtection = savingThrowModifierWithAura(state, targetId, options.modifier)
+  const auraProtection = savingThrowModifierWithAura(state, targetId, options.modifier, options.ability)
   const autoFailed = autoFailedSaveConditionFor(state, targetId, options.ability)
   // Преимущество от состояния приходит сюда же, где живёт автопровал: это
   // единственная воронка всех спасбросков, поэтому правило действует независимо
@@ -4504,6 +4669,7 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
       actorId: targetId,
     }),
     ...auraOfProtectionPayload(auraProtection.aura),
+    ...magicSavingThrowPayload(auraProtection),
     ...(advantageCondition ? { save_advantage_condition: advantageCondition } : {}),
     ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
     ...(disadvantageCondition ? { save_disadvantage_condition: disadvantageCondition } : {}),
@@ -4512,12 +4678,13 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
 }
 
 function rollSavingThrowCheck(state, diceService, targetId, options = {}) {
-  const auraProtection = savingThrowModifierWithAura(state, targetId, options.modifier)
+  const auraProtection = savingThrowModifierWithAura(state, targetId, options.modifier, options.ability)
   const autoFailed = autoFailedSaveConditionFor(state, targetId, options.ability)
   const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, targetId)
   return {
     ...diceService.rollCheck({ ...options, advantage: options.advantage === true || bloodiedFrenzy, modifier: auraProtection.modifier, actorId: targetId }),
     ...auraOfProtectionPayload(auraProtection.aura),
+    ...magicSavingThrowPayload(auraProtection),
     ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
     ...(autoFailed ? { success: false, auto_failed: true, auto_failed_condition: autoFailed } : {}),
   }
@@ -4710,7 +4877,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const ability = String(skillAbility(skill) || command.ability || 'str').toLowerCase()
       let modifier = Number.isSafeInteger(Number(command.modifier))
         ? Number(command.modifier)
-        : abilityModifier(actor?.abilities?.[ability]) + (skill ? skillProficiencyBonus(actor, skill) : command.proficient ? safeInteger(actor?.proficiency, 0) : 0)
+        : abilityModifier(effectiveAbilityScore(actor, ability)) + (skill ? skillProficiencyBonus(actor, skill) : command.proficient ? safeInteger(actor?.proficiency, 0) : 0)
+      const checkMagicItems = magicItemsWithEffect(actor, 'ability_check_bonus')
+      const checkMagicBonus = checkMagicItems.reduce((total, entry) => total + safeInteger(entry.effects.ability_check_bonus, 0), 0)
+      modifier += checkMagicBonus
+      const stealthMagicItems = skill === 'stealth' ? magicItemsWithEffect(actor, 'stealth_advantage') : []
+      const checkAbilityEffect = { str: 'strength_score', con: 'constitution_score', int: 'intelligence_score' }[ability]
+      const checkAbilityItems = checkAbilityEffect ? magicItemsWithEffect(actor, checkAbilityEffect) : []
       if (conditionIdsFor(state, command.actor_id).has('guidance-d4')) {
         const guidance = diceService.roll('1d4', 'spell:guidance', command.actor_id, command.visibility ?? 'public')
         rolls.push(guidance)
@@ -4721,10 +4894,16 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Истощение мешает любой проверке характеристики с первой же ступени.
       const checkPenalty = checkDisadvantageConditionFor(state, command.actor_id)
       const checkBoost = checkAdvantageConditionFor(state, command.actor_id, ability)
-      const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty), visibility: command.visibility })
+      const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || stealthMagicItems.length > 0, disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty), visibility: command.visibility })
       rolls.push(roll)
-      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
+      for (const entry of checkMagicItems) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, 'ability_check_bonus', 'ability-check', { bonus: entry.effects.ability_check_bonus }), [command.actor_id]))
+      for (const entry of stealthMagicItems) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, 'stealth_advantage', 'ability-check', { skill }), [command.actor_id]))
+      for (const entry of checkAbilityItems) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, checkAbilityEffect, 'ability-check', { ability, effective_score: effectiveAbilityScore(actor, ability) }), [command.actor_id]))
+      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost || stealthMagicItems.length ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
         ability, ...(skill ? { skill } : {}), ...roll,
+        ...(checkMagicBonus ? { magic_item_bonus: checkMagicBonus, magic_item_ids: checkMagicItems.map((entry) => entry.item.id) } : {}),
+        ...(stealthMagicItems.length ? { magic_item_advantage: stealthMagicItems.map((entry) => entry.item.id) } : {}),
+        ...(checkAbilityItems.length ? { magic_ability_score: effectiveAbilityScore(actor, ability), magic_ability_item_ids: checkAbilityItems.map((entry) => entry.item.id) } : {}),
         ...(checkPenalty ? { check_disadvantage_condition: checkPenalty } : {}),
         ...(checkBoost ? { check_advantage_condition: checkBoost } : {}),
         ...(command.social_check ? { social_check: {
@@ -4741,7 +4920,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const baseModifier = Number.isSafeInteger(Number(command.modifier))
         ? Number(command.modifier)
         : abilityModifier(actor?.abilities?.[ability]) + (command.proficient ? safeInteger(actor?.proficiency, 0) : 0)
-      const auraProtection = savingThrowModifierWithAura(state, command.actor_id, baseModifier)
+      const auraProtection = savingThrowModifierWithAura(state, command.actor_id, baseModifier, ability)
       let modifier = auraProtection.modifier
       const savingConditions = conditionIdsFor(state, command.actor_id)
       if (savingConditions.has('bless-d4')) {
@@ -4771,8 +4950,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, command.actor_id)
       const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `saving_throw:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(saveBoost) || bloodiedFrenzy, disadvantage: Boolean(command.disadvantage) || Boolean(savePenalty), visibility: command.visibility })
       rolls.push(roll)
+      for (const entry of auraProtection.magicItems) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, 'saving_throw_bonus', 'saving-throw', { bonus: entry.effects.saving_throw_bonus, ability }), [command.actor_id]))
+      const abilityEffect = { str: 'strength_score', con: 'constitution_score', int: 'intelligence_score' }[ability]
+      if (abilityEffect) for (const entry of magicItemsWithEffect(actor, abilityEffect)) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, abilityEffect, 'saving-throw', { ability, effective_score: effectiveAbilityScore(actor, ability) }), [command.actor_id]))
       events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || savePenalty || saveBoost || bloodiedFrenzy ? RULE_IDS.advantage : null), 'SavingThrowResolved', {
-        ability, ...roll, ...auraOfProtectionPayload(auraProtection.aura),
+        ability, ...roll, ...auraOfProtectionPayload(auraProtection.aura), ...magicSavingThrowPayload(auraProtection),
         ...(savePenalty ? { save_disadvantage_condition: savePenalty } : {}),
         ...(saveBoost ? { save_advantage_condition: saveBoost } : {}),
         ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
@@ -4903,7 +5085,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // A melee hit on a creature that cannot move or react is a critical hit
       // regardless of the die, so every rider damage roll below scales off
       // `critical` rather than off the natural 20.
-      const critical = attack.kept === 20 || (hit && conditionModifiers.automaticCritical)
+      const rolledCritical = attack.kept === 20 || (hit && conditionModifiers.automaticCritical)
+      const criticalImmunityItems = magicItemsWithEffect(target, 'critical_hit_immunity')
+      const critical = rolledCritical && criticalImmunityItems.length === 0
       rolls.push(attack)
       // Отражения: удар может уйти в двойника. Число двойников хранится прямо в
       // идентификаторе состояния, поэтому уменьшение — это снятие одного и
@@ -4931,6 +5115,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Перехваченный двойником удар не считается попаданием по цели: никакого
       // урона, никаких последствий попадания.
       const landed = hit && !interceptedByImage
+      const armorMagicItems = magicItemsWithEffect(target, 'armor_class_bonus')
+      for (const entry of armorMagicItems) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, 'armor_class_bonus', 'incoming-attack', { bonus: entry.effects.armor_class_bonus }), [targetId]))
+      if (selectedProfile?.selected_magic?.effects.attack_bonus) {
+        const entry = selectedProfile.selected_magic
+        events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, 'attack_bonus', 'weapon-attack', { bonus: entry.effects.attack_bonus }), [command.actor_id]))
+      }
+      const attackAbilityEffect = profile?.ability === 'str' ? 'strength_score' : null
+      if (attackAbilityEffect) for (const entry of magicItemsWithEffect(actor, attackAbilityEffect)) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, attackAbilityEffect, 'weapon-attack', { effective_score: effectiveAbilityScore(actor, profile.ability) }), [command.actor_id]))
+      for (const entry of criticalImmunityItems) if (rolledCritical) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, 'critical_hit_immunity', 'incoming-critical'), [targetId]))
       events.push(eventFrom(attackCommand, 'AttackResolved', {
         ...attack,
         target_id: targetId,
@@ -4938,6 +5131,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         hit: landed,
         ...(interceptedByImage ? { mirror_image_intercepted: true, mirror_images_before: mirrorImages } : {}),
         critical,
+        ...(rolledCritical && !critical ? { critical_prevented_by_magic_item: true, critical_preventing_item_ids: criticalImmunityItems.map((entry) => entry.item.id) } : {}),
         ...(conditionModifiers.automaticCritical && critical && attack.kept !== 20 ? { automatic_critical: true } : {}),
         ...(conditionModifiers.advantage.length ? { condition_advantage: conditionModifiers.advantage } : {}),
         ...(conditionModifiers.disadvantage.length ? { condition_disadvantage: conditionModifiers.disadvantage } : {}),
@@ -4959,6 +5153,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         trajectory: actorAt && targetAt ? lineCells(actorAt, targetAt) : [],
         long_range: Boolean(longRange),
         reaction_attack: command.reaction_attack === true,
+        ...(selectedProfile?.selected_magic ? { magic_item_catalog_id: selectedProfile.selected_magic.definition.catalog_id } : {}),
       }, [targetId]))
       if (selectedProfile && !selectedProfile.item.equipped) events.splice(events.length - 1, 0, eventFrom(attackCommand, 'EquipmentChanged', { item_id: selectedProfile.item.id, item_name: selectedProfile.item.name, equipped: true, timing: 'before_attack', turns_spent: 0 }, [command.actor_id]))
       if (actorConditions.has('disadvantage-next-attack')) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'disadvantage-next-attack' }, [command.actor_id]))
@@ -5019,6 +5214,44 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }
         let pendingCondition = null
         let secondaryDamage = null
+        const weaponMagic = selectedProfile?.selected_magic
+        if (weaponMagic?.effects.weapon_damage_dice) {
+          const expression = critical
+            ? criticalDamageExpression(String(weaponMagic.effects.weapon_damage_dice))
+            : String(weaponMagic.effects.weapon_damage_dice)
+          const magicDamage = diceService.roll(expression, `magic_item_damage:${weaponMagic.definition.catalog_id}`, command.actor_id, command.visibility ?? 'public')
+          rolls.push(magicDamage)
+          events.push(
+            eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(weaponMagic, 'weapon_damage_dice', 'weapon-hit', {
+              expression,
+              damage_type: String(weaponMagic.effects.weapon_damage_type ?? damageType),
+            }), [command.actor_id]),
+            eventFrom(command, 'DieRolled', { ...magicDamage, item_id: weaponMagic.item.id, catalog_id: weaponMagic.definition.catalog_id, damage_type: String(weaponMagic.effects.weapon_damage_type ?? damageType) }, []),
+          )
+          secondaryDamage = {
+            amount: magicDamage.total,
+            type: String(weaponMagic.effects.weapon_damage_type ?? damageType),
+            action_id: null,
+            magic_item_id: weaponMagic.item.id,
+            magic_item_catalog_id: weaponMagic.definition.catalog_id,
+          }
+        }
+        if (critical && weaponMagic?.effects.critical_damage_dice) {
+          const expression = String(weaponMagic.effects.critical_damage_dice)
+          const viciousDamage = diceService.roll(expression, `magic_item_critical:${weaponMagic.definition.catalog_id}`, command.actor_id, command.visibility ?? 'public')
+          rolls.push(viciousDamage)
+          events.push(
+            eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(weaponMagic, 'critical_damage_dice', 'critical-hit', { expression }), [command.actor_id]),
+            eventFrom(command, 'DieRolled', { ...viciousDamage, item_id: weaponMagic.item.id, catalog_id: weaponMagic.definition.catalog_id, damage_type: damageType }, []),
+          )
+          // У жестокого оружия дополнительный урон того же типа можно безопасно
+          // сложить с основным: сопротивление и уязвимость для обоих одинаковы.
+          raw += viciousDamage.total
+        }
+        if (selectedProfile?.ranged_damage_items?.length) {
+          for (const entry of selectedProfile.ranged_damage_items) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, 'ranged_weapon_damage_bonus', 'weapon-hit', { bonus: entry.effects.ranged_weapon_damage_bonus }), [command.actor_id]))
+        }
+        if (weaponMagic?.effects.weapon_damage_bonus) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(weaponMagic, 'weapon_damage_bonus', 'weapon-hit', { bonus: weaponMagic.effects.weapon_damage_bonus }), [command.actor_id]))
         const onHit = profile?.on_hit
         if (onHit) {
           let saved = false
@@ -5108,6 +5341,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             ...secondaryPayload,
             action_id: secondaryDamage.action_id,
             secondary_damage: true,
+            ...(secondaryDamage.magic_item_id ? {
+              magic_item_id: secondaryDamage.magic_item_id,
+              magic_item_catalog_id: secondaryDamage.magic_item_catalog_id,
+            } : {}),
           }, [targetId]))
           finalPayload = secondaryPayload
           damageOutcome = {
@@ -5352,6 +5589,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'ApplyDamage': {
       const amount = rollAmount('damage')
       const payload = resolveDamagePayload(state, targetId, amount, String(command.damage_type || 'untyped'))
+      if (payload.magic_item_resistance) {
+        for (const entry of magicItemsWithEffect(findActor(state, targetId), 'damage_resistance')
+          .filter((candidate) => String(candidate.effects.damage_resistance) === String(command.damage_type || 'untyped'))) {
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.resistance), 'MagicItemEffectApplied', magicEffectPayload(entry, 'damage_resistance', 'damage', { damage_type: command.damage_type }), [targetId]))
+        }
+      }
       events.push(eventFrom(commandWithRules(command, payload.immune || payload.resistant || payload.vulnerable ? RULE_IDS.resistance : null, payload.temporary_hp_absorbed ? RULE_IDS.temporaryHp : null), 'DamageApplied', payload, [targetId]))
       events.push(...zeroHitPointDamageConsequences(state, command, targetId, payload, { critical: command.critical_hit === true }))
       break
@@ -7737,8 +7980,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const modifier = Number.isSafeInteger(Number(actor?.initiativeBonus))
           ? Math.max(-30, Math.min(30, Number(actor.initiativeBonus)))
           : abilityModifier(actor?.abilities?.dex)
-        const roll = diceService.rollD20({ modifier, purpose: 'initiative', actorId: id, visibility: 'public' })
+        const warningItems = magicItemsWithEffect(actor, 'initiative_advantage')
+        const roll = diceService.rollD20({ modifier, purpose: 'initiative', actorId: id, advantage: warningItems.length > 0, visibility: 'public' })
         rolls.push(roll)
+        for (const entry of warningItems) events.push(eventFrom(commandWithRules(command, RULE_IDS.advantage), 'MagicItemEffectApplied', magicEffectPayload(entry, 'initiative_advantage', 'initiative'), [id]))
         entries.push({
           actor_id: id,
           total: roll.total,
@@ -7746,6 +7991,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           roll: roll.kept,
           dice: clone(roll.dice),
           roll_id: roll.roll_id,
+          ...(warningItems.length ? { magic_item_advantage: warningItems.map((entry) => entry.item.id) } : {}),
         })
       }
       const initiative = sortedInitiative(entries)
@@ -7899,11 +8145,25 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(auraHealing)
         startTurnState = applyGameEvent(startTurnState, auraHealing)
       }
-      const deathSave = deathSavingThrowAtTurnStart(startTurnState, command, nextId, diceService)
-      events.push(...deathSave.events)
-      rolls.push(...deathSave.rolls)
+      let startingActor = findActor(startTurnState, nextId)
+      const woundClosureItems = actorHp(startingActor) === 0
+        ? magicItemsWithEffect(startingActor, 'stabilize_at_turn_start')
+        : []
+      if (woundClosureItems.length && !deathSaveTracker(startTurnState, nextId).stable) {
+        for (const entry of woundClosureItems) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'MagicItemEffectApplied', magicEffectPayload(entry, 'stabilize_at_turn_start', 'turn-start'), [nextId]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HeroStabilized', {
+          hero_name: String(startingActor?.character ?? startingActor?.name ?? nextId),
+          reason: 'periapt-of-wound-closure',
+          successes: 0,
+          failures: 0,
+        }, [nextId]))
+      } else {
+        const deathSave = deathSavingThrowAtTurnStart(startTurnState, command, nextId, diceService)
+        events.push(...deathSave.events)
+        rolls.push(...deathSave.rolls)
+      }
       startTurnState = replayEvents(state, events)
-      const startingActor = findActor(startTurnState, nextId)
+      startingActor = findActor(startTurnState, nextId)
       for (const condition of [...(startTurnState.mechanics.conditions[nextId] ?? []).filter((candidate) => candidate.recurring_damage)]) {
         let effectContinues = true
         if (condition.start_turn_save) {
@@ -8289,9 +8549,77 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           effect_id: state.mechanics.concentration[command.actor_id].effect_id,
         }, [command.actor_id]))
       }
+      if (command.kind === 'short' && safeInteger(command.hit_dice, 0) > 0) {
+        const actor = findActor(state, command.actor_id)
+        const pool = state.mechanics.resources[command.actor_id]?.hit_dice ?? { current: 0, max: 0, sides: hitDieSidesFor(actor) }
+        const spent = safeInteger(command.hit_dice, 0)
+        const sides = Math.max(4, Math.min(20, safeInteger(pool.sides, hitDieSidesFor(actor))))
+        const constitution = abilityModifier(effectiveAbilityScore(actor, 'con'))
+        const modifier = constitution * spent
+        const expression = `${spent}d${sides}${modifier > 0 ? `+${modifier}` : modifier < 0 ? modifier : ''}`
+        const roll = diceService.roll(expression, 'short-rest:hit-dice', command.actor_id, command.visibility ?? 'party')
+        rolls.push(roll)
+        const woundClosureItems = magicItemsWithEffect(actor, 'hit_die_healing_multiplier')
+        const multiplier = woundClosureItems.reduce(
+          (value, entry) => Math.max(value, Math.max(1, safeInteger(entry.effects.hit_die_healing_multiplier, 1))),
+          1,
+        )
+        const requestedHealing = Math.max(0, safeInteger(roll.total, 0)) * multiplier
+        const hpBefore = actorHp(actor)
+        const hpAfter = Math.min(actorMaxHp(actor), hpBefore + requestedHealing)
+        events.push(
+          eventFrom(commandWithRules(command, RULE_IDS.healing), 'DieRolled', { ...roll, hit_dice: spent, hit_die_sides: sides }, []),
+          eventFrom(commandWithRules(command, RULE_IDS.resource, RULE_IDS.healing), 'HitDiceRolled', {
+            hit_dice: spent,
+            hit_die_sides: sides,
+            constitution_modifier_per_die: constitution,
+            expression,
+            roll_id: roll.roll_id,
+            rolled_healing: Math.max(0, safeInteger(roll.total, 0)),
+            healing_multiplier: multiplier,
+            requested_healing: requestedHealing,
+            applied_healing: hpAfter - hpBefore,
+          }, [command.actor_id]),
+          eventFrom(commandWithRules(command, RULE_IDS.resource), 'ResourceSpent', {
+            resource: 'hit_dice',
+            amount: spent,
+            before: safeInteger(pool.current, 0),
+            after: safeInteger(pool.current, 0) - spent,
+            max: safeInteger(pool.max, 0),
+            sides,
+          }, [command.actor_id]),
+        )
+        for (const entry of woundClosureItems) events.push(eventFrom(command, 'MagicItemEffectApplied', magicEffectPayload(entry, 'hit_die_healing_multiplier', 'short-rest', {
+          multiplier: entry.effects.hit_die_healing_multiplier,
+          roll_id: roll.roll_id,
+        }), [command.actor_id]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', {
+          requested_amount: requestedHealing,
+          applied_amount: hpAfter - hpBefore,
+          hp_before: hpBefore,
+          hp_after: hpAfter,
+          reason: 'short-rest-hit-dice',
+          hit_dice: spent,
+          hit_die_sides: sides,
+          roll_id: roll.roll_id,
+        }, [command.actor_id]))
+      }
       // Длительный отдых снимает одну ступень истощения — не всё сразу, как
       // многие помнят, а ровно одну. Из шестой выбираться шесть ночей.
       if (command.kind === 'long') {
+        const actor = findActor(state, command.actor_id)
+        const pool = state.mechanics.resources[command.actor_id]?.hit_dice ?? { current: 0, max: Math.max(1, safeInteger(actor?.level, 1)) }
+        const recovered = Math.min(
+          Math.max(0, safeInteger(pool.max, 0) - safeInteger(pool.current, 0)),
+          Math.max(1, Math.ceil(safeInteger(pool.max, 0) / 2)),
+        )
+        if (recovered > 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'HitDiceRecovered', {
+          amount: recovered,
+          before: safeInteger(pool.current, 0),
+          after: safeInteger(pool.current, 0) + recovered,
+          max: safeInteger(pool.max, 0),
+          reason: 'long-rest',
+        }, [command.actor_id]))
         const exhaustion = exhaustionLevelOf(state, command.actor_id)
         if (exhaustion > 0) {
           events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: `exhaustion:${exhaustion}`, reason: 'long-rest' }, [command.actor_id]))
@@ -8322,6 +8650,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       events.push(eventFrom(command, 'ItemGranted', { item }, [command.actor_id]))
       break
     }
+    case 'AwardCurrency':
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), 'CurrencyAwarded', {
+        currency_awarded: clone(command.currency),
+        amount_cp: command.amount_cp,
+        currency_before: clone(command.currency_before),
+        currency_after: clone(command.currency_after),
+        provenance: 'server-encounter-reward',
+      }, [command.actor_id]))
+      break
     case 'UpsertWorldEntity':
     case 'RecordWorldFact':
     case 'RevealWorldFact':
@@ -9308,7 +9645,12 @@ export function applyGameEvent(rawState, event) {
     case 'ResourceRestored': {
       const id = target
       state.mechanics.resources[id] ??= {}
-      state.mechanics.resources[id][payload.resource] = { current: safeInteger(payload.after, 0), max: Math.max(0, safeInteger(payload.max, 0)) }
+      state.mechanics.resources[id][payload.resource] = {
+        ...(state.mechanics.resources[id][payload.resource] ?? {}),
+        current: safeInteger(payload.after, 0),
+        max: Math.max(0, safeInteger(payload.max, 0)),
+        ...(payload.sides == null ? {} : { sides: Math.max(4, Math.min(20, safeInteger(payload.sides, 8))) }),
+      }
       break
     }
     // Единственное место, где реестр раскрытого наполняется. До 2026-07-27 его
@@ -10074,9 +10416,16 @@ export function applyGameEvent(rawState, event) {
       const recovery = actor ? combatResourceRecoveryFor(actor) : {}
       state.mechanics.resources[target] = Object.fromEntries(Object.entries(pools).map(([resource, pool]) => [resource, {
         ...pool,
-        current: kind === 'long' || resource === 'pact_slots' || recovery[resource] === 'short_or_long'
-          ? Math.max(0, safeInteger(pool.max, 0))
-          : Math.max(0, safeInteger(pool.current, 0)),
+        current: resource === 'hit_dice'
+          ? kind === 'long'
+            ? Math.min(
+                Math.max(0, safeInteger(pool.max, 0)),
+                Math.max(0, safeInteger(pool.current, 0)) + Math.max(1, Math.ceil(safeInteger(pool.max, 0) / 2)),
+              )
+            : Math.max(0, safeInteger(pool.current, 0))
+          : kind === 'long' || resource === 'pact_slots' || recovery[resource] === 'short_or_long'
+            ? Math.max(0, safeInteger(pool.max, 0))
+            : Math.max(0, safeInteger(pool.current, 0)),
       }]))
       if (kind === 'long' && actor) {
         replaceActor(state, target, (candidate) => ({ ...candidate, hp: actorMaxHp(candidate) }))
@@ -10217,6 +10566,9 @@ export function applyGameEvent(rawState, event) {
     }
     case 'ItemGranted':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: [...(Array.isArray(actor.inventory) ? actor.inventory : []), clone(payload.item)] }))
+      break
+    case 'CurrencyAwarded':
+      replaceActor(state, target, (actor) => ({ ...actor, currency: normalizeCurrency(payload.currency_after) }))
       break
     case 'SpellSelectionsUpdated':
       replaceActor(state, target, (actor) => ({
@@ -10469,6 +10821,10 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'HeroReplaced': return `${payload.replacement_name || 'Новый герой'} присоединяется к группе`
     case 'RestStarted': return `${named(event.actor_id) || 'Герой'} начинает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых`
     case 'RestCompleted': return `${named(event.actor_id) || 'Герой'} завершает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых`
+    case 'HitDiceRolled': return `${named(event.actor_id) || 'Герой'} тратит ${payload.hit_dice || 0} кост. хитов и восстанавливает ${payload.applied_healing || 0} ОЗ`
+    case 'HitDiceRecovered': return `${named(event.actor_id) || 'Герой'} восстанавливает ${payload.amount || 0} кост. хитов`
+    case 'CurrencyAwarded': return `${named(event.actor_id) || 'Герой'} получает монеты на сумму ${payload.amount_cp || 0} мм`
+    case 'MagicItemEffectApplied': return `Срабатывает магический предмет «${payload.item_name || payload.catalog_id || 'предмет'}»`
     case 'RulingRecorded': return 'Для действия сохранён ограниченный следующий шаг.'
     case 'ObjectiveUpdated': return `Цель отряда: ${payload.objective || 'следующий шаг не задан'}`
     case 'ActionDeclared': return 'Намерение героя принято к рассмотрению.'

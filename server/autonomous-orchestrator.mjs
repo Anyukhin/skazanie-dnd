@@ -39,6 +39,7 @@ import {
 import { planImprovisedEffect, resolveActionCost } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { nearestSceneObjectCommand, sceneInteractionNarration } from './scene-interactions.mjs'
+import { planEncounterLootDistribution, serverEncounterCoins } from './loot-tables.mjs'
 
 const clone = (value) => structuredClone(value)
 
@@ -916,6 +917,14 @@ export class AutonomousCampaignOrchestrator {
       loaded = await this.load(campaignId)
     }
     const reward = serverRewardForEncounter(loaded.state, outcome)
+    const coinReward = outcome === 'enemies_defeated'
+      ? serverEncounterCoins({
+          theme: loaded.state.mechanics?.encounter?.theme,
+          difficulty: loaded.state.mechanics?.encounter?.difficulty,
+          encounterId: reward.encounter_id,
+          enemyCount: Math.max(1, loaded.state.enemies?.length ?? 0),
+        })
+      : { currency: { copper: 0, silver: 0, gold: 0, platinum: 0 }, rolls: [] }
     const duplicate = await this.eventStore.getByIdempotencyKey?.(campaignId, `${idempotencyKey}:outcome`)
     if (duplicate) return { ...duplicate, state: (await this.load(campaignId)).state }
     const completionEvents = [event(`${idempotencyKey}:outcome`, 'EncounterOutcomeRecorded', {
@@ -932,7 +941,9 @@ export class AutonomousCampaignOrchestrator {
     completionEvents.push(event(`${idempotencyKey}:loot`, 'ServerLootGenerated', {
       encounter_id: reward.encounter_id,
       loot: reward.loot,
-      provenance: { source: 'server-loot-table', policy: 'encounter-loot-v1' },
+      coins: coinReward.currency,
+      coin_rolls: coinReward.rolls,
+      provenance: { source: 'server-loot-table', policy: 'encounter-loot-v2' },
     }))
     completionEvents.push(event(`${idempotencyKey}:transition`, 'TransitionUnlocked', {
       transition_id: `transition-${reward.encounter_id || digest(idempotencyKey)}`,
@@ -942,16 +953,32 @@ export class AutonomousCampaignOrchestrator {
     const outcomeCommit = await this.commitEvents(campaignId, `${idempotencyKey}:outcome`, completionEvents)
 
     loaded = await this.load(campaignId)
-    const ownerId = lootOwnerId(loaded.state)
-    const commands = reward.loot.map((item, index) => ({ command_type: 'GrantItem', actor_id: ownerId, item: {
-      id: `loot-${reward.encounter_id}-${index + 1}`,
-      catalog_id: item.catalog_id,
-      name: item.name,
-      quantity: item.quantity,
-      // Тип приходит из таблицы добычи: прежде щит и меч попадали в инвентарь
-      // «расходником», и интерфейс предлагал их выпить.
-      type: item.type ?? 'consumable', rarity: 'обычный', weight: 0, equipped: false,
-    } }))
+    const ineligibleActorIds = partyOrderIds(loaded.state)
+      .filter((id) => isUnresolvedDeadHero(loaded.state, id))
+    const allocations = planEncounterLootDistribution({
+      encounterId: reward.encounter_id,
+      loot: reward.loot,
+      coins: coinReward.currency,
+      partyMemberIds: partyOrderIds(loaded.state),
+      ineligibleActorIds,
+    })
+    const commands = allocations.flatMap((allocation) => [
+      ...allocation.items.map((item) => ({
+        command_type: 'GrantItem',
+        actor_id: allocation.actor_id,
+        item: {
+          ...item,
+          type: item.type ?? 'other',
+          rarity: item.rarity ?? 'обычный',
+          weight: Math.max(0, Number(item.weight) || 0),
+          equipped: false,
+          attuned_to: null,
+        },
+      })),
+      ...(Object.values(allocation.currency).some((amount) => Number(amount) > 0)
+        ? [{ command_type: 'AwardCurrency', actor_id: allocation.actor_id, currency: allocation.currency }]
+        : []),
+    ])
     const quest = openQuest(loaded.state)
     if (quest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })
     let subject = currentSubject(loaded.state)

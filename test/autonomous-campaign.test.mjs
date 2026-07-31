@@ -217,6 +217,66 @@ test('социальную сцену нельзя открыть с NPC, кот
   assert.equal(marta?.location, 'Old Road')
 })
 
+test('награда встречи атомарно делится между героями и повтор idempotency key не удваивает вещи или монеты', async (t) => {
+  const initial = campaign()
+  const template = initial.players[0]
+  initial.players = [
+    template,
+    { ...structuredClone(template), id: 'hero-2', character: 'Брин', inventory: [], x: 1 },
+    { ...structuredClone(template), id: 'hero-3', character: 'Кира', inventory: [], x: 2 },
+  ]
+  initial.partyMemberIds = initial.players.map((hero) => hero.id)
+  initial.mechanics.positions = {
+    hero: { x: 0, y: 0 },
+    'hero-2': { x: 1, y: 0 },
+    'hero-3': { x: 2, y: 0 },
+  }
+  initial.mechanics.encounter = {
+    id: 'encounter-reward-split',
+    encounter_id: 'encounter-reward-split',
+    difficulty: 'hard',
+    theme: 'warband',
+    xp_spent: 300,
+    enemy_ids: ['fallen-raider'],
+  }
+  initial.enemies = [{
+    id: 'fallen-raider',
+    name: 'Павший налётчик',
+    hp: 0,
+    maxHp: 20,
+    alive: false,
+    provenance: { xp: 300 },
+  }]
+  const { eventStore, autonomy } = await fixture(t, normalizeCampaignState(initial))
+
+  await autonomy.completeEncounter({
+    campaignId: 'AUTONOMY-30',
+    outcome: 'enemies_defeated',
+    idempotencyKey: 'reward-split',
+  })
+  const after = await eventStore.load('AUTONOMY-30')
+  const events = await eventStore.getEvents('AUTONOMY-30')
+  const itemEvents = events.filter((event) => event.event_type === 'ItemGranted')
+  const currencyEvents = events.filter((event) => event.event_type === 'CurrencyAwarded')
+  assert.ok(itemEvents.length >= 4)
+  assert.equal(currencyEvents.length, 3)
+  assert.deepEqual(new Set(itemEvents.map((event) => event.actor_id)), new Set(['hero', 'hero-2', 'hero-3']))
+  assert.deepEqual(new Set(currencyEvents.map((event) => event.actor_id)), new Set(['hero', 'hero-2', 'hero-3']))
+  assert.equal(after.state.players.every((hero) => hero.inventory.some((entry) => String(entry.id).startsWith('loot-'))), true)
+  assert.equal(after.state.players.every((hero) => hero.currency.gold + hero.currency.platinum > 0), true)
+
+  const beforeDuplicateCount = events.length
+  const duplicate = await autonomy.completeEncounter({
+    campaignId: 'AUTONOMY-30',
+    outcome: 'enemies_defeated',
+    idempotencyKey: 'reward-split',
+  })
+  assert.deepEqual(duplicate.state, after.state)
+  assert.equal((await eventStore.getEvents('AUTONOMY-30')).length, beforeDuplicateCount)
+  const replayed = await eventStore.replay('AUTONOMY-30', { use_snapshots: false })
+  assert.deepEqual(replayed.state, after.state)
+})
+
 test('climax resolves a triggered quest and completes the campaign replay-identically', async (t) => {
   const initial = campaign()
   initial.worldMemory.quests[0].clock = { current: 7, max: 8, label: 'Evidence', triggered: false }

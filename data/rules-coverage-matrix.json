@@ -41,9 +41,9 @@
       "id": "equipment",
       "mandatory_for_release": true,
       "coverage": "partial",
-      "expected_count": 12,
+      "expected_count": 90,
       "runtime_count_source": "SRD_EQUIPMENT_CATALOG",
-      "notes": "Минимальный торговый каталог, не полный список снаряжения SRD."
+      "notes": "Расширенный торговый каталог оружия, доспехов, походного снаряжения, ценностей и 15 магических предметов; это всё ещё не полный список SRD."
     },
     {
       "id": "feats",

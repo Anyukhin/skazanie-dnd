@@ -29,7 +29,29 @@ const SETTLEMENTS = deepFreeze({
 
 export const SHOP_SETTLEMENT_TYPES = Object.freeze(Object.keys(SETTLEMENTS))
 
-const ALL_CATALOG_IDS = Object.freeze(Object.keys(SRD_EQUIPMENT_CATALOG))
+// Presentation metadata is server-owned. The authoritative price is always
+// copied separately from SRD_EQUIPMENT_CATALOG below.
+const ITEM_PRESENTATION = deepFreeze({
+  'srd_5_2_1:dagger': { name: 'Кинжал', type: 'weapon', properties: 'Простое рукопашное оружие.' },
+  'srd_5_2_1:longsword': { name: 'Длинный меч', type: 'weapon', properties: 'Воинское рукопашное оружие.' },
+  'srd_5_2_1:longbow': { name: 'Длинный лук', type: 'weapon', properties: 'Воинское дальнобойное оружие.' },
+  'srd_5_2_1:shortbow': { name: 'Короткий лук', type: 'weapon', properties: 'Простое дальнобойное оружие.' },
+  'srd_5_2_1:leather-armor': { name: 'Кожаный доспех', type: 'armor', properties: 'Лёгкий доспех.' },
+  'srd_5_2_1:shield': { name: 'Щит', type: 'armor', properties: 'Защитное снаряжение.' },
+  'srd_5_2_1:explorers-pack': { name: 'Набор путешественника', type: 'tool', properties: 'Комплект дорожного снаряжения.' },
+  'srd_5_2_1:potion-of-healing': { name: 'Зелье лечения', type: 'consumable', properties: 'Восстанавливает 2к4 + 2 хита.' },
+  'srd_5_2_1:rations-one-day': { name: 'Сухой паёк, 1 день', type: 'consumable', properties: 'Дорожная пища на один день.' },
+  'srd_5_2_1:rope-hempen-50-feet': { name: 'Пеньковая верёвка, 50 футов', type: 'tool', properties: 'Пятьдесят футов пеньковой верёвки.' },
+  'srd_5_2_1:torch': { name: 'Факел', type: 'tool', properties: 'Обычный источник света.' },
+  'srd_5_2_1:arrows-20': { name: 'Стрелы, 20 штук', type: 'other', properties: 'Боеприпасы для лука.' },
+})
+
+// Каталог цен шире автоматически оформленного прилавка. Новые предметы уже
+// участвуют в добыче, продаже и явно настроенном stock, но general-магазин не
+// должен выбирать позицию без русской карточки представления.
+const ALL_CATALOG_IDS = Object.freeze(
+  Object.keys(ITEM_PRESENTATION).filter((catalogId) => Object.hasOwn(SRD_EQUIPMENT_CATALOG, catalogId)),
+)
 
 const THEMES = deepFreeze({
   general: ALL_CATALOG_IDS,
@@ -60,23 +82,6 @@ const THEMES = deepFreeze({
 })
 
 export const SHOP_THEMES = Object.freeze(Object.keys(THEMES))
-
-// Presentation metadata is server-owned. The authoritative price is always
-// copied separately from SRD_EQUIPMENT_CATALOG below.
-const ITEM_PRESENTATION = deepFreeze({
-  'srd_5_2_1:dagger': { name: 'Кинжал', type: 'weapon', properties: 'Простое рукопашное оружие.' },
-  'srd_5_2_1:longsword': { name: 'Длинный меч', type: 'weapon', properties: 'Воинское рукопашное оружие.' },
-  'srd_5_2_1:longbow': { name: 'Длинный лук', type: 'weapon', properties: 'Воинское дальнобойное оружие.' },
-  'srd_5_2_1:shortbow': { name: 'Короткий лук', type: 'weapon', properties: 'Простое дальнобойное оружие.' },
-  'srd_5_2_1:leather-armor': { name: 'Кожаный доспех', type: 'armor', properties: 'Лёгкий доспех.' },
-  'srd_5_2_1:shield': { name: 'Щит', type: 'armor', properties: 'Защитное снаряжение.' },
-  'srd_5_2_1:explorers-pack': { name: 'Набор путешественника', type: 'tool', properties: 'Комплект дорожного снаряжения.' },
-  'srd_5_2_1:potion-of-healing': { name: 'Зелье лечения', type: 'consumable', properties: 'Восстанавливает 2к4 + 2 хита.' },
-  'srd_5_2_1:rations-one-day': { name: 'Сухой паёк, 1 день', type: 'consumable', properties: 'Дорожная пища на один день.' },
-  'srd_5_2_1:rope-hempen-50-feet': { name: 'Пеньковая верёвка, 50 футов', type: 'tool', properties: 'Пятьдесят футов пеньковой верёвки.' },
-  'srd_5_2_1:torch': { name: 'Факел', type: 'tool', properties: 'Обычный источник света.' },
-  'srd_5_2_1:arrows-20': { name: 'Стрелы, 20 штук', type: 'other', properties: 'Боеприпасы для лука.' },
-})
 
 const PERSONAS = deepFreeze([
   {
