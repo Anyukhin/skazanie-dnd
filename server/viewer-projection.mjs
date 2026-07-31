@@ -1,6 +1,7 @@
 // @ts-check
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
+import { sceneNpcsForViewer } from './npc-positioning.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
 import {
@@ -548,7 +549,10 @@ function publicAutonomyFor(autonomy) {
  */
 export const PROJECTED_STATE_KEYS = Object.freeze([
   // Своя публичная форма.
-  'scene', 'adventure', 'worldMap', 'worldMemory', 'social', 'merchants',
+  'scene', 'adventure', 'worldMap', 'worldMemory', 'social', 'merchants', 'scene_npcs',
+  // Внутренний реестр точных HP и всех location posts наружу не копируется:
+  // вместо него ниже собирается bounded `scene_npcs` только текущей сцены.
+  'npc_world',
   'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
   // Отдаются как есть: общий контекст отряда без скрытого.
   'sessionCode', 'campaign', 'partyName', 'partyMemberIds', 'partyDecisionPolicy',
@@ -587,7 +591,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return state
   const visible = projectVisibleState(state, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}
-  const { locationMaps: _locationMaps, ...publicState } = visible
+  const { locationMaps: _locationMaps, npc_world: _npcWorld, ...publicState } = visible
   const scene = publicSceneFor(visible.scene ?? state.scene)
   const location = scene.location
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
@@ -625,6 +629,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       isPartyMember: true,
       state,
     }),
+    scene_npcs: sceneNpcsForViewer(state),
     merchants,
     enemies,
     mechanics,
@@ -660,6 +665,10 @@ function eventForViewer(event, user, actorId, state = {}) {
       ...publicEncounterFor(payload.encounter),
       enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId)),
     }
+  }
+  if (visible.event_type === 'NpcPlaced') delete payload.vitality
+  if (visible.event_type === 'NpcHarmed') {
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
   }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))

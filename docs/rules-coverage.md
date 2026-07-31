@@ -124,15 +124,16 @@ Domain integration flow дополнительно связывает legacy imp
 
 ## Events, replay и объяснимость
 
-Rules Engine создаёт события для checks, attacks, damage, healing, temporary HP, resources, generic conditions, автоматических concentration saves и завершения эффектов, encounter/combat/turn, movement, time, reveal/objective/entities/items/rulings и торговли. Reducer формирует persistent encounter registry, список противников, `battleLog`, `mapFeedback`, `economyLog`, appraisal registry, позиции, enemy `alive`, initiative/action economy, кошельки героев, кассы торговцев и merchant stock. `EncounterCreated` и `CombatStarted` создаются одним commit, а FileEventStore хранит immutable commits, idempotency metadata, snapshots и replay state.
+Rules Engine создаёт события для checks, attacks, damage, healing, temporary HP, resources, generic conditions, автоматических concentration saves и завершения эффектов, encounter/combat/turn, movement, time, reveal/objective/entities/items/rulings, торговли и мирных NPC. `NpcPlaced`/`NpcMoved` хранят пост по `location_id`; `NpcHarmed`/`NpcDied` — минимальную server-only живучесть и подтверждённые последствия collateral. Reducer формирует persistent encounter registry, список противников, `battleLog`, `mapFeedback`, `economyLog`, appraisal registry, позиции боевых акторов, bounded NPC posts/stances, enemy `alive`, initiative/action economy, кошельки героев, кассы торговцев и merchant stock. `EncounterCreated` и `CombatStarted` создаются одним commit, а FileEventStore хранит immutable commits, idempotency metadata, snapshots и replay state.
 
-Проверено unit-тестами: reducer/replay parity, optimistic conflict, idempotent retry/conflict, reopen store и snapshots. Domain/real-HTTP paths проверяют server-derived encounter proposal, safe spawn, atomic start, direct damage и player combat commits, NPC turns, player projection, повтор idempotency key и идентичный authoritative combat state после replay/перезапуска HTTP-процесса. Не проверены:
+Проверено unit-тестами: reducer/replay parity, optimistic conflict, idempotent retry/conflict, reopen store и snapshots; для мирных NPC — детерминированный пост у реквизита, отказ игроку в system-only командах, сохранение поста после возврата, schema-ready `NpcMoved`, область/промах, смерть с world-memory provenance, bounded panic, безопасная viewer projection и повтор commit без второго урона. Domain/real-HTTP paths проверяют server-derived encounter proposal, safe spawn, atomic start, direct damage и player combat commits, NPC turns, player projection, повтор idempotency key и идентичный authoritative combat state после replay/перезапуска HTTP-процесса. Не проверены:
 
 - crash между event commit и legacy room projection;
 - multi-process append;
 - bulk import/cutover реальных room files;
 - unknown event schema upgrade;
 - visibility-filtered explanation для всех пяти уровней.
+- браузерная фишка мирного NPC, её выбор как цели и визуальная подача паники;
 
 ## Ссылочная целостность rule IDs
 
