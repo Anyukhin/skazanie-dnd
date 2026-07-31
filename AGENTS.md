@@ -41,7 +41,8 @@ pnpm dev:agent        # только сервер, server/index.mjs
 pnpm dev:client       # только vite
 pnpm start            # прод-запуск сервера
 
-pnpm test                              # весь набор, node --test, concurrency 4
+pnpm test                              # функциональный набор с concurrency 4,
+                                       # затем tactical-map budget в отдельном процессе
 node --test test/rules-engine.test.mjs # один файл — так проверять точечные правки
 pnpm build                             # tsc --noEmit + vite build
 pnpm typecheck:server                  # tsc по tsconfig.server.json (только файлы с // @ts-check)
