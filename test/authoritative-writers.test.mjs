@@ -17,6 +17,10 @@ const serverDir = fileURLToPath(new URL('../server/', import.meta.url))
 
 /** Кто именно сегодня имеет право писать в журнал. Числа — из ручной сверки. */
 const KNOWN_WRITERS = Object.freeze({
+  // Будущий единственный писатель. Появился шагом 3 плана и пока не подключён к
+  // боевым путям: по мере шагов 4–5 остальные строки этой таблицы должны
+  // обнулиться, а здесь останется одна.
+  'authoritative-executor.mjs': 3,
   // Командные писатели: план → resolvePlan → commit.
   'game-orchestrator.mjs': 2,
   'autonomous-orchestrator.mjs': 3,
