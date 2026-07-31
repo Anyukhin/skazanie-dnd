@@ -5,6 +5,7 @@ import { npcSocialForViewer } from './npc-social.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
+import { hitPointDicePoolForActor } from './rules-engine.mjs'
 import {
   MATERIALS,
   SIZE_CLASSES,
@@ -633,7 +634,14 @@ function playerItemsWithCapabilities(players) {
  */
 export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
-  if (user?.role === 'admin') return { ...state, players: playerItemsWithCapabilities(state.players) }
+  if (user?.role === 'admin') return {
+    ...state,
+    players: playerItemsWithCapabilities(state.players),
+    mechanics: {
+      ...(state.mechanics ?? {}),
+      hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
+    },
+  }
   // `locationMaps` содержит ещё одну полную копию каждой тактической карты, а
   // `scene` ниже всё равно пересобирается строгим whitelist-проектором.
   // Не копируем одни и те же 10 000 клеток рекурсивно, чтобы тут же заменить
@@ -660,6 +668,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       const { enemy_knowledge: _enemyKnowledge, ...publicMechanics } = visible.mechanics
       return {
       ...publicMechanics,
+      ...(actorId ? { hit_point_dice: { [actorId]: hitPointDicePoolForActor(state, actorId) } } : { hit_point_dice: {} }),
       encounter: publicEncounterFor(visible.mechanics.encounter),
       ...(visible.mechanics.combat && typeof visible.mechanics.combat === 'object' ? {
         combat: {
@@ -742,6 +751,11 @@ function eventForViewer(event, user, actorId, state = {}) {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
   }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
+  if (['HitPointDieSpent', 'HitPointDiceRestored'].includes(String(visible.event_type))
+    && String(visible.actor_id ?? '') !== String(actorId)
+    && !targetIds.includes(String(actorId))) {
+    for (const key of ['pool_before', 'pool_after', 'restored']) delete payload[key]
+  }
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   const enemyTargetId = targetIds.find((/** @type {string} */ id) => enemyIds.has(id)) ?? (enemyIds.has(String(payload.target_id ?? '')) ? String(payload.target_id) : '')
   const enemyActor = enemyIds.has(String(visible.actor_id ?? ''))

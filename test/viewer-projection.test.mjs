@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { campaignStateForViewer, mechanicsForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
 
 const user = { role: 'player', heroIds: ['hero'] }
 
@@ -377,6 +377,42 @@ test('reward projection keeps coin transcript but hides frozen stat blocks and p
   }])
   assert.doesNotMatch(JSON.stringify(projected), /secret-goblin|9_999|never-project/u)
   assert.equal(mechanicsForViewer(raw, { role: 'admin' }, 'hero', state)[0].payload.plan.enemies[0].xp, 9_999)
+})
+
+test('Hit Dice pools stay private to their hero in event and explanation projections', () => {
+  const state = privateState()
+  const raw = [
+    {
+      event_type: 'HitPointDieSpent', actor_id: 'fighter', target_ids: ['fighter'], visibility: 'public',
+      payload: {
+        applied_healing: 7,
+        pool_before: { schema_version: 1, maximum: 4, spent: 1, die_size: 10 },
+        pool_after: { schema_version: 1, maximum: 4, spent: 2, die_size: 10 },
+      },
+    },
+    {
+      event_type: 'HitPointDiceRestored', actor_id: 'fighter', target_ids: ['fighter'], visibility: 'public',
+      payload: {
+        restored: 2,
+        pool_before: { schema_version: 1, maximum: 4, spent: 2, die_size: 10 },
+        pool_after: { schema_version: 1, maximum: 4, spent: 0, die_size: 10 },
+      },
+    },
+  ]
+
+  const otherHero = mechanicsForViewer(raw, user, 'hero', state)
+  assert.equal(otherHero[0].payload.applied_healing, 7)
+  for (const event of otherHero) {
+    assert.equal(event.payload.pool_before, undefined)
+    assert.equal(event.payload.pool_after, undefined)
+    assert.equal(event.payload.restored, undefined)
+  }
+  assert.doesNotMatch(JSON.stringify(turnExplanationForViewer({ events: raw }, user, 'hero', state)), /pool_before|pool_after|restored/u)
+
+  const owner = mechanicsForViewer(raw, { role: 'player', heroIds: ['fighter'] }, 'fighter', state)
+  assert.equal(owner[0].payload.pool_after.spent, 2)
+  assert.equal(owner[1].payload.restored, 2)
+  assert.equal(mechanicsForViewer(raw, { role: 'admin' }, 'hero', state)[0].payload.pool_after.spent, 2)
 })
 
 test('admin projection retains trusted state and also receives item capabilities', () => {

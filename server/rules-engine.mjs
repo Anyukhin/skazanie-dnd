@@ -320,6 +320,7 @@ const COMMAND_RULES = Object.freeze({
   EndTurn: [RULE_IDS.turns],
   AdvanceTime: [RULE_IDS.resource],
   StartRest: [RULE_IDS.resource],
+  SpendHitPointDie: [RULE_IDS.resource, RULE_IDS.healing],
   CompleteRest: [RULE_IDS.resource],
   StartConcentration: [RULE_IDS.concentration],
   EndConcentration: [RULE_IDS.concentration],
@@ -371,7 +372,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'CompleteRest',
+  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -391,6 +392,26 @@ const MERCHANT_LIFECYCLE_COMMAND_TYPES = new Set([
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability',
 ])
 const ENCOUNTER_LIFECYCLE_COMMAND_TYPES = new Set(['CreateEncounter'])
+
+export const REST_POLICY_ID = 'srd-5.2.1-rest-v2'
+export const REST_EVENT_SCHEMA_VERSION = 2
+export const HIT_POINT_DIE_EVENT_SCHEMA_VERSION = 1
+
+const REST_MINIMUM_MINUTES = Object.freeze({ short: 60, long: 480 })
+const CLASS_HIT_POINT_DIE_SIZES = Object.freeze({
+  barbarian: 12,
+  fighter: 10,
+  paladin: 10,
+  ranger: 10,
+  bard: 8,
+  cleric: 8,
+  druid: 8,
+  monk: 8,
+  rogue: 8,
+  warlock: 8,
+  sorcerer: 6,
+  wizard: 6,
+})
 
 const SCENE_ADVANCE_FIELDS = new Set([
   'title', 'location', 'location_id', 'mood', 'objective', 'transition', 'arrival', 'hook', 'theme', 'danger', 'seed',
@@ -1063,6 +1084,7 @@ function defaultMechanics() {
     schema_version: 1,
     temporary_hp: {},
     resources: {},
+    hit_point_dice: {},
     resting: {},
     conditions: {},
     defenses: {},
@@ -1153,10 +1175,30 @@ export function normalizeCampaignState(input = {}) {
   const mechanics = { ...defaultMechanics(), ...(state.mechanics && typeof state.mechanics === 'object' ? state.mechanics : {}) }
   mechanics.temporary_hp = { ...(state.mechanics?.temporary_hp ?? {}) }
   mechanics.resources = clone(state.mechanics?.resources ?? {})
+  mechanics.hit_point_dice = Object.fromEntries(Object.entries(clone(state.mechanics?.hit_point_dice ?? {}))
+    .filter(([id, pool]) => id && pool && typeof pool === 'object')
+    .flatMap(([id, pool]) => {
+      const actor = (state.players ?? []).find((candidate) => actorId(candidate) === String(id))
+      if (!actor) return []
+      const maximum = Math.max(1, Math.min(12, safeInteger(actor.level, 1)))
+      return [[String(id), {
+        schema_version: 1,
+        maximum,
+        spent: Math.max(0, Math.min(maximum, safeInteger(pool.spent, 0))),
+        die_size: CLASS_HIT_POINT_DIE_SIZES[characterClassKey(actor)] ?? 8,
+      }]]
+    }))
   mechanics.resting = Object.fromEntries(Object.entries(clone(state.mechanics?.resting ?? {}))
     .filter(([id, rest]) => id && rest && typeof rest === 'object')
     .map(([id, rest]) => [id, {
       kind: rest.kind === 'long' ? 'long' : 'short',
+      ...(Number(rest.schema_version) >= REST_EVENT_SCHEMA_VERSION ? {
+        schema_version: REST_EVENT_SCHEMA_VERSION,
+        policy_id: REST_POLICY_ID,
+        rest_id: String(rest.rest_id ?? '').slice(0, 180),
+        started_at_minutes: Math.max(0, safeInteger(rest.started_at_minutes, 0)),
+        minimum_duration_minutes: rest.kind === 'long' ? REST_MINIMUM_MINUTES.long : REST_MINIMUM_MINUTES.short,
+      } : {}),
       ...(rest.reason === 'knockout' ? {
         reason: 'knockout',
         recovery_minutes_remaining: Math.max(1, Math.min(60, safeInteger(rest.recovery_minutes_remaining, 60))),
@@ -2511,7 +2553,7 @@ function needsActor(type) {
   return new Set(['DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
-    'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn', 'StartRest', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
+    'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3159,7 +3201,7 @@ export function validateCommand(input, rawState, context = {}) {
     }
   }
 
-  if (command.command_type === 'StartRest' || command.command_type === 'CompleteRest') {
+  if (['StartRest', 'SpendHitPointDie', 'CompleteRest'].includes(command.command_type)) {
     const kind = command.kind === 'long' ? 'long' : 'short'
     command.kind = kind
     if (state.mechanics.combat.active) {
@@ -3175,8 +3217,37 @@ export function validateCommand(input, rawState, context = {}) {
     if (command.command_type === 'CompleteRest' && !activeRest) {
       throw new RulesValidationError('Сначала нужно начать отдых', 'REST_NOT_STARTED')
     }
+    if (command.command_type === 'CompleteRest' && activeRest?.reason === 'knockout') {
+      throw new RulesValidationError('Восстановление после нокаута завершается сервером по таймеру, лечением или первой помощью', 'KNOCKOUT_REST_AUTOMATIC')
+    }
     if (command.command_type === 'CompleteRest' && activeRest?.kind !== kind) {
       throw new RulesValidationError('Тип завершённого отдыха не совпадает с начатым', 'REST_KIND_MISMATCH')
+    }
+    if (command.command_type !== 'StartRest' && activeRest) {
+      const expectedRestId = String(command.rest_id ?? activeRest.rest_id ?? '')
+      if (Number(activeRest.schema_version) >= REST_EVENT_SCHEMA_VERSION && expectedRestId !== String(activeRest.rest_id ?? '')) {
+        throw new RulesValidationError('Идентификатор отдыха не совпадает с активным', 'REST_ID_MISMATCH')
+      }
+      command.rest_id = expectedRestId
+    }
+    if (command.command_type === 'CompleteRest' && Number(activeRest?.schema_version) >= REST_EVENT_SCHEMA_VERSION) {
+      const minimum = REST_MINIMUM_MINUTES[activeRest.kind]
+      if (elapsedRestMinutes(state, activeRest) < minimum) {
+        throw new RulesValidationError('Отдых ещё не достиг минимальной длительности', 'REST_DURATION_INSUFFICIENT')
+      }
+    }
+    if (command.command_type === 'SpendHitPointDie') {
+      const actor = playerActor(state, command.actor_id)
+      if (!activeRest || activeRest.kind !== 'short' || Number(activeRest.schema_version) < REST_EVENT_SCHEMA_VERSION) {
+        throw new RulesValidationError('Кость хитов можно тратить только во время короткого отдыха', 'HIT_POINT_DIE_REST_REQUIRED')
+      }
+      if (elapsedRestMinutes(state, activeRest) < REST_MINIMUM_MINUTES.short) {
+        throw new RulesValidationError('Короткий отдых ещё не завершён', 'REST_DURATION_INSUFFICIENT')
+      }
+      if (!actor || actorHp(actor) <= 0) throw new RulesValidationError('Герой без хитов не может тратить кости хитов', 'HIT_POINT_DIE_ACTOR_INCAPACITATED')
+      if (actorHp(actor) >= actorMaxHp(actor)) throw new RulesValidationError('У героя уже полные хиты', 'HIT_POINTS_ALREADY_FULL')
+      const pool = hitPointDicePoolForActor(state, command.actor_id)
+      if (!pool || pool.spent >= pool.maximum) throw new RulesValidationError('Кости хитов закончились', 'HIT_POINT_DICE_EXHAUSTED')
     }
   }
 
@@ -3621,6 +3692,24 @@ function actorHp(actor) {
 
 function actorMaxHp(actor) {
   return Math.max(1, safeInteger(actor?.maxHp ?? actor?.max_hp, 1))
+}
+
+export function hitPointDicePoolForActor(state, actorIdValue) {
+  const id = String(actorIdValue ?? '')
+  const actor = (state?.players ?? []).find((candidate) => actorId(candidate) === id)
+  if (!actor) return null
+  const maximum = Math.max(1, Math.min(12, safeInteger(actor.level, 1)))
+  const stored = state?.mechanics?.hit_point_dice?.[id]
+  return {
+    schema_version: 1,
+    maximum,
+    spent: Math.max(0, Math.min(maximum, safeInteger(stored?.spent, 0))),
+    die_size: CLASS_HIT_POINT_DIE_SIZES[characterClassKey(actor)] ?? 8,
+  }
+}
+
+function elapsedRestMinutes(state, rest) {
+  return Math.max(0, safeInteger(state.mechanics?.world_time?.elapsed_minutes, 0) - safeInteger(rest?.started_at_minutes, 0))
 }
 
 function effectiveArmorClass(state, actor, id) {
@@ -4929,6 +5018,63 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         ...eventFrom({ ...sourceCommand, visibility: 'gm_only' }, 'ItemDawnRechargeResolved', recharge.payload, recharge.payload.items.map((item) => item.owner_id)),
         event_schema_version: ITEM_DAWN_RECHARGE_EVENT_SCHEMA_VERSION,
       })
+    }
+  }
+
+  const appendWorldTimeConsequences = (sourceCommand, amount, unit) => {
+    const elapsedMinutes = durationInMinutes(amount, unit)
+    appendTimeAdvance(sourceCommand, amount, unit, elapsedMinutes)
+    if (elapsedMinutes <= 0) return
+    for (const socialEvent of npcPromiseDeadlineEvents(state, elapsedMinutes)) {
+      events.push(eventFrom({ ...sourceCommand, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+    }
+    for (const [heroId, rawTracker] of Object.entries(state.mechanics.death.saving_throws ?? {})) {
+      const tracker = deathSaveTracker(state, heroId)
+      const hero = playerActor(state, heroId)
+      if (!tracker.stable || !hero || actorHp(hero) !== 0 || isDeadHero(state, heroId)) continue
+      let remaining = Math.max(0, safeInteger(rawTracker?.recovery_minutes_remaining, 0))
+      if (remaining <= 0) {
+        const recoveryRoll = diceService.roll('1d4', 'stable-recovery-hours', heroId, sourceCommand.visibility ?? 'public')
+        rolls.push(recoveryRoll)
+        remaining = recoveryRoll.total * 60
+        events.push(eventFrom(commandWithRules(sourceCommand, RULE_IDS.zeroHp), 'StableRecoveryScheduled', {
+          ...recoveryRoll,
+          recovery_hours: recoveryRoll.total,
+          recovery_minutes: remaining,
+        }, [heroId]))
+      }
+      if (elapsedMinutes >= remaining) {
+        events.push(eventFrom(commandWithRules(sourceCommand, RULE_IDS.healing, RULE_IDS.zeroHp), 'HealingApplied', {
+          requested_amount: 1,
+          applied_amount: Math.min(1, actorMaxHp(hero)),
+          hp_before: 0,
+          hp_after: Math.min(1, actorMaxHp(hero)),
+          reason: 'stable-recovery-after-1d4-hours',
+        }, [heroId]))
+      } else {
+        events.push(eventFrom(commandWithRules(sourceCommand, RULE_IDS.zeroHp), 'StableRecoveryProgressed', {
+          elapsed_minutes: elapsedMinutes,
+          recovery_minutes_before: remaining,
+          recovery_minutes_remaining: remaining - elapsedMinutes,
+        }, [heroId]))
+      }
+    }
+    for (const [targetIdValue, rest] of Object.entries(state.mechanics.resting ?? {})) {
+      if (rest?.reason !== 'knockout') continue
+      const remaining = Math.max(1, safeInteger(rest.recovery_minutes_remaining, 60))
+      if (elapsedMinutes >= remaining) {
+        events.push(eventFrom(commandWithRules(sourceCommand, RULE_IDS.resource, RULE_IDS.conditions), 'RestCompleted', {
+          kind: 'short',
+          reason: 'knockout',
+          automatic: true,
+        }, [targetIdValue]))
+      } else {
+        events.push(eventFrom(commandWithRules(sourceCommand, RULE_IDS.resource), 'KnockoutRecoveryProgressed', {
+          elapsed_minutes: elapsedMinutes,
+          recovery_minutes_before: remaining,
+          recovery_minutes_remaining: remaining - elapsedMinutes,
+        }, [targetIdValue]))
+      }
     }
   }
 
@@ -8218,12 +8364,36 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (usedByActor) throw new RulesValidationError('Этот герой уже отдыхал у костра', 'SCENE_OBJECT_ALREADY_USED')
         if (state.mechanics.resting[command.actor_id]) throw new RulesValidationError('Герой уже отдыхает', 'REST_ALREADY_STARTED')
         operated()
-        events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'RestStarted', {
-          kind: 'short', source_prop_id: prop.id,
-        }, [command.actor_id]))
-        events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'RestCompleted', {
-          kind: 'short', source_prop_id: prop.id,
-        }, [command.actor_id]))
+        const startedAtMinutes = Math.max(0, safeInteger(state.mechanics.world_time?.elapsed_minutes, 0))
+        const restId = `rest:${command.command_id}:campfire`
+        events.push({
+          ...eventFrom(commandWithRules(command, RULE_IDS.resource), 'RestStarted', {
+            schema_version: REST_EVENT_SCHEMA_VERSION,
+            policy_id: REST_POLICY_ID,
+            rest_id: restId,
+            kind: 'short',
+            started_at_minutes: startedAtMinutes,
+            ended_at_minutes: null,
+            duration_minutes: 0,
+            minimum_duration_minutes: REST_MINIMUM_MINUTES.short,
+            source_prop_id: prop.id,
+          }, [command.actor_id]),
+          event_schema_version: REST_EVENT_SCHEMA_VERSION,
+        })
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), REST_MINIMUM_MINUTES.short, 'minute')
+        events.push({
+          ...eventFrom(commandWithRules(command, RULE_IDS.resource), 'RestCompleted', {
+            schema_version: REST_EVENT_SCHEMA_VERSION,
+            policy_id: REST_POLICY_ID,
+            rest_id: restId,
+            kind: 'short',
+            started_at_minutes: startedAtMinutes,
+            ended_at_minutes: startedAtMinutes + REST_MINIMUM_MINUTES.short,
+            duration_minutes: REST_MINIMUM_MINUTES.short,
+            source_prop_id: prop.id,
+          }, [command.actor_id]),
+          event_schema_version: REST_EVENT_SCHEMA_VERSION,
+        })
         events.push(eventFrom(command, 'SceneObjectUseRecorded', {
           prop_id: prop.id,
           kind: definition.kind,
@@ -8840,66 +9010,69 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'AdvanceTime': {
       const amount = Math.max(0, Number(command.amount) || 0)
       const unit = String(command.unit || 'minute')
-      const elapsedMinutes = durationInMinutes(amount, unit)
-      appendTimeAdvance(command, amount, unit, elapsedMinutes)
-      if (elapsedMinutes <= 0) break
-      for (const socialEvent of npcPromiseDeadlineEvents(state, elapsedMinutes)) {
-        events.push(eventFrom({ ...command, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
-      }
-      for (const [heroId, rawTracker] of Object.entries(state.mechanics.death.saving_throws ?? {})) {
-        const tracker = deathSaveTracker(state, heroId)
-        const hero = playerActor(state, heroId)
-        if (!tracker.stable || !hero || actorHp(hero) !== 0 || isDeadHero(state, heroId)) continue
-        let remaining = Math.max(0, safeInteger(rawTracker?.recovery_minutes_remaining, 0))
-        if (remaining <= 0) {
-          const recoveryRoll = diceService.roll('1d4', 'stable-recovery-hours', heroId, command.visibility ?? 'public')
-          rolls.push(recoveryRoll)
-          remaining = recoveryRoll.total * 60
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'StableRecoveryScheduled', {
-            ...recoveryRoll,
-            recovery_hours: recoveryRoll.total,
-            recovery_minutes: remaining,
-          }, [heroId]))
-        }
-        if (elapsedMinutes >= remaining) {
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.healing, RULE_IDS.zeroHp), 'HealingApplied', {
-            requested_amount: 1,
-            applied_amount: Math.min(1, actorMaxHp(hero)),
-            hp_before: 0,
-            hp_after: Math.min(1, actorMaxHp(hero)),
-            reason: 'stable-recovery-after-1d4-hours',
-          }, [heroId]))
-        } else {
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'StableRecoveryProgressed', {
-            elapsed_minutes: elapsedMinutes,
-            recovery_minutes_before: remaining,
-            recovery_minutes_remaining: remaining - elapsedMinutes,
-          }, [heroId]))
-        }
-      }
-      for (const [targetIdValue, rest] of Object.entries(state.mechanics.resting ?? {})) {
-        if (rest?.reason !== 'knockout') continue
-        const remaining = Math.max(1, safeInteger(rest.recovery_minutes_remaining, 60))
-        if (elapsedMinutes >= remaining) {
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.resource, RULE_IDS.conditions), 'RestCompleted', {
-            kind: 'short',
-            reason: 'knockout',
-            automatic: true,
-          }, [targetIdValue]))
-        } else {
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.resource), 'KnockoutRecoveryProgressed', {
-            elapsed_minutes: elapsedMinutes,
-            recovery_minutes_before: remaining,
-            recovery_minutes_remaining: remaining - elapsedMinutes,
-          }, [targetIdValue]))
-        }
-      }
+      appendWorldTimeConsequences(command, amount, unit)
       break
     }
-    case 'StartRest':
-      events.push(eventFrom(command, 'RestStarted', { kind: command.kind }, [command.actor_id]))
+    case 'StartRest': {
+      const startedAtMinutes = Math.max(0, safeInteger(state.mechanics.world_time?.elapsed_minutes, 0))
+      const restId = String(command.rest_id ?? `rest:${command.command_id}`).slice(0, 180)
+      events.push({
+        ...eventFrom(command, 'RestStarted', {
+          schema_version: REST_EVENT_SCHEMA_VERSION,
+          policy_id: REST_POLICY_ID,
+          rest_id: restId,
+          kind: command.kind,
+          started_at_minutes: startedAtMinutes,
+          ended_at_minutes: null,
+          duration_minutes: 0,
+          minimum_duration_minutes: REST_MINIMUM_MINUTES[command.kind],
+          ...(command.request_fingerprint ? { request_fingerprint: command.request_fingerprint } : {}),
+        }, [command.actor_id]),
+        event_schema_version: REST_EVENT_SCHEMA_VERSION,
+      })
       break
-    case 'CompleteRest':
+    }
+    case 'SpendHitPointDie': {
+      const actor = playerActor(state, command.actor_id)
+      const pool = hitPointDicePoolForActor(state, command.actor_id)
+      const rest = state.mechanics.resting[command.actor_id]
+      const constitutionModifier = abilityModifier(actor?.abilities?.con)
+      const roll = diceService.roll(`1d${pool.die_size}`, 'short-rest-hit-point-die', command.actor_id, command.visibility ?? 'public')
+      const healingTotal = Math.max(1, roll.total + constitutionModifier)
+      const hpBefore = actorHp(actor)
+      const hpAfter = Math.min(actorMaxHp(actor), hpBefore + healingTotal)
+      const poolAfter = { ...pool, spent: pool.spent + 1 }
+      rolls.push(roll)
+      events.push({
+        ...eventFrom(commandWithRules(command, RULE_IDS.resource, RULE_IDS.healing), 'HitPointDieSpent', {
+          schema_version: HIT_POINT_DIE_EVENT_SCHEMA_VERSION,
+          policy_id: REST_POLICY_ID,
+          rest_id: command.rest_id,
+          kind: 'short',
+          roll: clone(roll),
+          formula: `1d${pool.die_size}${constitutionModifier > 0 ? `+${constitutionModifier}` : constitutionModifier < 0 ? constitutionModifier : ''}`,
+          constitution_modifier: constitutionModifier,
+          healing_total: healingTotal,
+          applied_healing: hpAfter - hpBefore,
+          hp_before: hpBefore,
+          hp_after: hpAfter,
+          pool_before: pool,
+          pool_after: poolAfter,
+          ...(command.request_fingerprint ? { request_fingerprint: command.request_fingerprint } : {}),
+        }, [command.actor_id]),
+        event_schema_version: HIT_POINT_DIE_EVENT_SCHEMA_VERSION,
+      })
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', {
+        requested_amount: healingTotal,
+        applied_amount: hpAfter - hpBefore,
+        hp_before: hpBefore,
+        hp_after: hpAfter,
+        reason: 'short-rest-hit-point-die',
+      }, [command.actor_id]))
+      break
+    }
+    case 'CompleteRest': {
+      const activeRest = state.mechanics.resting[command.actor_id]
       if (command.kind === 'long' && state.mechanics.concentration[command.actor_id]) {
         events.push(eventFrom(commandWithRules(command, RULE_IDS.concentration), 'ConcentrationEnded', {
           reason: 'long-rest',
@@ -8909,6 +9082,20 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Длительный отдых снимает одну ступень истощения — не всё сразу, как
       // многие помнят, а ровно одну. Из шестой выбираться шесть ночей.
       if (command.kind === 'long') {
+        const pool = hitPointDicePoolForActor(state, command.actor_id)
+        if (pool) {
+          events.push({
+            ...eventFrom(commandWithRules(command, RULE_IDS.resource), 'HitPointDiceRestored', {
+              schema_version: HIT_POINT_DIE_EVENT_SCHEMA_VERSION,
+              policy_id: REST_POLICY_ID,
+              rest_id: activeRest?.rest_id ?? null,
+              pool_before: pool,
+              pool_after: { ...pool, spent: 0 },
+              restored: pool.spent,
+            }, [command.actor_id]),
+            event_schema_version: HIT_POINT_DIE_EVENT_SCHEMA_VERSION,
+          })
+        }
         const exhaustion = exhaustionLevelOf(state, command.actor_id)
         if (exhaustion > 0) {
           events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: `exhaustion:${exhaustion}`, reason: 'long-rest' }, [command.actor_id]))
@@ -8920,8 +9107,21 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           }, [command.actor_id]))
         }
       }
-      events.push(eventFrom(command, 'RestCompleted', { kind: command.kind }, [command.actor_id]))
+      events.push({
+        ...eventFrom(command, 'RestCompleted', {
+          schema_version: REST_EVENT_SCHEMA_VERSION,
+          policy_id: REST_POLICY_ID,
+          rest_id: activeRest?.rest_id ?? null,
+          kind: command.kind,
+          started_at_minutes: activeRest?.started_at_minutes ?? null,
+          ended_at_minutes: Math.max(0, safeInteger(state.mechanics.world_time?.elapsed_minutes, 0)),
+          duration_minutes: activeRest ? elapsedRestMinutes(state, activeRest) : null,
+          ...(command.request_fingerprint ? { request_fingerprint: command.request_fingerprint } : {}),
+        }, [command.actor_id]),
+        event_schema_version: REST_EVENT_SCHEMA_VERSION,
+      })
       break
+    }
     case 'RevealArea': {
       const cells = Array.isArray(command.cells) ? command.cells.slice(0, 100).map((cell) => ({ x: safeInteger(cell.x), y: safeInteger(cell.y) })) : []
       events.push(eventFrom(command, 'AreaRevealed', { cells }, []))
@@ -10798,7 +10998,39 @@ export function applyGameEvent(rawState, event) {
       })
       break
     case 'RestStarted':
-      state.mechanics.resting[target] = { kind: payload.kind === 'long' ? 'long' : 'short' }
+      state.mechanics.resting[target] = Number(event.event_schema_version) >= REST_EVENT_SCHEMA_VERSION
+        ? {
+            schema_version: REST_EVENT_SCHEMA_VERSION,
+            policy_id: REST_POLICY_ID,
+            rest_id: String(payload.rest_id ?? ''),
+            kind: payload.kind === 'long' ? 'long' : 'short',
+            started_at_minutes: Math.max(0, safeInteger(payload.started_at_minutes, 0)),
+            minimum_duration_minutes: payload.kind === 'long' ? REST_MINIMUM_MINUTES.long : REST_MINIMUM_MINUTES.short,
+          }
+        : {
+            kind: payload.kind === 'long' ? 'long' : 'short',
+            ...(payload.reason === 'knockout' ? { reason: 'knockout', recovery_minutes_remaining: 60 } : {}),
+          }
+      break
+    case 'HitPointDieSpent':
+      if (Number(event.event_schema_version) !== HIT_POINT_DIE_EVENT_SCHEMA_VERSION
+        || Number(payload.schema_version) !== HIT_POINT_DIE_EVENT_SCHEMA_VERSION) break
+      state.mechanics.hit_point_dice[target] = {
+        schema_version: HIT_POINT_DIE_EVENT_SCHEMA_VERSION,
+        maximum: Math.max(1, Math.min(12, safeInteger(payload.pool_after?.maximum, 1))),
+        spent: Math.max(0, safeInteger(payload.pool_after?.spent, 0)),
+        die_size: [6, 8, 10, 12].includes(Number(payload.pool_after?.die_size)) ? Number(payload.pool_after.die_size) : 8,
+      }
+      break
+    case 'HitPointDiceRestored':
+      if (Number(event.event_schema_version) !== HIT_POINT_DIE_EVENT_SCHEMA_VERSION
+        || Number(payload.schema_version) !== HIT_POINT_DIE_EVENT_SCHEMA_VERSION) break
+      state.mechanics.hit_point_dice[target] = {
+        schema_version: HIT_POINT_DIE_EVENT_SCHEMA_VERSION,
+        maximum: Math.max(1, Math.min(12, safeInteger(payload.pool_after?.maximum, 1))),
+        spent: 0,
+        die_size: [6, 8, 10, 12].includes(Number(payload.pool_after?.die_size)) ? Number(payload.pool_after.die_size) : 8,
+      }
       break
     case 'RestCompleted': {
       const actor = findActor(state, target)

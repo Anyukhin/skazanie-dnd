@@ -92,6 +92,7 @@ test('полный enforce-flow воспроизводит исследован�
 
   await run('Бой завершён', { command_type: 'EndCombat', actor_id: 'hero', reason: 'противник обезврежен', source_rule_ids: [RULE_IDS.initiative, RULE_IDS.turns] })
   await run('Начинаю короткий отдых', { command_type: 'StartRest', actor_id: 'hero', kind: 'short', source_rule_ids: [RULE_IDS.resource] })
+  await run('Отдыхаю час', { command_type: 'AdvanceTime', amount: 60, unit: 'minute', source_rule_ids: [RULE_IDS.resource] })
   await run('Завершаю короткий отдых', { command_type: 'CompleteRest', actor_id: 'hero', kind: 'short', source_rule_ids: [RULE_IDS.resource] })
 
   const loaded = await eventStore.load('FLOW-1')

@@ -253,6 +253,7 @@ function canUseHero(user, heroId, campaignId) {
 
 const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
 const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'OperateSceneObject', 'EndTurn', 'ResolveHeroDeath'])
+const PLAYER_REST_COMMANDS = new Set(['StartRest', 'SpendHitPointDie', 'CompleteRest'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
 const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem'])
@@ -304,6 +305,47 @@ function itemCommandFingerprint(command) {
     } : {}),
   }
   return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+function restCommandFingerprint(command) {
+  const type = commandType(command)
+  return createHash('sha256').update(JSON.stringify({
+    type,
+    actor_id: String(command?.actor_id ?? ''),
+    ...(type === 'StartRest' ? { kind: command?.kind === 'long' ? 'long' : 'short' } : {}),
+    ...(type !== 'StartRest' ? { rest_id: String(command?.rest_id ?? '') } : {}),
+  })).digest('hex')
+}
+
+const REST_PRIMARY_EVENT_TYPES = new Set(['RestStarted', 'HitPointDieSpent', 'RestCompleted'])
+
+async function assertRestIdempotency(campaignId, idempotencyKey, command) {
+  const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+  if (!duplicate) return
+  const primaryEvents = (duplicate.events ?? [])
+    .filter((event) => REST_PRIMARY_EVENT_TYPES.has(event.event_type))
+  if (commandType(command) !== 'StartRest' && !command.rest_id) {
+    const restIds = new Set(primaryEvents.map((event) => event.payload?.rest_id).filter(Boolean).map(String))
+    if (restIds.size === 1) {
+      command.rest_id = [...restIds][0]
+      command.request_fingerprint = restCommandFingerprint(command)
+    }
+  }
+  const fingerprints = new Set(primaryEvents
+    .map((event) => event.payload?.request_fingerprint)
+    .filter(Boolean)
+    .map(String))
+  if (fingerprints.size !== 1 || !fingerprints.has(restCommandFingerprint(command))) {
+    throw commandPolicyError('Этот ключ идемпотентности уже использован для другого действия отдыха', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+function assertRestResultFingerprint(result, command) {
+  const expected = restCommandFingerprint(command)
+  const event = (result?.mechanics ?? []).find((candidate) => REST_PRIMARY_EVENT_TYPES.has(candidate?.event_type))
+  if (!event || String(event.payload?.request_fingerprint ?? '') !== expected) {
+    throw commandPolicyError('Результат отдыха не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
+  }
 }
 
 const ITEM_PRIMARY_EVENT_TYPES = new Set(['ItemEquipped', 'ItemUnequipped', 'ItemTransferred', 'ItemAttunementChanged', 'ItemUsed', 'MagicItemActivationChanged'])
@@ -695,6 +737,66 @@ function sanitizePlayerCombatCommand(user, state, input) {
   return base
 }
 
+function sanitizePlayerRestCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_REST_COMMANDS.has(type)) throw commandPolicyError('Команда не относится к отдыху', 'PLAYER_COMMAND_FORBIDDEN')
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'expected_state_version', 'expectedStateVersion',
+    ...(type === 'StartRest' ? ['kind'] : []),
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда отдыха содержит запрещённые поля: ${unexpected.join(', ')}`, 'REST_COMMAND_UNKNOWN_FIELD')
+  }
+  if (type === 'StartRest' && Object.hasOwn(input ?? {}, 'kind') && !['short', 'long'].includes(input.kind)) {
+    throw commandPolicyError('Вид отдыха должен быть short или long', 'REST_KIND_INVALID')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Отдыхать можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  }
+  if (!(state.players ?? []).some((candidate) => String(candidate.id) === actor)) {
+    throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const command = {
+    command_type: type,
+    actor_id: actor,
+    ...(type === 'StartRest' ? { kind: input?.kind === 'long' ? 'long' : 'short' } : {}),
+    ...(type !== 'StartRest' && state.mechanics?.resting?.[actor]?.rest_id
+      ? { rest_id: String(state.mechanics.resting[actor].rest_id) }
+      : {}),
+    ...(expected == null ? {} : { expected_state_version: expected }),
+    server_authoritative: true,
+  }
+  return { ...command, request_fingerprint: restCommandFingerprint(command) }
+}
+
+function expandPlayerRestCommand(command) {
+  if (commandType(command) !== 'StartRest') return [command]
+  const duration = command.kind === 'long' ? 480 : 60
+  const fingerprint = command.request_fingerprint
+  return [
+    command,
+    {
+      command_type: 'AdvanceTime',
+      amount: duration,
+      unit: 'minute',
+      server_authoritative: true,
+      request_fingerprint: fingerprint,
+    },
+    ...(command.kind === 'long' ? [{
+      command_type: 'CompleteRest',
+      actor_id: command.actor_id,
+      kind: 'long',
+      server_authoritative: true,
+      request_fingerprint: fingerprint,
+    }] : []),
+  ]
+}
+
 function sanitizePlayerCharacterCommand(user, state, input) {
   const type = commandType(input)
   if (!PLAYER_CHARACTER_COMMANDS.has(type) && !PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) {
@@ -1077,6 +1179,12 @@ function withCombatForecast(projected, trustedState, viewerActorId) {
 
 function viewerStateFor(state, user, actorId) {
   return withCombatForecast(campaignStateForViewer(state, user, actorId), state, actorId)
+}
+
+function ownedViewerActorId(state, user, campaignId) {
+  return campaignHeroIds(user, campaignId)
+    .map(String)
+    .find((id) => state?.players?.some((player) => String(player.id) === id)) ?? ''
 }
 
 function stateWithLivePresence(state, campaignId) {
@@ -2508,7 +2616,7 @@ const server = createServer((req, res) => {
       const duplicate = await eventStore.getByIdempotencyKey(campaignId, `${key}:intent`)
       if (duplicate) {
         const current = await autonomousCampaign.load(campaignId)
-        return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: viewerStateFor(current.state, user, current.state.activePlayerId) })
+        return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: viewerStateFor(current.state, user, ownedViewerActorId(current.state, user, campaignId)) })
       }
       let loaded = await autonomousCampaign.load(campaignId)
       assertCampaignPlayable(loaded.state)
@@ -2545,7 +2653,7 @@ const server = createServer((req, res) => {
       return json(res, 200, {
         intent: result.intent, director_trace: decision.trace, reward,
         state_version: authoritative.state_version, admin_commands: 0,
-        state: viewerStateFor(authoritative.state, user, authoritative.state.activePlayerId),
+        state: viewerStateFor(authoritative.state, user, ownedViewerActorId(authoritative.state, user, campaignId)),
       })
     } catch (error) {
       return json(res, error?.code === 'DIRECTOR_INTENT_NOT_ALLOWED' || error?.code === 'DIRECTOR_MECHANICS_FORBIDDEN' ? 400 : 409, { error: error instanceof Error ? error.message : 'Director не смог продолжить приключение', code: error?.code })
@@ -2849,14 +2957,21 @@ const server = createServer((req, res) => {
       let commands = Array.isArray(body.commands) ? body.commands : body.command ? [body.command] : []
       if (!commands.length) return json(res, 400, { error: 'Нужна command или commands' })
       const authoritativeBefore = await latestCampaignState(commandMatch[1], room.state)
+      const requestedRestCommands = commands.filter((command) => PLAYER_REST_COMMANDS.has(commandType(command)))
+      if (requestedRestCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Отдых принимается одной семантической командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
       commands = commands.map((command) => {
         const type = commandType(command)
+        if (PLAYER_REST_COMMANDS.has(type)) return sanitizePlayerRestCommand(user, authoritativeBefore, command)
         if (PLAYER_MERCHANT_COMMANDS.has(type)) return sanitizeMerchantCommand(user, authoritativeBefore, command)
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
         if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, authoritativeBefore, command)
         return PLAYER_COMBAT_COMMANDS.has(type) ? { ...command, server_authoritative: true } : command
       })
+      const semanticRestCommand = commands.find((command) => PLAYER_REST_COMMANDS.has(commandType(command))) ?? null
+      if (semanticRestCommand) commands = expandPlayerRestCommand(semanticRestCommand)
       const actor = String(commands[0]?.actor_id || room.state.activePlayerId || '')
       const commandActor = [...(room.state.players ?? []), ...(room.state.actors ?? [])].find((candidate) => String(candidate.id ?? candidate.actor_id) === actor)
       const controller = String(commandActor?.controllerId ?? commandActor?.controller_id ?? commandActor?.ownerId ?? commandActor?.owner_id ?? '')
@@ -2876,6 +2991,7 @@ const server = createServer((req, res) => {
       const characterCommands = commands.filter((command) => PLAYER_CHARACTER_COMMANDS.has(commandType(command)))
       const characterLifecycleCommands = commands.filter((command) => PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(commandType(command)))
       const itemCommands = commands.filter((command) => PLAYER_ITEM_COMMANDS.has(commandType(command)))
+      const restCommands = semanticRestCommand ? [semanticRestCommand] : []
       const reactionActorId = String(room.state.mechanics?.combat?.reaction_window?.actor_id ?? '')
       const resolvesReaction = commands.some((command) => commandType(command) === 'UseCombatAction' && String(command.actor_id ?? '') === reactionActorId)
       if (merchantCommands.length) {
@@ -2897,10 +3013,12 @@ const server = createServer((req, res) => {
       if (itemCommands.length) {
         await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])
       }
+      if (restCommands.length) await assertRestIdempotency(commandMatch[1], idempotencyKey, restCommands[0])
       let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]) })
       if (merchantCommands.length) assertMerchantResultFingerprint(result, merchantCommands[0])
       if (characterCommands.length) assertCharacterBuildResultFingerprint(result, characterCommands)
       if (itemCommands.length) assertItemResultFingerprint(result, itemCommands[0])
+      if (restCommands.length) assertRestResultFingerprint(result, restCommands[0])
       if (result.authoritative_state) {
         const originalVersion = Number(result.state_version ?? result.authoritative_state.state_version ?? 0)
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))

@@ -1372,7 +1372,17 @@ export type GameMechanics = Record<string, unknown> & {
   }
   encounter?: (EncounterProposal & { id?: string; encounter_id?: string; status?: 'staged' | 'active' | 'ended'; enemy_ids?: string[]; outcome?: string }) | null
   resources?: Record<string, Record<string, { current: number; max: number }>>
-  resting?: Record<string, { kind: 'short' | 'long'; reason?: 'knockout'; recovery_minutes_remaining?: number }>
+  hit_point_dice?: Record<string, { schema_version: 1; maximum: number; spent: number; die_size: 6 | 8 | 10 | 12 }>
+  resting?: Record<string, {
+    kind: 'short' | 'long'
+    schema_version?: 2
+    policy_id?: string
+    rest_id?: string
+    started_at_minutes?: number
+    minimum_duration_minutes?: number
+    reason?: 'knockout'
+    recovery_minutes_remaining?: number
+  }>
   concentration?: Record<string, { effect_id?: string; source_rule_ids?: string[] }>
   conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null }>>
   active_effects?: Array<{
@@ -1404,6 +1414,11 @@ export type GameMechanics = Record<string, unknown> & {
     level_up_available: boolean
   }
 }
+
+export type RestCommand =
+  | { command_type: 'StartRest'; actor_id: string; kind: 'short' | 'long' }
+  | { command_type: 'SpendHitPointDie'; actor_id: string }
+  | { command_type: 'CompleteRest'; actor_id: string }
 
 export type CampaignSummary = {
   code: string
