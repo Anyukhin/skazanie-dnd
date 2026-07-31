@@ -4,14 +4,11 @@ import { npcSocialForViewer } from './npc-social.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
 import {
+  MATERIALS,
   SIZE_CLASSES,
-  cellAt,
+  SURFACES,
   deserializeTacticalMap,
-  edgeList,
-  edgeNeighbor,
   serializeTacticalMap,
-  setCell,
-  setEdge,
   tacticalMapHash,
 } from './tactical-map.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
@@ -142,20 +139,22 @@ function publicCellFor(cell = {}) {
   const revealed = cell.revealed === true
   const material = String(cell.material ?? '')
   const pattern = String(cell.pattern ?? '')
-  const allowedMaterials = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
-  const allowedPatterns = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
   return {
     x: integer(cell.x),
     y: integer(cell.y),
-    type: /** @type {SceneCellType} */ (['wall', 'floor', 'water', 'door'].includes(String(cell.type)) ? String(cell.type) : 'floor'),
+    type: /** @type {SceneCellType} */ (PUBLIC_CELL_TYPES.has(String(cell.type)) ? String(cell.type) : 'floor'),
     revealed,
-    ...(revealed && allowedMaterials.has(material) ? { material: /** @type {SceneCellMaterial} */ (material) } : {}),
-    ...(allowedPatterns.has(pattern) ? { pattern: /** @type {SceneCellPattern} */ (pattern) } : {}),
+    ...(revealed && PUBLIC_CELL_MATERIALS.has(material) ? { material: /** @type {SceneCellMaterial} */ (material) } : {}),
+    ...(PUBLIC_CELL_PATTERNS.has(pattern) ? { pattern: /** @type {SceneCellPattern} */ (pattern) } : {}),
     ...(revealed && Number.isSafeInteger(Number(cell.variant)) ? { variant: Math.max(0, Math.min(5, Number(cell.variant))) } : {}),
     ...(typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask) ? { edge_mask: cell.edge_mask } : {}),
     ...(revealed && cell.feature != null ? { feature: text(cell.feature, 40) } : {}),
   }
 }
+
+const PUBLIC_CELL_TYPES = new Set(['wall', 'floor', 'water', 'door'])
+const PUBLIC_CELL_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
+const PUBLIC_CELL_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
 
 /**
  * Карта, отфильтрованная по видимости. Нераскрытая клетка остаётся в сетке —
@@ -179,14 +178,22 @@ export function publicTacticalMapWithHashFor(value) {
   } catch {
     return null
   }
+  const revealedBits = map.layers.revealed
+  const stoneCode = MATERIALS.indexOf('stone')
+  const emptySurfaceCode = SURFACES.indexOf('none')
   /** @param {number} x @param {number} y */
-  const revealedAt = (x, y) => cellAt(map, x, y)?.revealed === true
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      const cell = cellAt(map, x, y)
-      if (!cell || cell.revealed) continue
-      setCell(map, x, y, { material: 'stone', variant: 0, surface: 'none', hazardId: null })
-    }
+  const revealedAt = (x, y) => {
+    if (x < 0 || y < 0 || x >= map.width || y >= map.height) return false
+    const index = y * map.width + x
+    return (revealedBits[index >> 3] & (1 << (index & 7))) !== 0
+  }
+  const cellCount = map.width * map.height
+  for (let index = 0; index < cellCount; index += 1) {
+    if ((revealedBits[index >> 3] & (1 << (index & 7))) !== 0) continue
+    map.layers.material[index] = stoneCode
+    map.layers.variant[index] = 0
+    map.layers.surface[index] = emptySurfaceCode
+    delete map.hazards[String(index)]
   }
   map.props = map.props.filter((prop) => prop.footprint.some((cell) => revealedAt(cell.x, cell.y))
     || (prop.footprint.length === 0 && revealedAt(Math.floor(prop.x), Math.floor(prop.y))))
@@ -201,12 +208,16 @@ export function publicTacticalMapWithHashFor(value) {
       pointOfInterest: prop.interaction.pointOfInterest === true,
     })
   }
-  for (const edge of edgeList(map)) {
-    const neighbor = edgeNeighbor(edge)
-    if (revealedAt(edge.x, edge.y) || revealedAt(neighbor.x, neighbor.y)) continue
-    setEdge(map, edge.x, edge.y, neighbor.x, neighbor.y, { kind: 'none' })
+  const visibleEdges = new Set()
+  for (const [key, edge] of Object.entries(map.edges)) {
+    const neighborX = edge.x + (edge.dir === 'e' ? 1 : 0)
+    const neighborY = edge.y + (edge.dir === 's' ? 1 : 0)
+    if (revealedAt(edge.x, edge.y) || revealedAt(neighborX, neighborY)) {
+      visibleEdges.add(`${edge.x},${edge.y},${edge.dir}`)
+    } else {
+      delete map.edges[key]
+    }
   }
-  const visibleEdges = new Set(edgeList(map).map((edge) => `${edge.x},${edge.y},${edge.dir}`))
   map.doors = map.doors.filter((door) => visibleEdges.has(`${door.x},${door.y},${door.dir}`))
   const projectedMap = serializeTacticalMap(map)
   const projectedProps = /** @type {Array<Record<string, any>>} */ (
@@ -586,7 +597,11 @@ function viewerFor(state, user, actorId) {
 export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return state
-  const visible = projectVisibleState(state, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}
+  // `locationMaps` содержит ещё одну полную копию каждой тактической карты и
+  // всё равно никогда не уходит игроку. Не копируем десятки тысяч клеток лишь
+  // затем, чтобы удалить ключ после рекурсивной проекции.
+  const { locationMaps: _privateLocationMaps, ...projectableState } = state
+  const visible = projectVisibleState(projectableState, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}
   const { locationMaps: _locationMaps, ...publicState } = visible
   const scene = publicSceneFor(visible.scene ?? state.scene)
   const location = scene.location
