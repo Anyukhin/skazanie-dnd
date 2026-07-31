@@ -286,12 +286,23 @@ test('все producer-path TimeAdvanced используют один resolver �
   assert.equal([...source.matchAll(/'TimeAdvanced'/gu)].length, 3, 'producer не должен обходить общий appendTimeAdvance')
 })
 
-test('compatibility room projection считает aggregate изменением инвентаря', () => {
+test('проекция комнаты больше не зависит от списка типов событий', () => {
+  // Раньше здесь проверялось, что `ItemDawnRechargeResolved` не забыт в
+  // allowlist `refreshInventory`. Сам allowlist удалён (шаг 1
+  // `docs/agent-architecture-plan.md`): проекция берёт авторитетное состояние
+  // целиком, поэтому забыть тип больше нельзя в принципе.
+  //
+  // Инвариант «комната равна полной проекции» проверяется на живом сервере в
+  // `test/room-projection-equivalence.test.mjs`, в том числе на типах событий,
+  // которых в прежних списках не было.
   const source = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
   const projection = source.split('function persistAuthoritativeProjection')[1]?.split('function reconcileProjectionOutbox')[0] ?? ''
-  assert.match(projection, /refreshInventory[\s\S]*'ItemDawnRechargeResolved'/u)
-  assert.match(projection, /refreshInventory[\s\S]*inventory: authoritative\.inventory/u)
-  assert.match(projection, /refreshInventory[\s\S]*inventoryLoad: authoritative\.inventoryLoad/u)
+  assert.doesNotMatch(projection, /const\s+(?:refreshInventory|characterBuildChanged)\s*=/u,
+    'вернулся список типов событий — вместе с ним вернулся и класс багов «забыли тип»')
+  assert.doesNotMatch(projection, /eventTypes\.has\(/u,
+    'проекция снова смотрит на тип события вместо авторитетного состояния')
+  assert.match(projection, /\.\.\.engineState/u,
+    'проекция обязана брать авторитетное состояние целиком')
 })
 
 test('повтор idempotency key и reopen не дублируют aggregate; stale version отклоняется', async (t) => {

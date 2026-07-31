@@ -1580,84 +1580,20 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       void eventStore.acknowledgeProjection(campaignId, proposedStateVersion).catch(() => {})
       return room
     }
-    const eventTypes = new Set(events.map((event) => event.event_type))
-    const merchantInventoryChanged = eventTypes.has('MerchantPurchaseCompleted')
-      || eventTypes.has('MerchantSaleCompleted')
-      || eventTypes.has('MerchantServicePurchased')
-      || eventTypes.has('EncounterRewardsDistributed')
-    const characterImported = eventTypes.has('CharacterImported')
-    const refreshInventory = forceProjectorRefresh || merchantInventoryChanged || [
-      'ItemGranted',
-      'ItemEquipped',
-      'ItemUnequipped',
-      'ItemUsed',
-      'ItemConsumed',
-      'ItemChargesSpent',
-      'ItemDestroyed',
-      'ItemDawnRechargeResolved',
-      'ItemTransferred',
-      'ItemAttunementChanged',
-      'MagicItemActivationChanged',
-    ].some((type) => eventTypes.has(type)) || characterImported
-    const characterBuildChanged = eventTypes.has('CharacterChoicesUpdated') || eventTypes.has('SpellSelectionsUpdated')
-      || eventTypes.has('CharacterLeveledUp') || eventTypes.has('CharacterImported')
-    const enginePlayers = new Map((engineState.players ?? []).map((player) => [String(player.id), player]))
-    const players = (room.state.players ?? []).map((player) => {
-      const authoritative = enginePlayers.get(String(player.id))
-      if (!authoritative) return player
-      return {
-        ...player,
-        hp: authoritative.hp,
-        ...(forceProjectorRefresh || eventTypes.has('ExperienceAwarded') ? { experience: authoritative.experience } : {}),
-        ...(refreshInventory ? { inventory: authoritative.inventory } : {}),
-        ...(refreshInventory ? {
-          armor: authoritative.armor,
-          speed: authoritative.speed,
-          proficiency: authoritative.proficiency,
-          characterSheet: authoritative.characterSheet,
-          inventoryLoad: authoritative.inventoryLoad,
-        } : {}),
-        ...(forceProjectorRefresh || merchantInventoryChanged || characterImported ? { currency: authoritative.currency } : {}),
-        ...(forceProjectorRefresh || characterBuildChanged ? {
-          level: authoritative.level,
-          experience: authoritative.experience,
-          maxHp: authoritative.maxHp,
-          armor: authoritative.armor,
-          speed: authoritative.speed,
-          proficiency: authoritative.proficiency,
-          abilities: authoritative.abilities,
-          characterClass: authoritative.characterClass,
-          hitPointIncreases: authoritative.hitPointIncreases,
-          characterSheet: authoritative.characterSheet,
-          subclass: authoritative.subclass,
-          classSkillProficiencies: authoritative.classSkillProficiencies,
-          selectedFeatureIds: authoritative.selectedFeatureIds,
-          knownSpellIds: authoritative.knownSpellIds,
-          preparedSpellIds: authoritative.preparedSpellIds,
-          ...(characterImported ? {
-            character: authoritative.character,
-            name: authoritative.name,
-            role: authoritative.role,
-            species: authoritative.species,
-            background: authoritative.background,
-            alignment: authoritative.alignment,
-            traits: authoritative.traits,
-            ideals: authoritative.ideals,
-            bonds: authoritative.bonds,
-            flaws: authoritative.flaws,
-            backstory: authoritative.backstory,
-            notes: authoritative.notes,
-            baseSpeed: authoritative.baseSpeed,
-            abilityGeneration: authoritative.abilityGeneration,
-            characterSetupRequired: authoritative.characterSetupRequired,
-            initials: authoritative.initials,
-          } : {}),
-        } : {}),
-        ...(forceProjectorRefresh || eventTypes.has('ActorMoved') || eventTypes.has('SceneAdvanced') ? { x: authoritative.x, y: authoritative.y } : {}),
-      }
-    })
-    const sceneChanged = forceProjectorRefresh || ['SceneAdvanced', 'AreaRevealed', 'ObjectiveUpdated', 'EntitySpawned'].some((type) => eventTypes.has(type))
-    const partyDecisionChanged = ['PartyDecisionOpened', 'PartyVoteCast', 'PartyDecisionAbstained', 'PartyDecisionResolved', 'PartyDecisionExpired', 'PartyDecisionConsumed'].some((type) => eventTypes.has(type))
+    // Раньше здесь жили два списка типов событий: `refreshInventory` на
+    // одиннадцать `Item*`-типов и `characterBuildChanged` на четыре. Забыть тип
+    // в списке означало молча показать игроку устаревшие данные, и каждая новая
+    // механика обязана была помнить про этот allowlist — вторая волна добавила
+    // в него четыре типа и чуть не забыла пятый.
+    //
+    // Списки удалены по шагу 1 плана (`docs/agent-architecture-plan.md`):
+    // полный пересчёт проекции измерен и стоит 1,59 мс — на два порядка меньше
+    // хода, поэтому оптимизация не окупала целый класс багов. Сторож инварианта —
+    // `test/room-projection-equivalence.test.mjs`.
+    //
+    // Комнате принадлежат ровно две вещи, которых нет в авторитетном состоянии:
+    // накопительный журнал и признак присутствия игрока. Всё остальное берётся
+    // из движка целиком.
     const messages = [...(room.state.messages ?? [])]
     for (const candidate of [journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
@@ -1665,52 +1601,21 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
       messages.push(journalEntry(candidate))
     }
     if (messages.length > JOURNAL_HISTORY_LIMIT) messages.splice(0, messages.length - JOURNAL_HISTORY_LIMIT)
-    let next = normalizeCampaignState({
+    const onlineById = new Map((room.state.players ?? []).map((player) => [String(player.id), Boolean(player.online)]))
+    const next = normalizeCampaignState({
       ...room.state,
+      ...engineState,
+      agentInteraction: engineState.agentInteraction ?? null,
+      players: (engineState.players ?? []).map((player) => ({
+        ...player,
+        ...(onlineById.has(String(player.id)) ? { online: onlineById.get(String(player.id)) } : {}),
+      })),
       messages,
-      players,
-      merchants: engineState.merchants ?? room.state.merchants,
-      worldMemory: engineState.worldMemory ?? room.state.worldMemory,
-      social: engineState.social ?? room.state.social,
-      enemies: engineState.enemies,
-      actors: engineState.actors ?? room.state.actors,
-      mechanics: engineState.mechanics,
-      state_version: engineState.state_version,
       state_projector_version: GAME_STATE_PROJECTOR_VERSION,
-      ruleset_id: engineState.ruleset_id,
-      ruleset_version: engineState.ruleset_version,
-      enabled_rule_packs: engineState.enabled_rule_packs,
-      enabled_house_rules: engineState.enabled_house_rules,
-      ruleset_locked_at: engineState.ruleset_locked_at,
-      ...(sceneChanged || engineState.scene ? { scene: engineState.scene, entities: engineState.entities } : {}),
-      ...(sceneChanged ? {
-        adventure: engineState.adventure,
-        worldMap: engineState.worldMap,
-      } : {}),
-      ...(sceneChanged || partyDecisionChanged ? { agentInteraction: engineState.agentInteraction ?? null } : {}),
-      activePlayerId: engineState.activePlayerId ?? room.state.activePlayerId,
-      tacticalTurn: engineState.tacticalTurn ?? room.state.tacticalTurn,
-      battleLog: engineState.battleLog ?? room.state.battleLog,
-      economyLog: engineState.economyLog ?? room.state.economyLog,
-      mapFeedback: engineState.mapFeedback ?? room.state.mapFeedback,
-      ...((forceProjectorRefresh || eventTypes.has('PublicDieRolled')) ? { lastDiceRoll: engineState.lastDiceRoll ?? null } : {}),
-      ...(eventTypes.has('RulingRecorded') ? { rulings: engineState.rulings } : {}),
+      // Принудительное обновление приходит с cutover, где режим движка уже
+      // авторитетный; обычный ход режим не переписывает.
+      ...(forceProjectorRefresh ? { engine_mode: 'enforce' } : {}),
     })
-    if (forceProjectorRefresh) {
-      const onlineById = new Map((room.state.players ?? []).map((player) => [String(player.id), Boolean(player.online)]))
-      next = normalizeCampaignState({
-        ...room.state,
-        ...engineState,
-        agentInteraction: engineState.agentInteraction ?? null,
-        players: (engineState.players ?? []).map((player) => ({
-          ...player,
-          ...(onlineById.has(String(player.id)) ? { online: onlineById.get(String(player.id)) } : {}),
-        })),
-        messages,
-        state_projector_version: GAME_STATE_PROJECTOR_VERSION,
-        engine_mode: 'enforce',
-      })
-    }
     const saved = saveRoom(campaignId, next, room.version)
     if (!saved.conflict) {
       if (compareProjection(engineState, saved.room.state).matched) {
