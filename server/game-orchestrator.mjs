@@ -101,7 +101,7 @@ function narrationQuestClock(clock) {
   return { label: memoryText(clock.label, 80), current: Math.max(0, Number(clock.current) || 0), max }
 }
 
-export function narrationStoryContext(state, viewer = {}) {
+export function narrationStoryContext(state, viewer = {}, events = []) {
   const memory = state.worldMemory ?? {}
   const active_quests = (memory.quests ?? [])
     .filter((quest) => quest.status === 'active' && partyVisibleRecord(quest))
@@ -225,6 +225,30 @@ export function narrationStoryContext(state, viewer = {}) {
       stance: memoryText(entry.stance, 40),
     }))
     .filter((entry) => entry.npc && entry.npc_reply)
+  const currentConversationEvent = [...(Array.isArray(events) ? events : [])]
+    .reverse()
+    .find((event) => event?.event_type === 'NpcConversationRecorded' && event.payload?.conversation?.npc_id)
+  const currentConversationId = memoryText(currentConversationEvent?.payload?.conversation?.id, 120)
+  const currentNpcId = memoryText(currentConversationEvent?.payload?.conversation?.npc_id, 120)
+  const currentProfile = currentNpcId && presentIds.has(currentNpcId)
+    ? viewerProfiles.get(currentNpcId)
+    : null
+  const priorDossier = (Array.isArray(currentProfile?.dossier) ? currentProfile.dossier : [])
+    .filter((entry) => String(entry?.provenance?.source_conversation_id ?? '') !== currentConversationId)
+  const npc_dossiers = currentProfile && priorDossier.length
+    ? [{
+        npc_id: currentNpcId,
+        name: memoryText(currentProfile.name, 120),
+        relationship: {
+          tier: viewerSocial.relationship_tiers?.[currentNpcId]?.[viewerId]
+            ?? relationshipTier(viewerSocial.relationships?.[currentNpcId]?.[viewerId] ?? 0),
+          provenance: { source_event_ids: [] },
+        },
+        interactions: priorDossier,
+        promises: (viewerSocial.promises ?? [])
+          .filter((promise) => promise.status === 'open' && String(promise.npc_id) === currentNpcId),
+      }]
+    : []
   return {
     active_quests,
     active_threads,
@@ -234,6 +258,7 @@ export function narrationStoryContext(state, viewer = {}) {
     present_npcs,
     open_promises,
     recent_interactions,
+    npc_dossiers,
   }
 }
 
@@ -628,7 +653,7 @@ export class GameOrchestrator {
       ...(noWorldChangeConstraint(plan) ? ['no-unconfirmed-world-changes'] : []),
       ...(Array.isArray(freeAction.narration_constraints) ? freeAction.narration_constraints : []),
     ]
-    const storyContext = narrationStoryContext(state, viewer)
+    const storyContext = narrationStoryContext(state, viewer, publicCommittedEvents)
     const brief = buildNarrationBrief({
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),
@@ -964,7 +989,7 @@ export class GameOrchestrator {
       rolls: [...precedingRolls, ...(engineResult.rolls ?? [])],
     }
     const changes = visibleChanges(committedEvents)
-    const storyContext = narrationStoryContext(committed.state, viewer)
+    const storyContext = narrationStoryContext(committed.state, viewer, publicCommittedEvents)
     const brief = buildNarrationBrief({
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),

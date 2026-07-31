@@ -12,7 +12,7 @@ export const AGENT_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: 'director/v1', purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
-  narrator: { id: 'narrator', prompt_id: 'narrator/v4', purpose: 'Финальное повествование из подтверждённых результатов' },
+  narrator: { id: 'narrator', prompt_id: 'narrator/v5', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v3', purpose: 'Динамическая архитектура новой локации и игровой карты' },
   action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v2', purpose: 'Разбор свободного действия: цель, средство, применимый навык и цена провала' },
 })

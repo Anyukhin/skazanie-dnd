@@ -1,4 +1,5 @@
 const PROFILE_VISIBILITIES = new Set(['public', 'party', 'gm_only'])
+const DOSSIER_VISIBILITIES = new Set(['public', 'party', 'specific_player', 'gm_only'])
 const PROMISE_DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 const PROMISE_STATUSES = new Set(['open', 'fulfilled', 'broken', 'cancelled'])
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
@@ -10,6 +11,13 @@ const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const SOCIAL_CHECK_SKILLS = new Set(['persuasion', 'deception', 'intimidation', 'insight'])
 const SOCIAL_CHECK_DEGREES = new Set(['strong_success', 'success', 'failure', 'severe_failure'])
 const WEEK_DAYS = new Set([0, 1, 2, 3, 4, 5, 6])
+
+export const NPC_DOSSIER_PROFILE_LIMIT = 12
+export const NPC_NARRATOR_DOSSIER_LIMITS = Object.freeze({
+  npcs: 1,
+  interactions: 3,
+  promises: 2,
+})
 
 export const NPC_SOCIAL_COMMAND_TYPES = new Set([
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
@@ -224,6 +232,52 @@ export function npcSpeechProfile(value = {}) {
   return { pace, lexicon, mannerism }
 }
 
+function safeNpcDossierEntry(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const id = clean(value.id, 120)
+  const sourceConversationId = clean(value.provenance?.source_conversation_id, 120)
+  const summary = clean(value.summary, 600)
+  if (!id || !sourceConversationId || !summary) return null
+  const disclosedClaimIds = strings(
+    (Array.isArray(value.disclosed_claims) ? value.disclosed_claims : [])
+      .map((claim) => claim?.id),
+    120,
+    12,
+  )
+  return {
+    id,
+    kind: 'recorded_exchange',
+    hero_id: clean(value.hero_id, 120),
+    summary,
+    stance: STANCES.has(value.stance) ? value.stance : 'neutral',
+    visibility: DOSSIER_VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
+    epistemic_status: disclosedClaimIds.length
+      ? 'contains_unverified_claims'
+      : 'recorded_dialogue_not_world_fact',
+    disclosed_fact_ids: strings(value.disclosed_fact_ids, 120, 12),
+    disclosed_claims: disclosedClaimIds.map((claimId) => ({
+      id: claimId,
+      truth_status: 'unknown',
+    })),
+    provenance: {
+      source_kind: 'NpcConversationRecorded',
+      source_conversation_id: sourceConversationId,
+      source_event_ids: strings(value.provenance?.source_event_ids, 120, 8),
+    },
+  }
+}
+
+function safeNpcDossier(value) {
+  const entries = new Map()
+  for (const candidate of Array.isArray(value) ? value : []) {
+    const entry = safeNpcDossierEntry(candidate)
+    if (!entry) continue
+    entries.delete(entry.id)
+    entries.set(entry.id, entry)
+  }
+  return [...entries.values()].slice(-NPC_DOSSIER_PROFILE_LIMIT)
+}
+
 function safeProfile(value = {}) {
   return {
     id: clean(value.id, 120),
@@ -242,6 +296,7 @@ function safeProfile(value = {}) {
     tags: strings(value.tags, 60, 20),
     schedule: safeSchedule(value.schedule),
     inventory: safeInventory(value.inventory),
+    dossier: safeNpcDossier(value.dossier),
   }
 }
 
@@ -298,6 +353,27 @@ function safeConversation(value = {}) {
   }
 }
 
+function dossierEntryFromConversation(conversation, event = {}) {
+  const heroLine = clean(conversation.player_message, 240)
+  const npcLine = clean(conversation.npc_reply, 320)
+  return safeNpcDossierEntry({
+    id: `interaction:${conversation.id}`,
+    hero_id: conversation.hero_id,
+    summary: [
+      heroLine ? `Герой сказал: «${heroLine}».` : '',
+      npcLine ? `Ответ NPC: «${npcLine}».` : '',
+    ].filter(Boolean).join(' '),
+    stance: conversation.stance,
+    visibility: conversation.visibility,
+    disclosed_fact_ids: conversation.disclosed_fact_ids,
+    disclosed_claims: conversation.disclosed_claim_ids.map((id) => ({ id })),
+    provenance: {
+      source_conversation_id: conversation.id,
+      source_event_ids: [event.event_id],
+    },
+  })
+}
+
 export function normalizeNpcSocialState(input = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const npcs = (Array.isArray(source.npcs) ? source.npcs : []).map(safeProfile).filter((npc) => npc.id && npc.name).slice(0, 500)
@@ -314,7 +390,7 @@ export function normalizeNpcSocialState(input = {}) {
     .filter((item) => item.id && npcIds.has(item.npc_id) && item.text && (!item.source_conversation_id || conversationIds.has(item.source_conversation_id))).slice(-500)
   const relationship_tiers = Object.fromEntries(Object.entries(relationships).map(([npcId, heroes]) => [npcId,
     Object.fromEntries(Object.entries(heroes).map(([heroId, score]) => [heroId, relationshipTier(score)]))]))
-  return { schema_version: 3, npcs, relationships, relationship_tiers, conversations, promises }
+  return { schema_version: 4, npcs, relationships, relationship_tiers, conversations, promises }
 }
 
 function profileFromMerchant(merchant = {}) {
@@ -406,6 +482,17 @@ function npcProfileForViewerAt(profile, viewer = {}) {
     inventory: current.inventory
       .filter((item) => item.quantity > 0 && viewerMaySee(item.visibility, viewer))
       .map((item) => ({ id: item.id, name: item.name, quantity: item.quantity, description: item.description })),
+    dossier: current.dossier
+      .filter((entry) => (
+        viewer.isAdmin === true
+        || entry.visibility === 'public'
+        || (entry.visibility === 'party' && viewer.isPartyMember !== false)
+        || (entry.visibility === 'specific_player' && entry.hero_id === clean(viewer.playerId, 120))
+      ))
+      .map((entry) => {
+        const { visibility: _visibility, ...visible } = entry
+        return clone(visible)
+      }),
   }
 }
 
@@ -482,13 +569,17 @@ function strictSpeechProfileInput(value) {
 
 function normalizeProfileInput(input) {
   const value = object(input, 'npc')
-  fields(value, new Set(['id', 'name', 'role', 'location', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'visibility', 'available', 'tags', 'schedule', 'inventory']), 'npc')
+  fields(value, new Set(['id', 'name', 'role', 'location', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'visibility', 'available', 'tags', 'schedule', 'inventory', 'dossier']), 'npc')
+  // Досье принадлежит серверу. Поле принимается только для round-trip
+  // спроецированного профиля через админское редактирование: присланные записи
+  // игнорируются, а reducer сохраняет событийную историю самого NPC.
+  const { dossier: _untrustedDossier, ...editable } = value
   const result = safeProfile({
-    ...value,
-    id: identifier(value.id, 'npc.id'),
-    ...(value.speech_profile == null ? {} : { speech_profile: strictSpeechProfileInput(value.speech_profile) }),
-    schedule: strictScheduleInput(value.schedule),
-    inventory: strictInventoryInput(value.inventory),
+    ...editable,
+    id: identifier(editable.id, 'npc.id'),
+    ...(editable.speech_profile == null ? {} : { speech_profile: strictSpeechProfileInput(editable.speech_profile) }),
+    schedule: strictScheduleInput(editable.schedule),
+    inventory: strictInventoryInput(editable.inventory),
   })
   if (!result.name) throw new NpcSocialValidationError('У NPC должно быть имя', 'NPC_SOCIAL_NAME_REQUIRED')
   if (!PROFILE_VISIBILITIES.has(value.visibility ?? 'party')) throw new NpcSocialValidationError('Некорректная видимость NPC', 'NPC_SOCIAL_VISIBILITY_INVALID')
@@ -686,12 +777,25 @@ export function applyNpcSocialEvent(input, event, state = {}) {
   const social = ensureNpcSocialState(input, state)
   const payload = event.payload ?? {}
   if (event.event_type === 'NpcSocialProfileUpserted') {
-    const npc = safeProfile(payload.npc)
+    const previous = social.npcs.find((candidate) => candidate.id === clean(payload.npc?.id, 120))
+    const npc = safeProfile({ ...payload.npc, dossier: previous?.dossier })
     social.npcs = [...social.npcs.filter((candidate) => candidate.id !== npc.id), npc]
   }
   if (event.event_type === 'NpcConversationRecorded') {
     const conversation = safeConversation(payload.conversation)
     social.conversations = [...social.conversations.filter((candidate) => candidate.id !== conversation.id), conversation].slice(-500)
+    const dossierEntry = dossierEntryFromConversation(conversation, event)
+    if (dossierEntry) {
+      social.npcs = social.npcs.map((npc) => npc.id === conversation.npc_id
+        ? safeProfile({
+            ...npc,
+            dossier: [
+              ...npc.dossier.filter((entry) => entry.id !== dossierEntry.id),
+              dossierEntry,
+            ],
+          })
+        : npc)
+    }
   }
   if (event.event_type === 'NpcRelationshipAdjusted') {
     const npcId = clean(payload.npc_id, 120)
@@ -725,7 +829,130 @@ export function npcSocialForViewer(input, viewer = {}) {
   const promises = social.promises.filter((entry) => visibleNpcIds.has(entry.npc_id) && (entry.visibility === 'party' || entry.hero_id === playerId))
   const relationships = Object.fromEntries([...visibleNpcIds].map((npcId) => [npcId, { [playerId]: social.relationships[npcId]?.[playerId] ?? 0 }]))
   const relationship_tiers = Object.fromEntries([...visibleNpcIds].map((npcId) => [npcId, { [playerId]: relationshipTier(relationships[npcId][playerId]) }]))
-  return { schema_version: 3, npcs: clone(npcs), relationships, relationship_tiers, conversations: clone(conversations), promises: clone(promises) }
+  return { schema_version: 4, npcs: clone(npcs), relationships, relationship_tiers, conversations: clone(conversations), promises: clone(promises) }
+}
+
+function narratorDossierText(value, maximum) {
+  return clean(value, maximum)
+}
+
+function narratorDossierVisibilityAllowed(value) {
+  return !['gm_only', 'gmOnly', 'npc_private', 'npcPrivate'].includes(String(value ?? ''))
+}
+
+function narratorDossierRecordVisible(record, viewerIds, viewerNames) {
+  if (!narratorDossierVisibilityAllowed(record?.visibility)) return false
+  if (record?.visibility !== 'specific_player') return true
+  return viewerIds.has(String(record?.hero_id ?? ''))
+    || viewerNames.has(narratorNpcKey(record?.hero))
+}
+
+function narratorNpcKey(value) {
+  return narratorDossierText(value, 160).toLocaleLowerCase('ru')
+}
+
+/**
+ * Нормализует явное event-sourced досье из уже спроецированного NarrationBrief.
+ * Эта функция намеренно не восстанавливает его из `recent_interactions`: полное
+ * досье профиля должен передать владелец story-context, иначе длинная история
+ * снова незаметно сузится до окна последних разговоров.
+ */
+export function npcDossiersForNarrator(brief = {}) {
+  const story = brief?.known_environment?.story_context ?? {}
+  const present = (Array.isArray(story.present_npcs) ? story.present_npcs : [])
+    .filter((npc) => npc?.id && npc?.name && narratorDossierVisibilityAllowed(npc.visibility))
+    .slice(0, 4)
+  if (!present.length) return []
+  const presentById = new Map(present.map((npc) => [String(npc.id), npc]))
+  const viewerHeroes = (Array.isArray(story.heroes) ? story.heroes : []).filter((hero) => hero?.is_viewer)
+  const viewerIds = new Set(viewerHeroes.map((hero) => String(hero?.id ?? '')).filter(Boolean))
+  const viewerNames = new Set(viewerHeroes.map((hero) => narratorNpcKey(hero?.name)).filter(Boolean))
+  const dossiers = []
+  for (const source of Array.isArray(story.npc_dossiers) ? story.npc_dossiers : []) {
+    if (!narratorDossierRecordVisible(source, viewerIds, viewerNames)) continue
+    const npc = presentById.get(String(source?.npc_id ?? ''))
+    if (!npc) continue
+    const interactionEntries = []
+    const interactionKeys = new Set()
+    for (const entry of Array.isArray(source?.interactions) ? source.interactions : []) {
+      if (!narratorDossierRecordVisible(entry, viewerIds, viewerNames)) continue
+      const sourceConversationId = narratorDossierText(entry?.provenance?.source_conversation_id, 120)
+      const recordKey = narratorDossierText(entry?.id, 120) || sourceConversationId
+      const summary = narratorDossierText(entry?.summary, 600)
+      if (!recordKey || !summary || interactionKeys.has(recordKey)) continue
+      interactionKeys.add(recordKey)
+      interactionEntries.push({
+        id: narratorDossierText(entry?.id, 120),
+        kind: 'recorded_exchange',
+        hero_id: narratorDossierText(entry?.hero_id, 120),
+        summary,
+        stance: narratorDossierText(entry?.stance, 40) || 'neutral',
+        epistemic_status: entry?.epistemic_status === 'contains_unverified_claims'
+          ? 'contains_unverified_claims'
+          : 'recorded_dialogue_not_world_fact',
+        disclosed_claims: (Array.isArray(entry?.disclosed_claims) ? entry.disclosed_claims : [])
+          .map((claim) => ({
+            id: narratorDossierText(claim?.id, 120),
+            truth_status: 'unknown',
+          }))
+          .filter((claim) => claim.id)
+          .slice(0, 12),
+        provenance: {
+          source_kind: 'NpcConversationRecorded',
+          source_conversation_id: sourceConversationId,
+          source_event_ids: (Array.isArray(entry?.provenance?.source_event_ids)
+            ? entry.provenance.source_event_ids
+            : [])
+            .map((eventId) => narratorDossierText(eventId, 120))
+            .filter(Boolean)
+            .slice(0, 8),
+        },
+      })
+    }
+    const promiseEntries = []
+    const promiseKeys = new Set()
+    for (const promise of Array.isArray(source?.promises) ? source.promises : []) {
+      if (!narratorDossierRecordVisible(promise, viewerIds, viewerNames)) continue
+      const id = narratorDossierText(promise?.id, 120)
+      const text = narratorDossierText(promise?.text, 280)
+      if (!id || !text || promiseKeys.has(id)) continue
+      promiseKeys.add(id)
+      promiseEntries.push({
+        id,
+        direction: narratorDossierText(promise?.direction, 40),
+        text,
+        due_hint: narratorDossierText(promise?.due_hint, 160),
+        status: 'open',
+        provenance: {
+          source_kind: 'event_reduced_promise',
+          source_id: id,
+          source_conversation_id: narratorDossierText(promise?.source_conversation_id, 120),
+        },
+      })
+    }
+    const relationship = narratorDossierText(source?.relationship?.tier, 40) || 'neutral'
+    if (!interactionEntries.length && !promiseEntries.length && relationship === 'neutral') continue
+    dossiers.push({
+      npc_id: narratorDossierText(npc.id, 120),
+      name: narratorDossierText(npc.name, 160),
+      relationship: {
+        tier: relationship,
+        provenance: {
+          source_kind: 'event_reduced_relationship',
+          source_event_ids: (Array.isArray(source?.relationship?.provenance?.source_event_ids)
+            ? source.relationship.provenance.source_event_ids
+            : [])
+            .map((eventId) => narratorDossierText(eventId, 120))
+            .filter(Boolean)
+            .slice(0, 8),
+        },
+      },
+      interactions: interactionEntries.slice(-NPC_NARRATOR_DOSSIER_LIMITS.interactions),
+      promises: promiseEntries.slice(-NPC_NARRATOR_DOSSIER_LIMITS.promises),
+    })
+    if (dossiers.length >= NPC_NARRATOR_DOSSIER_LIMITS.npcs) break
+  }
+  return dossiers
 }
 
 export function npcConversationNarration(events = [], state = {}) {

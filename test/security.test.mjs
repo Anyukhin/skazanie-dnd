@@ -363,13 +363,13 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
 // прежний записанный пробел закрыт.
 test('loaded role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
   // Версия в списке обязана совпадать с той, которую роль действительно грузит:
-  // narrator перешёл на v4, campaign_creator и map_architect — на v3,
+  // narrator перешёл на v5, campaign_creator и map_architect — на v3,
   // социальный контроллер — на v3 с границей UNTRUSTED_DATA,
   // action_adjudicator — на v2, остальные на v1.
   const prompts = [
     ['npc_controller/v1', 'npc_controller/v1'],
     ['npc_controller/social_v3', 'npc_controller/social-v3'],
-    ['narrator/v4', 'narrator/v4'],
+    ['narrator/v5', 'narrator/v5'],
     ['director/v1', 'director/v1'],
     ['action_adjudicator/v2', 'action_adjudicator/v2'],
     ['campaign_creator/v3', 'campaign_creator/v3'],
@@ -402,7 +402,7 @@ test('контрактным списком покрыта каждая роль
   assert.equal(loaded.size, 7, `ожидались ровно семь ролей, читающих промпт, найдено ${loaded.size}`)
 
   const knownGaps = new Set([])
-  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v3', 'narrator/v4', 'director/v1', 'action_adjudicator/v2', 'campaign_creator/v3', 'map_architect/v3'])
+  const covered = new Set(['npc_controller/v1', 'npc_controller/social_v3', 'narrator/v5', 'director/v1', 'action_adjudicator/v2', 'campaign_creator/v3', 'map_architect/v3'])
   const uncovered = [...loaded.keys()].filter((id) => !covered.has(id) && !knownGaps.has(id)).sort()
   assert.deepEqual(uncovered, [], 'роль грузит промпт, но не покрыта ни контрактным списком, ни записанным пробелом')
 })

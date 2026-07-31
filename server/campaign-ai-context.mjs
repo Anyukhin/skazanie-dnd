@@ -52,9 +52,13 @@ export function currentCampaignModel() {
   return currentCampaignAiSettings()?.model ?? ''
 }
 
+export function currentNarratorStyle() {
+  return currentCampaignAiSettings()?.narratorStyle ?? 'neutral'
+}
+
 export function currentNarratorStyleInstruction() {
   const settings = currentCampaignAiSettings()
-  return settings ? NARRATOR_STYLES[settings.narratorStyle].instruction : ''
+  return settings ? NARRATOR_STYLES[currentNarratorStyle()].instruction : ''
 }
 
 export function currentNarratorGenerationParameters() {

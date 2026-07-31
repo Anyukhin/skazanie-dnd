@@ -1,0 +1,257 @@
+{
+  "version": "narrator-few-shot/v1",
+  "examples": [
+    {
+      "id": "neutral-action-grounded-1",
+      "style": "neutral",
+      "moment": "action",
+      "tones": ["grounded", "tense"],
+      "text": "Засов поддаётся с сухим щелчком, и створка отходит ровно настолько, чтобы открыть тёмный проход."
+    },
+    {
+      "id": "neutral-action-warm-1",
+      "style": "neutral",
+      "moment": "action",
+      "tones": ["warm", "hopeful"],
+      "text": "Верёвка натягивается между сваями, и шаткий настил наконец перестаёт уходить из-под ног."
+    },
+    {
+      "id": "neutral-social-grounded-1",
+      "style": "neutral",
+      "moment": "social",
+      "tones": ["grounded", "warm"],
+      "text": "Трактирщица выслушивает довод до конца; её ладонь остаётся на медной кружке, а ответ звучит уже без прежней резкости."
+    },
+    {
+      "id": "neutral-social-tense-1",
+      "style": "neutral",
+      "moment": "social",
+      "tones": ["tense", "somber"],
+      "text": "Стражник не отводит взгляда от печати и отвечает коротко, оставляя вопрос открытым."
+    },
+    {
+      "id": "neutral-combat-tense-1",
+      "style": "neutral",
+      "moment": "combat",
+      "tones": ["tense", "grounded"],
+      "text": "Клинок срывает щепу с края щита, и противник вынужден сместиться к стене."
+    },
+    {
+      "id": "neutral-combat-triumphant-1",
+      "style": "neutral",
+      "moment": "combat",
+      "tones": ["triumphant", "hopeful"],
+      "text": "Последний удар разбивает строй нападающих, и путь к воротам остаётся за отрядом."
+    },
+    {
+      "id": "neutral-transition-mysterious-1",
+      "style": "neutral",
+      "moment": "transition",
+      "tones": ["mysterious", "somber"],
+      "text": "За каменной аркой начинается узкая галерея; из глубины доносится мерный плеск, а свет позади быстро тускнеет."
+    },
+    {
+      "id": "neutral-transition-hopeful-1",
+      "style": "neutral",
+      "moment": "transition",
+      "tones": ["hopeful", "warm"],
+      "text": "Тропа выходит из ельника к первым крышам, где в окнах уже горят вечерние огни."
+    },
+    {
+      "id": "neutral-discovery-mysterious-1",
+      "style": "neutral",
+      "moment": "discovery",
+      "tones": ["mysterious", "tense"],
+      "text": "Под слоем пыли проступает знакомый знак, повторённый на внутренней стороне крышки."
+    },
+    {
+      "id": "neutral-discovery-grounded-1",
+      "style": "neutral",
+      "moment": "discovery",
+      "tones": ["grounded", "somber"],
+      "text": "В журнале недостаёт одной страницы, но на корешке остаётся свежий обрывок бумаги."
+    },
+    {
+      "id": "neutral-quiet-warm-1",
+      "style": "neutral",
+      "moment": "quiet",
+      "tones": ["warm", "hopeful"],
+      "text": "Огонь в очаге потрескивает ровно, и у отряда остаётся время решить, куда двигаться дальше."
+    },
+    {
+      "id": "neutral-quiet-somber-1",
+      "style": "neutral",
+      "moment": "quiet",
+      "tones": ["somber", "grounded"],
+      "text": "Двор пуст, лишь незапертая калитка постукивает о столб; новых следов пока не видно."
+    },
+    {
+      "id": "formal-action-grounded-1",
+      "style": "formal",
+      "moment": "action",
+      "tones": ["grounded", "tense"],
+      "text": "Механизм срабатывает без задержки: запор отходит, открывая доступ в следующий коридор."
+    },
+    {
+      "id": "formal-action-hopeful-1",
+      "style": "formal",
+      "moment": "action",
+      "tones": ["hopeful", "warm"],
+      "text": "Крепление выдерживает нагрузку, и переход становится пригоден для безопасного движения."
+    },
+    {
+      "id": "formal-social-grounded-1",
+      "style": "formal",
+      "moment": "social",
+      "tones": ["grounded", "warm"],
+      "text": "Архивариус принимает приведённый довод и подтверждает, что запись заслуживает дополнительной проверки."
+    },
+    {
+      "id": "formal-social-tense-1",
+      "style": "formal",
+      "moment": "social",
+      "tones": ["tense", "somber"],
+      "text": "Начальник караула сохраняет прежнюю позицию и отказывается продолжать разговор без новых свидетельств."
+    },
+    {
+      "id": "formal-combat-tense-1",
+      "style": "formal",
+      "moment": "combat",
+      "tones": ["tense", "grounded"],
+      "text": "Атака достигает цели и нарушает построение противника у северной стены."
+    },
+    {
+      "id": "formal-combat-triumphant-1",
+      "style": "formal",
+      "moment": "combat",
+      "tones": ["triumphant", "hopeful"],
+      "text": "Сопротивление прекращается; проход к воротам остаётся под контролем отряда."
+    },
+    {
+      "id": "formal-transition-mysterious-1",
+      "style": "formal",
+      "moment": "transition",
+      "tones": ["mysterious", "somber"],
+      "text": "За аркой расположен неосвещённый проход, откуда регулярно доносится звук падающей воды."
+    },
+    {
+      "id": "formal-transition-hopeful-1",
+      "style": "formal",
+      "moment": "transition",
+      "tones": ["hopeful", "warm"],
+      "text": "Лесная дорога завершается у жилых домов; в окнах виден ровный вечерний свет."
+    },
+    {
+      "id": "formal-discovery-mysterious-1",
+      "style": "formal",
+      "moment": "discovery",
+      "tones": ["mysterious", "tense"],
+      "text": "Осмотр подтверждает совпадение знаков на крышке и найденной ранее печати."
+    },
+    {
+      "id": "formal-discovery-grounded-1",
+      "style": "formal",
+      "moment": "discovery",
+      "tones": ["grounded", "somber"],
+      "text": "В журнале отсутствует лист; характер разрыва указывает на недавнее изъятие."
+    },
+    {
+      "id": "formal-quiet-warm-1",
+      "style": "formal",
+      "moment": "quiet",
+      "tones": ["warm", "hopeful"],
+      "text": "Обстановка остаётся спокойной, и отряд может определить дальнейший порядок действий."
+    },
+    {
+      "id": "formal-quiet-somber-1",
+      "style": "formal",
+      "moment": "quiet",
+      "tones": ["somber", "grounded"],
+      "text": "Изменений в пустом дворе не наблюдается; решение о следующем шаге остаётся за отрядом."
+    },
+    {
+      "id": "ironic-action-grounded-1",
+      "style": "ironic",
+      "moment": "action",
+      "tones": ["grounded", "tense"],
+      "text": "Засов всё-таки сдаётся — с таким скрипом, будто намерен подать официальную жалобу."
+    },
+    {
+      "id": "ironic-action-warm-1",
+      "style": "ironic",
+      "moment": "action",
+      "tones": ["warm", "hopeful"],
+      "text": "Настил перестаёт шататься; верёвка, в отличие от прежних советчиков, честно делает своё дело."
+    },
+    {
+      "id": "ironic-social-grounded-1",
+      "style": "ironic",
+      "moment": "social",
+      "tones": ["grounded", "warm"],
+      "text": "Трактирщица принимает довод, хотя медная кружка по-прежнему выглядит самым надёжным участником переговоров."
+    },
+    {
+      "id": "ironic-social-tense-1",
+      "style": "ironic",
+      "moment": "social",
+      "tones": ["tense", "somber"],
+      "text": "Стражник остаётся при своём мнении; печать, по крайней мере, спорить не пытается."
+    },
+    {
+      "id": "ironic-combat-tense-1",
+      "style": "ironic",
+      "moment": "combat",
+      "tones": ["tense", "grounded"],
+      "text": "Удар разбивает край щита, и уверенность противника трескается следом — пока лишь образно."
+    },
+    {
+      "id": "ironic-combat-triumphant-1",
+      "style": "ironic",
+      "moment": "combat",
+      "tones": ["triumphant", "hopeful"],
+      "text": "Строй нападающих распадается, внезапно обнаружив все преимущества организованного отступления."
+    },
+    {
+      "id": "ironic-transition-mysterious-1",
+      "style": "ironic",
+      "moment": "transition",
+      "tones": ["mysterious", "somber"],
+      "text": "За аркой темнеет галерея, и мерный плеск заранее обещает обуви не лучший вечер."
+    },
+    {
+      "id": "ironic-transition-hopeful-1",
+      "style": "ironic",
+      "moment": "transition",
+      "tones": ["hopeful", "warm"],
+      "text": "Тропа выводит к освещённым окнам — редкий случай, когда дорога и надежда выбирают одно направление."
+    },
+    {
+      "id": "ironic-discovery-mysterious-1",
+      "style": "ironic",
+      "moment": "discovery",
+      "tones": ["mysterious", "tense"],
+      "text": "Под пылью находится тот же знак; тайна хотя бы проявляет похвальную последовательность."
+    },
+    {
+      "id": "ironic-discovery-grounded-1",
+      "style": "ironic",
+      "moment": "discovery",
+      "tones": ["grounded", "somber"],
+      "text": "Из журнала вырван лист, и корешок хранит больше сведений, чем дежурившие у ворот."
+    },
+    {
+      "id": "ironic-quiet-warm-1",
+      "style": "ironic",
+      "moment": "quiet",
+      "tones": ["warm", "hopeful"],
+      "text": "Очаг потрескивает, ничего не требует и тем самым выгодно отличается от большинства текущих задач."
+    },
+    {
+      "id": "ironic-quiet-somber-1",
+      "style": "ironic",
+      "moment": "quiet",
+      "tones": ["somber", "grounded"],
+      "text": "Во дворе по-прежнему пусто; калитка одна поддерживает беседу со столбом."
+    }
+  ]
+}

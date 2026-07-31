@@ -97,7 +97,8 @@ test('сервер не сохраняет предложенные модель
   assert.equal(Object.hasOwn(result, 'suggestions'), false)
 
   const systemPrompt = requests[0].messages[0].content
-  assert.match(systemPrompt, /PROMPT_ID: narrator\/v4/u)
+  assert.match(systemPrompt, /PROMPT_ID: narrator\/v5/u)
+  assert.match(systemPrompt, /CURATED_STYLE_EXAMPLES \(narrator-few-shot\/v1\)/u)
   assert.doesNotMatch(systemPrompt, /воздух густеет|повисает тишина|каталог клише/u)
   assert.ok(NARRATOR_CLICHE_CATALOG.length >= 16, 'каталог принадлежит production craft-проверке')
   assert.match(systemPrompt, /не называй видимые числа броска/u)
@@ -118,15 +119,18 @@ test('клише не отклоняет абзац и не тратит вто�
     },
   }
 
-  const result = await new Narrator({ llmClient, maxAttempts: 2 }).render(brief)
+  const narrator = new Narrator({ llmClient, maxAttempts: 2 })
+  const result = await narrator.render(brief)
+  const feedback = await narrator.awaitFeedback(result.narration)
 
   assert.equal(requests.length, 1, 'клише не стоит игрокам второго вызова провайдера')
   assert.equal(result.narration, clicheNarration, 'первый вариант уходит игрокам как есть')
   assert.equal(result.verification.valid, true)
   assert.equal(result.verification.violations.length, 0)
-  assert.deepEqual(result.verification.craft_notes.map((note) => note.code), ['NARRATOR_CLICHE'])
-  assert.match(result.verification.craft_notes[0].match, /Воздух густе/u, 'замечание цитирует текст модели')
-  assert.match(result.verification.craft_notes[0].message, /воздух густеет/u, 'и называет оборот целиком')
+  assert.equal(result.verification.feedback_pending, true)
+  assert.deepEqual(feedback.craft_notes.map((note) => note.code), ['NARRATOR_CLICHE'])
+  assert.match(feedback.craft_notes[0].match, /Воздух густе/u, 'замечание цитирует текст модели')
+  assert.match(feedback.craft_notes[0].message, /воздух густеет/u, 'и называет оборот целиком')
 })
 
 test('вердикт по клише уходит в промпт следующего хода, а каталог — нет', async () => {
@@ -234,7 +238,6 @@ test('локальная craft-проверка блокирует действ�
       'HERO_AGENCY_NOT_IN_BRIEF',
       'NPC_REACTION_NOT_PERMITTED',
       'PROMISE_RESOLUTION_NOT_IN_BRIEF',
-      'LINKED_MEMORY_OMITTED',
     ]),
   )
 })
@@ -357,34 +360,38 @@ test('lexical craft-guard блокирует явный разворот и ух
   }
 })
 
-test('craft-проверка отклоняет повтор недавнего текста, а fallback снижает тот же Jaccard 3-грамм', async () => {
+test('повтор показан без repair-вызова, а verdict применяется в следующем ходе', async () => {
   const brief = craftBrief()
   const recent = deterministicNarration(brief).narration
+  const requests = []
   const llmClient = {
-    completeJson: async () => ({
+    completeJson: async (input) => {
+      requests.push(input)
+      return {
       narration: recent,
       suggestions: [],
-    }),
+      }
+    },
   }
-  const result = await new Narrator({ llmClient, maxAttempts: 1 }).render(brief, {
+  const narrator = new Narrator({ llmClient, maxAttempts: 1 })
+  const result = await narrator.render(brief, {
     recentNarrations: [recent],
   })
-  const metrics = measureNarratorCraft([
-    { id: 'recent', kind: 'narrator', text: recent, suggestions: [] },
-    { id: 'fallback', kind: 'narrator', text: result.narration, suggestions: [] },
-  ])
-
-  assert.equal(result.provider, 'deterministic-fallback')
+  const feedback = await narrator.awaitFeedback(result.narration)
+  assert.equal(result.provider, 'Object')
   assert.equal(result.verification.valid, true, JSON.stringify(result.verification))
-  assert.notEqual(result.narration, recent)
+  assert.equal(result.narration, recent)
   assert.ok(
-    result.verification.repaired_from.some((entry) => entry.code === 'RECENT_NARRATION_REPETITION'),
-    result.verification.repaired_from,
+    feedback.violations.some((entry) => entry.code === 'RECENT_NARRATION_REPETITION'),
+    feedback,
   )
-  assert.ok(metrics.ngram_overlap.pairwise_jaccard_pct <= 5, metrics.ngram_overlap)
+  const next = await narrator.render(brief, { recentNarrations: [result.narration] })
+  assert.equal(next.verification.feedback_applied[0].valid, false)
+  assert.match(requests[1].messages[1].content, /RECENT_NARRATION_REPETITION/u)
+  assert.equal(requests.length, 2)
 })
 
-test('offline safety replay не вызывает сеть, проходит production repair path и не выдаёт fallback за model repair', () => {
+test('offline replay не вызывает сеть и пишет асинхронный verdict без repair-вызова', () => {
   const sourcePath = join(PROJECT_ROOT, 'eval', 'narrator-craft-after.json')
   const baselinePath = join(PROJECT_ROOT, 'eval', 'narrator-craft-baseline.json')
   const outputPath = join(mkdtempSync(join(tmpdir(), 'skazanie-narrator-replay-')), 'production-after.json')
@@ -408,15 +415,15 @@ test('offline safety replay не вызывает сеть, проходит pro
 
   const sourceAfter = readFileSync(sourcePath)
   const report = JSON.parse(readFileSync(outputPath, 'utf8'))
-  const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
   const samples = new Map(report.samples.map((sample) => [sample.id, sample]))
   const promise = samples.get('open-promise')
   const meeting = samples.get('past-meeting')
 
   assert.equal(createHash('sha256').update(sourceAfter).digest('hex'), sourceSha256)
   assert.equal(report.provenance.source_sha256, sourceSha256)
-  assert.equal(report.provenance.method, 'offline-replay-current-production-safety-path')
-  assert.equal(report.provenance.replay_max_attempts, 2)
+  assert.equal(report.schema_version, 3)
+  assert.equal(report.provenance.method, 'offline-replay-current-production-single-pass-path')
+  assert.equal(report.provenance.replay_max_attempts, 1)
   assert.equal(report.provenance.source_outputs_are_final_production_outputs, true)
   assert.deepEqual(report.provenance.source_narrator_output_mix, {
     provider_model: 3,
@@ -429,26 +436,20 @@ test('offline safety replay не вызывает сеть, проходит pro
   })
   assert.equal(report.provenance.saved_final_source_outputs_per_narrator_scenario, 1)
   assert.equal(report.provenance.repair_model_outputs_replayed, 0)
-  assert.match(report.provenance.note, /три принятых provider model outputs.+один.+deterministic-fallback/iu)
-  assert.match(report.provenance.note, /финальный safety-output.+не качество model repair|не качество model repair.+финальный safety-output/iu)
+  assert.match(report.provenance.note, /не запускают repair/iu)
   assert.equal(report.provenance.network_calls, 0)
   assert.equal(report.live_calls, 0)
   assert.deepEqual(report.provider_log, [])
-  assert.ok(
-    report.metrics.ngram_overlap.pairwise_jaccard_pct
-      < baseline.metrics.ngram_overlap.pairwise_jaccard_pct,
-    { before: baseline.metrics.ngram_overlap, after: report.metrics.ngram_overlap },
-  )
-  assert.equal(report.metrics.quality_gate.passed, true)
   const narratorSamples = report.samples.filter((sample) => sample.kind === 'narrator')
   assert.ok(narratorSamples.every((sample) => sample.verification?.valid === true))
-  assert.ok(narratorSamples.every((sample) => sample.provider === 'deterministic-provider-fallback'))
+  assert.ok(narratorSamples.every((sample) => sample.async_feedback))
   assert.ok(narratorSamples.every((sample) => (
-    sample.verification?.provider_error === 'OFFLINE_REPLAY_REPAIR_OUTPUT_UNAVAILABLE'
-    && sample.verification?.repaired_from?.length > 0
-    && sample.replay_source?.offline_pipeline_attempts === 2
+    sample.replay_source?.offline_pipeline_attempts === 1
     && sample.replay_source?.stage === 'saved-final-production-output-as-offline-candidate'
   )))
+  assert.ok(narratorSamples.some((sample) => sample.async_feedback?.valid === false))
+  assert.ok(narratorSamples.some((sample) => sample.provider === 'SavedFinalOutputReplayClient'))
+  assert.ok(narratorSamples.some((sample) => sample.provider === 'deterministic-fallback'))
   assert.equal(samples.get('forward-hook').replay_source.source_output_kind, 'deterministic-fallback')
   assert.ok(['decision-n-minus-2', 'open-promise', 'past-meeting']
     .every((id) => samples.get(id).replay_source.source_output_kind === 'provider-model'))

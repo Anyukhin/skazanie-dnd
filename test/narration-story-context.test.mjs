@@ -7,6 +7,7 @@ import test from 'node:test'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { GameOrchestrator, NARRATION_STORY_LIMITS, narrationStoryContext } from '../server/game-orchestrator.mjs'
+import { npcDossiersForNarrator } from '../server/npc-social.mjs'
 import { applyGameEvent, normalizeCampaignState, RulesEngine } from '../server/rules-engine.mjs'
 import { assertNarrationBrief } from '../server/security.mjs'
 import { FileTraceStore } from '../server/trace-store.mjs'
@@ -194,6 +195,133 @@ test('story context смотрит на отношение глазами кон
       class_name: 'Плут', background: 'бывший городской дозорный',
     },
   ])
+})
+
+test('story context отдаёт досье только текущего повторного NPC и исключает текущую реплику', () => {
+  const social = storySocial()
+  social.npcs[0].dossier = [
+    {
+      id: 'dossier:old',
+      hero_id: 'hero',
+      summary: 'Раньше Мира помогла Аде найти северную тропу.',
+      stance: 'friendly',
+      visibility: 'party',
+      disclosed_claims: [],
+      provenance: {
+        source_kind: 'NpcConversationRecorded',
+        source_conversation_id: 'conversation:old',
+        source_event_ids: ['event:old'],
+      },
+    },
+    {
+      id: 'dossier:other-hero',
+      hero_id: 'rogue',
+      summary: 'Чужой личный разговор не должен попасть в досье Ады.',
+      stance: 'guarded',
+      visibility: 'specific_player',
+      disclosed_claims: [],
+      provenance: {
+        source_kind: 'NpcConversationRecorded',
+        source_conversation_id: 'conversation:other-hero',
+        source_event_ids: ['event:other-hero'],
+      },
+    },
+    {
+      id: 'dossier:current',
+      hero_id: 'hero',
+      summary: 'Текущая реплика уже представлена событием этого хода.',
+      stance: 'friendly',
+      visibility: 'party',
+      disclosed_claims: [],
+      provenance: {
+        source_kind: 'NpcConversationRecorded',
+        source_conversation_id: 'conversation:current',
+        source_event_ids: ['event:current'],
+      },
+    },
+  ]
+  social.promises[0].source_conversation_id = 'conversation:gate'
+  social.npcs.push({
+    id: 'npc:other-present',
+    name: 'Другой знакомый',
+    role: 'писарь',
+    location: 'Трактир «Пустой кубок»',
+    public_summary: 'Тоже находится в сцене.',
+    visibility: 'party',
+    available: true,
+    dossier: [{
+      id: 'dossier:other-npc',
+      hero_id: 'hero',
+      summary: 'История другого NPC не относится к текущему разговору.',
+      stance: 'neutral',
+      visibility: 'party',
+      disclosed_claims: [],
+      provenance: {
+        source_kind: 'NpcConversationRecorded',
+        source_conversation_id: 'conversation:other-npc',
+        source_event_ids: ['event:other-npc'],
+      },
+    }],
+  })
+  const state = campaign({ worldMemory: storyWorldMemory(), social })
+  const currentEvents = [{
+    event_id: 'event:current',
+    event_type: 'NpcConversationRecorded',
+    payload: {
+      conversation: {
+        id: 'conversation:current',
+        npc_id: 'npc:mira',
+        hero_id: 'hero',
+      },
+    },
+    visibility: 'party',
+  }]
+  const context = narrationStoryContext(
+    state,
+    { playerId: 'hero', partyIds: ['hero', 'rogue'], isPartyMember: true },
+    currentEvents,
+  )
+
+  assert.equal(context.npc_dossiers.length, 1)
+  assert.equal(context.npc_dossiers[0].npc_id, 'npc:mira')
+  assert.equal(context.npc_dossiers[0].relationship.tier, 'friendly')
+  assert.deepEqual(context.npc_dossiers[0].interactions.map((entry) => entry.id), ['dossier:old'])
+  assert.deepEqual(context.npc_dossiers[0].promises.map((promise) => promise.id), ['promise:map'])
+  assert.doesNotMatch(JSON.stringify(context.npc_dossiers), /Текущая реплика|Чужой личный|История другого NPC/u)
+
+  const normalized = npcDossiersForNarrator({ known_environment: { story_context: context } })
+  assert.deepEqual(normalized[0].interactions.map((entry) => entry.id), ['dossier:old'])
+  assert.deepEqual(normalized[0].promises.map((promise) => promise.id), ['promise:map'])
+})
+
+test('story context не считает первую текущую беседу повторной встречей', () => {
+  const social = storySocial()
+  social.npcs[0].dossier = [{
+    id: 'dossier:first',
+    hero_id: 'hero',
+    summary: 'Это первая и текущая беседа.',
+    stance: 'neutral',
+    visibility: 'party',
+    disclosed_claims: [],
+    provenance: {
+      source_kind: 'NpcConversationRecorded',
+      source_conversation_id: 'conversation:first',
+      source_event_ids: ['event:first'],
+    },
+  }]
+  const state = campaign({ worldMemory: storyWorldMemory(), social })
+  const context = narrationStoryContext(
+    state,
+    { playerId: 'hero', partyIds: ['hero'], isPartyMember: true },
+    [{
+      event_id: 'event:first',
+      event_type: 'NpcConversationRecorded',
+      payload: { conversation: { id: 'conversation:first', npc_id: 'npc:mira', hero_id: 'hero' } },
+      visibility: 'party',
+    }],
+  )
+
+  assert.deepEqual(context.npc_dossiers, [])
 })
 
 test('story context не выдаёт присутствие NPC из gm_only расписания', () => {
