@@ -698,6 +698,202 @@ function contentBoundaryViolations(narration, directives) {
   return result
 }
 
+// Художественный verdict не пытается угадывать смысл произвольной прозы.
+// Он признаёт только bounded server-owned профили: явное совпадение, явное
+// противоречие либо честное отсутствие достаточных свидетельств.
+const TONE_ALIGNMENT_PROFILES = Object.freeze([
+  Object.freeze({
+    id: 'warm',
+    cues: Object.freeze(['тёпл', 'уют', 'дружелюб', 'добр', 'забот', 'нежн', 'сочувств', 'warm', 'cozy', 'friendly', 'kind', 'gentle', 'compassion']),
+    opposites: Object.freeze(['холодн', 'враждеб', 'жесток', 'безжалост', 'ледян', 'cold', 'hostile', 'cruel', 'merciless']),
+  }),
+  Object.freeze({
+    id: 'hopeful',
+    cues: Object.freeze(['надежд', 'ободр', 'героич', 'спасен', 'hope', 'hopeful', 'encourag', 'heroic']),
+    opposites: Object.freeze(['безнадёж', 'безысход', 'обреч', 'тщет', 'hopeless', 'despair', 'doomed', 'futile']),
+  }),
+  Object.freeze({
+    id: 'somber',
+    cues: Object.freeze(['мрачн', 'печал', 'траур', 'скорб', 'суров', 'grim', 'somber', 'tragic', 'bleak', 'mourning']),
+    opposites: Object.freeze(['беззабот', 'празднич', 'весел', 'радост', 'carefree', 'festive', 'cheerful', 'jolly']),
+  }),
+  Object.freeze({
+    id: 'tense',
+    cues: Object.freeze(['напряж', 'опас', 'тревог', 'угроз', 'страх', 'насторож', 'tense', 'danger', 'alarm', 'threat', 'fear', 'wary']),
+    opposites: Object.freeze(['безопасн', 'спокойн', 'безмятеж', 'расслаб', 'safe', 'calm', 'serene', 'relaxed']),
+  }),
+  Object.freeze({
+    id: 'mysterious',
+    cues: Object.freeze(['тайн', 'загад', 'мист', 'неизвест', 'скрыт', 'mystery', 'mysterious', 'secret', 'unknown', 'hidden']),
+    opposites: Object.freeze(['очевидн', 'разгадан', 'полностью-ясн', 'obvious', 'solved', 'fully-clear']),
+  }),
+  Object.freeze({
+    id: 'triumphant',
+    cues: Object.freeze(['триумф', 'побед', 'торжеств', 'triumph', 'victor']),
+    opposites: Object.freeze(['поражен', 'разгром', 'унижен', 'defeat', 'rout', 'humiliat']),
+  }),
+])
+
+const THEME_GENERIC_ROOTS = new Set([
+  'тем', 'кампан', 'истор', 'сюжет', 'сцен', 'геро', 'персонаж', 'приключен',
+  'отношен', 'эмоц', 'чувств', 'выбор', 'последств', 'theme', 'campaign',
+  'story', 'plot', 'scene', 'hero', 'character', 'adventur', 'emotion',
+  'choice', 'consequenc', 'межд', 'через', 'посл', 'перед', 'вокруг',
+  'против', 'котор', 'этот', 'потом', 'когда', 'пока', 'about', 'between',
+  'through', 'after', 'before', 'around', 'against', 'which', 'this', 'that',
+  'then', 'when', 'while', 'their',
+])
+
+const THEME_CONCEPT_PROFILES = Object.freeze([
+  Object.freeze({
+    id: 'memory',
+    cues: Object.freeze(['памят', 'помн', 'воспомин', 'прошл', 'memory', 'remember', 'recollect', 'past$']),
+    dismissals: Object.freeze([
+      /(?:забыть|забуд\w*|отринуть)\s+(?:всё\s+)?(?:прошл\w*|память|воспоминан\w*)/iu,
+      /(?:memory|the\s+past)\s+(?:means|matters)\s+nothing|forget\s+(?:all\s+)?(?:memory|the\s+past)/iu,
+    ]),
+  }),
+  Object.freeze({
+    id: 'duty',
+    cues: Object.freeze(['долг$', 'обязан', 'клятв', 'служен', 'duty', 'obligat', 'oath', 'responsib']),
+    dismissals: Object.freeze([
+      /(?:долг|обязательств\w*)[^.!?]{0,24}(?:ничего\s+не\s+значит|не\s+важ\w*|бессмыслен\w*)|нет\s+никак\w*\s+(?:долга|обязательств)/iu,
+      /(?:duty|obligations?)\s+(?:means?|matters?)\s+nothing|no\s+(?:duty|obligations?)/iu,
+    ]),
+  }),
+  Object.freeze({
+    id: 'trust',
+    cues: Object.freeze(['довер', 'верност', 'предан', 'союз', 'trust', 'loyal', 'faith']),
+    dismissals: Object.freeze([
+      /никому\s+нельзя\s+доверять|доверие[^.!?]{0,24}(?:ничего\s+не\s+значит|не\s+важ\w*|бессмыслен\w*)/iu,
+      /never\s+trust\s+anyone|trust\s+(?:means?|matters?)\s+nothing|trust\s+is\s+meaningless/iu,
+    ]),
+  }),
+  Object.freeze({
+    id: 'hope',
+    cues: Object.freeze(['надежд', 'hope']),
+    dismissals: Object.freeze([
+      /(?:надежд\w*)\s+(?:нет|не\s+остал\w*|бессмыслен\w*)/iu,
+      /(?:there\s+is\s+)?no\s+hope|hope\s+is\s+meaningless/iu,
+    ]),
+  }),
+  Object.freeze({
+    id: 'justice',
+    cues: Object.freeze(['справедлив', 'правосуд', 'justice']),
+    dismissals: Object.freeze([
+      /(?:справедливост\w*|правосудие)[^.!?]{0,24}(?:ничего\s+не\s+значит|не\s+важ\w*|бессмыслен\w*)/iu,
+      /justice\s+(?:means?|matters?)\s+nothing|justice\s+is\s+meaningless/iu,
+    ]),
+  }),
+  Object.freeze({
+    id: 'freedom',
+    cues: Object.freeze(['свобод', 'воля$', 'freedom', 'liberty']),
+    dismissals: Object.freeze([
+      /свобод\w*[^.!?]{0,24}(?:ничего\s+не\s+значит|не\s+важ\w*|бессмыслен\w*)/iu,
+      /(?:freedom|liberty)\s+(?:means?|matters?)\s+nothing|(?:freedom|liberty)\s+is\s+meaningless/iu,
+    ]),
+  }),
+  Object.freeze({
+    id: 'truth',
+    cues: Object.freeze(['истин', 'правд', 'truth']),
+    dismissals: Object.freeze([
+      /(?:истин\w*|правда)[^.!?]{0,24}(?:ничего\s+не\s+значит|не\s+важ\w*|бессмыслен\w*)/iu,
+      /truth\s+(?:means?|matters?)\s+nothing|truth\s+is\s+meaningless/iu,
+    ]),
+  }),
+])
+
+function alignmentCueIsNegated(text, index) {
+  const prefix = text.slice(Math.max(0, index - 56), index)
+  return /(?:^|[^\p{L}])(?:без|не|никак\w*|избега\w*|without|not|never|no)\s+(?:[\p{L}'’\-]+\s+){0,2}$/iu.test(prefix)
+}
+
+function cueMatchesToken(token, cue) {
+  return cue.endsWith('$') ? token === cue.slice(0, -1) : token.startsWith(cue)
+}
+
+function alignmentCueEvidence(value, cues, maximum = 4_000) {
+  const text = sceneText(value, maximum).normalize('NFKC').toLocaleLowerCase('ru')
+  const result = []
+  const seen = new Set()
+  for (const match of text.matchAll(/[a-zа-яё][a-zа-яё'’\-]*/giu)) {
+    const cue = cues.find((candidate) => cueMatchesToken(match[0], candidate))
+    if (!cue || seen.has(cue) || alignmentCueIsNegated(text, match.index ?? 0)) continue
+    seen.add(cue)
+    result.push({ cue, match: match[0] })
+  }
+  return result
+}
+
+function meaningfulThemeRoots(value) {
+  return [...suggestionRoots(sceneText(value, 800))]
+    .filter((root) => root.length >= 4 && ![...THEME_GENERIC_ROOTS]
+      .some((generic) => root === generic || root.startsWith(generic)))
+    .slice(0, 24)
+}
+
+function themeRootOverlap(themeRoots, narration) {
+  const narrationRoots = meaningfulThemeRoots(sceneText(narration, 4_000))
+  return themeRoots.find((root) => narrationRoots.includes(root)) ?? ''
+}
+
+function staticPatternEvidence(value, patterns, maximum = 4_000) {
+  const text = sceneText(value, maximum)
+  for (const pattern of patterns) {
+    const match = pattern.exec(text)
+    if (match) return sceneText(match[0], 120)
+  }
+  return ''
+}
+
+function toneAlignmentVerdict(narration, toneDirective) {
+  const tone = sceneText(toneDirective, 500)
+  if (!tone) return { status: 'not-configured' }
+  const expected = TONE_ALIGNMENT_PROFILES.filter((profile) => (
+    alignmentCueEvidence(tone, profile.cues, 500).length > 0
+  ))
+  if (!expected.length) return { status: 'insufficient-evidence' }
+  if (expected.some((profile) => alignmentCueEvidence(narration, profile.cues).length > 0)) {
+    return { status: 'passed' }
+  }
+  const oppositeEvidence = []
+  const seen = new Set()
+  for (const profile of expected) {
+    for (const evidence of alignmentCueEvidence(narration, profile.opposites)) {
+      if (seen.has(evidence.cue)) continue
+      seen.add(evidence.cue)
+      oppositeEvidence.push(evidence.match)
+    }
+  }
+  return oppositeEvidence.length >= 2
+    ? { status: 'violation', match: oppositeEvidence.slice(0, 4).join(', ') }
+    : { status: 'insufficient-evidence' }
+}
+
+function themeAlignmentVerdict(narration, themeDirective) {
+  const themes = sceneText(themeDirective, 800)
+  if (!themes) return { status: 'not-configured' }
+  const expectedConcepts = THEME_CONCEPT_PROFILES.filter((profile) => (
+    alignmentCueEvidence(themes, profile.cues, 800).length > 0
+  ))
+  const themeRoots = meaningfulThemeRoots(themes)
+  if (!expectedConcepts.length && !themeRoots.length) return { status: 'insufficient-evidence' }
+
+  const dismissals = expectedConcepts
+    .map((profile) => staticPatternEvidence(narration, profile.dismissals))
+    .filter(Boolean)
+  if (dismissals.length) {
+    return { status: 'violation', match: dismissals.slice(0, 2).join(' · ') }
+  }
+  if (expectedConcepts.some((profile) => alignmentCueEvidence(narration, profile.cues).length > 0)) {
+    return { status: 'passed' }
+  }
+  const sharedRoot = themeRootOverlap(themeRoots, narration)
+  return sharedRoot
+    ? { status: 'passed', match: sharedRoot }
+    : { status: 'insufficient-evidence' }
+}
+
 function arcRecapIsPresent(narration, recap) {
   return !recap || (
     /в\s+прошл(?:ый|ую)\s+раз/iu.test(String(narration ?? ''))
@@ -819,7 +1015,12 @@ export function verifyNarratorFeedback(narration, brief, {
   sensoryAnchors = sensoryAnchorsFor(brief),
   contentDirectives = narratorContentDirectives(brief),
 } = {}) {
-  const text = String(narration ?? '')
+  const text = sceneText(narration, 4_000)
+  const directives = {
+    tone: sceneText(contentDirectives?.tone, 500),
+    themes: sceneText(contentDirectives?.themes, 800),
+    boundaries: sceneText(contentDirectives?.boundaries, 1_000),
+  }
   const violations = []
   const add = (code, message, match = '') => {
     if (!violations.some((entry) => entry.code === code)) {
@@ -854,7 +1055,23 @@ export function verifyNarratorFeedback(narration, brief, {
       'Повествование не переиспользовало ни один закреплённый сенсорный признак локации',
     )
   }
-  for (const violation of contentBoundaryViolations(text, contentDirectives)) {
+  const toneAlignment = toneAlignmentVerdict(text, directives.tone)
+  if (toneAlignment.status === 'violation') {
+    add(
+      'NARRATOR_TONE_MISMATCH',
+      `Абзац использует явные маркеры тона, противоположного настройке кампании «${sceneText(directives.tone, 120)}»`,
+      toneAlignment.match,
+    )
+  }
+  const themeAlignment = themeAlignmentVerdict(text, directives.themes)
+  if (themeAlignment.status === 'violation') {
+    add(
+      'NARRATOR_THEME_UNALIGNED',
+      `Абзац явно отбрасывает заявленные темы кампании «${sceneText(directives.themes, 160)}»; в следующем ходе верни их в повествование`,
+      themeAlignment.match,
+    )
+  }
+  for (const violation of contentBoundaryViolations(text, directives)) {
     add(violation.code, violation.message, violation.match)
   }
   return {
@@ -862,9 +1079,9 @@ export function verifyNarratorFeedback(narration, brief, {
     violations,
     ...(craftNotes.length ? { craft_notes: craftNotes } : {}),
     content_alignment: {
-      tone: contentDirectives.tone ? 'checked-by-contract' : 'not-configured',
-      themes: contentDirectives.themes ? 'checked-by-contract' : 'not-configured',
-      boundaries: contentDirectives.boundaries
+      tone: toneAlignment.status,
+      themes: themeAlignment.status,
+      boundaries: directives.boundaries
         ? (violations.some((entry) => entry.code === 'CONTENT_BOUNDARY_VIOLATION') ? 'violation' : 'passed')
         : 'not-configured',
     },
