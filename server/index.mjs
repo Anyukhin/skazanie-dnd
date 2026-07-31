@@ -36,10 +36,12 @@ import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrat
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
+import { CampaignNarrationStream } from './narration-stream.mjs'
 import { CreativeDirector } from './creative-director.mjs'
 import { combatNarration as tacticalNarration } from './combat-narration.mjs'
 import { NpcControllerAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
+import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
@@ -131,6 +133,10 @@ const campaignTyping = new Map()
 const campaignEconomyJobs = new Map()
 const TYPING_TTL_MS = 4_000
 let campaignStreamSequence = 0
+const campaignNarrationStream = new CampaignNarrationStream({
+  connectionsFor: (campaignId) => streamConnections(campaignId).values(),
+  write: (connection, event, payload) => writeCampaignStream(connection, event, payload),
+})
 
 const diceService = new DiceService()
 const rollRegistry = new RollRegistry({
@@ -887,6 +893,41 @@ function canAccessRoom(user, room) {
   return (user.heroIds ?? []).some((id) => memberIds.includes(String(id)))
 }
 
+function explicitNarrationNpcId(state, user, playerId, rawNpcId) {
+  if (rawNpcId == null || rawNpcId === '') return ''
+  if (typeof rawNpcId !== 'string') {
+    throw commandPolicyError('npc_id должен быть строковым идентификатором', 'NPC_ID_INVALID')
+  }
+  const npcId = rawNpcId.trim()
+  if (!npcId || npcId.length > 120 || !/^[A-Za-z0-9._:-]+$/u.test(npcId)) {
+    throw commandPolicyError('npc_id должен содержать от 1 до 120 безопасных символов', 'NPC_ID_INVALID')
+  }
+  const social = ensureNpcSocialState(state.social, state)
+  const visibleSocial = npcSocialForViewer(social, {
+    playerId,
+    isAdmin: user?.role === 'admin',
+    isPartyMember: true,
+    state,
+  })
+  if (!visibleSocial.npcs.some((npc) => String(npc.id) === npcId)) {
+    throw commandPolicyError('Выбранный собеседник не виден этому игроку', 'NPC_NOT_VISIBLE')
+  }
+  const persisted = social.npcs.find((npc) => String(npc.id) === npcId)
+  const profile = persisted ? npcProfileAtWorldTime(persisted, state) : null
+  if (!profile || profile.available === false) {
+    throw commandPolicyError('Выбранный собеседник сейчас недоступен', 'NPC_UNAVAILABLE')
+  }
+  if (state.mechanics?.combat?.active) {
+    throw commandPolicyError('Развёрнутый разговор недоступен во время боя', 'NPC_SOCIAL_BLOCKED_IN_COMBAT')
+  }
+  const sceneLocation = String(state.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  const npcLocation = String(profile.location ?? '').trim().toLocaleLowerCase('ru')
+  if (sceneLocation && npcLocation && sceneLocation !== npcLocation) {
+    throw commandPolicyError('Выбранный собеседник находится в другой локации', 'NPC_WRONG_LOCATION')
+  }
+  return npcId
+}
+
 function streamConnections(campaignId) {
   const normalized = String(campaignId || '').toUpperCase()
   if (!campaignStreams.has(normalized)) campaignStreams.set(normalized, new Map())
@@ -1009,11 +1050,11 @@ function typingActorIdsForCampaign(campaignId) {
 }
 
 function writeCampaignStream(connection, event, payload) {
-  if (connection.closed || connection.res.destroyed) return false
-  connection.res.write(`id: ${++campaignStreamSequence}\n`)
-  connection.res.write(`event: ${event}\n`)
-  connection.res.write(`data: ${JSON.stringify(payload)}\n\n`)
-  return true
+  if (connection.closed || connection.res.destroyed) return null
+  const frame = `id: ${++campaignStreamSequence}\nevent: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
+  const ready = connection.res.write(frame)
+  if (!ready) connection.narrationBackpressured = true
+  return ready
 }
 
 function broadcastCampaignTyping(campaignId) {
@@ -1042,7 +1083,10 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
       updatedAt: room.updatedAt,
       state: compacted.state,
     })
-    if (written) connection.mapHash = compacted.hash
+    // `ServerResponse.write()` возвращает false уже после постановки кадра в
+    // очередь. Хеш можно продвинуть даже при backpressure: этот room-кадр не
+    // потерян и будет записан Node после `drain`.
+    if (written !== null) connection.mapHash = compacted.hash
   }
 }
 
@@ -1904,8 +1948,21 @@ const server = createServer((req, res) => {
     // Администратор ведёт весь отряд, но за его аккаунтом герои не закреплены,
     // поэтому heroIds пуст и присутствие показывало «0 в сети».
     const controlsParty = user?.role === 'admin'
-    const connection = { id: connectionId, userId: String(user.id), user, heroIds, actorId, controlsParty, res, closed: false, mapHash: '' }
+    const connection = {
+      id: connectionId,
+      userId: String(user.id),
+      user,
+      heroIds,
+      actorId,
+      controlsParty,
+      res,
+      closed: false,
+      mapHash: '',
+      narrationBackpressured: false,
+    }
     streamConnections(campaignId).set(connectionId, connection)
+    const drain = () => campaignNarrationStream.drain(connection)
+    res.on('drain', drain)
     const heartbeat = setInterval(() => {
       if (!connection.closed && !res.destroyed) res.write(`: heartbeat ${Date.now()}\n\n`)
     }, 20_000)
@@ -1913,6 +1970,7 @@ const server = createServer((req, res) => {
       if (connection.closed) return
       connection.closed = true
       clearInterval(heartbeat)
+      res.off('drain', drain)
       streamConnections(campaignId).delete(connectionId)
       queueMicrotask(() => {
         void reconcilePartyDecisionPresence(campaignId)
@@ -1922,6 +1980,9 @@ const server = createServer((req, res) => {
     }
     req.once('close', close)
     req.once('aborted', close)
+    // При переподключении достаточно последнего полного снимка каждого
+    // незавершённого текста; сырьевые дельты и механика здесь не хранятся.
+    campaignNarrationStream.replay(campaignId, connection)
     broadcastCampaignRoom(campaignId)
     return
   }
@@ -3028,6 +3089,7 @@ const server = createServer((req, res) => {
   }
   if (req.url === '/api/narrate' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
+    let narrationTransport = null
     try {
       const body = await readBody(req)
       if (Object.hasOwn(body, 'state') || Object.hasOwn(body, 'player')
@@ -3054,6 +3116,7 @@ const server = createServer((req, res) => {
       const requestedPlayerId = String(body.actor_id ?? '')
       const playerId = requestedPlayerId || String(trustedState.activePlayerId || '')
       if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
+      const explicitNpcId = explicitNarrationNpcId(trustedState, user, playerId, body.npc_id)
       const combatActorId = String(trustedState.mechanics?.combat?.initiative?.[trustedState.mechanics?.combat?.active_index ?? 0]?.actor_id ?? '')
       if (trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
         return json(res, 409, { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' })
@@ -3067,6 +3130,29 @@ const server = createServer((req, res) => {
       if (exceedsRate(`narrate:${user.id}`, 40)) return json(res, 429, { error: 'Слишком много ходов за короткое время' })
       const mode = 'enforce'
       const idempotencyKey = String(body.idempotencyKey || body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
+      const streamMessageId = narrationMessageId(idempotencyKey)
+      narrationTransport = {
+        campaignId,
+        messageId: streamMessageId,
+        started: false,
+        finished: false,
+        lastProgress: '',
+      }
+      const startNarration = () => {
+        const payload = campaignNarrationStream.start(campaignId, {
+          messageId: streamMessageId,
+        })
+        narrationTransport.started = true
+        return payload
+      }
+      const progressNarration = (text) => {
+        const payload = campaignNarrationStream.progress(campaignId, {
+          messageId: streamMessageId,
+          text,
+        })
+        narrationTransport.lastProgress = payload?.text ?? String(text)
+        return payload
+      }
       let verifiedRoll = null
       if (body.roll?.roll_id) {
         verifiedRoll = rollRegistry.consume(body.roll.roll_id, { campaignId, actorId: playerId, idempotencyKey })
@@ -3077,7 +3163,7 @@ const server = createServer((req, res) => {
       const action = String(body.action || '').trim().slice(0, 2_000)
       let directorResolution = null
       let directorReplay = null
-      if (mode === 'enforce') {
+      if (mode === 'enforce' && !explicitNpcId) {
         const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
         const duplicateScene = (duplicate?.events ?? []).find((event) => event.event_type === 'SceneAdvanced')
         if (duplicateScene) {
@@ -3108,7 +3194,7 @@ const server = createServer((req, res) => {
           throw commandPolicyError('Нет завершённого решения группы для перехода сцены', 'PARTY_DECISION_REQUIRED')
         }
       }
-      const directorInteraction = mode === 'enforce' && !directorResolution && !directorReplay
+      const directorInteraction = mode === 'enforce' && !explicitNpcId && !directorResolution && !directorReplay
         ? proposeAgentInteraction(action, trustedState)
         : null
 
@@ -3158,12 +3244,24 @@ const server = createServer((req, res) => {
             playerName: player?.character ?? player?.name ?? body.player,
             message: action,
             idempotencyKey,
+            npcId: explicitNpcId,
             verifiedRoll,
             user,
             allowedActorIds: campaignHeroIds(user, campaignId),
+            onNarrationStart: startNarration,
+            onNarrationProgress: progressNarration,
           })
         }
       })
+      if (result.idempotent_replay) {
+        const persistedNarration = (getRoom(campaignId).state?.messages ?? [])
+          .find((message) => String(message.id) === streamMessageId)
+        if (persistedNarration?.text) {
+          // Повтор обязан вернуть тот же канонический текст, который уже лежит
+          // в летописи, даже если старый trace отсутствует или был обновлён.
+          result = { ...result, narration: String(persistedNarration.text) }
+        }
+      }
       const interactionProjection = await persistInteractionProjection(campaignId, result.effects?.interaction)
       // Служебные команды (`/why`) — не часть истории отряда: реплику игрока не
       // сохраняем, а ответ подписываем разбором правил, а не Рассказчиком.
@@ -3192,8 +3290,14 @@ const server = createServer((req, res) => {
       // ходе, чью проекцию уже успел записать кто-то другой (тогда
       // persistAuthoritativeProjection выходит раньше, чем дойдёт до messages).
       const journaled = appendRoomJournal(campaignId, [playerEntry, narrationEntry].filter(Boolean))
+      const canonicalNarration = journalNarrationId
+        ? String((journaled?.state?.messages ?? [])
+            .find((message) => String(message.id) === journalNarrationId)
+            ?.text ?? result.narration)
+        : result.narration
       const responsePayload = {
         ...result,
+        narration: canonicalNarration,
         ...(journalNarrationId ? { narration_message_id: journalNarrationId } : {}),
         ...(result.authoritative_state ? { authoritative_state: journaled?.state ?? projected?.state ?? result.authoritative_state } : {}),
         // Narration can outlive a concurrent room PUT. Returning the snapshot
@@ -3201,10 +3305,45 @@ const server = createServer((req, res) => {
         // locking cursor backwards and make it lose the completed turn.
         room_version: getRoom(campaignId).version,
       }
+      if (journalNarrationId) {
+        const finalText = String(responsePayload.narration ?? '')
+        const phase = narrationTransport.lastProgress
+          && !finalText.startsWith(narrationTransport.lastProgress)
+          ? 'replaced'
+          : 'complete'
+        try {
+          campaignNarrationStream.complete(campaignId, {
+            messageId: journalNarrationId,
+            text: finalText,
+            phase,
+            replayed: Boolean(result.idempotent_replay),
+          })
+        } catch (error) {
+          console.warn('[Сказание] Не удалось завершить необязательный поток повествования:', error?.code ?? error?.name)
+        } finally {
+          narrationTransport.finished = true
+        }
+      } else if (narrationTransport.started) {
+        try {
+          campaignNarrationStream.abort(campaignId, {
+            messageId: streamMessageId,
+          })
+        } catch { /* Пустой SSE-финал не подменяет авторитетный HTTP-ответ. */ }
+        narrationTransport.finished = true
+      }
+      if (res.destroyed || res.writableEnded) return
       return json(res, 200, turnResultForViewer(responsePayload, user, playerId))
     }
     catch (error) {
+      if (narrationTransport?.started && !narrationTransport.finished) {
+        try {
+          campaignNarrationStream.abort(narrationTransport.campaignId, {
+            messageId: narrationTransport.messageId,
+          })
+        } catch { /* Ошибка SSE не подменяет исход авторитетного запроса. */ }
+      }
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'PARTY_DECISION_ALREADY_CONSUMED'].includes(error?.code) ? 409 : error?.code === 'ROLL_ALREADY_USED' || error?.code === 'ROLL_FORBIDDEN' ? 400 : error?.code?.startsWith('LLM_') ? 502 : 400
+      if (res.destroyed || res.writableEnded) return
       return json(res, status, { error: error instanceof Error ? error.message : 'Ошибка игрового оркестратора', code: error?.code })
     }
   }

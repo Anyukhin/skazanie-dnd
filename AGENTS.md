@@ -124,7 +124,7 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 | `server/director-agent.mjs` | `prompts/director/v1.txt` | темп, развилки, переходы |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
 | `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v1.txt` | социальные сцены |
-| `server/narrator.mjs` | `prompts/narrator/v1.txt` | текст после commit |
+| `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |
 | `server/scene-architect.mjs` | `prompts/map_architect/v1.txt` | новые области |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v1.txt` | исходная ситуация кампании |
 | `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v2.txt` | прочтение свободного действия |

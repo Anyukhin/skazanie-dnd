@@ -4,6 +4,7 @@ import { currentCampaignModel } from './campaign-ai-context.mjs'
 const DEFAULT_TIMEOUT_MS = 45_000
 const DEFAULT_MAX_TOOL_CALLS = 8
 const DEFAULT_MAX_RESPONSE_BYTES = 2_000_000
+export const ROUTERAI_STREAM_MAX_EVENT_BYTES = 64 * 1024
 const DANGEROUS_JSON_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 
 export class LLMError extends Error {
@@ -242,6 +243,150 @@ async function readProviderBody(response, maxBytes) {
   throw new LLMResponseError('RouterAI вернул нечитаемый ответ')
 }
 
+async function* providerBodyChunks(body) {
+  if (!body) throw new LLMResponseError('RouterAI returned an empty streaming body')
+  if (typeof body.getReader === 'function') {
+    const reader = body.getReader()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) return
+        if (value != null) yield value
+      }
+    } finally {
+      reader.releaseLock?.()
+    }
+  }
+  if (typeof body[Symbol.asyncIterator] === 'function') {
+    for await (const chunk of body) yield chunk
+    return
+  }
+  throw new LLMResponseError('RouterAI returned an unreadable streaming body')
+}
+
+function streamFrameSeparator(value) {
+  const match = /\r?\n\r?\n/u.exec(value)
+  return match ? { index: match.index, length: match[0].length } : null
+}
+
+/**
+ * Строгий ограниченный SSE-парсер OpenAI-совместимого потока. Сырые дельты
+ * провайдера не покидают адаптер: вызывающий код превращает их в проверенные снимки.
+ */
+export async function parseRouterAIEventStream(body, {
+  onDelta = null,
+  maxEventBytes = ROUTERAI_STREAM_MAX_EVENT_BYTES,
+  maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+} = {}) {
+  const eventLimit = positiveInteger(maxEventBytes, ROUTERAI_STREAM_MAX_EVENT_BYTES, 'maxEventBytes')
+  const responseLimit = positiveInteger(maxResponseBytes, DEFAULT_MAX_RESPONSE_BYTES, 'maxResponseBytes')
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  let buffer = ''
+  let receivedBytes = 0
+  let content = ''
+  let model = null
+  let usage = null
+  let done = false
+
+  const processFrame = async (frame) => {
+    const dataLines = []
+    for (const line of String(frame).split(/\r?\n/u)) {
+      if (!line || line.startsWith(':')) continue
+      if (line === 'data') dataLines.push('')
+      else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /u, ''))
+    }
+    if (!dataLines.length) return
+    const data = dataLines.join('\n')
+    if (data.trim() === '[DONE]') {
+      done = true
+      return
+    }
+    const payload = strictJsonParse(data, {
+      label: 'RouterAI SSE event',
+      expected: 'object',
+      maxBytes: eventLimit,
+    })
+    if (payload.error) {
+      throw new LLMError('RouterAI stream returned an error event', 'LLM_PROVIDER_ERROR', {
+        providerCode: String(payload.error?.code ?? '').slice(0, 80),
+      })
+    }
+    if (payload.model != null) model = String(payload.model)
+    if (payload.usage != null) usage = payload.usage
+    const delta = payload.choices?.[0]?.delta
+    if (delta?.tool_calls?.length || delta?.toolCalls?.length) {
+      throw new LLMResponseError('Streaming tool calls are not supported', 'LLM_TOOL_CALL_INVALID')
+    }
+    if (delta?.content == null) return
+    if (typeof delta.content !== 'string') {
+      throw new LLMResponseError('RouterAI stream returned non-text content')
+    }
+    if (!delta.content) return
+    if (byteLength(content) + byteLength(delta.content) > responseLimit) {
+      throw new LLMResponseError(
+        `RouterAI stream exceeds ${responseLimit} bytes`,
+        'LLM_RESPONSE_TOO_LARGE',
+      )
+    }
+    content += delta.content
+    if (typeof onDelta === 'function') await onDelta(delta.content)
+  }
+
+  try {
+    for await (const chunk of providerBodyChunks(body)) {
+      const bytes = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : Buffer.from(chunk)
+      receivedBytes += bytes.byteLength
+      if (receivedBytes > responseLimit) {
+        throw new LLMResponseError(
+          `RouterAI stream exceeds ${responseLimit} bytes`,
+          'LLM_RESPONSE_TOO_LARGE',
+        )
+      }
+      buffer += decoder.decode(bytes, { stream: true })
+      let separator = streamFrameSeparator(buffer)
+      while (separator) {
+        const frame = buffer.slice(0, separator.index)
+        buffer = buffer.slice(separator.index + separator.length)
+        if (byteLength(frame) > eventLimit) {
+          throw new LLMResponseError(
+            `RouterAI SSE event exceeds ${eventLimit} bytes`,
+            'LLM_RESPONSE_TOO_LARGE',
+          )
+        }
+        await processFrame(frame)
+        if (done) return { content, model, usage, done }
+        separator = streamFrameSeparator(buffer)
+      }
+      if (byteLength(buffer) > eventLimit) {
+        throw new LLMResponseError(
+          `RouterAI SSE event exceeds ${eventLimit} bytes`,
+          'LLM_RESPONSE_TOO_LARGE',
+        )
+      }
+    }
+    buffer += decoder.decode()
+    if (buffer.trim()) {
+      if (byteLength(buffer) > eventLimit) {
+        throw new LLMResponseError(
+          `RouterAI SSE event exceeds ${eventLimit} bytes`,
+          'LLM_RESPONSE_TOO_LARGE',
+        )
+      }
+      await processFrame(buffer)
+    }
+    if (!done) {
+      throw new LLMResponseError(
+        'RouterAI stream ended before [DONE]',
+        'LLM_STREAM_INCOMPLETE',
+      )
+    }
+    return { content, model, usage, done }
+  } catch (error) {
+    if (error instanceof LLMError) throw error
+    throw new LLMResponseError('RouterAI returned a malformed SSE stream', 'LLM_STREAM_INVALID', { cause: error })
+  }
+}
+
 export class RouterAIClient extends LLMClient {
   constructor({
     apiKey = process.env.ROUTERAI_API_KEY ?? '',
@@ -289,6 +434,12 @@ export class RouterAIClient extends LLMClient {
     const reasoning = request.reasoning && typeof request.reasoning === 'object' ? request.reasoning : this.reasoning
     if (reasoning) body.reasoning = reasoning
     if (wantsJson(request)) body.response_format = { type: 'json_object' }
+    const streaming = typeof request.onDelta === 'function'
+    if (streaming) {
+      if (wantsJson(request)) throw new TypeError('Streaming JSON responses are not supported')
+      body.stream = true
+      body.stream_options = { include_usage: true }
+    }
 
     try {
       const response = await raceWithSignal(this.fetchImpl(`${this.baseUrl}/chat/completions`, {
@@ -297,8 +448,26 @@ export class RouterAIClient extends LLMClient {
         body: JSON.stringify(body),
         signal: scope.signal,
       }), scope.signal)
-      const payload = await raceWithSignal(readProviderBody(response, this.maxResponseBytes), scope.signal)
       if (!response.ok) throw new LLMError(`RouterAI ответил HTTP ${response.status}`, 'LLM_PROVIDER_ERROR', { status: response.status })
+      if (streaming) {
+        const streamed = await raceWithSignal(parseRouterAIEventStream(response.body, {
+          onDelta: request.onDelta,
+          maxEventBytes: request.maxEventBytes ?? ROUTERAI_STREAM_MAX_EVENT_BYTES,
+          maxResponseBytes: request.maxResponseBytes ?? this.maxResponseBytes,
+        }), scope.signal)
+        const message = normalizeAssistantMessage({
+          role: 'assistant',
+          content: streamed.content,
+        }, request, this)
+        return {
+          ...message,
+          model: streamed.model ?? body.model,
+          usage: streamed.usage,
+          provider: 'RouterAI',
+          streamed: true,
+        }
+      }
+      const payload = await raceWithSignal(readProviderBody(response, this.maxResponseBytes), scope.signal)
       const message = normalizeAssistantMessage(payload.choices?.[0]?.message, request, this)
       return { ...message, model: payload.model ?? body.model, usage: payload.usage ?? null, provider: 'RouterAI' }
     } catch (error) {
@@ -388,10 +557,21 @@ export class FallbackLLMClient extends LLMClient {
 
   async complete(input, options = {}) {
     const validateResponse = options.validateResponse ?? (input && !Array.isArray(input) ? input.validateResponse : null)
+    const requestedDelta = options.onDelta ?? (input && !Array.isArray(input) ? input.onDelta : null)
     const attempts = []
     for (const client of this._candidates()) {
+      let emitted = false
+      const onDelta = typeof requestedDelta === 'function'
+        ? async (delta) => {
+            emitted = true
+            await requestedDelta(delta)
+          }
+        : null
       try {
-        const result = await client.complete(input, options)
+        const result = await client.complete(input, {
+          ...options,
+          ...(onDelta ? { onDelta } : {}),
+        })
         if (typeof validateResponse === 'function' && await validateResponse(result) === false) {
           throw new LLMResponseError(`Model ${client.model} returned an unusable response`, 'LLM_RESPONSE_INVALID')
         }
@@ -401,6 +581,9 @@ export class FallbackLLMClient extends LLMClient {
         if (!this._retryable(error)) throw error
         this._markFailure(client, error)
         attempts.push({ model: String(client.model ?? 'unknown-model'), code: String(error?.code ?? error?.name ?? 'LLM_ERROR') })
+        // После первой показанной дельты другой провайдер не может продолжить
+        // текст без склейки двух независимо сгенерированных ответов.
+        if (emitted) throw error
       }
     }
     throw new LLMError('All configured RouterAI models failed', 'LLM_FALLBACK_EXHAUSTED', { attempts })

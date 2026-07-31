@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emptyState } from './data'
-import { ApiRequestError, fetchWithTimeout, generateItemImage, isStateVersionConflictError, narrateWithAgent, rollDice, rollSharedDie } from './ai-client'
+import {
+  ApiRequestError,
+  fetchWithTimeout,
+  generateItemImage,
+  isStateVersionConflictError,
+  narrateWithAgent,
+  publishNarrationPreview,
+  rollDice,
+  rollSharedDie,
+} from './ai-client'
+import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
@@ -118,6 +128,32 @@ type EncounterAssemblyResult = TacticalCommandResult & {
 let localCommandSequence = 0
 const commandId = () => globalThis.crypto?.randomUUID?.() ?? `command-${Date.now()}-${++localCommandSequence}`
 const clock = () => new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date())
+const NARRATION_PREVIEW_TEXT_MAX_BYTES = 12 * 1024
+const NARRATION_PREVIEW_EVENT_MAX_BYTES = 16 * 1024
+const NARRATION_PREVIEW_PHASES = new Set<NarrationPreviewPhase>([
+  'start', 'streaming', 'complete', 'replaced', 'aborted',
+])
+
+function parseNarrationPreview(value: string): NarrationPreview | null {
+  if (new TextEncoder().encode(value).byteLength > NARRATION_PREVIEW_EVENT_MAX_BYTES) return null
+  const payload = JSON.parse(value) as {
+    message_id?: unknown
+    text?: unknown
+    phase?: unknown
+    replayed?: unknown
+  }
+  const messageId = typeof payload.message_id === 'string' ? payload.message_id : ''
+  const text = typeof payload.text === 'string' ? payload.text : ''
+  const phase = typeof payload.phase === 'string' ? payload.phase as NarrationPreviewPhase : null
+  if (!/^[A-Za-z0-9._:-]{1,120}$/u.test(messageId) || !phase || !NARRATION_PREVIEW_PHASES.has(phase)) return null
+  if (new TextEncoder().encode(text).byteLength > NARRATION_PREVIEW_TEXT_MAX_BYTES) return null
+  return {
+    messageId,
+    text,
+    phase,
+    replayed: payload.replayed === true,
+  }
+}
 
 function apiRequestError(response: Response, details: ApiErrorDetails | null, fallback: string) {
   return new ApiRequestError(details?.error || fallback, response.status, details?.code)
@@ -262,6 +298,7 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
 export function useGameSession() {
   const [state, setState] = useState<GameState>(loadState)
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
+  const [narrationPreview, setNarrationPreview] = useState<NarrationPreview | null>(null)
   const [tacticalBusy, setTacticalBusy] = useState(false)
   const [tacticalError, setTacticalError] = useState<string | null>(null)
   const [merchantBusy, setMerchantBusy] = useState(false)
@@ -299,6 +336,11 @@ export function useGameSession() {
 
   const applyRoomSnapshot = useCallback((room: RoomSnapshot) => {
     if (!room.state) return
+    setNarrationPreview((current) => (
+      current && room.state?.messages?.some((message) => message.id === current.messageId)
+        ? null
+        : current
+    ))
     roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
     applyRemote(room.state)
   }, [applyRemote])
@@ -434,10 +476,27 @@ export function useGameSession() {
         console.warn('Realtime-событие присутствия отклонено:', error)
       }
     }
+    const receiveNarration = (event: MessageEvent<string>) => {
+      try {
+        const preview = parseNarrationPreview(event.data)
+        if (!preview) return
+        publishNarrationPreview(state.sessionCode, preview)
+        setNarrationPreview(() => (
+          stateRef.current.messages.some((message) => message.id === preview.messageId)
+            ? null
+            : preview
+        ))
+      } catch (error) {
+        console.warn('Потоковое повествование отклонено:', error)
+      }
+    }
     const closeSource = () => {
       if (!source) return
       source.removeEventListener('room', receive as EventListener)
       source.removeEventListener('presence', receivePresence as EventListener)
+      source.removeEventListener('narration.start', receiveNarration as EventListener)
+      source.removeEventListener('narration.chunk', receiveNarration as EventListener)
+      source.removeEventListener('narration.complete', receiveNarration as EventListener)
       source.close()
       source = null
     }
@@ -477,6 +536,9 @@ export function useGameSession() {
       source = nextSource
       nextSource.addEventListener('room', receive as EventListener)
       nextSource.addEventListener('presence', receivePresence as EventListener)
+      nextSource.addEventListener('narration.start', receiveNarration as EventListener)
+      nextSource.addEventListener('narration.chunk', receiveNarration as EventListener)
+      nextSource.addEventListener('narration.complete', receiveNarration as EventListener)
       nextSource.onopen = () => {
         retryDelay = 1_000
         opened = true
@@ -497,6 +559,7 @@ export function useGameSession() {
   // Пакет анимации принадлежит одной кампании. При смене комнаты это состояние
   // представления сбрасывается, чтобы не проиграть последний ход чужого стола.
   useEffect(() => { setCombatVisualBatch(null) }, [state.sessionCode])
+  useEffect(() => { setNarrationPreview(null) }, [state.sessionCode])
 
   useEffect(() => {
     if (!busy.current && !tacticalBusy && !merchantBusy && !directorBusy) flushQueuedRooms()
@@ -578,7 +641,7 @@ export function useGameSession() {
     }
   }, [])
 
-  const submitAction = useCallback(async (text: string, actorId?: string): Promise<CommandOutcome> => {
+  const submitAction = useCallback(async (text: string, actorId?: string, npcId?: string): Promise<CommandOutcome> => {
     if (!text.trim() || state.isNarrating || state.pendingCheck) {
       return { ok: false, error: 'Сейчас нельзя отправить это действие.' }
     }
@@ -596,7 +659,15 @@ export function useGameSession() {
     let aiResult: AiTurnResult | null = null
     let authoritativeError: Error | null = null
     try {
-      aiResult = await narrateWithAgent(pending, text.trim(), player.character, undefined, undefined, player.id)
+      aiResult = await narrateWithAgent(
+        pending,
+        text.trim(),
+        player.character,
+        undefined,
+        undefined,
+        player.id,
+        { npcId, onNarrationPreview: setNarrationPreview },
+      )
     } catch (error) {
       console.warn('AI fallback:', error instanceof Error ? error.message : error)
       authoritativeError = await normalizeCommandError(error)
@@ -623,6 +694,9 @@ export function useGameSession() {
       return { ok: false, error: message, ...(conflict ? { conflict: true } : {}) }
     }
     if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
+    if (aiResult?.narration_message_id) {
+      setNarrationPreview((current) => current?.messageId === aiResult?.narration_message_id ? null : current)
+    }
     if (aiResult?.mechanics?.length) {
       setCombatVisualBatch({
         id: `narrate:${aiResult.turn_id ?? aiResult.state_version ?? Date.now()}`,
@@ -1347,6 +1421,7 @@ export function useGameSession() {
 
   return {
     state,
+    narrationPreview,
     connectionState,
     tacticalBusy,
     tacticalError,

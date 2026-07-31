@@ -8,6 +8,7 @@ import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
+import { FileTraceStore } from '../server/trace-store.mjs'
 import {
   NPC_DOSSIER_PROFILE_LIMIT,
   npcProfileAtWorldTime,
@@ -581,6 +582,161 @@ test('двое присутствующих NPC с одной ролью даю�
   assert.deepEqual(result.mechanics, [])
   assert.equal(result.turn_consumed, false)
   assert.equal(after.state_version, before.state_version)
+})
+
+test('explicit npc_id selects a visible social target and participates in the request fingerprint', async () => {
+  const initial = campaign()
+  initial.social.npcs.push(
+    {
+      ...initial.social.npcs[0],
+      id: 'borin',
+      name: 'Borin',
+      visibility: 'party',
+    },
+    {
+      ...initial.social.npcs[0],
+      id: 'hidden-npc',
+      name: 'Hidden',
+      visibility: 'gm_only',
+    },
+  )
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-explicit-npc-'))
+  const eventStore = new FileEventStore({
+    rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+  })
+  await eventStore.initializeCampaign({
+    campaign_id: 'EXPLICIT-NPC',
+    initial_state: { ...initial, sessionCode: 'EXPLICIT-NPC' },
+    ruleset_id: initial.ruleset_id,
+    ruleset_version: initial.ruleset_version,
+    enabled_rule_packs: initial.enabled_rule_packs,
+    enabled_house_rules: initial.enabled_house_rules,
+  })
+  const fallback = new NpcSocialController()
+  let socialCalls = 0
+  const orchestrator = new GameOrchestrator({
+    intentParser: { parse: async ({ message, playerId }) => ({
+      actor_id: playerId, intent: 'exploration', approach: 'look', targets: [],
+      mentioned_entities: [], missing_information: [], requires_clarification: false,
+      confidence: 1, raw_message: message,
+    }) },
+    adjudicator: { createPlan: async () => { throw new Error('Explicit npc_id must select the social path') } },
+    npcSocialController: {
+      respond: async (input) => { socialCalls += 1; return fallback.respond(input) },
+    },
+    narrator: { render: async () => { throw new Error('Committed NPC dialogue must not be rewritten') } },
+    rulesEngine: new RulesEngine({ diceService: dice() }),
+    eventStore,
+    traceStore: new FileTraceStore({ rootDir: join(root, 'traces') }),
+  })
+  const base = {
+    state: { ...initial, sessionCode: 'EXPLICIT-NPC' },
+    campaignId: 'EXPLICIT-NPC',
+    playerId: 'hero',
+    message: 'Hello there.',
+    idempotencyKey: 'explicit-target-1',
+    npcId: 'marta',
+    user: { role: 'player' },
+  }
+
+  const first = await orchestrator.handle(base)
+  const replay = await orchestrator.handle(base)
+
+  assert.equal(first.action_kind, 'social')
+  assert.equal(first.mechanics.some((event) => event.payload?.conversation?.npc_id === 'marta'), true)
+  assert.equal(replay.idempotent_replay, true)
+  assert.equal(replay.narration, first.narration)
+  assert.equal(socialCalls, 1)
+  await assert.rejects(
+    orchestrator.handle({ ...base, npcId: 'borin' }),
+    (error) => error?.code === 'IDEMPOTENCY_CONFLICT',
+  )
+  await assert.rejects(
+    orchestrator.handle({ ...base, message: 'A different request.' }),
+    (error) => error?.code === 'IDEMPOTENCY_CONFLICT',
+  )
+  await assert.rejects(
+    orchestrator.handle({ ...base, npcId: undefined }),
+    (error) => error?.code === 'IDEMPOTENCY_CONFLICT',
+  )
+  const differentKey = await orchestrator.handle({ ...base, idempotencyKey: 'explicit-target-2' })
+  assert.notEqual(differentKey.turn_id, first.turn_id)
+  assert.equal(replay.turn_id, first.turn_id)
+})
+
+test('direct orchestrator caller cannot select a hidden explicit npc_id', async () => {
+  const initial = campaign()
+  initial.social.npcs.push({
+    ...initial.social.npcs[0],
+    id: 'hidden-npc',
+    name: 'Hidden',
+    visibility: 'gm_only',
+  })
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-hidden-explicit-npc-'))
+  const eventStore = new FileEventStore({
+    rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+  })
+  await eventStore.initializeCampaign({
+    campaign_id: 'HIDDEN-NPC',
+    initial_state: { ...initial, sessionCode: 'HIDDEN-NPC' },
+  })
+  let socialCalls = 0
+  const orchestrator = new GameOrchestrator({
+    intentParser: { parse: async ({ message, playerId }) => ({
+      actor_id: playerId, intent: 'unknown', approach: '', targets: [],
+      mentioned_entities: [], missing_information: [], requires_clarification: false,
+      confidence: 1, raw_message: message,
+    }) },
+    adjudicator: { createPlan: async () => { throw new Error('Hidden target must not reach adjudication') } },
+    npcSocialController: { respond: async () => { socialCalls += 1; return null } },
+    rulesEngine: new RulesEngine({ diceService: dice() }),
+    eventStore,
+  })
+
+  const result = await orchestrator.handle({
+    state: { ...initial, sessionCode: 'HIDDEN-NPC' },
+    campaignId: 'HIDDEN-NPC',
+    playerId: 'hero',
+    message: 'Speak.',
+    idempotencyKey: 'hidden-explicit',
+    npcId: 'hidden-npc',
+    user: { role: 'player' },
+  })
+
+  assert.equal(result.turn_consumed, false)
+  assert.match(result.narration, /собеседник|рядом/iu)
+  assert.equal(socialCalls, 0)
+})
+
+test('an explicit npc_id conflicts with a duplicate non-social request', async () => {
+  const initial = campaign()
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-explicit-after-command-'))
+  const eventStore = new FileEventStore({
+    rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+  })
+  await eventStore.initializeCampaign({ campaign_id: 'EXPLICIT-AFTER-COMMAND', initial_state: { ...initial, sessionCode: 'EXPLICIT-AFTER-COMMAND' } })
+  const orchestrator = new GameOrchestrator({
+    rulesEngine: new RulesEngine({ diceService: dice() }),
+    eventStore,
+    traceStore: new FileTraceStore({ rootDir: join(root, 'traces') }),
+    npcSocialController: new NpcSocialController(),
+  })
+  const common = {
+    state: { ...initial, sessionCode: 'EXPLICIT-AFTER-COMMAND' },
+    campaignId: 'EXPLICIT-AFTER-COMMAND',
+    playerId: 'hero',
+    message: 'System command.',
+    idempotencyKey: 'non-social-then-explicit',
+  }
+  await orchestrator.handle({
+    ...common,
+    commands: [{ command_type: 'ApplyHealing', actor_id: 'hero', amount: 1 }],
+  })
+
+  await assert.rejects(
+    orchestrator.handle({ ...common, npcId: 'marta', user: { role: 'player' } }),
+    (error) => error?.code === 'IDEMPOTENCY_CONFLICT',
+  )
 })
 
 test('social check classifier and policy choose a server-owned skill, ability and DC', () => {

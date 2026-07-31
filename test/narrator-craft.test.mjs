@@ -97,7 +97,7 @@ test('сервер не сохраняет предложенные модель
   assert.equal(Object.hasOwn(result, 'suggestions'), false)
 
   const systemPrompt = requests[0].messages[0].content
-  assert.match(systemPrompt, /PROMPT_ID: narrator\/v5/u)
+  assert.match(systemPrompt, /PROMPT_ID: narrator\/v6/u)
   assert.match(systemPrompt, /CURATED_STYLE_EXAMPLES \(narrator-few-shot\/v1\)/u)
   assert.doesNotMatch(systemPrompt, /воздух густеет|повисает тишина|каталог клише/u)
   assert.ok(NARRATOR_CLICHE_CATALOG.length >= 16, 'каталог принадлежит production craft-проверке')
