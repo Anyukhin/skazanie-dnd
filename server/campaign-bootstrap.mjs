@@ -238,7 +238,7 @@ function startingCells(cells, count) {
 }
 
 export class CampaignBootstrapper {
-  constructor({ llmClient = null } = {}) { this.llmClient = llmClient }
+  constructor({ llmClient = null, loreAuthor = null } = {}) { this.llmClient = llmClient; this.loreAuthor = loreAuthor }
 
   async create({ code, name, partyName, world: rawWorld, players: rawPlayers, merchants: rawMerchants } = {}) {
     const campaignCode = clean(code, 24).toUpperCase()
@@ -272,10 +272,21 @@ export class CampaignBootstrapper {
     }
     const seed = createHash('sha256').update(JSON.stringify({ campaignCode, world, heroes: heroes.map((hero) => hero.id) })).digest('hex').slice(0, 24)
     const arc = buildCampaignArcPlan(seed)
+    // Пролог — необязательное украшение: письмо-завязка, которое владелец
+    // зачитает перед первым вечером. Отказ летописца кампанию не задерживает.
+    const prologue = this.loreAuthor
+      ? await this.loreAuthor.composePrologue({
+        campaign: campaignName,
+        worldSummary: opening.worldSummary,
+        worldHistory: opening.worldHistory,
+        heroes,
+      })
+      : ''
     const campaignConcept = {
       ...world,
       worldSummary: opening.worldSummary,
       worldHistory: opening.worldHistory,
+      ...(prologue ? { prologue } : {}),
       generatedBy,
       arc,
     }

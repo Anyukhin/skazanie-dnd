@@ -45,6 +45,7 @@ import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from 
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePack } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
+import { LoreAuthor } from './lore-author.mjs'
 import { reasoningProfileFor } from './model-style-profiles.mjs'
 import { PostCommitCoordinator } from './post-commit-coordinator.mjs'
 import {
@@ -224,9 +225,16 @@ const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
 const creativeDirector = new CriticalNarrationCoordinator({ narrator })
 const npcController = new NpcMoraleAgent({ llmClient: apiKey ? llmClient : null })
 const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmClient : null })
-const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null })
+// Длинная форма — пролог и хроника арки — идёт через отдельную дешёвую модель:
+// замер показал, что Luna в длинной форме не уступает и стоит в разы меньше.
+// Модель меняется переменной DND_AI_LORE_MODEL; без ключа летописец молчит.
+const loreModel = process.env.DND_AI_LORE_MODEL ?? 'openai/gpt-5.6-luna'
+const loreAuthor = new LoreAuthor({
+  llmClient: apiKey ? new RouterAIClient({ model: loreModel, reasoning: reasoningProfileFor(loreModel), timeoutMs: 30_000 }) : null,
+})
+const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null, loreAuthor })
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
-const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator })
+const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
 const combatTurnCoordinator = new CombatTurnCoordinator({
   eventStore,
