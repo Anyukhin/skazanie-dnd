@@ -76,7 +76,7 @@ export class RollRegistry {
     if (changed) this._persist()
   }
 
-  registerCheck({ campaignId, actorId, label = 'Проверка', modifier = 0, difficulty = 10, ability = null, advantage = false, disadvantage = false, visibility = 'public' }) {
+  registerCheck({ campaignId, actorId, label = 'Проверка', modifier = 0, difficulty = 10, ability = null, advantage = false, disadvantage = false, visibility = 'public', context = null }) {
     this.cleanup()
     const check_id = String(this.checkIdFactory())
     const check = {
@@ -90,16 +90,22 @@ export class RollRegistry {
       advantage: Boolean(advantage),
       disadvantage: Boolean(disadvantage),
       visibility,
+      // Служебный контекст хода (например, судейское прочтение свободного
+      // действия): не показывается игроку, а возвращается серверу при consume,
+      // чтобы вторая фаза хода не выводила решение заново.
+      ...(context ? { context: structuredClone(context) } : {}),
       expires_at: this.now() + this.ttlMs,
     }
     this.checks.set(check_id, check)
     this._persist()
-    return structuredClone(check)
+    const { context: _hidden, ...visible } = check
+    return structuredClone(visible)
   }
 
   issue({ checkId, check_id, campaignId, actorId, label = 'Проверка', modifier = 0, difficulty = 10, ability = null, advantage = false, disadvantage = false, visibility = 'public' }) {
     this.cleanup()
     const registeredId = checkId ?? check_id
+    let context = null
     if (registeredId) {
       const registered = this.checks.get(String(registeredId))
       if (!registered) throw new RollRegistryError('Проверка не найдена или истекла', 'CHECK_NOT_FOUND')
@@ -107,6 +113,7 @@ export class RollRegistry {
         throw new RollRegistryError('Проверка принадлежит другому ходу или персонажу', 'CHECK_FORBIDDEN')
       }
       this.checks.delete(String(registeredId))
+      context = registered.context ?? null
       ;({ label, modifier, difficulty, ability, advantage, disadvantage, visibility } = registered)
     }
     const result = this.diceService.rollCheck({
@@ -115,6 +122,7 @@ export class RollRegistry {
     })
     const entry = {
       result: { ...result, label: String(label).slice(0, 80), ability },
+      ...(context ? { context } : {}),
       campaign_id: String(campaignId || ''),
       actor_id: String(actorId || ''),
       expires_at: this.now() + this.ttlMs,
@@ -136,6 +144,6 @@ export class RollRegistry {
     if (entry.consumed_by && entry.consumed_by !== key) throw new RollRegistryError('Бросок уже использован', 'ROLL_ALREADY_USED')
     entry.consumed_by = key || `used:${this.now()}`
     this._persist()
-    return structuredClone(entry.result)
+    return structuredClone({ ...entry.result, ...(entry.context ? { context: entry.context } : {}) })
   }
 }

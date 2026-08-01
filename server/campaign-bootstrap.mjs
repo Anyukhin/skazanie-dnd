@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { generateSceneCells } from './adventure-director.mjs'
+import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioning.mjs'
+import { serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
 import { withStarterKit } from './starter-kit.mjs'
 import { ensureSceneWorldMemory } from './scene-memory.mjs'
@@ -185,7 +187,10 @@ function normalizeOpeningNpcs(value, fallback) {
       beliefs: (Array.isArray(entry.beliefs) ? entry.beliefs : []).map((belief) => clean(belief, 160)).filter(Boolean).slice(0, 4),
     }))
     .filter((entry) => entry.name)
-    .slice(0, 3)
+    // Пять, а не три: пролог регулярно называет по имени больше трёх персонажей,
+    // и срезанные исчезали из мира — с ними нельзя было заговорить, а их
+    // токенов не было на карте.
+    .slice(0, 5)
   return normalized.length ? normalized : fallback
 }
 
@@ -328,6 +333,27 @@ export class CampaignBootstrapper {
       tags: [`faction:${starterFactionId}`],
     }))
     const starterNpcId = openingNpcs[0].id
+    // Токены собеседников появляются уже в первой сцене. Раньше расстановка
+    // выполнялась только при переходе сцены (`AdvanceScene`), и в свежесозданной
+    // кампании названные в прологе NPC существовали лишь в тексте — на поле их
+    // не было. Расстановку планирует тот же модуль, что и при переходах.
+    const startingLocationId = campaignWorldMap.currentLocationId || opening.scene.location
+    const sceneTacticalMap = serializeTacticalMap(tacticalMapFromLegacyCells(cells, {
+      locationId: startingLocationId,
+      seed: campaignWorldMap.seed ?? seed,
+    }))
+    const emptyNpcWorld = { schema_version: 2, placements: [], vitals: {}, stances: {}, inventories: {} }
+    const placementDraft = {
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells, map: sceneTacticalMap },
+      social: { npcs: openingNpcs },
+      players: positionedHeroes,
+      npc_world: emptyNpcWorld,
+      mechanics: {},
+    }
+    let npcWorld = emptyNpcWorld
+    planSceneNpcPlacementEvents(placementDraft).forEach((draft, index) => {
+      npcWorld = applyNpcWorldEvent(npcWorld, { ...draft, event_id: `bootstrap-npc-${seed}-${index + 1}` })
+    })
     const sceneMemory = ensureSceneWorldMemory({}, {
       scene: { title: opening.scene.title, location: opening.scene.location, mood: opening.scene.mood, objective: opening.scene.objective },
       campaignConcept,
@@ -379,7 +405,8 @@ export class CampaignBootstrapper {
       activePlayerId: positionedHeroes[0].id,
       tacticalTurn: { sceneTurn: 1, actorId: positionedHeroes[0].id, movementSpent: 0, actionUsed: false },
       isNarrating: false, pendingCheck: null, agentInteraction: null, lastDiceRoll: null,
-      scene: { title: opening.scene.title, location: opening.scene.location, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells },
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells, map: sceneTacticalMap },
+      npc_world: npcWorld,
       adventure: { chapter: 1, currentHook: opening.hook, visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [] },
       messages: [{ id: `opening-${seed}`, speaker: 'narrator', author: 'Рассказчик', timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()), text: opening.openingNarration, turnConsumed: false }],
     }

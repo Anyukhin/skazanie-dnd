@@ -38,6 +38,9 @@ export type PendingCheck = {
   difficulty: number
   sides: 20
   ability?: string | null
+  skill?: string | null
+  advantage?: boolean
+  disadvantage?: boolean
   action: string
   playerId: string
   status: 'ready' | 'rolling' | 'resolving'

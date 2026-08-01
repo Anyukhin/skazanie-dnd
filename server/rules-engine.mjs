@@ -4828,6 +4828,83 @@ function bloodiedFrenzySaveAdvantage(state, targetId) {
 }
 
 /**
+ * Результат d20-проверки из броска, который игрок уже сделал через реестр
+ * бросков (`/api/roll`). Движок берёт из реестра только выпавшие кости;
+ * модификатор, режим преимущества и итог он пересчитывает сам — авторитет по
+ * математике не делится даже с собственным реестром. Поле `verified_roll`
+ * ставит только серверный код: санитайзеры клиентских команд пересобирают
+ * команду по белому списку полей и пропустить его не могут.
+ */
+function checkRollFromVerified(verified, { modifier = 0, difficulty = 10, purpose = 'check', actorId = null, advantage = false, disadvantage = false, visibility = 'public' } = {}) {
+  const dice = (Array.isArray(verified?.dice) ? verified.dice : [])
+    .map((value) => safeInteger(value, 0))
+    .filter((value) => value >= 1 && value <= 20)
+  if (!dice.length) return null
+  const mode = advantage && !disadvantage ? 'advantage' : disadvantage && !advantage ? 'disadvantage' : 'normal'
+  const kept = mode === 'advantage' ? Math.max(...dice) : mode === 'disadvantage' ? Math.min(...dice) : dice[0]
+  const safeModifier = safeInteger(modifier, 0)
+  const dc = safeInteger(difficulty, 10)
+  const total = kept + safeModifier
+  return {
+    roll_id: String(verified.roll_id ?? ''),
+    expression: `${dice.length}d20${safeModifier > 0 ? `+${safeModifier}` : safeModifier < 0 ? String(safeModifier) : ''}`,
+    dice,
+    kept,
+    mode,
+    modifier: safeModifier,
+    total,
+    difficulty: dc,
+    success: total >= dc,
+    purpose: String(purpose || 'check').slice(0, 80),
+    actor_id: actorId == null ? null : String(actorId).slice(0, 120),
+    visibility: visibility === 'private' || visibility === 'party' ? visibility : 'public',
+    created_at: verified.created_at ?? null,
+    player_rolled: true,
+  }
+}
+
+/**
+ * Предпросмотр d20-проверки для ручного броска: модификатор и режим
+ * преимущества считаются теми же функциями, что и исполнение команды, —
+ * второго авторитетного пути у проверки не появляется. Это то, что игрок
+ * видит на карточке броска до того, как возьмёт кубик.
+ */
+export function previewD20Check(state, { actorId, kind = 'check', ability = null, skill = null, difficulty = 10, proficient = false } = {}) {
+  const actor = findActor(state, actorId)
+  if (kind === 'save') {
+    const saveAbility = String(ability || 'con').toLowerCase()
+    const baseModifier = abilityModifier(actor?.abilities?.[saveAbility]) + (proficient ? safeInteger(actor?.proficiency, 0) : 0)
+    const aura = savingThrowModifierWithAura(state, String(actorId), baseModifier)
+    return {
+      kind: 'save',
+      ability: saveAbility,
+      skill: null,
+      modifier: aura.modifier,
+      difficulty: safeInteger(difficulty, 10),
+      advantage: Boolean(saveAdvantageConditionFor(state, actorId, saveAbility))
+        || conditionIdsFor(state, actorId).has('silvery-fortune')
+        || bloodiedFrenzySaveAdvantage(state, actorId),
+      disadvantage: Boolean(saveDisadvantageConditionFor(state, actorId, saveAbility)),
+    }
+  }
+  const checkSkill = canonicalSkillId(skill)
+  const checkAbility = String(skillAbility(checkSkill) || ability || 'str').toLowerCase()
+  const skillProficiency = checkSkill ? skillProficiencyForActor(actor, checkSkill) : null
+  const modifier = abilityModifier(actor?.abilities?.[checkAbility])
+    + (skillProficiency?.bonus ?? (proficient ? safeInteger(actor?.proficiency, 0) : 0))
+  return {
+    kind: 'check',
+    ability: checkAbility,
+    skill: checkSkill || null,
+    modifier,
+    difficulty: safeInteger(difficulty, 10),
+    advantage: Boolean(checkAdvantageConditionFor(state, actorId, checkAbility))
+      || conditionIdsFor(state, actorId).has('silvery-fortune'),
+    disadvantage: Boolean(checkDisadvantageConditionFor(state, actorId)),
+  }
+}
+
+/**
  * Rolls a saving throw.  Pass `ability` to let the conditions that make a save
  * fail without a roll apply: the die is still rolled and recorded so the
  * transcript and replay stay identical, and only the outcome is forced.
@@ -5230,7 +5307,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Истощение мешает любой проверке характеристики с первой же ступени.
       const checkPenalty = checkDisadvantageConditionFor(state, command.actor_id)
       const checkBoost = checkAdvantageConditionFor(state, command.actor_id, ability)
-      const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty), visibility: command.visibility })
+      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty), visibility: command.visibility }
+      const roll = checkRollFromVerified(command.verified_roll, checkRollOptions) ?? diceService.rollCheck(checkRollOptions)
       rolls.push(roll)
       events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
         ability, ...(skill ? { skill } : {}), ...roll,
@@ -5283,7 +5361,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const savePenalty = saveDisadvantageConditionFor(state, command.actor_id, ability)
       const saveBoost = saveAdvantageConditionFor(state, command.actor_id, ability)
       const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, command.actor_id)
-      const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `saving_throw:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(saveBoost) || bloodiedFrenzy, disadvantage: Boolean(command.disadvantage) || Boolean(savePenalty), visibility: command.visibility })
+      const saveRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `saving_throw:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(saveBoost) || bloodiedFrenzy, disadvantage: Boolean(command.disadvantage) || Boolean(savePenalty), visibility: command.visibility }
+      const roll = checkRollFromVerified(command.verified_roll, saveRollOptions) ?? diceService.rollCheck(saveRollOptions)
       rolls.push(roll)
       events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || savePenalty || saveBoost || bloodiedFrenzy ? RULE_IDS.advantage : null), 'SavingThrowResolved', {
         ability, ...roll, ...auraOfProtectionPayload(auraProtection.aura), ...itemSavingThrowPayload(auraProtection.itemSavingThrowBonus),

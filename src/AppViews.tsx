@@ -680,7 +680,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
               </span>
             </button>
           </div>
-          <ToggleRow icon={<Dices size={17} />} title="Автобросок при атаке" description="Включено — цель сразу атакуется; выключено — появляется отдельная кнопка кубика" value={autoAttackRoll} onChange={() => onAutoAttackRollChange(!autoAttackRoll)} />
+          <ToggleRow icon={<Dices size={17} />} title="Автобросок кубика" description="Выключено — игра предлагает бросок: проверки ждут вашего d20, атака по клику требует подтверждения. Включено — сервер бросает сразу" value={autoAttackRoll} onChange={() => onAutoAttackRollChange(!autoAttackRoll)} />
           <ToggleRow icon={<Swords size={17} />} title="Боевые анимации" description="Движение, удары и состояния проигрываются поверх доски; клик пропускает текущую очередь" value={combatAnimations} onChange={() => onCombatAnimationsChange(!combatAnimations)} />
         </div>
       </div>

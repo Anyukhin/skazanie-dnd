@@ -254,7 +254,7 @@ export function generateBuildingScene({
         {
           zoneId: 'yard',
           theme: 'yard',
-          density: 6,
+          density: 10,
           require: ['tree_oak', 'tree_birch', 'tree_pine', 'well', 'cart', 'woodpile'],
           prefer: ['tree_oak', 'tree_birch', 'tree_pine', 'tree_dead', 'bush', 'shrub', 'boulder', 'haystack', 'woodpile'],
         },

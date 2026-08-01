@@ -109,7 +109,7 @@ export const SCENE_THEMES = Object.freeze([
     live: true,
     material: 'grass',
     match: /лес|чащ|рощ|бор|дубрав|пущ|тайг/iu,
-    density: 11,
+    density: 16,
     require: ['tree_oak', 'tree_spruce', 'tree_birch', 'fallen_log', 'campfire'],
     prefer: ['tree_oak', 'tree_spruce', 'tree_birch', 'tree_pine', 'tree_dead', 'tree_stump', 'bush', 'shrub', 'boulder', 'fern', 'campfire'],
   },
@@ -118,9 +118,12 @@ export const SCENE_THEMES = Object.freeze([
     label: 'Дорога',
     kind: 'open',
     live: true,
-    material: 'earth',
+    // Обочины — луг, а не голая земля: с материалом `earth` вся карта сливалась
+    // в одну коричневую плоскость, и сама дорога на ней не читалась. Полосу
+    // утоптанной земли рисует layoutOpenTerrain поверх травы.
+    material: 'grass',
     match: /дорог|тракт|путь|перекрёст|перекрест|мост|брод|перевал/iu,
-    density: 6,
+    density: 12,
     require: ['milestone', 'tree_birch', 'cart', 'roadside_shrine'],
     prefer: ['tree_birch', 'tree_dead', 'bush', 'boulder', 'fern', 'path_stone', 'milestone'],
     road: true,
@@ -132,7 +135,7 @@ export const SCENE_THEMES = Object.freeze([
     live: true,
     material: 'earth',
     match: /деревн|поселен|село|посад|хутор|город|слобод|рынок|площад/iu,
-    density: 9,
+    density: 14,
     require: ['market_stall', 'well', 'cart', 'village_fence'],
     // Одноклеточный `campfire` сохраняется и в legacy-клетках под известным
     // движку feature. `hitching_post` намеренно не здесь: старый контракт

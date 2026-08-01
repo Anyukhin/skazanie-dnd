@@ -261,6 +261,28 @@ export function TokenHealthBar({ fill, label, className }: { fill: number; label
   </span>
 }
 
+/**
+ * Портрет на токене NPC. Тот же серверный эндпоинт, что и в досье: для
+ * значимых персонажей — сгенерированный портрет, для остальных — ролевая
+ * заготовка с подтверждёнными правами. Пока картинки нет — инициалы.
+ */
+function NpcTokenPortrait({ campaignId, npcId, name }: { campaignId: string; npcId: string; name: string }) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [campaignId, npcId])
+  if (failed || !campaignId) {
+    return <span className="neutral-token-mark" aria-hidden="true">{name.slice(0, 2).toLocaleUpperCase('ru')}</span>
+  }
+  return <img
+    className="neutral-token-portrait"
+    src={`/api/campaigns/${encodeURIComponent(campaignId)}/npcs/${encodeURIComponent(npcId)}/portrait`}
+    alt=""
+    aria-hidden="true"
+    loading="lazy"
+    draggable={false}
+    onError={() => setFailed(true)}
+  />
+}
+
 export function NpcPortrait({ campaignId, npcId, name }: { campaignId: string; npcId: string; name: string }) {
   const [failed, setFailed] = useState(false)
   useEffect(() => setFailed(false), [campaignId, npcId])
@@ -1545,7 +1567,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               setOpenTokenLabelId((current) => current === sceneNpcMenuId ? null : sceneNpcMenuId)
             }}
           >
-            <span className="neutral-token-mark" aria-hidden="true">{sceneNpc.name.slice(0, 2).toLocaleUpperCase('ru')}</span>
+            <NpcTokenPortrait campaignId={state.sessionCode} npcId={sceneNpc.id} name={sceneNpc.name} />
             <span className="neutral-nameplate">{sceneNpc.name}</span>
           </button>
           {openTokenLabelId === sceneNpcMenuId && <div className="neutral-token-menu" role="group" aria-label={`Действия с ${sceneNpc.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>

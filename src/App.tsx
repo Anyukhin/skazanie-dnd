@@ -2,7 +2,7 @@ import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 
 import {
   BookOpen, ChevronDown, ChevronRight, Copy, Crown, DoorOpen,
   Dices, Flame, Footprints, Gem, History, Menu, MessageSquare,
-  MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RotateCcw,
+  PanelLeftClose, PanelLeftOpen, Plus, RotateCcw,
   ScrollText, Send, Settings, Shield, Sparkles, Swords, Target, Users, X,
   BrainCircuit, Check, Compass, SlidersHorizontal, Wifi, WifiOff,
   Heart, HeartCrack, HelpCircle,
@@ -194,7 +194,7 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, t
         {isAdmin && <button className={`nav-item ${view === 'agent-lab' ? 'active' : ''}`} data-tooltip="Лаборатория агентов" aria-label="Открыть лабораторию агентов в отдельном окне" onClick={() => { const url = new URL(window.location.href); url.searchParams.set('agentLab', '1'); window.open(url.toString(), 'skazanie-agent-lab', 'width=1500,height=950') }}><BrainCircuit size={18} /><span>Лаборатория агентов</span></button>}
       </nav>
       <div className="sidebar-section">
-        <div className="section-label"><span>ОТРЯД · {players.filter(p => p.online).length} В СЕТИ{players.some((p) => p.hp <= 0) ? ` · ${players.filter((p) => p.hp <= 0).length} ПАЛИ` : ''}</span><MoreHorizontal size={17} /></div>
+        <div className="section-label"><span>ОТРЯД · {players.filter(p => p.online).length} В СЕТИ{players.some((p) => p.hp <= 0) ? ` · ${players.filter((p) => p.hp <= 0).length} ПАЛИ` : ''}</span></div>
         <div className="players-list">
           {players.map((player) => <PlayerCard key={player.id} player={player} selected={player.id === selectedPlayerId} turn={player.id === turnPlayerId} accessible={accessibleHeroIds.includes(player.id)} typing={typingActorIds.includes(player.id)} deathSaves={deathSavesByHero?.[player.id]} onClick={() => onSelect(player.id)} />)}
         </div>
@@ -327,17 +327,26 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
 function DiceCheckCard({ check, onRoll, onCancel }: { check: PendingCheck; onRoll: () => void; onCancel: () => void }) {
   const rolling = check.status === 'rolling'
   const resolving = check.status === 'resolving'
-  const shownValue = check.result?.value ?? (rolling ? '…' : 20)
+  // Пока кость «катится», на грани мелькают случайные числа — сам результат
+  // приходит только с сервера и подставляется по завершении броска.
+  const [spinValue, setSpinValue] = useState(20)
+  useEffect(() => {
+    if (!rolling) return
+    const timer = window.setInterval(() => setSpinValue(1 + Math.floor(Math.random() * 20)), 76)
+    return () => window.clearInterval(timer)
+  }, [rolling])
+  const shownValue = check.result?.value ?? (rolling ? spinValue : 20)
+  const swing = check.advantage && !check.disadvantage ? 'преимущество' : check.disadvantage && !check.advantage ? 'помеха' : null
   return (
     <div className={`dice-check ${rolling ? 'rolling' : ''} ${resolving ? 'resolving' : ''}`}>
       <div className="dice-copy">
         <span>ТРЕБУЕТСЯ ПРОВЕРКА</span>
         <strong>{check.label}</strong>
-        <small>Сложность {check.difficulty} · модификатор {check.modifier >= 0 ? '+' : ''}{check.modifier}</small>
+        <small>Сложность {check.difficulty} · модификатор {check.modifier >= 0 ? '+' : ''}{check.modifier}{swing ? ` · ${swing}` : ''}</small>
       </div>
       <button className="d20-button" onClick={onRoll} disabled={check.status !== 'ready'} aria-label={`Бросить d20: ${check.label}`}>
         <i><b>{shownValue}</b><small>d20</small></i>
-        <span>{rolling ? 'Кость катится…' : resolving ? `Итого ${check.result?.total}` : 'Бросить кубик'}</span>
+        <span>{rolling ? 'Кость катится…' : resolving ? `${check.result?.value} ${check.modifier >= 0 ? '+' : '−'} ${Math.abs(check.modifier)} = ${check.result?.total}` : 'Бросить кубик'}</span>
       </button>
       <button className="cancel-check" onClick={onCancel} disabled={check.status === 'rolling'}>{check.status === 'resolving' ? 'Отменить зависшее разрешение' : 'Отказаться от действия'}</button>
       <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : 'Нажми на кость — что выпадет, то и будет.'}</p>
@@ -599,7 +608,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     levels: Object.fromEntries(state.players.map((player) => [player.id, player.level])),
   })
   const [uiScale, setUiScale] = useState(loadUiScale)
-  const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') !== 'false')
+  // По умолчанию кубик бросает игрок: автоматика включается осознанно.
+  const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') === 'true')
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
   const [combatAnimations, setCombatAnimations] = useState(() => window.localStorage.getItem(COMBAT_ANIMATIONS_KEY) !== 'false')
   const [atmosphereSettings, setAtmosphereSettings] = useState(loadAtmosphereSettings)

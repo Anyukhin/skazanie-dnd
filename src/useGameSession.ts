@@ -619,13 +619,19 @@ export function useGameSession() {
     persistRemote(next)
   }, [persistLocal, persistRemote])
 
-  const finishTurn = useCallback((current: GameState, _action: string, aiResult: AiTurnResult, roll?: RollResult): GameState => {
+  const finishTurn = useCallback((current: GameState, action: string, aiResult: AiTurnResult, roll?: RollResult): GameState => {
     const base = mergeAuthoritativeState(current, aiResult)
     const consumesTurn = aiResult.turn_consumed !== false
+    // Служебные команды (`/why`) сервер подписывает «Разбор правил», а не
+    // Рассказчиком. Оптимистичная копия обязана совпадать с серверной записью
+    // и по автору, и по id — иначе после опроса комнаты текст задваивается.
+    const metaCommand = /^\s*\//u.test(action)
     const narratorMessage: Message = {
-      id: `${Date.now()}-agent`, speaker: 'narrator', author: 'Рассказчик',
+      id: aiResult.narration_message_id ?? `${Date.now()}-agent`,
+      speaker: metaCommand ? 'system' : 'narrator',
+      author: metaCommand ? 'Разбор правил' : 'Рассказчик',
       timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
-      text: aiResult.narration, roll: aiResult.effects.roll ?? roll, turnConsumed: consumesTurn,
+      text: aiResult.narration, roll: aiResult.effects.roll ?? roll, turnConsumed: metaCommand ? undefined : consumesTurn,
       // Ставки приходили в ответе, но нигде не показывались: игрок узнавал СЛ
       // и цену провала только из объяснения `/why`, если додумывался спросить.
       ...(aiResult.stakes ? { stakes: aiResult.stakes } : {}),
@@ -650,10 +656,13 @@ export function useGameSession() {
     setTacticalError(null)
     const epoch = ++actionEpoch.current
     const player = state.players.find((item) => item.id === (actorId || state.activePlayerId)) ?? state.players[0]
+    // Служебные команды (`/why`) сервер в летопись не пишет — локальный пузырь
+    // игрока прожил бы ровно до следующего опроса комнаты и исчезал на глазах.
+    const metaCommand = /^\s*\//u.test(text.trim())
     const pending: GameState = {
       ...state,
       isNarrating: true,
-      messages: [...state.messages, playerMessage(player.character, text.trim())],
+      messages: metaCommand ? state.messages : [...state.messages, playerMessage(player.character, text.trim())],
     }
     commit(pending)
 

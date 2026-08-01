@@ -271,10 +271,15 @@ test('structured merchant command bypasses free-form Narrator and speaks only fr
   assert.doesNotMatch(result.narration, /повозк|перенес/u)
 })
 
-test('/why объясняет последнее решение правилами, бросками и событиями', async () => {
+test('/why объясняет последнее решение человеческим языком, без сырых идентификаторов', async () => {
   const { orchestrator } = await setup()
   await orchestrator.handle({ state, playerId: 'hero', message: 'Команда', idempotencyKey: 'heal-1', commands: [{ command_type: 'ApplyHealing', actor_id: 'hero', amount: 2 }] })
   const why = await orchestrator.handle({ state, playerId: 'hero', message: '/why' })
-  assert.match(why.narration, /Правила:/)
+  // Ответ строится из читаемых блоков: что распознано, что выпало, что вышло
+  // и на каком основании. Сырые rule_id вида `srd_5_2_1:*` игроку не показываются.
+  assert.match(why.narration, /В итоге:/)
+  assert.match(why.narration, /Основание:/)
+  assert.doesNotMatch(why.narration, /srd_5_2_1/)
+  assert.doesNotMatch(why.narration, /command_type|rule_id/)
   assert.ok(why.explanation.events.some((event) => event.event_type === 'HealingApplied'))
 })

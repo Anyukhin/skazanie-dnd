@@ -19,7 +19,8 @@ import {
   deterministicNarration,
   verifyNarratorCraft,
 } from './narrator.mjs'
-import { actorNameResolver, eventSummary, normalizeCampaignState } from './rules-engine.mjs'
+import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check } from './rules-engine.mjs'
+import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
@@ -401,16 +402,58 @@ function visibleChanges(events) {
   }))
 }
 
+// Как игра прочла команду — одной понятной фразой. Сырые идентификаторы
+// правил и типов команд игроку не показываются: это объяснение, а не журнал
+// отладки.
+function describeCommandForPlayer(command, resolveName) {
+  const type = String(command?.command_type ?? '')
+  const difficulty = Number.isSafeInteger(Number(command?.difficulty)) ? ` против СЛ ${Number(command.difficulty)}` : ''
+  if (type === 'MakeAbilityCheck') return `${d20CheckLabel({ kind: 'check', ability: command.ability, skill: command.skill })}${difficulty}`
+  if (type === 'MakeSavingThrow') return `${d20CheckLabel({ kind: 'save', ability: command.ability })}${difficulty}`
+  if (type === 'MakeAttack') return `атака по цели «${resolveName(command.target_id)}»`
+  if (type === 'MakeAreaAttack') return 'атака по области'
+  if (type === 'CastSpell') return 'применение заклинания'
+  if (type === 'MoveActor') return 'перемещение'
+  if (type === 'UseCombatAction') return 'боевое действие'
+  if (type === 'OperateSceneObject' || type === 'OperateDoor') return 'взаимодействие с объектом сцены'
+  if (type === 'RecordRuling') return 'судейское решение ведущего'
+  if (type === 'UpdateObjective') return 'обновление цели отряда'
+  // Служебные команды (объявление действия и т.п.) игроку не пересказываем.
+  return null
+}
+
+function describeRollForPlayer(roll) {
+  const kept = roll?.kept ?? (Array.isArray(roll?.dice) ? roll.dice[0] : null)
+  const modifier = Number(roll?.modifier) || 0
+  const modifierText = modifier ? ` ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)} (модификатор)` : ''
+  const base = kept != null
+    ? `выпало ${kept}${modifierText}, итого ${roll.total}`
+    : `${roll?.expression ?? 'бросок'} = ${roll?.total}`
+  const target = roll?.difficulty != null ? ` против СЛ ${roll.difficulty}` : ''
+  const outcome = typeof roll?.success === 'boolean' ? ` — ${roll.success ? 'успех' : 'провал'}` : ''
+  return `${rollPurposeLabel(roll?.purpose)}: ${base}${target}${outcome}`
+}
+
 function whyNarration(explanation, resolveName) {
   if (!explanation) return 'Для этой кампании ещё нет сохранённого механического решения.'
-  const rules = explanation.rules_used?.length ? `Правила: ${explanation.rules_used.join(', ')}.` : 'Официальное правило не выбрано; использовано временное решение.'
-  const rolls = explanation.rolls?.length
-    ? `Броски: ${explanation.rolls.map((roll) => `${roll.expression} = ${roll.total}`).join('; ')}.`
-    : 'Бросков не было.'
-  const events = explanation.events?.length
-    ? `События: ${explanation.events.map((event) => eventSummary(event, resolveName)).join('; ')}.`
-    : 'Механических событий не было.'
-  return `${rules} ${rolls} ${events}`
+  const sentences = []
+  const recognized = (Array.isArray(explanation.commands) ? explanation.commands : [])
+    .map((command) => describeCommandForPlayer(command, resolveName))
+    .filter(Boolean)
+  sentences.push(recognized.length
+    ? `Игра прочла действие как: ${[...new Set(recognized)].join('; ')}.`
+    : 'Действие не потребовало механических команд.')
+  const rolls = Array.isArray(explanation.rolls) ? explanation.rolls : []
+  sentences.push(rolls.length
+    ? `${rolls.slice(0, 3).map(describeRollForPlayer).join('. ')}.`
+    : 'Бросков не потребовалось.')
+  const events = Array.isArray(explanation.events) ? explanation.events : []
+  const outcomes = events.map((event) => eventSummary(event, resolveName)).filter(Boolean)
+  if (outcomes.length) sentences.push(`В итоге: ${outcomes.slice(0, 4).join('; ')}.`)
+  sentences.push(explanation.ruling
+    ? 'Основание: разовое судейское решение ведущего — точного правила для этого случая движок не исполняет.'
+    : 'Основание: закреплённые правила игры, результат рассчитан сервером.')
+  return sentences.join(' ')
 }
 
 function modelIdentifiers(narration) {
@@ -650,6 +693,7 @@ export class GameOrchestrator {
     narrator = new Narrator(),
     npcSocialController = null,
     unknownActionHandler = null,
+    rollRegistry = null,
     idFactory = randomUUID,
     now = () => Date.now(),
   } = {}) {
@@ -677,7 +721,10 @@ export class GameOrchestrator {
     this.traceStore = traceStore
     this.narrator = narrator
     this.npcSocialController = npcSocialController
-    this.unknownActionHandler = unknownActionHandler ?? new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, now })
+    this.unknownActionHandler = unknownActionHandler ?? new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, rollRegistry, now })
+    // Реестр бросков включает ручное подтверждение кубика игроком; без него
+    // все d20-проверки разрешаются немедленным серверным броском, как раньше.
+    this.rollRegistry = rollRegistry
     this.narrationInflight = new Map()
     this.idFactory = idFactory
     this.now = now
@@ -737,6 +784,26 @@ export class GameOrchestrator {
     mode,
   }) {
     const state = freeAction.state ?? authoritativeState
+    // Проверка объявлена, но кубик за игроком: события не коммитились, мир не
+    // изменился. Клиент получает карточку броска, а не нарацию хода.
+    if (freeAction.kind === 'check_required') {
+      return {
+        narration: String(freeAction.narration ?? ''),
+        effects: emptyEffects(),
+        provider: 'deterministic-free-action',
+        model: 'server-policy',
+        turn_id: turnId,
+        engine_mode: mode,
+        state_version: freeAction.state_version ?? state.state_version,
+        mechanics: [],
+        visible_state_changes: [],
+        check: freeAction.check,
+        ...(freeAction.stakes ? { stakes: freeAction.stakes } : {}),
+        turn_consumed: false,
+        action_kind: 'free',
+        free_action_outcome: freeAction.kind,
+      }
+    }
     const committedEvents = Array.isArray(freeAction.events) ? freeAction.events : []
     const publicCommittedEvents = mechanicsForViewer(committedEvents, { isPartyMember: true }, playerId, state)
     const constraints = [
@@ -870,6 +937,10 @@ export class GameOrchestrator {
     }
     let turnId = structuredCommandTurnId(campaignId, idempotencyKey)
     const mode = 'enforce'
+    // Ручной бросок: клиент просит не бросать d20 за игрока. Сервер остаётся
+    // авторитетом — он регистрирует проверку и принимает только свой roll_id.
+    const manualRoll = input.manualRoll === true
+    const verifiedRoll = input.verifiedRoll ?? null
 
     if (message === '/why' || input.why === true) {
       const rawExplanation = this.explanation(campaignId, input.turnId ?? input.turn_id, {
@@ -1005,6 +1076,8 @@ export class GameOrchestrator {
         idempotencyKey,
         playerId,
         intent,
+        manualRoll,
+        verifiedRoll,
       })
       return this.freeActionResponse({
         freeAction,
@@ -1042,6 +1115,52 @@ export class GameOrchestrator {
       const response = { narration, effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], authoritative_state: authoritativeState, turn_consumed: false }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })
       return response
+    }
+
+    // Ручной бросок для распознанных проверок и спасбросков: план построен,
+    // но кубик остаётся за игроком. Ничего не коммитим — ход завершит второй
+    // запрос с roll_id из `/api/roll`. Социальные проверки и структурные
+    // команды идут прежним путём.
+    const planCheckCommand = !input.commands && !socialRequest && !duplicate
+      ? (plan.proposed_commands ?? []).find((command) => ['MakeAbilityCheck', 'MakeSavingThrow'].includes(command.command_type) && !command.social_check)
+      : null
+    if (planCheckCommand && manualRoll && !verifiedRoll && this.rollRegistry) {
+      const preview = previewD20Check(authoritativeState, {
+        actorId: planCheckCommand.actor_id ?? playerId,
+        kind: planCheckCommand.command_type === 'MakeSavingThrow' ? 'save' : 'check',
+        ability: planCheckCommand.ability ?? null,
+        skill: planCheckCommand.skill ?? null,
+        difficulty: planCheckCommand.difficulty ?? 10,
+        proficient: Boolean(planCheckCommand.proficient),
+      })
+      const check = this.rollRegistry.registerCheck({
+        campaignId,
+        actorId: String(planCheckCommand.actor_id ?? playerId),
+        label: d20CheckLabel({ kind: preview.kind, ability: preview.ability, skill: preview.skill }),
+        modifier: preview.modifier,
+        difficulty: preview.difficulty,
+        ability: preview.ability,
+        advantage: preview.advantage,
+        disadvantage: preview.disadvantage,
+      })
+      return {
+        narration: `Требуется проверка: ${check.label}, СЛ ${check.difficulty}. Бросьте d20, чтобы узнать исход.`,
+        effects: emptyEffects(),
+        provider: 'RulesEngine',
+        model: 'deterministic',
+        turn_id: turnId,
+        engine_mode: mode,
+        state_version: authoritativeState.state_version,
+        mechanics: [],
+        visible_state_changes: [],
+        check: { ...check, sides: 20, skill: preview.skill },
+        turn_consumed: false,
+      }
+    }
+    if (planCheckCommand && verifiedRoll) {
+      // Кости из реестра передаются движку; математику он пересчитывает сам.
+      const { context: _checkContext, ...verifiedRollPayload } = verifiedRoll
+      planCheckCommand.verified_roll = verifiedRollPayload
     }
 
     let socialBaseState = authoritativeState
