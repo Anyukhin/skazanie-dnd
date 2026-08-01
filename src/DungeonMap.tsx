@@ -746,10 +746,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [pendingCommand, setPendingCommand] = useState<PendingCombatCommand | null>(null)
   const [hoveredMoveKey, setHoveredMoveKey] = useState<string | null>(null)
   const [pendingMoveKey, setPendingMoveKey] = useState<string | null>(null)
-  // Режим перемещения включается явным нажатием на свою фишку. Пока он выключен,
-  // карта ведёт себя как карта: её можно свободно таскать, и зелёный маршрут не
-  // тянется за указателем по каждой клетке, под которой тот проехал.
-  const [moveModeActorId, setMoveModeActorId] = useState<string | null>(null)
   const [inspectedTarget, setInspectedTarget] = useState<{ id: string; name: string; team: 'ally' | 'enemy'; hp?: number; maxHp?: number; healthLabel?: string; distanceFeet: number; allowed: boolean; reason: string | null } | null>(null)
   const { columns: cellColumns, rows: cellRows } = mapGridDimensions(state.scene.cells)
   // Канон сцены — `scene.map`; старая проекция без него собирается из клеток.
@@ -1017,22 +1013,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     for (const cell of sceneObjectCells(prop)) sceneObjectByCell.set(boardPositionKey(cell.x, cell.y), prop)
   }
   const movementLimit = combatActive ? remainingFeet : Number.POSITIVE_INFINITY
-  // Клетки становятся целями шага только в режиме перемещения. Раньше они были
-  // ими всегда, поэтому провести карту мышью, не начертив по дороге маршрут,
-  // было невозможно.
-  const moveModeOn = Boolean(selected && moveModeActorId === selected)
-  // Выход из режима убирает и намеченную клетку, и подсветку под указателем:
-  // иначе зелёный след остался бы висеть на карте после снятия выбора.
-  const exitMoveMode = () => {
-    setMoveModeActorId(null)
-    setHoveredMoveKey(null)
-    setPendingMoveKey(null)
-  }
-  const toggleMoveMode = (actorId: string) => {
-    if (moveModeActorId === actorId) exitMoveMode()
-    else setMoveModeActorId(actorId)
-  }
-  const reachable = selected && active && movementAvailable && moveModeOn
+  const reachable = selected && active && movementAvailable
     ? new Set([...movementPaths.entries()].filter(([, route]) => route.costFeet <= movementLimit).map(([key]) => key))
     : new Set<string>()
   const previewMoveKey = pendingMoveKey ?? hoveredMoveKey
@@ -1649,12 +1630,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             resourceReady: targetResourceReady, specialBlockReason: playerSpecialBlock,
           })
           const playerTargetReason = playerCommandAllowed ? 'Допустимая цель' : playerTargetCheck.reason ?? 'Выбранная команда не подходит для союзника'
-          // Пока по фишке не нажали, карта в режиме осмотра — об этом нужно
-          // сказать прямо, иначе игрок не догадается, почему клетки не
-          // подсвечиваются под курсором.
-          const playerMoveHint = player.id === selected && !playerCommandAllowed
-            ? (moveModeOn ? 'Нажмите ещё раз, чтобы выйти из режима перемещения' : 'Нажмите, чтобы наметить путь')
-            : playerTargetReason
           const playerConditions = (state.mechanics?.conditions?.[player.id] ?? []).map(conditionPresentation)
           return <button
             className={'map-token hero-token ' + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (linkedParticipantIds.includes(player.id) ? 'journal-linked ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
@@ -1666,10 +1641,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             onMouseLeave={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
             onFocus={() => { setLinkedParticipantIds([player.id]); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
             onBlur={() => { setLinkedParticipantIds([]); if (!pendingCommand) setInspectedTarget(null) }}
-            onClick={(event) => { event.stopPropagation(); setOpenTokenLabelId((current) => current === player.id ? null : player.id); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canAid) useActionAtTarget(player.id); else if (canHeal) castAtTarget(player.id); else if (player.id === selected) toggleMoveMode(player.id) }}
+            onClick={(event) => { event.stopPropagation(); setOpenTokenLabelId((current) => current === player.id ? null : player.id); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canAid) useActionAtTarget(player.id); else if (canHeal) castAtTarget(player.id) }}
             aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${player.character}` : canAid ? `Использовать ${selectedCombatAction?.name} на ${player.character}` : canHeal ? `Наложить ${selectedSpell?.name} на ${player.character}` : player.character + (player.id === turnActorId ? ', активный герой' : '')}
             aria-disabled={!canHeal && !canAid && !canThrowHere}
-            title={playerMoveHint}
+            title={playerTargetReason}
           >
             <TokenConditionIcons conditions={playerConditions} />
             {openTokenLabelId === player.id && <span className="token-label">{player.character}<small>{player.hp} ОЗ · {combatActive ? `${remainingFeet} фт` : 'свободный ход'}</small></span>}
@@ -1851,19 +1826,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         animationsEnabled={combatAnimations}
         conditions={state.mechanics?.conditions}
         conditionVersion={state.state_version}
-        onBackgroundActivate={() => { setOpenTokenLabelId(null); exitMoveMode() }}
+        onBackgroundActivate={() => setOpenTokenLabelId(null)}
         decoration={trajectory
           ? <svg className="projectile-trajectory" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} /></svg>
           : null}
       />
-      {/* Режим перемещения включается нажатием на фишку — без подсказки это
-          неочевидно, и карта выглядит просто не реагирующей на клики. */}
-      {selected && !moveModeOn && !pendingCommand && (
-        <div className="move-mode-hint" role="status">
-          <Footprints size={15} />
-          <span>Нажмите на свою фишку, чтобы наметить путь</span>
-        </div>
-      )}
       <div className="map-scale-plate">1 клетка = 5 футов</div>
       {/* Режим стоит над полем по центру: он описывает то, что происходит на
           карте, и читается раньше, чем взгляд уходит к панели действий. */}
