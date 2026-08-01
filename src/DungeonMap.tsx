@@ -1856,6 +1856,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           ? <svg className="projectile-trajectory" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} /></svg>
           : null}
       />
+      {/* Режим перемещения включается нажатием на фишку — без подсказки это
+          неочевидно, и карта выглядит просто не реагирующей на клики. */}
+      {selected && !moveModeOn && !pendingCommand && (
+        <div className="move-mode-hint" role="status">
+          <Footprints size={15} />
+          <span>Нажмите на свою фишку, чтобы наметить путь</span>
+        </div>
+      )}
       <div className="map-scale-plate">1 клетка = 5 футов</div>
       {/* Режим стоит над полем по центру: он описывает то, что происходит на
           карте, и читается раньше, чем взгляд уходит к панели действий. */}

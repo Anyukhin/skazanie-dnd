@@ -1574,6 +1574,13 @@ function setSceneDoorState(state, doorId, doorState) {
 const DOORWAY_SIGHT_CELLS = 9
 
 /**
+ * Дальность разведки при перемещении. Меньше дверной: дверь открывает целое
+ * помещение разом, а шаг — только то, что вокруг героя, иначе карта
+ * раскрывалась бы вперёд отряда и исследовать было бы нечего.
+ */
+const MOVEMENT_SIGHT_CELLS = 6
+
+/**
  * Клетки, которые видны от `origin` после того, как проём открылся: обход в
  * ширину по проходимым клеткам, не пересекающий ни глухие рёбра, ни закрытые
  * двери. Это не полноценный расчёт линии обзора — он и не нужен: задача узкая,
@@ -1765,7 +1772,13 @@ function tacticalCellMap(state) {
 }
 
 function isWalkableCell(cell) {
-  if (!cell || cell.revealed === false) return false
+  // Нераскрытая клетка проходима: иначе исследование невозможно в принципе.
+  // Прежняя проверка `revealed === false` запирала отряд в том пятне, которое
+  // досталось ему при создании сцены — шагнуть в темноту было нельзя, а
+  // раскрывалась она только шагом в неё же. Стены и вода остаются
+  // непроходимыми независимо от тумана, поэтому сквозь них путь всё равно не
+  // построится, а само содержимое клетки игрок увидит, только дойдя до него.
+  if (!cell) return false
   return ['floor', 'door'].includes(String(cell.type || 'floor').toLowerCase())
 }
 
@@ -8194,6 +8207,17 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         monster_ability: aggressiveBonus > 0 ? 'aggressive' : null,
         phase: state.mechanics.combat.active ? 'combat' : 'exploration',
       }, [command.actor_id]))
+      // Разведка местом, где герой оказался. Без этого туман снимался только
+      // переходом сцены и открытой дверью, а `isWalkableCell` считает
+      // нераскрытую клетку непроходимой — то есть отряд запирался в том
+      // пятне, которое досталось ему при создании сцены, и внутрь здания
+      // пройти было нельзя вовсе.
+      const scoutedMap = ensureSceneTacticalMap(state)
+      if (scoutedMap) {
+        const scouted = cellsVisibleFrom(scoutedMap, to, { radius: MOVEMENT_SIGHT_CELLS })
+          .filter((cell) => cellAt(scoutedMap, cell.x, cell.y)?.revealed !== true)
+        if (scouted.length) events.push(eventFrom(command, 'AreaRevealed', { cells: scouted }, []))
+      }
       const enteredAreaState = replayEvents(state, events)
       events.push(...areaEntryConsequences(enteredAreaState, command, command.actor_id, from, to, { diceService, rolls, resolveDamage: resolveDamagePayload }))
       const moverConditions = conditionIdsFor(state, command.actor_id)
