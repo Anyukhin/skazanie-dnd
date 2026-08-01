@@ -220,7 +220,10 @@ function BackpackIcon() {
 }
 
 function NewbieGuide({ onDismiss }: { onDismiss: () => void }) {
-  return <aside className="newbie-guide" role="dialog" aria-modal="false" aria-labelledby="newbie-guide-title">
+  // Панель висит поверх карты и перехватывает клики по клеткам под собой:
+  // игрок целится в клетку, попадает в шпаргалку — и герой «не реагирует».
+  // Поэтому любой клик по панели закрывает её: прочитал — кликнул — играешь.
+  return <aside className="newbie-guide" role="dialog" aria-modal="false" aria-labelledby="newbie-guide-title" onClick={onDismiss}>
     <header>
       <HelpCircle size={21} />
       <span><small>ПЕРВЫЕ ШАГИ</small><strong id="newbie-guide-title">Можно говорить обычными фразами</strong></span>
