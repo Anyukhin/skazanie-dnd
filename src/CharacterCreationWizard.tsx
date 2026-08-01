@@ -57,18 +57,71 @@ const skillHintFor = (id: string) => SKILL_HINTS[String(id).toLowerCase().replac
  * ассеты с отдельными правами.
  */
 const CLASS_EMBLEMS: Record<string, ReactNode> = {
-  barbarian: <><path d="M5 19 14 10" /><path d="M12 4c4 0 7 2 7 5 0 2-2 3-4 3-3 0-5-2-5-5" /><path d="m4 20 3-3" /></>,
-  bard: <><circle cx="9" cy="16" r="5" /><path d="M13 12 19 5" /><path d="m16 4 4 1 1 4" /></>,
-  cleric: <><path d="M12 3v18" /><path d="M6 8h12" /><circle cx="12" cy="12" r="9" /></>,
-  druid: <><path d="M12 21c0-7 3-12 8-15-6-1-11 2-12 8-1 4 1 7 4 7Z" /><path d="M12 21c-1-4-3-6-6-7" /></>,
-  fighter: <><path d="m5 19 9-9" /><path d="M14 4h6v6" /><path d="M20 4 10 14" /><path d="m4 16 4 4" /></>,
-  monk: <><circle cx="12" cy="12" r="9" /><path d="M8 13c2 2 6 2 8 0" /><path d="M9 9h.01M15 9h.01" /></>,
-  paladin: <><path d="M12 3 4 6v6c0 5 3 8 8 9 5-1 8-4 8-9V6Z" /><path d="M12 8v7" /><path d="M9 11h6" /></>,
-  ranger: <><path d="M6 3c6 3 9 9 9 18" /><path d="M6 3 4 9" /><path d="m6 3 6 1" /><path d="M14 14 21 7" /></>,
-  rogue: <><path d="m6 18 9-9" /><path d="M15 5h4v4" /><path d="m5 17 2 2" /><circle cx="9" cy="15" r="1" /></>,
-  sorcerer: <><path d="M12 3c3 5 6 6 6 10a6 6 0 0 1-12 0c0-4 3-5 6-10Z" /><path d="M12 20c-2 0-3-1-3-3 0-2 3-3 3-6" /></>,
-  warlock: <><path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
-  wizard: <><path d="M4 6h11a3 3 0 0 1 3 3v11H7a3 3 0 0 1-3-3Z" /><path d="M4 6a3 3 0 0 1 3-3h11" /><path d="M11 11h4" /></>,
+  // Секира с двойным лезвием.
+  barbarian: <><path d="M12 3v18" /><path d="M12 6c3-2 6-2 8 0-2 2-5 3-8 2Z" /><path d="M12 6c-3-2-6-2-8 0 2 2 5 3 8 2Z" /></>,
+  // Лютня: корпус, гриф и колки.
+  bard: <><ellipse cx="9" cy="16" rx="5" ry="5.5" /><circle cx="9" cy="16" r="1.6" /><path d="M12.5 12.5 18 6" /><path d="m17 4.5 2.5 2.5" /><path d="m19 3 2 2" /></>,
+  // Храмовый символ: солнце над крестом.
+  cleric: <><path d="M12 21V9" /><path d="M8 13h8" /><circle cx="12" cy="6" r="3" /><path d="M12 1v1.5M12 9.5V11M7 6H5.5M18.5 6H17" /></>,
+  // Дубовый лист с прожилками.
+  druid: <><path d="M12 21c0-8 4-14 9-16 1 8-3 15-9 16Z" /><path d="M12 21c-2-5-5-7-9-8 4-3 8-2 10 1" /><path d="M13 12.5 12 21" /></>,
+  // Меч и щит.
+  fighter: <><path d="M8 3v11l-2 2 3 3 3-3-2-2V3Z" /><path d="M16 5h5v6c0 4-2.5 6-5 7-2.5-1-5-3-5-7" /></>,
+  // Кулак монаха.
+  monk: <><path d="M7 11V7.5a1.5 1.5 0 0 1 3 0V11" /><path d="M10 10.5V6a1.5 1.5 0 0 1 3 0v4.5" /><path d="M13 10.5V7a1.5 1.5 0 0 1 3 0v6" /><path d="M16 11.5c0-1 2-1.5 2 .5v3c0 3-2.5 6-6 6s-6-2.5-6-6v-2c0-2 2-2 2 0" /></>,
+  // Щит с восходящим солнцем клятвы.
+  paladin: <><path d="M12 2 4 5v7c0 5.5 3.5 8.5 8 10 4.5-1.5 8-4.5 8-10V5Z" /><path d="M8 13a4 4 0 0 1 8 0" /><path d="M12 5.5V9" /></>,
+  // Лук со стрелой.
+  ranger: <><path d="M6 3c7 4 7 14 0 18" /><path d="M6 3 6 21" /><path d="M4 12h14" /><path d="m15 9 3 3-3 3" /></>,
+  // Кинжал с каплей яда.
+  rogue: <><path d="M12 2 9 9h6Z" /><path d="M12 9v9" /><path d="M9 12h6" /><path d="M12 22c1.2 0 2-.8 2-2 0-1.2-2-3-2-3s-2 1.8-2 3c0 1.2.8 2 2 2Z" /></>,
+  // Родовая искра: пламя в ладони судьбы.
+  sorcerer: <><path d="M12 2c2.5 4.5 6 6 6 10a6 6 0 0 1-12 0c0-4 3.5-5.5 6-10Z" /><path d="M12 18c-1.6 0-2.6-1-2.6-2.4 0-1.8 2.6-3.2 2.6-5.4" /></>,
+  // Око покровителя в кольце пакта.
+  warlock: <><path d="M2 12s4-6.5 10-6.5S22 12 22 12s-4 6.5-10 6.5S2 12 2 12Z" /><circle cx="12" cy="12" r="3.2" /><path d="M12 2v1.8M12 20.2V22M4 4l1.4 1.4M18.6 18.6 20 20" /></>,
+  // Раскрытая книга заклинаний.
+  wizard: <><path d="M3 5.5c3-1.5 6-1.5 9 0v14c-3-1.5-6-1.5-9 0Z" /><path d="M21 5.5c-3-1.5-6-1.5-9 0v14c3-1.5 6-1.5 9 0Z" /><path d="M12 5.5v14" /></>,
+}
+
+/**
+ * Эмблемы видов. Рисунок, а не фотография: изображения рас с dnd.su имеют
+ * неподтверждённые права (см. ATTRIBUTION.md — там же оговорка про миниатюры
+ * бестиария), и добавлять новый такой долг ради экрана создания не стоит.
+ * Если владелец положит файл `public/assets/species/<id>.png`, карточка
+ * покажет его вместо эмблемы — код это уже умеет.
+ */
+const SPECIES_EMBLEMS: Record<string, ReactNode> = {
+  human: <><circle cx="12" cy="8" r="3.4" /><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" /></>,
+  elf: <><circle cx="12" cy="9" r="3.2" /><path d="M6 20c0-3.6 2.7-6.4 6-6.4s6 2.8 6 6.4" /><path d="M8.8 7.2 5.5 4.6M15.2 7.2l3.3-2.6" /></>,
+  dwarf: <><circle cx="12" cy="7.5" r="3" /><path d="M7 20v-3c0-2.2 2.2-4 5-4s5 1.8 5 4v3" /><path d="M9 12c.8 3 1.4 4.5 3 6 1.6-1.5 2.2-3 3-6" /></>,
+  halfling: <><circle cx="12" cy="9.5" r="3" /><path d="M7 20c0-3 2.2-5.4 5-5.4s5 2.4 5 5.4" /><path d="M6 9.5c1.5-2 3.5-3 6-3s4.5 1 6 3" /></>,
+  gnome: <><circle cx="12" cy="11" r="2.8" /><path d="M7.5 20c0-2.6 2-4.6 4.5-4.6s4.5 2 4.5 4.6" /><path d="M12 3 7 9h10Z" /></>,
+  'half-orc': <><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c0-3.7 2.9-6.6 6.5-6.6s6.5 2.9 6.5 6.6" /><path d="M9.5 10.5 9 12.5M14.5 10.5l.5 2" /></>,
+  'half-elf': <><circle cx="12" cy="8.6" r="3.3" /><path d="M5.8 20c0-3.7 2.8-6.5 6.2-6.5s6.2 2.8 6.2 6.5" /><path d="M15.1 6.9 18 4.8" /></>,
+  tiefling: <><circle cx="12" cy="10" r="3.2" /><path d="M6.5 20c0-3.2 2.5-5.6 5.5-5.6s5.5 2.4 5.5 5.6" /><path d="M8.6 7.4C7.4 5.6 7 4 7.2 2.8c1.6.5 2.9 1.7 3.6 3.2" /><path d="M15.4 7.4c1.2-1.8 1.6-3.4 1.4-4.6-1.6.5-2.9 1.7-3.6 3.2" /></>,
+  dragonborn: <><path d="M12 4c3.4 0 6 2.2 6 5 0 3.6-2.6 6.4-6 8.6-3.4-2.2-6-5-6-8.6 0-2.8 2.6-5 6-5Z" /><path d="M9.6 9h.01M14.4 9h.01" /><path d="M6 6.5 3.4 4.4M18 6.5l2.6-2.1" /></>,
+  custom: <><circle cx="12" cy="12" r="8.6" /><path d="M12 8v5" /><path d="M12 16h.01" /></>,
+}
+
+function SpeciesEmblem({ speciesId, label }: { speciesId: string; label: string }) {
+  const [failed, setFailed] = useState(false)
+  const glyph = SPECIES_EMBLEMS[speciesId]
+  if (!failed) {
+    return <span className="species-art">
+      <img
+        src={`/assets/species/${speciesId}.png`}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    </span>
+  }
+  return <span className="species-art">
+    {glyph
+      ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ width: '100%', height: '100%', color: '#c8a06a', padding: 12 }}>{glyph}</svg>
+      : <span>{label.slice(0, 2).toLocaleUpperCase('ru')}</span>}
+  </span>
 }
 
 function ClassEmblem({ classId }: { classId: string }) {
@@ -585,7 +638,20 @@ export function CharacterCreationWizard({
             ><ClassEmblem classId={entry.id} /><strong>{entry.label}</strong><small>{skills} навыка · {magic}</small></button>
           })}</div>}
           {step === 1 && <div className="creation-form">
-            <label><span>Вид</span><select value={draft.speciesOptionId} onChange={(event) => patch('speciesOptionId', event.target.value)}>{catalog.ability_policy.species_options.map((entry) => <option key={entry.id} value={entry.id}>{entry.label} · {entry.base_speed} фт.</option>)}</select></label>
+            <label><span>Вид</span></label>
+            <div className="creation-species" role="group" aria-label="Выбор вида">
+              {catalog.ability_policy.species_options.map((entry) => <button
+                key={entry.id}
+                type="button"
+                className={draft.speciesOptionId === entry.id ? 'selected' : ''}
+                aria-pressed={draft.speciesOptionId === entry.id}
+                onClick={() => patch('speciesOptionId', entry.id)}
+              >
+                <SpeciesEmblem speciesId={entry.id} label={entry.label} />
+                <b>{entry.label}</b>
+                <small>{entry.base_speed} фт.</small>
+              </button>)}
+            </div>
             {speciesOption?.id === 'custom' && <label><span>Название авторского вида</span><input value={draft.customSpecies} onChange={(event) => patch('customSpecies', event.target.value)} maxLength={120} /></label>}
             <p><ShieldCheck size={17} />Скорость определяется видом. Предыстория редакции 2024 даёт прибавки к характеристикам, два владения навыками, инструмент и черту происхождения.</p>
             <div className="creation-backgrounds" role="group" aria-label="Выбор предыстории">
@@ -734,7 +800,7 @@ function SpellChoice({
       aria-label={`${spell.name}, ${spell.level === 0 ? 'заговор' : 'заклинание 1 круга'}, ${support.label}`}
       title={spell.description || support.explanation}
     >
-      <CombatIcon id={spell.id} kind="spell" hint={spell.name} size={34} compact />
+      <CombatIcon id={spell.id} kind="spell" hint={spell.name} size={52} />
       <span>
         <strong>{spell.name}</strong>
         <small>{spell.level === 0 ? 'заговор' : '1 круг'}{meta ? ` · ${meta}` : ''}{showSupport ? ` · ${support.shortLabel}` : ''}</small>

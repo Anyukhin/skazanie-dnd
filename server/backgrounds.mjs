@@ -73,6 +73,26 @@ export function defaultBackgroundAbilityChoice(backgroundId) {
 }
 
 /**
+ * Достраивает герою производные предыстории: владения навыками и разбор
+ * последствий. Хранить их в документе персонажа нельзя — он ходит через
+ * контракт импорта, который перечитывается при применении события и replay,
+ * а производные поля в контракт не входят. Поэтому источник истины —
+ * `backgroundId`, а всё остальное выводится здесь.
+ */
+export function withBackgroundBenefits(actor) {
+  const background = backgroundById(actor?.backgroundId)
+  if (!background) {
+    const { backgroundSkillProficiencies: _skills, backgroundBenefits: _benefits, ...rest } = actor ?? {}
+    return rest
+  }
+  return {
+    ...actor,
+    backgroundSkillProficiencies: [...background.skillProficiencies],
+    backgroundBenefits: backgroundBenefits(background.id, actor.backgroundAbilityChoice),
+  }
+}
+
+/**
  * Что предыстория даёт герою на самом деле. Возвращается ровно то, что движок
  * умеет применить, плюс честная отметка о неисполняемой части.
  */

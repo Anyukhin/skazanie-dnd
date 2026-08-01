@@ -27,10 +27,10 @@ import { withStarterKit } from './starter-kit.mjs'
 import {
   BACKGROUND_ABILITY_MODES,
   BACKGROUND_POLICY_ID,
-  backgroundBenefits,
   backgroundById,
   listBackgrounds,
   resolveBackgroundAbilityChoice,
+  withBackgroundBenefits,
 } from './backgrounds.mjs'
 
 /**
@@ -802,7 +802,7 @@ export function applyCharacterLifecycleEvent(state, event) {
       character: payload.patch,
     }, { allowLegacyAbilityPolicy: true })
     const wasCharacterSlot = actor.characterSetupRequired === true
-    let updated = { ...actor, ...parsed.patch, id: actor.id, inventory: clone(actor.inventory ?? []), currency: clone(actor.currency ?? {}) }
+    let updated = withBackgroundBenefits({ ...actor, ...parsed.patch, id: actor.id, inventory: clone(actor.inventory ?? []), currency: clone(actor.currency ?? {}) })
     if (wasCharacterSlot) {
       updated = withStarterKit({
         ...updated,
@@ -1023,8 +1023,11 @@ export function parseCharacterImport(raw, options = {}) {
     canonical.backgroundId = background.id
     canonical.background = background.name
     canonical.backgroundAbilityChoice = { mode: resolved.mode, abilities: Object.keys(resolved.bonuses) }
-    canonical.backgroundSkillProficiencies = [...background.skillProficiencies]
-    canonical.backgroundBenefits = backgroundBenefits(background.id, canonical.backgroundAbilityChoice)
+    // Навыки и черта здесь намеренно НЕ сохраняются: патч обязан пройти
+    // обратно через тот же контракт импорта — его перечитывает reducer при
+    // применении и replay, — а производные поля в контракт не входят и
+    // роняли бы событие как «неподдерживаемые». Они выводятся из
+    // `backgroundId` в `withBackgroundBenefits` при сборке героя.
   }
   return {
     document,
