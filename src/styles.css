@@ -2193,3 +2193,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .turn-stakes b { font: 600 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .03em; }
 .turn-stakes small { font: 500 var(--fs-xxs) Manrope, sans-serif; color: #97826a; line-height: 1.45; }
 
+/* Подсказка про режим перемещения: пока он выключен, клетки намеренно не
+   реагируют на клики (иначе маршрут тянулся бы за курсором при перетаскивании
+   карты), и без этой строки карта выглядит сломанной. */
+.move-mode-hint { position: absolute; z-index: 24; left: 50%; bottom: 16px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid rgba(211,160,97,.34); border-radius: 18px; background: rgba(16,13,10,.9); color: #d3a967; font: 600 var(--fs-sm) Manrope, sans-serif; transform: translateX(-50%); pointer-events: none; box-shadow: 0 10px 26px rgba(0,0,0,.5); }
