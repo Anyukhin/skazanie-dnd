@@ -163,7 +163,7 @@ const DECLARED = Object.freeze([
   entry('barrel_stack', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 18 }),
   entry('keg', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 8 }),
   entry('crate', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 10, scaleRange: { min: 0.85, max: 1.15 } }),
-  entry('crate_stack', { anchor: 'corner', blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 16 }),
+  entry('crate_stack', { baseFootprint: { w: 2, h: 1 }, anchor: 'corner', blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 16 }),
   entry('sack', { anchor: 'wall', destructible: true, hp: 4, scaleRange: { min: 0.8, max: 1.2 } }),
   entry('basket', { anchor: 'wall', destructible: true, hp: 3, scaleRange: { min: 0.8, max: 1.2 } }),
   entry('bucket', { scaleRange: { min: 0.8, max: 1.1 } }),
@@ -211,7 +211,7 @@ const DECLARED = Object.freeze([
 
   // --- Внешняя территория ---------------------------------------------
   entry('tree_oak', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 40, scaleRange: { min: 0.8, max: 1.4 } }),
-  entry('tree_pine', { themes: [...YARD, ...WILD], baseFootprint: { w: 1, h: 1 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 30, scaleRange: { min: 0.8, max: 1.5 } }),
+  entry('tree_pine', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 30, scaleRange: { min: 0.8, max: 1.5 } }),
   entry('tree_birch', { themes: [...YARD, ...WILD], blocksMove: true, blocksSight: true, cover: 'half', destructible: true, hp: 22, scaleRange: { min: 0.85, max: 1.35 } }),
   entry('tree_dead', { themes: [...YARD, ...WILD], blocksMove: true, cover: 'half', destructible: true, hp: 18, scaleRange: { min: 0.8, max: 1.3 } }),
   entry('tree_stump', { themes: [...YARD, ...WILD], cover: 'half', scaleRange: { min: 0.8, max: 1.2 } }),
@@ -246,13 +246,7 @@ const DECLARED = Object.freeze([
 
   // --- Склеп -------------------------------------------------------------
   entry('sarcophagus', { themes: [...CRYPT], baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', interactive: true, destructible: true, hp: 25 }),
-  // Могила читалась мелкой: насыпь размером ровно в клетку выглядит как
-  // коврик, а не как захоронение. Настоящий двухклеточный footprint здесь
-  // невозможен без перерисовки штампа — кадр в атласе 83×96, то есть могила
-  // нарисована одноклеточной, и в рамке 2×1 спрайт остался бы прежней высоты
-  // и потерялся бы в пустоте. Поэтому увеличен рисунок, а не занимаемые
-  // клетки: насыпь выходит за края своей клетки, как и положено.
-  entry('grave', { themes: [...CRYPT], anchor: 'wall', cover: 'half', scaleRange: { min: 1.3, max: 1.5 } }),
+  entry('grave', { themes: [...CRYPT], baseFootprint: { w: 2, h: 1 }, anchor: 'wall', cover: 'half' }),
   entry('bone_pile', { themes: [...CRYPT, ...CAVE], baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
   entry('urn', { themes: [...CRYPT], anchor: 'wall', destructible: true, hp: 4 }),
   entry('crypt_niche', { themes: [...CRYPT], anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' }),
