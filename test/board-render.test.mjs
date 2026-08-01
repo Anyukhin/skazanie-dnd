@@ -503,10 +503,15 @@ test('фактура пола раскладывается по карте не�
   assert.deepEqual(window(4), window(0))
 })
 
-test('масштаб уменьшается только у деревянного пола и деревянных стен', () => {
+test('масштаб уменьшается у досок и каменной кладки, но не у природных фактур', () => {
   assert.equal(render.WOOD_TEXTURE_REPEAT_SCALE, 2)
   assert.equal(render.terrainCellsPerTileFor('wood', 8), 4)
-  for (const material of ['stone', 'earth', 'grass', 'sand', 'marble', 'metal', 'ice']) {
+  // Кладка: булыжник пола и блоки стен были размером с полклетки рядом с фишкой.
+  for (const material of ['stone', 'marble', 'metal']) {
+    assert.equal(render.terrainCellsPerTileFor(material, 8), 4, `${material} обязан стать мельче клетки`)
+  }
+  // У земли, травы, песка и льда нет заметного модуля — уменьшение дало бы шум.
+  for (const material of ['earth', 'grass', 'sand', 'ice']) {
     assert.equal(render.terrainCellsPerTileFor(material, 8), 8, `${material} не должен менять масштаб`)
   }
 
