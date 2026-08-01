@@ -88,3 +88,26 @@
 .creation-spells article strong{white-space:normal}
 .creation-spells article .combat-icon{flex:0 0 auto}
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Предыстории: карточка обязана показать все последствия выбора до перехода
+   дальше — характеристики, навыки, инструмент, черту и снаряжение. */
+.creation-backgrounds{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:11px}
+.creation-backgrounds button{display:grid;gap:5px;padding:15px;border:1px solid rgba(255,255,255,.08);border-radius:9px;color:#b9aa98;text-align:left;background:rgba(255,255,255,.025)}
+.creation-backgrounds button.selected{border-color:#c7945c;background:rgba(173,113,54,.14)}
+.creation-backgrounds strong{color:#e2c69f;font:600 var(--fs-xl) Spectral,serif}
+.creation-backgrounds i{color:#8d8175;font:500 var(--fs-xs)/1.4 Manrope,sans-serif;font-style:normal;margin-bottom:3px}
+.creation-backgrounds small{color:#8a7d6f;font:500 var(--fs-xxs)/1.35 Manrope,sans-serif}
+.creation-backgrounds small b{color:#a89578;font-weight:700}
+.creation-backgrounds button.selected strong{color:#f0d6ae}
+
+.creation-origin-bonus{display:grid;gap:10px;margin-top:16px;padding:14px;border:1px solid rgba(211,160,97,.28);border-radius:9px;background:rgba(120,80,40,.1)}
+.creation-origin-bonus>header{display:flex;justify-content:space-between;color:#d7bea0;font:600 var(--fs-lg) Spectral,serif}
+.creation-origin-bonus>header b{color:#b98955;font:600 var(--fs-xs) Manrope,sans-serif}
+.creation-origin-bonus .origin-modes{display:flex;gap:7px}
+.creation-origin-bonus .origin-modes button{padding:7px 13px;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#a99b8c;background:rgba(255,255,255,.03);font:600 var(--fs-xs) Manrope,sans-serif}
+.creation-origin-bonus .origin-modes button.selected{border-color:#c7945c;color:#ecd1aa;background:rgba(173,113,54,.2)}
+.creation-origin-bonus .origin-abilities{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.creation-origin-bonus .origin-abilities button{display:grid;gap:3px;padding:11px;border:1px solid rgba(255,255,255,.09);border-radius:7px;color:#a99b8c;background:rgba(255,255,255,.025)}
+.creation-origin-bonus .origin-abilities button.selected{border-color:rgba(112,185,148,.5);color:#c8e0d0;background:rgba(62,119,87,.18)}
+.creation-origin-bonus .origin-abilities span{font:600 var(--fs-sm) Spectral,serif}
+.creation-origin-bonus .origin-abilities b{color:#7fb096;font:600 var(--fs-lg) Spectral,serif}

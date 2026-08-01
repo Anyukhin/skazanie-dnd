@@ -2627,6 +2627,10 @@ export function skillProficiencyForActor(actor, skill) {
   const sheetEntry = actor?.characterSheet?.skills?.[id]
     ?? actor?.characterSheet?.skills?.[id.replace(/-/gu, '_')]
     ?? null
+  // Навыки предыстории идут мимо классового выбора: `normalizedClassSkillProficiencies`
+  // фильтрует по списку класса и режет по его квоте, поэтому положить их туда
+  // означало бы либо потерять владение, либо отнять у героя классовый выбор.
+  const fromBackground = listedSkill(actor?.backgroundSkillProficiencies, id)
   const expertise = [
     actor?.skillExpertiseIds,
     actor?.expertiseSkillIds,
@@ -2636,6 +2640,7 @@ export function skillProficiencyForActor(actor, skill) {
   ].some((values) => listedSkill(values, id))
     || sheetEntry?.expertise === true
   const proficient = expertise
+    || fromBackground
     || sheetEntry?.proficient === true
     || isSkillProficient(actor, id)
   const proficiency = Math.max(0, safeInteger(actor?.proficiency, 0))

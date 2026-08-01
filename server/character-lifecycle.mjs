@@ -24,6 +24,14 @@ import {
 import { ITEM_ARMOR_PROFILES } from './item-catalog.mjs'
 import { activeItemEffectTotals } from './item-lifecycle.mjs'
 import { withStarterKit } from './starter-kit.mjs'
+import {
+  BACKGROUND_ABILITY_MODES,
+  BACKGROUND_POLICY_ID,
+  backgroundBenefits,
+  backgroundById,
+  listBackgrounds,
+  resolveBackgroundAbilityChoice,
+} from './backgrounds.mjs'
 
 /**
  * Standalone character domain contract.
@@ -298,6 +306,17 @@ export function characterCreationCatalog() {
     import_schema: CHARACTER_IMPORT_SCHEMA,
     import_schema_version: CHARACTER_IMPORT_SCHEMA_VERSION,
     ability_policy: clone(characterCreationPolicy),
+    // Предыстории отдаются каталогом целиком: мастер показывает последствия
+    // выбора до перехода дальше, а сервер всё равно пересчитывает их сам по
+    // идентификатору — присланные клиентом бонусы недоверенные.
+    backgrounds: {
+      policy_id: BACKGROUND_POLICY_ID,
+      ability_modes: BACKGROUND_ABILITY_MODES.map((mode) => clone(mode)),
+      options: listBackgrounds(),
+      // Черта происхождения записывается в лист, но движком не исполняется:
+      // feats в покрытии проекта помечены `missing`.
+      origin_feats_supported: false,
+    },
     classes: classCombat.classes.map((classOption) => {
       const actor = {
         characterClass: classOption.classKey,
@@ -824,6 +843,9 @@ const IMPORT_CHARACTER_V1 = Object.freeze([
   'character', 'name', 'role', 'characterClass', 'subclass', 'species', 'background', 'alignment',
   'traits', 'ideals', 'bonds', 'flaws', 'backstory', 'notes', 'level', 'experience', 'abilities',
   'abilityGeneration', 'baseSpeed', 'hitPointIncreases', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds',
+  // Предыстория: только идентификатор и раскладка прибавок. Сами бонусы,
+  // навыки и черта выводятся сервером из каталога и полем импорта не являются.
+  'backgroundId', 'backgroundAbilityChoice',
 ])
 const IMPORT_V0_ALIASES = Object.freeze({
   character_class: 'characterClass',
@@ -971,6 +993,39 @@ export function parseCharacterImport(raw, options = {}) {
     if (value !== undefined) canonical[field] = value
   }
   if (derivedSpecies) canonical.species = derivedSpecies
+  // Предыстория: клиент присылает только её идентификатор и раскладку прибавок,
+  // всё остальное сервер берёт из каталога. Прибавки ложатся поверх стандартного
+  // массива уже здесь, поэтому в лист уходит итоговая характеристика, а не
+  // «база плюс обещание».
+  const backgroundId = optionalText(source.backgroundId, 'character.backgroundId', 60)
+  if (backgroundId) {
+    const background = backgroundById(backgroundId)
+    if (!background) {
+      throw new CharacterLifecycleValidationError('Такой предыстории нет в каталоге', 'IMPORT_BACKGROUND_UNKNOWN')
+    }
+    const resolved = resolveBackgroundAbilityChoice(backgroundId, source.backgroundAbilityChoice ?? {})
+    if (!resolved.ok) {
+      throw new CharacterLifecycleValidationError(resolved.reason, 'IMPORT_BACKGROUND_ABILITY_INVALID')
+    }
+    // Сами числа уже проверены versioned-политикой генерации характеристик:
+    // она требует, чтобы итог равнялся стандартному массиву плюс объявленные
+    // бонусы происхождения. Здесь остаётся сверить, что объявленные бонусы —
+    // это именно бонусы выбранной предыстории, а не чужая раскладка под тем же
+    // профилем.
+    const declared = canonical.abilityGeneration?.originBonuses ?? {}
+    const mismatch = ABILITY_IDS.some((ability) => (declared[ability] ?? 0) !== (resolved.bonuses[ability] ?? 0))
+    if (mismatch) {
+      throw new CharacterLifecycleValidationError(
+        'Бонусы происхождения не совпадают с прибавками выбранной предыстории',
+        'IMPORT_BACKGROUND_ABILITY_INVALID',
+      )
+    }
+    canonical.backgroundId = background.id
+    canonical.background = background.name
+    canonical.backgroundAbilityChoice = { mode: resolved.mode, abilities: Object.keys(resolved.bonuses) }
+    canonical.backgroundSkillProficiencies = [...background.skillProficiencies]
+    canonical.backgroundBenefits = backgroundBenefits(background.id, canonical.backgroundAbilityChoice)
+  }
   return {
     document,
     patch: canonical,

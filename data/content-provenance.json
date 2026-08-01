@@ -88,6 +88,14 @@
       "size_bytes": 170310,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
+    },
+    {
+      "path": "data/backgrounds-srd-5-2-1.json",
+      "sha256": "05191d5d62aaf793c60dfa62f60d2ad212e3ea8c86fe5009c908730a1a324b1d",
+      "size_bytes": 13051,
+      "source_id": "srd-5.2.1",
+      "rights_status": "project_license_required",
+      "notes": "Механические факты предысторий редакции 2024. Описания написаны для проекта и текст источника не воспроизводят."
     }
   ],
   "release_blockers": [

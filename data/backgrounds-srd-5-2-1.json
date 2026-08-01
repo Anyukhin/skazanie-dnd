@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "rulesetId": "srd_5_2_1",
+  "editionFamily": "5e_2024",
+  "policyId": "skazanie.backgrounds.srd-5-2-1",
+  "note": "Механические факты предысторий редакции 2024. Описания написаны для этого проекта и не воспроизводят текст источника.",
+  "abilityChoiceModes": [
+    { "id": "two_one", "label": "+2 и +1", "increases": [2, 1] },
+    { "id": "one_one_one", "label": "+1 каждой", "increases": [1, 1, 1] }
+  ],
+  "backgrounds": [
+    {
+      "id": "acolyte",
+      "name": "Послушник",
+      "englishName": "Acolyte",
+      "summary": "Вы выросли при храме: разбирали свитки, помогали на службах и научились направлять малую долю божественной силы.",
+      "abilityOptions": ["int", "wis", "cha"],
+      "skillProficiencies": ["insight", "religion"],
+      "toolProficiency": { "id": "calligraphers_supplies", "name": "Инструменты каллиграфа" },
+      "originFeat": { "id": "magic_initiate_cleric", "name": "Посвящённый в магию (жрец)" },
+      "equipment": { "summary": "Инструменты каллиграфа, молитвенник, священный символ, пергамент, мантия", "gold": 8, "alternativeGold": 50 }
+    },
+    {
+      "id": "artisan",
+      "name": "Ремесленник",
+      "englishName": "Artisan",
+      "summary": "Вы начинали подмастерьем и знаете цену работе рук: чинили, торговались и говорили с заказчиками.",
+      "abilityOptions": ["str", "dex", "int"],
+      "skillProficiencies": ["investigation", "persuasion"],
+      "toolProficiency": { "id": "artisans_tools", "name": "Инструменты ремесленника (на выбор)" },
+      "originFeat": { "id": "crafter", "name": "Ремесло" },
+      "equipment": { "summary": "Инструменты ремесленника, две сумки, дорожная одежда", "gold": 32, "alternativeGold": 50 }
+    },
+    {
+      "id": "charlatan",
+      "name": "Шарлатан",
+      "englishName": "Charlatan",
+      "summary": "Вы живёте чужой доверчивостью: поддельная бумага, уверенный тон и вовремя убранная рука.",
+      "abilityOptions": ["dex", "con", "cha"],
+      "skillProficiencies": ["deception", "sleight_of_hand"],
+      "toolProficiency": { "id": "forgery_kit", "name": "Набор для подделок" },
+      "originFeat": { "id": "skilled", "name": "Одарённый" },
+      "equipment": { "summary": "Набор для подделок, костюм, дорожная одежда", "gold": 15, "alternativeGold": 50 }
+    },
+    {
+      "id": "criminal",
+      "name": "Преступник",
+      "englishName": "Criminal",
+      "summary": "Вы работали по ту сторону закона и научились попадать туда, куда не звали, не оставляя следов.",
+      "abilityOptions": ["dex", "con", "int"],
+      "skillProficiencies": ["sleight_of_hand", "stealth"],
+      "toolProficiency": { "id": "thieves_tools", "name": "Воровские инструменты" },
+      "originFeat": { "id": "alert", "name": "Настороженный" },
+      "equipment": { "summary": "Воровские инструменты, лом, две сумки, дорожная одежда", "gold": 16, "alternativeGold": 50 }
+    },
+    {
+      "id": "entertainer",
+      "name": "Артист",
+      "englishName": "Entertainer",
+      "summary": "Сцена вам привычнее очага: вы умеете держать зал и уходить под аплодисменты, а не под тумаки.",
+      "abilityOptions": ["str", "dex", "cha"],
+      "skillProficiencies": ["acrobatics", "performance"],
+      "toolProficiency": { "id": "musical_instrument", "name": "Музыкальный инструмент (на выбор)" },
+      "originFeat": { "id": "musician", "name": "Музыкант" },
+      "equipment": { "summary": "Музыкальный инструмент, зеркальце, костюм, дорожная одежда", "gold": 11, "alternativeGold": 50 }
+    },
+    {
+      "id": "farmer",
+      "name": "Фермер",
+      "englishName": "Farmer",
+      "summary": "Вы выросли на земле: знаете погоду, скотину и цену спине, которая не подводит к вечеру.",
+      "abilityOptions": ["str", "con", "wis"],
+      "skillProficiencies": ["animal_handling", "nature"],
+      "toolProficiency": { "id": "carpenters_tools", "name": "Инструменты плотника" },
+      "originFeat": { "id": "tough", "name": "Крепкий" },
+      "equipment": { "summary": "Серп, инструменты плотника, комплект целителя, железный горшок, дорожная одежда", "gold": 30, "alternativeGold": 50 }
+    },
+    {
+      "id": "guard",
+      "name": "Стражник",
+      "englishName": "Guard",
+      "summary": "Вы стояли на воротах и стенах: замечали лишнее в толпе и знали, кого пропускать без разговоров.",
+      "abilityOptions": ["str", "int", "wis"],
+      "skillProficiencies": ["athletics", "perception"],
+      "toolProficiency": { "id": "gaming_set", "name": "Игровой набор (на выбор)" },
+      "originFeat": { "id": "alert", "name": "Настороженный" },
+      "equipment": { "summary": "Копьё, лёгкий арбалет с болтами, игровой набор, фонарь, кандалы, дорожная одежда", "gold": 12, "alternativeGold": 50 }
+    },
+    {
+      "id": "guide",
+      "name": "Проводник",
+      "englishName": "Guide",
+      "summary": "Дальние тропы вам знакомее городских улиц: вы читаете следы, находите воду и уходите незамеченным.",
+      "abilityOptions": ["dex", "con", "wis"],
+      "skillProficiencies": ["stealth", "survival"],
+      "toolProficiency": { "id": "cartographers_tools", "name": "Инструменты картографа" },
+      "originFeat": { "id": "magic_initiate_druid", "name": "Посвящённый в магию (друид)" },
+      "equipment": { "summary": "Короткий лук со стрелами, инструменты картографа, спальник, палатка, дорожная одежда", "gold": 3, "alternativeGold": 50 }
+    },
+    {
+      "id": "hermit",
+      "name": "Отшельник",
+      "englishName": "Hermit",
+      "summary": "Вы жили в стороне от людей и научились обходиться малым: травы, тишина и собственные мысли.",
+      "abilityOptions": ["con", "wis", "cha"],
+      "skillProficiencies": ["medicine", "religion"],
+      "toolProficiency": { "id": "herbalism_kit", "name": "Набор травника" },
+      "originFeat": { "id": "healer", "name": "Целитель" },
+      "equipment": { "summary": "Набор травника, посох, спальник, книга, масляная лампа, дорожная одежда", "gold": 16, "alternativeGold": 50 }
+    },
+    {
+      "id": "merchant",
+      "name": "Торговец",
+      "englishName": "Merchant",
+      "summary": "Вы водили обозы и держали лавку: знаете цену товару, дорогам и человеку напротив.",
+      "abilityOptions": ["con", "int", "cha"],
+      "skillProficiencies": ["animal_handling", "persuasion"],
+      "toolProficiency": { "id": "navigators_tools", "name": "Инструменты навигатора" },
+      "originFeat": { "id": "lucky", "name": "Везучий" },
+      "equipment": { "summary": "Инструменты навигатора, две сумки, дорожная одежда", "gold": 22, "alternativeGold": 50 }
+    },
+    {
+      "id": "noble",
+      "name": "Дворянин",
+      "englishName": "Noble",
+      "summary": "Вы росли среди привилегий и обязательств: знаете родословные, этикет и то, как просьба звучит приказом.",
+      "abilityOptions": ["str", "int", "cha"],
+      "skillProficiencies": ["history", "persuasion"],
+      "toolProficiency": { "id": "gaming_set", "name": "Игровой набор (на выбор)" },
+      "originFeat": { "id": "skilled", "name": "Одарённый" },
+      "equipment": { "summary": "Игровой набор, парадная одежда, перстень с печаткой, пергамент", "gold": 29, "alternativeGold": 50 }
+    },
+    {
+      "id": "sage",
+      "name": "Мудрец",
+      "englishName": "Sage",
+      "summary": "Годы среди книг научили вас искать ответ там, где другие видят пыль и непонятные значки.",
+      "abilityOptions": ["con", "int", "wis"],
+      "skillProficiencies": ["arcana", "history"],
+      "toolProficiency": { "id": "calligraphers_supplies", "name": "Инструменты каллиграфа" },
+      "originFeat": { "id": "magic_initiate_wizard", "name": "Посвящённый в магию (волшебник)" },
+      "equipment": { "summary": "Инструменты каллиграфа, книга, пергамент, посох, мантия", "gold": 8, "alternativeGold": 50 }
+    },
+    {
+      "id": "sailor",
+      "name": "Моряк",
+      "englishName": "Sailor",
+      "summary": "Палуба под ногами привычнее мостовой: вы держите равновесие в шторм и не теряетесь в портовой драке.",
+      "abilityOptions": ["str", "dex", "wis"],
+      "skillProficiencies": ["acrobatics", "perception"],
+      "toolProficiency": { "id": "navigators_tools", "name": "Инструменты навигатора" },
+      "originFeat": { "id": "tavern_brawler", "name": "Кабацкий драчун" },
+      "equipment": { "summary": "Кинжал, инструменты навигатора, верёвка, дорожная одежда", "gold": 20, "alternativeGold": 50 }
+    },
+    {
+      "id": "scribe",
+      "name": "Писарь",
+      "englishName": "Scribe",
+      "summary": "Вы переписывали чужие слова так долго, что научились замечать в них то, чего автор не писал.",
+      "abilityOptions": ["dex", "int", "wis"],
+      "skillProficiencies": ["investigation", "perception"],
+      "toolProficiency": { "id": "calligraphers_supplies", "name": "Инструменты каллиграфа" },
+      "originFeat": { "id": "skilled", "name": "Одарённый" },
+      "equipment": { "summary": "Инструменты каллиграфа, масляная лампа, пергамент, парадная одежда", "gold": 23, "alternativeGold": 50 }
+    },
+    {
+      "id": "soldier",
+      "name": "Солдат",
+      "englishName": "Soldier",
+      "summary": "Строй, приказ и долгий переход — ваша прежняя жизнь. Вы знаете, как держать линию и как её ломать.",
+      "abilityOptions": ["str", "dex", "con"],
+      "skillProficiencies": ["athletics", "intimidation"],
+      "toolProficiency": { "id": "gaming_set", "name": "Игровой набор (на выбор)" },
+      "originFeat": { "id": "savage_attacker", "name": "Неистово атакующий" },
+      "equipment": { "summary": "Копьё, короткий лук со стрелами, игровой набор, комплект целителя, дорожная одежда", "gold": 14, "alternativeGold": 50 }
+    },
+    {
+      "id": "wayfarer",
+      "name": "Бродяга",
+      "englishName": "Wayfarer",
+      "summary": "Улица растила вас без поблажек: вы читаете людей с первого взгляда и умеете исчезать до неприятностей.",
+      "abilityOptions": ["dex", "wis", "cha"],
+      "skillProficiencies": ["insight", "stealth"],
+      "toolProficiency": { "id": "thieves_tools", "name": "Воровские инструменты" },
+      "originFeat": { "id": "lucky", "name": "Везучий" },
+      "equipment": { "summary": "Два кинжала, воровские инструменты, спальник, чашка, дорожная одежда", "gold": 16, "alternativeGold": 50 }
+    }
+  ]
+}
