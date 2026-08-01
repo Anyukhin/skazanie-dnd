@@ -506,3 +506,55 @@ test('повтор commit с тем же idempotency_key не применяет
   assert.equal(retry.duplicate, true)
   assert.equal(retry.state.npc_world.vitals.marta.hp, 3)
 })
+
+test('собеседник, заведённый посреди кампании, сразу получает пост и попадает в проекцию', () => {
+  // Отряд уже в сцене, новых NPC в ней нет: ровно то состояние, в котором
+  // Режиссёр вводит собеседника по ходу игры.
+  const state = npcState({ npcs: [] })
+  const resolved = resolveCommand({
+    command_type: 'UpsertNpcSocialProfile',
+    command_id: 'npc-introduced',
+    npc: {
+      id: 'iara',
+      name: 'Иара Вейр',
+      role: 'хранительница архива',
+      location: 'Рынок',
+      public_summary: 'Хранит записи поселения.',
+      voice: 'Говорит тихо и точно.',
+      visibility: 'party',
+      available: true,
+    },
+  }, state, { diceService: dice([]), context: { isAdmin: true, isDirector: true } })
+
+  // Профиль без поста — это NPC, существующий только в тексте Рассказчика:
+  // проекция отбрасывает его, и на поле токена нет.
+  assert.ok(resolved.events.some((event) => event.event_type === 'NpcPlaced'),
+    'новому собеседнику не запланировали пост')
+
+  const after = replayEvents(state, resolved.events)
+  const visible = sceneNpcsForViewer(after, { role: 'player' }, 'hero')
+  const iara = visible.find((npc) => npc.id === 'iara')
+  assert.ok(iara, 'новый собеседник не виден игроку на карте')
+  assert.equal(typeof iara.x, 'number')
+  assert.equal(typeof iara.y, 'number')
+})
+
+test('профиль NPC из другой локации поста в текущей сцене не занимает', () => {
+  const state = npcState({ npcs: [] })
+  const resolved = resolveCommand({
+    command_type: 'UpsertNpcSocialProfile',
+    command_id: 'npc-elsewhere',
+    npc: {
+      id: 'dalny',
+      name: 'Дальний',
+      role: 'мельник',
+      location: 'Другая деревня',
+      public_summary: 'Живёт в стороне.',
+      voice: 'Говорит громко.',
+      visibility: 'party',
+      available: true,
+    },
+  }, state, { diceService: dice([]), context: { isAdmin: true, isDirector: true } })
+  assert.equal(resolved.events.some((event) => event.event_type === 'NpcPlaced'), false,
+    'NPC чужой локации не должен занимать клетку текущей сцены')
+})

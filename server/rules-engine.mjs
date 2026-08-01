@@ -9331,10 +9331,20 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'UpsertNpcSocialProfile':
     case 'RecordNpcSocialTurn':
     case 'ResolveNpcPromise': {
+      const socialEventsAdded = []
       for (const socialEvent of npcSocialEvents(command, state)) {
         const resolvedSocialEvent = eventFrom({ ...command, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids)
         if (socialEvent.event_id) resolvedSocialEvent.event_id = socialEvent.event_id
         events.push(resolvedSocialEvent)
+        socialEventsAdded.push(resolvedSocialEvent)
+      }
+      // Собеседник, заведённый посреди кампании, тоже обязан появиться на поле.
+      // Раньше расстановку выполнял только переход сцены, поэтому названный
+      // Рассказчиком новый NPC существовал лишь в тексте: профиль есть,
+      // placement нет, и `sceneNpcsForViewer` отбрасывал его из проекции.
+      if (command.command_type === 'UpsertNpcSocialProfile' && socialEventsAdded.length) {
+        const withProfile = replayEvents(state, socialEventsAdded)
+        events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(withProfile)))
       }
       break
     }
