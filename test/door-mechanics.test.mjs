@@ -8,6 +8,7 @@ import {
   deserializeTacticalMap,
   doorBlocksStep,
   doorsReachableFrom,
+  edgeBetween,
   edgeNeighbor,
   legacyCellsFromTacticalMap,
   reachableCells,
@@ -247,4 +248,57 @@ test('состояние двери переживает повторное пр
   const twice = forced.events.reduce(applyGameEvent, fixture('locked', 15))
   assert.equal(doorStateOf(once), 'broken')
   assert.equal(doorStateOf(twice), 'broken')
+})
+
+/**
+ * Та же пара комнат, но дальняя ещё не раскрыта: ровно то состояние, в котором
+ * игрок подходит к двери впервые.
+ */
+function unexploredFixture(doorState = 'closed') {
+  const map = twoRooms(doorState)
+  // `twoRooms` объявляет дверь с непреграждающим ребром — там проверяется
+  // только полотно. Настоящая закрытая дверь держит и шаг, и взгляд, а именно
+  // это и должно сняться при открытии.
+  setDoor(map, { id: 'door-hall', x: 3, y: 1, dir: 'e', state: doorState, lockDc: 0, blocksMove: true, blocksSight: true })
+  for (let y = 1; y <= 2; y += 1) {
+    for (let x = 4; x <= 5; x += 1) setCell(map, x, y, { revealed: false })
+  }
+  return normalizeCampaignState({
+    sessionCode: 'DOORS-FOG',
+    players: [{ id: 'hero', character: 'Борен', hp: 12, maxHp: 12, armor: 14, speed: 30, x: 3, y: 1, abilities: { str: 16, dex: 10, con: 12, int: 10, wis: 10, cha: 10 } }],
+    enemies: [],
+    scene: { turn: 1, cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) },
+    mechanics: { combat: { active: false }, positions: { hero: { x: 3, y: 1 } } },
+  })
+}
+
+test('открытая дверь снимает блокировку с ребра и раскрывает комнату за собой', () => {
+  const before = unexploredFixture('closed')
+  const beforeMap = deserializeTacticalMap(before.scene.map)
+  assert.equal(edgeBetween(beforeMap, 3, 1, 4, 1)?.blocksSight, true)
+  assert.equal(cellAt(beforeMap, 5, 1)?.revealed, false)
+
+  const opened = operate(before, 'open')
+  // Раскрытие едет отдельным событием: replay обязан воспроизвести и его.
+  assert.deepEqual(opened.events.map((event) => event.event_type), ['DoorStateChanged', 'AreaRevealed'])
+
+  const after = opened.events.reduce(applyGameEvent, before)
+  const afterMap = deserializeTacticalMap(after.scene.map)
+  const edge = edgeBetween(afterMap, 3, 1, 4, 1)
+  assert.equal(edge?.blocksMove, false, 'открытая дверь обязана пропускать шаг')
+  assert.equal(edge?.blocksSight, false, 'открытая дверь обязана пропускать взгляд')
+  assert.equal(cellAt(afterMap, 5, 1)?.revealed, true, 'комната за дверью осталась в тумане')
+  // Нераскрытая клетка непроходима (`isWalkableCell`), поэтому без раскрытия
+  // распахнутая дверь не давала прохода — это и было «дверь никуда не ведёт».
+  assert.ok(move(after, { x: 5, y: 1 }).events.some((event) => event.event_type === 'ActorMoved'))
+})
+
+test('закрытая обратно дверь снова держит взгляд, но уже увиденное не забывается', () => {
+  const opened = operate(unexploredFixture('closed'), 'open')
+  const afterOpen = opened.events.reduce(applyGameEvent, unexploredFixture('closed'))
+  const closed = operate(afterOpen, 'close')
+  const afterClose = closed.events.reduce(applyGameEvent, afterOpen)
+  const map = deserializeTacticalMap(afterClose.scene.map)
+  assert.equal(edgeBetween(map, 3, 1, 4, 1)?.blocksSight, true)
+  assert.equal(cellAt(map, 5, 1)?.revealed, true, 'карта не должна забывать разведанное')
 })

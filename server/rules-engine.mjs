@@ -1546,22 +1546,71 @@ const CREATURE_ENTITY_KINDS = new Set(['enemy'])
  * планировки, дальнейшее живёт здесь и меняется только событиями
  * (`docs/tactical-map-plan.md`, раздел 5) — второго источника истины нет.
  */
+/** Открытый и выломанный проём не держат ни шаг, ни взгляд. */
+function doorEdgeBlocks(doorState) {
+  return !['open', 'broken'].includes(String(doorState))
+}
+
 function setSceneDoorState(state, doorId, doorState) {
   const map = ensureSceneTacticalMap(state)
   if (!map) return state
   const door = doorById(map, doorId)
   if (!door || !DOOR_STATES.includes(String(doorState))) return state
-  const edge = edgeBetween(map, door.x, door.y, edgeNeighbor(door).x, edgeNeighbor(door).y)
+  // Признаки ребра выводятся из состояния полотна, а не переносятся с прежнего
+  // ребра. Раньше здесь стоял перенос — и открытая дверь оставалась стеной:
+  // ребро продолжало держать и шаг, и взгляд, поэтому комната за распахнутой
+  // дверью не открывалась, а клиент не строил в неё маршрут.
+  const blocks = doorEdgeBlocks(doorState)
   setTacticalDoor(map, {
     ...door,
     state: String(doorState),
-    // Признаки ребра принадлежат проёму в стене и от полотна не зависят:
-    // `setDoor` перезаписывает ребро целиком, и без переноса стена вокруг
-    // двери потеряла бы свои свойства.
-    blocksMove: edge?.blocksMove === true,
-    blocksSight: edge?.blocksSight === true,
+    blocksMove: blocks,
+    blocksSight: blocks,
   })
   return writeSceneTacticalMap(state, map)
+}
+
+/** Дальность обзора, на которую распахнутая дверь открывает соседнее помещение. */
+const DOORWAY_SIGHT_CELLS = 9
+
+/**
+ * Клетки, которые видны от `origin` после того, как проём открылся: обход в
+ * ширину по проходимым клеткам, не пересекающий ни глухие рёбра, ни закрытые
+ * двери. Это не полноценный расчёт линии обзора — он и не нужен: задача узкая,
+ * открыть игроку ровно то помещение, куда теперь ведёт открытая дверь, вместо
+ * чёрного пятна, в которое нельзя даже шагнуть (`isWalkableCell` считает
+ * нераскрытую клетку непроходимой).
+ */
+function cellsVisibleFrom(map, origin, { radius = DOORWAY_SIGHT_CELLS, openedDoorId = null } = {}) {
+  const opened = openedDoorId == null ? '' : String(openedDoorId)
+  const start = { x: Math.floor(Number(origin?.x)), y: Math.floor(Number(origin?.y)) }
+  if (!Number.isSafeInteger(start.x) || !Number.isSafeInteger(start.y)) return []
+  if (!cellAt(map, start.x, start.y)) return []
+  const seen = new Map([[`${start.x},${start.y}`, 0]])
+  const queue = [start]
+  const found = [start]
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const current = queue[cursor]
+    const distance = seen.get(`${current.x},${current.y}`) ?? 0
+    if (distance >= radius) continue
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = { x: current.x + dx, y: current.y + dy }
+      const key = `${next.x},${next.y}`
+      if (seen.has(key)) continue
+      const cell = cellAt(map, next.x, next.y)
+      if (!cell) continue
+      const edge = edgeBetween(map, current.x, current.y, next.x, next.y)
+      // Дверь, которую открывают прямо сейчас, ещё числится закрытой: событие
+      // состояния применится позже, а раскрытие считается по будущей карте.
+      const justOpened = opened && String(edge?.doorId ?? '') === opened
+      if (edge?.blocksSight === true && !justOpened) continue
+      seen.set(key, distance + 1)
+      found.push(next)
+      // Стену видно, но сквозь неё не смотрят: дальше обход не идёт.
+      if (cell.passable) queue.push(next)
+    }
+  }
+  return found
 }
 
 /** Ставит предмет в клетку, заменяя прежний предмет той же клетки. */
@@ -8244,10 +8293,19 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       const intent = ['open', 'close', 'force'].includes(String(command.intent)) ? String(command.intent) : 'open'
       const before = String(door.state)
+      // Распахнутый проём обязан открыть то, что за ним: пока раскрытия не
+      // было, соседнее помещение оставалось чёрным пятном, в которое вдобавок
+      // нельзя было шагнуть.
+      const revealBeyondDoor = () => {
+        const cells = cellsVisibleFrom(map, at, { openedDoorId: door.id })
+          .filter((cell) => cellAt(map, cell.x, cell.y)?.revealed !== true)
+        if (cells.length) events.push(eventFrom(command, 'AreaRevealed', { cells }, []))
+      }
       if (intent === 'open') {
         if (before === 'locked') throw new RulesValidationError('Дверь заперта: её придётся выломать', 'DOOR_LOCKED')
         if (before !== 'closed') throw new RulesValidationError('Эта дверь и так открыта', 'DOOR_ALREADY_OPEN')
         events.push(eventFrom(command, 'DoorStateChanged', { door_id: door.id, state: 'open', previous_state: before, method: 'hand' }, []))
+        revealBeyondDoor()
         break
       }
       if (intent === 'close') {
@@ -8273,6 +8331,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       events.push(eventFrom(command, 'DoorForced', {
         door_id: door.id, success: check.success, previous_state: before, difficulty, check_total: check.total,
       }, []))
+      if (check.success) revealBeyondDoor()
       break
     }
     case 'OperateSceneObject': {
