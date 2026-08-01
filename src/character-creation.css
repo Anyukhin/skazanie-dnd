@@ -76,3 +76,15 @@
    действием: это подсказка новичку, а не кнопка подтверждения. */
 .character-creation-wizard>footer .creation-roll{margin-right:auto;border-color:rgba(150,124,196,.4);color:#c3ade3;background:rgba(88,68,132,.18)}
 .character-creation-wizard>footer .creation-roll:hover:not(:disabled){border-color:rgba(178,150,228,.6);color:#dcccf5}
+
+/* Поиск по заклинаниям и содержательная карточка: у полного класса список
+   1 круга уходит за экран, а одно название не объясняет, что заклинание
+   делает. Иконка та же, что в бою, — узнаётся между мастером и столом. */
+.creation-spell-search input{width:100%;padding:11px 13px;border:1px solid rgba(255,255,255,.1);border-radius:7px;outline:0;color:#e0ccb1;background:#15120f;font:500 var(--fs-sm) Manrope,sans-serif}
+.creation-spell-search input:focus{border-color:#b9804d}
+.creation-spells section>div{grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}
+.creation-spells article>button:first-child{align-items:flex-start;gap:11px;padding:12px}
+.creation-spells article i{color:#7d7165;font:500 var(--fs-xxs)/1.4 Manrope,sans-serif;font-style:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.creation-spells article strong{white-space:normal}
+.creation-spells article .combat-icon{flex:0 0 auto}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

@@ -9,6 +9,7 @@ import type {
   Player,
 } from './types'
 import { mechanicsSupportPresentation } from './tactical-ui'
+import { CombatIcon } from './CombatIcon'
 import './character-creation.css'
 
 /**
@@ -203,6 +204,7 @@ export function CharacterCreationWizard({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [busy, onClose])
+  const [spellSearch, setSpellSearch] = useState('')
   const classOption = catalog.classes.find((entry) => entry.id === draft.classId) ?? catalog.classes[0]
   const speciesOption = catalog.ability_policy.species_options.find((entry) => entry.id === draft.speciesOptionId)
   const skillRule = classOption?.class_skills
@@ -212,8 +214,23 @@ export function CharacterCreationWizard({
   // от того, что реально можно взять: иначе класс с бедным каталогом запер бы
   // мастер на недостижимом «выберите 3 заговора».
   const selectable = (spell: { mechanics_support?: MechanicsSupport | null }) => !mechanicsSupportPresentation(spell.mechanics_support ?? undefined).blocked
+  // Поиск по названию и описанию: у полного класса список 1 круга уходит за
+  // экран, и найти нужное заклинание глазами было нельзя. Уже выбранные
+  // карточки остаются видимыми при любом запросе — иначе счётчик показывает
+  // «2/3», а что именно взято, не видно.
   const cantrips = spellRules?.spells.filter((spell) => spell.level === 0 && selectable(spell)) ?? []
   const leveledSpells = spellRules?.spells.filter((spell) => spell.level === 1 && selectable(spell)) ?? []
+  // Поиск по названию и описанию: у полного класса список 1 круга уходит за
+  // экран, и найти нужное заклинание глазами было нельзя. Фильтр действует
+  // только на показ — лимиты и счётчики выше считаются по полному списку,
+  // иначе запрос молча менял бы условие «выберите 3 заговора». Уже выбранные
+  // карточки остаются видимыми при любом запросе.
+  const spellQuery = spellSearch.trim().toLocaleLowerCase('ru')
+  const matchesQuery = (spell: { id: string; name: string; description?: string }) => !spellQuery
+    || draft.knownSpellIds.includes(spell.id)
+    || `${spell.name} ${spell.description ?? ''}`.toLocaleLowerCase('ru').includes(spellQuery)
+  const visibleCantrips = cantrips.filter(matchesQuery)
+  const visibleLeveledSpells = leveledSpells.filter(matchesQuery)
   const selectedCantrips = cantrips.filter((spell) => draft.knownSpellIds.includes(spell.id)).length
   const selectedKnownSpells = leveledSpells.filter((spell) => draft.knownSpellIds.includes(spell.id)).length
   const selectedPreparedSpells = leveledSpells.filter((spell) => draft.preparedSpellIds.includes(spell.id)).length
@@ -502,8 +519,18 @@ export function CharacterCreationWizard({
           </div>}
           {step === 4 && <div className="creation-spells">
             {!spellRules ? <div className="creation-empty"><ShieldCheck size={24} /><strong>На 1 уровне у этого класса нет выбора заклинаний</strong><p>Заклинания появятся на следующих уровнях.</p></div> : <>
-              {cantrips.length > 0 && <section><header><span>Заговоры</span><b>{selectedCantrips}/{cantripLimit}</b></header>{cantripSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{cantripSupport.label}</b> — {cantripSupport.explanation}</span></p>}<div>{cantrips.map((spell) => <SpellChoice key={spell.id} spell={spell} selected={draft.knownSpellIds.includes(spell.id)} showSupport={!cantripSupport} onClick={() => toggleSpell(spell.id)} />)}</div></section>}
-              {leveledSpells.length > 0 && <section><header><span>Заклинания 1 круга</span><b>{spellRules.mode === 'known' ? `${selectedKnownSpells}/${knownLimit}` : spellRules.mode === 'spellbook' ? `книга ${selectedKnownSpells}/${bookLimit}` : `подготовлено ${selectedPreparedSpells}/${preparedLimit}`}</b></header>{leveledSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{leveledSupport.label}</b> — {leveledSupport.explanation}</span></p>}<div>{leveledSpells.map((spell) => {
+              <label className="creation-spell-search">
+                <span className="visually-hidden">Поиск заклинания</span>
+                <input
+                  type="search"
+                  value={spellSearch}
+                  onChange={(event) => setSpellSearch(event.target.value)}
+                  placeholder="Название или эффект…"
+                  aria-label="Поиск заклинания по названию или эффекту"
+                />
+              </label>
+              {cantrips.length > 0 && <section><header><span>Заговоры</span><b>{selectedCantrips}/{cantripLimit}</b></header>{cantripSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{cantripSupport.label}</b> — {cantripSupport.explanation}</span></p>}<div>{visibleCantrips.map((spell) => <SpellChoice key={spell.id} spell={spell} selected={draft.knownSpellIds.includes(spell.id)} showSupport={!cantripSupport} onClick={() => toggleSpell(spell.id)} />)}</div></section>}
+              {leveledSpells.length > 0 && <section><header><span>Заклинания 1 круга</span><b>{spellRules.mode === 'known' ? `${selectedKnownSpells}/${knownLimit}` : spellRules.mode === 'spellbook' ? `книга ${selectedKnownSpells}/${bookLimit}` : `подготовлено ${selectedPreparedSpells}/${preparedLimit}`}</b></header>{leveledSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{leveledSupport.label}</b> — {leveledSupport.explanation}</span></p>}<div>{visibleLeveledSpells.map((spell) => {
                 const preparedMode = spellRules.mode === 'prepared'
                 const inBook = draft.knownSpellIds.includes(spell.id)
                 return <SpellChoice key={spell.id} spell={spell} showSupport={!leveledSupport} selected={preparedMode ? draft.preparedSpellIds.includes(spell.id) : inBook} secondary={spellRules.mode === 'spellbook' && inBook ? { selected: draft.preparedSpellIds.includes(spell.id), onClick: () => toggleSpell(spell.id, true) } : undefined} onClick={() => preparedMode ? toggleSpell(spell.id, true) : toggleSpell(spell.id)} />
@@ -561,14 +588,22 @@ function SpellChoice({
   // собирал книгу, половину которой движок потом отказывался применять.
   const support = mechanicsSupportPresentation(spell.mechanics_support)
   const blocked = support.blocked
+  // Список одних названий не давал понять, что заклинание делает: описание,
+  // время накладывания и дальность приходили с сервера и никуда не выводились.
+  const meta = [spell.casting_time, spell.range_text].filter(Boolean).join(' · ')
   return <article className={`${selected ? 'selected' : ''} ${blocked ? 'blocked' : ''}`.trim()}>
     <button
       onClick={onClick}
       disabled={blocked}
       aria-label={`${spell.name}, ${spell.level === 0 ? 'заговор' : 'заклинание 1 круга'}, ${support.label}`}
-      title={support.explanation}
+      title={spell.description || support.explanation}
     >
-      <span><strong>{spell.name}</strong><small>{spell.level === 0 ? 'заговор' : '1 круг'}{showSupport ? ` · ${support.shortLabel}` : ''}</small></span><Check size={14} />
+      <CombatIcon id={spell.id} kind="spell" hint={spell.name} size={34} compact />
+      <span>
+        <strong>{spell.name}</strong>
+        <small>{spell.level === 0 ? 'заговор' : '1 круг'}{meta ? ` · ${meta}` : ''}{showSupport ? ` · ${support.shortLabel}` : ''}</small>
+        {spell.description && <i>{spell.description}</i>}
+      </span><Check size={14} />
     </button>
     {secondary && <button className={secondary.selected ? 'prepare selected' : 'prepare'} onClick={secondary.onClick}>{secondary.selected ? 'Подготовлено' : 'Подготовить'}</button>}
   </article>
