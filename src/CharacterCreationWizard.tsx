@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, Check, ShieldCheck, Sparkles, X } from 'lucide-react'
 
 import type {
@@ -19,6 +20,77 @@ const FEATURE_HINTS: Record<string, string> = {
   'fighting-style-defense': '+1 к КД, пока носите доспех',
   'fighting-style-protection': 'реакцией мешаете атаке по союзнику рядом',
 }
+
+/**
+ * Что навык делает за столом. Каталог даёт только имя и характеристику, а без
+ * пояснения шаг выбора превращался в угадайку по названию.
+ */
+const SKILL_HINTS: Record<string, string> = {
+  acrobatics: 'Удержать равновесие, вывернуться из захвата, мягко упасть.',
+  'animal-handling': 'Успокоить зверя, править упряжкой, понять намерения животного.',
+  arcana: 'Опознать заклинание, магический предмет или след ритуала.',
+  athletics: 'Лезть, прыгать, плыть, толкать и удерживать в силовой борьбе.',
+  deception: 'Соврать убедительно, выдать себя за другого, отвести подозрение.',
+  history: 'Вспомнить события, династии, войны и происхождение реликвии.',
+  insight: 'Понять, лжёт ли собеседник и чего он хочет на самом деле.',
+  intimidation: 'Добиться своего угрозой, давлением или холодной уверенностью.',
+  investigation: 'Найти улику, вычислить тайник, восстановить ход событий.',
+  medicine: 'Стабилизировать умирающего, распознать болезнь или яд.',
+  nature: 'Знать местность, погоду, растения и повадки зверей.',
+  perception: 'Заметить спрятанное, услышать шорох, разглядеть засаду.',
+  performance: 'Захватить публику песней, речью или представлением.',
+  persuasion: 'Договориться по-доброму: убедить, расположить, примирить.',
+  religion: 'Знать божеств, обряды, символы культов и нежить.',
+  'sleight-of-hand': 'Незаметно взять, подменить, спрятать предмет, вскрыть замок.',
+  stealth: 'Двигаться бесшумно и оставаться незамеченным.',
+  survival: 'Идти по следу, ориентироваться, добывать еду, читать погоду.',
+}
+
+const skillHintFor = (id: string) => SKILL_HINTS[String(id).toLowerCase().replace(/_/gu, '-')] ?? ''
+
+/**
+ * Эмблема класса. Карточки различались только текстом, из-за чего выбор
+ * читался как список строк. Рисунки штриховые и берут цвет от карточки,
+ * поэтому подчиняются состоянию «выбрано» и не тянут за собой растровые
+ * ассеты с отдельными правами.
+ */
+const CLASS_EMBLEMS: Record<string, ReactNode> = {
+  barbarian: <><path d="M5 19 14 10" /><path d="M12 4c4 0 7 2 7 5 0 2-2 3-4 3-3 0-5-2-5-5" /><path d="m4 20 3-3" /></>,
+  bard: <><circle cx="9" cy="16" r="5" /><path d="M13 12 19 5" /><path d="m16 4 4 1 1 4" /></>,
+  cleric: <><path d="M12 3v18" /><path d="M6 8h12" /><circle cx="12" cy="12" r="9" /></>,
+  druid: <><path d="M12 21c0-7 3-12 8-15-6-1-11 2-12 8-1 4 1 7 4 7Z" /><path d="M12 21c-1-4-3-6-6-7" /></>,
+  fighter: <><path d="m5 19 9-9" /><path d="M14 4h6v6" /><path d="M20 4 10 14" /><path d="m4 16 4 4" /></>,
+  monk: <><circle cx="12" cy="12" r="9" /><path d="M8 13c2 2 6 2 8 0" /><path d="M9 9h.01M15 9h.01" /></>,
+  paladin: <><path d="M12 3 4 6v6c0 5 3 8 8 9 5-1 8-4 8-9V6Z" /><path d="M12 8v7" /><path d="M9 11h6" /></>,
+  ranger: <><path d="M6 3c6 3 9 9 9 18" /><path d="M6 3 4 9" /><path d="m6 3 6 1" /><path d="M14 14 21 7" /></>,
+  rogue: <><path d="m6 18 9-9" /><path d="M15 5h4v4" /><path d="m5 17 2 2" /><circle cx="9" cy="15" r="1" /></>,
+  sorcerer: <><path d="M12 3c3 5 6 6 6 10a6 6 0 0 1-12 0c0-4 3-5 6-10Z" /><path d="M12 20c-2 0-3-1-3-3 0-2 3-3 3-6" /></>,
+  warlock: <><path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
+  wizard: <><path d="M4 6h11a3 3 0 0 1 3 3v11H7a3 3 0 0 1-3-3Z" /><path d="M4 6a3 3 0 0 1 3-3h11" /><path d="M11 11h4" /></>,
+}
+
+function ClassEmblem({ classId }: { classId: string }) {
+  const glyph = CLASS_EMBLEMS[classId]
+  if (!glyph) return null
+  return <svg className="class-emblem" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{glyph}</svg>
+}
+
+/** Ведущая характеристика класса — куда случайный герой кладёт лучшее значение. */
+const PRIMARY_ABILITY: Record<string, 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'> = {
+  barbarian: 'str', bard: 'cha', cleric: 'wis', druid: 'wis', fighter: 'str', monk: 'dex',
+  paladin: 'str', ranger: 'dex', rogue: 'dex', sorcerer: 'cha', warlock: 'cha', wizard: 'int',
+}
+
+const RANDOM_NAMES = [
+  'Ална Верес', 'Борен Тихая Сталь', 'Виден Кром', 'Гелла Ржавый Ключ', 'Дарен Ольховый',
+  'Ивета Соль', 'Кирем Двухпалый', 'Лисса Пепел', 'Мирон Заречный', 'Нэда Стужа',
+  'Овен Крапива', 'Рута Мельник', 'Сван Долгий Шаг', 'Тайра Уголь', 'Фарн Оникс',
+]
+
+const RANDOM_BACKGROUNDS = [
+  'солдат', 'учёная', 'странник', 'ремесленник', 'сирота с окраины', 'моряк',
+  'послушник храма', 'охотник', 'торговец вразнос', 'бывший вор',
+]
 
 const abilityIds = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
 const abilityLabels: Record<(typeof abilityIds)[number], string> = {
@@ -164,6 +236,75 @@ export function CharacterCreationWizard({
 
   const patch = <K extends keyof CreationDraft>(key: K, value: CreationDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }))
+    setError('')
+  }
+
+  /**
+   * Готовый герой одним нажатием. Собирается по тем же правилам каталога, что
+   * и ручной путь: число классовых навыков, полнота групп умений и лимиты
+   * заговоров и заклинаний берутся из `catalog`, поэтому результат проходит
+   * `validateStep` на каждом шаге и его можно отправлять сразу.
+   */
+  const rollRandomHero = () => {
+    const pick = <T,>(list: readonly T[]): T | undefined => (list.length ? list[Math.floor(Math.random() * list.length)] : undefined)
+    const pickMany = <T,>(list: readonly T[], count: number): T[] => {
+      const pool = [...list]
+      const taken: T[] = []
+      while (taken.length < count && pool.length) taken.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0])
+      return taken
+    }
+    const entry = pick(catalog.classes)
+    if (!entry) return
+    // Авторский вид требует ручного названия — случайному герою он не подходит.
+    const species = pick(catalog.ability_policy.species_options.filter((option) => option.id !== 'custom'))
+      ?? catalog.ability_policy.species_options[0]
+    // Лучшее значение уходит в ведущую характеристику класса, второе — в
+    // Телосложение: случайная раскладка регулярно давала мага с Силой 15.
+    const primary = PRIMARY_ABILITY[entry.id] ?? 'str'
+    const rest = pickMany(abilityIds.filter((ability) => ability !== primary && ability !== 'con'), 4)
+    const order = [primary, 'con' as const, ...rest]
+    const scores = [...catalog.ability_policy.standard_array].sort((left, right) => right - left)
+    const abilities = { ...draft.abilities }
+    order.forEach((ability, index) => { abilities[ability] = scores[index] ?? scores[scores.length - 1] })
+
+    const rolledSkills = pickMany(entry.class_skills?.options ?? [], entry.class_skills?.choice_count ?? 0)
+    const rolledFeatures = (entry.feature_choice_groups ?? [])
+      .flatMap((group) => pickMany(group.options, group.choiceCount))
+    const rolledSpells = entry.spell_selection
+      ? (() => {
+          const usable = entry.spell_selection.spells.filter(selectable)
+          const zero = usable.filter((spell) => spell.level === 0)
+          const first = usable.filter((spell) => spell.level === 1)
+          const known = [
+            ...pickMany(zero, Math.min(entry.spell_selection.cantrips ?? 0, zero.length)),
+            ...pickMany(first, Math.min(
+              entry.spell_selection.mode === 'spellbook'
+                ? entry.spell_selection.spellbookMinimum ?? 0
+                : entry.spell_selection.mode === 'known'
+                  ? entry.spell_selection.spellsKnown ?? 0
+                  : entry.spell_selection.preparedLimit ?? 0,
+              first.length,
+            )),
+          ]
+          const prepared = entry.spell_selection.mode === 'prepared'
+            ? known.filter((spell) => spell.level === 1).map((spell) => spell.id)
+            : []
+          return { knownSpellIds: known.map((spell) => spell.id), preparedSpellIds: prepared }
+        })()
+      : { knownSpellIds: [], preparedSpellIds: [] }
+
+    setDraft((current) => ({
+      ...current,
+      classId: entry.id,
+      speciesOptionId: species?.id ?? current.speciesOptionId,
+      customSpecies: '',
+      background: pick(RANDOM_BACKGROUNDS) ?? 'странник',
+      abilities,
+      classSkillIds: rolledSkills.map((skill) => skill.id),
+      selectedFeatureIds: rolledFeatures.map((option) => option.id),
+      ...rolledSpells,
+      character: pick(RANDOM_NAMES) ?? 'Безымянный герой',
+    }))
     setError('')
   }
 
@@ -343,7 +484,7 @@ export function CharacterCreationWizard({
               aria-pressed={draft.classId === entry.id}
               aria-label={`${entry.label}: ${skills} навыка на выбор, ${magic}`}
               onClick={() => selectClass(entry.id)}
-            ><strong>{entry.label}</strong><small>{skills} навыка · {magic}</small></button>
+            ><ClassEmblem classId={entry.id} /><strong>{entry.label}</strong><small>{skills} навыка · {magic}</small></button>
           })}</div>}
           {step === 1 && <div className="creation-form">
             <label><span>Вид</span><select value={draft.speciesOptionId} onChange={(event) => patch('speciesOptionId', event.target.value)}>{catalog.ability_policy.species_options.map((entry) => <option key={entry.id} value={entry.id}>{entry.label} · {entry.base_speed} фт.</option>)}</select></label>
@@ -356,7 +497,7 @@ export function CharacterCreationWizard({
             <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}>{catalog.ability_policy.standard_array.map((score) => <option key={score} value={score}>{score}</option>)}</select><b>{signed(abilityModifier(draft.abilities[ability]))}</b><small>+ 0 происхождение</small></label>)}</div>
           </div>}
           {step === 3 && <div className="creation-choices">
-            <section><header><span>Классовые навыки</span><b>{draft.classSkillIds.length}/{skillRule?.choice_count ?? 0}</b></header><div>{skillRule?.options.map((skill) => <button key={skill.id} className={draft.classSkillIds.includes(skill.id) ? 'selected' : ''} onClick={() => toggleSkill(skill.id)}><Check size={13} />{skill.name}<small>{abilityLabels[skill.ability]}</small></button>)}</div></section>
+            <section><header><span>Классовые навыки</span><b>{draft.classSkillIds.length}/{skillRule?.choice_count ?? 0}</b></header><div>{skillRule?.options.map((skill) => <button key={skill.id} className={draft.classSkillIds.includes(skill.id) ? 'selected' : ''} aria-label={`${skill.name}: ${skillHintFor(skill.id) || abilityLabels[skill.ability]}`} onClick={() => toggleSkill(skill.id)}><Check size={13} /><span><b>{skill.name}</b><small>{abilityLabels[skill.ability]}</small>{skillHintFor(skill.id) && <i>{skillHintFor(skill.id)}</i>}</span></button>)}</div></section>
             {featureGroups.map((group) => <section key={group.id}><header><span>{group.name}</span><b>{group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length}/{group.choiceCount}</b></header><div>{group.options.map((option) => <button key={option.id} className={draft.selectedFeatureIds.includes(option.id) ? 'selected' : ''} aria-label={FEATURE_HINTS[option.id] ? `${option.name}: ${FEATURE_HINTS[option.id]}` : option.name} title={FEATURE_HINTS[option.id]} onClick={() => toggleFeature(group, option.id)}><Check size={13} />{option.name}{FEATURE_HINTS[option.id] && <small>{FEATURE_HINTS[option.id]}</small>}</button>)}</div></section>)}
           </div>}
           {step === 4 && <div className="creation-spells">
@@ -383,6 +524,14 @@ export function CharacterCreationWizard({
               : '')}
           </div>
           <span>
+            {/* Готовый герой одним нажатием: заполняет все шаги валидными
+                значениями, дальше их можно править вручную. */}
+            <button
+              className="creation-roll"
+              disabled={busy}
+              title="Заполнить все шаги случайным, но корректным героем"
+              onClick={rollRandomHero}
+            ><Sparkles size={15} />Случайный герой</button>
             <button disabled={step === 0 || busy} onClick={() => setStep((current) => Math.max(0, current - 1))}><ArrowLeft size={15} />Назад</button>
             {step < steps.length - 1
               ? <button className="primary" onClick={next}>Дальше<ArrowRight size={15} /></button>
