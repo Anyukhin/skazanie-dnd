@@ -747,7 +747,13 @@ export function TacticalBoard({
   }, [cells])
 
   const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
+    // Клик и перетаскивание различаются порогом смещения, а не местом нажатия:
+    // с клетки можно и уйти в ход (отпустили на месте — сработает click), и
+    // повести карту (сдвинулись дальше 3 px — click подавляется suppressClick).
+    // Прочие кнопки — фишки, двери, меню — перетаскивание не начинают: у них
+    // нажатие значит действие, а не захват карты.
+    const control = (event.target as HTMLElement).closest('button')
+    if (event.button !== 0 || (control && !control.classList.contains('board-cell'))) return
     drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startPanX: pan.x, startPanY: pan.y, moved: false }
     event.currentTarget.setPointerCapture(event.pointerId)
     setDragging(true)
@@ -842,7 +848,12 @@ export function TacticalBoard({
           return
         }
         if (suppressClick.current) {
+          // Конец перетаскивания. Одного `return` мало: флаг уже сброшен, и
+          // bubble-обработчик ниже принял бы этот же click за ход в клетку,
+          // над которой отпустили кнопку.
           suppressClick.current = false
+          event.preventDefault()
+          event.stopPropagation()
           return
         }
         if (!(event.target as HTMLElement).closest('.map-token')) onBackgroundActivate?.()
@@ -885,11 +896,11 @@ export function TacticalBoard({
                 title={node.title}
                 onPointerEnter={node.onPointerEnter}
                 onPointerLeave={node.onPointerLeave}
-                onPointerDown={(event) => { if (node.interactive) event.stopPropagation() }}
-                onPointerUp={(event) => { if (node.interactive) event.stopPropagation() }}
                 onClick={(event) => {
                   if (!node.interactive) return
                   event.stopPropagation()
+                  // Клик после перетаскивания карты — это конец жеста, а не ход.
+                  if (suppressClick.current) return
                   node.onActivate?.()
                 }}
                 onKeyDown={(event) => {
