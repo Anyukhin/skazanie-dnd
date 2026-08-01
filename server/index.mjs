@@ -1924,7 +1924,7 @@ function serveStatic(req, res) {
     ? noneMatch.split(',').some((tag) => tag.trim() === etag)
     : Number.isFinite(modifiedSince) && modifiedSince >= Math.floor(stats.mtimeMs / 1000) * 1000
   if (fresh) { res.writeHead(304, validators); return res.end() }
-  const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
+  const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg' }
   res.writeHead(200, { ...validators, 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Content-Length': stats.size })
   createReadStream(file).pipe(res)
 }

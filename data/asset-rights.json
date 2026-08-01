@@ -1224,7 +1224,14 @@
     ["npcs/roles/priest.png", "b4fe808b16b194b1f4b8222cb48fd97f48e61c918fc415bfda74528e3c5a56ed", 186651],
     ["npcs/roles/artisan.png", "447cf00ced561f96d725dc08f40ef3a1899540be522e6fec5ab48a1c3cae751f", 182606],
     ["npcs/roles/traveler.png", "0a3b064ec59b55623f47ecbbc984a7c16a6087e7733ff58558c629ab1901ef2a", 186199],
-    ["npcs/roles/commoner.png", "171f951f5c38a93e6a56037f49ed7f0721a2a66e570e770ab25a1ad066f3e255", 186303]
+    ["npcs/roles/commoner.png", "171f951f5c38a93e6a56037f49ed7f0721a2a66e570e770ab25a1ad066f3e255", 186303],
+    ["audio/ambience/building.ogg", "c5c3c786b446e211f71756099a3a4c549b2752b8938cabdc08ddc1ea37b432d9", 475947],
+    ["audio/ambience/cave.ogg", "37ab4bba007f100afb74ecc6bb9d815ab0d30ddafdbd8aef196d9e04e49524fe", 221621],
+    ["audio/ambience/crypt.ogg", "1031a22f6b3f5489fe5761ce8bcc9464e77f235eac4e7b935c1c86424922689c", 250802],
+    ["audio/ambience/forest.ogg", "c3dfaa6fae233db01d1ea7351fce9c95af51b3972e9fcc3076a0f90eb75a0d23", 344577],
+    ["audio/ambience/road.ogg", "09f1763755be73ab69789131721348b17e8d5fa1944ca41ce299abec9c890ff8", 349393],
+    ["audio/ambience/settlement.ogg", "44d4916dede3bb2556f67324b563f653c7c976a9fd551803b07a4302a9c032d0", 385793],
+    ["audio/ambience/temple.ogg", "9019ab395a1671606f05a3b9323839dab7cd7419517b8f66da725108fcbfc37b", 484544]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",

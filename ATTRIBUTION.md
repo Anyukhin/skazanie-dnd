@@ -105,6 +105,28 @@
 общий release gate: применимые права на generated output и лицензию проектного
 кода владелец проверяет до внешнего распространения.
 
+## Звуковые assets
+
+### Атмосфера локаций
+
+Файлы в `public/assets/audio/ambience` (`building`, `temple`, `crypt`, `cave`,
+`forest`, `road`, `settlement` — по одной 60-секундной петле `.ogg`) получены
+1 августа 2026 года из набора, скачанного владельцем проекта по ссылке Google
+Drive. Исходные файлы — несжатые `.wav` из папок `AMBIENCE` и `Locations`;
+в репозиторий попали не они, а обрезанные до минуты и пережатые в Vorbis 56 кбит/с
+фрагменты (ffmpeg, нормализация громкости `loudnorm`).
+
+**Лицензия набора в архиве не приложена.** Ни файла `LICENSE`, ни `README` в
+обоих архивах нет. Набор скачивался как CC0-пак фэнтезийной атмосферы, и его
+состав это косвенно подтверждает, но текста лицензии у проекта на руках нет.
+Поэтому в `data/asset-rights.json` записи держат общий статус
+`review_required` и `distribution: blocked`, как и остальные визуальные assets.
+
+Перед публичным или коммерческим распространением владелец обязан приложить
+страницу-источник с текстом лицензии либо заменить петли ассетами с
+подтверждёнными правами. Наличие файлов в репозитории само по себе не является
+подтверждением права на распространение.
+
 ## Structured dnd.su mechanics overrides
 
 `data/dndsu-spell-mechanics-overrides.json` contains only original short structured summaries of verified mechanics from the linked dnd.su cards. It does not copy full page text and exists to correct ambiguities in the automatic parser.

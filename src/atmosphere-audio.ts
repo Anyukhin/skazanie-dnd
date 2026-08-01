@@ -74,6 +74,21 @@ const MOOD_PROFILES: Record<AtmosphereMood, MoodProfile> = Object.freeze({
 
 const AMBIENT_VOICE_LEVELS = [0.070, 0.050, 0.035] as const
 
+/**
+ * Настроения, у которых есть записанная петля в `public/assets/audio/ambience`.
+ * Бой и финал остаются синтезированными: у них задача не воссоздать место, а
+ * поднять напряжение, и ровный гул справляется с этим лучше записи.
+ */
+const RECORDED_AMBIENCE_MOODS: ReadonlySet<AtmosphereMood> = new Set([
+  'building', 'temple', 'crypt', 'cave', 'forest', 'road', 'settlement',
+])
+
+/**
+ * Уровень записи в слое. Заметно выше синтезированных голосов: у записи свой
+ * естественный разброс громкости, и на уровне гула она превращалась в шорох.
+ */
+const RECORDED_AMBIENCE_LEVEL = 0.55
+
 const EVENT_EFFECTS: Readonly<Record<string, AtmosphereEffect>> = Object.freeze({
   PublicDieRolled: 'dice',
   DieRolled: 'dice',
@@ -243,6 +258,38 @@ export function createAtmosphereAudio(options: {
     effectsBus.gain.setTargetAtTime(effects, at, glideSeconds)
   }
 
+  /**
+   * Записанные петли атмосферы. Загружаются лениво: пока файл не приехал,
+   * сцену держит синтез, а когда буфер готов — слой перезапускается уже с
+   * записью, если настроение к тому моменту не сменилось. Неудача загрузки
+   * запоминается, чтобы не долбить сервер на каждой смене сцены.
+   */
+  const ambienceBuffers = new Map<AtmosphereMood, AudioBuffer>()
+  const ambienceFailed = new Set<AtmosphereMood>()
+  const ambienceLoading = new Set<AtmosphereMood>()
+
+  const loadAmbience = async (mood: AtmosphereMood) => {
+    if (!context || disposed) return
+    if (!RECORDED_AMBIENCE_MOODS.has(mood)) return
+    if (ambienceBuffers.has(mood) || ambienceFailed.has(mood) || ambienceLoading.has(mood)) return
+    ambienceLoading.add(mood)
+    try {
+      const response = await fetch(`/assets/audio/ambience/${mood}.ogg`)
+      if (!response.ok) throw new Error(`ambience ${mood}: ${response.status}`)
+      const encoded = await response.arrayBuffer()
+      const decoded = await context.decodeAudioData(encoded)
+      if (disposed) return
+      ambienceBuffers.set(mood, decoded)
+      // Настроение могло смениться, пока файл летел: перезапускаем только то,
+      // что играет прямо сейчас.
+      if (desiredMood === mood) startAmbientLayer(mood, 1.2)
+    } catch {
+      ambienceFailed.add(mood)
+    } finally {
+      ambienceLoading.delete(mood)
+    }
+  }
+
   const noiseBuffer = (seconds: number): AudioBuffer | null => {
     if (!context) return null
     const length = Math.max(1, Math.floor(context.sampleRate * seconds))
@@ -262,6 +309,33 @@ export function createAtmosphereAudio(options: {
     layerGain.gain.linearRampToValueAtTime(1, now + duration)
     layerGain.connect(ambientBus)
     const sources: AudioScheduledSourceNode[] = []
+
+    // Записанная атмосфера, если она уже загружена. Синтез остаётся запасным
+    // путём и звучит, пока файл летит по сети или если его нет вовсе:
+    // молчащая сцена хуже простого гула.
+    const recorded = ambienceBuffers.get(mood)
+    if (recorded) {
+      const player = track(context.createBufferSource())
+      const gain = context.createGain()
+      player.buffer = recorded
+      player.loop = true
+      gain.gain.setValueAtTime(RECORDED_AMBIENCE_LEVEL, now)
+      player.connect(gain).connect(layerGain)
+      player.start(now)
+      sources.push(player)
+      const previousLayer = currentLayer
+      currentLayer = { gain: layerGain, sources }
+      if (previousLayer) {
+        previousLayer.gain.gain.cancelScheduledValues(now)
+        previousLayer.gain.gain.setValueAtTime(previousLayer.gain.gain.value, now)
+        previousLayer.gain.gain.linearRampToValueAtTime(0, now + duration)
+        for (const source of previousLayer.sources) {
+          try { source.stop(now + duration + 0.05) } catch {}
+        }
+      }
+      return
+    }
+    void loadAmbience(mood)
 
     for (const [frequency, level] of [
       [profile.base, AMBIENT_VOICE_LEVELS[0]],
