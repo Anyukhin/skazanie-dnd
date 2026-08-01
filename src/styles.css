@@ -369,6 +369,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .neutral-token:hover, .neutral-token:focus-visible { box-shadow: 0 7px 12px #000, 0 0 0 2px var(--neutral-ring); }
 .neutral-token.dead { filter: grayscale(.78); opacity: .68; cursor: default; }
 .neutral-token-mark { font: 700 clamp(7px,1.5cqw,11px) Spectral,serif; letter-spacing: -.04em; }
+/* Портрет заполняет круг токена; при ошибке загрузки остаются инициалы. */
+.neutral-token-portrait { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; object-position: center 18%; pointer-events: none; }
 .neutral-nameplate { position: absolute; left: 50%; top: calc(100% + 7px); max-width: 116px; overflow: hidden; padding: 3px 6px; border: 1px solid color-mix(in srgb,var(--neutral-ring),transparent 55%); border-radius: 4px; background: rgba(13,11,10,.94); color: #e2d8ca; font: 600 var(--fs-xs) Manrope,sans-serif; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); pointer-events: none; }
 .neutral-token-menu { position: absolute; z-index: 16; left: 50%; top: calc(50% + 34px); width: min(190px,26cqw); min-width: 150px; display: grid; gap: 7px; padding: 9px; border: 1px solid rgba(212,174,123,.28); border-radius: 6px; background: rgba(18,15,12,.97); color: #b8aa99; transform: translateX(-50%); box-shadow: 0 14px 32px rgba(0,0,0,.62); }
 .neutral-token-menu > span { min-width: 0; display: grid; text-align: left; }
@@ -620,13 +622,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .chat-head > div { min-width: 0; gap: 10px; }
   .chat-interaction-slot:empty { display: block; }
   .chronicle-filters { display: flex; }
-  .message.system { margin-bottom: 9px; opacity: .72; }
-  .message.system .message-meta { min-height: 14px; }
-  .message.system .message-meta strong { color: #7d746a; font: 700 var(--fs-xs) Manrope,sans-serif; letter-spacing: .04em; }
-  .message.system .message-meta time { color: #504b46; font-size: var(--fs-xs); }
-  .message.system .message-body p { color: #827a72; font: var(--fs-sm)/1.4 Manrope,sans-serif; }
   .chronicle-to-latest { display: flex; }
 }
+/* Служебные записи («Разбор правил», отказы) приглушены на любой ширине
+   экрана: раньше стиль жил только в @media ≥1280px, и на ноутбуке разбор
+   выглядел как вторая реплика Рассказчика. */
+.message.system { margin-bottom: 9px; opacity: .72; }
+.message.system .message-meta { min-height: 14px; }
+.message.system .message-meta strong { color: #7d746a; font: 700 var(--fs-xs) Manrope,sans-serif; letter-spacing: .04em; }
+.message.system .message-meta time { color: #504b46; font-size: var(--fs-xs); }
+.message.system .message-body p { color: #827a72; font: var(--fs-sm)/1.4 Manrope,sans-serif; }
+/* Кнопка «Почему так?» не имела своего стиля и рендерилась системной серой
+   кнопкой: светлый текст на светлом фоне. Теперь это тихая ссылка-подсказка. */
+.why-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 3px 9px; border: 1px solid rgba(201,149,85,.3); border-radius: 11px; background: rgba(34,28,22,.72); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }
+.why-link:hover:not(:disabled) { border-color: rgba(224,180,122,.55); color: #e0bc8b; background: rgba(52,41,30,.82); }
+.why-link:disabled { opacity: .45; cursor: default; }
 .roll-result { display: inline-flex; align-items: center; gap: 8px; min-width: 250px; margin-top: 8px; padding: 6px 8px; border: 1px solid rgba(112,144,116,.19); border-radius: 4px; background: rgba(62,83,64,.12); color: #739276; }
 .roll-result > span { display: grid; min-width: 93px; }
 .roll-result small { color: #837d74; font-size: var(--fs-sm); }
@@ -2021,8 +2031,7 @@ button.campaign-title:hover strong { color: #edc996; }
 /* Original painted atlas: readable silhouettes without fluorescent rune effects. */
 .combat-icon {
   border-color: rgba(176, 137, 87, .42);
-  background: #211a14;
-  background-image: none;
+  background: #211a14 radial-gradient(circle at 50% 30%, rgba(82, 63, 42, .55), rgba(12, 9, 7, .9) 78%);
   box-shadow: inset 0 1px rgba(255, 240, 208, .12), inset 0 -2px 4px rgba(0, 0, 0, .65), 0 2px 5px rgba(0, 0, 0, .48);
   color: #d4b17b;
 }
@@ -2061,6 +2070,42 @@ button.campaign-title:hover strong { color: #edc996; }
   filter: none;
 }
 .combat-icon.compact .combat-icon-art { inset: 1px; }
+/* Свои PNG нарисованы без рамки и фона (docs/icon-prompts.md): карточку обязан
+   рисовать тайл. Но в хотбаре правило «.combat-hotbar .action-tile .combat-icon»
+   снимает рамку тайла — атласные клетки приносят нарисованную рамку внутри
+   картинки, и вторая рамка поверх им не нужна. Поэтому собственному рисунку
+   рамку и тематический фон рисует сам слой art: обе разновидности выглядят
+   одинаковыми карточками, а фон подсказывает тип действия. */
+.combat-hotbar .action-tile { --own-icon-hue: 33; --own-icon-sat: 40%; }
+.combat-hotbar .action-tile.spell { --own-icon-hue: 152; --own-icon-sat: 32%; }
+.combat-hotbar .action-tile.feature-action { --own-icon-hue: 268; --own-icon-sat: 28%; }
+.combat-hotbar .action-tile.item { --own-icon-hue: 22; --own-icon-sat: 46%; }
+.combat-hotbar .action-tile .combat-icon-art.own {
+  inset: 0;
+  border-radius: 8px;
+  background-image:
+    var(--combat-icon-src),
+    radial-gradient(circle at 50% 26%, hsl(var(--own-icon-hue) var(--own-icon-sat) 27% / .9), hsl(var(--own-icon-hue) 26% 9% / .96) 76%),
+    url('/assets/ui/combat-icon-texture.png');
+  background-position: center 46%, center, center;
+  background-size: 74% 74%, cover, 112px 112px;
+  background-repeat: no-repeat;
+  background-blend-mode: normal, normal, soft-light;
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--own-icon-hue) 36% 50% / .55),
+    inset 0 0 0 2px rgba(10, 8, 6, .85),
+    inset 0 3px 3px -2px rgba(255, 240, 208, .14),
+    inset 0 -5px 9px rgba(0, 0, 0, .58);
+}
+.combat-hotbar .action-tile:hover:not(:disabled) .combat-icon-art.own,
+.combat-hotbar .action-tile.selected .combat-icon-art.own {
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--own-icon-hue) 52% 62% / .8),
+    inset 0 0 0 2px rgba(10, 8, 6, .85),
+    inset 0 3px 3px -2px rgba(255, 240, 208, .2),
+    inset 0 -5px 9px rgba(0, 0, 0, .5);
+  filter: saturate(1.04) brightness(1.07);
+}
 .action-tile:hover:not(:disabled) .combat-icon,
 .action-tile.selected .combat-icon,
 .reaction-options button:hover .combat-icon {
@@ -2147,3 +2192,8 @@ button.campaign-title:hover strong { color: #edc996; }
 .turn-stakes span { display: grid; gap: 2px; }
 .turn-stakes b { font: 600 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .03em; }
 .turn-stakes small { font: 500 var(--fs-xxs) Manrope, sans-serif; color: #97826a; line-height: 1.45; }
+
+/* Подсказка про режим перемещения: пока он выключен, клетки намеренно не
+   реагируют на клики (иначе маршрут тянулся бы за курсором при перетаскивании
+   карты), и без этой строки карта выглядит сломанной. */
+.move-mode-hint { position: absolute; z-index: 24; left: 50%; bottom: 16px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid rgba(211,160,97,.34); border-radius: 18px; background: rgba(16,13,10,.9); color: #d3a967; font: 600 var(--fs-sm) Manrope, sans-serif; transform: translateX(-50%); pointer-events: none; box-shadow: 0 10px 26px rgba(0,0,0,.5); }

@@ -105,6 +105,15 @@ export function publishNarrationPreview(campaignId: string, preview: NarrationPr
   }
 }
 
+/**
+ * Единый ключ настройки автоброска. Значение читается в момент запроса:
+ * сервер по нему решает, бросать d20 самому или предложить бросок игроку.
+ */
+export const AUTO_ROLL_STORAGE_KEY = 'skazanie-auto-attack-roll'
+export function autoRollEnabled() {
+  try { return window.localStorage.getItem(AUTO_ROLL_STORAGE_KEY) === 'true' } catch { return false }
+}
+
 async function expectedNarrationMessageId(idempotencyKey: string): Promise<string | null> {
   if (!globalThis.crypto?.subtle) return null
   const digest = await globalThis.crypto.subtle.digest(
@@ -148,6 +157,9 @@ export async function narrateWithAgent(
         ...(actorId ? { actor_id: actorId } : {}),
         ...(options.npcId ? { npc_id: options.npcId } : {}),
         ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
+        // Ручной режим: сервер не бросает d20 за игрока, а возвращает карточку
+        // проверки; ход завершится повторным запросом с roll_id.
+        ...(autoRollEnabled() ? {} : { manual_roll: true }),
       }),
     }, 48_000, 'Рассказчик не ответил вовремя. Попробуйте обновить состояние кампании.')
     if (!response.ok) {

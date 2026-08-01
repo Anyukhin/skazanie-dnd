@@ -241,7 +241,7 @@ const loreAuthor = new LoreAuthor({
 })
 const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null, loreAuthor })
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
-const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor })
+const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor, rollRegistry })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
 const combatTurnCoordinator = new CombatTurnCoordinator({
   eventStore,
@@ -1455,6 +1455,7 @@ const gameOrchestrator = new GameOrchestrator({
   // Свободные действия судит тот же арбитр, что и автономный цикл: иначе у
   // одного вопроса появилось бы два разных ответа.
   unknownActionHandler: autonomousCampaign,
+  rollRegistry,
 })
 
 async function latestCampaignState(campaignId, fallbackState) {
@@ -1923,7 +1924,7 @@ function serveStatic(req, res) {
     ? noneMatch.split(',').some((tag) => tag.trim() === etag)
     : Number.isFinite(modifiedSince) && modifiedSince >= Math.floor(stats.mtimeMs / 1000) * 1000
   if (fresh) { res.writeHead(304, validators); return res.end() }
-  const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
+  const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg' }
   res.writeHead(200, { ...validators, 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Content-Length': stats.size })
   createReadStream(file).pipe(res)
 }
@@ -3493,6 +3494,7 @@ const server = createServer((req, res) => {
             idempotencyKey,
             npcId: explicitNpcId,
             verifiedRoll,
+            manualRoll: body.manual_roll === true,
             user,
             allowedActorIds: campaignHeroIds(user, campaignId),
             onNarrationStart: startNarration,
@@ -3513,7 +3515,10 @@ const server = createServer((req, res) => {
       // Служебные команды (`/why`) — не часть истории отряда: реплику игрока не
       // сохраняем, а ответ подписываем разбором правил, а не Рассказчиком.
       const metaCommand = /^\s*\//u.test(action)
-      const journalNarrationId = String(result.narration ?? '').trim() ? narrationMessageId(idempotencyKey) : null
+      // Приглашение к броску не является событием истории: в летопись попадёт
+      // только завершённый ход, когда игрок бросит кубик и сервер его примет.
+      const checkRequired = Boolean(result.check)
+      const journalNarrationId = !checkRequired && String(result.narration ?? '').trim() ? narrationMessageId(idempotencyKey) : null
       const narrationEntry = journalNarrationId ? {
         id: journalNarrationId,
         text: result.narration,
@@ -3523,7 +3528,9 @@ const server = createServer((req, res) => {
         roll: result.effects?.roll ?? null,
         stakes: result.stakes ?? null,
       } : null
-      const playerEntry = !metaCommand && String(action ?? '').trim() ? {
+      // Вторая фаза ручного броска приходит с тем же текстом действия: реплика
+      // игрока уже записана первой фазой, второй раз её не повторяем.
+      const playerEntry = !metaCommand && !body.roll?.roll_id && String(action ?? '').trim() ? {
         id: playerMessageId(idempotencyKey),
         text: action,
         speaker: 'player',

@@ -10,6 +10,7 @@ import { FileEventStore } from '../server/event-store.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { IntentParser } from '../server/intent-parser.mjs'
 import { buildNarrationBrief, verifyNarration } from '../server/security.mjs'
+import { RollRegistry } from '../server/roll-registry.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 import { addProp, createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
 
@@ -30,7 +31,7 @@ function campaign(overrides = {}) {
   })
 }
 
-async function setup(initialState = campaign()) {
+async function setup(initialState = campaign(), { rollRegistry = null } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-free-action-'))
   const dice = new DiceService({ rng: new SequenceDiceRng([18, 3, 18, 3, 18, 3, 18, 3]), idFactory: (() => { let id = 0; return () => `free-roll-${++id}` })() })
   const eventStore = new FileEventStore({
@@ -45,10 +46,11 @@ async function setup(initialState = campaign()) {
     rulesEngine,
     eventStore,
     narrator: { render: async () => { narratorCalls += 1; throw new Error('Свободное действие не должно вызывать Narrator') } },
+    rollRegistry,
     idFactory: (() => { let id = 0; return () => `free-turn-${++id}` })(),
   })
   await eventStore.initializeCampaign({ campaign_id: 'FREE-ACTION', initial_state: initialState })
-  return { orchestrator, eventStore, narratorCalls: () => narratorCalls, initialState }
+  return { orchestrator, eventStore, dice, narratorCalls: () => narratorCalls, initialState }
 }
 
 function actionInput(message, idempotencyKey, state) {
@@ -440,4 +442,61 @@ test('IntentParser разрешает присутствующего NPC по р
   assert.equal(ambiguous.requires_clarification, true)
   assert.deepEqual(ambiguous.missing_information, ['ambiguous_npc'])
   assert.deepEqual(ambiguous.targets.sort(), ['guard-a', 'guard-b'])
+})
+
+test('ручной бросок: сервер объявляет проверку, ничего не коммитит и завершает ход именно выпавшей костью', async () => {
+  const registry = new RollRegistry({
+    diceService: new DiceService({ rng: new SequenceDiceRng([18]), idFactory: () => 'manual-roll-1' }),
+    checkIdFactory: () => 'manual-check-1',
+  })
+  const { orchestrator, eventStore } = await setup(campaign(), { rollRegistry: registry })
+
+  // Фаза 1: проверка объявлена, кубик остаётся за игроком, событий нет.
+  const invited = await orchestrator.handle({
+    ...actionInput('Подпираю дверь тяжёлой скамьёй, чтобы её не открыли снаружи', 'free-manual-1', campaign()),
+    manualRoll: true,
+  })
+  assert.equal(invited.free_action_outcome, 'check_required')
+  assert.equal(invited.turn_consumed, false)
+  assert.equal(invited.check.check_id, 'manual-check-1')
+  assert.equal(invited.check.difficulty, 15)
+  assert.equal(invited.check.ability, 'str')
+  assert.match(invited.check.label, /Сила/u)
+  assert.match(invited.narration, /Бросьте d20/u)
+  assert.deepEqual(invited.mechanics, [])
+  assert.equal((await eventStore.load('FREE-ACTION')).state_version, 0)
+
+  // Игрок бросает через реестр: та же математика, что показывалась на карточке.
+  const issued = registry.issue({ checkId: 'manual-check-1', campaignId: 'FREE-ACTION', actorId: 'hero' })
+  assert.equal(issued.kept, 18)
+  // Сила +2 и владение Атлетикой +2 — ровно то, что показывала карточка.
+  assert.equal(issued.modifier, 4)
+  assert.equal(issued.success, true)
+
+  const consumed = registry.consume(issued.roll_id, { campaignId: 'FREE-ACTION', actorId: 'hero', idempotencyKey: 'free-manual-2' })
+  assert.equal(consumed.context.kind, 'free_action')
+
+  // Фаза 2: движок берёт кости игрока, пересчитывает итог и коммитит ход.
+  const resolved = await orchestrator.handle({
+    ...actionInput('Подпираю дверь тяжёлой скамьёй, чтобы её не открыли снаружи', 'free-manual-2', campaign()),
+    manualRoll: true,
+    verifiedRoll: consumed,
+  })
+  assert.equal(resolved.free_action_outcome, 'check_success')
+  const check = resolved.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')
+  assert.equal(check.payload.roll_id, 'manual-roll-1')
+  assert.equal(check.payload.kept, 18)
+  assert.equal(check.payload.player_rolled, true)
+  assert.equal(check.payload.success, true)
+  assert.ok((await eventStore.load('FREE-ACTION')).state_version > 0)
+})
+
+test('без manualRoll свободное действие разрешается прежним серверным броском', async () => {
+  const registry = new RollRegistry({
+    diceService: new DiceService({ rng: new SequenceDiceRng([9]), idFactory: () => 'manual-roll-x' }),
+  })
+  const { orchestrator } = await setup(campaign(), { rollRegistry: registry })
+  const result = await orchestrator.handle(actionInput('Подпираю дверь тяжёлой скамьёй, чтобы её не открыли снаружи', 'free-auto-1', campaign()))
+  assert.equal(result.free_action_outcome, 'check_success')
+  assert.ok(result.mechanics.some((event) => event.event_type === 'AbilityCheckResolved'))
 })

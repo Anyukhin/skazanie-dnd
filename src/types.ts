@@ -38,6 +38,9 @@ export type PendingCheck = {
   difficulty: number
   sides: 20
   ability?: string | null
+  skill?: string | null
+  advantage?: boolean
+  disadvantage?: boolean
   action: string
   playerId: string
   status: 'ready' | 'rolling' | 'resolving'
@@ -1574,6 +1577,24 @@ export type CharacterCreationCatalog = {
     standard_array: number[]
     origin_bonus_profiles: Array<{ id: string; label: string; bonuses: number[] }>
     species_options: Array<{ id: string; label: string; base_speed: number }>
+  }
+  /** Предыстории редакции 2024: их последствия сервер пересчитывает по id. */
+  backgrounds?: {
+    policy_id: string
+    ability_modes: Array<{ id: string; label: string; increases: number[] }>
+    options: Array<{
+      id: string
+      name: string
+      englishName: string
+      summary: string
+      abilityOptions: string[]
+      skillProficiencies: string[]
+      toolProficiency: { id: string; name: string } | null
+      originFeat: { id: string; name: string } | null
+      equipment: { summary: string; gold: number; alternativeGold: number } | null
+    }>
+    /** Черта происхождения записывается, но движком пока не исполняется. */
+    origin_feats_supported: boolean
   }
   classes: Array<{
     id: DndClassKey

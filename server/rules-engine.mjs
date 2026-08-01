@@ -1546,22 +1546,78 @@ const CREATURE_ENTITY_KINDS = new Set(['enemy'])
  * планировки, дальнейшее живёт здесь и меняется только событиями
  * (`docs/tactical-map-plan.md`, раздел 5) — второго источника истины нет.
  */
+/** Открытый и выломанный проём не держат ни шаг, ни взгляд. */
+function doorEdgeBlocks(doorState) {
+  return !['open', 'broken'].includes(String(doorState))
+}
+
 function setSceneDoorState(state, doorId, doorState) {
   const map = ensureSceneTacticalMap(state)
   if (!map) return state
   const door = doorById(map, doorId)
   if (!door || !DOOR_STATES.includes(String(doorState))) return state
-  const edge = edgeBetween(map, door.x, door.y, edgeNeighbor(door).x, edgeNeighbor(door).y)
+  // Признаки ребра выводятся из состояния полотна, а не переносятся с прежнего
+  // ребра. Раньше здесь стоял перенос — и открытая дверь оставалась стеной:
+  // ребро продолжало держать и шаг, и взгляд, поэтому комната за распахнутой
+  // дверью не открывалась, а клиент не строил в неё маршрут.
+  const blocks = doorEdgeBlocks(doorState)
   setTacticalDoor(map, {
     ...door,
     state: String(doorState),
-    // Признаки ребра принадлежат проёму в стене и от полотна не зависят:
-    // `setDoor` перезаписывает ребро целиком, и без переноса стена вокруг
-    // двери потеряла бы свои свойства.
-    blocksMove: edge?.blocksMove === true,
-    blocksSight: edge?.blocksSight === true,
+    blocksMove: blocks,
+    blocksSight: blocks,
   })
   return writeSceneTacticalMap(state, map)
+}
+
+/** Дальность обзора, на которую распахнутая дверь открывает соседнее помещение. */
+const DOORWAY_SIGHT_CELLS = 9
+
+/**
+ * Дальность разведки при перемещении. Меньше дверной: дверь открывает целое
+ * помещение разом, а шаг — только то, что вокруг героя, иначе карта
+ * раскрывалась бы вперёд отряда и исследовать было бы нечего.
+ */
+const MOVEMENT_SIGHT_CELLS = 6
+
+/**
+ * Клетки, которые видны от `origin` после того, как проём открылся: обход в
+ * ширину по проходимым клеткам, не пересекающий ни глухие рёбра, ни закрытые
+ * двери. Это не полноценный расчёт линии обзора — он и не нужен: задача узкая,
+ * открыть игроку ровно то помещение, куда теперь ведёт открытая дверь, вместо
+ * чёрного пятна, в которое нельзя даже шагнуть (`isWalkableCell` считает
+ * нераскрытую клетку непроходимой).
+ */
+function cellsVisibleFrom(map, origin, { radius = DOORWAY_SIGHT_CELLS, openedDoorId = null } = {}) {
+  const opened = openedDoorId == null ? '' : String(openedDoorId)
+  const start = { x: Math.floor(Number(origin?.x)), y: Math.floor(Number(origin?.y)) }
+  if (!Number.isSafeInteger(start.x) || !Number.isSafeInteger(start.y)) return []
+  if (!cellAt(map, start.x, start.y)) return []
+  const seen = new Map([[`${start.x},${start.y}`, 0]])
+  const queue = [start]
+  const found = [start]
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const current = queue[cursor]
+    const distance = seen.get(`${current.x},${current.y}`) ?? 0
+    if (distance >= radius) continue
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = { x: current.x + dx, y: current.y + dy }
+      const key = `${next.x},${next.y}`
+      if (seen.has(key)) continue
+      const cell = cellAt(map, next.x, next.y)
+      if (!cell) continue
+      const edge = edgeBetween(map, current.x, current.y, next.x, next.y)
+      // Дверь, которую открывают прямо сейчас, ещё числится закрытой: событие
+      // состояния применится позже, а раскрытие считается по будущей карте.
+      const justOpened = opened && String(edge?.doorId ?? '') === opened
+      if (edge?.blocksSight === true && !justOpened) continue
+      seen.set(key, distance + 1)
+      found.push(next)
+      // Стену видно, но сквозь неё не смотрят: дальше обход не идёт.
+      if (cell.passable) queue.push(next)
+    }
+  }
+  return found
 }
 
 /** Ставит предмет в клетку, заменяя прежний предмет той же клетки. */
@@ -1716,7 +1772,13 @@ function tacticalCellMap(state) {
 }
 
 function isWalkableCell(cell) {
-  if (!cell || cell.revealed === false) return false
+  // Нераскрытая клетка проходима: иначе исследование невозможно в принципе.
+  // Прежняя проверка `revealed === false` запирала отряд в том пятне, которое
+  // досталось ему при создании сцены — шагнуть в темноту было нельзя, а
+  // раскрывалась она только шагом в неё же. Стены и вода остаются
+  // непроходимыми независимо от тумана, поэтому сквозь них путь всё равно не
+  // построится, а само содержимое клетки игрок увидит, только дойдя до него.
+  if (!cell) return false
   return ['floor', 'door'].includes(String(cell.type || 'floor').toLowerCase())
 }
 
@@ -2578,6 +2640,10 @@ export function skillProficiencyForActor(actor, skill) {
   const sheetEntry = actor?.characterSheet?.skills?.[id]
     ?? actor?.characterSheet?.skills?.[id.replace(/-/gu, '_')]
     ?? null
+  // Навыки предыстории идут мимо классового выбора: `normalizedClassSkillProficiencies`
+  // фильтрует по списку класса и режет по его квоте, поэтому положить их туда
+  // означало бы либо потерять владение, либо отнять у героя классовый выбор.
+  const fromBackground = listedSkill(actor?.backgroundSkillProficiencies, id)
   const expertise = [
     actor?.skillExpertiseIds,
     actor?.expertiseSkillIds,
@@ -2587,6 +2653,7 @@ export function skillProficiencyForActor(actor, skill) {
   ].some((values) => listedSkill(values, id))
     || sheetEntry?.expertise === true
   const proficient = expertise
+    || fromBackground
     || sheetEntry?.proficient === true
     || isSkillProficient(actor, id)
   const proficiency = Math.max(0, safeInteger(actor?.proficiency, 0))
@@ -4828,6 +4895,83 @@ function bloodiedFrenzySaveAdvantage(state, targetId) {
 }
 
 /**
+ * Результат d20-проверки из броска, который игрок уже сделал через реестр
+ * бросков (`/api/roll`). Движок берёт из реестра только выпавшие кости;
+ * модификатор, режим преимущества и итог он пересчитывает сам — авторитет по
+ * математике не делится даже с собственным реестром. Поле `verified_roll`
+ * ставит только серверный код: санитайзеры клиентских команд пересобирают
+ * команду по белому списку полей и пропустить его не могут.
+ */
+function checkRollFromVerified(verified, { modifier = 0, difficulty = 10, purpose = 'check', actorId = null, advantage = false, disadvantage = false, visibility = 'public' } = {}) {
+  const dice = (Array.isArray(verified?.dice) ? verified.dice : [])
+    .map((value) => safeInteger(value, 0))
+    .filter((value) => value >= 1 && value <= 20)
+  if (!dice.length) return null
+  const mode = advantage && !disadvantage ? 'advantage' : disadvantage && !advantage ? 'disadvantage' : 'normal'
+  const kept = mode === 'advantage' ? Math.max(...dice) : mode === 'disadvantage' ? Math.min(...dice) : dice[0]
+  const safeModifier = safeInteger(modifier, 0)
+  const dc = safeInteger(difficulty, 10)
+  const total = kept + safeModifier
+  return {
+    roll_id: String(verified.roll_id ?? ''),
+    expression: `${dice.length}d20${safeModifier > 0 ? `+${safeModifier}` : safeModifier < 0 ? String(safeModifier) : ''}`,
+    dice,
+    kept,
+    mode,
+    modifier: safeModifier,
+    total,
+    difficulty: dc,
+    success: total >= dc,
+    purpose: String(purpose || 'check').slice(0, 80),
+    actor_id: actorId == null ? null : String(actorId).slice(0, 120),
+    visibility: visibility === 'private' || visibility === 'party' ? visibility : 'public',
+    created_at: verified.created_at ?? null,
+    player_rolled: true,
+  }
+}
+
+/**
+ * Предпросмотр d20-проверки для ручного броска: модификатор и режим
+ * преимущества считаются теми же функциями, что и исполнение команды, —
+ * второго авторитетного пути у проверки не появляется. Это то, что игрок
+ * видит на карточке броска до того, как возьмёт кубик.
+ */
+export function previewD20Check(state, { actorId, kind = 'check', ability = null, skill = null, difficulty = 10, proficient = false } = {}) {
+  const actor = findActor(state, actorId)
+  if (kind === 'save') {
+    const saveAbility = String(ability || 'con').toLowerCase()
+    const baseModifier = abilityModifier(actor?.abilities?.[saveAbility]) + (proficient ? safeInteger(actor?.proficiency, 0) : 0)
+    const aura = savingThrowModifierWithAura(state, String(actorId), baseModifier)
+    return {
+      kind: 'save',
+      ability: saveAbility,
+      skill: null,
+      modifier: aura.modifier,
+      difficulty: safeInteger(difficulty, 10),
+      advantage: Boolean(saveAdvantageConditionFor(state, actorId, saveAbility))
+        || conditionIdsFor(state, actorId).has('silvery-fortune')
+        || bloodiedFrenzySaveAdvantage(state, actorId),
+      disadvantage: Boolean(saveDisadvantageConditionFor(state, actorId, saveAbility)),
+    }
+  }
+  const checkSkill = canonicalSkillId(skill)
+  const checkAbility = String(skillAbility(checkSkill) || ability || 'str').toLowerCase()
+  const skillProficiency = checkSkill ? skillProficiencyForActor(actor, checkSkill) : null
+  const modifier = abilityModifier(actor?.abilities?.[checkAbility])
+    + (skillProficiency?.bonus ?? (proficient ? safeInteger(actor?.proficiency, 0) : 0))
+  return {
+    kind: 'check',
+    ability: checkAbility,
+    skill: checkSkill || null,
+    modifier,
+    difficulty: safeInteger(difficulty, 10),
+    advantage: Boolean(checkAdvantageConditionFor(state, actorId, checkAbility))
+      || conditionIdsFor(state, actorId).has('silvery-fortune'),
+    disadvantage: Boolean(checkDisadvantageConditionFor(state, actorId)),
+  }
+}
+
+/**
  * Rolls a saving throw.  Pass `ability` to let the conditions that make a save
  * fail without a roll apply: the die is still rolled and recorded so the
  * transcript and replay stay identical, and only the outcome is forced.
@@ -5230,7 +5374,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Истощение мешает любой проверке характеристики с первой же ступени.
       const checkPenalty = checkDisadvantageConditionFor(state, command.actor_id)
       const checkBoost = checkAdvantageConditionFor(state, command.actor_id, ability)
-      const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty), visibility: command.visibility })
+      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty), visibility: command.visibility }
+      const roll = checkRollFromVerified(command.verified_roll, checkRollOptions) ?? diceService.rollCheck(checkRollOptions)
       rolls.push(roll)
       events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
         ability, ...(skill ? { skill } : {}), ...roll,
@@ -5283,7 +5428,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const savePenalty = saveDisadvantageConditionFor(state, command.actor_id, ability)
       const saveBoost = saveAdvantageConditionFor(state, command.actor_id, ability)
       const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, command.actor_id)
-      const roll = diceService.rollCheck({ modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `saving_throw:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(saveBoost) || bloodiedFrenzy, disadvantage: Boolean(command.disadvantage) || Boolean(savePenalty), visibility: command.visibility })
+      const saveRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `saving_throw:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(saveBoost) || bloodiedFrenzy, disadvantage: Boolean(command.disadvantage) || Boolean(savePenalty), visibility: command.visibility }
+      const roll = checkRollFromVerified(command.verified_roll, saveRollOptions) ?? diceService.rollCheck(saveRollOptions)
       rolls.push(roll)
       events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || savePenalty || saveBoost || bloodiedFrenzy ? RULE_IDS.advantage : null), 'SavingThrowResolved', {
         ability, ...roll, ...auraOfProtectionPayload(auraProtection.aura), ...itemSavingThrowPayload(auraProtection.itemSavingThrowBonus),
@@ -8061,6 +8207,17 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         monster_ability: aggressiveBonus > 0 ? 'aggressive' : null,
         phase: state.mechanics.combat.active ? 'combat' : 'exploration',
       }, [command.actor_id]))
+      // Разведка местом, где герой оказался. Без этого туман снимался только
+      // переходом сцены и открытой дверью, а `isWalkableCell` считает
+      // нераскрытую клетку непроходимой — то есть отряд запирался в том
+      // пятне, которое досталось ему при создании сцены, и внутрь здания
+      // пройти было нельзя вовсе.
+      const scoutedMap = ensureSceneTacticalMap(state)
+      if (scoutedMap) {
+        const scouted = cellsVisibleFrom(scoutedMap, to, { radius: MOVEMENT_SIGHT_CELLS })
+          .filter((cell) => cellAt(scoutedMap, cell.x, cell.y)?.revealed !== true)
+        if (scouted.length) events.push(eventFrom(command, 'AreaRevealed', { cells: scouted }, []))
+      }
       const enteredAreaState = replayEvents(state, events)
       events.push(...areaEntryConsequences(enteredAreaState, command, command.actor_id, from, to, { diceService, rolls, resolveDamage: resolveDamagePayload }))
       const moverConditions = conditionIdsFor(state, command.actor_id)
@@ -8165,10 +8322,19 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       const intent = ['open', 'close', 'force'].includes(String(command.intent)) ? String(command.intent) : 'open'
       const before = String(door.state)
+      // Распахнутый проём обязан открыть то, что за ним: пока раскрытия не
+      // было, соседнее помещение оставалось чёрным пятном, в которое вдобавок
+      // нельзя было шагнуть.
+      const revealBeyondDoor = () => {
+        const cells = cellsVisibleFrom(map, at, { openedDoorId: door.id })
+          .filter((cell) => cellAt(map, cell.x, cell.y)?.revealed !== true)
+        if (cells.length) events.push(eventFrom(command, 'AreaRevealed', { cells }, []))
+      }
       if (intent === 'open') {
         if (before === 'locked') throw new RulesValidationError('Дверь заперта: её придётся выломать', 'DOOR_LOCKED')
         if (before !== 'closed') throw new RulesValidationError('Эта дверь и так открыта', 'DOOR_ALREADY_OPEN')
         events.push(eventFrom(command, 'DoorStateChanged', { door_id: door.id, state: 'open', previous_state: before, method: 'hand' }, []))
+        revealBeyondDoor()
         break
       }
       if (intent === 'close') {
@@ -8194,6 +8360,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       events.push(eventFrom(command, 'DoorForced', {
         door_id: door.id, success: check.success, previous_state: before, difficulty, check_total: check.total,
       }, []))
+      if (check.success) revealBeyondDoor()
       break
     }
     case 'OperateSceneObject': {
@@ -9193,10 +9360,20 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'UpsertNpcSocialProfile':
     case 'RecordNpcSocialTurn':
     case 'ResolveNpcPromise': {
+      const socialEventsAdded = []
       for (const socialEvent of npcSocialEvents(command, state)) {
         const resolvedSocialEvent = eventFrom({ ...command, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids)
         if (socialEvent.event_id) resolvedSocialEvent.event_id = socialEvent.event_id
         events.push(resolvedSocialEvent)
+        socialEventsAdded.push(resolvedSocialEvent)
+      }
+      // Собеседник, заведённый посреди кампании, тоже обязан появиться на поле.
+      // Раньше расстановку выполнял только переход сцены, поэтому названный
+      // Рассказчиком новый NPC существовал лишь в тексте: профиль есть,
+      // placement нет, и `sceneNpcsForViewer` отбрасывал его из проекции.
+      if (command.command_type === 'UpsertNpcSocialProfile' && socialEventsAdded.length) {
+        const withProfile = replayEvents(state, socialEventsAdded)
+        events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(withProfile)))
       }
       break
     }

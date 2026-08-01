@@ -476,6 +476,28 @@ export function stakesFor({
   }
 }
 
+// Русские подписи d20-проверок для карточки броска и журнала. Идентификаторы
+// характеристик и навыков остаются английскими (правило репозитория), подпись
+// собирается на сервере — клиент показывает её как есть.
+export const ABILITY_LABELS_RU = Object.freeze({
+  str: 'Сила', dex: 'Ловкость', con: 'Телосложение', int: 'Интеллект', wis: 'Мудрость', cha: 'Харизма',
+})
+export const SKILL_LABELS_RU = Object.freeze({
+  'acrobatics': 'Акробатика', 'animal-handling': 'Уход за животными', 'arcana': 'Магия', 'athletics': 'Атлетика',
+  'deception': 'Обман', 'history': 'История', 'insight': 'Проницательность', 'intimidation': 'Запугивание',
+  'investigation': 'Расследование', 'medicine': 'Медицина', 'nature': 'Природа', 'perception': 'Восприятие',
+  'performance': 'Выступление', 'persuasion': 'Убеждение', 'religion': 'Религия', 'sleight-of-hand': 'Ловкость рук',
+  'stealth': 'Скрытность', 'survival': 'Выживание',
+})
+
+export function d20CheckLabel({ kind = 'check', ability = null, skill = null } = {}) {
+  const abilityName = ABILITY_LABELS_RU[String(ability ?? '').toLocaleLowerCase('en')] ?? null
+  if (kind === 'save') return abilityName ? `Спасбросок: ${abilityName}` : 'Спасбросок'
+  const skillName = SKILL_LABELS_RU[String(skill ?? '').toLocaleLowerCase('en').replace(/_/gu, '-')] ?? null
+  if (skillName && abilityName) return `${abilityName} (${skillName})`
+  return skillName ?? (abilityName ? `Проверка: ${abilityName}` : 'Проверка')
+}
+
 /**
  * Шаг 6 брифа: живой ведущий не разрешает перекатывать ту же попытку, пока
  * обстоятельства не изменились. Отпечаток берётся от героя, подхода и препятствия.

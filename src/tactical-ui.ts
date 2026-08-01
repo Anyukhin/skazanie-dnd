@@ -16,7 +16,14 @@ export type MovementPath = {
   costFeet: number
 }
 
-const isWalkable = (cell?: MapCell) => Boolean(cell?.revealed && (cell.type === 'floor' || cell.type === 'door'))
+/**
+ * Правило повторяет серверное `isWalkableCell`: туман не делает клетку
+ * непроходимой. Раньше здесь стояло `cell.revealed &&`, и клиент не строил
+ * маршрут в темноту — подсветки не было, нажатие по клетке ничего не делало,
+ * а сервер к тому моменту шаг уже разрешал. Разведка снимает туман по мере
+ * движения; стены и вода остаются непроходимыми независимо от него.
+ */
+const isWalkable = (cell?: MapCell) => Boolean(cell && (cell.type === 'floor' || cell.type === 'door'))
 
 type AreaEffectWithCells = NonNullable<NonNullable<GameState['mechanics']>['active_effects']>[number] & {
   cells?: Array<{ x: number; y: number }>
@@ -173,7 +180,6 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
 }
 
 export function movementCellReason(state: GameState, actor: BoardActor, cell: MapCell, remainingFeet: number, paths: Map<string, MovementPath>) {
-  if (!cell.revealed) return 'Клетка скрыта туманом войны'
   if (cell.type !== 'floor' && cell.type !== 'door') return 'Клетка непроходима'
   if (occupiedBoardPositions(state, actor.id).has(boardPositionKey(cell.x, cell.y))) return 'Клетка занята'
   const route = paths.get(boardPositionKey(cell.x, cell.y))

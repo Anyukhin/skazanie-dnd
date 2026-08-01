@@ -20,7 +20,21 @@ test('аудиоконтур покрывает все темы и процед�
   assert.match(source, /createOscillator\(/u)
   assert.match(source, /createBufferSource\(/u)
   assert.match(source, /createBiquadFilter\(/u)
-  assert.doesNotMatch(source, /\.(?:mp3|wav|ogg|m4a)\b/ui)
+  // Раньше здесь стоял запрет любых аудиофайлов: атмосфера была полностью
+  // процедурной, потому что лицензированных записей у проекта не было. Теперь
+  // записи есть, и контракт другой — место озвучивает запись, а синтез
+  // остаётся запасным путём.
+  assert.match(source, /\/assets\/audio\/ambience\/\$\{mood\}\.ogg/u,
+    'записанная атмосфера обязана грузиться по настроению')
+  const recordedMoods = source.match(/RECORDED_AMBIENCE_MOODS[^=]*=\s*new Set\(\[([\s\S]*?)\]\)/u)
+  assert.ok(recordedMoods, 'список записанных настроений должен быть статическим')
+  assert.deepEqual(
+    [...recordedMoods[1].matchAll(/'([^']+)'/gu)].map((entry) => entry[1]),
+    ['building', 'temple', 'crypt', 'cave', 'forest', 'road', 'settlement'],
+    'бой и финал остаются синтезированными',
+  )
+  // Синтез обязан пережить отказ загрузки: молчащая сцена хуже простого гула.
+  assert.match(source, /ambienceFailed\.add\(mood\)/u)
 })
 
 test('AudioContext создаётся только внутри явного unlock и mood меняется crossfade-ом', () => {

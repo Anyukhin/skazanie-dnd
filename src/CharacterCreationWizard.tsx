@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, Check, ShieldCheck, Sparkles, X } from 'lucide-react'
 
 import type {
@@ -8,6 +9,8 @@ import type {
   Player,
 } from './types'
 import { mechanicsSupportPresentation } from './tactical-ui'
+import { SKILL_LABELS } from './app-shared'
+import { CombatIcon } from './CombatIcon'
 import './character-creation.css'
 
 /**
@@ -19,6 +22,130 @@ const FEATURE_HINTS: Record<string, string> = {
   'fighting-style-defense': '+1 к КД, пока носите доспех',
   'fighting-style-protection': 'реакцией мешаете атаке по союзнику рядом',
 }
+
+/**
+ * Что навык делает за столом. Каталог даёт только имя и характеристику, а без
+ * пояснения шаг выбора превращался в угадайку по названию.
+ */
+const SKILL_HINTS: Record<string, string> = {
+  acrobatics: 'Удержать равновесие, вывернуться из захвата, мягко упасть.',
+  'animal-handling': 'Успокоить зверя, править упряжкой, понять намерения животного.',
+  arcana: 'Опознать заклинание, магический предмет или след ритуала.',
+  athletics: 'Лезть, прыгать, плыть, толкать и удерживать в силовой борьбе.',
+  deception: 'Соврать убедительно, выдать себя за другого, отвести подозрение.',
+  history: 'Вспомнить события, династии, войны и происхождение реликвии.',
+  insight: 'Понять, лжёт ли собеседник и чего он хочет на самом деле.',
+  intimidation: 'Добиться своего угрозой, давлением или холодной уверенностью.',
+  investigation: 'Найти улику, вычислить тайник, восстановить ход событий.',
+  medicine: 'Стабилизировать умирающего, распознать болезнь или яд.',
+  nature: 'Знать местность, погоду, растения и повадки зверей.',
+  perception: 'Заметить спрятанное, услышать шорох, разглядеть засаду.',
+  performance: 'Захватить публику песней, речью или представлением.',
+  persuasion: 'Договориться по-доброму: убедить, расположить, примирить.',
+  religion: 'Знать божеств, обряды, символы культов и нежить.',
+  'sleight-of-hand': 'Незаметно взять, подменить, спрятать предмет, вскрыть замок.',
+  stealth: 'Двигаться бесшумно и оставаться незамеченным.',
+  survival: 'Идти по следу, ориентироваться, добывать еду, читать погоду.',
+}
+
+const skillHintFor = (id: string) => SKILL_HINTS[String(id).toLowerCase().replace(/_/gu, '-')] ?? ''
+
+/**
+ * Эмблема класса. Карточки различались только текстом, из-за чего выбор
+ * читался как список строк. Рисунки штриховые и берут цвет от карточки,
+ * поэтому подчиняются состоянию «выбрано» и не тянут за собой растровые
+ * ассеты с отдельными правами.
+ */
+const CLASS_EMBLEMS: Record<string, ReactNode> = {
+  // Секира с двойным лезвием.
+  barbarian: <><path d="M12 3v18" /><path d="M12 6c3-2 6-2 8 0-2 2-5 3-8 2Z" /><path d="M12 6c-3-2-6-2-8 0 2 2 5 3 8 2Z" /></>,
+  // Лютня: корпус, гриф и колки.
+  bard: <><ellipse cx="9" cy="16" rx="5" ry="5.5" /><circle cx="9" cy="16" r="1.6" /><path d="M12.5 12.5 18 6" /><path d="m17 4.5 2.5 2.5" /><path d="m19 3 2 2" /></>,
+  // Храмовый символ: солнце над крестом.
+  cleric: <><path d="M12 21V9" /><path d="M8 13h8" /><circle cx="12" cy="6" r="3" /><path d="M12 1v1.5M12 9.5V11M7 6H5.5M18.5 6H17" /></>,
+  // Дубовый лист с прожилками.
+  druid: <><path d="M12 21c0-8 4-14 9-16 1 8-3 15-9 16Z" /><path d="M12 21c-2-5-5-7-9-8 4-3 8-2 10 1" /><path d="M13 12.5 12 21" /></>,
+  // Меч и щит.
+  fighter: <><path d="M8 3v11l-2 2 3 3 3-3-2-2V3Z" /><path d="M16 5h5v6c0 4-2.5 6-5 7-2.5-1-5-3-5-7" /></>,
+  // Кулак монаха.
+  monk: <><path d="M7 11V7.5a1.5 1.5 0 0 1 3 0V11" /><path d="M10 10.5V6a1.5 1.5 0 0 1 3 0v4.5" /><path d="M13 10.5V7a1.5 1.5 0 0 1 3 0v6" /><path d="M16 11.5c0-1 2-1.5 2 .5v3c0 3-2.5 6-6 6s-6-2.5-6-6v-2c0-2 2-2 2 0" /></>,
+  // Щит с восходящим солнцем клятвы.
+  paladin: <><path d="M12 2 4 5v7c0 5.5 3.5 8.5 8 10 4.5-1.5 8-4.5 8-10V5Z" /><path d="M8 13a4 4 0 0 1 8 0" /><path d="M12 5.5V9" /></>,
+  // Лук со стрелой.
+  ranger: <><path d="M6 3c7 4 7 14 0 18" /><path d="M6 3 6 21" /><path d="M4 12h14" /><path d="m15 9 3 3-3 3" /></>,
+  // Кинжал с каплей яда.
+  rogue: <><path d="M12 2 9 9h6Z" /><path d="M12 9v9" /><path d="M9 12h6" /><path d="M12 22c1.2 0 2-.8 2-2 0-1.2-2-3-2-3s-2 1.8-2 3c0 1.2.8 2 2 2Z" /></>,
+  // Родовая искра: пламя в ладони судьбы.
+  sorcerer: <><path d="M12 2c2.5 4.5 6 6 6 10a6 6 0 0 1-12 0c0-4 3.5-5.5 6-10Z" /><path d="M12 18c-1.6 0-2.6-1-2.6-2.4 0-1.8 2.6-3.2 2.6-5.4" /></>,
+  // Око покровителя в кольце пакта.
+  warlock: <><path d="M2 12s4-6.5 10-6.5S22 12 22 12s-4 6.5-10 6.5S2 12 2 12Z" /><circle cx="12" cy="12" r="3.2" /><path d="M12 2v1.8M12 20.2V22M4 4l1.4 1.4M18.6 18.6 20 20" /></>,
+  // Раскрытая книга заклинаний.
+  wizard: <><path d="M3 5.5c3-1.5 6-1.5 9 0v14c-3-1.5-6-1.5-9 0Z" /><path d="M21 5.5c-3-1.5-6-1.5-9 0v14c3-1.5 6-1.5 9 0Z" /><path d="M12 5.5v14" /></>,
+}
+
+/**
+ * Эмблемы видов. Рисунок, а не фотография: изображения рас с dnd.su имеют
+ * неподтверждённые права (см. ATTRIBUTION.md — там же оговорка про миниатюры
+ * бестиария), и добавлять новый такой долг ради экрана создания не стоит.
+ * Если владелец положит файл `public/assets/species/<id>.png`, карточка
+ * покажет его вместо эмблемы — код это уже умеет.
+ */
+const SPECIES_EMBLEMS: Record<string, ReactNode> = {
+  human: <><circle cx="12" cy="8" r="3.4" /><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" /></>,
+  elf: <><circle cx="12" cy="9" r="3.2" /><path d="M6 20c0-3.6 2.7-6.4 6-6.4s6 2.8 6 6.4" /><path d="M8.8 7.2 5.5 4.6M15.2 7.2l3.3-2.6" /></>,
+  dwarf: <><circle cx="12" cy="7.5" r="3" /><path d="M7 20v-3c0-2.2 2.2-4 5-4s5 1.8 5 4v3" /><path d="M9 12c.8 3 1.4 4.5 3 6 1.6-1.5 2.2-3 3-6" /></>,
+  halfling: <><circle cx="12" cy="9.5" r="3" /><path d="M7 20c0-3 2.2-5.4 5-5.4s5 2.4 5 5.4" /><path d="M6 9.5c1.5-2 3.5-3 6-3s4.5 1 6 3" /></>,
+  gnome: <><circle cx="12" cy="11" r="2.8" /><path d="M7.5 20c0-2.6 2-4.6 4.5-4.6s4.5 2 4.5 4.6" /><path d="M12 3 7 9h10Z" /></>,
+  'half-orc': <><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c0-3.7 2.9-6.6 6.5-6.6s6.5 2.9 6.5 6.6" /><path d="M9.5 10.5 9 12.5M14.5 10.5l.5 2" /></>,
+  'half-elf': <><circle cx="12" cy="8.6" r="3.3" /><path d="M5.8 20c0-3.7 2.8-6.5 6.2-6.5s6.2 2.8 6.2 6.5" /><path d="M15.1 6.9 18 4.8" /></>,
+  tiefling: <><circle cx="12" cy="10" r="3.2" /><path d="M6.5 20c0-3.2 2.5-5.6 5.5-5.6s5.5 2.4 5.5 5.6" /><path d="M8.6 7.4C7.4 5.6 7 4 7.2 2.8c1.6.5 2.9 1.7 3.6 3.2" /><path d="M15.4 7.4c1.2-1.8 1.6-3.4 1.4-4.6-1.6.5-2.9 1.7-3.6 3.2" /></>,
+  dragonborn: <><path d="M12 4c3.4 0 6 2.2 6 5 0 3.6-2.6 6.4-6 8.6-3.4-2.2-6-5-6-8.6 0-2.8 2.6-5 6-5Z" /><path d="M9.6 9h.01M14.4 9h.01" /><path d="M6 6.5 3.4 4.4M18 6.5l2.6-2.1" /></>,
+  custom: <><circle cx="12" cy="12" r="8.6" /><path d="M12 8v5" /><path d="M12 16h.01" /></>,
+}
+
+function SpeciesEmblem({ speciesId, label }: { speciesId: string; label: string }) {
+  const [failed, setFailed] = useState(false)
+  const glyph = SPECIES_EMBLEMS[speciesId]
+  if (!failed) {
+    return <span className="species-art">
+      <img
+        src={`/assets/species/${speciesId}.png`}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    </span>
+  }
+  return <span className="species-art">
+    {glyph
+      ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ width: '100%', height: '100%', color: '#c8a06a', padding: 12 }}>{glyph}</svg>
+      : <span>{label.slice(0, 2).toLocaleUpperCase('ru')}</span>}
+  </span>
+}
+
+function ClassEmblem({ classId }: { classId: string }) {
+  const glyph = CLASS_EMBLEMS[classId]
+  if (!glyph) return null
+  return <svg className="class-emblem" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{glyph}</svg>
+}
+
+/** Ведущая характеристика класса — куда случайный герой кладёт лучшее значение. */
+const PRIMARY_ABILITY: Record<string, 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'> = {
+  barbarian: 'str', bard: 'cha', cleric: 'wis', druid: 'wis', fighter: 'str', monk: 'dex',
+  paladin: 'str', ranger: 'dex', rogue: 'dex', sorcerer: 'cha', warlock: 'cha', wizard: 'int',
+}
+
+const RANDOM_NAMES = [
+  'Ална Верес', 'Борен Тихая Сталь', 'Виден Кром', 'Гелла Ржавый Ключ', 'Дарен Ольховый',
+  'Ивета Соль', 'Кирем Двухпалый', 'Лисса Пепел', 'Мирон Заречный', 'Нэда Стужа',
+  'Овен Крапива', 'Рута Мельник', 'Сван Долгий Шаг', 'Тайра Уголь', 'Фарн Оникс',
+]
+
+const RANDOM_BACKGROUNDS = [
+  'солдат', 'учёная', 'странник', 'ремесленник', 'сирота с окраины', 'моряк',
+  'послушник храма', 'охотник', 'торговец вразнос', 'бывший вор',
+]
 
 const abilityIds = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
 const abilityLabels: Record<(typeof abilityIds)[number], string> = {
@@ -35,6 +162,11 @@ type CreationDraft = {
   speciesOptionId: string
   customSpecies: string
   background: string
+  backgroundId: string
+  /** Раскладка прибавок предыстории: `two_one` либо `one_one_one`. */
+  backgroundAbilityMode: string
+  /** Порядок нажатия задаёт размер прибавки: первая получает больше. */
+  backgroundAbilities: string[]
   abilities: CharacterAbilityScores
   classSkillIds: string[]
   selectedFeatureIds: string[]
@@ -55,6 +187,9 @@ function initialDraft(catalog: CharacterCreationCatalog): CreationDraft {
     speciesOptionId: catalog.ability_policy.species_options[0]?.id ?? '',
     customSpecies: '',
     background: '',
+    backgroundId: '',
+    backgroundAbilityMode: 'two_one',
+    backgroundAbilities: [],
     abilities: assigned,
     classSkillIds: [],
     selectedFeatureIds: [],
@@ -131,6 +266,7 @@ export function CharacterCreationWizard({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [busy, onClose])
+  const [spellSearch, setSpellSearch] = useState('')
   const classOption = catalog.classes.find((entry) => entry.id === draft.classId) ?? catalog.classes[0]
   const speciesOption = catalog.ability_policy.species_options.find((entry) => entry.id === draft.speciesOptionId)
   const skillRule = classOption?.class_skills
@@ -140,8 +276,23 @@ export function CharacterCreationWizard({
   // от того, что реально можно взять: иначе класс с бедным каталогом запер бы
   // мастер на недостижимом «выберите 3 заговора».
   const selectable = (spell: { mechanics_support?: MechanicsSupport | null }) => !mechanicsSupportPresentation(spell.mechanics_support ?? undefined).blocked
+  // Поиск по названию и описанию: у полного класса список 1 круга уходит за
+  // экран, и найти нужное заклинание глазами было нельзя. Уже выбранные
+  // карточки остаются видимыми при любом запросе — иначе счётчик показывает
+  // «2/3», а что именно взято, не видно.
   const cantrips = spellRules?.spells.filter((spell) => spell.level === 0 && selectable(spell)) ?? []
   const leveledSpells = spellRules?.spells.filter((spell) => spell.level === 1 && selectable(spell)) ?? []
+  // Поиск по названию и описанию: у полного класса список 1 круга уходит за
+  // экран, и найти нужное заклинание глазами было нельзя. Фильтр действует
+  // только на показ — лимиты и счётчики выше считаются по полному списку,
+  // иначе запрос молча менял бы условие «выберите 3 заговора». Уже выбранные
+  // карточки остаются видимыми при любом запросе.
+  const spellQuery = spellSearch.trim().toLocaleLowerCase('ru')
+  const matchesQuery = (spell: { id: string; name: string; description?: string }) => !spellQuery
+    || draft.knownSpellIds.includes(spell.id)
+    || `${spell.name} ${spell.description ?? ''}`.toLocaleLowerCase('ru').includes(spellQuery)
+  const visibleCantrips = cantrips.filter(matchesQuery)
+  const visibleLeveledSpells = leveledSpells.filter(matchesQuery)
   const selectedCantrips = cantrips.filter((spell) => draft.knownSpellIds.includes(spell.id)).length
   const selectedKnownSpells = leveledSpells.filter((spell) => draft.knownSpellIds.includes(spell.id)).length
   const selectedPreparedSpells = leveledSpells.filter((spell) => draft.preparedSpellIds.includes(spell.id)).length
@@ -164,6 +315,129 @@ export function CharacterCreationWizard({
 
   const patch = <K extends keyof CreationDraft>(key: K, value: CreationDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }))
+    setError('')
+  }
+
+  const backgroundOptions = catalog.backgrounds?.options ?? []
+  const abilityModes = catalog.backgrounds?.ability_modes ?? []
+  const selectedBackground = backgroundOptions.find((option) => option.id === draft.backgroundId) ?? null
+  const originIncreases = abilityModes.find((mode) => mode.id === draft.backgroundAbilityMode)?.increases ?? []
+  const originBonusReady = Boolean(selectedBackground) && draft.backgroundAbilities.length === originIncreases.length
+  const skillNameFor = (id: string) => SKILL_LABELS[String(id)] ?? String(id)
+  /** Итоговая прибавка предыстории к характеристике — её же показывает шаг характеристик. */
+  const originBonusFor = (ability: string) => {
+    const index = draft.backgroundAbilities.indexOf(ability)
+    return index >= 0 ? originIncreases[index] ?? 0 : 0
+  }
+
+  const selectBackground = (option: { id: string; name: string; abilityOptions: string[] }) => {
+    setDraft((current) => ({
+      ...current,
+      backgroundId: option.id,
+      background: option.name,
+      // Раскладка по умолчанию — +2 первой из предложенных и +1 второй; её
+      // можно переставить, но валидный выбор есть сразу.
+      backgroundAbilityMode: 'two_one',
+      backgroundAbilities: option.abilityOptions.slice(0, 2),
+    }))
+    setError('')
+  }
+
+  const setAbilityMode = (mode: string) => {
+    const size = abilityModes.find((entry) => entry.id === mode)?.increases.length ?? 2
+    setDraft((current) => ({
+      ...current,
+      backgroundAbilityMode: mode,
+      backgroundAbilities: current.backgroundAbilities.slice(0, size),
+    }))
+    setError('')
+  }
+
+  /** Порядок нажатия задаёт, какая характеристика получит большую прибавку. */
+  const toggleOriginAbility = (ability: string) => {
+    setDraft((current) => {
+      const size = abilityModes.find((entry) => entry.id === current.backgroundAbilityMode)?.increases.length ?? 2
+      const already = current.backgroundAbilities.includes(ability)
+      const next = already
+        ? current.backgroundAbilities.filter((entry) => entry !== ability)
+        : [...current.backgroundAbilities, ability].slice(-size)
+      return { ...current, backgroundAbilities: next }
+    })
+    setError('')
+  }
+
+  /**
+   * Готовый герой одним нажатием. Собирается по тем же правилам каталога, что
+   * и ручной путь: число классовых навыков, полнота групп умений и лимиты
+   * заговоров и заклинаний берутся из `catalog`, поэтому результат проходит
+   * `validateStep` на каждом шаге и его можно отправлять сразу.
+   */
+  const rollRandomHero = () => {
+    const pick = <T,>(list: readonly T[]): T | undefined => (list.length ? list[Math.floor(Math.random() * list.length)] : undefined)
+    const pickMany = <T,>(list: readonly T[], count: number): T[] => {
+      const pool = [...list]
+      const taken: T[] = []
+      while (taken.length < count && pool.length) taken.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0])
+      return taken
+    }
+    const rolledBackground = pick(backgroundOptions)
+    const entry = pick(catalog.classes)
+    if (!entry) return
+    // Авторский вид требует ручного названия — случайному герою он не подходит.
+    const species = pick(catalog.ability_policy.species_options.filter((option) => option.id !== 'custom'))
+      ?? catalog.ability_policy.species_options[0]
+    // Лучшее значение уходит в ведущую характеристику класса, второе — в
+    // Телосложение: случайная раскладка регулярно давала мага с Силой 15.
+    const primary = PRIMARY_ABILITY[entry.id] ?? 'str'
+    const rest = pickMany(abilityIds.filter((ability) => ability !== primary && ability !== 'con'), 4)
+    const order = [primary, 'con' as const, ...rest]
+    const scores = [...catalog.ability_policy.standard_array].sort((left, right) => right - left)
+    const abilities = { ...draft.abilities }
+    order.forEach((ability, index) => { abilities[ability] = scores[index] ?? scores[scores.length - 1] })
+
+    const rolledSkills = pickMany(entry.class_skills?.options ?? [], entry.class_skills?.choice_count ?? 0)
+    const rolledFeatures = (entry.feature_choice_groups ?? [])
+      .flatMap((group) => pickMany(group.options, group.choiceCount))
+    const rolledSpells = entry.spell_selection
+      ? (() => {
+          const usable = entry.spell_selection.spells.filter(selectable)
+          const zero = usable.filter((spell) => spell.level === 0)
+          const first = usable.filter((spell) => spell.level === 1)
+          const known = [
+            ...pickMany(zero, Math.min(entry.spell_selection.cantrips ?? 0, zero.length)),
+            ...pickMany(first, Math.min(
+              entry.spell_selection.mode === 'spellbook'
+                ? entry.spell_selection.spellbookMinimum ?? 0
+                : entry.spell_selection.mode === 'known'
+                  ? entry.spell_selection.spellsKnown ?? 0
+                  : entry.spell_selection.preparedLimit ?? 0,
+              first.length,
+            )),
+          ]
+          const prepared = entry.spell_selection.mode === 'prepared'
+            ? known.filter((spell) => spell.level === 1).map((spell) => spell.id)
+            : []
+          return { knownSpellIds: known.map((spell) => spell.id), preparedSpellIds: prepared }
+        })()
+      : { knownSpellIds: [], preparedSpellIds: [] }
+
+    setDraft((current) => ({
+      ...current,
+      classId: entry.id,
+      speciesOptionId: species?.id ?? current.speciesOptionId,
+      customSpecies: '',
+      ...(rolledBackground ? {
+        backgroundId: rolledBackground.id,
+        background: rolledBackground.name,
+        backgroundAbilityMode: 'two_one',
+        backgroundAbilities: rolledBackground.abilityOptions.slice(0, 2),
+      } : { background: pick(RANDOM_BACKGROUNDS) ?? 'странник' }),
+      abilities,
+      classSkillIds: rolledSkills.map((skill) => skill.id),
+      selectedFeatureIds: rolledFeatures.map((option) => option.id),
+      ...rolledSpells,
+      character: pick(RANDOM_NAMES) ?? 'Безымянный герой',
+    }))
     setError('')
   }
 
@@ -246,7 +520,9 @@ export function CharacterCreationWizard({
 
   const validateStep = () => {
     if (!classOption) return 'Выберите поддерживаемый класс.'
-    if (step === 1 && (!speciesOption || !selectedSpecies || !draft.background.trim())) return 'Выберите вид и укажите предысторию.'
+    if (step === 1 && (!speciesOption || !selectedSpecies)) return 'Выберите вид.'
+    if (step === 1 && !draft.backgroundId) return 'Выберите предысторию.'
+    if (step === 1 && !originBonusReady) return `Отметьте ${originIncreases.length} ${plural(originIncreases.length, ['характеристику', 'характеристики', 'характеристик'])} для прибавок предыстории.`
     if (step === 3 && skillRule && draft.classSkillIds.length !== skillRule.choice_count) return `Выберите ${skillRule.choice_count} ${plural(skillRule.choice_count, ['классовый навык', 'классовых навыка', 'классовых навыков'])}.`
     if (step === 3) {
       const incomplete = featureGroups.find((group) => group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length !== group.choiceCount)
@@ -272,9 +548,21 @@ export function CharacterCreationWizard({
     const message = validateStep()
     if (message) return setError(message)
     if (!classOption || !speciesOption) return
-    const originBonusProfile = catalog.ability_policy.origin_bonus_profiles[0]
+    // Прибавки предыстории идут штатным путём versioned-политики: сервер
+    // требует, чтобы итоговые характеристики равнялись стандартному массиву
+    // плюс объявленные бонусы происхождения, и сверяет профиль по имени.
     const originBonuses = emptyScores()
     abilityIds.forEach((ability) => { originBonuses[ability] = 0 })
+    draft.backgroundAbilities.forEach((ability, index) => {
+      originBonuses[ability as keyof CharacterAbilityScores] = originIncreases[index] ?? 0
+    })
+    const profileId = selectedBackground ? draft.backgroundAbilityMode : 'none'
+    const originBonusProfile = catalog.ability_policy.origin_bonus_profiles.find((profile) => profile.id === profileId)
+      ?? catalog.ability_policy.origin_bonus_profiles[0]
+    const finalAbilities = { ...draft.abilities }
+    for (const ability of abilityIds) {
+      finalAbilities[ability] = draft.abilities[ability] + originBonuses[ability]
+    }
     const document = {
       schema: catalog.import_schema,
       schema_version: catalog.import_schema_version,
@@ -285,12 +573,16 @@ export function CharacterCreationWizard({
         characterClass: classOption.id,
         species: selectedSpecies,
         background: draft.background.trim(),
+      ...(draft.backgroundId ? {
+        backgroundId: draft.backgroundId,
+        backgroundAbilityChoice: { mode: draft.backgroundAbilityMode, abilities: draft.backgroundAbilities },
+      } : {}),
         traits: draft.appearance.trim(),
         backstory: draft.backstory.trim(),
         notes: '',
         level: 1,
         experience: 0,
-        abilities: draft.abilities,
+        abilities: finalAbilities,
         abilityGeneration: {
           policyId: catalog.ability_policy.policy_id,
           policyVersion: catalog.ability_policy.policy_version,
@@ -343,26 +635,104 @@ export function CharacterCreationWizard({
               aria-pressed={draft.classId === entry.id}
               aria-label={`${entry.label}: ${skills} навыка на выбор, ${magic}`}
               onClick={() => selectClass(entry.id)}
-            ><strong>{entry.label}</strong><small>{skills} навыка · {magic}</small></button>
+            ><ClassEmblem classId={entry.id} /><strong>{entry.label}</strong><small>{skills} навыка · {magic}</small></button>
           })}</div>}
           {step === 1 && <div className="creation-form">
-            <label><span>Вид</span><select value={draft.speciesOptionId} onChange={(event) => patch('speciesOptionId', event.target.value)}>{catalog.ability_policy.species_options.map((entry) => <option key={entry.id} value={entry.id}>{entry.label} · {entry.base_speed} фт.</option>)}</select></label>
+            <label><span>Вид</span></label>
+            <div className="creation-species" role="group" aria-label="Выбор вида">
+              {catalog.ability_policy.species_options.map((entry) => <button
+                key={entry.id}
+                type="button"
+                className={draft.speciesOptionId === entry.id ? 'selected' : ''}
+                aria-pressed={draft.speciesOptionId === entry.id}
+                onClick={() => patch('speciesOptionId', entry.id)}
+              >
+                <SpeciesEmblem speciesId={entry.id} label={entry.label} />
+                <b>{entry.label}</b>
+                <small>{entry.base_speed} фт.</small>
+              </button>)}
+            </div>
             {speciesOption?.id === 'custom' && <label><span>Название авторского вида</span><input value={draft.customSpecies} onChange={(event) => patch('customSpecies', event.target.value)} maxLength={120} /></label>}
-            <label><span>Предыстория</span><input value={draft.background} onChange={(event) => patch('background', event.target.value)} placeholder="Например: солдат, учёная, странник" maxLength={160} /></label>
-            <p><ShieldCheck size={17} />Скорость определяется видом. Происхождение даёт умения и снаряжение, а не прибавки к характеристикам.</p>
+            <p><ShieldCheck size={17} />Скорость определяется видом. Предыстория редакции 2024 даёт прибавки к характеристикам, два владения навыками, инструмент и черту происхождения.</p>
+            <div className="creation-backgrounds" role="group" aria-label="Выбор предыстории">
+              {(catalog.backgrounds?.options ?? []).map((option) => {
+                const chosen = draft.backgroundId === option.id
+                return <button
+                  key={option.id}
+                  type="button"
+                  className={chosen ? 'selected' : ''}
+                  aria-pressed={chosen}
+                  onClick={() => selectBackground(option)}
+                >
+                  <strong>{option.name}</strong>
+                  <i>{option.summary}</i>
+                  <small>
+                    <b>Характеристики:</b> {option.abilityOptions.map((ability) => abilityLabels[ability as keyof typeof abilityLabels]).join(', ')}
+                  </small>
+                  <small><b>Навыки:</b> {option.skillProficiencies.map((id) => skillNameFor(id)).join(', ')}</small>
+                  <small><b>Инструмент:</b> {option.toolProficiency?.name ?? '—'}</small>
+                  <small><b>Черта:</b> {option.originFeat?.name ?? '—'}</small>
+                  <small><b>Снаряжение:</b> {option.equipment?.summary ?? '—'} · {option.equipment?.gold ?? 0} зм</small>
+                </button>
+              })}
+            </div>
+            {selectedBackground && <div className="creation-origin-bonus">
+              <header><span>Прибавки предыстории</span><b>{originBonusReady ? 'выбрано' : 'выберите раскладку'}</b></header>
+              <div className="origin-modes">
+                {(catalog.backgrounds?.ability_modes ?? []).map((mode) => <button
+                  key={mode.id}
+                  type="button"
+                  className={draft.backgroundAbilityMode === mode.id ? 'selected' : ''}
+                  aria-pressed={draft.backgroundAbilityMode === mode.id}
+                  onClick={() => setAbilityMode(mode.id)}
+                >{mode.label}</button>)}
+              </div>
+              <div className="origin-abilities">
+                {selectedBackground.abilityOptions.map((ability) => {
+                  const index = draft.backgroundAbilities.indexOf(ability)
+                  const increases = (catalog.backgrounds?.ability_modes ?? []).find((mode) => mode.id === draft.backgroundAbilityMode)?.increases ?? []
+                  return <button
+                    key={ability}
+                    type="button"
+                    className={index >= 0 ? 'selected' : ''}
+                    aria-pressed={index >= 0}
+                    onClick={() => toggleOriginAbility(ability)}
+                  >
+                    <span>{abilityLabels[ability as keyof typeof abilityLabels]}</span>
+                    <b>{index >= 0 ? `+${increases[index] ?? 1}` : '—'}</b>
+                  </button>
+                })}
+              </div>
+              {!catalog.backgrounds?.origin_feats_supported && selectedBackground.originFeat && (
+                <p className="creation-support-note">
+                  <ShieldCheck size={13} />
+                  <span><b>{selectedBackground.originFeat.name}</b> — черта записывается в лист, но движок её пока не применяет.</span>
+                </p>
+              )}
+            </div>}
           </div>}
           {step === 2 && <div className="creation-abilities">
             <p>Распределите значения {catalog.ability_policy.standard_array.join(', ')}. При выборе уже занятого значения мастер автоматически меняет характеристики местами.</p>
-            <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}>{catalog.ability_policy.standard_array.map((score) => <option key={score} value={score}>{score}</option>)}</select><b>{signed(abilityModifier(draft.abilities[ability]))}</b><small>+ 0 происхождение</small></label>)}</div>
+            <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}>{catalog.ability_policy.standard_array.map((score) => <option key={score} value={score}>{score}</option>)}</select><b>{signed(abilityModifier(draft.abilities[ability]))}</b><small>{originBonusFor(ability) > 0 ? `+ ${originBonusFor(ability)} предыстория` : 'без прибавки предыстории'}</small></label>)}</div>
           </div>}
           {step === 3 && <div className="creation-choices">
-            <section><header><span>Классовые навыки</span><b>{draft.classSkillIds.length}/{skillRule?.choice_count ?? 0}</b></header><div>{skillRule?.options.map((skill) => <button key={skill.id} className={draft.classSkillIds.includes(skill.id) ? 'selected' : ''} onClick={() => toggleSkill(skill.id)}><Check size={13} />{skill.name}<small>{abilityLabels[skill.ability]}</small></button>)}</div></section>
+            <section><header><span>Классовые навыки</span><b>{draft.classSkillIds.length}/{skillRule?.choice_count ?? 0}</b></header><div>{skillRule?.options.map((skill) => <button key={skill.id} className={draft.classSkillIds.includes(skill.id) ? 'selected' : ''} aria-label={`${skill.name}: ${skillHintFor(skill.id) || abilityLabels[skill.ability]}`} onClick={() => toggleSkill(skill.id)}><Check size={13} /><span><b>{skill.name}</b><small>{abilityLabels[skill.ability]}</small>{skillHintFor(skill.id) && <i>{skillHintFor(skill.id)}</i>}</span></button>)}</div></section>
             {featureGroups.map((group) => <section key={group.id}><header><span>{group.name}</span><b>{group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length}/{group.choiceCount}</b></header><div>{group.options.map((option) => <button key={option.id} className={draft.selectedFeatureIds.includes(option.id) ? 'selected' : ''} aria-label={FEATURE_HINTS[option.id] ? `${option.name}: ${FEATURE_HINTS[option.id]}` : option.name} title={FEATURE_HINTS[option.id]} onClick={() => toggleFeature(group, option.id)}><Check size={13} />{option.name}{FEATURE_HINTS[option.id] && <small>{FEATURE_HINTS[option.id]}</small>}</button>)}</div></section>)}
           </div>}
           {step === 4 && <div className="creation-spells">
             {!spellRules ? <div className="creation-empty"><ShieldCheck size={24} /><strong>На 1 уровне у этого класса нет выбора заклинаний</strong><p>Заклинания появятся на следующих уровнях.</p></div> : <>
-              {cantrips.length > 0 && <section><header><span>Заговоры</span><b>{selectedCantrips}/{cantripLimit}</b></header>{cantripSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{cantripSupport.label}</b> — {cantripSupport.explanation}</span></p>}<div>{cantrips.map((spell) => <SpellChoice key={spell.id} spell={spell} selected={draft.knownSpellIds.includes(spell.id)} showSupport={!cantripSupport} onClick={() => toggleSpell(spell.id)} />)}</div></section>}
-              {leveledSpells.length > 0 && <section><header><span>Заклинания 1 круга</span><b>{spellRules.mode === 'known' ? `${selectedKnownSpells}/${knownLimit}` : spellRules.mode === 'spellbook' ? `книга ${selectedKnownSpells}/${bookLimit}` : `подготовлено ${selectedPreparedSpells}/${preparedLimit}`}</b></header>{leveledSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{leveledSupport.label}</b> — {leveledSupport.explanation}</span></p>}<div>{leveledSpells.map((spell) => {
+              <label className="creation-spell-search">
+                <span className="visually-hidden">Поиск заклинания</span>
+                <input
+                  type="search"
+                  value={spellSearch}
+                  onChange={(event) => setSpellSearch(event.target.value)}
+                  placeholder="Название или эффект…"
+                  aria-label="Поиск заклинания по названию или эффекту"
+                />
+              </label>
+              {cantrips.length > 0 && <section><header><span>Заговоры</span><b>{selectedCantrips}/{cantripLimit}</b></header>{cantripSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{cantripSupport.label}</b> — {cantripSupport.explanation}</span></p>}<div>{visibleCantrips.map((spell) => <SpellChoice key={spell.id} spell={spell} selected={draft.knownSpellIds.includes(spell.id)} showSupport={!cantripSupport} onClick={() => toggleSpell(spell.id)} />)}</div></section>}
+              {leveledSpells.length > 0 && <section><header><span>Заклинания 1 круга</span><b>{spellRules.mode === 'known' ? `${selectedKnownSpells}/${knownLimit}` : spellRules.mode === 'spellbook' ? `книга ${selectedKnownSpells}/${bookLimit}` : `подготовлено ${selectedPreparedSpells}/${preparedLimit}`}</b></header>{leveledSupport && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{leveledSupport.label}</b> — {leveledSupport.explanation}</span></p>}<div>{visibleLeveledSpells.map((spell) => {
                 const preparedMode = spellRules.mode === 'prepared'
                 const inBook = draft.knownSpellIds.includes(spell.id)
                 return <SpellChoice key={spell.id} spell={spell} showSupport={!leveledSupport} selected={preparedMode ? draft.preparedSpellIds.includes(spell.id) : inBook} secondary={spellRules.mode === 'spellbook' && inBook ? { selected: draft.preparedSpellIds.includes(spell.id), onClick: () => toggleSpell(spell.id, true) } : undefined} onClick={() => preparedMode ? toggleSpell(spell.id, true) : toggleSpell(spell.id)} />
@@ -383,6 +753,14 @@ export function CharacterCreationWizard({
               : '')}
           </div>
           <span>
+            {/* Готовый герой одним нажатием: заполняет все шаги валидными
+                значениями, дальше их можно править вручную. */}
+            <button
+              className="creation-roll"
+              disabled={busy}
+              title="Заполнить все шаги случайным, но корректным героем"
+              onClick={rollRandomHero}
+            ><Sparkles size={15} />Случайный герой</button>
             <button disabled={step === 0 || busy} onClick={() => setStep((current) => Math.max(0, current - 1))}><ArrowLeft size={15} />Назад</button>
             {step < steps.length - 1
               ? <button className="primary" onClick={next}>Дальше<ArrowRight size={15} /></button>
@@ -412,14 +790,22 @@ function SpellChoice({
   // собирал книгу, половину которой движок потом отказывался применять.
   const support = mechanicsSupportPresentation(spell.mechanics_support)
   const blocked = support.blocked
+  // Список одних названий не давал понять, что заклинание делает: описание,
+  // время накладывания и дальность приходили с сервера и никуда не выводились.
+  const meta = [spell.casting_time, spell.range_text].filter(Boolean).join(' · ')
   return <article className={`${selected ? 'selected' : ''} ${blocked ? 'blocked' : ''}`.trim()}>
     <button
       onClick={onClick}
       disabled={blocked}
       aria-label={`${spell.name}, ${spell.level === 0 ? 'заговор' : 'заклинание 1 круга'}, ${support.label}`}
-      title={support.explanation}
+      title={spell.description || support.explanation}
     >
-      <span><strong>{spell.name}</strong><small>{spell.level === 0 ? 'заговор' : '1 круг'}{showSupport ? ` · ${support.shortLabel}` : ''}</small></span><Check size={14} />
+      <CombatIcon id={spell.id} kind="spell" hint={spell.name} size={52} />
+      <span>
+        <strong>{spell.name}</strong>
+        <small>{spell.level === 0 ? 'заговор' : '1 круг'}{meta ? ` · ${meta}` : ''}{showSupport ? ` · ${support.shortLabel}` : ''}</small>
+        {spell.description && <i>{spell.description}</i>}
+      </span><Check size={14} />
     </button>
     {secondary && <button className={secondary.selected ? 'prepare selected' : 'prepare'} onClick={secondary.onClick}>{secondary.selected ? 'Подготовлено' : 'Подготовить'}</button>}
   </article>

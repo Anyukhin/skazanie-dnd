@@ -514,14 +514,26 @@ function drawTerrainRect(
 }
 
 /**
- * Деревянные фактуры собраны из более крупных досок, чем остальные тайлы.
- * Большее окно исходника на одну клетку уменьшает доски без пересборки
- * лицензированного растрового набора и сохраняет непрерывность текстуры.
+ * Во сколько раз растянуть окно исходника на одну клетку. Большее окно
+ * уменьшает саму фактуру, не трогая ни лицензированный растровый набор, ни
+ * клетку как игровую единицу, и сохраняет непрерывность текстуры по карте.
+ *
+ * Доски были крупными изначально. Каменная кладка попала сюда после разбора
+ * видео: булыжник пола и блоки стен читались размером с полклетки, из-за чего
+ * фишка героя выглядела игрушечной рядом с кладкой. Земля, трава и песок
+ * остаются как есть — у них нет заметного глазу модуля, и уменьшение
+ * превратило бы их в шум.
  */
+const TEXTURE_REPEAT_SCALE: Partial<Record<TacticalMaterial, number>> = {
+  wood: WOOD_TEXTURE_REPEAT_SCALE,
+  stone: 2,
+  marble: 2,
+  metal: 2,
+}
+
 export function terrainCellsPerTileFor(material: TacticalMaterial, cellsPerTile: number) {
-  return material === 'wood'
-    ? Math.max(1, cellsPerTile / WOOD_TEXTURE_REPEAT_SCALE)
-    : cellsPerTile
+  const scale = TEXTURE_REPEAT_SCALE[material] ?? 1
+  return scale > 1 ? Math.max(1, cellsPerTile / scale) : cellsPerTile
 }
 
 /**

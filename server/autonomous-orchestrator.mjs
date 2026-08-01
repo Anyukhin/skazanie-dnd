@@ -33,6 +33,7 @@ import {
   isEnemyActor,
   isLivingActor,
   normalizeCampaignState,
+  previewD20Check,
 } from './rules-engine.mjs'
 import { classifyFreeActionKind } from './intent-parser.mjs'
 import {
@@ -46,6 +47,7 @@ import {
   attemptFingerprint,
   bindFreeActionReadingToState,
   contextualResolutionFor,
+  d20CheckLabel,
   failForwardFor,
   interpretFreeAction,
   previousFailedAttempt,
@@ -219,7 +221,7 @@ function parseJsonFact(fact) {
 
 export class AutonomousCampaignOrchestrator {
   constructor({
-    loreAuthor = null, eventStore, rulesEngine, narrator = null, actionAdjudicator = null, now = () => Date.now() } = {}) {
+    loreAuthor = null, eventStore, rulesEngine, narrator = null, actionAdjudicator = null, rollRegistry = null, now = () => Date.now() } = {}) {
     if (!eventStore || !rulesEngine) throw new TypeError('AutonomousCampaignOrchestrator requires eventStore and rulesEngine')
     this.eventStore = eventStore
     this.rulesEngine = rulesEngine
@@ -228,6 +230,9 @@ export class AutonomousCampaignOrchestrator {
     // обязана оставаться играбельной без ключа модели.
     this.actionAdjudicator = actionAdjudicator
     this.loreAuthor = loreAuthor
+    // Реестр бросков нужен только ручному подтверждению кубика игроком.
+    // Без него свободное действие разрешается как раньше — серверным броском.
+    this.rollRegistry = rollRegistry
     this.now = now
   }
 
@@ -629,7 +634,7 @@ export class AutonomousCampaignOrchestrator {
     return { intent, authorization, results, state: loaded.state, state_version: loaded.state_version, admin_commands: 0 }
   }
 
-  async handleUnknownAction({ campaignId, action, idempotencyKey, playerId = '', intent = null }) {
+  async handleUnknownAction({ campaignId, action, idempotencyKey, playerId = '', intent = null, manualRoll = false, verifiedRoll = null }) {
     const text = clean(action, 1_000)
     const loaded = await this.load(campaignId)
     const actorId = clean(playerId, 120)
@@ -755,9 +760,17 @@ export class AutonomousCampaignOrchestrator {
     // Смысл задумки понимает агент, если он есть; всё остальное — СЛ, бросок,
     // сверка средств, цена хода и последствие — остаётся за сервером.
     const deterministicReading = interpretFreeAction(text)
-    const proposedReading = this.actionAdjudicator
-      ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
-      : deterministicReading
+    // Вторая фаза ручного броска: прочтение действия зафиксировано вместе с
+    // проверкой в реестре бросков. Повторный вызов модели дал бы другой навык
+    // или СЛ — не те, что игроку показали перед броском.
+    const storedReading = verifiedRoll?.context?.kind === 'free_action'
+      && String(verifiedRoll.context.action_fingerprint ?? '') === digest(text)
+      ? verifiedRoll.context.reading ?? null
+      : null
+    const proposedReading = storedReading
+      ?? (this.actionAdjudicator
+        ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
+        : deterministicReading)
     const reading = bindFreeActionReadingToState(loaded.state, actorId, text, proposedReading)
     if (reading.reference_ambiguities.length) {
       return {
@@ -943,6 +956,44 @@ export class AutonomousCampaignOrchestrator {
       }
     }
 
+    // Ручной бросок: проверка объявляется, но кубик остаётся за игроком.
+    // Сервер регистрирует её в реестре бросков и ничего не коммитит; ход
+    // завершится вторым запросом с roll_id, выданным `/api/roll`. Прочтение
+    // действия едет в контексте проверки, чтобы вторая фаза не спрашивала
+    // модель заново и игрок бросал ровно то, что ему объявили.
+    if (manualRoll && !verifiedRoll && this.rollRegistry) {
+      const preview = previewD20Check(loaded.state, {
+        actorId, kind: 'check', ability: reading.ability, skill: reading.skill, difficulty: resolution.difficulty,
+      })
+      const check = this.rollRegistry.registerCheck({
+        campaignId,
+        actorId,
+        label: d20CheckLabel({ kind: 'check', ability: preview.ability, skill: preview.skill }),
+        modifier: preview.modifier,
+        difficulty: preview.difficulty,
+        ability: preview.ability,
+        advantage: preview.advantage,
+        disadvantage: preview.disadvantage,
+        context: { kind: 'free_action', action_fingerprint: digest(text), reading },
+      })
+      return {
+        kind: 'check_required',
+        check: { ...check, sides: 20, skill: preview.skill },
+        stakes,
+        narration: `Требуется проверка: ${check.label}, СЛ ${check.difficulty}. Бросьте d20, чтобы узнать исход.`,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
+    // Бросок, который игрок уже сделал через реестр, передаётся движку как
+    // выпавшие кости; математику и итог движок пересчитывает сам.
+    const { context: _checkContext, ...verifiedRollPayload } = verifiedRoll ?? {}
     // Проверка: бросок делает движок своим Dice Service, число СЛ выбрал сервер.
     const checkCommit = await run([
       declaration,
@@ -962,6 +1013,7 @@ export class AutonomousCampaignOrchestrator {
         skill: reading.skill,
         difficulty: resolution.difficulty,
         difficulty_category: resolution.difficulty_category,
+        ...(verifiedRoll ? { verified_roll: verifiedRollPayload } : {}),
       },
     ])
     verifyDuplicate(checkCommit)
