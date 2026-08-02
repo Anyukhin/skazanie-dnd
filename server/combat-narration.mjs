@@ -123,6 +123,8 @@ function tacticalNarration(events, state) {
       meaningful.push(targetIsEnemy
         ? `${actor} атакует ${target}${reason}: ${outcome}.`
         : `${actor} атакует ${target}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
+    } else if (event.event_type === 'ItemEffectIneffective') {
+      meaningful.push(`${payload.item_name || 'Склянка'} разбивается о ${target}, но вреда не причиняет.`)
     } else if (event.event_type === 'MonsterAbilityRecharged') {
       // Качественно и без чисел: порог recharge — часть стат-блока, и за столом
       // его не объявляют. Игрок узнаёт ровно то, что видит: приём снова готов.
@@ -237,7 +239,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
-  'MonsterAbilityRecharged',
+  'ItemEffectIneffective', 'MonsterAbilityRecharged',
   'KnockoutEnded', 'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',

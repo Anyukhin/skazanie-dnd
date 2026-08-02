@@ -1174,6 +1174,12 @@ function readiedOptionFor(readied, reason = 'Триггер сработал') {
     : { id: 'readied-attack', name: 'Заготовленная атака', description: `${reason} — нанести заготовленный удар.`, resource: null, cost: 1 }
 }
 
+/**
+ * Что гасит действие «Потушить пламя». Список закрыт: тушить можно только то
+ * горение, которое движок действительно ведёт условием с повторяющимся уроном.
+ */
+const EXTINGUISHABLE_FLAME_CONDITIONS = new Set(['searing-smite-flames', 'alchemists-fire-flames'])
+
 const READIED_TRIGGERS = Object.freeze({
   'enemy-approaches': 'враг подойдёт вплотную',
   'enemy-casts-spell': 'враг начнёт творить заклинание',
@@ -4047,6 +4053,92 @@ function monsterRechargeAtTurnStart(state, command, actorIdValue, diceService) {
   return { events, rolls }
 }
 
+/**
+ * Метательная склянка: кислота, святая вода, алхимический огонь.
+ *
+ * Редакция описывает их одинаково — «бросок как импровизированным оружием», —
+ * поэтому и здесь путь один, а различаются только данные профиля: чем бьёт,
+ * кому вредит и что оставляет после попадания. Заводить каждой склянке свою
+ * ветку значило бы развести три одинаковых правила.
+ *
+ * Владение импровизированным оружием движок не моделирует, поэтому к броску
+ * идёт только модификатор Ловкости. Это названо в ограничении каталога: тихо
+ * подставить бонус мастерства было бы выдумкой в пользу игрока.
+ *
+ * Святая вода вредит лишь нежити и исчадиям. Промолчать при попадании по
+ * остальным нельзя — за столом склянка разбилась и все это видели, — поэтому
+ * уходит отдельное событие `ItemEffectIneffective` с причиной.
+ */
+function thrownFlaskEvents(state, command, { actor, item, use, diceService, rolls, resolveDamage }) {
+  const targetId = String(command.target_id ?? '')
+  const target = findActor(state, targetId)
+  if (!target) throw new RulesValidationError('Цель броска не найдена', 'TARGET_NOT_FOUND')
+  const events = []
+  const armorClass = effectiveArmorClass(state, target, targetId)
+  const attack = diceService.rollD20({
+    modifier: abilityModifier(actor?.abilities?.dex),
+    purpose: `item_thrown:${String(item.catalog_id ?? item.id)}`,
+    actorId: command.actor_id,
+    visibility: command.visibility,
+  })
+  rolls.push(attack)
+  const natural = safeInteger(attack.kept, 0)
+  const critical = natural === 20
+  const hit = critical || (natural !== 1 && attack.total >= armorClass)
+  events.push(eventFrom(commandWithRules(command, RULE_IDS.attack, RULE_IDS.armorClass, critical ? RULE_IDS.criticalHit : null), 'AttackResolved', {
+    ...attack,
+    item_id: item.id,
+    item_name: item.name,
+    improvised_thrown: true,
+    armor_class: armorClass,
+    hit,
+    critical,
+    damage_type: use.damage_type ?? null,
+    range_feet: safeInteger(use.range_feet, 20),
+  }, [targetId]))
+  if (!hit) return events
+
+  const allowedTypes = uniqueStrings(use.damage_creature_types).map((value) => value.toLowerCase())
+  const creatureType = String(target?.creature_type ?? target?.creatureType ?? '').toLowerCase()
+  if (allowedTypes.length && !allowedTypes.includes(creatureType)) {
+    events.push(eventFrom(command, 'ItemEffectIneffective', {
+      item_id: item.id,
+      item_name: item.name,
+      reason: 'creature-type',
+      damage_type: use.damage_type ?? null,
+      applicable_creature_types: allowedTypes,
+    }, [targetId]))
+    return events
+  }
+
+  if (use.damage) {
+    const expression = critical ? criticalDamageExpression(String(use.damage)) : String(use.damage)
+    const damageRoll = diceService.roll(expression, `item_thrown_damage:${String(item.catalog_id ?? item.id)}`, command.actor_id, command.visibility ?? 'public')
+    rolls.push(damageRoll)
+    events.push(eventFrom(command, 'DieRolled', { ...damageRoll, item_id: item.id, damage_type: use.damage_type }, []))
+    const payload = resolveDamage(state, targetId, damageRoll.total, String(use.damage_type ?? 'acid'))
+    events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', {
+      ...payload, item_id: item.id, item_name: item.name, critical,
+    }, [targetId]))
+    events.push(...zeroHitPointDamageConsequences(state, command, targetId, payload, { critical }))
+  }
+
+  // Горение — обычное условие с повторяющимся уроном: тик в начале хода цели
+  // движок уже умеет, своей машинерии пламени не заводится.
+  if (use.on_hit_condition) {
+    events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: String(use.on_hit_condition.id),
+      duration: null,
+      source_actor: command.actor_id,
+      item_id: item.id,
+      item_name: item.name,
+      recurring_damage: String(use.on_hit_condition.recurring_damage),
+      recurring_damage_type: String(use.on_hit_condition.recurring_damage_type ?? 'fire'),
+    }, [targetId]))
+  }
+  return events
+}
+
 function deathSavingThrowAtTurnStart(state, command, actorIdValue, diceService) {
   if (!isUnstableDyingHero(state, actorIdValue)) return { events: [], rolls: [] }
   const actor = playerActor(state, actorIdValue)
@@ -6844,8 +6936,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(actionEvent({ success: check.success, difficulty }))
       } else if (action.id === 'extinguish-self' || action.id === 'extinguish-ally') {
         const extinguishTargetId = action.id === 'extinguish-self' ? command.actor_id : actionTargetId
-        const flames = (state.mechanics.conditions[extinguishTargetId] ?? []).find((condition) => String(condition?.id ?? condition) === 'searing-smite-flames')
-        if (!flames) throw new RulesValidationError('На цели нет пламени «Пылающей кары»', 'SEARING_SMITE_NOT_ACTIVE')
+        // Тушить одинаково нечем: пламя «Пылающей кары» и пламя алхимического
+        // огня гасятся одним и тем же действием, поэтому действие ищет любое
+        // горение, а не одно заклинание.
+        const flames = (state.mechanics.conditions[extinguishTargetId] ?? []).find((condition) => EXTINGUISHABLE_FLAME_CONDITIONS.has(String(condition?.id ?? condition)))
+        if (!flames) throw new RulesValidationError('На цели нет горящего пламени', 'FLAMES_NOT_ACTIVE')
         const sourceActorId = String(flames.source_actor ?? '')
         const sourceConcentration = state.mechanics.concentration[sourceActorId]
         if (flames.effect_id && String(sourceConcentration?.effect_id ?? '') === String(flames.effect_id)) {
@@ -9670,6 +9765,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           item_name: item.name,
         }, [command.target_id]))
       }
+      if (use.kind === 'thrown_flask') events.push(...thrownFlaskEvents(state, command, {
+        actor, item, use, diceService, rolls, resolveDamage: resolveDamagePayload,
+      }))
       if (safeInteger(use.consumes, 0) > 0) {
         events.push(eventFrom(command, 'ItemConsumed', {
           item_id: item.id,
@@ -11828,6 +11926,7 @@ export function eventSummary(event, resolveName = (id) => id) {
         ? `Урон снижен Resistance на ${payload.resistance_cantrip_reduction}; HP ${payload.hp_before} → ${payload.hp_after}`
         : `Урон: ${payload.applied_amount}; HP ${payload.hp_before} → ${payload.hp_after}`
     case 'SpellImmunityResolved': return `${payload.item_immunity_sources?.[0]?.item_name || 'Магический предмет'} полностью защищает от заклинания ${payload.spell_id}`
+    case 'ItemEffectIneffective': return `${payload.item_name || 'Предмет'} не действует на ${named((event.target_ids ?? [])[0]) || 'цель'}`
     case 'HealingApplied': return `Лечение: ${payload.applied_amount}; HP ${payload.hp_before} → ${payload.hp_after}`
     case 'HitPointMaximumReduced': return `Максимум HP снижен: ${payload.maximum_hp_before} → ${payload.maximum_hp_after}`
     case 'HitPointMaximumReductionPrevented': return `Aura of Life предотвращает снижение максимума HP`

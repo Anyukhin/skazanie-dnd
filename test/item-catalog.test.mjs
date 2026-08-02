@@ -106,7 +106,13 @@ test('manifest содержит ровно согласованные 107 зап
   assert.equal(ITEM_CATALOG['srd_5_2_1:potion-of-healing'].mechanics_source_page, 99)
   assert.deepEqual(
     entries.filter((entry) => entry.mechanics_status === 'verified').map((entry) => entry.catalog_id).sort(),
-    ['srd_5_2_1:healers-kit', 'srd_5_2_1:potion-of-healing'],
+    [
+      'srd_5_2_1:acid',
+      'srd_5_2_1:alchemists-fire',
+      'srd_5_2_1:healers-kit',
+      'srd_5_2_1:holy-water',
+      'srd_5_2_1:potion-of-healing',
+    ],
   )
   assert.deepEqual(ITEM_CATALOG['srd_5_2_1:longsword-plus-1'].source_pages, [91, 206, 253])
   assert.equal(ITEM_CATALOG['srd_5_2_1:longsword-plus-1'].price_cp, 41_500)
