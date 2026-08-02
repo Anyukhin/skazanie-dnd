@@ -189,6 +189,14 @@ test('режим импровизации меняет только владел
     'chaos',
   )
 
+  // Смена режима не должна быть молчаливой: игроки видят её в летописи.
+  const journal = await request(baseUrl, '/api/rooms/IMPROV', { cookie: ownerCookie })
+  assert.equal(journal.status, 200, journal.text)
+  const modeMessages = (journal.body.state.messages ?? []).filter((message) => /Режим импровизации изменён/u.test(message.text))
+  assert.equal(modeMessages.length, 1, 'ровно одна запись на одну фактическую смену')
+  assert.equal(modeMessages[0].speaker, 'system')
+  assert.match(modeMessages[0].text, /Хаос/u)
+
   // Мусор отвергается отдельным кодом и не затирает сохранённый режим.
   const rejected = await request(baseUrl, '/api/campaigns/IMPROV/settings', {
     method: 'PATCH',
@@ -211,6 +219,12 @@ test('режим импровизации меняет только владел
   assert.equal(styleOnly.status, 200, styleOnly.text)
   assert.equal(styleOnly.body.settings.improvMode, 'chaos')
   assert.equal(styleOnly.body.settings.narratorStyle, 'ironic')
+  // Запись в летописи одна: PATCH без фактической смены режима её не повторяет.
+  const afterStyleOnly = await request(baseUrl, '/api/rooms/IMPROV', { cookie: ownerCookie })
+  assert.equal(
+    (afterStyleOnly.body.state.messages ?? []).filter((message) => /Режим импровизации изменён/u.test(message.text)).length,
+    1,
+  )
 
   // Перезапуск: настройка перечитывается с диска, а не живёт в памяти процесса.
   await stopServer(child)

@@ -127,14 +127,15 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 | `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |
 | `server/scene-architect.mjs` | `prompts/map_architect/v3.txt` | новые области |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v3.txt` | исходная ситуация кампании |
-| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v2.txt` | прочтение свободного действия |
+| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v3.txt` | прочтение свободного действия |
 
 Больше промпты не загружает никто; ролей семь, а загружаемых промптов восемь:
 Режиссёр держит по файлу на режим импровизации кампании (`improv_mode`), и
 вариант выбирается в `choose()`, а не импортом. Файлов в `prompts/` ещё больше:
-рядом с загружаемой версией лежат предыдущие (`campaign_creator/v1`, `v2`,
-`director/v1`, `map_architect/v1`, `v2`, `narrator/v1`—`v4`,
-`npc_controller/social_v1`, `v2`) плюс `narrator/few-shot-v1.json`. Актуальна та
+рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`,
+`campaign_creator/v1`, `v2`, `director/v1`, `map_architect/v1`, `v2`,
+`narrator/v1`—`v4`, `npc_controller/social_v1`, `v2`) плюс
+`narrator/few-shot-v1.json`. Актуальна та
 версия, которую действительно читает модуль из таблицы, — остальные оставлены
 как история контракта.
 Сторож соответствия — `test/security.test.mjs`. **Детерминированные модули без LLM:**

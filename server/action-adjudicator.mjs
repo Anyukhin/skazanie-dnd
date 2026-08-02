@@ -21,7 +21,7 @@ import { buildDataOnlyContext } from './security.mjs'
  * ошибке, таймауте или отсутствии ключа предложение молча заменяется
  * детерминированным прочтением, и игра продолжается.
  */
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v2.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v3.txt', import.meta.url)), 'utf8')
 
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const list = (value) => Array.isArray(value) ? value : []

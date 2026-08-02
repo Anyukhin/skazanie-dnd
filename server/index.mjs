@@ -2426,11 +2426,24 @@ const server = createServer((req, res) => {
       if (!Object.hasOwn(IMPROV_MODES, requestedImprovMode)) {
         return json(res, 400, { error: 'Неизвестный режим импровизации', code: 'IMPROV_MODE_INVALID' })
       }
+      const previousImprovMode = normalizeImprovMode(current.improvMode)
       const saved = saveCampaignAiSettings(campaignId, {
         model: requestedModel,
         narratorStyle: requestedStyle,
         improvMode: requestedImprovMode,
       })
+      // Смена режима меняет правила игры за столом, поэтому она не должна
+      // случаться молча. Это запись в летопись комнаты, а не событие движка:
+      // режим живёт в настройках кампании, а не в состоянии, и заводить ради
+      // строки в журнале тип события с миграцией replay было бы неверно.
+      if (requestedImprovMode !== previousImprovMode) {
+        appendRoomJournal(campaignId, [{
+          id: `improv-mode-${campaignId}-${Date.now()}`,
+          speaker: 'system',
+          author: 'Настройки кампании',
+          text: `Режим импровизации изменён: ${IMPROV_MODES[requestedImprovMode].label} — ${IMPROV_MODES[requestedImprovMode].description}.`,
+        }])
+      }
       return json(res, 200, {
         settings: { model: saved.model, narratorStyle: saved.narratorStyle, improvMode: saved.improvMode },
         availableModels: allowedAiModels,
