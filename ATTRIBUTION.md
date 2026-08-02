@@ -127,6 +127,37 @@ Drive. Исходные файлы — несжатые `.wav` из папок `
 подтверждёнными правами. Наличие файлов в репозитории само по себе не является
 подтверждением права на распространение.
 
+### Музыка мастеров создания
+
+Две дорожки играют только на экранах мастеров и в игровую комнату не попадают.
+В отличие от петель атмосферы, у обеих есть страница-источник с явной лицензией,
+поэтому здесь они разобраны поимённо.
+
+**`public/assets/audio/character-creation-old-tower-inn.mp3`** — «Medieval: The
+Old Tower Inn», автор **RandomMind**, лицензия **CC0 1.0** (public domain
+dedication). Источник:
+<https://opengameart.org/content/medieval-the-old-tower-inn>. CC0 не требует
+указания авторства; запись сделана добровольно, чтобы происхождение файла не
+терялось.
+
+**`public/assets/audio/world-creation-noonday-feast.mp3`** — «Noonday Feast of
+the Jolly Friar» из альбома *Nimueh's Gift*, автор **Elyvilon**, лицензия
+**CC BY 4.0**. Источник:
+<https://opengameart.org/content/medieval-fantasy-ambient-music-nimuehs-gift>.
+Текст лицензии: <https://creativecommons.org/licenses/by/4.0/>.
+
+**CC BY 4.0 обязывает.** Атрибуция для второй дорожки — не любезность, а
+условие лицензии: при любом распространении сборки указание автора, названия и
+лицензии обязано ехать вместе с ней. Эта запись и есть выполнение условия;
+удалять её нельзя, пока файл лежит в репозитории. Дорожка не изменялась —
+ни обрезки, ни перекодирования, ни нормализации громкости, — поэтому пометка о
+производной работе не требуется.
+
+SHA-256 и размеры обоих файлов записаны в `data/asset-rights.json`. Общий статус
+дерева `public/assets` остаётся `review_required`/`distribution: blocked` — он
+относится к набору целиком и не отменяется тем, что права на эти два файла
+подтверждены страницей-источником.
+
 ## Structured dnd.su mechanics overrides
 
 `data/dndsu-spell-mechanics-overrides.json` contains only original short structured summaries of verified mechanics from the linked dnd.su cards. It does not copy full page text and exists to correct ambiguities in the automatic parser.

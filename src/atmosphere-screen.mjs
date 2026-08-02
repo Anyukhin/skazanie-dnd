@@ -39,6 +39,46 @@ const SCREEN_ATTENUATION = Object.freeze({
 })
 
 /**
+ * Музыка мастеров. Владелец выбрал по дорожке на экран; процедурного фона у
+ * этих экранов по-прежнему нет — вместо него играет файл.
+ *
+ * Пути, а не импорты: файлы весят почти шесть мегабайт вместе и грузятся
+ * лениво, при заходе на экран, а не вместе с бандлом.
+ */
+export const SCREEN_MUSIC_TRACKS = Object.freeze({
+  'hero-forge': '/assets/audio/character-creation-old-tower-inn.mp3',
+  'world-forge': '/assets/audio/world-creation-noonday-feast.mp3',
+})
+
+/**
+ * Громкость дорожки как доля пользовательской настройки. Умеренно и заведомо
+ * не громче игрового фона: переход из мастера в комнату не должен звучать
+ * провалом громкости.
+ */
+const SCREEN_MUSIC_VOLUME = 0.7
+
+/**
+ * Дорожка для экрана либо `null`. Прихожая молчит намеренно: владелец просил
+ * «при запуске не будет звуков», и музыку туда не ставили.
+ *
+ * @param {string} screen
+ * @returns {string | null}
+ */
+export function screenMusicTrack(screen) {
+  return SCREEN_MUSIC_TRACKS[screen] ?? null
+}
+
+/**
+ * Доля пользовательской громкости для дорожки этого экрана.
+ *
+ * @param {string} screen
+ * @returns {number}
+ */
+export function screenMusicVolume(screen) {
+  return screenMusicTrack(screen) ? SCREEN_MUSIC_VOLUME : 0
+}
+
+/**
  * Экран по флагам приложения. Флаги приходят как есть из состояния React, и
  * решение принимается здесь, а не тремя `?:` в компоненте.
  *

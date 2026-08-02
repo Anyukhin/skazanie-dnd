@@ -1231,7 +1231,9 @@
     ["audio/ambience/forest.ogg", "c3dfaa6fae233db01d1ea7351fce9c95af51b3972e9fcc3076a0f90eb75a0d23", 344577],
     ["audio/ambience/road.ogg", "09f1763755be73ab69789131721348b17e8d5fa1944ca41ce299abec9c890ff8", 349393],
     ["audio/ambience/settlement.ogg", "44d4916dede3bb2556f67324b563f653c7c976a9fd551803b07a4302a9c032d0", 385793],
-    ["audio/ambience/temple.ogg", "9019ab395a1671606f05a3b9323839dab7cd7419517b8f66da725108fcbfc37b", 484544]
+    ["audio/ambience/temple.ogg", "9019ab395a1671606f05a3b9323839dab7cd7419517b8f66da725108fcbfc37b", 484544],
+    ["audio/character-creation-old-tower-inn.mp3", "3fe4070015b880b591c79a7fca31156a0083a8768d88a39da39ab6c54f2f014d", 2535801],
+    ["audio/world-creation-noonday-feast.mp3", "09bad17b9b243f5a6a63e9bbfc0d031832311258a86f64875f7d5e1b4f1fbe41", 3336654]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",

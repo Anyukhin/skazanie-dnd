@@ -10,3 +10,9 @@ export function atmosphereScreenFor(flags?: {
 }): AtmosphereScreen
 
 export function atmosphereScreenAttenuation(screen: string): number
+
+export const SCREEN_MUSIC_TRACKS: Readonly<Record<string, string>>
+
+export function screenMusicTrack(screen: string): string | null
+
+export function screenMusicVolume(screen: string): number

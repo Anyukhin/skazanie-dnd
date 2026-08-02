@@ -8,13 +8,17 @@
 // владельца, и придумывать его за него нельзя. Здесь проверяется только выбор
 // экрана и приглушение.
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import {
   ATMOSPHERE_SCREENS,
+  SCREEN_MUSIC_TRACKS,
   atmosphereScreenAttenuation,
   atmosphereScreenFor,
+  screenMusicTrack,
+  screenMusicVolume,
 } from '../src/atmosphere-screen.mjs'
 
 const audioSource = readFileSync(new URL('../src/atmosphere-audio.ts', import.meta.url), 'utf8')
@@ -51,7 +55,51 @@ test('вход молчит, мастера приглушены, игра зв�
   assert.equal(atmosphereScreenAttenuation(undefined), 1)
 })
 
-test('новых музыкальных тем не заведено, приглушение идёт поверх настройки игрока', () => {
+test('музыка есть только у мастеров, прихожая молчит', () => {
+  assert.deepEqual(Object.keys(SCREEN_MUSIC_TRACKS).sort(), ['hero-forge', 'world-forge'])
+  assert.equal(screenMusicTrack('hero-forge'), '/assets/audio/character-creation-old-tower-inn.mp3')
+  assert.equal(screenMusicTrack('world-forge'), '/assets/audio/world-creation-noonday-feast.mp3')
+  // Владелец просил «при запуске не будет звуков»: музыку туда не ставили.
+  assert.equal(screenMusicTrack('lobby'), null)
+  assert.equal(screenMusicTrack('play'), null)
+  assert.equal(screenMusicTrack('что-то ещё'), null)
+
+  // Громкость — доля пользовательской настройки, и заведомо не громче игры.
+  for (const screen of ['hero-forge', 'world-forge']) {
+    const volume = screenMusicVolume(screen)
+    assert.ok(volume > 0 && volume <= 1, `${screen}: ${volume}`)
+    assert.ok(volume < 1, `${screen}: музыка мастера не должна быть громче игрового фона`)
+  }
+  assert.equal(screenMusicVolume('lobby'), 0)
+  assert.equal(screenMusicVolume('play'), 0)
+})
+
+test('файлы музыки лежат в репозитории и объявлены в реестре прав', () => {
+  const registry = JSON.parse(readFileSync(new URL('../data/asset-rights.json', import.meta.url), 'utf8'))
+  const declared = new Map(registry.assets.map((entry) => [entry[0], entry]))
+  for (const track of Object.values(SCREEN_MUSIC_TRACKS)) {
+    const relative = track.replace(/^\/assets\//u, '')
+    const file = new URL(`../public/assets/${relative}`, import.meta.url)
+    const bytes = readFileSync(file)
+    assert.ok(bytes.length > 100_000, `${relative}: файл подозрительно мал`)
+    const entry = declared.get(relative)
+    assert.ok(entry, `${relative}: файл не объявлен в data/asset-rights.json`)
+    assert.equal(entry[1], createHash('sha256').update(bytes).digest('hex'), `${relative}: хеш разошёлся с реестром`)
+    assert.equal(entry[2], bytes.length, `${relative}: размер разошёлся с реестром`)
+  }
+
+  // CC BY 4.0 обязывает указать автора: без этой записи файл распространять
+  // нельзя, и сторож не даст её потерять.
+  const attribution = readFileSync(new URL('../ATTRIBUTION.md', import.meta.url), 'utf8')
+  assert.match(attribution, /Noonday Feast of\s*\nthe Jolly Friar|Noonday Feast of the Jolly Friar/u)
+  assert.match(attribution, /Elyvilon/u)
+  assert.match(attribution, /CC BY 4\.0/u)
+  assert.match(attribution, /opengameart\.org\/content\/medieval-fantasy-ambient-music-nimuehs-gift/u)
+  assert.match(attribution, /RandomMind/u)
+  assert.match(attribution, /opengameart\.org\/content\/medieval-the-old-tower-inn/u)
+})
+
+test('новых процедурных тем не заведено, приглушение идёт поверх настройки игрока', () => {
   // Сторож против «изобрели тему»: каталог настроений обязан остаться прежним.
   const moods = audioSource.match(/export const ATMOSPHERE_MOODS = \[([\s\S]*?)\] as const/u)
   assert.ok(moods)

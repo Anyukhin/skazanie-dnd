@@ -28,6 +28,7 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { atmosphereScreenAttenuation, atmosphereScreenFor } from './atmosphere-screen.mjs'
+import { createScreenMusic, type ScreenMusicPlayer } from './screen-music'
 import { normalizeVoiceMode, pickNarrationVoice, shouldAutoSpeak, type NarrationVoiceMode } from './narration-tts.mjs'
 import { cancelNarration, observeVoices, russianVoiceAvailable, speakNarration } from './narration-speech'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
@@ -660,6 +661,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     'Notification' in window ? Notification.permission : 'unsupported'
   ))
   const atmosphereAudioRef = useRef<AtmosphereAudio | null>(null)
+  const screenMusicRef = useRef<ScreenMusicPlayer | null>(null)
   const normalDocumentTitle = useRef(document.title || DEFAULT_DOCUMENT_TITLE)
   const latestNarratorMessage = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
   const visibleNarrationPreview = narrationPreview
@@ -989,7 +991,21 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       heroWizardOpen: Boolean(creatingPlayerId),
     })
     atmosphereAudioRef.current?.setScreenAttenuation(atmosphereScreenAttenuation(screen))
+    // Музыка мастеров: файл начинает качаться только сейчас, при заходе, и
+    // останавливается при уходе с экрана.
+    screenMusicRef.current?.setScreen(screen)
   }, [campaignsOpen, worldWizardOpen, creatingPlayerId])
+  useEffect(() => {
+    const music = createScreenMusic({ ambientVolume: atmosphereSettings.ambientVolume, muted: atmosphereSettings.muted })
+    screenMusicRef.current = music
+    return () => {
+      if (screenMusicRef.current === music) screenMusicRef.current = null
+      music.dispose()
+    }
+  }, [])
+  useEffect(() => {
+    screenMusicRef.current?.setSettings({ ambientVolume: atmosphereSettings.ambientVolume, muted: atmosphereSettings.muted })
+  }, [atmosphereSettings.ambientVolume, atmosphereSettings.muted])
   useEffect(() => {
     atmosphereAudioRef.current?.setWaiting(state.isNarrating)
   }, [state.isNarrating])
