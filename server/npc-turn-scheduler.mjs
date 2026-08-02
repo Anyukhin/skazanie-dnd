@@ -124,7 +124,10 @@ function actionProfiles(state, enemy) {
   const requiredActionId = multiattack?.same_action === true && attacksUsed > 0
     ? String(economy.multiattack_action_id ?? '') || null
     : fixedSequence[attacksUsed] ?? null
-  const available = explicit.filter((action) => !(Number(action?.uses) > 0 && spent.has(`monster-action-used:${action.id}`))
+  // `uses` и `recharge` тратятся одним маркером, поэтому и отсеиваются одинаково:
+  // разряженное дыхание не должно попадать в кандидаты — движок всё равно
+  // ответит `MONSTER_ACTION_SPENT`, и ход существа пропал бы впустую.
+  const available = explicit.filter((action) => !((Number(action?.uses) > 0 || Number(action?.recharge) > 0) && spent.has(`monster-action-used:${action.id}`))
     && (!requiredActionId || String(action?.id ?? '') === requiredActionId)
     && (!actionCounts.size || usedActionIds.filter((id) => id === String(action?.id ?? '')).length < (actionCounts.get(String(action?.id ?? '')) ?? 0)))
   if (available.length) return available.map((action) => attackProfileFor(state, actorId(enemy), action.id)).filter(Boolean)
@@ -194,6 +197,8 @@ const COVER_TARGET_PENALTY = Object.freeze({ none: 0, half: 70, 'three-quarters'
 const OWN_COVER_BONUS = Object.freeze({ none: 0, half: 45, 'three-quarters': 90 })
 const CLEAR_SHOT_BONUS = 200
 const HIGH_GROUND_BONUS = 120
+/** Надбавка заряженной recharge-способности: она сильнее обычной атаки. */
+const RECHARGE_READY_BONUS = 120
 /**
  * Потолки перебора. Поиск пути дороже всей остальной оценки вместе взятой,
  * поэтому позиции сначала оцениваются геометрией (это дёшево), и только у
@@ -472,6 +477,10 @@ function targetCandidates(state, enemy) {
       const alreadyControlled = profile.on_hit?.condition && conditionIds(state, actorId(target)).has(String(profile.on_hit.condition))
       const controlValue = profile.on_hit?.condition && !alreadyControlled ? 80 + Number(profile.tactical_priority || 0) * 10 : 0
       const packValue = support && (hasTrait(enemy, 'pack-tactics') || hasTrait(enemy, 'martial-advantage')) ? 90 : 0
+      // Заряженная recharge-способность — обычно сильнейший ход существа, и
+      // держать её «на потом» смысла нет: следующий бросок вернёт её сам, а
+      // непотраченная она не стоит ничего. Разряженная сюда не доходит вовсе.
+      const rechargeValue = Number(profile.recharge) > 0 ? RECHARGE_READY_BONUS : 0
       const rangedAtMeleePenalty = profile.kind === 'ranged' && enemyAt && targetAt && Math.max(Math.abs(enemyAt.x - targetAt.x), Math.abs(enemyAt.y - targetAt.y)) === 1 ? 70 : 0
       // Укрытие и высота считаются движковыми функциями и только для стрельбы:
       // вплотную укрытия нет, а высота в ближнем бою движком не учитывается.
@@ -493,7 +502,7 @@ function targetCandidates(state, enemy) {
         + (relentlessPursuit
           ? Math.max(0, 800 - pathDistance * 80)
           : damage >= targetHp ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))
-        + (relentlessPursuit ? 0 : Math.max(0, 22 - targetArmor) * 4 + controlValue + packValue)
+        + (relentlessPursuit ? 0 : Math.max(0, 22 - targetArmor) * 4 + controlValue + packValue) + rechargeValue
         - pathDistance * 3 - rangedAtMeleePenalty - coverPenalty + highGround
       candidates.push({ actor: target, path, inRange: inRange && !blockedShot, blockedShot, coverLevel, distance: pathDistance, profile, score })
     }

@@ -136,7 +136,10 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     traits: [{ id: 'spider-climb', name: 'Паучье лазание' }, { id: 'web-walker', name: 'Хождение по паутине' }],
     action_profiles: [
       { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 5, damage_expression: '1d8+3', damage_type: 'piercing', range_feet: 5, on_hit: { save_ability: 'con', save_dc: 11, damage_expression: '2d8', damage_type: 'poison', half_on_save: true } },
-      { id: 'web', name: 'Паутина', kind: 'ranged', attack_modifier: 5, damage_amount: 0, damage_type: 'untyped', range_feet: 60, normal_range_feet: 30, on_hit: { condition: 'restrained', duration: 'until-next-turn' }, uses: 1, tactical_priority: 8 },
+      // Recharge 5–6 из стат-блока. Раньше стояло `uses: 1` — грубое
+      // приближение «один раз за бой»: способность не возвращалась никогда,
+      // хотя по редакции паук пускает её снова, едва выпадет 5 или 6.
+      { id: 'web', name: 'Паутина', kind: 'ranged', attack_modifier: 5, damage_amount: 0, damage_type: 'untyped', range_feet: 60, normal_range_feet: 30, on_hit: { condition: 'restrained', duration: 'until-next-turn' }, recharge: 5, tactical_priority: 8 },
     ],
   },
   'srd_5_2_1:orc': {

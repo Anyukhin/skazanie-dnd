@@ -105,6 +105,10 @@ function tacticalNarration(events, state) {
     } else if (event.event_type === 'ActorMoved') {
       meaningful.push(`${actor} перемещается на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
     } else if (event.event_type === 'AttackResolved') {
+      // Особый приём объявляется отдельной строкой: иначе он тонет в обычном
+      // «атакует — попадание», и стол не замечает, что существо потратило то,
+      // чего у него больше нет до следующего броска.
+      if (payload.recharge_action === true) meaningful.push(`${actor} пускает в ход «${String(payload.action_name || payload.action_id || 'особый приём')}».`)
       const reason = attackConditionReason(payload)
         + (payload.high_ground === 'higher' ? ' с возвышенности' : payload.high_ground === 'lower' ? ' снизу вверх' : '')
         + (payload.cover ? ` сквозь ${[
@@ -119,6 +123,10 @@ function tacticalNarration(events, state) {
       meaningful.push(targetIsEnemy
         ? `${actor} атакует ${target}${reason}: ${outcome}.`
         : `${actor} атакует ${target}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
+    } else if (event.event_type === 'MonsterAbilityRecharged') {
+      // Качественно и без чисел: порог recharge — часть стат-блока, и за столом
+      // его не объявляют. Игрок узнаёт ровно то, что видит: приём снова готов.
+      meaningful.push(`${target}: «${String(payload.name || payload.action_id || 'особый приём')}» снова наготове.`)
     } else if (event.event_type === 'AreaAttackResolved') {
       meaningful.push(`${actor} бросает ${payload.item_name || 'снаряд'} в область радиусом ${Number(payload.radius_feet) || 0} фт.`)
     } else if (event.event_type === 'SpellCast') {
@@ -229,6 +237,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
+  'MonsterAbilityRecharged',
   'KnockoutEnded', 'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',

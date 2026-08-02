@@ -2051,8 +2051,27 @@ function trustedAttackProfile(state, actor, actionId = null) {
     disadvantage: Boolean(profile.disadvantage ?? actor?.attackDisadvantage),
     on_hit: profile.on_hit && typeof profile.on_hit === 'object' ? clone(profile.on_hit) : null,
     uses: Math.max(0, safeInteger(profile.uses, 0)),
+    recharge: rechargeMinimumOf(profile),
     tactical_priority: safeInteger(profile.tactical_priority, 0),
   }
+}
+
+/**
+ * Recharge (X–6): наименьшее значение d6, возвращающее способность. `0` —
+ * способность не восстанавливается броском вовсе.
+ */
+function rechargeMinimumOf(profile) {
+  return Math.max(0, Math.min(6, safeInteger(profile?.recharge, 0)))
+}
+
+/**
+ * Действие существа, которое нельзя повторять свободно. Два вида ограничения
+ * тратятся одинаково — маркером `monster-action-used:<id>`, — и различаются
+ * только тем, снимается ли маркер: `uses` уходит на весь бой, `recharge`
+ * возвращается броском в начале хода.
+ */
+function monsterActionIsLimited(profile) {
+  return safeInteger(profile?.uses, 0) > 0 || rechargeMinimumOf(profile) > 0
 }
 
 function combatItem(actor, itemId) {
@@ -3463,7 +3482,7 @@ export function validateCommand(input, rawState, context = {}) {
     if (command.action_id && isEnemyActor(state, command.actor_id)) {
       const monsterAction = monsterActionFor(actor, command.action_id)
       if (!monsterAction) throw new RulesValidationError('Выбранное действие отсутствует в блоке статистики существа', 'MONSTER_ACTION_NOT_AVAILABLE')
-      if (safeInteger(monsterAction.uses, 0) > 0 && conditionIdsFor(state, command.actor_id).has(`monster-action-used:${monsterAction.id}`)) {
+      if (monsterActionIsLimited(monsterAction) && conditionIdsFor(state, command.actor_id).has(`monster-action-used:${monsterAction.id}`)) {
         throw new RulesValidationError('Ограниченное действие существа уже использовано', 'MONSTER_ACTION_SPENT')
       }
     }
@@ -3980,6 +3999,47 @@ function areaEntryConsequences(state, command, movedId, from, to, { diceService,
     if (!saved && effect.condition) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: String(effect.condition), duration: 'until-next-turn', source_actor: effect.source_actor, effect_id: effect.effect_id }, [movedId]))
   }
   return events
+}
+
+/**
+ * Recharge (X–6) в начале собственного хода существа.
+ *
+ * Потраченная способность помечена тем же маркером `monster-action-used:<id>`,
+ * что и `uses`, поэтому и валидация, и планировщик уже умеют её не предлагать.
+ * Разница ровно одна: этот бросок маркер снимает. Кость бросает сервер через
+ * `DiceService` — в тестах она детерминирована, — и бросок уходит `gm_only`:
+ * точный порог из стат-блока за столом не объявляется, игрок узнаёт только то,
+ * что приём снова наготове, и то из качественной строки рассказчика.
+ *
+ * Момент выбран по редакции: восстановление привязано к началу хода существа,
+ * а не к кругу боя, поэтому оно живёт в обработке `TurnStarted`, а не в
+ * отдельной команде.
+ */
+function monsterRechargeAtTurnStart(state, command, actorIdValue, diceService) {
+  const id = String(actorIdValue ?? '')
+  const actor = findActor(state, id)
+  const events = []
+  const rolls = []
+  if (!actor || !isEnemyActor(state, id) || !isLivingActor(actor)) return { events, rolls }
+  const spent = conditionIdsFor(state, id)
+  const rechargeCommand = { ...command, actor_id: id, visibility: 'gm_only' }
+  for (const action of (Array.isArray(actor.action_profiles) ? actor.action_profiles : [])) {
+    const minimum = rechargeMinimumOf(action)
+    const actionId = String(action?.id ?? '')
+    const condition = `monster-action-used:${actionId}`
+    if (!actionId || minimum <= 0 || !spent.has(condition)) continue
+    const roll = diceService.roll('1d6', `monster_recharge:${actionId}`, id, 'gm_only')
+    rolls.push(roll)
+    events.push(eventFrom(rechargeCommand, 'DieRolled', { ...roll, recharge_action_id: actionId }, []))
+    if (roll.total < minimum) continue
+    events.push(eventFrom(commandWithRules(rechargeCommand, RULE_IDS.conditions), 'ConditionRemoved', { condition, trigger: 'recharge' }, [id]))
+    events.push(eventFrom(commandWithRules(rechargeCommand, RULE_IDS.turns), 'MonsterAbilityRecharged', {
+      action_id: actionId,
+      name: String(action?.name ?? actionId).slice(0, 120),
+      recharge_minimum: minimum,
+    }, [id]))
+  }
+  return { events, rolls }
 }
 
 function deathSavingThrowAtTurnStart(state, command, actorIdValue, diceService) {
@@ -5669,6 +5729,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         item_name: selectedProfile?.item.name ?? null,
         action_id: profile?.id ?? null,
         action_name: profile?.name ?? null,
+        // Признак качественный: за столом и так видно, что существо пустило в
+        // ход особый приём. Ни диапазон recharge, ни статус заряда сюда не идут.
+        ...(rechargeMinimumOf(profile) > 0 ? { recharge_action: true } : {}),
         pack_tactics: packTactics,
         bloodied_frenzy: bloodiedFrenzy,
         charge: chargeActive,
@@ -5684,7 +5747,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (trueStrike) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'true-strike' }, [command.actor_id]))
       if (silveryFortune) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'silvery-fortune' }, [command.actor_id]))
       if (guidingBoltAdvantage) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'guiding-bolt-advantage' }, [targetId]))
-      if (profile?.uses > 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `monster-action-used:${profile.id}`, source_actor: command.actor_id }, [command.actor_id]))
+      // Порог recharge в payload не кладётся: событие видно игроку, а порог —
+      // строка стат-блока. Движок читает его из профиля существа, а не отсюда.
+      if (monsterActionIsLimited(profile)) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `monster-action-used:${profile.id}`, source_actor: command.actor_id }, [command.actor_id]))
       if (helped) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'helped' }, [command.actor_id]))
       if (hidden) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'hidden' }, [command.actor_id]))
       if (landed && (configuredDamageExpression || command.damage_amount != null)) {
@@ -8972,6 +9037,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           spell_id: 'heroism', offered, temporary_hp_before: before, temporary_hp_after: Math.max(before, offered), trigger: 'turn-start',
         }, [nextId]))
       }
+      const recharge = monsterRechargeAtTurnStart(startTurnState, command, nextId, diceService)
+      events.push(...recharge.events)
+      rolls.push(...recharge.rolls)
       break
     }
     case 'BargainWithMerchant': {
@@ -11783,6 +11851,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'EnemyKnowledgeRevealed': return `${resolveName(payload.enemy_id)} опознан: отряд знает точные ОЗ и КД`
     case 'ConditionAdded': return `Добавлено состояние: ${payload.condition}`
     case 'ConditionImmunityResolved': return `${named((event.target_ids ?? [])[0]) || 'Существо'} невосприимчиво: состояние ${payload.condition} не наложено`
+    case 'MonsterAbilityRecharged': return `${named((event.target_ids ?? [])[0]) || 'Существо'}: «${payload.name || payload.action_id}» снова наготове`
     case 'ConditionRemoved': return `Снято состояние: ${payload.condition}`
     // Семейство «падение и смерть» печатало сырой `target_ids[0]`: игрок
     // видел «hero выбывает из боя» вместо имени героя. Это самые заметные
