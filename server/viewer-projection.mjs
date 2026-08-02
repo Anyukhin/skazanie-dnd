@@ -3,6 +3,7 @@ import { encounterDifficultyLabel } from './encounter-assembler.mjs'
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
 import { itemViewerCapabilities } from './item-catalog.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
+import { suggestedActionsFor } from './action-hints.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
@@ -589,6 +590,10 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // вместо него ниже собирается bounded `scene_npcs` только текущей сцены.
   'npc_world',
   'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
+  // Собственного ключа в состоянии нет: подсказки выводятся из уже собранной
+  // комнаты и существуют только в проекции. Решение осознанное — скрытого в
+  // них быть не может, потому что вход у них тот же, что уехал игроку.
+  'suggested_actions',
   // Отдаются как есть: общий контекст отряда без скрытого.
   'sessionCode', 'campaign', 'partyName', 'partyMemberIds', 'partyDecisionPolicy',
   'campaignConcept', 'state_version', 'ruleset_id', 'ruleset_version',
@@ -683,7 +688,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       } : {}),
     }})()
     : visible.mechanics
-  return {
+  const room = {
     ...publicState,
     players: playerItemsWithCapabilities(publicState.players),
     scene,
@@ -708,6 +713,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     messages: (Array.isArray(visible.messages) ? visible.messages : []).map(publicCombatMessageFor),
     ...(publicAutonomyFor(state.autonomy) ? { autonomy: publicAutonomyFor(state.autonomy) } : {}),
   }
+  // Подсказки строятся из **уже собранной** комнаты, а не из авторитетного
+  // состояния. Порядок здесь и есть гарантия: раскрыть скрытое подсказка не
+  // может по построению — чего нет в проекции, того нет и на её входе.
+  return { ...room, suggested_actions: suggestedActionsFor(room) }
 }
 
 /**

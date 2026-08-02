@@ -613,6 +613,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .live-dot { display: flex; align-items: center; gap: 5px; margin-left: 3px; color: #668b6b; font-size: var(--fs-sm); letter-spacing: .13em; }
 .live-dot::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #6e9e76; box-shadow: 0 0 0 3px rgba(110,158,118,.1); }
 .chat-interaction-slot:empty { display: none; }
+/* Подсказки новичку: заметны, но тише реплик рассказчика — они помогают, а не
+   рассказывают. Закрываются крестиком и не возвращаются до смены сцены. */
+.action-hints { margin: 0 20px 6px; padding: 9px 11px; border: 1px solid #3c3529; border-radius: 9px; background: #221e18; }
+.action-hints-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.action-hints-head > span { display: flex; align-items: center; gap: 6px; font-size: calc(11px * var(--ui-readable-scale)); letter-spacing: .06em; text-transform: uppercase; color: #b7a27a; }
+.action-hints ul { margin: 6px 0 0; padding: 0 0 0 15px; display: grid; gap: 3px; }
+.action-hints li { font-size: calc(12px * var(--ui-readable-scale)); color: #c9bda9; }
 .messages { min-height: 0; padding: 14px 20px 6px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #433a31 transparent; }
 /* Одна колонка: аватарку сообщения убрали в 10be690, а колонка под неё осталась —
    и текст все эти дни жил в 29px, переносясь по слову на строку. Стили самой

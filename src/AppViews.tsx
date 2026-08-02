@@ -234,11 +234,17 @@ export function stakesTitle(stakes: NonNullable<Message['stakes']>) {
   return `${both} · СЛ ${stakes.difficulty}${category ? ` · ${category}` : ''}`
 }
 
-export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak, open, onToggle }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null; open: boolean; onToggle: () => void
+export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak, open, onToggle }: {
+  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null; open: boolean; onToggle: () => void
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
+  // Закрытие держится до смены сцены: ключ и есть «та же сцена». Иначе панель
+  // возвращалась бы на каждый ответ рассказчика и раздражала бы ровно тех, кто
+  // её только что закрыл.
+  const [hintsDismissedFor, setHintsDismissedFor] = useState('')
+  const hintsKey = `${sceneKey}`
+  const visibleHints = hintsDismissedFor === hintsKey ? [] : suggestedActions
   const [filter, setFilter] = useState<ChronicleFilter>('all')
   const [followLatest, setFollowLatest] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -304,6 +310,17 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
       <div className="chat-interaction-slot">
         {interaction ? <AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onAbstain={onAbstain} onRoll={onRollInteraction} onContinue={onContinueInteraction} /> : null}
       </div>
+      {/* Подсказки новичку. Закрываются на месте и не возвращаются до смены
+          сцены; выключенные настройкой не приходят сюда вовсе. */}
+      {visibleHints.length > 0 && (
+        <aside className="action-hints" aria-label="Что можно сделать">
+          <div className="action-hints-head">
+            <span><Sparkles size={14} />Что можно сделать</span>
+            <button className="icon-button" type="button" onClick={() => setHintsDismissedFor(hintsKey)} aria-label="Скрыть подсказки"><X size={16} /></button>
+          </div>
+          <ul>{visibleHints.map((hint) => <li key={hint.id}>{hint.text}</li>)}</ul>
+        </aside>
+      )}
       <div className="messages" ref={messagesRef} onScroll={handleScroll}>
         {visibleMessages.map((message) => (
           <article key={message.id} className={`message ${message.speaker}`}>
@@ -607,7 +624,7 @@ export function AtmosphereRange({ label, description, value, onChange }: { label
   </label>
 }
 
-export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange }: {
+export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
   campaignAiBusy: boolean
@@ -620,6 +637,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   notificationPermission: NotificationPermission | 'unsupported'
   voiceMode: NarrationVoiceMode
   voiceSupported: boolean
+  actionHintsEnabled: boolean
   onCampaignAiChange: (patch: Partial<CampaignAiSettings>) => void
   onUiScaleChange: (value: number) => void
   onAutoAttackRollChange: (value: boolean) => void
@@ -630,6 +648,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   onAtmosphereMutedChange: (value: boolean) => void
   onRequestNotifications: () => void
   onVoiceModeChange: (value: NarrationVoiceMode) => void
+  onActionHintsEnabledChange: (value: boolean) => void
 }) {
   const [scaleInput, setScaleInput] = useState(String(uiScale))
 
@@ -711,6 +730,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
             </select>
             <span className="ui-scale-marks"><i>{UI_SCALE_MIN}%</i><i>100%</i><i>125%</i><i>{UI_SCALE_MAX}%</i></span>
           </label>
+          <ToggleRow icon={<Sparkles size={17} />} title="Подсказки «что можно сделать»" description="Короткий список доступного в текущей сцене над лентой истории; в бою подсказок нет" value={actionHintsEnabled} onChange={() => onActionHintsEnabledChange(!actionHintsEnabled)} />
           <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — иллюстрация и окружение соответствуют месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
           {/* Озвучка спрашивается только там, где её есть чем исполнить: без
               русского голоса в системе выбор был бы обещанием без механики. */}

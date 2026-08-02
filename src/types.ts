@@ -1077,6 +1077,12 @@ export type GameState = {
   enemies?: Enemy[]
   actors?: SummonedCreature[]
   merchants?: Merchant[]
+  /**
+   * Детерминированные подсказки «что можно сделать». Сервер собирает их из уже
+   * спроецированной комнаты, поэтому скрытого в них нет по построению. В бою
+   * список пуст: там действия перечисляет хотбар.
+   */
+  suggested_actions?: Array<{ id: string; text: string }>
   tacticalTurn?: TacticalTurn
   mapFeedback?: MapFeedback[]
   /** Deterministic combat facts recorded without invoking the narrator. */
