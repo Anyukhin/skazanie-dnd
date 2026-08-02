@@ -552,6 +552,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .legend-mark { flex: 0 0 17px; width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid rgba(210,180,136,.38); border-radius: 50%; color: #d1b78d; font: 800 9px/1 Manrope, sans-serif; font-style: normal; }
 .legend-mark.elevation { width: 24px; border-radius: 3px; color: #e9cc98; }
 .legend-mark.cover { border-color: rgba(136,176,193,.48); color: #a9cedb; }
+/* Поверхности: те же тона, что SURFACE_COLORS в src/board-render.ts. */
+.legend-swatch.surface-water { background: #3f7d84; }
+.legend-swatch.surface-ice { background: #8fb9c2; }
+.legend-swatch.surface-mud { background: #5c4a34; }
+.legend-swatch.surface-rubble { background: #7a7168; }
+.legend-mark.stairs { border-color: rgba(214,161,96,.5); color: #e0b070; font-size: 11px; }
 .zoom-control { position: absolute; z-index: 9; right: 27px; top: 88px; display: flex; align-items: center; height: 36px; border: 1px solid var(--line); border-radius: 4px; background: rgba(15,13,11,.78); backdrop-filter: blur(10px); }
 .zoom-control button { width: 36px; min-width: 36px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: #817970; cursor: pointer; }
 .zoom-control button:hover { color: #ddd2c4; }
@@ -1164,6 +1170,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Отмена рядом с подтверждением: тише кнопкой, но того же роста. */
 .combat-hotbar .hotbar-turn-controls .cancel-self-cast { min-height: 28px; justify-content: center; gap: 6px; border-color: var(--line); background: transparent; color: #8b8177; }
 .combat-hotbar .hotbar-turn-controls .cancel-self-cast:hover { border-color: rgba(211,160,97,.35); color: #c49a63; }
+/* Куда ведёт выбранная лестница: подпись, а не кнопка — кнопка перехода рядом
+   может быть закрыта боем или расстоянием, а назначение перехода видно всегда. */
+.hotbar-turn-controls .scene-object-lead { overflow: hidden; color: #9c8a6c; font: 600 var(--fs-sm) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .combat-hotbar > .tactical-command-status { position: absolute; left: 10px; bottom: calc(100% + 45px); margin: 0; padding: 6px 9px; border-radius: 4px; background: rgba(15,13,11,.92); }
 .combat-hotbar > .tactical-command-error { position: absolute; right: 0; bottom: calc(100% + 44px); width: min(360px, 70vw); margin: 0; }
 .combat-hotbar > .tactical-command-error button { width: 18px; margin: -3px -3px 0 0; }

@@ -35,12 +35,34 @@ test('качественное здоровье врага остаётся то
   assert.match(styles, /\.enemy-health-ring\[data-status="critical"\]/u)
 })
 
-test('легенда доски сворачивается и объясняет динамические слои', () => {
-  assert.match(app, /<details className="map-legend">/u)
+test('легенда доски сворачивается, помнит состояние и объясняет динамические слои', () => {
+  assert.match(app, /<details\s+className="map-legend"/u)
   for (const label of ['трудная местность', 'длящееся заклинание', 'Концентрация владельца', 'Высота в футах', 'Укрытие от линии огня']) {
     assert.match(app, new RegExp(label, 'u'))
   }
   assert.match(styles, /\.map-legend:not\(\[open\]\)/u)
+
+  // Этап L8: поверхности, лестницы и память о свёрнутом состоянии.
+  for (const label of ['Вода · движение вдвое дороже', 'Лёд · проверка на падение', 'Грязь · трудная местность',
+    'Щебень · трудная местность', 'Лестница или люк · переход между этажами']) {
+    assert.match(app, new RegExp(label, 'u'))
+  }
+  for (const swatch of ['surface-water', 'surface-ice', 'surface-mud', 'surface-rubble']) {
+    assert.match(styles, new RegExp(`\\.legend-swatch\\.${swatch}`, 'u'))
+  }
+  assert.match(styles, /\.legend-mark\.stairs/u)
+  // Свёрнута по умолчанию, состояние переживает перезагрузку.
+  assert.match(app, /MAP_LEGEND_KEY\) === 'open'/u)
+  assert.match(app, /window\.localStorage\.setItem\(MAP_LEGEND_KEY, open \? 'open' : 'closed'\)/u)
+})
+
+test('лестница объясняет назначение раньше кнопки перехода', () => {
+  // Тултип и подпись панели считает та же чистая функция, что и надпись кнопки.
+  assert.match(app, /levelTransitionHint\(sceneObject\?\.transition, knownSceneLevels\)/u)
+  assert.match(app, /levelTransitionHint\(selectedSceneObject\.transition, knownSceneLevels\)/u)
+  assert.match(app, /title=\{sceneObjectHint\}/u)
+  assert.match(app, /aria-label=\{sceneObjectHint\}/u)
+  assert.match(styles, /\.hotbar-turn-controls \.scene-object-lead/u)
 })
 
 test('лестница даёт кнопку перехода, а индикатор этажей стоит поверх карты и не ловит клики', () => {

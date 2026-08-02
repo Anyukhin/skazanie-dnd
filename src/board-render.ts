@@ -3948,11 +3948,100 @@ function drawRoomLabels(context: BoardContext2D, scene: BoardScene) {
 }
 
 /**
+ * Порог зума для подписей зон (`docs/multilevel-map-plan.md`, 7.4). Совпадает
+ * с порогом полной прорисовки предметов, и это не совпадение: там, где предмет
+ * уже читается рисунком, помещение читается своей обстановкой, и подпись
+ * поверх пола становится помехой. Считается, как и все пороги доски, в
+ * пикселях холста.
+ */
+export const ZONE_LABEL_MAX_CELL_PIXELS = PROP_FULL_DETAIL_CELL_PIXELS
+
+/**
+ * Доля клеток зоны, которую надо раскрыть, чтобы подпись появилась. Половина —
+ * самое простое правило из двух, предложенных планом: один проход по карте,
+ * никакой отдельной геометрии центроида, и оно честно молчит, пока комната
+ * разведана только с порога.
+ */
+export const ZONE_LABEL_REVEALED_SHARE = 0.5
+
+export type ZoneLabelPlacement = { zoneId: string; label: string; x: number; y: number }
+
+const zoneLabelCache = new WeakMap<TacticalMap, ZoneLabelPlacement[]>()
+
+/**
+ * Подписи зон в центре масс раскрытых клеток. Считаются один раз на карту:
+ * декодированная карта на клиенте неизменяема, а слой подписей переживает
+ * каждый пан и зум (тот же довод, что у `revealedRoomLabelPlacements`).
+ *
+ * Зоны, у которых уже есть печатная подпись комнаты, пропускаются: два
+ * названия одного помещения друг на друге — это не читаемость, а каша.
+ */
+export function revealedZoneLabelPlacements(map: TacticalMap): ZoneLabelPlacement[] {
+  const cached = zoneLabelCache.get(map)
+  if (cached) return cached
+  const printed = new Set(map.overlays.roomLabels.map((entry) => entry.zoneId))
+  const wanted = new Map(map.zones
+    .filter((zone) => zone.label.trim() && !printed.has(zone.id))
+    .map((zone) => [zone.id, zone.label]))
+  const totals = new Map<string, { cells: number; revealed: number; sumX: number; sumY: number }>()
+  if (wanted.size) {
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const cell = cellAt(map, x, y)
+        if (!cell || !wanted.has(cell.zone)) continue
+        const own = totals.get(cell.zone) ?? { cells: 0, revealed: 0, sumX: 0, sumY: 0 }
+        own.cells += 1
+        if (cell.revealed) {
+          own.revealed += 1
+          own.sumX += x + 0.5
+          own.sumY += y + 0.5
+        }
+        totals.set(cell.zone, own)
+      }
+    }
+  }
+  const placements: ZoneLabelPlacement[] = []
+  for (const [zoneId, label] of wanted) {
+    const own = totals.get(zoneId)
+    if (!own || !own.revealed || own.revealed < own.cells * ZONE_LABEL_REVEALED_SHARE) continue
+    placements.push({ zoneId, label, x: own.sumX / own.revealed, y: own.sumY / own.revealed })
+  }
+  zoneLabelCache.set(map, placements)
+  return placements
+}
+
+/** Подписи зон полупрозрачной плашкой: только на среднем и дальнем плане. */
+function drawZoneLabels(context: BoardContext2D, scene: BoardScene) {
+  const size = scene.cellSize
+  const fontSize = Math.max(7, Math.min(13, size * 0.62))
+  context.save()
+  context.font = `600 ${fontSize}px Spectral, serif`
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  for (const entry of revealedZoneLabelPlacements(scene.map)) {
+    const x = entry.x * size
+    const y = entry.y * size
+    const width = Math.max(size * 2, entry.label.length * fontSize * 0.56)
+    context.globalAlpha = 0.62
+    context.fillStyle = '#1d1811'
+    context.fillRect(x - width / 2, y - fontSize * 0.8, width, fontSize * 1.6)
+    context.globalAlpha = 0.92
+    context.fillStyle = '#efe0c2'
+    context.fillText(entry.label, x, y, width - fontSize * 0.4)
+  }
+  context.globalAlpha = 1
+  context.restore()
+}
+
+/**
  * Слой печатной карты: координатная рамка обязательна, остальные элементы
- * следуют флагам серверного контракта.
+ * следуют флагам серверного контракта. Подписи зон живут здесь же, а не в
+ * кадре: слой рисуется поверх тайлов одним проходом и кэшируется вместе с
+ * ними — на каждый кадр приходится только сама отрисовка текста.
  */
 export function drawMapDecorations(context: BoardContext2D, scene: BoardScene) {
   if (scene.map.overlays.roomLabels.length) drawRoomLabels(context, scene)
+  if (scene.cellSize < ZONE_LABEL_MAX_CELL_PIXELS) drawZoneLabels(context, scene)
   if (scene.map.overlays.compass) drawCompass(context, scene)
   if (scene.map.overlays.scaleBar) drawScaleBar(context, scene)
 }

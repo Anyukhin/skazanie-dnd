@@ -32,7 +32,7 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
+import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
@@ -144,6 +144,7 @@ export const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
 export const TILE_ROWS_KEY = 'skazanie-tile-rows-v1'
 export const TILE_LOCK_KEY = 'skazanie-tiles-locked-v1'
 export const TILE_ORDER_KEY = 'skazanie-tile-order-v1'
+export const MAP_LEGEND_KEY = 'skazanie-map-legend-open-v1'
 export const BASE_ATTACK_ID = '__base-attack__'
 export const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
   inspect: 'Осмотреть',
@@ -686,6 +687,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     try { return JSON.parse(window.localStorage.getItem(TILE_ORDER_KEY) ?? '{}') as Record<string, string[]> } catch { return {} }
   })
   const [draggedTileId, setDraggedTileId] = useState<string | null>(null)
+  /* Легенда доски свёрнута по умолчанию: она нужна новичку и первому вечеру, а
+     дальше только занимает угол стола. Своё состояние она помнит между
+     сессиями — тем же способом, что высота панели и раскладка плиток. */
+  const [legendOpen, setLegendOpen] = useState(() => window.localStorage.getItem(MAP_LEGEND_KEY) === 'open')
   const [hoveredDoorId, setHoveredDoorId] = useState<string | null>(null)
   const [selectedSceneObjectId, setSelectedSceneObjectId] = useState<string | null>(null)
   const [hoveredSceneObjectId, setHoveredSceneObjectId] = useState<string | null>(null)
@@ -1403,6 +1408,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     }) : null
     const cellKey = cell.x + ',' + cell.y
     const sceneObject = sceneObjectByCell.get(cellKey)
+    /* Тултип лестницы (`docs/multilevel-map-plan.md`, 7.4). Кнопка перехода
+       появляется только у подошедшего вплотную персонажа, а «куда ведёт эта
+       лестница» игрок спрашивает раньше — наведением с другого конца зала. */
+    const sceneObjectHint = [sceneObject ? `Выбрать: ${sceneObjectLabel(sceneObject)}` : '',
+      levelTransitionHint(sceneObject?.transition, knownSceneLevels) ?? ''].filter(Boolean).join(' · ')
     const canMoveHere = reachable.has(cellKey)
     const route = movementPaths.get(cellKey)
     const moveReason = active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null
@@ -1430,7 +1440,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         : canMoveHere
           ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}`
           : sceneObject
-            ? `Выбрать: ${sceneObjectLabel(sceneObject)}`
+            ? sceneObjectHint
             : moveReason ?? undefined
     const enemyKind = enemy ? enemyVisualKind(enemy) : null
     const enemyHealth = enemy ? enemyHealthPresentation(enemy) : null
@@ -1505,9 +1515,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           tabIndex={0}
           className="scene-object-hotspot"
           data-selected={sceneObject.id === selectedSceneObjectId ? 'true' : undefined}
-          aria-label={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
+          aria-label={sceneObjectHint}
           aria-pressed={sceneObject.id === selectedSceneObjectId}
-          title={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
+          title={sceneObjectHint}
           onPointerDown={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
           onPointerEnter={() => setHoveredSceneObjectId(sceneObject.id)}
@@ -1861,7 +1871,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       {/* Режим стоит над полем по центру: он описывает то, что происходит на
           карте, и читается раньше, чем взгляд уходит к панели действий. */}
       {!combatActive && <div className="map-mode-plate" role="status">Исследование</div>}
-      <details className="map-legend">
+      <details
+        className="map-legend"
+        open={legendOpen}
+        onToggle={(event) => {
+          const open = (event.currentTarget as HTMLDetailsElement).open
+          setLegendOpen(open)
+          window.localStorage.setItem(MAP_LEGEND_KEY, open ? 'open' : 'closed')
+        }}
+      >
         <summary><HelpCircle size={13} />Легенда доски</summary>
         <div>
           <span><i className="legend-dot party" />Отряд</span>
@@ -1874,6 +1892,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <span><i className="legend-mark concentration">К</i>Концентрация владельца</span>
           <span><i className="legend-mark elevation">+5</i>Высота в футах</span>
           <span><i className="legend-mark cover">½</i>Укрытие от линии огня</span>
+          {/* Поверхности: цвета повторяют SURFACE_COLORS из src/board-render.ts —
+              по ним игрок читает, где вода, где лёд, а где месиво. */}
+          <span><i className="legend-swatch surface-water" />Вода · движение вдвое дороже</span>
+          <span><i className="legend-swatch surface-ice" />Лёд · проверка на падение</span>
+          <span><i className="legend-swatch surface-mud" />Грязь · трудная местность</span>
+          <span><i className="legend-swatch surface-rubble" />Щебень · трудная местность</span>
+          <span><i className="legend-mark stairs">⇅</i>Лестница или люк · переход между этажами</span>
         </div>
       </details>
       {/* Остаток хода стоит у нижней кромки стола, а не над панелью действий:
@@ -2242,6 +2267,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 <span>{label}</span>
               </button>
             })}
+            {/* Куда ведёт выбранная лестница — строкой, а не только надписью
+                кнопки: кнопка закрыта в бою и вдали, а знать назначение
+                перехода игрок вправе всегда. */}
+            {selectedSceneObject?.transition && <span className="scene-object-lead">
+              {levelTransitionHint(selectedSceneObject.transition, knownSceneLevels)}
+            </span>}
             {selectedSceneObject && selectedLevelTransition && <button
               type="button"
               className={`scene-object-control level-transition ${selectedLevelTransition.direction}`}

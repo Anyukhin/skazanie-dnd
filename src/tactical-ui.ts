@@ -450,6 +450,20 @@ export function levelLabelFor(toLevel: number, transitionLabel?: string, levels:
   return `этаж ${Number(toLevel)}`
 }
 
+/**
+ * Подсказка у предмета-перехода: «Ведёт: Винный погреб». Нужна отдельно от
+ * надписи кнопки — кнопка появляется только у подошедшего вплотную персонажа,
+ * а «куда ведёт эта лестница» игрок спрашивает раньше, наведением с другого
+ * конца зала. `null` означает, что предмет переходом не является.
+ */
+export function levelTransitionHint(
+  transition: { toLevel: number; label?: string } | null | undefined,
+  levels: readonly SceneLevel[] = [],
+) {
+  if (!transition || !Number.isFinite(Number(transition.toLevel))) return null
+  return `Ведёт: ${levelLabelFor(Number(transition.toLevel), transition.label, levels)}`
+}
+
 export type LevelTransitionPresentation = {
   /** Надпись кнопки: направление и подпись целевого этажа. */
   label: string

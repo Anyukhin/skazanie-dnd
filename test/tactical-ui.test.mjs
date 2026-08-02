@@ -362,6 +362,18 @@ test('кнопка перехода называет направление и �
   assert.equal(inCombat.title, 'Сначала завершите бой', 'бой важнее расстояния: сервер откажет именно по нему')
 })
 
+test('тултип лестницы называет этаж и молчит на обычном предмете', () => {
+  const levels = [{ index: 0, label: 'Общий зал' }, { index: -1, label: 'Винный погреб' }]
+  assert.equal(tacticalUi.levelTransitionHint({ toLevel: 1, label: 'Спальни' }, levels), 'Ведёт: Спальни')
+  assert.equal(tacticalUi.levelTransitionHint({ toLevel: -1 }, levels), 'Ведёт: Винный погреб',
+    'подпись обязана подхватываться из известных этажей — та же лестница подписей, что у кнопки')
+  assert.equal(tacticalUi.levelTransitionHint({ toLevel: 2 }, []), 'Ведёт: этаж 2')
+  // Подсказка живёт до кнопки: она нужна и в бою, и с другого конца зала.
+  assert.equal(tacticalUi.levelTransitionHint(null), null)
+  assert.equal(tacticalUi.levelTransitionHint(undefined), null)
+  assert.equal(tacticalUi.levelTransitionHint({ toLevel: 'подвал' }), null, 'мусор не должен превращаться в подсказку')
+})
+
 test('индикатор этажей строится сверху вниз и молчит на одноэтажной локации', () => {
   const rows = tacticalUi.levelIndicatorRows([
     { index: 0, label: 'Общий зал' },

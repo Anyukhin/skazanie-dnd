@@ -1006,6 +1006,55 @@ test('запас отпечатка не делает соседние тайл�
   assert.equal(render.tileKey(after, far), before, 'далёкий тайл не должен зависеть от чужого раскрытия')
 })
 
+test('подписи зон появляются на дальнем плане и только у раскрытых зон', () => {
+  const map = createTacticalMap({ width: 12, height: 6 })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Общий зал' })
+  addZone(map, { id: 'cellar', kind: 'interior', material: 'stone', lightLevel: 'dark', label: 'Погреб' })
+  for (let y = 0; y < 6; y += 1) {
+    for (let x = 0; x < 12; x += 1) {
+      setCell(map, x, y, { passable: true, revealed: true, zone: x < 6 ? 'hall' : 'cellar' })
+    }
+  }
+  // Погреб разведан с порога: раскрыто меньше половины его клеток.
+  for (let y = 0; y < 6; y += 1) {
+    for (let x = 7; x < 12; x += 1) setCell(map, x, y, { revealed: false })
+  }
+  const clientMap = decoded(map)
+  assert.deepEqual(
+    render.revealedZoneLabelPlacements(clientMap).map((entry) => entry.label),
+    ['Общий зал'],
+    'подпись зоны не должна выходить сквозь туман раньше половины разведки',
+  )
+  const placement = render.revealedZoneLabelPlacements(clientMap)[0]
+  assert.ok(Math.abs(placement.x - 3) < 1e-9 && Math.abs(placement.y - 3) < 1e-9,
+    `центр масс раскрытой зоны поехал: ${placement.x},${placement.y}`)
+
+  const far = recordingContext()
+  render.drawMapDecorations(far, { map: clientMap, palette: render.DEFAULT_BOARD_PALETTE, cellSize: render.ZONE_LABEL_MAX_CELL_PIXELS - 1 })
+  assert.ok(far.ops.some((item) => item.op === 'fillText' && item.text === 'Общий зал'), 'на дальнем плане подпись обязана быть')
+
+  const near = recordingContext()
+  render.drawMapDecorations(near, { map: clientMap, palette: render.DEFAULT_BOARD_PALETTE, cellSize: render.ZONE_LABEL_MAX_CELL_PIXELS })
+  assert.equal(near.ops.some((item) => item.op === 'fillText'), false,
+    'при крупном зуме подпись обязана уйти: помещение читается своей обстановкой')
+})
+
+test('печатная подпись комнаты отменяет подпись той же зоны', () => {
+  const map = createTacticalMap({ width: 6, height: 4 })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Общий зал' })
+  for (let y = 0; y < 4; y += 1) {
+    for (let x = 0; x < 6; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: 'hall' })
+  }
+  map.overlays = { compass: false, scaleBar: false, roomLabels: [{ zoneId: 'hall', label: 'Общий зал' }] }
+  const clientMap = decoded(map)
+  assert.deepEqual(render.revealedZoneLabelPlacements(clientMap), [],
+    'два названия одного помещения друг на друге — это не читаемость')
+
+  const context = recordingContext()
+  render.drawMapDecorations(context, { map: clientMap, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 12 })
+  assert.equal(context.ops.filter((item) => item.op === 'fillText' && item.text === 'Общий зал').length, 1)
+})
+
 // --- живой слой доски: огонь, вода, дверь (этап L7) -----------------------
 
 /** Сцена с огнём и водой: два источника в раскрытой части и лужа рядом. */
