@@ -2215,3 +2215,11 @@ button.campaign-title:hover strong { color: #edc996; }
 .turn-stakes b { font: 600 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .03em; }
 .turn-stakes small { font: 500 var(--fs-xxs) Manrope, sans-serif; color: #97826a; line-height: 1.45; }
 
+
+/* Подготовка ассетов: генерический список пробелов без излишеств. */
+.admin-asset-list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
+.admin-asset-list li { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border: 1px solid #342f26; border-radius: 7px; background: #201c17; }
+.admin-asset-list label { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
+.admin-asset-list label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-asset-list img { border-radius: 5px; object-fit: cover; }
+.admin-asset-list em { color: #8d8172; font-style: normal; font-size: calc(11px * var(--ui-readable-scale)); }

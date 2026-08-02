@@ -48,7 +48,7 @@ const IMPORTANT_TAGS = new Set([
  *   source: 'static',
  *   role: keyof typeof NPC_PORTRAIT_ROLE_ASSETS,
  *   url: string,
- *   reason: 'secondary_npc' | 'generator_unavailable' | 'generation_failed',
+ *   reason: 'secondary_npc' | 'generator_unavailable' | 'generation_failed' | 'runtime_generation_disabled',
  * }} StaticNpcPortrait
  */
 
@@ -377,6 +377,7 @@ export class NpcPortraitService {
    *   profile: PublicNpcPortraitProfile,
    *   projectedState: any,
    *   allowGeneration?: () => boolean,
+   *   generationEnabled?: boolean,
    * }} input
    * @returns {Promise<NpcPortraitResult>}
    */
@@ -385,12 +386,17 @@ export class NpcPortraitService {
     profile,
     projectedState,
     allowGeneration = () => true,
+    generationEnabled = true,
   }) {
     if (!npcPortraitSignificance(projectedState, profile).significant) {
       return staticNpcPortrait(profile, 'secondary_npc')
     }
     const cached = await this.cached(campaignId, profile.id)
     if (cached) return cached
+    // Рантайм-генерация выключена: отдаём заглушку, как при ненастроенном
+    // генераторе. Ни ошибки, ни очереди «сгенерируем потом» — картинки
+    // готовятся заранее, режимом подготовки.
+    if (!generationEnabled) return staticNpcPortrait(profile, 'runtime_generation_disabled')
     if (!this.configured) return staticNpcPortrait(profile, 'generator_unavailable')
     const location = npcPortraitCacheLocation(this.cacheRoot, campaignId, profile.id)
     const running = this.inflight.get(location.key)
@@ -409,6 +415,23 @@ export class NpcPortraitService {
     } finally {
       this.inflight.delete(location.key)
     }
+  }
+
+  /**
+   * Подготовка заранее: сгенерировать и положить в кеш, минуя проверку «а нет
+   * ли уже». Это и есть перегенерация — `rename` перекрывает прежний файл.
+   *
+   * Значимость NPC здесь не проверяется намеренно: в подготовке решает ведущий,
+   * а не эвристика значимости. Рантайм-флаг тоже не спрашивается — он выключает
+   * генерацию в игре, а не единственный способ картинку получить.
+   *
+   * @param {{ campaignId: string, profile: PublicNpcPortraitProfile }} input
+   * @returns {Promise<GeneratedNpcPortrait>}
+   */
+  async prepare({ campaignId, profile }) {
+    if (!this.configured) throw new Error('Генератор портретов не настроен')
+    const location = npcPortraitCacheLocation(this.cacheRoot, campaignId, profile.id)
+    return this.generateAndCache(location, profile)
   }
 
   /**

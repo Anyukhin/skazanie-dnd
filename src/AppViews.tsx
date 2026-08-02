@@ -16,7 +16,7 @@ import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
-  Account, AgentInteraction, AiHealth, CampaignAiSettings, CampaignAiSettingsResponse,
+  Account, AgentInteraction, AiHealth, AssetPreparationReport, CampaignAiSettings, CampaignAiSettingsResponse,
   CampaignSummary, EncounterProposal, GameState, Merchant, Message, Player,
 } from './types'
 import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
@@ -460,6 +460,46 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
   const [partyName, setPartyName] = useState(state.partyName ?? 'Отряд героев')
   const [partyMemberIds, setPartyMemberIds] = useState(state.partyMemberIds?.length ? state.partyMemberIds : state.players.map((player) => player.id))
   const [scene, setScene] = useState({ title: state.scene.title, location: state.scene.location, mood: state.scene.mood, objective: state.scene.objective })
+  // Подготовка ассетов: список пробелов и запуск генерации заранее. Во время
+  // игры картинки не генерируются — это решение владельца, а не ограничение UI.
+  const [assets, setAssets] = useState<AssetPreparationReport | null>(null)
+  const [assetSelection, setAssetSelection] = useState<string[]>([])
+  const [assetBusy, setAssetBusy] = useState(false)
+  const [assetError, setAssetError] = useState('')
+  const [assetMessage, setAssetMessage] = useState('')
+
+  const loadAssets = async () => {
+    setAssetError('')
+    const response = await fetch(`/api/campaigns/${state.sessionCode}/asset-preparation`)
+    const body = await response.json() as AssetPreparationReport & { error?: string }
+    if (!response.ok) throw new Error(body.error || 'Не удалось получить список ассетов')
+    setAssets(body)
+    setAssetSelection([])
+  }
+
+  const prepareAssets = async (npcIds: string[], regenerate: boolean) => {
+    if (!npcIds.length) { setAssetError('Не выбрано ни одной позиции'); return }
+    setAssetBusy(true)
+    setAssetError('')
+    setAssetMessage('')
+    try {
+      const response = await fetch(`/api/campaigns/${state.sessionCode}/asset-preparation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ npc_ids: npcIds, regenerate }),
+      })
+      const body = await response.json() as { prepared?: Array<{ id: string; status: string; error?: string }>; error?: string }
+      if (!response.ok) throw new Error(body.error || 'Не удалось подготовить ассеты')
+      const ready = (body.prepared ?? []).filter((entry) => entry.status === 'ready').length
+      const failed = (body.prepared ?? []).filter((entry) => entry.status !== 'ready')
+      setAssetMessage(`Готово: ${ready}${failed.length ? `; не удалось: ${failed.map((entry) => entry.id).join(', ')}` : ''}`)
+      await loadAssets()
+    } catch (cause) {
+      setAssetError(cause instanceof Error ? cause.message : 'Не удалось подготовить ассеты')
+    } finally {
+      setAssetBusy(false)
+    }
+  }
 
   const loadUsers = async () => {
     const response = await fetch('/api/admin/users')
@@ -582,6 +622,53 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
             <button onClick={() => { void assembleCurrentEncounter() }} disabled={encounterBusy || combatActive}>{encounterBusy ? <RefreshCw className="spinning" size={15} /> : <Swords size={15} />}{encounterBusy ? 'Собираем столкновение…' : 'Собрать столкновение'}</button>
           </div>
           {encounterProposal?.enemies?.length ? <div className="encounter-proposal-list">{encounterProposal.enemies.map((enemy) => <span key={enemy.id}><b>{enemy.name}</b><small>Параметры рассчитываются сервером и скрыты от игроков</small></span>)}</div> : null}
+        </div>
+        <div className="admin-card admin-assets">
+          <div className="admin-card-head">
+            <span><Sparkles size={18} /><b>Подготовка ассетов</b></span>
+            <em>{assets ? (assets.runtime_image_generation ? 'В ИГРЕ ВКЛЮЧЕНА' : 'В ИГРЕ ВЫКЛЮЧЕНА') : '—'}</em>
+            <button onClick={() => { loadAssets().catch((cause) => setAssetError(cause instanceof Error ? cause.message : 'Ошибка')) }}><RefreshCw size={14} />Обновить</button>
+          </div>
+          <p className="admin-hint">Картинки готовятся заранее: во время игры генерация выключена, чтобы не тратить бюджет вечера посреди хода. Подготовка работает независимо от этого флага.</p>
+          {assets && !assets.generator_configured && <p className="admin-error">Генератор изображений не настроен: подготовка недоступна.</p>}
+          {assets && (
+            <>
+              <ul className="admin-asset-list">
+                {assets.npc_portraits.map((npc) => (
+                  <li key={npc.id}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={assetSelection.includes(npc.id)}
+                        onChange={(event) => setAssetSelection((current) => (
+                          event.currentTarget.checked ? [...current, npc.id] : current.filter((id) => id !== npc.id)
+                        ))}
+                      />
+                      <span>{npc.name}{npc.role ? ` · ${npc.role}` : ''}</span>
+                    </label>
+                    {npc.has_portrait
+                      ? <>
+                        <img src={`/api/campaigns/${state.sessionCode}/npcs/${encodeURIComponent(npc.id)}/portrait`} alt="" width={40} height={40} />
+                        <button disabled={assetBusy} onClick={() => { void prepareAssets([npc.id], true) }}>Перегенерировать</button>
+                      </>
+                      : <em>нет портрета</em>}
+                  </li>
+                ))}
+                {!assets.npc_portraits.length && <li><em>Значимых NPC в кампании пока нет.</em></li>}
+              </ul>
+              <div className="admin-actions">
+                <button disabled={assetBusy || !assetSelection.length} onClick={() => { void prepareAssets(assetSelection, false) }}>
+                  Сгенерировать выбранные ({assetSelection.length})
+                </button>
+                <small>Не больше {assets.maximum_batch} за один запуск.</small>
+              </div>
+              {assets.items_without_illustration.length > 0 && (
+                <p className="admin-hint">Предметы без иллюстрации ({assets.items_without_illustration.length}): {assets.items_without_illustration.slice(0, 8).map((item) => item.name).join(', ')}. {assets.items_note}</p>
+              )}
+            </>
+          )}
+          {assetMessage && <p className="admin-hint">{assetMessage}</p>}
+          {assetError && <p className="admin-error">{assetError}</p>}
         </div>
         <div className="admin-card admin-merchants">
           <div className="admin-card-head"><span><Store size={18} /><b>Торговцы и ShopAssembler</b></span><em>{state.merchants?.length ?? 0} в кампании</em></div>

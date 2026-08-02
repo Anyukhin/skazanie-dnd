@@ -1047,6 +1047,20 @@ export type CampaignConcept = {
   }>
 }
 
+/**
+ * Отчёт режима подготовки ассетов. Картинки готовятся заранее: во время игры
+ * генерация выключена решением владельца, а подготовка работает всегда.
+ */
+export type AssetPreparationReport = {
+  policy_id: string
+  runtime_image_generation: boolean
+  generator_configured: boolean
+  maximum_batch: number
+  npc_portraits: Array<{ id: string; name: string; role: string; has_portrait: boolean }>
+  items_without_illustration: Array<{ id: string; name: string; owner_id: string }>
+  items_note: string
+}
+
 export type GameState = {
   sessionCode: string
   campaign: string

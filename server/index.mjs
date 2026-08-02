@@ -114,8 +114,17 @@ import { characterCreationCatalog, createCharacterSlot } from './character-lifec
 import {
   NPC_PORTRAIT_GENERATION_LIMIT,
   NpcPortraitService,
+  npcPortraitSignificance,
+  publicNpcPortraitProfile,
   visibleNpcPortraitProfile,
 } from './npc-portraits.mjs'
+import {
+  ASSET_PREPARATION_POLICY_ID,
+  MAX_PREPARATION_BATCH,
+  itemsWithoutIllustration,
+  npcPortraitInventory,
+  planPreparation,
+} from './asset-preparation.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -138,6 +147,13 @@ const modelFailureCooldownMs = Number(process.env.DND_AI_FAILURE_COOLDOWN_MS || 
 const combatTurnTimeoutMs = Number(process.env.DND_COMBAT_TURN_TIMEOUT_MS || 120_000)
 const dailyTokenLimit = Number(process.env.DND_AI_DAILY_TOKEN_LIMIT || 2_000_000)
 const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
+/**
+ * Генерация картинок во время игры. По умолчанию **выключена** — решение
+ * владельца: вечер стоит около 50 ₽, и платить за картинку посреди хода, пока
+ * стол ждёт, незачем. Готовые картинки из кеша при этом отдаются как обычно, а
+ * новые готовятся заранее режимом подготовки.
+ */
+const runtimeImageGeneration = ['on', 'true', '1', 'yes'].includes(String(process.env.DND_RUNTIME_IMAGE_GENERATION ?? '').trim().toLowerCase())
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
 const usageLedger = new DurableUsageLedger({
@@ -1135,6 +1151,18 @@ function originAllowed(req) {
   if (/^https?:\/\/(?:127\.0\.0\.1|localhost):4173$/i.test(origin)) return true
   try { return new URL(origin).host === String(req.headers.host || '') }
   catch { return false }
+}
+
+/**
+ * Подготовка ассетов тратит деньги, поэтому доступна не всякому участнику:
+ * администратору сервера и владельцу кампании — тем же двоим, кто управляет
+ * общими настройками ИИ.
+ */
+function canManageCampaignAssets(user, room) {
+  if (!user) return false
+  if (user.role === 'admin') return true
+  const campaignId = String(room?.state?.sessionCode || '')
+  return Boolean(campaignId) && campaignMembershipFor(user.id, campaignId)?.role === 'owner'
 }
 
 function canAccessRoom(user, room) {
@@ -2147,6 +2175,7 @@ const server = createServer((req, res) => {
         profile,
         projectedState: projected,
         allowGeneration: () => !exceedsRate(`npc-portrait:${user.id}`, NPC_PORTRAIT_GENERATION_LIMIT),
+        generationEnabled: runtimeImageGeneration,
       })
       if (portrait.kind === 'rate_limited') {
         return json(res, 429, {
@@ -2157,6 +2186,62 @@ const server = createServer((req, res) => {
       return serveNpcPortrait(req, res, portrait)
     } catch {
       return json(res, 502, { error: 'Не удалось подготовить портрет NPC', code: 'NPC_PORTRAIT_FAILED' })
+    }
+  }
+  // Режим подготовки ассетов: список пробелов и запуск генерации заранее.
+  // Работает независимо от рантайм-флага — тот выключает генерацию в игре, а не
+  // единственный способ картинку получить.
+  const assetPreparationMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/asset-preparation$/)
+  if (assetPreparationMatch && (req.method === 'GET' || req.method === 'POST')) {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = assetPreparationMatch[1].toUpperCase()
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
+    if (!canManageCampaignAssets(user, room)) return json(res, 403, { error: 'Подготовка ассетов доступна администратору или владельцу кампании', code: 'ASSET_PREPARATION_FORBIDDEN' })
+    try {
+      const authoritative = await latestCampaignState(campaignId, room.state)
+      const projected = viewerStateFor(authoritative, { role: 'admin', id: user.id }, '')
+      const profiles = (Array.isArray(projected?.social?.npcs) ? projected.social.npcs : [])
+        .map(publicNpcPortraitProfile)
+        .filter(Boolean)
+      const npcs = await npcPortraitInventory({
+        service: npcPortraitService,
+        campaignId,
+        projectedState: projected,
+        significance: (state, profile) => npcPortraitSignificance(state, profile).significant,
+        profiles,
+      })
+      if (req.method === 'GET') {
+        return json(res, 200, {
+          policy_id: ASSET_PREPARATION_POLICY_ID,
+          runtime_image_generation: runtimeImageGeneration,
+          generator_configured: Boolean(apiKey && imageModel),
+          maximum_batch: MAX_PREPARATION_BATCH,
+          npc_portraits: npcs,
+          items_without_illustration: itemsWithoutIllustration(authoritative),
+          items_note: 'Иллюстрация предмета хранится на самой записи предмета и проставляется редактором инвентаря; серверного кеша для неё нет.',
+        })
+      }
+      const body = await readBody(req).catch(() => ({}))
+      const plan = planPreparation(body.npc_ids, npcs, { regenerate: body.regenerate === true })
+      if (!plan.ok) return json(res, 400, { error: plan.message, code: plan.code })
+      if (!apiKey || !imageModel) return json(res, 503, { error: 'Генератор изображений не настроен', code: 'IMAGE_GENERATOR_UNAVAILABLE' })
+      const prepared = []
+      // Последовательно и намеренно: параллельный запуск скрыл бы расход и
+      // упёрся бы в лимит провайдера на середине пачки.
+      for (const npcId of plan.ids) {
+        const profile = profiles.find((candidate) => String(candidate.id) === npcId)
+        if (!profile) continue
+        try {
+          await npcPortraitService.prepare({ campaignId, profile })
+          prepared.push({ id: npcId, status: 'ready' })
+        } catch (error) {
+          prepared.push({ id: npcId, status: 'failed', error: error instanceof Error ? error.message : 'Не удалось подготовить портрет' })
+        }
+      }
+      return json(res, 200, { policy_id: ASSET_PREPARATION_POLICY_ID, prepared })
+    } catch {
+      return json(res, 502, { error: 'Не удалось подготовить ассеты', code: 'ASSET_PREPARATION_FAILED' })
     }
   }
   const campaignTypingMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/presence\/typing$/)
@@ -3442,6 +3527,14 @@ const server = createServer((req, res) => {
   if (req.url === '/api/items/generate-image' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
     if (exceedsRate(`image:${user.id}`, 10)) return json(res, 429, { error: 'Слишком много запросов генерации изображений' })
+    // Игровой путь закрыт флагом целиком, включая администратора: картинки
+    // готовятся заранее, а не посреди вечера.
+    if (!runtimeImageGeneration) {
+      return json(res, 409, {
+        error: 'Генерация изображений во время игры выключена. Подготовьте картинки заранее в разделе подготовки ассетов',
+        code: 'RUNTIME_IMAGE_GENERATION_DISABLED',
+      })
+    }
     if (!apiKey) return json(res, 503, { error: 'Генератор изображений не настроен' })
     try {
       const body = await readBody(req)
