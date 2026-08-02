@@ -271,11 +271,34 @@ export function publicTacticalMapFor(value) {
 }
 
 /**
+ * Этажи, на которых партия уже побывала. Проекция строгая и намеренно узкая:
+ * игрок видит номер и подпись, но не заявку архитектора (`scene.levels`
+ * содержит его подсказки о содержимом ещё не построенных этажей) и не карты
+ * неактивных этажей — те живут в `state.locationMaps` и в проекцию не входят
+ * вовсе.
+ *
+ * @param {unknown} value
+ * @returns {Array<{index: number, label: string}>}
+ */
+function publicKnownLevelsFor(value) {
+  return (Array.isArray(value) ? value : [])
+    .flatMap((entry) => {
+      const index = Number(/** @type {any} */ (entry)?.index)
+      if (!Number.isSafeInteger(index)) return []
+      return [{ index, label: text(/** @type {any} */ (entry)?.label, 120) }]
+    })
+    .slice(0, 8)
+}
+
+/**
  * @param {Loose} [scene]
+ * @param {unknown} [knownLevels] известные партии этажи текущей локации
  * @returns {Loose & { cells: SceneCell[] }}
  */
-export function publicSceneFor(scene = {}) {
+export function publicSceneFor(scene = {}, knownLevels = undefined) {
   const projected = publicTacticalMapWithHashFor(scene.map)
+  const levels = publicKnownLevelsFor(knownLevels)
+  const levelIndex = Number(scene.level?.index)
   return {
     title: text(scene.title, 120),
     location: text(scene.location, 180),
@@ -283,6 +306,10 @@ export function publicSceneFor(scene = {}) {
     objective: text(scene.objective, 500),
     turn: Math.max(0, integer(scene.turn, 0)),
     cells: publicCellsFor(scene.cells),
+    ...(Number.isSafeInteger(levelIndex)
+      ? { level: { index: levelIndex, label: text(scene.level?.label, 120) } }
+      : {}),
+    ...(levels.length ? { levels } : {}),
     ...(projected ? { map: projected.map, map_hash: projected.hash } : {}),
     ...(scene.theme == null ? {} : { theme: text(scene.theme, 120) }),
     ...(scene.danger == null ? {} : { danger: text(scene.danger, 40) }),
@@ -656,8 +683,12 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // обязан исчезнуть из публичной проекции целиком; сторож — проверка
   // `authoritative_state.npc_world === undefined` в
   // `test/npc-item-transfer-api.test.mjs`.
-  const { locationMaps: _locationMaps, npc_world: _npcWorld, ...publicState } = visible
-  const scene = publicSceneFor(state.scene)
+  // `levelEntities` — стэш жителей неактивных этажей: точные HP противников,
+  // незакрытое столкновение и посты NPC другого яруса. Игроку он не
+  // принадлежит и обязан исчезнуть целиком, как `locationMaps` и `npc_world`.
+  const { locationMaps: _locationMaps, npc_world: _npcWorld, levelEntities: _levelEntities, ...publicState } = visible
+  const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
+  const scene = publicSceneFor(state.scene, state.locationLevels?.[currentLocationId])
   const location = scene.location
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
     .filter((/** @type {Loose} */ merchant) => merchant.available !== false && merchantIsAtLocation(merchant, state?.scene ?? location))
@@ -723,6 +754,16 @@ function eventForViewer(event, user, actorId, state = {}) {
     payload.scene = publicSceneFor(payload.scene)
     payload.adventure = publicAdventureFor(payload.adventure)
     payload.worldMap = publicWorldMapFor(payload.worldMap)
+  }
+  // Первое событие этажа несёт карту целиком, и она нераскрыта. Отдавать её
+  // игроку как есть означало бы показать весь ярус сразу — карта проходит тот
+  // же обезличивающий проектор, что и карта сцены.
+  if (visible.event_type === 'MapLevelChanged' && payload.map) {
+    const projectedLevel = publicTacticalMapWithHashFor(payload.map)
+    if (projectedLevel) {
+      payload.map = projectedLevel.map
+      payload.map_hash = projectedLevel.hash
+    } else delete payload.map
   }
   if (visible.event_type === 'MerchantCreated' && payload.merchant) {
     payload.merchant = publicMerchantFor(payload.merchant)

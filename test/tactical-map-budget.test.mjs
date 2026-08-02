@@ -4,17 +4,20 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { buildBuildingScene } from '../server/building-generator.mjs'
+import { buildBuildingScene, generateBuildingScene } from '../server/building-generator.mjs'
 import { campaignStateForViewer, publicSceneFor } from '../server/viewer-projection.mjs'
+import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
+import { normalizeDeclaredLevels } from '../server/level-generator.mjs'
 import { MapStore } from '../server/map-store.mjs'
-import { applyGameEvent, movementStepCostFor, normalizeCampaignState, shortestTacticalPath } from '../server/rules-engine.mjs'
+import { applyGameEvent, movementStepCostFor, normalizeCampaignState, resolveCommand, shortestTacticalPath } from '../server/rules-engine.mjs'
 import {
   SIZE_CLASSES,
   addProp,
   addZone,
   cellAt,
   createTacticalMap,
+  deserializeTacticalMap,
   legacyCellsFromTacticalMap,
   reachableCells,
   serializeTacticalMap,
@@ -332,6 +335,72 @@ test('проекция состояния игроку не разваливае
   assert.ok(projected?.scene, 'проекция обязана вернуть сцену')
   console.log(`  клеток в проекции: ${projected.scene.cells.length}`)
   assertWallClock(median, 60, 'проекция состояния')
+})
+
+/**
+ * Таверна с объявленными этажами и отрядом у лестницы — вход для замеров
+ * перехода (`docs/multilevel-map-plan.md`, раздел 8).
+ */
+function tavernAtStairs() {
+  const declared = normalizeDeclaredLevels([
+    { offset: 1, hint: 'спальни и кабинет хозяина' },
+    { offset: -1, hint: 'винный погреб' },
+  ])
+  const map = generateBuildingScene({ seed: 'бюджет-этажей', locationId: 'loc-tavern', levels: declared })
+  const stairs = map.props.find((prop) => Number(prop.transition?.toLevel) === 1)
+  assert.ok(stairs, 'у таверны с объявленным вторым этажом обязана быть лестница-переход')
+  const anchor = stairs.footprint[0]
+  const spot = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]]
+    .map(([dx, dy]) => ({ x: anchor.x + dx, y: anchor.y + dy }))
+    .find((candidate) => cellAt(map, candidate.x, candidate.y)?.passable)
+  assert.ok(spot, 'рядом с лестницей обязана быть проходимая клетка')
+  return {
+    stairs,
+    state: normalizeCampaignState({
+      sessionCode: 'BUDGET-LEVELS',
+      partyMemberIds: ['hero'],
+      players: [{ id: 'hero', character: 'Герой', hp: 10, maxHp: 10, level: 1, inventory: [], ...spot }],
+      worldMap: { seed: 'budget-levels', currentLocationId: 'loc-tavern', locations: [{ id: 'loc-tavern', name: 'Постоялый двор' }] },
+      scene: {
+        title: 'Постоялый двор',
+        location: 'Постоялый двор',
+        location_id: 'loc-tavern',
+        levels: declared,
+        map: serializeTacticalMap(map),
+        cells: legacyCellsFromTacticalMap(map),
+      },
+    }),
+  }
+}
+
+test('переход между этажами укладывается в пороги плана', () => {
+  const dice = new DiceService({ rng: new SequenceDiceRng([]), idFactory: () => 'unused', now: () => '2026-08-02T00:00:00.000Z' })
+  const { state, stairs } = tavernAtStairs()
+  const command = { command_type: 'UseLevelTransition', actor_id: 'hero', prop_id: stairs.id }
+
+  // Первый переход строит этаж прямо в resolve — это самый дорогой путь.
+  const generation = measure('переход с генерацией этажа', () => (
+    resolveCommand({ ...command, command_id: 'climb' }, state, { diceService: dice })
+  ))
+  const first = resolveCommand({ ...command, command_id: 'climb' }, state, { diceService: dice })
+  assert.ok(first.events[0].payload.map, 'первая генерация обязана нести карту в событии')
+
+  // Второй — находит запомненный этаж и ничего не строит.
+  const upstairs = applyGameEvent(state, first.events[0])
+  const back = deserializeTacticalMap(upstairs.scene.map).props.find((prop) => Number(prop.transition?.toLevel) === 0)
+  assert.ok(back, 'на построенном этаже обязан быть обратный переход')
+  const descentCommand = { command_type: 'UseLevelTransition', actor_id: 'hero', prop_id: back.id, command_id: 'descend' }
+  const remembered = measure('переход по запомненному этажу', () => (
+    resolveCommand(descentCommand, upstairs, { diceService: dice })
+  ))
+  const descent = resolveCommand(descentCommand, upstairs, { diceService: dice })
+  assert.equal(Object.hasOwn(descent.events[0].payload, 'map'), false, 'повторный переход карту в событии не несёт')
+
+  const size = kilobytes(descent.events[0].payload)
+  console.log(`  событие повторного перехода: ${size.toFixed(2)} КБ`)
+  assert.ok(size <= 2, `событие повторного перехода ${size.toFixed(2)} КБ, порог плана — 2 КБ`)
+  assertWallClock(generation, 150, 'переход с генерацией этажа')
+  assertWallClock(remembered, 15, 'переход по запомненному этажу')
 })
 
 test('бюджеты классов размеров согласованы между собой', () => {

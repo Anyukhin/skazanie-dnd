@@ -112,9 +112,32 @@ function normalizedSceneCells(value) {
   })
 }
 
-function sceneMapRecord(value) {
+/**
+ * Запись запомненной локации.
+ *
+ * Клетки лежали здесь с самого начала; сериализованная карта добавлена этапом
+ * L3 и **необязательна**. Без неё запомненный этаж возвращается той же дорогой,
+ * что и раньше: карта пересобирается из клеток, а вместе с ней теряются зоны,
+ * рёбра и привязки лестниц к этажам. Для этажа входа это терпимо — привязку
+ * восстанавливает заявка `scene.levels`. Для этажа выше или ниже терпимо уже
+ * нет: у пересобранной карты `levelIndex` равен нулю, и заявка привязала бы
+ * лестницу не туда. Поэтому этаж консервируется целиком.
+ *
+ * Поле уже умеют выносить `externalizeMaps`/`internalizeMaps`
+ * (`server/map-store.mjs`) — в снимок попадает ссылка, а не тело карты.
+ *
+ * @param {unknown} value клетки, либо запись целиком
+ * @param {unknown} [map] сериализованная карта; по умолчанию берётся из записи
+ */
+function sceneMapRecord(value, map = undefined) {
   const cells = normalizedSceneCells(value)
-  return cells.length ? { version: 1, cells } : null
+  if (!cells.length) return null
+  const source = map === undefined
+    ? (value && typeof value === 'object' && !Array.isArray(value) ? /** @type {any} */ (value).map : undefined)
+    : map
+  return source && typeof source === 'object' && !Array.isArray(source)
+    ? { version: 1, cells, map: source }
+    : { version: 1, cells }
 }
 
 /**
@@ -137,6 +160,25 @@ export function sceneMapForLocation(locationMaps, locationId) {
   return record ? clone(record.cells) : null
 }
 
+/**
+ * Сериализованная карта запомненного этажа, если она была законсервирована.
+ * Сохранения, сделанные до L3, отдают `null` — там лежат только клетки.
+ *
+ * @param {Record<string, any>|null|undefined} locationMaps
+ * @param {string} locationId ключ этажа (`levelKey`)
+ * @returns {Record<string, any>|null}
+ */
+export function sceneTacticalMapForLocation(locationMaps, locationId) {
+  const id = text(locationId, 120)
+  const record = id ? locationMaps?.[id] : null
+  // Клетки записи здесь намеренно не нормализуются: карта самодостаточна, а
+  // разбор нескольких тысяч клеток ради выброшенного результата стоил бы дороже
+  // самого перехода.
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return null
+  const map = record.map
+  return map && typeof map === 'object' && !Array.isArray(map) ? clone(map) : null
+}
+
 export function sceneLocationId(state = {}) {
   const direct = publicText(state.scene?.location_id ?? state.scene?.locationId, 120)
   if (direct) return direct
@@ -151,9 +193,9 @@ export function sceneLocationId(state = {}) {
   )
 }
 
-export function rememberSceneMap(state, locationId, cells) {
+export function rememberSceneMap(state, locationId, cells, map = undefined) {
   const id = publicText(locationId, 120)
-  const record = sceneMapRecord(cells)
+  const record = sceneMapRecord(cells, map)
   if (!id || !record) return state
   state.locationMaps = {
     ...normalizeLocationMaps(state.locationMaps),
@@ -162,10 +204,24 @@ export function rememberSceneMap(state, locationId, cells) {
   return state
 }
 
+/**
+ * Номер активного этажа. Сцена без поля `level` — это этаж входа, и такой
+ * ответ обязателен: у всех сохранённых кампаний поля нет вовсе.
+ *
+ * @param {Record<string, any>} [state]
+ * @returns {number}
+ */
+export function sceneLevelIndex(state = {}) {
+  const index = Number(state?.scene?.level?.index)
+  return Number.isSafeInteger(index) ? index : 0
+}
+
 export function rememberCurrentSceneMap(state) {
   const cells = state?.scene?.cells
   if (!Array.isArray(cells) || !cells.length) return state
-  return rememberSceneMap(state, sceneLocationId(state), cells)
+  // Ключ обязан учитывать этаж: иначе второй этаж лёг бы поверх зала под тем же
+  // идентификатором локации и стёр бы его.
+  return rememberSceneMap(state, levelKey(sceneLocationId(state), sceneLevelIndex(state)), cells, state.scene.map)
 }
 
 /**

@@ -187,18 +187,127 @@ function arrivalPointOf(baseMap, sourceProp) {
  * `building-generator` тоже лежат в interior-зоне, поэтому контур получается
  * вместе с кладкой, а не по одному лишь полу.
  *
+ * Зон может не быть **ни одной**, и это не открытая местность, а потеря на
+ * дороге: карта сцены доезжает до состояния старыми клетками, а те несут только
+ * тип, материал и предмет — пересобранная из них карта помнит стены и двери, но
+ * не зоны. Тогда контур берётся от самой лестницы: помещение, из которого
+ * партия поднимается, плюс его кладка.
+ *
+ * Разделены именно эти два случая: «зон нет вообще» — карта прошла круг через
+ * старые клетки, «есть зоны, но ни одной interior» — картограф действительно
+ * нарисовал опушку, и подниматься там некуда. Волна вдобавок обязана упереться
+ * в кладку со всех сторон: пятно, вышедшее на край карты, — это улица, а не
+ * помещение, и второй этаж над ней не строится.
+ *
  * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{x: number, y: number}|null} [arrival] клетка перехода на этом этаже
  * @returns {Set<string>}
  */
-export function interiorOutline(map) {
+export function interiorOutline(map, arrival = null) {
   const interiorZones = new Set(map.zones.filter((zone) => zone.kind === 'interior').map((zone) => zone.id))
   /** @type {Set<string>} */
   const outline = new Set()
-  if (!interiorZones.size) return outline
+  if (!interiorZones.size) return !map.zones.length && arrival ? enclosureAround(map, arrival) : outline
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const cell = cellAt(map, x, y)
       if (cell && interiorZones.has(cell.zone)) outline.add(`${x},${y}`)
+    }
+  }
+  return outline
+}
+
+/**
+ * Здание вокруг точки, восстановленное по одной геометрии.
+ *
+ * Правило одно: **двор — это то, что выходит на край участка.** Помещения
+ * нарезаются кладкой, дверные клетки их разделяют; от лестницы волна идёт по
+ * комнатам и переходит в соседнюю только через дверь и только если та комната
+ * не касается границы карты. Двор и улица границы касаются всегда, потому что
+ * участок и есть карта, — и внутрь контура не попадают.
+ *
+ * Дверь после круга через старые клетки шаг не держит
+ * (`tacticalMapFromLegacyCells` ставит `blocksMove` только у проёма в стену),
+ * поэтому обычная волна `reachableCells` растеклась бы по всему участку. Здесь
+ * дверь — граница помещения, а не препятствие.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{x: number, y: number}} arrival
+ * @returns {Set<string>}
+ */
+function enclosureAround(map, arrival) {
+  const doorCells = new Set(map.doors.map((door) => `${door.x},${door.y}`))
+  /** @type {Map<string, number>} */
+  const regionOf = new Map()
+  /** @type {Array<{cells: string[], onBorder: boolean}>} */
+  const regions = []
+  const walkable = (x, y) => {
+    const cell = cellAt(map, x, y)
+    return Boolean(cell?.passable) && !doorCells.has(`${x},${y}`)
+  }
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const start = `${x},${y}`
+      if (regionOf.has(start) || !walkable(x, y)) continue
+      const id = regions.length
+      const region = { cells: [start], onBorder: false }
+      regions.push(region)
+      regionOf.set(start, id)
+      const queue = [{ x, y }]
+      for (let index = 0; index < queue.length; index += 1) {
+        const current = queue[index]
+        if (current.x === 0 || current.y === 0 || current.x === map.width - 1 || current.y === map.height - 1) {
+          region.onBorder = true
+        }
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nextX = current.x + dx
+          const nextY = current.y + dy
+          const key = `${nextX},${nextY}`
+          if (regionOf.has(key) || !walkable(nextX, nextY)) continue
+          regionOf.set(key, id)
+          region.cells.push(key)
+          queue.push({ x: nextX, y: nextY })
+        }
+      }
+    }
+  }
+
+  const startRegion = regionOf.get(`${arrival.x},${arrival.y}`)
+  if (startRegion == null || regions[startRegion].onBorder) return new Set()
+  /** @type {Set<number>} */
+  const taken = new Set([startRegion])
+  for (let changed = true; changed;) {
+    changed = false
+    for (const door of map.doors) {
+      const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .map(([dx, dy]) => regionOf.get(`${door.x + dx},${door.y + dy}`))
+        .filter((id) => id != null)
+      if (!sides.some((id) => taken.has(/** @type {number} */ (id)))) continue
+      for (const side of sides) {
+        const id = /** @type {number} */ (side)
+        if (taken.has(id) || regions[id].onBorder) continue
+        taken.add(id)
+        changed = true
+      }
+    }
+  }
+
+  /** @type {Set<string>} */
+  const outline = new Set()
+  for (const id of taken) for (const key of regions[id].cells) outline.add(key)
+  for (const door of map.doors) {
+    const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      .map(([dx, dy]) => regionOf.get(`${door.x + dx},${door.y + dy}`))
+      .filter((id) => id != null)
+    if (sides.some((id) => taken.has(/** @type {number} */ (id)))) outline.add(`${door.x},${door.y}`)
+  }
+  // Кладка: непроходимые соседи получившегося пятна. Контур обязан идти вместе
+  // со стенами — по нему выкраивается коробка этажа выше.
+  for (const key of [...outline]) {
+    const [x, y] = key.split(',').map(Number)
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const neighbor = cellAt(map, x + dx, y + dy)
+      if (neighbor && !neighbor.passable) outline.add(`${x + dx},${y + dy}`)
     }
   }
   return outline
@@ -369,7 +478,7 @@ function levelInvariantErrors(map, arrival) {
  * @returns {LevelGenerationResult}
  */
 function buildUpperLevel({ baseMap, locationId, index, fromLevel, seed, label, arrival }) {
-  const outline = interiorOutline(baseMap)
+  const outline = interiorOutline(baseMap, arrival)
   if (!outline.size) {
     return refusal(
       'LEVEL_OUTLINE_MISSING',
@@ -535,7 +644,7 @@ function paintUpperLevel({ baseMap, locationId, index, seed, label, arrival, out
  */
 function buildCellarLevel({ baseMap, locationId, index, fromLevel, seed, label, arrival, sourceProp }) {
   const random = randomFor(`${LEVEL_GENERATOR.id}:${LEVEL_GENERATOR.version}:${seed}:down`)
-  const interiorCells = interiorOutline(baseMap)
+  const interiorCells = interiorOutline(baseMap, arrival)
   const outline = interiorCells.size ? cellarOutline(interiorCells, arrival) : rectangleAround(baseMap, arrival)
   if (!outline.has(`${arrival.x},${arrival.y}`)) {
     return refusal('LEVEL_ARRIVAL_OUTSIDE_OUTLINE', `Точка спуска ${arrival.x},${arrival.y} лежит вне контура подвала`, index, label)

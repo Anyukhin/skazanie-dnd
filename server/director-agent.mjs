@@ -14,6 +14,25 @@ export const DIRECTOR_MEMORY_RECORD_LIMIT = 6
 const DIRECTOR_THREAD_LIMIT = 6
 const DIRECTOR_PROMISE_LIMIT = 6
 
+/**
+ * «Этаж: {подпись}; известные этажи: {список}» — одна строка сцен-брифа.
+ * Пустая, пока локация одноэтажна: у обычной сцены поля `scene.level` нет, и
+ * бриф остаётся прежним байт в байт.
+ *
+ * @param {Record<string, any>} state
+ * @returns {string}
+ */
+function sceneLevelLine(state = {}) {
+  const level = state.scene?.level
+  if (!level || typeof level !== 'object') return ''
+  const locationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
+  const known = (Array.isArray(state.locationLevels?.[locationId]) ? state.locationLevels[locationId] : [])
+    .map((entry) => clean(entry?.label, 120))
+    .filter(Boolean)
+  const label = clean(level.label, 120) || `этаж ${Number(level.index) || 0}`
+  return known.length ? `Этаж: ${label}; известные этажи: ${known.join(', ')}` : `Этаж: ${label}`
+}
+
 function currentChapterHistory(state = {}) {
   const history = Array.isArray(state.autonomy?.director_history) ? state.autonomy.director_history : []
   const intents = history.map((entry) => entry?.intent ?? entry).filter((entry) => entry && typeof entry === 'object')
@@ -127,12 +146,17 @@ export function fallbackDirectorIntent(state = {}) {
 
 function publicDirectorBrief(state = {}, playerAction = '') {
   const arc = campaignArcPosition(state)
+  const levelLine = sceneLevelLine(state)
   return {
     WORLD_STATE: {
       campaign_premise: campaignConceptForAgent(state),
       scene: {
         title: clean(state.scene?.title, 100), location: clean(state.scene?.location, 160),
         objective: clean(state.scene?.objective, 240), turn: Number(state.scene?.turn) || 0,
+        // Строка про этаж стоит здесь, чтобы модель не выдумывала географию
+        // многоэтажной локации. Она собирается из уже применённых событий и
+        // отдельного вызова не стоит; у одноэтажной локации поля нет вовсе.
+        ...(levelLine ? { level: levelLine } : {}),
       },
       chapter: Math.max(1, Number(state.adventure?.chapter) || 1),
       pacing: {

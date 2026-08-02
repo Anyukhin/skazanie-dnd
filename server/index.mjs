@@ -317,7 +317,11 @@ function canUseHero(user, heroId, campaignId) {
 }
 
 const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'OperateSceneObject', 'EndTurn', 'ResolveHeroDeath'])
+// `UseLevelTransition` живёт в этом же наборе, хотя доступен только вне боя:
+// набор описывает безопасные команды на тактической доске, а не боевые — им
+// пользуются и `OperateDoor`, и взаимодействие с предметом. Запрет перехода в
+// бою — правило движка, а не политика маршрута.
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_REST_COMMANDS = new Set(['StartRest', 'SpendHitPointDie', 'CompleteRest'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
@@ -765,6 +769,11 @@ function sanitizePlayerCombatCommand(user, state, input) {
       // Кнопка не может подменить обычное взаимодействие готовым исходом взлома.
       approach: 'hand',
     }
+  }
+  if (type === 'UseLevelTransition') {
+    // Из запроса берётся только предмет. Куда он ведёт, далеко ли до него и
+    // можно ли идти прямо сейчас — знает карта и Rules Engine.
+    return { ...base, prop_id: String(input?.prop_id ?? input?.propId ?? '').slice(0, 120) }
   }
   if (type === 'MakeAreaAttack') return { ...base, item_id: String(input?.item_id || ''), to: { x: input?.to?.x, y: input?.to?.y } }
   if (type === 'ChangeWeapon') return { ...base, item_id: String(input?.item_id || '') }
