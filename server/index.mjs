@@ -43,6 +43,7 @@ import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrat
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertText } from './architect-usage.mjs'
+import { sceneSummaryFor } from './scene-summary.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator } from './creative-director.mjs'
@@ -1538,6 +1539,16 @@ async function executeDirectorSceneTransition(input) {
   })
 }
 
+/**
+ * Поток событий кампании для сводки сцены. Читается только при переходе — раз
+ * в сцену, — поэтому полный проход по журналу здесь дешевле, чем ещё одно поле
+ * состояния, которое пришлось бы поддерживать в replay.
+ */
+async function campaignEventsForSummary(campaignId) {
+  try { return await eventStore.getEvents(campaignId) }
+  catch { return [] }
+}
+
 async function executeDirectorSceneTransitionOnce({ campaignId, room, user, action, idempotencyKey, resolution, partyDecision }) {
   const authoritative = await latestCampaignState(campaignId, room.state)
   const planningState = normalizeCampaignState(authoritative)
@@ -1562,11 +1573,21 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
       }])
     }
   }
+  // Сводка пишется о сцене, которую отряд ПОКИДАЕТ: обработчик `AdvanceScene`
+  // уже заводит `NarrativeSummaryRecorded`, но до сих пор клал туда дежурную
+  // фразу Архитектора. Здесь в неё попадают настоящие события сцены.
+  const sceneSummary = sceneSummaryFor({
+    state: planningState,
+    events: await campaignEventsForSummary(campaignId),
+    decision: resolution.decision,
+    destinationHint: resolution.destinationHint,
+    destination: planned.sceneArgs?.location,
+  })
   const directorPlan = buildDirectorTransitionCommands({
     campaignId,
     action,
     state: planningState,
-    sceneArgs: planned.sceneArgs,
+    sceneArgs: sceneSummary ? { ...planned.sceneArgs, scene_summary: sceneSummary } : planned.sceneArgs,
     shopIntent: planned.shopIntent,
     partyDecision,
   })

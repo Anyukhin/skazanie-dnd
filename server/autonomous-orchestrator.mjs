@@ -116,6 +116,54 @@ function currentSubject(state) {
     ?? null
 }
 
+/**
+ * Материальное последствие свободного действия — задача 2.1 плана.
+ * «Сожжённая таверна остаётся сожжённой»: успех, изменивший мир, оставляет
+ * факт, который дальше видят Режиссёр, Рассказчик и сводка сцены.
+ *
+ * Граница намеренно узкая и берётся из полей, которые уже есть в прочтении:
+ * успех И (эффект наносит урон обстановкой ИЛИ ставка была serious/deadly ИЛИ
+ * названа опасность сцены). Обычная удачная проверка мир не меняет, и факт о
+ * ней был бы шумом — а шум вытеснит из окна выборки настоящее последствие.
+ */
+export function materialConsequenceCommands(state, { succeeded = false, reading = {}, checkEvent = null } = {}) {
+  if (!succeeded) return []
+  const material = reading.effect === 'hazard_damage'
+    || ['serious', 'deadly'].includes(String(reading.risk))
+    || Boolean(reading.hazard)
+  if (!material) return []
+  const eventId = String(checkEvent?.event_id ?? '')
+  if (!eventId) return []
+  const factId = `fact-scene-change-${digest(eventId)}`
+  const memory = state.worldMemory ?? {}
+  if ((memory.facts ?? []).some((fact) => fact?.id === factId)) return []
+  const goal = String(reading.goal_summary ?? '').trim()
+  const approach = String(reading.approach_summary ?? '').trim()
+  if (!goal && !approach) return []
+  const commands = []
+  let subject = currentSubject(state)
+  if (!subject) {
+    subject = {
+      id: `location-${digest(state.scene?.location || 'scene')}`,
+      kind: 'location',
+      name: state.scene?.location || 'Текущая сцена',
+      summary: '', aliases: [], visibility: 'party', tags: [],
+    }
+    commands.push({ command_type: 'UpsertWorldEntity', entity: subject })
+  }
+  const place = String(state.scene?.location ?? '').trim()
+  commands.push({ command_type: 'RecordWorldFact', fact: {
+    id: factId,
+    subject_id: subject.id,
+    predicate: 'scene_change',
+    object: goal || approach,
+    summary: `${[goal, approach].filter(Boolean).join(': ')}${place ? ` (${place})` : ''}`,
+    visibility: 'party',
+    source_event_ids: [eventId],
+  } })
+  return commands
+}
+
 function explorationCells(state) {
   return (state.scene?.cells ?? []).filter((cell) => cell.revealed !== true && ['floor', 'door'].includes(String(cell.type)))
     .sort((a, b) => Number(a.y) - Number(b.y) || Number(a.x) - Number(b.x))
@@ -1031,6 +1079,7 @@ export class AutonomousCampaignOrchestrator {
     const followUp = [
       { command_type: 'RecordRuling', ruling: outcomeRuling, ruling_id: ruling.id },
       ...(effectPlan?.commands ?? []),
+      ...materialConsequenceCommands(loaded.state, { succeeded, reading, checkEvent }),
       ...(inCombat ? [] : [
         { command_type: 'AdvanceTime', amount: succeeded ? 5 : consequence.minutes, unit: 'minute' },
         { command_type: 'UpdateObjective', objective },

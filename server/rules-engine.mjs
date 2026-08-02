@@ -417,6 +417,10 @@ const SCENE_ADVANCE_FIELDS = new Set([
   'title', 'location', 'location_id', 'mood', 'objective', 'transition', 'arrival', 'hook', 'theme', 'danger', 'seed',
   'completed_objective', 'objective_status', 'outcome', 'carry_unresolved', 'map',
   'scene_kind', 'settlement_type',
+  // Развёрнутая сводка завершённой сцены для памяти мира. Отдельное поле, а не
+  // `outcome`: тот короткой строкой уходит в летопись приключения (240 знаков),
+  // а сводке нужно несколько предложений с перечнем заметных событий.
+  'scene_summary',
 ])
 
 const SCENE_MAP_FIELDS = new Set(['layout', 'scale', 'pattern', 'material', 'width', 'height', 'openness', 'water', 'featureCount'])
@@ -9153,7 +9157,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       const priorTitle = String(state.scene?.title || state.scene?.location || 'Предыдущая сцена').slice(0, 180)
       const priorSummary = String(
-        command.scene_args?.outcome
+        command.scene_args?.scene_summary
+          || command.scene_args?.outcome
           || command.scene_args?.completed_objective
           || state.scene?.objective
           || `Отряд покинул ${state.scene?.location || 'предыдущую локацию'}.`,
