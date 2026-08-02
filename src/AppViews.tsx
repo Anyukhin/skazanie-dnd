@@ -29,6 +29,13 @@ import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions
  * и оставался главным источником конфликтов между потоками работ.
  */
 
+// Список режимов импровизации приходит с сервера вместе с настройками; здесь —
+// только запасной вариант на время загрузки, чтобы селектор не оставался пустым.
+const IMPROV_MODE_FALLBACK: CampaignAiSettingsResponse['improvModes'] = [
+  { id: 'story', label: 'Сюжет', description: 'свобода в сценах, но главная линия в приоритете' },
+  { id: 'chaos', label: 'Хаос', description: 'можно всё, мир подстраивается под выбор отряда' },
+]
+
 export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onClose }: { state: GameState; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onCreateHero: (heroId: string) => void; onClose: () => void }) {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
   const [campaignsLoading, setCampaignsLoading] = useState(true)
@@ -634,6 +641,17 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
               aria-label="Стиль рассказчика"
             >
               {(campaignAi?.narratorStyles ?? [{ id: 'neutral' as const, label: 'Нейтральный' }]).map((style) => <option key={style.id} value={style.id}>{style.label}</option>)}
+            </select>
+          </label>
+          <label className="ui-scale-setting">
+            <span><b>Режим импровизации</b><small>Насколько сильно Режиссёр перестраивает историю под незапланированные действия отряда</small></span>
+            <select
+              value={campaignAi?.settings.improvMode ?? 'story'}
+              disabled={!campaignAi?.canManage || campaignAiBusy}
+              onChange={(event) => onCampaignAiChange({ improvMode: event.currentTarget.value as CampaignAiSettings['improvMode'] })}
+              aria-label="Режим импровизации кампании"
+            >
+              {(campaignAi?.improvModes ?? IMPROV_MODE_FALLBACK).map((improv) => <option key={improv.id} value={improv.id}>{improv.label} — {improv.description}</option>)}
             </select>
           </label>
           {!campaignAi?.canManage && campaignAi && <p className="secure-note"><Lock size={14} />Изменять общие настройки ИИ может владелец кампании или администратор.</p>}

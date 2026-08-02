@@ -28,7 +28,14 @@ import {
   userForToken,
   verifyUser,
 } from './store.mjs'
-import { NARRATOR_STYLES, normalizeNarratorStyle, runWithCampaignAiSettings } from './campaign-ai-context.mjs'
+import {
+  IMPROV_MODES,
+  NARRATOR_STYLES,
+  currentImprovMode,
+  normalizeImprovMode,
+  normalizeNarratorStyle,
+  runWithCampaignAiSettings,
+} from './campaign-ai-context.mjs'
 import { DiceService } from './dice-service.mjs'
 import { MapStore } from './map-store.mjs'
 import { FileEventStore } from './event-store.mjs'
@@ -2385,9 +2392,11 @@ const server = createServer((req, res) => {
       settings: {
         model: allowedAiModels.includes(saved.model) ? saved.model : model,
         narratorStyle: normalizeNarratorStyle(saved.narratorStyle),
+        improvMode: normalizeImprovMode(saved.improvMode),
       },
       availableModels: allowedAiModels,
       narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
+      improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
       canManage: user.role === 'admin' || campaignMembershipFor(user.id, campaignId)?.role === 'owner',
     })
   }
@@ -2405,17 +2414,28 @@ const server = createServer((req, res) => {
       const current = getCampaignAiSettings(campaignId)
       const requestedModel = body.model === undefined ? (current.model || model) : String(body.model).trim()
       const requestedStyle = body.narratorStyle === undefined ? current.narratorStyle : String(body.narratorStyle).trim().toLowerCase()
+      const requestedImprovMode = body.improvMode === undefined
+        ? normalizeImprovMode(current.improvMode)
+        : String(body.improvMode).trim().toLowerCase()
       if (!allowedAiModels.includes(requestedModel)) {
         return json(res, 400, { error: 'Эта модель не входит в серверный список разрешённых моделей', code: 'AI_MODEL_NOT_ALLOWED' })
       }
       if (!Object.hasOwn(NARRATOR_STYLES, requestedStyle)) {
         return json(res, 400, { error: 'Неизвестный стиль рассказчика', code: 'NARRATOR_STYLE_NOT_ALLOWED' })
       }
-      const saved = saveCampaignAiSettings(campaignId, { model: requestedModel, narratorStyle: requestedStyle })
+      if (!Object.hasOwn(IMPROV_MODES, requestedImprovMode)) {
+        return json(res, 400, { error: 'Неизвестный режим импровизации', code: 'IMPROV_MODE_INVALID' })
+      }
+      const saved = saveCampaignAiSettings(campaignId, {
+        model: requestedModel,
+        narratorStyle: requestedStyle,
+        improvMode: requestedImprovMode,
+      })
       return json(res, 200, {
-        settings: { model: saved.model, narratorStyle: saved.narratorStyle },
+        settings: { model: saved.model, narratorStyle: saved.narratorStyle, improvMode: saved.improvMode },
         availableModels: allowedAiModels,
         narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
+        improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
         canManage: true,
       })
     } catch (error) {
@@ -2684,7 +2704,11 @@ const server = createServer((req, res) => {
         loaded = await autonomousCampaign.load(campaignId)
       }
       if (loaded.state.mechanics?.combat?.active) return json(res, 409, { error: 'Сначала завершите активный бой через тактический интерфейс', code: 'COMBAT_ACTIVE' })
-      const decision = await directorAgent.choose({ state: loaded.state, playerAction: body.player_action })
+      const decision = await directorAgent.choose({
+        state: loaded.state,
+        playerAction: body.player_action,
+        improvMode: currentImprovMode(),
+      })
       const result = await autonomousCampaign.runIntent({ campaignId, intent: decision.intent, idempotencyKey: key })
       for (const stage of result.results ?? []) events.push(...(stage.events ?? []))
       const authoritative = await autonomousCampaign.load(campaignId)

@@ -1537,12 +1537,14 @@ export type AiHealth = {
 export type CampaignAiSettings = {
   model: string
   narratorStyle: 'neutral' | 'formal' | 'ironic'
+  improvMode: 'chaos' | 'story'
 }
 
 export type CampaignAiSettingsResponse = {
   settings: CampaignAiSettings
   availableModels: string[]
   narratorStyles: Array<{ id: CampaignAiSettings['narratorStyle']; label: string }>
+  improvModes: Array<{ id: CampaignAiSettings['improvMode']; label: string; description: string }>
   canManage: boolean
   error?: string
 }
