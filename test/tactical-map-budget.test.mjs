@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { buildBuildingScene } from '../server/building-generator.mjs'
 import { campaignStateForViewer, publicSceneFor } from '../server/viewer-projection.mjs'
-import { movementStepCostFor, normalizeCampaignState, shortestTacticalPath } from '../server/rules-engine.mjs'
+import { FileEventStore } from '../server/event-store.mjs'
+import { MapStore } from '../server/map-store.mjs'
+import { applyGameEvent, movementStepCostFor, normalizeCampaignState, shortestTacticalPath } from '../server/rules-engine.mjs'
 import {
   SIZE_CLASSES,
   addProp,
@@ -234,7 +239,34 @@ test('дельта раскрытия за ход не больше 4 КБ', () 
   assert.ok(size <= 4, `дельта ${size.toFixed(2)} КБ, порог плана — 4 КБ`)
 })
 
-test('прирост снимка от карты замерен и зафиксирован храповиком', () => {
+/**
+ * Снимок, каким его пишет `FileEventStore` на диск. Мерить состояние в памяти
+ * бессмысленно: карта выносится **при записи снимка**, и в оперативном
+ * состоянии она обязана остаться целой.
+ *
+ * @param {import('node:test').TestContext} t
+ * @param {Record<string, any>} state
+ * @param {boolean} withMapStore
+ * @returns {Promise<Record<string, any>>} разобранный файл снимка
+ */
+async function writtenSnapshot(t, state, withMapStore) {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-budget-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const store = new FileEventStore({
+    rootDir: root,
+    reducer: applyGameEvent,
+    normalizeState: normalizeCampaignState,
+    ...(withMapStore ? { mapStore: new MapStore({ rootDir: join(root, 'engine') }) } : {}),
+  })
+  await store.initializeCampaign({ campaignId: 'budget', initialState: state })
+  const file = readdirSync(root, { recursive: true })
+    .map(String)
+    .find((name) => name.includes('snapshots') && name.endsWith('.json'))
+  assert.ok(file, 'снимок обязан быть записан')
+  return JSON.parse(readFileSync(join(root, file), 'utf8'))
+}
+
+test('прирост снимка от карты укладывается в порог плана', async (t) => {
   const map = buildBuildingScene({ seed: 'snapshot', width: 30, height: 30 }).map
   const state = normalizeCampaignState({
     sessionCode: 'BUDGET',
@@ -242,17 +274,46 @@ test('прирост снимка от карты замерен и зафикс
     partyMemberIds: ['hero'],
     scene: { title: 'Сцена', location: 'Дом', cells: legacyCellsFromTacticalMap(map) },
   })
-  const full = kilobytes(state)
-  const withoutMap = kilobytes({ ...state, scene: { ...state.scene, map: undefined, cells: undefined }, locationMaps: {} })
-  const growth = full - withoutMap
-  console.log(`  снимок 30×30: всего ${full.toFixed(1)} КБ, вклад карты ${growth.toFixed(1)} КБ`)
 
-  // Порог плана — 5 КБ, и он достижим только после выноса карты из снимка
-  // (этап больших карт). Сейчас в снимке лежат и карта, и производные клетки,
-  // и копия клеток в locationMaps. Храповик держит сегодняшнее число, чтобы
-  // рост был замечен до того, как за него возьмутся.
-  assert.ok(growth <= 220, `вклад карты в снимок ${growth.toFixed(1)} КБ — вырос против замеренного`)
-  assert.ok(growth > 5, 'если вклад уже меньше 5 КБ, карта вынесена из снимка и порог плана пора включать буквально')
+  const snapshot = await writtenSnapshot(t, state, true)
+  const stored = snapshot.state
+  const full = kilobytes(stored)
+  const withoutMap = kilobytes({
+    ...stored,
+    scene: { ...stored.scene, map: undefined, cells: undefined },
+    locationMaps: {},
+  })
+  const growth = full - withoutMap
+  console.log(`  снимок 30×30: всего ${full.toFixed(1)} КБ, вклад карты ${growth.toFixed(2)} КБ`)
+
+  // Порог плана (раздел 13 `docs/tactical-map-plan.md`) — 5 КБ. До выноса он не
+  // выполнялся: в снимке лежали карта, производные клетки и полная копия клеток
+  // каждой запомненной локации, что давало 174,7 КБ на сцене 30×30. Теперь в
+  // снимке остаются только ссылки, и порог включён буквально.
+  assert.ok(growth <= 5, `вклад карты в снимок ${growth.toFixed(2)} КБ, порог плана — 5 КБ`)
+  // Храповик по фактическому замеру 2026-08-02 (0,30 КБ) с запасом втрое:
+  // ссылка — это маркер, хеш, ширина и высота, и расти ей неоткуда. Возврат
+  // тела карты в снимок будет пойман здесь, а не через год на диске игрока.
+  assert.ok(growth <= 1, `вклад карты в снимок ${growth.toFixed(2)} КБ — вырос против замеренных 0,30 КБ`)
+})
+
+test('вынос карт уменьшает записанный снимок на порядок', async (t) => {
+  const map = buildBuildingScene({ seed: 'snapshot', width: 30, height: 30 }).map
+  const state = normalizeCampaignState({
+    sessionCode: 'BUDGET-STORE',
+    players: [{ id: 'hero', character: 'Герой', hp: 10, maxHp: 10, inventory: [], x: 1, y: 1, level: 1 }],
+    partyMemberIds: ['hero'],
+    scene: { title: 'Сцена', location: 'Дом', cells: legacyCellsFromTacticalMap(map) },
+  })
+
+  const plain = kilobytes(await writtenSnapshot(t, state, false))
+  const externalized = kilobytes(await writtenSnapshot(t, state, true))
+  console.log(`  снимок целиком: ${plain.toFixed(1)} КБ → ${externalized.toFixed(1)} КБ с MapStore`)
+
+  // Детерминированное отношение важнее абсолютных чисел: оно не зависит ни от
+  // машины, ни от того, сколько ещё полей появится в состоянии кампании.
+  assert.ok(externalized * 10 < plain,
+    `снимок ${externalized.toFixed(1)} КБ против ${plain.toFixed(1)} КБ — вынос дал меньше порядка`)
 })
 
 test('проекция состояния игроку не разваливается на карте класса region', () => {
