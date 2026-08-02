@@ -87,7 +87,7 @@ import {
   merchantViewFor,
   planMerchantEconomyClock,
 } from './merchant-economy.mjs'
-import { assembleEncounter } from './encounter-assembler.mjs'
+import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
 import { compactStateForTransport } from './reveal-transport.mjs'
@@ -1557,6 +1557,25 @@ async function campaignEventsForSummary(campaignId) {
   catch { return [] }
 }
 
+/**
+ * Предупреждение о заведомо превосходящей силе. Встречу собирают два пути —
+ * инструмент ведущего и автономный Режиссёр, — поэтому строка привязана к
+ * событию, а не к одному эндпоинту: идентификатор берётся от `EncounterCreated`,
+ * и повторная проекция того же события её не удвоит.
+ */
+function warnOnDeadlyEncounter(campaignId, events = []) {
+  const created = (Array.isArray(events) ? events : []).find((event) => (
+    event?.event_type === 'EncounterCreated' && String(event?.payload?.encounter?.difficulty ?? '') === 'deadly'
+  ))
+  if (!created) return null
+  return appendRoomJournal(campaignId, [{
+    id: `deadly-warning-${campaignId}-${String(created.event_id ?? created.state_version_after ?? '')}`,
+    speaker: 'system',
+    author: 'Оценка угрозы',
+    text: DEADLY_ENCOUNTER_WARNING,
+  }])
+}
+
 async function executeDirectorSceneTransitionOnce({ campaignId, room, user, action, idempotencyKey, resolution, partyDecision }) {
   const authoritative = await latestCampaignState(campaignId, room.state)
   const planningState = normalizeCampaignState(authoritative)
@@ -2749,6 +2768,8 @@ const server = createServer((req, res) => {
       const result = await autonomousCampaign.runIntent({ campaignId, intent: body.intent, idempotencyKey: key })
       const events = []
       for (const stage of result.results ?? []) events.push(...(stage.events ?? []))
+      // Предупреждение уходит до того, как отряд получит ход в этом бою.
+      warnOnDeadlyEncounter(campaignId, events)
       if (body.run_combat === true && result.state.mechanics?.combat?.active) {
         const combat = await autonomousCampaign.runCombat(campaignId, { idempotencyPrefix: `${key}:combat` })
         if (!combat.state.mechanics?.combat?.active) await autonomousCampaign.completeEncounter({ campaignId, idempotencyKey: `${key}:completion` })
@@ -2804,6 +2825,7 @@ const server = createServer((req, res) => {
       })
       const result = await autonomousCampaign.runIntent({ campaignId, intent: decision.intent, idempotencyKey: key })
       for (const stage of result.results ?? []) events.push(...(stage.events ?? []))
+      warnOnDeadlyEncounter(campaignId, events)
       const authoritative = await autonomousCampaign.load(campaignId)
       // Шаг Директора менял цель и сцену молча: в ленте не появлялось ни строки,
       // и игрок видел новую задачу про персонажа, которого ему не представили.
@@ -2998,6 +3020,16 @@ const server = createServer((req, res) => {
         theme,
         seed,
       })
+      // Точка невозврата — StartCombat ниже. Предупреждение уходит до него,
+      // пока отступить ещё можно; ярлык качественный, чисел бюджета в нём нет.
+      if (proposalPreview?.difficulty === 'deadly') {
+        appendRoomJournal(campaignId, [{
+          id: `deadly-warning-${campaignId}-${idempotencyKey}`,
+          speaker: 'system',
+          author: 'Оценка угрозы',
+          text: DEADLY_ENCOUNTER_WARNING,
+        }])
+      }
       const actorId = String(party[0]?.id ?? authoritative.activePlayerId ?? '')
       let result = await gameOrchestrator.handle({
         state: room.state,

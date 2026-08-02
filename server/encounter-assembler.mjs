@@ -670,8 +670,38 @@ const THEMES = deepFreeze({
 })
 
 export const ENCOUNTER_THEMES = Object.freeze(Object.keys(THEMES))
-export const ENCOUNTER_DIFFICULTIES = Object.freeze(['easy', 'medium', 'hard'])
-const SRD_DIFFICULTY = Object.freeze({ easy: 'low', medium: 'moderate', hard: 'high' })
+export const ENCOUNTER_DIFFICULTIES = Object.freeze(['easy', 'medium', 'hard', 'deadly'])
+const SRD_DIFFICULTY = Object.freeze({ easy: 'low', medium: 'moderate', hard: 'high', deadly: 'high' })
+
+/**
+ * «Смертельно» — **серверная политика, а не SRD**. В редакции 5.2.1 четвёртого
+ * тира нет: таблица на странице 202 заканчивается на high. Этот тир нужен для
+ * решения владельца о честном мире — когда отряд сам провоцирует силу заведомо
+ * выше своих возможностей, бой собирается по-настоящему смертельным.
+ *
+ * Множитель применяется к high и намеренно живёт отдельной константой, чтобы
+ * ни одно число здесь нельзя было принять за строку из таблицы SRD.
+ */
+const DEADLY_BUDGET_MULTIPLIER = 2
+const DEADLY_DIFFICULTY = 'deadly'
+
+/**
+ * Ярлык «на глаз» для стола. Числа бюджета игрокам не показываются: они
+ * превращают оценку опасности в арифметику, а не в решение отступить.
+ */
+export const ENCOUNTER_DIFFICULTY_LABELS = Object.freeze({
+  easy: 'лёгкий',
+  medium: 'средний',
+  hard: 'тяжёлый',
+  deadly: 'смертельный',
+})
+
+/** Предупреждение до точки невозврата: бой ещё не начат, отступить можно. */
+export const DEADLY_ENCOUNTER_WARNING = 'Противник выглядит смертельно опасным — силы явно неравны. Ещё не поздно отступить или сменить план.'
+
+export function encounterDifficultyLabel(difficulty) {
+  return ENCOUNTER_DIFFICULTY_LABELS[String(difficulty ?? '')] ?? ENCOUNTER_DIFFICULTY_LABELS.medium
+}
 
 // SRD 5.2.1, printed page 202: XP Budget per Character.
 const XP_BUDGET_PER_CHARACTER = deepFreeze({
@@ -1022,9 +1052,14 @@ export class EncounterAssembler {
       throw new EncounterAssemblyError('Нет безопасных клеток для размещения противников', 'NO_SAFE_PLACEMENT_CELLS')
     }
 
-    const budgetXp = validated.party.reduce((sum, member) => (
+    const srdBudgetXp = validated.party.reduce((sum, member) => (
       sum + XP_BUDGET_PER_CHARACTER[member.level][SRD_DIFFICULTY[validated.difficulty]]
     ), 0)
+    // Умножение — единственное отличие смертельного тира от high, и оно
+    // серверное: таблица SRD остаётся нетронутой.
+    const budgetXp = validated.difficulty === DEADLY_DIFFICULTY
+      ? srdBudgetXp * DEADLY_BUDGET_MULTIPLIER
+      : srdBudgetXp
     const quantityCap = Math.min(
       ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures,
       ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures_per_character * validated.party.length,
@@ -1047,6 +1082,8 @@ export class EncounterAssembler {
       proposal_id: `encounter-proposal-${proposalHash.slice(0, 24)}`,
       version: ENCOUNTER_PROPOSAL_VERSION,
       difficulty: validated.difficulty,
+      // Ярлык едет рядом с самим уровнем: столу показывают его, а не бюджет.
+      difficulty_label: encounterDifficultyLabel(validated.difficulty),
       theme: validated.theme,
       xp_budget: budgetXp,
       xp_spent: spentXp,

@@ -1,4 +1,5 @@
 // @ts-check
+import { encounterDifficultyLabel } from './encounter-assembler.mjs'
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
 import { itemViewerCapabilities } from './item-catalog.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
@@ -461,6 +462,9 @@ export function publicEncounterFor(encounter = {}) {
     id: text(encounter.id ?? encounter.encounter_id, 120),
     status: ['staged', 'active', 'ended'].includes(String(encounter.status)) ? String(encounter.status) : 'staged',
     difficulty: text(encounter.difficulty, 40),
+    // Качественная оценка «на глаз» для стола. Числа бюджета остаются в
+    // `threat` и в интерфейсе игрокам не показываются.
+    difficulty_label: encounterDifficultyLabel(encounter.difficulty),
     theme: text(encounter.theme, 40),
     proposal_id: text(encounter.proposal_id, 120),
     enemy_ids: (Array.isArray(encounter.enemy_ids) ? encounter.enemy_ids : []).map((id) => text(id, 120)).filter(Boolean).slice(0, 12),

@@ -442,7 +442,7 @@ export type Merchant = {
   pricing: MerchantPricingPolicy
 }
 
-export type EncounterDifficulty = 'easy' | 'medium' | 'hard'
+export type EncounterDifficulty = 'easy' | 'medium' | 'hard' | 'deadly'
 export type EncounterTheme = 'generic' | 'undead' | 'beasts' | 'goblinoids' | 'raiders'
 
 export type EncounterProposalEnemy = {
@@ -474,6 +474,7 @@ export type EncounterProposal = {
   version?: string
   source?: string | Record<string, unknown>
   difficulty?: EncounterDifficulty
+  difficulty_label?: string
   theme?: EncounterTheme
   xp_budget?: number
   xp_spent?: number
