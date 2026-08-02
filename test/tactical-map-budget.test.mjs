@@ -53,7 +53,7 @@ const RUNS = 9
 const lightingBuildDir = mkdtempSync(join(tmpdir(), 'skazanie-budget-lighting-'))
 {
   const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-  const sources = ['../src/board-lighting.ts', '../src/tactical-map-client.ts']
+  const sources = ['../src/board-lighting.ts', '../src/board-ambient.ts', '../src/tactical-map-client.ts']
     .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
   const compiled = spawnSync(process.execPath, [
     compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
@@ -69,6 +69,7 @@ const lightingBuildDir = mkdtempSync(join(tmpdir(), 'skazanie-budget-lighting-')
   }
 }
 const lighting = await import(pathToFileURL(join(lightingBuildDir, 'board-lighting.mjs')).href)
+const ambient = await import(pathToFileURL(join(lightingBuildDir, 'board-ambient.mjs')).href)
 const mapClient = await import(pathToFileURL(join(lightingBuildDir, 'tactical-map-client.mjs')).href)
 process.on('exit', () => rmSync(lightingBuildDir, { recursive: true, force: true }))
 
@@ -465,6 +466,79 @@ test('запекание света на карте 100×100 укладывае�
   console.log(`  клеток ярче амбиента: ${lit}`)
   assert.ok(lit > 1_000, `освещено всего ${lit} клеток — распространение света сломалось`)
   assertWallClock(median, 30, 'сетка освещённости')
+})
+
+/**
+ * Поддельный 2D-контекст для замера кадра эффектов: считает команды и ничего
+ * не рисует. Такой же приём, как в `test/board-render.test.mjs`, — стоимость
+ * кадра здесь определяется нашей арифметикой, а не растеризацией браузера.
+ */
+function countingContext() {
+  let calls = 0
+  const count = () => { calls += 1 }
+  return {
+    get calls() { return calls },
+    globalAlpha: 1,
+    globalCompositeOperation: 'source-over',
+    lineWidth: 1,
+    fillStyle: '',
+    strokeStyle: '',
+    font: '',
+    textAlign: 'start',
+    textBaseline: 'alphabetic',
+    save: count, restore: count, translate: count, rotate: count,
+    beginPath: count, closePath: count, moveTo: count, lineTo: count, arc: count,
+    fill: count, stroke: count, fillRect: count, strokeRect: count, clearRect: count,
+    setLineDash: count, drawImage: count, fillText: count,
+  }
+}
+
+test('кадр живого слоя эффектов на 100×100 укладывается в 4 мс', () => {
+  // Порог этапа L7 (`docs/multilevel-map-plan.md`, 7.3). Слой рисуется на
+  // `board-effects-canvas` по кадру, поэтому он единственный в доске, кто
+  // обязан укладываться в бюджет **каждого** кадра, а не перерисовки тайла.
+  const map = regionMap({ props: 200 })
+  for (let index = 0; index < 20; index += 1) {
+    addProp(map, {
+      id: `fire-${index}`,
+      assetId: index % 2 ? 'campfire' : 'torch_wall',
+      x: 12.5 + (index % 5) * 17,
+      y: 12.5 + Math.floor(index / 5) * 21,
+      footprint: [],
+    })
+  }
+  const clientMap = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
+  assert.ok(clientMap, 'карта обязана декодироваться на клиенте')
+  const scene = { map: clientMap, palette: { lightWarm: '#ffb257', door: '#8a5a30' }, cellSize: 28 }
+
+  // Худший случай — вся карта в окне: игрок отдалил вид целиком.
+  const view = { x: 0, y: 0, width: clientMap.width, height: clientMap.height }
+  assert.equal(ambient.ambientFires(clientMap, view).length, 20, 'источников обязано быть ровно двадцать')
+  const water = ambient.ambientWaterCells(clientMap, view).length
+  assert.ok(water > 300, `клеток воды ${water} — карта замера потеряла реку`)
+
+  const context = countingContext()
+  let timeMs = 0
+  const median = measure('кадр эффектов 100×100, 20 источников', () => {
+    timeMs += 16.7
+    ambient.drawAmbientEffects(context, scene, { timeMs, view })
+  })
+  const perFrame = context.calls / (RUNS + 1)
+  console.log(`  команд рисования на кадр: ${perFrame.toFixed(0)}`)
+  // Счётчик важнее времени: он ловит регресс независимо от загрузки машины.
+  // Двадцать огней дают по два круга, вода — по штриху на клетку.
+  assert.ok(perFrame > 100, `команд на кадр ${perFrame.toFixed(0)} — живой слой перестал рисовать`)
+  assert.ok(perFrame < 6_000, `команд на кадр ${perFrame.toFixed(0)} — слой начал рисовать лишнее`)
+  assertWallClock(median, 4, 'кадр живого слоя эффектов')
+
+  // Тихая сцена не стоит ничего: цикл в ней просто не заводится.
+  const quiet = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(regionMap({ props: 0 })))))
+  for (let y = 0; y < quiet.height; y += 1) {
+    for (let x = 0; x < 4; x += 1) quiet.layers.surface[y * quiet.width + x] = 0
+  }
+  const idle = countingContext()
+  ambient.drawAmbientEffects(idle, { ...scene, map: quiet }, { timeMs: 1_000, view })
+  assert.equal(idle.calls, 0, 'без огня и воды кадр обязан быть пустым')
 })
 
 test('бюджеты классов размеров согласованы между собой', () => {

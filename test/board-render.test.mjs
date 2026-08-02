@@ -17,7 +17,7 @@ import {
 // спецификаторы без `.js`, а Node ESM их не разрешает.
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-board-render-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/board-render.ts', '../src/board-lighting.ts', '../src/tactical-map-client.ts']
+const sources = ['../src/board-render.ts', '../src/board-lighting.ts', '../src/board-ambient.ts', '../src/tactical-map-client.ts']
   .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
@@ -33,6 +33,7 @@ for (const name of readdirSync(buildDir)) {
 const render = await import(pathToFileURL(join(buildDir, 'board-render.mjs')).href)
 const client = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
 const lighting = await import(pathToFileURL(join(buildDir, 'board-lighting.mjs')).href)
+const ambient = await import(pathToFileURL(join(buildDir, 'board-ambient.mjs')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 /** Поддельный 2D-контекст: записывает присвоения стилей и вызовы по порядку. */
@@ -1003,4 +1004,142 @@ test('запас отпечатка не делает соседние тайл�
   setCell(map, 20, 20, { revealed: false })
   const after = { ...scene, map: decoded(map) }
   assert.equal(render.tileKey(after, far), before, 'далёкий тайл не должен зависеть от чужого раскрытия')
+})
+
+// --- живой слой доски: огонь, вода, дверь (этап L7) -----------------------
+
+/** Сцена с огнём и водой: два источника в раскрытой части и лужа рядом. */
+function ambientScene({ revealed = true } = {}) {
+  const map = createTacticalMap({
+    width: 24, height: 12, locationId: 'loc-fire', seed: 'ambient', theme: 'crypt',
+    fill: { passable: true, revealed, material: 'stone' },
+  })
+  setCell(map, 5, 5, { surface: 'water' })
+  setCell(map, 6, 5, { surface: 'water' })
+  addProp(map, { id: 'torch-a', assetId: 'torch_wall', x: 2.5, y: 2.5, footprint: [{ x: 2, y: 2 }] })
+  addProp(map, { id: 'torch-b', assetId: 'campfire', x: 8.5, y: 3.5, footprint: [{ x: 8, y: 3 }] })
+  addProp(map, { id: 'crate', assetId: 'crate', x: 1.5, y: 8.5, footprint: [{ x: 1, y: 8 }] })
+  return { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+}
+
+test('фазы мерцания детерминированы идентификатором предмета и различаются между огнями', () => {
+  assert.equal(ambient.ambientPhase('torch-a'), ambient.ambientPhase('torch-a'), 'фаза обязана быть функцией id')
+  assert.notEqual(ambient.ambientPhase('torch-a'), ambient.ambientPhase('torch-b'),
+    'два факела в одной комнате обязаны мерцать вразнобой')
+  for (const id of ['torch-a', 'campfire-17', '']) {
+    const phase = ambient.ambientPhase(id)
+    assert.ok(phase >= 0 && phase < 1, `фаза ${phase} вне [0, 1)`)
+  }
+
+  // Колебание — чистая функция времени и фазы, размах в пределах единицы:
+  // свеча, а не стробоскоп.
+  let extreme = 0
+  for (let timeMs = 0; timeMs < 8_000; timeMs += 37) {
+    const value = ambient.fireFlicker(timeMs, 0.25)
+    assert.equal(value, ambient.fireFlicker(timeMs, 0.25))
+    extreme = Math.max(extreme, Math.abs(value))
+  }
+  assert.ok(extreme <= 1.0001, `размах ${extreme} вышел за единицу`)
+  assert.ok(extreme > 0.5, 'колебание обязано быть заметным глазу')
+  assert.ok(ambient.FIRE_FLICKER_AMPLITUDE <= 0.1, 'размах радиуса ореола обязан остаться малым')
+  assert.ok(ambient.FIRE_FLICKER_PERIOD_MS >= 1_500, 'частота мерцания обязана остаться низкой')
+})
+
+test('живой слой рисует только видимый огонь и видимую воду', () => {
+  const scene = ambientScene()
+  const context = recordingContext()
+  ambient.drawAmbientEffects(context, scene, { timeMs: 1_000 })
+  assert.ok(context.ops.some((item) => item.op === 'fill' && item.value === scene.palette.lightWarm),
+    'ореол огня не нарисован')
+  assert.ok(context.ops.some((item) => item.op === 'stroke'), 'блик воды не нарисован')
+  assert.equal(context.globalAlpha, 1, 'прозрачность обязана вернуться к единице')
+
+  // Окно просмотра режет обе стороны: огонь и вода за краем экрана не стоят
+  // ни одной команды рисования.
+  const narrow = recordingContext()
+  ambient.drawAmbientEffects(narrow, scene, { timeMs: 1_000, view: { x: 18, y: 8, width: 4, height: 3 } })
+  assert.deepEqual(narrow.ops, [], 'за пределами окна живой слой не рисует ничего')
+  assert.equal(ambient.hasAmbientMotion(scene.map, { x: 18, y: 8, width: 4, height: 3 }), false,
+    'без движения в окне цикл обязан иметь право заснуть')
+  assert.equal(ambient.hasAmbientMotion(scene.map), true)
+
+  // Нераскрытая карта не выдаёт ни очага, ни лужи: слой эффектов лежит поверх
+  // тумана, и мерцание сквозь него читалось бы разведкой.
+  const hidden = ambientScene({ revealed: false })
+  const dark = recordingContext()
+  ambient.drawAmbientEffects(dark, hidden, { timeMs: 1_000 })
+  assert.deepEqual(dark.ops, [])
+  assert.equal(ambient.hasAmbientMotion(hidden.map), false)
+})
+
+test('пустая сцена не даёт ни одной команды, и цикл засыпает', () => {
+  const map = createTacticalMap({ width: 8, height: 8, fill: { passable: true, revealed: true } })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+  const context = recordingContext()
+  ambient.drawAmbientEffects(context, scene, { timeMs: 500 })
+  assert.deepEqual(context.ops, [], 'без огня, воды и дверей рисовать нечего')
+  assert.equal(ambient.ambientFrameWanted(scene.map, { timeMs: 500 }), false)
+  assert.equal(ambient.hasAmbientMotion(null), false, 'карты нет — движения нет')
+})
+
+test('prefers-reduced-motion выключает и мерцание, и блики, и створку', () => {
+  const scene = ambientScene()
+  const context = recordingContext()
+  ambient.drawAmbientEffects(context, scene, {
+    timeMs: 1_000,
+    reducedMotion: true,
+    doorSwings: [{ doorId: 'door-a', state: 'open', startedAt: 990 }],
+  })
+  assert.deepEqual(context.ops, [], 'просили не двигать картинку — не двигаем ничего')
+  assert.equal(ambient.hasAmbientMotion(scene.map, undefined, true), false)
+  assert.equal(ambient.ambientFrameWanted(scene.map, { timeMs: 1_000, reducedMotion: true }), false,
+    'при reduced-motion цикл не должен заводиться вовсе')
+})
+
+test('створка двери поворачивается 150 мс и после этого цикл не нужен', () => {
+  const map = createTacticalMap({ width: 8, height: 8, fill: { passable: true, revealed: true } })
+  setEdge(map, 2, 2, 3, 2, { kind: 'door', doorId: 'door-a' })
+  setDoor(map, { id: 'door-a', x: 2, y: 2, dir: 'e', state: 'open' })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+  const swing = { doorId: 'door-a', state: 'open', startedAt: 1_000 }
+
+  const middle = recordingContext()
+  ambient.drawAmbientEffects(middle, scene, { timeMs: 1_075, doorSwings: [swing] })
+  const leaf = middle.ops.filter((item) => item.op === 'fillRect' && item.value === scene.palette.door)
+  assert.equal(leaf.length, 1, 'створка обязана быть нарисована ровно одним полотном')
+  const turns = middle.ops.filter((item) => item.op === 'rotate').map((item) => item.angle)
+  assert.equal(turns.length, 1)
+  assert.ok(turns[0] > 0 && turns[0] < Math.PI / 2, `угол ${turns[0]} вне четверти оборота`)
+  assert.ok(ambient.ambientFrameWanted(scene.map, { timeMs: 1_075, doorSwings: [swing] }))
+
+  // Открытие идёт от косяка, закрытие — к нему.
+  const started = recordingContext()
+  ambient.drawAmbientEffects(started, scene, { timeMs: 1_000, doorSwings: [swing] })
+  assert.equal(started.ops.filter((item) => item.op === 'rotate')[0].angle, 0, 'открытие начинается от косяка')
+  const closing = recordingContext()
+  ambient.drawAmbientEffects(closing, scene, {
+    timeMs: 1_000, doorSwings: [{ doorId: 'door-a', state: 'closed', startedAt: 1_000 }],
+  })
+  assert.ok(Math.abs(closing.ops.filter((item) => item.op === 'rotate')[0].angle - Math.PI / 2) < 1e-9,
+    'закрытие начинается с раскрытого положения')
+
+  // Через 150 мс анимация кончилась: дальше дверь дорисовывает тайловый кэш.
+  const done = recordingContext()
+  ambient.drawAmbientEffects(done, scene, { timeMs: 1_000 + ambient.DOOR_SWING_MS, doorSwings: [swing] })
+  assert.deepEqual(done.ops, [])
+  assert.equal(ambient.ambientFrameWanted(scene.map, { timeMs: 1_150, doorSwings: [swing] }), false,
+    'догоревшая створка не должна держать цикл живым')
+})
+
+test('кадр живого слоя воспроизводим: одно и то же время даёт тот же рисунок', () => {
+  const scene = ambientScene()
+  const first = recordingContext()
+  const second = recordingContext()
+  ambient.drawAmbientEffects(first, scene, { timeMs: 4_321 })
+  ambient.drawAmbientEffects(second, scene, { timeMs: 4_321 })
+  assert.deepEqual(second.ops, first.ops)
+
+  const later = recordingContext()
+  ambient.drawAmbientEffects(later, scene, { timeMs: 4_321 + ambient.FIRE_FLICKER_PERIOD_MS / 4 })
+  assert.notDeepEqual(later.ops, first.ops, 'через четверть периода картинка обязана измениться')
 })

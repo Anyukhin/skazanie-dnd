@@ -3,8 +3,8 @@ import type { BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
   DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
-  type BoardEffectRenderer, type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture, type PropAtlas,
-  type TerrainTiles, type TileSurface,
+  type BoardEffectRenderer, type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture,
+  type BoardViewport, type PropAtlas, type TerrainTiles, type TileSurface,
 } from './board-render'
 import {
   COMBAT_ANIMATION_QUEUE_LIMIT,
@@ -17,7 +17,15 @@ import {
   createSpellEffectBudgetController,
   createSpellEffectRenderer,
   isSpellAnimationCue,
+  systemPrefersReducedMotion,
 } from './spell-effects'
+import {
+  DOOR_SWING_MS,
+  ambientFrameWanted,
+  drawAmbientEffects,
+  hasAmbientMotion,
+  type BoardDoorSwing,
+} from './board-ambient'
 import { boardCameraKey } from './tactical-ui'
 import './tactical-board.css'
 
@@ -375,6 +383,29 @@ export function TacticalBoard({
     }
   }, [map, terrain, artUrl])
 
+  /**
+   * Видимое окно в координатах клеток. Холст лежит внутри трансформированного
+   * полотна, поэтому окно считается по фактическим экранным прямоугольникам, а
+   * не по панораме и зуму. Его спрашивают оба потребителя — отрисовка тайлов и
+   * живой слой эффектов, — и второй копии этой арифметики быть не должно.
+   */
+  const viewportInCells = useCallback((): BoardViewport => {
+    const frame = frameRef.current
+    const fallback = { x: 0, y: 0, width: columns, height: rows }
+    if (!frame) return fallback
+    const frameRect = frame.getBoundingClientRect()
+    const stage = frame.closest('.map-stage') ?? frame.parentElement
+    const stageRect = stage?.getBoundingClientRect()
+    const screenCell = frameRect.width / Math.max(1, columns)
+    if (!stageRect || screenCell <= 0) return fallback
+    return {
+      x: (stageRect.left - frameRect.left) / screenCell,
+      y: (stageRect.top - frameRect.top) / screenCell,
+      width: stageRect.width / screenCell,
+      height: stageRect.height / screenCell,
+    }
+  }, [columns, rows])
+
   const paint = useCallback(() => {
     const canvas = canvasRef.current
     const frame = frameRef.current
@@ -391,22 +422,7 @@ export function TacticalBoard({
     const scene = boardScene(cellSize)
     if (!scene) return
 
-    // Видимое окно в координатах клеток: холст лежит внутри трансформированного
-    // полотна, поэтому окно считается по фактическим экранным прямоугольникам.
-    const frameRect = frame.getBoundingClientRect()
-    const stage = frame.closest('.map-stage') ?? frame.parentElement
-    const stageRect = stage?.getBoundingClientRect()
-    const screenCell = frameRect.width / Math.max(1, columns)
-    const view = stageRect && screenCell > 0
-      ? {
-          x: (stageRect.left - frameRect.left) / screenCell,
-          y: (stageRect.top - frameRect.top) / screenCell,
-          width: stageRect.width / screenCell,
-          height: stageRect.height / screenCell,
-        }
-      : { x: 0, y: 0, width: columns, height: rows }
-
-    const tiles = visibleTiles(map, view)
+    const tiles = visibleTiles(map, viewportInCells())
     const { entries } = syncTileCache(cacheRef.current, scene, tiles, createTileSurface)
     context.clearRect(0, 0, canvas.width, canvas.height)
     for (const entry of entries) {
@@ -419,7 +435,7 @@ export function TacticalBoard({
     drawBoardOverlay(context, scene, overlayCells)
     drawBoardEffects(context, scene, effectRenderers ?? [])
     drawMapDecorations(context, scene)
-  }, [map, columns, rows, cellPixels, zoom, overlayCells, effectRenderers, assetsVersion, boardScene])
+  }, [map, columns, rows, cellPixels, zoom, overlayCells, effectRenderers, assetsVersion, boardScene, viewportInCells])
 
   useEffect(() => { paint() }, [paint, pan.x, pan.y])
 
@@ -764,6 +780,79 @@ export function TacticalBoard({
       ghosted.forEach((element) => element.classList.remove('animation-ghosted'))
     }
   }, [activeAnimation, clearEffectsCanvas, prepareEffectsContext])
+
+  /*
+   * Живой слой доски (`docs/multilevel-map-plan.md`, 7.3): мерцание огня,
+   * блики воды и поворот створки. Он делит холст эффектов с боевой анимацией и
+   * потому **не заводит второго цикла**: пока идёт боевой пакет, канвасом
+   * владеет он один, а живой слой спит. Иначе два `requestAnimationFrame`
+   * чистили бы один и тот же буфер по очереди и гасили друг друга.
+   */
+  const doorSwingsRef = useRef<BoardDoorSwing[]>([])
+  const [ambientTick, setAmbientTick] = useState(0)
+  const doorStateSignature = (map?.doors ?? []).map((door) => `${door.id}:${door.state}`).join(',')
+  const previousDoorStates = useRef(new Map<string, string>())
+  useEffect(() => {
+    const next = new Map((map?.doors ?? []).map((door) => [door.id, String(door.state)]))
+    const changed = [...next].filter(([id, state]) => (
+      previousDoorStates.current.has(id) && previousDoorStates.current.get(id) !== state
+    ))
+    previousDoorStates.current = next
+    if (!changed.length) return
+    const startedAt = performance.now()
+    doorSwingsRef.current = [
+      ...doorSwingsRef.current,
+      ...changed.map(([doorId, state]) => ({ doorId, state, startedAt } as BoardDoorSwing)),
+    ]
+    // Тик будит цикл: сама смена состояния двери на видимость огня и воды не
+    // влияет, и без него створка осталась бы неанимированной на тихой карте.
+    setAmbientTick((value) => value + 1)
+  }, [doorStateSignature, map])
+
+  useEffect(() => {
+    // Канвас занят боевой анимацией — живой слой ждёт своей очереди и холст за
+    // собой не чистит: боевой цикл чистит его сам на каждом кадре.
+    if (activeAnimation) return
+    if (!map || cellPixels <= 0) return
+    if (animationsEnabled === false || systemPrefersReducedMotion()) {
+      doorSwingsRef.current = []
+      clearEffectsCanvas()
+      return
+    }
+    if (!hasAmbientMotion(map, viewportInCells()) && !doorSwingsRef.current.length) {
+      clearEffectsCanvas()
+      return
+    }
+
+    let frameHandle = 0
+    let cancelled = false
+    const frame = (now: number) => {
+      if (cancelled) return
+      const prepared = prepareEffectsContext()
+      if (!prepared) return
+      doorSwingsRef.current = doorSwingsRef.current.filter((swing) => now - swing.startedAt < DOOR_SWING_MS)
+      const options = { timeMs: now, view: viewportInCells(), doorSwings: doorSwingsRef.current }
+      prepared.context.clearRect(0, 0, prepared.canvas.width, prepared.canvas.height)
+      drawAmbientEffects(prepared.context, prepared.scene, options)
+      // Движение кончилось — цикл засыпает, а не крутится вхолостую.
+      if (!ambientFrameWanted(map, options)) {
+        clearEffectsCanvas()
+        return
+      }
+      frameHandle = requestAnimationFrame(frame)
+    }
+    frameHandle = requestAnimationFrame(frame)
+    // Перезапуск от панорамы и зума холст не чистит: ближайший же кадр чистит
+    // его сам, а лишний `clearRect` дал бы мигание прямо во время
+    // перетаскивания карты.
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frameHandle)
+    }
+  }, [
+    map, cellPixels, zoom, pan.x, pan.y, activeAnimation, animationsEnabled, ambientTick,
+    prepareEffectsContext, viewportInCells, clearEffectsCanvas,
+  ])
 
   const cellFromPoint = useCallback((clientX: number, clientY: number) => {
     const frame = frameRef.current
