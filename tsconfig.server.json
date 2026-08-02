@@ -18,6 +18,7 @@
   },
   "include": [
     "server/asset-registry.mjs",
+    "server/backgrounds.mjs",
     "server/building-generator.mjs",
     "server/combat-bounds.mjs",
     "server/contracts.mjs",
