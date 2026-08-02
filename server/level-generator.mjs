@@ -11,6 +11,7 @@ import {
   addZone,
   cellAt,
   createTacticalMap,
+  floorVariantAt,
   reachableCells,
   setCell,
   setEdge,
@@ -554,6 +555,10 @@ function buildUpperLevel({ baseMap, locationId, index, fromLevel, seed, label, a
  */
 function paintUpperLevel({ baseMap, locationId, index, seed, label, arrival, outline, interior, partitioned }) {
   const random = randomFor(`${LEVEL_GENERATOR.id}:${LEVEL_GENERATOR.version}:${seed}:up`)
+  // Свой ключ шума на этаж: иначе подвал и первый этаж получили бы в одних и
+  // тех же координатах один и тот же вариант тайла.
+  /** @param {number} x @param {number} y */
+  const variantAt = (x, y) => floorVariantAt(`${seed}:L${index}`, x, y)
   const map = createTacticalMap({
     width: baseMap.width,
     height: baseMap.height,
@@ -584,7 +589,7 @@ function paintUpperLevel({ baseMap, locationId, index, seed, label, arrival, out
     const partition = partitioned && (x === plan.partitionX || (x > plan.partitionX && y === plan.partitionY))
     const room = roomAt(x, y)
     if (perimeter || partition || !room) {
-      setCell(map, x, y, { passable: false, material: 'stone', zone: 'walls', variant: Math.floor(random() * 6) })
+      setCell(map, x, y, { passable: false, material: 'stone', zone: 'walls', variant: variantAt(x, y) })
       continue
     }
     const zone = map.zones.find((entry) => entry.id === room.zoneId)
@@ -592,7 +597,7 @@ function paintUpperLevel({ baseMap, locationId, index, seed, label, arrival, out
       passable: true,
       material: zone?.material ?? 'wood',
       zone: room.zoneId,
-      variant: Math.floor(random() * 6),
+      variant: variantAt(x, y),
     })
   }
 
@@ -644,6 +649,8 @@ function paintUpperLevel({ baseMap, locationId, index, seed, label, arrival, out
  */
 function buildCellarLevel({ baseMap, locationId, index, fromLevel, seed, label, arrival, sourceProp }) {
   const random = randomFor(`${LEVEL_GENERATOR.id}:${LEVEL_GENERATOR.version}:${seed}:down`)
+  /** @param {number} x @param {number} y */
+  const variantAt = (x, y) => floorVariantAt(`${seed}:L${index}`, x, y)
   const interiorCells = interiorOutline(baseMap, arrival)
   const outline = interiorCells.size ? cellarOutline(interiorCells, arrival) : rectangleAround(baseMap, arrival)
   if (!outline.has(`${arrival.x},${arrival.y}`)) {
@@ -684,7 +691,7 @@ function buildCellarLevel({ baseMap, locationId, index, fromLevel, seed, label, 
     const [x, y] = key.split(',').map(Number)
     const perimeter = onOutlineEdge(outline, x, y)
     if (perimeter || partitions.includes(x)) {
-      setCell(map, x, y, { passable: false, material: 'stone', zone: 'walls', variant: Math.floor(random() * 6) })
+      setCell(map, x, y, { passable: false, material: 'stone', zone: 'walls', variant: variantAt(x, y) })
       continue
     }
     setCell(map, x, y, {
@@ -693,7 +700,7 @@ function buildCellarLevel({ baseMap, locationId, index, fromLevel, seed, label, 
       // камень читается как склеп, а не как подсобное помещение.
       material: (x + y) % 3 === 0 ? 'stone' : 'earth',
       zone: 'cellar',
-      variant: Math.floor(random() * 6),
+      variant: variantAt(x, y),
     })
   }
 

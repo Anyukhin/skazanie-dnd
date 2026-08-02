@@ -1,6 +1,4 @@
 // @ts-check
-import { createHash } from 'node:crypto'
-
 import { placeProps } from './prop-placement.mjs'
 import {
   SIZE_CLASSES,
@@ -11,6 +9,7 @@ import {
   createTacticalMap,
   doorwayEdgeAt,
   edgeBetween,
+  floorVariantAt,
   reachableCells,
   setCell,
   setDoor,
@@ -35,18 +34,6 @@ export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', vers
 
 /** Размер сцены-эталона. */
 export const REFERENCE_SIZE = Object.freeze({ width: 26, height: 26 })
-
-/**
- * @param {string|number} seed
- * @returns {() => number}
- */
-function randomFor(seed) {
-  let state = createHash('sha256').update(String(seed)).digest().readUInt32LE(0) || 1
-  return () => {
-    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
-    return state / 0x100000000
-  }
-}
 
 /**
  * @typedef {object} RoomPlan
@@ -126,8 +113,6 @@ export function generateBuildingScene({
 } = {}) {
   const safeWidth = Math.max(16, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
   const safeHeight = Math.max(16, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
-  const random = randomFor(`${BUILDING_GENERATOR.id}:${BUILDING_GENERATOR.version}:${seed}`)
-
   const map = createTacticalMap({
     width: safeWidth,
     height: safeHeight,
@@ -144,6 +129,12 @@ export function generateBuildingScene({
   addZone(map, { id: 'store', kind: 'interior', material: 'wood', lightLevel: 'dark', floorDirection: 'vertical', label: 'Кладовая' })
   addZone(map, { id: 'walls', kind: 'interior', material: 'stone', lightLevel: 'dark', floorDirection: 'horizontal', label: '' })
 
+  // Вариант тайла — позиционный шум от сида (`floorVariantAt`), а не бросок из
+  // общей последовательности: тон клетки обязан зависеть от её координат, а не
+  // от того, в каком порядке генератор до неё дошёл.
+  /** @param {number} x @param {number} y */
+  const variantAt = (x, y) => floorVariantAt(seed, x, y)
+
   // --- участок --------------------------------------------------------
   for (let y = 0; y < safeHeight; y += 1) {
     for (let x = 0; x < safeWidth; x += 1) {
@@ -151,7 +142,7 @@ export function generateBuildingScene({
         passable: true,
         material: 'grass',
         zone: 'yard',
-        variant: Math.floor(random() * 6),
+        variant: variantAt(x, y),
         revealed: false,
         moveCost: 1,
       })
@@ -176,7 +167,7 @@ export function generateBuildingScene({
       const partition = x === partitionX || (x > partitionX && y === partitionY)
       const room = roomAt(x, y)
       if (perimeter || partition || !room) {
-        setCell(map, x, y, { passable: false, material: 'stone', zone: 'walls', variant: Math.floor(random() * 6) })
+        setCell(map, x, y, { passable: false, material: 'stone', zone: 'walls', variant: variantAt(x, y) })
         continue
       }
       const zone = map.zones.find((entry) => entry.id === room.zoneId)
@@ -184,7 +175,7 @@ export function generateBuildingScene({
         passable: true,
         material: zone?.material ?? 'wood',
         zone: room.zoneId,
-        variant: Math.floor(random() * 6),
+        variant: variantAt(x, y),
       })
     }
   }
@@ -214,7 +205,7 @@ export function generateBuildingScene({
   for (let y = building.maxY + 1; y < safeHeight; y += 1) {
     const drift = Math.round(Math.sin((y - building.maxY) * 0.6) * 1.4)
     for (const x of [entranceX + drift, entranceX + drift + 1]) {
-      if (cellAt(map, x, y)) setCell(map, x, y, { material: 'earth', variant: Math.floor(random() * 6) })
+      if (cellAt(map, x, y)) setCell(map, x, y, { material: 'earth', variant: variantAt(x, y) })
     }
   }
 
@@ -543,7 +534,7 @@ export function safeRoom({ seed = 'safe', locationId = '', theme = 'tavern' } = 
         material: border ? 'stone' : 'wood',
         zone: 'hall',
         revealed: true,
-        variant: (x + y) % 6,
+        variant: floorVariantAt(seed, x, y),
       })
     }
   }

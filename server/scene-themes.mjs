@@ -13,6 +13,7 @@ import {
   createTacticalMap,
   edgeList,
   edgeNeighbor,
+  floorVariantAt,
   setCell,
   setDoor,
   setEdge,
@@ -421,7 +422,7 @@ export function layoutOrganicCave(theme, {
       setCell(map, x, y, {
         passable: false,
         material: theme.material,
-        variant: Math.floor(random() * 6),
+        variant: floorVariantAt(seed, x, y),
         revealed: true,
       })
     }
@@ -503,7 +504,7 @@ export function layoutOrganicCave(theme, {
       passable: true,
       material: theme.material,
       zone: graph.zones[zoneIndex]?.id ?? graph.zones[0].id,
-      variant: Math.floor(random() * 6),
+      variant: floorVariantAt(seed, x, y),
       revealed: true,
     })
   }
@@ -558,7 +559,7 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
         passable: true,
         material: onRoad ? 'earth' : theme.material,
         zone: 'field',
-        variant: Math.floor(random() * 6),
+        variant: floorVariantAt(seed, x, y),
         revealed: true,
       })
     }
@@ -626,7 +627,7 @@ export function layoutSettlement(theme, {
         passable: true,
         material: 'grass',
         zone: 'common',
-        variant: Math.floor(random() * 6),
+        variant: floorVariantAt(seed, x, y),
         revealed: true,
       })
     }

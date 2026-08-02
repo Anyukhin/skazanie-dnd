@@ -8,6 +8,7 @@ import {
   cellAt,
   createTacticalMap,
   doorwayEdgeAt,
+  floorVariantAt,
   reachableCells,
   setCell,
   setDoor,
@@ -219,7 +220,7 @@ export function layoutSceneGraph(graph, {
   // проходимость появляется только внутри комнат.
   for (let y = 0; y < safeHeight; y += 1) {
     for (let x = 0; x < safeWidth; x += 1) {
-      setCell(map, x, y, { passable: false, material, zone: 'rock', variant: Math.floor(random() * 6), revealed: false })
+      setCell(map, x, y, { passable: false, material, zone: 'rock', variant: floorVariantAt(seed, x, y), revealed: false })
     }
   }
 
@@ -237,7 +238,7 @@ export function layoutSceneGraph(graph, {
           passable: true,
           material: zone?.kind === 'exterior' ? 'grass' : material,
           zone: zoneId,
-          variant: Math.floor(random() * 6),
+          variant: floorVariantAt(seed, x, y),
         })
       }
     }

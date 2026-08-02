@@ -4,7 +4,7 @@ import type {
 } from './types'
 import { areaCells, type AreaShape } from './area-geometry'
 import { LIGHT_FULL, LIGHT_SOURCE_ASSETS, lightAt, lightGridFor, lightSourceAssetId } from './board-lighting'
-import { cellAt, doorStates, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
+import { cellAt, doorStates, edgeBetween, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
 
 /**
  * Чистая отрисовка тактической доски. Модуль ничего не знает ни о React, ни о
@@ -242,6 +242,18 @@ const MATERIAL_COLORS: Record<TacticalMaterial, string> = {
 /** Материалы, из которых строят стены: остальные — покрытие пола. */
 const BUILT_MATERIALS = new Set<TacticalMaterial>(['stone', 'wood', 'marble', 'metal'])
 
+/**
+ * Смещение тона по варианту тайла (`docs/multilevel-map-plan.md`, 7.2).
+ * Генераторы раскидывают вариант позиционным шумом (`floorVariantAt` в
+ * `server/tactical-map.mjs`), и это единственная таблица, по которой вариант
+ * превращается в цвет: её же читает и заливка `boardFillColor`, и накладка
+ * поверх растровой фактуры.
+ *
+ * Значения нарочно мелкие. Пол — фон, а не рисунок: заметный разброс тонов
+ * читается как грязь на доске и мешает видеть фишки и подсветки.
+ */
+export const FLOOR_VARIANT_SHADES: readonly number[] = [0, -0.04, 0.03, -0.02, 0.05, -0.06]
+
 const SURFACE_COLORS: Record<TacticalSurface, string | null> = {
   none: null,
   water: '#3f7d84',
@@ -300,7 +312,7 @@ export function boardFillColor(target: BoardFillTarget, palette: BoardPalette, t
   // Материал под текстурой лишь подкрашивает подложку; без текстуры он и есть
   // единственный признак покрытия, поэтому подмешивается сильнее.
   const material = mixColors(base, MATERIAL_COLORS[cell.material], texturesAvailable ? 0.3 : 0.55)
-  const variantShade = [0, -0.04, 0.03, -0.02, 0.05, -0.06][Math.abs(cell.variant) % 6]
+  const variantShade = FLOOR_VARIANT_SHADES[Math.abs(cell.variant) % FLOOR_VARIANT_SHADES.length]
   const elevated = cell.elevation === 0 ? material : shade(material, Math.max(-0.2, Math.min(0.2, cell.elevation * 0.05)))
   const tinted = shade(elevated, variantShade)
   // Непроходимая клетка без поверхности — это массив породы или кладка, а не
@@ -678,6 +690,68 @@ export function drawZoneBackground(context: BoardContext2D, scene: BoardScene, t
   }
 }
 
+/**
+ * Тона накладки варианта. Задаются полностью непрозрачными: силу даёт
+ * `globalAlpha`, и она выводится из той же таблицы `FLOOR_VARIANT_SHADES`, что
+ * и цвет заливки без фактуры.
+ */
+const VARIANT_TINT_LIGHT = '#fff3dc'
+const VARIANT_TINT_DARK = '#1b1611'
+
+/**
+ * Накладка варианта поверх растровой фактуры. Без неё вариант виден только там,
+ * где фактур нет: фактура пола раскладывается по карте непрерывно и заливку под
+ * собой закрывает целиком, а значит и весь разброс тонов вместе с ней.
+ */
+function drawVariantTint(context: BoardContext2D, cell: TacticalCell, left: number, top: number, size: number) {
+  const shift = FLOOR_VARIANT_SHADES[Math.abs(cell.variant) % FLOOR_VARIANT_SHADES.length]
+  if (Math.abs(shift) < 0.005) return
+  context.save()
+  context.globalAlpha = Math.min(0.22, Math.abs(shift) * 2.4)
+  context.fillStyle = shift > 0 ? VARIANT_TINT_LIGHT : VARIANT_TINT_DARK
+  context.fillRect(left, top, size, size)
+  context.globalAlpha = 1
+  context.restore()
+}
+
+/** Ширина полосы дизеринга на стыке материалов: половина клетки внутрь. */
+const MATERIAL_DITHER_BAND = 0.5
+const MATERIAL_DITHER_ALPHA = 0.55
+
+const DITHER_NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+
+/**
+ * Дизеринг стыка материалов (`docs/multilevel-map-plan.md`, 7.2). Граница
+ * между досками и камнем идёт по сетке и без этого читается линейкой,
+ * прочерченной по линейке же: игрок видит не смену покрытия, а шов.
+ *
+ * Смешение шахматное и детерминированное: полосу цвета соседа получает только
+ * клетка чётной суммы координат, поэтому вдоль стыка тона чередуются через
+ * одну и граница рассыпается. Стена стык не размывает — за ней другое
+ * помещение, а не продолжение пола.
+ */
+function drawMaterialDither(
+  context: BoardContext2D, scene: BoardScene, cell: TacticalCell,
+  left: number, top: number, size: number, available: boolean,
+) {
+  if (!cell.passable || (cell.x + cell.y) % 2 !== 0) return
+  const band = size * MATERIAL_DITHER_BAND
+  for (const [dx, dy] of DITHER_NEIGHBORS) {
+    const neighbor = cellAt(scene.map, cell.x + dx, cell.y + dy)
+    if (!neighbor || !neighbor.passable || neighbor.material === cell.material) continue
+    if (edgeBetween(scene.map, cell.x, cell.y, neighbor.x, neighbor.y)?.kind === 'wall') continue
+    context.save()
+    context.globalAlpha = MATERIAL_DITHER_ALPHA
+    context.fillStyle = boardFillColor({ kind: 'floor', cell: neighbor }, scene.palette, available)
+    if (dx === 1) context.fillRect(left + size - band, top, band, size)
+    else if (dx === -1) context.fillRect(left, top, band, size)
+    else if (dy === 1) context.fillRect(left, top + size - band, size, band)
+    else context.fillRect(left, top, size, band)
+    context.globalAlpha = 1
+    context.restore()
+  }
+}
+
 /** Слой 2: тайлы пола по материалу и варианту, поверх — иллюстрация локации. */
 export function drawFloorTiles(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
@@ -705,19 +779,164 @@ export function drawFloorTiles(context: BoardContext2D, scene: BoardScene, tile:
           context.fillRect(left, top, frame.size, frame.size)
           context.restore()
         }
+        if (cell.passable) drawVariantTint(context, cell, left, top, frame.size)
         drawSurfaceTexture(context, scene, cell, left, top, frame.size, x, y)
       } else {
         const texture = textures?.get(cell.material)
         if (texture) drawLegacyFloorTexture(context, texture, cell, cell.passable ? 0.55 : 0.72, left, top, frame.size, floorDirection)
       }
+      drawMaterialDither(context, scene, cell, left, top, frame.size, available)
       drawSceneArt(context, scene, cell, left, top)
     }
   }
 }
 
+// --- процедурные декали ---------------------------------------------------
+
+/**
+ * Как часто клетка получает декаль, в промилле (`docs/multilevel-map-plan.md`,
+ * 7.2: примерно одна на 15–25 клеток). Сорок пять на тысячу — это одна на
+ * двадцать две: пол перестаёт быть стерильным, но не превращается в сыпь.
+ */
+export const DECAL_DENSITY_PER_MILLE = 45
+
+/** Вид процедурной декали. `null` — на этом покрытии декалей не бывает. */
+export type FloorDecalKind = 'crack' | 'straw' | 'stain' | 'moss'
+
+/** Пещерные темы: там пол зарастает мхом, а не устилается соломой. */
+const CAVE_DECAL_THEME = /cave|grotto|mine|пещер|грот|шахт/iu
+
+/**
+ * Шум декалей: та же роль, что у `floorVariantAt` на сервере, но здесь он
+ * нужен клиенту, а карта приходит уже готовой. Считается от сида карты и
+ * координат клетки, поэтому одинаков в любом кадре, на любом зуме и у любого
+ * игрока — декаль не «переезжает» при панорамировании и не пересчитывается.
+ */
+export function decalNoiseAt(seed: string, x: number, y: number) {
+  let hash = 0x811c9dc5
+  const source = `${seed}|${x}|${y}`
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  hash = Math.imul(hash ^ (hash >>> 15), 0x2c1b3c6d)
+  hash = Math.imul(hash ^ (hash >>> 12), 0x297a2d39)
+  return (hash ^ (hash >>> 15)) >>> 0
+}
+
+/**
+ * Вид декали для клетки. Тематика жёсткая: трещина идёт по камню и мрамору,
+ * солома и пятна — по дереву и утоптанной земле, мох — по камню и земле в
+ * пещере. Трава, песок, металл и лёд декалей не получают: там либо нечему
+ * трескаться, либо декаль читается мусором.
+ */
+export function floorDecalKindFor(map: TacticalMap, cell: TacticalCell, noise: number): FloorDecalKind | null {
+  if (!cell.passable || cell.surface !== 'none') return null
+  const cave = CAVE_DECAL_THEME.test(map.theme)
+  if (cave && (cell.material === 'stone' || cell.material === 'earth')) return (noise >>> 10) % 3 === 0 ? 'crack' : 'moss'
+  if (cell.material === 'stone' || cell.material === 'marble') return 'crack'
+  if (cell.material === 'wood' || cell.material === 'earth') return (noise >>> 10) % 2 === 0 ? 'straw' : 'stain'
+  return null
+}
+
+const DECAL_COLORS: Record<FloorDecalKind, string> = {
+  crack: '#3a2f24',
+  straw: '#c9a961',
+  stain: '#4a3520',
+  moss: '#4f6b39',
+}
+
+const DECAL_ALPHA: Record<FloorDecalKind, number> = {
+  crack: 0.32, straw: 0.42, stain: 0.26, moss: 0.34,
+}
+
+/**
+ * Рисунок одной декали. Разброс берётся из битов того же шума — своего
+ * генератора случайности здесь нет, иначе декаль перестала бы быть функцией от
+ * клетки и «поплыла» бы при каждой перерисовке тайла.
+ */
+function drawFloorDecal(
+  context: BoardContext2D, kind: FloorDecalKind, noise: number,
+  left: number, top: number, size: number,
+) {
+  // Три независимых сдвига в пределах клетки: они же задают и наклон рисунка.
+  const jitterX = ((noise >>> 4) & 63) / 63
+  const jitterY = ((noise >>> 12) & 63) / 63
+  const spin = ((noise >>> 20) & 63) / 63
+  const centerX = left + size * (0.28 + jitterX * 0.44)
+  const centerY = top + size * (0.28 + jitterY * 0.44)
+  context.globalAlpha = DECAL_ALPHA[kind]
+  if (kind === 'crack') {
+    context.strokeStyle = DECAL_COLORS[kind]
+    context.beginPath()
+    const reach = size * (0.2 + spin * 0.16)
+    const slope = (spin - 0.5) * 1.4
+    context.moveTo(centerX - reach, centerY - reach * slope)
+    context.lineTo(centerX - reach * 0.2, centerY + reach * 0.28)
+    context.lineTo(centerX + reach * 0.35, centerY - reach * 0.18)
+    context.lineTo(centerX + reach, centerY + reach * slope * 0.6)
+    context.stroke()
+    return
+  }
+  if (kind === 'straw') {
+    context.strokeStyle = DECAL_COLORS[kind]
+    context.beginPath()
+    for (let index = 0; index < 4; index += 1) {
+      const angle = (spin + index * 0.27) * Math.PI * 2
+      const length = size * (0.1 + ((noise >>> (index * 3)) & 7) / 7 * 0.1)
+      const offsetX = centerX + Math.cos(angle * 1.7) * size * 0.1
+      const offsetY = centerY + Math.sin(angle * 1.3) * size * 0.1
+      context.moveTo(offsetX - Math.cos(angle) * length, offsetY - Math.sin(angle) * length)
+      context.lineTo(offsetX + Math.cos(angle) * length, offsetY + Math.sin(angle) * length)
+    }
+    context.stroke()
+    return
+  }
+  // Пятно и мох — заливки. У пятна одно расплывшееся ядро, у мха — россыпь.
+  context.fillStyle = DECAL_COLORS[kind]
+  if (kind === 'stain') {
+    ellipseShape(context, centerX, centerY, size * (0.14 + spin * 0.1), size * (0.1 + jitterX * 0.09))
+    return
+  }
+  for (let index = 0; index < 3; index += 1) {
+    const angle = (spin + index / 3) * Math.PI * 2
+    const radius = size * (0.05 + ((noise >>> (index * 5)) & 7) / 7 * 0.05)
+    circle(context, centerX + Math.cos(angle) * size * 0.13, centerY + Math.sin(angle) * size * 0.13, radius)
+  }
+}
+
+/**
+ * Процедурные декали пола: трещины, солома, пятна и мох
+ * (`docs/multilevel-map-plan.md`, 7.2). Новых ассетов не требуют — рисуются
+ * вектором **в тайл**, поэтому стоят ровно один раз на перерисовку тайла, а не
+ * каждый кадр.
+ *
+ * В нераскрытой клетке декали нет: туман полупрозрачный, и рисунок под ним
+ * читался бы, выдавая покрытие ещё не разведанного пола.
+ */
+function drawProceduralDecals(context: BoardContext2D, scene: BoardScene, frame: TileFrame) {
+  const seed = scene.map.seed || scene.map.terrainHash
+  context.save()
+  context.lineWidth = Math.max(1, frame.size / 26)
+  for (let y = frame.minY; y <= frame.maxY; y += 1) {
+    for (let x = frame.minX; x <= frame.maxX; x += 1) {
+      const cell = cellAt(scene.map, x, y)
+      if (!cell?.revealed) continue
+      const noise = decalNoiseAt(seed, x, y)
+      if (noise % 1000 >= DECAL_DENSITY_PER_MILLE) continue
+      const kind = floorDecalKindFor(scene.map, cell, noise)
+      if (!kind) continue
+      drawFloorDecal(context, kind, noise, (x - frame.minX) * frame.size, (y - frame.minY) * frame.size, frame.size)
+    }
+  }
+  context.globalAlpha = 1
+  context.restore()
+}
+
 /** Слой 3: декали — рябь на воде, трещины на щебне, наледь. */
 export function drawDecals(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
+  drawProceduralDecals(context, scene, frame)
   context.save()
   context.lineWidth = Math.max(1, frame.size / 22)
   for (let y = frame.minY; y <= frame.maxY; y += 1) {

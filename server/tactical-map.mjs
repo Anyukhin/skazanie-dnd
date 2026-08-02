@@ -387,6 +387,64 @@ export function createTacticalMap({
   return map
 }
 
+// --- вариант тайла -------------------------------------------------------
+
+/**
+ * Сколько вариантов пола раскидывается по карте (`docs/multilevel-map-plan.md`,
+ * 7.2). Четыре — это столько, сколько владелец готов нарисовать на материал;
+ * больше слой всё равно не покажет, а тона начнут пестрить.
+ */
+export const FLOOR_VARIANTS = 4
+
+/**
+ * Вариант тайла клетки: детерминированный шум от сида и координат.
+ *
+ * Раньше генераторы тянули вариант из общей последовательности `random()`.
+ * Это давало разброс, но привязывало вариант к **порядку обхода**: та же
+ * клетка получала другой тон, стоило генератору поменять порядок циклов или
+ * добавить один лишний бросок. Здесь вариант зависит только от `(сид, x, y)`,
+ * поэтому он переживает и правку генератора, и перегенерацию этажа, и не
+ * тратит состояние общей случайности.
+ *
+ * Хеш — целочисленный перемешиватель по образцу splitmix32: криптографии тут
+ * не нужно, а `createHash` на каждую из десяти тысяч клеток стоил бы дороже
+ * всей остальной генерации.
+ *
+ * @param {string|number} seed
+ * @param {number} x
+ * @param {number} y
+ * @param {number} [variants]
+ * @returns {number} целое 0…variants−1
+ */
+export function floorVariantAt(seed, x, y, variants = FLOOR_VARIANTS) {
+  const span = Math.max(1, Math.floor(variants))
+  let hash = seedNoiseBase(seed)
+  hash = (hash ^ Math.imul(Math.trunc(x) | 0, 0x27d4eb2d)) >>> 0
+  hash = (hash ^ Math.imul(Math.trunc(y) | 0, 0x165667b1)) >>> 0
+  hash = Math.imul(hash ^ (hash >>> 15), 0x2c1b3c6d) >>> 0
+  hash = Math.imul(hash ^ (hash >>> 12), 0x297a2d39) >>> 0
+  hash = (hash ^ (hash >>> 15)) >>> 0
+  return hash % span
+}
+
+/** Кэш базы шума: строка сида одна на всю генерацию, а клеток десять тысяч. */
+const seedNoiseBases = new Map()
+
+/**
+ * @param {string|number} seed
+ * @returns {number}
+ */
+function seedNoiseBase(seed) {
+  const key = String(seed)
+  const cached = seedNoiseBases.get(key)
+  if (cached !== undefined) return cached
+  const base = createHash('sha256').update(key).digest().readUInt32LE(0) >>> 0
+  // Предел кэша: сидов за жизнь процесса набегает много, а стоит запись копейки.
+  if (seedNoiseBases.size > 512) seedNoiseBases.clear()
+  seedNoiseBases.set(key, base)
+  return base
+}
+
 // --- аксессоры клеток ----------------------------------------------------
 
 /**
