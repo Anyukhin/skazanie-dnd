@@ -364,7 +364,7 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
 // прежний записанный пробел закрыт.
 test('loaded role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
   // Версия в списке обязана совпадать с той, которую роль действительно грузит:
-  // narrator перешёл на v5, campaign_creator и map_architect — на v3,
+  // narrator перешёл на v5, campaign_creator — на v3, map_architect — на v4,
   // социальный контроллер — на v3 с границей UNTRUSTED_DATA,
   // action_adjudicator — на v2, остальные на v1.
   const prompts = [
@@ -374,7 +374,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
     ['director/v1', 'director/v1'],
     ['action_adjudicator/v2', 'action_adjudicator/v2'],
     ['campaign_creator/v3', 'campaign_creator/v3'],
-    ['map_architect/v3', 'map_architect/v3'],
+    ['map_architect/v4', 'map_architect/v4'],
   ]
   for (const [fileId, promptId] of prompts) {
     const prompt = await readFile(new URL(`../prompts/${fileId}.txt`, import.meta.url), 'utf8')

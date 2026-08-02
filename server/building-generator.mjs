@@ -4,7 +4,9 @@ import { createHash } from 'node:crypto'
 import { placeProps } from './prop-placement.mjs'
 import {
   SIZE_CLASSES,
+  addProp,
   addZone,
+  attachLevelTransitions,
   cellAt,
   createTacticalMap,
   doorwayEdgeAt,
@@ -58,10 +60,13 @@ function randomFor(seed) {
 /**
  * Планировка здания: общий зал плюс два меньших помещения.
  *
+ * Экспортируется ради `server/level-generator.mjs`: верхний этаж нарезается той
+ * же логикой, что и первый, и второй копии этого правила быть не должно.
+ *
  * @param {{minX: number, minY: number, maxX: number, maxY: number}} interior
  * @returns {{rooms: RoomPlan[], partitionX: number, partitionY: number}}
  */
-function planRooms(interior) {
+export function planRooms(interior) {
   // Зал занимает примерно две трети ширины: за стойкой и столами нужно место,
   // а подсобка и кладовая мелкие по назначению.
   const partitionX = Math.round(interior.minX + (interior.maxX - interior.minX) * 0.62)
@@ -84,7 +89,7 @@ function planRooms(interior) {
  * @param {string} kind
  * @param {{blocksMove?: boolean, blocksSight?: boolean, cover?: string}} [options]
  */
-function edgesAround(map, x, y, kind, options = {}) {
+export function edgesAround(map, x, y, kind, options = {}) {
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const neighbor = cellAt(map, x + dx, y + dy)
     if (!neighbor || !neighbor.passable) continue
@@ -107,6 +112,7 @@ function edgesAround(map, x, y, kind, options = {}) {
  * @param {string} [options.locationId]
  * @param {string} [options.theme]
  * @param {boolean} [options.withProps] расставлять ли предметы
+ * @param {Array<{offset?: number, label?: string}>} [options.levels] объявленные этажи локации
  * @returns {import('./tactical-map.mjs').TacticalMap}
  */
 export function generateBuildingScene({
@@ -116,6 +122,7 @@ export function generateBuildingScene({
   locationId = '',
   theme = 'tavern',
   withProps = true,
+  levels = [],
 } = {}) {
   const safeWidth = Math.max(16, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
   const safeHeight = Math.max(16, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
@@ -261,7 +268,85 @@ export function generateBuildingScene({
       ],
     })
   }
+  // Лестница в зале стоит здесь с самого начала, но переходом становится только
+  // когда у локации объявлены этажи (заявка `levels` архитектора). Без заявки
+  // вызов ничего не меняет, и одноэтажная таверна собирается ровно как прежде.
+  ensureDeclaredTransitions(map, levels, 'hall')
   return map
+}
+
+/**
+ * Привязывает объявленные этажи к лестницам зала и достраивает недостающие.
+ *
+ * Одной привязки мало: `placeProps` ставит лестницу наравне с мебелью, и на
+ * части сидов она не помещается — `stairs_up` занимает две клетки у стены.
+ * Пока лестница была декором, это ничего не значило; с объявленным вторым
+ * этажом это дыра: этаж есть, а подняться нечем. Поэтому недостающий крючок
+ * ставится явно, по первой свободной клетке зала у стены.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {Array<{offset?: number, label?: string}>} levels
+ * @param {string} zoneId зона, в которой ищется место под лестницу
+ */
+function ensureDeclaredTransitions(map, levels, zoneId) {
+  const declared = Array.isArray(levels) ? levels : []
+  if (!declared.length) return
+  const attached = attachLevelTransitions(map, declared)
+  const covered = new Set(attached.map((prop) => prop.transition?.toLevel))
+  /** @type {Set<string>} */
+  const occupied = new Set()
+  for (const prop of map.props) for (const cell of prop.footprint) occupied.add(`${cell.x},${cell.y}`)
+  for (const level of declared) {
+    const toLevel = Number(level?.offset)
+    if (!Number.isSafeInteger(toLevel) || toLevel === map.levelIndex || covered.has(toLevel)) continue
+    const spot = freeWallCellIn(map, zoneId, occupied)
+    if (!spot) continue
+    addProp(map, {
+      id: `level-transition-${toLevel}`,
+      assetId: toLevel > map.levelIndex ? 'stairs_up' : 'stairs_down',
+      x: spot.x + 0.5,
+      y: spot.y + 0.5,
+      rotation: 0,
+      scale: 1,
+      // Одна клетка, а не штатный след 2×1: лестница обязана встать даже в
+      // тесном зале, а её точные координаты нужны парному переходу этажом выше.
+      footprint: [{ x: spot.x, y: spot.y }],
+      zOrder: 0,
+      blocksMove: false,
+      blocksSight: false,
+      cover: 'none',
+      interactive: true,
+      transition: { toLevel, label: String(level?.label ?? '') },
+    })
+    covered.add(toLevel)
+    occupied.add(`${spot.x},${spot.y}`)
+  }
+}
+
+/**
+ * Первая свободная проходимая клетка зоны, у которой есть стена: лестница
+ * прижимается к кладке, а не встаёт посреди зала. Обход по y, затем x —
+ * результат детерминирован.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} zoneId
+ * @param {Set<string>} occupied
+ * @returns {{x: number, y: number}|null}
+ */
+function freeWallCellIn(map, zoneId, occupied) {
+  /** @type {{x: number, y: number}|null} */
+  let anywhere = null
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (!cell || !cell.passable || cell.zone !== zoneId || occupied.has(`${x},${y}`)) continue
+      if (!anywhere) anywhere = { x, y }
+      const nearWall = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .some(([dx, dy]) => cellAt(map, x + dx, y + dy)?.passable !== true)
+      if (nearWall) return { x, y }
+    }
+  }
+  return anywhere
 }
 
 /**
@@ -274,7 +359,7 @@ export function generateBuildingScene({
  * @param {number} y
  * @param {string} id
  */
-function openDoorway(map, x, y, id) {
+export function openDoorway(map, x, y, id) {
   const cell = cellAt(map, x, y)
   if (!cell) return
   setCell(map, x, y, { passable: true, material: 'wood' })
@@ -312,7 +397,7 @@ function openDoorway(map, x, y, id) {
  * @param {number} x
  * @param {number} y
  */
-function openWindow(map, x, y) {
+export function openWindow(map, x, y) {
   const cell = cellAt(map, x, y)
   if (!cell || cell.passable) return
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -340,7 +425,7 @@ function railBetween(map, ax, ay, bx, by) {
  * раздел 10): ослабить необязательные требования, затем упростить планировку,
  * затем отдать минимальную безопасную комнату. Игра не останавливается никогда.
  *
- * @param {{seed?: string, width?: number, height?: number, locationId?: string, theme?: string, withProps?: boolean}} [options]
+ * @param {{seed?: string, width?: number, height?: number, locationId?: string, theme?: string, withProps?: boolean, levels?: Array<{offset?: number, label?: string}>}} [options]
  * @returns {{map: import('./tactical-map.mjs').TacticalMap, fallback: string, warnings: string[]}}
  */
 export function buildBuildingScene(options = {}) {

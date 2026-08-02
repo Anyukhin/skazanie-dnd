@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { publicAdventureMemory } from './adventure-director.mjs'
+import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
@@ -15,7 +16,7 @@ import { buildDataOnlyContext } from './security.mjs'
 export const SCENE_ARCHITECT_AGENT_ID = 'scene_architect'
 export const LEGACY_SCENE_ARCHITECT_AGENT_ID = 'AgentCartographer'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v3.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v4.txt', import.meta.url)), 'utf8')
 
 function clean(value, maximum = 240) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -157,6 +158,11 @@ function normalizePlan(value, fallback) {
   const objectiveStatus = new Set(['completed', 'unresolved', 'abandoned'])
   const scale = MAP_SCALES.has(mapSource.scale) ? mapSource.scale : fallback.map.scale
   const dimensions = scaleDimensions(scale)
+  // Этажи необязательны, и их отсутствие — самый частый и совершенно нормальный
+  // ответ. Поэтому поле не подставляется из fallback и не появляется в заявке
+  // пустым массивом: одноэтажная локация обязана выглядеть ровно так же, как до
+  // появления многоуровневых карт.
+  const levels = normalizeDeclaredLevels(source.levels)
   return {
     title: clean(source.title, 80) || fallback.title,
     location: clean(source.location, 120) || fallback.location,
@@ -170,6 +176,7 @@ function normalizePlan(value, fallback) {
     outcome: clean(source.outcome, 240) || fallback.outcome,
     objective_status: objectiveStatus.has(source.objective_status) ? source.objective_status : fallback.objective_status,
     carry_unresolved: source.carry_unresolved !== false,
+    ...(levels.length ? { levels } : {}),
     map: {
       layout: layouts.has(mapSource.layout) ? mapSource.layout : fallback.map.layout,
       scale,

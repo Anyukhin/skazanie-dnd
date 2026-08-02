@@ -4,6 +4,7 @@ import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
 import { SIZE_CLASSES, legacyCellsFromTacticalMap } from './tactical-map.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './scene-interactions.mjs'
 import { REFERENCE_SIZE } from './building-generator.mjs'
+import { normalizeDeclaredLevels } from './level-generator.mjs'
 import {
   buildThemedScene,
   fallbackThemeFor,
@@ -193,7 +194,7 @@ export function rememberCurrentSceneMap(state) {
  * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
  * ведёт к теме, а не мимо неё.
  */
-function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap }) {
+function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap, levels = [] }) {
   // Опознание живёт в одном месте — `server/scene-themes.mjs`.
   const recognized = matchTheme({ location, theme, sceneKind })
     ?? themeFromMapRequest(requestedMap)
@@ -209,6 +210,7 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locat
       locationId,
       width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
       height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
+      levels,
     })
     return ensureSceneInteractionFeatures(
       legacyCellsFromTacticalMap(built.map),
@@ -231,9 +233,11 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locat
  * @param {object} input
  * @returns {ReturnType<typeof generateDynamicSceneMap>}
  */
-export function generateSceneCells({ theme = '', danger = 'средняя', location = '', sceneKind = '', seed = 'scene', locationId = '', map = {} } = {}) {
+export function generateSceneCells({ theme = '', danger = 'средняя', location = '', sceneKind = '', seed = 'scene', locationId = '', map = {}, levels = [] } = {}) {
   const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
-  return generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap })
+  return generateSceneCellsFor({
+    theme, danger, location, sceneKind, seed, locationId, requestedMap, levels: normalizeDeclaredLevels(levels),
+  })
 }
 
 /**
@@ -261,10 +265,30 @@ export function levelKey(locationId, level = 0) {
   return `${base.slice(0, 120 - suffix.length)}${suffix}`
 }
 
-function stableLocationMapSeed(worldMap, locationId, location) {
+export function stableLocationMapSeed(worldMap, locationId, location) {
   const campaignSeed = publicText(worldMap?.seed, 120, 'campaign')
   const stableId = publicText(locationId, 120, publicText(location, 120, 'location'))
   return `location-map:v1:${campaignSeed}:${stableId}`
+}
+
+/**
+ * Сид этажа. Выводится из сида локации, а не берётся заново: один и тот же
+ * `(locationId, level)` обязан давать ту же карту при любом числе переходов
+ * туда и обратно, иначе replay соберёт другой подвал.
+ *
+ * Суффикс совпадает по форме с `levelKey`, и это намеренно: читая сид в логе,
+ * видно, какой именно этаж им собран. Этаж входа сохраняет прежний сид без
+ * суффикса, поэтому карты уже сыгранных локаций не меняются.
+ *
+ * @param {string} baseSeed сид локации из `stableLocationMapSeed`
+ * @param {number} [level]
+ * @returns {string}
+ */
+export function levelSeed(baseSeed, level = 0) {
+  const index = Number(level)
+  const safeLevel = Number.isSafeInteger(index) ? index : 0
+  const base = publicText(baseSeed, 180, 'location-map')
+  return safeLevel === 0 ? base : `${base}@L${safeLevel}`
 }
 
 function publicHistoryEntry(value) {
@@ -393,6 +417,7 @@ export function createSceneTransition(input = {}, state = {}) {
   const rememberedMap = sceneMapForLocation(state.locationMaps, locationId)
     ?? (sceneLocationId(state) === locationId ? normalizedSceneCells(previousScene.cells) : null)
   const requestedMap = input.map && typeof input.map === 'object' && !Array.isArray(input.map) ? input.map : {}
+  const declaredLevels = normalizeDeclaredLevels(input.levels)
   const cells = rememberedMap ?? generateSceneCellsFor({
     theme,
     danger,
@@ -401,6 +426,7 @@ export function createSceneTransition(input = {}, state = {}) {
     seed: stableLocationMapSeed(worldMap, locationId, location),
     locationId,
     requestedMap,
+    levels: declaredLevels,
   })
   const scene = {
     title,
@@ -409,6 +435,15 @@ export function createSceneTransition(input = {}, state = {}) {
     mood,
     objective,
     turn: Math.max(0, Number(previousScene.turn) || 0) + 1,
+    // Объявленные архитектором этажи живут в самой сцене, а не отдельным
+    // индексом состояния. Причина — replay: `SceneAdvanced` несёт объект сцены
+    // целиком и применяется присваиванием `state.scene = payload.scene`, так что
+    // заявка восстанавливается из потока событий без единой новой строки в
+    // reducer. Отдельная карта `state.locationLevels` (раздел 3.3 плана) хранит
+    // другое — этажи, на которых партия уже побывала, и пополняется механикой
+    // перехода на этапе L3. Одноэтажная локация поля не получает вовсе, поэтому
+    // сохранённые кампании и старые события читаются как раньше.
+    ...(declaredLevels.length ? { levels: declaredLevels } : {}),
     cells,
   }
 

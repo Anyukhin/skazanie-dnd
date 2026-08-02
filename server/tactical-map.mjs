@@ -837,6 +837,50 @@ export function addProp(map, prop) {
 }
 
 /**
+ * Куда ведёт лестница по своему виду. Люк ведёт только вниз, поэтому вверх его
+ * не подставляем даже при нехватке других крючков.
+ */
+const TRANSITION_ASSETS_UP = Object.freeze(['stairs_up'])
+const TRANSITION_ASSETS_DOWN = Object.freeze(['stairs_down', 'trapdoor'])
+
+/**
+ * Превращает уже расставленные лестницы и люки в переходы на объявленные этажи
+ * локации (`docs/multilevel-map-plan.md`, 5.2).
+ *
+ * Отдельный проход, а не поле расстановки: лестница ставится тем же
+ * `placeProps`, что и мебель, и знать про этажи ему незачем. Пока этажи не
+ * объявлены, вызов ничего не делает и лестница остаётся декором — ровно прежнее
+ * поведение одноэтажной локации.
+ *
+ * Направление берётся по виду ассета, а не по свободной клетке рядом: у
+ * лестницы вверх и у люка разный смысл, и перепутать их нельзя. Порядок
+ * предметов на карте детерминирован, поэтому и привязка детерминирована.
+ *
+ * @param {TacticalMap} map
+ * @param {Array<{offset?: number, label?: string}>} levels объявленные этажи
+ * @returns {TacticalProp[]} предметы, ставшие переходами
+ */
+export function attachLevelTransitions(map, levels) {
+  /** @type {TacticalProp[]} */
+  const attached = []
+  /** @type {Set<string>} */
+  const taken = new Set(map.props.filter((prop) => prop.transition).map((prop) => prop.id))
+  for (const level of Array.isArray(levels) ? levels : []) {
+    const toLevel = Number(level?.offset)
+    if (!Number.isSafeInteger(toLevel) || toLevel === map.levelIndex) continue
+    if (Math.abs(toLevel) > MAX_LEVEL_OFFSET) continue
+    const wanted = toLevel > map.levelIndex ? TRANSITION_ASSETS_UP : TRANSITION_ASSETS_DOWN
+    const prop = map.props.find((candidate) => !taken.has(candidate.id) && wanted.includes(candidate.assetId))
+    if (!prop) continue
+    prop.transition = { toLevel, label: boundedText(level?.label, 120) }
+    prop.interactive = true
+    taken.add(prop.id)
+    attached.push(prop)
+  }
+  return attached
+}
+
+/**
  * @param {TacticalMap} map
  * @param {Partial<TacticalZone> & {id: string}} zone
  * @returns {TacticalZone}

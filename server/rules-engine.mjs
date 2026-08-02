@@ -416,6 +416,10 @@ const CLASS_HIT_POINT_DIE_SIZES = Object.freeze({
 const SCENE_ADVANCE_FIELDS = new Set([
   'title', 'location', 'location_id', 'mood', 'objective', 'transition', 'arrival', 'hook', 'theme', 'danger', 'seed',
   'completed_objective', 'objective_status', 'outcome', 'carry_unresolved', 'map',
+  // Заявка архитектора на дополнительные этажи локации. Форму проверяет
+  // `normalizeDeclaredLevels` в `adventure-director.mjs`; здесь поле только
+  // пропускается сквозь белый список, иначе оно не доехало бы до генератора.
+  'levels',
   'scene_kind', 'settlement_type',
 ])
 
