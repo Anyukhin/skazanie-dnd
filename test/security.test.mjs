@@ -366,12 +366,15 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
   // Версия в списке обязана совпадать с той, которую роль действительно грузит:
   // narrator перешёл на v5, campaign_creator и map_architect — на v3,
   // социальный контроллер — на v3 с границей UNTRUSTED_DATA,
-  // action_adjudicator — на v2, остальные на v1.
+  // action_adjudicator — на v2, остальные на v1. Режиссёр грузит два промпта —
+  // по одному на режим импровизации кампании, — и оба обязаны держать тот же
+  // bounded-intent контракт, что и прежний v1.
   const prompts = [
     ['npc_controller/v1', 'npc_controller/v1'],
     ['npc_controller/social_v3', 'npc_controller/social-v3'],
     ['narrator/v6', 'narrator/v6'],
-    ['director/v1', 'director/v1'],
+    ['director/v2_story', 'director/v2_story'],
+    ['director/v2_chaos', 'director/v2_chaos'],
     ['action_adjudicator/v2', 'action_adjudicator/v2'],
     ['campaign_creator/v3', 'campaign_creator/v3'],
     ['map_architect/v3', 'map_architect/v3'],
@@ -400,7 +403,9 @@ test('контрактным списком покрыта каждая роль
       loaded.set(`${match[1]}/${match[2]}`, file)
     }
   }
-  assert.equal(loaded.size, 7, `ожидались ровно семь ролей, читающих промпт, найдено ${loaded.size}`)
+  // Восемь загружаемых промптов на семь ролей: у Режиссёра свой файл на каждый
+  // режим импровизации.
+  assert.equal(loaded.size, 8, `ожидались ровно восемь загружаемых промптов, найдено ${loaded.size}`)
 
   const knownGaps = new Set([])
   // Список ролей больше не дублируется здесь: он дважды расходился с кодом при

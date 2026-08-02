@@ -121,7 +121,7 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 
 | Файл | Промпт | Роль |
 | --- | --- | --- |
-| `server/director-agent.mjs` | `prompts/director/v1.txt` | темп, развилки, переходы |
+| `server/director-agent.mjs` | `prompts/director/v2_story.txt`, `prompts/director/v2_chaos.txt` | темп, развилки, переходы |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
 | `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v3.txt` | социальные сцены |
 | `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |
@@ -129,11 +129,14 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v3.txt` | исходная ситуация кампании |
 | `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v2.txt` | прочтение свободного действия |
 
-Больше промпты не загружает никто; ролей семь. Файлов в `prompts/` больше:
+Больше промпты не загружает никто; ролей семь, а загружаемых промптов восемь:
+Режиссёр держит по файлу на режим импровизации кампании (`improv_mode`), и
+вариант выбирается в `choose()`, а не импортом. Файлов в `prompts/` ещё больше:
 рядом с загружаемой версией лежат предыдущие (`campaign_creator/v1`, `v2`,
-`map_architect/v1`, `v2`, `narrator/v1`—`v4`, `npc_controller/social_v1`, `v2`) плюс
-`narrator/few-shot-v1.json`. Актуальна та версия, которую действительно читает
-модуль из таблицы, — остальные оставлены как история контракта.
+`director/v1`, `map_architect/v1`, `v2`, `narrator/v1`—`v4`,
+`npc_controller/social_v1`, `v2`) плюс `narrator/few-shot-v1.json`. Актуальна та
+версия, которую действительно читает модуль из таблицы, — остальные оставлены
+как история контракта.
 Сторож соответствия — `test/security.test.mjs`. **Детерминированные модули без LLM:**
 `adjudicator.mjs`, `intent-parser.mjs`, `world-memory.mjs`,
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`.
@@ -142,6 +145,8 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 `server/player-request-router.mjs` объявляет роли маршрутизации ввода игрока (`PLAYER_REQUEST_ROLES`). `prompt_id` там стоит
 только у ролей, которые действительно исполняет модель, и **не читается ни одним
 модулем** — это метаданные, а не привязка; сторож — `test/player-request-router.test.mjs`.
+Значение — строка либо список, если у роли есть варианты контракта: у Режиссёра
+их два, и выбор идёт по `improv_mode` кампании в момент вызова.
 Роли `worldkeeper` и `game_master` объявлены без `prompt_id`: первую исполняет
 детерминированный `answerKnownLore` в том же файле, вторую — Rules Engine.
 

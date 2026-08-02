@@ -11,14 +11,18 @@ const PROMPT_OWNER_FILES = Object.freeze({
   action_adjudicator: '../server/action-adjudicator.mjs',
 })
 
-function loadedPromptId(role) {
-  if (role.id === 'narrator') return NARRATOR_PROMPT_VERSION
+// Роль может объявлять несколько контрактов: у Режиссёра промпт выбирается
+// режимом импровизации кампании, и владеющий модуль читает с диска оба.
+const declaredPromptIds = (role) => [role.prompt_id].flat()
+
+function loadedPromptIds(role) {
+  if (role.id === 'narrator') return [NARRATOR_PROMPT_VERSION]
   const ownerFile = PROMPT_OWNER_FILES[role.id]
   assert.ok(ownerFile, `${role.id}: для модельной роли не объявлен владеющий модуль`)
   const ownerSource = readFileSync(new URL(ownerFile, import.meta.url), 'utf8')
-  const match = ownerSource.match(/new URL\('\.\.\/prompts\/([^']+)\.txt'/u)
-  assert.ok(match, `${role.id}: владеющий модуль не загружает версионированный prompt`)
-  return match[1]
+  const matches = [...ownerSource.matchAll(/new URL\('\.\.\/prompts\/([^']+)\.txt'/gu)].map((match) => match[1])
+  assert.ok(matches.length > 0, `${role.id}: владеющий модуль не загружает версионированный prompt`)
+  return matches
 }
 
 test('маршрутизатор отправляет вопросы о лоре Хранителю мира', () => {
@@ -72,8 +76,11 @@ test('каждый объявленный prompt_id указывает на су
     'каждая модельная роль должна иметь ровно один проверяемый владеющий модуль',
   )
   for (const role of modelRoles) {
-    assert.equal(role.prompt_id, loadedPromptId(role), `${role.id}: декларация разошлась с загружаемым prompt`)
-    assert.equal(existsSync(new URL(`../prompts/${role.prompt_id}.txt`, import.meta.url)), true, role.id)
+    assert.deepEqual(declaredPromptIds(role).sort(), loadedPromptIds(role).sort(),
+      `${role.id}: декларация разошлась с загружаемым prompt`)
+    for (const promptId of declaredPromptIds(role)) {
+      assert.equal(existsSync(new URL(`../prompts/${promptId}.txt`, import.meta.url)), true, `${role.id}: ${promptId}`)
+    }
   }
 })
 

@@ -36,7 +36,10 @@ export const PROMPT_DESCRIPTORS = Object.freeze([
   Object.freeze({ role: 'npc_morale', promptId: 'npc_controller/v1', module: 'npc-controller.mjs', loads: true }),
   Object.freeze({ role: 'npc_social', promptId: 'npc_controller/social_v3', module: 'npc-social-controller.mjs', loads: true }),
   Object.freeze({ role: 'narrator', promptId: 'narrator/v6', module: 'narrator.mjs', loads: true }),
-  Object.freeze({ role: 'director', promptId: 'director/v1', module: 'director-agent.mjs', loads: true }),
+  // Режиссёр — единственная роль с вариантами: промпт выбирается режимом
+  // импровизации кампании, поэтому один модуль объявляет два дескриптора.
+  Object.freeze({ role: 'director_story', promptId: 'director/v2_story', module: 'director-agent.mjs', loads: true }),
+  Object.freeze({ role: 'director_chaos', promptId: 'director/v2_chaos', module: 'director-agent.mjs', loads: true }),
   Object.freeze({ role: 'action_adjudicator', promptId: 'action_adjudicator/v2', module: 'action-adjudicator.mjs', loads: true }),
   Object.freeze({ role: 'campaign_creator', promptId: 'campaign_creator/v3', module: 'campaign-bootstrap.mjs', loads: true }),
   Object.freeze({ role: 'scene_architect', promptId: 'map_architect/v3', module: 'scene-architect.mjs', loads: true }),
@@ -46,7 +49,11 @@ export const PROMPT_DESCRIPTORS = Object.freeze([
  * Что модули **на самом деле** читают: путь вытаскивается из исходника, а не
  * из памяти автора. Так реестр нельзя оставить устаревшим, подняв версию в коде.
  *
- * @returns {Map<string, string>} модуль → `prompt_id`
+ * Значение — список: у Режиссёра промпт выбирается режимом импровизации, и
+ * модуль читает с диска оба варианта. Раньше здесь стояла одна строка на модуль,
+ * и второй промпт молча затирал первый.
+ *
+ * @returns {Map<string, string[]>} модуль → все `prompt_id`, которые он читает
  */
 export function loadedPromptIds() {
   const serverDir = new URL('./', import.meta.url)
@@ -55,7 +62,10 @@ export function loadedPromptIds() {
     if (!name.endsWith('.mjs')) continue
     const source = readFileSync(new URL(name, serverDir), 'utf8')
     for (const match of source.matchAll(/\.\.\/prompts\/([A-Za-z0-9_]+)\/([A-Za-z0-9_.-]+)\.txt/g)) {
-      found.set(name, `${match[1]}/${match[2]}`)
+      const promptId = `${match[1]}/${match[2]}`
+      const ids = found.get(name) ?? []
+      if (!ids.includes(promptId)) ids.push(promptId)
+      found.set(name, ids)
     }
   }
   return found

@@ -7,10 +7,15 @@ import { campaignConceptForAgent } from './agent-context.mjs'
  * контракт промпта. Роль без `prompt_id` исполняется детерминированно, кодом:
  * `worldkeeper` — это `answerKnownLore` ниже, `game_master` — Rules Engine.
  * Промпты для них удалены 2026-07-26, потому что их никто не загружал.
+ *
+ * `prompt_id` — строка либо список, если у роли есть варианты контракта. У
+ * Режиссёра их два: вариант выбирается режимом импровизации кампании
+ * (`improv_mode`) в момент вызова, а не импортом, поэтому одной строкой роль
+ * описать нельзя.
  */
 export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
-  director: { id: 'director', prompt_id: 'director/v1', purpose: 'Темп, развилки, групповые решения и переходы сцен' },
+  director: { id: 'director', prompt_id: ['director/v2_story', 'director/v2_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
   narrator: { id: 'narrator', prompt_id: 'narrator/v6', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v3', purpose: 'Динамическая архитектура новой локации и игровой карты' },
