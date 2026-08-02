@@ -31,6 +31,7 @@ type TacticalCommand =
   | { command_type: 'ChangeWeapon'; actor_id: string; item_id: string }
   | { command_type: 'OperateDoor'; actor_id: string; door_id: string; intent: 'open' | 'close' | 'force' }
   | { command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent }
+  | { command_type: 'UseLevelTransition'; actor_id: string; prop_id: string }
   | { command_type: 'EndTurn'; actor_id: string }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
   | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
@@ -264,10 +265,11 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
       ...player,
       hp: server.hp,
       ...(eventTypes.has('ItemGranted') ? { inventory: server.inventory } : {}),
-      ...(eventTypes.has('ActorMoved') || eventTypes.has('SceneAdvanced') ? { x: server.x, y: server.y } : {}),
+      ...(eventTypes.has('ActorMoved') || eventTypes.has('SceneAdvanced') || eventTypes.has('MapLevelChanged') ? { x: server.x, y: server.y } : {}),
     }
   })
-  const sceneChanged = ['SceneAdvanced', 'AreaRevealed', 'ObjectiveUpdated', 'EntitySpawned'].some((type) => eventTypes.has(type))
+  // Смена этажа меняет карту, партию и предметы разом — сцену берём целиком.
+  const sceneChanged = ['SceneAdvanced', 'AreaRevealed', 'ObjectiveUpdated', 'EntitySpawned', 'MapLevelChanged'].some((type) => eventTypes.has(type))
   return {
     ...current,
     players,
@@ -1135,6 +1137,14 @@ export function useGameSession() {
     }, label[intent])
   }, [executeTacticalCommand])
 
+  /* Переход между этажами — та же лёгкая команда, что и остальные действия у
+     карты: сервер решает, дошёл ли герой до лестницы и не идёт ли бой, и
+     отказывает кодами `TRANSITION_*` / `LEVEL_*`. Клиент только называет
+     предмет. */
+  const useLevelTransition = useCallback((actorId: string, propId: string) => {
+    return executeTacticalCommand({ command_type: 'UseLevelTransition', actor_id: actorId, prop_id: propId }, 'Перейти на другой этаж')
+  }, [executeTacticalCommand])
+
   const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => {
     return executeTacticalCommand({
       command_type: 'UseCombatAction', actor_id: actorId, action_id: actionId,
@@ -1518,6 +1528,7 @@ export function useGameSession() {
     changeWeapon,
     operateDoor,
     operateSceneObject,
+    useLevelTransition,
     finishMapTurn,
     resolveHeroDeath,
     equipItem,

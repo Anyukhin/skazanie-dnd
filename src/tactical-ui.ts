@@ -415,3 +415,85 @@ export function conditionPresentation(condition: { id: string; duration?: string
     duration: duration ? String(duration).replace(/^rounds:/, 'раундов: ') : null,
   }
 }
+
+/**
+ * Этажи локации (`docs/multilevel-map-plan.md`, раздел 6). Всё, что клиент
+ * считает о переходе между этажами, живёт здесь чистыми функциями: доска и
+ * экран только показывают результат, а тесты `test/tactical-ui.test.mjs`
+ * проверяют его без DOM.
+ */
+export type SceneLevel = { index: number; label?: string }
+
+/**
+ * Ключ запомненной камеры доски. У каждого этажа своя камера: партия бегает по
+ * лестнице туда-сюда, и общий ключ возвращал бы её на угол чужого этажа. Этаж
+ * входа ключ не меняет — записи, сделанные до этажей, остаются валидными (то же
+ * правило, что у серверного `levelKey`).
+ */
+export function boardCameraKey(locationId?: string | null, levelIndex = 0) {
+  const base = String(locationId || '') || 'нет карты'
+  const level = Number.isSafeInteger(Number(levelIndex)) ? Number(levelIndex) : 0
+  return level === 0 ? base : `${base}@L${level}`
+}
+
+/**
+ * Подпись этажа для игрока. Порядок источников: подпись самого перехода, затем
+ * известные партии этажи, затем номер — кнопка и индикатор не должны остаться
+ * без текста, даже если сервер прислал пустую строку.
+ */
+export function levelLabelFor(toLevel: number, transitionLabel?: string, levels: readonly SceneLevel[] = []) {
+  const declared = String(transitionLabel ?? '').trim()
+  if (declared) return declared
+  const known = levels.find((level) => Number(level?.index) === Number(toLevel))
+  const remembered = String(known?.label ?? '').trim()
+  if (remembered) return remembered
+  return `этаж ${Number(toLevel)}`
+}
+
+export type LevelTransitionPresentation = {
+  /** Надпись кнопки: направление и подпись целевого этажа. */
+  label: string
+  direction: 'up' | 'down'
+  disabled: boolean
+  /** Подсказка: при отказе объясняет причину, иначе повторяет надпись. */
+  title: string
+}
+
+/**
+ * Кнопка у лестницы. Далеко и бой — разные отказы: кнопка в обоих случаях
+ * видна, но подсказка называет, что именно мешает. Проверка расстояния здесь
+ * клиентская и недоверенная — авторитет остаётся за `TRANSITION_TOO_FAR`
+ * в Rules Engine.
+ */
+export function levelTransitionPresentation(input: {
+  transition: { toLevel: number; label?: string }
+  currentLevel?: number
+  levels?: readonly SceneLevel[]
+  atHand: boolean
+  combatActive: boolean
+}): LevelTransitionPresentation {
+  const current = Number.isSafeInteger(Number(input.currentLevel)) ? Number(input.currentLevel) : 0
+  const toLevel = Number(input.transition?.toLevel) || 0
+  const direction: 'up' | 'down' = toLevel > current ? 'up' : 'down'
+  const label = `${direction === 'up' ? 'Подняться' : 'Спуститься'}: ${levelLabelFor(toLevel, input.transition?.label, input.levels ?? [])}`
+  const refusal = input.combatActive
+    ? 'Сначала завершите бой'
+    : input.atHand ? '' : 'Подойдите вплотную'
+  return { label, direction, disabled: Boolean(refusal), title: refusal || label }
+}
+
+/**
+ * Строки индикатора этажей: верхний этаж сверху, активный помечен. Один этаж —
+ * не выбор, а шум, поэтому индикатор одноэтажной локации пустой.
+ */
+export function levelIndicatorRows(levels: readonly SceneLevel[] | undefined, currentIndex = 0) {
+  const byIndex = new Map<number, { index: number; label: string; active: boolean }>()
+  const current = Number.isSafeInteger(Number(currentIndex)) ? Number(currentIndex) : 0
+  for (const level of levels ?? []) {
+    const index = Number(level?.index)
+    if (!Number.isSafeInteger(index) || byIndex.has(index)) continue
+    byIndex.set(index, { index, label: levelLabelFor(index, level?.label), active: index === current })
+  }
+  const rows = [...byIndex.values()].sort((left, right) => right.index - left.index)
+  return rows.length > 1 ? rows : []
+}

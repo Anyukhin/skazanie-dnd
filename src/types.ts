@@ -960,6 +960,16 @@ export type Scene = {
   map_delta?: SerializedRevealDelta
   /** Карта не менялась: она уже есть у клиента под `map_hash`. */
   map_unchanged?: boolean
+  /**
+   * Активный этаж локации. Отсутствует у старой проекции и у одноэтажных
+   * локаций — тогда это этаж входа (`index = 0`).
+   */
+  level?: { index: number; label?: string }
+  /**
+   * Этажи, на которых партия уже побывала: из них строится индикатор на доске.
+   * Неактивные этажи в проекцию не входят, здесь только номера и подписи.
+   */
+  levels?: Array<{ index: number; label?: string }>
   theme?: string
   danger?: 'низкая' | 'средняя' | 'высокая'
   scene_kind?: 'settlement' | 'wilderness' | 'dungeon' | 'road' | 'other'

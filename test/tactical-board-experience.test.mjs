@@ -6,6 +6,8 @@ const app = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
   .join('\n')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+const boardStyles = readFileSync(new URL('../src/tactical-board.css', import.meta.url), 'utf8')
+const board = readFileSync(new URL('../src/TacticalBoard.tsx', import.meta.url), 'utf8')
 
 test('тактические модификаторы видны на самой цели и объясняют блокировку', () => {
   assert.match(app, /enemyForecast\.cover_bonus/u)
@@ -39,4 +41,28 @@ test('легенда доски сворачивается и объясняет
     assert.match(app, new RegExp(label, 'u'))
   }
   assert.match(styles, /\.map-legend:not\(\[open\]\)/u)
+})
+
+test('лестница даёт кнопку перехода, а индикатор этажей стоит поверх карты и не ловит клики', () => {
+  // Кнопка живёт в том же блоке, что и действия объекта сцены: подпись,
+  // доступность и подсказку считает `levelTransitionPresentation`.
+  assert.match(app, /levelTransitionPresentation\(\{/u)
+  assert.match(app, /onUseLevelTransition\(selected, selectedSceneObject\.id\)/u)
+  assert.match(app, /className="map-level-stack"/u)
+  assert.match(app, /levelIndicatorRows\(knownSceneLevels, sceneLevelIndex\)/u)
+  assert.match(app, /levelStackRows\.length > 0 &&/u)
+  assert.match(boardStyles, /\.map-level-stack \{[^}]*pointer-events: none;/su)
+  assert.match(boardStyles, /\.map-level-stack span\.active/u)
+})
+
+test('доска помнит камеру по этажу и растворяет смену этажа за 400 мс без rAF-цикла', () => {
+  assert.match(board, /boardCameraKey\(map\?\.locationId, levelIndex\)/u)
+  assert.match(board, /const LEVEL_CROSSFADE_MS = 400/u)
+  assert.match(board, /level-change-\$\{levelShift\}/u)
+  // Анимация живёт только эти 400 мс: таймер снимает класс, постоянного цикла нет.
+  assert.match(board, /setTimeout\(\(\) => setLevelShift\(null\), LEVEL_CROSSFADE_MS\)/u)
+  assert.match(boardStyles, /\.board-frame\.level-change-up \{[^}]*animation: tactical-level-change-up \.4s/su)
+  assert.match(boardStyles, /@keyframes tactical-level-change-down \{[^}]*translateY\(-18px\)/su)
+  // Reduced motion оставляет проявление, но убирает сдвиг.
+  assert.match(boardStyles, /animation-name: tactical-level-change-fade;/u)
 })

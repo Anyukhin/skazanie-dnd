@@ -18,6 +18,7 @@ import {
   createSpellEffectRenderer,
   isSpellAnimationCue,
 } from './spell-effects'
+import { boardCameraKey } from './tactical-ui'
 import './tactical-board.css'
 
 /**
@@ -35,6 +36,13 @@ import './tactical-board.css'
 const MAX_CANVAS_SIDE = 8192
 /** Reduced motion сохраняет статический акцент, но не растягивает пакет дольше 1,8 с. */
 const REDUCED_MOTION_SPELL_CUE_MS = 120
+
+/**
+ * Кроссфейд при смене этажа (`docs/multilevel-map-plan.md`, 6.4). Держится
+ * ровно столько, сколько идёт CSS-анимация: класс снимается по таймеру, и
+ * постоянного rAF-цикла у доски не появляется.
+ */
+const LEVEL_CROSSFADE_MS = 400
 
 /**
  * Манифест растровых штампов предметов. Собирается `pnpm props:atlas`; его
@@ -202,12 +210,17 @@ type BoardConditionState = Record<string, Array<{ id: string }>>
  *
  * Память намеренно только на время сессии: переживать перезагрузку страницы
  * камере незачем, а `sessionStorage` пришлось бы ещё и разбирать при чтении.
+ *
+ * Ключ составной: локация плюс этаж (`boardCameraKey`). Партия ходит по
+ * лестнице внутри одной локации, и без номера этажа подвал наследовал бы
+ * камеру зала — вид уезжал бы в пустоту за краем меньшей карты.
  */
 const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: number } }>()
 
 export function TacticalBoard({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
   effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
+  levelIndex = 0,
 }: {
   map: TacticalMap | null
   columns: number
@@ -235,8 +248,10 @@ export function TacticalBoard({
   conditions?: BoardConditionState
   conditionVersion?: number
   onBackgroundActivate?: () => void
+  /** Активный этаж локации: своя камера и кроссфейд при смене. */
+  levelIndex?: number
 }) {
-  const cameraKey = map?.locationId || 'нет карты'
+  const cameraKey = boardCameraKey(map?.locationId, levelIndex)
   const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
   const [hoverCell, setHoverCell] = useState<{ x: number; y: number } | null>(null)
   const [pan, setPan] = useState(() => cameraByLocation.get(cameraKey)?.pan ?? { x: 0, y: 0 })
@@ -253,6 +268,27 @@ export function TacticalBoard({
     setZoom(saved?.zoom ?? 1)
     setPan(saved?.pan ?? { x: 0, y: 0 })
   }, [cameraKey])
+
+  /*
+   * Кроссфейд этажа сделан CSS-анимацией самой рамки доски, а не снимком
+   * холста поверх нового (вариант из 6.4 плана). Причина в том, что вместе с
+   * этажом меняется размер карты: снимок пришлось бы держать на отдельном
+   * холсте своей геометрии, тянуть его через смену `columns`/`rows` и следить,
+   * чтобы он лёг раньше первой отрисовки нового пола. CSS-анимация не знает
+   * ни о карте, ни о тайловом кэше, живёт ровно 400 мс и не заводит rAF-цикла
+   * — а видно то же самое: старый пол растворяется, новый приходит со сдвигом
+   * по вертикали.
+   */
+  const [levelShift, setLevelShift] = useState<'up' | 'down' | null>(null)
+  const lastLevelIndex = useRef(levelIndex)
+  useEffect(() => {
+    if (lastLevelIndex.current === levelIndex) return
+    const direction: 'up' | 'down' = levelIndex > lastLevelIndex.current ? 'up' : 'down'
+    lastLevelIndex.current = levelIndex
+    setLevelShift(direction)
+    const timer = setTimeout(() => setLevelShift(null), LEVEL_CROSSFADE_MS)
+    return () => clearTimeout(timer)
+  }, [levelIndex])
 
   const frameRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -871,7 +907,7 @@ export function TacticalBoard({
     >
       <div
         ref={frameRef}
-        className={`board-frame ${irregular ? 'irregular' : ''}`}
+        className={`board-frame ${irregular ? 'irregular' : ''} ${levelShift ? `level-change-${levelShift}` : ''}`}
         style={{ width: `calc(var(--cell) * ${columns})`, height: `calc(var(--cell) * ${rows})` }}
       >
         <canvas ref={canvasRef} className="board-canvas" aria-hidden="true" />
