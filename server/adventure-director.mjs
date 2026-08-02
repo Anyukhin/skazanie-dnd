@@ -236,6 +236,31 @@ export function generateSceneCells({ theme = '', danger = 'средняя', loca
   return generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap })
 }
 
+/**
+ * Ключ этажа в `state.locationMaps` (`docs/multilevel-map-plan.md`, 3.1).
+ *
+ * Этаж входа сохраняет **прежний ключ без суффикса**, поэтому все сохранённые
+ * кампании остаются валидными и никакой миграции не требуют: то, что лежало под
+ * `locationId`, и есть этаж 0.
+ *
+ * Составной ключ обязан пережить `normalizeLocationMaps`, а та режет ключ до 120
+ * символов. Поэтому под суффикс место отводится заранее: иначе у длинного
+ * идентификатора локации срезался бы как раз номер этажа, и два разных этажа
+ * схлопнулись бы в одну запись.
+ *
+ * @param {string} locationId
+ * @param {number} [level]
+ * @returns {string}
+ */
+export function levelKey(locationId, level = 0) {
+  const index = Number(level)
+  const safeLevel = Number.isSafeInteger(index) ? index : 0
+  const base = publicText(locationId, 120)
+  if (!base || safeLevel === 0) return base
+  const suffix = `@L${safeLevel}`
+  return `${base.slice(0, 120 - suffix.length)}${suffix}`
+}
+
 function stableLocationMapSeed(worldMap, locationId, location) {
   const campaignSeed = publicText(worldMap?.seed, 120, 'campaign')
   const stableId = publicText(locationId, 120, publicText(location, 120, 'location'))

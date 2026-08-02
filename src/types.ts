@@ -681,6 +681,11 @@ export type TacticalProp = {
   hp: number
   interactive: boolean
   state: string
+  /**
+   * Предмет ведёт на другой этаж локации: лестница, люк. Необязателен —
+   * одноэтажная карта поля не несёт.
+   */
+  transition?: { toLevel: number; label?: string }
   /** Разрешённая игроку часть серверного контракта взаимодействия. */
   interaction?: {
     kind: string
@@ -724,6 +729,10 @@ export type TacticalLayers = {
 export type TacticalMap = {
   version: string
   locationId: string
+  /** Этаж карты: 0 — этаж входа, +1 вверх, −1 подвал. */
+  levelIndex: number
+  /** Подпись этажа для игрока: «Второй этаж», «Винный погреб». */
+  levelLabel: string
   seed: string
   generator: { id: string; version: string }
   width: number

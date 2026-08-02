@@ -1,5 +1,6 @@
 // @ts-check
 import { createHash } from 'node:crypto'
+import { assetById } from './asset-registry.mjs'
 import {
   interactionMetadataForProp,
   sceneInteractionMetadata,
@@ -30,6 +31,14 @@ export const DOOR_STATES = Object.freeze(['open', 'closed', 'locked', 'broken'])
 export const ZONE_KINDS = Object.freeze(['interior', 'exterior'])
 export const FLOOR_DIRECTIONS = Object.freeze(['horizontal', 'vertical'])
 export const SPAWN_ROLES = Object.freeze(['party', 'enemy', 'neutral'])
+
+/**
+ * Насколько далеко от этажа входа может уводить переход
+ * (`docs/multilevel-map-plan.md`, 3.1). Три этажа вверх и три вниз — это
+ * башня и глубокий подвал; всё, что дальше, в здании не встречается, а в
+ * подземелье выражается отдельными локациями, а не этажами.
+ */
+export const MAX_LEVEL_OFFSET = 3
 
 /**
  * Классы размеров карты (`docs/tactical-map-plan.md`, 11.3). Бюджет предметов
@@ -135,6 +144,17 @@ export class TacticalMapError extends Error {
  */
 
 /**
+ * Предмет-переход между этажами локации: лестница, люк, позже лестница-стремянка
+ * и верёвка. Хранится на самом предмете, а не отдельным списком, потому что
+ * переход — это свойство лестницы, и второго источника истины про неё быть не
+ * должно.
+ *
+ * @typedef {object} TacticalPropTransition
+ * @property {number} toLevel этаж, куда ведёт переход
+ * @property {string} label подпись для игрока: «Второй этаж», «Винный погреб»
+ */
+
+/**
  * @typedef {object} TacticalProp
  * @property {string} id
  * @property {string} assetId
@@ -152,6 +172,7 @@ export class TacticalMapError extends Error {
  * @property {boolean} interactive
  * @property {string} state
  * @property {TacticalPropInteraction|null} interaction
+ * @property {TacticalPropTransition|null} transition переход на другой этаж
  */
 
 /**
@@ -184,6 +205,8 @@ export class TacticalMapError extends Error {
  * @typedef {object} TacticalMap
  * @property {string} version
  * @property {string} locationId
+ * @property {number} levelIndex этаж этой карты: 0 — этаж входа, +1 вверх, −1 подвал
+ * @property {string} levelLabel подпись этажа для игрока
  * @property {string} seed
  * @property {{id: string, version: string}} generator
  * @property {number} width
@@ -289,6 +312,8 @@ export function sizeClassFor(width, height) {
  * @param {number} options.width
  * @param {number} options.height
  * @param {string} [options.locationId]
+ * @param {number} [options.levelIndex]
+ * @param {string} [options.levelLabel]
  * @param {string} [options.seed]
  * @param {{id: string, version: string}} [options.generator]
  * @param {string} [options.theme]
@@ -301,6 +326,8 @@ export function createTacticalMap({
   width,
   height,
   locationId = '',
+  levelIndex = 0,
+  levelLabel = '',
   seed = '',
   generator = { id: 'manual', version: '1' },
   theme = '',
@@ -315,6 +342,8 @@ export function createTacticalMap({
   const map = {
     version: TACTICAL_MAP_VERSION,
     locationId: boundedText(locationId, 120),
+    levelIndex: boundedInteger(levelIndex, 0, -MAX_LEVEL_OFFSET, MAX_LEVEL_OFFSET),
+    levelLabel: boundedText(levelLabel, 120),
     seed: boundedText(seed, 200),
     generator: {
       id: boundedText(generator?.id, 60, 'manual'),
@@ -693,6 +722,51 @@ export function setDoor(map, door) {
 }
 
 /**
+ * Разбирает и проверяет переход на другой этаж. Отсутствие поля — обычный
+ * предмет, поэтому `null` здесь не отказ, а норма.
+ *
+ * Проверки того, что переход осмыслен, стоят на входе, а не в `validateTacticalMap`:
+ * лестница «в никуда» или на собственный этаж — это не замечание к карте, а
+ * ошибка того, кто её строит, и чем раньше она видна, тем дешевле.
+ *
+ * Крючком может быть только ассет реестра с флагом `interactive`
+ * (`stairs_up`, `stairs_down`, `trapdoor`): игрок нажимает на предмет, и
+ * предмет без взаимодействия нажать нечем.
+ *
+ * @param {TacticalMap} map
+ * @param {string} assetId
+ * @param {unknown} value
+ * @returns {TacticalPropTransition|null}
+ */
+function normalizeTransition(map, assetId, value) {
+  if (value == null) return null
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new TacticalMapError('transition должен быть объектом', 'TRANSITION_NOT_OBJECT')
+  }
+  const raw = /** @type {Record<string, unknown>} */ (value)
+  const toLevel = Number(raw.toLevel)
+  if (!Number.isSafeInteger(toLevel)) {
+    throw new TacticalMapError(`transition.toLevel должен быть целым: ${String(raw.toLevel)}`, 'TRANSITION_LEVEL_NOT_INTEGER')
+  }
+  if (Math.abs(toLevel) > MAX_LEVEL_OFFSET) {
+    throw new TacticalMapError(
+      `transition.toLevel=${toLevel} выходит за предел ±${MAX_LEVEL_OFFSET}`,
+      'TRANSITION_LEVEL_OUT_OF_RANGE',
+    )
+  }
+  if (toLevel === map.levelIndex) {
+    throw new TacticalMapError(`transition.toLevel=${toLevel} совпадает с этажом карты`, 'TRANSITION_LEVEL_SAME')
+  }
+  if (assetById(assetId)?.interactive !== true) {
+    throw new TacticalMapError(
+      `Переход нельзя повесить на ${assetId || '<без ассета>'}: нужен ассет реестра с флагом interactive`,
+      'TRANSITION_ASSET_NOT_INTERACTIVE',
+    )
+  }
+  return { toLevel, label: boundedText(raw.label, 120) }
+}
+
+/**
  * @param {TacticalMap} map
  * @param {Partial<TacticalProp> & {id: string, assetId: string, x: number, y: number}} prop
  * @returns {TacticalProp}
@@ -730,10 +804,12 @@ export function addProp(map, prop) {
         rewardKey: boundedText(sourceInteraction.rewardKey, 120),
       }
     : null
+  const assetId = boundedText(prop.assetId, 120)
+  const transition = normalizeTransition(map, assetId, prop.transition)
   /** @type {TacticalProp} */
   const record = {
     id: boundedText(prop.id, 120),
-    assetId: boundedText(prop.assetId, 120),
+    assetId,
     x: Number(prop.x),
     y: Number(prop.y),
     rotation: Number.isFinite(Number(prop.rotation)) ? Number(prop.rotation) : 0,
@@ -748,9 +824,12 @@ export function addProp(map, prop) {
     cover,
     destructible: prop.destructible === true,
     hp: boundedInteger(prop.hp, 0, 0, 1_000),
-    interactive: prop.interactive === true || interaction !== null,
+    // Переход сам по себе делает предмет интерактивным: нажимать на лестницу
+    // игроку придётся, даже если словарь взаимодействий про неё ничего не знает.
+    interactive: prop.interactive === true || interaction !== null || transition !== null,
     state: boundedText(prop.state, 40),
     interaction,
+    transition,
   }
   if (!record.id) throw new TacticalMapError('У предмета должен быть идентификатор', 'PROP_ID_REQUIRED')
   map.props.push(record)
@@ -1107,8 +1186,17 @@ function compactProp(prop) {
   // server-owned каталога по assetId. Не дублируем их в авторитетном снимке:
   // region-карта может содержать до двух тысяч предметов. У несистемного
   // интерактивного prop флаг по-прежнему хранится явно.
-  if (prop.interactive && !prop.interaction) result.interactive = true
+  // Флаг восстанавливается из перехода при чтении, поэтому лестница со ступенью
+  // на другой этаж его не дублирует.
+  if (prop.interactive && !prop.interaction && !prop.transition) result.interactive = true
   if (prop.state) result.state = prop.state
+  // Переход пишется только когда он есть: предмет без него сохраняет прежнюю
+  // форму записи байт в байт.
+  if (prop.transition) {
+    result.transition = prop.transition.label
+      ? { toLevel: prop.transition.toLevel, label: prop.transition.label }
+      : { toLevel: prop.transition.toLevel }
+  }
   // Полная скрытая metadata нужна в persistence только выбранным 2–4 POI.
   // kind/verbs даже для них восстанавливаются по каталогу, поэтому сохраняем
   // лишь маркер и ключи server-owned таблиц.
@@ -1131,6 +1219,10 @@ export function serializeTacticalMap(map) {
   return {
     version: map.version,
     locationId: map.locationId,
+    // Этаж входа — умолчание, и в записи он не появляется: одноэтажные карты,
+    // сохранённые до появления этажей, сериализуются байт в байт как раньше.
+    ...(map.levelIndex ? { levelIndex: map.levelIndex } : {}),
+    ...(map.levelLabel ? { levelLabel: map.levelLabel } : {}),
     seed: map.seed,
     generator: { id: map.generator.id, version: map.generator.version },
     width: map.width,
@@ -1184,6 +1276,10 @@ export function deserializeTacticalMap(value) {
   const map = {
     version: boundedText(raw.version, 60, TACTICAL_MAP_VERSION),
     locationId: boundedText(raw.locationId, 120),
+    // Читается до предметов: `addProp` сверяет `transition.toLevel` с этажом
+    // карты, и на не заполненном ещё поле сверка была бы ложной.
+    levelIndex: boundedInteger(raw.levelIndex, 0, -MAX_LEVEL_OFFSET, MAX_LEVEL_OFFSET),
+    levelLabel: boundedText(raw.levelLabel, 120),
     seed: boundedText(raw.seed, 200),
     generator: {
       id: boundedText(raw.generator?.id, 60, 'manual'),
@@ -1358,6 +1454,12 @@ export function validateTacticalMap(map) {
   for (const prop of map.props) {
     if (propIds.has(prop.id)) fail('PROP_ID_NOT_UNIQUE', `Предмет ${prop.id} объявлен дважды`, prop.id)
     propIds.add(prop.id)
+    // `addProp` уже сверил переход с этажом карты, но этаж можно поменять и
+    // после расстановки. Тогда лестница начинает вести сама в себя, и заметить
+    // это должна проверка карты целиком, а не первый игрок у лестницы.
+    if (prop.transition && prop.transition.toLevel === map.levelIndex) {
+      fail('TRANSITION_LEVEL_SAME', `Переход ${prop.id} ведёт на собственный этаж ${map.levelIndex}`, prop.id)
+    }
     for (const cell of prop.footprint) {
       const key = `${cell.x},${cell.y}`
       const target = cellAt(map, cell.x, cell.y)

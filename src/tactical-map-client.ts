@@ -26,6 +26,8 @@ const SCENE_OBJECT_INTENTS: readonly SceneObjectIntent[] = ['inspect', 'open', '
 
 const MAX_WIDTH = 100
 const MAX_HEIGHT = 100
+/** Зеркало `MAX_LEVEL_OFFSET` из `server/tactical-map.mjs`. */
+const MAX_LEVEL_OFFSET = 3
 
 // --- битсеты и базовые преобразования ------------------------------------
 
@@ -265,6 +267,8 @@ function emptyMap(width: number, height: number): TacticalMap {
   return {
     version: '',
     locationId: '',
+    levelIndex: 0,
+    levelLabel: '',
     seed: '',
     generator: { id: 'manual', version: '1' },
     width,
@@ -373,6 +377,15 @@ function decodeProp(value: unknown): TacticalProp | null {
   const interactionVerbs = rawInteraction && Array.isArray(rawInteraction.verbs)
     ? [...new Set(rawInteraction.verbs.filter((verb): verb is SceneObjectIntent => SCENE_OBJECT_INTENTS.includes(verb as SceneObjectIntent)))]
     : []
+  // Переход приходит только у лестниц и люков. Значения вне контракта клиент не
+  // домысливает: доска обязана отработать как с обычным предметом.
+  const rawTransition = raw.transition && typeof raw.transition === 'object' && !Array.isArray(raw.transition)
+    ? raw.transition as Record<string, unknown>
+    : null
+  const toLevel = rawTransition ? Number(rawTransition.toLevel) : Number.NaN
+  const transition = Number.isSafeInteger(toLevel) && Math.abs(toLevel) <= MAX_LEVEL_OFFSET
+    ? { toLevel, ...(text(rawTransition?.label, 120) ? { label: text(rawTransition?.label, 120) } : {}) }
+    : null
   const legacyInteractionKind = text(raw.interactionKind, 60)
   const legacyInteractionVerbs = Array.isArray(raw.interactionVerbs)
     ? [...new Set(raw.interactionVerbs.filter((verb): verb is SceneObjectIntent => SCENE_OBJECT_INTENTS.includes(verb as SceneObjectIntent)))]
@@ -394,8 +407,11 @@ function decodeProp(value: unknown): TacticalProp | null {
     cover: (COVER_LEVELS.includes(raw.cover as TacticalCover) ? raw.cover : 'none') as TacticalCover,
     destructible: raw.destructible === true,
     hp: boundedInteger(raw.hp, 0, 0, 1_000),
-    interactive: raw.interactive === true,
+    // Как и на сервере: переход сам по себе делает предмет интерактивным,
+    // поэтому сериализованная лестница флаг не дублирует.
+    interactive: raw.interactive === true || transition !== null,
     state: text(raw.state, 40),
+    ...(transition ? { transition } : {}),
     ...(rawInteraction && interactionKind ? {
       interaction: {
         kind: interactionKind,
@@ -459,6 +475,10 @@ export function decodeTacticalMap(value: unknown): TacticalMap | null {
     const map = emptyMap(width, height)
     map.version = text(raw.version, 60)
     map.locationId = text(raw.locationId, 120)
+    // Отсутствие полей этажа — карта, сохранённая до появления этажей, то есть
+    // этаж входа. Отдельной ветки совместимости для неё не нужно.
+    map.levelIndex = boundedInteger(raw.levelIndex, 0, -MAX_LEVEL_OFFSET, MAX_LEVEL_OFFSET)
+    map.levelLabel = text(raw.levelLabel, 120)
     map.seed = text(raw.seed, 200)
     map.generator = {
       id: text((raw.generator as Record<string, unknown>)?.id, 60, 'manual'),
