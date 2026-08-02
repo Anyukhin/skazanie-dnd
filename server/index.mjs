@@ -271,7 +271,7 @@ const loreModel = process.env.DND_AI_LORE_MODEL ?? 'openai/gpt-5.6-luna-pro'
 const loreAuthor = new LoreAuthor({
   llmClient: apiKey ? new RouterAIClient({ model: loreModel, reasoning: reasoningProfileFor(loreModel), timeoutMs: 30_000 }) : null,
 })
-const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null, loreAuthor })
+const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null, loreAuthor, diceService })
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
 const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor, rollRegistry })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })

@@ -12,6 +12,7 @@ import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
+import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v3.txt', import.meta.url)), 'utf8')
 
@@ -99,8 +100,28 @@ function normalizeHero(input, index) {
   }
 }
 
-function fallbackTheme(world, entropy = '') {
+const capitalize = (value) => {
+  const text = String(value ?? '').trim()
+  return text ? text[0].toLocaleUpperCase('ru') + text.slice(1) : ''
+}
+
+function fallbackTheme(world, entropy = '', inspiration = null) {
   const value = `${world.preset} ${world.era} ${world.genre} ${world.premise}`.toLocaleLowerCase('ru')
+  // Зерно вдохновения важнее захардкоженной четвёрки, но слабее слов владельца:
+  // регион подставляется только там, где мастер оставлен пустым, — а именно это
+  // и означает наличие `inspiration.region`.
+  if (inspiration?.region && !value.trim()) {
+    return {
+      // Ярлык пула написан строчными как ориентир; названием места он
+      // становится здесь, иначе в кампании появилось бы «портовый город» с
+      // маленькой буквы посреди заголовка сцены.
+      location: capitalize(inspiration.region.label),
+      theme: inspiration.region.theme,
+      layout: inspiration.region.layout,
+      danger: inspiration.region.danger,
+      water: inspiration.region.water,
+    }
+  }
   if (/будущ|косм|кибер|зв[её]зд|станци|технолог/u.test(value)) return { location: 'Кольцевая станция «Гелиос»', theme: 'футуристическая орбитальная станция', layout: 'rooms', danger: 'средняя', water: 0 }
   if (/соврем|детектив|нуар|город/u.test(value)) return { location: 'Ночной район Ривермарк', theme: 'современный город', layout: 'streets', danger: 'низкая', water: 0.03 }
   if (/дик|постапок|пустош|выжив/u.test(value)) return { location: 'Поселение у Разломанной трассы', theme: 'постапокалиптическая пустошь', layout: 'open', danger: 'высокая', water: 0.02 }
@@ -130,17 +151,22 @@ function startingVisualSpec(theme, world) {
   return { scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 11 }
 }
 
-function fallbackOpening({ name, partyName, world, heroes, entropy }) {
-  const theme = fallbackTheme(world, entropy)
+function fallbackOpening({ name, partyName, world, heroes, entropy, inspiration = null }) {
+  const theme = fallbackTheme(world, entropy, inspiration)
   const location = world.startingLocation || theme.location
   const unnamedPartySize = ['одного', 'двух', 'трёх', 'четырёх', 'пяти'][Math.max(1, Math.min(5, heroes.length)) - 1]
   const heroNames = heroes.every((hero) => hero.characterSetupRequired)
     ? `${unnamedPartySize} ${heroes.length === 1 ? 'героя, которому игрок ещё даст имя и прошлое' : 'героев, которым игроки ещё дадут имена и прошлое'}`
     : heroes.map((hero) => hero.character).join(', ')
   const era = world.era || 'необычной авторской эпохе'
-  const genre = world.genre || world.preset || 'приключенческой истории'
+  // Зерно подставляется ровно там, где владелец промолчал: иначе несколько
+  // кампаний подряд начинались одним и тем же «привычный порядок нарушает
+  // событие» — на это владелец и пожаловался.
+  const genre = world.genre || world.preset || inspiration?.genreLean || 'приключенческой истории'
   const tone = world.tone || 'Атмосфера полна тайн и обещает открытия'
-  const premise = world.premise || 'Привычный порядок нарушает событие, которое может навсегда изменить этот мир.'
+  const premise = world.premise
+    || (inspiration?.hook ? `${capitalize(inspiration.hook)}. ${inspiration.detail ? `И ещё: ${inspiration.detail}.` : ''}`.trim() : '')
+    || 'Привычный порядок нарушает событие, которое может навсегда изменить этот мир.'
   const situation = world.openingSituation || premise
   const visual = startingVisualSpec(theme, world)
   return {
@@ -243,7 +269,13 @@ function startingCells(cells, count) {
 }
 
 export class CampaignBootstrapper {
-  constructor({ llmClient = null, loreAuthor = null } = {}) { this.llmClient = llmClient; this.loreAuthor = loreAuthor }
+  constructor({ llmClient = null, loreAuthor = null, diceService = null } = {}) {
+    this.llmClient = llmClient
+    this.loreAuthor = loreAuthor
+    // Единственный источник случайности в проекте. В тестах он детерминирован,
+    // поэтому «разные броски дают разные зёрна» — проверяемое утверждение.
+    this.diceService = diceService
+  }
 
   async create({ code, name, partyName, world: rawWorld, players: rawPlayers, merchants: rawMerchants } = {}) {
     const campaignCode = clean(code, 24).toUpperCase()
@@ -254,7 +286,8 @@ export class CampaignBootstrapper {
     const heroes = rawPlayers.map(normalizeHero).map((hero) => hero.characterSetupRequired ? hero : withStarterKit(hero))
     if (new Set(heroes.map((hero) => hero.id)).size !== heroes.length) throw new Error('В кампании повторяются id героев')
     const world = normalizeWorld(rawWorld)
-    const fallback = fallbackOpening({ name: campaignName, partyName: groupName, world, heroes, entropy: campaignCode })
+    const inspiration = drawCampaignInspiration({ world, diceService: this.diceService })
+    const fallback = fallbackOpening({ name: campaignName, partyName: groupName, world, heroes, entropy: campaignCode, inspiration })
     let opening = fallback
     let generatedBy = 'local-storyteller'
     if (this.llmClient) {
@@ -265,7 +298,13 @@ export class CampaignBootstrapper {
             // Вводные владельца и листы героев — свободный текст игроков. Они
             // уходят только внутри UNTRUSTED_DATA: предыстория героя не должна
             // уметь командовать автором кампании.
-            { role: 'user', content: buildDataOnlyContext({ campaign_setup: { campaign: campaignName, party: groupName, party_size: heroes.length, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) } }) },
+            // Зерно вдохновения уезжает рядом с вводными и только когда есть
+            // что подмешивать. Оно серверное, но идёт тем же data-only путём:
+            // отдельного доверенного канала ради него заводить не за чем.
+            { role: 'user', content: buildDataOnlyContext({
+              campaign_setup: { campaign: campaignName, party: groupName, party_size: heroes.length, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) },
+              ...(inspirationPromptSeed(inspiration) ? { inspiration_seed: inspirationPromptSeed(inspiration) } : {}),
+            }) },
           ],
           temperature: 0.8,
           maxTokens: 3200,

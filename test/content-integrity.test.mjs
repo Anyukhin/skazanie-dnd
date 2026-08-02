@@ -15,10 +15,11 @@ test('content integrity gate verifies hashes, references, counts and the complet
   assert.equal(report.integrity.compatibility_catalogs.classes, 12)
   assert.deepEqual(report.integrity.item_catalog, { entries: 107, shop_entries: 12 })
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'equipment').count, 107)
-  // 1222 + 7 петель атмосферы (`public/assets/audio/ambience/*.ogg`).
+  // 1222 + 7 петель атмосферы (`public/assets/audio/ambience/*.ogg`)
+  // + 2 дорожки музыки мастеров создания мира и героя.
   // Число сторожит именно неожиданный приход и уход ассетов, поэтому меняется
   // вместе с осознанным пополнением набора.
-  assert.equal(report.integrity.assets, 1229)
+  assert.equal(report.integrity.assets, 1231)
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

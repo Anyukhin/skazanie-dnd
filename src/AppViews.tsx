@@ -37,7 +37,7 @@ const IMPROV_MODE_FALLBACK: CampaignAiSettingsResponse['improvModes'] = [
   { id: 'chaos', label: 'Хаос', description: 'можно всё, мир подстраивается под выбор отряда' },
 ]
 
-export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onClose }: { state: GameState; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onCreateHero: (heroId: string) => void; onClose: () => void }) {
+export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onWizardChange, onClose }: { state: GameState; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onCreateHero: (heroId: string) => void; onWizardChange?: (open: boolean) => void; onClose: () => void }) {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
   const [campaignsLoading, setCampaignsLoading] = useState(true)
   const [wizard, setWizard] = useState(false)
@@ -75,6 +75,12 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
     }
   }
   useEffect(() => { void load() }, [])
+  // Мастер создания мира — отдельный экран для звука. Окно кампаний о звуке
+  // ничего не знает и знать не должно: оно только сообщает, открыт ли мастер.
+  useEffect(() => {
+    onWizardChange?.(wizard)
+    return () => onWizardChange?.(false)
+  }, [wizard, onWizardChange])
 
   const validateStep = () => {
     setError('')

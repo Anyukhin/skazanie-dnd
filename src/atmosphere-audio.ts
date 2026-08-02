@@ -36,6 +36,8 @@ export type AtmosphereAudio = {
   isUnlocked(): boolean
   setMood(mood: AtmosphereMood, fadeSeconds?: number): void
   setWaiting(waiting: boolean): void
+  /** Во сколько раз тише звучит фон на текущем экране: 0 — тишина, 1 — игра. */
+  setScreenAttenuation(scale: number): void
   playEffect(effect: AtmosphereEffect): void
   playEvents(events: readonly (string | AtmosphereEvent)[]): void
   setAmbientVolume(volume: number): AtmosphereSettings
@@ -234,6 +236,9 @@ export function createAtmosphereAudio(options: {
   let currentLayer: AmbientLayer | null = null
   let desiredMood: AtmosphereMood = 'building'
   let waiting = false
+  // Во сколько раз тише играет фон на текущем экране. Единица — игровая
+  // комната; до неё звук приглушён, потому что игрок ещё читает и печатает.
+  let screenAttenuation = 1
   let disposed = false
   const activeSources = new Set<AudioScheduledSourceNode>()
 
@@ -250,7 +255,10 @@ export function createAtmosphereAudio(options: {
 
   const updateBuses = (at = context?.currentTime ?? 0, glideSeconds = 0.025) => {
     if (!ambientBus || !effectsBus) return
-    const ambient = settings.muted ? 0 : settings.ambientVolume * (waiting ? 0.62 : 1)
+    // Приглушение экрана — множитель поверх пользовательской громкости, а не
+    // её замена: настройка звука остаётся единственным местом, где игрок
+    // задаёт уровень, а экран лишь решает, во сколько раз тише сейчас уместно.
+    const ambient = settings.muted ? 0 : settings.ambientVolume * (waiting ? 0.62 : 1) * screenAttenuation
     const effects = settings.muted ? 0 : settings.effectsVolume
     ambientBus.gain.cancelScheduledValues(at)
     effectsBus.gain.cancelScheduledValues(at)
@@ -518,6 +526,13 @@ export function createAtmosphereAudio(options: {
       waiting = next
       updateBuses(context?.currentTime ?? 0, 0.45)
       if (waiting) playEffect('narration')
+    },
+    setScreenAttenuation(value) {
+      const next = Math.max(0, Math.min(1, Number(value)))
+      if (!Number.isFinite(next) || screenAttenuation === next) return
+      screenAttenuation = next
+      // Плавно: резкий обрыв фона на открытии окна кампаний слышен как сбой.
+      updateBuses(context?.currentTime ?? 0, 0.35)
     },
     playEffect,
     playEvents(events) {
