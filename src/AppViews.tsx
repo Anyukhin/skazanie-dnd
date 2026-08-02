@@ -12,6 +12,7 @@ import {
   UI_SCALE_PRESETS, battleEventText, clampUiScale, locationsMatch,
 } from './app-shared'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
+import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
@@ -233,8 +234,8 @@ export function stakesTitle(stakes: NonNullable<Message['stakes']>) {
   return `${both} · СЛ ${stakes.difficulty}${category ? ` · ${category}` : ''}`
 }
 
-export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, open, onToggle }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; open: boolean; onToggle: () => void
+export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak, open, onToggle }: {
+  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null; open: boolean; onToggle: () => void
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -331,6 +332,11 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
               {/* Провенанс правила нажимается. Сырой rule_id в игровом интерфейсе не
                   показываем — сервер отвечает разбором по запросу. */}
               {message.roll && <button className="why-link" onClick={onWhy} disabled={isNarrating}><HelpCircle size={15} />Почему так?</button>}
+              {/* Озвучка ручным нажатием. Кнопки нет вовсе, если игрок выключил
+                  озвучку или в системе нет русского голоса. */}
+              {message.speaker === 'narrator' && onSpeak && (
+                <button className="why-link" type="button" onClick={() => onSpeak(message.text)} aria-label="Озвучить рассказ"><Volume2 size={15} />Озвучить</button>
+              )}
             </div>
           </article>
         ))}
@@ -601,7 +607,7 @@ export function AtmosphereRange({ label, description, value, onChange }: { label
   </label>
 }
 
-export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, notificationPermission, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications }: {
+export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
   campaignAiBusy: boolean
@@ -612,6 +618,8 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   combatAnimations: boolean
   atmosphereSettings: AtmosphereSettings
   notificationPermission: NotificationPermission | 'unsupported'
+  voiceMode: NarrationVoiceMode
+  voiceSupported: boolean
   onCampaignAiChange: (patch: Partial<CampaignAiSettings>) => void
   onUiScaleChange: (value: number) => void
   onAutoAttackRollChange: (value: boolean) => void
@@ -621,6 +629,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   onEffectsVolumeChange: (value: number) => void
   onAtmosphereMutedChange: (value: boolean) => void
   onRequestNotifications: () => void
+  onVoiceModeChange: (value: NarrationVoiceMode) => void
 }) {
   const [scaleInput, setScaleInput] = useState(String(uiScale))
 
@@ -703,6 +712,18 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
             <span className="ui-scale-marks"><i>{UI_SCALE_MIN}%</i><i>100%</i><i>125%</i><i>{UI_SCALE_MAX}%</i></span>
           </label>
           <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — иллюстрация и окружение соответствуют месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
+          {/* Озвучка спрашивается только там, где её есть чем исполнить: без
+              русского голоса в системе выбор был бы обещанием без механики. */}
+          {voiceSupported && (
+            <label className="ui-scale-setting">
+              <span><b>Озвучка рассказчика</b><small>Голос браузера читает нарратив на этом устройстве; выбор не влияет на других игроков</small></span>
+              <select value={voiceMode} onChange={(event) => onVoiceModeChange(event.currentTarget.value as NarrationVoiceMode)} aria-label="Озвучка рассказчика">
+                <option value="off">Выключена</option>
+                <option value="button">Кнопкой у сообщения</option>
+                <option value="auto">Автоматически</option>
+              </select>
+            </label>
+          )}
           <div className="atmosphere-settings" role="group" aria-label="Звук и музыка">
             <div className="atmosphere-settings-title"><Volume2 size={17} /><span><b>Звук и музыка</b><small>Процедурный фон и сигналы подтверждённых событий</small></span></div>
             <AtmosphereRange label="Фоновая атмосфера" description="Музыка, ветер и гул текущего места" value={atmosphereSettings.ambientVolume} onChange={onAmbientVolumeChange} />

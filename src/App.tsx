@@ -27,6 +27,8 @@ import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
+import { normalizeVoiceMode, pickNarrationVoice, shouldAutoSpeak, type NarrationVoiceMode } from './narration-tts.mjs'
+import { cancelNarration, observeVoices, russianVoiceAvailable, speakNarration } from './narration-speech'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
 import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
@@ -76,6 +78,9 @@ type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'set
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
 const COMBAT_ANIMATIONS_KEY = 'skazanie-combat-animations-v1'
+// Озвучка — настройка устройства, а не кампании: за одним столом кто-то слушает,
+// кто-то читает, и навязывать общий выбор нельзя.
+const NARRATION_VOICE_KEY = 'skazanie-narration-voice-v1'
 const DEFAULT_DOCUMENT_TITLE = 'Сказание'
 function reachableBoardCells(state: GameState, actor: BoardCombatant, remainingFeet: number) {
   const result = new Set<string>()
@@ -632,6 +637,12 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
   const [combatAnimations, setCombatAnimations] = useState(() => window.localStorage.getItem(COMBAT_ANIMATIONS_KEY) !== 'false')
   const [atmosphereSettings, setAtmosphereSettings] = useState(loadAtmosphereSettings)
+  const [voiceMode, setVoiceMode] = useState<NarrationVoiceMode>(() => normalizeVoiceMode(window.localStorage.getItem(NARRATION_VOICE_KEY)))
+  const [narrationVoices, setNarrationVoices] = useState<SpeechSynthesisVoice[]>([])
+  // Русского голоса нет — озвучки нет вовсе: читать русский текст английским
+  // голосом хуже, чем молчать. Настройка и кнопка в таком случае не рисуются.
+  const narrationVoice = useMemo(() => pickNarrationVoice(narrationVoices), [narrationVoices])
+  const voiceSupported = russianVoiceAvailable(narrationVoices)
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => (
     'Notification' in window ? Notification.permission : 'unsupported'
   ))
@@ -859,6 +870,26 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   useEffect(() => { window.localStorage.setItem('skazanie-auto-attack-roll', String(autoAttackRoll)) }, [autoAttackRoll])
   useEffect(() => { window.localStorage.setItem(SCENIC_BACKDROP_KEY, String(scenicBackdrop)) }, [scenicBackdrop])
   useEffect(() => { window.localStorage.setItem(COMBAT_ANIMATIONS_KEY, String(combatAnimations)) }, [combatAnimations])
+  useEffect(() => { window.localStorage.setItem(NARRATION_VOICE_KEY, voiceMode) }, [voiceMode])
+  // Список голосов в Chrome приезжает событием, а не первым вызовом. Подписка
+  // снимается вместе с компонентом — вместе с ней смолкает и сама озвучка.
+  useEffect(() => {
+    const stop = observeVoices(setNarrationVoices)
+    return () => {
+      stop()
+      cancelNarration()
+    }
+  }, [])
+  // Автоозвучка читает только завершённый нарратив. Стриминговые куски сюда не
+  // попадают: сообщение появляется в ленте уже целым, и голос не заикается.
+  const spokenMessageId = useRef<string | null>(null)
+  useEffect(() => {
+    if (!latestNarratorMessage) return
+    if (spokenMessageId.current === latestNarratorMessage.id) return
+    spokenMessageId.current = latestNarratorMessage.id
+    if (!shouldAutoSpeak(latestNarratorMessage, voiceMode)) return
+    speakNarration(latestNarratorMessage.text, narrationVoice)
+  }, [latestNarratorMessage, voiceMode, narrationVoice])
   useEffect(() => {
     const restoreTitle = () => {
       if (!document.hidden) document.title = normalDocumentTitle.current
@@ -1285,7 +1316,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             narrating={state.isNarrating}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
               <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
 
@@ -1310,7 +1341,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
           onActivate={(itemId, activated) => activateItem(activePlayer.id, itemId, activated)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
+        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
