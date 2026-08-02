@@ -87,6 +87,10 @@ function assertPlainCommand(command) {
     'item_id', 'quantity', 'equipped', 'attuned', 'recipient_id', 'charges_to_spend',
     'activated',
     'merchant_id', 'stock_id', 'action_id',
+    // Клетка рассыпания, выбор режима фляги и оружие под яд. Поля недоверенные:
+    // допустимость клетки, дальность и принадлежность оружия проверяет
+    // Rules Engine, а не отправитель команды.
+    'to', 'use_mode', 'weapon_id',
     'expected_state_version', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility', 'request_fingerprint',
     'server_authoritative',
   ]

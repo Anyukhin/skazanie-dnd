@@ -16,7 +16,7 @@ export const DIRECTOR_INTENT_TYPES = Object.freeze([
 ])
 
 const INTENT_TYPES = new Set(DIRECTOR_INTENT_TYPES)
-const DIFFICULTIES = new Set(['easy', 'medium', 'hard'])
+const DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'deadly'])
 /**
  * Список тем был записан здесь вторым, руками, и разошёлся с реальным: у
  * EncounterAssembler их было пять, а Директор мог попросить четыре — `generic`

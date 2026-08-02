@@ -54,6 +54,12 @@ test('совместимый API создаёт кампанию, исполня
   const usage = await usageResponse.json()
   assert.equal(usage.usage.daily_token_limit, 2_000_000)
   assert.equal(usage.usage.committed_tokens, 0)
+  // Расход Архитектора едет отдельным разделом: у него своя величина — сколько
+  // локаций создано за день по кампаниям, — и свой порог предупреждения.
+  assert.match(usage.architect.day, /^\d{4}-\d{2}-\d{2}$/)
+  assert.ok(Number.isSafeInteger(usage.architect.alert_threshold) && usage.architect.alert_threshold > 0)
+  assert.deepEqual(usage.architect.campaigns, {})
+  assert.equal(usage.architect.total_generations, 0)
 
   const state = {
     sessionCode: 'API-TEST', campaign: 'API test', activePlayerId: 'hero', isNarrating: false, pendingCheck: null, suggestions: [], messages: [],

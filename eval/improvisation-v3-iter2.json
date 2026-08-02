@@ -1,0 +1,1138 @@
+{
+  "schema_version": 1,
+  "label": "v3-iter2",
+  "date": "2026-08-02T02:50:34.981Z",
+  "prompt_id": "action_adjudicator/v3",
+  "primary_model": "openai/gpt-5.6-luna",
+  "reasoning_effort": "по умолчанию модели",
+  "live_calls": 31,
+  "tokens": {
+    "input": 66895,
+    "output": 12264
+  },
+  "provider_log": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 7325
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 8406
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 6920
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 10311
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 5774
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 16627
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 7989
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 6352
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 6685
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 7014
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 10762
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 5733
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 13787
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 8602
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 7991
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 13710
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 11126
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 7429
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 10298
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 11571
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 9760
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 8535
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 7869
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 7084
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 6685
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 8311
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 6993
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 6412
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 8108
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 6131
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 8921
+    }
+  ],
+  "samples": [
+    {
+      "id": "acro-chandelier-ogre",
+      "category": "acrobatics_environment",
+      "text": "Прыгаю с люстры прямо на огра, чтобы сбить его с ног",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Сбить огра с ног",
+        "approach_summary": "Прыгнуть с тяжёлой люстры прямо на огра, используя вес и момент падения",
+        "obstacle": "Нужно удержаться на свисающей люстре и точно приземлиться на огра среди опрокинутых столов и разлитого масла",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "prone",
+        "effect_target": "enemy-ogre",
+        "hazard": "",
+        "target_id": "enemy-ogre",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 7326
+    },
+    {
+      "id": "acro-table-vault",
+      "category": "acrobatics_environment",
+      "text": "Перекатываюсь через опрокинутый стол и оказываюсь за спиной у разбойника",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Переместиться за спину разбойника",
+        "approach_summary": "Перекатиться через опрокинутый стол, используя ловкость и акробатику",
+        "obstacle": "Опрокинутый стол и разлившееся под ногами масло",
+        "ability": "dex",
+        "skill": "acrobatics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "enemy-bandit",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 8406
+    },
+    {
+      "id": "acro-oil-slip",
+      "category": "acrobatics_environment",
+      "text": "Толкаю огра так, чтобы он поскользнулся на разлитом масле",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Сбить огра с ног",
+        "approach_summary": "Толкнуть огра в сторону разлитого масла, чтобы он поскользнулся",
+        "obstacle": "Большая масса огра и скользкая, неустойчивая поверхность",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "prone",
+        "effect_target": "enemy-ogre",
+        "hazard": "",
+        "target_id": "enemy-ogre",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 6921
+    },
+    {
+      "id": "acro-swing-beam",
+      "category": "acrobatics_environment",
+      "text": "Цепляюсь за балку и раскачиваюсь, чтобы перелететь через весь зал",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Перебраться через весь зал по воздуху, чтобы приблизиться к огру",
+        "approach_summary": "Цепляется за балку, раскачивается и отпускается в нужный момент",
+        "obstacle": "Опрокинутые столы и разлившееся масло затрудняют безопасное перемещение, а падение с балки опасно",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 10311
+    },
+    {
+      "id": "acro-chasm-jump",
+      "category": "acrobatics_environment",
+      "text": "Разбегаюсь и прыгаю через трещину в полу",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Перебраться через двадцатифутовую трещину и продолжить путь к двери хранилища",
+        "approach_summary": "Разбежаться и перепрыгнуть трещину одним прыжком",
+        "obstacle": "Широкая трещина в полу требует дальнего прыжка",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "fall",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 5774
+    },
+    {
+      "id": "acro-squeeze-portcullis",
+      "category": "acrobatics_environment",
+      "text": "Протискиваюсь между прутьями опускной решётки",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Пробраться на другую сторону опускной решётки",
+        "approach_summary": "Протиснуться через промежуток между прутьями, пока решётка опускается",
+        "obstacle": "Опускающаяся решётка и узкие промежутки между прутьями",
+        "ability": "dex",
+        "skill": "acrobatics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "time"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 16627
+    },
+    {
+      "id": "social-seduce-guard",
+      "category": "social_audacity",
+      "text": "Соблазняю стражника, чтобы он забыл про мою подорожную",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Убедить стражника не проверять подорожную и пропустить Аду за ворота",
+        "approach_summary": "Соблазнить начальника караула личным обаянием",
+        "obstacle": "Стражник занят проверкой подорожных и обязан пропускать путешественников по правилам",
+        "ability": "cha",
+        "skill": "persuasion",
+        "plausibility": "plausible",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "npc-guard",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 7990
+    },
+    {
+      "id": "social-intimidate-captain",
+      "category": "social_audacity",
+      "text": "Запугиваю начальника караула, нависая над ним и обещая проблемы",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Заставить начальника караула пропустить Аду за ворота",
+        "approach_summary": "Запугать его физическим превосходством, нависая над ним и угрожая проблемами",
+        "obstacle": "Начальник караула действует при свидетелях и отвечает за порядок у ворот",
+        "ability": "str",
+        "skill": "intimidation",
+        "plausibility": "plausible",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "npc-guard",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 6352
+    },
+    {
+      "id": "social-bluff-noble",
+      "category": "social_audacity",
+      "text": "Вру знатной госпоже, что я её новая охранница и должна идти рядом",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Убедить госпожу Вельту, что Ада — её новая охранница, и получить возможность идти рядом с ней",
+        "approach_summary": "Представиться новой охранницей и уверенно солгать о своих полномочиях",
+        "obstacle": "У Ады нет подтверждённых полномочий или документов, а рядом находятся стражники",
+        "ability": "cha",
+        "skill": "deception",
+        "plausibility": "plausible",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "free",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "npc-lady",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 6685
+    },
+    {
+      "id": "social-bribe-merchant",
+      "category": "social_audacity",
+      "text": "Предлагаю купцу долю, если он проведёт меня в своей повозке",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Попасть за ворота до закрытия вместе с повозкой купца",
+        "approach_summary": "Предложить купцу долю в обмен на то, чтобы он провёз Аду в своей повозке",
+        "obstacle": "Купец должен согласиться и провести её через досмотр стражников",
+        "ability": "cha",
+        "skill": "persuasion",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "free",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "npc-merchant",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "time"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 7014
+    },
+    {
+      "id": "social-insult-ogre",
+      "category": "social_audacity",
+      "text": "Ору на огра самые обидные оскорбления, чтобы он бросил разбойника и пошёл на меня",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Заставить огра переключиться с разбойника на Аду",
+        "approach_summary": "Громко выкрикивать в адрес огра оскорбления, провоцируя его напасть на неё",
+        "obstacle": "Огр занят дракой с разбойником",
+        "ability": "cha",
+        "skill": "intimidation",
+        "plausibility": "plausible",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "free",
+        "effect": "distract",
+        "effect_target": "enemy-ogre",
+        "hazard": "",
+        "target_id": "enemy-ogre",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 10762
+    },
+    {
+      "id": "social-read-guard",
+      "category": "social_audacity",
+      "text": "Присматриваюсь к стражнику: он врёт про приказ или правда боится?",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Понять, врёт ли стражник о приказе или действительно боится.",
+        "approach_summary": "Наблюдать за стражником и сопоставить его слова с поведением и выражением эмоций.",
+        "obstacle": "Поведение стражника может быть неоднозначным, а вокруг шумит очередь.",
+        "ability": "wis",
+        "skill": "insight",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "npc-guard",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "time"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 5733
+    },
+    {
+      "id": "item-oil-fire",
+      "category": "inventory_items",
+      "text": "Бросаю флягу масла под ноги огру и поджигаю факелом",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Вынудить огра покинуть общий зал огнём под ногами",
+        "approach_summary": "Бросить флягу масла под ноги огру и поджечь масло факелом",
+        "obstacle": "Огр находится в разгаре драки, а масло и огонь могут вызвать опасное возгорание в трактире",
+        "ability": "dex",
+        "skill": "sleight_of_hand",
+        "plausibility": "plausible",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "hazard_damage",
+        "effect_target": "enemy-ogre",
+        "hazard": "fire",
+        "target_id": "enemy-ogre",
+        "item_id": "item-oil",
+        "proficiency": "none",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 13787
+    },
+    {
+      "id": "item-rope-portcullis",
+      "category": "inventory_items",
+      "text": "Привязываю верёвку к решётке и тяну её вверх всем весом",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Поднять опускную решётку, чтобы пройти дальше",
+        "approach_summary": "Привязать верёвку к решётке и тянуть её вверх всем весом",
+        "obstacle": "Тяжёлая решётка требует значительного усилия",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "item-rope",
+        "proficiency": "proficient",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 8602
+    },
+    {
+      "id": "item-crowbar-door",
+      "category": "inventory_items",
+      "text": "Поддеваю ломом дверь хранилища и налегаю",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Открыть запертую дверь хранилища",
+        "approach_summary": "Поддеть дверь ломом и налечь на него, чтобы сорвать запор",
+        "obstacle": "Запертая дверь хранилища",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "item-crowbar",
+        "proficiency": "proficient",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 7991
+    },
+    {
+      "id": "item-caltrops-retreat",
+      "category": "inventory_items",
+      "text": "Рассыпаю калтропы позади себя, отступая от огра",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Создать позади себя опасное препятствие для преследующего огра",
+        "approach_summary": "На ходу рассыпать калтропы по полу между собой и огрём",
+        "obstacle": "Огр находится поблизости, а пол загромождён и покрыт маслом",
+        "ability": "dex",
+        "skill": "survival",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "hazard_damage",
+        "effect_target": "enemy-ogre",
+        "hazard": "shards",
+        "target_id": "enemy-ogre",
+        "item_id": "item-caltrops",
+        "proficiency": "proficient",
+        "consequence_type": "time"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 13710
+    },
+    {
+      "id": "item-rope-chasm",
+      "category": "inventory_items",
+      "text": "Закидываю верёвку с петлёй на выступ по ту сторону трещины и перебираюсь по ней",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Перебраться через двадцатифутовую трещину к дальней стороне",
+        "approach_summary": "Закинуть петлю верёвки на выступ за трещиной и перебраться по закреплённой верёвке",
+        "obstacle": "Глубокая трещина шириной двадцать футов и необходимость надёжно зацепить верёвку за выступ",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "deadly",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "item-rope",
+        "proficiency": "proficient",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 11126
+    },
+    {
+      "id": "wild-ride-ogre",
+      "category": "wild_but_possible",
+      "text": "Запрыгиваю огру на плечи и закрываю ему глаза руками",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Временно лишить огра возможности видеть",
+        "approach_summary": "Запрыгнуть огру на плечи и закрыть ему глаза руками",
+        "obstacle": "Огр крупнее и сильнее Ады, а под ногами разлито масло",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "blind",
+        "effect_target": "enemy-ogre",
+        "hazard": "",
+        "target_id": "enemy-ogre",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 7430
+    },
+    {
+      "id": "wild-tablecloth",
+      "category": "wild_but_possible",
+      "text": "Срываю скатерть и набрасываю её разбойнику на голову",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Лишить разбойника возможности видеть и помешать ему сражаться",
+        "approach_summary": "Сорвать скатерть со стола и набросить её разбойнику на голову",
+        "obstacle": "Разбойник может сопротивляться, а скатерть нужно успеть сорвать и натянуть на него в драке",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "blind",
+        "effect_target": "enemy-bandit",
+        "hazard": "",
+        "target_id": "enemy-bandit",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 10298
+    },
+    {
+      "id": "wild-dagger-lamp",
+      "category": "wild_but_possible",
+      "text": "Метаю кинжал в крепление люстры, чтобы она рухнула на огра",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Обрушить тяжёлую люстру на огра",
+        "approach_summary": "Метнуть кинжал точно в крепление люстры, чтобы сорвать её с балки",
+        "obstacle": "Нужно попасть по креплению и сорвать тяжёлую люстру, не задев лишь саму конструкцию",
+        "ability": "dex",
+        "skill": "sleight_of_hand",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "hazard_damage",
+        "effect_target": "enemy-ogre",
+        "hazard": "crush",
+        "target_id": "enemy-ogre",
+        "item_id": "item-dagger",
+        "proficiency": "none",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 11571
+    },
+    {
+      "id": "wild-pretend-corpse",
+      "category": "wild_but_possible",
+      "text": "Падаю и притворяюсь мёртвой, чтобы огр потерял ко мне интерес",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Заставить огра потерять к Аде интерес, притворившись мёртвой",
+        "approach_summary": "Упасть на пол и изображать смерть",
+        "obstacle": "Огр может заметить обман посреди драки",
+        "ability": "cha",
+        "skill": "deception",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "prone",
+        "effect_target": "hero-1",
+        "hazard": "",
+        "target_id": "enemy-ogre",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 9760
+    },
+    {
+      "id": "wild-sing-guards",
+      "category": "wild_but_possible",
+      "text": "Начинаю громко петь похабную песню, чтобы вся очередь смотрела на меня, а не на купца",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Отвлечь очередь от купца Тависа, чтобы досмотр не привлекал к нему внимания",
+        "approach_summary": "Громко исполнять похабную песню, превращая себя в центр внимания",
+        "obstacle": "Очередь занята досмотром, а стражники контролируют порядок у ворот",
+        "ability": "cha",
+        "skill": "performance",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "distract",
+        "effect_target": "npc-merchant",
+        "hazard": "",
+        "target_id": "npc-merchant",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 8535
+    },
+    {
+      "id": "wild-dive-flooded",
+      "category": "wild_but_possible",
+      "text": "Набираю воздуха и ныряю в затопленный ход, надеясь доплыть до конца на одном дыхании",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Добраться до конца затопленного хода и запертой двери хранилища",
+        "approach_summary": "Нырнуть в ход и проплыть его на одном дыхании",
+        "obstacle": "Ход полностью затоплен, поэтому нельзя дышать во время движения",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "time"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 7869
+    },
+    {
+      "id": "means-fly-chasm",
+      "category": "honest_impossible_without_means",
+      "text": "Взлетаю и перелетаю трещину по воздуху",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Перебраться через двадцатифутовую трещину по воздуху",
+        "approach_summary": "Взлететь и перелететь трещину без опоры",
+        "obstacle": "У Ады нет способности к полёту или другого средства, позволяющего двигаться по воздуху",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "impossible_without_means",
+        "risk": "deadly",
+        "required_means": [
+          "полёт"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 7084
+    },
+    {
+      "id": "means-breathe-water",
+      "category": "honest_impossible_without_means",
+      "text": "Дышу под водой и спокойно исследую весь затопленный ход без спешки",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Исследовать весь затопленный ход и добраться до его дальнего конца",
+        "approach_summary": "Спокойно плыть под водой и осматривать ход по пути",
+        "obstacle": "У Ады нет способности дышать под водой",
+        "ability": "wis",
+        "skill": "perception",
+        "plausibility": "impossible_without_means",
+        "risk": "deadly",
+        "required_means": [
+          "водное дыхание"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "time"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 6685
+    },
+    {
+      "id": "means-teleport-vault",
+      "category": "honest_impossible_without_means",
+      "text": "Телепортируюсь сквозь решётку внутрь хранилища",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Попасть внутрь хранилища за опускной решёткой",
+        "approach_summary": "Телепортироваться сквозь решётку",
+        "obstacle": "Решётка перекрывает вход, а у Ады нет способности или заклинания телепортации",
+        "ability": "int",
+        "skill": "arcana",
+        "plausibility": "impossible_without_means",
+        "risk": "none",
+        "required_means": [
+          "телепортация"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "lost_opportunity"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 8311
+    },
+    {
+      "id": "means-charm-spell",
+      "category": "honest_impossible_without_means",
+      "text": "Накладываю на стражника чары очарования, чтобы он пропустил меня",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Добиться, чтобы стражник пропустил Аду за ворота",
+        "approach_summary": "Наложить на стражника чары очарования",
+        "obstacle": "У Ады нет подготовленного или известного заклинания очарования",
+        "ability": "cha",
+        "skill": "persuasion",
+        "plausibility": "impossible_without_means",
+        "risk": "none",
+        "required_means": [
+          "заклинание очарования"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "npc-guard",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 6993
+    },
+    {
+      "id": "means-invisible",
+      "category": "honest_impossible_without_means",
+      "text": "Становлюсь невидимой и прохожу мимо караула",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Пройти за Северные ворота мимо караула незамеченной",
+        "approach_summary": "Стать невидимой и пройти мимо стражника",
+        "obstacle": "У Ады нет способности или средства, позволяющего стать невидимой",
+        "ability": "dex",
+        "skill": "stealth",
+        "plausibility": "impossible_without_means",
+        "risk": "serious",
+        "required_means": [
+          "невидимость"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "npc-guard",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 6412
+    },
+    {
+      "id": "impossible-moon",
+      "category": "physically_impossible",
+      "text": "Прыгаю с места на луну",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Добраться до Луны прыжком с места",
+        "approach_summary": "Прыгнуть вверх и преодолеть расстояние до Луны без дополнительного средства",
+        "obstacle": "Обычного прыжка недостаточно для полёта в космос и преодоления огромного расстояния",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "impossible_without_means",
+        "risk": "deadly",
+        "required_means": [
+          "полёт"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "lost_opportunity"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 8108
+    },
+    {
+      "id": "impossible-stop-time",
+      "category": "physically_impossible",
+      "text": "Останавливаю время во всём трактире",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Остановить время во всём трактире",
+        "approach_summary": "Применить способность, останавливающую время в большой области",
+        "obstacle": "У Ады нет заклинания или способности для остановки времени",
+        "ability": "int",
+        "skill": "arcana",
+        "plausibility": "impossible_without_means",
+        "risk": "none",
+        "required_means": [
+          "заклинание остановки времени"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "lost_opportunity"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 6132
+    },
+    {
+      "id": "impossible-become-dragon",
+      "category": "physically_impossible",
+      "text": "Превращаюсь в дракона и разношу стену",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Разрушить стену, превратившись в дракона",
+        "approach_summary": "Принять форму дракона и проломить стену силой",
+        "obstacle": "У Ады нет способности или заклинания для превращения в дракона",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "impossible_without_means",
+        "risk": "none",
+        "required_means": [
+          "превращение в дракона"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "lost_opportunity"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 8921
+    }
+  ],
+  "score": {
+    "total": 31,
+    "structural_valid_pct": 100,
+    "in_expectation_pct": 100,
+    "wrong_refusals": 0,
+    "categories": {
+      "acrobatics_environment": {
+        "label": "акробатика и среда",
+        "total": 6,
+        "structural_valid_pct": 100,
+        "in_expectation_pct": 100,
+        "wrong_refusals": 0
+      },
+      "social_audacity": {
+        "label": "социальные дерзости",
+        "total": 6,
+        "structural_valid_pct": 100,
+        "in_expectation_pct": 100,
+        "wrong_refusals": 0
+      },
+      "inventory_items": {
+        "label": "предметы из инвентаря",
+        "total": 5,
+        "structural_valid_pct": 100,
+        "in_expectation_pct": 100,
+        "wrong_refusals": 0
+      },
+      "wild_but_possible": {
+        "label": "безумные, но возможные",
+        "total": 6,
+        "structural_valid_pct": 100,
+        "in_expectation_pct": 100,
+        "wrong_refusals": 0
+      },
+      "honest_impossible_without_means": {
+        "label": "честный impossible_without_means",
+        "total": 5,
+        "structural_valid_pct": 100,
+        "in_expectation_pct": 100,
+        "wrong_refusals": 0
+      },
+      "physically_impossible": {
+        "label": "физически невозможное",
+        "total": 3,
+        "structural_valid_pct": 100,
+        "in_expectation_pct": 100,
+        "wrong_refusals": 0
+      }
+    },
+    "misses": []
+  }
+}

@@ -16,20 +16,52 @@ import { fileURLToPath } from 'node:url'
  * статусов в `AGENTS.md`.
  */
 
+/**
+ * Формы каталога. Он читается из JSON, поэтому типы объявлены здесь: без них
+ * `JSON.parse` возвращает `any`, и проверка молча пропускала бы любую опечатку
+ * в имени поля.
+ *
+ * @typedef {{ id: string, name: string }} BackgroundNamedEntry
+ * @typedef {{ id: string, label: string, increases: number[] }} BackgroundAbilityMode
+ * @typedef {{
+ *   id: string,
+ *   name: string,
+ *   englishName: string,
+ *   summary: string,
+ *   abilityOptions: string[],
+ *   skillProficiencies: string[],
+ *   toolProficiency?: BackgroundNamedEntry | null,
+ *   originFeat?: BackgroundNamedEntry | null,
+ *   equipment?: { summary: string, gold: number, alternativeGold?: number },
+ * }} BackgroundEntry
+ * @typedef {{
+ *   policyId?: string,
+ *   abilityChoiceModes?: BackgroundAbilityMode[],
+ *   backgrounds: BackgroundEntry[],
+ * }} BackgroundCatalog
+ */
+
+/** @type {BackgroundCatalog} */
 const catalog = JSON.parse(readFileSync(fileURLToPath(new URL('../data/backgrounds-srd-5-2-1.json', import.meta.url)), 'utf8'))
 
 export const BACKGROUND_POLICY_ID = String(catalog.policyId ?? 'skazanie.backgrounds')
 export const BACKGROUND_ABILITY_MODES = Object.freeze(
-  (catalog.abilityChoiceModes ?? []).map((mode) => Object.freeze({ ...mode, increases: Object.freeze([...mode.increases]) })),
+  (catalog.abilityChoiceModes ?? []).map((/** @type {BackgroundAbilityMode} */ mode) => Object.freeze({ ...mode, increases: Object.freeze([...mode.increases]) })),
 )
 
 const ABILITY_IDS = Object.freeze(['str', 'dex', 'con', 'int', 'wis', 'cha'])
-const byId = new Map(catalog.backgrounds.map((entry) => [String(entry.id), Object.freeze(entry)]))
+const byId = new Map(catalog.backgrounds.map((/** @type {BackgroundEntry} */ entry) => (
+  /** @type {[string, Readonly<BackgroundEntry>]} */ ([String(entry.id), Object.freeze(entry)])
+)))
 
 export function listBackgrounds() {
-  return catalog.backgrounds.map((entry) => structuredClone(entry))
+  return catalog.backgrounds.map((/** @type {BackgroundEntry} */ entry) => structuredClone(entry))
 }
 
+/**
+ * @param {unknown} id
+ * @returns {Readonly<BackgroundEntry> | null}
+ */
 export function backgroundById(id) {
   return byId.get(String(id ?? '')) ?? null
 }
@@ -39,7 +71,7 @@ export function backgroundById(id) {
  * только выбор из трёх, предложенных предысторией, и только в одной из двух
  * разрешённых форм — +2/+1 либо +1/+1/+1.
  *
- * @param {string} backgroundId
+ * @param {unknown} backgroundId
  * @param {{ mode?: string, abilities?: string[] }} choice
  * @returns {{ ok: true, bonuses: Record<string, number>, mode: string } | { ok: false, reason: string }}
  */
@@ -47,7 +79,9 @@ export function resolveBackgroundAbilityChoice(backgroundId, choice = {}) {
   const background = backgroundById(backgroundId)
   if (!background) return { ok: false, reason: 'Такой предыстории нет в каталоге' }
   const allowed = new Set(background.abilityOptions)
-  const mode = BACKGROUND_ABILITY_MODES.find((entry) => entry.id === String(choice.mode ?? ''))
+  // Раскладки заморожены при сборке каталога, поэтому `increases` здесь
+  // `readonly`: тип обязан это отражать, иначе `find` не совпадёт по сигнатуре.
+  const mode = BACKGROUND_ABILITY_MODES.find((/** @type {Readonly<{ id: string, label: string, increases: readonly number[] }>} */ entry) => entry.id === String(choice.mode ?? ''))
     ?? BACKGROUND_ABILITY_MODES[0]
   const picked = (Array.isArray(choice.abilities) ? choice.abilities : []).map((value) => String(value).toLowerCase())
   const expected = mode.increases.length
@@ -65,7 +99,12 @@ export function resolveBackgroundAbilityChoice(backgroundId, choice = {}) {
   return { ok: true, bonuses, mode: mode.id }
 }
 
-/** Раскладка по умолчанию: +2 первой из предложенных, +1 второй. */
+/**
+ * Раскладка по умолчанию: +2 первой из предложенных, +1 второй.
+ *
+ * @param {unknown} backgroundId
+ * @returns {{ mode: string, abilities: string[] } | null}
+ */
 export function defaultBackgroundAbilityChoice(backgroundId) {
   const background = backgroundById(backgroundId)
   if (!background) return null
@@ -78,6 +117,13 @@ export function defaultBackgroundAbilityChoice(backgroundId) {
  * контракт импорта, который перечитывается при применении события и replay,
  * а производные поля в контракт не входят. Поэтому источник истины —
  * `backgroundId`, а всё остальное выводится здесь.
+ *
+ * Лист героя ходит через контракт импорта и здесь читается как свободная
+ * запись: строгой формы у него в этом модуле нет и заводить её нельзя — она
+ * разошлась бы с контрактом.
+ *
+ * @param {Record<string, any>} actor
+ * @returns {Record<string, any>}
  */
 export function withBackgroundBenefits(actor) {
   const background = backgroundById(actor?.backgroundId)
@@ -95,6 +141,9 @@ export function withBackgroundBenefits(actor) {
 /**
  * Что предыстория даёт герою на самом деле. Возвращается ровно то, что движок
  * умеет применить, плюс честная отметка о неисполняемой части.
+ *
+ * @param {unknown} backgroundId
+ * @param {{ mode?: string, abilities?: string[] } | null} [abilityChoice]
  */
 export function backgroundBenefits(backgroundId, abilityChoice) {
   const background = backgroundById(backgroundId)

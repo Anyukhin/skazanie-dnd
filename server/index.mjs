@@ -28,13 +28,23 @@ import {
   userForToken,
   verifyUser,
 } from './store.mjs'
-import { NARRATOR_STYLES, normalizeNarratorStyle, runWithCampaignAiSettings } from './campaign-ai-context.mjs'
+import {
+  IMPROV_MODES,
+  NARRATOR_STYLES,
+  currentImprovMode,
+  normalizeImprovMode,
+  normalizeNarratorStyle,
+  runWithCampaignAiSettings,
+} from './campaign-ai-context.mjs'
 import { DiceService } from './dice-service.mjs'
 import { MapStore } from './map-store.mjs'
 import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
+import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertText } from './architect-usage.mjs'
+import { sceneSummaryFor } from './scene-summary.mjs'
+import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from './campaign-recap.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator } from './creative-director.mjs'
@@ -77,7 +87,7 @@ import {
   merchantViewFor,
   planMerchantEconomyClock,
 } from './merchant-economy.mjs'
-import { assembleEncounter } from './encounter-assembler.mjs'
+import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
 import { compactStateForTransport } from './reveal-transport.mjs'
@@ -104,8 +114,17 @@ import { characterCreationCatalog, createCharacterSlot } from './character-lifec
 import {
   NPC_PORTRAIT_GENERATION_LIMIT,
   NpcPortraitService,
+  npcPortraitSignificance,
+  publicNpcPortraitProfile,
   visibleNpcPortraitProfile,
 } from './npc-portraits.mjs'
+import {
+  ASSET_PREPARATION_POLICY_ID,
+  MAX_PREPARATION_BATCH,
+  itemsWithoutIllustration,
+  npcPortraitInventory,
+  planPreparation,
+} from './asset-preparation.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -128,11 +147,24 @@ const modelFailureCooldownMs = Number(process.env.DND_AI_FAILURE_COOLDOWN_MS || 
 const combatTurnTimeoutMs = Number(process.env.DND_COMBAT_TURN_TIMEOUT_MS || 120_000)
 const dailyTokenLimit = Number(process.env.DND_AI_DAILY_TOKEN_LIMIT || 2_000_000)
 const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
+/**
+ * Генерация картинок во время игры. По умолчанию **выключена** — решение
+ * владельца: вечер стоит около 50 ₽, и платить за картинку посреди хода, пока
+ * стол ждёт, незачем. Готовые картинки из кеша при этом отдаются как обычно, а
+ * новые готовятся заранее режимом подготовки.
+ */
+const runtimeImageGeneration = ['on', 'true', '1', 'yes'].includes(String(process.env.DND_RUNTIME_IMAGE_GENERATION ?? '').trim().toLowerCase())
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
 const usageLedger = new DurableUsageLedger({
   storageFile: join(storageDir, 'engine', 'llm-usage.json'),
   dailyTokenLimit,
+})
+// Лимита на локации нет — это решение владельца. Порог нужен только для того,
+// чтобы стол увидел предупреждение о расходе.
+const architectUsage = new ArchitectUsageStore({
+  storageFile: join(storageDir, 'engine', 'architect-usage.json'),
+  alertThreshold: Number(process.env.DND_ARCHITECT_ALERT_THRESHOLD || DEFAULT_ARCHITECT_ALERT_THRESHOLD),
 })
 const npcPortraitService = new NpcPortraitService({
   storageDir,
@@ -243,6 +275,13 @@ const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmC
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
 const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor, rollRegistry })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
+// Рекап зовётся раз на возвращение стола и кешируется по версии состояния,
+// поэтому идёт через общий metered-клиент и попадает в usage-леджер.
+const campaignRecap = new CampaignRecapService({
+  llmClient: apiKey ? llmClient : null,
+  cache: new RecapCacheStore({ storageFile: join(storageDir, 'engine', 'campaign-recap.json') }),
+  gapHours: Number(process.env.DND_RECAP_GAP_HOURS || DEFAULT_RECAP_GAP_HOURS),
+})
 const combatTurnCoordinator = new CombatTurnCoordinator({
   eventStore,
   rulesEngine,
@@ -1114,6 +1153,18 @@ function originAllowed(req) {
   catch { return false }
 }
 
+/**
+ * Подготовка ассетов тратит деньги, поэтому доступна не всякому участнику:
+ * администратору сервера и владельцу кампании — тем же двоим, кто управляет
+ * общими настройками ИИ.
+ */
+function canManageCampaignAssets(user, room) {
+  if (!user) return false
+  if (user.role === 'admin') return true
+  const campaignId = String(room?.state?.sessionCode || '')
+  return Boolean(campaignId) && campaignMembershipFor(user.id, campaignId)?.role === 'owner'
+}
+
 function canAccessRoom(user, room) {
   if (!user) return false
   if (user.role === 'admin') return true
@@ -1524,6 +1575,35 @@ async function executeDirectorSceneTransition(input) {
   })
 }
 
+/**
+ * Поток событий кампании для сводки сцены. Читается только при переходе — раз
+ * в сцену, — поэтому полный проход по журналу здесь дешевле, чем ещё одно поле
+ * состояния, которое пришлось бы поддерживать в replay.
+ */
+async function campaignEventsForSummary(campaignId) {
+  try { return await eventStore.getEvents(campaignId) }
+  catch { return [] }
+}
+
+/**
+ * Предупреждение о заведомо превосходящей силе. Встречу собирают два пути —
+ * инструмент ведущего и автономный Режиссёр, — поэтому строка привязана к
+ * событию, а не к одному эндпоинту: идентификатор берётся от `EncounterCreated`,
+ * и повторная проекция того же события её не удвоит.
+ */
+function warnOnDeadlyEncounter(campaignId, events = []) {
+  const created = (Array.isArray(events) ? events : []).find((event) => (
+    event?.event_type === 'EncounterCreated' && String(event?.payload?.encounter?.difficulty ?? '') === 'deadly'
+  ))
+  if (!created) return null
+  return appendRoomJournal(campaignId, [{
+    id: `deadly-warning-${campaignId}-${String(created.event_id ?? created.state_version_after ?? '')}`,
+    speaker: 'system',
+    author: 'Оценка угрозы',
+    text: DEADLY_ENCOUNTER_WARNING,
+  }])
+}
+
 async function executeDirectorSceneTransitionOnce({ campaignId, room, user, action, idempotencyKey, resolution, partyDecision }) {
   const authoritative = await latestCampaignState(campaignId, room.state)
   const planningState = normalizeCampaignState(authoritative)
@@ -1534,11 +1614,35 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
     decision: resolution.decision,
     destinationHint: resolution.destinationHint,
   })
+  // Считаем только живую генерацию: детерминированный fallback токенов не
+  // тратит. Лимита нет — на пересечении порога стол получает одну строку
+  // предупреждения, и ход продолжается как обычно.
+  if (planned.trace?.mode === 'model') {
+    const counted = architectUsage.recordGeneration(campaignId)
+    if (counted.alert) {
+      appendRoomJournal(campaignId, [{
+        id: `architect-alert-${campaignId}-${counted.day}`,
+        speaker: 'system',
+        author: 'Расход кампании',
+        text: architectAlertText(counted.generations),
+      }])
+    }
+  }
+  // Сводка пишется о сцене, которую отряд ПОКИДАЕТ: обработчик `AdvanceScene`
+  // уже заводит `NarrativeSummaryRecorded`, но до сих пор клал туда дежурную
+  // фразу Архитектора. Здесь в неё попадают настоящие события сцены.
+  const sceneSummary = sceneSummaryFor({
+    state: planningState,
+    events: await campaignEventsForSummary(campaignId),
+    decision: resolution.decision,
+    destinationHint: resolution.destinationHint,
+    destination: planned.sceneArgs?.location,
+  })
   const directorPlan = buildDirectorTransitionCommands({
     campaignId,
     action,
     state: planningState,
-    sceneArgs: planned.sceneArgs,
+    sceneArgs: sceneSummary ? { ...planned.sceneArgs, scene_summary: sceneSummary } : planned.sceneArgs,
     shopIntent: planned.shopIntent,
     partyDecision,
   })
@@ -1997,7 +2101,7 @@ const server = createServer((req, res) => {
   })
   if (req.url === '/api/admin/usage' && req.method === 'GET') {
     const user = requireAdmin(req, res); if (!user) return
-    return json(res, 200, { usage: usageLedger.report(), models: llmClient.health() })
+    return json(res, 200, { usage: usageLedger.report(), architect: architectUsage.report(), models: llmClient.health() })
   }
   if (req.url === '/api/auth/me' && req.method === 'GET') {
     const user = userForToken(cookies(req).skazanie_session)
@@ -2071,6 +2175,7 @@ const server = createServer((req, res) => {
         profile,
         projectedState: projected,
         allowGeneration: () => !exceedsRate(`npc-portrait:${user.id}`, NPC_PORTRAIT_GENERATION_LIMIT),
+        generationEnabled: runtimeImageGeneration,
       })
       if (portrait.kind === 'rate_limited') {
         return json(res, 429, {
@@ -2081,6 +2186,62 @@ const server = createServer((req, res) => {
       return serveNpcPortrait(req, res, portrait)
     } catch {
       return json(res, 502, { error: 'Не удалось подготовить портрет NPC', code: 'NPC_PORTRAIT_FAILED' })
+    }
+  }
+  // Режим подготовки ассетов: список пробелов и запуск генерации заранее.
+  // Работает независимо от рантайм-флага — тот выключает генерацию в игре, а не
+  // единственный способ картинку получить.
+  const assetPreparationMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/asset-preparation$/)
+  if (assetPreparationMatch && (req.method === 'GET' || req.method === 'POST')) {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = assetPreparationMatch[1].toUpperCase()
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
+    if (!canManageCampaignAssets(user, room)) return json(res, 403, { error: 'Подготовка ассетов доступна администратору или владельцу кампании', code: 'ASSET_PREPARATION_FORBIDDEN' })
+    try {
+      const authoritative = await latestCampaignState(campaignId, room.state)
+      const projected = viewerStateFor(authoritative, { role: 'admin', id: user.id }, '')
+      const profiles = (Array.isArray(projected?.social?.npcs) ? projected.social.npcs : [])
+        .map(publicNpcPortraitProfile)
+        .filter(Boolean)
+      const npcs = await npcPortraitInventory({
+        service: npcPortraitService,
+        campaignId,
+        projectedState: projected,
+        significance: (state, profile) => npcPortraitSignificance(state, profile).significant,
+        profiles,
+      })
+      if (req.method === 'GET') {
+        return json(res, 200, {
+          policy_id: ASSET_PREPARATION_POLICY_ID,
+          runtime_image_generation: runtimeImageGeneration,
+          generator_configured: Boolean(apiKey && imageModel),
+          maximum_batch: MAX_PREPARATION_BATCH,
+          npc_portraits: npcs,
+          items_without_illustration: itemsWithoutIllustration(authoritative),
+          items_note: 'Иллюстрация предмета хранится на самой записи предмета и проставляется редактором инвентаря; серверного кеша для неё нет.',
+        })
+      }
+      const body = await readBody(req).catch(() => ({}))
+      const plan = planPreparation(body.npc_ids, npcs, { regenerate: body.regenerate === true })
+      if (!plan.ok) return json(res, 400, { error: plan.message, code: plan.code })
+      if (!apiKey || !imageModel) return json(res, 503, { error: 'Генератор изображений не настроен', code: 'IMAGE_GENERATOR_UNAVAILABLE' })
+      const prepared = []
+      // Последовательно и намеренно: параллельный запуск скрыл бы расход и
+      // упёрся бы в лимит провайдера на середине пачки.
+      for (const npcId of plan.ids) {
+        const profile = profiles.find((candidate) => String(candidate.id) === npcId)
+        if (!profile) continue
+        try {
+          await npcPortraitService.prepare({ campaignId, profile })
+          prepared.push({ id: npcId, status: 'ready' })
+        } catch (error) {
+          prepared.push({ id: npcId, status: 'failed', error: error instanceof Error ? error.message : 'Не удалось подготовить портрет' })
+        }
+      }
+      return json(res, 200, { policy_id: ASSET_PREPARATION_POLICY_ID, prepared })
+    } catch {
+      return json(res, 502, { error: 'Не удалось подготовить ассеты', code: 'ASSET_PREPARATION_FAILED' })
     }
   }
   const campaignTypingMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/presence\/typing$/)
@@ -2373,6 +2534,32 @@ const server = createServer((req, res) => {
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось создать кампанию' }) }
   }
 
+  // Рекап «в прошлой серии»: стол вернулся после перерыва и вспоминает, на чём
+  // остановился. Только чтение, только участникам кампании.
+  const campaignRecapMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/recap$/)
+  if (campaignRecapMatch && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignRecapMatch[1].toUpperCase()
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    try {
+      // `load` уже отдаёт metadata: второй вызов `getMetadata` заново разобрал
+      // бы с диска все коммиты кампании ради одного поля.
+      const loaded = await eventStore.load(campaignId)
+      return json(res, 200, await campaignRecap.recapFor({
+        campaignId,
+        state: loaded.state,
+        stateVersion: loaded.state_version ?? 0,
+        lastEventAt: loaded.metadata?.updated_at,
+      }))
+    } catch {
+      // Рекап — украшение возвращения за стол, а не условие входа в игру:
+      // на любой поломке источника комната обязана открыться молча.
+      return json(res, 200, { recap: null, reason: 'unavailable' })
+    }
+  }
+
   const campaignAiSettingsMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/settings$/)
   if (campaignAiSettingsMatch && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
@@ -2385,9 +2572,13 @@ const server = createServer((req, res) => {
       settings: {
         model: allowedAiModels.includes(saved.model) ? saved.model : model,
         narratorStyle: normalizeNarratorStyle(saved.narratorStyle),
+        improvMode: normalizeImprovMode(saved.improvMode),
       },
       availableModels: allowedAiModels,
       narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
+      improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
+      architectGenerationsToday: architectUsage.generationsToday(campaignId),
+      architectAlertThreshold: architectUsage.alertThreshold,
       canManage: user.role === 'admin' || campaignMembershipFor(user.id, campaignId)?.role === 'owner',
     })
   }
@@ -2405,17 +2596,43 @@ const server = createServer((req, res) => {
       const current = getCampaignAiSettings(campaignId)
       const requestedModel = body.model === undefined ? (current.model || model) : String(body.model).trim()
       const requestedStyle = body.narratorStyle === undefined ? current.narratorStyle : String(body.narratorStyle).trim().toLowerCase()
+      const requestedImprovMode = body.improvMode === undefined
+        ? normalizeImprovMode(current.improvMode)
+        : String(body.improvMode).trim().toLowerCase()
       if (!allowedAiModels.includes(requestedModel)) {
         return json(res, 400, { error: 'Эта модель не входит в серверный список разрешённых моделей', code: 'AI_MODEL_NOT_ALLOWED' })
       }
       if (!Object.hasOwn(NARRATOR_STYLES, requestedStyle)) {
         return json(res, 400, { error: 'Неизвестный стиль рассказчика', code: 'NARRATOR_STYLE_NOT_ALLOWED' })
       }
-      const saved = saveCampaignAiSettings(campaignId, { model: requestedModel, narratorStyle: requestedStyle })
+      if (!Object.hasOwn(IMPROV_MODES, requestedImprovMode)) {
+        return json(res, 400, { error: 'Неизвестный режим импровизации', code: 'IMPROV_MODE_INVALID' })
+      }
+      const previousImprovMode = normalizeImprovMode(current.improvMode)
+      const saved = saveCampaignAiSettings(campaignId, {
+        model: requestedModel,
+        narratorStyle: requestedStyle,
+        improvMode: requestedImprovMode,
+      })
+      // Смена режима меняет правила игры за столом, поэтому она не должна
+      // случаться молча. Это запись в летопись комнаты, а не событие движка:
+      // режим живёт в настройках кампании, а не в состоянии, и заводить ради
+      // строки в журнале тип события с миграцией replay было бы неверно.
+      if (requestedImprovMode !== previousImprovMode) {
+        appendRoomJournal(campaignId, [{
+          id: `improv-mode-${campaignId}-${Date.now()}`,
+          speaker: 'system',
+          author: 'Настройки кампании',
+          text: `Режим импровизации изменён: ${IMPROV_MODES[requestedImprovMode].label} — ${IMPROV_MODES[requestedImprovMode].description}.`,
+        }])
+      }
       return json(res, 200, {
-        settings: { model: saved.model, narratorStyle: saved.narratorStyle },
+        settings: { model: saved.model, narratorStyle: saved.narratorStyle, improvMode: saved.improvMode },
         availableModels: allowedAiModels,
         narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
+        improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
+        architectGenerationsToday: architectUsage.generationsToday(campaignId),
+        architectAlertThreshold: architectUsage.alertThreshold,
         canManage: true,
       })
     } catch (error) {
@@ -2636,6 +2853,8 @@ const server = createServer((req, res) => {
       const result = await autonomousCampaign.runIntent({ campaignId, intent: body.intent, idempotencyKey: key })
       const events = []
       for (const stage of result.results ?? []) events.push(...(stage.events ?? []))
+      // Предупреждение уходит до того, как отряд получит ход в этом бою.
+      warnOnDeadlyEncounter(campaignId, events)
       if (body.run_combat === true && result.state.mechanics?.combat?.active) {
         const combat = await autonomousCampaign.runCombat(campaignId, { idempotencyPrefix: `${key}:combat` })
         if (!combat.state.mechanics?.combat?.active) await autonomousCampaign.completeEncounter({ campaignId, idempotencyKey: `${key}:completion` })
@@ -2684,9 +2903,14 @@ const server = createServer((req, res) => {
         loaded = await autonomousCampaign.load(campaignId)
       }
       if (loaded.state.mechanics?.combat?.active) return json(res, 409, { error: 'Сначала завершите активный бой через тактический интерфейс', code: 'COMBAT_ACTIVE' })
-      const decision = await directorAgent.choose({ state: loaded.state, playerAction: body.player_action })
+      const decision = await directorAgent.choose({
+        state: loaded.state,
+        playerAction: body.player_action,
+        improvMode: currentImprovMode(),
+      })
       const result = await autonomousCampaign.runIntent({ campaignId, intent: decision.intent, idempotencyKey: key })
       for (const stage of result.results ?? []) events.push(...(stage.events ?? []))
+      warnOnDeadlyEncounter(campaignId, events)
       const authoritative = await autonomousCampaign.load(campaignId)
       // Шаг Директора менял цель и сцену молча: в ленте не появлялось ни строки,
       // и игрок видел новую задачу про персонажа, которого ему не представили.
@@ -2881,6 +3105,16 @@ const server = createServer((req, res) => {
         theme,
         seed,
       })
+      // Точка невозврата — StartCombat ниже. Предупреждение уходит до него,
+      // пока отступить ещё можно; ярлык качественный, чисел бюджета в нём нет.
+      if (proposalPreview?.difficulty === 'deadly') {
+        appendRoomJournal(campaignId, [{
+          id: `deadly-warning-${campaignId}-${idempotencyKey}`,
+          speaker: 'system',
+          author: 'Оценка угрозы',
+          text: DEADLY_ENCOUNTER_WARNING,
+        }])
+      }
       const actorId = String(party[0]?.id ?? authoritative.activePlayerId ?? '')
       let result = await gameOrchestrator.handle({
         state: room.state,
@@ -3293,6 +3527,14 @@ const server = createServer((req, res) => {
   if (req.url === '/api/items/generate-image' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
     if (exceedsRate(`image:${user.id}`, 10)) return json(res, 429, { error: 'Слишком много запросов генерации изображений' })
+    // Игровой путь закрыт флагом целиком, включая администратора: картинки
+    // готовятся заранее, а не посреди вечера.
+    if (!runtimeImageGeneration) {
+      return json(res, 409, {
+        error: 'Генерация изображений во время игры выключена. Подготовьте картинки заранее в разделе подготовки ассетов',
+        code: 'RUNTIME_IMAGE_GENERATION_DISABLED',
+      })
+    }
     if (!apiKey) return json(res, 503, { error: 'Генератор изображений не настроен' })
     try {
       const body = await readBody(req)
@@ -3322,6 +3564,11 @@ const server = createServer((req, res) => {
         return json(res, 200, { dry_run: true, transition: null, stages: [{ agent: 'AgentDirector', status: 'completed', output: resolved }], narration: resolved?.narration ?? 'Переход сцены не требуется.' })
       }
       const planned = await sceneArchitect.plan({ action, state: labState, decision: resolved.decision, destinationHint: resolved.destinationHint })
+      // Лаборатория — админская примерка в режиме dry_run: настоящей локации в
+      // кампании она не создаёт. Токены тратит, поэтому попадает в отчёт админа
+      // отдельным счётчиком, но игровой счётчик и предупреждение стола не
+      // трогает — иначе игроки увидят «создано N локаций», которых нет.
+      if (planned.trace?.mode === 'model') architectUsage.recordGeneration(campaignId, { kind: 'lab' })
       const transition = createSceneTransition(planned.sceneArgs, labState)
       return json(res, 200, {
         dry_run: true,

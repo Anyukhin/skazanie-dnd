@@ -34,6 +34,9 @@ function startServer({ port, storage, providerBaseUrl, appendLog }) {
       ROUTERAI_API_KEY: 'portrait-api-test-key',
       ROUTERAI_BASE_URL: providerBaseUrl,
       DND_IMAGE_MODEL: 'test/portrait-image-v1',
+      // Этот сторож проверяет именно ленивую генерацию, поэтому рантайм-флаг
+      // здесь включён явно. Поведение при выключенном — в `asset-preparation`.
+      DND_RUNTIME_IMAGE_GENERATION: 'on',
       DND_AI_MODEL: 'test/text-model',
       DND_AI_FALLBACK_MODELS: '',
       ADMIN_SETUP_TOKEN: 'portrait-api-setup',

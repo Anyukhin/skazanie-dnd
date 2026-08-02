@@ -129,3 +129,31 @@ test('Сопротивление редакции 2024 уменьшает выб
   assert.equal(nextTurn.events.find((event) => event.event_type === 'DamageApplied').payload.applied_amount, 2)
   assert.equal(applyAll(after, nextTurn.events).players.find((hero) => hero.id === 'ally').hp, 7)
 })
+
+test('1к4 Сопротивления вычитается до половины: порядок модификаторов по SRD 5.2.1', () => {
+  const initial = stateFor('cleric')
+  // Цель сопротивляется огню сама по себе. Заговор при этом остаётся обычным
+  // модификатором урона, а не вторым сопротивлением.
+  initial.mechanics.defenses = { ally: { resistances: ['fire'] } }
+  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'resistance', target_id: 'ally', spell_option: 'fire', server_authoritative: true }, initial, {
+    diceService: dice(), context: { serverAuthoritativeCombat: true },
+  })
+  const protectedState = applyAll(initial, cast.events)
+
+  const hit = resolveCommand({ command_type: 'ApplyDamage', actor_id: 'enemy', target_id: 'ally', amount: 9, damage_type: 'fire' }, protectedState, { diceService: dice([3]) })
+  const payload = hit.events.find((event) => event.event_type === 'DamageApplied').payload
+  assert.equal(payload.resistant, true)
+  assert.equal(payload.resistance_cantrip_reduction, 3)
+  // (9 − 3) ÷ 2 = 3. Прежний порядок считал ⌊9 ÷ 2⌋ − 3 = 1 и снимал с цели
+  // втрое меньше положенного.
+  assert.equal(payload.applied_amount, 3)
+  assert.equal(applyAll(protectedState, hit.events).players.find((hero) => hero.id === 'ally').hp, 17)
+
+  // Уязвимость идёт тем же порядком и с той же стороны: сначала 1к4, потом ×2.
+  const vulnerableState = applyAll(initial, cast.events)
+  vulnerableState.mechanics.defenses = { ally: { vulnerabilities: ['fire'] } }
+  const heavy = resolveCommand({ command_type: 'ApplyDamage', actor_id: 'enemy', target_id: 'ally', amount: 9, damage_type: 'fire' }, vulnerableState, { diceService: dice([3]) })
+  const heavyPayload = heavy.events.find((event) => event.event_type === 'DamageApplied').payload
+  assert.equal(heavyPayload.vulnerable, true)
+  assert.equal(heavyPayload.applied_amount, 12)
+})

@@ -17,7 +17,12 @@ export function encounterNarration(events) {
   const names = enemies.map((enemy) => narrationTextOr(enemy?.name, 'Противник')).filter(Boolean)
   const roster = names.length ? names.join(', ') : 'противники'
   const initiativeStarted = (Array.isArray(events) ? events : []).some((event) => event?.event_type === 'CombatStarted')
-  return `На поле появляются противники: ${roster}.${initiativeStarted ? ' Инициатива определена, бой начинается.' : ''}`
+  // Смертельная сборка — решение владельца про честный мир: если отряд всё же
+  // пошёл в бой, текст обязан сказать это прямо, а не сгладить.
+  const deadly = String(encounter.difficulty ?? '') === 'deadly'
+    ? ' Силы неравны: это заведомо превосходящий противник.'
+    : ''
+  return `На поле появляются противники: ${roster}.${deadly}${initiativeStarted ? ' Инициатива определена, бой начинается.' : ''}`
 }
 
 export const encounterNarrator = registerDeterministicNarrator({

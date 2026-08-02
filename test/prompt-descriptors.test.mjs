@@ -19,13 +19,18 @@ import {
 
 test('реестр совпадает с тем, что модули действительно читают с диска', () => {
   const loaded = loadedPromptIds()
-  const byModule = new Map(PROMPT_DESCRIPTORS.map((descriptor) => [descriptor.module, descriptor.promptId]))
+  // Модуль может объявлять несколько промптов: у Режиссёра вариант выбирается
+  // режимом импровизации кампании. Сверяются наборы целиком, а не одна строка.
+  const byModule = new Map()
+  for (const descriptor of PROMPT_DESCRIPTORS) {
+    byModule.set(descriptor.module, [...(byModule.get(descriptor.module) ?? []), descriptor.promptId].sort())
+  }
 
-  for (const [module, promptId] of loaded) {
+  for (const [module, promptIds] of loaded) {
     assert.ok(byModule.has(module),
-      `${module} читает ${promptId}, но его нет в реестре — роль появилась мимо PROMPT_DESCRIPTORS`)
-    assert.equal(byModule.get(module), promptId,
-      `${module}: реестр обещает ${byModule.get(module)}, а модуль читает ${promptId}`)
+      `${module} читает ${promptIds.join(', ')}, но его нет в реестре — роль появилась мимо PROMPT_DESCRIPTORS`)
+    assert.deepEqual([...promptIds].sort(), byModule.get(module),
+      `${module}: реестр обещает ${byModule.get(module).join(', ')}, а модуль читает ${[...promptIds].sort().join(', ')}`)
   }
   for (const descriptor of PROMPT_DESCRIPTORS) {
     if (!descriptor.loads) continue
@@ -51,6 +56,17 @@ test('старые версии промптов остаются на диск�
   for (const id of historical) {
     assert.equal(descriptorForPromptId(id), null, `${id} не должен считаться активным`)
   }
+})
+
+test('вариант промпта Режиссёра объявлен на каждый режим импровизации', () => {
+  const director = PROMPT_DESCRIPTORS.filter((descriptor) => descriptor.promptId.startsWith('director/'))
+  assert.deepEqual(director.map((descriptor) => descriptor.promptId).sort(), ['director/v2_chaos', 'director/v2_story'],
+    'режимов импровизации два, и у каждого свой промпт Режиссёра')
+  for (const descriptor of director) {
+    assert.equal(descriptor.module, 'director-agent.mjs', 'оба варианта грузит один модуль')
+  }
+  assert.equal(descriptorForPromptId('director/v1'), null,
+    'v1 остаётся на диске для чтения сохранённых трасс, но активным больше не считается')
 })
 
 test('роли не дублируются и не делят один промпт молча', () => {

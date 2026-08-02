@@ -358,13 +358,15 @@ function campaignSettingsFile(code) {
 }
 
 export function getCampaignAiSettings(code) {
-  const value = readJson(campaignSettingsFile(code), { model: '', narratorStyle: 'neutral' })
+  const value = readJson(campaignSettingsFile(code), { model: '', narratorStyle: 'neutral', improvMode: 'story' })
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new StorageCorruptionError(campaignSettingsFile(code), new Error('Некорректная структура настроек ИИ'))
   }
   return {
     model: String(value.model ?? '').trim(),
     narratorStyle: String(value.narratorStyle ?? 'neutral').trim(),
+    // Кампании, созданные до появления режима импровизации, читаются как 'story'.
+    improvMode: String(value.improvMode ?? 'story').trim(),
   }
 }
 
@@ -375,6 +377,7 @@ export function saveCampaignAiSettings(code, settings) {
   const value = {
     model: String(settings.model ?? '').trim(),
     narratorStyle: String(settings.narratorStyle ?? 'neutral').trim(),
+    improvMode: String(settings.improvMode ?? 'story').trim(),
     updatedAt: new Date().toISOString(),
   }
   atomicWrite(campaignSettingsFile(code), value)

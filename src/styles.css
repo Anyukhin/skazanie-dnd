@@ -457,6 +457,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .newbie-guide > p b { color: #bbae9e; }
 .newbie-guide footer { display: flex; justify-content: flex-end; margin-top: 13px; }
 .newbie-guide footer button { min-height: 33px; padding: 0 13px; border: 1px solid rgba(204,151,86,.3); border-radius: 5px; background: rgba(192,132,66,.1); color: #c9975d; cursor: pointer; }
+/* Рекап «в прошлой серии»: та же рамка, что у шпаргалки, но у левого края —
+   обе карточки могут висеть одновременно, и перекрывать друг друга им нельзя.
+   Клик по тексту не закрывает: рекап читают, а не пролистывают. */
+.previously-on { position: absolute; z-index: 61; top: calc(var(--status) + 18px); left: 18px; width: min(420px, calc(100% - var(--server-column) - 36px)); padding: 15px; border: 1px solid rgba(204,151,86,.35); border-radius: 9px; background: radial-gradient(circle at 0 0, rgba(170,112,52,.16), transparent 48%), rgba(18,15,12,.97); box-shadow: 0 22px 60px rgba(0,0,0,.62); backdrop-filter: blur(12px); }
+.previously-on header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; color: #c28e54; }
+.previously-on header > span { min-width: 0; display: grid; }
+.previously-on header small { color: #8b6843; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.previously-on header strong { color: #dfd1bf; font: 600 var(--fs-lg) Spectral, serif; }
+.previously-on header button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: #766d63; cursor: pointer; }
+.previously-on header button:hover { color: #d7a568; }
+.previously-on > p { margin: 13px 0 0; padding: 11px; border: 1px solid rgba(255,255,255,.06); border-radius: 6px; background: rgba(255,255,255,.025); color: #b6aa9b; font: var(--fs-sm)/1.65 Spectral, serif; }
 /* Режим набран как все надписи-заголовки этого интерфейса: прописные, Manrope
    700, разрядка, приглушённое золото — тот же ряд, что «ГЛАВА · СЦЕНА» над ним
    и «ОТРЯД» в меню. Отличие одно: тонкие линии по бокам, как разделитель главы
@@ -602,6 +613,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .live-dot { display: flex; align-items: center; gap: 5px; margin-left: 3px; color: #668b6b; font-size: var(--fs-sm); letter-spacing: .13em; }
 .live-dot::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #6e9e76; box-shadow: 0 0 0 3px rgba(110,158,118,.1); }
 .chat-interaction-slot:empty { display: none; }
+/* Подсказки новичку: заметны, но тише реплик рассказчика — они помогают, а не
+   рассказывают. Закрываются крестиком и не возвращаются до смены сцены. */
+.action-hints { margin: 0 20px 6px; padding: 9px 11px; border: 1px solid #3c3529; border-radius: 9px; background: #221e18; }
+.action-hints-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.action-hints-head > span { display: flex; align-items: center; gap: 6px; font-size: calc(11px * var(--ui-readable-scale)); letter-spacing: .06em; text-transform: uppercase; color: #b7a27a; }
+.action-hints ul { margin: 6px 0 0; padding: 0 0 0 15px; display: grid; gap: 3px; }
+.action-hints li { font-size: calc(12px * var(--ui-readable-scale)); color: #c9bda9; }
 .messages { min-height: 0; padding: 14px 20px 6px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #433a31 transparent; }
 /* Одна колонка: аватарку сообщения убрали в 10be690, а колонка под неё осталась —
    и текст все эти дни жил в 29px, переносясь по слову на строку. Стили самой
@@ -1343,6 +1361,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .ui-scale-setting select:disabled { opacity: .52; cursor: not-allowed; }
 .ui-scale-marks { grid-column: 1 / -1; display: flex; justify-content: space-between; color: #8d857b; font-size: var(--fs-sm); }
 .ui-scale-marks i { font-style: normal; }
+/* Счётчик локаций стоит под селектором режима и занимает всю ширину строки:
+   иначе он уезжает во вторую колонку сетки настройки. */
+.architect-usage-note { grid-column: 1 / -1; }
+.world-creator label > small { color: #615a53; font-size: var(--fs-sm); }
 
 @media (max-width: 680px) {
   .ui-scale-setting { grid-template-columns: 1fr 66px; }
@@ -2193,3 +2215,11 @@ button.campaign-title:hover strong { color: #edc996; }
 .turn-stakes b { font: 600 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .03em; }
 .turn-stakes small { font: 500 var(--fs-xxs) Manrope, sans-serif; color: #97826a; line-height: 1.45; }
 
+
+/* Подготовка ассетов: генерический список пробелов без излишеств. */
+.admin-asset-list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
+.admin-asset-list li { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border: 1px solid #342f26; border-radius: 7px; background: #201c17; }
+.admin-asset-list label { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
+.admin-asset-list label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-asset-list img { border-radius: 5px; object-fit: cover; }
+.admin-asset-list em { color: #8d8172; font-style: normal; font-size: calc(11px * var(--ui-readable-scale)); }

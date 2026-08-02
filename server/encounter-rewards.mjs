@@ -29,7 +29,7 @@ export const SERVER_LOOT_GENERATED_EVENT_SCHEMA_VERSION = 2
 export const MAX_ENCOUNTER_COINS_CP = 288_000
 export const MAX_HERO_REWARD_INVENTORY_ITEMS = 200
 
-const DIFFICULTIES = new Set(['easy', 'medium', 'hard'])
+const DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'deadly'])
 const THEMES = new Set([
   'goblinoids',
   'undead',

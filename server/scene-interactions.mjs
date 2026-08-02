@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { serverEncounterLoot } from './loot-tables.mjs'
+import { igniteDefinitionFor, sceneHazardVerbsFor, toppleDefinitionFor } from './scene-hazards.mjs'
 
 export const SCENE_INTERACTION_POLICY_ID = 'skazanie:scene-interactions-v1'
 
@@ -179,8 +180,15 @@ export function sceneInteractionDefinition({ mapSeed = '', props = [], propId = 
   const locked = metadata.kind === 'container' && hashNumber(`${seed}:locked`) % 3 === 0
   const trapped = metadata.kind === 'container' && hashNumber(`${seed}:trap`) % 4 === 0
   const detail = DETAIL_TABLE[metadata.detailKey] ?? DETAIL_TABLE[`${metadata.kind}:0`]
+  // Глаголы обстановки добавляются к обычным операциям, а не заменяют их:
+  // стеллаж по-прежнему осматривают, но теперь его ещё можно опрокинуть.
+  // Список объявляет сервер — клиент рисует кнопки по нему как и раньше.
+  const hazardVerbs = sceneHazardVerbsFor(prop.assetId)
   return {
     ...metadata,
+    verbs: [...metadata.verbs, ...hazardVerbs.filter((verb) => !metadata.verbs.includes(verb))],
+    topple: toppleDefinitionFor(prop.assetId),
+    ignite: igniteDefinitionFor(prop.assetId),
     alias,
     initialState: metadata.kind === 'container' ? (locked ? 'locked' : 'closed') : 'idle',
     check: metadata.kind === 'relic'

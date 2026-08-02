@@ -12,10 +12,11 @@ import {
   UI_SCALE_PRESETS, battleEventText, clampUiScale, locationsMatch,
 } from './app-shared'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
+import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
-  Account, AgentInteraction, AiHealth, CampaignAiSettings, CampaignAiSettingsResponse,
+  Account, AgentInteraction, AiHealth, AssetPreparationReport, CampaignAiSettings, CampaignAiSettingsResponse,
   CampaignSummary, EncounterProposal, GameState, Merchant, Message, Player,
 } from './types'
 import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
@@ -29,6 +30,13 @@ import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions
  * и оставался главным источником конфликтов между потоками работ.
  */
 
+// Список режимов импровизации приходит с сервера вместе с настройками; здесь —
+// только запасной вариант на время загрузки, чтобы селектор не оставался пустым.
+const IMPROV_MODE_FALLBACK: CampaignAiSettingsResponse['improvModes'] = [
+  { id: 'story', label: 'Сюжет', description: 'свобода в сценах, но главная линия в приоритете' },
+  { id: 'chaos', label: 'Хаос', description: 'можно всё, мир подстраивается под выбор отряда' },
+]
+
 export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onClose }: { state: GameState; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onCreateHero: (heroId: string) => void; onClose: () => void }) {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
   const [campaignsLoading, setCampaignsLoading] = useState(true)
@@ -41,6 +49,9 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
   // Соло-кампания — полноценный режим. Мест ровно столько, сколько игроков
   // сядет за стол; лишние места иначе висят пустыми и блокируют ход.
   const [slotCount, setSlotCount] = useState(1)
+  // Режим импровизации выбирается при старте, но записывается тем же
+  // settings-эндпоинтом, что и потом: второго пути записи настроек нет.
+  const [improvMode, setImprovMode] = useState<CampaignAiSettings['improvMode']>('story')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -80,6 +91,17 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
       const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, slotCount } }) })
       const body = await response.json() as { version?: number; state?: GameState | null; error?: string }
       if (!response.ok) throw new Error(body.error || 'Не удалось создать кампанию')
+      // «Сюжет» — серверный дефолт, поэтому лишний PATCH не отправляем: он
+      // сменой не является и записал бы в летопись ложное «режим изменён».
+      if (improvMode !== 'story') {
+        // Кампания уже создана и играбельна. Если настройка не записалась,
+        // мир не теряем: владелец переключит режим на экране настроек.
+        await fetch(`/api/campaigns/${encodeURIComponent(resolvedCode)}/settings`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ improvMode }),
+        }).catch(() => null)
+      }
       await onAccountRefresh()
       await onSwitch(resolvedCode, body)
       onClose()
@@ -116,6 +138,12 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
             <label><span>Основа мира и желаемая история</span><textarea value={world.premise} onChange={(event) => setWorld({ ...world, premise: event.target.value })} placeholder="Что существует в мире, о чём должна быть кампания, какие конфликты интересны?" /></label>
             <label><span>С чего начинается первая сцена</span><textarea value={world.openingSituation} onChange={(event) => setWorld({ ...world, openingSituation: event.target.value })} placeholder="Например: герои прибывают на станцию в момент исчезновения дипломатического корабля" /></label>
             <div className="field-grid"><label><span>Темы и мотивы</span><input value={world.themes} onChange={(event) => setWorld({ ...world, themes: event.target.value })} placeholder="Исследование, политика, выживание…" /></label><label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /></label></div>
+            <label><span>Режим импровизации</span>
+              <select value={improvMode} onChange={(event) => setImprovMode(event.currentTarget.value as CampaignAiSettings['improvMode'])} aria-label="Режим импровизации кампании">
+                {IMPROV_MODE_FALLBACK.map((improv) => <option key={improv.id} value={improv.id}>{improv.label} — {improv.description}</option>)}
+              </select>
+              <small>Режим можно поменять и позже, на экране настроек кампании.</small>
+            </label>
           </div>}
           {step === 2 && <div className="hero-creator slot-creator">
             <div className="world-auto-note"><Users size={17} /><span><b>Сколько игроков сядет за стол?</b> Первое место всегда ваше, остальные заполнят приглашённые друзья при входе по ссылке. Пустых мест не останется.</span></div>
@@ -126,7 +154,7 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
             </div>
             <div className="hero-library">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
           </div>}
-          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || 'Название придумает рассказчик'}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{[world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
+          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || 'Название придумает рассказчик'}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{[world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
           <div className="campaign-wizard-actions"><button onClick={() => step === 1 ? setWizard(false) : setStep((current) => current - 1)}>{step === 1 ? 'К списку кампаний' : 'Назад'}</button>{step < 3 ? <button className="primary" onClick={() => { if (validateStep()) setStep((current) => current + 1) }}>Продолжить<ChevronRight size={14} /></button> : <button className="primary" onClick={() => { void create() }} disabled={busy}><Sparkles size={14} />{busy ? 'Рассказчик создаёт мир…' : 'Создать мир и написать пролог'}</button>}</div>
         </>}
         {error && <div className="admin-error">{error}</div>}
@@ -206,11 +234,17 @@ export function stakesTitle(stakes: NonNullable<Message['stakes']>) {
   return `${both} · СЛ ${stakes.difficulty}${category ? ` · ${category}` : ''}`
 }
 
-export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, open, onToggle }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; open: boolean; onToggle: () => void
+export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak, open, onToggle }: {
+  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null; open: boolean; onToggle: () => void
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
+  // Закрытие держится до смены сцены: ключ и есть «та же сцена». Иначе панель
+  // возвращалась бы на каждый ответ рассказчика и раздражала бы ровно тех, кто
+  // её только что закрыл.
+  const [hintsDismissedFor, setHintsDismissedFor] = useState('')
+  const hintsKey = `${sceneKey}`
+  const visibleHints = hintsDismissedFor === hintsKey ? [] : suggestedActions
   const [filter, setFilter] = useState<ChronicleFilter>('all')
   const [followLatest, setFollowLatest] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -276,6 +310,17 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
       <div className="chat-interaction-slot">
         {interaction ? <AgentInteractionCard interaction={interaction} players={players} playerId={currentPlayerId} canContinue={canAct} onVote={onVote} onAbstain={onAbstain} onRoll={onRollInteraction} onContinue={onContinueInteraction} /> : null}
       </div>
+      {/* Подсказки новичку. Закрываются на месте и не возвращаются до смены
+          сцены; выключенные настройкой не приходят сюда вовсе. */}
+      {visibleHints.length > 0 && (
+        <aside className="action-hints" aria-label="Что можно сделать">
+          <div className="action-hints-head">
+            <span><Sparkles size={14} />Что можно сделать</span>
+            <button className="icon-button" type="button" onClick={() => setHintsDismissedFor(hintsKey)} aria-label="Скрыть подсказки"><X size={16} /></button>
+          </div>
+          <ul>{visibleHints.map((hint) => <li key={hint.id}>{hint.text}</li>)}</ul>
+        </aside>
+      )}
       <div className="messages" ref={messagesRef} onScroll={handleScroll}>
         {visibleMessages.map((message) => (
           <article key={message.id} className={`message ${message.speaker}`}>
@@ -304,6 +349,11 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
               {/* Провенанс правила нажимается. Сырой rule_id в игровом интерфейсе не
                   показываем — сервер отвечает разбором по запросу. */}
               {message.roll && <button className="why-link" onClick={onWhy} disabled={isNarrating}><HelpCircle size={15} />Почему так?</button>}
+              {/* Озвучка ручным нажатием. Кнопки нет вовсе, если игрок выключил
+                  озвучку или в системе нет русского голоса. */}
+              {message.speaker === 'narrator' && onSpeak && (
+                <button className="why-link" type="button" onClick={() => onSpeak(message.text)} aria-label="Озвучить рассказ"><Volume2 size={15} />Озвучить</button>
+              )}
             </div>
           </article>
         ))}
@@ -410,6 +460,46 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
   const [partyName, setPartyName] = useState(state.partyName ?? 'Отряд героев')
   const [partyMemberIds, setPartyMemberIds] = useState(state.partyMemberIds?.length ? state.partyMemberIds : state.players.map((player) => player.id))
   const [scene, setScene] = useState({ title: state.scene.title, location: state.scene.location, mood: state.scene.mood, objective: state.scene.objective })
+  // Подготовка ассетов: список пробелов и запуск генерации заранее. Во время
+  // игры картинки не генерируются — это решение владельца, а не ограничение UI.
+  const [assets, setAssets] = useState<AssetPreparationReport | null>(null)
+  const [assetSelection, setAssetSelection] = useState<string[]>([])
+  const [assetBusy, setAssetBusy] = useState(false)
+  const [assetError, setAssetError] = useState('')
+  const [assetMessage, setAssetMessage] = useState('')
+
+  const loadAssets = async () => {
+    setAssetError('')
+    const response = await fetch(`/api/campaigns/${state.sessionCode}/asset-preparation`)
+    const body = await response.json() as AssetPreparationReport & { error?: string }
+    if (!response.ok) throw new Error(body.error || 'Не удалось получить список ассетов')
+    setAssets(body)
+    setAssetSelection([])
+  }
+
+  const prepareAssets = async (npcIds: string[], regenerate: boolean) => {
+    if (!npcIds.length) { setAssetError('Не выбрано ни одной позиции'); return }
+    setAssetBusy(true)
+    setAssetError('')
+    setAssetMessage('')
+    try {
+      const response = await fetch(`/api/campaigns/${state.sessionCode}/asset-preparation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ npc_ids: npcIds, regenerate }),
+      })
+      const body = await response.json() as { prepared?: Array<{ id: string; status: string; error?: string }>; error?: string }
+      if (!response.ok) throw new Error(body.error || 'Не удалось подготовить ассеты')
+      const ready = (body.prepared ?? []).filter((entry) => entry.status === 'ready').length
+      const failed = (body.prepared ?? []).filter((entry) => entry.status !== 'ready')
+      setAssetMessage(`Готово: ${ready}${failed.length ? `; не удалось: ${failed.map((entry) => entry.id).join(', ')}` : ''}`)
+      await loadAssets()
+    } catch (cause) {
+      setAssetError(cause instanceof Error ? cause.message : 'Не удалось подготовить ассеты')
+    } finally {
+      setAssetBusy(false)
+    }
+  }
 
   const loadUsers = async () => {
     const response = await fetch('/api/admin/users')
@@ -527,11 +617,58 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
           {encounterError && <div className="admin-error">{encounterError}</div>}
           {encounterProposal && <div className="encounter-admin-success"><Check size={15} /><span><b>Столкновение собрано</b><small>{encounterProposal.enemies?.length ?? 0} противников{encounterProposal.xp_spent != null ? ` · ${encounterProposal.xp_spent}${encounterProposal.xp_budget != null ? ` / ${encounterProposal.xp_budget}` : ''} XP` : ''}</small></span></div>}
           <div className="encounter-assembler-controls">
-            <label><span>Сложность для группы</span><select value={encounterDifficulty} disabled={encounterBusy || combatActive} onChange={(event) => setEncounterDifficulty(event.target.value as EncounterAssemblyOptions['difficulty'])}><option value="easy">Лёгкая</option><option value="medium">Средняя</option><option value="hard">Тяжёлая</option></select></label>
+            <label><span>Сложность для группы</span><select value={encounterDifficulty} disabled={encounterBusy || combatActive} onChange={(event) => setEncounterDifficulty(event.target.value as EncounterAssemblyOptions['difficulty'])}><option value="easy">Лёгкая</option><option value="medium">Средняя</option><option value="hard">Тяжёлая</option><option value="deadly">Смертельная · превосходящая сила</option></select></label>
             <label><span>Тема противников</span><select value={encounterTheme} disabled={encounterBusy || combatActive} onChange={(event) => setEncounterTheme(event.target.value as EncounterAssemblyOptions['theme'])}><option value="generic">Любые подходящие</option><option value="undead">Нежить</option><option value="beasts">Звери</option><option value="goblinoids">Гоблиноиды</option><option value="raiders">Налётчики</option></select></label>
             <button onClick={() => { void assembleCurrentEncounter() }} disabled={encounterBusy || combatActive}>{encounterBusy ? <RefreshCw className="spinning" size={15} /> : <Swords size={15} />}{encounterBusy ? 'Собираем столкновение…' : 'Собрать столкновение'}</button>
           </div>
           {encounterProposal?.enemies?.length ? <div className="encounter-proposal-list">{encounterProposal.enemies.map((enemy) => <span key={enemy.id}><b>{enemy.name}</b><small>Параметры рассчитываются сервером и скрыты от игроков</small></span>)}</div> : null}
+        </div>
+        <div className="admin-card admin-assets">
+          <div className="admin-card-head">
+            <span><Sparkles size={18} /><b>Подготовка ассетов</b></span>
+            <em>{assets ? (assets.runtime_image_generation ? 'В ИГРЕ ВКЛЮЧЕНА' : 'В ИГРЕ ВЫКЛЮЧЕНА') : '—'}</em>
+            <button onClick={() => { loadAssets().catch((cause) => setAssetError(cause instanceof Error ? cause.message : 'Ошибка')) }}><RefreshCw size={14} />Обновить</button>
+          </div>
+          <p className="admin-hint">Картинки готовятся заранее: во время игры генерация выключена, чтобы не тратить бюджет вечера посреди хода. Подготовка работает независимо от этого флага.</p>
+          {assets && !assets.generator_configured && <p className="admin-error">Генератор изображений не настроен: подготовка недоступна.</p>}
+          {assets && (
+            <>
+              <ul className="admin-asset-list">
+                {assets.npc_portraits.map((npc) => (
+                  <li key={npc.id}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={assetSelection.includes(npc.id)}
+                        onChange={(event) => setAssetSelection((current) => (
+                          event.currentTarget.checked ? [...current, npc.id] : current.filter((id) => id !== npc.id)
+                        ))}
+                      />
+                      <span>{npc.name}{npc.role ? ` · ${npc.role}` : ''}</span>
+                    </label>
+                    {npc.has_portrait
+                      ? <>
+                        <img src={`/api/campaigns/${state.sessionCode}/npcs/${encodeURIComponent(npc.id)}/portrait`} alt="" width={40} height={40} />
+                        <button disabled={assetBusy} onClick={() => { void prepareAssets([npc.id], true) }}>Перегенерировать</button>
+                      </>
+                      : <em>нет портрета</em>}
+                  </li>
+                ))}
+                {!assets.npc_portraits.length && <li><em>Значимых NPC в кампании пока нет.</em></li>}
+              </ul>
+              <div className="admin-actions">
+                <button disabled={assetBusy || !assetSelection.length} onClick={() => { void prepareAssets(assetSelection, false) }}>
+                  Сгенерировать выбранные ({assetSelection.length})
+                </button>
+                <small>Не больше {assets.maximum_batch} за один запуск.</small>
+              </div>
+              {assets.items_without_illustration.length > 0 && (
+                <p className="admin-hint">Предметы без иллюстрации ({assets.items_without_illustration.length}): {assets.items_without_illustration.slice(0, 8).map((item) => item.name).join(', ')}. {assets.items_note}</p>
+              )}
+            </>
+          )}
+          {assetMessage && <p className="admin-hint">{assetMessage}</p>}
+          {assetError && <p className="admin-error">{assetError}</p>}
         </div>
         <div className="admin-card admin-merchants">
           <div className="admin-card-head"><span><Store size={18} /><b>Торговцы и ShopAssembler</b></span><em>{state.merchants?.length ?? 0} в кампании</em></div>
@@ -574,7 +711,7 @@ export function AtmosphereRange({ label, description, value, onChange }: { label
   </label>
 }
 
-export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, notificationPermission, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications }: {
+export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
   campaignAiBusy: boolean
@@ -585,6 +722,9 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   combatAnimations: boolean
   atmosphereSettings: AtmosphereSettings
   notificationPermission: NotificationPermission | 'unsupported'
+  voiceMode: NarrationVoiceMode
+  voiceSupported: boolean
+  actionHintsEnabled: boolean
   onCampaignAiChange: (patch: Partial<CampaignAiSettings>) => void
   onUiScaleChange: (value: number) => void
   onAutoAttackRollChange: (value: boolean) => void
@@ -594,6 +734,8 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   onEffectsVolumeChange: (value: number) => void
   onAtmosphereMutedChange: (value: boolean) => void
   onRequestNotifications: () => void
+  onVoiceModeChange: (value: NarrationVoiceMode) => void
+  onActionHintsEnabledChange: (value: boolean) => void
 }) {
   const [scaleInput, setScaleInput] = useState(String(uiScale))
 
@@ -636,6 +778,25 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
               {(campaignAi?.narratorStyles ?? [{ id: 'neutral' as const, label: 'Нейтральный' }]).map((style) => <option key={style.id} value={style.id}>{style.label}</option>)}
             </select>
           </label>
+          <label className="ui-scale-setting">
+            <span><b>Режим импровизации</b><small>Насколько сильно Режиссёр перестраивает историю под незапланированные действия отряда</small></span>
+            <select
+              value={campaignAi?.settings.improvMode ?? 'story'}
+              disabled={!campaignAi?.canManage || campaignAiBusy}
+              onChange={(event) => onCampaignAiChange({ improvMode: event.currentTarget.value as CampaignAiSettings['improvMode'] })}
+              aria-label="Режим импровизации кампании"
+            >
+              {(campaignAi?.improvModes ?? IMPROV_MODE_FALLBACK).map((improv) => <option key={improv.id} value={improv.id}>{improv.label} — {improv.description}</option>)}
+            </select>
+            {campaignAi && (
+              <small className="architect-usage-note">
+                Локаций сегодня: {campaignAi.architectGenerationsToday}
+                {campaignAi.architectGenerationsToday >= campaignAi.architectAlertThreshold
+                  ? ' — расход токенов выше обычного. Ограничения нет.'
+                  : ''}
+              </small>
+            )}
+          </label>
           {!campaignAi?.canManage && campaignAi && <p className="secure-note"><Lock size={14} />Изменять общие настройки ИИ может владелец кампании или администратор.</p>}
           {campaignAiError && <p className="admin-error">{campaignAiError}</p>}
           <div className="provider-info"><span>ПРОВАЙДЕР<strong>{health?.provider ?? 'RouterAI'}</strong></span><span>МОДЕЛЬ<strong>{health?.model ?? 'Проверка подключения…'}</strong></span><span>МЕХАНИКА<strong>Единый серверный движок</strong></span><span>RULESET<strong>{health?.rulesetId ?? 'не выбран'}</strong></span></div>
@@ -656,7 +817,20 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
             </select>
             <span className="ui-scale-marks"><i>{UI_SCALE_MIN}%</i><i>100%</i><i>125%</i><i>{UI_SCALE_MAX}%</i></span>
           </label>
+          <ToggleRow icon={<Sparkles size={17} />} title="Подсказки «что можно сделать»" description="Короткий список доступного в текущей сцене над лентой истории; в бою подсказок нет" value={actionHintsEnabled} onChange={() => onActionHintsEnabledChange(!actionHintsEnabled)} />
           <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — иллюстрация и окружение соответствуют месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
+          {/* Озвучка спрашивается только там, где её есть чем исполнить: без
+              русского голоса в системе выбор был бы обещанием без механики. */}
+          {voiceSupported && (
+            <label className="ui-scale-setting">
+              <span><b>Озвучка рассказчика</b><small>Голос браузера читает нарратив на этом устройстве; выбор не влияет на других игроков</small></span>
+              <select value={voiceMode} onChange={(event) => onVoiceModeChange(event.currentTarget.value as NarrationVoiceMode)} aria-label="Озвучка рассказчика">
+                <option value="off">Выключена</option>
+                <option value="button">Кнопкой у сообщения</option>
+                <option value="auto">Автоматически</option>
+              </select>
+            </label>
+          )}
           <div className="atmosphere-settings" role="group" aria-label="Звук и музыка">
             <div className="atmosphere-settings-title"><Volume2 size={17} /><span><b>Звук и музыка</b><small>Процедурный фон и сигналы подтверждённых событий</small></span></div>
             <AtmosphereRange label="Фоновая атмосфера" description="Музыка, ветер и гул текущего места" value={atmosphereSettings.ambientVolume} onChange={onAmbientVolumeChange} />

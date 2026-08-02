@@ -44,6 +44,17 @@ export const DND_SU_BESTIARY_SOURCE = deepFreeze({
 // Each entry is a server-owned projection of one SRD 5.2.1 stat block onto the
 // combat fields currently supported by the rules engine. damageDice is the
 // number of sides in the primary attack's single damage die.
+//
+// `damage_vulnerabilities`, `damage_resistances`, `damage_immunities` и
+// `condition_immunities` — это строки Vulnerabilities/Resistances/Immunities
+// того же стат-блока, поэтому отдельного номера страницы у них нет: он уже
+// стоит в `source_page` записи и уезжает в `provenance.source_page` врага.
+// Поля объявлены **только** у существ, у которых эти строки в SRD 5.2.1
+// действительно есть; отсутствие поля означает «в стат-блоке пусто», а не
+// «ещё не перенесли». Условные формулировки редакции («немагическое оружие»,
+// «не адамантиновое») сюда не переносятся: движок не различает магическое
+// оружие, и записать такую строку списком значило бы соврать в сторону
+// монстра. Поэтому у зорна (SRD 5.2.1, с. 343) резистов здесь нет.
 export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
   'srd_5_2_1:goblin-minion': {
     name: 'Гоблин-налётчик', hp: 7, armor: 12, speed: 30, abilities: { str: 8, dex: 14, con: 10, int: 10, wis: 8, cha: 8 },
@@ -71,6 +82,8 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Скелет', hp: 13, armor: 14, speed: 30, abilities: { str: 10, dex: 16, con: 15, int: 6, wis: 8, cha: 5 },
     initiative_bonus: 3, attackBonus: 5, damageDice: 6, damageBonus: 3,
     challenge_rating: '1/4', xp: 50, source_page: 325, creature_type: 'undead',
+    damage_vulnerabilities: ['bludgeoning'], damage_immunities: ['poison'],
+    condition_immunities: ['exhaustion', 'poisoned'],
     source_url: 'https://dnd.su/bestiary/24-skeleton/', image: '/assets/enemies/skeleton.png',
     traits: [{ id: 'undead-nature', name: 'Природа нежити' }],
     action_profiles: [
@@ -82,6 +95,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Зомби', hp: 15, armor: 8, speed: 20, abilities: { str: 13, dex: 6, con: 16, int: 3, wis: 6, cha: 5 },
     initiative_bonus: -2, attackBonus: 3, damageDice: 8, damageBonus: 1,
     challenge_rating: '1/4', xp: 50, source_page: 343, creature_type: 'undead',
+    damage_immunities: ['poison'], condition_immunities: ['exhaustion', 'poisoned'],
     source_url: 'https://dnd.su/bestiary/9-zombie/', image: '/assets/enemies/zombie.png',
     traits: [{ id: 'undead-fortitude', name: 'Стойкость нежити' }, { id: 'undead-nature', name: 'Природа нежити' }],
     action_profiles: [
@@ -122,7 +136,10 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     traits: [{ id: 'spider-climb', name: 'Паучье лазание' }, { id: 'web-walker', name: 'Хождение по паутине' }],
     action_profiles: [
       { id: 'bite', name: 'Укус', kind: 'melee', attack_modifier: 5, damage_expression: '1d8+3', damage_type: 'piercing', range_feet: 5, on_hit: { save_ability: 'con', save_dc: 11, damage_expression: '2d8', damage_type: 'poison', half_on_save: true } },
-      { id: 'web', name: 'Паутина', kind: 'ranged', attack_modifier: 5, damage_amount: 0, damage_type: 'untyped', range_feet: 60, normal_range_feet: 30, on_hit: { condition: 'restrained', duration: 'until-next-turn' }, uses: 1, tactical_priority: 8 },
+      // Recharge 5–6 из стат-блока. Раньше стояло `uses: 1` — грубое
+      // приближение «один раз за бой»: способность не возвращалась никогда,
+      // хотя по редакции паук пускает её снова, едва выпадет 5 или 6.
+      { id: 'web', name: 'Паутина', kind: 'ranged', attack_modifier: 5, damage_amount: 0, damage_type: 'untyped', range_feet: 60, normal_range_feet: 30, on_hit: { condition: 'restrained', duration: 'until-next-turn' }, recharge: 5, tactical_priority: 8 },
     ],
   },
   'srd_5_2_1:orc': {
@@ -194,6 +211,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Упырь', hp: 22, armor: 12, speed: 30, abilities: { str: 13, dex: 15, con: 10, int: 7, wis: 10, cha: 6 },
     initiative_bonus: 2, attackBonus: 4, damageDice: 6, damageBonus: 2,
     challenge_rating: '1', xp: 200, source_page: 288, creature_type: 'undead',
+    damage_immunities: ['poison'], condition_immunities: ['exhaustion', 'poisoned'],
     source_url: 'https://dnd.su/bestiary/21321-ghoul/', image: '/assets/enemies/ghoul.png',
     traits: [{ id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'bite' }],
     action_profiles: [
@@ -275,6 +293,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Лиловый гриб', hp: 18, armor: 5, speed: 5, abilities: { str: 3, dex: 1, con: 10, int: 1, wis: 3, cha: 1 },
     initiative_bonus: -5, attackBonus: 2, damageDice: 8, damageBonus: 0,
     challenge_rating: '1/4', xp: 50, source_page: 286, creature_type: 'plant',
+    condition_immunities: ['blinded', 'charmed', 'deafened', 'frightened'],
     source_url: 'https://dnd.su/bestiary/157-violet-fungus/', image: '/assets/enemies/violet-fungus.png',
     traits: [
       { id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'rotting-touch' },
@@ -288,6 +307,8 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Скелет минотавра', hp: 45, armor: 12, speed: 40, abilities: { str: 18, dex: 11, con: 15, int: 6, wis: 8, cha: 5 },
     initiative_bonus: 0, attackBonus: 6, damageDice: 6, damageBonus: 4,
     challenge_rating: '2', xp: 450, source_page: 326, creature_type: 'undead',
+    damage_vulnerabilities: ['bludgeoning'], damage_immunities: ['poison'],
+    condition_immunities: ['exhaustion', 'poisoned'],
     source_url: 'https://dnd.su/bestiary/286-minotaur_skeleton/', image: '/assets/enemies/minotaur-skeleton.png',
     traits: [{
       id: 'charge', name: 'Разбег', action_id: 'gore', minimum_distance_feet: 20,
@@ -438,6 +459,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Пробуждённое дерево', hp: 59, armor: 13, speed: 20, abilities: { str: 19, dex: 6, con: 15, int: 10, wis: 10, cha: 7 },
     initiative_bonus: -2, attackBonus: 6, damageDice: 6, damageBonus: 4,
     challenge_rating: '2', xp: 450, source_page: 260, creature_type: 'plant',
+    damage_vulnerabilities: ['fire'], damage_resistances: ['bludgeoning', 'piercing'],
     source_url: 'https://dnd.su/bestiary/21194-awakened-tree/', image: '/assets/enemies/awakened-tree.png',
     traits: [{ id: 'relentless-pursuit', name: 'Политика: неумолимое преследование' }],
     action_profiles: [
@@ -448,6 +470,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Гигантский лось', hp: 42, armor: 14, speed: 60, abilities: { str: 19, dex: 18, con: 14, int: 7, wis: 14, cha: 10 },
     initiative_bonus: 6, attackBonus: 6, damageDice: 6, damageBonus: 4,
     challenge_rating: '2', xp: 450, source_page: 351, creature_type: 'celestial',
+    damage_resistances: ['necrotic', 'radiant'],
     source_url: 'https://dnd.su/bestiary/21332-giant-elk/', image: '/assets/enemies/giant-elk.png',
     traits: [{
       id: 'charge', name: 'Разбег', action_id: 'ram', minimum_distance_feet: 20,
@@ -466,6 +489,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Огр-зомби', hp: 85, armor: 8, speed: 30, abilities: { str: 19, dex: 6, con: 18, int: 3, wis: 6, cha: 5 },
     initiative_bonus: -2, attackBonus: 6, damageDice: 8, damageBonus: 4,
     challenge_rating: '2', xp: 450, source_page: 344, creature_type: 'undead',
+    damage_immunities: ['poison'], condition_immunities: ['exhaustion', 'poisoned'],
     source_url: 'https://dnd.su/bestiary/21479-ogre-zombie/', image: '/assets/enemies/ogre-zombie.png',
     traits: [{ id: 'undead-fortitude', name: 'Стойкость нежити' }],
     action_profiles: [
@@ -476,6 +500,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Рыцарь', hp: 52, armor: 18, speed: 30, abilities: { str: 16, dex: 11, con: 14, int: 11, wis: 11, cha: 15 },
     initiative_bonus: 0, attackBonus: 5, damageDice: 6, damageBonus: 3,
     challenge_rating: '3', xp: 700, source_page: 302, creature_type: 'humanoid',
+    condition_immunities: ['frightened'],
     source_url: 'https://dnd.su/bestiary/21419-knight/', image: '/assets/enemies/knight.png',
     traits: [
       { id: 'multiattack', name: 'Мультиатака', attacks: 2 },
@@ -500,6 +525,8 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Земляной элементаль', hp: 147, armor: 17, speed: 30, abilities: { str: 20, dex: 8, con: 20, int: 5, wis: 10, cha: 5 },
     initiative_bonus: -1, attackBonus: 8, damageDice: 8, damageBonus: 5,
     challenge_rating: '5', xp: 1800, source_page: 282, creature_type: 'elemental',
+    damage_vulnerabilities: ['thunder'], damage_immunities: ['poison'],
+    condition_immunities: ['exhaustion', 'paralyzed', 'petrified', 'poisoned', 'unconscious'],
     source_url: 'https://dnd.su/bestiary/21290-earth-elemental/', image: '/assets/enemies/earth-elemental.png',
     traits: [
       { id: 'multiattack', name: 'Мультиатака', attacks: 2 },
@@ -542,6 +569,8 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Живой доспех', hp: 33, armor: 18, speed: 25, abilities: { str: 14, dex: 11, con: 13, int: 1, wis: 3, cha: 1 },
     initiative_bonus: 2, attackBonus: 4, damageDice: 6, damageBonus: 2,
     challenge_rating: '1', xp: 200, source_page: 259, creature_type: 'construct',
+    damage_immunities: ['poison', 'psychic'],
+    condition_immunities: ['charmed', 'deafened', 'exhaustion', 'frightened', 'paralyzed', 'petrified', 'poisoned'],
     source_url: 'https://dnd.su/bestiary/35-animated-armor/', image: '/assets/enemies/animated-armor.png',
     traits: [{ id: 'multiattack', name: 'Мультиатака', attacks: 2, action_id: 'slam' }],
     action_profiles: [
@@ -552,6 +581,8 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Золотистый студень', hp: 52, armor: 8, speed: 20, abilities: { str: 15, dex: 6, con: 14, int: 2, wis: 6, cha: 1 },
     initiative_bonus: -2, attackBonus: 4, damageDice: 6, damageBonus: 2,
     challenge_rating: '2', xp: 450, source_page: 312, creature_type: 'ooze',
+    damage_resistances: ['acid'], damage_immunities: ['lightning', 'slashing'],
+    condition_immunities: ['blinded', 'charmed', 'deafened', 'exhaustion', 'frightened', 'prone'],
     source_url: 'https://dnd.su/bestiary/8-ochre-jelly/', image: '/assets/enemies/ochre-jelly.png',
     traits: [{ id: 'relentless-pursuit', name: 'Политика: неумолимое преследование' }],
     action_profiles: [
@@ -562,6 +593,8 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Шипастый дьявол', hp: 110, armor: 15, speed: 30, abilities: { str: 16, dex: 17, con: 18, int: 12, wis: 14, cha: 14 },
     initiative_bonus: 3, attackBonus: 6, damageDice: 6, damageBonus: 3,
     challenge_rating: '5', xp: 1800, source_page: 262, creature_type: 'fiend',
+    damage_resistances: ['cold'], damage_immunities: ['fire', 'poison'],
+    condition_immunities: ['poisoned'],
     source_url: 'https://dnd.su/bestiary/77-barbed_devil/', image: '/assets/enemies/barbed-devil.png',
     traits: [{ id: 'multiattack', name: 'Мультиатака: когти и хвост', action_counts: { claws: 1, tail: 1 } }],
     action_profiles: [
@@ -670,8 +703,38 @@ const THEMES = deepFreeze({
 })
 
 export const ENCOUNTER_THEMES = Object.freeze(Object.keys(THEMES))
-export const ENCOUNTER_DIFFICULTIES = Object.freeze(['easy', 'medium', 'hard'])
-const SRD_DIFFICULTY = Object.freeze({ easy: 'low', medium: 'moderate', hard: 'high' })
+export const ENCOUNTER_DIFFICULTIES = Object.freeze(['easy', 'medium', 'hard', 'deadly'])
+const SRD_DIFFICULTY = Object.freeze({ easy: 'low', medium: 'moderate', hard: 'high', deadly: 'high' })
+
+/**
+ * «Смертельно» — **серверная политика, а не SRD**. В редакции 5.2.1 четвёртого
+ * тира нет: таблица на странице 202 заканчивается на high. Этот тир нужен для
+ * решения владельца о честном мире — когда отряд сам провоцирует силу заведомо
+ * выше своих возможностей, бой собирается по-настоящему смертельным.
+ *
+ * Множитель применяется к high и намеренно живёт отдельной константой, чтобы
+ * ни одно число здесь нельзя было принять за строку из таблицы SRD.
+ */
+const DEADLY_BUDGET_MULTIPLIER = 2
+const DEADLY_DIFFICULTY = 'deadly'
+
+/**
+ * Ярлык «на глаз» для стола. Числа бюджета игрокам не показываются: они
+ * превращают оценку опасности в арифметику, а не в решение отступить.
+ */
+export const ENCOUNTER_DIFFICULTY_LABELS = Object.freeze({
+  easy: 'лёгкий',
+  medium: 'средний',
+  hard: 'тяжёлый',
+  deadly: 'смертельный',
+})
+
+/** Предупреждение до точки невозврата: бой ещё не начат, отступить можно. */
+export const DEADLY_ENCOUNTER_WARNING = 'Противник выглядит смертельно опасным — силы явно неравны. Ещё не поздно отступить или сменить план.'
+
+export function encounterDifficultyLabel(difficulty) {
+  return ENCOUNTER_DIFFICULTY_LABELS[String(difficulty ?? '')] ?? ENCOUNTER_DIFFICULTY_LABELS.medium
+}
 
 // SRD 5.2.1, printed page 202: XP Budget per Character.
 const XP_BUDGET_PER_CHARACTER = deepFreeze({
@@ -983,6 +1046,12 @@ function enemyFrom(statBlockId, position, proposalHash, index, ordinal) {
     damageBonus: block.damageBonus,
     abilities: cloneCatalogValue(block.abilities ?? {}),
     creature_type: block.creature_type,
+    // Пустые строки стат-блока не превращаются в пустые массивы: запись врага
+    // остаётся той же формы, что и была, пока у существа нечего объявлять.
+    ...(block.damage_vulnerabilities?.length ? { damage_vulnerabilities: cloneCatalogValue(block.damage_vulnerabilities) } : {}),
+    ...(block.damage_resistances?.length ? { damage_resistances: cloneCatalogValue(block.damage_resistances) } : {}),
+    ...(block.damage_immunities?.length ? { damage_immunities: cloneCatalogValue(block.damage_immunities) } : {}),
+    ...(block.condition_immunities?.length ? { condition_immunities: cloneCatalogValue(block.condition_immunities) } : {}),
     image: block.image,
     source_url: block.source_url,
     traits: cloneCatalogValue(block.traits ?? []),
@@ -1022,9 +1091,14 @@ export class EncounterAssembler {
       throw new EncounterAssemblyError('Нет безопасных клеток для размещения противников', 'NO_SAFE_PLACEMENT_CELLS')
     }
 
-    const budgetXp = validated.party.reduce((sum, member) => (
+    const srdBudgetXp = validated.party.reduce((sum, member) => (
       sum + XP_BUDGET_PER_CHARACTER[member.level][SRD_DIFFICULTY[validated.difficulty]]
     ), 0)
+    // Умножение — единственное отличие смертельного тира от high, и оно
+    // серверное: таблица SRD остаётся нетронутой.
+    const budgetXp = validated.difficulty === DEADLY_DIFFICULTY
+      ? srdBudgetXp * DEADLY_BUDGET_MULTIPLIER
+      : srdBudgetXp
     const quantityCap = Math.min(
       ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures,
       ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures_per_character * validated.party.length,
@@ -1047,6 +1121,8 @@ export class EncounterAssembler {
       proposal_id: `encounter-proposal-${proposalHash.slice(0, 24)}`,
       version: ENCOUNTER_PROPOSAL_VERSION,
       difficulty: validated.difficulty,
+      // Ярлык едет рядом с самим уровнем: столу показывают его, а не бюджет.
+      difficulty_label: encounterDifficultyLabel(validated.difficulty),
       theme: validated.theme,
       xp_budget: budgetXp,
       xp_spent: spentXp,

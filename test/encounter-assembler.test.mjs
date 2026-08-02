@@ -41,7 +41,7 @@ function expectCode(fn, code) {
 
 test('exports an expanded dnd.su-linked SRD 5.2.1 monster catalog with fixed source provenance', () => {
   assert.equal(ENCOUNTER_PROPOSAL_VERSION, 'skazanie:encounter-proposal-v1')
-  assert.deepEqual(ENCOUNTER_DIFFICULTIES, ['easy', 'medium', 'hard'])
+  assert.deepEqual(ENCOUNTER_DIFFICULTIES, ['easy', 'medium', 'hard', 'deadly'])
   assert.deepEqual(ENCOUNTER_THEMES, [
     'goblinoids', 'undead', 'beasts', 'raiders',
     'warband', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness',
@@ -248,7 +248,9 @@ test('встреча принимает server-owned реквизит темы �
 })
 
 test('rejects malformed enums, numbers, duplicate positions, sparse arrays, and unsafe placement', () => {
-  expectCode(() => assembleEncounter(baseInput({ difficulty: 'deadly' })), 'ENCOUNTER_DIFFICULTY_NOT_ALLOWED')
+  // `deadly` стал легальным четвёртым тиром, поэтому непринимаемым значением
+  // здесь работает то, чего в allowlist нет и не планируется.
+  expectCode(() => assembleEncounter(baseInput({ difficulty: 'lethal' })), 'ENCOUNTER_DIFFICULTY_NOT_ALLOWED')
   expectCode(() => assembleEncounter(baseInput({ difficulty: 1 })), 'ENCOUNTER_DIFFICULTY_NOT_ALLOWED')
   expectCode(() => assembleEncounter(baseInput({ theme: 'dragon' })), 'ENCOUNTER_THEME_NOT_ALLOWED')
   expectCode(() => assembleEncounter(baseInput({ theme: { toString: () => 'generic' } })), 'ENCOUNTER_THEME_NOT_ALLOWED')

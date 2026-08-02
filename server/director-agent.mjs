@@ -3,11 +3,22 @@ import { fileURLToPath } from 'node:url'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
+import { currentImprovMode, normalizeImprovMode } from './campaign-ai-context.mjs'
 import { campaignArcPosition } from './campaign-loop-policy.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/director/v1.txt', import.meta.url)), 'utf8')
+// Режиссёр читает по промпту на режим импровизации. Bounded-intent контракт в
+// обоих файлах один и тот же: allowlist намерений, запрет на числа и свободные
+// tool calls, UNTRUSTED_DATA как данные. Различаются только творческие
+// директивы. `v1.txt` остаётся на диске для чтения сохранённых трасс.
+const STORY_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v2_story.txt', import.meta.url)), 'utf8')
+const CHAOS_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v2_chaos.txt', import.meta.url)), 'utf8')
+
+const DIRECTOR_PROMPTS = Object.freeze({
+  story: { id: 'director/v2_story', text: STORY_PROMPT },
+  chaos: { id: 'director/v2_chaos', text: CHAOS_PROMPT },
+})
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 
 export const DIRECTOR_MEMORY_RECORD_LIMIT = 6
@@ -172,21 +183,26 @@ function publicDirectorBrief(state = {}, playerAction = '') {
 export class DirectorAgent {
   constructor({ llmClient = null } = {}) { this.llmClient = llmClient }
 
-  async choose({ state = {}, playerAction = '' } = {}) {
+  // `improvMode` выбирает системный промпт: story — мягкий возврат к главной
+  // линии, chaos — перестройка арки вокруг фактических действий отряда.
+  // Детерминированный fallback от режима не зависит: его политика серверная.
+  async choose({ state = {}, playerAction = '', improvMode = currentImprovMode() } = {}) {
+    const improv = normalizeImprovMode(improvMode)
+    const directorPrompt = DIRECTOR_PROMPTS[improv]
     const fallback = fallbackDirectorIntent(state)
-    if (!this.llmClient) return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', reason: 'LLM is not configured' } }
+    if (!this.llmClient) return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', improv_mode: improv, prompt_id: directorPrompt.id, reason: 'LLM is not configured' } }
     try {
       const result = await this.llmClient.completeJson({
         messages: [
-          { role: 'system', content: prompt },
+          { role: 'system', content: directorPrompt.text },
           { role: 'user', content: buildDataOnlyContext({ director_brief: publicDirectorBrief(state, playerAction) }) },
         ],
         temperature: 0.25,
         maxTokens: 500,
       })
-      return { intent: normalizeDirectorIntent(result), trace: { agent: 'DirectorAgent', mode: 'model', model: this.llmClient.model ?? null } }
+      return { intent: normalizeDirectorIntent(result), trace: { agent: 'DirectorAgent', mode: 'model', improv_mode: improv, prompt_id: directorPrompt.id, model: this.llmClient.model ?? null } }
     } catch (error) {
-      return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', reason: error instanceof Error ? error.message : 'invalid model response' } }
+      return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', improv_mode: improv, prompt_id: directorPrompt.id, reason: error instanceof Error ? error.message : 'invalid model response' } }
     }
   }
 }

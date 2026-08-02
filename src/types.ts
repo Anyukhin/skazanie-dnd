@@ -442,7 +442,7 @@ export type Merchant = {
   pricing: MerchantPricingPolicy
 }
 
-export type EncounterDifficulty = 'easy' | 'medium' | 'hard'
+export type EncounterDifficulty = 'easy' | 'medium' | 'hard' | 'deadly'
 export type EncounterTheme = 'generic' | 'undead' | 'beasts' | 'goblinoids' | 'raiders'
 
 export type EncounterProposalEnemy = {
@@ -474,6 +474,7 @@ export type EncounterProposal = {
   version?: string
   source?: string | Record<string, unknown>
   difficulty?: EncounterDifficulty
+  difficulty_label?: string
   theme?: EncounterTheme
   xp_budget?: number
   xp_spent?: number
@@ -661,7 +662,7 @@ export type TacticalDoor = {
   keyItemId: string | null
 }
 
-export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use'
+export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use' | 'topple' | 'ignite'
 
 export type TacticalProp = {
   id: string
@@ -1046,6 +1047,20 @@ export type CampaignConcept = {
   }>
 }
 
+/**
+ * Отчёт режима подготовки ассетов. Картинки готовятся заранее: во время игры
+ * генерация выключена решением владельца, а подготовка работает всегда.
+ */
+export type AssetPreparationReport = {
+  policy_id: string
+  runtime_image_generation: boolean
+  generator_configured: boolean
+  maximum_batch: number
+  npc_portraits: Array<{ id: string; name: string; role: string; has_portrait: boolean }>
+  items_without_illustration: Array<{ id: string; name: string; owner_id: string }>
+  items_note: string
+}
+
 export type GameState = {
   sessionCode: string
   campaign: string
@@ -1076,6 +1091,12 @@ export type GameState = {
   enemies?: Enemy[]
   actors?: SummonedCreature[]
   merchants?: Merchant[]
+  /**
+   * Детерминированные подсказки «что можно сделать». Сервер собирает их из уже
+   * спроецированной комнаты, поэтому скрытого в них нет по построению. В бою
+   * список пуст: там действия перечисляет хотбар.
+   */
+  suggested_actions?: Array<{ id: string; text: string }>
   tacticalTurn?: TacticalTurn
   mapFeedback?: MapFeedback[]
   /** Deterministic combat facts recorded without invoking the narrator. */
@@ -1534,15 +1555,30 @@ export type AiHealth = {
   characterCreation?: CharacterCreationCatalog
 }
 
+export type CampaignRecap = {
+  text: string
+  version: number
+  provider: string
+}
+
+export type CampaignRecapResponse = {
+  recap: CampaignRecap | null
+  reason?: string
+}
+
 export type CampaignAiSettings = {
   model: string
   narratorStyle: 'neutral' | 'formal' | 'ironic'
+  improvMode: 'chaos' | 'story'
 }
 
 export type CampaignAiSettingsResponse = {
   settings: CampaignAiSettings
   availableModels: string[]
   narratorStyles: Array<{ id: CampaignAiSettings['narratorStyle']; label: string }>
+  improvModes: Array<{ id: CampaignAiSettings['improvMode']; label: string; description: string }>
+  architectGenerationsToday: number
+  architectAlertThreshold: number
   canManage: boolean
   error?: string
 }

@@ -101,12 +101,12 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 
 | Файл | Ответственность |
 | --- | --- |
-| `server/rules-engine.mjs` | вся механика, допустимость, числа. ~7000 строк — точка входа для любого правила |
+| `server/rules-engine.mjs` | вся механика, допустимость, числа. ~11700 строк — точка входа для любого правила |
 | `server/event-store.mjs` | события, commit, replay |
 | `server/dice-service.mjs` | вся случайность; в тестах внедряется детерминированно |
 | `server/roll-registry.mjs` | `roll_id`/`check_id`, срок действия, защита от повторного применения |
 | `server/game-orchestrator.mjs` | оркестрация цикла `/api/narrate` |
-| `server/index.mjs` | HTTP-сервер и маршруты, ~2700 строк |
+| `server/index.mjs` | HTTP-сервер и маршруты, ~3600 строк |
 | `server/store.mjs` | persistence поверх `storage/` |
 | `server/security.mjs` | членство, владелец героя, полномочия |
 | `server/viewer-projection.mjs` | что игрок имеет право видеть |
@@ -121,15 +121,24 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 
 | Файл | Промпт | Роль |
 | --- | --- | --- |
-| `server/director-agent.mjs` | `prompts/director/v1.txt` | темп, развилки, переходы |
+| `server/director-agent.mjs` | `prompts/director/v2_story.txt`, `prompts/director/v2_chaos.txt` | темп, развилки, переходы |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
-| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v1.txt` | социальные сцены |
+| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v3.txt` | социальные сцены |
 | `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |
-| `server/scene-architect.mjs` | `prompts/map_architect/v1.txt` | новые области |
-| `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v1.txt` | исходная ситуация кампании |
-| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v2.txt` | прочтение свободного действия |
+| `server/scene-architect.mjs` | `prompts/map_architect/v3.txt` | новые области |
+| `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v3.txt` | исходная ситуация кампании |
+| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v3.txt` | прочтение свободного действия |
+| `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» после перерыва |
 
-Больше промпты не загружает никто; ролей семь, и столько же файлов в `prompts/`.
+Больше промпты не загружает никто; ролей восемь, а загружаемых промптов девять:
+Режиссёр держит по файлу на режим импровизации кампании (`improv_mode`), и
+вариант выбирается в `choose()`, а не импортом. Файлов в `prompts/` ещё больше:
+рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`,
+`campaign_creator/v1`, `v2`, `director/v1`, `map_architect/v1`, `v2`,
+`narrator/v1`—`v4`, `npc_controller/social_v1`, `v2`) плюс
+`narrator/few-shot-v1.json`. Актуальна та
+версия, которую действительно читает модуль из таблицы, — остальные оставлены
+как история контракта.
 Сторож соответствия — `test/security.test.mjs`. **Детерминированные модули без LLM:**
 `adjudicator.mjs`, `intent-parser.mjs`, `world-memory.mjs`,
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`.
@@ -138,6 +147,8 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 `server/player-request-router.mjs` объявляет роли маршрутизации ввода игрока (`PLAYER_REQUEST_ROLES`). `prompt_id` там стоит
 только у ролей, которые действительно исполняет модель, и **не читается ни одним
 модулем** — это метаданные, а не привязка; сторож — `test/player-request-router.test.mjs`.
+Значение — строка либо список, если у роли есть варианты контракта: у Режиссёра
+их два, и выбор идёт по `improv_mode` кампании в момент вызова.
 Роли `worldkeeper` и `game_master` объявлены без `prompt_id`: первую исполняет
 детерминированный `answerKnownLore` в том же файле, вторую — Rules Engine.
 
@@ -168,8 +179,9 @@ commit, механики он не касается.
 
 Закрыто 2026-07-26: мёртвые `*.orig`, девять `.codex-*.patch`, пустые `.agents/`
 и `prompts/legacy/` удалены; пять промптов без потребителя удалены как контракты
-ролей, которые исполняются кодом. В `prompts/` остались ровно те файлы, которые
-перечислены в таблице выше и действительно загружаются.
+ролей, которые исполняются кодом. В `prompts/` остались только версии живых
+ролей — но не по одной на роль: предыдущие версии тех же контрактов лежат рядом
+с текущей.
 
 Закрыто 2026-07-27: у модулей `*-narration` появился общий контракт —
 `server/deterministic-narration.mjs`. Рассказчик объявляет `id`, `priority`,

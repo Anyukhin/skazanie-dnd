@@ -245,7 +245,7 @@ test('этап 1: два игрока получают SSE presence, комми�
     body: { model: selectedModel, narratorStyle: 'formal' },
   })
   assert.equal(savedSettings.status, 200, savedSettings.text)
-  assert.deepEqual(savedSettings.body.settings, { model: selectedModel, narratorStyle: 'formal' })
+  assert.deepEqual(savedSettings.body.settings, { model: selectedModel, narratorStyle: 'formal', improvMode: 'story' })
   const rejectedModel = await request(baseUrl, '/api/campaigns/STAGE1/settings', {
     method: 'PATCH',
     cookie: ownerCookie,
@@ -329,6 +329,6 @@ test('этап 1: два игрока получают SSE presence, комми�
   assert.deepEqual(recovered.body.state.players.map((player) => player.experience), [10, 10, 10, 10])
   const recoveredSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', { cookie: ownerCookie })
   assert.equal(recoveredSettings.status, 200, recoveredSettings.text)
-  assert.deepEqual(recoveredSettings.body.settings, { model: selectedModel, narratorStyle: 'formal' })
+  assert.deepEqual(recoveredSettings.body.settings, { model: selectedModel, narratorStyle: 'formal', improvMode: 'story' })
   assert.equal(await eventStore.pendingProjection('STAGE1'), null)
 })
