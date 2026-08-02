@@ -27,6 +27,7 @@ import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
+import { atmosphereScreenAttenuation, atmosphereScreenFor } from './atmosphere-screen.mjs'
 import { normalizeVoiceMode, pickNarrationVoice, shouldAutoSpeak, type NarrationVoiceMode } from './narration-tts.mjs'
 import { cancelNarration, observeVoices, russianVoiceAvailable, speakNarration } from './narration-speech'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
@@ -645,6 +646,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // Выключенные не доезжают до панели вовсе, а не прячутся стилем.
   const [actionHintsEnabled, setActionHintsEnabled] = useState(() => window.localStorage.getItem(ACTION_HINTS_KEY) !== 'false')
   const [narrationVoices, setNarrationVoices] = useState<SpeechSynthesisVoice[]>([])
+  // Мастер создания мира живёт внутри модального окна кампаний, но звук о нём
+  // знать обязан: тема мастерской включается именно там.
+  const [worldWizardOpen, setWorldWizardOpen] = useState(false)
   // Русского голоса нет — озвучки нет вовсе: читать русский текст английским
   // голосом хуже, чем молчать. Настройка и кнопка в таком случае не рисуются.
   const narrationVoice = useMemo(() => pickNarrationVoice(narrationVoices), [narrationVoices])
@@ -974,6 +978,18 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     })
     atmosphereAudioRef.current?.setMood(mood, 1.8)
   }, [audioCombatActive, audioFinale, sceneTheme])
+  // Громкость фона до стола. Тема остаётся прежней — своей музыки у этих
+  // экранов пока нет, — но играть её в полный голос, пока игрок выбирает
+  // кампанию или лепит героя, неуместно.
+  useEffect(() => {
+    const screen = atmosphereScreenFor({
+      authenticated: true,
+      campaignListOpen: campaignsOpen,
+      worldWizardOpen,
+      heroWizardOpen: Boolean(creatingPlayerId),
+    })
+    atmosphereAudioRef.current?.setScreenAttenuation(atmosphereScreenAttenuation(screen))
+  }, [campaignsOpen, worldWizardOpen, creatingPlayerId])
   useEffect(() => {
     atmosphereAudioRef.current?.setWaiting(state.isNarrating)
   }, [state.isNarrating])
@@ -1156,7 +1172,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <button className="primary" onClick={() => setCampaignsOpen(true)}><Plus size={16} />Кампании и группы</button>
             <button onClick={onLogout}>Выйти из аккаунта</button>
           </div>
-          {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onClose={() => setCampaignsOpen(false)} />}
+          {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
         </main>
       </div>
     )
@@ -1172,7 +1188,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <button className="primary" onClick={() => setCampaignsOpen(true)}><ScrollText size={16} />Кампании и группы</button>
             <button onClick={onLogout}>Выйти из аккаунта</button>
           </div>
-          {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onClose={() => setCampaignsOpen(false)} />}
+          {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
         </main>
       </div>
     )
@@ -1357,7 +1373,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       </main>
       {merchantOpen && <MerchantScreen merchants={merchantScreenMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantOpen(false)} />}
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
-      {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onClose={() => setCampaignsOpen(false)} />}
+      {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
       {creatingPlayerId && aiHealth?.characterCreation && <CharacterCreationWizard
         player={state.players.find((player) => player.id === creatingPlayerId) ?? activePlayer}
         accountName={account.name}
