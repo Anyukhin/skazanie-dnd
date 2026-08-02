@@ -22,6 +22,7 @@ import {
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check } from './rules-engine.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
+import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'

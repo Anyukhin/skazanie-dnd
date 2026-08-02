@@ -661,7 +661,7 @@ export type TacticalDoor = {
   keyItemId: string | null
 }
 
-export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use'
+export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use' | 'topple' | 'ignite'
 
 export type TacticalProp = {
   id: string

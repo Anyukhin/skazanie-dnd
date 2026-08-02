@@ -1126,6 +1126,8 @@ export function useGameSession() {
       open: 'Открыть объект сцены',
       take: 'Взять объект сцены',
       use: 'Использовать объект сцены',
+      topple: 'Опрокинуть объект сцены',
+      ignite: 'Поджечь объект сцены',
     }
     return executeTacticalCommand({
       command_type: 'OperateSceneObject',

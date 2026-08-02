@@ -188,6 +188,11 @@ import {
   sceneObjectDistance,
   sceneObjectLoot,
 } from './scene-interactions.mjs'
+import {
+  burningPropEffect,
+  fireSourceNear,
+  hazardPropCells,
+} from './scene-hazards.mjs'
 
 export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
@@ -3691,7 +3696,7 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'OperateSceneObject') {
     if (!command.prop_id) throw new RulesValidationError('Не выбран объект сцены', 'SCENE_OBJECT_REQUIRED')
-    if (!['inspect', 'open', 'take', 'use'].includes(command.intent)) {
+    if (!['inspect', 'open', 'take', 'use', 'topple', 'ignite'].includes(command.intent)) {
       throw new RulesValidationError('Неизвестный способ взаимодействия с объектом сцены', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
     }
     if (command.approach === 'force' && command.server_authoritative !== true && context.serverAuthoritativeCombat !== true) {
@@ -8425,6 +8430,85 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         policy_id: SCENE_INTERACTION_POLICY_ID,
       }, []))
 
+      // Обстановка как оружие: опрокинуть тяжёлое и поджечь горючее. Обе ветки
+      // стоят до обычных операций, потому что меняют состояние пропса
+      // необратимо — с поваленным стеллажом больше ничего не сделать.
+      if (command.intent === 'topple' || command.intent === 'ignite') {
+        if (['toppled', 'burning', 'burned'].includes(interaction.state)) {
+          throw new RulesValidationError('Объект уже изменён и второй раз не поддаётся', 'SCENE_OBJECT_ALREADY_ALTERED')
+        }
+        const hazard = command.intent === 'topple' ? definition.topple : definition.ignite
+        if (!hazard) throw new RulesValidationError('Для этого объекта такое действие недоступно', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+        const cells = hazardPropCells(prop)
+        if (!cells.length) throw new RulesValidationError('У объекта нет клеток на карте', 'SCENE_OBJECT_OUT_OF_REACH')
+        operated()
+        if (command.intent === 'topple') {
+          const check = resolveSceneCheck({ ability: hazard.ability, skill: hazard.skill, dc: hazard.dc, purpose: hazard.purpose })
+          if (!check.success) {
+            events.push(eventFrom(command, 'SceneObjectStateChanged', { prop_id: prop.id, state: interaction.state, success: false, intent: command.intent }, []))
+          } else {
+            // Под падающей мебелью оказываются те, кто стоит на её клетках:
+            // спасбросок Ловкости делит урон и решает, собьёт ли с ног.
+            const covered = new Set(cells.map((cell) => `${cell.x}:${cell.y}`))
+            const caught = listActors(state).filter((candidate) => {
+              const id = actorId(candidate)
+              if (id === String(command.actor_id) || !isLivingActor(candidate)) return false
+              const at = actorPosition(state, id)
+              return Boolean(at && covered.has(`${at.x}:${at.y}`))
+            })
+            for (const victim of caught) {
+              const victimId = actorId(victim)
+              const save = diceService.rollCheck({
+                modifier: abilityModifier(victim?.abilities?.[hazard.save_ability]),
+                difficulty: hazard.save_dc,
+                purpose: 'scene-object:topple-save',
+                actorId: victimId,
+                visibility: command.visibility,
+              })
+              rolls.push(save)
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+                ...save, ability: hazard.save_ability, difficulty: hazard.save_dc, prop_id: prop.id,
+              }, [victimId]))
+              const damageRoll = diceService.roll(hazard.damage, 'scene_object_topple_damage', victimId, command.visibility ?? 'public')
+              rolls.push(damageRoll)
+              events.push(eventFrom(command, 'DieRolled', damageRoll, []))
+              // Спасбросок делит урон пополам, как у площадных эффектов.
+              const amount = Math.max(0, save.success ? Math.floor(damageRoll.total / 2) : damageRoll.total)
+              if (amount > 0) {
+                const damagePayload = {
+                  ...resolveDamagePayload(state, victimId, amount, hazard.damage_type),
+                  prop_id: prop.id,
+                  reason: 'scene-object-topple',
+                }
+                events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', damagePayload, [victimId]))
+                events.push(...zeroHitPointDamageConsequences(state, command, victimId, damagePayload))
+              }
+              if (!save.success) {
+                events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone' }, [victimId]))
+              }
+            }
+            events.push(eventFrom(command, 'SceneObjectStateChanged', { prop_id: prop.id, state: 'toppled', intent: command.intent }, []))
+          }
+        } else {
+          const source = fireSourceNear(map.props, at, actor)
+          if (!source) throw new RulesValidationError('Нечем поджечь: рядом нет открытого огня и нет подходящего предмета', 'SCENE_OBJECT_NO_FIRE_SOURCE')
+          // Зона огня — это обычный площадный эффект. Своей машинерии горения
+          // не заводится: тик по входу и по концу хода уже умеет движок.
+          const effect = burningPropEffect({
+            propId: prop.id,
+            commandId: command.command_id,
+            cells,
+            definition: hazard,
+            sourceActorId: command.actor_id,
+            round: state.mechanics.combat.round,
+          })
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SpellAreaCreated', { effect }, []))
+          events.push(eventFrom(command, 'SceneObjectStateChanged', {
+            prop_id: prop.id, state: 'burning', intent: command.intent, fire_source: source.kind, effect_id: effect.effect_id,
+          }, []))
+        }
+        break
+      }
       if (command.intent === 'inspect') {
         const attemptedByActor = interaction.inspection_attempted_by.includes(command.actor_id)
           || (interaction.inspection_attempted && !interaction.inspection_attempted_by.length)

@@ -150,6 +150,8 @@ export const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
   open: 'Открыть',
   take: 'Взять',
   use: 'Использовать',
+  topple: 'Опрокинуть',
+  ignite: 'Поджечь',
 }
 export const SPELL_OPTION_LABELS: Record<string, string> = {
   approach: 'Подойди',
