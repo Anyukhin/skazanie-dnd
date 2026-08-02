@@ -3914,10 +3914,15 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
   const resistant = defenses.resistances.includes(damageType) || itemResistanceSources.length > 0 || ragingResistance || uncannyResistance || absorbingResistance || bladeWardResistance || conditionResistance || Boolean(auraOfLife)
   const vulnerable = defenses.vulnerabilities.includes(damageType)
   let afterDefense = immune ? 0 : raw
-  if (!immune && resistant && !vulnerable) afterDefense = Math.floor(afterDefense / 2)
-  if (!immune && vulnerable && !resistant) afterDefense *= 2
+  // Порядок по SRD 5.2.1: «сопротивление и уязвимость применяются **после** всех
+  // прочих модификаторов урона». Заговор «Сопротивление» — как раз такой
+  // модификатор, поэтому его 1к4 вычитается первым, и только потом урон делится
+  // пополам. Раньше было наоборот, и сопротивляющаяся цель получала вдвое меньше
+  // положенного: 9 урона с 1к4=3 давали 1 вместо 3.
   const resistanceCantripReduction = Math.min(afterDefense, Math.max(0, safeInteger(resistanceCantrip?.reduction, 0)))
   afterDefense -= resistanceCantripReduction
+  if (!immune && resistant && !vulnerable) afterDefense = Math.floor(afterDefense / 2)
+  if (!immune && vulnerable && !resistant) afterDefense *= 2
   const temporaryBefore = Math.max(0, safeInteger(state.mechanics.temporary_hp[targetId], 0))
   const absorbed = Math.min(temporaryBefore, afterDefense)
   const applied = afterDefense - absorbed
