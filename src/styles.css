@@ -1343,6 +1343,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .ui-scale-setting select:disabled { opacity: .52; cursor: not-allowed; }
 .ui-scale-marks { grid-column: 1 / -1; display: flex; justify-content: space-between; color: #8d857b; font-size: var(--fs-sm); }
 .ui-scale-marks i { font-style: normal; }
+/* Счётчик локаций стоит под селектором режима и занимает всю ширину строки:
+   иначе он уезжает во вторую колонку сетки настройки. */
+.architect-usage-note { grid-column: 1 / -1; }
+.world-creator label > small { color: #615a53; font-size: var(--fs-sm); }
 
 @media (max-width: 680px) {
   .ui-scale-setting { grid-template-columns: 1fr 66px; }

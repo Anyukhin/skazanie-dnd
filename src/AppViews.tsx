@@ -48,6 +48,9 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
   // Соло-кампания — полноценный режим. Мест ровно столько, сколько игроков
   // сядет за стол; лишние места иначе висят пустыми и блокируют ход.
   const [slotCount, setSlotCount] = useState(1)
+  // Режим импровизации выбирается при старте, но записывается тем же
+  // settings-эндпоинтом, что и потом: второго пути записи настроек нет.
+  const [improvMode, setImprovMode] = useState<CampaignAiSettings['improvMode']>('story')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -87,6 +90,17 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
       const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, slotCount } }) })
       const body = await response.json() as { version?: number; state?: GameState | null; error?: string }
       if (!response.ok) throw new Error(body.error || 'Не удалось создать кампанию')
+      // «Сюжет» — серверный дефолт, поэтому лишний PATCH не отправляем: он
+      // сменой не является и записал бы в летопись ложное «режим изменён».
+      if (improvMode !== 'story') {
+        // Кампания уже создана и играбельна. Если настройка не записалась,
+        // мир не теряем: владелец переключит режим на экране настроек.
+        await fetch(`/api/campaigns/${encodeURIComponent(resolvedCode)}/settings`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ improvMode }),
+        }).catch(() => null)
+      }
       await onAccountRefresh()
       await onSwitch(resolvedCode, body)
       onClose()
@@ -123,6 +137,12 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
             <label><span>Основа мира и желаемая история</span><textarea value={world.premise} onChange={(event) => setWorld({ ...world, premise: event.target.value })} placeholder="Что существует в мире, о чём должна быть кампания, какие конфликты интересны?" /></label>
             <label><span>С чего начинается первая сцена</span><textarea value={world.openingSituation} onChange={(event) => setWorld({ ...world, openingSituation: event.target.value })} placeholder="Например: герои прибывают на станцию в момент исчезновения дипломатического корабля" /></label>
             <div className="field-grid"><label><span>Темы и мотивы</span><input value={world.themes} onChange={(event) => setWorld({ ...world, themes: event.target.value })} placeholder="Исследование, политика, выживание…" /></label><label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /></label></div>
+            <label><span>Режим импровизации</span>
+              <select value={improvMode} onChange={(event) => setImprovMode(event.currentTarget.value as CampaignAiSettings['improvMode'])} aria-label="Режим импровизации кампании">
+                {IMPROV_MODE_FALLBACK.map((improv) => <option key={improv.id} value={improv.id}>{improv.label} — {improv.description}</option>)}
+              </select>
+              <small>Режим можно поменять и позже, на экране настроек кампании.</small>
+            </label>
           </div>}
           {step === 2 && <div className="hero-creator slot-creator">
             <div className="world-auto-note"><Users size={17} /><span><b>Сколько игроков сядет за стол?</b> Первое место всегда ваше, остальные заполнят приглашённые друзья при входе по ссылке. Пустых мест не останется.</span></div>
@@ -133,7 +153,7 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
             </div>
             <div className="hero-library">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
           </div>}
-          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || 'Название придумает рассказчик'}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{[world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
+          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || 'Название придумает рассказчик'}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{[world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
           <div className="campaign-wizard-actions"><button onClick={() => step === 1 ? setWizard(false) : setStep((current) => current - 1)}>{step === 1 ? 'К списку кампаний' : 'Назад'}</button>{step < 3 ? <button className="primary" onClick={() => { if (validateStep()) setStep((current) => current + 1) }}>Продолжить<ChevronRight size={14} /></button> : <button className="primary" onClick={() => { void create() }} disabled={busy}><Sparkles size={14} />{busy ? 'Рассказчик создаёт мир…' : 'Создать мир и написать пролог'}</button>}</div>
         </>}
         {error && <div className="admin-error">{error}</div>}
@@ -653,6 +673,14 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
             >
               {(campaignAi?.improvModes ?? IMPROV_MODE_FALLBACK).map((improv) => <option key={improv.id} value={improv.id}>{improv.label} — {improv.description}</option>)}
             </select>
+            {campaignAi && (
+              <small className="architect-usage-note">
+                Локаций сегодня: {campaignAi.architectGenerationsToday}
+                {campaignAi.architectGenerationsToday >= campaignAi.architectAlertThreshold
+                  ? ' — расход токенов выше обычного. Ограничения нет.'
+                  : ''}
+              </small>
+            )}
           </label>
           {!campaignAi?.canManage && campaignAi && <p className="secure-note"><Lock size={14} />Изменять общие настройки ИИ может владелец кампании или администратор.</p>}
           {campaignAiError && <p className="admin-error">{campaignAiError}</p>}

@@ -1545,6 +1545,8 @@ export type CampaignAiSettingsResponse = {
   availableModels: string[]
   narratorStyles: Array<{ id: CampaignAiSettings['narratorStyle']; label: string }>
   improvModes: Array<{ id: CampaignAiSettings['improvMode']; label: string; description: string }>
+  architectGenerationsToday: number
+  architectAlertThreshold: number
   canManage: boolean
   error?: string
 }

@@ -147,6 +147,10 @@ test('режим импровизации меняет только владел
     assert.ok(mode.label, 'у режима есть подпись для интерфейса')
     assert.ok(mode.description, 'у режима есть короткое русское описание')
   }
+  // Счётчик локаций едет тем же ответом, что и режим: интерфейс настроек берёт
+  // обе величины одним запросом.
+  assert.equal(initial.body.architectGenerationsToday, 0)
+  assert.ok(Number.isSafeInteger(initial.body.architectAlertThreshold) && initial.body.architectAlertThreshold > 0)
 
   // Не-владелец в кампании: настройку видит, но менять не может.
   const invite = await request(baseUrl, '/api/campaigns/IMPROV/invites', {
@@ -184,6 +188,7 @@ test('режим импровизации меняет только владел
   })
   assert.equal(saved.status, 200, saved.text)
   assert.equal(saved.body.settings.improvMode, 'chaos')
+  assert.equal(saved.body.architectGenerationsToday, 0, 'PATCH возвращает счётчик тем же ответом')
   assert.equal(
     (await request(baseUrl, '/api/campaigns/IMPROV/settings', { cookie: ownerCookie })).body.settings.improvMode,
     'chaos',

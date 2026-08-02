@@ -42,6 +42,7 @@ import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
+import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertText } from './architect-usage.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator } from './creative-director.mjs'
@@ -140,6 +141,12 @@ mkdirSync(generatedDir, { recursive: true })
 const usageLedger = new DurableUsageLedger({
   storageFile: join(storageDir, 'engine', 'llm-usage.json'),
   dailyTokenLimit,
+})
+// Лимита на локации нет — это решение владельца. Порог нужен только для того,
+// чтобы стол увидел предупреждение о расходе.
+const architectUsage = new ArchitectUsageStore({
+  storageFile: join(storageDir, 'engine', 'architect-usage.json'),
+  alertThreshold: Number(process.env.DND_ARCHITECT_ALERT_THRESHOLD || DEFAULT_ARCHITECT_ALERT_THRESHOLD),
 })
 const npcPortraitService = new NpcPortraitService({
   storageDir,
@@ -1541,6 +1548,20 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
     decision: resolution.decision,
     destinationHint: resolution.destinationHint,
   })
+  // Считаем только живую генерацию: детерминированный fallback токенов не
+  // тратит. Лимита нет — на пересечении порога стол получает одну строку
+  // предупреждения, и ход продолжается как обычно.
+  if (planned.trace?.mode === 'model') {
+    const counted = architectUsage.recordGeneration(campaignId)
+    if (counted.alert) {
+      appendRoomJournal(campaignId, [{
+        id: `architect-alert-${campaignId}-${counted.day}`,
+        speaker: 'system',
+        author: 'Расход кампании',
+        text: architectAlertText(counted.generations),
+      }])
+    }
+  }
   const directorPlan = buildDirectorTransitionCommands({
     campaignId,
     action,
@@ -2004,7 +2025,7 @@ const server = createServer((req, res) => {
   })
   if (req.url === '/api/admin/usage' && req.method === 'GET') {
     const user = requireAdmin(req, res); if (!user) return
-    return json(res, 200, { usage: usageLedger.report(), models: llmClient.health() })
+    return json(res, 200, { usage: usageLedger.report(), architect: architectUsage.report(), models: llmClient.health() })
   }
   if (req.url === '/api/auth/me' && req.method === 'GET') {
     const user = userForToken(cookies(req).skazanie_session)
@@ -2397,6 +2418,8 @@ const server = createServer((req, res) => {
       availableModels: allowedAiModels,
       narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
       improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
+      architectGenerationsToday: architectUsage.generationsToday(campaignId),
+      architectAlertThreshold: architectUsage.alertThreshold,
       canManage: user.role === 'admin' || campaignMembershipFor(user.id, campaignId)?.role === 'owner',
     })
   }
@@ -2449,6 +2472,8 @@ const server = createServer((req, res) => {
         availableModels: allowedAiModels,
         narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
         improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
+        architectGenerationsToday: architectUsage.generationsToday(campaignId),
+        architectAlertThreshold: architectUsage.alertThreshold,
         canManage: true,
       })
     } catch (error) {
@@ -3359,6 +3384,11 @@ const server = createServer((req, res) => {
         return json(res, 200, { dry_run: true, transition: null, stages: [{ agent: 'AgentDirector', status: 'completed', output: resolved }], narration: resolved?.narration ?? 'Переход сцены не требуется.' })
       }
       const planned = await sceneArchitect.plan({ action, state: labState, decision: resolved.decision, destinationHint: resolved.destinationHint })
+      // Лаборатория — админская примерка в режиме dry_run: настоящей локации в
+      // кампании она не создаёт. Токены тратит, поэтому попадает в отчёт админа
+      // отдельным счётчиком, но игровой счётчик и предупреждение стола не
+      // трогает — иначе игроки увидят «создано N локаций», которых нет.
+      if (planned.trace?.mode === 'model') architectUsage.recordGeneration(campaignId, { kind: 'lab' })
       const transition = createSceneTransition(planned.sceneArgs, labState)
       return json(res, 200, {
         dry_run: true,
