@@ -2140,7 +2140,7 @@ function elevationAt(state, position) {
  * (`generateDynamicSceneMap`), поэтому правило работает и на сгенерированных
  * картах, а не только на заданных вручную.
  */
-function highGroundBetween(state, from, to, distanceFeet) {
+export function highGroundBetween(state, from, to, distanceFeet) {
   if (distanceFeet == null || distanceFeet <= 5) return 'level'
   const difference = elevationAt(state, from) - elevationAt(state, to)
   if (difference >= 5) return 'higher'
@@ -2153,7 +2153,7 @@ function highGroundBetween(state, from, to, distanceFeet) {
  * fire.  The ruleset takes the best cover available rather than adding them up,
  * so a creature behind a pillar gets three-quarters, not seven.
  */
-function coverBetween(state, attackerId, targetId, from, to) {
+export function coverBetween(state, attackerId, targetId, from, to) {
   const none = { level: 'none', armorClassBonus: 0, blockers: [] }
   if (!from || !to) return none
   if (Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) <= 1) return none
