@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { spawnSync } from 'node:child_process'
 
 import { buildBuildingScene, generateBuildingScene } from '../server/building-generator.mjs'
 import { campaignStateForViewer, publicSceneFor } from '../server/viewer-projection.mjs'
@@ -42,6 +44,33 @@ import {
  */
 
 const RUNS = 9
+
+/**
+ * Запекание света — клиентский TypeScript, поэтому он собирается тем же
+ * приёмом, что и в `test/board-render.test.mjs`: сборка во временный каталог и
+ * импорт. Компиляция идёт один раз на файл и в замеры не входит.
+ */
+const lightingBuildDir = mkdtempSync(join(tmpdir(), 'skazanie-budget-lighting-'))
+{
+  const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
+  const sources = ['../src/board-lighting.ts', '../src/tactical-map-client.ts']
+    .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
+  const compiled = spawnSync(process.execPath, [
+    compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
+    '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', lightingBuildDir, ...sources,
+  ], { encoding: 'utf8' })
+  assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
+  for (const name of readdirSync(lightingBuildDir)) {
+    if (!name.endsWith('.js')) continue
+    const source = readFileSync(join(lightingBuildDir, name), 'utf8')
+      .replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
+    writeFileSync(join(lightingBuildDir, name.replace(/\.js$/, '.mjs')), source)
+    rmSync(join(lightingBuildDir, name))
+  }
+}
+const lighting = await import(pathToFileURL(join(lightingBuildDir, 'board-lighting.mjs')).href)
+const mapClient = await import(pathToFileURL(join(lightingBuildDir, 'tactical-map-client.mjs')).href)
+process.on('exit', () => rmSync(lightingBuildDir, { recursive: true, force: true }))
 
 /**
  * @param {string} label
@@ -401,6 +430,41 @@ test('переход между этажами укладывается в по�
   assert.ok(size <= 2, `событие повторного перехода ${size.toFixed(2)} КБ, порог плана — 2 КБ`)
   assertWallClock(generation, 150, 'переход с генерацией этажа')
   assertWallClock(remembered, 15, 'переход по запомненному этажу')
+})
+
+test('запекание света на карте 100×100 укладывается в 30 мс', () => {
+  // Порог раздела 8 плана многоэтажности. Сетка считается при смене карты,
+  // этажа, двери, предметов и раскрытия — но не в кадре и не на панораме,
+  // поэтому 30 мс здесь и есть весь бюджет освещения.
+  const map = regionMap({ props: 200 })
+  for (let index = 0; index < 20; index += 1) {
+    addProp(map, {
+      id: `fire-${index}`,
+      assetId: index % 2 ? 'campfire' : 'torch_wall',
+      x: 12.5 + (index % 5) * 17,
+      y: 12.5 + Math.floor(index / 5) * 21,
+      footprint: [],
+    })
+  }
+  const clientMap = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
+  assert.ok(clientMap, 'карта обязана декодироваться на клиенте')
+  assert.equal(lighting.lightSourcesOf(clientMap).length, 20, 'источников обязано быть ровно двадцать')
+  // Та же карта без огня — отсчёт для детерминированного счётчика.
+  const plain = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(regionMap({ props: 200 })))))
+  const ambient = lighting.computeLightGrid(plain)
+
+  let grid = null
+  const median = measure('сетка освещённости 100×100, 20 источников', () => {
+    grid = lighting.computeLightGrid(clientMap)
+  })
+
+  // Счётчик важнее времени: он ловит регресс алгоритма независимо от загрузки
+  // машины. Двадцать источников обязаны действительно осветить свои круги.
+  let lit = 0
+  for (let index = 0; index < grid.length; index += 1) if (grid[index] > ambient[index]) lit += 1
+  console.log(`  клеток ярче амбиента: ${lit}`)
+  assert.ok(lit > 1_000, `освещено всего ${lit} клеток — распространение света сломалось`)
+  assertWallClock(median, 30, 'сетка освещённости')
 })
 
 test('бюджеты классов размеров согласованы между собой', () => {

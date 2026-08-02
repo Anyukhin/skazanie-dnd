@@ -17,7 +17,7 @@ import {
 // спецификаторы без `.js`, а Node ESM их не разрешает.
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-board-render-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/board-render.ts', '../src/tactical-map-client.ts']
+const sources = ['../src/board-render.ts', '../src/board-lighting.ts', '../src/tactical-map-client.ts']
   .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
@@ -32,6 +32,7 @@ for (const name of readdirSync(buildDir)) {
 }
 const render = await import(pathToFileURL(join(buildDir, 'board-render.mjs')).href)
 const client = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
+const lighting = await import(pathToFileURL(join(buildDir, 'board-lighting.mjs')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 /** Поддельный 2D-контекст: записывает присвоения стилей и вызовы по порядку. */
@@ -756,6 +757,69 @@ test('предмет на шве тайлов не остаётся полови
   assert.notEqual(render.tileKey(after, left), before.left, 'левый тайл обязан перерисоваться')
   assert.notEqual(render.tileKey(after, right), before.right,
     'правый тайл рисует ту же стойку и обязан перерисоваться вместе с ней')
+})
+
+test('свет запекается в тайл: тьма по сетке, тень у стены и тёплый ореол у огня', () => {
+  const map = createTacticalMap({ width: 16, height: 16, locationId: 'loc', seed: 'light', theme: 'crypt' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'stone', lightLevel: 'dim', label: 'Палата' })
+  for (let y = 0; y < 16; y += 1) {
+    for (let x = 0; x < 16; x += 1) setCell(map, x, y, { passable: true, revealed: true, material: 'stone', zone: 'hall' })
+  }
+  setCell(map, 15, 15, { revealed: false })
+  setEdge(map, 4, 4, 5, 4, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
+  addProp(map, { id: 'torch', assetId: 'torch_wall', x: 2.5, y: 2.5, footprint: [{ x: 2, y: 2 }] })
+
+  const palette = { ...render.DEFAULT_BOARD_PALETTE, lightShadow: '#111827', lightWarm: '#ffa500' }
+  const scene = { map: decoded(map), palette, cellSize: 32 }
+  const context = recordingContext()
+  render.drawLightShading(context, scene, { tileX: 0, tileY: 0 })
+
+  const shadows = context.ops.filter((item) => item.op === 'fillRect' && item.value === '#111827')
+  const halo = context.ops.filter((item) => item.op === 'fill' && item.value === '#ffa500')
+  // 256 клеток тайла минус нераскрытая, плюс две полосы тени у единственной стены.
+  assert.equal(shadows.length, 255 + 2, `заливок тьмы ${shadows.length}`)
+  assert.equal(halo.length, 3, 'ореол факела рисуется тремя кольцами')
+  assert.equal(context.globalAlpha, 1, 'прозрачность обязана вернуться к единице')
+
+  // Освещённость обязана доходить до рисования: у факела темнее не становится.
+  const grid = lighting.computeLightGrid(scene.map)
+  const atTorch = render.lightShadowAlpha(grid[2 * 16 + 2])
+  const far = render.lightShadowAlpha(grid[14 * 16 + 14])
+  assert.ok(atTorch < far, `у факела альфа тьмы ${atTorch} обязана быть меньше дальней ${far}`)
+})
+
+test('тайл со светом рисуется целиком и в отсутствие арта', () => {
+  const map = createTacticalMap({ width: 16, height: 16, fill: { passable: true, revealed: true, material: 'wood' } })
+  addProp(map, { id: 'fire', assetId: 'campfire', x: 8.5, y: 8.5, footprint: [{ x: 8, y: 8 }] })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 24 }
+  const context = recordingContext()
+  assert.doesNotThrow(() => render.drawTerrainTile(context, scene, { tileX: 0, tileY: 0 }))
+  assert.ok(context.ops.some((item) => item.op === 'fill' && item.value === render.DEFAULT_BOARD_PALETTE.lightWarm),
+    'тёплый ореол костра обязан попасть в тайл')
+})
+
+test('ключ тайла меняется от источника света и этажа, но не от панорамы', () => {
+  const map = createTacticalMap({ width: 32, height: 32, fill: { passable: true, revealed: true }, theme: 'crypt' })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 16 }
+  const tile = { tileX: 0, tileY: 0 }
+  const before = render.tileKey(scene, tile)
+
+  // Панорама и зум окна: тайл тот же, ключ обязан совпасть до символа.
+  const near = render.visibleTiles(scene.map, { x: 0, y: 0, width: 16, height: 16 })
+  const shifted = render.visibleTiles(scene.map, { x: 8, y: 4, width: 16, height: 16 })
+  assert.ok(near.some((item) => item.tileX === 0 && item.tileY === 0))
+  assert.ok(shifted.some((item) => item.tileX === 0 && item.tileY === 0))
+  assert.equal(render.tileKey(scene, tile), before, 'панорама ключ тайла не трогает')
+
+  addProp(map, { id: 'torch', assetId: 'torch_wall', x: 3.5, y: 3.5, footprint: [{ x: 3, y: 3 }] })
+  const lit = { ...scene, map: decoded(map) }
+  assert.notEqual(render.tileKey(lit, tile), before, 'новый факел обязан обесценить тайл')
+
+  // Этаж в отпечаток местности не входит, а амбиент подвала другой.
+  const cellar = createTacticalMap({ width: 32, height: 32, fill: { passable: true, revealed: true }, theme: 'crypt', levelIndex: -1 })
+  const cellarScene = { ...scene, map: decoded(cellar) }
+  assert.equal(cellarScene.map.terrainHash, scene.map.terrainHash, 'этажи различаются только номером')
+  assert.notEqual(render.tileKey(cellarScene, tile), before, 'у подвала обязан быть свой ключ тайла')
 })
 
 test('запас отпечатка не делает соседние тайлы зависимыми без нужды', () => {

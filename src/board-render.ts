@@ -3,6 +3,7 @@ import type {
   TacticalProp, TacticalSurface,
 } from './types'
 import { areaCells, type AreaShape } from './area-geometry'
+import { LIGHT_FULL, LIGHT_SOURCE_ASSETS, lightAt, lightGridFor, lightSourceAssetId } from './board-lighting'
 import { cellAt, doorStates, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
 
 /**
@@ -13,7 +14,8 @@ import { cellAt, doorStates, edgeList, edgeNeighbor, revealedAt } from './tactic
  *
  * Порядок слоёв снизу вверх (`docs/tactical-map-plan.md`, раздел 7):
  * фон зоны → тайлы пола → декали → сегменты стен по рёбрам → предметы →
- * сетка 5 футов → туман войны. Фишки и интерактив живут в DOM поверх холста.
+ * запечённый свет → сетка 5 футов → туман войны. Фишки и интерактив живут в
+ * DOM поверх холста.
  */
 
 /** Сторона тайла кэша местности в клетках. */
@@ -115,6 +117,10 @@ export type BoardPalette = {
   fog: string
   zoneInterior: string
   zoneExterior: string
+  /** Цвет тьмы: им запекается затемнение по сетке освещённости и тень у стен. */
+  lightShadow: string
+  /** Цвет огня: тёплый ореол вокруг факела, костра и очага. */
+  lightWarm: string
 }
 
 /**
@@ -146,6 +152,10 @@ export const DEFAULT_BOARD_PALETTE: BoardPalette = {
   fog: 'rgba(13,11,9,.62)',
   zoneInterior: '#5b4a35',
   zoneExterior: '#4a5738',
+  // Тьма не чёрная, а холодная синеватая: чёрный поверх фактуры съедает её
+  // целиком, и пол в тени перестаёт отличаться от кладки.
+  lightShadow: '#0d1016',
+  lightWarm: '#ffb257',
 }
 
 /** Названия переменных темы, которые доска читает из CSS. */
@@ -154,6 +164,8 @@ const PALETTE_VARIABLES: Array<[keyof BoardPalette, string]> = [
   ['floorAlt', '--map-floor-alt'],
   ['wall', '--map-wall'],
   ['gridLine', '--map-grid-line'],
+  ['lightShadow', '--map-light-shadow'],
+  ['lightWarm', '--map-light-warm'],
 ]
 
 /**
@@ -450,15 +462,22 @@ export function tileRevealSignature(map: TacticalMap, tile: BoardTile) {
 }
 
 /**
- * Ключ тайла: отпечаток местности, размер клетки, координаты тайла и раскрытие
- * внутри него. Тайл перерисовывается только при смене своего ключа.
+ * Ключ тайла: отпечаток местности, этаж, размер клетки, координаты тайла и
+ * раскрытие внутри него. Тайл перерисовывается только при смене своего ключа.
+ *
+ * Этаж входит в ключ из-за запечённого света (`src/board-lighting.ts`):
+ * `terrainHash` считается без `levelIndex`, а у подвала амбиент свой. Всё
+ * остальное, от чего зависит свет — предметы, двери, рёбра, зоны, тема, —
+ * в отпечатке местности уже есть, поэтому переставленный факел и открытая
+ * дверь обесценивают тайлы тем же механизмом, что и раньше. Панорама и зум
+ * ключа не меняют: в нём нет ни окна просмотра, ни смещения.
  */
 export function tileKey(scene: BoardScene, tile: BoardTile) {
   const art = scene.art ? (scene.artKey ?? 'art') : ''
   const textures = texturesAvailableIn(scene) ? 't' : 'f'
   const stamps = scene.propAtlas?.key ?? ''
   const tiles = scene.terrain?.key ?? ''
-  return `${scene.map.terrainHash}:${scene.cellSize}:${textures}:${art}:${stamps}:${tiles}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
+  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${tiles}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
 }
 
 /**
@@ -3065,6 +3084,120 @@ export function drawGrid(context: BoardContext2D, scene: BoardScene, tile: Board
   context.restore()
 }
 
+// --- запечённый свет ------------------------------------------------------
+
+/**
+ * Предельная непрозрачность затемнения. При минимуме читаемости сетки
+ * (`LIGHT_MIN_READABLE`) она даёт около 0.40 — пол в темноте заметно глуше
+ * освещённого, но фактура, укрытия и сетка футов сквозь него читаются.
+ */
+export const LIGHT_SHADOW_MAX_ALPHA = 0.62
+
+/** Ширина мягкой тени вдоль стены: четверть клетки внутрь. */
+export const WALL_SHADOW_CELLS = 0.25
+export const WALL_SHADOW_ALPHA = 0.2
+
+/** Непрозрачность затемнения по освещённости клетки. */
+export function lightShadowAlpha(light: number) {
+  const level = Math.max(0, Math.min(LIGHT_FULL, light))
+  return ((LIGHT_FULL - level) / LIGHT_FULL) * LIGHT_SHADOW_MAX_ALPHA
+}
+
+/**
+ * Кольца тёплого ореола: доля радиуса источника и непрозрачность. Градиента
+ * канвы здесь намеренно нет — `createRadialGradient` есть не у каждой
+ * реализации контекста, а весь модуль обязан рисоваться и в поддельном
+ * контексте тестов (тот же довод, что у `ellipseShape`).
+ */
+const WARM_HALO_RINGS: ReadonlyArray<readonly [number, number]> = [[1, 0.05], [0.62, 0.05], [0.32, 0.06]]
+
+/** Мягкая тень вдоль стен: полоса внутрь каждой раскрытой соседней клетки. */
+function drawWallShadows(context: BoardContext2D, scene: BoardScene, frame: TileFrame) {
+  const size = frame.size
+  const band = size * WALL_SHADOW_CELLS
+  context.fillStyle = scene.palette.lightShadow
+  context.globalAlpha = WALL_SHADOW_ALPHA
+  for (const edge of edgeList(scene.map)) {
+    if (edge.kind !== 'wall') continue
+    if (edge.x < frame.minX - 1 || edge.x > frame.maxX || edge.y < frame.minY - 1 || edge.y > frame.maxY) continue
+    const neighbor = edgeNeighbor(edge)
+    const left = (edge.x - frame.minX) * size
+    const top = (edge.y - frame.minY) * size
+    if (edge.dir === 'e') {
+      if (revealedAt(scene.map, edge.x, edge.y)) context.fillRect(left + size - band, top, band, size)
+      if (revealedAt(scene.map, neighbor.x, neighbor.y)) context.fillRect(left + size, top, band, size)
+    } else {
+      if (revealedAt(scene.map, edge.x, edge.y)) context.fillRect(left, top + size - band, size, band)
+      if (revealedAt(scene.map, neighbor.x, neighbor.y)) context.fillRect(left, top + size, size, band)
+    }
+  }
+  context.globalAlpha = 1
+}
+
+/**
+ * Тёплый ореол у огня. Статичная часть света: мерцание — этап L7 и живёт на
+ * холсте эффектов, тайлового кэша оно не касается.
+ */
+function drawWarmHalos(context: BoardContext2D, scene: BoardScene, frame: TileFrame) {
+  const size = frame.size
+  context.fillStyle = scene.palette.lightWarm
+  for (const prop of scene.map.props) {
+    const assetId = lightSourceAssetId(prop.assetId)
+    if (!assetId) continue
+    const cellX = Math.floor(prop.x)
+    const cellY = Math.floor(prop.y)
+    if (!revealedAt(scene.map, cellX, cellY)) continue
+    const radius = LIGHT_SOURCE_ASSETS[assetId].radius
+    // Отбор по тайлу с запасом на радиус: источник из соседнего тайла обязан
+    // досветить сюда, иначе ореол обрывался бы ровно по шву кэша.
+    if (cellX + 1 + radius <= frame.minX || cellX - radius >= frame.maxX + 1) continue
+    if (cellY + 1 + radius <= frame.minY || cellY - radius >= frame.maxY + 1) continue
+    const centerX = (cellX + 0.5 - frame.minX) * size
+    const centerY = (cellY + 0.5 - frame.minY) * size
+    for (const [share, alpha] of WARM_HALO_RINGS) {
+      context.globalAlpha = alpha
+      circle(context, centerX, centerY, radius * share * size)
+    }
+  }
+  context.globalAlpha = 1
+}
+
+/**
+ * Свет, запечённый в тайл: затемнение по сетке освещённости, мягкая тень вдоль
+ * стен и тёплые ореолы у огня.
+ *
+ * Слой ложится поверх пола, стен и предметов, но **только в раскрытых
+ * клетках**: нераскрытая часть остаётся единым туманом и не выдаёт ни
+ * планировки, ни того, где горит огонь. Порядок внутри слоя — тьма, тень,
+ * ореол: свеча обязана пробиваться сквозь тень собственной стены.
+ *
+ * Сетка берётся из кэша по объекту карты (`lightGridFor`), поэтому панорама и
+ * зум её не пересчитывают, а перерисовка тайла стоит одних заливок.
+ */
+export function drawLightShading(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
+  const frame = tileFrame(scene, tile)
+  const grid = lightGridFor(scene.map)
+  const size = frame.size
+  context.save()
+  context.fillStyle = scene.palette.lightShadow
+  for (let y = frame.minY; y <= frame.maxY; y += 1) {
+    for (let x = frame.minX; x <= frame.maxX; x += 1) {
+      if (!revealedAt(scene.map, x, y)) continue
+      const alpha = lightShadowAlpha(lightAt(grid, scene.map, x, y))
+      if (alpha < 0.01) continue
+      context.globalAlpha = alpha
+      context.fillRect((x - frame.minX) * size, (y - frame.minY) * size, size, size)
+    }
+  }
+  context.globalAlpha = 1
+  drawWallShadows(context, scene, frame)
+  drawWarmHalos(context, scene, frame)
+  // Прозрачность возвращается руками: поддельный контекст тестов не обязан
+  // хранить стек состояний.
+  context.globalAlpha = 1
+  context.restore()
+}
+
 /** Световая заливка зоны; `null` означает нейтральный яркий свет. */
 export function zoneLightTreatment(lightLevel: string): string | null {
   const level = String(lightLevel ?? '').trim().toLowerCase()
@@ -3243,6 +3376,7 @@ export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile
   drawDecals(context, scene, tile)
   drawEdgeSegments(context, scene, tile)
   drawProps(context, scene, tile)
+  drawLightShading(context, scene, tile)
   drawZoneLighting(context, scene, tile)
   drawCellFeatures(context, scene, tile)
   drawGrid(context, scene, tile)

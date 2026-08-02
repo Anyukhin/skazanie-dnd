@@ -118,6 +118,16 @@ export function revealedAt(map: TacticalMap, x: number, y: number): boolean {
 }
 
 /**
+ * Проходима ли клетка, без сборки логической клетки. Нужна там же, где
+ * `revealedAt`: распространение света обходит клетки тысячами, и объект на
+ * каждую клетку там был бы чистой потерей.
+ */
+export function passableAt(map: TacticalMap, x: number, y: number): boolean {
+  const index = cellIndex(map, x, y)
+  return index >= 0 && bitAt(map.layers.present, index) && bitAt(map.layers.passable, index)
+}
+
+/**
  * Логическая клетка. `null` означает, что клетки нет вовсе, — это единственный
  * способ отличить «клетки нет» от «клетка есть, но непроходима».
  */
