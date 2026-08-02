@@ -1064,6 +1064,14 @@ Viewer-safe досье из stacked PR #13, портрет из PR #20 и явн
 - Текущий рабочий storage не проходит `cutover:verify`; автоматическая перезапись намеренно запрещена.
 - FileEventStore и compatibility room рассчитаны на single-writer deployment; auth.json отдельно защищён межпроцессным lock вокруг read-modify-write. OneDrive sync может создавать внешние конфликты.
 - Нет PostgreSQL adapter, multi-process coordination, scheduled backup/retention и production restore verification.
+- Сводка сцены читает журнал событий целиком. `campaignEventsForSummary` в
+  `server/index.mjs` зовёт `eventStore.getEvents(campaignId)` без среза, а тот
+  разбирает все коммиты кампании с диска. Вызов происходит один раз на переход
+  сцены и на фоне вызова модели незаметен, но стоимость растёт линейно с длиной
+  кампании: у долгой цепочки арок это станет самой дорогой частью перехода.
+  Решение, когда понадобится, — записывать версию состояния на начале сцены в
+  payload `SceneAdvanced` и читать события от неё, а не от нуля. Пока не сделано
+  сознательно: отдельное поле состояния пришлось бы поддерживать в replay.
 
 ## Security
 

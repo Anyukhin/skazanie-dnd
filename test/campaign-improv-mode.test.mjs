@@ -152,6 +152,15 @@ test('режим импровизации меняет только владел
   assert.equal(initial.body.architectGenerationsToday, 0)
   assert.ok(Number.isSafeInteger(initial.body.architectAlertThreshold) && initial.body.architectAlertThreshold > 0)
 
+  // Рекап: кампания только что создана, перерыва не было — карточки нет.
+  const freshRecap = await request(baseUrl, '/api/campaigns/IMPROV/recap', { cookie: ownerCookie })
+  assert.equal(freshRecap.status, 200, freshRecap.text)
+  assert.equal(freshRecap.body.recap, null)
+  assert.equal(freshRecap.body.reason, 'no_gap')
+  // Читать рекап может только участник кампании: аноним и чужой игрок — нет.
+  assert.equal((await request(baseUrl, '/api/campaigns/IMPROV/recap')).status, 401)
+  assert.equal((await request(baseUrl, '/api/campaigns/IMPROV/recap', { cookie: guestCookie })).status, 403)
+
   // Не-владелец в кампании: настройку видит, но менять не может.
   const invite = await request(baseUrl, '/api/campaigns/IMPROV/invites', {
     method: 'POST',

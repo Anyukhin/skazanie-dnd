@@ -44,6 +44,7 @@ import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertText } from './architect-usage.mjs'
 import { sceneSummaryFor } from './scene-summary.mjs'
+import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from './campaign-recap.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator } from './creative-director.mjs'
@@ -258,6 +259,13 @@ const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmC
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
 const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor, rollRegistry })
 const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
+// Рекап зовётся раз на возвращение стола и кешируется по версии состояния,
+// поэтому идёт через общий metered-клиент и попадает в usage-леджер.
+const campaignRecap = new CampaignRecapService({
+  llmClient: apiKey ? llmClient : null,
+  cache: new RecapCacheStore({ storageFile: join(storageDir, 'engine', 'campaign-recap.json') }),
+  gapHours: Number(process.env.DND_RECAP_GAP_HOURS || DEFAULT_RECAP_GAP_HOURS),
+})
 const combatTurnCoordinator = new CombatTurnCoordinator({
   eventStore,
   rulesEngine,
@@ -2420,6 +2428,32 @@ const server = createServer((req, res) => {
       const updatedCreator = userForToken(cookies(req).skazanie_session) ?? creator
       return json(res, 201, { ...room.room, user: updatedCreator })
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось создать кампанию' }) }
+  }
+
+  // Рекап «в прошлой серии»: стол вернулся после перерыва и вспоминает, на чём
+  // остановился. Только чтение, только участникам кампании.
+  const campaignRecapMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/recap$/)
+  if (campaignRecapMatch && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = campaignRecapMatch[1].toUpperCase()
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    try {
+      // `load` уже отдаёт metadata: второй вызов `getMetadata` заново разобрал
+      // бы с диска все коммиты кампании ради одного поля.
+      const loaded = await eventStore.load(campaignId)
+      return json(res, 200, await campaignRecap.recapFor({
+        campaignId,
+        state: loaded.state,
+        stateVersion: loaded.state_version ?? 0,
+        lastEventAt: loaded.metadata?.updated_at,
+      }))
+    } catch {
+      // Рекап — украшение возвращения за стол, а не условие входа в игру:
+      // на любой поломке источника комната обязана открыться молча.
+      return json(res, 200, { recap: null, reason: 'unavailable' })
+    }
   }
 
   const campaignAiSettingsMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/settings$/)

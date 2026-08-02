@@ -9,7 +9,7 @@ import {
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -217,6 +217,21 @@ function MapSymbol() {
 
 function BackpackIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 8V6a5 5 0 0 1 10 0v2M5 9h14l1 12H4L5 9Z"/><path d="M8 13h8v5H8z"/></svg>
+}
+
+const recapDismissedKey = (sessionCode: string) => `skazanie-recap-dismissed-v1:${sessionCode.toUpperCase()}`
+
+function PreviouslyOnCard({ recap, onDismiss }: { recap: CampaignRecap; onDismiss: () => void }) {
+  // Карточка не блокирующая и не модальная: доска под ней остаётся рабочей,
+  // а прочитавший закрывает её крестиком.
+  return <aside className="previously-on" role="note" aria-labelledby="previously-on-title">
+    <header>
+      <ScrollText size={19} />
+      <span><small>ПОСЛЕ ПЕРЕРЫВА</small><strong id="previously-on-title">В прошлой серии…</strong></span>
+      <button type="button" onClick={onDismiss} aria-label="Закрыть напоминание"><X size={16} /></button>
+    </header>
+    <p>{recap.text}</p>
+  </aside>
 }
 
 function NewbieGuide({ onDismiss }: { onDismiss: () => void }) {
@@ -589,6 +604,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [campaignAi, setCampaignAi] = useState<CampaignAiSettingsResponse | null>(null)
   const [campaignAiBusy, setCampaignAiBusy] = useState(false)
   const [campaignAiError, setCampaignAiError] = useState('')
+  const [campaignRecap, setCampaignRecap] = useState<CampaignRecap | null>(null)
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null)
   const [creatingPlayerId, setCreatingPlayerId] = useState<string | null>(null)
   // Закрытый мастер не должен открываться заново на том же экране: иначе
@@ -765,6 +781,23 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         if (error instanceof DOMException && error.name === 'AbortError') return
         setCampaignAiError(error instanceof Error ? error.message : 'Не удалось загрузить настройки ИИ кампании')
       })
+    return () => controller.abort()
+  }, [state.sessionCode])
+  // Рекап «в прошлой серии». Сервер сам решает, был ли перерыв, и отдаёт
+  // recap: null, если карточку показывать не нужно. Закрытая версия помнится
+  // локально на игрока, чтобы один и тот же текст не встречал его дважды.
+  useEffect(() => {
+    const controller = new AbortController()
+    setCampaignRecap(null)
+    void fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/recap`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body = await response.json().catch(() => null) as CampaignRecapResponse | null
+        if (!body?.recap?.text) return
+        if (window.localStorage.getItem(recapDismissedKey(state.sessionCode)) === String(body.recap.version)) return
+        setCampaignRecap(body.recap)
+      })
+      .catch(() => { /* рекап не обязателен: комната открывается без него */ })
     return () => controller.abort()
   }, [state.sessionCode])
   useEffect(() => {
@@ -1190,6 +1223,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             busy={lifecycleBusy}
             onResume={() => { void changeLifecycle('resume') }}
           />}
+          {campaignRecap && <PreviouslyOnCard recap={campaignRecap} onDismiss={() => {
+            window.localStorage.setItem(recapDismissedKey(state.sessionCode), String(campaignRecap.version))
+            setCampaignRecap(null)
+          }} />}
           {newbieGuideOpen && <NewbieGuide onDismiss={() => {
             window.localStorage.setItem(NEWBIE_GUIDE_DISMISSED_KEY, 'true')
             setNewbieGuideOpen(false)

@@ -1534,6 +1534,17 @@ export type AiHealth = {
   characterCreation?: CharacterCreationCatalog
 }
 
+export type CampaignRecap = {
+  text: string
+  version: number
+  provider: string
+}
+
+export type CampaignRecapResponse = {
+  recap: CampaignRecap | null
+  reason?: string
+}
+
 export type CampaignAiSettings = {
   model: string
   narratorStyle: 'neutral' | 'formal' | 'ironic'

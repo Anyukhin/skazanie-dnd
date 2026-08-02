@@ -457,6 +457,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .newbie-guide > p b { color: #bbae9e; }
 .newbie-guide footer { display: flex; justify-content: flex-end; margin-top: 13px; }
 .newbie-guide footer button { min-height: 33px; padding: 0 13px; border: 1px solid rgba(204,151,86,.3); border-radius: 5px; background: rgba(192,132,66,.1); color: #c9975d; cursor: pointer; }
+/* Рекап «в прошлой серии»: та же рамка, что у шпаргалки, но у левого края —
+   обе карточки могут висеть одновременно, и перекрывать друг друга им нельзя.
+   Клик по тексту не закрывает: рекап читают, а не пролистывают. */
+.previously-on { position: absolute; z-index: 61; top: calc(var(--status) + 18px); left: 18px; width: min(420px, calc(100% - var(--server-column) - 36px)); padding: 15px; border: 1px solid rgba(204,151,86,.35); border-radius: 9px; background: radial-gradient(circle at 0 0, rgba(170,112,52,.16), transparent 48%), rgba(18,15,12,.97); box-shadow: 0 22px 60px rgba(0,0,0,.62); backdrop-filter: blur(12px); }
+.previously-on header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; color: #c28e54; }
+.previously-on header > span { min-width: 0; display: grid; }
+.previously-on header small { color: #8b6843; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.previously-on header strong { color: #dfd1bf; font: 600 var(--fs-lg) Spectral, serif; }
+.previously-on header button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: #766d63; cursor: pointer; }
+.previously-on header button:hover { color: #d7a568; }
+.previously-on > p { margin: 13px 0 0; padding: 11px; border: 1px solid rgba(255,255,255,.06); border-radius: 6px; background: rgba(255,255,255,.025); color: #b6aa9b; font: var(--fs-sm)/1.65 Spectral, serif; }
 /* Режим набран как все надписи-заголовки этого интерфейса: прописные, Manrope
    700, разрядка, приглушённое золото — тот же ряд, что «ГЛАВА · СЦЕНА» над ним
    и «ОТРЯД» в меню. Отличие одно: тонкие линии по бокам, как разделитель главы
