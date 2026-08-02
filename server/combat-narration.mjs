@@ -47,6 +47,22 @@ const ATTACKER_CONDITION_LABELS = Object.freeze({
 })
 
 /**
+ * Названия видов урона в именительном падеже — для фразы «яд не действует».
+ * Точный список защит существа не раскрывается: игрок узнаёт ровно то, что
+ * увидел за столом, — что именно этот удар не сработал.
+ */
+const DAMAGE_TYPE_LABELS = Object.freeze({
+  acid: 'Кислота', bludgeoning: 'Дробящий удар', cold: 'Холод', fire: 'Огонь',
+  force: 'Силовая волна', lightning: 'Молния', necrotic: 'Некротическая энергия',
+  piercing: 'Колющий удар', poison: 'Яд', psychic: 'Психическая атака',
+  radiant: 'Свет', slashing: 'Рубящий удар', thunder: 'Грохот',
+})
+
+function damageTypeLabel(damageType) {
+  return DAMAGE_TYPE_LABELS[String(damageType ?? '').toLowerCase()] ?? 'Этот урон'
+}
+
+/**
  * Explains why an attack was rolled with advantage or disadvantage.  When both
  * sides contribute they cancel and the roll is ordinary, so naming either one
  * would misdescribe what happened.
@@ -113,6 +129,10 @@ function tacticalNarration(events, state) {
       meaningful.push(`${target} исчезает с поля боя.`)
     } else if (event.event_type === 'EquipmentChanged') {
       meaningful.push(`${actor} экипирует ${payload.item_name || 'оружие'}${payload.turns_spent ? ', затрачивая действие' : ' перед атакой'}.`)
+    } else if (event.event_type === 'DamageApplied' && payload.immune === true && Number(payload.raw_amount) > 0) {
+      meaningful.push(`${damageTypeLabel(payload.damage_type)} не действует на ${target}.`)
+    } else if (event.event_type === 'ConditionImmunityResolved') {
+      meaningful.push(`${target} не поддаётся: состояние не пристаёт к такому существу.`)
     } else if (event.event_type === 'DamageApplied' && Number(payload.applied_amount) > 0) {
       meaningful.push(targetIsEnemy
         ? payload.death_ward_triggered
@@ -123,6 +143,10 @@ function tacticalNarration(events, state) {
           : payload.resistance_cantrip_reduction
             ? `Сопротивление уменьшает урон по ${target} на ${Number(payload.resistance_cantrip_reduction)}; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`
             : `${target} получает ${Number(payload.applied_amount)} урона; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`)
+      // Качественно, без списков: за столом видно, что удар «не пошёл», а не то,
+      // от чего именно существо защищено.
+      if (payload.resistant === true) meaningful.push('Удар словно вязнет — цель сопротивляется такому урону.')
+      else if (payload.vulnerable === true) meaningful.push('Удар приходится по уязвимому месту — рана вдвое тяжелее.')
     } else if (event.event_type === 'CreatureKnockedOut') {
       meaningful.push(targetIsEnemy ? `${target} нокаутирован и больше не сопротивляется.` : `${target} нокаутирован, остаётся с 1 ОЗ и начинает короткий отдых.`)
     } else if (event.event_type === 'KnockoutEnded') {
@@ -201,7 +225,7 @@ function tacticalNarration(events, state) {
 export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'ActionReadied', 'ActorMoved', 'AreaAttackResolved', 'AttackResolved',
   'CombatEnded', 'CombatStarted', 'ConcentrationEnded', 'ConcentrationSavingThrowResolved',
-  'ConditionAdded', 'CreatureKnockedOut', 'DamageApplied', 'DeathSaveFailureRecorded',
+  'ConditionAdded', 'ConditionImmunityResolved', 'CreatureKnockedOut', 'DamageApplied', 'DeathSaveFailureRecorded',
   'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',

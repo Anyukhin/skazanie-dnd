@@ -3829,12 +3829,40 @@ function immuneToMagicalSleep(state, actor) {
     || conditions.has('immune:charmed')
 }
 
+/** Списки стат-блока приходят из данных, поэтому приводятся к нижнему регистру. */
+function statBlockDamageList(value) {
+  return uniqueStrings(value).map((entry) => entry.toLowerCase())
+}
+
+/**
+ * Иммунитет к состоянию из стат-блока. Читается из записи существа, а не из
+ * `mechanics.conditions`: это свойство природы существа, и оно не меняется по
+ * ходу боя. `immuneToMagicalSleep` выше разбирает частный случай очарования и
+ * остаётся как был — там своя логика про нежить.
+ */
+function statBlockConditionImmunities(state, id) {
+  const actor = findActor(state, id)
+  return new Set(uniqueStrings(actor?.condition_immunities ?? actor?.conditionImmunities).map((value) => value.toLowerCase()))
+}
+
+/**
+ * Защиты существа: то, что наложено по ходу игры (`mechanics.defenses`), плюс
+ * то, что записано в самом стат-блоке. Второе появилось вместе с переносом
+ * строк Vulnerabilities/Resistances/Immunities из SRD 5.2.1 в профили
+ * `encounter-assembler`: до этого карта `mechanics.defenses` существовала, но
+ * заполнять её было нечем, и скелет одинаково получал от дубины и от стрелы.
+ *
+ * Слияние стоит **здесь**, а не в вызывающих: `damagePayload` — единственный
+ * счётчик урона в движке, и атаки, ловушки, зоны и заклинания сходятся в него.
+ * Любая вторая точка развела бы удар мечом и «огненный шар».
+ */
 function defenseFor(state, id) {
   const defense = state.mechanics.defenses[id] ?? {}
+  const actor = findActor(state, id)
   return {
-    resistances: uniqueStrings(defense.resistances),
-    vulnerabilities: uniqueStrings(defense.vulnerabilities),
-    immunities: uniqueStrings(defense.immunities),
+    resistances: [...uniqueStrings(defense.resistances), ...statBlockDamageList(actor?.damage_resistances)],
+    vulnerabilities: [...uniqueStrings(defense.vulnerabilities), ...statBlockDamageList(actor?.damage_vulnerabilities)],
+    immunities: [...uniqueStrings(defense.immunities), ...statBlockDamageList(actor?.damage_immunities)],
   }
 }
 
@@ -9816,7 +9844,44 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     }
   }
 
-  return { command, events, rolls }
+  return { command, events: withoutImmuneConditions(state, command, events), rolls }
+}
+
+/**
+ * Иммунитет к состоянию отменяет **наложение**, а не его последствия: события
+ * `ConditionAdded` не появляется вовсе, иначе reducer записал бы состояние, и
+ * «иммунитет» остался бы надписью поверх работающего эффекта.
+ *
+ * Фильтр стоит на выходе `resolveCommand`, а не по месту: `ConditionAdded`
+ * выпускают четыре десятка мест — атаки, заклинания, зоны, ловушки, ходы NPC, —
+ * и правка «в каждом» разошлась бы уже на втором. Событие не исчезает молча:
+ * вместо него уходит `ConditionImmunityResolved`, потому что за столом причина
+ * обязана быть видна. Если у события несколько целей и иммунна часть из них,
+ * исходное событие остаётся для остальных.
+ */
+function withoutImmuneConditions(state, command, events) {
+  return events.flatMap((event) => {
+    if (event.event_type !== 'ConditionAdded') return [event]
+    const condition = String(event.payload?.condition ?? '')
+    const targets = uniqueStrings(event.target_ids)
+    const immune = targets.filter((id) => statBlockConditionImmunities(state, id).has(condition.toLowerCase()))
+    if (!immune.length) return [event]
+    const affected = targets.filter((id) => !immune.includes(id))
+    return [
+      ...(affected.length ? [{ ...event, target_ids: affected }] : []),
+      eventFrom(
+        commandWithRules({ ...command, visibility: event.visibility ?? command.visibility }, RULE_IDS.conditions),
+        'ConditionImmunityResolved',
+        {
+          condition,
+          reason: 'condition-immunity',
+          ...(event.payload?.source_actor == null ? {} : { source_actor: String(event.payload.source_actor) }),
+          ...(event.payload?.spell_id == null ? {} : { spell_id: String(event.payload.spell_id) }),
+        },
+        immune,
+      ),
+    ]
+  })
 }
 
 function replaceActor(state, id, updater) {
@@ -11717,6 +11782,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'ResourceSpent': return `${payload.resource}: ${payload.before} → ${payload.after}`
     case 'EnemyKnowledgeRevealed': return `${resolveName(payload.enemy_id)} опознан: отряд знает точные ОЗ и КД`
     case 'ConditionAdded': return `Добавлено состояние: ${payload.condition}`
+    case 'ConditionImmunityResolved': return `${named((event.target_ids ?? [])[0]) || 'Существо'} невосприимчиво: состояние ${payload.condition} не наложено`
     case 'ConditionRemoved': return `Снято состояние: ${payload.condition}`
     // Семейство «падение и смерть» печатало сырой `target_ids[0]`: игрок
     // видел «hero выбывает из боя» вместо имени героя. Это самые заметные
