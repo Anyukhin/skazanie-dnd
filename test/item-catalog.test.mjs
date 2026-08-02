@@ -109,8 +109,11 @@ test('manifest содержит ровно согласованные 107 зап
     [
       'srd_5_2_1:acid',
       'srd_5_2_1:alchemists-fire',
+      'srd_5_2_1:caltrops',
       'srd_5_2_1:healers-kit',
       'srd_5_2_1:holy-water',
+      'srd_5_2_1:oil-flask',
+      'srd_5_2_1:poison-basic',
       'srd_5_2_1:potion-of-healing',
     ],
   )

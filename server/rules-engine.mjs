@@ -2452,6 +2452,8 @@ const CONDITION_EFFECTS = Object.freeze({
   shielded: { armorClassBonus: 5 },
   'shield-of-faith': { armorClassBonus: 2 },
   'speed-reduced-10': { speedBonusFeet: -10 },
+  // Калтропы: скорость падает до нуля до начала следующего хода жертвы.
+  'caltrops-speed-zero': { speedZero: true },
   'protected-from-poison': { resistsDamageTypes: ['poison'] },
   // Кора не прибавляет к классу доспеха, а задаёт ему нижнюю границу: в тяжёлых
   // латах она бесполезна, а голому магу выправляет защиту до 16.
@@ -3967,14 +3969,22 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
  */
 function lingeringAreaDamage(state, command, effect, targetIdValue, { saved, diceService, rolls, trigger, resolveDamage }) {
   const expression = effect?.damage ? String(effect.damage) : null
-  if (!expression) return []
+  // Плоский урон зоны: у калтропов это ровно 1 колющего, у горящего масла — 5
+  // огнём. Катить ради этого кость нечестно — в редакции числа фиксированные.
+  const flat = Math.max(0, safeInteger(effect?.damage_amount, 0))
+  if (!expression && flat <= 0) return []
   const events = []
-  const damageRoll = diceService.roll(expression, `spell_area_damage:${effect.spell_id}`, String(effect.source_actor ?? command.actor_id), command.visibility ?? 'public')
-  rolls.push(damageRoll)
-  events.push(eventFrom(command, 'DieRolled', { ...damageRoll, spell_id: effect.spell_id, damage_type: effect.damage_type ?? 'force' }, []))
+  const damageRoll = expression
+    ? diceService.roll(expression, `spell_area_damage:${effect.spell_id}`, String(effect.source_actor ?? command.actor_id), command.visibility ?? 'public')
+    : null
+  if (damageRoll) {
+    rolls.push(damageRoll)
+    events.push(eventFrom(command, 'DieRolled', { ...damageRoll, spell_id: effect.spell_id, damage_type: effect.damage_type ?? 'force' }, []))
+  }
+  const total = damageRoll ? damageRoll.total : flat
   const raw = saved
-    ? (effect.half_on_save === true ? Math.floor(damageRoll.total / 2) : 0)
-    : damageRoll.total
+    ? (effect.half_on_save === true ? Math.floor(total / 2) : 0)
+    : total
   if (raw <= 0) return events
   const payload = resolveDamage(state, targetIdValue, raw, String(effect.damage_type ?? 'force'))
   events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, spell_id: effect.spell_id, area_effect: true, trigger, saved }, [targetIdValue]))
@@ -4128,15 +4138,104 @@ function thrownFlaskEvents(state, command, { actor, item, use, diceService, roll
   if (use.on_hit_condition) {
     events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
       condition: String(use.on_hit_condition.id),
-      duration: null,
+      duration: use.on_hit_condition.duration ?? null,
       source_actor: command.actor_id,
       item_id: item.id,
       item_name: item.name,
-      recurring_damage: String(use.on_hit_condition.recurring_damage),
-      recurring_damage_type: String(use.on_hit_condition.recurring_damage_type ?? 'fire'),
+      ...(use.on_hit_condition.recurring_damage ? {
+        recurring_damage: String(use.on_hit_condition.recurring_damage),
+        recurring_damage_type: String(use.on_hit_condition.recurring_damage_type ?? 'fire'),
+      } : {}),
+      ...(use.on_hit_condition.fire_damage_bonus ? { fire_damage_bonus: safeInteger(use.on_hit_condition.fire_damage_bonus, 0) } : {}),
     }, [targetId]))
   }
   return events
+}
+
+/**
+ * Рассыпанная зона: калтропы и лужа масла.
+ *
+ * Обе — обычные площадные эффекты, та же запись, что строит `CastSpell` и
+ * `burningPropEffect` из разбора «среда как оружие». Своей машинерии зон не
+ * заводится: тик по входу и по концу хода движок уже умеет, и правило
+ * «поджечь разлитое» работает существующей веткой `flammable`.
+ *
+ * Клетка приходит от игрока и потому проверяется сервером целиком: она обязана
+ * быть на карте, раскрытой, не стеной и в пределах дальности предмета.
+ */
+function spilledZoneEvents(state, command, { item, use }) {
+  const spill = command.use_mode === 'spill' ? use.spill_mode : use
+  const zone = spill?.zone
+  if (!zone) throw new RulesValidationError('У предмета нет серверного профиля рассыпания', 'ITEM_SPILL_NOT_AVAILABLE')
+  const from = actorPosition(state, command.actor_id)
+  const to = { x: Math.floor(Number(command.to?.x)), y: Math.floor(Number(command.to?.y)) }
+  if (!from) throw new RulesValidationError('Герой должен находиться на карте', 'MAP_POSITION_REQUIRED')
+  if (!Number.isFinite(to.x) || !Number.isFinite(to.y)) throw new RulesValidationError('Нужна клетка', 'INVALID_DESTINATION')
+  const cell = tacticalCellMap(state).get(`${to.x},${to.y}`)
+  if (!cell || cell.revealed === false || cell.type === 'wall') throw new RulesValidationError('В эту клетку нельзя высыпать предмет', 'INVALID_DESTINATION')
+  const rangeFeet = Math.max(5, safeInteger(spill.range_feet ?? use.range_feet, 5))
+  if (Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 > rangeFeet) {
+    throw new RulesValidationError('Клетка находится слишком далеко', 'ITEM_TARGET_OUT_OF_RANGE')
+  }
+  const identifier = `item-zone:${String(zone.id)}:${String(command.command_id).slice(0, 140)}`
+  const effect = {
+    id: identifier,
+    effect_id: identifier,
+    spell_id: `item:${String(zone.id)}`,
+    source_actor: String(command.actor_id),
+    center: to,
+    cells: [to],
+    area_shape: 'line',
+    radius_feet: 5,
+    difficult_terrain: false,
+    trigger_on_enter: true,
+    trigger_on_turn_end: zone.damage_amount != null || zone.damage != null,
+    save_ability: zone.save_ability ?? null,
+    save_dc: safeInteger(zone.save_dc, 10),
+    condition: zone.condition ?? null,
+    damage: zone.damage ?? null,
+    damage_amount: safeInteger(zone.damage_amount, 0),
+    damage_type: zone.damage_type ?? null,
+    half_on_save: false,
+    follows_source: false,
+    concentration: false,
+    item_id: String(item.id),
+    item_name: String(item.name),
+    // Лужа сама по себе безвредна: она только ждёт огня. Что из неё вырастает
+    // при поджоге, записано здесь же, чтобы ветка `flammable` не гадала.
+    ...(zone.flammable === true ? {
+      flammable: { damage: null, damageType: String(zone.burning_damage_type ?? 'fire') },
+      ignites_into: {
+        damage_amount: safeInteger(zone.burning_damage_amount, 5),
+        damage_type: String(zone.burning_damage_type ?? 'fire'),
+        rounds: Math.max(1, safeInteger(zone.burning_rounds, 2)),
+      },
+    } : {}),
+    expires_round: safeInteger(state.mechanics.combat.round, 1) + Math.max(1, safeInteger(zone.rounds, 10)),
+  }
+  return [eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SpellAreaCreated', { effect }, [])]
+}
+
+/**
+ * Яд на оружии: рифма к попаданию, а не отдельный урон. Возвращается в том же
+ * виде, что и добавки магических предметов, поэтому дальше считается общим
+ * путём — и иммунитет цели к яду обнуляет её сам, без единой особой строки.
+ */
+function weaponCoatingRiderFor(state, actorIdValue, itemId) {
+  const conditionId = `weapon-coated:${String(itemId ?? '')}`
+  const condition = (state.mechanics.conditions[String(actorIdValue ?? '')] ?? [])
+    .find((candidate) => String(candidate?.id ?? candidate) === conditionId)
+  if (!condition?.rider_damage) return null
+  return {
+    expression: String(condition.rider_damage),
+    damage_type: String(condition.rider_damage_type ?? 'poison'),
+    item_id: String(itemId),
+    item_name: String(condition.rider_source_name ?? 'Яд'),
+    catalog_id: null,
+    effect_id: conditionId,
+    critical_doubles: false,
+    condition_id: conditionId,
+  }
 }
 
 function deathSavingThrowAtTurnStart(state, command, actorIdValue, diceService) {
@@ -5423,7 +5522,22 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     return `combat:${safeInteger(combat.round, 1)}:${String(activeActor)}`
   }
 
+  const oiledTargets = new Set()
   const resolveDamagePayload = (sourceState, resolvedTargetId, rawAmount, damageType, existingResistance = null) => {
+    // Облитая маслом цель: следующий огненный урон в течение минуты сильнее на
+    // объявленное число. Прибавка идёт до защит — это модификатор урона, а
+    // сопротивление по SRD применяется после всех модификаторов.
+    if (String(damageType) === 'fire' && !oiledTargets.has(String(resolvedTargetId))) {
+      const oiled = (sourceState.mechanics.conditions[String(resolvedTargetId)] ?? [])
+        .find((candidate) => safeInteger(candidate?.fire_damage_bonus, 0) > 0)
+      if (oiled) {
+        oiledTargets.add(String(resolvedTargetId))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', {
+          condition: String(oiled.id), trigger: 'fire-damage',
+        }, [String(resolvedTargetId)]))
+        rawAmount = Math.max(0, safeInteger(rawAmount, 0)) + safeInteger(oiled.fire_damage_bonus, 0)
+      }
+    }
     if (existingResistance?.reduction > 0) return damagePayload(sourceState, resolvedTargetId, rawAmount, damageType, existingResistance)
     const preliminary = damagePayload(sourceState, resolvedTargetId, rawAmount, damageType)
     if (preliminary.immune || preliminary.applied_amount + preliminary.temporary_hp_absorbed <= 0) return preliminary
@@ -5790,9 +5904,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const attackCommand = commandWithRules(command, RULE_IDS.armorClass, advantage || disadvantage ? RULE_IDS.advantage : null, critical ? RULE_IDS.criticalHit : null)
       const configuredDamageExpression = profile?.damage_expression ?? command.damage_expression
       const damageType = profile?.damage_type ?? String(command.damage_type || 'untyped')
-      const itemDamageRiders = selectedProfile
-        ? weaponDamageRidersForItem(actor, selectedProfile.item.id, { selectedCountsAsEquipped: true })
-        : []
+      // Нанесённый яд — такая же добавка к попаданию, как зачарование предмета,
+      // поэтому едет тем же списком: отдельного пути для него не нужно.
+      const weaponCoatingRider = selectedProfile ? weaponCoatingRiderFor(state, command.actor_id, selectedProfile.item.id) : null
+      const itemDamageRiders = [
+        ...(selectedProfile ? weaponDamageRidersForItem(actor, selectedProfile.item.id, { selectedCountsAsEquipped: true }) : []),
+        ...(weaponCoatingRider ? [weaponCoatingRider] : []),
+      ]
       let damageOutcome = null
       // Перехваченный двойником удар не считается попаданием по цели: никакого
       // урона, никаких последствий попадания.
@@ -6033,6 +6151,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             catalog_id: rider.catalog_id,
             effect_id: rider.effect_id,
           })
+        }
+        // Доза расходуется первым же попаданием, которое нанесло урон.
+        if (weaponCoatingRider) {
+          events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.conditions), 'ConditionRemoved', {
+            condition: weaponCoatingRider.condition_id, trigger: 'weapon-hit',
+          }, [command.actor_id]))
         }
         if (secondaryDamage?.amount > 0 && finalPayload.hp_after > 0) {
           const secondaryPayload = applyKnockoutChoice(resolveDamagePayload(afterDamageState, targetId, secondaryDamage.amount, secondaryDamage.type))
@@ -7445,9 +7569,36 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SpellAreaRemoved', {
               effect_id: String(web.effect_id ?? web.id), spell_id: web.spell_id, reason: 'burned-away',
             }, []))
-            const burnExpression = String(web.flammable.damage ?? '2d4')
+            // Правило стола: разлитое масло не просто выгорает, а остаётся
+            // гореть. Что именно вырастает из лужи, объявлено самой записью —
+            // ветка не знает про масло ничего сверх этого.
+            if (web.ignites_into) {
+              const burningId = `${String(web.effect_id ?? web.id)}:burning`
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SpellAreaCreated', {
+                effect: {
+                  ...clone(web),
+                  id: burningId,
+                  effect_id: burningId,
+                  spell_id: `${String(web.spell_id)}:burning`,
+                  flammable: undefined,
+                  ignites_into: undefined,
+                  open_flame: true,
+                  trigger_on_enter: true,
+                  trigger_on_turn_end: true,
+                  save_ability: null,
+                  damage: null,
+                  damage_amount: safeInteger(web.ignites_into.damage_amount, 5),
+                  damage_type: String(web.ignites_into.damage_type ?? 'fire'),
+                  half_on_save: false,
+                  expires_round: safeInteger(state.mechanics.combat.round, 1) + Math.max(1, safeInteger(web.ignites_into.rounds, 2)),
+                },
+              }, []))
+            }
+            // Паутина вспыхивает и сразу жжёт стоящих в ней. Лужа масла — нет:
+            // она превращается в горящую зону, и урон приходит уже оттуда.
+            const burnExpression = web.flammable.damage ? String(web.flammable.damage) : web.ignites_into ? null : '2d4'
             let burnState = events.reduce(applyGameEvent, state)
-            for (const caught of listActors(burnState).filter((candidate) => isLivingActor(candidate) && positionInEffect(burnState, actorPosition(burnState, actorId(candidate)), web))) {
+            for (const caught of (burnExpression ? listActors(burnState) : []).filter((candidate) => isLivingActor(candidate) && positionInEffect(burnState, actorPosition(burnState, actorId(candidate)), web))) {
               const caughtId = actorId(caught)
               const burnRoll = diceService.roll(burnExpression, `spell_area_burn:${web.spell_id}`, command.actor_id, command.visibility ?? 'public')
               rolls.push(burnRoll)
@@ -9765,9 +9916,24 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           item_name: item.name,
         }, [command.target_id]))
       }
-      if (use.kind === 'thrown_flask') events.push(...thrownFlaskEvents(state, command, {
+      if (use.kind === 'thrown_flask' && command.use_mode !== 'spill') events.push(...thrownFlaskEvents(state, command, {
         actor, item, use, diceService, rolls, resolveDamage: resolveDamagePayload,
       }))
+      if (use.kind === 'spill_zone' || (use.kind === 'thrown_flask' && command.use_mode === 'spill')) {
+        events.push(...spilledZoneEvents(state, command, { item, use }))
+      }
+      if (use.kind === 'coat_weapon') {
+        const weapon = (actor?.inventory ?? []).find((candidate) => String(candidate?.id) === String(command.weapon_id ?? ''))
+        if (!weapon?.combat || weapon.type !== 'weapon') throw new RulesValidationError('Яд наносится на оружие из инвентаря героя', 'INVALID_WEAPON')
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+          condition: `weapon-coated:${String(weapon.id)}`,
+          duration: String(use.duration ?? 'rounds:10'),
+          source_actor: command.actor_id,
+          rider_damage: String(use.rider_damage),
+          rider_damage_type: String(use.rider_damage_type ?? 'poison'),
+          rider_source_name: String(item.name),
+        }, [command.actor_id]))
+      }
       if (safeInteger(use.consumes, 0) > 0) {
         events.push(eventFrom(command, 'ItemConsumed', {
           item_id: item.id,
@@ -10778,6 +10944,12 @@ export function applyGameEvent(rawState, event) {
         start_turn_save: payload.start_turn_save ?? null,
         recurring_damage: payload.recurring_damage ?? null,
         recurring_damage_type: payload.recurring_damage_type ?? null,
+        // Добавка к следующему попаданию: нанесённый на оружие яд.
+        rider_damage: payload.rider_damage ?? null,
+        rider_damage_type: payload.rider_damage_type ?? null,
+        rider_source_name: payload.rider_source_name ?? null,
+        // Прибавка к следующему огненному урону: облитая маслом цель.
+        fire_damage_bonus: payload.fire_damage_bonus ?? null,
         escape_check_ability: payload.escape_check_ability ?? null,
         temporary_hp_amount: payload.temporary_hp_amount ?? null,
         check_total: payload.check_total ?? null,
