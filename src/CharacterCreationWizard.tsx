@@ -125,9 +125,15 @@ function SpeciesEmblem({ speciesId, label }: { speciesId: string; label: string 
 }
 
 function ClassEmblem({ classId }: { classId: string }) {
+  const [failed, setFailed] = useState(false)
   const glyph = CLASS_EMBLEMS[classId]
-  if (!glyph) return null
-  return <svg className="class-emblem" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{glyph}</svg>
+  return <span className="class-emblem" aria-hidden="true">
+    {!failed
+      ? <img src={`/assets/ui/class-icons/${classId}.webp`} alt="" loading="eager" decoding="async" onError={() => setFailed(true)} />
+      : glyph
+        ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{glyph}</svg>
+        : null}
+  </span>
 }
 
 /** Ведущая характеристика класса — куда случайный герой кладёт лучшее значение. */

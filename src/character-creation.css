@@ -50,7 +50,12 @@
 .creation-card-grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
 .creation-card-grid button{min-height:150px;grid-template-columns:52px 1fr;align-content:start;gap:4px 14px;padding:18px}
 .creation-card-grid button>svg,.creation-card-grid .class-emblem{grid-row:1/3;width:52px;height:52px;align-self:center;color:#c08e55}
-.creation-card-grid button.selected .class-emblem{color:#eec894}
+.creation-card-grid .class-emblem{display:block;overflow:hidden;border:1px solid rgba(211,160,97,.3);border-radius:9px;background:#100e0c;box-shadow:0 5px 16px rgba(0,0,0,.32)}
+.creation-card-grid .class-emblem img,.creation-card-grid .class-emblem svg{display:block;width:100%;height:100%}
+.creation-card-grid .class-emblem img{object-fit:cover;transition:filter .18s ease,transform .18s ease}
+.creation-card-grid .class-emblem svg{box-sizing:border-box;padding:9px}
+.creation-card-grid button.selected .class-emblem{border-color:#e2b879;color:#eec894;box-shadow:0 0 0 1px rgba(226,184,121,.2),0 7px 20px rgba(0,0,0,.42)}
+.creation-card-grid button.selected .class-emblem img{filter:brightness(1.14) saturate(1.08);transform:scale(1.035)}
 .creation-card-grid strong{font-size:var(--fs-3xl)}
 .creation-card-grid small{color:#93867a}
 
@@ -142,3 +147,26 @@
 .creation-species .species-art span{width:100%;height:100%;display:grid;place-items:center;color:#c8a06a;font:600 var(--fs-2xl) Spectral,serif}
 .creation-species b{color:#e2c69f;font:600 var(--fs-lg) Spectral,serif}
 .creation-species small{color:#8a7d6f;font:500 var(--fs-xxs) Manrope,sans-serif}
+
+/* Широкие правила выше идут после исторического mobile media query. Повторяем
+   итоговую мобильную геометрию в конце каскада, чтобы мастер не сохранял
+   desktop-колонки и минимальную ширину карточек на узком экране. */
+@media(max-width:760px){
+  .character-creation-backdrop{padding:0}
+  .character-creation-wizard{width:100%;height:100dvh;border-radius:0;grid-template:64px 58px minmax(0,1fr) 68px/minmax(0,1fr)}
+  .character-creation-wizard>header{grid-column:1;padding:0 14px}
+  .character-creation-wizard>header h2{font-size:var(--fs-2xl)}
+  .character-creation-wizard>nav{grid-row:2;min-width:0;flex-direction:row;overflow-x:auto;padding:7px;border-right:0;border-bottom:1px solid rgba(255,255,255,.06)}
+  .character-creation-wizard>nav button{min-width:42px;grid-template-columns:1fr;padding:5px}
+  .character-creation-wizard>nav button span{display:none}
+  .character-creation-wizard>main{grid-row:3;min-width:0;padding:14px}
+  .character-creation-wizard>footer{grid-column:1;grid-row:4;gap:6px;padding:0 10px}
+  .character-creation-wizard>footer>div{display:none}
+  .character-creation-wizard>footer button{padding:0 10px}
+  .creation-card-grid,.creation-abilities>div,.creation-spells section>div{grid-template-columns:minmax(0,1fr)}
+  .creation-card-grid{gap:8px}
+  .creation-card-grid button{min-width:0;min-height:0;grid-template-columns:56px minmax(0,1fr);gap:2px 12px;padding:11px 12px}
+  .creation-card-grid button>svg,.creation-card-grid .class-emblem{width:56px;height:56px}
+  .creation-form.identity{grid-template-columns:1fr}
+  .creation-form.identity label:first-child,.creation-form.identity .creation-summary{grid-column:1}
+}

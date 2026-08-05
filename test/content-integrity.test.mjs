@@ -19,7 +19,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 2 дорожки музыки мастеров создания мира и героя.
   // Число сторожит именно неожиданный приход и уход ассетов, поэтому меняется
   // вместе с осознанным пополнением набора.
-  assert.equal(report.integrity.assets, 1231)
+  // + 12 рисованных эмблем классов (`public/assets/ui/class-icons/*.webp`).
+  assert.equal(report.integrity.assets, 1243)
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 
