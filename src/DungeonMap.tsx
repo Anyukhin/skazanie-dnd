@@ -32,7 +32,7 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
+import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
@@ -144,6 +144,7 @@ export const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
 export const TILE_ROWS_KEY = 'skazanie-tile-rows-v1'
 export const TILE_LOCK_KEY = 'skazanie-tiles-locked-v1'
 export const TILE_ORDER_KEY = 'skazanie-tile-order-v1'
+export const MAP_LEGEND_KEY = 'skazanie-map-legend-open-v1'
 export const BASE_ATTACK_ID = '__base-attack__'
 export const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
   inspect: 'Осмотреть',
@@ -604,7 +605,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -626,6 +627,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
   onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => Promise<CommandOutcome>
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => Promise<CommandOutcome>
+  onUseLevelTransition: (actorId: string, propId: string) => Promise<CommandOutcome>
+  onLeaveLocation: () => void
   onOpenMerchant: (merchantId: string) => void
   onFinishTurn: () => Promise<CommandOutcome>
   onFreeAction: (text: string) => Promise<CommandOutcome>
@@ -687,6 +690,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     try { return JSON.parse(window.localStorage.getItem(TILE_ORDER_KEY) ?? '{}') as Record<string, string[]> } catch { return {} }
   })
   const [draggedTileId, setDraggedTileId] = useState<string | null>(null)
+  /* Легенда доски свёрнута по умолчанию: она нужна новичку и первому вечеру, а
+     дальше только занимает угол стола. Своё состояние она помнит между
+     сессиями — тем же способом, что высота панели и раскладка плиток. */
+  const [legendOpen, setLegendOpen] = useState(() => window.localStorage.getItem(MAP_LEGEND_KEY) === 'open')
   const [hoveredDoorId, setHoveredDoorId] = useState<string | null>(null)
   const [selectedSceneObjectId, setSelectedSceneObjectId] = useState<string | null>(null)
   const [hoveredSceneObjectId, setHoveredSceneObjectId] = useState<string | null>(null)
@@ -752,7 +759,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const { columns: cellColumns, rows: cellRows } = mapGridDimensions(state.scene.cells)
   // Канон сцены — `scene.map`; старая проекция без него собирается из клеток.
   const boardMap = useMemo(() => sceneTacticalMap(state.scene), [state.scene])
-  useEffect(() => setSelectedSceneObjectId(null), [boardMap?.locationId])
+  // Этаж входит в сброс наравне с локацией: лестница, у которой стоял герой,
+  // на новом этаже не существует, а идентификаторы предметов у карт свои.
+  useEffect(() => setSelectedSceneObjectId(null), [boardMap?.locationId, boardMap?.levelIndex])
   const columns = boardMap?.width ?? cellColumns
   const rows = boardMap?.height ?? cellRows
   const irregularMap = state.scene.cells.length < columns * rows
@@ -1010,6 +1019,23 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const selectedSceneObject = interactiveSceneObjects.find((prop) => prop.id === selectedSceneObjectId) ?? null
   const selectedSceneObjectAtHand = Boolean(selectedSceneObject && sceneObjectsAtHand.some((prop) => prop.id === selectedSceneObject.id))
   const selectedSceneObjectVerbs = selectedSceneObject ? sceneObjectVerbs(selectedSceneObject) : []
+  /* Этажи локации (`docs/multilevel-map-plan.md`, раздел 6). Номер активного
+     этажа приходит проекцией; у старой кампании его нет, и это этаж входа. */
+  const sceneLevelIndex = Number(state.scene.level?.index ?? boardMap?.levelIndex ?? 0) || 0
+  const knownSceneLevels = state.scene.levels ?? []
+  const levelStackRows = levelIndicatorRows(knownSceneLevels, sceneLevelIndex)
+  /* Кнопка перехода живёт у выбранного предмета, а не отдельным списком:
+     лестница — такой же объект сцены, и решение «куда веду» уже приехало в
+     `transition`. Далеко или бой — кнопка видна, но закрыта с причиной. */
+  const selectedLevelTransition = selectedSceneObject?.transition
+    ? levelTransitionPresentation({
+        transition: selectedSceneObject.transition,
+        currentLevel: sceneLevelIndex,
+        levels: knownSceneLevels,
+        atHand: selectedSceneObjectAtHand,
+        combatActive,
+      })
+    : null
   const sceneObjectByCell = new Map<string, TacticalProp>()
   for (const prop of [...interactiveSceneObjects].sort((left, right) => left.zOrder - right.zOrder)) {
     for (const cell of sceneObjectCells(prop)) sceneObjectByCell.set(boardPositionKey(cell.x, cell.y), prop)
@@ -1385,6 +1411,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     }) : null
     const cellKey = cell.x + ',' + cell.y
     const sceneObject = sceneObjectByCell.get(cellKey)
+    /* Тултип лестницы (`docs/multilevel-map-plan.md`, 7.4). Кнопка перехода
+       появляется только у подошедшего вплотную персонажа, а «куда ведёт эта
+       лестница» игрок спрашивает раньше — наведением с другого конца зала. */
+    const sceneObjectHint = [sceneObject ? `Выбрать: ${sceneObjectLabel(sceneObject)}` : '',
+      levelTransitionHint(sceneObject?.transition, knownSceneLevels) ?? ''].filter(Boolean).join(' · ')
     const canMoveHere = reachable.has(cellKey)
     const route = movementPaths.get(cellKey)
     const moveReason = active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null
@@ -1412,7 +1443,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         : canMoveHere
           ? `Маршрут для ${activeName}: ${route?.costFeet ?? 0} футов${opportunityRisk ? '. Это спровоцирует атаку по возможности' : ''}`
           : sceneObject
-            ? `Выбрать: ${sceneObjectLabel(sceneObject)}`
+            ? sceneObjectHint
             : moveReason ?? undefined
     const enemyKind = enemy ? enemyVisualKind(enemy) : null
     const enemyHealth = enemy ? enemyHealthPresentation(enemy) : null
@@ -1487,9 +1518,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           tabIndex={0}
           className="scene-object-hotspot"
           data-selected={sceneObject.id === selectedSceneObjectId ? 'true' : undefined}
-          aria-label={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
+          aria-label={sceneObjectHint}
           aria-pressed={sceneObject.id === selectedSceneObjectId}
-          title={`Выбрать: ${sceneObjectLabel(sceneObject)}`}
+          title={sceneObjectHint}
           onPointerDown={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
           onPointerEnter={() => setHoveredSceneObjectId(sceneObject.id)}
@@ -1828,16 +1859,30 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         animationsEnabled={combatAnimations}
         conditions={state.mechanics?.conditions}
         conditionVersion={state.state_version}
+        levelIndex={sceneLevelIndex}
         onBackgroundActivate={() => setOpenTokenLabelId(null)}
         decoration={trajectory
           ? <svg className="projectile-trajectory" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} /></svg>
           : null}
       />
       <div className="map-scale-plate">1 клетка = 5 футов</div>
+      {/* Индикатор этажей: появляется только там, где партия знает больше
+          одного этажа. Не кликабельный — вид всегда следует за партией. */}
+      {levelStackRows.length > 0 && <div className="map-level-stack" role="status" aria-label="Известные этажи локации">
+        {levelStackRows.map((row) => <span key={row.index} className={row.active ? 'active' : ''} aria-current={row.active ? 'true' : undefined}>{row.label}</span>)}
+      </div>}
       {/* Режим стоит над полем по центру: он описывает то, что происходит на
           карте, и читается раньше, чем взгляд уходит к панели действий. */}
       {!combatActive && <div className="map-mode-plate" role="status">Исследование</div>}
-      <details className="map-legend">
+      <details
+        className="map-legend"
+        open={legendOpen}
+        onToggle={(event) => {
+          const open = (event.currentTarget as HTMLDetailsElement).open
+          setLegendOpen(open)
+          window.localStorage.setItem(MAP_LEGEND_KEY, open ? 'open' : 'closed')
+        }}
+      >
         <summary><HelpCircle size={13} />Легенда доски</summary>
         <div>
           <span><i className="legend-dot party" />Отряд</span>
@@ -1850,6 +1895,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <span><i className="legend-mark concentration">К</i>Концентрация владельца</span>
           <span><i className="legend-mark elevation">+5</i>Высота в футах</span>
           <span><i className="legend-mark cover">½</i>Укрытие от линии огня</span>
+          {/* Поверхности: цвета повторяют SURFACE_COLORS из src/board-render.ts —
+              по ним игрок читает, где вода, где лёд, а где месиво. */}
+          <span><i className="legend-swatch surface-water" />Вода · движение вдвое дороже</span>
+          <span><i className="legend-swatch surface-ice" />Лёд · проверка на падение</span>
+          <span><i className="legend-swatch surface-mud" />Грязь · трудная местность</span>
+          <span><i className="legend-swatch surface-rubble" />Щебень · трудная местность</span>
+          <span><i className="legend-mark stairs">⇅</i>Лестница или люк · переход между этажами</span>
         </div>
       </details>
       {/* Остаток хода стоит у нижней кромки стола, а не над панелью действий:
@@ -2145,12 +2197,26 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       <section className={`tactical-control combat-hotbar ${combatActive ? '' : 'out-of-combat'}`} aria-label={combatActive ? `Панель боевых действий: ${activeName}` : `Панель действий вне боя: ${activeName}`}>
         {/* Ряд рисуется только со своим содержимым: остаток хода уехал под стол,
             и в бою здесь не остаётся ничего, кроме пустой полосы отступов. */}
-        {showStartCombat && !combatActive && <div className="hotbar-controls-row">
+        {!combatActive && <div className="hotbar-controls-row">
           <div className="hotbar-exploration-note">
             {/* Сам режим переехал на поле, по центру сверху: он относится к карте,
-                а не к панели действий. Здесь остался только вход в бой, и пустой
-                коробки без него не остаётся. */}
-            <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>
+                а не к панели действий. Здесь остались вход в бой и выход из
+                локации — два решения, которые не выражаются плиткой действия.
+
+                Уход показывается всегда вне боя, в том числе когда противников в
+                сцене не осталось: именно тогда уйти и хочется, а прежде ряд без
+                кнопки боя не рисовался вовсе. Отряд она не уводит — открывает
+                голосование, а переход исполняет сервер по его результату. Замок
+                тот же, что у свободного ввода вне боя, и не строже: кнопка — ярлык
+                к той же фразе, и запирать её там, где те же слова можно набрать
+                руками, не за что. */}
+            <button
+              className="exploration-leave-location"
+              disabled={narrating || tacticalBusy}
+              onClick={onLeaveLocation}
+              title="Предложить отряду покинуть локацию. Переход начнётся после решения группы"
+            ><DoorOpen size={22} /><span><small>Решение группы</small><strong>Покинуть локацию</strong></span></button>
+            {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
           </div>
         </div>}
         <div className="hotbar-main">
@@ -2218,7 +2284,23 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 <span>{label}</span>
               </button>
             })}
-            {selectedSceneObject && selectedSceneObjectVerbs.length === 0 && <button type="button" className="scene-object-control" disabled title="Сервер не открыл доступных действий для этого объекта"><span>Нет доступных действий</span></button>}
+            {/* Куда ведёт выбранная лестница — строкой, а не только надписью
+                кнопки: кнопка закрыта в бою и вдали, а знать назначение
+                перехода игрок вправе всегда. */}
+            {selectedSceneObject?.transition && <span className="scene-object-lead">
+              {levelTransitionHint(selectedSceneObject.transition, knownSceneLevels)}
+            </span>}
+            {selectedSceneObject && selectedLevelTransition && <button
+              type="button"
+              className={`scene-object-control level-transition ${selectedLevelTransition.direction}`}
+              disabled={!canAct || tacticalBusy || selectedLevelTransition.disabled}
+              onClick={() => selected && onUseLevelTransition(selected, selectedSceneObject.id)}
+              title={selectedLevelTransition.title}
+            >
+              <CombatIcon id={`level-transition-${selectedLevelTransition.direction}`} kind="swap" hint={`${selectedLevelTransition.direction === 'up' ? 'подняться' : 'спуститься'} лестница этаж`} size={27} compact />
+              <span>{selectedLevelTransition.label}</span>
+            </button>}
+            {selectedSceneObject && selectedSceneObjectVerbs.length === 0 && !selectedLevelTransition && <button type="button" className="scene-object-control" disabled title="Сервер не открыл доступных действий для этого объекта"><span>Нет доступных действий</span></button>}
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
             {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}

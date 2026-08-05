@@ -3,8 +3,8 @@ import type { BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
   DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
-  type BoardEffectRenderer, type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture, type PropAtlas,
-  type TerrainTiles, type TileSurface,
+  type BoardEffectRenderer, type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture,
+  type BoardViewport, type PropAtlas, type TerrainTiles, type TileSurface,
 } from './board-render'
 import {
   COMBAT_ANIMATION_QUEUE_LIMIT,
@@ -17,7 +17,16 @@ import {
   createSpellEffectBudgetController,
   createSpellEffectRenderer,
   isSpellAnimationCue,
+  systemPrefersReducedMotion,
 } from './spell-effects'
+import {
+  DOOR_SWING_MS,
+  ambientFrameWanted,
+  drawAmbientEffects,
+  hasAmbientMotion,
+  type BoardDoorSwing,
+} from './board-ambient'
+import { boardCameraKey } from './tactical-ui'
 import './tactical-board.css'
 
 /**
@@ -35,6 +44,13 @@ import './tactical-board.css'
 const MAX_CANVAS_SIDE = 8192
 /** Reduced motion сохраняет статический акцент, но не растягивает пакет дольше 1,8 с. */
 const REDUCED_MOTION_SPELL_CUE_MS = 120
+
+/**
+ * Кроссфейд при смене этажа (`docs/multilevel-map-plan.md`, 6.4). Держится
+ * ровно столько, сколько идёт CSS-анимация: класс снимается по таймеру, и
+ * постоянного rAF-цикла у доски не появляется.
+ */
+const LEVEL_CROSSFADE_MS = 400
 
 /**
  * Манифест растровых штампов предметов. Собирается `pnpm props:atlas`; его
@@ -202,12 +218,17 @@ type BoardConditionState = Record<string, Array<{ id: string }>>
  *
  * Память намеренно только на время сессии: переживать перезагрузку страницы
  * камере незачем, а `sessionStorage` пришлось бы ещё и разбирать при чтении.
+ *
+ * Ключ составной: локация плюс этаж (`boardCameraKey`). Партия ходит по
+ * лестнице внутри одной локации, и без номера этажа подвал наследовал бы
+ * камеру зала — вид уезжал бы в пустоту за краем меньшей карты.
  */
 const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: number } }>()
 
 export function TacticalBoard({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
   effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
+  levelIndex = 0,
 }: {
   map: TacticalMap | null
   columns: number
@@ -235,8 +256,10 @@ export function TacticalBoard({
   conditions?: BoardConditionState
   conditionVersion?: number
   onBackgroundActivate?: () => void
+  /** Активный этаж локации: своя камера и кроссфейд при смене. */
+  levelIndex?: number
 }) {
-  const cameraKey = map?.locationId || 'нет карты'
+  const cameraKey = boardCameraKey(map?.locationId, levelIndex)
   const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
   const [hoverCell, setHoverCell] = useState<{ x: number; y: number } | null>(null)
   const [pan, setPan] = useState(() => cameraByLocation.get(cameraKey)?.pan ?? { x: 0, y: 0 })
@@ -253,6 +276,27 @@ export function TacticalBoard({
     setZoom(saved?.zoom ?? 1)
     setPan(saved?.pan ?? { x: 0, y: 0 })
   }, [cameraKey])
+
+  /*
+   * Кроссфейд этажа сделан CSS-анимацией самой рамки доски, а не снимком
+   * холста поверх нового (вариант из 6.4 плана). Причина в том, что вместе с
+   * этажом меняется размер карты: снимок пришлось бы держать на отдельном
+   * холсте своей геометрии, тянуть его через смену `columns`/`rows` и следить,
+   * чтобы он лёг раньше первой отрисовки нового пола. CSS-анимация не знает
+   * ни о карте, ни о тайловом кэше, живёт ровно 400 мс и не заводит rAF-цикла
+   * — а видно то же самое: старый пол растворяется, новый приходит со сдвигом
+   * по вертикали.
+   */
+  const [levelShift, setLevelShift] = useState<'up' | 'down' | null>(null)
+  const lastLevelIndex = useRef(levelIndex)
+  useEffect(() => {
+    if (lastLevelIndex.current === levelIndex) return
+    const direction: 'up' | 'down' = levelIndex > lastLevelIndex.current ? 'up' : 'down'
+    lastLevelIndex.current = levelIndex
+    setLevelShift(direction)
+    const timer = setTimeout(() => setLevelShift(null), LEVEL_CROSSFADE_MS)
+    return () => clearTimeout(timer)
+  }, [levelIndex])
 
   const frameRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -339,6 +383,29 @@ export function TacticalBoard({
     }
   }, [map, terrain, artUrl])
 
+  /**
+   * Видимое окно в координатах клеток. Холст лежит внутри трансформированного
+   * полотна, поэтому окно считается по фактическим экранным прямоугольникам, а
+   * не по панораме и зуму. Его спрашивают оба потребителя — отрисовка тайлов и
+   * живой слой эффектов, — и второй копии этой арифметики быть не должно.
+   */
+  const viewportInCells = useCallback((): BoardViewport => {
+    const frame = frameRef.current
+    const fallback = { x: 0, y: 0, width: columns, height: rows }
+    if (!frame) return fallback
+    const frameRect = frame.getBoundingClientRect()
+    const stage = frame.closest('.map-stage') ?? frame.parentElement
+    const stageRect = stage?.getBoundingClientRect()
+    const screenCell = frameRect.width / Math.max(1, columns)
+    if (!stageRect || screenCell <= 0) return fallback
+    return {
+      x: (stageRect.left - frameRect.left) / screenCell,
+      y: (stageRect.top - frameRect.top) / screenCell,
+      width: stageRect.width / screenCell,
+      height: stageRect.height / screenCell,
+    }
+  }, [columns, rows])
+
   const paint = useCallback(() => {
     const canvas = canvasRef.current
     const frame = frameRef.current
@@ -355,22 +422,7 @@ export function TacticalBoard({
     const scene = boardScene(cellSize)
     if (!scene) return
 
-    // Видимое окно в координатах клеток: холст лежит внутри трансформированного
-    // полотна, поэтому окно считается по фактическим экранным прямоугольникам.
-    const frameRect = frame.getBoundingClientRect()
-    const stage = frame.closest('.map-stage') ?? frame.parentElement
-    const stageRect = stage?.getBoundingClientRect()
-    const screenCell = frameRect.width / Math.max(1, columns)
-    const view = stageRect && screenCell > 0
-      ? {
-          x: (stageRect.left - frameRect.left) / screenCell,
-          y: (stageRect.top - frameRect.top) / screenCell,
-          width: stageRect.width / screenCell,
-          height: stageRect.height / screenCell,
-        }
-      : { x: 0, y: 0, width: columns, height: rows }
-
-    const tiles = visibleTiles(map, view)
+    const tiles = visibleTiles(map, viewportInCells())
     const { entries } = syncTileCache(cacheRef.current, scene, tiles, createTileSurface)
     context.clearRect(0, 0, canvas.width, canvas.height)
     for (const entry of entries) {
@@ -383,7 +435,7 @@ export function TacticalBoard({
     drawBoardOverlay(context, scene, overlayCells)
     drawBoardEffects(context, scene, effectRenderers ?? [])
     drawMapDecorations(context, scene)
-  }, [map, columns, rows, cellPixels, zoom, overlayCells, effectRenderers, assetsVersion, boardScene])
+  }, [map, columns, rows, cellPixels, zoom, overlayCells, effectRenderers, assetsVersion, boardScene, viewportInCells])
 
   useEffect(() => { paint() }, [paint, pan.x, pan.y])
 
@@ -729,6 +781,79 @@ export function TacticalBoard({
     }
   }, [activeAnimation, clearEffectsCanvas, prepareEffectsContext])
 
+  /*
+   * Живой слой доски (`docs/multilevel-map-plan.md`, 7.3): мерцание огня,
+   * блики воды и поворот створки. Он делит холст эффектов с боевой анимацией и
+   * потому **не заводит второго цикла**: пока идёт боевой пакет, канвасом
+   * владеет он один, а живой слой спит. Иначе два `requestAnimationFrame`
+   * чистили бы один и тот же буфер по очереди и гасили друг друга.
+   */
+  const doorSwingsRef = useRef<BoardDoorSwing[]>([])
+  const [ambientTick, setAmbientTick] = useState(0)
+  const doorStateSignature = (map?.doors ?? []).map((door) => `${door.id}:${door.state}`).join(',')
+  const previousDoorStates = useRef(new Map<string, string>())
+  useEffect(() => {
+    const next = new Map((map?.doors ?? []).map((door) => [door.id, String(door.state)]))
+    const changed = [...next].filter(([id, state]) => (
+      previousDoorStates.current.has(id) && previousDoorStates.current.get(id) !== state
+    ))
+    previousDoorStates.current = next
+    if (!changed.length) return
+    const startedAt = performance.now()
+    doorSwingsRef.current = [
+      ...doorSwingsRef.current,
+      ...changed.map(([doorId, state]) => ({ doorId, state, startedAt } as BoardDoorSwing)),
+    ]
+    // Тик будит цикл: сама смена состояния двери на видимость огня и воды не
+    // влияет, и без него створка осталась бы неанимированной на тихой карте.
+    setAmbientTick((value) => value + 1)
+  }, [doorStateSignature, map])
+
+  useEffect(() => {
+    // Канвас занят боевой анимацией — живой слой ждёт своей очереди и холст за
+    // собой не чистит: боевой цикл чистит его сам на каждом кадре.
+    if (activeAnimation) return
+    if (!map || cellPixels <= 0) return
+    if (animationsEnabled === false || systemPrefersReducedMotion()) {
+      doorSwingsRef.current = []
+      clearEffectsCanvas()
+      return
+    }
+    if (!hasAmbientMotion(map, viewportInCells()) && !doorSwingsRef.current.length) {
+      clearEffectsCanvas()
+      return
+    }
+
+    let frameHandle = 0
+    let cancelled = false
+    const frame = (now: number) => {
+      if (cancelled) return
+      const prepared = prepareEffectsContext()
+      if (!prepared) return
+      doorSwingsRef.current = doorSwingsRef.current.filter((swing) => now - swing.startedAt < DOOR_SWING_MS)
+      const options = { timeMs: now, view: viewportInCells(), doorSwings: doorSwingsRef.current }
+      prepared.context.clearRect(0, 0, prepared.canvas.width, prepared.canvas.height)
+      drawAmbientEffects(prepared.context, prepared.scene, options)
+      // Движение кончилось — цикл засыпает, а не крутится вхолостую.
+      if (!ambientFrameWanted(map, options)) {
+        clearEffectsCanvas()
+        return
+      }
+      frameHandle = requestAnimationFrame(frame)
+    }
+    frameHandle = requestAnimationFrame(frame)
+    // Перезапуск от панорамы и зума холст не чистит: ближайший же кадр чистит
+    // его сам, а лишний `clearRect` дал бы мигание прямо во время
+    // перетаскивания карты.
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frameHandle)
+    }
+  }, [
+    map, cellPixels, zoom, pan.x, pan.y, activeAnimation, animationsEnabled, ambientTick,
+    prepareEffectsContext, viewportInCells, clearEffectsCanvas,
+  ])
+
   const cellFromPoint = useCallback((clientX: number, clientY: number) => {
     const frame = frameRef.current
     if (!frame) return null
@@ -871,7 +996,7 @@ export function TacticalBoard({
     >
       <div
         ref={frameRef}
-        className={`board-frame ${irregular ? 'irregular' : ''}`}
+        className={`board-frame ${irregular ? 'irregular' : ''} ${levelShift ? `level-change-${levelShift}` : ''}`}
         style={{ width: `calc(var(--cell) * ${columns})`, height: `calc(var(--cell) * ${rows})` }}
       >
         <canvas ref={canvasRef} className="board-canvas" aria-hidden="true" />

@@ -16,6 +16,24 @@ export const WORLD_MEMORY_COMMAND_TYPES = new Set([
   'RecordNpcBelief', 'RecordRumor', 'ResolveEpistemicClaim', 'RecordNarrativeSummary',
 ])
 
+/** Закрытые статусы квеста: изменять часы и разрешать повторно уже нельзя. */
+export const CLOSED_QUEST_STATUSES = Object.freeze(['completed', 'failed', 'abandoned'])
+
+/**
+ * Статус квеста по исходу его развязки. Одна таблица на команду, на событие и на
+ * проектор: раньше отображение было записано трижды выражением
+ * `outcome === 'success' ? 'completed' : 'failed'`, и третий исход в него не
+ * помещался.
+ *
+ * @param {unknown} outcome
+ * @returns {'completed'|'failed'|'abandoned'}
+ */
+export function questStatusForOutcome(outcome) {
+  if (outcome === 'success') return 'completed'
+  if (outcome === 'abandoned') return 'abandoned'
+  return 'failed'
+}
+
 export class WorldMemoryValidationError extends Error {
   constructor(message, code = 'WORLD_MEMORY_INVALID') {
     super(message)
@@ -409,9 +427,14 @@ export function validateWorldMemoryCommand(command, state, context = {}) {
     const quest = memory.quests.find((item) => item.id === result.quest_id)
     if (!quest) throw new WorldMemoryValidationError('Квест не найден', 'WORLD_QUEST_NOT_FOUND')
     if (quest.status !== 'active') throw new WorldMemoryValidationError('Разрешить можно только активный квест', 'WORLD_QUEST_CLOSED')
-    if (quest.clock?.triggered !== true) throw new WorldMemoryValidationError('Квест нельзя разрешить до заполнения его часов', 'WORLD_QUEST_CLOCK_NOT_TRIGGERED')
     result.outcome = text(command.outcome, 20)
-    if (!['success', 'failure'].includes(result.outcome)) throw new WorldMemoryValidationError('Исход квеста должен быть success или failure', 'WORLD_QUEST_OUTCOME_INVALID')
+    if (!['success', 'failure', 'abandoned'].includes(result.outcome)) throw new WorldMemoryValidationError('Исход квеста должен быть success, failure или abandoned', 'WORLD_QUEST_OUTCOME_INVALID')
+    // Отказ — единственный исход, не требующий заполненных часов: отряд закрывает
+    // нить своим решением, а не её развязкой. Успех и провал по-прежнему
+    // наступают только тогда, когда часы дошли до конца.
+    if (result.outcome !== 'abandoned' && quest.clock?.triggered !== true) {
+      throw new WorldMemoryValidationError('Квест нельзя разрешить до заполнения его часов', 'WORLD_QUEST_CLOCK_NOT_TRIGGERED')
+    }
     result.summary = text(command.summary, 1_000)
     if (!result.summary) throw new WorldMemoryValidationError('Развязка квеста требует подтверждённого итога', 'WORLD_QUEST_RESOLUTION_REQUIRED')
     result.next_objective = text(command.next_objective, 300)
@@ -466,10 +489,14 @@ export function worldMemoryEvent(command) {
   if (command.command_type === 'ResolveQuest') return { event_type: 'QuestResolved', payload: {
     quest_id: command.quest_id,
     outcome: command.outcome,
-    status: command.outcome === 'success' ? 'completed' : 'failed',
+    status: questStatusForOutcome(command.outcome),
     summary: command.summary,
     next_objective: command.next_objective,
     source_event_ids: clone(command.source_event_ids ?? []),
+    // Поле появляется только у развязок, привязанных к запросу Режиссёра. Без
+    // него payload собирается байт в байт как раньше, и уже записанные события
+    // читаются без изменений.
+    ...(command.request_fingerprint ? { request_fingerprint: String(command.request_fingerprint).slice(0, 128) } : {}),
   }, target_ids: [] }
   if (command.command_type === 'UpsertNarrativeThread') return { event_type: 'NarrativeThreadUpserted', payload: { thread: clone(command.thread) }, target_ids: [] }
   if (command.command_type === 'AdvanceNarrativeThreadClock') return { event_type: 'NarrativeThreadClockAdvanced', payload: { thread_id: command.thread_id, amount: command.amount }, target_ids: [] }
@@ -536,7 +563,7 @@ export function applyWorldMemoryEvent(input, event) {
   if (event.event_type === 'QuestResolved') {
     memory.quests = memory.quests.map((quest) => quest.id === payload.quest_id ? {
       ...quest,
-      status: payload.outcome === 'success' ? 'completed' : 'failed',
+      status: questStatusForOutcome(payload.outcome),
       summary: text(payload.summary, 1_000) || quest.summary,
     } : quest)
   }

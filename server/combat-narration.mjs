@@ -104,6 +104,14 @@ function tacticalNarration(events, state) {
       if (surprised.length) meaningful.push(`Застигнуты врасплох: ${surprised.join(', ')} — первый ход они теряют и не могут использовать реакцию.`)
     } else if (event.event_type === 'ActorMoved') {
       meaningful.push(`${actor} перемещается на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
+    } else if (event.event_type === 'MapLevelChanged') {
+      // Шаблон, а не вызов модели: смена этажа — уже решённая механика, и
+      // Директор увидит её в следующем брифе. Строка идёт тем же путём в
+      // журнал, что и остальные системные строки тактического хода.
+      const label = String(payload.level_label ?? '').trim() || `этаж ${Number(payload.to_level) || 0}`
+      meaningful.push(Number(payload.to_level) > Number(payload.from_level)
+        ? `Партия поднимается по лестнице — ${label}.`
+        : `Партия спускается по лестнице — ${label}.`)
     } else if (event.event_type === 'AttackResolved') {
       // Особый приём объявляется отдельной строкой: иначе он тонет в обычном
       // «атакует — попадание», и стол не замечает, что существо потратило то,
@@ -240,7 +248,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
   'ItemEffectIneffective', 'MonsterAbilityRecharged',
-  'KnockoutEnded', 'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
+  'KnockoutEnded', 'MapLevelChanged', 'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',

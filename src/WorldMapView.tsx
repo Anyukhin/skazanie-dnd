@@ -134,6 +134,13 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const combatActive = state.mechanics?.combat?.active === true
   const travelBlocked = busy || combatActive
 
+  // Формат строки — договор с сервером, а не проза. `detectPartyExitRequest`
+  // (`server/party-exit-intent.mjs`) читает маркер и берёт из кавычек первое
+  // место как исходное, а второе как пункт назначения. Пока договора не было,
+  // кнопка отправляла текст, который не подходил ни под один шаблон ухода:
+  // голосование не открывалось, решения группы не появлялось, а без него сервер
+  // отказывается менять сцену — кнопка не работала вовсе.
+  // Сторож на обе стороны — `test/party-exit-intent.test.mjs`.
   const proposeTravel = () => {
     if (!selected || !current || selected.id === current.id || !route.locationIds.length || travelBlocked) return
     onTravel(`[ГЛОБАЛЬНАЯ КАРТА] Отряд предлагает отправиться из «${current.name}» в «${selected.name}». Выбранный путь: ${routeNames.join(' → ')}.`)

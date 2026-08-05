@@ -1,10 +1,13 @@
 import { reputationTier } from './reputation-policy.mjs'
 import { MAX_CAMPAIGN_ARCS, campaignArcClimaxSatisfied, campaignArcPlan } from './campaign-loop-policy.mjs'
+import { CLOSED_QUEST_STATUSES } from './world-memory.mjs'
 
 const STATUSES = new Set(['setup', 'active', 'paused', 'completed', 'failed', 'archived'])
 const TERMINAL = new Set(['completed', 'failed', 'archived'])
 const VISIBLE_TO_PARTY = new Set(['public', 'party'])
-const RESOLVED_QUEST_STATUSES = new Set(['completed', 'failed'])
+// Брошенный квест закрыт так же, как завершённый: в эпилог он попадает нитью с
+// исходом, а не остаётся среди открытых обещаний навсегда.
+const RESOLVED_QUEST_STATUSES = new Set(CLOSED_QUEST_STATUSES)
 const RESOLVED_PROMISE_STATUSES = new Set(['fulfilled', 'broken'])
 
 const clean = (value, maximum = 500) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -296,7 +299,11 @@ export function buildDeterministicEpilogue(state, outcomeOrOptions = undefined) 
   const living = facts.heroes.filter((hero) => hero.status === 'living').map((hero) => hero.name)
   const fallen = facts.heroes.filter((hero) => hero.status === 'dead').map((hero) => hero.name)
   const questOutcomes = facts.quests.map((quest) => {
-    const resolution = quest.status === 'completed' ? 'завершён' : 'провален'
+    const resolution = quest.status === 'completed'
+      ? 'завершён'
+      : quest.status === 'abandoned'
+        ? 'оставлен отрядом'
+        : 'провален'
     const summary = withoutTerminalPunctuation(quest.summary, 240)
     return `«${quest.title}» ${resolution}${summary ? `: ${summary}` : ''}`
   })
@@ -343,7 +350,10 @@ export function campaignCanAutoComplete(state = {}) {
   // campaign premise quest. The first non-scene quest is the main thread; old
   // streams without that distinction fall back to their first quest.
   const mainQuest = quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0]
-  if (!mainQuest || !['completed', 'failed'].includes(mainQuest.status)) return false
+  // Отказ отряда закрывает главную нить наравне с провалом. Иначе брошенный
+  // главный квест запирал кампанию: остаться активным он уже не может, а
+  // условие финала на него больше никогда не сходилось бы.
+  if (!mainQuest || !CLOSED_QUEST_STATUSES.includes(mainQuest.status)) return false
   return campaignArcPlan(state) ? campaignArcClimaxSatisfied(state) : true
 }
 
@@ -404,7 +414,7 @@ export function buildEpilogueNarrationBrief(state = {}, outcomeOrOptions = undef
       payload: {
         quest_id: quest.quest_id,
         title: quest.title,
-        outcome: quest.status === 'completed' ? 'success' : 'failure',
+        outcome: quest.status === 'completed' ? 'success' : quest.status === 'abandoned' ? 'abandoned' : 'failure',
         summary: quest.summary,
       },
       })),

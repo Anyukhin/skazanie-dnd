@@ -321,3 +321,76 @@ test('причины преимущества и помехи берутся т�
   })
   assert.deepEqual(durable, advantage, 'контекст из журнала обязан работать после SSE и replay без локального visualBatch')
 })
+
+test('камера доски помнится по этажу, а этаж входа не меняет прежний ключ', () => {
+  assert.equal(tacticalUi.boardCameraKey('taverna'), 'taverna', 'ключ этажа входа обязан совпасть со старым — иначе камера сбросится у всех сохранённых кампаний')
+  assert.equal(tacticalUi.boardCameraKey('taverna', 0), 'taverna')
+  assert.equal(tacticalUi.boardCameraKey('taverna', 2), 'taverna@L2')
+  assert.equal(tacticalUi.boardCameraKey('taverna', -1), 'taverna@L-1')
+  assert.notEqual(tacticalUi.boardCameraKey('taverna', 1), tacticalUi.boardCameraKey('taverna', -1), 'спальни и погреб не должны делить камеру')
+  assert.equal(tacticalUi.boardCameraKey('', 0), 'нет карты')
+})
+
+test('кнопка перехода называет направление и подпись этажа, а отказ объясняет причину', () => {
+  const levels = [{ index: 0, label: 'Общий зал' }, { index: 1, label: 'Спальни' }, { index: -1, label: 'Винный погреб' }]
+  const up = tacticalUi.levelTransitionPresentation({
+    transition: { toLevel: 1, label: 'Спальни' }, currentLevel: 0, levels, atHand: true, combatActive: false,
+  })
+  assert.deepEqual(up, { label: 'Подняться: Спальни', direction: 'up', disabled: false, title: 'Подняться: Спальни' })
+
+  const down = tacticalUi.levelTransitionPresentation({
+    transition: { toLevel: -1 }, currentLevel: 0, levels, atHand: true, combatActive: false,
+  })
+  assert.equal(down.label, 'Спуститься: Винный погреб', 'пустая подпись перехода обязана подхватываться из известных этажей')
+  assert.equal(down.direction, 'down')
+
+  const unknown = tacticalUi.levelTransitionPresentation({
+    transition: { toLevel: 2 }, currentLevel: 1, levels: [], atHand: true, combatActive: false,
+  })
+  assert.equal(unknown.label, 'Подняться: этаж 2', 'без подписи кнопка всё равно обязана называть цель')
+
+  const far = tacticalUi.levelTransitionPresentation({
+    transition: { toLevel: 1, label: 'Спальни' }, currentLevel: 0, levels, atHand: false, combatActive: false,
+  })
+  assert.equal(far.disabled, true)
+  assert.equal(far.title, 'Подойдите вплотную')
+
+  const inCombat = tacticalUi.levelTransitionPresentation({
+    transition: { toLevel: 1, label: 'Спальни' }, currentLevel: 0, levels, atHand: true, combatActive: true,
+  })
+  assert.equal(inCombat.disabled, true)
+  assert.equal(inCombat.title, 'Сначала завершите бой', 'бой важнее расстояния: сервер откажет именно по нему')
+})
+
+test('тултип лестницы называет этаж и молчит на обычном предмете', () => {
+  const levels = [{ index: 0, label: 'Общий зал' }, { index: -1, label: 'Винный погреб' }]
+  assert.equal(tacticalUi.levelTransitionHint({ toLevel: 1, label: 'Спальни' }, levels), 'Ведёт: Спальни')
+  assert.equal(tacticalUi.levelTransitionHint({ toLevel: -1 }, levels), 'Ведёт: Винный погреб',
+    'подпись обязана подхватываться из известных этажей — та же лестница подписей, что у кнопки')
+  assert.equal(tacticalUi.levelTransitionHint({ toLevel: 2 }, []), 'Ведёт: этаж 2')
+  // Подсказка живёт до кнопки: она нужна и в бою, и с другого конца зала.
+  assert.equal(tacticalUi.levelTransitionHint(null), null)
+  assert.equal(tacticalUi.levelTransitionHint(undefined), null)
+  assert.equal(tacticalUi.levelTransitionHint({ toLevel: 'подвал' }), null, 'мусор не должен превращаться в подсказку')
+})
+
+test('индикатор этажей строится сверху вниз и молчит на одноэтажной локации', () => {
+  const rows = tacticalUi.levelIndicatorRows([
+    { index: 0, label: 'Общий зал' },
+    { index: -1, label: 'Винный погреб' },
+    { index: 1, label: 'Спальни' },
+  ], -1)
+  assert.deepEqual(rows.map((row) => row.index), [1, 0, -1], 'верхний этаж обязан стоять сверху')
+  assert.deepEqual(rows.filter((row) => row.active).map((row) => row.label), ['Винный погреб'])
+
+  assert.deepEqual(tacticalUi.levelIndicatorRows([{ index: 0, label: 'Общий зал' }], 0), [], 'один этаж — не выбор, индикатор не рисуется')
+  assert.deepEqual(tacticalUi.levelIndicatorRows(undefined, 0), [], 'старая проекция без этажей не должна ломать доску')
+
+  const noisy = tacticalUi.levelIndicatorRows([
+    { index: 0, label: 'Общий зал' },
+    { index: 0, label: 'Дубль' },
+    { index: 'подвал' },
+    { index: 1, label: '' },
+  ], 0)
+  assert.deepEqual(noisy.map((row) => row.label), ['этаж 1', 'Общий зал'], 'дубли и мусор отбрасываются, пустая подпись заменяется номером')
+})

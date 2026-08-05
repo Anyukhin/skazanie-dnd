@@ -147,10 +147,51 @@ export class MapStore {
 }
 
 /**
+ * Клетки запомненной локации выносятся тем же хранилищем, что и карта.
+ *
+ * Записи `state.locationMaps` карту слоями не хранят вовсе: `sceneMapRecord`
+ * (`server/adventure-director.mjs`) кладёт туда только `{version, cells}`.
+ * Поэтому вынос по полю `map` их никогда не задевал, и в снимке оставалась
+ * полная копия клеток каждой посещённой локации — замер 2026-08-02 на сцене
+ * 30×30 дал 83,0 КБ при 9,3 КБ у самой карты. С этажами число таких записей
+ * умножается на число этажей, поэтому вынос обязателен до L1.
+ *
+ * Ширина и высота считаются по охвату клеток, чтобы ссылка оставалась
+ * самоописательной, как у карты.
+ *
+ * @param {MapStore} store
+ * @param {unknown[]} cells
+ * @returns {MapRef}
+ */
+function putCells(store, cells) {
+  let width = 0
+  let height = 0
+  for (const cell of cells) {
+    const x = Number(/** @type {any} */ (cell)?.x)
+    const y = Number(/** @type {any} */ (cell)?.y)
+    if (Number.isSafeInteger(x)) width = Math.max(width, x + 1)
+    if (Number.isSafeInteger(y)) height = Math.max(height, y + 1)
+  }
+  return store.put({ cells, width, height })
+}
+
+/**
+ * @param {MapStore} store
+ * @param {string} hash
+ * @returns {unknown[]|null} null, если файла нет — вызывающий обязан пережить
+ */
+function getCells(store, hash) {
+  const body = store.get(hash)
+  return Array.isArray(body?.cells) ? body.cells : null
+}
+
+/**
  * Заменяет карты в состоянии ссылками. Возвращает новое состояние; исходное не
  * трогается.
  *
- * Выносятся карта текущей сцены и карты локаций. Вместе с картой из снимка
+ * Выносятся карта текущей сцены, карты локаций и запомненные клетки локаций
+ * (`locationMaps[*].cells` — единственное, что там реально лежит сегодня).
+ * Вместе с картой из снимка
  * убирается **производный массив клеток**: замер показал, что он стоит вдвое
  * дороже самой карты (83 КБ против 43 КБ на сцене 30×30), а хранить
  * производное значение незачем — оно восстанавливается из карты точно, и это
@@ -182,12 +223,15 @@ export function externalizeMaps(state, store) {
     const replaced = {}
     let touched = false
     for (const [id, record] of Object.entries(locationMaps)) {
-      if (record && typeof record === 'object' && record.map && !isMapRef(record.map)) {
-        replaced[id] = { ...record, map: store.put(record.map) }
-        touched = true
-      } else {
+      if (!record || typeof record !== 'object' || Array.isArray(record)) {
         replaced[id] = record
+        continue
       }
+      let entry = record
+      if (entry.map && !isMapRef(entry.map)) entry = { ...entry, map: store.put(entry.map) }
+      if (Array.isArray(entry.cells)) entry = { ...entry, cells: putCells(store, entry.cells) }
+      if (entry !== record) touched = true
+      replaced[id] = entry
     }
     if (touched) { next.locationMaps = replaced; changed = true }
   }
@@ -234,13 +278,23 @@ export function internalizeMaps(state, store) {
     const replaced = {}
     let touched = false
     for (const [id, record] of Object.entries(locationMaps)) {
-      if (record && typeof record === 'object' && isMapRef(record.map)) {
-        const restored = store.get(record.map.hash)
-        if (restored) { replaced[id] = { ...record, map: restored }; touched = true }
-        else { replaced[id] = record; missing.push(record.map.hash) }
-      } else {
+      if (!record || typeof record !== 'object' || Array.isArray(record)) {
         replaced[id] = record
+        continue
       }
+      let entry = record
+      if (isMapRef(entry.map)) {
+        const restored = store.get(entry.map.hash)
+        if (restored) entry = { ...entry, map: restored }
+        else missing.push(entry.map.hash)
+      }
+      if (isMapRef(entry.cells)) {
+        const restored = getCells(store, entry.cells.hash)
+        if (restored) entry = { ...entry, cells: restored }
+        else missing.push(entry.cells.hash)
+      }
+      if (entry !== record) touched = true
+      replaced[id] = entry
     }
     if (touched) { next.locationMaps = replaced; changed = true }
   }

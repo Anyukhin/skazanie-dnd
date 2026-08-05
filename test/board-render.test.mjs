@@ -17,7 +17,7 @@ import {
 // спецификаторы без `.js`, а Node ESM их не разрешает.
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-board-render-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/board-render.ts', '../src/tactical-map-client.ts']
+const sources = ['../src/board-render.ts', '../src/board-lighting.ts', '../src/board-ambient.ts', '../src/tactical-map-client.ts']
   .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
@@ -32,6 +32,8 @@ for (const name of readdirSync(buildDir)) {
 }
 const render = await import(pathToFileURL(join(buildDir, 'board-render.mjs')).href)
 const client = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
+const lighting = await import(pathToFileURL(join(buildDir, 'board-lighting.mjs')).href)
+const ambient = await import(pathToFileURL(join(buildDir, 'board-ambient.mjs')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 /** Поддельный 2D-контекст: записывает присвоения стилей и вызовы по порядку. */
@@ -47,14 +49,14 @@ function recordingContext() {
     restore() { ops.push({ op: 'restore' }) },
     translate(x, y) { ops.push({ op: 'translate', x, y }) },
     rotate(angle) { ops.push({ op: 'rotate', angle }) },
-    beginPath() {},
+    beginPath() { ops.push({ op: 'beginPath' }) },
     closePath() {},
-    moveTo() {},
-    lineTo() {},
-    arc() {},
-    fill() { ops.push({ op: 'fill', value: styles.fillStyle }) },
-    stroke() { ops.push({ op: 'stroke', value: styles.strokeStyle }) },
-    fillRect() { ops.push({ op: 'fillRect', value: styles.fillStyle }) },
+    moveTo(x, y) { ops.push({ op: 'moveTo', x, y }) },
+    lineTo(x, y) { ops.push({ op: 'lineTo', x, y }) },
+    arc(x, y, radius) { ops.push({ op: 'arc', x, y, radius }) },
+    fill() { ops.push({ op: 'fill', value: styles.fillStyle, alpha: context.globalAlpha }) },
+    stroke() { ops.push({ op: 'stroke', value: styles.strokeStyle, alpha: context.globalAlpha }) },
+    fillRect(x, y, width, height) { ops.push({ op: 'fillRect', value: styles.fillStyle, alpha: context.globalAlpha, x, y, width, height }) },
     strokeRect() { ops.push({ op: 'strokeRect', value: styles.strokeStyle }) },
     fillText(text, x, y) { ops.push({ op: 'fillText', text, x, y, value: styles.fillStyle }) },
     clearRect() { ops.push({ op: 'clearRect' }) },
@@ -758,6 +760,241 @@ test('предмет на шве тайлов не остаётся полови
     'правый тайл рисует ту же стойку и обязан перерисоваться вместе с ней')
 })
 
+test('свет запекается в тайл: тьма по сетке, тень у стены и тёплый ореол у огня', () => {
+  const map = createTacticalMap({ width: 16, height: 16, locationId: 'loc', seed: 'light', theme: 'crypt' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'stone', lightLevel: 'dim', label: 'Палата' })
+  for (let y = 0; y < 16; y += 1) {
+    for (let x = 0; x < 16; x += 1) setCell(map, x, y, { passable: true, revealed: true, material: 'stone', zone: 'hall' })
+  }
+  setCell(map, 15, 15, { revealed: false })
+  setEdge(map, 4, 4, 5, 4, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
+  addProp(map, { id: 'torch', assetId: 'torch_wall', x: 2.5, y: 2.5, footprint: [{ x: 2, y: 2 }] })
+
+  const palette = { ...render.DEFAULT_BOARD_PALETTE, lightShadow: '#111827', lightWarm: '#ffa500' }
+  const scene = { map: decoded(map), palette, cellSize: 32 }
+  const context = recordingContext()
+  render.drawLightShading(context, scene, { tileX: 0, tileY: 0 })
+
+  const shadows = context.ops.filter((item) => item.op === 'fillRect' && item.value === '#111827')
+  const halo = context.ops.filter((item) => item.op === 'fill' && item.value === '#ffa500')
+  // 256 клеток тайла минус нераскрытая, плюс две полосы тени у единственной стены.
+  assert.equal(shadows.length, 255 + 2, `заливок тьмы ${shadows.length}`)
+  assert.equal(halo.length, 3, 'ореол факела рисуется тремя кольцами')
+  assert.equal(context.globalAlpha, 1, 'прозрачность обязана вернуться к единице')
+
+  // Освещённость обязана доходить до рисования: у факела темнее не становится.
+  const grid = lighting.computeLightGrid(scene.map)
+  const atTorch = render.lightShadowAlpha(grid[2 * 16 + 2])
+  const far = render.lightShadowAlpha(grid[14 * 16 + 14])
+  assert.ok(atTorch < far, `у факела альфа тьмы ${atTorch} обязана быть меньше дальней ${far}`)
+})
+
+test('тайл со светом рисуется целиком и в отсутствие арта', () => {
+  const map = createTacticalMap({ width: 16, height: 16, fill: { passable: true, revealed: true, material: 'wood' } })
+  addProp(map, { id: 'fire', assetId: 'campfire', x: 8.5, y: 8.5, footprint: [{ x: 8, y: 8 }] })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 24 }
+  const context = recordingContext()
+  assert.doesNotThrow(() => render.drawTerrainTile(context, scene, { tileX: 0, tileY: 0 }))
+  assert.ok(context.ops.some((item) => item.op === 'fill' && item.value === render.DEFAULT_BOARD_PALETTE.lightWarm),
+    'тёплый ореол костра обязан попасть в тайл')
+})
+
+test('ключ тайла меняется от источника света и этажа, но не от панорамы', () => {
+  const map = createTacticalMap({ width: 32, height: 32, fill: { passable: true, revealed: true }, theme: 'crypt' })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 16 }
+  const tile = { tileX: 0, tileY: 0 }
+  const before = render.tileKey(scene, tile)
+
+  // Панорама и зум окна: тайл тот же, ключ обязан совпасть до символа.
+  const near = render.visibleTiles(scene.map, { x: 0, y: 0, width: 16, height: 16 })
+  const shifted = render.visibleTiles(scene.map, { x: 8, y: 4, width: 16, height: 16 })
+  assert.ok(near.some((item) => item.tileX === 0 && item.tileY === 0))
+  assert.ok(shifted.some((item) => item.tileX === 0 && item.tileY === 0))
+  assert.equal(render.tileKey(scene, tile), before, 'панорама ключ тайла не трогает')
+
+  addProp(map, { id: 'torch', assetId: 'torch_wall', x: 3.5, y: 3.5, footprint: [{ x: 3, y: 3 }] })
+  const lit = { ...scene, map: decoded(map) }
+  assert.notEqual(render.tileKey(lit, tile), before, 'новый факел обязан обесценить тайл')
+
+  // Этаж в отпечаток местности не входит, а амбиент подвала другой.
+  const cellar = createTacticalMap({ width: 32, height: 32, fill: { passable: true, revealed: true }, theme: 'crypt', levelIndex: -1 })
+  const cellarScene = { ...scene, map: decoded(cellar) }
+  assert.equal(cellarScene.map.terrainHash, scene.map.terrainHash, 'этажи различаются только номером')
+  assert.notEqual(render.tileKey(cellarScene, tile), before, 'у подвала обязан быть свой ключ тайла')
+})
+
+/** Ровное поле одного материала: вход для проверок декалей и вариантов. */
+function plainMap({ width = 64, height = 64, material = 'stone', theme = 'dungeon' } = {}) {
+  return createTacticalMap({
+    width, height, locationId: 'loc-decal', seed: 'decal-seed', theme,
+    fill: { passable: true, revealed: true, material },
+  })
+}
+
+test('процедурные декали детерминированы: два вызова дают тот же рисунок', () => {
+  const scene = {
+    map: decoded(plainMap({ width: 16, height: 16 })),
+    palette: render.DEFAULT_BOARD_PALETTE,
+    cellSize: 32,
+  }
+  const first = recordingContext()
+  const second = recordingContext()
+  render.drawDecals(first, scene, { tileX: 0, tileY: 0 })
+  render.drawDecals(second, scene, { tileX: 0, tileY: 0 })
+  assert.deepEqual(second.ops, first.ops, 'декаль обязана быть функцией от клетки, а не от вызова')
+  assert.ok(first.ops.some((item) => item.op === 'stroke'), 'на каменном полу 16×16 обязана быть хотя бы одна трещина')
+
+  // Тот же тайл на карте с другим сидом рисуется иначе: иначе «шум» не шум.
+  const other = recordingContext()
+  const otherMap = createTacticalMap({
+    width: 16, height: 16, locationId: 'loc-decal', seed: 'другой-сид', theme: 'dungeon',
+    fill: { passable: true, revealed: true, material: 'stone' },
+  })
+  render.drawDecals(other, { ...scene, map: decoded(otherMap) }, { tileX: 0, tileY: 0 })
+  assert.notDeepEqual(other.ops, first.ops, 'сид карты обязан менять раскладку декалей')
+})
+
+test('плотность декалей держится в диапазоне «одна на 15–25 клеток»', () => {
+  const map = decoded(plainMap())
+  const scene = { map, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 24 }
+  let decals = 0
+  for (let tileY = 0; tileY < 4; tileY += 1) {
+    for (let tileX = 0; tileX < 4; tileX += 1) {
+      const context = recordingContext()
+      render.drawDecals(context, scene, { tileX, tileY })
+      // Поверхности на карте нет, поэтому штриховка ряби не рисуется вовсе и
+      // каждый штрих — это декаль.
+      decals += context.ops.filter((item) => item.op === 'stroke').length
+    }
+  }
+  const cells = map.width * map.height
+  console.log(`  декалей: ${decals} на ${cells} клеток — одна на ${(cells / decals).toFixed(1)}`)
+  assert.ok(decals * 25 >= cells, `декалей ${decals} на ${cells} клеток — реже одной на 25`)
+  assert.ok(decals * 15 <= cells, `декалей ${decals} на ${cells} клеток — чаще одной на 15`)
+
+  // Нераскрытая клетка декали не получает: туман полупрозрачный, и рисунок под
+  // ним выдал бы покрытие неразведанного пола.
+  const hidden = plainMap({ width: 16, height: 16 })
+  for (let y = 0; y < 16; y += 1) for (let x = 0; x < 16; x += 1) setCell(hidden, x, y, { revealed: false })
+  const dark = recordingContext()
+  render.drawDecals(dark, { ...scene, map: decoded(hidden) }, { tileX: 0, tileY: 0 })
+  assert.equal(dark.ops.some((item) => item.op === 'stroke'), false)
+})
+
+test('вид декали следует материалу и теме', () => {
+  const stone = decoded(plainMap({ width: 4, height: 4, material: 'stone' }))
+  const cave = decoded(plainMap({ width: 4, height: 4, material: 'stone', theme: 'cave' }))
+  const kinds = (map) => {
+    const seen = new Set()
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const cell = client.cellAt(map, x, y)
+        const kind = render.floorDecalKindFor(map, cell, render.decalNoiseAt(map.seed, x, y))
+        if (kind) seen.add(kind)
+      }
+    }
+    return seen
+  }
+  assert.deepEqual([...kinds(stone)], ['crack'], 'на камне подземелья бывают только трещины')
+  assert.ok(kinds(cave).has('moss'), 'в пещере пол обязан зарастать мхом')
+
+  const wooden = decoded(plainMap({ width: 8, height: 8, material: 'wood' }))
+  const wood = kinds(wooden)
+  assert.ok(wood.has('straw') || wood.has('stain'), 'на досках бывают солома и пятна')
+  assert.equal(wood.has('crack'), false, 'доски не трескаются каменной трещиной')
+
+  // Трава, песок и металл декалей не получают: там декаль читается мусором.
+  for (const material of ['grass', 'sand', 'metal', 'ice']) {
+    assert.equal(kinds(decoded(plainMap({ width: 4, height: 4, material }))).size, 0, material)
+  }
+
+  // Под водой декалей нет — там рисуется своя рябь.
+  const flooded = plainMap({ width: 4, height: 4 })
+  setCell(flooded, 1, 1, { surface: 'water' })
+  const map = decoded(flooded)
+  assert.equal(render.floorDecalKindFor(map, client.cellAt(map, 1, 1), 0), null)
+})
+
+test('вариант тайла меняет тон пола и поверх растровой фактуры', () => {
+  const map = createTacticalMap({ width: 8, height: 1 })
+  for (let x = 0; x < 8; x += 1) {
+    setCell(map, x, 0, { passable: true, revealed: true, material: 'wood', variant: x % 6 })
+  }
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 40, terrain: stubTerrain() }
+  const context = recordingContext()
+  render.drawFloorTiles(context, scene, { tileX: 0, tileY: 0 })
+
+  // Накладка варианта — единственный полупрозрачный слой этого прохода: у
+  // заливки пола прозрачность единичная.
+  const tints = context.ops.filter((item) => item.op === 'fillRect' && item.alpha < 1)
+  assert.ok(tints.length >= 4, `накладок варианта ${tints.length}: фактура закрыла весь разброс тонов`)
+  const tones = new Set(tints.map((item) => `${item.value}:${item.alpha.toFixed(3)}`))
+  assert.ok(tones.size > 1, 'все клетки получили один и тот же тон — вариант не дошёл до рисования')
+
+  // Без фактур разброс живёт в самой заливке, как и раньше.
+  const flat = new Set(Array.from({ length: 6 }, (_, variant) => render.boardFillColor(
+    { kind: 'floor', cell: { ...client.cellAt(scene.map, 0, 0), variant } },
+    render.DEFAULT_BOARD_PALETTE,
+    false,
+  )))
+  assert.ok(flat.size > 1, 'на плоской заливке вариант обязан различать клетки')
+})
+
+test('стык материалов размывается шахматным дизерингом, а однородный пол — нет', () => {
+  const map = createTacticalMap({ width: 8, height: 4 })
+  for (let y = 0; y < 4; y += 1) {
+    for (let x = 0; x < 8; x += 1) {
+      setCell(map, x, y, { passable: true, revealed: true, material: x < 4 ? 'wood' : 'stone' })
+    }
+  }
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+  const context = recordingContext()
+  render.drawFloorTiles(context, scene, { tileX: 0, tileY: 0 })
+
+  const dither = context.ops.filter((item) => item.op === 'fillRect' && item.alpha > 0 && item.alpha < 1 && item.width !== item.height)
+  assert.ok(dither.length > 0, 'на стыке дерева и камня обязана появиться полоса смешения')
+  // Полоса лежит вплотную к шву: клетки 3 и 4 по горизонтали.
+  const seam = 4 * scene.cellSize
+  assert.ok(dither.every((item) => Math.abs(item.x + item.width - seam) < 1 || Math.abs(item.x - seam) < 1),
+    'полоса смешения обязана лежать у самого стыка')
+  // Шахматность: полосу получает только клетка чётной суммы координат, поэтому
+  // вдоль шва стороны чередуются и ни один ряд не мажется с обеих сторон сразу.
+  const rows = new Map()
+  for (const item of dither) {
+    const row = Math.round(item.y / scene.cellSize)
+    const side = Math.abs(item.x - seam) < 1 ? 'right' : 'left'
+    assert.equal(rows.has(row), false, `ряд ${row} получил смешение с обеих сторон — шахматность потеряна`)
+    rows.set(row, side)
+  }
+  assert.deepEqual([...rows.entries()].sort(), [[0, 'right'], [1, 'left'], [2, 'right'], [3, 'left']])
+
+  const plain = recordingContext()
+  render.drawFloorTiles(plain, {
+    map: decoded(plainMap({ width: 8, height: 4, material: 'wood' })),
+    palette: render.DEFAULT_BOARD_PALETTE,
+    cellSize: 32,
+  }, { tileX: 0, tileY: 0 })
+  assert.equal(plain.ops.some((item) => item.op === 'fillRect' && item.width !== item.height), false,
+    'вдали от стыка материалов полос смешения быть не должно')
+})
+
+test('стена не даёт полу перетечь через себя дизерингом', () => {
+  const map = createTacticalMap({ width: 4, height: 2 })
+  for (let y = 0; y < 2; y += 1) {
+    for (let x = 0; x < 4; x += 1) {
+      setCell(map, x, y, { passable: true, revealed: true, material: x < 2 ? 'wood' : 'stone' })
+    }
+  }
+  setEdge(map, 1, 0, 2, 0, { kind: 'wall', blocksMove: true, blocksSight: true })
+  setEdge(map, 1, 1, 2, 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+  const context = recordingContext()
+  render.drawFloorTiles(context, {
+    map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32,
+  }, { tileX: 0, tileY: 0 })
+  assert.equal(context.ops.some((item) => item.op === 'fillRect' && item.width !== item.height), false,
+    'за стеной другое помещение, а не продолжение пола')
+})
+
 test('запас отпечатка не делает соседние тайлы зависимыми без нужды', () => {
   const map = createTacticalMap({ width: 64, height: 64, fill: { passable: true, revealed: true } })
   const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 16 }
@@ -767,4 +1004,191 @@ test('запас отпечатка не делает соседние тайл�
   setCell(map, 20, 20, { revealed: false })
   const after = { ...scene, map: decoded(map) }
   assert.equal(render.tileKey(after, far), before, 'далёкий тайл не должен зависеть от чужого раскрытия')
+})
+
+test('подписи зон появляются на дальнем плане и только у раскрытых зон', () => {
+  const map = createTacticalMap({ width: 12, height: 6 })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Общий зал' })
+  addZone(map, { id: 'cellar', kind: 'interior', material: 'stone', lightLevel: 'dark', label: 'Погреб' })
+  for (let y = 0; y < 6; y += 1) {
+    for (let x = 0; x < 12; x += 1) {
+      setCell(map, x, y, { passable: true, revealed: true, zone: x < 6 ? 'hall' : 'cellar' })
+    }
+  }
+  // Погреб разведан с порога: раскрыто меньше половины его клеток.
+  for (let y = 0; y < 6; y += 1) {
+    for (let x = 7; x < 12; x += 1) setCell(map, x, y, { revealed: false })
+  }
+  const clientMap = decoded(map)
+  assert.deepEqual(
+    render.revealedZoneLabelPlacements(clientMap).map((entry) => entry.label),
+    ['Общий зал'],
+    'подпись зоны не должна выходить сквозь туман раньше половины разведки',
+  )
+  const placement = render.revealedZoneLabelPlacements(clientMap)[0]
+  assert.ok(Math.abs(placement.x - 3) < 1e-9 && Math.abs(placement.y - 3) < 1e-9,
+    `центр масс раскрытой зоны поехал: ${placement.x},${placement.y}`)
+
+  const far = recordingContext()
+  render.drawMapDecorations(far, { map: clientMap, palette: render.DEFAULT_BOARD_PALETTE, cellSize: render.ZONE_LABEL_MAX_CELL_PIXELS - 1 })
+  assert.ok(far.ops.some((item) => item.op === 'fillText' && item.text === 'Общий зал'), 'на дальнем плане подпись обязана быть')
+
+  const near = recordingContext()
+  render.drawMapDecorations(near, { map: clientMap, palette: render.DEFAULT_BOARD_PALETTE, cellSize: render.ZONE_LABEL_MAX_CELL_PIXELS })
+  assert.equal(near.ops.some((item) => item.op === 'fillText'), false,
+    'при крупном зуме подпись обязана уйти: помещение читается своей обстановкой')
+})
+
+test('печатная подпись комнаты отменяет подпись той же зоны', () => {
+  const map = createTacticalMap({ width: 6, height: 4 })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Общий зал' })
+  for (let y = 0; y < 4; y += 1) {
+    for (let x = 0; x < 6; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: 'hall' })
+  }
+  map.overlays = { compass: false, scaleBar: false, roomLabels: [{ zoneId: 'hall', label: 'Общий зал' }] }
+  const clientMap = decoded(map)
+  assert.deepEqual(render.revealedZoneLabelPlacements(clientMap), [],
+    'два названия одного помещения друг на друге — это не читаемость')
+
+  const context = recordingContext()
+  render.drawMapDecorations(context, { map: clientMap, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 12 })
+  assert.equal(context.ops.filter((item) => item.op === 'fillText' && item.text === 'Общий зал').length, 1)
+})
+
+// --- живой слой доски: огонь, вода, дверь (этап L7) -----------------------
+
+/** Сцена с огнём и водой: два источника в раскрытой части и лужа рядом. */
+function ambientScene({ revealed = true } = {}) {
+  const map = createTacticalMap({
+    width: 24, height: 12, locationId: 'loc-fire', seed: 'ambient', theme: 'crypt',
+    fill: { passable: true, revealed, material: 'stone' },
+  })
+  setCell(map, 5, 5, { surface: 'water' })
+  setCell(map, 6, 5, { surface: 'water' })
+  addProp(map, { id: 'torch-a', assetId: 'torch_wall', x: 2.5, y: 2.5, footprint: [{ x: 2, y: 2 }] })
+  addProp(map, { id: 'torch-b', assetId: 'campfire', x: 8.5, y: 3.5, footprint: [{ x: 8, y: 3 }] })
+  addProp(map, { id: 'crate', assetId: 'crate', x: 1.5, y: 8.5, footprint: [{ x: 1, y: 8 }] })
+  return { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+}
+
+test('фазы мерцания детерминированы идентификатором предмета и различаются между огнями', () => {
+  assert.equal(ambient.ambientPhase('torch-a'), ambient.ambientPhase('torch-a'), 'фаза обязана быть функцией id')
+  assert.notEqual(ambient.ambientPhase('torch-a'), ambient.ambientPhase('torch-b'),
+    'два факела в одной комнате обязаны мерцать вразнобой')
+  for (const id of ['torch-a', 'campfire-17', '']) {
+    const phase = ambient.ambientPhase(id)
+    assert.ok(phase >= 0 && phase < 1, `фаза ${phase} вне [0, 1)`)
+  }
+
+  // Колебание — чистая функция времени и фазы, размах в пределах единицы:
+  // свеча, а не стробоскоп.
+  let extreme = 0
+  for (let timeMs = 0; timeMs < 8_000; timeMs += 37) {
+    const value = ambient.fireFlicker(timeMs, 0.25)
+    assert.equal(value, ambient.fireFlicker(timeMs, 0.25))
+    extreme = Math.max(extreme, Math.abs(value))
+  }
+  assert.ok(extreme <= 1.0001, `размах ${extreme} вышел за единицу`)
+  assert.ok(extreme > 0.5, 'колебание обязано быть заметным глазу')
+  assert.ok(ambient.FIRE_FLICKER_AMPLITUDE <= 0.1, 'размах радиуса ореола обязан остаться малым')
+  assert.ok(ambient.FIRE_FLICKER_PERIOD_MS >= 1_500, 'частота мерцания обязана остаться низкой')
+})
+
+test('живой слой рисует только видимый огонь и видимую воду', () => {
+  const scene = ambientScene()
+  const context = recordingContext()
+  ambient.drawAmbientEffects(context, scene, { timeMs: 1_000 })
+  assert.ok(context.ops.some((item) => item.op === 'fill' && item.value === scene.palette.lightWarm),
+    'ореол огня не нарисован')
+  assert.ok(context.ops.some((item) => item.op === 'stroke'), 'блик воды не нарисован')
+  assert.equal(context.globalAlpha, 1, 'прозрачность обязана вернуться к единице')
+
+  // Окно просмотра режет обе стороны: огонь и вода за краем экрана не стоят
+  // ни одной команды рисования.
+  const narrow = recordingContext()
+  ambient.drawAmbientEffects(narrow, scene, { timeMs: 1_000, view: { x: 18, y: 8, width: 4, height: 3 } })
+  assert.deepEqual(narrow.ops, [], 'за пределами окна живой слой не рисует ничего')
+  assert.equal(ambient.hasAmbientMotion(scene.map, { x: 18, y: 8, width: 4, height: 3 }), false,
+    'без движения в окне цикл обязан иметь право заснуть')
+  assert.equal(ambient.hasAmbientMotion(scene.map), true)
+
+  // Нераскрытая карта не выдаёт ни очага, ни лужи: слой эффектов лежит поверх
+  // тумана, и мерцание сквозь него читалось бы разведкой.
+  const hidden = ambientScene({ revealed: false })
+  const dark = recordingContext()
+  ambient.drawAmbientEffects(dark, hidden, { timeMs: 1_000 })
+  assert.deepEqual(dark.ops, [])
+  assert.equal(ambient.hasAmbientMotion(hidden.map), false)
+})
+
+test('пустая сцена не даёт ни одной команды, и цикл засыпает', () => {
+  const map = createTacticalMap({ width: 8, height: 8, fill: { passable: true, revealed: true } })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+  const context = recordingContext()
+  ambient.drawAmbientEffects(context, scene, { timeMs: 500 })
+  assert.deepEqual(context.ops, [], 'без огня, воды и дверей рисовать нечего')
+  assert.equal(ambient.ambientFrameWanted(scene.map, { timeMs: 500 }), false)
+  assert.equal(ambient.hasAmbientMotion(null), false, 'карты нет — движения нет')
+})
+
+test('prefers-reduced-motion выключает и мерцание, и блики, и створку', () => {
+  const scene = ambientScene()
+  const context = recordingContext()
+  ambient.drawAmbientEffects(context, scene, {
+    timeMs: 1_000,
+    reducedMotion: true,
+    doorSwings: [{ doorId: 'door-a', state: 'open', startedAt: 990 }],
+  })
+  assert.deepEqual(context.ops, [], 'просили не двигать картинку — не двигаем ничего')
+  assert.equal(ambient.hasAmbientMotion(scene.map, undefined, true), false)
+  assert.equal(ambient.ambientFrameWanted(scene.map, { timeMs: 1_000, reducedMotion: true }), false,
+    'при reduced-motion цикл не должен заводиться вовсе')
+})
+
+test('створка двери поворачивается 150 мс и после этого цикл не нужен', () => {
+  const map = createTacticalMap({ width: 8, height: 8, fill: { passable: true, revealed: true } })
+  setEdge(map, 2, 2, 3, 2, { kind: 'door', doorId: 'door-a' })
+  setDoor(map, { id: 'door-a', x: 2, y: 2, dir: 'e', state: 'open' })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+  const swing = { doorId: 'door-a', state: 'open', startedAt: 1_000 }
+
+  const middle = recordingContext()
+  ambient.drawAmbientEffects(middle, scene, { timeMs: 1_075, doorSwings: [swing] })
+  const leaf = middle.ops.filter((item) => item.op === 'fillRect' && item.value === scene.palette.door)
+  assert.equal(leaf.length, 1, 'створка обязана быть нарисована ровно одним полотном')
+  const turns = middle.ops.filter((item) => item.op === 'rotate').map((item) => item.angle)
+  assert.equal(turns.length, 1)
+  assert.ok(turns[0] > 0 && turns[0] < Math.PI / 2, `угол ${turns[0]} вне четверти оборота`)
+  assert.ok(ambient.ambientFrameWanted(scene.map, { timeMs: 1_075, doorSwings: [swing] }))
+
+  // Открытие идёт от косяка, закрытие — к нему.
+  const started = recordingContext()
+  ambient.drawAmbientEffects(started, scene, { timeMs: 1_000, doorSwings: [swing] })
+  assert.equal(started.ops.filter((item) => item.op === 'rotate')[0].angle, 0, 'открытие начинается от косяка')
+  const closing = recordingContext()
+  ambient.drawAmbientEffects(closing, scene, {
+    timeMs: 1_000, doorSwings: [{ doorId: 'door-a', state: 'closed', startedAt: 1_000 }],
+  })
+  assert.ok(Math.abs(closing.ops.filter((item) => item.op === 'rotate')[0].angle - Math.PI / 2) < 1e-9,
+    'закрытие начинается с раскрытого положения')
+
+  // Через 150 мс анимация кончилась: дальше дверь дорисовывает тайловый кэш.
+  const done = recordingContext()
+  ambient.drawAmbientEffects(done, scene, { timeMs: 1_000 + ambient.DOOR_SWING_MS, doorSwings: [swing] })
+  assert.deepEqual(done.ops, [])
+  assert.equal(ambient.ambientFrameWanted(scene.map, { timeMs: 1_150, doorSwings: [swing] }), false,
+    'догоревшая створка не должна держать цикл живым')
+})
+
+test('кадр живого слоя воспроизводим: одно и то же время даёт тот же рисунок', () => {
+  const scene = ambientScene()
+  const first = recordingContext()
+  const second = recordingContext()
+  ambient.drawAmbientEffects(first, scene, { timeMs: 4_321 })
+  ambient.drawAmbientEffects(second, scene, { timeMs: 4_321 })
+  assert.deepEqual(second.ops, first.ops)
+
+  const later = recordingContext()
+  ambient.drawAmbientEffects(later, scene, { timeMs: 4_321 + ambient.FIRE_FLICKER_PERIOD_MS / 4 })
+  assert.notDeepEqual(later.ops, first.ops, 'через четверть периода картинка обязана измениться')
 })

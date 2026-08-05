@@ -3,10 +3,19 @@ import { parseDiceExpression } from './dice-service.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
 import {
   createSceneTransition,
+  levelKey,
+  levelSeed,
   normalizeLocationMaps,
   publicAdventureMemory,
   rememberCurrentSceneMap,
+  rememberSceneMap,
+  sceneLevelIndex,
+  sceneLocationId,
+  sceneMapForLocation,
+  sceneTacticalMapForLocation,
+  stableLocationMapSeed,
 } from './adventure-director.mjs'
+import { generateLevelMap, levelLabelFor } from './level-generator.mjs'
 import { ensureCampaignWorldMap } from './world-map.mjs'
 import {
   applyCombatBounds,
@@ -17,6 +26,7 @@ import {
 import {
   DOOR_STATES,
   addProp as addTacticalProp,
+  attachLevelTransitions,
   cellAt,
   deserializeTacticalMap,
   doorById,
@@ -24,6 +34,7 @@ import {
   edgeBetween,
   edgeNeighbor,
   legacyCellsFromTacticalMap,
+  reachableCells,
   serializeTacticalMap,
   setCell as setTacticalCell,
   setDoor as setTacticalDoor,
@@ -377,7 +388,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
+  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -421,6 +432,10 @@ const CLASS_HIT_POINT_DIE_SIZES = Object.freeze({
 const SCENE_ADVANCE_FIELDS = new Set([
   'title', 'location', 'location_id', 'mood', 'objective', 'transition', 'arrival', 'hook', 'theme', 'danger', 'seed',
   'completed_objective', 'objective_status', 'outcome', 'carry_unresolved', 'map',
+  // Заявка архитектора на дополнительные этажи локации. Форму проверяет
+  // `normalizeDeclaredLevels` в `adventure-director.mjs`; здесь поле только
+  // пропускается сквозь белый список, иначе оно не доехало бы до генератора.
+  'levels',
   'scene_kind', 'settlement_type',
   // Развёрнутая сводка завершённой сцены для памяти мира. Отдельное поле, а не
   // `outcome`: тот короткой строкой уходит в летопись приключения (240 знаков),
@@ -1547,6 +1562,211 @@ function legacyCellsDiverged(actual, derived) {
   return false
 }
 
+// --- этажи локации (docs/multilevel-map-plan.md, разделы 3.3 и 4) ---------
+
+/** Сколько стэшей неактивных этажей держим в состоянии. */
+const MAX_LEVEL_STASHES = 32
+
+/**
+ * Этажи, объявленные архитектором. Живут в самой сцене (этап L2), поэтому
+ * восстанавливаются из `SceneAdvanced` без отдельного reducer.
+ */
+function declaredSceneLevels(state) {
+  return Array.isArray(state?.scene?.levels) ? state.scene.levels : []
+}
+
+/**
+ * Возвращает лестнице её этаж, если привязка потерялась по дороге.
+ *
+ * Это мина этапа L2: карта сцены доезжает до состояния **старыми клетками**
+ * (`createSceneTransition` кладёт только `scene.cells`), а
+ * `ensureSceneTacticalMap` пересобирает её из них. Сам предмет `stairs_up`
+ * переживает круг — он кодируется полем `feature`, — а `transition` теряется.
+ *
+ * Восстановление детерминировано: порядок предметов на карте фиксирован, и
+ * `attachLevelTransitions` привязывает их по виду ассета. Поэтому оно обязано
+ * выполняться и в resolve, и в apply: живая игра и replay иначе разошлись бы.
+ * Этажи выше и ниже входа этой дорогой не чинятся — у пересобранной карты
+ * `levelIndex` равен нулю, и заявка привязала бы лестницу не туда; такие этажи
+ * консервируются картой целиком.
+ *
+ * @returns {boolean} появилась ли хотя бы одна новая привязка
+ */
+function restoreSceneLevelTransitions(state, map) {
+  const levels = declaredSceneLevels(state)
+  if (!map || !levels.length || (safeInteger(map.levelIndex, 0)) !== 0) return false
+  return attachLevelTransitions(map, levels).length > 0
+}
+
+/** Подпись этажа: сперва слова перехода, затем заявка архитектора, затем номер. */
+function sceneLevelLabel(state, level, transitionLabel = '') {
+  const declared = declaredSceneLevels(state).find((entry) => Number(entry?.offset) === level)
+  const label = String(transitionLabel || declared?.label || '').replace(/\s+/gu, ' ').trim()
+  return (label || levelLabelFor(level, String(declared?.hint ?? ''))).slice(0, 120)
+}
+
+/**
+ * Карта запомненного этажа. Записи, сделанные с L3, несут саму карту; в старых
+ * лежат только клетки, и по ним восстанавливается лишь этаж входа — у
+ * пересобранной карты нет номера этажа, и выдавать её за подвал нельзя.
+ */
+function rememberedLevelMap(state, locationId, level) {
+  const key = levelKey(locationId, level)
+  const serialized = sceneTacticalMapForLocation(state.locationMaps, key)
+  if (serialized) {
+    try {
+      return deserializeTacticalMap(serialized)
+    } catch { /* Повреждённая запись — соберём этаж заново. */ }
+  }
+  if (level !== 0) return null
+  const cells = sceneMapForLocation(state.locationMaps, key)
+  if (!Array.isArray(cells) || !cells.length) return null
+  const rebuilt = tacticalMapFromLegacyCells(cells, { locationId, seed: String(state.worldMap?.seed ?? '') })
+  attachLevelTransitions(rebuilt, declaredSceneLevels(state))
+  return rebuilt
+}
+
+/** Парный переход на целевом этаже: тот, что ведёт обратно на покидаемый. */
+function levelTransitionBackTo(map, fromLevel) {
+  return map.props.find((prop) => Number(prop.transition?.toLevel) === fromLevel) ?? null
+}
+
+/**
+ * Места партии на целевом этаже. Волна идёт по проходимым клеткам от точки
+ * прибытия, как расстановка при `SceneAdvanced` идёт от входа: ближние клетки
+ * достаются первым в списке партии, порядок детерминирован.
+ */
+function levelArrivalPositions(state, map, arrivalProp) {
+  const partyIds = sceneAdvancePartyIds(state)
+  const anchor = arrivalProp?.footprint?.[0]
+  if (!anchor) throw new RulesValidationError('У точки прибытия нет координат на целевом этаже', 'LEVEL_ARRIVAL_MISSING')
+  // На повторно посещаемом этаже жители пока лежат в стэше и
+  // в карте не видны. Их клетки нужно занять до расстановки партии,
+  // иначе reducer сначала поставит героя, а затем вернёт противника в ту же
+  // позицию. Позиции стэша авторитетны: они созданы предыдущим событием.
+  const targetKey = levelKey(sceneLocationId(state), safeInteger(map.levelIndex, 0))
+  const targetStash = state.levelEntities && typeof state.levelEntities === 'object'
+    ? state.levelEntities[targetKey]
+    : null
+  const occupied = new Set(Object.values(targetStash?.positions ?? {}).flatMap((position) => {
+    const x = Number(position?.x)
+    const y = Number(position?.y)
+    return Number.isSafeInteger(x) && Number.isSafeInteger(y) ? [`${x},${y}`] : []
+  }))
+  const cells = [...reachableCells(map, anchor.x, anchor.y)]
+    .filter((key) => !occupied.has(key))
+    .map((key) => {
+      const [x, y] = key.split(',').map(Number)
+      return { x, y }
+    })
+    .sort((left, right) => (
+      (Math.abs(left.x - anchor.x) + Math.abs(left.y - anchor.y)) - (Math.abs(right.x - anchor.x) + Math.abs(right.y - anchor.y))
+      || left.y - right.y
+      || left.x - right.x
+    ))
+  if (cells.length < partyIds.length) {
+    throw new RulesValidationError('На целевом этаже недостаточно проходимых клеток для отряда', 'SCENE_ENTRANCE_CAPACITY_EXCEEDED')
+  }
+  return partyIds.map((id, index) => ({ actor_id: id, x: cells[index].x, y: cells[index].y }))
+}
+
+/**
+ * Кладёт «жителей» покидаемого этажа в стэш и убирает их со сцены.
+ *
+ * Складывается всё, что при возвращении обязано оказаться на месте: противники,
+ * сущности сцены, призванные существа партии, позиции всех непартийных актёров,
+ * состояние взаимодействия с предметами (ключ — идентификатор предмета, а он у
+ * каждого этажа свой и совпадает по форме), незакрытое столкновение и посты
+ * NPC этой локации. Пустой этаж записи не создаёт.
+ */
+function stashLevelEntities(state, key) {
+  if (!key) return state
+  const partyIds = new Set(state.partyMemberIds ?? [])
+  const world = normalizeNpcWorldState(state.npc_world)
+  const locationId = sceneLocationId(state)
+  const summons = (state.actors ?? []).filter((actor) => isPartySummon(actor))
+  const positions = Object.fromEntries(Object.entries(state.mechanics.positions ?? {})
+    .filter(([id]) => !partyIds.has(String(id))))
+  const placements = world.placements.filter((placement) => placement.location_id === locationId)
+  const stash = {
+    enemies: clone(state.enemies ?? []),
+    entities: clone(state.entities ?? []),
+    summons: clone(summons),
+    positions: clone(positions),
+    scene_interactions: clone(state.mechanics.scene_interactions ?? {}),
+    encounter: clone(state.mechanics.encounter ?? null),
+    npc_placements: clone(placements),
+  }
+  const populated = stash.enemies.length || stash.entities.length || stash.summons.length
+    || Object.keys(stash.positions).length || Object.keys(stash.scene_interactions).length
+    || stash.encounter || stash.npc_placements.length
+  const stashes = { ...(state.levelEntities && typeof state.levelEntities === 'object' ? state.levelEntities : {}) }
+  delete stashes[key]
+  if (populated) stashes[key] = stash
+  const trimmed = Object.entries(stashes).slice(-MAX_LEVEL_STASHES)
+  state.levelEntities = Object.fromEntries(trimmed)
+  if (!trimmed.length) delete state.levelEntities
+
+  state.enemies = []
+  state.entities = []
+  state.actors = (state.actors ?? []).filter((actor) => !isPartySummon(actor))
+  state.mechanics.positions = Object.fromEntries(Object.entries(state.mechanics.positions ?? {})
+    .filter(([id]) => partyIds.has(String(id))))
+  state.mechanics.scene_interactions = {}
+  state.mechanics.encounter = null
+  state.npc_world = {
+    ...world,
+    placements: world.placements.filter((placement) => placement.location_id !== locationId),
+  }
+  return state
+}
+
+/**
+ * Возвращает на сцену стэш этажа. Пустой стэш — это пустой этаж: жителей туда
+ * приведёт Директор обычными механизмами, а не механика перехода.
+ */
+function restoreLevelEntities(state, key) {
+  const stash = key && state.levelEntities && typeof state.levelEntities === 'object'
+    ? state.levelEntities[key]
+    : null
+  state.enemies = clone(stash?.enemies ?? [])
+  state.entities = clone(stash?.entities ?? [])
+  state.actors = [...(state.actors ?? []).filter((actor) => !isPartySummon(actor)), ...clone(stash?.summons ?? [])]
+  state.mechanics.scene_interactions = clone(stash?.scene_interactions ?? {})
+  state.mechanics.encounter = stash?.encounter ? clone(stash.encounter) : null
+  state.mechanics.positions = { ...clone(stash?.positions ?? {}), ...state.mechanics.positions }
+  const world = normalizeNpcWorldState(state.npc_world)
+  state.npc_world = normalizeNpcWorldState({
+    ...world,
+    placements: [...world.placements, ...clone(stash?.npc_placements ?? [])],
+  })
+  if (!stash) return state
+  const stashes = { ...state.levelEntities }
+  delete stashes[key]
+  if (Object.keys(stashes).length) state.levelEntities = stashes
+  else delete state.levelEntities
+  return state
+}
+
+/** Известные партии этажи локации: без дублей, по возрастанию, этаж входа всегда есть. */
+function rememberKnownLevel(state, locationId, level, label) {
+  if (!locationId) return state
+  const known = state.locationLevels && typeof state.locationLevels === 'object' && !Array.isArray(state.locationLevels)
+    ? { ...state.locationLevels }
+    : {}
+  const byIndex = new Map()
+  byIndex.set(0, { index: 0, label: sceneLevelLabel(state, 0) })
+  for (const entry of Array.isArray(known[locationId]) ? known[locationId] : []) {
+    const index = Number(entry?.index)
+    if (!Number.isSafeInteger(index)) continue
+    byIndex.set(index, { index, label: String(entry?.label ?? '').slice(0, 120) || sceneLevelLabel(state, index) })
+  }
+  byIndex.set(level, { index: level, label })
+  known[locationId] = [...byIndex.values()].sort((left, right) => left.index - right.index)
+  state.locationLevels = known
+  return state
+}
+
 /**
  * Виды сущностей, которые являются существами. Существа в карту не входят: они
  * живут в состоянии боя и лишь временно занимают клетку
@@ -2643,6 +2863,9 @@ function normalizeCommand(input, state) {
     command.intent = String(command.intent ?? 'inspect')
     command.approach = command.approach === 'force' ? 'force' : 'hand'
   }
+  if (command.command_type === 'UseLevelTransition') {
+    command.prop_id = String(command.prop_id ?? command.propId ?? '').slice(0, 120)
+  }
   command.expected_state_version = safeInteger(command.expected_state_version ?? command.expectedStateVersion, state.state_version)
   return command
 }
@@ -2651,7 +2874,7 @@ function needsActor(type) {
   return new Set(['DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
-    'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
+    'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3707,7 +3930,11 @@ export function validateCommand(input, rawState, context = {}) {
     }
   }
 
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  // `UseLevelTransition` стоит рядом с `AdvanceScene` осознанно: подъём по
+  // лестнице — перемещение по миру, а не механика редакции. Приписать ему
+  // `turn-economy` значило бы соврать: в бою переход запрещён вовсе, и хода он
+  // не тратит.
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -9019,6 +9246,79 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, []))
       break
     }
+    /**
+     * Переход между этажами локации (`docs/multilevel-map-plan.md`, раздел 4).
+     *
+     * Это не `AdvanceScene`: лестница внутри здания не меняет локацию, не
+     * требует решения группы и не сбрасывает приключение. Партия ходит вместе —
+     * переход инициирует один игрок, остальных «перевозит» вместе с ним.
+     */
+    case 'UseLevelTransition': {
+      const map = ensureSceneTacticalMap(state)
+      if (!map) throw new RulesValidationError('Для перехода между этажами нужна тактическая карта', 'TACTICAL_MAP_REQUIRED')
+      let prop = map.props.find((candidate) => String(candidate.id) === command.prop_id)
+      // Привязка лестницы к этажу могла потеряться на круге через старые
+      // клетки. Чиним до отказа, а не после: иначе объявленный этаж существовал
+      // бы только в заявке.
+      if (!prop?.transition && restoreSceneLevelTransitions(state, map)) {
+        writeSceneTacticalMap(state, map)
+        prop = map.props.find((candidate) => String(candidate.id) === command.prop_id)
+      }
+      if (!prop?.transition) throw new RulesValidationError('Этот предмет не ведёт на другой этаж', 'TRANSITION_NOT_FOUND')
+      if (state.mechanics.combat.active) {
+        throw new RulesValidationError('Сначала завершите бой: между этажами в бою не ходят', 'LEVEL_TRANSITION_IN_COMBAT')
+      }
+      if (!sceneAdvancePartyIds(state).includes(String(command.actor_id))) {
+        throw new RulesValidationError('Между этажами водит партию только её персонаж', 'PARTY_MEMBER_REQUIRED')
+      }
+      const at = actorPosition(state, command.actor_id)
+      if (!at) throw new RulesValidationError('Участник должен находиться на карте', 'MAP_POSITION_REQUIRED')
+      if (sceneObjectDistance(prop, at) > 1) {
+        throw new RulesValidationError('До перехода нужно дойти: встаньте вплотную', 'TRANSITION_TOO_FAR')
+      }
+
+      const locationId = sceneLocationId(state)
+      const fromLevel = safeInteger(map.levelIndex, 0)
+      const toLevel = safeInteger(prop.transition.toLevel, fromLevel)
+      const label = sceneLevelLabel(state, toLevel, prop.transition.label)
+      // Тело этажа едет в событии **только при первой генерации**. Повторный
+      // переход находит этаж в `state.locationMaps` под ключом этажа, а тот
+      // восстанавливается из самого потока событий — это детерминированно и не
+      // зависит от внешнего хранилища.
+      let target = rememberedLevelMap(state, locationId, toLevel)
+      let generated = false
+      if (!target) {
+        const declared = declaredSceneLevels(state).find((entry) => Number(entry?.offset) === toLevel)
+        const result = generateLevelMap({
+          locationId,
+          level: toLevel,
+          seed: levelSeed(stableLocationMapSeed(state.worldMap, locationId, state.scene?.location), toLevel),
+          baseMap: map,
+          sourceProp: prop,
+          hint: String(declared?.hint ?? '') || String(prop.transition.label ?? ''),
+          theme: String(state.scene?.theme ?? ''),
+        })
+        if (!result.map) {
+          const failure = result.errors[0] ?? { code: 'LEVEL_GENERATION_FAILED', message: `Этаж ${toLevel} не удалось построить` }
+          throw new RulesValidationError(failure.message, failure.code)
+        }
+        target = result.map
+        generated = true
+      }
+      const arrival = levelTransitionBackTo(target, fromLevel)
+      if (!arrival) throw new RulesValidationError('На целевом этаже нет обратного перехода', 'LEVEL_ARRIVAL_MISSING')
+      const partyPositions = levelArrivalPositions(state, target, arrival)
+      events.push(eventFrom(command, 'MapLevelChanged', {
+        location_id: locationId,
+        from_level: fromLevel,
+        to_level: toLevel,
+        level_label: label,
+        arrival_prop_id: arrival.id,
+        party_positions: partyPositions,
+        ...(generated ? { map: serializeTacticalMap(target) } : {}),
+      }, partyPositions.map((position) => position.actor_id)))
+      break
+    }
     case 'CreateEncounter': {
       const encounterId = String(command.encounter.proposal_id).replace(/^encounter-proposal-/u, 'encounter-')
       const encounter = {
@@ -10561,6 +10861,22 @@ export function applyGameEvent(rawState, event) {
       }
       break
     case 'SceneAdvanced': {
+      // Уход из локации консервирует покидаемый этаж так же, как переход между
+      // этажами. Сама карта уже лежит в `state.locationMaps` — её кладёт туда
+      // `rememberCurrentSceneMap` после каждого события, — а вот жителей нужно
+      // сложить явно, иначе они пропадут вместе со сценой. С этажа входа
+      // складывать нечего: он и есть этаж локации, и его жители остаются на
+      // месте ровно так же, как остаются посты NPC.
+      {
+        const previousLevel = sceneLevelIndex(state)
+        if (previousLevel !== 0) {
+          const previousLocation = sceneLocationId(state)
+          rememberSceneMap(state, levelKey(previousLocation, previousLevel), state.scene?.cells, state.scene?.map)
+          stashLevelEntities(state, levelKey(previousLocation, previousLevel))
+        }
+      }
+      // Номер этажа принадлежит сцене, поэтому со сменой сцены он исчезает сам:
+      // в новую локацию отряд входит на этаж входа.
       state.scene = clone(plainObject(payload.scene) ? payload.scene : {})
       state.worldMap = clone(plainObject(payload.worldMap) ? payload.worldMap : ensureCampaignWorldMap({ ...state, scene: payload.scene }))
       state.adventure = {
@@ -10609,6 +10925,85 @@ export function applyGameEvent(rawState, event) {
       if (state.agentInteraction?.status === 'resolved') state.agentInteraction = null
       delete state.suggestions
       if (!partyIds.has(String(state.activePlayerId ?? ''))) state.activePlayerId = state.partyMemberIds[0] ?? ''
+      break
+    }
+    /**
+     * Смена активного этажа локации.
+     *
+     * Карту событие несёт **только при первой генерации этажа**. Повторный
+     * переход её не несёт: тело этажа уже лежит в `state.locationMaps` под
+     * ключом этажа, а туда оно попало применением этого же события — то есть
+     * восстанавливается из самого потока событий, а не из внешнего хранилища.
+     * Replay поэтому детерминирован, а событие возвращения на посещённый этаж
+     * весит меньше двух килобайт (бюджет раздела 8 плана).
+     */
+    case 'MapLevelChanged': {
+      if (!state.scene || typeof state.scene !== 'object' || Array.isArray(state.scene)) break
+      const locationId = String(payload.location_id ?? '') || sceneLocationId(state)
+      const fromLevel = safeInteger(payload.from_level, sceneLevelIndex(state))
+      const toLevel = safeInteger(payload.to_level, fromLevel)
+      if (fromLevel === toLevel) break
+
+      // 1. Целевая карта берётся первой: если её нет ни в событии, ни в памяти
+      //    локаций, переходить некуда — и трогать сцену нельзя вовсе, иначе
+      //    жители покидаемого этажа ушли бы в стэш без всякого перехода.
+      let target = null
+      if (plainObject(payload.map)) {
+        try {
+          target = deserializeTacticalMap(clone(payload.map))
+        } catch { /* Повреждённая карта в событии — попробуем запомненный этаж. */ }
+      }
+      if (!target) target = rememberedLevelMap(state, locationId, toLevel)
+      if (!target) break
+
+      // 2. Консервация покидаемого этажа. Привязки лестниц восстанавливаются и
+      //    здесь: живая игра чинит их в resolve, и без такой же починки в
+      //    reducer replay собрал бы другой этаж.
+      const leaving = ensureSceneTacticalMap(state)
+      if (leaving && restoreSceneLevelTransitions(state, leaving)) writeSceneTacticalMap(state, leaving)
+      rememberSceneMap(state, levelKey(locationId, fromLevel), state.scene.cells, state.scene.map)
+
+      // 3. Жители покидаемого этажа уходят в стэш, жители целевого — из стэша.
+      //    Единственная точка записи `scene.cells` — `syncSceneCells` внутри
+      //    `writeSceneTacticalMap`.
+      stashLevelEntities(state, levelKey(locationId, fromLevel))
+      const label = String(payload.level_label ?? '').slice(0, 120) || sceneLevelLabel(state, toLevel)
+      state.scene.level = { index: toLevel, label }
+      writeSceneTacticalMap(state, target)
+      restoreLevelEntities(state, levelKey(locationId, toLevel))
+
+      // 4. Расстановка партии и раскрытие вокруг прибытия.
+      const levelPartyIds = new Set(state.partyMemberIds ?? [])
+      const levelWalkable = new Set((Array.isArray(state.scene.cells) ? state.scene.cells : [])
+        .filter((cell) => ['floor', 'door'].includes(String(cell?.type || 'floor').toLowerCase()))
+        .map((cell) => `${Number(cell.x)},${Number(cell.y)}`))
+      const levelUsedActors = new Set()
+      const levelUsedCells = new Set()
+      const levelPositions = new Map()
+      for (const entry of Array.isArray(payload.party_positions) ? payload.party_positions : []) {
+        const id = String(entry?.actor_id ?? '')
+        const x = Number(entry?.x)
+        const y = Number(entry?.y)
+        const key = `${x},${y}`
+        if (!levelPartyIds.has(id) || levelUsedActors.has(id) || levelUsedCells.has(key)
+          || !Number.isSafeInteger(x) || !Number.isSafeInteger(y) || !levelWalkable.has(key)) continue
+        levelUsedActors.add(id)
+        levelUsedCells.add(key)
+        levelPositions.set(id, { x, y })
+      }
+      revealSceneCells(state, [...levelUsedCells].map((key) => {
+        const [x, y] = key.split(',').map(Number)
+        return { x, y }
+      }))
+      state.players = state.players.map((player) => {
+        const position = levelPositions.get(actorId(player))
+        return position ? { ...player, ...position } : player
+      })
+      state.mechanics.positions = { ...state.mechanics.positions, ...Object.fromEntries(levelPositions) }
+      state.mapFeedback = []
+
+      // 5. Этаж становится известным партии.
+      rememberKnownLevel(state, locationId, toLevel, label)
       break
     }
     case 'DamageApplied':
@@ -12040,6 +12435,7 @@ export function eventSummary(event, resolveName = (id) => id) {
   const payload = event.payload ?? {}
   const named = (id) => (id == null || id === '' ? id : resolveName(id))
   switch (event.event_type) {
+    case 'MapLevelChanged': return `${Number(payload.to_level) > Number(payload.from_level) ? 'Партия поднимается' : 'Партия спускается'}: ${payload.level_label || `этаж ${payload.to_level}`}`
     case 'SceneObjectOperated': return `${named(event.actor_id) || 'Герой'} взаимодействует с объектом ${payload.prop_id}: ${payload.intent}`
     case 'SceneObjectCheckResolved': return `${named(event.actor_id) || 'Герой'} проверяет объект ${payload.prop_id}: ${payload.success ? 'успех' : 'неудача'} (${payload.total}/${payload.difficulty})`
     case 'SceneObjectInspected': return `${named(event.actor_id) || 'Герой'} осматривает объект ${payload.prop_id}`

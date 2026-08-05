@@ -273,7 +273,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .rest-controls button { min-height: 32px; padding: 0 7px; border: 1px solid rgba(204,151,86,.26); border-radius: 5px; background: rgba(163,101,43,.1); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
 .rest-controls button:hover:not(:disabled) { border-color: rgba(224,174,111,.5); background: rgba(163,101,43,.18); }
 .rest-controls button:disabled { opacity: .38; cursor: default; }
-.map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
+/* --map-light-* — запечённый свет доски (`src/board-lighting.ts`): цвет тьмы и цвет огня. Значения по умолчанию продублированы в DEFAULT_BOARD_PALETTE, доска обязана рисоваться и без темы. */
+.map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); --map-light-shadow: #0d1016; --map-light-warm: #ffb257; position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
 .map-stage::before { content: ''; position: absolute; inset: 0; opacity: .12; background-image: repeating-linear-gradient(35deg, transparent 0 15px, rgba(255,255,255,.025) 16px 17px), repeating-linear-gradient(125deg, transparent 0 22px, rgba(0,0,0,.3) 23px 24px); }
 .map-stage.map-theme-tech { --map-floor: #53646a; --map-floor-alt: #5c6e73; --map-wall: #26373c; --map-grid-line: rgba(121,207,207,.2); background: radial-gradient(ellipse at 54% 43%, #3f6269 0%, #192a2f 58%, #080b0d 88%); }
 .map-stage.map-theme-wild { --map-floor: #71834a; --map-floor-alt: #7b8d52; --map-wall: #354129; --map-grid-line: rgba(70,86,40,.24); background: radial-gradient(ellipse at 54% 43%, #66764a 0%, #2c3824 58%, #0b1008 88%); }
@@ -562,6 +563,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .legend-mark { flex: 0 0 17px; width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid rgba(210,180,136,.38); border-radius: 50%; color: #d1b78d; font: 800 9px/1 Manrope, sans-serif; font-style: normal; }
 .legend-mark.elevation { width: 24px; border-radius: 3px; color: #e9cc98; }
 .legend-mark.cover { border-color: rgba(136,176,193,.48); color: #a9cedb; }
+/* Поверхности: те же тона, что SURFACE_COLORS в src/board-render.ts. */
+.legend-swatch.surface-water { background: #3f7d84; }
+.legend-swatch.surface-ice { background: #8fb9c2; }
+.legend-swatch.surface-mud { background: #5c4a34; }
+.legend-swatch.surface-rubble { background: #7a7168; }
+.legend-mark.stairs { border-color: rgba(214,161,96,.5); color: #e0b070; font-size: 11px; }
 .zoom-control { position: absolute; z-index: 9; right: 27px; top: 88px; display: flex; align-items: center; height: 36px; border: 1px solid var(--line); border-radius: 4px; background: rgba(15,13,11,.78); backdrop-filter: blur(10px); }
 .zoom-control button { width: 36px; min-width: 36px; height: 100%; display: grid; place-items: center; border: 0; background: transparent; color: #817970; cursor: pointer; }
 .zoom-control button:hover { color: #ddd2c4; }
@@ -1181,6 +1188,9 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Отмена рядом с подтверждением: тише кнопкой, но того же роста. */
 .combat-hotbar .hotbar-turn-controls .cancel-self-cast { min-height: 28px; justify-content: center; gap: 6px; border-color: var(--line); background: transparent; color: #8b8177; }
 .combat-hotbar .hotbar-turn-controls .cancel-self-cast:hover { border-color: rgba(211,160,97,.35); color: #c49a63; }
+/* Куда ведёт выбранная лестница: подпись, а не кнопка — кнопка перехода рядом
+   может быть закрыта боем или расстоянием, а назначение перехода видно всегда. */
+.hotbar-turn-controls .scene-object-lead { overflow: hidden; color: #9c8a6c; font: 600 var(--fs-sm) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .combat-hotbar > .tactical-command-status { position: absolute; left: 10px; bottom: calc(100% + 45px); margin: 0; padding: 6px 9px; border-radius: 4px; background: rgba(15,13,11,.92); }
 .combat-hotbar > .tactical-command-error { position: absolute; right: 0; bottom: calc(100% + 44px); width: min(360px, 70vw); margin: 0; }
 .combat-hotbar > .tactical-command-error button { width: 18px; margin: -3px -3px 0 0; }
@@ -1203,6 +1213,14 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .exploration-start-combat span { display: grid; gap: 1px; text-align: left; }
 .exploration-start-combat small { color: inherit; opacity: .62; font: var(--fs-xs) Manrope, sans-serif; }
 .exploration-start-combat strong { color: inherit; font: 600 var(--fs-md) Spectral, serif; white-space: nowrap; }
+/* Уход из локации стоит рядом с началом боя и намеренно холоднее его: это не
+   опасное действие, а предложение отряду, и красным оно кричать не должно. */
+.exploration-leave-location { min-height: 44px; display: flex; align-items: center; gap: 8px; margin: 0; padding: 7px 11px; border: 1px solid rgba(120,142,176,.4); border-radius: 6px; background: linear-gradient(180deg, rgba(52,68,94,.3), rgba(28,36,52,.24)); color: #9fb2ce; cursor: pointer; }
+.exploration-leave-location:hover:not(:disabled) { border-color: rgba(146,175,219,.66); color: #c6d6ef; transform: translateY(-1px); }
+.exploration-leave-location:disabled { opacity: .36; cursor: default; }
+.exploration-leave-location span { display: grid; gap: 1px; text-align: left; }
+.exploration-leave-location small { color: inherit; opacity: .62; font: var(--fs-xs) Manrope, sans-serif; }
+.exploration-leave-location strong { color: inherit; font: 600 var(--fs-md) Spectral, serif; white-space: nowrap; }
 .map-legend { bottom: 18px; }
 
 @media (max-width: 1120px) {
@@ -1272,8 +1290,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .map-economy { gap: 5px; padding: 5px 6px; }
   .map-economy > span { padding: 0 9px; }
   .game-area > .dice-tray:not(.dice-tray--rolling) { bottom: 150px; }
-  .exploration-start-combat { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }
-  .exploration-start-combat span { display: none; }
+  .exploration-start-combat,
+  .exploration-leave-location { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }
+  .exploration-start-combat span,
+  .exploration-leave-location span { display: none; }
 }
 
 @media (max-width: 440px) {

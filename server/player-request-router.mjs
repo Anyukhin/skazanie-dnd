@@ -1,4 +1,5 @@
 import { interpretResolvedPartyDecision } from './scene-architect.mjs'
+import { abandonableQuest, detectPartyExitRequest } from './party-exit-intent.mjs'
 import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 
@@ -18,16 +19,15 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   director: { id: 'director', prompt_id: ['director/v2_story', 'director/v2_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
   narrator: { id: 'narrator', prompt_id: 'narrator/v6', purpose: 'Финальное повествование из подтверждённых результатов' },
-  map_architect: { id: 'map_architect', prompt_id: 'map_architect/v3', purpose: 'Динамическая архитектура новой локации и игровой карты' },
+  map_architect: { id: 'map_architect', prompt_id: 'map_architect/v4', purpose: 'Динамическая архитектура новой локации и игровой карты' },
   action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v3', purpose: 'Разбор свободного действия: цель, средство, применимый навык и цена провала' },
 })
 
 const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
-const DIRECTOR_REQUEST = /(?:покида|уходим|маршрут|куда\s+дальше|голосован|вместе\s+реш|цель\s+достиг|следующ\w*\s+локац|\[РЕШЕНИЕ ГРУППЫ\])/iu
+const DIRECTOR_REQUEST = /(?:покида|уходим|маршрут|куда\s+дальше|голосован|вместе\s+реш|цель\s+достиг|следующ\w*\s+локац|\[РЕШЕНИЕ ГРУППЫ\]|\[ГЛОБАЛЬНАЯ КАРТА\])/iu
 const DIRECTION_REQUEST = /(?:куда\s+(?:нам\s+)?(?:идти|пойти|уходить|направляться|двигаться)(?:\s+дальше|\s+отсюда|\s+по\s+заданию)?|куда\s+по\s+заданию|что\s+делать\s+дальше)/iu
 const FATE_REQUEST = /(?:пусть|пускай|давайте|может)\s+(?:решит|определит|бросим)\s+(?:кубик|кость)|кубик\s+судьбы/iu
 const RULES_REQUEST = /(?:правил|можно\s+ли|провер|брос|куб|атак|урон|заклин|спасброс|инициатив|класс\s+брони)/iu
-const EXIT_REQUEST = /(?:предлагаю\s+)?(?:покинуть|уйти\s+из|выбраться\s+из|уходим\s+из)\s+(?:этого\s+)?(?:подземель\w*|локац\w*|мест\w*|город\w*|деревн\w*|лес\w*|чащ\w*|порт\w*|замок\w*|лагер\w*|храм\w*|пещер\w*|руин\w*|архив\w*|здани\w*|район\w*|улиц\w*)/iu
 
 export function selectAgentRole(action) {
   const text = String(action || '').normalize('NFKC')
@@ -39,6 +39,34 @@ export function selectAgentRole(action) {
 
 export function roleAllowsWorldTools(role) {
   return role !== 'worldkeeper'
+}
+
+/** Подпись варианта голосования обрезается сервером до 100 знаков. */
+const PARTY_OPTION_LIMIT = 100
+
+/**
+ * Подпись варианта «уйти и бросить задание».
+ *
+ * Пункт назначения берётся в кавычки намеренно: подпись читает тот же словарь
+ * ухода, которым она была предложена, и «Каменный Град» без кавычек местом не
+ * опознаётся — в списке мест есть «город», но нет каждого названия мира. При
+ * нехватке места режется название задания, а не маршрут: маршрут решает, куда
+ * попадёт отряд, а название — только украшение подписи.
+ *
+ * @param {string} questTitle
+ * @param {string} destination
+ * @returns {string}
+ */
+function abandonLabel(questTitle, destination) {
+  // Кавычки-ёлочки в подписи значащие: по ним разбирается пункт назначения.
+  // Чужая «ёлочка» внутри названия закрыла бы кавычку не там, где нужно.
+  const plain = (value) => String(value ?? '').replace(/[«»]/gu, '').trim()
+  const place = plain(destination).slice(0, 60)
+  const lead = place ? `Уходим в «${place}» и бросаем задание` : 'Уходим отсюда и бросаем задание'
+  const room = PARTY_OPTION_LIMIT - lead.length - ' «»'.length
+  const title = plain(questTitle)
+  const fitted = title.length > room ? `${title.slice(0, Math.max(1, room - 1)).trimEnd()}…` : title
+  return `${lead} «${fitted}»`
 }
 
 export function proposeAgentInteraction(action, state = {}) {
@@ -54,19 +82,26 @@ export function proposeAgentInteraction(action, state = {}) {
       resolutionPrompt: 'Продолжи историю по результату общего броска и при уходе открой следующую сцену.',
     }
   }
-  if (EXIT_REQUEST.test(text)) {
-    const destination = text.match(/(?:отправиться|пойти|идти|направиться)\s+(?:в|на|к)\s+([^,.!?;:]+)/iu)?.[1]
-      ?.replace(/\s+/gu, ' ').trim().slice(0, 120)
+  const exit = detectPartyExitRequest(text)
+  if (exit) {
+    const destination = exit.destination
     const knownFrom = String(state.scene?.location || state.scene?.title || '').replace(/\s+/gu, ' ').trim().slice(0, 120)
     const from = knownFrom || 'подземелья'
     const leaveOption = destination
       ? knownFrom ? `Уходим из «${from}» и идём в ${destination}` : `Уходим из подземелья и идём в ${destination}`
       : knownFrom ? `Покинуть «${from}»` : 'Покинуть подземелье'
+    // Отказ от задания — третий вариант того же голосования, а не отдельная
+    // карточка: уйти, не закрыв нить, и уйти, отказавшись от неё, — это один и
+    // тот же разговор за столом, и разводить его на два голосования незачем.
+    // Подпись несёт название задания только для игрока; какое задание закрыть,
+    // сервер выбирает сам через `abandonableQuest` в момент исполнения.
+    const quest = abandonableQuest(state)
+    const abandonOption = quest ? abandonLabel(quest.title, destination) : ''
     return {
       type: 'vote',
       title: knownFrom ? `Покинуть «${from}»?` : 'Покинуть подземелье?',
       description: 'Маршрут меняет судьбу всей группы, поэтому Режиссёр просит большинство героев принять решение вместе.',
-      options: [leaveOption, 'Остаться и исследовать дальше'],
+      options: [leaveOption, ...(abandonOption ? [abandonOption] : []), 'Остаться и исследовать дальше'],
       resolutionPrompt: 'Исполни решение большинства. Если отряд уходит, бесшовно открой следующую локацию.',
     }
   }
@@ -163,7 +198,12 @@ export function resolvePartyDecision(action, state = {}) {
   const interpretation = interpretResolvedPartyDecision(action, state)
   if (!interpretation) return null
   if (interpretation.kind === 'move') {
-    return { type: 'scene_request', decision: interpretation.decision, destinationHint: interpretation.destinationHint }
+    return {
+      type: 'scene_request',
+      decision: interpretation.decision,
+      destinationHint: interpretation.destinationHint,
+      abandonsQuest: interpretation.abandonsQuest === true,
+    }
   }
   if (interpretation.kind === 'stay') {
     const direction = String(state.adventure?.currentHook || state.scene?.objective || 'неисследованный проход').replace(/\s+/g, ' ').trim().slice(0, 160)
