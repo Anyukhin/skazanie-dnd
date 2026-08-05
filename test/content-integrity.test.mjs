@@ -20,7 +20,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // Число сторожит именно неожиданный приход и уход ассетов, поэтому меняется
   // вместе с осознанным пополнением набора.
   // + 12 рисованных эмблем классов (`public/assets/ui/class-icons/*.webp`).
-  assert.equal(report.integrity.assets, 1243)
+  // + 6 переиспользуемых фонов способностей (`public/assets/ui/action-backgrounds/*.webp`).
+  assert.equal(report.integrity.assets, 1249)
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

@@ -1245,7 +1245,13 @@
     ["ui/class-icons/rogue.webp", "da44bb45e07d91de26a7bab787072a56b7d836554c50b36ff72fe79e338b544c", 13374],
     ["ui/class-icons/sorcerer.webp", "1c83b54a516f24f4dcd4def19788a7a1613c4815767f31cadf8197de6e2c6937", 20378],
     ["ui/class-icons/warlock.webp", "1a97548c8f35613e41466db16fd5394d8853f6d2f65299bca57bb039a82a13e1", 16484],
-    ["ui/class-icons/wizard.webp", "9c9126b9dbfe6d6976199d469756170d7325f313cccdaddfbe9fcb693d7f6d55", 18274]
+    ["ui/class-icons/wizard.webp", "9c9126b9dbfe6d6976199d469756170d7325f313cccdaddfbe9fcb693d7f6d55", 18274],
+    ["ui/action-backgrounds/arcane.webp", "5a5488ce977e00229daffdb3cd2230c49dc2304c5e3a8a32f74fb95a5ac4e6b2", 10252],
+    ["ui/action-backgrounds/divine.webp", "4de64f8013a5191f87dd6fadfcc3d7f45448920dd1294a6b1f74da8a5ce57b67", 13426],
+    ["ui/action-backgrounds/martial.webp", "1555d6bf5659bd5152f1b427a38be2fee2e6e8dc1bdba0110fd615c8637a8db8", 9194],
+    ["ui/action-backgrounds/nature.webp", "6d2469503a732aefda8bb649846827ddbbe3f736f6e59500539f54b54bdb8aa7", 17372],
+    ["ui/action-backgrounds/shadow.webp", "a45394c38ed5dcdf37752aa2da1ec4b0763c401581888e5478609b1ac32f5ae5", 9934],
+    ["ui/action-backgrounds/utility.webp", "f79d961bfb0e13296eab6f86a243f56c4e5e0c4af78cb6c3403ba141ac97784f", 13086]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",
