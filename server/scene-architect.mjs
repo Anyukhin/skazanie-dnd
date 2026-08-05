@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { publicAdventureMemory } from './adventure-director.mjs'
+import { classifyPartyDecision } from './party-exit-intent.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
@@ -82,25 +83,21 @@ function selectedDecision(action, state = {}) {
   return clean(option?.label || action, 500)
 }
 
+/**
+ * Разбор подтверждённого решения группы. Словарь ухода живёт в
+ * `server/party-exit-intent.mjs` — том же, по которому Режиссёр решал, предлагать
+ * ли это голосование. Два независимых списка расходились, и вариант, за который
+ * отряд уже проголосовал, мог не опознаться как уход.
+ */
 export function interpretResolvedPartyDecision(action, state = {}) {
   const text = clean(action, 2000).normalize('NFKC')
   if (!/^\[РЕШЕНИЕ ГРУППЫ\]/iu.test(text)) return null
   const decision = selectedDecision(text, state)
-  const normalized = decision.toLocaleLowerCase('ru')
-  const stays = /(?:оста(?:ться|ёмся|емся)|не\s+уход|продолж(?:ить|аем)\s+(?:исслед|поиск)|исследовать\s+дальше)/iu.test(normalized)
-  const moves = /(?:уход(?:им|ить)|уйти|уйд[её]м|покин(?:уть|ем|уть)|отступ(?:аем|ить)|выбраться|возвращаемся|ид[её]м\s+(?:в|на|к)|направляемся\s+(?:в|на|к))/iu.test(normalized)
-  if (stays && !moves) return { kind: 'stay', decision }
-  if (!moves) return { kind: 'other', decision }
-
-  const destinationMatch = normalized.match(/(?:уходим|уйти|уйд[её]м|ид[её]м|направляемся|возвращаемся)\s+(?:из\s+[^—,.;]+\s+)?(?:в|на|к)\s+([^—,.;]+)/iu)
-    ?? normalized.match(/(?:^|\s)(?:в|на|к)\s+(город(?:\w*)?|деревн(?:ю|е)|порт|лес|замок|тракт|лагерь|храм|башн(?:ю|е)|пещер(?:у|е)|горы?)(?:\s+[^—,.;]*)?/iu)
-  const normalizedHint = destinationMatch?.[1] ?? ''
-  const hintOffset = normalizedHint ? normalized.indexOf(normalizedHint) : -1
-  const destinationHint = clean(
-    hintOffset >= 0 ? decision.slice(hintOffset, hintOffset + normalizedHint.length) : normalizedHint,
-    120,
-  )
-  return { kind: 'move', decision, destinationHint }
+  const classified = classifyPartyDecision(decision)
+  if (classified.kind === 'move') {
+    return { kind: 'move', decision, destinationHint: classified.destinationHint, abandonsQuest: classified.abandonsQuest }
+  }
+  return { kind: classified.kind, decision, abandonsQuest: classified.abandonsQuest }
 }
 
 function themeFor(destination, action) {
@@ -123,7 +120,7 @@ function themeFor(destination, action) {
   return { theme: 'новая местность', layout: 'open', scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 11, openness: 0.64, water: 0.05, featureCount: 5, danger: 'средняя' }
 }
 
-function fallbackPlan({ action, state, decision, destinationHint }) {
+function fallbackPlan({ action, state, decision, destinationHint, abandonsQuest = false }) {
   const from = clean(state.scene?.location || state.scene?.title, 120) || 'прежняя локация'
   const destination = clean(destinationHint, 120) || `Окрестности ${from}`
   const location = destination.charAt(0).toLocaleUpperCase('ru') + destination.slice(1)
@@ -131,21 +128,30 @@ function fallbackPlan({ action, state, decision, destinationHint }) {
   const oldHook = clean(state.adventure?.currentHook, 240)
   const oldObjective = clean(state.scene?.objective, 160)
   const requestedHook = /печат[ьи]\s+архивариуса/iu.test(action) ? 'Печать архивариуса остаётся незавершённой нитью и может открыть другой путь.' : ''
-  const hook = requestedHook || oldHook || oldObjective || `В ${location} обнаружится связь с оставленным позади путём.`
+  // Отряд отказался от задания — новая цель не должна вести обратно к нему.
+  // Прежняя зацепка не переезжает ни в цель, ни в незавершённые нити: отказ
+  // именно тем и отличается от «ушли, не закрыв», что нить закрыта решением.
+  const hook = abandonsQuest
+    ? `В ${location} найдётся дело, не связанное с оставленным заданием.`
+    : requestedHook || oldHook || oldObjective || `В ${location} обнаружится связь с оставленным позади путём.`
   const map = themeFor(location, action)
   return {
     title: `Глава ${chapter} · ${location}`,
     location,
     mood: map.theme === 'городские улицы' ? 'Шумная передышка за городскими стенами, где опасность прячется среди людей' : 'Неизведанное место, в котором путь ещё предстоит найти',
-    objective: oldHook ? `Найти в ${location} другой путь к разгадке: ${oldHook}` : `Осмотреться в ${location} и найти другой путь`,
+    objective: abandonsQuest
+      ? `Осмотреться в ${location} и найти новую цель`
+      : oldHook ? `Найти в ${location} другой путь к разгадке: ${oldHook}` : `Осмотреться в ${location} и найти другой путь`,
     transition: `Отряд отступает из «${from}» и следует принятому решению: ${clean(decision, 220)}.`,
     arrival: map.theme === 'городские улицы' ? `Дорога выводит героев к воротам. За ними открываются улицы локации «${location}» — с площадями, переулками и местами, где можно искать сведения.` : `Путь из «${from}» приводит героев в новую локацию — «${location}».`,
     hook,
     theme: map.theme,
     danger: map.danger,
-    outcome: `Отряд покинул «${from}», не закрыв прежнюю сюжетную нить.`,
-    objective_status: 'unresolved',
-    carry_unresolved: true,
+    outcome: abandonsQuest
+      ? `Отряд покинул «${from}», отказавшись от прежнего задания.`
+      : `Отряд покинул «${from}», не закрыв прежнюю сюжетную нить.`,
+    objective_status: abandonsQuest ? 'abandoned' : 'unresolved',
+    carry_unresolved: !abandonsQuest,
     map: { layout: map.layout, scale: map.scale, pattern: map.pattern, material: map.material, width: map.width, height: map.height, openness: map.openness, water: map.water, featureCount: map.featureCount },
   }
 }
@@ -196,8 +202,8 @@ export class SceneArchitectAgent {
     this.llmClient = llmClient
   }
 
-  async plan({ action, state = {}, decision = '', destinationHint = '' } = {}) {
-    const fallback = fallbackPlan({ action: clean(action, 2000), state, decision: clean(decision, 500), destinationHint })
+  async plan({ action, state = {}, decision = '', destinationHint = '', abandonsQuest = false } = {}) {
+    const fallback = fallbackPlan({ action: clean(action, 2000), state, decision: clean(decision, 500), destinationHint, abandonsQuest })
     const fallbackShopIntent = defaultSceneShopIntent(fallback)
     if (!this.llmClient) return {
       sceneArgs: fallback,
@@ -212,7 +218,7 @@ export class SceneArchitectAgent {
           // Решение партии и текст разрешения — свободный текст игроков; память
           // кампании тоже могла быть записана из их слов. Всё уходит только
           // внутри UNTRUSTED_DATA, снаружи не остаётся ни одной их строки.
-          { role: 'user', content: buildDataOnlyContext({ scene_planning: { selected_party_decision: clean(decision, 500), destination_hint: clean(destinationHint, 120), ...planningBrief, full_resolution_context: clean(action, 2000) } }) },
+          { role: 'user', content: buildDataOnlyContext({ scene_planning: { selected_party_decision: clean(decision, 500), destination_hint: clean(destinationHint, 120), quest_abandoned: abandonsQuest === true, ...planningBrief, full_resolution_context: clean(action, 2000) } }) },
         ],
         temperature: 0.45,
         maxTokens: 1000,

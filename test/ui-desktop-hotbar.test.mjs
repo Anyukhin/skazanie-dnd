@@ -32,8 +32,15 @@ test('wide hotbar lays out title, chips and two-column detail at the requested t
   assert.match(styles, /\.hotbar-detail \.detail-description \{[^}]*columns: 2;/)
 })
 
-test('the exploration controls wrapper cannot render without its start-combat button', async () => {
+test('строка исследования не рендерится пустой и всегда несёт выход из локации', async () => {
+  // Прежний сторож требовал, чтобы коробка не появлялась без кнопки боя. Смысл
+  // остался тот же — пустой полосы отступов быть не должно, — но безусловное
+  // содержимое теперь другое: уйти из локации нужно как раз тогда, когда в сцене
+  // не осталось ни одного противника и кнопки боя нет.
   const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
   .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
-  assert.match(appSource, /\{showStartCombat && !combatActive && <div className="hotbar-controls-row">[\s\S]*?<button className="exploration-start-combat"[\s\S]*?<\/div>\}/)
+  const row = appSource.match(/\{!combatActive && <div className="hotbar-controls-row">[\s\S]*?<\/div>\}/)
+  assert.ok(row, 'строка исследования обязана рендериться только вне боя')
+  assert.match(row[0], /<button\s+className="exploration-leave-location"/)
+  assert.match(row[0], /\{showStartCombat && <button className="exploration-start-combat"/)
 })

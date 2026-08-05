@@ -603,7 +603,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -626,6 +626,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => Promise<CommandOutcome>
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => Promise<CommandOutcome>
   onUseLevelTransition: (actorId: string, propId: string) => Promise<CommandOutcome>
+  onLeaveLocation: () => void
   onOpenMerchant: (merchantId: string) => void
   onFinishTurn: () => Promise<CommandOutcome>
   onFreeAction: (text: string) => Promise<CommandOutcome>
@@ -2194,12 +2195,26 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       <section className={`tactical-control combat-hotbar ${combatActive ? '' : 'out-of-combat'}`} aria-label={combatActive ? `Панель боевых действий: ${activeName}` : `Панель действий вне боя: ${activeName}`}>
         {/* Ряд рисуется только со своим содержимым: остаток хода уехал под стол,
             и в бою здесь не остаётся ничего, кроме пустой полосы отступов. */}
-        {showStartCombat && !combatActive && <div className="hotbar-controls-row">
+        {!combatActive && <div className="hotbar-controls-row">
           <div className="hotbar-exploration-note">
             {/* Сам режим переехал на поле, по центру сверху: он относится к карте,
-                а не к панели действий. Здесь остался только вход в бой, и пустой
-                коробки без него не остаётся. */}
-            <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>
+                а не к панели действий. Здесь остались вход в бой и выход из
+                локации — два решения, которые не выражаются плиткой действия.
+
+                Уход показывается всегда вне боя, в том числе когда противников в
+                сцене не осталось: именно тогда уйти и хочется, а прежде ряд без
+                кнопки боя не рисовался вовсе. Отряд она не уводит — открывает
+                голосование, а переход исполняет сервер по его результату. Замок
+                тот же, что у свободного ввода вне боя, и не строже: кнопка — ярлык
+                к той же фразе, и запирать её там, где те же слова можно набрать
+                руками, не за что. */}
+            <button
+              className="exploration-leave-location"
+              disabled={narrating || tacticalBusy}
+              onClick={onLeaveLocation}
+              title="Предложить отряду покинуть локацию. Переход начнётся после решения группы"
+            ><DoorOpen size={22} /><span><small>Решение группы</small><strong>Покинуть локацию</strong></span></button>
+            {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
           </div>
         </div>}
         <div className="hotbar-main">

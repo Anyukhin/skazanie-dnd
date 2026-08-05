@@ -64,6 +64,7 @@ import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
 import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect.mjs'
 import { proposeAgentInteraction, resolvePartyDecision } from './player-request-router.mjs'
+import { abandonableQuest, classifyPartyDecision } from './party-exit-intent.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { ActionAdjudicator } from './action-adjudicator.mjs'
@@ -1209,6 +1210,34 @@ function partyVoterSnapshot(campaignId, state, eligibleHeroIds) {
   }
 }
 
+/** Все герои отряда, независимо от того, кто из них сейчас в сети. */
+function partyHeroIds(state = {}) {
+  return [...new Set((state.partyMemberIds?.length
+    ? state.partyMemberIds
+    : (state.players ?? []).map((player) => player.id)).map(String))]
+}
+
+/**
+ * Сколько у кампании разных голосующих.
+ *
+ * Считается тем же отображением «герой → голосующий», которым потом
+ * воспользуется само решение, поэтому «один голосующий» здесь и там значит одно
+ * и то же. Голосующий — аккаунт (`voterScope: 'account'`), так что один игрок за
+ * пятерых героев остаётся одним голосом, а герой без владельца — своим
+ * собственным.
+ *
+ * Берётся весь отряд, а не только те, кто сейчас в сети: иначе голосование молча
+ * исчезало бы каждый раз, когда у соигрока оборвалась связь. Этот случай уже
+ * решает `disconnectAction: 'abstain'` — воздержавшийся не отменяет решения.
+ *
+ * @param {string} campaignId
+ * @param {Record<string, any>} [state]
+ * @returns {number}
+ */
+function campaignVoterCount(campaignId, state = {}) {
+  return partyVoterSnapshot(campaignId, state, partyHeroIds(state)).eligibleVoterIds.length
+}
+
 /**
  * Прогноз удара для интерфейса. Считается на сервере по доверенному состоянию:
  * игрок видит шанс попадания и его причины до клика, но не получает скрытые
@@ -1412,7 +1441,11 @@ function executeTool(name, args, effects, state = {}) {
     })).filter((option) => option.label).slice(0, 4)
     if (options.length < 2) return { error: 'Для решения нужны хотя бы два варианта' }
     effects.interaction = {
-      id: randomUUID(),
+      // Идентификатор обычно случайный: карточку открывает живой ход, и повтор
+      // её не воспроизводит. Соло-путь передаёт свой — выведенный из ключа
+      // идемпотентности, — иначе повтор одного запроса открыл бы второе решение
+      // с новым id и разошёлся бы с уже записанным.
+      id: String(args.interactionId ?? '').trim().slice(0, 120) || randomUUID(),
       type: ['vote', 'roll', 'choice'].includes(args.type) ? args.type : 'vote',
       title: String(args.title || 'Решение отряда').replace(/\s+/g, ' ').trim().slice(0, 100),
       description: String(args.description || '').replace(/\s+/g, ' ').trim().slice(0, 360),
@@ -1533,6 +1566,97 @@ async function executeDirectorSceneTransition(input) {
   })
 }
 
+/**
+ * Уход из локации в кампании с одним голосующим.
+ *
+ * Голосовать не с кем, и карточка была чистой формальностью: игрок нажимал
+ * «покинуть локацию», получал вопрос об этом же, отвечал сам себе и подтверждал
+ * собственный ответ — три круга там, где решение уже принято.
+ *
+ * Решение при этом **не отменяется, а исполняется сразу**: `AdvanceScene`
+ * отклоняется движком без подтверждённого `agentInteraction`
+ * (`PARTY_DECISION_REQUIRED`), и ослаблять этот инвариант ради удобства нельзя —
+ * на нём держится и идемпотентность перехода. Поэтому открытие и голос едут
+ * одним коммитом, ровно как их уже пишет автономный контур для `end_scene`.
+ * Подделки в журнале не появляется: голос действительно подан этим героем, за
+ * тот вариант, который назвали его же слова.
+ *
+ * Вариант выбирают слова игрока: отказ от задания — только если он о нём
+ * сказал. Возвращает `null`, если соло-путь не применим, и тогда вызывающий
+ * открывает обычную карточку.
+ */
+async function executeSoloPartyExit({ campaignId, room, user, action, idempotencyKey, proposal, playerId }) {
+  const interactionId = `solo-exit-${createHash('sha256').update(`${campaignId}\0${idempotencyKey}`).digest('hex').slice(0, 24)}`
+  const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
+  executeTool('request_party_decision', { ...proposal, interactionId }, effects, room.state)
+  const interaction = effects.interaction
+  if (!interaction) return null
+
+  // Вариант опознаётся тем же словарём, которым он был составлен, а не позицией
+  // в списке: порядок вариантов — дело подачи, и завязываться на него незачем.
+  const classified = interaction.options.map((option) => ({ option, ...classifyPartyDecision(option.label) }))
+  const wantsAbandon = classifyPartyDecision(action).abandonsQuest
+  const chosen = (wantsAbandon ? classified.find((entry) => entry.kind === 'move' && entry.abandonsQuest) : null)
+    ?? classified.find((entry) => entry.kind === 'move' && !entry.abandonsQuest)
+    ?? classified.find((entry) => entry.kind === 'move')
+  if (!chosen) return null
+
+  // Отказ записать решение не должен ронять ход: худшее, что тут может
+  // случиться, — герой не годится в голосующие, и тогда стол увидит обычную
+  // карточку, как видел раньше.
+  const committed = await authoritativeExecutor.commitDerived({
+    campaignId,
+    idempotencyKey: `party-decision-solo:${interactionId}`,
+    deriveEvents: (state) => {
+      // Чужое открытое решение соло-путь не трогает: сначала стол закрывает его,
+      // потом уходит. Вызывающий получит `null` и откроет обычную карточку.
+      if (state.agentInteraction) return []
+      const eligibleHeroIds = partyHeroIds(state)
+      const snapshot = partyVoterSnapshot(campaignId, state, eligibleHeroIds)
+      const opened = partyDecisionOpenedEvent(interaction, playerId, {
+        eligibleHeroIds,
+        eligibleVoterIds: snapshot.eligibleVoterIds,
+        voterByHeroId: snapshot.voterByHeroId,
+        policy: state.partyDecisionPolicy,
+      })
+      const afterOpen = applyGameEvent(state, { ...opened, campaign_id: campaignId, event_id: `${interactionId}:opened` })
+      const voted = resolvePartyVote(afterOpen, {
+        interactionId,
+        heroId: playerId,
+        optionId: chosen.option.id,
+        eligibleHeroIds,
+      })
+      // Кворум обязан сойтись с одного голоса — иначе голосующих больше одного,
+      // и решение принимать в одиночку нельзя.
+      if (!voted.resolvedOptionId) return []
+      return [opened, ...voted.events]
+    },
+    producerCapability: PARTY_DECISION_CAPABILITY,
+  }).catch(() => null)
+  if (!committed) return null
+
+  const resolution = resolvePartyDecision(`[РЕШЕНИЕ ГРУППЫ] ${chosen.option.label}`, {
+    // Разбор не зависит от того, что вернул коммит: повтор по ключу отдаёт
+    // запись журнала, а не состояние, и `decision` тогда собирался бы из текста
+    // с маркером вместо подписи варианта.
+    agentInteraction: {
+      id: interactionId, status: 'resolved', resolvedOptionId: chosen.option.id, options: interaction.options,
+    },
+  })
+  if (resolution?.type !== 'scene_request') return null
+  return executeDirectorSceneTransition({
+    campaignId,
+    room: { ...room, state: committed.state ?? room.state },
+    user,
+    action,
+    idempotencyKey,
+    resolution: {
+      ...resolution,
+      partyDecision: { interaction_id: interactionId, resolved_option_id: chosen.option.id },
+    },
+  })
+}
+
 async function executeDirectorSceneTransitionOnce({ campaignId, room, user, action, idempotencyKey, resolution, partyDecision }) {
   const authoritative = await latestCampaignState(campaignId, room.state)
   const planningState = normalizeCampaignState(authoritative)
@@ -1542,7 +1666,12 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
     state: planningState,
     decision: resolution.decision,
     destinationHint: resolution.destinationHint,
+    abandonsQuest: resolution.abandonsQuest === true,
   })
+  // Какое задание закрывает отказ, решает сервер той же функцией, которой он
+  // собирал подпись варианта: подпись — текст для игрока, а идентификатор нити
+  // из подписи не восстанавливается и восстанавливаться не должен.
+  const abandonQuest = resolution?.abandonsQuest === true ? abandonableQuest(planningState) : null
   const directorPlan = buildDirectorTransitionCommands({
     campaignId,
     action,
@@ -1550,6 +1679,7 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
     sceneArgs: planned.sceneArgs,
     shopIntent: planned.shopIntent,
     partyDecision,
+    abandonQuest,
   })
   const result = await gameOrchestrator.handle({
     state: planningState,
@@ -1584,6 +1714,8 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
       shop_action: directorPlan.shopIntent.action,
       shop_outcome: merchantEvent ? 'created' : directorPlan.existingMerchantId ? 'reused' : 'not-requested',
       merchant_id: merchantEvent?.payload?.merchant_id ?? directorPlan.existingMerchantId,
+      abandoned_quest_id: (result.mechanics ?? []).find((event) => event.event_type === 'QuestResolved'
+        && event.payload?.outcome === 'abandoned')?.payload?.quest_id ?? null,
     },
     agent_trace: [
       { agent: 'AgentDirector', output: resolution },
@@ -3454,6 +3586,9 @@ const server = createServer((req, res) => {
       const directorInteraction = mode === 'enforce' && !explicitNpcId && !directorResolution && !directorReplay
         ? proposeAgentInteraction(action, trustedState)
         : null
+      // Соло-стол не голосует. Бросок судьбы остаётся карточкой и в одиночку:
+      // там решение принимает кубик, а не отряд, и пропускать его нечестно.
+      const soloExit = directorInteraction?.type === 'vote' && campaignVoterCount(campaignId, trustedState) <= 1
 
       let result
       const campaignAiSettings = getCampaignAiSettings(campaignId)
@@ -3479,13 +3614,24 @@ const server = createServer((req, res) => {
             state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
           }
         } else if (directorInteraction) {
-          const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
-          executeTool('request_party_decision', directorInteraction, effects, trustedState)
-          result = {
-            narration: effects.interaction.description,
-            effects,
-            provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
-            state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
+          // Соло-путь возвращает `null`, когда он неприменим (уже открыто другое
+          // решение либо кворум не сошёлся с одного голоса), и тогда карточка
+          // открывается обычным порядком.
+          result = soloExit
+            ? await executeSoloPartyExit({
+              campaignId, room, user, action, idempotencyKey, playerId,
+              proposal: directorInteraction,
+            })
+            : null
+          if (!result) {
+            const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
+            executeTool('request_party_decision', directorInteraction, effects, trustedState)
+            result = {
+              narration: effects.interaction.description,
+              effects,
+              provider: 'AgentDirector', model: 'deterministic-policy', engine_mode: mode,
+              state_version: trustedState.state_version, turn_consumed: false, action_kind: 'free', mechanics: [],
+            }
           }
         } else {
           result = await gameOrchestrator.handle({

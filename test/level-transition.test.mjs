@@ -280,6 +280,51 @@ test('жители этажа возвращаются из стэша, а не 
   assert.equal(hall.levelEntities?.[levelKey('loc-tavern', 0)], undefined, 'возвращённый стэш не остаётся в состоянии')
 })
 
+test('партия не появляется в одной клетке с жителем повторно посещаемого этажа', () => {
+  const initial = tavernState()
+  const firstUpEvent = climb(initial).events[0]
+  const upstairs = applyGameEvent(initial, firstUpEvent)
+  const occupied = firstUpEvent.payload.party_positions[0]
+  const upstairsMap = deserializeTacticalMap(upstairs.scene.map)
+  const freeCell = legacyCellsFromTacticalMap(upstairsMap)
+    .filter((cell) => cell.type === 'floor'
+      && firstUpEvent.payload.party_positions.every((position) => position.x !== cell.x || position.y !== cell.y))
+    .at(-1)
+  assert.ok(freeCell, 'герою есть куда отойти от лестницы')
+  const partyPositions = new Map(firstUpEvent.payload.party_positions
+    .map((position) => [position.actor_id, { x: position.x, y: position.y }]))
+  partyPositions.set(PARTY[0], { x: freeCell.x, y: freeCell.y })
+  const withGuard = normalizeCampaignState({
+    ...upstairs,
+    players: upstairs.players.map((player) => ({ ...player, ...partyPositions.get(player.id) })),
+    mechanics: {
+      ...upstairs.mechanics,
+      positions: {
+        ...upstairs.mechanics.positions,
+        ...Object.fromEntries(partyPositions),
+      },
+    },
+    enemies: [{
+      id: 'upstairs-guard', name: 'Страж этажа', hp: 8, maxHp: 8, alive: true,
+      x: occupied.x, y: occupied.y,
+    }],
+  })
+
+  const hall = applyGameEvent(withGuard, climb(withGuard, { actorId: PARTY[1], level: 0 }).events[0])
+  const returnEvent = climb(hall, { level: 1 }).events[0]
+  assert.ok(
+    returnEvent.payload.party_positions.every((position) => position.x !== occupied.x || position.y !== occupied.y),
+    'клетка сохранённого противника не достаётся герою',
+  )
+
+  const returned = applyGameEvent(hall, returnEvent)
+  const guard = returned.enemies.find((enemy) => enemy.id === 'upstairs-guard')
+  assert.deepEqual(returned.mechanics.positions[guard.id], { x: occupied.x, y: occupied.y })
+  for (const hero of returnEvent.payload.party_positions) {
+    assert.notDeepEqual(returned.mechanics.positions[hero.actor_id], returned.mechanics.positions[guard.id])
+  }
+})
+
 // --- мина этапа L2 --------------------------------------------------------
 
 test('привязка лестницы восстанавливается после круга через старые клетки', () => {

@@ -46,6 +46,51 @@ test('Director строит атомарный batch SceneAdvanced + catalog mer
   assert.equal(planned.shopIntent.settlement_type, 'city')
 })
 
+test('отказ от задания едет тем же пакетом и с тем же отпечатком, что и переход', () => {
+  const planned = buildDirectorTransitionCommands({
+    campaignId: 'DIRECTOR-1',
+    action: '[РЕШЕНИЕ ГРУППЫ] Уходим в «Серая чаща» и бросаем задание «Найти выход»',
+    state: state(),
+    sceneArgs: { title: 'Чаща', location: 'Серая чаща', theme: 'дикая местность', objective: 'Осмотреться', seed: 'forest-abandon' },
+    abandonQuest: { id: 'quest:main', title: 'Найти выход' },
+  })
+  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceScene', 'ResolveQuest'])
+  assert.equal(planned.abandonedQuestId, 'quest:main')
+  const resolve = planned.commands[1]
+  assert.equal(resolve.outcome, 'abandoned')
+  assert.equal(resolve.request_fingerprint, planned.fingerprint)
+  assert.match(resolve.summary, /Склеп Норвин/u)
+  assert.ok(resolve.next_objective.length > 0, 'развязка обязана назвать следующую цель')
+
+  // Отказ без указанного задания не появляется: решение уйти само по себе нить
+  // не закрывает.
+  const withoutAbandon = buildDirectorTransitionCommands({
+    campaignId: 'DIRECTOR-1', action: '[РЕШЕНИЕ ГРУППЫ] Уходим в чащу', state: state(),
+    sceneArgs: { title: 'Чаща', location: 'Серая чаща', theme: 'дикая местность', seed: 'forest-abandon' },
+  })
+  assert.deepEqual(withoutAbandon.commands.map((command) => command.command_type), ['AdvanceScene'])
+  assert.equal(withoutAbandon.abandonedQuestId, null)
+})
+
+test('чужой отказ от задания в пакете отклоняется как конфликт идемпотентности', () => {
+  const fingerprint = directorTransitionFingerprint({ campaignId: 'DIRECTOR-1', action: 'уходим' })
+  assert.throws(() => assertDirectorTransitionResult({
+    mechanics: [
+      { event_type: 'SceneAdvanced', payload: { request_fingerprint: fingerprint } },
+      { event_type: 'QuestResolved', payload: { outcome: 'abandoned', request_fingerprint: 'другой-запрос' } },
+    ],
+  }, fingerprint), (error) => error.code === 'IDEMPOTENCY_CONFLICT')
+
+  // Развязка по заполненным часам приходит отдельным коммитом автономного
+  // контура и отпечатка перехода не несёт — её проверка не касается.
+  assert.doesNotThrow(() => assertDirectorTransitionResult({
+    mechanics: [
+      { event_type: 'SceneAdvanced', payload: { request_fingerprint: fingerprint } },
+      { event_type: 'QuestResolved', payload: { outcome: 'success' } },
+    ],
+  }, fingerprint))
+})
+
 test('wilderness transition does not create a stationary shop', () => {
   const planned = buildDirectorTransitionCommands({
     campaignId: 'DIRECTOR-1', action: '[РЕШЕНИЕ ГРУППЫ] Идём в лес', state: state(),

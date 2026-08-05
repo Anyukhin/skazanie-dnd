@@ -1118,6 +1118,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const turnSummon = state.actors?.find((actor) => actor.id === turnActorId && actor.alive)
   const turnActorName = turnPlayer?.character ?? turnSummon?.name ?? turnEnemy?.name ?? 'участник боя'
   const mapActorId = combatActive ? turnActorId : activePlayer.id
+  // Формулировка не случайная: её разбирает тот же словарь ухода
+  // (`server/party-exit-intent.mjs`), которым сервер решает, открывать ли
+  // голосование. Кнопка отправляет ровно то намерение, которое игрок мог бы
+  // написать словами, — своего скрытого канала у неё нет, и переход всё равно
+  // исполняет сервер по результату голосования.
+  const proposeLeaveLocation = () => {
+    void submitAction(`Предлагаю покинуть локацию «${state.scene.location || state.scene.title}»`, activePlayer.id)
+  }
   const mapHero = partyPlayers.find((player) => player.id === mapActorId)
   const mapSummon = state.actors?.find((actor) => actor.id === mapActorId && actor.alive)
 
@@ -1237,6 +1245,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onOperateDoor={operateDoor}
             onOperateSceneObject={operateSceneObject}
             onUseLevelTransition={useLevelTransition}
+            onLeaveLocation={proposeLeaveLocation}
             onOpenMerchant={openMerchant}
             onFinishTurn={finishMapTurn}
             onFreeAction={(text) => submitAction(text, activePlayer.id)}

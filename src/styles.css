@@ -1195,6 +1195,14 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .exploration-start-combat span { display: grid; gap: 1px; text-align: left; }
 .exploration-start-combat small { color: inherit; opacity: .62; font: var(--fs-xs) Manrope, sans-serif; }
 .exploration-start-combat strong { color: inherit; font: 600 var(--fs-md) Spectral, serif; white-space: nowrap; }
+/* Уход из локации стоит рядом с началом боя и намеренно холоднее его: это не
+   опасное действие, а предложение отряду, и красным оно кричать не должно. */
+.exploration-leave-location { min-height: 44px; display: flex; align-items: center; gap: 8px; margin: 0; padding: 7px 11px; border: 1px solid rgba(120,142,176,.4); border-radius: 6px; background: linear-gradient(180deg, rgba(52,68,94,.3), rgba(28,36,52,.24)); color: #9fb2ce; cursor: pointer; }
+.exploration-leave-location:hover:not(:disabled) { border-color: rgba(146,175,219,.66); color: #c6d6ef; transform: translateY(-1px); }
+.exploration-leave-location:disabled { opacity: .36; cursor: default; }
+.exploration-leave-location span { display: grid; gap: 1px; text-align: left; }
+.exploration-leave-location small { color: inherit; opacity: .62; font: var(--fs-xs) Manrope, sans-serif; }
+.exploration-leave-location strong { color: inherit; font: 600 var(--fs-md) Spectral, serif; white-space: nowrap; }
 .map-legend { bottom: 18px; }
 
 @media (max-width: 1120px) {
@@ -1264,8 +1272,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .map-economy { gap: 5px; padding: 5px 6px; }
   .map-economy > span { padding: 0 9px; }
   .game-area > .dice-tray:not(.dice-tray--rolling) { bottom: 150px; }
-  .exploration-start-combat { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }
-  .exploration-start-combat span { display: none; }
+  .exploration-start-combat,
+  .exploration-leave-location { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }
+  .exploration-start-combat span,
+  .exploration-leave-location span { display: none; }
 }
 
 @media (max-width: 440px) {

@@ -193,6 +193,19 @@ test('deterministic epilogue uses committed campaign facts', () => {
   assert.match(epilogue, /В летописи мира остаются: Ада/u)
 })
 
+test('детерминированный эпилог отличает отказ от задания от провала', () => {
+  const state = campaign()
+  state.worldMemory.quests = [{
+    id: 'quest:abandoned', title: 'Вернуть печать', summary: 'Отряд выбрал другой путь.',
+    status: 'abandoned', visibility: 'party', entity_ids: [], objectives: [],
+    clock: { current: 1, max: 4, label: 'Прогресс', triggered: false },
+  }]
+
+  const epilogue = buildDeterministicEpilogue(state)
+  assert.match(epilogue, /«Вернуть печать» оставлен отрядом/u)
+  assert.doesNotMatch(epilogue, /«Вернуть печать» провален/u)
+})
+
 test('automatic completion requires climax and a fully resolved main thread', () => {
   const state = campaign()
   state.autonomy.pacing = { beat: 8, phase: 'climax', tension: 84 }

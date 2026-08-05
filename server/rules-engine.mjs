@@ -1625,7 +1625,21 @@ function levelArrivalPositions(state, map, arrivalProp) {
   const partyIds = sceneAdvancePartyIds(state)
   const anchor = arrivalProp?.footprint?.[0]
   if (!anchor) throw new RulesValidationError('У точки прибытия нет координат на целевом этаже', 'LEVEL_ARRIVAL_MISSING')
+  // На повторно посещаемом этаже жители пока лежат в стэше и
+  // в карте не видны. Их клетки нужно занять до расстановки партии,
+  // иначе reducer сначала поставит героя, а затем вернёт противника в ту же
+  // позицию. Позиции стэша авторитетны: они созданы предыдущим событием.
+  const targetKey = levelKey(sceneLocationId(state), safeInteger(map.levelIndex, 0))
+  const targetStash = state.levelEntities && typeof state.levelEntities === 'object'
+    ? state.levelEntities[targetKey]
+    : null
+  const occupied = new Set(Object.values(targetStash?.positions ?? {}).flatMap((position) => {
+    const x = Number(position?.x)
+    const y = Number(position?.y)
+    return Number.isSafeInteger(x) && Number.isSafeInteger(y) ? [`${x},${y}`] : []
+  }))
   const cells = [...reachableCells(map, anchor.x, anchor.y)]
+    .filter((key) => !occupied.has(key))
     .map((key) => {
       const [x, y] = key.split(',').map(Number)
       return { x, y }
