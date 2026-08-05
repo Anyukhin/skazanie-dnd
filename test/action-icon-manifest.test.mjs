@@ -41,6 +41,9 @@ test('компонент берёт свой рисунок, а атлас ос�
   assert.ok(componentSource.includes('--combat-icon-x'), 'запасной вариант через атлас должен остаться')
   assert.ok(styles.includes('.combat-icon-art.own'), 'стиль для своего рисунка должен существовать')
   assert.ok(styles.includes('background-size: contain'), 'своя картинка вписывается целиком, а не режется как клетка атласа')
+  assert.ok(componentSource.includes('abilityIconBackgroundUrl(theme)'), 'свой рисунок обязан получить тематический фон')
+  assert.ok(componentSource.includes('combat-icon-symbol'), 'символ и фон должны оставаться отдельными слоями')
+  assert.ok(styles.includes('var(--combat-icon-bg)'), 'фоновая плитка должна отрисовываться из переменной компонента')
 })
 
 test('манифест собирается детерминированно и отсортирован', () => {

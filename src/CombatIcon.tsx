@@ -17,6 +17,8 @@ export type CombatIconKind =
   | 'reaction'
   | 'deck'
 
+export type AbilityIconTheme = 'martial' | 'arcane' | 'divine' | 'nature' | 'shadow' | 'utility'
+
 type CombatIconProps = {
   id: string
   kind: CombatIconKind
@@ -77,6 +79,39 @@ const fallbackIcons: Record<CombatIconKind, number[]> = {
   'start-combat': [24],
   reaction: [20],
   deck: [0, 2, 13, 15, 16],
+}
+
+const abilityIconThemePatterns: Array<[RegExp, AbilityIconTheme]> = [
+  [/\bmending\b|\bresistance\b|\blight\b|alarm|identify|message|detect|locate|comprehend|tongues/u, 'utility'],
+  [/heal|cure|restor|holy|divine|sacred|radiant|bless|aid|prayer|paladin|cleric|smite|life|vital|sanctuary|guidance|spare.the.dying|thaumaturgy|protection|ceremony/u, 'divine'],
+  [/nature|wild|beast|animal|plant|thorn|vine|druid|ranger|poison|acid|earth|water|wind|insect|spider/u, 'nature'],
+  [/death|dead|necrot|curse|hex|shadow|fear|charm|mind|psychic|illusion|dream|eldritch|warlock|rogue|hide|sneak|invisib/u, 'shadow'],
+  [/attack|strike|blade|sword|weapon|rage|reckless|martial|flurry|stunning|fighter|barbarian|monk|arrow|bow|shove|grapple/u, 'martial'],
+  [/magic|arcane|spell|sorcerer|wizard|bard|fire|flame|cold|frost|ice|lightning|thunder|storm|teleport|counter/u, 'arcane'],
+]
+
+const defaultAbilityIconThemes: Record<CombatIconKind, AbilityIconTheme> = {
+  spell: 'arcane',
+  weapon: 'martial',
+  action: 'utility',
+  item: 'utility',
+  movement: 'utility',
+  spellbook: 'arcane',
+  roll: 'utility',
+  swap: 'utility',
+  'end-turn': 'utility',
+  'start-combat': 'martial',
+  reaction: 'utility',
+  deck: 'utility',
+}
+
+export function abilityIconTheme(id: string, kind: CombatIconKind, hint = ''): AbilityIconTheme {
+  const signature = `${id} ${hint}`.toLocaleLowerCase('ru')
+  return abilityIconThemePatterns.find(([pattern]) => pattern.test(signature))?.[1] ?? defaultAbilityIconThemes[kind]
+}
+
+export function abilityIconBackgroundUrl(theme: AbilityIconTheme) {
+  return `/assets/ui/action-backgrounds/${theme}.webp`
 }
 
 function hashId(value: string) {
@@ -169,6 +204,7 @@ export function CombatIcon({ id, kind, hint = '', size, compact = false, priorit
   // постепенно, поэтому запасной вариант обязателен — иначе интерфейс поедет на
   // полпути, когда нарисована половина каталога.
   const own = ownIconUrl(id)
+  const theme = abilityIconTheme(id, kind, hint)
   const index = combatIconIndex(id, kind, hint)
   const column = index % 5
   const row = Math.floor(index / 5)
@@ -178,12 +214,17 @@ export function CombatIcon({ id, kind, hint = '', size, compact = false, priorit
   // Запасное значение стоит в CSS, поэтому иконка нигде не схлопнется в ноль.
   const style = {
     ...(own
-      ? revealed ? { '--combat-icon-src': `url('${own}')` } : {}
+      ? {
+          '--combat-icon-bg': `url('${abilityIconBackgroundUrl(theme)}')`,
+          ...(revealed ? { '--combat-icon-src': `url('${own}')` } : {}),
+        }
       : { '--combat-icon-x': `${column * 25}%`, '--combat-icon-y': `${row * 25}%` }),
     ...(size === undefined ? {} : { width: size, height: size }),
   } as CSSProperties
 
-  return <span ref={holder} className={`combat-icon combat-icon-${kind}${compact ? ' compact' : ''}`} style={style} aria-hidden="true">
-    <i className={own ? 'combat-icon-art own' : 'combat-icon-art'} />
+  return <span ref={holder} className={`combat-icon combat-icon-${kind} combat-icon-theme-${theme}${compact ? ' compact' : ''}`} style={style} aria-hidden="true">
+    <i className={own ? 'combat-icon-art own' : 'combat-icon-art'}>
+      {own && <b className="combat-icon-symbol" />}
+    </i>
   </span>
 }

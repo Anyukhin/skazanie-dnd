@@ -2106,47 +2106,48 @@ button.campaign-title:hover strong { color: #edc996; }
    берёт начальное значение none, и виден один тайл: именно так и выглядит
    иконка до того, как её показали. Клетка атласа при этом не проступает. */
 .combat-icon-art.own {
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--combat-icon-bg);
+  background-position: center;
+  background-size: cover;
+  filter: none;
+}
+.combat-icon-symbol {
+  position: absolute;
+  inset: 13%;
+  display: block;
   background-image: var(--combat-icon-src);
   background-position: center;
   background-size: contain;
-  filter: none;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .82)) drop-shadow(0 0 3px rgba(0, 0, 0, .35));
+  transition: filter .16s ease, transform .16s ease;
 }
-.combat-icon.compact .combat-icon-art { inset: 1px; }
-/* Свои PNG нарисованы без рамки и фона (docs/icon-prompts.md): карточку обязан
-   рисовать тайл. Но в хотбаре правило «.combat-hotbar .action-tile .combat-icon»
-   снимает рамку тайла — атласные клетки приносят нарисованную рамку внутри
-   картинки, и вторая рамка поверх им не нужна. Поэтому собственному рисунку
-   рамку и тематический фон рисует сам слой art: обе разновидности выглядят
-   одинаковыми карточками, а фон подсказывает тип действия. */
-.combat-hotbar .action-tile { --own-icon-hue: 33; --own-icon-sat: 40%; }
-.combat-hotbar .action-tile.spell { --own-icon-hue: 152; --own-icon-sat: 32%; }
-.combat-hotbar .action-tile.feature-action { --own-icon-hue: 268; --own-icon-sat: 28%; }
-.combat-hotbar .action-tile.item { --own-icon-hue: 22; --own-icon-sat: 46%; }
+.combat-icon.compact .combat-icon-art:not(.own) { inset: 1px; }
+.combat-icon.compact .combat-icon-symbol { inset: 12%; }
+/* Свои PNG остаются прозрачными исходниками (docs/icon-prompts.md). Фон и рамка
+   выбираются компонентом по семантическому семейству и лежат отдельным слоем,
+   поэтому новый рисунок автоматически получает готовую карточку. */
 .combat-hotbar .action-tile .combat-icon-art.own {
   inset: 0;
   border-radius: 8px;
-  background-image:
-    var(--combat-icon-src),
-    radial-gradient(circle at 50% 26%, hsl(var(--own-icon-hue) var(--own-icon-sat) 27% / .9), hsl(var(--own-icon-hue) 26% 9% / .96) 76%),
-    url('/assets/ui/combat-icon-texture.png');
-  background-position: center 46%, center, center;
-  background-size: 74% 74%, cover, 112px 112px;
-  background-repeat: no-repeat;
-  background-blend-mode: normal, normal, soft-light;
   box-shadow:
-    inset 0 0 0 1px hsl(var(--own-icon-hue) 36% 50% / .55),
-    inset 0 0 0 2px rgba(10, 8, 6, .85),
     inset 0 3px 3px -2px rgba(255, 240, 208, .14),
     inset 0 -5px 9px rgba(0, 0, 0, .58);
 }
+.combat-hotbar .action-tile .combat-icon-symbol { inset: 11%; }
 .combat-hotbar .action-tile:hover:not(:disabled) .combat-icon-art.own,
 .combat-hotbar .action-tile.selected .combat-icon-art.own {
   box-shadow:
-    inset 0 0 0 1px hsl(var(--own-icon-hue) 52% 62% / .8),
-    inset 0 0 0 2px rgba(10, 8, 6, .85),
     inset 0 3px 3px -2px rgba(255, 240, 208, .2),
     inset 0 -5px 9px rgba(0, 0, 0, .5);
   filter: saturate(1.04) brightness(1.07);
+}
+.combat-hotbar .action-tile:hover:not(:disabled) .combat-icon-symbol,
+.combat-hotbar .action-tile.selected .combat-icon-symbol {
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .75)) drop-shadow(0 0 4px rgba(224, 177, 109, .32));
+  transform: scale(1.035);
 }
 .action-tile:hover:not(:disabled) .combat-icon,
 .action-tile.selected .combat-icon,
