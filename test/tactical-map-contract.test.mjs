@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { generateDynamicSceneMap } from '../server/dynamic-map.mjs'
+import { levelKey, normalizeLocationMaps } from '../server/adventure-director.mjs'
 import {
   EDGE_KINDS,
   MATERIALS,
+  MAX_LEVEL_OFFSET,
   SIZE_CLASSES,
   SURFACES,
   TacticalMapError,
@@ -78,6 +80,155 @@ test('карта переживает сборку, сериализацию и 
   assert.equal(cellAt(restored, 2, 2)?.hazardId, 'hz-1')
   assert.equal(cellAt(restored, 1, 0)?.moveCost, 2)
   assert.equal(cellAt(restored, 0, 2)?.elevation, -1)
+})
+
+// --- этажи (этап L1 плана многоуровневых карт) ---------------------------
+
+/** Карта одной клетки, на которой можно поставить лестницу. */
+function levelMap({ levelIndex = 0, levelLabel = '' } = {}) {
+  const map = createTacticalMap({ width: 2, height: 1, locationId: 'tavern', levelIndex, levelLabel })
+  setCell(map, 0, 0, { passable: true })
+  setCell(map, 1, 0, { passable: true })
+  return map
+}
+
+test('этаж и переход переживают сериализацию и чтение обратно', () => {
+  const map = levelMap({ levelIndex: -1, levelLabel: 'Винный погреб' })
+  addProp(map, {
+    id: 'stairs-1',
+    assetId: 'stairs_up',
+    x: 0.5,
+    y: 0.5,
+    footprint: [{ x: 0, y: 0 }],
+    transition: { toLevel: 0, label: 'Общий зал' },
+  })
+
+  const restored = deserializeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
+  assert.equal(restored.levelIndex, -1)
+  assert.equal(restored.levelLabel, 'Винный погреб')
+  assert.deepEqual(restored.props[0].transition, { toLevel: 0, label: 'Общий зал' })
+  assert.equal(restored.props[0].interactive, true, 'переход обязан делать предмет интерактивным')
+  assert.equal(tacticalMapHash(restored), tacticalMapHash(map), 'новые поля обязаны участвовать в хеше')
+})
+
+test('переход без подписи не тащит пустое поле через сериализацию', () => {
+  const map = levelMap()
+  addProp(map, { id: 'hatch', assetId: 'trapdoor', x: 0.5, y: 0.5, footprint: [], transition: { toLevel: -1 } })
+  const raw = serializeTacticalMap(map)
+  assert.deepEqual(raw.props[0].transition, { toLevel: -1 })
+  assert.equal(deserializeTacticalMap(raw).props[0].transition.label, '')
+})
+
+test('карта без этажей сериализуется как прежде, байт в байт', () => {
+  // Единственная гарантия обратной совместимости, которую видно из кода: если
+  // новых полей нет, записи не появляется вовсе, и старая карта не меняется.
+  const map = levelMap()
+  addProp(map, { id: 'barrel', assetId: 'barrel', x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] })
+  const raw = serializeTacticalMap(map)
+  assert.equal('levelIndex' in raw, false, 'этаж входа в записи не появляется')
+  assert.equal('levelLabel' in raw, false)
+  assert.equal('transition' in raw.props[0], false, 'обычный предмет записи о переходе не несёт')
+  assert.equal(map.levelIndex, 0, 'в памяти этаж входа — это ноль, а не отсутствие поля')
+  assert.equal(map.props[0].transition, null)
+})
+
+test('карта, сохранённая до появления этажей, читается как этаж входа', () => {
+  const map = levelMap()
+  addProp(map, { id: 'barrel', assetId: 'barrel', x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] })
+  const raw = serializeTacticalMap(map)
+  delete raw.levelIndex
+  delete raw.levelLabel
+  const restored = deserializeTacticalMap(raw)
+  assert.equal(restored.levelIndex, 0)
+  assert.equal(restored.levelLabel, '')
+  assert.equal(restored.props[0].transition, null)
+  assert.equal(JSON.stringify(serializeTacticalMap(restored)), JSON.stringify(raw),
+    'круговое преобразование старой карты обязано совпасть байт в байт')
+})
+
+test('мусорный переход отвергается на входе, а не молча портит карту', () => {
+  /** @param {unknown} transition @param {string} code @param {string} [assetId] */
+  const rejected = (transition, code, assetId = 'stairs_up') => {
+    const map = levelMap()
+    assert.throws(
+      () => addProp(map, { id: 'p', assetId, x: 0.5, y: 0.5, footprint: [], transition }),
+      (error) => error instanceof TacticalMapError && error.code === code,
+      `${JSON.stringify(transition)} на ${assetId}: ожидался отказ ${code}`,
+    )
+  }
+
+  rejected('вверх', 'TRANSITION_NOT_OBJECT')
+  rejected([1], 'TRANSITION_NOT_OBJECT')
+  rejected({ toLevel: 1.5 }, 'TRANSITION_LEVEL_NOT_INTEGER')
+  rejected({ toLevel: 'один' }, 'TRANSITION_LEVEL_NOT_INTEGER')
+  rejected({ toLevel: MAX_LEVEL_OFFSET + 1 }, 'TRANSITION_LEVEL_OUT_OF_RANGE')
+  rejected({ toLevel: -MAX_LEVEL_OFFSET - 1 }, 'TRANSITION_LEVEL_OUT_OF_RANGE')
+  // Этаж карты — ноль, значит переход на ноль ведёт сам в себя.
+  rejected({ toLevel: 0 }, 'TRANSITION_LEVEL_SAME')
+  // Бочка интерактивной в реестре не объявлена — нажать на неё нечем.
+  rejected({ toLevel: 1 }, 'TRANSITION_ASSET_NOT_INTERACTIVE', 'barrel')
+  rejected({ toLevel: 1 }, 'TRANSITION_ASSET_NOT_INTERACTIVE', 'нет-такого-ассета')
+})
+
+test('крючками перехода служат ровно интерактивные ассеты реестра', () => {
+  for (const assetId of ['stairs_up', 'stairs_down', 'trapdoor']) {
+    const map = levelMap()
+    const prop = addProp(map, { id: assetId, assetId, x: 0.5, y: 0.5, footprint: [], transition: { toLevel: 1 } })
+    assert.equal(prop.transition.toLevel, 1, `${assetId} обязан принимать переход`)
+  }
+})
+
+test('этаж, изменённый после расстановки, ловится проверкой карты', () => {
+  const map = levelMap({ levelIndex: 1 })
+  addProp(map, { id: 'stairs', assetId: 'stairs_down', x: 0.5, y: 0.5, footprint: [], transition: { toLevel: 0 } })
+  assert.equal(validateTacticalMap(map).ok, true)
+  map.levelIndex = 0
+  const report = validateTacticalMap(map)
+  assert.equal(report.ok, false)
+  assert.ok(report.errors.some((issue) => issue.code === 'TRANSITION_LEVEL_SAME'), JSON.stringify(report.errors))
+})
+
+test('ключ этажа не меняет прежние ключи и разводит этажи', () => {
+  // Этаж входа обязан сохранить прежний ключ: иначе все сохранённые кампании
+  // потеряли бы свои карты и потребовали миграции.
+  assert.equal(levelKey('tavern'), 'tavern')
+  assert.equal(levelKey('tavern', 0), 'tavern')
+  assert.equal(levelKey('tavern', 1), 'tavern@L1')
+  assert.equal(levelKey('tavern', -1), 'tavern@L-1')
+  assert.equal(levelKey('tavern', 3), 'tavern@L3')
+  assert.notEqual(levelKey('tavern', 1), levelKey('tavern', -1))
+  // Мусор вместо этажа — это этаж входа, а не сломанный ключ.
+  assert.equal(levelKey('tavern', Number.NaN), 'tavern')
+  assert.equal(levelKey('tavern', 1.5), 'tavern')
+  assert.equal(levelKey(''), '')
+  assert.equal(levelKey('', 2), '', 'без локации ключа этажа не существует')
+})
+
+test('длинный идентификатор локации не съедает номер этажа', () => {
+  // `normalizeLocationMaps` режет ключ до 120 символов. Если бы суффикс не
+  // помещался заранее, два этажа схлопнулись бы в одну запись.
+  const long = 'л'.repeat(130)
+  const first = levelKey(long, 1)
+  const second = levelKey(long, 2)
+  assert.ok(first.length <= 120, `ключ длиной ${first.length} не переживёт нормализацию`)
+  assert.ok(first.endsWith('@L1'))
+  assert.notEqual(first, second)
+  assert.deepEqual(
+    Object.keys(normalizeLocationMaps({ [first]: { version: 1, cells: [{ x: 0, y: 0, type: 'floor', revealed: true }] } })),
+    [first],
+    'нормализация обязана переварить составной ключ как есть',
+  )
+})
+
+test('нормализация памяти локаций принимает ключи этажей рядом со старыми', () => {
+  const cells = [{ x: 0, y: 0, type: 'floor', revealed: true }]
+  const normalized = normalizeLocationMaps({
+    tavern: { version: 1, cells },
+    'tavern@L1': { version: 1, cells },
+    'tavern@L-1': { version: 1, cells },
+  })
+  assert.deepEqual(Object.keys(normalized).sort(), ['tavern', 'tavern@L-1', 'tavern@L1'])
+  for (const record of Object.values(normalized)) assert.equal(record.cells.length, 1)
 })
 
 test('старая зона без направления настила получает совместимое горизонтальное значение', () => {

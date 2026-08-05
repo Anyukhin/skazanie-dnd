@@ -682,6 +682,11 @@ export type TacticalProp = {
   hp: number
   interactive: boolean
   state: string
+  /**
+   * Предмет ведёт на другой этаж локации: лестница, люк. Необязателен —
+   * одноэтажная карта поля не несёт.
+   */
+  transition?: { toLevel: number; label?: string }
   /** Разрешённая игроку часть серверного контракта взаимодействия. */
   interaction?: {
     kind: string
@@ -725,6 +730,10 @@ export type TacticalLayers = {
 export type TacticalMap = {
   version: string
   locationId: string
+  /** Этаж карты: 0 — этаж входа, +1 вверх, −1 подвал. */
+  levelIndex: number
+  /** Подпись этажа для игрока: «Второй этаж», «Винный погреб». */
+  levelLabel: string
   seed: string
   generator: { id: string; version: string }
   width: number
@@ -952,6 +961,16 @@ export type Scene = {
   map_delta?: SerializedRevealDelta
   /** Карта не менялась: она уже есть у клиента под `map_hash`. */
   map_unchanged?: boolean
+  /**
+   * Активный этаж локации. Отсутствует у старой проекции и у одноэтажных
+   * локаций — тогда это этаж входа (`index = 0`).
+   */
+  level?: { index: number; label?: string }
+  /**
+   * Этажи, на которых партия уже побывала: из них строится индикатор на доске.
+   * Неактивные этажи в проекцию не входят, здесь только номера и подписи.
+   */
+  levels?: Array<{ index: number; label?: string }>
   theme?: string
   danger?: 'низкая' | 'средняя' | 'высокая'
   scene_kind?: 'settlement' | 'wilderness' | 'dungeon' | 'road' | 'other'

@@ -397,6 +397,29 @@ test('клиент потерял дельту — обнаруживает эт
   assert.ok(cache.resolveSceneMap({ map_hash: third.hash, map_unchanged: true })?.map)
 })
 
+test('кэш клиента переживает беготню партии по трём этажам', () => {
+  cache.forgetSceneMaps()
+  // Каждый заход на этаж раскрывает ещё кусок тумана, то есть даёт новую
+  // карту с новым хешем. Три этажа по четыре захода — двенадцать карт, и все
+  // они обязаны дожить до конца пробежки: на прежнем лимите в 8 записей
+  // сервер получил бы «карты нет» и слал бы её целиком вместо дельты.
+  const walk = []
+  for (let visit = 0; visit < 4; visit += 1) {
+    for (const level of [0, 1, -1]) {
+      const map = plainMap({ width: 12, height: 12 })
+      revealCircle(map, 2 + visit * 2, 2 + (level + 1) * 3, 2)
+      walk.push(project(map))
+    }
+  }
+  assert.equal(new Set(walk.map((floor) => floor.hash)).size, 12, 'заходы обязаны быть попарно разными картами')
+  for (const floor of walk) cache.rememberSceneMap(floor.hash, floor.map)
+  for (const floor of walk) {
+    assert.ok(cache.resolveSceneMap({ map_hash: floor.hash, map_unchanged: true })?.map,
+      'этаж, на котором партия уже была, обязан остаться в кэше')
+  }
+  cache.forgetSceneMaps()
+})
+
 test('клиент отвергает дельту от карты другого размера и чужой версии формата', () => {
   const small = plainMap({ width: 10, height: 10 })
   const projected = project(small)

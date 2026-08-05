@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
+import { CLOSED_QUEST_STATUSES } from './world-memory.mjs'
 
 const clean = (value, maximum = 240) => String(value ?? '')
   .normalize('NFKC')
@@ -171,7 +172,9 @@ function availableIntentTypes(state = {}) {
   const quests = state.worldMemory?.quests ?? []
   const chapter = Math.max(1, Number(state.adventure?.chapter) || 1)
   const chapterQuest = chapterQuestFor(state, chapter)
-  const chapterQuestResolved = Boolean(chapterQuest && ['completed', 'failed'].includes(chapterQuest.status))
+  // Брошенный квест главы закрыт: сцену после него завершать можно, иначе отказ
+  // отряда останавливал бы Режиссёра на этой главе навсегда.
+  const chapterQuestResolved = Boolean(chapterQuest && CLOSED_QUEST_STATUSES.includes(chapterQuest.status))
   const mainQuest = quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0]
   const mainQuestOpen = Boolean(mainQuest && ['active', 'hidden'].includes(mainQuest.status))
   const chapterHistory = currentChapterIntents(state)
@@ -300,7 +303,7 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}) {
         policy: 'director-intent-policy-one-evening-v1',
       }
     }
-    if (chapterQuest && ['completed', 'failed'].includes(chapterQuest.status)) {
+    if (chapterQuest && CLOSED_QUEST_STATUSES.includes(chapterQuest.status)) {
       if (!arc.is_final) {
         const intent = intentForType('end_scene', state, availability.openQuest)
         return {

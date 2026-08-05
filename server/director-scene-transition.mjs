@@ -183,6 +183,7 @@ export function buildDirectorTransitionCommands({
   sceneArgs,
   shopIntent,
   partyDecision,
+  abandonQuest = null,
 } = {}) {
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
     throw new DirectorTransitionError('Не найдено авторитетное состояние кампании', 'INVALID_DIRECTOR_TRANSITION_STATE')
@@ -222,6 +223,24 @@ export function buildDirectorTransitionCommands({
     request_fingerprint: fingerprint,
   }]
 
+  // Отказ от задания едет тем же коммитом, что и уход: отряд проголосовал за
+  // одно решение, и распадаться на «локация сменилась, а нить осталась висеть»
+  // оно не должно. Команда стоит после `AdvanceScene` по той же причине, что и
+  // `CreateMerchant`: `expected_state_version` объявлен у перехода, и вперёд него
+  // в пакет ничего не встаёт.
+  const abandonedQuestId = compactText(abandonQuest?.id, 120)
+  if (abandonedQuestId) {
+    const from = compactText(state.scene?.location || state.scene?.title, 120) || 'прежняя локация'
+    commands.push({
+      command_type: 'ResolveQuest',
+      quest_id: abandonedQuestId,
+      outcome: 'abandoned',
+      summary: `Отряд отказался от задания «${compactText(abandonQuest?.title, 160) || abandonedQuestId}», покидая «${from}».`,
+      next_objective: compactText(transition.scene?.objective, 300) || 'Найти новую цель без прежнего задания',
+      request_fingerprint: fingerprint,
+    })
+  }
+
   let shopProposal = null
   if (shopRequested && !existingMerchant) {
     shopProposal = assembleShop({
@@ -247,6 +266,7 @@ export function buildDirectorTransitionCommands({
     shopIntent: normalizedShopIntent,
     shopProposal,
     existingMerchantId: existingMerchant?.id ?? null,
+    abandonedQuestId: abandonedQuestId || null,
     commands: Object.freeze(commands.map((command) => Object.freeze(command))),
   })
 }
@@ -264,6 +284,17 @@ export function assertDirectorTransitionResult(result, expectedFingerprint) {
     if (event?.payload?.request_fingerprint !== expectedFingerprint) {
       throw new DirectorTransitionError(
         'Ключ идемпотентности уже связан с другим созданием торговца',
+        'IDEMPOTENCY_CONFLICT',
+      )
+    }
+  }
+  // Развязки квестов родом не из этого перехода в пакете быть не может: отказ от
+  // задания создаётся здесь же и несёт тот же отпечаток запроса. Развязка по
+  // заполненным часам приходит отдельным коммитом автономного контура.
+  for (const event of events.filter((candidate) => candidate?.event_type === 'QuestResolved')) {
+    if (event?.payload?.outcome === 'abandoned' && event?.payload?.request_fingerprint !== expectedFingerprint) {
+      throw new DirectorTransitionError(
+        'Ключ идемпотентности уже связан с другим отказом от задания',
         'IDEMPOTENCY_CONFLICT',
       )
     }

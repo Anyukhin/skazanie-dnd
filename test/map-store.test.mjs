@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { MapStore, externalizeMaps, internalizeMaps, isMapRef } from '../server/map-store.mjs'
+import { FileEventStore } from '../server/event-store.mjs'
+import { applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 import { buildBuildingScene } from '../server/building-generator.mjs'
 import { legacyCellsFromTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
 
@@ -21,6 +23,20 @@ function sceneState(seed = 'store') {
     sessionCode: 'STORE',
     scene: { title: 'Сцена', location: 'Дом', cells: legacyCellsFromTacticalMap(map), map: serialized },
     locationMaps: { 'loc-1': { version: 2, map: serialized } },
+  }
+}
+
+/**
+ * Так `state.locationMaps` выглядит в живой игре: `sceneMapRecord`
+ * (`server/adventure-director.mjs`) кладёт туда только `{version, cells}`,
+ * никакой карты слоями там нет.
+ */
+function rememberedCellsState(seed = 'remembered') {
+  const map = buildBuildingScene({ seed, width: 30, height: 30 }).map
+  return {
+    sessionCode: 'STORE',
+    scene: { title: 'Сцена', location: 'Дом', cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) },
+    locationMaps: { 'loc-1': { version: 1, cells: legacyCellsFromTacticalMap(map) } },
   }
 }
 
@@ -79,6 +95,50 @@ test('вынос карты резко уменьшает снимок', (t) => 
   assert.ok(refOnly < 0.3, `ссылка на карту весит ${refOnly.toFixed(2)} КБ`)
 })
 
+test('запомненные клетки локации выносятся и возвращаются без изменений', (t) => {
+  const { store } = tempStore(t)
+  const state = rememberedCellsState()
+  const stripped = externalizeMaps(state, store)
+  assert.ok(isMapRef(stripped.locationMaps['loc-1'].cells),
+    'клетки запомненной локации обязаны стать ссылкой — это единственное, что там лежит в живой игре')
+  assert.equal(stripped.locationMaps['loc-1'].version, 1, 'служебные поля записи остаются на месте')
+  assert.equal(stripped.locationMaps['loc-1'].cells.width, 30, 'ссылка описывает охват клеток')
+
+  const restored = internalizeMaps(stripped, store)
+  assert.deepEqual(restored.missing, [])
+  assert.deepEqual(restored.state, state, 'состояние обязано вернуться в прежний вид')
+})
+
+test('вынос запомненных клеток уменьшает снимок на порядок', (t) => {
+  const { store } = tempStore(t)
+  const state = rememberedCellsState()
+  const before = Buffer.byteLength(JSON.stringify(state.locationMaps)) / 1024
+  const after = Buffer.byteLength(JSON.stringify(externalizeMaps(state, store).locationMaps)) / 1024
+  console.log(`  locationMaps: ${before.toFixed(1)} КБ → ${after.toFixed(2)} КБ`)
+  assert.ok(after * 10 < before, `${after.toFixed(2)} КБ против ${before.toFixed(1)} КБ — вынос дал меньше порядка`)
+})
+
+test('снимок старого формата читается как раньше', (t) => {
+  const { store } = tempStore(t)
+  // Снимки, записанные до выноса, несут клетки массивом, а не ссылкой. Такой
+  // снимок обязан читаться без единой правки и без потерь.
+  const legacy = rememberedCellsState('legacy')
+  const restored = internalizeMaps(legacy, store)
+  assert.deepEqual(restored.missing, [])
+  assert.equal(restored.state, legacy, 'состояние без ссылок обязано вернуться тем же объектом')
+})
+
+test('потерянный файл клеток локации не роняет состояние', (t) => {
+  const { store } = tempStore(t)
+  const stripped = externalizeMaps(rememberedCellsState(), store)
+  unlinkSync(store.fileFor(stripped.locationMaps['loc-1'].cells.hash))
+  store.cache.clear()
+
+  const restored = internalizeMaps(stripped, store)
+  assert.deepEqual(restored.missing, [stripped.locationMaps['loc-1'].cells.hash])
+  assert.ok(isMapRef(restored.state.locationMaps['loc-1'].cells), 'ссылка остаётся ссылкой')
+})
+
 test('потерянный файл карты не роняет состояние', (t) => {
   const { store } = tempStore(t)
   const stripped = externalizeMaps(sceneState(), store)
@@ -104,6 +164,41 @@ test('состояние без карт проходит через обе фу
   const plain = { sessionCode: 'PLAIN', scene: { title: 'Без карты', cells: [] } }
   assert.equal(externalizeMaps(plain, store), plain)
   assert.equal(internalizeMaps(plain, store).state, plain)
+})
+
+/**
+ * Снимок с вынесенными картами обязан давать то же состояние, что и честный
+ * replay без снимков. Это и есть цена выноса: если она не сходится, снимок
+ * молча портит кампанию, а заметно это станет только после перезапуска сервера.
+ */
+test('снимок с вынесенными картами даёт то же состояние, что и replay без снимков', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-map-replay-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const map = buildBuildingScene({ seed: 'replay', width: 30, height: 30 }).map
+  const state = normalizeCampaignState({
+    sessionCode: 'REPLAY',
+    players: [{ id: 'hero', character: 'Герой', hp: 10, maxHp: 10, inventory: [], x: 1, y: 1, level: 1 }],
+    partyMemberIds: ['hero'],
+    scene: { title: 'Сцена', location: 'Дом', cells: legacyCellsFromTacticalMap(map) },
+  })
+  const store = new FileEventStore({
+    rootDir: root,
+    reducer: applyGameEvent,
+    normalizeState: normalizeCampaignState,
+    mapStore: new MapStore({ rootDir: join(root, 'engine') }),
+  })
+  await store.importLegacySnapshot({ campaign_id: 'REPLAY', legacy_state: state, idempotency_key: 'import-1' })
+
+  const fromSnapshot = await store.load('REPLAY')
+  const fromEvents = await store.replay('REPLAY', { use_snapshots: false })
+  assert.ok(fromSnapshot.state.locationMaps && Object.keys(fromSnapshot.state.locationMaps).length,
+    'проверять нечего, если локация не запомнена')
+  assert.deepEqual(fromSnapshot.state, fromEvents.state, 'снимок и replay разошлись')
+  assert.ok(Array.isArray(fromSnapshot.state.scene.cells) && fromSnapshot.state.scene.cells.length,
+    'производные клетки обязаны собраться обратно из вынесенной карты')
+  for (const record of Object.values(fromSnapshot.state.locationMaps)) {
+    assert.ok(Array.isArray(record.cells), 'клетки запомненной локации обязаны вернуться массивом, а не ссылкой')
+  }
 })
 
 test('файлы карт раскладываются по подкаталогам, а не в один', (t) => {

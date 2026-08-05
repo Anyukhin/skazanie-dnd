@@ -1,7 +1,7 @@
 // @ts-check
 import { createHash } from 'node:crypto'
 import { sceneInteractionCatalogEntry } from './scene-interactions.mjs'
-import { SIZE_CLASSES } from './tactical-map.mjs'
+import { SIZE_CLASSES, floorVariantAt } from './tactical-map.mjs'
 
 /**
  * Форма тактической клетки **до** M0 из `docs/tactical-map-plan.md`. Это
@@ -302,7 +302,7 @@ export function generateDynamicSceneMap({ seed, theme = '', danger = 'средн
       if (passable && !centralSpine && random() < waterChance) type = 'water'
       if ((layout === 'streets' || layout === 'ruins') && type === 'wall' && !border && (streetXs.has(x - 1) || streetXs.has(x + 1) || streetYs.has(y - 1) || streetYs.has(y + 1)) && random() < 0.14) type = 'door'
       const cellMaterial = material === 'grass' && type === 'floor' && (scenicTrail || entranceRoad) ? 'earth' : material
-      cells.push({ x, y, type, revealed: passable && x <= 2, material: cellMaterial, variant: Math.floor(random() * 6), pattern: /** @type {SceneCellPattern} */ (pattern) })
+      cells.push({ x, y, type, revealed: passable && x <= 2, material: cellMaterial, variant: floorVariantAt(/** @type {string | number} */ (seed), x, y), pattern: /** @type {SceneCellPattern} */ (pattern) })
     }
   }
 
@@ -314,7 +314,7 @@ export function generateDynamicSceneMap({ seed, theme = '', danger = 'средн
   const ensureFloor = (x, y) => {
     let cell = byPosition.get(key(x, y))
     if (!cell) {
-      cell = { x, y, type: 'floor', revealed: x <= 2, material: material === 'grass' ? 'earth' : material, variant: Math.floor(random() * 6), pattern: /** @type {SceneCellPattern} */ (pattern) }
+      cell = { x, y, type: 'floor', revealed: x <= 2, material: material === 'grass' ? 'earth' : material, variant: floorVariantAt(/** @type {string | number} */ (seed), x, y), pattern: /** @type {SceneCellPattern} */ (pattern) }
       cells.push(cell)
       byPosition.set(key(x, y), cell)
     }

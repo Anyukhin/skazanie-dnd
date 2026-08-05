@@ -42,7 +42,7 @@ export const PROMPT_DESCRIPTORS = Object.freeze([
   Object.freeze({ role: 'director_chaos', promptId: 'director/v2_chaos', module: 'director-agent.mjs', loads: true }),
   Object.freeze({ role: 'action_adjudicator', promptId: 'action_adjudicator/v3', module: 'action-adjudicator.mjs', loads: true }),
   Object.freeze({ role: 'campaign_creator', promptId: 'campaign_creator/v3', module: 'campaign-bootstrap.mjs', loads: true }),
-  Object.freeze({ role: 'scene_architect', promptId: 'map_architect/v3', module: 'scene-architect.mjs', loads: true }),
+  Object.freeze({ role: 'scene_architect', promptId: 'map_architect/v4', module: 'scene-architect.mjs', loads: true }),
   Object.freeze({ role: 'recap', promptId: 'recap/v1', module: 'campaign-recap.mjs', loads: true }),
 ])
 

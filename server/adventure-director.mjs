@@ -4,6 +4,7 @@ import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
 import { SIZE_CLASSES, legacyCellsFromTacticalMap } from './tactical-map.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './scene-interactions.mjs'
 import { REFERENCE_SIZE } from './building-generator.mjs'
+import { normalizeDeclaredLevels } from './level-generator.mjs'
 import {
   buildThemedScene,
   fallbackThemeFor,
@@ -111,9 +112,32 @@ function normalizedSceneCells(value) {
   })
 }
 
-function sceneMapRecord(value) {
+/**
+ * Запись запомненной локации.
+ *
+ * Клетки лежали здесь с самого начала; сериализованная карта добавлена этапом
+ * L3 и **необязательна**. Без неё запомненный этаж возвращается той же дорогой,
+ * что и раньше: карта пересобирается из клеток, а вместе с ней теряются зоны,
+ * рёбра и привязки лестниц к этажам. Для этажа входа это терпимо — привязку
+ * восстанавливает заявка `scene.levels`. Для этажа выше или ниже терпимо уже
+ * нет: у пересобранной карты `levelIndex` равен нулю, и заявка привязала бы
+ * лестницу не туда. Поэтому этаж консервируется целиком.
+ *
+ * Поле уже умеют выносить `externalizeMaps`/`internalizeMaps`
+ * (`server/map-store.mjs`) — в снимок попадает ссылка, а не тело карты.
+ *
+ * @param {unknown} value клетки, либо запись целиком
+ * @param {unknown} [map] сериализованная карта; по умолчанию берётся из записи
+ */
+function sceneMapRecord(value, map = undefined) {
   const cells = normalizedSceneCells(value)
-  return cells.length ? { version: 1, cells } : null
+  if (!cells.length) return null
+  const source = map === undefined
+    ? (value && typeof value === 'object' && !Array.isArray(value) ? /** @type {any} */ (value).map : undefined)
+    : map
+  return source && typeof source === 'object' && !Array.isArray(source)
+    ? { version: 1, cells, map: source }
+    : { version: 1, cells }
 }
 
 /**
@@ -136,6 +160,25 @@ export function sceneMapForLocation(locationMaps, locationId) {
   return record ? clone(record.cells) : null
 }
 
+/**
+ * Сериализованная карта запомненного этажа, если она была законсервирована.
+ * Сохранения, сделанные до L3, отдают `null` — там лежат только клетки.
+ *
+ * @param {Record<string, any>|null|undefined} locationMaps
+ * @param {string} locationId ключ этажа (`levelKey`)
+ * @returns {Record<string, any>|null}
+ */
+export function sceneTacticalMapForLocation(locationMaps, locationId) {
+  const id = text(locationId, 120)
+  const record = id ? locationMaps?.[id] : null
+  // Клетки записи здесь намеренно не нормализуются: карта самодостаточна, а
+  // разбор нескольких тысяч клеток ради выброшенного результата стоил бы дороже
+  // самого перехода.
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return null
+  const map = record.map
+  return map && typeof map === 'object' && !Array.isArray(map) ? clone(map) : null
+}
+
 export function sceneLocationId(state = {}) {
   const direct = publicText(state.scene?.location_id ?? state.scene?.locationId, 120)
   if (direct) return direct
@@ -150,9 +193,9 @@ export function sceneLocationId(state = {}) {
   )
 }
 
-export function rememberSceneMap(state, locationId, cells) {
+export function rememberSceneMap(state, locationId, cells, map = undefined) {
   const id = publicText(locationId, 120)
-  const record = sceneMapRecord(cells)
+  const record = sceneMapRecord(cells, map)
   if (!id || !record) return state
   state.locationMaps = {
     ...normalizeLocationMaps(state.locationMaps),
@@ -161,10 +204,24 @@ export function rememberSceneMap(state, locationId, cells) {
   return state
 }
 
+/**
+ * Номер активного этажа. Сцена без поля `level` — это этаж входа, и такой
+ * ответ обязателен: у всех сохранённых кампаний поля нет вовсе.
+ *
+ * @param {Record<string, any>} [state]
+ * @returns {number}
+ */
+export function sceneLevelIndex(state = {}) {
+  const index = Number(state?.scene?.level?.index)
+  return Number.isSafeInteger(index) ? index : 0
+}
+
 export function rememberCurrentSceneMap(state) {
   const cells = state?.scene?.cells
   if (!Array.isArray(cells) || !cells.length) return state
-  return rememberSceneMap(state, sceneLocationId(state), cells)
+  // Ключ обязан учитывать этаж: иначе второй этаж лёг бы поверх зала под тем же
+  // идентификатором локации и стёр бы его.
+  return rememberSceneMap(state, levelKey(sceneLocationId(state), sceneLevelIndex(state)), cells, state.scene.map)
 }
 
 /**
@@ -193,7 +250,7 @@ export function rememberCurrentSceneMap(state) {
  * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
  * ведёт к теме, а не мимо неё.
  */
-function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap }) {
+function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap, levels = [] }) {
   // Опознание живёт в одном месте — `server/scene-themes.mjs`.
   const recognized = matchTheme({ location, theme, sceneKind })
     ?? themeFromMapRequest(requestedMap)
@@ -209,6 +266,7 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locat
       locationId,
       width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
       height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
+      levels,
     })
     return ensureSceneInteractionFeatures(
       legacyCellsFromTacticalMap(built.map),
@@ -231,15 +289,62 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locat
  * @param {object} input
  * @returns {ReturnType<typeof generateDynamicSceneMap>}
  */
-export function generateSceneCells({ theme = '', danger = 'средняя', location = '', sceneKind = '', seed = 'scene', locationId = '', map = {} } = {}) {
+export function generateSceneCells({ theme = '', danger = 'средняя', location = '', sceneKind = '', seed = 'scene', locationId = '', map = {}, levels = [] } = {}) {
   const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
-  return generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap })
+  return generateSceneCellsFor({
+    theme, danger, location, sceneKind, seed, locationId, requestedMap, levels: normalizeDeclaredLevels(levels),
+  })
 }
 
-function stableLocationMapSeed(worldMap, locationId, location) {
+/**
+ * Ключ этажа в `state.locationMaps` (`docs/multilevel-map-plan.md`, 3.1).
+ *
+ * Этаж входа сохраняет **прежний ключ без суффикса**, поэтому все сохранённые
+ * кампании остаются валидными и никакой миграции не требуют: то, что лежало под
+ * `locationId`, и есть этаж 0.
+ *
+ * Составной ключ обязан пережить `normalizeLocationMaps`, а та режет ключ до 120
+ * символов. Поэтому под суффикс место отводится заранее: иначе у длинного
+ * идентификатора локации срезался бы как раз номер этажа, и два разных этажа
+ * схлопнулись бы в одну запись.
+ *
+ * @param {string} locationId
+ * @param {number} [level]
+ * @returns {string}
+ */
+export function levelKey(locationId, level = 0) {
+  const index = Number(level)
+  const safeLevel = Number.isSafeInteger(index) ? index : 0
+  const base = publicText(locationId, 120)
+  if (!base || safeLevel === 0) return base
+  const suffix = `@L${safeLevel}`
+  return `${base.slice(0, 120 - suffix.length)}${suffix}`
+}
+
+export function stableLocationMapSeed(worldMap, locationId, location) {
   const campaignSeed = publicText(worldMap?.seed, 120, 'campaign')
   const stableId = publicText(locationId, 120, publicText(location, 120, 'location'))
   return `location-map:v1:${campaignSeed}:${stableId}`
+}
+
+/**
+ * Сид этажа. Выводится из сида локации, а не берётся заново: один и тот же
+ * `(locationId, level)` обязан давать ту же карту при любом числе переходов
+ * туда и обратно, иначе replay соберёт другой подвал.
+ *
+ * Суффикс совпадает по форме с `levelKey`, и это намеренно: читая сид в логе,
+ * видно, какой именно этаж им собран. Этаж входа сохраняет прежний сид без
+ * суффикса, поэтому карты уже сыгранных локаций не меняются.
+ *
+ * @param {string} baseSeed сид локации из `stableLocationMapSeed`
+ * @param {number} [level]
+ * @returns {string}
+ */
+export function levelSeed(baseSeed, level = 0) {
+  const index = Number(level)
+  const safeLevel = Number.isSafeInteger(index) ? index : 0
+  const base = publicText(baseSeed, 180, 'location-map')
+  return safeLevel === 0 ? base : `${base}@L${safeLevel}`
 }
 
 function publicHistoryEntry(value) {
@@ -368,6 +473,7 @@ export function createSceneTransition(input = {}, state = {}) {
   const rememberedMap = sceneMapForLocation(state.locationMaps, locationId)
     ?? (sceneLocationId(state) === locationId ? normalizedSceneCells(previousScene.cells) : null)
   const requestedMap = input.map && typeof input.map === 'object' && !Array.isArray(input.map) ? input.map : {}
+  const declaredLevels = normalizeDeclaredLevels(input.levels)
   const cells = rememberedMap ?? generateSceneCellsFor({
     theme,
     danger,
@@ -376,6 +482,7 @@ export function createSceneTransition(input = {}, state = {}) {
     seed: stableLocationMapSeed(worldMap, locationId, location),
     locationId,
     requestedMap,
+    levels: declaredLevels,
   })
   const scene = {
     title,
@@ -384,6 +491,15 @@ export function createSceneTransition(input = {}, state = {}) {
     mood,
     objective,
     turn: Math.max(0, Number(previousScene.turn) || 0) + 1,
+    // Объявленные архитектором этажи живут в самой сцене, а не отдельным
+    // индексом состояния. Причина — replay: `SceneAdvanced` несёт объект сцены
+    // целиком и применяется присваиванием `state.scene = payload.scene`, так что
+    // заявка восстанавливается из потока событий без единой новой строки в
+    // reducer. Отдельная карта `state.locationLevels` (раздел 3.3 плана) хранит
+    // другое — этажи, на которых партия уже побывала, и пополняется механикой
+    // перехода на этапе L3. Одноэтажная локация поля не получает вовсе, поэтому
+    // сохранённые кампании и старые события читаются как раньше.
+    ...(declaredLevels.length ? { levels: declaredLevels } : {}),
     cells,
   }
 

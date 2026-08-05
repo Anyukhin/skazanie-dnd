@@ -122,6 +122,63 @@ test('triggered quest clock resolves through a typed event and rejects premature
   assert.match(resolved.state.worldMemory.quests[0].summary, /rivals reached/u)
 })
 
+test('отказ отряда закрывает квест до заполнения часов, а успех и провал — нет', () => {
+  const initialState = campaign()
+  // Часы у квеста стоят на 1 из 3: обычная развязка здесь запрещена, а отказ —
+  // единственный исход, который отряд объявляет своим решением, а не развязкой.
+  const prepared = resolveCommands([{
+    command_type: 'UpsertQuest',
+    quest: {
+      id: 'quest:find-seal', title: 'Find the Seal', summary: 'Recover the archive seal.',
+      objectives: ['Go to the archive vault'], visibility: 'party', clock: { current: 1, max: 3, label: 'Rivals arrive' },
+    },
+  }], initialState, { diceService: dice(), context: { isAdmin: true } })
+
+  assert.throws(
+    () => runWorldMemoryCommands(prepared.state, [{
+      command_type: 'ResolveQuest', quest_id: 'quest:find-seal', outcome: 'success',
+      summary: 'Not yet.', next_objective: 'Wait.',
+    }]),
+    (error) => error.code === 'WORLD_QUEST_CLOCK_NOT_TRIGGERED',
+  )
+  assert.throws(
+    () => runWorldMemoryCommands(prepared.state, [{
+      command_type: 'ResolveQuest', quest_id: 'quest:find-seal', outcome: 'walked-away',
+      summary: 'Nope.', next_objective: 'Nope.',
+    }]),
+    (error) => error.code === 'WORLD_QUEST_OUTCOME_INVALID',
+  )
+
+  const abandoned = runWorldMemoryCommands(prepared.state, [{
+    command_type: 'ResolveQuest', quest_id: 'quest:find-seal', outcome: 'abandoned',
+    summary: 'Отряд отказался от задания и ушёл из архива.',
+    next_objective: 'Осмотреться в новом месте и найти новую цель',
+    request_fingerprint: 'director-transition-fingerprint',
+  }])
+
+  assert.equal(abandoned.events[0].event_type, 'QuestResolved')
+  assert.equal(abandoned.events[0].payload.status, 'abandoned')
+  assert.equal(abandoned.events[0].payload.request_fingerprint, 'director-transition-fingerprint')
+  assert.equal(abandoned.state.worldMemory.quests[0].status, 'abandoned')
+  assert.deepEqual(replayEvents(prepared.state, abandoned.events).worldMemory, abandoned.state.worldMemory)
+
+  // Закрытый отказом квест дальше ведёт себя как любой закрытый: часы у него уже
+  // не двигаются, и повторно разрешить его нельзя.
+  assert.throws(
+    () => runWorldMemoryCommands(abandoned.state, [{ command_type: 'AdvanceQuestClock', quest_id: 'quest:find-seal', amount: 1 }]),
+    (error) => error.code === 'WORLD_QUEST_CLOSED',
+  )
+})
+
+test('развязка без отпечатка запроса собирает прежний payload без нового поля', () => {
+  const event = worldMemoryEvent({
+    command_type: 'ResolveQuest', quest_id: 'quest:find-seal', outcome: 'success',
+    summary: 'Done.', next_objective: 'Next.', source_event_ids: [],
+  })
+  assert.equal(Object.hasOwn(event.payload, 'request_fingerprint'), false)
+  assert.equal(event.payload.status, 'completed')
+})
+
 test('a private fact is visible only to the hero who learned it', () => {
   const state = buildMemory().state
   const hero = worldMemoryForViewer(state.worldMemory, { playerId: 'hero', isPartyMember: true })

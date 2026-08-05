@@ -3,7 +3,8 @@ import type {
   TacticalProp, TacticalSurface,
 } from './types'
 import { areaCells, type AreaShape } from './area-geometry'
-import { cellAt, doorStates, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
+import { LIGHT_FULL, LIGHT_SOURCE_ASSETS, lightAt, lightGridFor, lightSourceAssetId } from './board-lighting'
+import { cellAt, doorStates, edgeBetween, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
 
 /**
  * Чистая отрисовка тактической доски. Модуль ничего не знает ни о React, ни о
@@ -13,7 +14,8 @@ import { cellAt, doorStates, edgeList, edgeNeighbor, revealedAt } from './tactic
  *
  * Порядок слоёв снизу вверх (`docs/tactical-map-plan.md`, раздел 7):
  * фон зоны → тайлы пола → декали → сегменты стен по рёбрам → предметы →
- * сетка 5 футов → туман войны. Фишки и интерактив живут в DOM поверх холста.
+ * запечённый свет → сетка 5 футов → туман войны. Фишки и интерактив живут в
+ * DOM поверх холста.
  */
 
 /** Сторона тайла кэша местности в клетках. */
@@ -115,6 +117,10 @@ export type BoardPalette = {
   fog: string
   zoneInterior: string
   zoneExterior: string
+  /** Цвет тьмы: им запекается затемнение по сетке освещённости и тень у стен. */
+  lightShadow: string
+  /** Цвет огня: тёплый ореол вокруг факела, костра и очага. */
+  lightWarm: string
 }
 
 /**
@@ -146,6 +152,10 @@ export const DEFAULT_BOARD_PALETTE: BoardPalette = {
   fog: 'rgba(13,11,9,.62)',
   zoneInterior: '#5b4a35',
   zoneExterior: '#4a5738',
+  // Тьма не чёрная, а холодная синеватая: чёрный поверх фактуры съедает её
+  // целиком, и пол в тени перестаёт отличаться от кладки.
+  lightShadow: '#0d1016',
+  lightWarm: '#ffb257',
 }
 
 /** Названия переменных темы, которые доска читает из CSS. */
@@ -154,6 +164,8 @@ const PALETTE_VARIABLES: Array<[keyof BoardPalette, string]> = [
   ['floorAlt', '--map-floor-alt'],
   ['wall', '--map-wall'],
   ['gridLine', '--map-grid-line'],
+  ['lightShadow', '--map-light-shadow'],
+  ['lightWarm', '--map-light-warm'],
 ]
 
 /**
@@ -230,6 +242,18 @@ const MATERIAL_COLORS: Record<TacticalMaterial, string> = {
 /** Материалы, из которых строят стены: остальные — покрытие пола. */
 const BUILT_MATERIALS = new Set<TacticalMaterial>(['stone', 'wood', 'marble', 'metal'])
 
+/**
+ * Смещение тона по варианту тайла (`docs/multilevel-map-plan.md`, 7.2).
+ * Генераторы раскидывают вариант позиционным шумом (`floorVariantAt` в
+ * `server/tactical-map.mjs`), и это единственная таблица, по которой вариант
+ * превращается в цвет: её же читает и заливка `boardFillColor`, и накладка
+ * поверх растровой фактуры.
+ *
+ * Значения нарочно мелкие. Пол — фон, а не рисунок: заметный разброс тонов
+ * читается как грязь на доске и мешает видеть фишки и подсветки.
+ */
+export const FLOOR_VARIANT_SHADES: readonly number[] = [0, -0.04, 0.03, -0.02, 0.05, -0.06]
+
 const SURFACE_COLORS: Record<TacticalSurface, string | null> = {
   none: null,
   water: '#3f7d84',
@@ -288,7 +312,7 @@ export function boardFillColor(target: BoardFillTarget, palette: BoardPalette, t
   // Материал под текстурой лишь подкрашивает подложку; без текстуры он и есть
   // единственный признак покрытия, поэтому подмешивается сильнее.
   const material = mixColors(base, MATERIAL_COLORS[cell.material], texturesAvailable ? 0.3 : 0.55)
-  const variantShade = [0, -0.04, 0.03, -0.02, 0.05, -0.06][Math.abs(cell.variant) % 6]
+  const variantShade = FLOOR_VARIANT_SHADES[Math.abs(cell.variant) % FLOOR_VARIANT_SHADES.length]
   const elevated = cell.elevation === 0 ? material : shade(material, Math.max(-0.2, Math.min(0.2, cell.elevation * 0.05)))
   const tinted = shade(elevated, variantShade)
   // Непроходимая клетка без поверхности — это массив породы или кладка, а не
@@ -450,15 +474,22 @@ export function tileRevealSignature(map: TacticalMap, tile: BoardTile) {
 }
 
 /**
- * Ключ тайла: отпечаток местности, размер клетки, координаты тайла и раскрытие
- * внутри него. Тайл перерисовывается только при смене своего ключа.
+ * Ключ тайла: отпечаток местности, этаж, размер клетки, координаты тайла и
+ * раскрытие внутри него. Тайл перерисовывается только при смене своего ключа.
+ *
+ * Этаж входит в ключ из-за запечённого света (`src/board-lighting.ts`):
+ * `terrainHash` считается без `levelIndex`, а у подвала амбиент свой. Всё
+ * остальное, от чего зависит свет — предметы, двери, рёбра, зоны, тема, —
+ * в отпечатке местности уже есть, поэтому переставленный факел и открытая
+ * дверь обесценивают тайлы тем же механизмом, что и раньше. Панорама и зум
+ * ключа не меняют: в нём нет ни окна просмотра, ни смещения.
  */
 export function tileKey(scene: BoardScene, tile: BoardTile) {
   const art = scene.art ? (scene.artKey ?? 'art') : ''
   const textures = texturesAvailableIn(scene) ? 't' : 'f'
   const stamps = scene.propAtlas?.key ?? ''
   const tiles = scene.terrain?.key ?? ''
-  return `${scene.map.terrainHash}:${scene.cellSize}:${textures}:${art}:${stamps}:${tiles}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
+  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${tiles}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
 }
 
 /**
@@ -659,6 +690,68 @@ export function drawZoneBackground(context: BoardContext2D, scene: BoardScene, t
   }
 }
 
+/**
+ * Тона накладки варианта. Задаются полностью непрозрачными: силу даёт
+ * `globalAlpha`, и она выводится из той же таблицы `FLOOR_VARIANT_SHADES`, что
+ * и цвет заливки без фактуры.
+ */
+const VARIANT_TINT_LIGHT = '#fff3dc'
+const VARIANT_TINT_DARK = '#1b1611'
+
+/**
+ * Накладка варианта поверх растровой фактуры. Без неё вариант виден только там,
+ * где фактур нет: фактура пола раскладывается по карте непрерывно и заливку под
+ * собой закрывает целиком, а значит и весь разброс тонов вместе с ней.
+ */
+function drawVariantTint(context: BoardContext2D, cell: TacticalCell, left: number, top: number, size: number) {
+  const shift = FLOOR_VARIANT_SHADES[Math.abs(cell.variant) % FLOOR_VARIANT_SHADES.length]
+  if (Math.abs(shift) < 0.005) return
+  context.save()
+  context.globalAlpha = Math.min(0.22, Math.abs(shift) * 2.4)
+  context.fillStyle = shift > 0 ? VARIANT_TINT_LIGHT : VARIANT_TINT_DARK
+  context.fillRect(left, top, size, size)
+  context.globalAlpha = 1
+  context.restore()
+}
+
+/** Ширина полосы дизеринга на стыке материалов: половина клетки внутрь. */
+const MATERIAL_DITHER_BAND = 0.5
+const MATERIAL_DITHER_ALPHA = 0.55
+
+const DITHER_NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+
+/**
+ * Дизеринг стыка материалов (`docs/multilevel-map-plan.md`, 7.2). Граница
+ * между досками и камнем идёт по сетке и без этого читается линейкой,
+ * прочерченной по линейке же: игрок видит не смену покрытия, а шов.
+ *
+ * Смешение шахматное и детерминированное: полосу цвета соседа получает только
+ * клетка чётной суммы координат, поэтому вдоль стыка тона чередуются через
+ * одну и граница рассыпается. Стена стык не размывает — за ней другое
+ * помещение, а не продолжение пола.
+ */
+function drawMaterialDither(
+  context: BoardContext2D, scene: BoardScene, cell: TacticalCell,
+  left: number, top: number, size: number, available: boolean,
+) {
+  if (!cell.passable || (cell.x + cell.y) % 2 !== 0) return
+  const band = size * MATERIAL_DITHER_BAND
+  for (const [dx, dy] of DITHER_NEIGHBORS) {
+    const neighbor = cellAt(scene.map, cell.x + dx, cell.y + dy)
+    if (!neighbor || !neighbor.passable || neighbor.material === cell.material) continue
+    if (edgeBetween(scene.map, cell.x, cell.y, neighbor.x, neighbor.y)?.kind === 'wall') continue
+    context.save()
+    context.globalAlpha = MATERIAL_DITHER_ALPHA
+    context.fillStyle = boardFillColor({ kind: 'floor', cell: neighbor }, scene.palette, available)
+    if (dx === 1) context.fillRect(left + size - band, top, band, size)
+    else if (dx === -1) context.fillRect(left, top, band, size)
+    else if (dy === 1) context.fillRect(left, top + size - band, size, band)
+    else context.fillRect(left, top, size, band)
+    context.globalAlpha = 1
+    context.restore()
+  }
+}
+
 /** Слой 2: тайлы пола по материалу и варианту, поверх — иллюстрация локации. */
 export function drawFloorTiles(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
@@ -686,19 +779,164 @@ export function drawFloorTiles(context: BoardContext2D, scene: BoardScene, tile:
           context.fillRect(left, top, frame.size, frame.size)
           context.restore()
         }
+        if (cell.passable) drawVariantTint(context, cell, left, top, frame.size)
         drawSurfaceTexture(context, scene, cell, left, top, frame.size, x, y)
       } else {
         const texture = textures?.get(cell.material)
         if (texture) drawLegacyFloorTexture(context, texture, cell, cell.passable ? 0.55 : 0.72, left, top, frame.size, floorDirection)
       }
+      drawMaterialDither(context, scene, cell, left, top, frame.size, available)
       drawSceneArt(context, scene, cell, left, top)
     }
   }
 }
 
+// --- процедурные декали ---------------------------------------------------
+
+/**
+ * Как часто клетка получает декаль, в промилле (`docs/multilevel-map-plan.md`,
+ * 7.2: примерно одна на 15–25 клеток). Сорок пять на тысячу — это одна на
+ * двадцать две: пол перестаёт быть стерильным, но не превращается в сыпь.
+ */
+export const DECAL_DENSITY_PER_MILLE = 45
+
+/** Вид процедурной декали. `null` — на этом покрытии декалей не бывает. */
+export type FloorDecalKind = 'crack' | 'straw' | 'stain' | 'moss'
+
+/** Пещерные темы: там пол зарастает мхом, а не устилается соломой. */
+const CAVE_DECAL_THEME = /cave|grotto|mine|пещер|грот|шахт/iu
+
+/**
+ * Шум декалей: та же роль, что у `floorVariantAt` на сервере, но здесь он
+ * нужен клиенту, а карта приходит уже готовой. Считается от сида карты и
+ * координат клетки, поэтому одинаков в любом кадре, на любом зуме и у любого
+ * игрока — декаль не «переезжает» при панорамировании и не пересчитывается.
+ */
+export function decalNoiseAt(seed: string, x: number, y: number) {
+  let hash = 0x811c9dc5
+  const source = `${seed}|${x}|${y}`
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  hash = Math.imul(hash ^ (hash >>> 15), 0x2c1b3c6d)
+  hash = Math.imul(hash ^ (hash >>> 12), 0x297a2d39)
+  return (hash ^ (hash >>> 15)) >>> 0
+}
+
+/**
+ * Вид декали для клетки. Тематика жёсткая: трещина идёт по камню и мрамору,
+ * солома и пятна — по дереву и утоптанной земле, мох — по камню и земле в
+ * пещере. Трава, песок, металл и лёд декалей не получают: там либо нечему
+ * трескаться, либо декаль читается мусором.
+ */
+export function floorDecalKindFor(map: TacticalMap, cell: TacticalCell, noise: number): FloorDecalKind | null {
+  if (!cell.passable || cell.surface !== 'none') return null
+  const cave = CAVE_DECAL_THEME.test(map.theme)
+  if (cave && (cell.material === 'stone' || cell.material === 'earth')) return (noise >>> 10) % 3 === 0 ? 'crack' : 'moss'
+  if (cell.material === 'stone' || cell.material === 'marble') return 'crack'
+  if (cell.material === 'wood' || cell.material === 'earth') return (noise >>> 10) % 2 === 0 ? 'straw' : 'stain'
+  return null
+}
+
+const DECAL_COLORS: Record<FloorDecalKind, string> = {
+  crack: '#3a2f24',
+  straw: '#c9a961',
+  stain: '#4a3520',
+  moss: '#4f6b39',
+}
+
+const DECAL_ALPHA: Record<FloorDecalKind, number> = {
+  crack: 0.32, straw: 0.42, stain: 0.26, moss: 0.34,
+}
+
+/**
+ * Рисунок одной декали. Разброс берётся из битов того же шума — своего
+ * генератора случайности здесь нет, иначе декаль перестала бы быть функцией от
+ * клетки и «поплыла» бы при каждой перерисовке тайла.
+ */
+function drawFloorDecal(
+  context: BoardContext2D, kind: FloorDecalKind, noise: number,
+  left: number, top: number, size: number,
+) {
+  // Три независимых сдвига в пределах клетки: они же задают и наклон рисунка.
+  const jitterX = ((noise >>> 4) & 63) / 63
+  const jitterY = ((noise >>> 12) & 63) / 63
+  const spin = ((noise >>> 20) & 63) / 63
+  const centerX = left + size * (0.28 + jitterX * 0.44)
+  const centerY = top + size * (0.28 + jitterY * 0.44)
+  context.globalAlpha = DECAL_ALPHA[kind]
+  if (kind === 'crack') {
+    context.strokeStyle = DECAL_COLORS[kind]
+    context.beginPath()
+    const reach = size * (0.2 + spin * 0.16)
+    const slope = (spin - 0.5) * 1.4
+    context.moveTo(centerX - reach, centerY - reach * slope)
+    context.lineTo(centerX - reach * 0.2, centerY + reach * 0.28)
+    context.lineTo(centerX + reach * 0.35, centerY - reach * 0.18)
+    context.lineTo(centerX + reach, centerY + reach * slope * 0.6)
+    context.stroke()
+    return
+  }
+  if (kind === 'straw') {
+    context.strokeStyle = DECAL_COLORS[kind]
+    context.beginPath()
+    for (let index = 0; index < 4; index += 1) {
+      const angle = (spin + index * 0.27) * Math.PI * 2
+      const length = size * (0.1 + ((noise >>> (index * 3)) & 7) / 7 * 0.1)
+      const offsetX = centerX + Math.cos(angle * 1.7) * size * 0.1
+      const offsetY = centerY + Math.sin(angle * 1.3) * size * 0.1
+      context.moveTo(offsetX - Math.cos(angle) * length, offsetY - Math.sin(angle) * length)
+      context.lineTo(offsetX + Math.cos(angle) * length, offsetY + Math.sin(angle) * length)
+    }
+    context.stroke()
+    return
+  }
+  // Пятно и мох — заливки. У пятна одно расплывшееся ядро, у мха — россыпь.
+  context.fillStyle = DECAL_COLORS[kind]
+  if (kind === 'stain') {
+    ellipseShape(context, centerX, centerY, size * (0.14 + spin * 0.1), size * (0.1 + jitterX * 0.09))
+    return
+  }
+  for (let index = 0; index < 3; index += 1) {
+    const angle = (spin + index / 3) * Math.PI * 2
+    const radius = size * (0.05 + ((noise >>> (index * 5)) & 7) / 7 * 0.05)
+    circle(context, centerX + Math.cos(angle) * size * 0.13, centerY + Math.sin(angle) * size * 0.13, radius)
+  }
+}
+
+/**
+ * Процедурные декали пола: трещины, солома, пятна и мох
+ * (`docs/multilevel-map-plan.md`, 7.2). Новых ассетов не требуют — рисуются
+ * вектором **в тайл**, поэтому стоят ровно один раз на перерисовку тайла, а не
+ * каждый кадр.
+ *
+ * В нераскрытой клетке декали нет: туман полупрозрачный, и рисунок под ним
+ * читался бы, выдавая покрытие ещё не разведанного пола.
+ */
+function drawProceduralDecals(context: BoardContext2D, scene: BoardScene, frame: TileFrame) {
+  const seed = scene.map.seed || scene.map.terrainHash
+  context.save()
+  context.lineWidth = Math.max(1, frame.size / 26)
+  for (let y = frame.minY; y <= frame.maxY; y += 1) {
+    for (let x = frame.minX; x <= frame.maxX; x += 1) {
+      const cell = cellAt(scene.map, x, y)
+      if (!cell?.revealed) continue
+      const noise = decalNoiseAt(seed, x, y)
+      if (noise % 1000 >= DECAL_DENSITY_PER_MILLE) continue
+      const kind = floorDecalKindFor(scene.map, cell, noise)
+      if (!kind) continue
+      drawFloorDecal(context, kind, noise, (x - frame.minX) * frame.size, (y - frame.minY) * frame.size, frame.size)
+    }
+  }
+  context.globalAlpha = 1
+  context.restore()
+}
+
 /** Слой 3: декали — рябь на воде, трещины на щебне, наледь. */
 export function drawDecals(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
+  drawProceduralDecals(context, scene, frame)
   context.save()
   context.lineWidth = Math.max(1, frame.size / 22)
   for (let y = frame.minY; y <= frame.maxY; y += 1) {
@@ -3065,6 +3303,120 @@ export function drawGrid(context: BoardContext2D, scene: BoardScene, tile: Board
   context.restore()
 }
 
+// --- запечённый свет ------------------------------------------------------
+
+/**
+ * Предельная непрозрачность затемнения. При минимуме читаемости сетки
+ * (`LIGHT_MIN_READABLE`) она даёт около 0.40 — пол в темноте заметно глуше
+ * освещённого, но фактура, укрытия и сетка футов сквозь него читаются.
+ */
+export const LIGHT_SHADOW_MAX_ALPHA = 0.62
+
+/** Ширина мягкой тени вдоль стены: четверть клетки внутрь. */
+export const WALL_SHADOW_CELLS = 0.25
+export const WALL_SHADOW_ALPHA = 0.2
+
+/** Непрозрачность затемнения по освещённости клетки. */
+export function lightShadowAlpha(light: number) {
+  const level = Math.max(0, Math.min(LIGHT_FULL, light))
+  return ((LIGHT_FULL - level) / LIGHT_FULL) * LIGHT_SHADOW_MAX_ALPHA
+}
+
+/**
+ * Кольца тёплого ореола: доля радиуса источника и непрозрачность. Градиента
+ * канвы здесь намеренно нет — `createRadialGradient` есть не у каждой
+ * реализации контекста, а весь модуль обязан рисоваться и в поддельном
+ * контексте тестов (тот же довод, что у `ellipseShape`).
+ */
+const WARM_HALO_RINGS: ReadonlyArray<readonly [number, number]> = [[1, 0.05], [0.62, 0.05], [0.32, 0.06]]
+
+/** Мягкая тень вдоль стен: полоса внутрь каждой раскрытой соседней клетки. */
+function drawWallShadows(context: BoardContext2D, scene: BoardScene, frame: TileFrame) {
+  const size = frame.size
+  const band = size * WALL_SHADOW_CELLS
+  context.fillStyle = scene.palette.lightShadow
+  context.globalAlpha = WALL_SHADOW_ALPHA
+  for (const edge of edgeList(scene.map)) {
+    if (edge.kind !== 'wall') continue
+    if (edge.x < frame.minX - 1 || edge.x > frame.maxX || edge.y < frame.minY - 1 || edge.y > frame.maxY) continue
+    const neighbor = edgeNeighbor(edge)
+    const left = (edge.x - frame.minX) * size
+    const top = (edge.y - frame.minY) * size
+    if (edge.dir === 'e') {
+      if (revealedAt(scene.map, edge.x, edge.y)) context.fillRect(left + size - band, top, band, size)
+      if (revealedAt(scene.map, neighbor.x, neighbor.y)) context.fillRect(left + size, top, band, size)
+    } else {
+      if (revealedAt(scene.map, edge.x, edge.y)) context.fillRect(left, top + size - band, size, band)
+      if (revealedAt(scene.map, neighbor.x, neighbor.y)) context.fillRect(left, top + size, size, band)
+    }
+  }
+  context.globalAlpha = 1
+}
+
+/**
+ * Тёплый ореол у огня. Статичная часть света: мерцание — этап L7 и живёт на
+ * холсте эффектов, тайлового кэша оно не касается.
+ */
+function drawWarmHalos(context: BoardContext2D, scene: BoardScene, frame: TileFrame) {
+  const size = frame.size
+  context.fillStyle = scene.palette.lightWarm
+  for (const prop of scene.map.props) {
+    const assetId = lightSourceAssetId(prop.assetId)
+    if (!assetId) continue
+    const cellX = Math.floor(prop.x)
+    const cellY = Math.floor(prop.y)
+    if (!revealedAt(scene.map, cellX, cellY)) continue
+    const radius = LIGHT_SOURCE_ASSETS[assetId].radius
+    // Отбор по тайлу с запасом на радиус: источник из соседнего тайла обязан
+    // досветить сюда, иначе ореол обрывался бы ровно по шву кэша.
+    if (cellX + 1 + radius <= frame.minX || cellX - radius >= frame.maxX + 1) continue
+    if (cellY + 1 + radius <= frame.minY || cellY - radius >= frame.maxY + 1) continue
+    const centerX = (cellX + 0.5 - frame.minX) * size
+    const centerY = (cellY + 0.5 - frame.minY) * size
+    for (const [share, alpha] of WARM_HALO_RINGS) {
+      context.globalAlpha = alpha
+      circle(context, centerX, centerY, radius * share * size)
+    }
+  }
+  context.globalAlpha = 1
+}
+
+/**
+ * Свет, запечённый в тайл: затемнение по сетке освещённости, мягкая тень вдоль
+ * стен и тёплые ореолы у огня.
+ *
+ * Слой ложится поверх пола, стен и предметов, но **только в раскрытых
+ * клетках**: нераскрытая часть остаётся единым туманом и не выдаёт ни
+ * планировки, ни того, где горит огонь. Порядок внутри слоя — тьма, тень,
+ * ореол: свеча обязана пробиваться сквозь тень собственной стены.
+ *
+ * Сетка берётся из кэша по объекту карты (`lightGridFor`), поэтому панорама и
+ * зум её не пересчитывают, а перерисовка тайла стоит одних заливок.
+ */
+export function drawLightShading(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
+  const frame = tileFrame(scene, tile)
+  const grid = lightGridFor(scene.map)
+  const size = frame.size
+  context.save()
+  context.fillStyle = scene.palette.lightShadow
+  for (let y = frame.minY; y <= frame.maxY; y += 1) {
+    for (let x = frame.minX; x <= frame.maxX; x += 1) {
+      if (!revealedAt(scene.map, x, y)) continue
+      const alpha = lightShadowAlpha(lightAt(grid, scene.map, x, y))
+      if (alpha < 0.01) continue
+      context.globalAlpha = alpha
+      context.fillRect((x - frame.minX) * size, (y - frame.minY) * size, size, size)
+    }
+  }
+  context.globalAlpha = 1
+  drawWallShadows(context, scene, frame)
+  drawWarmHalos(context, scene, frame)
+  // Прозрачность возвращается руками: поддельный контекст тестов не обязан
+  // хранить стек состояний.
+  context.globalAlpha = 1
+  context.restore()
+}
+
 /** Световая заливка зоны; `null` означает нейтральный яркий свет. */
 export function zoneLightTreatment(lightLevel: string): string | null {
   const level = String(lightLevel ?? '').trim().toLowerCase()
@@ -3243,6 +3595,7 @@ export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile
   drawDecals(context, scene, tile)
   drawEdgeSegments(context, scene, tile)
   drawProps(context, scene, tile)
+  drawLightShading(context, scene, tile)
   drawZoneLighting(context, scene, tile)
   drawCellFeatures(context, scene, tile)
   drawGrid(context, scene, tile)
@@ -3595,11 +3948,100 @@ function drawRoomLabels(context: BoardContext2D, scene: BoardScene) {
 }
 
 /**
+ * Порог зума для подписей зон (`docs/multilevel-map-plan.md`, 7.4). Совпадает
+ * с порогом полной прорисовки предметов, и это не совпадение: там, где предмет
+ * уже читается рисунком, помещение читается своей обстановкой, и подпись
+ * поверх пола становится помехой. Считается, как и все пороги доски, в
+ * пикселях холста.
+ */
+export const ZONE_LABEL_MAX_CELL_PIXELS = PROP_FULL_DETAIL_CELL_PIXELS
+
+/**
+ * Доля клеток зоны, которую надо раскрыть, чтобы подпись появилась. Половина —
+ * самое простое правило из двух, предложенных планом: один проход по карте,
+ * никакой отдельной геометрии центроида, и оно честно молчит, пока комната
+ * разведана только с порога.
+ */
+export const ZONE_LABEL_REVEALED_SHARE = 0.5
+
+export type ZoneLabelPlacement = { zoneId: string; label: string; x: number; y: number }
+
+const zoneLabelCache = new WeakMap<TacticalMap, ZoneLabelPlacement[]>()
+
+/**
+ * Подписи зон в центре масс раскрытых клеток. Считаются один раз на карту:
+ * декодированная карта на клиенте неизменяема, а слой подписей переживает
+ * каждый пан и зум (тот же довод, что у `revealedRoomLabelPlacements`).
+ *
+ * Зоны, у которых уже есть печатная подпись комнаты, пропускаются: два
+ * названия одного помещения друг на друге — это не читаемость, а каша.
+ */
+export function revealedZoneLabelPlacements(map: TacticalMap): ZoneLabelPlacement[] {
+  const cached = zoneLabelCache.get(map)
+  if (cached) return cached
+  const printed = new Set(map.overlays.roomLabels.map((entry) => entry.zoneId))
+  const wanted = new Map(map.zones
+    .filter((zone) => zone.label.trim() && !printed.has(zone.id))
+    .map((zone) => [zone.id, zone.label]))
+  const totals = new Map<string, { cells: number; revealed: number; sumX: number; sumY: number }>()
+  if (wanted.size) {
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const cell = cellAt(map, x, y)
+        if (!cell || !wanted.has(cell.zone)) continue
+        const own = totals.get(cell.zone) ?? { cells: 0, revealed: 0, sumX: 0, sumY: 0 }
+        own.cells += 1
+        if (cell.revealed) {
+          own.revealed += 1
+          own.sumX += x + 0.5
+          own.sumY += y + 0.5
+        }
+        totals.set(cell.zone, own)
+      }
+    }
+  }
+  const placements: ZoneLabelPlacement[] = []
+  for (const [zoneId, label] of wanted) {
+    const own = totals.get(zoneId)
+    if (!own || !own.revealed || own.revealed < own.cells * ZONE_LABEL_REVEALED_SHARE) continue
+    placements.push({ zoneId, label, x: own.sumX / own.revealed, y: own.sumY / own.revealed })
+  }
+  zoneLabelCache.set(map, placements)
+  return placements
+}
+
+/** Подписи зон полупрозрачной плашкой: только на среднем и дальнем плане. */
+function drawZoneLabels(context: BoardContext2D, scene: BoardScene) {
+  const size = scene.cellSize
+  const fontSize = Math.max(7, Math.min(13, size * 0.62))
+  context.save()
+  context.font = `600 ${fontSize}px Spectral, serif`
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  for (const entry of revealedZoneLabelPlacements(scene.map)) {
+    const x = entry.x * size
+    const y = entry.y * size
+    const width = Math.max(size * 2, entry.label.length * fontSize * 0.56)
+    context.globalAlpha = 0.62
+    context.fillStyle = '#1d1811'
+    context.fillRect(x - width / 2, y - fontSize * 0.8, width, fontSize * 1.6)
+    context.globalAlpha = 0.92
+    context.fillStyle = '#efe0c2'
+    context.fillText(entry.label, x, y, width - fontSize * 0.4)
+  }
+  context.globalAlpha = 1
+  context.restore()
+}
+
+/**
  * Слой печатной карты: координатная рамка обязательна, остальные элементы
- * следуют флагам серверного контракта.
+ * следуют флагам серверного контракта. Подписи зон живут здесь же, а не в
+ * кадре: слой рисуется поверх тайлов одним проходом и кэшируется вместе с
+ * ними — на каждый кадр приходится только сама отрисовка текста.
  */
 export function drawMapDecorations(context: BoardContext2D, scene: BoardScene) {
   if (scene.map.overlays.roomLabels.length) drawRoomLabels(context, scene)
+  if (scene.cellSize < ZONE_LABEL_MAX_CELL_PIXELS) drawZoneLabels(context, scene)
   if (scene.map.overlays.compass) drawCompass(context, scene)
   if (scene.map.overlays.scaleBar) drawScaleBar(context, scene)
 }

@@ -13,6 +13,7 @@ import {
   createTacticalMap,
   edgeList,
   edgeNeighbor,
+  floorVariantAt,
   setCell,
   setDoor,
   setEdge,
@@ -421,7 +422,7 @@ export function layoutOrganicCave(theme, {
       setCell(map, x, y, {
         passable: false,
         material: theme.material,
-        variant: Math.floor(random() * 6),
+        variant: floorVariantAt(seed, x, y),
         revealed: true,
       })
     }
@@ -503,7 +504,7 @@ export function layoutOrganicCave(theme, {
       passable: true,
       material: theme.material,
       zone: graph.zones[zoneIndex]?.id ?? graph.zones[0].id,
-      variant: Math.floor(random() * 6),
+      variant: floorVariantAt(seed, x, y),
       revealed: true,
     })
   }
@@ -558,7 +559,7 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
         passable: true,
         material: onRoad ? 'earth' : theme.material,
         zone: 'field',
-        variant: Math.floor(random() * 6),
+        variant: floorVariantAt(seed, x, y),
         revealed: true,
       })
     }
@@ -626,7 +627,7 @@ export function layoutSettlement(theme, {
         passable: true,
         material: 'grass',
         zone: 'common',
-        variant: Math.floor(random() * 6),
+        variant: floorVariantAt(seed, x, y),
         revealed: true,
       })
     }
@@ -732,10 +733,12 @@ export function layoutSettlement(theme, {
  * @param {number} [options.height]
  * @param {string} [options.locationId]
  * @param {string} [options.themeId] уже опознанная тема; сильнее названия
+ * @param {Array<{offset?: number, label?: string}>} [options.levels] объявленные этажи локации
  * @returns {{map: import('./tactical-map.mjs').TacticalMap, theme: string, warnings: string[]}}
  */
 export function buildThemedScene({
   location = '', theme = '', sceneKind = '', seed = 'scene', width = 26, height = 26, locationId = '', themeId = '',
+  levels = [],
 } = {}) {
   // Тему могли опознать не по названию, а по узору из заявки картографа. Тогда
   // повторное опознание здесь её потеряет: `themeFor` читает только слова.
@@ -743,7 +746,10 @@ export function buildThemedScene({
   const definition = chosen ?? themeFor({ location, theme, sceneKind })
 
   if (definition.kind === 'building') {
-    const built = buildBuildingScene({ seed, width, height, locationId, theme: definition.id })
+    // Объявленные этажи нужны только теме здания: лестницу на этаже входа
+    // ставит один `building-generator`, остальные темы крючков не расставляют
+    // вовсе, и привязывать им нечего.
+    const built = buildBuildingScene({ seed, width, height, locationId, theme: definition.id, levels })
     return { map: built.map, theme: definition.id, warnings: built.warnings }
   }
 

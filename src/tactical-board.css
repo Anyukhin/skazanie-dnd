@@ -55,6 +55,72 @@
   color: #ffe0ad;
 }
 
+/*
+ * Смена этажа (`docs/multilevel-map-plan.md`, 6.4). Кроссфейд живёт на самой
+ * рамке доски: новый пол проявляется со сдвигом по вертикали — снизу при
+ * подъёме, сверху при спуске, — а старый уходит вместе с ним. Класс держится
+ * ровно 400 мс, поэтому анимация не мешает ни перетаскиванию карты, ни
+ * тайловому кэшу.
+ */
+.board-frame.level-change-up {
+  animation: tactical-level-change-up .4s ease-out;
+}
+
+.board-frame.level-change-down {
+  animation: tactical-level-change-down .4s ease-out;
+}
+
+@keyframes tactical-level-change-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@keyframes tactical-level-change-down {
+  from {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+}
+
+/*
+ * Индикатор этажей: стек известных партии этажей, верхний сверху, активный
+ * подсвечен. Кликов нет — вид всегда следует за партией, а `pointer-events`
+ * стоит только на самой плашке, чтобы карта под ней оставалась кликабельной.
+ */
+.map-level-stack {
+  position: absolute;
+  z-index: 8;
+  left: 22px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid rgba(222, 201, 171, .16);
+  border-radius: 6px;
+  background: rgba(15, 13, 11, .86);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.map-level-stack span {
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #8d857b;
+  font: 600 var(--fs-xs) Manrope, sans-serif;
+  white-space: nowrap;
+}
+
+.map-level-stack span.active {
+  border-color: rgba(214, 161, 96, .32);
+  background: rgba(174, 113, 52, .16);
+  color: #e6bd83;
+  font-weight: 700;
+}
+
 @keyframes tactical-active-turn-pulse {
   50% {
     outline-color: rgba(255, 226, 163, .72);
@@ -67,5 +133,17 @@
   .board-frame .map-token.active-turn,
   .board-frame .enemy-token.active-turn {
     animation: none;
+  }
+
+  /* Смена этажа остаётся заметной, но без движения: только проявление. */
+  .board-frame.level-change-up,
+  .board-frame.level-change-down {
+    animation-name: tactical-level-change-fade;
+  }
+}
+
+@keyframes tactical-level-change-fade {
+  from {
+    opacity: 0;
   }
 }
