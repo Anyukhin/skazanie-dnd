@@ -108,9 +108,11 @@ export function sceneHazardTagsFor(assetId) {
 /**
  * Все пропсы, которым справочник даёт хотя бы один глагол обстановки.
  *
- * Нужен сторожу: справочник опасностей, флаг `interactive` реестра и каталог
- * взаимодействий обязаны сходиться, иначе «поджечь сено» упрётся в
- * `SCENE_OBJECT_NOT_INTERACTIVE` или `SCENE_OBJECT_UNSUPPORTED` уже в движке.
+ * Нужен сторожу. Операбельность решает каталог взаимодействий: без вида в нём
+ * «поджечь сено» упрётся в `SCENE_OBJECT_UNSUPPORTED` уже в движке. Флаг
+ * `interactive` реестра сторож требует не ради движка — `addProp` поднимает его
+ * сам всякому предмету из каталога, — а чтобы реестр не расходился со
+ * справочником; свой настоящий смысл флаг имеет только в `normalizeTransition`.
  */
 export function sceneHazardAssetIds() {
   return [...new Set([...Object.keys(HEAVY_PROPS), ...Object.keys(FLAMMABLE_PROPS)])].sort()

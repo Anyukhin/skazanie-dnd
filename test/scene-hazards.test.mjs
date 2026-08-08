@@ -271,6 +271,30 @@ test('интеракции получают детерминированное �
   assert.equal(hasSceneHazardEvent([]), false)
 })
 
+test('глагол согласуется с родом подписи, а не всегда с мужским', () => {
+  // «Колонна качнулся» — подписи в справочнике разного рода, а формы глагола
+  // выбирались по мужскому.
+  const failed = operate(hazardState({ assetId: 'pillar' }), 'topple', dice([1, 1, 1, 1]))
+  assert.equal(
+    sceneHazardNarration(failed.events, failed.state),
+    'Колонна качнулась, но устояла: опрокинуть её не вышло.',
+  )
+
+  const toppled = operate(hazardState({ assetId: 'pillar', victimAt: { x: 1, y: 0 } }), 'topple', dice([19, 2, 4, 3]))
+  assert.match(sceneHazardNarration(toppled.events, toppled.state), /под ней/u)
+
+  // Множественное число — тот же случай, что и род.
+  const firewood = operate(hazardState({ assetId: 'firewood_stack', withFire: true }), 'ignite', dice([10, 10]))
+  assert.match(sceneHazardNarration(firewood.events, firewood.state), /^Дрова занимаются огнём/u)
+
+  // Мужской род остался прежним: подпись без записи в карте рода не меняет.
+  const shelf = operate(hazardState(), 'topple', dice([1, 1, 1, 1]))
+  assert.equal(
+    sceneHazardNarration(shelf.events, shelf.state),
+    'Стеллаж качнулся, но устоял: опрокинуть его не вышло.',
+  )
+})
+
 test('состояние пропса переживает replay и попадает в обе авторитетные записи', () => {
   const state = hazardState({ withFire: true })
   for (const [intent, expected] of [['topple', 'toppled'], ['ignite', 'burning']]) {
