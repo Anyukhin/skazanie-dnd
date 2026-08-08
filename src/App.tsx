@@ -358,7 +358,10 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
           onError={() => setLocationArtReady(false)}
         />}
       </span>}
-      {scenicBackdrop && locationArtReady && <span className="scene-location-caption">{location}</span>}
+      {/* Подписи у иллюстрации нет: она печатала ровно то же `location`, что
+          строкой ниже стоит в `.scene-title`. Скринридер читал название места
+          дважды подряд, а глазами оно и так видно рядом — вторая копия ничего
+          не добавляла ни тем, ни другим. */}
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
       <div className="scene-title"><span>ГЛАВА {chapter}{round != null ? ` · РАУНД ${round}` : ''} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
@@ -714,8 +717,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // Иллюстрация локации отдаётся **только из кеша кампании**: во время игры
   // картинки не генерируются, их готовит ведущий заранее. Нет в кеше — сервер
   // честно отвечает 404, и шапка остаётся с библиотечной подложкой.
-  const locationArtUrl = state.scene.location_id
-    ? `/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(state.scene.location_id)}/illustration`
+  //
+  // `scene.location_id` есть только у ведущего: публичная проекция сцены его не
+  // несёт, и по одному этому полю иллюстрацию видел бы только он. Запасной
+  // источник — текущая точка карты мира, тот же порядок, что на доске.
+  const locationArtId = state.scene.location_id ?? state.worldMap?.currentLocationId ?? ''
+  const locationArtUrl = locationArtId
+    ? `/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(locationArtId)}/illustration`
     : ''
   const audioCombatActive = Boolean(state.mechanics?.combat?.active)
   const audioFinale = ['completed', 'failed', 'archived'].includes(state.mechanics?.campaign_lifecycle?.status ?? '')

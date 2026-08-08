@@ -123,7 +123,7 @@ function campaignState() {
     scene: {
       title: 'Разбитый обоз',
       location: 'Норвинский тракт',
-      location_id: 'loc:norvin-road',
+      location_id: 'loc-norvin-road',
       mood: 'Тревожно',
       objective: 'Найти уцелевших',
       turn: 1,
@@ -131,9 +131,23 @@ function campaignState() {
     },
     mechanics: { world_time: { elapsed_minutes: 60 } },
     adventure: { chapter: 1, history: [], visitedLocations: ['Норвинский тракт'] },
+    worldMap: {
+      version: 1,
+      seed: 'location-art-seed',
+      name: 'Норвин',
+      width: 1000,
+      height: 640,
+      currentLocationId: 'loc-norvin-road',
+      regions: [{ id: 'reg:north', name: 'Север', biome: 'plains', x: 10, y: 10, radius: 100 }],
+      locations: [{
+        id: 'loc-norvin-road', name: 'Норвинский тракт', kind: 'landmark',
+        x: 10, y: 10, regionId: 'reg:north', summary: 'Разбитая дорога', known: true, visited: true,
+      }],
+      routes: [],
+    },
     worldMemory: {
       entities: [
-        { id: 'loc:norvin-road', kind: 'location', name: 'Норвинский тракт', summary: 'Разбитая дорога', visibility: 'party', aliases: [], tags: [] },
+        { id: 'loc-norvin-road', kind: 'location', name: 'Норвинский тракт', summary: 'Разбитая дорога', visibility: 'party', aliases: [], tags: [] },
         { id: 'loc:cult-lair', kind: 'location', name: 'Логово культа', summary: 'GM_ONLY_SUMMARY', visibility: 'gm_only', aliases: [], tags: [] },
       ],
       facts: [],
@@ -160,9 +174,12 @@ test('иллюстрации локаций готовятся заранее, �
     let raw = ''
     for await (const chunk of req) raw += String(chunk)
     imageRequests.push(JSON.parse(raw))
+    // Каждая генерация даёт свои байты: одинаковые скрыли бы главное в проверке
+    // перегенерации — новый ETag и новую картинку у уже открытой вкладки.
+    const bytes = imageRequests.length === 1 ? WEBP : Buffer.concat([WEBP, Buffer.from([imageRequests.length])])
     res.writeHead(200, { 'Content-Type': 'application/json' })
     return res.end(JSON.stringify({
-      data: [{ b64_json: WEBP.toString('base64') }],
+      data: [{ b64_json: bytes.toString('base64') }],
       usage: { input_tokens: 4, output_tokens: 8, total_tokens: 12 },
       cost: 0.03,
     }))
@@ -212,7 +229,7 @@ test('иллюстрации локаций готовятся заранее, �
   })
   assert.equal(assigned.status, 200, `${await assigned.text()}\n${logs}`)
 
-  const roadPath = `/api/campaigns/LOCATION-ART/locations/${encodeURIComponent('loc:norvin-road')}/illustration`
+  const roadPath = `/api/campaigns/LOCATION-ART/locations/${encodeURIComponent('loc-norvin-road')}/illustration`
   const lairPath = `/api/campaigns/LOCATION-ART/locations/${encodeURIComponent('loc:cult-lair')}/illustration`
 
   // Пока картинки нет — честный 404 и ни одного обращения к модели.
@@ -240,7 +257,7 @@ test('иллюстрации локаций готовятся заранее, �
   assert.equal(listed.runtime_image_generation, false)
   assert.deepEqual(
     listed.location_illustrations.map((entry) => [entry.id, entry.name, entry.has_illustration]),
-    [['loc:cult-lair', 'Логово культа', false], ['loc:norvin-road', 'Норвинский тракт', false]],
+    [['loc-norvin-road', 'Норвинский тракт', false], ['loc:cult-lair', 'Логово культа', false]],
   )
   const playerForbidden = await request(baseUrl, '/api/campaigns/LOCATION-ART/asset-preparation', { cookie: playerCookie })
   assert.equal(playerForbidden.status, 403)
@@ -248,11 +265,11 @@ test('иллюстрации локаций готовятся заранее, �
   // Подготовка работает при выключенном рантайм-флаге — иначе картинку было бы
   // неоткуда взять.
   const prepared = await request(baseUrl, '/api/campaigns/LOCATION-ART/asset-preparation', {
-    method: 'POST', cookie: adminCookie, body: { location_ids: ['loc:norvin-road'] },
+    method: 'POST', cookie: adminCookie, body: { location_ids: ['loc-norvin-road'] },
   })
   const preparedBody = await json(prepared)
   assert.equal(prepared.status, 200, `${JSON.stringify(preparedBody)}\n${logs}`)
-  assert.deepEqual(preparedBody.prepared, [{ id: 'loc:norvin-road', kind: 'location_illustration', status: 'ready' }])
+  assert.deepEqual(preparedBody.prepared, [{ id: 'loc-norvin-road', kind: 'location_illustration', status: 'ready' }])
   assert.equal(imageRequests.length, 1)
   assert.equal(imageRequests[0].model, 'test/location-image-v1')
   assert.equal(imageRequests[0].aspect_ratio, '16:9', 'широкий кадр под шапку сцены')
@@ -263,11 +280,23 @@ test('иллюстрации локаций готовятся заранее, �
   assert.equal(usage.usage.completed_requests, 1, 'расход подготовки виден ведущему')
   assert.equal(usage.usage.provider_cost, 0.03)
 
+  // Игрок должен уметь построить адрес картинки. `scene.location_id` в его
+  // проекции нет и не будет — id текущего места он берёт из карты мира, и это
+  // ровно тот же ключ, под которым ведущий готовил иллюстрацию.
+  const playerRoom = await json(await request(baseUrl, '/api/rooms/LOCATION-ART', { cookie: playerCookie }))
+  const playerState = playerRoom.state
+  assert.equal(playerState.scene.location_id, undefined, 'публичная сцена id локации не несёт')
+  assert.equal(playerState.worldMap.currentLocationId, 'loc-norvin-road', 'запасной источник id для клиента')
+
   // Теперь игрок получает картинку — из кеша, без обращения к модели.
   const served = await request(baseUrl, roadPath, { cookie: playerCookie })
   assert.equal(served.status, 200, logs)
   assert.equal(served.headers.get('content-type'), 'image/webp')
   assert.equal(served.headers.get('x-location-illustration-cache'), 'hit')
+  // Адрес иллюстрации один на всю жизнь локации, версии в нём нет. Час
+  // `max-age` означал бы, что после перегенерации ведущий заплатил за новую
+  // картинку и целый вечер видит прежнюю.
+  assert.equal(served.headers.get('cache-control'), 'private, no-cache')
   assert.equal(Buffer.from(await served.arrayBuffer()).equals(WEBP), true)
   assert.equal(imageRequests.length, 1)
 
@@ -279,17 +308,24 @@ test('иллюстрации локаций готовятся заранее, �
 
   // Уже готовое без перегенерации пропускается, а с ней — перерисовывается.
   const skipped = await request(baseUrl, '/api/campaigns/LOCATION-ART/asset-preparation', {
-    method: 'POST', cookie: adminCookie, body: { location_ids: ['loc:norvin-road'] },
+    method: 'POST', cookie: adminCookie, body: { location_ids: ['loc-norvin-road'] },
   })
   assert.equal(skipped.status, 200)
   assert.deepEqual((await json(skipped)).prepared, [])
   assert.equal(imageRequests.length, 1, 'за ту же картинку второй раз не платим')
 
   const regenerated = await request(baseUrl, '/api/campaigns/LOCATION-ART/asset-preparation', {
-    method: 'POST', cookie: adminCookie, body: { location_ids: ['loc:norvin-road'], regenerate: true },
+    method: 'POST', cookie: adminCookie, body: { location_ids: ['loc-norvin-road'], regenerate: true },
   })
   assert.equal(regenerated.status, 200)
   assert.equal(imageRequests.length, 2)
+
+  // После «Перегенерировать» открытая вкладка обязана показать новую картинку.
+  // Прежний ETag больше не подходит — ответ приходит целиком, а не 304.
+  const afterRegeneration = await request(baseUrl, roadPath, { cookie: playerCookie, headers: { 'If-None-Match': etag } })
+  assert.equal(afterRegeneration.status, 200, 'старый ETag не должен подтверждать устаревшую картинку')
+  assert.notEqual(afterRegeneration.headers.get('etag'), etag)
+  assert.equal(Buffer.from(await afterRegeneration.arrayBuffer()).equals(Buffer.concat([WEBP, Buffer.from([2])])), true)
 
   // Кеш локаций разведён по кампаниям и не хранит ни кода, ни id открытым
   // текстом.

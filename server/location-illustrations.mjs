@@ -20,7 +20,7 @@
  * расходящийся набор проверок видимости.
  */
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 
 import { IMAGE_GENERATION_MAX_BYTES, createRouterImageGenerator, isWebp } from './image-generation.mjs'
@@ -111,9 +111,18 @@ export function visibleCampaignLocations(projectedState) {
 
   // Сцена первой: место, где отряд стоит сейчас, ведущий готовит в первую
   // очередь, и его подпись должна победить более сухую запись карты.
+  //
+  // `location_id` несёт только авторитетное состояние и проекция ведущего:
+  // публичная сцена игрока его не отдаёт. Поэтому текущее место опознаётся ещё
+  // и по `worldMap.currentLocationId` — без этого игрок, стоящий в этой самой
+  // локации, не мог бы получить её картинку.
+  //
+  // Запись сцены кладётся независимо от карты и памяти мира: импровизированное
+  // в хаосе место в них ещё не попало, но отряд в нём уже стоит, и отвечать
+  // «такой локации нет» о месте под ногами — ложь.
   const scene = projectedState?.scene ?? {}
   remember(locationProfile({
-    id: scene.location_id ?? scene.locationId,
+    id: scene.location_id ?? scene.locationId ?? projectedState?.worldMap?.currentLocationId,
     name: scene.location,
     summary: scene.title,
     kind: scene.scene_kind,
@@ -248,6 +257,28 @@ export class LocationIllustrationService {
   }
 
   /**
+   * Лежит ли картинка в кеше. Списку подготовки нужен только флаг, и платить за
+   * него полным чтением файла с sha256 незачем: у ведущего в списке десятки
+   * локаций, и каждое открытие карточки перечитывало бы весь кеш кампании
+   * целиком ради одной галочки. Содержимое проверит `cached()` в момент отдачи —
+   * там байты всё равно нужны.
+   *
+   * @param {unknown} campaignId
+   * @param {unknown} locationId
+   * @returns {Promise<boolean>}
+   */
+  async hasCached(campaignId, locationId) {
+    const location = locationIllustrationCacheLocation(this.cacheRoot, campaignId, locationId)
+    try {
+      const info = await stat(location.filePath)
+      return info.isFile() && info.size > 0 && info.size <= LOCATION_ILLUSTRATION_MAX_BYTES
+    } catch (error) {
+      if (/** @type {NodeJS.ErrnoException} */ (error)?.code === 'ENOENT') return false
+      throw error
+    }
+  }
+
+  /**
    * Подготовка заранее: сгенерировать и положить в кеш, перекрыв прежний файл.
    * Проверки «а нет ли уже» здесь нет намеренно — это и есть перегенерация, а
    * решение платить второй раз принимает ведущий, а не сервис.
@@ -269,6 +300,13 @@ export class LocationIllustrationService {
     let generated
     try {
       generated = await this.generator({ prompt, model: this.imageModel })
+      // Формат и размер проверяются **до** списания. Провайдер, приславший
+      // вместо картинки html, работу не сделал, и записывать такую бронь в
+      // леджер успешной значит показывать ведущему чужой успех: отчёт «одна
+      // готовая иллюстрация» при пустом кеше.
+      if (!Buffer.isBuffer(generated?.bytes) || !isWebp(generated.bytes) || generated.bytes.length > LOCATION_ILLUSTRATION_MAX_BYTES) {
+        throw Object.assign(new Error('Генератор изображений вернул неподдерживаемый файл'), { code: 'IMAGE_FORMAT_REJECTED' })
+      }
     } catch (error) {
       if (reservation) {
         const errorCode = error && typeof error === 'object' && 'code' in error
@@ -281,9 +319,6 @@ export class LocationIllustrationService {
       throw error
     }
     if (reservation) this.usageLedger?.settle(reservation.request_id, generated.usage ?? {})
-    if (!Buffer.isBuffer(generated?.bytes) || !isWebp(generated.bytes) || generated.bytes.length > LOCATION_ILLUSTRATION_MAX_BYTES) {
-      throw new Error('Генератор изображений вернул неподдерживаемый файл')
-    }
     await mkdir(target.directory, { recursive: true })
     const temporary = join(target.directory, `.${randomUUID()}.tmp`)
     try {
@@ -314,13 +349,12 @@ export class LocationIllustrationService {
 export async function locationIllustrationInventory({ service, campaignId, locations }) {
   const entries = []
   for (const location of locations) {
-    const cached = await service.cached(campaignId, location.id)
     entries.push({
       id: location.id,
       name: location.name,
       kind: location.kind,
       source: location.source,
-      has_illustration: Boolean(cached),
+      has_illustration: await service.hasCached(campaignId, location.id),
     })
   }
   return entries

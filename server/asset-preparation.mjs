@@ -88,8 +88,6 @@ export async function npcPortraitInventory({ service, campaignId, projectedState
   return entries.sort((left, right) => left.id.localeCompare(right.id))
 }
 
-const EMPTY_SELECTION = Object.freeze({ npc_ids: [], location_ids: [] })
-
 /**
  * Что подготовка сделает с запрошенным списком. Разбор отделён от исполнения,
  * чтобы отказ по капу был проверяем без единого обращения к генератору.
@@ -101,7 +99,11 @@ const EMPTY_SELECTION = Object.freeze({ npc_ids: [], location_ids: [] })
  */
 export function planPreparation(requested, inventories, { regenerate = false } = {}) {
   const body = requested && typeof requested === 'object' && !Array.isArray(requested) ? requested : {}
-  const refuse = (code, message) => ({ ok: false, code, message, ...EMPTY_SELECTION })
+  // Пустые списки — свежие литералы на каждый отказ, а не общий замороженный
+  // экземпляр: разбор отдаёт наружу обычный изменяемый ответ, и вызывающий,
+  // который дописал бы в него позицию, дописал бы её сразу во все прошлые и
+  // будущие отказы.
+  const refuse = (code, message) => ({ ok: false, code, message, npc_ids: [], location_ids: [] })
   /** @type {Record<string, string[]>} */
   const asked = {}
   /** @type {Record<string, string[]>} */

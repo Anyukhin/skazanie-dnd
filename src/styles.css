@@ -238,7 +238,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .scene-illustration img.scene-location-art.ready { opacity: 1; }
 /* Подпись у иллюстрации — тем же капслоком и охрой, что у строки «ГЛАВА · СЦЕНА»
    в этой же шапке. Абсолютная, поэтому названию сцены ширины не отнимает. */
-.scene-location-caption { position: absolute; z-index: 2; right: 44px; bottom: 4px; max-width: 40%; overflow: hidden; color: #9b7448; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 2px 8px #000; pointer-events: none; }
 .scene-header.has-illustration .scene-title { text-shadow: 0 2px 8px #000; }
 .scene-title { flex: 0 1 auto; min-width: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
 .scene-title > span { color: #9b7448; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .16em; white-space: nowrap; }

@@ -188,6 +188,21 @@ test('кап один на все виды картинок: локации и N
   assert.match(planPreparation({ location_ids: ['loc:unknown'] }, inventories).message, /локации/u)
 })
 
+test('отказ отдаёт свои пустые списки, а не общий экземпляр на все отказы', () => {
+  const inventories = { npcs: [{ id: 'npc:a', has_portrait: false }], locations: [] }
+  const first = planPreparation({ npc_ids: ['npc:zzz'] }, inventories)
+  const second = planPreparation({}, inventories)
+  assert.notEqual(first.npc_ids, second.npc_ids, 'два отказа не должны делить один массив')
+  assert.notEqual(first.location_ids, second.location_ids)
+
+  // Ответ разбора — обычный изменяемый объект, и вызывающий вправе с ним
+  // работать. Общий замороженный экземпляр либо молча проглотил бы правку, либо
+  // разнёс её по всем прошлым и будущим отказам.
+  first.npc_ids.push('npc:a')
+  assert.deepEqual(second.npc_ids, [])
+  assert.deepEqual(planPreparation({}, inventories).npc_ids, [])
+})
+
 test('предметы без иллюстрации перечисляются детерминированно и без дублей', () => {
   const state = {
     players: [

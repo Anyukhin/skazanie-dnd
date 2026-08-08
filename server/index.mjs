@@ -2217,13 +2217,13 @@ function serveNpcPortrait(req, res, portrait) {
 /**
  * Отдача уже лежащей в кеше кампании картинки: приватный кеш браузера, ETag и
  * 304. Одна функция на портреты NPC и иллюстрации локаций — заголовки у них
- * отличаются только префиксом, а условный запрос ошибиться в двух копиях
- * ничего не стоит.
+ * отличаются только префиксом и сроком, а условный запрос ошибиться в двух
+ * копиях ничего не стоит.
  */
-function serveGeneratedImage(req, res, image, headerPrefix) {
+function serveGeneratedImage(req, res, image, headerPrefix, cacheControl = 'private, max-age=3600') {
   const validators = {
     ETag: image.etag,
-    'Cache-Control': 'private, max-age=3600',
+    'Cache-Control': cacheControl,
     Vary: 'Cookie',
     [`${headerPrefix}-Source`]: image.source,
     [`${headerPrefix}-Cache`]: image.cacheHit ? 'hit' : 'miss',
@@ -2380,7 +2380,12 @@ const server = createServer((req, res) => {
       if (!location) return json(res, 404, { error: 'Локация не найдена', code: 'LOCATION_NOT_VISIBLE' })
       const illustration = await locationIllustrationService.cached(campaignId, location.id)
       if (!illustration) return json(res, 404, { error: 'Иллюстрация ещё не подготовлена', code: 'LOCATION_ILLUSTRATION_ABSENT' })
-      return serveGeneratedImage(req, res, illustration, 'X-Location-Illustration')
+      // `no-cache`, а не `max-age`: URL у иллюстрации один на всю жизнь
+      // локации, и после «Перегенерировать» браузер час показывал бы прежнюю
+      // картинку — ведущий платил бы за новую и не видел её. Версии в адресе
+      // взять негде: у игрока инвентаря подготовки нет. Ревалидация стоит
+      // условного запроса с ETag, который тут же отвечает 304.
+      return serveGeneratedImage(req, res, illustration, 'X-Location-Illustration', 'private, no-cache')
     } catch {
       return json(res, 502, { error: 'Не удалось отдать иллюстрацию локации', code: 'LOCATION_ILLUSTRATION_FAILED' })
     }

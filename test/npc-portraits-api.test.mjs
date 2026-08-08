@@ -304,6 +304,9 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
   const cached = await request(baseUrl, importantPath, { cookie: playerCookie, redirect: 'manual' })
   assert.equal(cached.status, 200)
   assert.equal(cached.headers.get('x-npc-portrait-cache'), 'hit')
+  // Портрет живёт по адресу NPC и в игре не перерисовывается: час приватного
+  // кеша здесь уместен и правкой заголовков иллюстраций локаций не задет.
+  assert.equal(cached.headers.get('cache-control'), 'private, max-age=3600')
   assert.equal(imageRequests.length, 1)
   const usageAfterCacheHit = await json(await request(baseUrl, '/api/admin/usage', { cookie: adminCookie }))
   assert.equal(usageAfterCacheHit.usage.completed_requests, 1)

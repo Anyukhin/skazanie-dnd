@@ -115,6 +115,36 @@ test('игроку не видны ни gm_only локации памяти ми
   assert.ok(visibleLocationProfile(admin, 'loc:cult-lair'), 'ведущий готовит и закрытые локации')
 })
 
+test('текущая локация опознаётся по карте мира: в публичной сцене location_id нет', () => {
+  const player = campaignStateForViewer(campaignState(), { role: 'player', id: 'user:ada' }, 'hero:ada')
+  // Вот из-за чего иллюстрацию не видел никто, кроме ведущего: публичная сцена
+  // id локации не несёт, и клиент строил пустой адрес.
+  assert.equal(player.scene.location_id, undefined)
+  assert.equal(player.worldMap.currentLocationId, 'loc:norvin-road', 'запасной источник id для клиента и сервера')
+
+  const current = visibleLocationProfile(player, player.worldMap.currentLocationId)
+  assert.equal(current?.source, 'scene', 'запись текущей сцены, а не сухая строка карты')
+  assert.deepEqual([current?.name, current?.summary], ['Норвинский тракт', 'Разбитый обоз'])
+})
+
+test('импровизированная локация под ногами отряда видима, даже если её нет ни в карте, ни в памяти', () => {
+  // Хаос сочиняет место на ходу, и в карту мира оно попадает не в тот же миг.
+  // Отвечать «такой локации нет» о месте, где отряд стоит, нельзя: это 404 на
+  // ровном месте, а не защита чужой тайны.
+  const improvised = {
+    scene: { title: 'Забытая часовня', location: 'Часовня на отшибе', scene_kind: 'dungeon' },
+    worldMap: { currentLocationId: 'loc:improvised-chapel', locations: [] },
+    worldMemory: { entities: [] },
+  }
+  const profile = visibleLocationProfile(improvised, 'loc:improvised-chapel')
+  assert.equal(profile?.name, 'Часовня на отшибе')
+  assert.equal(profile?.source, 'scene')
+  assert.deepEqual(visibleCampaignLocations(improvised).map((entry) => entry.id), ['loc:improvised-chapel'])
+  // Послабление ровно одно — текущее место зрителя. Соседняя выдумка остаётся
+  // невидимой.
+  assert.equal(visibleLocationProfile(improvised, 'loc:someone-else'), null)
+})
+
 test('идентификатор локации проверяется, а ключ кеша не содержит ни кампании, ни id', () => {
   assert.equal(normalizeLocationId('loc:archive'), 'loc:archive')
   for (const bad of ['', '../secret', 'loc archive', '/loc', 'a'.repeat(121)]) {
@@ -203,16 +233,52 @@ test('инвентарь локаций честно показывает, у к
   assert.deepEqual(inventory.map((entry) => entry.name), ['Затопленный архив', 'Логово культа', 'Тайный схрон', 'Норвинский тракт'])
 })
 
-test('неподдерживаемый ответ генератора не превращается в файл кеша', async (t) => {
+test('неподдерживаемый ответ генератора не превращается ни в файл кеша, ни в успех леджера', async (t) => {
   const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-location-bad-'))
   t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  const usageLedger = new DurableUsageLedger({ storageFile: join(rootDir, 'engine', 'usage.json'), dailyTokenLimit: 10_000 })
   const service = new LocationIllustrationService({
     storageDir: rootDir,
     imageModel: 'openai/gpt-image-1',
     apiKey: 'test-key',
-    generator: async () => ({ bytes: Buffer.from('<html>не картинка</html>', 'utf8') }),
+    usageLedger,
+    generator: async () => ({ bytes: Buffer.from('<html>не картинка</html>', 'utf8'), usage: { total_tokens: 14, cost: 0.5 } }),
   })
   const location = { id: 'loc:archive', name: 'Архив', summary: '', kind: '', source: 'world_memory' }
   await assert.rejects(service.prepare({ campaignId: 'PREP', location }), /неподдерживаемый файл/u)
   assert.equal(await service.cached('PREP', location.id), null)
+
+  // Провайдер, приславший html, работу не сделал. Отчёт «одна готовая
+  // иллюстрация» при пустом кеше — это ложь ведущему о том, за что он заплатил.
+  const report = usageLedger.report()
+  assert.equal(report.completed_requests, 0, 'брак не списывается как успех')
+  assert.equal(report.failed_requests, 1)
+  assert.equal(report.provider_cost, 0)
+})
+
+test('список подготовки узнаёт о картинке по метаданным файла, а не вычитывая весь кеш', async (t) => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-location-has-'))
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  const service = serviceWith(rootDir, [])
+  assert.equal(await service.hasCached('PREP', 'loc:archive'), false)
+  await service.prepare({ campaignId: 'PREP', location: { id: 'loc:archive', name: 'Архив', summary: '', kind: '', source: 'world_memory' } })
+  assert.equal(await service.hasCached('PREP', 'loc:archive'), true)
+  assert.equal(await service.hasCached('OTHER', 'loc:archive'), false, 'кеш разведён по кампаниям и здесь')
+
+  // У ведущего в списке десятки локаций: читать каждую картинку целиком и
+  // считать sha256 ради одной галочки — работа впустую.
+  const asked = []
+  const inventory = await locationIllustrationInventory({
+    service: {
+      hasCached: async (campaignId, locationId) => { asked.push(locationId); return locationId === 'loc:archive' },
+      cached: async () => { throw new Error('списку подготовки незачем читать файл целиком') },
+    },
+    campaignId: 'PREP',
+    locations: [
+      { id: 'loc:archive', name: 'Архив', kind: '', source: 'world_memory' },
+      { id: 'loc:norvin-road', name: 'Тракт', kind: 'landmark', source: 'scene' },
+    ],
+  })
+  assert.deepEqual(inventory.map((entry) => [entry.id, entry.has_illustration]), [['loc:archive', true], ['loc:norvin-road', false]])
+  assert.deepEqual(asked, ['loc:archive', 'loc:norvin-road'])
 })
