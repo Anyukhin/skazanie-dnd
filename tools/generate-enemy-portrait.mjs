@@ -30,9 +30,9 @@
  */
 import 'dotenv/config'
 
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { createRouterImageGenerator } from '../server/image-generation.mjs'
 import { decodePng, encodePng } from './png-codec.mjs'
@@ -40,6 +40,9 @@ import { resampleImage } from './build-prop-atlas.mjs'
 import { registerAssets } from './register-asset-rights.mjs'
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
+
+/** Корень набора картинок репозитория. В тестах подменяется временным каталогом. */
+export const ENEMY_PORTRAIT_ASSETS_ROOT = join(ROOT, 'public/assets')
 
 /** Каталог портретов врагов внутри `public/assets`. */
 export const ENEMY_PORTRAIT_DIRECTORY = 'enemies'
@@ -163,26 +166,35 @@ export function toEnemyPortraitPng(bytes, { side = ENEMY_PORTRAIT_SIDE, minBytes
 
 /**
  * @param {string} id
+ * @param {{assetsRoot?: string}} [options]
  * @returns {{assetPath: string, filePath: string, imageField: string}}
  */
-export function enemyPortraitLocation(id) {
+export function enemyPortraitLocation(id, { assetsRoot = ENEMY_PORTRAIT_ASSETS_ROOT } = {}) {
   const assetPath = `${ENEMY_PORTRAIT_DIRECTORY}/${id}.png`
   return {
     assetPath,
-    filePath: join(ROOT, 'public/assets', assetPath),
+    filePath: join(assetsRoot, assetPath),
     imageField: `/assets/${assetPath}`,
   }
 }
 
 /**
+ * `fetchImpl`, `assetsRoot` и `registryFile` существуют ради проверяемости, а
+ * не гибкости: без них оркестрацию можно было бы проверить только реальным
+ * походом к модели и записью в репозиторий. Контракт запроса при этом остаётся
+ * здесь — тест перехватывает `fetch` и читает то, что попросил сам инструмент.
+ *
  * @param {{
  *   id: string,
  *   description: string,
  *   force?: boolean,
  *   generator?: (input: {prompt: string, model: string}) => Promise<{bytes: Buffer, usage?: Record<string, unknown>}>,
+ *   fetchImpl?: typeof fetch,
  *   model?: string,
  *   apiKey?: string,
  *   baseUrl?: string,
+ *   assetsRoot?: string,
+ *   registryFile?: string,
  * }} input
  */
 export async function generateEnemyPortrait({
@@ -190,11 +202,14 @@ export async function generateEnemyPortrait({
   description,
   force = false,
   generator,
+  fetchImpl,
   model = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1',
   apiKey = process.env.ROUTERAI_API_KEY || '',
   baseUrl = process.env.ROUTERAI_BASE_URL || '',
+  assetsRoot = ENEMY_PORTRAIT_ASSETS_ROOT,
+  registryFile,
 }) {
-  const location = enemyPortraitLocation(id)
+  const location = enemyPortraitLocation(id, { assetsRoot })
   if (!force && existsSync(location.filePath)) {
     throw new EnemyPortraitError(`Портрет уже есть: ${location.assetPath}. Перерисовать — с --force`, 'ENEMY_PORTRAIT_EXISTS')
   }
@@ -202,13 +217,14 @@ export async function generateEnemyPortrait({
     if (!apiKey || !baseUrl) throw new EnemyPortraitError('Нет ROUTERAI_API_KEY или ROUTERAI_BASE_URL в .env', 'IMAGE_GENERATOR_UNAVAILABLE')
     // Просим 1K и уменьшаем сами: модель без запаса по разрешению теряет
     // читаемость силуэта, ради которой контракт и написан.
-    return createRouterImageGenerator({ apiKey, baseUrl, outputFormat: 'png', resolution: '1K', quality: 'medium' })
+    return createRouterImageGenerator({ apiKey, baseUrl, fetchImpl, outputFormat: 'png', resolution: '1K', quality: 'medium' })
   })()
   const prompt = buildEnemyPortraitPrompt(id, description)
   const generated = await generate({ prompt, model })
   const png = toEnemyPortraitPng(generated.bytes)
+  mkdirSync(dirname(location.filePath), { recursive: true })
   writeFileSync(location.filePath, png)
-  const rights = registerAssets([location.assetPath])
+  const rights = registerAssets([location.assetPath], registryFile, { assetsRoot })
   return {
     ...location,
     bytes: png.length,
