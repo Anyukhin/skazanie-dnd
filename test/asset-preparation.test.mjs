@@ -139,23 +139,53 @@ test('инвентарь подготовки показывает, у кого 
 })
 
 test('план подготовки уважает кап, неизвестные позиции и уже готовое', () => {
-  const inventory = [
+  const npcs = [
     { id: 'npc:a', has_portrait: false },
     { id: 'npc:b', has_portrait: true },
   ]
-  assert.deepEqual(planPreparation(['npc:a', 'npc:b'], inventory).ids, ['npc:a'], 'готовое пропускается')
-  assert.deepEqual(planPreparation(['npc:a', 'npc:b'], inventory, { regenerate: true }).ids, ['npc:a', 'npc:b'])
-  assert.deepEqual(planPreparation(['npc:a', 'npc:a'], inventory).ids, ['npc:a'], 'дубликаты схлопываются')
+  const inventories = { npcs, locations: [] }
+  assert.deepEqual(planPreparation({ npc_ids: ['npc:a', 'npc:b'] }, inventories).npc_ids, ['npc:a'], 'готовое пропускается')
+  assert.deepEqual(planPreparation({ npc_ids: ['npc:a', 'npc:b'] }, inventories, { regenerate: true }).npc_ids, ['npc:a', 'npc:b'])
+  assert.deepEqual(planPreparation({ npc_ids: ['npc:a', 'npc:a'] }, inventories).npc_ids, ['npc:a'], 'дубликаты схлопываются')
 
-  assert.equal(planPreparation([], inventory).code, 'NOTHING_REQUESTED')
-  assert.equal(planPreparation(['npc:zzz'], inventory).code, 'UNKNOWN_ASSET')
+  assert.equal(planPreparation({}, inventories).code, 'NOTHING_REQUESTED')
+  assert.equal(planPreparation({ npc_ids: [] }, inventories).code, 'NOTHING_REQUESTED')
+  assert.equal(planPreparation({ npc_ids: ['npc:zzz'] }, inventories).code, 'UNKNOWN_ASSET')
 
   const large = Array.from({ length: MAX_PREPARATION_BATCH + 1 }, (_, index) => ({ id: `npc:${index}`, has_portrait: false }))
-  const overflow = planPreparation(large.map((entry) => entry.id), large)
+  const overflow = planPreparation({ npc_ids: large.map((entry) => entry.id) }, { npcs: large })
   assert.equal(overflow.ok, false)
   assert.equal(overflow.code, 'BATCH_TOO_LARGE')
   assert.match(overflow.message, new RegExp(String(MAX_PREPARATION_BATCH), 'u'))
-  assert.equal(planPreparation(large.slice(0, MAX_PREPARATION_BATCH).map((entry) => entry.id), large).ok, true)
+  assert.equal(planPreparation({ npc_ids: large.slice(0, MAX_PREPARATION_BATCH).map((entry) => entry.id) }, { npcs: large }).ok, true)
+})
+
+test('кап один на все виды картинок: локации и NPC складываются, а не считаются порознь', () => {
+  const npcs = Array.from({ length: MAX_PREPARATION_BATCH - 1 }, (_, index) => ({ id: `npc:${index}`, has_portrait: false }))
+  const locations = [
+    { id: 'loc:norvin', has_illustration: false },
+    { id: 'loc:archive', has_illustration: true },
+  ]
+  const inventories = { npcs, locations }
+
+  const fits = planPreparation({ npc_ids: npcs.map((entry) => entry.id), location_ids: ['loc:norvin'] }, inventories)
+  assert.equal(fits.ok, true, 'ровно потолок проходит')
+  assert.deepEqual(fits.location_ids, ['loc:norvin'])
+
+  const overflow = planPreparation(
+    { npc_ids: npcs.map((entry) => entry.id), location_ids: ['loc:norvin', 'loc:archive'] },
+    inventories,
+    { regenerate: true },
+  )
+  assert.equal(overflow.code, 'BATCH_TOO_LARGE', 'потолок общий, а не по потолку на вид')
+  assert.deepEqual([overflow.npc_ids, overflow.location_ids], [[], []])
+
+  // Готовая иллюстрация пропускается так же, как готовый портрет, и
+  // перегенерация её возвращает.
+  assert.deepEqual(planPreparation({ location_ids: ['loc:archive'] }, inventories).location_ids, [])
+  assert.deepEqual(planPreparation({ location_ids: ['loc:archive'] }, inventories, { regenerate: true }).location_ids, ['loc:archive'])
+  assert.equal(planPreparation({ location_ids: ['loc:unknown'] }, inventories).code, 'UNKNOWN_ASSET')
+  assert.match(planPreparation({ location_ids: ['loc:unknown'] }, inventories).message, /локации/u)
 })
 
 test('предметы без иллюстрации перечисляются детерминированно и без дублей', () => {

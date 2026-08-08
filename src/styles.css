@@ -231,6 +231,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .scene-illustration { position: absolute; z-index: 0; inset: 0; overflow: hidden; border-radius: inherit; background: #17130f; pointer-events: none; animation: sceneIllustrationArrival .9s ease-out both; }
 .scene-illustration::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(12,10,8,.28), rgba(12,10,8,.68) 54%, #12100e 92%), linear-gradient(0deg, rgba(10,8,7,.35), transparent 55%); }
 .scene-illustration img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center 54%; filter: saturate(.78) brightness(.68) contrast(1.08); animation: sceneIllustrationDrift 8s ease-out both; }
+/* Иллюстрация самого места ложится поверх библиотечной подложки в тот же кадр.
+   Пока её нет — а её может не быть, и это норма, — слой прозрачен, и шапка
+   выглядит ровно как раньше: ни пустой рамки, ни сдвига раскладки. */
+.scene-illustration img.scene-location-art { position: absolute; inset: 0; opacity: 0; transition: opacity .8s ease-out; animation: none; }
+.scene-illustration img.scene-location-art.ready { opacity: 1; }
+/* Подпись у иллюстрации — тем же капслоком и охрой, что у строки «ГЛАВА · СЦЕНА»
+   в этой же шапке. Абсолютная, поэтому названию сцены ширины не отнимает. */
+.scene-location-caption { position: absolute; z-index: 2; right: 44px; bottom: 4px; max-width: 40%; overflow: hidden; color: #9b7448; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 2px 8px #000; pointer-events: none; }
 .scene-header.has-illustration .scene-title { text-shadow: 0 2px 8px #000; }
 .scene-title { flex: 0 1 auto; min-width: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
 .scene-title > span { color: #9b7448; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .16em; white-space: nowrap; }
@@ -818,6 +826,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .scene-illustration, .scene-illustration img, .cinematic-narration,
   .game-area.is-narrating .map-atmosphere-one, .game-area.is-narrating .map-atmosphere-two,
   .game-area.is-narrating .map-stage::after { animation: none; }
+  .scene-illustration img.scene-location-art { transition: none; }
 }
 
 .auth-screen { position: relative; min-height: 100vh; display: grid; grid-template-columns: minmax(420px, 1.1fr) minmax(390px, .9fr); overflow: hidden; background: #0c0b0a; }
@@ -2238,6 +2247,9 @@ button.campaign-title:hover strong { color: #edc996; }
 
 
 /* Подготовка ассетов: генерический список пробелов без излишеств. */
+/* Заголовок группы в карточке подготовки: портреты и локации — разные наборы,
+   а кнопка запуска и потолок пачки у них общие. */
+.admin-asset-group { display: block; margin: 12px 0 0; color: #9b7448; font-size: calc(11px * var(--ui-readable-scale)); font-weight: 700; letter-spacing: .14em; }
 .admin-asset-list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
 .admin-asset-list li { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border: 1px solid #342f26; border-radius: 7px; background: #201c17; }
 .admin-asset-list label { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }

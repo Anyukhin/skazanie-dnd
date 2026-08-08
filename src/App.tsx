@@ -298,7 +298,7 @@ function LevelUpScreen({ levelUp, canOpenSheet, onOpenSheet, onClose }: {
   </div>
 }
 
-function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, scenicBackdrop, merchants, onOpenMerchant, onReset }: {
+function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, onOpenMerchant, onReset }: {
   title: string
   location: string
   objective: string
@@ -307,12 +307,22 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
   round?: number
   illustration: SceneArt
   illustrationKey: string
+  /**
+   * Иллюстрация текущей локации, подготовленная заранее. Пустая строка —
+   * локации без id: спрашивать сервер не о чем.
+   */
+  locationArtUrl: string
   scenicBackdrop: boolean
   merchants: Merchant[]
   onOpenMerchant: () => void
   onReset: () => void
 }) {
   const [objectiveExpanded, setObjectiveExpanded] = useState(false)
+  // Готовой картинки у локации может и не быть — это норма, а не ошибка.
+  // Поэтому изображение грузится незаметно и проявляется только после
+  // `onLoad`: пока его нет, шапка выглядит ровно как раньше.
+  const [locationArtReady, setLocationArtReady] = useState(false)
+  useEffect(() => { setLocationArtReady(false) }, [locationArtUrl])
   const objectiveRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (!objectiveExpanded) return
@@ -336,7 +346,19 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
     <div className={`scene-header ${scenicBackdrop ? 'has-illustration' : ''}`}>
       {scenicBackdrop && <span key={`${illustrationKey}:${illustration.id}`} className="scene-illustration" aria-hidden="true">
         <img src={illustration.url} alt="" decoding="async" />
+        {/* Иллюстрация самого места ложится поверх библиотечной подложки в тот
+            же кадр: рамка, затемнение и подпись у них общие — шапка остаётся
+            одной карточкой, а не обрастает вторым блоком. */}
+        {locationArtUrl && <img
+          className={`scene-location-art ${locationArtReady ? 'ready' : ''}`}
+          src={locationArtUrl}
+          alt=""
+          decoding="async"
+          onLoad={() => setLocationArtReady(true)}
+          onError={() => setLocationArtReady(false)}
+        />}
       </span>}
+      {scenicBackdrop && locationArtReady && <span className="scene-location-caption">{location}</span>}
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
       <div className="scene-title"><span>ГЛАВА {chapter}{round != null ? ` · РАУНД ${round}` : ''} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
@@ -689,6 +711,12 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     () => sceneIllustrationForTheme(sceneTheme, sceneLocationKey),
     [sceneLocationKey, sceneTheme],
   )
+  // Иллюстрация локации отдаётся **только из кеша кампании**: во время игры
+  // картинки не генерируются, их готовит ведущий заранее. Нет в кеше — сервер
+  // честно отвечает 404, и шапка остаётся с библиотечной подложкой.
+  const locationArtUrl = state.scene.location_id
+    ? `/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(state.scene.location_id)}/illustration`
+    : ''
   const audioCombatActive = Boolean(state.mechanics?.combat?.active)
   const audioFinale = ['completed', 'failed', 'archived'].includes(state.mechanics?.campaign_lifecycle?.status ?? '')
   const combatWasActive = useRef(false)
@@ -1366,7 +1394,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={() => openMerchant()} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
