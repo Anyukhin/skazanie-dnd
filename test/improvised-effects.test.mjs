@@ -171,6 +171,23 @@ test('окрик и ослепление достают дальше касан�
   assert.match(shout.rejected, /далеко/)
 })
 
+test('эффект обстановки до планировщика не доходит, а дойдя — получает отказ', () => {
+  // Маршрут в OperateSceneObject выбирается раньше броска, поэтому topple_prop
+  // и ignite_prop сюда попадают только когда предмет картой не подтверждён.
+  // Своей механики у них нет: придумывать вместо предмета команду нельзя.
+  const state = battlefield()
+  for (const effectId of ['topple_prop', 'ignite_prop']) {
+    const plan = planImprovisedEffect(state, { actorId: 'hero', effectId, targetId: 'ogre' })
+    assert.equal(plan.effect.id, 'none', `${effectId}: предмет обстановки не участник и целью быть не может`)
+    assert.match(plan.rejected, /не подтверждён картой/u)
+    assert.deepEqual(plan.commands, [], `${effectId}: ни одной команды здесь родиться не должно`)
+  }
+  // Даже без цели отказ именно про предмет: сторона проверяется до неё.
+  const bare = planImprovisedEffect(state, { actorId: 'hero', effectId: 'ignite_prop' })
+  assert.equal(bare.effect.id, 'none')
+  assert.match(bare.rejected, /не подтверждён картой/u)
+})
+
 test('каталог эффектов закрыт и каждый эффект знает свою сторону и досягаемость', () => {
   for (const [id, effect] of Object.entries(IMPROVISED_EFFECTS)) {
     assert.equal(effect.id, id)

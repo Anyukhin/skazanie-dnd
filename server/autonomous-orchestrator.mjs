@@ -779,30 +779,51 @@ export class AutonomousCampaignOrchestrator {
       text,
     })
     if (sceneObjectCommand) {
-      const commit = await run([
-        declaration,
-        {
-          ...sceneObjectCommand,
-          actor_id: actorId,
-          server_authoritative: true,
-        },
-      ])
-      verifyDuplicate(commit)
-      const interactionEvents = commit.events ?? []
-      return {
-        kind: 'scene_interaction',
-        narration: sceneInteractionNarration(interactionEvents)
-          || 'Герой взаимодействует с объектом сцены; результат подтверждён правилами.',
-        turn_consumed: interactionEvents.some((event) => (
-          event.event_type === 'SceneObjectOperated' && event.payload?.action_spent === true
-        )),
-        admin_commands: 0,
-        state: commit.state ?? loaded.state,
-        state_version: commit.state_version ?? loaded.state_version,
-        events: interactionEvents,
-        commands: commit.commands ?? [],
-        rolls: commit.rolls ?? [],
-        duplicate: Boolean(commit.duplicate),
+      try {
+        const commit = await run([
+          declaration,
+          {
+            ...sceneObjectCommand,
+            actor_id: actorId,
+            server_authoritative: true,
+          },
+        ])
+        verifyDuplicate(commit)
+        const interactionEvents = commit.events ?? []
+        return {
+          kind: 'scene_interaction',
+          narration: sceneInteractionNarration(interactionEvents)
+            || 'Герой взаимодействует с объектом сцены; результат подтверждён правилами.',
+          turn_consumed: interactionEvents.some((event) => (
+            event.event_type === 'SceneObjectOperated' && event.payload?.action_spent === true
+          )),
+          admin_commands: 0,
+          state: commit.state ?? loaded.state,
+          state_version: commit.state_version ?? loaded.state_version,
+          events: interactionEvents,
+          commands: commit.commands ?? [],
+          rolls: commit.rolls ?? [],
+          duplicate: Boolean(commit.duplicate),
+        }
+      } catch (error) {
+        if (!(error instanceof RulesValidationError)) throw error
+        // Предмет выбирает текст игрока, а досягаемость и состояние проверяет
+        // движок. «Осмотреть кровать в дальнем углу» называет настоящий пропс,
+        // до которого не дотянуться, — это ответ правил игроку, а не ошибка
+        // запроса. Без этой ветки SCENE_OBJECT_OUT_OF_REACH уезжал наружу
+        // как HTTP 400 и обрывал ход.
+        return {
+          kind: 'clarification',
+          narration: `${error.message}.`,
+          turn_consumed: false,
+          admin_commands: 0,
+          state: loaded.state,
+          state_version: loaded.state_version,
+          events: [],
+          commands: [],
+          rolls: [],
+          duplicate: false,
+        }
       }
     }
     // Судейство как у живого ведущего: понять намерение, сверить средства, выбрать режим

@@ -17,17 +17,24 @@ import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { scenePropIntentFor } from '../server/improvised-effects.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
-import { addProp, createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
+import { addProp, createTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 
 const CAMPAIGN_ID = 'PROP-IMPROV-1'
 
-function sceneState({ withFire = true } = {}) {
+/**
+ * @param {{withFire?: boolean, distantBed?: boolean, hiddenCorner?: boolean}} options
+ *   `distantBed` — настоящий пропс вне досягаемости: зонд ревью про «осмотреть
+ *   кровать в дальнем углу». `hiddenCorner` прячет его клетку от игрока.
+ */
+function sceneState({ withFire = true, distantBed = false, hiddenCorner = false } = {}) {
   const map = createTacticalMap({
     width: 6, height: 4, locationId: 'stable', seed: 'prop-improv',
     fill: { passable: true, revealed: true, material: 'wood' },
   })
+  if (hiddenCorner) setCell(map, 4, 3, { revealed: false })
   addProp(map, { id: 'prop-haystack', assetId: 'haystack', x: 1.5, y: 0.5, footprint: [{ x: 1, y: 0 }] })
   addProp(map, { id: 'prop-shelf', assetId: 'bookshelf', x: 0.5, y: 1.5, footprint: [{ x: 0, y: 1 }] })
+  if (distantBed) addProp(map, { id: 'prop-bed', assetId: 'bed', x: 4.5, y: 3.5, footprint: [{ x: 4, y: 3 }] })
   if (withFire) addProp(map, { id: 'prop-fire', assetId: 'campfire', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
   return normalizeCampaignState({
     sessionCode: CAMPAIGN_ID,
@@ -123,6 +130,28 @@ test('бриф называет арбитру только те предмет�
   }
 })
 
+test('предмет в нераскрытой клетке арбитру не называется', () => {
+  // Карта в состоянии авторитетная, поэтому спрашивать про раскрытие обязан
+  // сам бриф: иначе арбитр предложил бы игроку поджечь кровать в той части
+  // подземелья, которую проекция карты от него ещё прячет.
+  const visible = adjudicationBrief(sceneState({ distantBed: true }), 'hero', 'Поджигаю сено')
+  assert.ok(visible.scene_props.some((entry) => entry.id === 'prop-bed'), 'раскрытая клетка предмет показывает')
+
+  const hidden = adjudicationBrief(sceneState({ distantBed: true, hiddenCorner: true }), 'hero', 'Поджигаю сено')
+  assert.deepEqual(hidden.scene_props.map((entry) => entry.id), ['prop-haystack', 'prop-shelf'])
+})
+
+test('расстояние до предмета считается от авторитетной позиции, а не от листа героя', () => {
+  const state = sceneState()
+  // Ходит движок по mechanics.positions; поле листа осталось той клеткой, с
+  // которой герой начал бой, и бриф не имеет права мерить от неё.
+  state.mechanics.positions.hero = { x: 3, y: 3 }
+  const brief = adjudicationBrief(state, 'hero', 'Поджигаю сено')
+
+  assert.equal(state.players[0].x, 0, 'лист персонажа намеренно оставлен устаревшим')
+  assert.equal(brief.scene_props.find((entry) => entry.id === 'prop-haystack').distance_feet, 15)
+})
+
 test('«поджигаю сено» доходит до настоящей зоны огня, а не до одноразового урона', async (t) => {
   const { autonomy } = await fixture(t)
   const result = await improvise(autonomy, 'prop-improv-1', 'Поджигаю сено у стойл, чтобы огонь отрезал налётчика.')
@@ -170,14 +199,40 @@ test('выдуманный предмет и чужой глагол до дви
 })
 
 test('отказ правил остаётся отказом правил: нечем поджечь — ход не потрачен', async (t) => {
-  const { autonomy } = await fixture(t, { state: sceneState({ withFire: false }) })
+  const { autonomy, eventStore } = await fixture(t, { state: sceneState({ withFire: false }) })
+  const before = await eventStore.load(CAMPAIGN_ID)
   const result = await improvise(autonomy, 'prop-improv-no-fire', 'Поджигаю сено у стойл голыми руками.')
 
   assert.equal(result.kind, 'clarification')
   assert.match(result.narration, /Нечем поджечь/u)
   assert.deepEqual(result.events, [])
   assert.equal(result.turn_consumed, false)
-  assert.equal(result.state.mechanics.combat.action_economy.hero.action, true, 'действие обязано остаться при герое')
+
+  // Ответ несёт состояние, прочитанное ДО попытки, поэтому проверять по нему
+  // атомарность бессмысленно — такое утверждение не может упасть. Спрашивается
+  // хранилище: версия не сдвинулась, действие осталось при герое, стог цел.
+  const after = await eventStore.load(CAMPAIGN_ID)
+  assert.equal(after.state_version, before.state_version, 'отклонённый коммит не должен оставлять версию')
+  assert.equal(after.state.mechanics.combat.action_economy.hero.action, true, 'действие обязано остаться при герое')
+  assert.equal(after.state.mechanics.scene_interactions?.['prop-haystack']?.state ?? 'idle', 'idle')
+})
+
+test('явный глагол по дальнему предмету возвращает уточнение, а не ошибку запроса', async (t) => {
+  // Зонд ревью: «осмотреть кровать в дальнем углу» называет настоящий пропс,
+  // до которого не дотянуться. Ветка ближайшего названного предмета шла без
+  // try/catch, и SCENE_OBJECT_OUT_OF_REACH улетал наружу как HTTP 400.
+  const { autonomy, eventStore } = await fixture(t, { state: sceneState({ distantBed: true }) })
+  const before = await eventStore.load(CAMPAIGN_ID)
+  const result = await improvise(autonomy, 'prop-improv-far-bed', 'Осмотреть кровать в дальнем углу конюшни.')
+
+  assert.equal(result.kind, 'clarification')
+  assert.match(result.narration, /встаньте вплотную/u)
+  assert.deepEqual(result.events, [])
+  assert.equal(result.turn_consumed, false)
+
+  const after = await eventStore.load(CAMPAIGN_ID)
+  assert.equal(after.state_version, before.state_version, 'отклонённый коммит не должен оставлять версию')
+  assert.equal(after.state.mechanics.combat.action_economy.hero.action, true)
 })
 
 test('каталог знает ровно два глагола обстановки и ничего сверх', () => {

@@ -11,6 +11,7 @@ import { ENVIRONMENT_HAZARD_IDS, IMPROVISED_EFFECT_IDS, scenePropIntentFor } fro
 import { hazardPropCells, igniteDefinitionFor, sceneHazardVerbsFor, toppleDefinitionFor } from './scene-hazards.mjs'
 import { sceneInteractionCatalogEntry } from './scene-interactions.mjs'
 import { buildDataOnlyContext } from './security.mjs'
+import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 
 /**
  * Арбитр свободного действия. Единственная роль модели здесь — **понять
@@ -79,6 +80,41 @@ function participantsBrief(state) {
 }
 
 /**
+ * Позиция героя так же, как её видит движок: авторитетная запись
+ * `mechanics.positions` первична, поле `players[].x/y` — фолбэк для сцен без
+ * боя, где расстановку никто не заводил. Иначе в бою бриф считал расстояния от
+ * начальной клетки листа, а не от той, где герой стоит на самом деле.
+ */
+function heroPosition(state, actorId) {
+  const id = String(actorId)
+  const stored = state?.mechanics?.positions?.[id]
+  const hero = (state?.players ?? []).find((actor) => String(actor?.id) === id) ?? null
+  const x = Math.floor(Number(stored?.x ?? hero?.x))
+  const y = Math.floor(Number(stored?.y ?? hero?.y))
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+}
+
+/**
+ * Раскрытие клетки по авторитетной карте — тот же вопрос, что решает
+ * `viewer-projection.mjs`, вырезая нераскрытые пропсы из проекции игрока.
+ * Карта здесь авторитетная, поэтому спрашивать про раскрытие обязан сам бриф.
+ */
+function revealedPropPredicate(state) {
+  const serialized = state?.scene?.map
+  if (!serialized || typeof serialized !== 'object') return () => false
+  let map = null
+  try {
+    map = deserializeTacticalMap(serialized)
+  } catch {
+    // Карту, которую не разобрать, движок тоже не исполнит: пустой список
+    // честнее выдуманного.
+    return () => false
+  }
+  const revealedAt = (x, y) => cellAt(map, x, y)?.revealed === true
+  return (prop) => hazardPropCells(prop).some((cell) => revealedAt(cell.x, cell.y))
+}
+
+/**
  * Предметы обстановки, с которыми движок действительно умеет работать.
  *
  * Без этого списка «поджигаю сено» превращалось в одноразовый импровизированный
@@ -86,20 +122,23 @@ function participantsBrief(state) {
  * строится из авторитетной карты сцены и справочника опасностей, поэтому в него
  * не попадает ни один предмет, которому движок откажет по каталогу.
  *
+ * Из авторитетной карты берётся и раскрытие: предмет в неразведанной части
+ * подземелья в брифе не появляется, иначе арбитр назвал бы игроку стеллаж за
+ * закрытой дверью — тот самый, который проекция карты от него прячет.
+ *
  * Скрытого здесь нет: id, русское имя, состояние, доступные глаголы и клетка —
  * ровно то, что игрок и так видит на доске.
  */
 function scenePropsBrief(state, actorId) {
-  const hero = (state?.players ?? []).find((actor) => String(actor?.id) === String(actorId)) ?? null
-  const at = Number.isFinite(Number(hero?.x)) && Number.isFinite(Number(hero?.y))
-    ? { x: Math.floor(Number(hero.x)), y: Math.floor(Number(hero.y)) }
-    : null
+  const at = heroPosition(state, actorId)
+  const revealed = revealedPropPredicate(state)
   const props = Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : []
   return props
     .flatMap((prop) => {
       const id = clean(prop?.id, 120)
       const verbs = sceneHazardVerbsFor(prop?.assetId)
       if (!id || !verbs.length || !sceneInteractionCatalogEntry(prop?.assetId)) return []
+      if (!revealed(prop)) return []
       const name = toppleDefinitionFor(prop?.assetId)?.mass || igniteDefinitionFor(prop?.assetId)?.what || ''
       const cell = hazardPropCells(prop)[0] ?? null
       return [{
