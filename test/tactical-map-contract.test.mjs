@@ -165,8 +165,10 @@ test('мусорный переход отвергается на входе, а
   rejected({ toLevel: -MAX_LEVEL_OFFSET - 1 }, 'TRANSITION_LEVEL_OUT_OF_RANGE')
   // Этаж карты — ноль, значит переход на ноль ведёт сам в себя.
   rejected({ toLevel: 0 }, 'TRANSITION_LEVEL_SAME')
-  // Бочка интерактивной в реестре не объявлена — нажать на неё нечем.
-  rejected({ toLevel: 1 }, 'TRANSITION_ASSET_NOT_INTERACTIVE', 'barrel')
+  // Стул интерактивным в реестре не объявлен — нажать на него нечем. Бочка
+  // здесь больше не годится: задача 3.2b открыла интеракции всей обстановке,
+  // которую можно опрокинуть или поджечь, и бочка среди них.
+  rejected({ toLevel: 1 }, 'TRANSITION_ASSET_NOT_INTERACTIVE', 'chair')
   rejected({ toLevel: 1 }, 'TRANSITION_ASSET_NOT_INTERACTIVE', 'нет-такого-ассета')
 })
 

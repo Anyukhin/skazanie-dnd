@@ -214,6 +214,7 @@ export function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
   const projected = prop.interaction?.verbs ?? prop.interactionVerbs ?? []
   return [...new Set(projected.filter((verb): verb is SceneObjectIntent => (
     verb === 'inspect' || verb === 'open' || verb === 'take' || verb === 'use'
+    || verb === 'topple' || verb === 'ignite'
   )))]
 }
 

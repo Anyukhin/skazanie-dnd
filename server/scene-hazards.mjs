@@ -105,6 +105,22 @@ export function sceneHazardTagsFor(assetId) {
   }
 }
 
+/**
+ * Все пропсы, которым справочник даёт хотя бы один глагол обстановки.
+ *
+ * Нужен сторожу: справочник опасностей, флаг `interactive` реестра и каталог
+ * взаимодействий обязаны сходиться, иначе «поджечь сено» упрётся в
+ * `SCENE_OBJECT_NOT_INTERACTIVE` или `SCENE_OBJECT_UNSUPPORTED` уже в движке.
+ */
+export function sceneHazardAssetIds() {
+  return [...new Set([...Object.keys(HEAVY_PROPS), ...Object.keys(FLAMMABLE_PROPS)])].sort()
+}
+
+/** Открытый огонь карты: без такого пропса или предмета поджечь нечем. */
+export function fireSourceAssetIds() {
+  return [...FIRE_SOURCE_PROPS]
+}
+
 /** Глаголы, которые справочник добавляет к обычным операциям пропса. */
 export function sceneHazardVerbsFor(assetId) {
   const tags = sceneHazardTagsFor(assetId)

@@ -4,12 +4,34 @@ import { igniteDefinitionFor, sceneHazardVerbsFor, toppleDefinitionFor } from '.
 
 export const SCENE_INTERACTION_POLICY_ID = 'skazanie:scene-interactions-v1'
 
+/**
+ * Что сервер умеет делать с реквизитом сцены.
+ *
+ * Вид (`kind`) задаёт обычные операции и таблицы деталей; глаголы обстановки
+ * (`topple`, `ignite`) добавляет справочник `scene-hazards.mjs` по тем же
+ * `assetId`. Поэтому запись здесь — это единственный ключ, открывающий пропсу
+ * доступ к движку: без неё `OperateSceneObject` отвечает `SCENE_OBJECT_UNSUPPORTED`,
+ * какими бы тегами опасности предмет ни обладал.
+ *
+ * `furnishing` — обстановка: её осматривают, валят и жгут, но добычи и тайника
+ * в ней нет. Отдельный вид, а не `lore`, именно потому, что записка в кровати
+ * или под ковром была бы выдумкой сервера.
+ */
 const CATALOG = Object.freeze([
-  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'crate', 'sarcophagus', 'urn', 'crypt_niche', 'reliquary']), verbs: Object.freeze(['inspect', 'open', 'take']) }),
+  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'crate', 'sarcophagus', 'urn', 'crypt_niche', 'reliquary', 'cupboard', 'wardrobe', 'basket', 'keg']), verbs: Object.freeze(['inspect', 'open', 'take']) }),
   Object.freeze({ kind: 'relic', aliases: Object.freeze(['altar', 'rune', 'statue', 'roadside_shrine', 'brazier']), verbs: Object.freeze(['inspect', 'use']) }),
   Object.freeze({ kind: 'campfire', aliases: Object.freeze(['campfire']), verbs: Object.freeze(['inspect', 'use']) }),
   Object.freeze({ kind: 'lore', aliases: Object.freeze(['bookshelf', 'table', 'fallen_log', 'tree_stump', 'boulder', 'rubble_heap', 'stalagmite', 'milestone']), verbs: Object.freeze(['inspect']) }),
   Object.freeze({ kind: 'corpse', aliases: Object.freeze(['bones', 'bone_pile', 'grave', 'corpse']), verbs: Object.freeze(['inspect', 'take']) }),
+  Object.freeze({
+    kind: 'furnishing',
+    aliases: Object.freeze([
+      'bar_counter', 'bar_shelf', 'shelf_wall', 'pillar', 'cart', 'market_stall',
+      'haystack', 'woodpile', 'firewood_stack', 'broom', 'cobweb',
+      'banner', 'temple_banner', 'rug', 'bed', 'bunk_bed', 'bench', 'prayer_bench',
+    ]),
+    verbs: Object.freeze(['inspect']),
+  }),
 ])
 
 const DETAIL_TABLE = Object.freeze({
@@ -26,6 +48,9 @@ const DETAIL_TABLE = Object.freeze({
   'corpse:0': Object.freeze({ id: 'cause-of-death', text: 'Следы позволяют определить вероятную причину гибели.' }),
   'corpse:1': Object.freeze({ id: 'travel-token', text: 'При останках сохранился знак, связанный с местным путём.' }),
   'corpse:2': Object.freeze({ id: 'defensive-wounds', text: 'Положение останков говорит о внезапном нападении.' }),
+  'furnishing:0': Object.freeze({ id: 'dry-and-brittle', text: 'Вещь рассохлась и держится на честном слове.' }),
+  'furnishing:1': Object.freeze({ id: 'recently-disturbed', text: 'Пыль вокруг сдвинута: обстановку здесь недавно трогали.' }),
+  'furnishing:2': Object.freeze({ id: 'poorly-braced', text: 'Опора стоит косо — сильного толчка она не выдержит.' }),
 })
 
 const REWARD_KEYS = Object.freeze({
@@ -35,6 +60,14 @@ const REWARD_KEYS = Object.freeze({
   lore: Object.freeze(['written-clue']),
   corpse: Object.freeze(['personal-effects']),
 })
+
+/**
+ * Точкой интереса становится только то, где сервер действительно что-то
+ * приготовил. Обстановка интерактивна, но приметной не объявляется: иначе
+ * маркер «здесь что-то есть» висел бы над каждой скамьёй и перестал бы
+ * значить хоть что-нибудь.
+ */
+const POINT_OF_INTEREST_KINDS = Object.freeze(Object.keys(REWARD_KEYS))
 
 const ASSET_ALIASES_RU = Object.freeze({
   chest: Object.freeze(['сундук', 'ларец']),
@@ -62,6 +95,30 @@ const ASSET_ALIASES_RU = Object.freeze({
   bone_pile: Object.freeze(['кости', 'останки', 'скелет']),
   grave: Object.freeze(['могила', 'могилу', 'могиле']),
   corpse: Object.freeze(['труп', 'трупа', 'теле']),
+  // Обстановка и хранение, открытые задачей 3.2b. Слова подобраны так, чтобы не
+  // отбирать уже занятые: «полка», «шкаф» и «книги» остаются за bookshelf.
+  cupboard: Object.freeze(['буфет', 'буфета', 'буфете']),
+  wardrobe: Object.freeze(['платяной шкаф', 'гардероб', 'гардероба']),
+  basket: Object.freeze(['корзина', 'корзину', 'корзине']),
+  keg: Object.freeze(['бочонок', 'бочонка', 'бочонке']),
+  bar_counter: Object.freeze(['стойка', 'стойку', 'стойке']),
+  bar_shelf: Object.freeze(['полка за стойкой']),
+  shelf_wall: Object.freeze(['стеллаж', 'стеллажа', 'стеллаже']),
+  pillar: Object.freeze(['колонна', 'колонну', 'колонне']),
+  cart: Object.freeze(['телега', 'телегу', 'телеге']),
+  market_stall: Object.freeze(['лоток', 'лотка', 'прилавок']),
+  haystack: Object.freeze(['сено', 'сена', 'стог', 'стога']),
+  woodpile: Object.freeze(['поленница', 'поленницу', 'поленнице']),
+  firewood_stack: Object.freeze(['дрова', 'дров', 'вязанка']),
+  broom: Object.freeze(['метла', 'метлу', 'метле']),
+  cobweb: Object.freeze(['паутина', 'паутину', 'паутине']),
+  banner: Object.freeze(['полотнище', 'знамя', 'флаг']),
+  temple_banner: Object.freeze(['храмовое полотнище']),
+  rug: Object.freeze(['ковёр', 'ковер', 'ковра', 'ковре']),
+  bed: Object.freeze(['кровать', 'кровати', 'постель', 'постели']),
+  bunk_bed: Object.freeze(['койка', 'койку', 'койке', 'нары']),
+  bench: Object.freeze(['скамья', 'скамью', 'скамье', 'скамейка', 'лавка']),
+  prayer_bench: Object.freeze(['молитвенная скамья']),
 })
 
 const FALLBACK_ASSETS = Object.freeze(['chest', 'altar', 'campfire', 'bookshelf', 'bone_pile'])
@@ -121,9 +178,13 @@ export function interactionMetadataForProp({ mapSeed = '', prop, pointOfInterest
   const detailKey = `${catalog.kind}:${metadataVariant(mapSeed, prop, detailVariants)}`
   const rewards = REWARD_KEYS[catalog.kind] ?? []
   const rewardKey = rewards.length ? `${catalog.kind}:${rewards[metadataVariant(`${mapSeed}:reward`, prop, rewards.length)]}` : ''
+  // Глаголы обстановки объявляются здесь же, а не только в разборе команды:
+  // affordance пропса едет игроку картой, и кнопка «Опрокинуть» появляется
+  // ровно потому, что сервер её назвал. Клиент рисует то, что ему прислали.
+  const hazardVerbs = sceneHazardVerbsFor(prop?.assetId).filter((verb) => !catalog.verbs.includes(verb))
   return {
     kind: catalog.kind,
-    verbs: [...catalog.verbs],
+    verbs: [...catalog.verbs, ...hazardVerbs],
     pointOfInterest: pointOfInterest === true,
     detailKey,
     rewardKey,
@@ -132,21 +193,28 @@ export function interactionMetadataForProp({ mapSeed = '', prop, pointOfInterest
 
 /**
  * Помечает ровно 2–4 поддержанных объекта (или все, если их меньше двух).
+ *
+ * Поддержанных объектов на карте стало заметно больше (задача 3.2b), поэтому
+ * кандидатом в точку интереса считается не всякий из них, а только тот, за
+ * которым стоит server-owned находка или знание. Обстановка остаётся
+ * интерактивной, но приметной не объявляется.
  */
 export function sceneInteractionMetadata({ mapSeed = '', props = [] } = {}) {
   const supported = (Array.isArray(props) ? props : [])
     .filter((prop) => clean(prop?.id, 120) && sceneInteractionCatalogEntry(prop?.assetId))
     .map((prop) => ({
       prop,
+      kind: sceneInteractionCatalogEntry(prop?.assetId).kind,
       score: hashNumber(`${clean(mapSeed)}:poi:${clean(prop.id)}:${clean(prop.assetId)}`),
     }))
     .sort((left, right) => left.score - right.score || clean(left.prop.id).localeCompare(clean(right.prop.id)))
-  const desired = supported.length
-    ? Math.min(supported.length, 2 + (hashNumber(`${clean(mapSeed)}:poi-count`) % 3))
+  const candidates = supported.filter((candidate) => POINT_OF_INTEREST_KINDS.includes(candidate.kind))
+  const desired = candidates.length
+    ? Math.min(candidates.length, 2 + (hashNumber(`${clean(mapSeed)}:poi-count`) % 3))
     : 0
   const diverse = []
   const selectedAssets = new Set()
-  for (const candidate of supported) {
+  for (const candidate of candidates) {
     const assetId = clean(candidate.prop.assetId, 120)
     if (selectedAssets.has(assetId)) continue
     diverse.push(candidate)
@@ -155,7 +223,7 @@ export function sceneInteractionMetadata({ mapSeed = '', props = [] } = {}) {
   }
   const selectedEntries = [...diverse]
   const selectedIds = new Set(selectedEntries.map(({ prop }) => clean(prop.id, 120)))
-  for (const candidate of supported) {
+  for (const candidate of candidates) {
     if (selectedEntries.length >= desired) break
     const propId = clean(candidate.prop.id, 120)
     if (selectedIds.has(propId)) continue

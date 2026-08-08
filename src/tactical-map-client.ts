@@ -22,7 +22,10 @@ export const DOOR_STATES: readonly TacticalDoorState[] = ['open', 'closed', 'loc
 export const ZONE_KINDS: readonly TacticalZoneKind[] = ['interior', 'exterior']
 export const FLOOR_DIRECTIONS: readonly TacticalFloorDirection[] = ['horizontal', 'vertical']
 export const SPAWN_ROLES: readonly TacticalSpawnRole[] = ['party', 'enemy', 'neutral']
-const SCENE_OBJECT_INTENTS: readonly SceneObjectIntent[] = ['inspect', 'open', 'take', 'use']
+/* Зеркало серверного контракта глаголов. `topple` и `ignite` приезжают только
+   у тяжёлого и горючего реквизита — их объявляет `server/scene-hazards.mjs`
+   вместе с обычными операциями, и клиент их не выводит, а перечисляет. */
+const SCENE_OBJECT_INTENTS: readonly SceneObjectIntent[] = ['inspect', 'open', 'take', 'use', 'topple', 'ignite']
 
 const MAX_WIDTH = 100
 const MAX_HEIGHT = 100

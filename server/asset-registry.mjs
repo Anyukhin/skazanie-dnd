@@ -145,34 +145,39 @@ const OPENINGS = Object.freeze([
  */
 const DECLARED = Object.freeze([
   // --- Мебель общего зала ---------------------------------------------
-  entry('table_round', { baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 12, scaleRange: { min: 0.85, max: 1.15 } }),
-  entry('table_long', { baseFootprint: { w: 3, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 15 }),
-  entry('table_small', { blocksMove: true, cover: 'half', destructible: true, hp: 8 }),
-  entry('bench', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', destructible: true, hp: 8 }),
+  // `interactive` у мебели и убранства — это не «здесь спрятана награда», а
+  // «с этим предметом сервер умеет работать»: справочник опасностей
+  // (`scene-hazards.mjs`) объявил его тяжёлым или горючим, а каталог
+  // взаимодействий (`scene-interactions.mjs`) знает его вид. Флаг и каталог
+  // обязаны совпадать — сторож `test/scene-hazards.test.mjs`.
+  entry('table_round', { baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 12, interactive: true, scaleRange: { min: 0.85, max: 1.15 } }),
+  entry('table_long', { baseFootprint: { w: 3, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 15, interactive: true }),
+  entry('table_small', { blocksMove: true, cover: 'half', destructible: true, hp: 8, interactive: true }),
+  entry('bench', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', destructible: true, hp: 8, interactive: true }),
   entry('chair', { destructible: true, hp: 5, scaleRange: { min: 0.85, max: 1.1 } }),
   entry('stool', { destructible: true, hp: 4, scaleRange: { min: 0.8, max: 1.1 } }),
-  entry('bar_counter', { baseFootprint: { w: 4, h: 1 }, anchor: 'wall', blocksMove: true, cover: 'three_quarters', destructible: true, hp: 25 }),
-  entry('bar_shelf', { baseFootprint: { w: 3, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' }),
+  entry('bar_counter', { baseFootprint: { w: 4, h: 1 }, anchor: 'wall', blocksMove: true, cover: 'three_quarters', destructible: true, hp: 25, interactive: true }),
+  entry('bar_shelf', { baseFootprint: { w: 3, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
   entry('fireplace', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
   entry('hearth_fire', { anchor: 'wall', interactive: true, scaleRange: { min: 0.8, max: 1.2 } }),
   entry('cauldron', { anchor: 'wall', interactive: true, destructible: true, hp: 10 }),
-  entry('firewood_stack', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 8 }),
+  entry('firewood_stack', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 8, interactive: true }),
 
   // --- Хранение и утварь ----------------------------------------------
-  entry('barrel', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 10, scaleRange: { min: 0.85, max: 1.15 } }),
-  entry('barrel_stack', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 18 }),
-  entry('keg', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 8 }),
-  entry('crate', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 10, scaleRange: { min: 0.85, max: 1.15 } }),
-  entry('crate_stack', { baseFootprint: { w: 2, h: 1 }, anchor: 'corner', blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 16 }),
+  entry('barrel', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 10, interactive: true, scaleRange: { min: 0.85, max: 1.15 } }),
+  entry('barrel_stack', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 18, interactive: true }),
+  entry('keg', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 8, interactive: true }),
+  entry('crate', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 10, interactive: true, scaleRange: { min: 0.85, max: 1.15 } }),
+  entry('crate_stack', { baseFootprint: { w: 2, h: 1 }, anchor: 'corner', blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 16, interactive: true }),
   entry('sack', { anchor: 'wall', destructible: true, hp: 4, scaleRange: { min: 0.8, max: 1.2 } }),
-  entry('basket', { anchor: 'wall', destructible: true, hp: 3, scaleRange: { min: 0.8, max: 1.2 } }),
+  entry('basket', { anchor: 'wall', destructible: true, hp: 3, interactive: true, scaleRange: { min: 0.8, max: 1.2 } }),
   entry('bucket', { scaleRange: { min: 0.8, max: 1.1 } }),
   entry('chest', { anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 14, interactive: true }),
   entry('cupboard', { anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
   entry('wardrobe', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
   entry('bookshelf', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
-  entry('shelf_wall', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall' }),
-  entry('broom', { anchor: 'corner', scaleRange: { min: 0.9, max: 1.05 } }),
+  entry('shelf_wall', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', interactive: true }),
+  entry('broom', { anchor: 'corner', interactive: true, scaleRange: { min: 0.9, max: 1.05 } }),
 
   // --- Мелочь на столах: футпринт пуст, предмет ничего не занимает -----
   entry('mug', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.1 } }),
@@ -190,8 +195,8 @@ const DECLARED = Object.freeze([
   entry('pot', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.8, max: 1.15 } }),
 
   // --- Спальные помещения ---------------------------------------------
-  entry('bed', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 10 }),
-  entry('bunk_bed', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' }),
+  entry('bed', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, cover: 'half', destructible: true, hp: 10, interactive: true }),
+  entry('bunk_bed', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
   entry('night_table', { anchor: 'wall', destructible: true, hp: 5 }),
   entry('washbasin', { anchor: 'wall' }),
 
@@ -199,9 +204,9 @@ const DECLARED = Object.freeze([
   entry('torch_wall', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall', interactive: true }),
   entry('lantern_wall', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall', interactive: true }),
   entry('candelabra', { destructible: true, hp: 4 }),
-  entry('banner', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall' }),
+  entry('banner', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall', interactive: true }),
   entry('sign_board', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall' }),
-  entry('rug', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.9, max: 1.3 } }),
+  entry('rug', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, interactive: true, scaleRange: { min: 0.9, max: 1.3 } }),
   entry('floor_stain', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.4 } }),
 
   // --- Переходы --------------------------------------------------------
@@ -221,26 +226,26 @@ const DECLARED = Object.freeze([
   entry('flowers', { themes: [...YARD, ...WILD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
   entry('rock_small', { themes: [...YARD, ...WILD], cover: 'half', scaleRange: { min: 0.7, max: 1.3 } }),
   entry('boulder', { themes: [...YARD, ...WILD], blocksMove: true, blocksSight: true, cover: 'three_quarters', scaleRange: { min: 0.85, max: 1.4 } }),
-  entry('woodpile', { themes: [...YARD, ...WILD], anchor: 'wall', baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 12 }),
-  entry('cart', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 20 }),
+  entry('woodpile', { themes: [...YARD, ...WILD], anchor: 'wall', baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 12, interactive: true }),
+  entry('cart', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 20, interactive: true }),
   entry('wagon_wheel', { themes: [...YARD, ...WILD], anchor: 'wall', cover: 'half', destructible: true, hp: 6 }),
   entry('hitching_post', { themes: [...YARD, ...WILD], interactive: true }),
   entry('water_trough', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 1 }, blocksMove: true, cover: 'half' }),
   entry('well', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', interactive: true }),
   entry('lamp_post', { themes: [...YARD, ...WILD], interactive: true }),
   entry('signpost', { themes: [...YARD, ...WILD], interactive: true }),
-  entry('haystack', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 10, scaleRange: { min: 0.85, max: 1.25 } }),
+  entry('haystack', { themes: [...YARD, ...WILD], baseFootprint: { w: 2, h: 2 }, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: true, hp: 10, interactive: true, scaleRange: { min: 0.85, max: 1.25 } }),
   entry('path_stone', { themes: [...YARD, ...WILD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
   entry('campfire', { themes: [...YARD, ...WILD], interactive: true }),
 
   // --- Храм --------------------------------------------------------------
-  entry('pillar', { themes: [...TEMPLE], blocksMove: true, blocksSight: true, cover: 'three_quarters' }),
+  entry('pillar', { themes: [...TEMPLE], blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
   entry('altar', { themes: [...TEMPLE, ...CRYPT], baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, cover: 'half', interactive: true }),
-  entry('statue', { themes: [...TEMPLE, ...CRYPT], blocksMove: true, blocksSight: true, cover: 'three_quarters' }),
+  entry('statue', { themes: [...TEMPLE, ...CRYPT], blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
   entry('brazier', { themes: [...TEMPLE, ...CRYPT], interactive: true, destructible: true, hp: 6 }),
   entry('offering_bowl', { themes: [...TEMPLE], baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.8, max: 1.1 } }),
-  entry('prayer_bench', { themes: [...TEMPLE], baseFootprint: { w: 2, h: 1 }, anchor: 'wall', destructible: true, hp: 8 }),
-  entry('temple_banner', { themes: [...TEMPLE], kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall' }),
+  entry('prayer_bench', { themes: [...TEMPLE], baseFootprint: { w: 2, h: 1 }, anchor: 'wall', destructible: true, hp: 8, interactive: true }),
+  entry('temple_banner', { themes: [...TEMPLE], kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall', interactive: true }),
   entry('reliquary', { themes: [...TEMPLE], anchor: 'wall', blocksMove: true, cover: 'half', interactive: true }),
   entry('mosaic', { themes: [...TEMPLE], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.9, max: 1.4 } }),
 
@@ -250,7 +255,7 @@ const DECLARED = Object.freeze([
   entry('bone_pile', { themes: [...CRYPT, ...CAVE], baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
   entry('urn', { themes: [...CRYPT], anchor: 'wall', destructible: true, hp: 4 }),
   entry('crypt_niche', { themes: [...CRYPT], anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' }),
-  entry('cobweb', { themes: [...CRYPT, ...CAVE], kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'corner' }),
+  entry('cobweb', { themes: [...CRYPT, ...CAVE], kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'corner', interactive: true }),
 
   // --- Пещера ------------------------------------------------------------
   entry('stalagmite', { themes: [...CAVE], blocksMove: true, cover: 'half', scaleRange: { min: 0.7, max: 1.5 } }),
@@ -265,7 +270,7 @@ const DECLARED = Object.freeze([
   entry('fern', { themes: [...WILD], kind: 'decal', baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.3 } }),
   entry('milestone', { themes: [...WILD], anchor: 'wall', cover: 'half' }),
   entry('roadside_shrine', { themes: [...WILD], anchor: 'wall', blocksMove: true, cover: 'half', interactive: true }),
-  entry('market_stall', { themes: ['settlement', 'exterior'], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half' }),
+  entry('market_stall', { themes: ['settlement', 'exterior'], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', interactive: true }),
   entry('village_fence', { themes: ['settlement', 'exterior'], baseFootprint: { w: 2, h: 1 }, anchor: 'wall', cover: 'half' }),
 
   // --- Проёмы на рёбрах ----------------------------------------------------
