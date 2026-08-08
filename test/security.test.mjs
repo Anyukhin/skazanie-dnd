@@ -366,7 +366,8 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
   // Версия в списке обязана совпадать с той, которую роль действительно грузит:
   // narrator перешёл на v5, campaign_creator — на v3, map_architect — на v4,
   // социальный контроллер — на v3 с границей UNTRUSTED_DATA,
-  // action_adjudicator — на v2, остальные на v1. Режиссёр грузит два промпта —
+  // action_adjudicator — на v4 вместе с мостом к обстановке (topple_prop и
+  // ignite_prop), остальные на v1. Режиссёр грузит два промпта —
   // по одному на режим импровизации кампании, — и оба обязаны держать тот же
   // bounded-intent контракт, что и прежний v1.
   const prompts = [
@@ -375,7 +376,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
     ['narrator/v6', 'narrator/v6'],
     ['director/v2_story', 'director/v2_story'],
     ['director/v2_chaos', 'director/v2_chaos'],
-    ['action_adjudicator/v3', 'action_adjudicator/v3'],
+    ['action_adjudicator/v4', 'action_adjudicator/v4'],
     ['campaign_creator/v3', 'campaign_creator/v3'],
     ['map_architect/v4', 'map_architect/v4'],
     ['recap/v1', 'recap/v1'],

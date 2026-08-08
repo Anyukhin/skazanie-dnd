@@ -127,13 +127,13 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 | `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |
 | `server/scene-architect.mjs` | `prompts/map_architect/v4.txt` | новые области |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v3.txt` | исходная ситуация кампании |
-| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v3.txt` | прочтение свободного действия |
+| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v4.txt` | прочтение свободного действия |
 | `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» после перерыва |
 
 Больше промпты не загружает никто; ролей восемь, а загружаемых промптов девять:
 Режиссёр держит по файлу на режим импровизации кампании (`improv_mode`), и
 вариант выбирается в `choose()`, а не импортом. Файлов в `prompts/` ещё больше:
-рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`,
+рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`, `v3`,
 `campaign_creator/v1`, `v2`, `director/v1`, `map_architect/v1`, `v2`,
 `narrator/v1`—`v4`, `npc_controller/social_v1`, `v2`) плюс
 `narrator/few-shot-v1.json`. Актуальна та

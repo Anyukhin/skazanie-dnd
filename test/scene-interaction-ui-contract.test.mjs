@@ -23,9 +23,14 @@ test('доска предлагает только спроецированны�
     ['open', 'Открыть'],
     ['take', 'Взять'],
     ['use', 'Использовать'],
+    // Обстановка как оружие: сервер объявляет эти два глагола у тяжёлого и
+    // горючего реквизита, и доска обязана нарисовать их той же кнопкой.
+    ['topple', 'Опрокинуть'],
+    ['ignite', 'Поджечь'],
   ]) {
     assert.match(appSource, new RegExp(`${intent}: '${label}'`, 'u'))
   }
+  assert.match(appSource, /verb === 'topple' \|\| verb === 'ignite'/u)
 })
 
 test('декодер карты сохраняет только публичный контракт взаимодействия', () => {
@@ -33,7 +38,7 @@ test('декодер карты сохраняет только публичны
     mapClientSource.indexOf('function decodeProp'),
     mapClientSource.indexOf('function decodeZone'),
   )
-  assert.match(mapClientSource, /SCENE_OBJECT_INTENTS: readonly SceneObjectIntent\[\] = \['inspect', 'open', 'take', 'use'\]/u)
+  assert.match(mapClientSource, /SCENE_OBJECT_INTENTS: readonly SceneObjectIntent\[\] = \['inspect', 'open', 'take', 'use', 'topple', 'ignite'\]/u)
   assert.match(decodePropSource, /pointOfInterest: rawInteraction\.pointOfInterest === true/u)
   assert.doesNotMatch(decodePropSource, /detailKey|rewardKey/u)
 })

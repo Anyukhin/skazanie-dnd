@@ -20,7 +20,7 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
   narrator: { id: 'narrator', prompt_id: 'narrator/v6', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v4', purpose: 'Динамическая архитектура новой локации и игровой карты' },
-  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v3', purpose: 'Разбор свободного действия: цель, средство, применимый навык и цена провала' },
+  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v4', purpose: 'Разбор свободного действия: цель, средство, применимый навык и цена провала' },
 })
 
 const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu

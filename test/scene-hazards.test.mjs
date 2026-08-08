@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { assetById } from '../server/asset-registry.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
-import { sceneInteractionDefinition } from '../server/scene-interactions.mjs'
-import { hazardAssetKey, sceneHazardTagsFor, sceneHazardVerbsFor } from '../server/scene-hazards.mjs'
+import { interactionMetadataForProp, sceneInteractionCatalogEntry, sceneInteractionDefinition } from '../server/scene-interactions.mjs'
+import {
+  fireSourceAssetIds,
+  hazardAssetKey,
+  sceneHazardAssetIds,
+  sceneHazardTagsFor,
+  sceneHazardVerbsFor,
+} from '../server/scene-hazards.mjs'
 import { hasSceneHazardEvent, sceneHazardNarration } from '../server/scene-hazard-narration.mjs'
 import { addProp, createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
 
@@ -84,6 +91,71 @@ test('теги обстановки выводятся из assetId и объя�
   assert.ok(definition.verbs.includes('topple') && definition.verbs.includes('ignite'))
   assert.equal(definition.topple.skill, 'athletics')
   assert.equal(definition.ignite.damage_type, 'fire')
+})
+
+test('весь справочник опасностей операбелен: реестр, каталог и глаголы сходятся', () => {
+  const hazardIds = sceneHazardAssetIds()
+  assert.ok(hazardIds.length >= 30, `справочник обмельчал: ${hazardIds.length} пропсов`)
+  for (const assetId of hazardIds) {
+    const asset = assetById(assetId)
+    assert.ok(asset, `${assetId}: тега опасности нет соответствия в реестре ассетов`)
+    assert.equal(asset.interactive, true, `${assetId}: тяжёлый или горючий предмет обязан быть интерактивным`)
+    const catalog = sceneInteractionCatalogEntry(assetId)
+    assert.ok(catalog, `${assetId}: каталог взаимодействий не узнаёт предмет, движок ответит SCENE_OBJECT_UNSUPPORTED`)
+    const expected = sceneHazardVerbsFor(assetId)
+    assert.ok(expected.length, `${assetId}: у предмета из справочника обязан быть хотя бы один глагол обстановки`)
+    const definition = sceneInteractionDefinition({
+      mapSeed: 'hazard-coverage',
+      props: [{ id: 'p', assetId, x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] }],
+      propId: 'p',
+    })
+    for (const verb of expected) {
+      assert.ok(definition.verbs.includes(verb), `${assetId}: контракт не объявил ${verb}`)
+    }
+    // Affordance едет игроку картой: клиент рисует кнопку по этому списку.
+    const projected = interactionMetadataForProp({ mapSeed: 'hazard-coverage', prop: { id: 'p', assetId } })
+    for (const verb of expected) {
+      assert.ok(projected.verbs.includes(verb), `${assetId}: проекция карты не объявила ${verb}`)
+    }
+  }
+  for (const assetId of fireSourceAssetIds()) {
+    assert.ok(assetById(assetId), `${assetId}: источник огня обязан существовать в реестре`)
+  }
+})
+
+test('декор без тегов опасности интерактивным не становится', () => {
+  for (const assetId of ['chair', 'stool', 'sack', 'bucket', 'night_table', 'mug', 'sign_board', 'floor_stain', 'washbasin']) {
+    const asset = assetById(assetId)
+    assert.ok(asset, `${assetId}: запись реестра пропала`)
+    assert.deepEqual(sceneHazardVerbsFor(assetId), [], `${assetId}: у декора не должно быть глаголов обстановки`)
+    if (assetId === 'night_table') continue // словарный вариант `table`: осмотр был и остаётся
+    assert.equal(asset.interactive, false, `${assetId}: декор не должен становиться интерактивным`)
+    assert.equal(sceneInteractionCatalogEntry(assetId), null, `${assetId}: каталог не должен знать декор`)
+  }
+})
+
+test('новые пропсы обстановки действительно валятся и горят через движок', () => {
+  // Сено поджигается от костра рядом, платяной шкаф валится проверкой Атлетики.
+  const burning = operate(hazardState({ assetId: 'haystack', withFire: true }), 'ignite', dice([10, 10]))
+  assert.ok(types(burning).includes('SpellAreaCreated'))
+  assert.equal(propState(burning.state), 'burning')
+
+  const toppled = operate(hazardState({ assetId: 'wardrobe', victimAt: { x: 1, y: 0 } }), 'topple', dice([19, 2, 4, 3]))
+  assert.ok(types(toppled).includes('SceneObjectCheckResolved'))
+  assert.equal(propState(toppled.state), 'toppled')
+  assert.ok(toppled.state.enemies[0].hp < 14, 'шкаф придавил стоящего под ним')
+
+  // Обстановка осматривается как раньше, но добычи и тайника в ней нет.
+  const furnishing = sceneInteractionDefinition({
+    mapSeed: 'hazard-coverage',
+    props: [{ id: 'p', assetId: 'bunk_bed', x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] }],
+    propId: 'p',
+  })
+  assert.equal(furnishing.kind, 'furnishing')
+  assert.deepEqual(furnishing.verbs, ['inspect', 'ignite'])
+  assert.equal(furnishing.rewardKey, '')
+  assert.equal(furnishing.pointOfInterest, false, 'обстановка не объявляется точкой интереса')
+  assert.ok(furnishing.detail?.text, 'осмотр обстановки обязан что-то сообщать')
 })
 
 test('успешное опрокидывание валит стеллаж, ранит стоящего под ним и сбивает с ног', () => {
@@ -197,6 +269,30 @@ test('интеракции получают детерминированное �
   // Чужой батч этот рассказчик не перехватывает.
   assert.equal(hasSceneHazardEvent([{ event_type: 'SceneObjectStateChanged', payload: { intent: 'open' } }]), false)
   assert.equal(hasSceneHazardEvent([]), false)
+})
+
+test('глагол согласуется с родом подписи, а не всегда с мужским', () => {
+  // «Колонна качнулся» — подписи в справочнике разного рода, а формы глагола
+  // выбирались по мужскому.
+  const failed = operate(hazardState({ assetId: 'pillar' }), 'topple', dice([1, 1, 1, 1]))
+  assert.equal(
+    sceneHazardNarration(failed.events, failed.state),
+    'Колонна качнулась, но устояла: опрокинуть её не вышло.',
+  )
+
+  const toppled = operate(hazardState({ assetId: 'pillar', victimAt: { x: 1, y: 0 } }), 'topple', dice([19, 2, 4, 3]))
+  assert.match(sceneHazardNarration(toppled.events, toppled.state), /под ней/u)
+
+  // Множественное число — тот же случай, что и род.
+  const firewood = operate(hazardState({ assetId: 'firewood_stack', withFire: true }), 'ignite', dice([10, 10]))
+  assert.match(sceneHazardNarration(firewood.events, firewood.state), /^Дрова занимаются огнём/u)
+
+  // Мужской род остался прежним: подпись без записи в карте рода не меняет.
+  const shelf = operate(hazardState(), 'topple', dice([1, 1, 1, 1]))
+  assert.equal(
+    sceneHazardNarration(shelf.events, shelf.state),
+    'Стеллаж качнулся, но устоял: опрокинуть его не вышло.',
+  )
 })
 
 test('состояние пропса переживает replay и попадает в обе авторитетные записи', () => {
