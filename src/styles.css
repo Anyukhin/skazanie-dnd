@@ -236,8 +236,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    выглядит ровно как раньше: ни пустой рамки, ни сдвига раскладки. */
 .scene-illustration img.scene-location-art { position: absolute; inset: 0; opacity: 0; transition: opacity .8s ease-out; animation: none; }
 .scene-illustration img.scene-location-art.ready { opacity: 1; }
-/* Подпись у иллюстрации — тем же капслоком и охрой, что у строки «ГЛАВА · СЦЕНА»
-   в этой же шапке. Абсолютная, поэтому названию сцены ширины не отнимает. */
+/* С иллюстрацией название сцены лежит поверх картинки, а не на ровной подложке,
+   и затемнение из `::after` контраста не гарантирует: кадр может оказаться
+   светлым именно там, где стоят буквы. Тень держит их читаемыми и, в отличие от
+   собственного фона, ничего не двигает в раскладке. */
 .scene-header.has-illustration .scene-title { text-shadow: 0 2px 8px #000; }
 .scene-title { flex: 0 1 auto; min-width: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
 .scene-title > span { color: #9b7448; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .16em; white-space: nowrap; }

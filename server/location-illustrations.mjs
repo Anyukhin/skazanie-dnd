@@ -20,7 +20,7 @@
  * расходящийся набор проверок видимости.
  */
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 
 import { IMAGE_GENERATION_MAX_BYTES, createRouterImageGenerator, isWebp } from './image-generation.mjs'
@@ -28,6 +28,9 @@ import { IMAGE_GENERATION_MAX_BYTES, createRouterImageGenerator, isWebp } from '
 export const LOCATION_ILLUSTRATION_MAX_BYTES = IMAGE_GENERATION_MAX_BYTES
 
 const LOCATION_ILLUSTRATION_ESTIMATED_OUTPUT_TOKENS = 1_024
+
+/** Заголовок RIFF/WEBP: `isWebp` смотрит байты 0..4 и 8..12, дальше не читает. */
+const WEBP_HEADER_BYTES = 12
 
 /**
  * @typedef {{
@@ -260,8 +263,18 @@ export class LocationIllustrationService {
    * Лежит ли картинка в кеше. Списку подготовки нужен только флаг, и платить за
    * него полным чтением файла с sha256 незачем: у ведущего в списке десятки
    * локаций, и каждое открытие карточки перечитывало бы весь кеш кампании
-   * целиком ради одной галочки. Содержимое проверит `cached()` в момент отдачи —
-   * там байты всё равно нужны.
+   * целиком ради одной галочки.
+   *
+   * Но «файл есть» и «картинка есть» — не одно и то же: `cached()` отдаёт только
+   * webp нужного размера, и файл другого формата он бы отбросил. Галочка,
+   * поставленная по одному лишь `stat`, обещала бы ведущему готовую
+   * иллюстрацию там, где игрок получит 404. Поэтому сигнатура сверяется и
+   * здесь — это ровно 12 байт заголовка, а не весь файл.
+   *
+   * Дальше семантика расходится намеренно: битый файл здесь только не
+   * засчитывается, а удаляет его `cached()` в момент отдачи. Список подготовки
+   * — экран для чтения, и стирать чужие файлы под ведущим, пока он листает
+   * карточки, ему не поручали.
    *
    * @param {unknown} campaignId
    * @param {unknown} locationId
@@ -271,7 +284,15 @@ export class LocationIllustrationService {
     const location = locationIllustrationCacheLocation(this.cacheRoot, campaignId, locationId)
     try {
       const info = await stat(location.filePath)
-      return info.isFile() && info.size > 0 && info.size <= LOCATION_ILLUSTRATION_MAX_BYTES
+      if (!info.isFile() || info.size === 0 || info.size > LOCATION_ILLUSTRATION_MAX_BYTES) return false
+      const handle = await open(location.filePath, 'r')
+      try {
+        const header = Buffer.alloc(WEBP_HEADER_BYTES)
+        const { bytesRead } = await handle.read(header, 0, WEBP_HEADER_BYTES, 0)
+        return isWebp(header.subarray(0, bytesRead))
+      } finally {
+        await handle.close()
+      }
     } catch (error) {
       if (/** @type {NodeJS.ErrnoException} */ (error)?.code === 'ENOENT') return false
       throw error

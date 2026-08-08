@@ -5,7 +5,7 @@
 // подготовка пишет кеш и расход в леджер, а в рантайме модель не зовётся
 // вообще — у сервиса просто нет метода «сгенерируй, если нет».
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import test from 'node:test'
@@ -281,4 +281,23 @@ test('список подготовки узнаёт о картинке по м
   })
   assert.deepEqual(inventory.map((entry) => [entry.id, entry.has_illustration]), [['loc:archive', true], ['loc:norvin-road', false]])
   assert.deepEqual(asked, ['loc:archive', 'loc:norvin-road'])
+})
+
+test('галочка списка и отдача согласны о формате: файл не-webp готовой картинкой не считается', async (t) => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-location-broken-'))
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  const service = serviceWith(rootDir, [])
+  const target = locationIllustrationCacheLocation(resolve(rootDir, 'generated', 'locations'), 'PREP', 'loc:archive')
+  mkdirSync(target.directory, { recursive: true })
+  writeFileSync(target.filePath, Buffer.from('<html>провайдер прислал страницу ошибки</html>', 'utf8'))
+
+  // Раньше галочка стояла по одному `stat`: ведущий видел «иллюстрация готова»,
+  // а игрок на том же месте получал 404, потому что отдача сверяет сигнатуру.
+  assert.equal(await service.hasCached('PREP', 'loc:archive'), false, 'по метаданным файл есть, но это не картинка')
+
+  // Удаление битого файла остаётся за отдачей: список подготовки только читает
+  // и файлы под ведущим не стирает.
+  assert.equal(existsSync(target.filePath), true, 'список подготовки чужих файлов не трогает')
+  assert.equal(await service.cached('PREP', 'loc:archive'), null)
+  assert.equal(existsSync(target.filePath), false, 'битый файл убирает cached() при отдаче')
 })

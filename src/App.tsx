@@ -347,8 +347,8 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
       {scenicBackdrop && <span key={`${illustrationKey}:${illustration.id}`} className="scene-illustration" aria-hidden="true">
         <img src={illustration.url} alt="" decoding="async" />
         {/* Иллюстрация самого места ложится поверх библиотечной подложки в тот
-            же кадр: рамка, затемнение и подпись у них общие — шапка остаётся
-            одной карточкой, а не обрастает вторым блоком. */}
+            же кадр: рамка и затемнение у них общие — шапка остаётся одной
+            карточкой, а не обрастает вторым блоком. */}
         {locationArtUrl && <img
           className={`scene-location-art ${locationArtReady ? 'ready' : ''}`}
           src={locationArtUrl}
