@@ -29,6 +29,7 @@ import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
 import { planHeroTurn } from './party-tactics.mjs'
 import {
+  RulesValidationError,
   findActor,
   isEnemyActor,
   isLivingActor,
@@ -57,8 +58,9 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { planImprovisedEffect, resolveActionCost } from './improvised-effects.mjs'
+import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
+import { sceneHazardNarration } from './scene-hazard-narration.mjs'
 import { nearestSceneObjectCommand, sceneInteractionNarration } from './scene-interactions.mjs'
 
 const clone = (value) => structuredClone(value)
@@ -834,6 +836,64 @@ export class AutonomousCampaignOrchestrator {
         commands: [],
         rolls: [],
         duplicate: false,
+      }
+    }
+    // Мост между свободной фразой и обстановкой как оружием (задача 3.2c).
+    // Арбитр называет предмет из переданного ему списка и глагол; всё
+    // остальное — досягаемость, проверка, источник огня, урон, зона огня и цена
+    // действия — считает та же `OperateSceneObject`, которой пользуются кнопки
+    // пропса. Второго пути импровизации здесь не заводится: это маршрут, а не
+    // ещё один движок.
+    const scenePropIntent = scenePropIntentFor(reading.effect)
+    if (scenePropIntent && reading.prop_id) {
+      try {
+        const commit = await run([
+          declaration,
+          {
+            command_type: 'OperateSceneObject',
+            actor_id: actorId,
+            prop_id: reading.prop_id,
+            intent: scenePropIntent,
+            approach: 'hand',
+            server_authoritative: true,
+          },
+        ])
+        verifyDuplicate(commit)
+        const hazardEvents = commit.events ?? []
+        const hazardState = commit.state ?? loaded.state
+        return {
+          kind: 'scene_interaction',
+          narration: sceneHazardNarration(hazardEvents, hazardState)
+            || sceneInteractionNarration(hazardEvents)
+            || 'Герой обращает обстановку против противника; результат подтверждён правилами.',
+          turn_consumed: hazardEvents.some((event) => (
+            event.event_type === 'SceneObjectOperated' && event.payload?.action_spent === true
+          )),
+          admin_commands: 0,
+          state: hazardState,
+          state_version: commit.state_version ?? loaded.state_version,
+          events: hazardEvents,
+          commands: commit.commands ?? [],
+          rolls: commit.rolls ?? [],
+          duplicate: Boolean(commit.duplicate),
+        }
+      } catch (error) {
+        if (!(error instanceof RulesValidationError)) throw error
+        // «Нечем поджечь», «встаньте вплотную», «уже горит» — это честный ответ
+        // игроку от правил, а не ошибка запроса. Ход не тратится, событий не
+        // остаётся: коммит атомарен и целиком откатился.
+        return {
+          kind: 'clarification',
+          narration: `${error.message}.`,
+          turn_consumed: false,
+          admin_commands: 0,
+          state: loaded.state,
+          state_version: loaded.state_version,
+          events: [],
+          commands: [],
+          rolls: [],
+          duplicate: false,
+        }
       }
     }
     const corpseSearch = resolveCorpseSearch(loaded.state, text, reading)

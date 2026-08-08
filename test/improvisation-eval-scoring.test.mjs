@@ -29,6 +29,7 @@ const valid = (overrides = {}) => ({
   effect: 'none',
   effect_target: '',
   hazard: '',
+  prop_id: '',
   target_id: '',
   item_id: '',
   proficiency: 'proficient',
@@ -52,9 +53,24 @@ test('набор покрывает все шесть категорий с ог
   assert.ok(counts.get('social_audacity') >= 5)
   assert.ok(counts.get('inventory_items') >= 4)
   assert.ok(counts.get('wild_but_possible') >= 5)
+  assert.ok(counts.get('scene_props') >= 4)
   assert.ok(counts.get('honest_impossible_without_means') >= 4)
   assert.ok(counts.get('physically_impossible') >= 3)
   assert.ok(IMPROVISATION_CASES.length >= 30, 'владелец просил около тридцати импровизаций')
+})
+
+test('кейсы обстановки опираются на настоящий список пропсов сцены', () => {
+  const propCases = IMPROVISATION_CASES.filter((testCase) => testCase.category === 'scene_props')
+  const known = new Set(propCases.flatMap((testCase) => (testCase.state.scene?.map?.props ?? []).map((prop) => String(prop.id))))
+  assert.ok(known.size >= 3, 'у сцены обязан быть реальный список предметов, иначе кейсы ничего не проверяют')
+  for (const testCase of propCases) {
+    assert.ok(Array.isArray(testCase.state.scene?.map?.props), `${testCase.id}: сцене нужна карта с предметами`)
+    for (const id of testCase.expect.prop?.ids ?? []) {
+      assert.ok(known.has(id), `${testCase.id}: ожидаемый ${id} обязан существовать в сцене`)
+    }
+  }
+  // Три кейса «выдумки» обязательны: именно они ловят предмет, которого нет.
+  assert.ok(propCases.filter((testCase) => testCase.expect.no_prop_effect).length >= 3)
 })
 
 test('структурная проверка ловит мусор до нормализатора', () => {
@@ -108,18 +124,26 @@ test('сводка считает доли и разрез по категори
   assert.deepEqual(score.misses.map((miss) => miss.id), ['b', 'c'])
 })
 
-test('промпт v3 держит контракт роли и не ослабляет запреты v2', async () => {
-  const v3 = await readFile(new URL('../prompts/action_adjudicator/v3.txt', import.meta.url), 'utf8')
-  assert.match(v3, /^PROMPT_ID: action_adjudicator\/v3/u)
-  assert.match(v3, /UNTRUSTED_DATA/u)
+test('промпт v4 держит контракт роли и не ослабляет запреты v2/v3', async () => {
+  const v4 = await readFile(new URL('../prompts/action_adjudicator/v4.txt', import.meta.url), 'utf8')
+  assert.match(v4, /^PROMPT_ID: action_adjudicator\/v4/u)
+  assert.match(v4, /UNTRUSTED_DATA/u)
   // Запреты v2 сохранены дословно.
-  assert.match(v3, /Ты не бросаешь кубики, не называешь числа и не описываешь исход/u)
-  assert.match(v3, /не выдумывай предметов, существ и особенностей обстановки/u)
-  assert.match(v3, /отвечай только JSON без markdown и пояснений/u)
+  assert.match(v4, /Ты не бросаешь кубики, не называешь числа и не описываешь исход/u)
+  assert.match(v4, /не выдумывай предметов, существ и особенностей обстановки/u)
+  assert.match(v4, /отвечай только JSON без markdown и пояснений/u)
   // Усиление 1.3: выполнимое не получает отказ, а отказ обязан назвать средство.
-  assert.match(v3, /выполнимая задумка никогда не получает отказ/u)
-  assert.match(v3, /required_means при impossible_without_means обязателен и никогда не пуст/u)
-  assert.match(v3, /социальная дерзость — всегда допустимая заявка/u)
-  // Перечисления не расширялись: список effect меняется вместе с механикой 3.2.
-  assert.match(v3, /- effect: none, prone, help_ally, distract, blind, restrain, hazard_damage/u)
+  assert.match(v4, /выполнимая задумка никогда не получает отказ/u)
+  assert.match(v4, /required_means при impossible_without_means обязателен и никогда не пуст/u)
+  assert.match(v4, /социальная дерзость — всегда допустимая заявка/u)
+  // Единственное расширение перечислений — мост к механике 3.2.
+  assert.match(v4, /- effect: none, prone, help_ally, distract, blind, restrain, hazard_damage, topple_prop, ignite_prop/u)
+  assert.match(v4, /prop_id обязателен и берётся ровно из scene_props/u)
+  assert.match(v4, /не подбирай похожий и не придумывай новый/u)
+
+  // Прочие перечисления не трогали: v3 остаётся на диске, и разница между
+  // файлами обязана сводиться к мосту, а не к переписанному контракту.
+  const v3 = await readFile(new URL('../prompts/action_adjudicator/v3.txt', import.meta.url), 'utf8')
+  const enums = (text) => text.split(/\r?\n/u).filter((line) => /^- (?:ability|skill|plausibility|risk|action_cost|hazard|proficiency|consequence_type):/u.test(line))
+  assert.deepEqual(enums(v4), enums(v3), 'кроме effect перечисления обязаны совпасть с v3')
 })

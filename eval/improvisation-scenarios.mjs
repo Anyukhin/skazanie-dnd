@@ -25,7 +25,13 @@ const SKILLS = Object.freeze([
   'performance', 'persuasion', 'religion', 'sleight_of_hand', 'stealth', 'survival',
 ])
 const ACTION_COSTS = Object.freeze(['action', 'bonus_action', 'free'])
-const EFFECTS = Object.freeze(['none', 'prone', 'help_ally', 'distract', 'blind', 'restrain', 'hazard_damage'])
+const EFFECTS = Object.freeze([
+  'none', 'prone', 'help_ally', 'distract', 'blind', 'restrain', 'hazard_damage',
+  // Контракт v4: мост к обстановке как оружию.
+  'topple_prop', 'ignite_prop',
+])
+/** Эффекты, которые обязаны назвать предмет сцены и ничего кроме него. */
+export const SCENE_PROP_EFFECTS = Object.freeze(['topple_prop', 'ignite_prop'])
 const PROFICIENCY_LEVELS = Object.freeze(['none', 'proficient', 'expertise'])
 const CONSEQUENCE_TYPES = Object.freeze(['time', 'noise', 'exposure', 'lost_opportunity'])
 
@@ -105,6 +111,43 @@ export const VAULT_STATE = Object.freeze({
     cells: [{ x: 9, y: 7, revealed: true }],
   },
   mechanics: { combat: { active: false } },
+  social: { npcs: [] },
+})
+
+/**
+ * Конюшня: обстановка, с которой движок умеет работать по-настоящему.
+ *
+ * Единственная сцена набора с картой: `scene.map.props` — это тот же список,
+ * который сервер передаёт арбитру в `scene_props`. Он нужен, чтобы проверить
+ * ровно контракт v4 — назван ли предмет идентификатором из списка и не
+ * придумывает ли модель предмет, которого на карте нет.
+ *
+ * Наборы глаголов у предметов разные намеренно: стеллаж (`bookshelf`) и валится,
+ * и горит, а сено (`haystack`) и ковёр (`rug`) только горят. Так проверяется не
+ * только «назвал ли предмет», но и «не приписал ли ему чужой глагол».
+ */
+export const STABLE_STATE = Object.freeze({
+  sessionCode: 'IMPROVEVAL',
+  players: [{ ...hero(), x: 3, y: 3 }],
+  enemies: [
+    { id: 'enemy-raider', name: 'Налётчик', role: 'разбойник', hp: 16, alive: true, x: 4, y: 3 },
+  ],
+  scene: {
+    title: 'Налёт на конюшню',
+    location: 'Конюшня «Пустого кубка»',
+    mood: 'сухое сено у стойл, стеллаж с упряжью вдоль стены, на полу истёртый ковёр, в углу горит жаровня',
+    objective: 'Выбить налётчика с конюшни',
+    cells: [{ x: 4, y: 3, revealed: true }],
+    map: {
+      props: [
+        { id: 'prop-haystack', assetId: 'haystack', x: 4.5, y: 4.5, footprint: [{ x: 4, y: 4 }] },
+        { id: 'prop-shelf', assetId: 'bookshelf', x: 3.5, y: 2.5, footprint: [{ x: 3, y: 2 }] },
+        { id: 'prop-rug', assetId: 'rug', x: 2.5, y: 3.5, footprint: [{ x: 2, y: 3 }] },
+        { id: 'prop-brazier', assetId: 'brazier', x: 2.5, y: 2.5, footprint: [{ x: 2, y: 2 }] },
+      ],
+    },
+  },
+  mechanics: { combat: { active: true, round: 1, action_economy: { 'hero-1': { action: true, bonus_action: true, movement_spent: 0 } } } },
   social: { npcs: [] },
 })
 
@@ -321,6 +364,61 @@ export const IMPROVISATION_CASES = Object.freeze([
     expect: { plausibility: range('impossible_without_means', 'impossible_without_means'), risk: range('none', 'deadly'), requires_means: true },
   },
 
+  // --- Обстановка как оружие (6) ---
+  // Контракт v4: назвать предмет из scene_props или честно не называть ничего.
+  // Механику после этого исполняет OperateSceneObject, а не импровизация.
+  {
+    id: 'prop-ignite-haystack',
+    category: 'scene_props',
+    state: STABLE_STATE,
+    text: 'Подношу факел к сену у стойл и поджигаю его',
+    expect: {
+      plausibility: range('trivial', 'strenuous'), risk: range('minor', 'deadly'), no_refusal: true,
+      prop: { effect: ['ignite_prop'], ids: ['prop-haystack'] },
+    },
+  },
+  {
+    id: 'prop-topple-shelf-on-raider',
+    category: 'scene_props',
+    state: STABLE_STATE,
+    text: 'Наваливаюсь на стеллаж с упряжью, чтобы он рухнул на налётчика',
+    expect: {
+      ability: ['str'], plausibility: range('plausible', 'strenuous'), risk: range('minor', 'deadly'), no_refusal: true,
+      prop: { effect: ['topple_prop'], ids: ['prop-shelf'] },
+    },
+  },
+  {
+    id: 'prop-ignite-rug',
+    category: 'scene_props',
+    state: STABLE_STATE,
+    text: 'Поджигаю факелом ковёр под ногами налётчика',
+    expect: {
+      plausibility: range('trivial', 'strenuous'), risk: range('minor', 'deadly'), no_refusal: true,
+      prop: { effect: ['ignite_prop'], ids: ['prop-rug'] },
+    },
+  },
+  {
+    id: 'prop-ignite-invented-barrel',
+    category: 'scene_props',
+    state: STABLE_STATE,
+    text: 'Поджигаю бочку с маслом, что стоит у стены',
+    expect: { plausibility: range('trivial', 'impossible_without_means'), risk: range('none', 'deadly'), no_prop_effect: true },
+  },
+  {
+    id: 'prop-topple-invented-statue',
+    category: 'scene_props',
+    state: STABLE_STATE,
+    text: 'Опрокидываю на налётчика каменную статую у входа',
+    expect: { plausibility: range('trivial', 'impossible_without_means'), risk: range('none', 'deadly'), no_prop_effect: true },
+  },
+  {
+    id: 'prop-topple-rug-without-verb',
+    category: 'scene_props',
+    state: STABLE_STATE,
+    text: 'Опрокидываю ковёр на налётчика',
+    expect: { plausibility: range('trivial', 'impossible_without_means'), risk: range('none', 'deadly'), no_prop_effect: true },
+  },
+
   // --- Физически невозможное в этой обстановке (3) ---
   {
     id: 'impossible-moon',
@@ -350,6 +448,7 @@ export const CATEGORY_LABELS = Object.freeze({
   social_audacity: 'социальные дерзости',
   inventory_items: 'предметы из инвентаря',
   wild_but_possible: 'безумные, но возможные',
+  scene_props: 'обстановка как оружие',
   honest_impossible_without_means: 'честный impossible_without_means',
   physically_impossible: 'физически невозможное',
 })
@@ -382,6 +481,10 @@ export function structuralIssues(raw) {
   enumField('proficiency', PROFICIENCY_LEVELS)
   enumField('consequence_type', CONSEQUENCE_TYPES)
   if (!Array.isArray(raw.required_means)) issues.push('required_means не массив')
+  if (raw.prop_id !== undefined && typeof raw.prop_id !== 'string') issues.push('prop_id не строка')
+  if (SCENE_PROP_EFFECTS.includes(String(raw.effect)) && !String(raw.prop_id ?? '').trim()) {
+    issues.push(`${raw.effect} без prop_id`)
+  }
   // Контракт v2/v3: числа и текст исхода — работа сервера, не модели.
   for (const field of ['difficulty', 'dc', 'damage', 'outcome', 'narration', 'result']) {
     if (raw[field] !== undefined) issues.push(`${field} не должно приходить от модели`)
@@ -419,6 +522,27 @@ export function expectationMisses(testCase, raw) {
   }
   if (expect.item && String(raw.item_id ?? '') && !expect.item.includes(String(raw.item_id))) {
     misses.push(`item_id=${raw.item_id}, ожидалось одно из ${expect.item.join('/')}`)
+  }
+  // Мост к обстановке: предмет обязан быть назван идентификатором из scene_props.
+  if (expect.prop) {
+    const effect = String(raw.effect ?? '')
+    const propId = String(raw.prop_id ?? '')
+    if (!expect.prop.effect.includes(effect)) {
+      misses.push(`effect=${effect || '—'}, ожидалось одно из ${expect.prop.effect.join('/')}`)
+    }
+    if (!expect.prop.ids.includes(propId)) {
+      misses.push(`prop_id=${propId || '—'}, ожидалось одно из ${expect.prop.ids.join('/')}`)
+    }
+  }
+  // Второй критерий владельца: выдуманного предмета обстановки не существует.
+  if (expect.no_prop_effect) {
+    const effect = String(raw.effect ?? '')
+    const propId = String(raw.prop_id ?? '')
+    if (SCENE_PROP_EFFECTS.includes(effect)) {
+      misses.push(`выдуманная интеракция обстановки: effect=${effect}, prop_id=${propId || '—'}`)
+    } else if (propId) {
+      misses.push(`prop_id=${propId} назван там, где подходящего предмета нет`)
+    }
   }
   return misses
 }

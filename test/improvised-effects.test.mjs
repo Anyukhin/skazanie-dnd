@@ -174,7 +174,9 @@ test('окрик и ослепление достают дальше касан�
 test('каталог эффектов закрыт и каждый эффект знает свою сторону и досягаемость', () => {
   for (const [id, effect] of Object.entries(IMPROVISED_EFFECTS)) {
     assert.equal(effect.id, id)
-    assert.ok(['none', 'ally', 'enemy'].includes(effect.target), `${id}: сторона обязана быть объявлена`)
+    // `scene_prop` — не участник, а предмет карты: такой эффект исполняет
+    // OperateSceneObject, но досягаемость он обязан объявить наравне со всеми.
+    assert.ok(['none', 'ally', 'enemy', 'scene_prop'].includes(effect.target), `${id}: сторона обязана быть объявлена`)
     assert.ok(effect.summary, `${id}: нужен текст для игрока`)
     // Эффект без объявленной досягаемости получил бы её нулём и не сработал бы
     // никогда. Новый эффект обязан назвать дистанцию, а не унаследовать молчание.
