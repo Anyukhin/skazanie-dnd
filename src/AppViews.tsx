@@ -470,6 +470,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
   // игры картинки не генерируются — это решение владельца, а не ограничение UI.
   const [assets, setAssets] = useState<AssetPreparationReport | null>(null)
   const [assetSelection, setAssetSelection] = useState<string[]>([])
+  const [locationSelection, setLocationSelection] = useState<string[]>([])
   const [assetBusy, setAssetBusy] = useState(false)
   const [assetError, setAssetError] = useState('')
   const [assetMessage, setAssetMessage] = useState('')
@@ -481,10 +482,11 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
     if (!response.ok) throw new Error(body.error || 'Не удалось получить список ассетов')
     setAssets(body)
     setAssetSelection([])
+    setLocationSelection([])
   }
 
-  const prepareAssets = async (npcIds: string[], regenerate: boolean) => {
-    if (!npcIds.length) { setAssetError('Не выбрано ни одной позиции'); return }
+  const prepareAssets = async (npcIds: string[], locationIds: string[], regenerate: boolean) => {
+    if (!npcIds.length && !locationIds.length) { setAssetError('Не выбрано ни одной позиции'); return }
     setAssetBusy(true)
     setAssetError('')
     setAssetMessage('')
@@ -492,7 +494,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
       const response = await fetch(`/api/campaigns/${state.sessionCode}/asset-preparation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ npc_ids: npcIds, regenerate }),
+        body: JSON.stringify({ npc_ids: npcIds, location_ids: locationIds, regenerate }),
       })
       const body = await response.json() as { prepared?: Array<{ id: string; status: string; error?: string }>; error?: string }
       if (!response.ok) throw new Error(body.error || 'Не удалось подготовить ассеты')
@@ -639,6 +641,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
           {assets && !assets.generator_configured && <p className="admin-error">Генератор изображений не настроен: подготовка недоступна.</p>}
           {assets && (
             <>
+              <span className="admin-asset-group">ПОРТРЕТЫ NPC</span>
               <ul className="admin-asset-list">
                 {assets.npc_portraits.map((npc) => (
                   <li key={npc.id}>
@@ -655,18 +658,42 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
                     {npc.has_portrait
                       ? <>
                         <img src={`/api/campaigns/${state.sessionCode}/npcs/${encodeURIComponent(npc.id)}/portrait`} alt="" width={40} height={40} />
-                        <button disabled={assetBusy} onClick={() => { void prepareAssets([npc.id], true) }}>Перегенерировать</button>
+                        <button disabled={assetBusy} onClick={() => { void prepareAssets([npc.id], [], true) }}>Перегенерировать</button>
                       </>
                       : <em>нет портрета</em>}
                   </li>
                 ))}
                 {!assets.npc_portraits.length && <li><em>Значимых NPC в кампании пока нет.</em></li>}
               </ul>
+              <span className="admin-asset-group">ИЛЛЮСТРАЦИИ ЛОКАЦИЙ</span>
+              <ul className="admin-asset-list">
+                {assets.location_illustrations.map((location) => (
+                  <li key={location.id}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={locationSelection.includes(location.id)}
+                        onChange={(event) => setLocationSelection((current) => (
+                          event.currentTarget.checked ? [...current, location.id] : current.filter((id) => id !== location.id)
+                        ))}
+                      />
+                      <span>{location.name}{location.kind ? ` · ${location.kind}` : ''}</span>
+                    </label>
+                    {location.has_illustration
+                      ? <>
+                        <img src={`/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(location.id)}/illustration`} alt="" width={64} height={36} />
+                        <button disabled={assetBusy} onClick={() => { void prepareAssets([], [location.id], true) }}>Перегенерировать</button>
+                      </>
+                      : <em>нет иллюстрации</em>}
+                  </li>
+                ))}
+                {!assets.location_illustrations.length && <li><em>Известных локаций в кампании пока нет.</em></li>}
+              </ul>
               <div className="admin-actions">
-                <button disabled={assetBusy || !assetSelection.length} onClick={() => { void prepareAssets(assetSelection, false) }}>
-                  Сгенерировать выбранные ({assetSelection.length})
+                <button disabled={assetBusy || !(assetSelection.length + locationSelection.length)} onClick={() => { void prepareAssets(assetSelection, locationSelection, false) }}>
+                  Сгенерировать выбранные ({assetSelection.length + locationSelection.length})
                 </button>
-                <small>Не больше {assets.maximum_batch} за один запуск.</small>
+                <small>Не больше {assets.maximum_batch} за один запуск — общим счётом на портреты и локации.</small>
               </div>
               {assets.items_without_illustration.length > 0 && (
                 <p className="admin-hint">Предметы без иллюстрации ({assets.items_without_illustration.length}): {assets.items_without_illustration.slice(0, 8).map((item) => item.name).join(', ')}. {assets.items_note}</p>

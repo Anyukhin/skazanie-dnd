@@ -126,6 +126,12 @@ import {
   npcPortraitInventory,
   planPreparation,
 } from './asset-preparation.mjs'
+import {
+  LocationIllustrationService,
+  locationIllustrationInventory,
+  visibleCampaignLocations,
+  visibleLocationProfile,
+} from './location-illustrations.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -168,6 +174,16 @@ const architectUsage = new ArchitectUsageStore({
   alertThreshold: Number(process.env.DND_ARCHITECT_ALERT_THRESHOLD || DEFAULT_ARCHITECT_ALERT_THRESHOLD),
 })
 const npcPortraitService = new NpcPortraitService({
+  storageDir,
+  imageModel,
+  apiKey,
+  baseUrl,
+  usageLedger,
+})
+// У иллюстраций локаций рантайм-генерации нет вовсе: сервис умеет только читать
+// кеш и готовить заранее. Флаг `DND_RUNTIME_IMAGE_GENERATION` его не касается —
+// выключать здесь нечего.
+const locationIllustrationService = new LocationIllustrationService({
   storageDir,
   imageModel,
   apiKey,
@@ -2195,24 +2211,34 @@ function serveNpcPortrait(req, res, portrait) {
     })
     return res.end()
   }
+  return serveGeneratedImage(req, res, portrait, 'X-NPC-Portrait')
+}
+
+/**
+ * Отдача уже лежащей в кеше кампании картинки: приватный кеш браузера, ETag и
+ * 304. Одна функция на портреты NPC и иллюстрации локаций — заголовки у них
+ * отличаются только префиксом и сроком, а условный запрос ошибиться в двух
+ * копиях ничего не стоит.
+ */
+function serveGeneratedImage(req, res, image, headerPrefix, cacheControl = 'private, max-age=3600') {
   const validators = {
-    ETag: portrait.etag,
-    'Cache-Control': 'private, max-age=3600',
+    ETag: image.etag,
+    'Cache-Control': cacheControl,
     Vary: 'Cookie',
-    'X-NPC-Portrait-Source': portrait.source,
-    'X-NPC-Portrait-Cache': portrait.cacheHit ? 'hit' : 'miss',
+    [`${headerPrefix}-Source`]: image.source,
+    [`${headerPrefix}-Cache`]: image.cacheHit ? 'hit' : 'miss',
   }
-  if (String(req.headers['if-none-match'] || '') === portrait.etag) {
+  if (String(req.headers['if-none-match'] || '') === image.etag) {
     res.writeHead(304, validators)
     return res.end()
   }
-  const stats = statSync(portrait.filePath)
+  const stats = statSync(image.filePath)
   res.writeHead(200, {
     ...validators,
-    'Content-Type': portrait.contentType,
+    'Content-Type': image.contentType,
     'Content-Length': stats.size,
   })
-  return createReadStream(portrait.filePath).pipe(res)
+  return createReadStream(image.filePath).pipe(res)
 }
 
 const server = createServer((req, res) => {
@@ -2329,6 +2355,41 @@ const server = createServer((req, res) => {
       return json(res, 502, { error: 'Не удалось подготовить портрет NPC', code: 'NPC_PORTRAIT_FAILED' })
     }
   }
+  // Иллюстрация локации — **только из кеша**. Модель отсюда не зовётся ни при
+  // каком флаге: картинки готовятся заранее, а посреди игры за них не платят.
+  // Нет в кеше — честный 404, интерфейс просто ничего не покажет.
+  const locationIllustrationMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/locations\/([^/]+)\/illustration$/)
+  if (locationIllustrationMatch && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = locationIllustrationMatch[1].toUpperCase()
+    let locationId = ''
+    try { locationId = decodeURIComponent(locationIllustrationMatch[2]) }
+    catch { return json(res, 400, { error: 'Некорректный location_id', code: 'INVALID_LOCATION_ID' }) }
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    try {
+      const authoritative = await latestCampaignState(campaignId, room.state)
+      const actorId = campaignHeroIds(user, campaignId).map(String)
+        .find((id) => authoritative.players?.some((player) => String(player.id) === id)) ?? ''
+      // Видимость решает проекция зрителя: локация, которую этот игрок ещё не
+      // должен знать, здесь не существует — и её отсутствие не отличить от
+      // отсутствия картинки.
+      const projected = viewerStateFor(authoritative, user, actorId)
+      const location = visibleLocationProfile(projected, locationId)
+      if (!location) return json(res, 404, { error: 'Локация не найдена', code: 'LOCATION_NOT_VISIBLE' })
+      const illustration = await locationIllustrationService.cached(campaignId, location.id)
+      if (!illustration) return json(res, 404, { error: 'Иллюстрация ещё не подготовлена', code: 'LOCATION_ILLUSTRATION_ABSENT' })
+      // `no-cache`, а не `max-age`: URL у иллюстрации один на всю жизнь
+      // локации, и после «Перегенерировать» браузер час показывал бы прежнюю
+      // картинку — ведущий платил бы за новую и не видел её. Версии в адресе
+      // взять негде: у игрока инвентаря подготовки нет. Ревалидация стоит
+      // условного запроса с ETag, который тут же отвечает 304.
+      return serveGeneratedImage(req, res, illustration, 'X-Location-Illustration', 'private, no-cache')
+    } catch {
+      return json(res, 502, { error: 'Не удалось отдать иллюстрацию локации', code: 'LOCATION_ILLUSTRATION_FAILED' })
+    }
+  }
   // Режим подготовки ассетов: список пробелов и запуск генерации заранее.
   // Работает независимо от рантайм-флага — тот выключает генерацию в игре, а не
   // единственный способ картинку получить.
@@ -2352,6 +2413,12 @@ const server = createServer((req, res) => {
         significance: (state, profile) => npcPortraitSignificance(state, profile).significant,
         profiles,
       })
+      const knownLocations = visibleCampaignLocations(projected)
+      const locations = await locationIllustrationInventory({
+        service: locationIllustrationService,
+        campaignId,
+        locations: knownLocations,
+      })
       if (req.method === 'GET') {
         return json(res, 200, {
           policy_id: ASSET_PREPARATION_POLICY_ID,
@@ -2359,25 +2426,36 @@ const server = createServer((req, res) => {
           generator_configured: Boolean(apiKey && imageModel),
           maximum_batch: MAX_PREPARATION_BATCH,
           npc_portraits: npcs,
+          location_illustrations: locations,
           items_without_illustration: itemsWithoutIllustration(authoritative),
           items_note: 'Иллюстрация предмета хранится на самой записи предмета и проставляется редактором инвентаря; серверного кеша для неё нет.',
         })
       }
       const body = await readBody(req).catch(() => ({}))
-      const plan = planPreparation(body.npc_ids, npcs, { regenerate: body.regenerate === true })
+      const plan = planPreparation(body, { npcs, locations }, { regenerate: body.regenerate === true })
       if (!plan.ok) return json(res, 400, { error: plan.message, code: plan.code })
       if (!apiKey || !imageModel) return json(res, 503, { error: 'Генератор изображений не настроен', code: 'IMAGE_GENERATOR_UNAVAILABLE' })
       const prepared = []
       // Последовательно и намеренно: параллельный запуск скрыл бы расход и
       // упёрся бы в лимит провайдера на середине пачки.
-      for (const npcId of plan.ids) {
+      for (const npcId of plan.npc_ids) {
         const profile = profiles.find((candidate) => String(candidate.id) === npcId)
         if (!profile) continue
         try {
           await npcPortraitService.prepare({ campaignId, profile })
-          prepared.push({ id: npcId, status: 'ready' })
+          prepared.push({ id: npcId, kind: 'npc_portrait', status: 'ready' })
         } catch (error) {
-          prepared.push({ id: npcId, status: 'failed', error: error instanceof Error ? error.message : 'Не удалось подготовить портрет' })
+          prepared.push({ id: npcId, kind: 'npc_portrait', status: 'failed', error: error instanceof Error ? error.message : 'Не удалось подготовить портрет' })
+        }
+      }
+      for (const locationId of plan.location_ids) {
+        const location = knownLocations.find((candidate) => candidate.id === locationId)
+        if (!location) continue
+        try {
+          await locationIllustrationService.prepare({ campaignId, location })
+          prepared.push({ id: locationId, kind: 'location_illustration', status: 'ready' })
+        } catch (error) {
+          prepared.push({ id: locationId, kind: 'location_illustration', status: 'failed', error: error instanceof Error ? error.message : 'Не удалось подготовить иллюстрацию' })
         }
       }
       return json(res, 200, { policy_id: ASSET_PREPARATION_POLICY_ID, prepared })

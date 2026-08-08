@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
-  .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
+const appTsxSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const appSource = [appTsxSource, ...await Promise.all(['../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+  .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))].join('\n')
 const boardSource = await readFile(new URL('../src/TacticalBoard.tsx', import.meta.url), 'utf8')
 const sessionSource = await readFile(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const mapClientSource = await readFile(new URL('../src/tactical-map-client.ts', import.meta.url), 'utf8')
@@ -55,6 +56,14 @@ test('клик выбирает интерактивный prop, а его кн�
   assert.match(appSource, /tabIndex=\{0\}/u)
   assert.doesNotMatch(appSource, /tabIndex=\{cellIsInteractive \? -1 : 0\}/u)
   assert.doesNotMatch(appSource, /style=\{\{\s*position: 'absolute',\s*inset: '12%'/u)
+})
+
+test('адрес иллюстрации локации строится и у игрока: id берётся из карты мира, когда сцена его не несёт', () => {
+  // `scene.location_id` есть только в проекции ведущего. Если фолбэк на
+  // `worldMap.currentLocationId` схлопнуть обратно до голого `scene.location_id`,
+  // картинку локации увидит один ведущий, а игроки — библиотечную подложку.
+  assert.match(appTsxSource, /const locationArtId = state\.scene\.location_id \?\? state\.worldMap\?\.currentLocationId \?\? ''/u)
+  assert.match(appTsxSource, /\/api\/campaigns\/\$\{state\.sessionCode\}\/locations\/\$\{encodeURIComponent\(locationArtId\)\}\/illustration/u)
 })
 
 test('свободное действие не подменяется готовыми подсказками рассказчика', () => {

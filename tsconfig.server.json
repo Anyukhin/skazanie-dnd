@@ -24,6 +24,8 @@
     "server/contracts.mjs",
     "server/dynamic-map.mjs",
     "server/graph-layout.mjs",
+    "server/image-generation.mjs",
+    "server/location-illustrations.mjs",
     "server/map-store.mjs",
     "server/npc-portraits.mjs",
     "server/prop-placement.mjs",

@@ -1074,8 +1074,10 @@ export type AssetPreparationReport = {
   policy_id: string
   runtime_image_generation: boolean
   generator_configured: boolean
+  /** Потолок общий на все виды картинок: платит стол один раз за всю пачку. */
   maximum_batch: number
   npc_portraits: Array<{ id: string; name: string; role: string; has_portrait: boolean }>
+  location_illustrations: Array<{ id: string; name: string; kind: string; source: string; has_illustration: boolean }>
   items_without_illustration: Array<{ id: string; name: string; owner_id: string }>
   items_note: string
 }

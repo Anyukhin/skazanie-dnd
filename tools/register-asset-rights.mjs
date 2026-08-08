@@ -26,6 +26,7 @@ import { join } from 'node:path'
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
 const REGISTRY = join(ROOT, 'data/asset-rights.json')
+const ASSETS = join(ROOT, 'public/assets')
 
 /**
  * Реестр печатается в том же виде, в каком лежит в репозитории: одна запись —
@@ -51,16 +52,22 @@ function serializeRegistry(registry) {
 }
 
 /**
- * @param {string[]} paths пути относительно `public/assets`
+ * Реестр и корень набора вынесены в параметры не ради гибкости — второго
+ * реестра у проекта нет. Ради проверяемости: инструмент, который умеет писать
+ * только в настоящий `data/asset-rights.json`, тестируется либо правкой
+ * репозитория, либо никак.
+ *
+ * @param {string[]} paths пути относительно корня набора
  * @param {string} [registryFile]
+ * @param {{assetsRoot?: string}} [options]
  * @returns {{added: string[], updated: string[], unchanged: string[]}}
  */
-export function registerAssets(paths, registryFile = REGISTRY) {
+export function registerAssets(paths, registryFile = REGISTRY, { assetsRoot = ASSETS } = {}) {
   const registry = JSON.parse(readFileSync(registryFile, 'utf8'))
   if (!Array.isArray(registry.assets)) throw new Error('В data/asset-rights.json нет списка assets')
   const report = { added: /** @type {string[]} */ ([]), updated: /** @type {string[]} */ ([]), unchanged: /** @type {string[]} */ ([]) }
   for (const path of paths) {
-    const file = join(ROOT, 'public/assets', path)
+    const file = join(assetsRoot, path)
     const bytes = readFileSync(file)
     const record = [path, createHash('sha256').update(bytes).digest('hex'), statSync(file).size]
     const at = registry.assets.findIndex((/** @type {unknown[]} */ tuple) => tuple?.[0] === path)
