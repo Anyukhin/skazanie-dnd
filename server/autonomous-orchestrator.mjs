@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { revealedPropPredicate } from './action-adjudicator.mjs'
 import { normalizeDirectorIntent, serverReputationDelta } from './autonomous-campaign.mjs'
 import {
   ENCOUNTER_COINS_POLICY_ID,
@@ -30,6 +31,7 @@ import { planNpcTurn } from './npc-turn-scheduler.mjs'
 import { planHeroTurn } from './party-tactics.mjs'
 import {
   RulesValidationError,
+  actorPosition,
   findActor,
   isEnemyActor,
   isLivingActor,
@@ -772,12 +774,41 @@ export class AutonomousCampaignOrchestrator {
     // глагол и способ; дальность, состояние, СЛ, бросок, награда и последствия
     // снова проверяет та же OperateSceneObject, которой пользуются кнопки.
     const sceneProps = Array.isArray(loaded.state.scene?.map?.props) ? loaded.state.scene.map.props : []
-    const sceneActor = findActor(loaded.state, actorId)
-    const sceneObjectCommand = nearestSceneObjectCommand({
-      props: sceneProps,
-      actorPosition: sceneActor ? { x: sceneActor.x, y: sceneActor.y } : null,
-      text,
-    })
+    // Позиция берётся тем же `actorPosition`, которым движок проверяет
+    // досягаемость: `mechanics.positions` с фолбэком на лист. Лист остаётся той
+    // клеткой, с которой герой начал бой, и «ближайший» по нему выбирал не тот
+    // сундук из двух — а иногда объявлял недосягаемым тот, что под рукой.
+    const sceneActorPosition = actorPosition(loaded.state, actorId)
+    // Раскрытие спрашивается по авторитетной карте — тем же предикатом, что
+    // вырезает нераскрытые пропсы из брифа арбитра. Иначе фраза «осмотреть
+    // сундук» работала бы оракулом по неразведанной части подземелья: игрок
+    // называл бы предметы, которых на его карте ещё нет, и узнавал, есть ли они.
+    const revealedProp = revealedPropPredicate(loaded.state)
+    const namedSceneObject = nearestSceneObjectCommand({ props: sceneProps, actorPosition: sceneActorPosition, text })
+    const sceneObjectCommand = namedSceneObject
+      ? nearestSceneObjectCommand({
+          props: sceneProps.filter((prop) => revealedProp(prop)),
+          actorPosition: sceneActorPosition,
+          text,
+        })
+      : null
+    // Предмет на карте есть, но отряд его ещё не видел. Это не выдумка игрока и
+    // не путь в импровизацию: честный ответ — «отсюда такого не видно», ход при
+    // герое, событий нет.
+    if (namedSceneObject && !sceneObjectCommand) {
+      return {
+        kind: 'clarification',
+        narration: 'Отсюда такого не видно. Подойдите ближе или осмотритесь: на вашей карте этого места ещё нет.',
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
     if (sceneObjectCommand) {
       try {
         const commit = await run([

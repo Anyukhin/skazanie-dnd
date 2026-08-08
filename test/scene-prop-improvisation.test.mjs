@@ -22,11 +22,13 @@ import { addProp, createTacticalMap, serializeTacticalMap, setCell } from '../se
 const CAMPAIGN_ID = 'PROP-IMPROV-1'
 
 /**
- * @param {{withFire?: boolean, distantBed?: boolean, hiddenCorner?: boolean}} options
+ * @param {{withFire?: boolean, distantBed?: boolean, hiddenCorner?: boolean, twinChests?: boolean}} options
  *   `distantBed` — настоящий пропс вне досягаемости: зонд ревью про «осмотреть
  *   кровать в дальнем углу». `hiddenCorner` прячет его клетку от игрока.
+ *   `twinChests` ставит два одинаковых сундука: один у клетки из листа героя,
+ *   другой у клетки, где герой стоит на самом деле.
  */
-function sceneState({ withFire = true, distantBed = false, hiddenCorner = false } = {}) {
+function sceneState({ withFire = true, distantBed = false, hiddenCorner = false, twinChests = false } = {}) {
   const map = createTacticalMap({
     width: 6, height: 4, locationId: 'stable', seed: 'prop-improv',
     fill: { passable: true, revealed: true, material: 'wood' },
@@ -35,6 +37,10 @@ function sceneState({ withFire = true, distantBed = false, hiddenCorner = false 
   addProp(map, { id: 'prop-haystack', assetId: 'haystack', x: 1.5, y: 0.5, footprint: [{ x: 1, y: 0 }] })
   addProp(map, { id: 'prop-shelf', assetId: 'bookshelf', x: 0.5, y: 1.5, footprint: [{ x: 0, y: 1 }] })
   if (distantBed) addProp(map, { id: 'prop-bed', assetId: 'bed', x: 4.5, y: 3.5, footprint: [{ x: 4, y: 3 }] })
+  if (twinChests) {
+    addProp(map, { id: 'prop-chest-sheet', assetId: 'chest', x: 0.5, y: 2.5, footprint: [{ x: 0, y: 2 }] })
+    addProp(map, { id: 'prop-chest-real', assetId: 'chest', x: 5.5, y: 2.5, footprint: [{ x: 5, y: 2 }] })
+  }
   if (withFire) addProp(map, { id: 'prop-fire', assetId: 'campfire', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
   return normalizeCampaignState({
     sessionCode: CAMPAIGN_ID,
@@ -233,6 +239,41 @@ test('явный глагол по дальнему предмету возвр�
   const after = await eventStore.load(CAMPAIGN_ID)
   assert.equal(after.state_version, before.state_version, 'отклонённый коммит не должен оставлять версию')
   assert.equal(after.state.mechanics.combat.action_economy.hero.action, true)
+})
+
+test('предмет в нераскрытой клетке фразой не находится', async (t) => {
+  // Разбор фразы про реквизит шёл по всем предметам карты — включая те, что
+  // проекция от игрока прячет. Отказ «встаньте вплотную» на такую фразу и был
+  // оракулом: игрок узнавал, что кровать в неразведанном углу существует.
+  const { autonomy, eventStore } = await fixture(t, { state: sceneState({ distantBed: true, hiddenCorner: true }) })
+  const before = await eventStore.load(CAMPAIGN_ID)
+  const result = await improvise(autonomy, 'prop-improv-hidden-bed', 'Осмотреть кровать в дальнем углу конюшни.')
+
+  assert.equal(result.kind, 'clarification')
+  assert.match(result.narration, /не видно/u)
+  assert.doesNotMatch(result.narration, /вплотную/u, 'о существовании предмета отвечать нельзя')
+  assert.deepEqual(result.events, [])
+  assert.equal(result.turn_consumed, false)
+
+  const after = await eventStore.load(CAMPAIGN_ID)
+  assert.equal(after.state_version, before.state_version, 'отклонённый разбор не должен оставлять версию')
+  assert.equal(after.state.mechanics.combat.action_economy.hero.action, true)
+})
+
+test('ближайший предмет выбирается от боевой позиции, а не от листа героя', async (t) => {
+  // Ходит герой по `mechanics.positions`; поле листа осталось той клеткой, с
+  // которой он начал бой. Мерить от неё значило выбрать сундук на другом конце
+  // конюшни и получить отказ по досягаемости на ровном месте.
+  const state = sceneState({ twinChests: true })
+  state.mechanics.positions.hero = { x: 5, y: 3 }
+  assert.equal(state.players[0].x, 0, 'лист персонажа намеренно оставлен устаревшим')
+
+  const { autonomy } = await fixture(t, { state })
+  const result = await improvise(autonomy, 'prop-improv-twin-chests', 'Осмотреть сундук у стены конюшни.')
+
+  assert.equal(result.kind, 'scene_interaction')
+  const operated = (result.events ?? []).find((event) => event.event_type === 'SceneObjectOperated')
+  assert.equal(operated?.payload?.prop_id, 'prop-chest-real')
 })
 
 test('каталог знает ровно два глагола обстановки и ничего сверх', () => {

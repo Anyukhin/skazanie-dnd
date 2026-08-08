@@ -98,8 +98,16 @@ function heroPosition(state, actorId) {
  * Раскрытие клетки по авторитетной карте — тот же вопрос, что решает
  * `viewer-projection.mjs`, вырезая нераскрытые пропсы из проекции игрока.
  * Карта здесь авторитетная, поэтому спрашивать про раскрытие обязан сам бриф.
+ *
+ * Экспортируется ради второго читателя того же состояния: разбор свободной
+ * фразы про реквизит (`autonomous-orchestrator.mjs`) обязан отвечать на вопрос
+ * о раскрытии ровно так же, иначе «осмотреть сундук» стало бы дешёвым оракулом
+ * по неразведанной части карты.
+ *
+ * @param {Record<string, any> | null | undefined} state
+ * @returns {(prop: Record<string, any> | null | undefined) => boolean}
  */
-function revealedPropPredicate(state) {
+export function revealedPropPredicate(state) {
   const serialized = state?.scene?.map
   if (!serialized || typeof serialized !== 'object') return () => false
   let map = null

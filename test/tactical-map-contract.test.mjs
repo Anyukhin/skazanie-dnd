@@ -13,6 +13,7 @@ import {
   addProp,
   addSpawnPoint,
   addZone,
+  attachLevelTransitions,
   cellAt,
   cellCount,
   createTacticalMap,
@@ -165,19 +166,45 @@ test('мусорный переход отвергается на входе, а
   rejected({ toLevel: -MAX_LEVEL_OFFSET - 1 }, 'TRANSITION_LEVEL_OUT_OF_RANGE')
   // Этаж карты — ноль, значит переход на ноль ведёт сам в себя.
   rejected({ toLevel: 0 }, 'TRANSITION_LEVEL_SAME')
-  // Стул интерактивным в реестре не объявлен — нажать на него нечем. Бочка
-  // здесь больше не годится: задача 3.2b открыла интеракции всей обстановке,
-  // которую можно опрокинуть или поджечь, и бочка среди них.
+  // Ни стул, ни выдуманный ассет крючком перехода быть не могут.
   rejected({ toLevel: 1 }, 'TRANSITION_ASSET_NOT_INTERACTIVE', 'chair')
   rejected({ toLevel: 1 }, 'TRANSITION_ASSET_NOT_INTERACTIVE', 'нет-такого-ассета')
 })
 
-test('крючками перехода служат ровно интерактивные ассеты реестра', () => {
+test('крючками перехода служат ровно ассеты, объявляющие переход', () => {
   for (const assetId of ['stairs_up', 'stairs_down', 'trapdoor']) {
     const map = levelMap()
     const prop = addProp(map, { id: assetId, assetId, x: 0.5, y: 0.5, footprint: [], transition: { toLevel: 1 } })
     assert.equal(prop.transition.toLevel, 1, `${assetId} обязан принимать переход`)
   }
+
+  // Задача 3.2b подняла флаг `interactive` трём десяткам предметов обстановки,
+  // и прежний гейт «ассет интерактивен» пускал межэтажный переход на ковёр,
+  // паутину или полотнище. Вопрос не в том, нажимается ли предмет, а в том,
+  // ведёт ли он на другой этаж.
+  for (const assetId of ['rug', 'cobweb', 'banner', 'bench', 'bar_counter', 'chest']) {
+    const map = levelMap()
+    assert.throws(
+      () => addProp(map, { id: 'p', assetId, x: 0.5, y: 0.5, footprint: [], transition: { toLevel: 1 } }),
+      (error) => error instanceof TacticalMapError && error.code === 'TRANSITION_ASSET_NOT_INTERACTIVE',
+      `${assetId}: межэтажный переход на этом предмете висеть не может`,
+    )
+    // Интерактивность предмета при этом не отменяется — отвергнут только переход.
+    assert.equal(addProp(map, { id: 'p', assetId, x: 0.5, y: 0.5, footprint: [] }).transition, null)
+  }
+
+  // Второй проход навешивания переходов обязан пользоваться тем же набором:
+  // иначе генератор объявил бы этаж, а `addProp` тот же предмет не принял.
+  const generated = levelMap()
+  addProp(generated, { id: 'rug', assetId: 'rug', x: 0.5, y: 0.5, footprint: [] })
+  addProp(generated, { id: 'up', assetId: 'stairs_up', x: 1.5, y: 0.5, footprint: [] })
+  addProp(generated, { id: 'hatch', assetId: 'trapdoor', x: 2.5, y: 0.5, footprint: [] })
+  assert.deepEqual(
+    attachLevelTransitions(generated, [{ offset: 1, label: 'Второй этаж' }, { offset: -1, label: 'Подпол' }])
+      .map((prop) => prop.id),
+    ['up', 'hatch'],
+  )
+  assert.equal(generated.props.find((prop) => prop.id === 'rug').transition, null)
 })
 
 test('этаж, изменённый после расстановки, ловится проверкой карты', () => {

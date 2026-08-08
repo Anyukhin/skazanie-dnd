@@ -138,6 +138,17 @@ export function sceneInteractionFallbackAssets() {
   return [...FALLBACK_ASSETS]
 }
 
+/**
+ * Виды, за которыми сервер действительно держит находку, тайник или знание.
+ *
+ * Тот же список, по которому выбираются точки интереса. Он же — единственный
+ * фильтр, которому позволено пускать предмет в подсказки игроку: «можно
+ * осмотреть скамью» подсказкой не является.
+ */
+export function sceneInteractionRewardKinds() {
+  return [...POINT_OF_INTEREST_KINDS]
+}
+
 export function sceneInteractionAssetIds() {
   return CATALOG.flatMap((entry) => [...entry.aliases])
 }
@@ -153,6 +164,27 @@ function hashNumber(value) {
 function assetAlias(assetId) {
   const value = clean(assetId, 120).toLowerCase()
   return ASSET_ALIAS_MATCHERS.find(({ pattern }) => pattern.test(value))?.alias ?? null
+}
+
+/**
+ * Русская подпись предмета по `assetId` — для любого текста, который увидит
+ * игрок. Идентификаторы карты латинские (`bar_counter`, `crypt_niche`), и
+ * показывать их нельзя ни при каких обстоятельствах: за столом это читается как
+ * сбой, а не как предмет обстановки.
+ *
+ * Источников два, оба уже существуют: справочник опасностей знает подпись
+ * точнее (`table_long` — «длинный стол», а не просто «стол»), словарь синонимов
+ * покрывает остальное. Первым словом синонима стоит именительный падеж —
+ * именно он и берётся.
+ *
+ * Пустая строка — законный ответ: подписи нет, значит, называть предмет игроку
+ * нечем, и звать его следует не под латинским именем, а никак.
+ */
+export function sceneObjectLabelFor(assetId) {
+  const hazard = clean(toppleDefinitionFor(assetId)?.mass, 60) || clean(igniteDefinitionFor(assetId)?.what, 60)
+  if (hazard) return hazard
+  const alias = assetAlias(assetId)
+  return alias ? clean(ASSET_ALIASES_RU[alias]?.[0], 60) : ''
 }
 
 export function sceneInteractionCatalogEntry(assetId) {

@@ -780,6 +780,18 @@ export function setDoor(map, door) {
 }
 
 /**
+ * Виды, которые несут межэтажный переход. Тот же набор, из которого
+ * `attachLevelTransitions` (ниже) выбирает крючок вверх и вниз, и тот же,
+ * который ставят `level-generator.mjs` и `building-generator.mjs`.
+ *
+ * Список закрыт намеренно. Прежняя проверка спрашивала флаг `interactive`
+ * реестра, а после открытия интеракций всей обстановке этот флаг носят три
+ * десятка предметов — и ручная карта могла повесить лестницу на этаж выше
+ * на ковёр, паутину или полотнище.
+ */
+const TRANSITION_ASSETS = Object.freeze(['stairs_up', 'stairs_down', 'trapdoor'])
+
+/**
  * Разбирает и проверяет переход на другой этаж. Отсутствие поля — обычный
  * предмет, поэтому `null` здесь не отказ, а норма.
  *
@@ -787,9 +799,9 @@ export function setDoor(map, door) {
  * лестница «в никуда» или на собственный этаж — это не замечание к карте, а
  * ошибка того, кто её строит, и чем раньше она видна, тем дешевле.
  *
- * Крючком может быть только ассет реестра с флагом `interactive`
- * (`stairs_up`, `stairs_down`, `trapdoor`): игрок нажимает на предмет, и
- * предмет без взаимодействия нажать нечем.
+ * Крючком может быть только ассет, который сам объявляет переход
+ * (`stairs_up`, `stairs_down`, `trapdoor`): вопрос не в том, нажимается ли
+ * предмет, а в том, ведёт ли он на другой этаж.
  *
  * @param {TacticalMap} map
  * @param {string} assetId
@@ -815,9 +827,11 @@ function normalizeTransition(map, assetId, value) {
   if (toLevel === map.levelIndex) {
     throw new TacticalMapError(`transition.toLevel=${toLevel} совпадает с этажом карты`, 'TRANSITION_LEVEL_SAME')
   }
-  if (assetById(assetId)?.interactive !== true) {
+  // Инвариант двойной: вид из закрытого списка И запись в реестре — чтобы
+  // список не пережил ассет, который из реестра убрали.
+  if (!TRANSITION_ASSETS.includes(assetId) || !assetById(assetId)) {
     throw new TacticalMapError(
-      `Переход нельзя повесить на ${assetId || '<без ассета>'}: нужен ассет реестра с флагом interactive`,
+      `Переход нельзя повесить на ${assetId || '<без ассета>'}: нужен ассет перехода (${TRANSITION_ASSETS.join(', ')})`,
       'TRANSITION_ASSET_NOT_INTERACTIVE',
     )
   }
