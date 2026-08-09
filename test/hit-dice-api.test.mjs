@@ -16,6 +16,9 @@ import { worldClockEventDrafts } from '../server/weather.mjs'
 const OFFSCREEN_STEP_EVENT_TYPES = new Set([
   'OffscreenWorldStepResolved', 'QuestClockAdvanced', 'QuestResolved',
   'WorldEntityUpserted', 'WorldFactRecorded', 'NarrativeSummaryRecorded',
+  // Увод заложника гасит доступность уже известного NPC — единственное, что ход
+  // мира правит помимо памяти мира.
+  'NpcSocialProfileUpserted',
 ])
 
 async function freePort() {
@@ -274,17 +277,19 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.deepEqual(sky, ['TimeOfDayChanged'], 'восемь часов сна переводят время суток ровно один раз')
   // Восемь часов — существенный скачок, и мир делает за них свой ход
   // (`server/offscreen-world.mjs`): часы заданий, память мира и врезка «Пока вас
-  // не было…». Список хода не выписывается сюда буквально — он зависит от того,
-  // что вообще есть в кампании, — но он обязан стоять **между** небом и
-  // восстановлением костей и содержать ровно один шаг мира. Полное равенство
-  // ниже остаётся тем же сторожем задвоенного события в контуре отдыха.
-  const restEventTypes = longRest.body.mechanics.map((event) => event.event_type)
-  const worldStep = restEventTypes.filter((type) => OFFSCREEN_STEP_EVENT_TYPES.has(type))
-  assert.deepEqual(
-    worldStep.filter((type) => type === 'OffscreenWorldStepResolved'),
-    ['OffscreenWorldStepResolved'],
-    'продолжительный отдых обязан двигать мир ровно один раз',
+  // не было…». Список выписан буквально и **не выводится из ответа**: счёт
+  // «сколько типов пришло, столько и ждём» подтверждал бы сам себя, и задвоенный
+  // `QuestClockAdvanced` — самый дорогой сбой слоя — прошёл бы мимо сторожа.
+  // У этой кампании открыто ровно одно задание с часами (цель главы), поэтому
+  // ход мира выпускает один тик часов, один шаг и одну сводку памяти. Ход стоит
+  // между небом и восстановлением костей; полное равенство ниже остаётся тем же
+  // сторожем задвоенного события в контуре отдыха.
+  const worldStep = ['QuestClockAdvanced', 'OffscreenWorldStepResolved', 'NarrativeSummaryRecorded']
+  assert.ok(
+    worldStep.every((type) => OFFSCREEN_STEP_EVENT_TYPES.has(type)),
+    'ход мира выпускает только события из своего закрытого набора',
   )
+  const restEventTypes = longRest.body.mechanics.map((event) => event.event_type)
   assert.deepEqual(
     restEventTypes,
     ['RestStarted', 'TimeAdvanced', ...sky, ...worldStep, 'HitPointDiceRestored', 'RestCompleted'],

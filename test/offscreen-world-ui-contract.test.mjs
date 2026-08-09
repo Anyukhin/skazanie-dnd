@@ -11,6 +11,7 @@ import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
+  OFFSCREEN_CARD_TITLE,
   OFFSCREEN_CARD_TITLE_PREFIX,
   OFFSCREEN_ENTRY_LABELS,
   OFFSCREEN_WORLD_EVENT_TYPE,
@@ -84,6 +85,10 @@ test('карточка летописи собирается на сервере
   const entry = offscreenChronicleEntry(events.find((event) => event.event_type === OFFSCREEN_WORLD_EVENT_TYPE))
   assert.ok(entry.id.startsWith('chronicle:'), 'идентификатор записи обязан быть детерминированным')
   assert.ok(entry.author.startsWith(OFFSCREEN_CARD_TITLE_PREFIX))
+  // Стол читает не `author`, а `card.title`: именно он стоит в `<strong>`
+  // врезки (`OffscreenChronicleEntry`, `src/AppViews.tsx`). Заголовок в
+  // карточке и в сводке памяти мира — одна и та же строка.
+  assert.equal(entry.offscreen.title, OFFSCREEN_CARD_TITLE)
   assert.equal(entry.offscreen.elapsed_minutes, 720)
   // День в карточке считается тем же счётом, что «День N» в подсказке погоды:
   // две разные цифры в одном интерфейсе расходились бы у игрока на глазах.

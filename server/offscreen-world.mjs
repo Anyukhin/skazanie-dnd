@@ -30,6 +30,15 @@ import { rumorSpreadTargets } from './world-deeds.mjs'
  *    (`OFFSCREEN_STEP_INTERVAL_MINUTES`). Без него два отдыха подряд в одни и те
  *    же сутки означали бы два хода мира, и «каждый отдых — катастрофа» стало бы
  *    правилом, а не преувеличением.
+ *
+ *    Оба порога считают **разрыв между ходами, а не длину скачка**: одна
+ *    команда времени даёт не больше одного хода мира, сколько бы суток в ней ни
+ *    уместилось. Месяц под замком двигает часы задания на одно деление, ровно
+ *    как ночёвка. Это решение, а не недосмотр: месячный скачок иначе выдал бы
+ *    столу тридцать врезок разом и заодно провалил бы все открытые задания в
+ *    одном коммите, ни разу не спросив стол. Развязку длинного простоя ставит
+ *    Режиссёр, у которого есть сцена; мир за спиной отряда только отмечает, что
+ *    время прошло.
  * 3. **Часы задания мир доводит до последнего деления, но не до развязки.**
  *    Шаг ставится, только пока `current + 1 < max`. Это не осторожность, а
  *    граница ответственности: заполненные часы — это исход, а исход принадлежит
@@ -46,6 +55,21 @@ import { rumorSpreadTargets } from './world-deeds.mjs'
  *    «Тема кампании» входит в текст именами: как зовут фракцию, где она стоит,
  *    кого она увела. Свободного текста модуль не сочиняет — иначе он перестал
  *    бы быть детерминированным.
+ *
+ *    Увод заложника — единственный ход, который выходит за память мира: он
+ *    пишет `NpcSocialProfileUpserted` с `available: false` (и гасит расписание,
+ *    иначе `npcProfileAtWorldTime` вернул бы уведённого к людям в ближайшую
+ *    смену). Без этого строка «больше не выходит к людям» осталась бы враньём:
+ *    `available` читают Режиссёр (`available_npcs`), разбор намерения,
+ *    адъюдикаторы и политика цикла — и уведённый NPC вышел бы к отряду в
+ *    следующей же сцене.
+ *
+ *    Набор из трёх ходов на длинной кампании вырождается: известные NPC
+ *    кончаются, и остаются два хода по кругу. Это осознанный потолок слоя —
+ *    расширять набор значило бы заводить встречи и стат-блоки за кадром, — но
+ *    дословных повторов в ленте ведущего быть не должно, поэтому у каждого
+ *    хода несколько формулировок (`FACTION_MOVE_SUMMARY`), и они идут по кругу
+ *    от точки, заданной сидом кампании.
  *
  * Детерминизм держится теми же приёмами, что у погоды и закона: никаких костей
  * (`DiceService` — общий поток случайности, и выпавшее из него зависит от числа
@@ -65,6 +89,13 @@ import { rumorSpreadTargets } from './world-deeds.mjs'
  * «Пока вас не было…» — монтаж для стола, и тайные нити ведущего в нём не
  * участвуют: в ход мира попадают только party-видимые квесты, фракции и NPC.
  * Так карточка не может назвать того, чего отряд знать не должен.
+ *
+ * Держат это ровно три фильтра — `visibleToParty` в `partyQuests`, в
+ * `antagonistFactionFor` и в `hostageCandidates`. Второй формы у ленты нет:
+ * `offscreen_world` уезжает игроку той же проекцией, что и ведущему
+ * (`server/viewer-projection.mjs`), и утечка была бы сквозной и молчаливой.
+ * Поэтому фильтры закреплены поимённо (`test/offscreen-world.test.mjs`,
+ * «тайные нити ведущего в ход мира не попадают»), а не подразумеваются.
  */
 
 export const OFFSCREEN_WORLD_SCHEMA_VERSION = 1
@@ -259,15 +290,23 @@ export function antagonistFactionFor(state = {}) {
  * Кого фракция может увести. Только известный отряду живой NPC, которого нет в
  * текущей сцене: заложник из-под носа героев — это сцена, а не сводка, и
  * забирать фигурку с доски за кадром нельзя.
+ *
+ * Торговцы исключены не из жалости к лавке, а потому, что увести их **нечем**:
+ * профиль торговца пересобирается из `state.merchants` при каждой нормализации
+ * (`ensureNpcSocialState`, `server/npc-social.mjs`), и выставленный здесь
+ * `available: false` был бы затёрт следующим же снимком. Карточка обещала бы
+ * столу недоступность, а лавка работала бы как ни в чём не бывало.
  */
 function hostageCandidates(state, takenIds) {
   const vitals = normalizeNpcWorldState(state?.npc_world).vitals
   const present = new Set(presentSceneNpcs(state).map((npc) => String(npc.id)))
+  const merchants = new Set((Array.isArray(state?.merchants) ? state.merchants : []).map((merchant) => String(merchant?.id ?? '')))
   return (Array.isArray(state?.social?.npcs) ? state.social.npcs : [])
     .filter((npc) => npc?.id && npc?.name)
     .filter((npc) => visibleToParty(npc.visibility))
     .filter((npc) => npc.available !== false && vitals[String(npc.id)]?.alive !== false)
     .filter((npc) => !present.has(String(npc.id)) && !takenIds.has(String(npc.id)))
+    .filter((npc) => !merchants.has(String(npc.id)))
     .sort((left, right) => String(left.id).localeCompare(String(right.id)))
 }
 
@@ -276,50 +315,132 @@ function placeNameFor(state) {
   return text(state?.scene?.location ?? state?.scene?.title, 180)
 }
 
+/**
+ * Формулировки ходов. Вариантов на вид несколько намеренно: набор ходов
+ * закрытый, и на длинной кампании, когда известные NPC кончились, фракция
+ * ходит двумя оставшимися по кругу. Расширять набор нельзя — это завело бы
+ * встречи и стат-блоки за кадром, — а дословный повтор в ленте ведущего
+ * читается как залипший движок.
+ */
 const FACTION_MOVE_SUMMARY = Object.freeze({
-  reinforced_posts: ({ faction, place }) => (place
-    ? `${faction} усилила посты у «${place}»: чужаков теперь считают на подходе.`
-    : `${faction} усилила посты: чужаков теперь считают на подходе.`),
-  moved_camp: ({ faction, place }) => (place
-    ? `${faction} снялась со стоянки близ «${place}» и встала там, где её не ждут.`
-    : `${faction} снялась со стоянки и встала там, где её не ждут.`),
-  took_hostage: ({ faction, npc }) => `${faction} увела заложника: ${npc} больше не выходит к людям.`,
+  reinforced_posts: Object.freeze([
+    ({ faction, place }) => (place
+      ? `${faction} усилила посты у «${place}»: чужаков теперь считают на подходе.`
+      : `${faction} усилила посты: чужаков теперь считают на подходе.`),
+    ({ faction, place }) => (place
+      ? `${faction} выставила дозоры вокруг «${place}»: незамеченным больше не пройти.`
+      : `${faction} выставила дозоры: незамеченным больше не пройти.`),
+    ({ faction, place }) => (place
+      ? `${faction} сменила караулы близ «${place}»: на тракте стало людно и недобро.`
+      : `${faction} сменила караулы: на трактах стало людно и недобро.`),
+  ]),
+  moved_camp: Object.freeze([
+    ({ faction, place }) => (place
+      ? `${faction} снялась со стоянки близ «${place}» и встала там, где её не ждут.`
+      : `${faction} снялась со стоянки и встала там, где её не ждут.`),
+    ({ faction, place }) => (place
+      ? `${faction} свернула лагерь под «${place}»: кострище остыло, а куда ушли — не сказали.`
+      : `${faction} свернула лагерь: кострище остыло, а куда ушли — не сказали.`),
+    ({ faction, place }) => (place
+      ? `${faction} бросила старое место у «${place}» и залегла в стороне от дорог.`
+      : `${faction} бросила старое место и залегла в стороне от дорог.`),
+  ]),
+  took_hostage: Object.freeze([
+    ({ faction, npc }) => `${faction} увела заложника: ${npc} больше не выходит к людям.`,
+    ({ faction, npc }) => `${faction} забрала с собой ${npc}: с тех пор к людям больше не выходит.`,
+  ]),
 })
+
+/**
+ * Формулировка выбирается **по кругу**, а не остатком от очередного sha256:
+ * остаток честно случаен, а значит два хода подряд с одинаковой строкой
+ * выпадают регулярно — именно они и читаются как залипший движок. Счётчик
+ * прошлых ходов того же вида берётся из ленты, то есть выводится из событий и
+ * переживает replay. Стартовая точка круга — от сида кампании, чтобы две
+ * кампании не открывались одной и той же фразой.
+ */
+function factionMoveSummary(moveKind, { seed, factionId, alreadyMoved, faction, place, npc }) {
+  const variants = FACTION_MOVE_SUMMARY[moveKind]
+  const start = Number.parseInt(digest(seed, factionId, moveKind).slice(8, 16), 16) % variants.length
+  return variants[(start + Math.max(0, integer(alreadyMoved, 0))) % variants.length]({ faction, place, npc })
+}
 
 /**
  * Ход фракции. Порядок в закрытом наборе обходится по кругу от детерминированно
  * выбранной точки: если заложника взять не из кого, следующий ход берётся из
  * того же набора, а не выдумывается.
+ *
+ * Возвращается пара: запись ленты и — для увода — сам профиль заложника.
+ * Профиль нужен вызывающему, чтобы выпустить `NpcSocialProfileUpserted`: без
+ * него строка «больше не выходит к людям» осталась бы текстом, а NPC —
+ * доступным всему серверу.
+ *
+ * @returns {{ entry: any, hostage: any } | null}
  */
-function planFactionMove(state, { faction, atMinutes, takenIds }) {
+function planFactionMove(state, { faction, atMinutes, takenIds, movesByKind }) {
   const seed = campaignSeedOf(state)
+  const factionId = text(faction.id, 120)
   const start = Number.parseInt(digest(seed, faction.id, String(atMinutes)).slice(0, 8), 16) % FACTION_MOVE_KINDS.length
   const place = placeNameFor(state)
   const factionName = text(faction.name, 180) || 'Противник'
   for (let offset = 0; offset < FACTION_MOVE_KINDS.length; offset += 1) {
     const moveKind = FACTION_MOVE_KINDS[(start + offset) % FACTION_MOVE_KINDS.length]
+    const alreadyMoved = movesByKind.get(moveKind) ?? 0
     if (moveKind !== 'took_hostage') {
       return {
-        kind: 'faction_move',
-        move_kind: moveKind,
-        faction_id: text(faction.id, 120),
-        faction_name: factionName,
-        summary: FACTION_MOVE_SUMMARY[moveKind]({ faction: factionName, place }),
+        entry: {
+          kind: 'faction_move',
+          move_kind: moveKind,
+          faction_id: factionId,
+          faction_name: factionName,
+          summary: factionMoveSummary(moveKind, { seed, factionId, alreadyMoved, faction: factionName, place }),
+        },
+        hostage: null,
       }
     }
     const hostage = hostageCandidates(state, takenIds)[0]
     if (!hostage) continue
+    const hostageName = text(hostage.name, 180)
     return {
-      kind: 'faction_move',
-      move_kind: moveKind,
-      faction_id: text(faction.id, 120),
-      faction_name: factionName,
-      npc_id: text(hostage.id, 120),
-      npc_name: text(hostage.name, 180),
-      summary: FACTION_MOVE_SUMMARY.took_hostage({ faction: factionName, npc: text(hostage.name, 180) }),
+      entry: {
+        kind: 'faction_move',
+        move_kind: moveKind,
+        faction_id: factionId,
+        faction_name: factionName,
+        npc_id: text(hostage.id, 120),
+        npc_name: hostageName,
+        summary: factionMoveSummary(moveKind, { seed, factionId, alreadyMoved, faction: factionName, npc: hostageName }),
+      },
+      hostage,
     }
   }
   return null
+}
+
+/**
+ * Уведённый NPC перестаёт быть доступным. Профиль пересобирается целиком,
+ * потому что редьюсер `NpcSocialProfileUpserted` заменяет запись, а не
+ * сливает её (`applyNpcSocialEvent`, `server/npc-social.mjs`); досье он
+ * восстанавливает из прежней записи сам, поэтому здесь оно не передаётся.
+ *
+ * Расписание гасится вместе с профилем: `npcProfileAtWorldTime` берёт
+ * `available` из активной записи расписания, и оставленное «утром в лавке»
+ * вернуло бы уведённого к людям в ближайшую смену.
+ */
+function hostageUnavailableDraft(hostage) {
+  return {
+    event_type: 'NpcSocialProfileUpserted',
+    visibility: 'party',
+    payload: {
+      npc: {
+        ...hostage,
+        available: false,
+        schedule: (Array.isArray(hostage.schedule) ? hostage.schedule : []).map((entry) => ({ ...entry, available: false })),
+        dossier: undefined,
+      },
+    },
+    target_ids: [text(hostage.id, 120)],
+  }
 }
 
 /** Кого фракции уже уводили: одного и того же заложника дважды не берут. */
@@ -328,6 +449,16 @@ function hostagesTaken(ledger) {
     .flatMap((step) => step.entries)
     .filter((entry) => entry.kind === 'faction_move' && entry.move_kind === 'took_hostage' && entry.npc_id)
     .map((entry) => entry.npc_id))
+}
+
+/** Сколько раз фракция уже ходила каждым видом: круг формулировок считает это. */
+function factionMovesByKind(ledger) {
+  const counts = new Map(FACTION_MOVE_KINDS.map((kind) => [kind, 0]))
+  for (const entry of ledger.steps.flatMap((step) => step.entries)) {
+    if (entry.kind !== 'faction_move' || !counts.has(entry.move_kind)) continue
+    counts.set(entry.move_kind, counts.get(entry.move_kind) + 1)
+  }
+  return counts
 }
 
 // ---------------------------------------------------------------------------
@@ -496,9 +627,20 @@ export function planOffscreenWorldStep(state = {}, { elapsedMinutes = 0 } = {}) 
 
   // 4. Ход фракции-антагониста.
   const faction = antagonistFactionFor(state)
-  const factionMove = faction ? planFactionMove(state, { faction, atMinutes, takenIds: hostagesTaken(ledger) }) : null
+  const factionPlan = faction
+    ? planFactionMove(state, {
+        faction,
+        atMinutes,
+        takenIds: hostagesTaken(ledger),
+        movesByKind: factionMovesByKind(ledger),
+      })
+    : null
+  const factionMove = factionPlan?.entry ?? null
   if (factionMove) {
     entries.push(factionMove)
+    // Увод — единственный ход, который меняет не только память мира: без этого
+    // драфта Режиссёр вывел бы уведённого к отряду в следующей же сцене.
+    if (factionPlan.hostage) drafts.push(hostageUnavailableDraft(factionPlan.hostage))
     const entityId = text(factionMove.faction_id, 120)
     drafts.push(worldFactDraft({
       id: `fact:offscreen-faction:${digest(entityId, factionMove.move_kind, String(atMinutes)).slice(0, 20)}`,
