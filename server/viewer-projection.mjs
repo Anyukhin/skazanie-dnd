@@ -99,9 +99,19 @@ export function publicWorldMapFor(worldMap = {}) {
   // ведущего) и ставит метку «вы здесь». За длинную кампанию известных мест
   // становится больше пятидесяти, точка стола молча уезжала за границу среза,
   // и игроки оставались с библиотечной подложкой вместо картинки.
-  const currentIndex = visible.findIndex((location) => text(location?.id, 100) === currentLocationId)
+  //
+  // Цена перестановки: пятидесятая по счёту известная точка уходит из карты
+  // игрока вместе с маршрутами, которые её касаются. Лимит есть лимит — кто-то
+  // обязан уступить место, и текущая локация важнее любой из прочих.
+  //
+  // Пустой `currentLocationId` — обычное состояние кампании: поле необязательное.
+  // Без проверки `findIndex` находил бы первую локацию с пустым id и поднимал
+  // мусорную запись наверх, выбрасывая честную.
+  const currentIndex = currentLocationId
+    ? visible.findIndex((location) => text(location?.id, 100) === currentLocationId)
+    : -1
   const locations = currentIndex >= 50
-    ? [visible[currentIndex], ...visible.slice(0, 49)]
+    ? [...visible.slice(0, 49), visible[currentIndex]]
     : visible.slice(0, 50)
   const locationIds = new Set(locations.map((location) => text(location?.id, 100)).filter(Boolean))
   const regionIds = new Set(locations.map((location) => text(location?.regionId, 100)).filter(Boolean))

@@ -153,6 +153,44 @@ test('опасные поля commerce proposal целиком откатыва�
   assert.deepEqual(planned.shopIntent, defaultSceneShopIntent(planned.sceneArgs))
 })
 
+// Отказ модели — рабочее состояние стола, а не исключительная ситуация: таймаут
+// провайдера, обрыв соединения, невалидный JSON. Ветка `catch` обязана вернуть ту
+// же сцену, что и запуск вовсе без модели, иначе партия остаётся без карты
+// посреди перехода. До этого сторожа ветку держал сетевой флейк API-тестов: они
+// поднимали сервер с выдуманным ключом, поход в настоящего провайдера падал, и
+// покрытие было побочным продуктом аварии — вместе с ней оно и ушло.
+test('падение модели уводит Архитектора в ту же детерминированную сцену, что и запуск без модели', async () => {
+  const request = {
+    action: '[РЕШЕНИЕ ГРУППЫ] Уходим в город',
+    state: archiveState,
+    decision: 'Уходим в город',
+    destinationHint: 'город',
+  }
+  const offline = await new SceneArchitectAgent().plan(request)
+  const failed = await new SceneArchitectAgent({
+    llmClient: { model: 'fake-cartographer', async completeJson() { throw new Error('LLM_TIMEOUT') } },
+  }).plan(request)
+
+  assert.equal(failed.trace.agent, 'scene_architect')
+  assert.equal(failed.trace.mode, 'deterministic-fallback')
+  assert.equal(failed.trace.reason, 'LLM_TIMEOUT')
+  assert.notEqual(failed.trace.reason, offline.trace.reason,
+    'трейс обязан отличать отказ модели от её отсутствия — это разные аварии')
+  assert.deepEqual(failed.sceneArgs, offline.sceneArgs)
+  assert.deepEqual(failed.shopIntent, defaultSceneShopIntent(failed.sceneArgs))
+  assert.equal(failed.sceneArgs.map.layout, 'streets')
+  assert.equal(createSceneTransition(failed.sceneArgs, archiveState).scene.cells.length, 20 * 20)
+
+  // Провайдер может оборвать соединение и не Error-ом. Причина тогда неизвестна,
+  // но сцена обязана остаться той же.
+  const rejected = await new SceneArchitectAgent({
+    llmClient: { completeJson: () => Promise.reject('провайдер оборвал соединение') },
+  }).plan(request)
+  assert.equal(rejected.trace.mode, 'deterministic-fallback')
+  assert.equal(rejected.trace.reason, 'unknown error')
+  assert.deepEqual(rejected.sceneArgs, offline.sceneArgs)
+})
+
 test('Scene Architect получает только public planning brief без клеток и private memory', async () => {
   let capturedRequest = null
   const llmClient = {

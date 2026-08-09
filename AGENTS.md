@@ -212,6 +212,7 @@ commit, механики он не касается.
 | Игрок видит только разрешённое | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |
+| Корпус тестов не ходит в интернет: каждый запуск `server/index.mjs` либо с пустым `ROUTERAI_API_KEY`, либо с локальным `ROUTERAI_BASE_URL` | `test/test-network-isolation.test.mjs` |
 
 Если новый инвариант нельзя привязать к тесту — он ещё не инвариант, а намерение.
 

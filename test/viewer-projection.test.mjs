@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer, publicWorldMapFor, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
 
 const user = { role: 'player', heroIds: ['hero'] }
 
@@ -138,6 +138,46 @@ test('у игрока остаётся непустой источник илл�
     'текущая точка обязана остаться в списке — по ней рисуется метка «вы здесь»')
   assert.ok(far.worldMap.locations.length <= 50, 'лимит публичной карты мира остаётся прежним')
   assert.doesNotMatch(JSON.stringify(far.worldMap), /secret-vault|hidden-region/u)
+})
+
+test('кампания без текущей локации получает обычный срез, а не поднятую пустую точку', () => {
+  // `worldMap.currentLocationId` — поле необязательное, и пустая строка тут
+  // норма. Локация с пустым id за границей среза — редкость, но проверка
+  // «текущая ушла за предел» обязана быть ложной в обоих случаях: иначе
+  // мусорная запись встаёт в карту игрока вместо честной пятидесятой.
+  const locations = Array.from({ length: 60 }, (_, index) => ({
+    id: index === 54 ? '' : `loc-${index}`, name: `Место ${index}`, x: index, y: index, known: true,
+  }))
+  const projected = publicWorldMapFor({ locations })
+
+  assert.equal(projected.currentLocationId, '')
+  assert.equal(projected.locations.length, 50)
+  assert.deepEqual(
+    projected.locations.map((location) => location.id),
+    Array.from({ length: 50 }, (_, index) => `loc-${index}`),
+  )
+})
+
+test('за пределом среза место уступает пятидесятая точка — вместе со своими маршрутами', () => {
+  // Цена перестановки, названная явно: лимит в полсотни точек никуда не делся,
+  // и текущая локация входит в срез не сверх него, а вместо последней.
+  const locations = Array.from({ length: 60 }, (_, index) => ({
+    id: `loc-${index}`, name: `Место ${index}`, x: index, y: index, known: true,
+  }))
+  const projected = publicWorldMapFor({
+    currentLocationId: 'loc-55',
+    locations,
+    routes: [
+      { id: 'route-near', from: 'loc-0', to: 'loc-1', kind: 'road', distance: 2 },
+      { id: 'route-dropped', from: 'loc-48', to: 'loc-49', kind: 'road', distance: 2 },
+    ],
+  })
+
+  assert.equal(projected.currentLocationId, 'loc-55')
+  assert.equal(projected.locations.length, 50)
+  assert.equal(projected.locations.at(-1).id, 'loc-55')
+  assert.equal(projected.locations.some((location) => location.id === 'loc-49'), false)
+  assert.deepEqual(projected.routes.map((route) => route.id), ['route-near'])
 })
 
 test('player inventory projection derives safe catalog capabilities without hydrating snapshots', () => {
