@@ -30,7 +30,10 @@ async function soloCampaign(t, { code, quests = [] }) {
     cwd: process.cwd(),
     env: {
       ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: 'deterministic-policy-test', ADMIN_SETUP_TOKEN: 'solo-setup-token', COOKIE_SECURE: 'false',
+      // Ключ пуст намеренно: сторож проверяет детерминированный уход соло-стола,
+      // а не модель. С непустым ключом сервер уходил в настоящий routerai.ru и
+      // ждал таймаут соединения на каждой модели каскада.
+      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'solo-setup-token', COOKIE_SECURE: 'false',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })

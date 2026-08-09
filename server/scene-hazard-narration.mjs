@@ -24,17 +24,20 @@ export function sceneHazardNarration(events, state) {
   const propId = String(changed.payload?.prop_id ?? '')
   const prop = (state?.scene?.map?.props ?? []).find((candidate) => String(candidate?.id) === propId)
   const what = narrationTextOr(prop?.assetId ? propLabel(prop.assetId) : '', 'предмет обстановки', 80)
+  const form = formsFor(what)
 
   if (changed.payload?.intent === 'topple') {
-    if (changed.payload?.success === false) return `${capitalize(what)} качнулся, но устоял: опрокинуть его не вышло.`
+    if (changed.payload?.success === false) {
+      return `${capitalize(what)} ${form.swayed}, но ${form.held}: опрокинуть ${form.accusative} не вышло.`
+    }
     const hurt = batch.filter((event) => event?.event_type === 'DamageApplied' && event?.payload?.reason === 'scene-object-topple')
     const prone = batch.some((event) => event?.event_type === 'ConditionAdded' && event?.payload?.condition === 'prone')
-    if (!hurt.length) return `${capitalize(what)} с грохотом валится на пол, но задеть никого не успевает.`
-    return `${capitalize(what)} обрушивается вниз и накрывает тех, кто стоял под ним${prone ? ', сбивая с ног' : ''}.`
+    if (!hurt.length) return `${capitalize(what)} с грохотом ${form.falls} на пол, но задеть никого не ${form.misses}.`
+    return `${capitalize(what)} ${form.collapses} вниз и ${form.covers} тех, кто стоял ${form.under}${prone ? ', сбивая с ног' : ''}.`
   }
 
   const fromProp = String(changed.payload?.fire_source ?? '') === 'prop'
-  return `${capitalize(what)} занимается огнём${fromProp ? ' от стоящего рядом пламени' : ''}. Пламя перекидывается на соседние клетки, и стоять в нём больше нельзя.`
+  return `${capitalize(what)} ${form.catches} огнём${fromProp ? ' от стоящего рядом пламени' : ''}. Пламя перекидывается на соседние клетки, и стоять в нём больше нельзя.`
 }
 
 const RU_LABELS = Object.freeze({
@@ -48,6 +51,49 @@ const RU_LABELS = Object.freeze({
   banner: 'полотнище', temple_banner: 'храмовое полотнище', rug: 'ковёр',
   bed: 'постель', bunk_bed: 'койка', prayer_bench: 'скамья', bench: 'скамья',
 })
+
+/**
+ * Род известных подписей. Русский глагол в прошедшем времени согласуется с
+ * подлежащим, а подписи в справочнике разного рода — без этой карты выходило
+ * «Колонна качнулся». `p` — множественное число: «дрова» ведут себя так же,
+ * как род, только формы у них свои.
+ */
+const LABEL_GENDER = Object.freeze({
+  'полка за стойкой': 'f', 'барная стойка': 'f', 'бочка': 'f', 'телега': 'f', 'статуя': 'f',
+  'колонна': 'f', 'поленница': 'f', 'корзина': 'f', 'метла': 'f', 'паутина': 'f',
+  'постель': 'f', 'койка': 'f', 'скамья': 'f',
+  'полотнище': 'n', 'храмовое полотнище': 'n',
+  'дрова': 'p',
+})
+
+/**
+ * Формы для каждого рода. Отдельной таблицей, а не правилом по окончанию:
+ * подписей три десятка, они заданы вручную, и угадывание здесь врало бы чаще,
+ * чем помогало.
+ */
+const GENDER_FORMS = Object.freeze({
+  m: Object.freeze({
+    swayed: 'качнулся', held: 'устоял', accusative: 'его', under: 'под ним',
+    falls: 'валится', misses: 'успевает', collapses: 'обрушивается', covers: 'накрывает', catches: 'занимается',
+  }),
+  f: Object.freeze({
+    swayed: 'качнулась', held: 'устояла', accusative: 'её', under: 'под ней',
+    falls: 'валится', misses: 'успевает', collapses: 'обрушивается', covers: 'накрывает', catches: 'занимается',
+  }),
+  n: Object.freeze({
+    swayed: 'качнулось', held: 'устояло', accusative: 'его', under: 'под ним',
+    falls: 'валится', misses: 'успевает', collapses: 'обрушивается', covers: 'накрывает', catches: 'занимается',
+  }),
+  p: Object.freeze({
+    swayed: 'качнулись', held: 'устояли', accusative: 'их', under: 'под ними',
+    falls: 'валятся', misses: 'успевают', collapses: 'обрушиваются', covers: 'накрывают', catches: 'занимаются',
+  }),
+})
+
+/** Подпись без рода в карте считается мужской: так же, как было до правки. */
+function formsFor(label) {
+  return GENDER_FORMS[LABEL_GENDER[String(label ?? '').toLocaleLowerCase('ru')] ?? 'm']
+}
 
 function propLabel(assetId) {
   const key = String(assetId ?? '').toLowerCase().split(/[\\/]/u).at(-1)?.replace(/\.[a-z0-9]+$/u, '') ?? ''

@@ -192,6 +192,30 @@ test('детерминированный текст остаётся связн�
   )
 })
 
+test('повторяющаяся рубрика не вытесняет из рекапа дела отряда', () => {
+  // Окно рекапа маленькое, а рубрики, которые пишутся сами, повторяются: врезка
+  // «Пока вас не было…» ложится в память после каждой ночёвки. Без свёртки по
+  // заголовку три ночёвки подряд заняли бы весь рекап, и вечер открылся бы
+  // чужими новостями вместо того, что делал стол.
+  const state = stateWithMemory()
+  state.worldMemory.summaries = [
+    ...state.worldMemory.summaries,
+    { id: 'summary:offscreen:1', kind: 'scene', title: 'Пока вас не было...', summary: 'Ватага усилила посты.', visibility: 'party' },
+    { id: 'summary:offscreen:2', kind: 'scene', title: 'Пока вас не было...', summary: 'Ватага снялась со стоянки.', visibility: 'party' },
+    { id: 'summary:offscreen:3', kind: 'scene', title: 'Пока вас не было...', summary: 'Ватага увела заложника.', visibility: 'party' },
+  ]
+  const sources = recapSources(state)
+  assert.deepEqual(
+    sources.summaries.map((entry) => entry.id),
+    ['summary:1', 'summary:2', 'summary:offscreen:3'],
+    'из рубрики остаётся последняя запись, и место в окне достаётся столу',
+  )
+  const text = deterministicRecapText(sources)
+  assert.match(text, /синюю нить/u)
+  assert.match(text, /разлитое масло/u)
+  assert.match(text, /увела заложника/u)
+})
+
 test('порог перерыва берётся из настройки, мусор откатывается к умолчанию', () => {
   assert.equal(new CampaignRecapService({ gapHours: 24 }).gapHours, 24)
   assert.equal(new CampaignRecapService({ gapHours: 0 }).gapHours, DEFAULT_RECAP_GAP_HOURS)

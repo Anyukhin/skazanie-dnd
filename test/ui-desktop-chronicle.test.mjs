@@ -17,6 +17,19 @@ test('desktop chronicle filters the existing speaker contract without losing pla
   assert.equal(chronicleMatchesFilter('system', 'all'), true)
 })
 
+/**
+ * Врезка «Пока вас не было…» приходит системной записью, но читается как
+ * рассказ. Без третьего признака она пряталась бы под фильтром «Рассказ» и
+ * всплывала под «Боем» — ровно наоборот тому, чем она является.
+ */
+test('системная врезка хода мира читается как рассказ, а не как боевая запись', () => {
+  assert.equal(chronicleMatchesFilter('system', 'story', true), true)
+  assert.equal(chronicleMatchesFilter('system', 'combat', true), false)
+  assert.equal(chronicleMatchesFilter('system', 'all', true), true)
+  // Обычная системная запись признака не получает и остаётся боевой.
+  assert.equal(chronicleMatchesFilter('system', 'combat', false), true)
+})
+
 test('desktop chronicle follows new events only while the reader remains at the bottom', () => {
   assert.equal(isChronicleNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 600 }), true)
   assert.equal(isChronicleNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 550 }), true)

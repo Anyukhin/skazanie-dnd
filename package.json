@@ -33,6 +33,7 @@
     "items:rights": "node tools/register-asset-rights.mjs --all-under items",
     "props:atlas": "node tools/build-prop-atlas.mjs",
     "props:rights": "node tools/register-asset-rights.mjs --all-under maps/props",
+    "enemies:portrait": "node tools/generate-enemy-portrait.mjs",
     "enemies:rights": "node tools/register-asset-rights.mjs --all-under enemies",
     "terrain:tiles": "node tools/build-terrain-tiles.mjs",
     "terrain:rights": "node tools/register-asset-rights.mjs --all-under maps/terrain"

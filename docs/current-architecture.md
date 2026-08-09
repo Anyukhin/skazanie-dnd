@@ -130,8 +130,10 @@ Frontend является UI/read-model adapter. Он не отправляет 
 
 1. Администратор выбирает в UI только сложность `easy|medium|hard` и одну из пяти
    тем `generic|goblinoids|undead|beasts|raiders`. Серверный endpoint и Director
-   дополнительно принимают `warband|vermin|ambush|crypt|cave|wilderness`; всего
-   allowlist содержит 11 тем. Endpoint также требует viewed state version и
+   дополнительно принимают `warband|law|vermin|ambush|crypt|cave|wilderness`; всего
+   allowlist содержит 12 тем. Тема `law` (дозорный, соглядатай, ветеран, рыцарь,
+   капитан стражи) существует ради встречи со стражей: бюджет XP тратится по всей
+   теме, и в `warband` роль деревенского стражника доставалась шипастому дьяволу. Endpoint также требует viewed state version и
    idempotency key. `CreateEncounter` через общий typed-command route запрещён.
 2. Сервер загружает авторитетные карту, живых героев, их уровни и позиции. Присланные stat blocks, HP, КД, атаки, XP, participants или координаты не входят в контракт и отклоняются.
 3. `EncounterAssembler` считает официальный SRD 5.2.1 XP Budget per Character для каждого уровня 1–20 и выбирает в пределах бюджета и quantity cap одну или несколько записей из 50 server-owned профилей. Intent агента/администратора ограничен только allowlisted difficulty/theme; числовые профили он не сочиняет.

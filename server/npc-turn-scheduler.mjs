@@ -17,6 +17,7 @@ import {
 } from './rules-engine.mjs'
 import { isPartySummon } from './combat-spells.mjs'
 import { commandsForMoraleDecision, isMoraleMoment } from './npc-controller.mjs'
+import { truceHolds } from './parley.mjs'
 
 const CELL_FEET = 5
 
@@ -904,6 +905,10 @@ export async function runNpcTurnScheduler({
       return { state, state_version: loaded.state_version, turns, events }
     }
     if (combat.reaction_window) return { state, state_version: loaded.state_version, turns, events }
+    // Перемирие замораживает очередь. Это не косметика: без остановки
+    // планировщик сходил бы за противника ровно в тот момент, когда обе стороны
+    // опустили оружие, и первое же перемирие рвал бы сам сервер.
+    if (truceHolds(state)) return { state, state_version: loaded.state_version, turns, events }
     const completed = new Set((combat.turn_completed ?? []).map(String))
     const currentId = String(
       (initiativeGroupIds(state).find((id) => !completed.has(String(id)))

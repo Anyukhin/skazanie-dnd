@@ -7,8 +7,11 @@ import {
   bindFreeActionReadingToState,
   normalizeFreeActionReading,
 } from './free-action-adjudication.mjs'
-import { ENVIRONMENT_HAZARD_IDS, IMPROVISED_EFFECT_IDS } from './improvised-effects.mjs'
+import { ENVIRONMENT_HAZARD_IDS, IMPROVISED_EFFECT_IDS, scenePropIntentFor } from './improvised-effects.mjs'
+import { hazardPropCells, igniteDefinitionFor, sceneHazardVerbsFor, toppleDefinitionFor } from './scene-hazards.mjs'
+import { sceneInteractionCatalogEntry } from './scene-interactions.mjs'
 import { buildDataOnlyContext } from './security.mjs'
+import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 
 /**
  * Арбитр свободного действия. Единственная роль модели здесь — **понять
@@ -21,7 +24,7 @@ import { buildDataOnlyContext } from './security.mjs'
  * ошибке, таймауте или отсутствии ключа предложение молча заменяется
  * детерминированным прочтением, и игра продолжается.
  */
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v3.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v4.txt', import.meta.url)), 'utf8')
 
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const list = (value) => Array.isArray(value) ? value : []
@@ -76,6 +79,91 @@ function participantsBrief(state) {
   ].filter((actor, index, all) => all.findIndex((candidate) => candidate.id === actor.id) === index).slice(0, 24)
 }
 
+/**
+ * Позиция героя так же, как её видит движок: авторитетная запись
+ * `mechanics.positions` первична, поле `players[].x/y` — фолбэк для сцен без
+ * боя, где расстановку никто не заводил. Иначе в бою бриф считал расстояния от
+ * начальной клетки листа, а не от той, где герой стоит на самом деле.
+ */
+function heroPosition(state, actorId) {
+  const id = String(actorId)
+  const stored = state?.mechanics?.positions?.[id]
+  const hero = (state?.players ?? []).find((actor) => String(actor?.id) === id) ?? null
+  const x = Math.floor(Number(stored?.x ?? hero?.x))
+  const y = Math.floor(Number(stored?.y ?? hero?.y))
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+}
+
+/**
+ * Раскрытие клетки по авторитетной карте — тот же вопрос, что решает
+ * `viewer-projection.mjs`, вырезая нераскрытые пропсы из проекции игрока.
+ * Карта здесь авторитетная, поэтому спрашивать про раскрытие обязан сам бриф.
+ *
+ * Экспортируется ради второго читателя того же состояния: разбор свободной
+ * фразы про реквизит (`autonomous-orchestrator.mjs`) обязан отвечать на вопрос
+ * о раскрытии ровно так же, иначе «осмотреть сундук» стало бы дешёвым оракулом
+ * по неразведанной части карты.
+ *
+ * @param {Record<string, any> | null | undefined} state
+ * @returns {(prop: Record<string, any> | null | undefined) => boolean}
+ */
+export function revealedPropPredicate(state) {
+  const serialized = state?.scene?.map
+  if (!serialized || typeof serialized !== 'object') return () => false
+  let map = null
+  try {
+    map = deserializeTacticalMap(serialized)
+  } catch {
+    // Карту, которую не разобрать, движок тоже не исполнит: пустой список
+    // честнее выдуманного.
+    return () => false
+  }
+  const revealedAt = (x, y) => cellAt(map, x, y)?.revealed === true
+  return (prop) => hazardPropCells(prop).some((cell) => revealedAt(cell.x, cell.y))
+}
+
+/**
+ * Предметы обстановки, с которыми движок действительно умеет работать.
+ *
+ * Без этого списка «поджигаю сено» превращалось в одноразовый импровизированный
+ * урон: модель не знала идентификатора пропса и назвать его не могла. Список
+ * строится из авторитетной карты сцены и справочника опасностей, поэтому в него
+ * не попадает ни один предмет, которому движок откажет по каталогу.
+ *
+ * Из авторитетной карты берётся и раскрытие: предмет в неразведанной части
+ * подземелья в брифе не появляется, иначе арбитр назвал бы игроку стеллаж за
+ * закрытой дверью — тот самый, который проекция карты от него прячет.
+ *
+ * Скрытого здесь нет: id, русское имя, состояние, доступные глаголы и клетка —
+ * ровно то, что игрок и так видит на доске.
+ */
+function scenePropsBrief(state, actorId) {
+  const at = heroPosition(state, actorId)
+  const revealed = revealedPropPredicate(state)
+  const props = Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : []
+  return props
+    .flatMap((prop) => {
+      const id = clean(prop?.id, 120)
+      const verbs = sceneHazardVerbsFor(prop?.assetId)
+      if (!id || !verbs.length || !sceneInteractionCatalogEntry(prop?.assetId)) return []
+      if (!revealed(prop)) return []
+      const name = toppleDefinitionFor(prop?.assetId)?.mass || igniteDefinitionFor(prop?.assetId)?.what || ''
+      const cell = hazardPropCells(prop)[0] ?? null
+      return [{
+        id,
+        name: clean(name, 80),
+        state: clean(state?.mechanics?.scene_interactions?.[id]?.state || prop?.state, 40) || 'idle',
+        verbs,
+        at: cell,
+        distance_feet: at && cell ? Math.max(Math.abs(cell.x - at.x), Math.abs(cell.y - at.y)) * 5 : null,
+      }]
+    })
+    // Ближнее — первым: досягаемость всё равно проверит движок, но выбирать
+    // модели проще из упорядоченного списка, а порядок обязан быть устойчивым.
+    .sort((left, right) => (left.distance_feet ?? 10_000) - (right.distance_feet ?? 10_000) || left.id.localeCompare(right.id))
+    .slice(0, 12)
+}
+
 function economyBrief(state, actorId) {
   const combat = state?.mechanics?.combat
   if (!combat?.active) return { in_combat: false }
@@ -100,6 +188,7 @@ export function adjudicationBrief(state, actorId, text) {
       objective: clean(state?.scene?.objective, 160),
     },
     participants: participantsBrief(state),
+    scene_props: scenePropsBrief(state, actorId),
     turn_economy: economyBrief(state, actorId),
     allowed: {
       effects: [...IMPROVISED_EFFECT_IDS],
@@ -139,6 +228,14 @@ export class ActionAdjudicator {
       if (reading.hazard && !ENVIRONMENT_HAZARD_IDS.includes(reading.hazard)) reading.hazard = ''
       const participantIds = new Set(participantsBrief(state).map((entry) => entry.id))
       if (reading.effect_target && !participantIds.has(reading.effect_target)) reading.effect_target = ''
+      // Предмет обстановки — только из переданного списка и только с тем
+      // глаголом, который у него действительно есть. Иначе «поджигаю бочку с
+      // порохом» превратилось бы в поджог придуманной бочки.
+      const propsById = new Map(scenePropsBrief(state, actorId).map((entry) => [entry.id, entry]))
+      const propIntent = scenePropIntentFor(reading.effect)
+      const namedProp = propsById.get(reading.prop_id) ?? null
+      if (!namedProp || !propIntent || !namedProp.verbs.includes(propIntent)) reading.prop_id = ''
+      if (propIntent && !reading.prop_id) reading.effect = 'none'
       return bindFreeActionReadingToState(state, actorId, text, reading)
     } catch {
       return bindFreeActionReadingToState(state, actorId, text, {

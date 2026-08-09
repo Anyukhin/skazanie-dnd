@@ -1,0 +1,1617 @@
+{
+  "schema_version": 1,
+  "label": "v4",
+  "date": "2026-08-08T22:00:08.225Z",
+  "prompt_id": "action_adjudicator/v4",
+  "primary_model": "openai/gpt-5.6-luna",
+  "reasoning_effort": "по умолчанию модели",
+  "live_calls": 57,
+  "tokens": {
+    "input": 44321,
+    "output": 3686
+  },
+  "provider_log": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": false,
+      "latency_ms": 10760,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "ok": false,
+      "latency_ms": 10728,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": false,
+      "latency_ms": 10730,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": false,
+      "latency_ms": 10710,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": false,
+      "latency_ms": 10731,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": false,
+      "latency_ms": 10726,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "ok": false,
+      "latency_ms": 10679,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": false,
+      "latency_ms": 10687,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": false,
+      "latency_ms": 10659,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": false,
+      "latency_ms": 10672,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": false,
+      "latency_ms": 10664,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "ok": false,
+      "latency_ms": 10674,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": true,
+      "latency_ms": 2277
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": false,
+      "latency_ms": 10674,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": true,
+      "latency_ms": 1087
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": false,
+      "latency_ms": 10672,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": true,
+      "latency_ms": 1620
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": false,
+      "latency_ms": 10617,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 4675
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": false,
+      "latency_ms": 10639,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "ok": true,
+      "latency_ms": 9912
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "ok": false,
+      "latency_ms": 10634,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": true,
+      "latency_ms": 2850
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": false,
+      "latency_ms": 10642,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": true,
+      "latency_ms": 1123
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": false,
+      "latency_ms": 10645,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": true,
+      "latency_ms": 2089
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": false,
+      "latency_ms": 10654,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": false,
+      "latency_ms": 5684,
+      "code": "LLM_JSON_INVALID"
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "ok": false,
+      "latency_ms": 10671,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": true,
+      "latency_ms": 2422
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": false,
+      "latency_ms": 10653,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": true,
+      "latency_ms": 1328
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": false,
+      "latency_ms": 10657,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": true,
+      "latency_ms": 1823
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": false,
+      "latency_ms": 10653,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": true,
+      "latency_ms": 5209
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": false,
+      "latency_ms": 10671,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "ok": false,
+      "latency_ms": 20003,
+      "code": "LLM_TIMEOUT"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": false,
+      "latency_ms": 10342,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": false,
+      "latency_ms": 10663,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": false,
+      "latency_ms": 10666,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": false,
+      "latency_ms": 10654,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "ok": false,
+      "latency_ms": 10660,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": false,
+      "latency_ms": 10653,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": true,
+      "latency_ms": 1406
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": false,
+      "latency_ms": 10636,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": true,
+      "latency_ms": 1706
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": false,
+      "latency_ms": 10657,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "ok": false,
+      "latency_ms": 4424,
+      "code": "LLM_JSON_INVALID"
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "ok": false,
+      "latency_ms": 10657,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": true,
+      "latency_ms": 2087
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "ok": false,
+      "latency_ms": 10642,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": true,
+      "latency_ms": 1161
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "ok": false,
+      "latency_ms": 10650,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": true,
+      "latency_ms": 1835
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "ok": false,
+      "latency_ms": 10646,
+      "code": "LLM_PROVIDER_UNAVAILABLE"
+    }
+  ],
+  "samples": [
+    {
+      "id": "acro-chandelier-ogre",
+      "category": "acrobatics_environment",
+      "text": "Прыгаю с люстры прямо на огра, чтобы сбить его с ног",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 53660
+    },
+    {
+      "id": "acro-table-vault",
+      "category": "acrobatics_environment",
+      "text": "Перекатываюсь через опрокинутый стол и оказываюсь за спиной у разбойника",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 53424
+    },
+    {
+      "id": "acro-oil-slip",
+      "category": "acrobatics_environment",
+      "text": "Толкаю огра так, чтобы он поскользнулся на разлитом масле",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Толкнуть огра, чтобы он поскользнулся на разлитом масле",
+        "approach_summary": "Ада толкает огра, используя свою силу, чтобы он потерял равновесие на масле",
+        "obstacle": "Огр крупный и устойчивый, масло под ногами",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "prone",
+        "effect_target": "enemy-ogre",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "enemy-ogre",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "time"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 23615
+    },
+    {
+      "id": "acro-swing-beam",
+      "category": "acrobatics_environment",
+      "text": "Цепляюсь за балку и раскачиваюсь, чтобы перелететь через весь зал",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10674
+    },
+    {
+      "id": "acro-chasm-jump",
+      "category": "acrobatics_environment",
+      "text": "Разбегаюсь и прыгаю через трещину в полу",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Перепрыгнуть через трещину в полу",
+        "approach_summary": "Ада разбегается и прыгает через трещину в полу.",
+        "obstacle": "Трещина в полу шириной в двадцать футов.",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "fall",
+        "prop_id": "",
+        "target_id": "hero-1",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "lost_opportunity"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [
+        "risk=minor, ожидалось serious..deadly"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 1087
+    },
+    {
+      "id": "acro-squeeze-portcullis",
+      "category": "acrobatics_environment",
+      "text": "Протискиваюсь между прутьями опускной решётки",
+      "scene": "Старая сокровищница",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10672
+    },
+    {
+      "id": "social-seduce-guard",
+      "category": "social_audacity",
+      "text": "Соблазняю стражника, чтобы он забыл про мою подорожную",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Соблазнить стражника, чтобы он забыл про мою подорожную",
+        "approach_summary": "Использовать социальное умение, чтобы сбить стражника с толку",
+        "obstacle": "Стражник может не поддаться соблазну или заметить мои намерения",
+        "ability": "cha",
+        "skill": "persuasion",
+        "plausibility": "plausible",
+        "risk": "none",
+        "required_means": [],
+        "action_cost": "free",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "npc-guard",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "lost_opportunity"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [
+        "risk=none, ожидалось minor..serious"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 1621
+    },
+    {
+      "id": "social-intimidate-captain",
+      "category": "social_audacity",
+      "text": "Запугиваю начальника караула, нависая над ним и обещая проблемы",
+      "scene": "Северные ворота",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10617
+    },
+    {
+      "id": "social-bluff-noble",
+      "category": "social_audacity",
+      "text": "Вру знатной госпоже, что я её новая охранница и должна идти рядом",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Убедить госпожу Вельту принять Аду за свою новую охранницу и позволить ей идти рядом",
+        "approach_summary": "Ада лжёт госпоже Вельте, представляясь её новой охранницей",
+        "obstacle": "У госпожи Вельты может не быть оснований доверять Аде или признавать её охранницей",
+        "ability": "cha",
+        "skill": "deception",
+        "plausibility": "plausible",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "free",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "npc-lady",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 4675
+    },
+    {
+      "id": "social-bribe-merchant",
+      "category": "social_audacity",
+      "text": "Предлагаю купцу долю, если он проведёт меня в своей повозке",
+      "scene": "Северные ворота",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10639
+    },
+    {
+      "id": "social-insult-ogre",
+      "category": "social_audacity",
+      "text": "Ору на огра самые обидные оскорбления, чтобы он бросил разбойника и пошёл на меня",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Заставить огра переключить внимание с разбойника на себя",
+        "approach_summary": "Кричит оскорбления, чтобы вывести огра из себя и спровоцировать атаку на себя",
+        "obstacle": "Огр может проигнорировать крики или оставаться сосредоточенным на текущей цели",
+        "ability": "cha",
+        "skill": "intimidation",
+        "plausibility": "plausible",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "distract",
+        "effect_target": "enemy-ogre",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "enemy-ogre",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 9912
+    },
+    {
+      "id": "social-read-guard",
+      "category": "social_audacity",
+      "text": "Присматриваюсь к стражнику: он врёт про приказ или правда боится?",
+      "scene": "Северные ворота",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10635
+    },
+    {
+      "id": "item-oil-fire",
+      "category": "inventory_items",
+      "text": "Бросаю флягу масла под ноги огру и поджигаю факелом",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Поджечь масло под ногами огра, чтобы нанести ему урон огнём",
+        "approach_summary": "Бросает флягу масла под ноги огру и поджигает факелом",
+        "obstacle": "Огр находится на расстоянии, нужно точно бросить флягу и успеть поджечь",
+        "ability": "dex",
+        "skill": "athletics",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "hazard_damage",
+        "effect_target": "enemy-ogre",
+        "hazard": "fire",
+        "prop_id": "",
+        "target_id": "enemy-ogre",
+        "item_id": "item-oil",
+        "proficiency": "proficient",
+        "consequence_type": "time"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 2850
+    },
+    {
+      "id": "item-rope-portcullis",
+      "category": "inventory_items",
+      "text": "Привязываю верёвку к решётке и тяну её вверх всем весом",
+      "scene": "Старая сокровищница",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10642
+    },
+    {
+      "id": "item-crowbar-door",
+      "category": "inventory_items",
+      "text": "Поддеваю ломом дверь хранилища и налегаю",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Открыть дверь хранилища",
+        "approach_summary": "Используя лом, чтобы поддеть и надавить на дверь хранилища",
+        "obstacle": "Дверь хранилища заперта и, вероятно, тяжелая",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "",
+        "item_id": "item-crowbar",
+        "proficiency": "proficient",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 1123
+    },
+    {
+      "id": "item-caltrops-retreat",
+      "category": "inventory_items",
+      "text": "Рассыпаю калтропы позади себя, отступая от огра",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10645
+    },
+    {
+      "id": "item-rope-chasm",
+      "category": "inventory_items",
+      "text": "Закидываю верёвку с петлёй на выступ по ту сторону трещины и перебираюсь по ней",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Перебраться по верёвке на выступ по другую сторону трещины",
+        "approach_summary": "Закидываю верёвку с петлёй на выступ и перебираюсь по ней",
+        "obstacle": "Трещина и необходимость метко закинуть верёвку",
+        "ability": "dex",
+        "skill": "athletics",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "required_means": [
+          "верёвка"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "",
+        "item_id": "item-rope",
+        "proficiency": "proficient",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 2089
+    },
+    {
+      "id": "wild-ride-ogre",
+      "category": "wild_but_possible",
+      "text": "Запрыгиваю огру на плечи и закрываю ему глаза руками",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10654
+    },
+    {
+      "id": "wild-tablecloth",
+      "category": "wild_but_possible",
+      "text": "Срываю скатерть и набрасываю её разбойнику на голову",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Набросить скатерть на голову разбойника, чтобы ослепить его",
+        "approach_summary": "Срывает скатерть со стола и набрасывает её на голову разбойника",
+        "obstacle": "Разбойник может уклониться или сбросить скатерть",
+        "ability": "dex",
+        "skill": "sleight_of_hand",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "blind",
+        "effect_target": "enemy-bandit",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "enemy-bandit",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "lost_opportunity"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 18777
+    },
+    {
+      "id": "wild-dagger-lamp",
+      "category": "wild_but_possible",
+      "text": "Метаю кинжал в крепление люстры, чтобы она рухнула на огра",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10654
+    },
+    {
+      "id": "wild-pretend-corpse",
+      "category": "wild_but_possible",
+      "text": "Падаю и притворяюсь мёртвой, чтобы огр потерял ко мне интерес",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Притвориться мертвой, чтобы огр потерял интерес",
+        "approach_summary": "Упасть на землю и притвориться мертвой",
+        "obstacle": "Огр может не поверить или не потерять интерес",
+        "ability": "dex",
+        "skill": "stealth",
+        "plausibility": "strenuous",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "prone",
+        "effect_target": "hero-1",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "enemy-ogre",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 1329
+    },
+    {
+      "id": "wild-sing-guards",
+      "category": "wild_but_possible",
+      "text": "Начинаю громко петь похабную песню, чтобы вся очередь смотрела на меня, а не на купца",
+      "scene": "Северные ворота",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10657
+    },
+    {
+      "id": "wild-dive-flooded",
+      "category": "wild_but_possible",
+      "text": "Набираю воздуха и ныряю в затопленный ход, надеясь доплыть до конца на одном дыхании",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Набираю воздуха и ныряю в затопленный ход, надеясь доплыть до конца на одном дыхании",
+        "approach_summary": "Ныряю в затопленный ход, набрав воздуха, чтобы доплыть до конца на одном дыхании",
+        "obstacle": "Длина затопленного хода и возможность задержать дыхание",
+        "ability": "con",
+        "skill": "athletics",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "exposure"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [
+        "risk=minor, ожидалось serious..deadly"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 1823
+    },
+    {
+      "id": "means-fly-chasm",
+      "category": "honest_impossible_without_means",
+      "text": "Взлетаю и перелетаю трещину по воздуху",
+      "scene": "Старая сокровищница",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10654
+    },
+    {
+      "id": "means-breathe-water",
+      "category": "honest_impossible_without_means",
+      "text": "Дышу под водой и спокойно исследую весь затопленный ход без спешки",
+      "scene": "Старая сокровищница",
+      "raw": {
+        "goal_summary": "Исследовать полностью затопленный ход и добраться до запертой двери хранилища",
+        "approach_summary": "Погрузиться в воду и дышать под водой, спокойно проплывая по затопленному ходу",
+        "obstacle": "У Ады нет способности или средства для дыхания под водой",
+        "ability": "con",
+        "skill": "survival",
+        "plausibility": "impossible_without_means",
+        "risk": "deadly",
+        "required_means": [
+          "водное дыхание"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "time"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 5210
+    },
+    {
+      "id": "means-teleport-vault",
+      "category": "honest_impossible_without_means",
+      "text": "Телепортируюсь сквозь решётку внутрь хранилища",
+      "scene": "Старая сокровищница",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10671
+    },
+    {
+      "id": "means-charm-spell",
+      "category": "honest_impossible_without_means",
+      "text": "Накладываю на стражника чары очарования, чтобы он пропустил меня",
+      "scene": "Северные ворота",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 62327
+    },
+    {
+      "id": "means-invisible",
+      "category": "honest_impossible_without_means",
+      "text": "Становлюсь невидимой и прохожу мимо караула",
+      "scene": "Северные ворота",
+      "raw": {
+        "goal_summary": "Стать невидимой и пройти мимо караула",
+        "approach_summary": "Использовать заклинание невидимости, чтобы незаметно миновать стражу.",
+        "obstacle": "Стражники на воротах, которые проверяют всех подорожных.",
+        "ability": "int",
+        "skill": "arcana",
+        "plausibility": "impossible_without_means",
+        "risk": "none",
+        "required_means": [
+          "заклинание невидимости"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "none"
+      },
+      "failure": null,
+      "structural_issues": [
+        "consequence_type=\"none\" вне перечисления"
+      ],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 22719
+    },
+    {
+      "id": "prop-ignite-haystack",
+      "category": "scene_props",
+      "text": "Подношу факел к сену у стойл и поджигаю его",
+      "scene": "Конюшня «Пустого кубка»",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10642
+    },
+    {
+      "id": "prop-topple-shelf-on-raider",
+      "category": "scene_props",
+      "text": "Наваливаюсь на стеллаж с упряжью, чтобы он рухнул на налётчика",
+      "scene": "Конюшня «Пустого кубка»",
+      "raw": {
+        "goal_summary": "Навалиться на стеллаж с упряжью, чтобы он рухнул на налётчика",
+        "approach_summary": "Использовать силу, чтобы опрокинуть стеллаж",
+        "obstacle": "Стеллаж стоит и не падает сам по себе",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "topple_prop",
+        "effect_target": "prop-shelf",
+        "hazard": "",
+        "prop_id": "prop-shelf",
+        "target_id": "enemy-raider",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 1706
+    },
+    {
+      "id": "prop-ignite-rug",
+      "category": "scene_props",
+      "text": "Поджигаю факелом ковёр под ногами налётчика",
+      "scene": "Конюшня «Пустого кубка»",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10657
+    },
+    {
+      "id": "prop-ignite-invented-barrel",
+      "category": "scene_props",
+      "text": "Поджигаю бочку с маслом, что стоит у стены",
+      "scene": "Конюшня «Пустого кубка»",
+      "raw": {
+        "goal_summary": "Поджечь бочку с маслом у стены",
+        "approach_summary": "Использует факел, чтобы поджечь бочку с маслом",
+        "obstacle": "Бочка с маслом находится у стены, рядом есть сено и другие горючие материалы",
+        "ability": "dex",
+        "skill": "sleight_of_hand",
+        "plausibility": "plausible",
+        "risk": "serious",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "ignite_prop",
+        "effect_target": "",
+        "hazard": "fire",
+        "prop_id": "prop-oil-barrel",
+        "target_id": "",
+        "item_id": "item-torch",
+        "proficiency": "proficient",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [
+        "выдуманная интеракция обстановки: effect=ignite_prop, prop_id=prop-oil-barrel"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 17167
+    },
+    {
+      "id": "prop-topple-invented-statue",
+      "category": "scene_props",
+      "text": "Опрокидываю на налётчика каменную статую у входа",
+      "scene": "Конюшня «Пустого кубка»",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10642
+    },
+    {
+      "id": "prop-topple-rug-without-verb",
+      "category": "scene_props",
+      "text": "Опрокидываю ковёр на налётчика",
+      "scene": "Конюшня «Пустого кубка»",
+      "raw": {
+        "goal_summary": "Опрокинуть ковёр на налётчика",
+        "approach_summary": "Ада пытается опрокинуть ковёр на налётчика, чтобы сбить его с ног.",
+        "obstacle": "Налётчик находится рядом с ковром, и Ада должна успеть опрокинуть его на него.",
+        "ability": "str",
+        "skill": "athletics",
+        "plausibility": "strenuous",
+        "risk": "minor",
+        "required_means": [],
+        "action_cost": "action",
+        "effect": "topple_prop",
+        "effect_target": "",
+        "hazard": "",
+        "prop_id": "prop-rug",
+        "target_id": "enemy-raider",
+        "item_id": "",
+        "proficiency": "proficient",
+        "consequence_type": "noise"
+      },
+      "failure": null,
+      "structural_issues": [],
+      "expectation_misses": [
+        "выдуманная интеракция обстановки: effect=topple_prop, prop_id=prop-rug"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 1161
+    },
+    {
+      "id": "impossible-moon",
+      "category": "physically_impossible",
+      "text": "Прыгаю с места на луну",
+      "scene": "Северные ворота",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10650
+    },
+    {
+      "id": "impossible-stop-time",
+      "category": "physically_impossible",
+      "text": "Останавливаю время во всём трактире",
+      "scene": "Трактир «Пустой кубок»",
+      "raw": {
+        "goal_summary": "Остановить время во всём трактире",
+        "approach_summary": "Использовать магию или способность, чтобы заморозить всё вокруг",
+        "obstacle": "Нет указания на наличие заклинания или способности у героя, которая это делает",
+        "ability": "wis",
+        "skill": "none",
+        "plausibility": "impossible_without_means",
+        "risk": "none",
+        "required_means": [
+          "заклинание остановки времени"
+        ],
+        "action_cost": "action",
+        "effect": "none",
+        "effect_target": "",
+        "hazard": "",
+        "prop_id": "",
+        "target_id": "",
+        "item_id": "",
+        "proficiency": "none",
+        "consequence_type": "lost_opportunity"
+      },
+      "failure": null,
+      "structural_issues": [
+        "skill=\"none\" вне перечисления"
+      ],
+      "expectation_misses": [],
+      "wrong_refusal": false,
+      "latency_ms": 1835
+    },
+    {
+      "id": "impossible-become-dragon",
+      "category": "physically_impossible",
+      "text": "Превращаюсь в дракона и разношу стену",
+      "scene": "Старая сокровищница",
+      "raw": null,
+      "failure": "LLM_FALLBACK_EXHAUSTED",
+      "structural_issues": [
+        "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+      ],
+      "expectation_misses": [
+        "нет разбора"
+      ],
+      "wrong_refusal": false,
+      "latency_ms": 10646
+    }
+  ],
+  "score": {
+    "total": 37,
+    "structural_valid_pct": 40.5,
+    "in_expectation_pct": 32.4,
+    "wrong_refusals": 0,
+    "categories": {
+      "acrobatics_environment": {
+        "label": "акробатика и среда",
+        "total": 6,
+        "structural_valid_pct": 33.3,
+        "in_expectation_pct": 16.7,
+        "wrong_refusals": 0
+      },
+      "social_audacity": {
+        "label": "социальные дерзости",
+        "total": 6,
+        "structural_valid_pct": 50,
+        "in_expectation_pct": 33.3,
+        "wrong_refusals": 0
+      },
+      "inventory_items": {
+        "label": "предметы из инвентаря",
+        "total": 5,
+        "structural_valid_pct": 60,
+        "in_expectation_pct": 60,
+        "wrong_refusals": 0
+      },
+      "wild_but_possible": {
+        "label": "безумные, но возможные",
+        "total": 6,
+        "structural_valid_pct": 50,
+        "in_expectation_pct": 33.3,
+        "wrong_refusals": 0
+      },
+      "honest_impossible_without_means": {
+        "label": "честный impossible_without_means",
+        "total": 5,
+        "structural_valid_pct": 20,
+        "in_expectation_pct": 40,
+        "wrong_refusals": 0
+      },
+      "scene_props": {
+        "label": "обстановка как оружие",
+        "total": 6,
+        "structural_valid_pct": 50,
+        "in_expectation_pct": 16.7,
+        "wrong_refusals": 0
+      },
+      "physically_impossible": {
+        "label": "физически невозможное",
+        "total": 3,
+        "structural_valid_pct": 0,
+        "in_expectation_pct": 33.3,
+        "wrong_refusals": 0
+      }
+    },
+    "misses": [
+      {
+        "id": "acro-chandelier-ogre",
+        "category": "acrobatics_environment",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "acro-table-vault",
+        "category": "acrobatics_environment",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "acro-swing-beam",
+        "category": "acrobatics_environment",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "acro-chasm-jump",
+        "category": "acrobatics_environment",
+        "plausibility": "strenuous",
+        "ability": "str",
+        "skill": "athletics",
+        "risk": "minor",
+        "structural_issues": [],
+        "expectation_misses": [
+          "risk=minor, ожидалось serious..deadly"
+        ]
+      },
+      {
+        "id": "acro-squeeze-portcullis",
+        "category": "acrobatics_environment",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "social-seduce-guard",
+        "category": "social_audacity",
+        "plausibility": "plausible",
+        "ability": "cha",
+        "skill": "persuasion",
+        "risk": "none",
+        "structural_issues": [],
+        "expectation_misses": [
+          "risk=none, ожидалось minor..serious"
+        ]
+      },
+      {
+        "id": "social-intimidate-captain",
+        "category": "social_audacity",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "social-bribe-merchant",
+        "category": "social_audacity",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "social-read-guard",
+        "category": "social_audacity",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "item-rope-portcullis",
+        "category": "inventory_items",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "item-caltrops-retreat",
+        "category": "inventory_items",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "wild-ride-ogre",
+        "category": "wild_but_possible",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "wild-dagger-lamp",
+        "category": "wild_but_possible",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "wild-sing-guards",
+        "category": "wild_but_possible",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "wild-dive-flooded",
+        "category": "wild_but_possible",
+        "plausibility": "plausible",
+        "ability": "con",
+        "skill": "athletics",
+        "risk": "minor",
+        "structural_issues": [],
+        "expectation_misses": [
+          "risk=minor, ожидалось serious..deadly"
+        ]
+      },
+      {
+        "id": "means-fly-chasm",
+        "category": "honest_impossible_without_means",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "means-teleport-vault",
+        "category": "honest_impossible_without_means",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "means-charm-spell",
+        "category": "honest_impossible_without_means",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "means-invisible",
+        "category": "honest_impossible_without_means",
+        "plausibility": "impossible_without_means",
+        "ability": "int",
+        "skill": "arcana",
+        "risk": "none",
+        "structural_issues": [
+          "consequence_type=\"none\" вне перечисления"
+        ],
+        "expectation_misses": []
+      },
+      {
+        "id": "prop-ignite-haystack",
+        "category": "scene_props",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "prop-ignite-rug",
+        "category": "scene_props",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "prop-ignite-invented-barrel",
+        "category": "scene_props",
+        "plausibility": "plausible",
+        "ability": "dex",
+        "skill": "sleight_of_hand",
+        "risk": "serious",
+        "structural_issues": [],
+        "expectation_misses": [
+          "выдуманная интеракция обстановки: effect=ignite_prop, prop_id=prop-oil-barrel"
+        ]
+      },
+      {
+        "id": "prop-topple-invented-statue",
+        "category": "scene_props",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "prop-topple-rug-without-verb",
+        "category": "scene_props",
+        "plausibility": "strenuous",
+        "ability": "str",
+        "skill": "athletics",
+        "risk": "minor",
+        "structural_issues": [],
+        "expectation_misses": [
+          "выдуманная интеракция обстановки: effect=topple_prop, prop_id=prop-rug"
+        ]
+      },
+      {
+        "id": "impossible-moon",
+        "category": "physically_impossible",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      },
+      {
+        "id": "impossible-stop-time",
+        "category": "physically_impossible",
+        "plausibility": "impossible_without_means",
+        "ability": "wis",
+        "skill": "none",
+        "risk": "none",
+        "structural_issues": [
+          "skill=\"none\" вне перечисления"
+        ],
+        "expectation_misses": []
+      },
+      {
+        "id": "impossible-become-dragon",
+        "category": "physically_impossible",
+        "plausibility": null,
+        "ability": null,
+        "skill": null,
+        "risk": null,
+        "structural_issues": [
+          "вызов не удался: LLM_FALLBACK_EXHAUSTED"
+        ],
+        "expectation_misses": [
+          "нет разбора"
+        ]
+      }
+    ]
+  }
+}

@@ -95,14 +95,36 @@ export class RecapCacheStore {
 const PARTY_VIEWER = Object.freeze({ playerId: '', isPartyMember: true })
 
 /**
+ * Одна рубрика — одна строка, и всегда свежая.
+ *
+ * Окно рекапа маленькое (`RECAP_SUMMARY_MINIMUM` сводок в тексте), а сводки с
+ * одним и тем же заголовком пишутся повторяющимися рубриками: врезка «Пока вас
+ * не было…» (`server/offscreen-world.mjs`) ложится в память после каждого хода
+ * мира, то есть после каждой ночёвки. Две-три ночёвки подряд вытеснили бы из
+ * «В прошлой серии» всё, что делал стол, и вечер открылся бы чужими новостями.
+ * Поэтому из каждой рубрики остаётся последняя запись — она и отвечает на
+ * вопрос «что там сейчас», — а места в окне хватает на дела отряда.
+ */
+function freshestByTitle(summaries) {
+  const byTitle = new Map()
+  for (const summary of summaries) {
+    const key = clean(summary?.title, 160) || `id:${clean(summary?.id, 120)}`
+    // Свежая запись обязана занять и место в порядке, а не только значение:
+    // `Map.set` по существующему ключу оставил бы её на позиции старой.
+    byTitle.delete(key)
+    byTitle.set(key, summary)
+  }
+  return [...byTitle.values()]
+}
+
+/**
  * Материал рекапа, приведённый к видимости отряда. Возвращает только то, что
  * стол имеет право прочитать вслух.
  */
 export function recapSources(state = {}, viewer = PARTY_VIEWER) {
   const memory = worldMemoryForViewer(state.worldMemory, viewer)
   const social = npcSocialForViewer(state.social, viewer)
-  const summaries = (memory.summaries ?? [])
-    .filter((summary) => clean(summary?.summary, 1_000))
+  const summaries = freshestByTitle((memory.summaries ?? []).filter((summary) => clean(summary?.summary, 1_000)))
     .slice(-RECAP_SUMMARY_LIMIT)
     .map((summary) => ({
       id: clean(summary.id, 120),

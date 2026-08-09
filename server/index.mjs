@@ -48,7 +48,7 @@ import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from '
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator } from './creative-director.mjs'
-import { combatNarration as tacticalNarration } from './combat-narration.mjs'
+import { tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
 import { NpcMoraleAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
 import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
@@ -66,6 +66,7 @@ import {
   PARTY_DECISION_CAPABILITY,
   PRESENCE_CAPABILITY,
   PUBLIC_DICE_CAPABILITY,
+  WORLD_RUMOR_CAPABILITY,
 } from './authoritative-executor.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
@@ -88,6 +89,9 @@ import {
   merchantViewFor,
   planMerchantEconomyClock,
 } from './merchant-economy.mjs'
+import { CAPTIVE_PLAYER_COMMAND_TYPES, planCaptiveNeglectCommands } from './captives.mjs'
+import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
+import { offscreenChronicleEntry } from './offscreen-world.mjs'
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
@@ -126,6 +130,12 @@ import {
   npcPortraitInventory,
   planPreparation,
 } from './asset-preparation.mjs'
+import {
+  LocationIllustrationService,
+  locationIllustrationInventory,
+  visibleCampaignLocations,
+  visibleLocationProfile,
+} from './location-illustrations.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -174,9 +184,21 @@ const npcPortraitService = new NpcPortraitService({
   baseUrl,
   usageLedger,
 })
+// У иллюстраций локаций рантайм-генерации нет вовсе: сервис умеет только читать
+// кеш и готовить заранее. Флаг `DND_RUNTIME_IMAGE_GENERATION` его не касается —
+// выключать здесь нечего.
+const locationIllustrationService = new LocationIllustrationService({
+  storageDir,
+  imageModel,
+  apiKey,
+  baseUrl,
+  usageLedger,
+})
 const campaignStreams = new Map()
 const campaignTyping = new Map()
-const campaignEconomyJobs = new Map()
+const campaignWorldClockJobs = new Map()
+/** Сколько коммитов часов молвы допустимо в одном заходе драйвера. */
+const WORLD_RUMOR_BURST_LIMIT = 4
 const TYPING_TTL_MS = 4_000
 let campaignStreamSequence = 0
 const campaignNarrationStream = new CampaignNarrationStream({
@@ -221,7 +243,7 @@ const eventStore = new FileEventStore({
  * пишутся прямо в журнал. Все девять путей этого модуля идут через общий
  * исполнитель, а разрешает их явная таблица и неподделываемая capability.
  */
-const authoritativeExecutor = new AuthoritativeExecutor({ eventStore })
+const authoritativeExecutor = new AuthoritativeExecutor({ eventStore, rulesEngine })
 
 /**
  * Шаг 7 плана `docs/agent-architecture-plan.md`, первое подключение.
@@ -361,12 +383,22 @@ const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
 // набор описывает безопасные команды на тактической доске, а не боевые — им
 // пользуются и `OperateDoor`, и взаимодействие с предметом. Запрет перехода в
 // бою — правило движка, а не политика маршрута.
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
+// Парлей стоит здесь же: переговоры посреди боя — такое же действие на доске,
+// как опознание врага, и после уговора бой обязан продолжиться тем же
+// `settleCombatContinuation`, который двигает очередь после любой боевой команды.
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'ProposeParley', 'SettleParley', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_REST_COMMANDS = new Set(['StartRest', 'SpendHitPointDie', 'CompleteRest'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
 const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem'])
 const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'])
+// Действия с пленным. Отдельный набор, а не часть боевого: они доступны только
+// вне боя и не трогают экономику хода.
+const PLAYER_CAPTIVE_COMMANDS = CAPTIVE_PLAYER_COMMAND_TYPES
+// Ответ страже. Отдельный набор по той же причине, что у пленных: встреча с
+// законом идёт вне боя и не трогает экономику хода. `ClearWantedLevel` сюда не
+// входит намеренно — амнистия владельческая, и её проверяет Rules Engine.
+const PLAYER_LAW_COMMANDS = new Set(['ResolveGuardEncounter'])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -902,6 +934,16 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
     // серверная таблица, и подставить их клиент не может.
     return { ...base, target_id: String(input?.target_id ?? input?.targetId ?? '').slice(0, 120) }
   }
+  if (type === 'ProposeParley') {
+    // Клиент выбирает только подход. Кто отвечает за сторону противника, какая
+    // СЛ и пойдёт ли она вообще на разговор — считает серверная мораль.
+    return { ...base, skill: input?.skill === 'intimidation' ? 'intimidation' : 'persuasion' }
+  }
+  if (type === 'SettleParley') {
+    // Клиент называет исход из карточки условий; список доступных исходов
+    // объявил сервер при заключении перемирия и сверяет заново.
+    return { ...base, outcome: String(input?.outcome ?? '').slice(0, 40) }
+  }
   if (type === 'OperateDoor') {
     // Из запроса берутся только дверь и намерение. Ни сложность замка, ни
     // состояние двери, ни исход броска клиент подсказать не может: их знает
@@ -1077,6 +1119,79 @@ function sanitizePlayerCharacterCommand(user, state, input) {
   return { ...command, request_fingerprint: characterBuildFingerprint(command) }
 }
 
+/**
+ * Из запроса берутся только пленный, герой и, для допроса, выбранный подход.
+ * Ни СЛ, ни исход броска, ни сумма награды клиент подсказать не может: их знает
+ * серверная политика плена.
+ */
+function sanitizePlayerCaptiveCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_CAPTIVE_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к действиям с пленным', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'captive_id', 'captiveId',
+    'skill',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда пленного содержит запрещённые поля: ${unexpected.join(', ')}`, 'CAPTIVE_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Распорядиться пленным можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  }
+  const captiveId = String(input?.captive_id ?? input?.captiveId ?? '').trim().slice(0, 120)
+  if (!captiveId) throw commandPolicyError('Не выбран пленный', 'CAPTIVE_NOT_FOUND')
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    captive_id: captiveId,
+    server_authoritative: true,
+    ...(type === 'InterrogateCaptive' ? { skill: String(input?.skill ?? 'intimidation') } : {}),
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
+ * Ответ страже. Из запроса берутся только герой, исход и подход к побегу:
+ * ступень розыска, размер виры и СЛ побега объявил сервер, и подсказать их
+ * клиент не может — их пересчитает Rules Engine по своей же карточке встречи.
+ */
+function sanitizePlayerLawCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_LAW_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к встрече со стражей', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'resolution', 'skill',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Ответ страже содержит запрещённые поля: ${unexpected.join(', ')}`, 'LAW_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Отвечать страже можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    resolution: String(input?.resolution ?? '').slice(0, 30),
+    skill: input?.skill === 'athletics' ? 'athletics' : 'stealth',
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
 function sanitizePlayerItemCommand(user, state, input) {
   const type = commandType(input)
   if (!PLAYER_ITEM_COMMANDS.has(type)) {
@@ -1242,9 +1357,30 @@ function journalStakes(stakes) {
   }
 }
 
-function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null }) {
+/**
+ * Карточка «Пока вас не было…» в летописи. Строки и заголовок приходят готовыми
+ * с сервера (`server/offscreen-world.mjs`) — здесь только границы длины: летопись
+ * переживает перезагрузку, и разросшаяся врезка осталась бы в ней навсегда.
+ */
+function journalOffscreen(offscreen) {
+  if (!offscreen || typeof offscreen !== 'object') return null
+  const lines = (Array.isArray(offscreen.lines) ? offscreen.lines : [])
+    .map((line) => String(line ?? '').slice(0, 400))
+    .filter(Boolean)
+    .slice(0, 3)
+  if (!lines.length) return null
+  return {
+    title: String(offscreen.title || 'Пока вас не было…').slice(0, 80),
+    day: Math.max(1, Number(offscreen.day) || 1),
+    elapsed_minutes: Math.max(0, Number(offscreen.elapsed_minutes) || 0),
+    lines,
+  }
+}
+
+function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null }) {
   const storedRoll = journalRoll(roll)
   const storedStakes = journalStakes(stakes)
+  const storedOffscreen = journalOffscreen(offscreen)
   return {
     id: String(id),
     speaker: speaker === 'system' ? 'system' : speaker === 'player' ? 'player' : 'narrator',
@@ -1254,6 +1390,7 @@ function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = 
     turnConsumed: Boolean(turnConsumed),
     ...(storedRoll ? { roll: storedRoll } : {}),
     ...(storedStakes ? { stakes: storedStakes } : {}),
+    ...(storedOffscreen ? { offscreen: storedOffscreen } : {}),
   }
 }
 
@@ -1554,29 +1691,116 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
   }
 }
 
-function nudgeMerchantEconomyClock(campaignId) {
+/**
+ * Есть ли часам молвы над чем работать. Дешёвая калитка перед `eventStore.load`:
+ * и факты поступков, и слухи, и реакция мира выводятся из летописи, поэтому
+ * пустая летопись означает пустой такт. Кампания, где отряд ещё ничего
+ * заметного не сделал, не платит за часы вовсе.
+ */
+function worldRumorClockHasWork(campaignId) {
+  const room = getRoom(campaignId)
+  if (!room?.state) return false
+  // Приостановленная и завершённая кампании доступны только для чтения: такт
+  // молвы там всё равно не закоммитится, а ошибка легла бы в лог на каждое
+  // сохранение комнаты.
+  try { assertCampaignPlayable(room.state) } catch { return false }
+  return Boolean((room.state.world_deeds?.deeds ?? []).length)
+}
+
+/**
+ * Есть ли часам голода над чем работать. Такая же дешёвая калитка, как у молвы:
+ * без удерживаемых пленных такт не платит за `eventStore.load` вовсе.
+ */
+function captiveClockHasWork(campaignId) {
+  const room = getRoom(campaignId)
+  if (!room?.state) return false
+  try { assertCampaignPlayable(room.state) } catch { return false }
+  return planCaptiveNeglectCommands(room.state).length > 0
+}
+
+/**
+ * Часы голода пленных. Живут рядом с часами молвы по той же причине: связанного
+ * надо кормить, а мировое время идёт само, и без серверного драйвера жестокость
+ * от голода не наступала бы никогда — клиент системный такт не дёргает.
+ *
+ * Такт сходится по построению: `NeglectCaptive` сдвигает `neglected_at_minutes`
+ * на текущую минуту, и следующая запись о том же пленном возможна только через
+ * сутки игрового времени.
+ */
+async function runCaptiveClock(campaignId) {
+  const loaded = await eventStore.load(campaignId)
+  const state = normalizeCampaignState(loaded.state)
+  const worldMinute = Math.max(0, Number(state.mechanics?.world_time?.elapsed_minutes ?? 0))
+  const commands = planCaptiveNeglectCommands(state, { worldMinute })
+  if (!commands.length) return { state, events: [] }
+  const committed = await authoritativeExecutor.executeCommands({
+    campaignId,
+    idempotencyKey: `captive-clock:${worldMinute}:${loaded.state_version}`,
+    commands,
+    context: { isDirector: true },
+  })
+  if (committed.replayed) return { state, events: [] }
+  return { state: normalizeCampaignState(committed.state ?? state), events: committed.events ?? [] }
+}
+
+/**
+ * Серверный драйвер мировых часов кампании: лавка и молва.
+ *
+ * Часы обязаны идти сами. Клиент системный такт не дёргает — это правило
+ * закреплено сторожами (`test/realtime-combat-transport.test.mjs`,
+ * `test/ui-hud-wave.test.mjs`), — поэтому единственный HTTP-роут `system-tick`
+ * не может быть их приводом: без драйвера часы молвы стояли, `RecordRumor` не
+ * писался никогда, а лента «что уже говорят» и репутация оставались пустыми.
+ *
+ * Драйвер один на оба часовых контура: у них общий вход (сохранение комнаты) и
+ * общее свойство — такт без работы ничего не пишет, поэтому цепочка
+ * «коммит → сохранение комнаты → новый такт» затухает за один-два оборота.
+ */
+function nudgeWorldClocks(campaignId) {
   const normalized = String(campaignId || '').toUpperCase()
   if (!normalized) return
-  const entry = campaignEconomyJobs.get(normalized) ?? { running: false, pending: false }
+  const entry = campaignWorldClockJobs.get(normalized) ?? { running: false, pending: false }
   entry.pending = true
-  campaignEconomyJobs.set(normalized, entry)
+  campaignWorldClockJobs.set(normalized, entry)
   if (entry.running) return
   entry.running = true
   queueMicrotask(() => {
     void (async () => {
+      let rumorCommits = 0
       while (entry.pending) {
         entry.pending = false
-        const result = await runMerchantEconomyClock(normalized)
-        if (result.events.length) persistAuthoritativeProjection(normalized, result.state, result.events)
+        const economy = await runMerchantEconomyClock(normalized)
+        if (economy.events.length) persistAuthoritativeProjection(normalized, economy.state, economy.events)
+        if (captiveClockHasWork(normalized)) {
+          const captives = await runCaptiveClock(normalized)
+          if (captives.events.length) persistAuthoritativeProjection(normalized, captives.state, captives.events)
+        }
+        if (!worldRumorClockHasWork(normalized)) continue
+        // Предохранитель от несходящегося такта. Свой коммит часов молвы сам
+        // сохраняет комнату, а сохранение комнаты будит драйвер снова: если
+        // такт по какой-то причине перестанет быть идемпотентным (например,
+        // сущность места вытеснится потолком памяти мира и факт поступка
+        // отвалится вместе с ней), петля станет горячей и съест ядро. Честного
+        // такта хватает двух оборотов — команды и реакция мира; всё сверх того
+        // означает, что состояние не сходится, и ждать следующего сохранения
+        // комнаты безопаснее, чем крутиться.
+        if (rumorCommits >= WORLD_RUMOR_BURST_LIMIT) continue
+        const rumor = await runWorldRumorClock(normalized)
+        if (!rumor.events.length) continue
+        rumorCommits += 1
+        if (rumorCommits >= WORLD_RUMOR_BURST_LIMIT) {
+          console.warn(`[Сказание] Часы молвы ${normalized} не сошлись за ${WORLD_RUMOR_BURST_LIMIT} оборотов: такт отложен до следующего сохранения комнаты`)
+        }
+        persistAuthoritativeProjection(normalized, rumor.state, rumor.events)
       }
     })()
       .catch((error) => {
-        console.error(`[Сказание] Не удалось продвинуть экономические часы ${normalized}:`, error?.message || error)
+        console.error(`[Сказание] Не удалось продвинуть мировые часы ${normalized}:`, error?.message || error)
       })
       .finally(() => {
         entry.running = false
-        if (entry.pending) nudgeMerchantEconomyClock(normalized)
-        else campaignEconomyJobs.delete(normalized)
+        if (entry.pending) nudgeWorldClocks(normalized)
+        else campaignWorldClockJobs.delete(normalized)
       })
   })
 }
@@ -1585,7 +1809,7 @@ onRoomSaved((campaignId, room) => {
   queueMicrotask(() => {
     broadcastCampaignRoom(campaignId, room)
     combatTurnCoordinator.nudge(campaignId)
-    nudgeMerchantEconomyClock(campaignId)
+    nudgeWorldClocks(campaignId)
   })
 })
 
@@ -2063,7 +2287,13 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // накопительный журнал и признак присутствия игрока. Всё остальное берётся
     // из движка целиком.
     const messages = [...(room.state.messages ?? [])]
-    for (const candidate of [journalMessage].flat()) {
+    // Карточка «Пока вас не было…» выводится из уже подтверждённых событий, а
+    // не прокидывается через каждый маршрут. Точка одна намеренно: ход мира
+    // рождается из мировых минут, а минуты двигают и привал, и сутки под
+    // замком, и Режиссёр — трижды повторённый вызов разошёлся бы на первом же
+    // новом маршруте. Идентификатор записи детерминирован (`chronicle:<шаг>`),
+    // поэтому повторная проекция того же события её не удваивает.
+    for (const candidate of [...(Array.isArray(events) ? events : []).map(offscreenChronicleEntry), journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
@@ -2272,6 +2502,52 @@ async function runMerchantEconomyClock(campaignId) {
   throw new Error('Не удалось синхронизировать экономические часы')
 }
 
+/**
+ * Часы молвы. Живут там же, где часы лавки, — в системном такте по мировому
+ * времени: слух не может родиться раньше, чем пройдут положенные игровые часы.
+ *
+ * Оба входа — общий исполнитель, нового авторитетного писателя здесь не
+ * появляется. Первый вход командный: факт поступка и сами слухи — обычные
+ * команды памяти мира, и они проходят Rules Engine. Второй — производный:
+ * реакция мира на дошедший слух считается уже по состоянию **с записанными
+ * слухами**, иначе платить пришлось бы за слух, который ещё не дошёл.
+ */
+async function runWorldRumorClock(campaignId) {
+  const events = []
+  const loaded = await eventStore.load(campaignId)
+  const state = normalizeCampaignState(loaded.state)
+  const worldMinute = Math.max(0, Number(state.mechanics?.world_time?.elapsed_minutes ?? 0))
+  const { commands } = planWorldRumorTick(state, { worldMinute })
+  let committed = null
+  if (commands.length) {
+    committed = await authoritativeExecutor.executeCommands({
+      campaignId,
+      idempotencyKey: `world-rumor-clock:${worldMinute}:${loaded.state_version}`,
+      commands,
+      context: { isDirector: true },
+    })
+    if (!committed.replayed) events.push(...(committed.events ?? []))
+  }
+  // Версия состояния в ключе обязательна, а не декоративна: `planWorldRumorTick`
+  // режет пачку такта (24 факта, 60 слухов), и остаток доезжает следующим
+  // тактом **той же мировой минуты**. С ключом от одной минуты второй такт
+  // получил бы `replayed` и репутация за остаток не начислилась бы до сдвига
+  // мирового времени. Командный вход считает так же.
+  const stateVersionForKey = Number(committed?.state_version ?? loaded.state_version)
+  const reputation = await authoritativeExecutor.commitDerived({
+    campaignId,
+    idempotencyKey: `world-rumor-reputation:${worldMinute}:${stateVersionForKey}`,
+    deriveEvents: (current) => planWorldRumorReputation(normalizeCampaignState(current)),
+    producerCapability: WORLD_RUMOR_CAPABILITY,
+  })
+  if (reputation && !reputation.replayed) events.push(...(reputation.events ?? []))
+  // Лишний `load` только ради возврата состояния не нужен: когда такт ничего не
+  // записал, вызывающий и не станет обновлять проекцию.
+  if (!events.length) return { state, events }
+  const final = reputation?.state ?? committed?.state ?? (await eventStore.load(campaignId)).state
+  return { state: normalizeCampaignState(final), events }
+}
+
 function serveStatic(req, res) {
   if (!existsSync(dist)) return json(res, 404, { error: 'Сначала выполните pnpm build' })
   let requested
@@ -2329,24 +2605,34 @@ function serveNpcPortrait(req, res, portrait) {
     })
     return res.end()
   }
+  return serveGeneratedImage(req, res, portrait, 'X-NPC-Portrait')
+}
+
+/**
+ * Отдача уже лежащей в кеше кампании картинки: приватный кеш браузера, ETag и
+ * 304. Одна функция на портреты NPC и иллюстрации локаций — заголовки у них
+ * отличаются только префиксом и сроком, а условный запрос ошибиться в двух
+ * копиях ничего не стоит.
+ */
+function serveGeneratedImage(req, res, image, headerPrefix, cacheControl = 'private, max-age=3600') {
   const validators = {
-    ETag: portrait.etag,
-    'Cache-Control': 'private, max-age=3600',
+    ETag: image.etag,
+    'Cache-Control': cacheControl,
     Vary: 'Cookie',
-    'X-NPC-Portrait-Source': portrait.source,
-    'X-NPC-Portrait-Cache': portrait.cacheHit ? 'hit' : 'miss',
+    [`${headerPrefix}-Source`]: image.source,
+    [`${headerPrefix}-Cache`]: image.cacheHit ? 'hit' : 'miss',
   }
-  if (String(req.headers['if-none-match'] || '') === portrait.etag) {
+  if (String(req.headers['if-none-match'] || '') === image.etag) {
     res.writeHead(304, validators)
     return res.end()
   }
-  const stats = statSync(portrait.filePath)
+  const stats = statSync(image.filePath)
   res.writeHead(200, {
     ...validators,
-    'Content-Type': portrait.contentType,
+    'Content-Type': image.contentType,
     'Content-Length': stats.size,
   })
-  return createReadStream(portrait.filePath).pipe(res)
+  return createReadStream(image.filePath).pipe(res)
 }
 
 const server = createServer((req, res) => {
@@ -2463,6 +2749,41 @@ const server = createServer((req, res) => {
       return json(res, 502, { error: 'Не удалось подготовить портрет NPC', code: 'NPC_PORTRAIT_FAILED' })
     }
   }
+  // Иллюстрация локации — **только из кеша**. Модель отсюда не зовётся ни при
+  // каком флаге: картинки готовятся заранее, а посреди игры за них не платят.
+  // Нет в кеше — честный 404, интерфейс просто ничего не покажет.
+  const locationIllustrationMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/locations\/([^/]+)\/illustration$/)
+  if (locationIllustrationMatch && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = locationIllustrationMatch[1].toUpperCase()
+    let locationId = ''
+    try { locationId = decodeURIComponent(locationIllustrationMatch[2]) }
+    catch { return json(res, 400, { error: 'Некорректный location_id', code: 'INVALID_LOCATION_ID' }) }
+    const room = getRoom(campaignId)
+    if (!room.state) return json(res, 404, { error: 'Кампания не найдена', code: 'CAMPAIGN_NOT_FOUND' })
+    if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    try {
+      const authoritative = await latestCampaignState(campaignId, room.state)
+      const actorId = campaignHeroIds(user, campaignId).map(String)
+        .find((id) => authoritative.players?.some((player) => String(player.id) === id)) ?? ''
+      // Видимость решает проекция зрителя: локация, которую этот игрок ещё не
+      // должен знать, здесь не существует — и её отсутствие не отличить от
+      // отсутствия картинки.
+      const projected = viewerStateFor(authoritative, user, actorId)
+      const location = visibleLocationProfile(projected, locationId)
+      if (!location) return json(res, 404, { error: 'Локация не найдена', code: 'LOCATION_NOT_VISIBLE' })
+      const illustration = await locationIllustrationService.cached(campaignId, location.id)
+      if (!illustration) return json(res, 404, { error: 'Иллюстрация ещё не подготовлена', code: 'LOCATION_ILLUSTRATION_ABSENT' })
+      // `no-cache`, а не `max-age`: URL у иллюстрации один на всю жизнь
+      // локации, и после «Перегенерировать» браузер час показывал бы прежнюю
+      // картинку — ведущий платил бы за новую и не видел её. Версии в адресе
+      // взять негде: у игрока инвентаря подготовки нет. Ревалидация стоит
+      // условного запроса с ETag, который тут же отвечает 304.
+      return serveGeneratedImage(req, res, illustration, 'X-Location-Illustration', 'private, no-cache')
+    } catch {
+      return json(res, 502, { error: 'Не удалось отдать иллюстрацию локации', code: 'LOCATION_ILLUSTRATION_FAILED' })
+    }
+  }
   // Режим подготовки ассетов: список пробелов и запуск генерации заранее.
   // Работает независимо от рантайм-флага — тот выключает генерацию в игре, а не
   // единственный способ картинку получить.
@@ -2486,6 +2807,12 @@ const server = createServer((req, res) => {
         significance: (state, profile) => npcPortraitSignificance(state, profile).significant,
         profiles,
       })
+      const knownLocations = visibleCampaignLocations(projected)
+      const locations = await locationIllustrationInventory({
+        service: locationIllustrationService,
+        campaignId,
+        locations: knownLocations,
+      })
       if (req.method === 'GET') {
         return json(res, 200, {
           policy_id: ASSET_PREPARATION_POLICY_ID,
@@ -2493,25 +2820,36 @@ const server = createServer((req, res) => {
           generator_configured: Boolean(apiKey && imageModel),
           maximum_batch: MAX_PREPARATION_BATCH,
           npc_portraits: npcs,
+          location_illustrations: locations,
           items_without_illustration: itemsWithoutIllustration(authoritative),
           items_note: 'Иллюстрация предмета хранится на самой записи предмета и проставляется редактором инвентаря; серверного кеша для неё нет.',
         })
       }
       const body = await readBody(req).catch(() => ({}))
-      const plan = planPreparation(body.npc_ids, npcs, { regenerate: body.regenerate === true })
+      const plan = planPreparation(body, { npcs, locations }, { regenerate: body.regenerate === true })
       if (!plan.ok) return json(res, 400, { error: plan.message, code: plan.code })
       if (!apiKey || !imageModel) return json(res, 503, { error: 'Генератор изображений не настроен', code: 'IMAGE_GENERATOR_UNAVAILABLE' })
       const prepared = []
       // Последовательно и намеренно: параллельный запуск скрыл бы расход и
       // упёрся бы в лимит провайдера на середине пачки.
-      for (const npcId of plan.ids) {
+      for (const npcId of plan.npc_ids) {
         const profile = profiles.find((candidate) => String(candidate.id) === npcId)
         if (!profile) continue
         try {
           await npcPortraitService.prepare({ campaignId, profile })
-          prepared.push({ id: npcId, status: 'ready' })
+          prepared.push({ id: npcId, kind: 'npc_portrait', status: 'ready' })
         } catch (error) {
-          prepared.push({ id: npcId, status: 'failed', error: error instanceof Error ? error.message : 'Не удалось подготовить портрет' })
+          prepared.push({ id: npcId, kind: 'npc_portrait', status: 'failed', error: error instanceof Error ? error.message : 'Не удалось подготовить портрет' })
+        }
+      }
+      for (const locationId of plan.location_ids) {
+        const location = knownLocations.find((candidate) => candidate.id === locationId)
+        if (!location) continue
+        try {
+          await locationIllustrationService.prepare({ campaignId, location })
+          prepared.push({ id: locationId, kind: 'location_illustration', status: 'ready' })
+        } catch (error) {
+          prepared.push({ id: locationId, kind: 'location_illustration', status: 'failed', error: error instanceof Error ? error.message : 'Не удалось подготовить иллюстрацию' })
         }
       }
       return json(res, 200, { policy_id: ASSET_PREPARATION_POLICY_ID, prepared })
@@ -3189,11 +3527,14 @@ const server = createServer((req, res) => {
       const authoritative = await autonomousCampaign.load(campaignId)
       // Шаг Директора менял цель и сцену молча: в ленте не появлялось ни строки,
       // и игрок видел новую задачу про персонажа, которого ему не представили.
-      const directorNarration = tacticalNarration(events, authoritative.state)
-        || deterministicNarration(
-          { visible_events: events, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
-          actorNameResolver(authoritative.state),
-        ).narration
+      // Строка про небо запасной текст не вытесняет, а дописывается к нему:
+      // переход, пересёкший границу времени суток, обязан остаться переходом.
+      // Брифу запасного рассказчика небо не показывают вовсе — `briefEvents`
+      // приезжают уже без него, иначе «наступил вечер» звучал бы дважды подряд.
+      const directorNarration = tacticalNarrationOr(events, authoritative.state, (briefEvents) => deterministicNarration(
+        { visible_events: briefEvents, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
+        actorNameResolver(authoritative.state),
+      ).narration)
       persistAuthoritativeProjection(campaignId, authoritative.state, events, directorNarration ? {
         id: `director-${createHash('sha256').update(String(key)).digest('hex').slice(0, 20)}`,
         text: directorNarration,
@@ -3410,7 +3751,7 @@ const server = createServer((req, res) => {
         : []
       const mechanics = [...(result.mechanics ?? []), ...subsequentEvents]
         .filter((event, index, all) => all.findIndex((candidate) => String(candidate.event_id ?? `${candidate.state_version_after}:${candidate.event_type}`) === String(event.event_id ?? `${event.state_version_after}:${event.event_type}`)) === index)
-      const narration = tacticalNarration(mechanics, latest.state) || result.narration
+      const narration = tacticalNarrationOr(mechanics, latest.state, result.narration)
       result = { ...result, state_version: latest.state_version, authoritative_state: latest.state, mechanics, npc_turns: scheduler.turns, narration }
       const narrationMessageId = narration ? combatMessageId(idempotencyKey) : null
       const projected = persistAuthoritativeProjection(campaignId, latest.state, mechanics, narrationMessageId ? { id: narrationMessageId, text: narration, turnConsumed: false } : null)
@@ -3560,6 +3901,8 @@ const server = createServer((req, res) => {
         if (PLAYER_MERCHANT_COMMANDS.has(type)) return sanitizeMerchantCommand(user, authoritativeBefore, command)
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
+        if (PLAYER_CAPTIVE_COMMANDS.has(type)) return sanitizePlayerCaptiveCommand(user, authoritativeBefore, command)
+        if (PLAYER_LAW_COMMANDS.has(type)) return sanitizePlayerLawCommand(user, authoritativeBefore, command)
         // Права администратора меняют авторизацию MakeAttack, но не делают
         // клиентские поля или request_fingerprint авторитетными. Ограничение
         // player→enemy остаётся только в player sanitizer.
@@ -3573,6 +3916,18 @@ const server = createServer((req, res) => {
       })
       const semanticRestCommand = commands.find((command) => PLAYER_REST_COMMANDS.has(commandType(command))) ?? null
       if (semanticRestCommand) commands = expandPlayerRestCommand(semanticRestCommand)
+      const lawCommands = commands.filter((command) => PLAYER_LAW_COMMANDS.has(commandType(command)))
+      if (lawCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Ответ страже должен быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      // Драка со стражей — тот же двухшаговый план, что и у сборки столкновения
+      // администратором: `ResolveGuardEncounter` ставит стражу на доску событием
+      // `EncounterCreated`, а инициативу поднимает штатный `StartCombat`.
+      // Расширение стоит **до** подсчёта `types`: иначе бой начался бы, а
+      // очередь после него никто бы не подвинул.
+      if (lawCommands.length && String(lawCommands[0].resolution) === 'fight') {
+        commands = [...commands, { command_type: 'StartCombat', actor_id: lawCommands[0].actor_id, server_authoritative: true }]
+      }
       const actor = String(commands[0]?.actor_id || room.state.activePlayerId || '')
       const commandActor = [...(room.state.players ?? []), ...(room.state.actors ?? [])].find((candidate) => String(candidate.id ?? candidate.actor_id) === actor)
       const controller = String(commandActor?.controllerId ?? commandActor?.controller_id ?? commandActor?.ownerId ?? commandActor?.owner_id ?? '')
@@ -3615,12 +3970,30 @@ const server = createServer((req, res) => {
       if (itemCommands.length && commands.length !== 1) {
         throw commandPolicyError('Действие с предметом должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
+      const captiveCommands = commands.filter((command) => PLAYER_CAPTIVE_COMMANDS.has(commandType(command)))
+      if (captiveCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Действие с пленным должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
       if (itemCommands.length) {
         await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])
       }
       if (restCommands.length) await assertRestIdempotency(commandMatch[1], idempotencyKey, restCommands[0])
       if (makeAttackCommands.length) await assertMakeAttackIdempotency(commandMatch[1], idempotencyKey, makeAttackCommands)
-      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]) })
+      // Двухфазный ручной бросок для команд доски, которые его поддерживают
+      // (сейчас — парлей). Первая фаза приходит без `roll` и получает карточку
+      // проверки, вторая приносит серверный `roll_id`; выдуманный клиентом
+      // результат сюда не проходит по построению — реестр знает только свои.
+      const manualRoll = body.manual_roll === true || body.manualRoll === true
+      let verifiedRoll = null
+      if (body.roll?.roll_id) {
+        verifiedRoll = rollRegistry.consume(body.roll.roll_id, { campaignId: commandMatch[1], actorId: actor, idempotencyKey })
+      } else if (body.roll) {
+        throw commandPolicyError('Принимается только серверный roll_id', 'UNVERIFIED_ROLL')
+      }
+      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]), manualRoll, verifiedRoll })
+      // Карточка проверки: мир не изменился, продолжать бой и проецировать
+      // нечего. Ответ уходит игроку как есть.
+      if (result.check) return json(res, 200, turnResultForViewer({ ...result, room_version: room.version }, user, actor))
       if (merchantCommands.length) assertMerchantResultFingerprint(result, merchantCommands[0])
       if (characterCommands.length) assertCharacterBuildResultFingerprint(result, characterCommands)
       if (itemCommands.length) assertItemResultFingerprint(result, itemCommands[0])
@@ -3656,8 +4029,12 @@ const server = createServer((req, res) => {
           viewer: { playerId: actor, partyIds: campaignHeroIds(user, commandMatch[1]), isPartyMember: true, role: user.role },
         })
         : null
-      const tacticalLog = result.authoritative_state ? tacticalNarration(result.mechanics, result.authoritative_state) : ''
-      const narration = creativeMoment?.narration || tacticalLog
+      // Рассказчик критического момента вытесняет боевой лог, но не небо: смена
+      // времени суток дописывается к любому из двух текстов.
+      const tactical = result.authoritative_state
+        ? tacticalNarrationParts(result.mechanics, result.authoritative_state)
+        : { main: '', sky: '' }
+      const narration = [creativeMoment?.narration || tactical.main, tactical.sky].filter(Boolean).join(' ')
       const narrationMessageId = narration
         ? combatMessageId(idempotencyKey)
         : merchantCommands.length && result.narration ? merchantMessageId(idempotencyKey) : null
@@ -3721,11 +4098,17 @@ const server = createServer((req, res) => {
         persistAuthoritativeProjection(campaignId, economyClock.state, economyClock.events)
         room = getRoom(campaignId)
       }
+      const rumorClock = await runWorldRumorClock(campaignId)
+      if (rumorClock.events.length) {
+        persistAuthoritativeProjection(campaignId, rumorClock.state, rumorClock.events)
+        room = getRoom(campaignId)
+      }
       const actorId = campaignHeroIds(user, campaignId).find((id) => room.state.players?.some((player) => String(player.id) === String(id))) ?? ''
       return json(res, 200, {
         ...room,
         state: viewerStateFor(normalizeCampaignState(room.state), user, actorId),
         economy_clock_events: economyClock.events.length,
+        rumor_clock_events: rumorClock.events.length,
       })
     } catch (error) {
       if (['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code)) {
@@ -4198,7 +4581,7 @@ server.listen(port, host, () => {
   const startupJobs = setTimeout(() => {
     for (const campaignId of listRoomCodes()) {
       combatTurnCoordinator.nudge(campaignId)
-      nudgeMerchantEconomyClock(campaignId)
+      nudgeWorldClocks(campaignId)
     }
   }, 250)
   startupJobs.unref()

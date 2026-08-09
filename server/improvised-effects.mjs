@@ -76,7 +76,37 @@ export const IMPROVISED_EFFECTS = Object.freeze({
     summary: 'Цель попадает под опасность окружения.',
     requiresHazard: true,
   }),
+  // Обстановка как оружие из свободной фразы (задача 3.2c). Эти два эффекта
+  // ничего не исполняют сами: они называют предмет сцены и глагол, а всю
+  // механику — досягаемость, проверку Атлетики, источник огня, урон, зону и
+  // цену действия — снова считает `OperateSceneObject`, та же команда, которой
+  // пользуются кнопки пропса. Отсюда `target: 'scene_prop'`: цель здесь не
+  // участник, и планировщик эффектов таких целей не разрешает.
+  topple_prop: Object.freeze({
+    id: 'topple_prop', target: 'scene_prop', range_feet: MELEE_REACH_FEET, sceneIntent: 'topple',
+    label: 'опрокинуть предмет обстановки',
+    summary: 'Тяжёлый предмет обстановки валится на то, что оказалось под ним.',
+  }),
+  ignite_prop: Object.freeze({
+    id: 'ignite_prop', target: 'scene_prop', range_feet: MELEE_REACH_FEET, sceneIntent: 'ignite',
+    label: 'поджечь предмет обстановки',
+    summary: 'Горючий предмет обстановки занимается огнём.',
+  }),
 })
+
+/**
+ * Глагол `OperateSceneObject` за эффектом обстановки, либо `null`.
+ *
+ * Это весь мост между свободной фразой и механикой 3.2: маршрут выбирается по
+ * закрытому каталогу, а не по тексту игрока и не по слову модели.
+ *
+ * @param {string} effectId
+ * @returns {string|null}
+ */
+export function scenePropIntentFor(effectId) {
+  const effect = IMPROVISED_EFFECTS[clean(effectId, 40)] ?? null
+  return effect?.target === 'scene_prop' ? String(effect.sceneIntent) : null
+}
 
 /**
  * Опасности окружения. Урон за импровизацию раньше не делали намеренно: без
@@ -152,6 +182,12 @@ export function planImprovisedEffect(state, { actorId = '', effectId = 'none', t
   const effect = IMPROVISED_EFFECTS[clean(effectId, 40)] ?? null
   if (!effect) return { effect: IMPROVISED_EFFECTS.none, commands: [], summary: IMPROVISED_EFFECTS.none.summary }
   if (effect.target === 'none') return { effect, commands: [], summary: effect.summary }
+  // Предмет обстановки сюда доходить не должен: маршрут в `OperateSceneObject`
+  // выбирается до броска. Если дошёл — значит, предмет не подтвердился картой,
+  // и придумывать вместо него команду нельзя.
+  if (effect.target === 'scene_prop') {
+    return { effect: IMPROVISED_EFFECTS.none, rejected: 'предмет обстановки не подтверждён картой', commands: [], summary: IMPROVISED_EFFECTS.none.summary }
+  }
 
   const target = clean(targetId, 120)
   if (!target) return { effect: IMPROVISED_EFFECTS.none, rejected: 'цель не названа', commands: [], summary: IMPROVISED_EFFECTS.none.summary }

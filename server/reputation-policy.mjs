@@ -1,3 +1,10 @@
+import {
+  WANTED_TRADE_REFUSAL_REASON,
+  wantedLevelHere,
+  wantedPriceBps,
+  wantedTradeAvailable,
+} from './law-and-order.mjs'
+
 /**
  * Что репутация делает с миром.
  *
@@ -18,6 +25,14 @@
  *   проверку невозможной;
  * - репутация не может закрыть торговлю совсем: голод и жадность сильнее
  *   неприязни, а запертая лавка останавливает кампанию.
+ *
+ * С 2026-08-09 сюда же приходит розыск (`server/law-and-order.mjs`), и это не
+ * второй механизм цены, а тот же самый: ступень добавляет наценку в те же
+ * базисные пункты и зажимается теми же границами. Розыск при этом умеет то,
+ * чего не умеет неприязнь, — **закрыть лавку**: продавший тем, кого ищет
+ * стража, отвечает перед той же стражей. Кампания от этого не встаёт, потому
+ * что выход из розыска у отряда есть всегда (вира, сдача, сутки без новых
+ * преступлений), и он не требует торговли.
  */
 
 const FACTION_TAG_PREFIX = 'faction:'
@@ -83,16 +98,24 @@ export function reputationStandingFor(state, npcId) {
   const factions = factionIdsForNpc(npc)
   const score = reputationScoreFor(state, npc)
   const tier = reputationTier(score)
+  // Розыск считается по краю, где отряд стоит **сейчас**: в соседнем крае тот
+  // же торговец возьмёт обычную цену, и это не поблажка, а география закона.
+  const wantedLevel = wantedLevelHere(state)
+  const tradeAvailable = wantedTradeAvailable(state)
   return {
     npc_id: String(npcId ?? ''),
     faction_ids: factions,
     score,
     tier,
-    price_adjustment_bps: REPUTATION_PRICE_BPS[tier] ?? 0,
+    wanted_level: wantedLevel,
+    price_adjustment_bps: (REPUTATION_PRICE_BPS[tier] ?? 0) + wantedPriceBps(state),
     social_dc_shift: REPUTATION_SOCIAL_DC_SHIFT[tier] ?? 0,
-    // Услуги — это одолжение, и в нём отказывают. Товар продают всем:
-    // запертая лавка останавливает кампанию, а наценка её только окрашивает.
-    services_available: !SERVICE_REFUSAL_TIERS.has(tier),
+    // Услуги — это одолжение, и в нём отказывают. Товар продают всем, пока
+    // отряд не в розыске: запертая из-за неприязни лавка останавливает
+    // кампанию, а запертая из-за стражи — следствие, которое отряд выбрал сам.
+    services_available: !SERVICE_REFUSAL_TIERS.has(tier) && tradeAvailable,
+    trade_available: tradeAvailable,
+    ...(tradeAvailable ? {} : { trade_refusal_reason: WANTED_TRADE_REFUSAL_REASON }),
   }
 }
 

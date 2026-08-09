@@ -44,7 +44,11 @@ test('бриф даёт агенту лист, сцену, участников 
   assert.deepEqual(brief.participants.map((entry) => entry.side), ['party', 'enemy'])
   // Список разрешённого передаётся явно: агент не должен угадывать словарь.
   assert.ok(brief.allowed.effects.includes('prone'))
+  assert.ok(brief.allowed.effects.includes('ignite_prop'))
+  assert.ok(brief.allowed.effects.includes('topple_prop'))
   assert.ok(brief.allowed.hazards.includes('fire'))
+  // Сцена без тактической карты просто не даёт предметов обстановки.
+  assert.deepEqual(brief.scene_props, [])
   // Скрытых параметров врага в брифе нет.
   assert.equal(Object.hasOwn(brief.participants[1], 'hp'), false)
 })
@@ -112,6 +116,20 @@ test('агент не может назначить СЛ, исход, свой �
   for (const forbidden of ['difficulty', 'success', 'damage']) {
     assert.equal(Object.hasOwn(reading, forbidden), false, `поле ${forbidden} не должно доходить до движка`)
   }
+})
+
+test('предмет обстановки без карты сцены назвать нельзя', async () => {
+  // Сцена этого набора карты не несёт, поэтому список предметов пуст, а любой
+  // prop_id — выдумка. Эффект обстановки без подтверждённого предмета
+  // обязан выродиться в none, а не уехать в движок.
+  const adjudicator = stub({
+    ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious',
+    action_cost: 'action', effect: 'ignite_prop', prop_id: 'prop-haystack',
+    proficiency: 'proficient', consequence_type: 'noise',
+  })
+  const reading = await adjudicator.read(scene(), 'hero', 'Поджигаю стог сена у стены', interpretFreeAction('Поджигаю стог сена у стены'))
+  assert.equal(reading.prop_id, '', 'идентификатор вне переданного списка отбрасывается')
+  assert.equal(reading.effect, 'none', 'без подтверждённого предмета интеракции обстановки не существует')
 })
 
 test('отказ модели возвращает игру к детерминированной таблице, а не ломает ход', async () => {

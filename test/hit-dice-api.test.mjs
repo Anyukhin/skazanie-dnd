@@ -6,6 +6,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
+import { worldClockEventDrafts } from '../server/weather.mjs'
+
+/**
+ * Что может выпустить ход мира за продолжительный отдых
+ * (`server/offscreen-world.mjs`). Набор закрытый: он и отделяет ход мира от
+ * событий самого отдыха, которые сторож ниже по-прежнему сверяет буквально.
+ */
+const OFFSCREEN_STEP_EVENT_TYPES = new Set([
+  'OffscreenWorldStepResolved', 'QuestClockAdvanced', 'QuestResolved',
+  'WorldEntityUpserted', 'WorldFactRecorded', 'NarrativeSummaryRecorded',
+  // Увод заложника гасит доступность уже известного NPC — единственное, что ход
+  // мира правит помимо памяти мира.
+  'NpcSocialProfileUpserted',
+])
 
 async function freePort() {
   const probe = createNetServer()
@@ -253,7 +267,33 @@ test('HTTP-отдых санитизирует поля, защищает гер
 
   const longRest = await restCommand(baseUrl, ownerCookie, 'rest-start-long', { command_type: 'StartRest', actor_id: 'fighter', kind: 'long' })
   assert.equal(longRest.status, 200, `${longRest.text}\n${logs}`)
-  assert.deepEqual(longRest.body.mechanics.map((event) => event.event_type), ['RestStarted', 'TimeAdvanced', 'HitPointDiceRestored', 'RestCompleted'])
+  // Восемь часов сна всегда пересекают границу времени суток, и мировые часы
+  // пишут об этом своё событие (`server/weather.mjs`). В списке оно остаётся на
+  // своём месте — вычеркнуть небо значило бы перестать замечать задвоенное
+  // событие в контуре отдыха, — а сколько его быть должно, отвечают сами часы.
+  const restedState = longRest.body.authoritative_state
+  const beforeRest = { ...restedState, mechanics: { ...restedState.mechanics, world_time: { ...restedState.mechanics.world_time, elapsed_minutes: 60 } } }
+  const sky = worldClockEventDrafts(beforeRest, 480).map((draft) => draft.event_type)
+  assert.deepEqual(sky, ['TimeOfDayChanged'], 'восемь часов сна переводят время суток ровно один раз')
+  // Восемь часов — существенный скачок, и мир делает за них свой ход
+  // (`server/offscreen-world.mjs`): часы заданий, память мира и врезка «Пока вас
+  // не было…». Список выписан буквально и **не выводится из ответа**: счёт
+  // «сколько типов пришло, столько и ждём» подтверждал бы сам себя, и задвоенный
+  // `QuestClockAdvanced` — самый дорогой сбой слоя — прошёл бы мимо сторожа.
+  // У этой кампании открыто ровно одно задание с часами (цель главы), поэтому
+  // ход мира выпускает один тик часов, один шаг и одну сводку памяти. Ход стоит
+  // между небом и восстановлением костей; полное равенство ниже остаётся тем же
+  // сторожем задвоенного события в контуре отдыха.
+  const worldStep = ['QuestClockAdvanced', 'OffscreenWorldStepResolved', 'NarrativeSummaryRecorded']
+  assert.ok(
+    worldStep.every((type) => OFFSCREEN_STEP_EVENT_TYPES.has(type)),
+    'ход мира выпускает только события из своего закрытого набора',
+  )
+  const restEventTypes = longRest.body.mechanics.map((event) => event.event_type)
+  assert.deepEqual(
+    restEventTypes,
+    ['RestStarted', 'TimeAdvanced', ...sky, ...worldStep, 'HitPointDiceRestored', 'RestCompleted'],
+  )
   assert.equal(longRest.body.authoritative_state.mechanics.world_time.elapsed_minutes, 540)
   assert.equal(longRest.body.authoritative_state.mechanics.hit_point_dice.fighter.spent, 0)
   assert.equal(longRest.body.authoritative_state.players.find((hero) => hero.id === 'fighter').hp, 30)

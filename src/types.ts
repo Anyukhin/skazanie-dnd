@@ -9,7 +9,21 @@ export type Message = {
   roll?: { roll_id?: string; value: number; modifier: number; total: number; difficulty?: number; label: string; success: boolean; ability?: string | null; actor_id?: string }
   /** Ставки хода: что проверялось, против какой СЛ и чем грозил провал. */
   stakes?: { skill?: string; ability?: string; difficulty?: number; difficulty_category?: string; on_failure?: string }
+  /**
+   * Врезка «Пока вас не было…»: что мир сделал за спиной отряда, пока шло
+   * время. Строки и заголовок собраны на сервере (`server/offscreen-world.mjs`);
+   * своей сборки у клиента нет, иначе стол и ведущий читали бы разный монтаж.
+   */
+  offscreen?: OffscreenChronicleCard
   turnConsumed?: boolean
+}
+
+/** Карточка хода мира в летописи. Детерминированные 1–3 строки и номер дня. */
+export type OffscreenChronicleCard = {
+  title: string
+  day: number
+  elapsed_minutes: number
+  lines: string[]
 }
 
 export type RollResult = NonNullable<Message['roll']>
@@ -45,6 +59,12 @@ export type PendingCheck = {
   playerId: string
   status: 'ready' | 'rolling' | 'resolving'
   result?: RollResult
+  /**
+   * Команда доски, ждущая броска. Есть только у двухфазных команд парлея:
+   * вторая фаза повторяет ту же команду с серверным `roll_id`, а не
+   * пересобирает свободное действие. Пусто — обычная проверка свободной фразы.
+   */
+  command?: { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
 }
 
 export type AgentInteractionOption = {
@@ -533,7 +553,15 @@ export type MerchantQuote = {
   total_price_cp: number
   breakdown?: MerchantQuoteBreakdown
   can_afford?: boolean
+  /** Купить нельзя вовсе — например, отряд ищет стража. Причина рядом. */
+  can_buy?: boolean
   can_sell?: boolean
+  /**
+   * Почему лавка закрыта для отряда: розыск или дурная слава. Поле отдельное от
+   * `reason` (тот про сам предмет: надет, сюжетный, не оценён) — без него отказ
+   * по розыску показывался игроку как «Недостаточно монет».
+   */
+  unavailable_reason?: string
   appraisal_required?: boolean
   can_appraise?: boolean
   price_provenance?: 'catalog' | 'server_appraisal_policy'
@@ -914,7 +942,7 @@ export type BattleEvent = {
   id: string
   sceneTurn?: number
   round?: number
-  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented'
+  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken'
   actorId?: string
   actorKind?: 'player' | 'enemy' | 'summon' | 'system'
   targetId?: string
@@ -1103,8 +1131,10 @@ export type AssetPreparationReport = {
   policy_id: string
   runtime_image_generation: boolean
   generator_configured: boolean
+  /** Потолок общий на все виды картинок: платит стол один раз за всю пачку. */
   maximum_batch: number
   npc_portraits: Array<{ id: string; name: string; role: string; has_portrait: boolean }>
+  location_illustrations: Array<{ id: string; name: string; kind: string; source: string; has_illustration: boolean }>
   items_without_illustration: Array<{ id: string; name: string; owner_id: string }>
   items_note: string
 }
@@ -1179,6 +1209,33 @@ export type GameState = {
   entities?: Array<Record<string, unknown>>
   adventure?: AdventureState
   worldMemory?: WorldMemoryProjection
+  /**
+   * Летопись поступков отряда. Приходит **только администратору**: игрок
+   * узнаёт о молве в игре, из уст NPC, а серверная проекция вырезает эту
+   * ветку целиком (`campaignStateForViewer`).
+   */
+  world_deeds?: WorldDeedsProjection
+  /**
+   * Пленные отряда. В отличие от летописи поступков, эта ветка игроку
+   * принадлежит: он видит, кого держит, — но не то, чего пленный ещё не сказал.
+   */
+  captives?: CaptivesProjection
+  /**
+   * Закон и розыск. Форма зависит от зрителя: игроку приезжают приметы мира и
+   * встреча со стражей, ведущему — лента по краям. Общий тип держит обе ветки
+   * необязательными, потому что второй проекции у клиента нет и быть не должно.
+   */
+  law?: LawProjection
+  /**
+   * Ходы мира за спиной отряда. Ветка одинакова у игрока и у ведущего: «Пока
+   * вас не было…» — монтаж для всего стола.
+   */
+  offscreen_world?: OffscreenWorldProjection
+  /**
+   * Время суток и погода. Ветка одинакова у игрока и у ведущего: небо над
+   * отрядом тайной не является.
+   */
+  weather?: WeatherProjection
   /**
    * Optional viewer-safe contract introduced by server PR #18. Coordinates
    * are authoritative; raw HP, goals and beliefs are deliberately absent.
@@ -1309,6 +1366,216 @@ export type WorldMemoryProjection = {
   }>
   threads?: Array<{ id: string; title: string; summary?: string; status?: string }>
   summaries?: Array<{ id: string; kind?: string; title: string; summary: string }>
+  /**
+   * Сущности и утверждения приходят только администратору: слухи пишутся с
+   * видимостью `gm_only`, и `worldMemoryForViewer` отсекает их у игрока.
+   */
+  entities?: Array<{ id: string; kind?: string; name: string }>
+  epistemic_claims?: Array<{
+    id: string
+    kind?: 'belief' | 'rumor'
+    holder_entity_id: string
+    predicate?: string
+    claim: string
+    summary?: string
+    truth_status?: 'unknown' | 'confirmed' | 'refuted'
+    recorded_at_minutes?: number
+  }>
+}
+
+/** Один поступок отряда: место, время кампании и свидетели. Только для ведущего. */
+export type WorldDeedEntry = {
+  id: string
+  kind: string
+  alignment: 'dark' | 'bright'
+  severity: 'grave' | 'major' | 'minor'
+  actor_names?: string[]
+  subject?: string
+  location_name?: string
+  at_minutes: number
+  witness_ids?: string[]
+  secret?: boolean
+  summary?: string
+  spread_at_minutes?: number
+  reputation_faction_ids?: string[]
+  /**
+   * Готовые для карточки поля ленты (`worldDeedsFeed`, `server/world-deeds.mjs`):
+   * русская подпись вида из `DEED_KINDS` и число свидетелей. Приходят только
+   * ведущему — вместе со всей летописью.
+   */
+  label?: string
+  witness_count?: number
+}
+
+export type WorldDeedsProjection = { schema_version?: number; deeds?: WorldDeedEntry[] }
+
+/**
+ * Одна запись хода мира: что именно случилось, пока отряда не было. Подпись
+ * вида (`label`) приходит с сервера — своей таблицы у клиента нет.
+ */
+export type OffscreenWorldEntry = {
+  kind: 'quest_clock' | 'quest_deadline' | 'quest_expired' | 'faction_move' | 'rumor_spread'
+  label?: string
+  summary: string
+  quest_id?: string
+  quest_title?: string
+  faction_id?: string
+  faction_name?: string
+  move_kind?: 'reinforced_posts' | 'moved_camp' | 'took_hostage' | ''
+  npc_id?: string
+  npc_name?: string
+  count?: number
+}
+
+/** Один ход мира: минута кампании, игровой день, что случилось и строки врезки. */
+export type OffscreenWorldStep = {
+  id: string
+  at_minutes: number
+  elapsed_minutes: number
+  day: number
+  entries: OffscreenWorldEntry[]
+  lines: string[]
+  policy_id?: string
+}
+
+/**
+ * Лента «Пока вас не было…». Форма у стола и у ведущего одна: в ход мира
+ * попадают только party-видимые задания, фракции и NPC, поэтому прятать в ней
+ * нечего (`server/offscreen-world.mjs`).
+ */
+export type OffscreenWorldProjection = { schema_version?: number; steps?: OffscreenWorldStep[] }
+
+/**
+ * Пленный отряда. Приходит и игроку, и ведущему, но не одинаково: серверная
+ * проекция вырезает `known_fact_ids` — то, чего пленный ещё не сказал, — и
+ * оставляет вместо него счётчик `pending_knowledge`. Иначе допрос перестал бы
+ * быть проверкой: ответ читался бы прямо из состояния.
+ */
+export type CaptiveEntry = {
+  id: string
+  npc_id: string
+  actor_id?: string
+  name: string
+  role?: string
+  temper?: string
+  origin: 'surrendered' | 'knocked_out'
+  status: 'held' | 'released' | 'handed_over' | 'dead'
+  band_id?: string
+  taken_at_minutes?: number
+  location_name?: string
+  revealed_fact_ids?: string[]
+  interrogations?: number
+  last_fed_at_minutes?: number
+  neglected_at_minutes?: number | null
+  resolved_at_minutes?: number | null
+  resolution?: string
+  disposition?: 'ally' | 'informant' | 'none'
+  /** Сколько зацепок пленный ещё держит при себе. Само знание остаётся у ведущего. */
+  pending_knowledge?: number
+  /** Только у ведущего: идентификаторы нераскрытых фактов. */
+  known_fact_ids?: string[]
+}
+
+export type CaptivesProjection = { schema_version?: number; captives?: CaptiveEntry[] }
+
+/** Чем можно ответить страже. Список закрыт сервером (`server/law-and-order.mjs`). */
+export type GuardResolution = 'fine' | 'surrender' | 'fight' | 'flee'
+
+export type GuardEncounterOption = {
+  id: GuardResolution
+  label: string
+  summary: string
+  fine_cp?: number
+  difficulty?: number
+}
+
+/**
+ * Встреча со стражей у игрока. Ступени розыска, очков и реестра преступлений
+ * здесь нет намеренно: сервер их не отдаёт, и клиент их не выводит — розыск
+ * игрок узнаёт по офицеру перед собой и по приметам вокруг.
+ */
+export type GuardEncounterCard = {
+  id: string
+  place_name?: string
+  officer_name?: string
+  officer_rank?: string
+  demand?: string
+  fine_cp?: number
+  escape_dc?: number
+  escape_attempts?: number
+  options?: GuardEncounterOption[]
+  /** Только у ведущего: точная ступень розыска в этом краю. */
+  level?: number
+}
+
+/** Одна строка ленты закона у ведущего: край, ступень и что за отрядом числится. */
+export type WantedRegionEntry = {
+  region_id: string
+  region_name?: string
+  level: number
+  label?: string
+  points: number
+  crime_count?: number
+  last_crime_at_minutes?: number | null
+  next_decay_in_minutes?: number | null
+  here?: boolean
+  /** Последнее снятие розыска в этом краю: вира, сдача или амнистия ведущего. */
+  cleared?: { at_minutes?: number; reason?: string } | null
+  crimes?: Array<{
+    id: string
+    kind: string
+    points: number
+    place_name?: string
+    at_minutes?: number
+    witnesses?: number
+    summary?: string
+    cleared_at_minutes?: number | null
+    cleared_reason?: string | null
+  }>
+}
+
+/**
+ * Закон и розыск. У игрока — только приметы мира и открытая встреча со стражей;
+ * у ведущего — лента по краям со ступенями и реестром преступлений.
+ */
+export type LawProjection = {
+  schema_version?: number
+  signs?: string[]
+  encounter?: GuardEncounterCard | null
+  regions?: WantedRegionEntry[]
+}
+
+/** Время суток по серверным часам кампании (`server/weather.mjs`). */
+export type DayPhaseId = 'morning' | 'day' | 'evening' | 'night'
+
+/** Погода. Список закрыт сервером — клиент своей таблицы не держит. */
+export type WeatherConditionId = 'clear' | 'overcast' | 'rain' | 'fog' | 'storm'
+
+/**
+ * Небо над отрядом. Всё уже посчитано сервером: и строка индикатора, и подписи
+ * действующих помех. Клиент только показывает — своей таблицы погоды у него нет
+ * и быть не должно, иначе она разошлась бы с броском.
+ */
+export type WeatherProjection = {
+  schema_version?: number
+  policy_id?: string
+  /** Игровой день кампании, начиная с первого. */
+  day: number
+  /** Часы и минуты мировых часов: «18:20». */
+  clock: string
+  phase: DayPhaseId
+  phase_label: string
+  weather: WeatherConditionId
+  weather_label: string
+  weather_summary: string
+  biome: string
+  region_name: string
+  /** Под крышей погоды нет: все помехи этого модуля выключены. */
+  indoors: boolean
+  /** Готовая строка шапки сцены: «Вечер · Дождь». */
+  indicator: string
+  /** Русские подписи действующих помех и преимуществ. */
+  effects: string[]
 }
 
 export type CombatInitiativeEntry = {
@@ -1406,6 +1673,29 @@ export type AttackForecast = {
   average_damage: number
 }
 
+/** Исходы перемирия. Список закрыт сервером (`server/parley.mjs`). */
+export type ParleyOutcome = 'withdraw' | 'tribute' | 'surrender' | 'resume'
+
+/**
+ * Перемирие посреди боя. Приходит в проекции внутри `mechanics.combat`, потому
+ * что это состояние боя, а не отдельный слой: пока оно есть, очередь заморожена.
+ */
+export type TruceState = {
+  schema_version?: number
+  policy_id?: string
+  leader_id: string
+  leader_name?: string
+  hero_id?: string
+  hero_name?: string
+  skill?: 'persuasion' | 'intimidation'
+  difficulty?: number
+  total?: number
+  round?: number
+  established_at_minutes?: number
+  outcomes: ParleyOutcome[]
+  tribute_cp?: number
+}
+
 export type CombatMechanics = {
   active?: boolean
   round?: number
@@ -1413,6 +1703,8 @@ export type CombatMechanics = {
   active_index?: number
   action_economy?: Record<string, CombatActionEconomy>
   reaction_window?: CombatReactionWindow | null
+  truce?: TruceState | null
+  parley_attempts?: number
 }
 
 export type GameMechanics = Record<string, unknown> & {

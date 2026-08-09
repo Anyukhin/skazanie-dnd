@@ -4,6 +4,7 @@ import { AuthoritativeExecutor } from './authoritative-executor.mjs'
 
 import { initiativeGroupIds, isEnemyActor, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
+import { truceHolds } from './parley.mjs'
 
 export const DEFAULT_TURN_TIMEOUT_MS = 120_000
 export const DEFAULT_RETRY_BASE_DELAY_MS = 250
@@ -71,6 +72,12 @@ export function combatTurnClock(rawState, events, {
   const state = normalizeCampaignState(rawState)
   const combat = state.mechanics?.combat
   if (!combat?.active) return null
+  // Перемирие морозит очередь целиком, а не только планировщик ходов NPC. Без
+  // этой строки доска показывала бы «оружие опущено», а часы хода тем временем
+  // дотикали бы до `commitTimedOutTurn` и сервер авторитетно закоммитил бы
+  // `EndTurn` за героя, который ещё не ходил: указатель уехал бы на противника,
+  // и возобновлённый бой начался бы с его хода.
+  if (truceHolds(state)) return null
   const actorIds = timedTurnActorIds(state)
   if (!actorIds.length || actorIds.every((id) => isEnemyActor(state, id))) return null
   const reactionWindowId = String(combat.reaction_window?.id ?? '')

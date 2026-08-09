@@ -242,7 +242,7 @@ test('откат кампании идёт отдельным управляющ
 test('таблица производных событий читается целиком и не пуста ни у кого', () => {
   const table = derivedEventAllowlistForReview()
   assert.deepEqual(Object.keys(table).sort(),
-    ['campaignLifecycle', 'economyClock', 'partyDecision', 'presence', 'publicDice'])
+    ['campaignLifecycle', 'economyClock', 'partyDecision', 'presence', 'publicDice', 'worldRumor'])
   for (const [producer, types] of Object.entries(table)) {
     assert.ok(types.length > 0, `${producer}: пустой список превращает capability в формальность`)
     assert.deepEqual(types, [...types].sort(), `${producer}: список обязан быть отсортирован для ревью`)
@@ -250,4 +250,7 @@ test('таблица производных событий читается це
   // Пополнение лавки остаётся за Rules Engine: часы — единственный производитель,
   // который расщепляется на два входа, и это записано в плане.
   assert.deepEqual(table.economyClock, ['MerchantEconomyClockAdvanced'])
+  // Часы молвы расщепляются так же: слухи — команды памяти мира через
+  // `executeCommands`, а сюда приходит только реакция мира на дошедший слух.
+  assert.deepEqual(table.worldRumor, ['FactionReputationAdjusted'])
 })

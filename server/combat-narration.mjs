@@ -1,5 +1,6 @@
 import { NARRATOR_PRIORITY, assertNarratorContract } from './deterministic-narration.mjs'
 import { sceneInteractionNarration } from './scene-interactions.mjs'
+import { WORLD_CLOCK_EVENT_TYPES, worldClockNarration } from './weather.mjs'
 
 /**
  * Боевой текст для ленты: удары, состояния, спасброски, ход времени.
@@ -81,9 +82,57 @@ function attackConditionReason(payload) {
   return ` ${advantage.length ? 'с преимуществом' : 'с помехой'} (${described})`
 }
 
-function tacticalNarration(events, state) {
+/** Сколько строк уезжает в ленту за один ход. */
+const MAX_NARRATION_LINES = 8
+
+/**
+ * Тот же разбор, но двумя частями: что сделал отряд и что стало с небом.
+ *
+ * Разделение нужно вызывающему, у которого есть **запасной** рассказчик. Раньше
+ * `tacticalNarration(...) || deterministicNarration(...)` читалось как «если
+ * боевой рассказчик молчал», но с появлением строки про небо молчать он перестал:
+ * шаг Режиссёра, пересёкший 17:00, отдавал в ленту одну фразу про вечер, а
+ * описание перехода — «Сцена перемещена из … в …» — пропадало. Небо теперь
+ * дописывается **к** запасному тексту, а не вместо него.
+ */
+export function tacticalNarrationParts(events, state) {
+  const { main, sky } = tacticalNarrationLines(events, state)
+  return {
+    main: main.slice(0, MAX_NARRATION_LINES).join(' '),
+    sky: sky.slice(0, Math.max(0, MAX_NARRATION_LINES - main.length)).join(' '),
+  }
+}
+
+/**
+ * События хода без неба: ровно то, что видит запасной рассказчик.
+ *
+ * Строку про небо дописывает `tacticalNarrationOr`, и второй её формы в тексте
+ * быть не должно. Запасной рассказчик (`qualitativeEventSummary`) описывает
+ * смену времени суток тем же самым предложением, поэтому шаг Режиссёра,
+ * пересёкший 17:00, отдавал в летопись «наступил вечер» дважды подряд.
+ */
+function eventsWithoutWorldClock(events) {
+  return (events ?? []).filter((event) => !WORLD_CLOCK_EVENT_TYPES.has(event?.event_type))
+}
+
+/**
+ * Текст хода с запасным вариантом. `fallback` — строка или функция, которую
+ * зовут лишь тогда, когда боевому рассказчику сказать про сам ход нечего:
+ * запасной рассказчик стоит дорого, и звать его ради выброшенного результата
+ * незачем. Функции отдаётся уже очищенный от неба список событий — так забыть
+ * про фильтр на очередном месте вызова физически негде.
+ */
+export function tacticalNarrationOr(events, state, fallback) {
+  const { main, sky } = tacticalNarrationParts(events, state)
+  const base = main || String((typeof fallback === 'function' ? fallback(eventsWithoutWorldClock(events)) : fallback) ?? '')
+  return [base, sky].filter(Boolean).join(' ')
+}
+
+function tacticalNarrationLines(events, state) {
   const meaningful = []
   const turns = []
+  /** Строки про небо: дописываются последними и не вытесняют события хода. */
+  const sky = []
   const sceneInteraction = sceneInteractionNarration(events)
   if (sceneInteraction) meaningful.push(sceneInteraction)
   const partyFailed = (events ?? []).some((event) => event?.event_type === 'CampaignFailed')
@@ -93,7 +142,14 @@ function tacticalNarration(events, state) {
     const targetId = event.target_ids?.[0] ?? payload.target_id
     const target = tacticalActorName(state, targetId)
     const targetIsEnemy = tacticalActorIsEnemy(state, targetId)
-    if (event.event_type === 'EncounterCreated') {
+    if (WORLD_CLOCK_EVENT_TYPES.has(event.event_type)) {
+      // Небо описывает сам модуль погоды: строка детерминированная, и второй её
+      // формы быть не должно — иначе журнал и подсказка индикатора разошлись бы.
+      // Копится она отдельно, потому что дописывается **после** событий хода:
+      // сначала что сделал отряд, потом что стало с миром.
+      const line = worldClockNarration(event)
+      if (line) sky.push(line)
+    } else if (event.event_type === 'EncounterCreated') {
       const names = (payload.encounter?.enemies ?? []).map((enemy) => String(enemy?.name ?? '')).filter(Boolean).slice(0, 12)
       meaningful.push(`На поле появляются противники: ${names.join(', ')}.`)
     } else if (event.event_type === 'EncounterEnded') {
@@ -227,6 +283,46 @@ function tacticalNarration(events, state) {
       meaningful.push(`${target} отступает и покидает бой.`)
     } else if (event.event_type === 'ConditionAdded' && payload.condition === 'surrendered') {
       meaningful.push(`${target} прекращает сопротивление и сдаётся.`)
+    } else if (event.event_type === 'ParleyProposed') {
+      // Про отказ и про насмешку расскажет `ParleyRejected`: здесь только сам
+      // окрик, иначе одна попытка звучала бы дважды.
+      meaningful.push(`${actor} перекрикивает лязг: «Стойте! Поговорим!»`)
+    } else if (event.event_type === 'ParleyRejected') {
+      meaningful.push(String(payload.taunt || 'Ответа нет — бой продолжается.'))
+    } else if (event.event_type === 'TruceEstablished') {
+      const truce = payload.truce ?? {}
+      meaningful.push(`Оружие опускается: ${String(truce.leader_name || 'предводитель уцелевших')} готов говорить. Перемирие держится, пока его никто не нарушил.`)
+    } else if (event.event_type === 'TruceBroken') {
+      meaningful.push(payload.broken_by === 'enemies'
+        ? 'Противник бьёт под перемирием — уговор разорван, бой возобновляется.'
+        : `${actor} бьёт под перемирием. Слово нарушено, и это видели.`)
+    } else if (event.event_type === 'ParleySettled') {
+      meaningful.push(payload.outcome === 'resume'
+        ? 'Переговоры кончились ничем: стороны расходятся по местам, и бой продолжается.'
+        : `Уговор заключён: ${String(payload.term_summary || payload.term_label || 'условия приняты')}${Number(payload.tribute_cp) > 0 ? ` Отряду остаётся ${Math.max(0, Number(payload.tribute_cp) || 0)} мм.` : ''}`)
+    } else if (event.event_type === 'CaptiveTaken') {
+      const captive = payload.captive ?? {}
+      meaningful.push(captive.origin === 'knocked_out'
+        ? `${String(captive.name || 'Побеждённый')} связан(а) без сознания и остаётся пленником отряда.`
+        : `${String(captive.name || 'Сдавшийся')} сдаётся на милость и остаётся пленником отряда.`)
+    } else if (event.event_type === 'CaptiveInterrogated') {
+      // Что именно сказал пленный, знает только тот, кто вёл допрос: сам факт
+      // приезжает отдельным `KnowledgeRevealed` с видимостью того же игрока.
+      meaningful.push(payload.success === true
+        ? `${actor} разговорил(а) пленного — тот выдаёт то, что знает.`
+        : `${actor} давит на пленного, но тот молчит.`)
+    } else if (event.event_type === 'CaptiveFed') {
+      meaningful.push('Пленного накормили и напоили.')
+    } else if (event.event_type === 'CaptiveNeglected') {
+      meaningful.push(`${String(payload.captive_name || 'Пленник')} вторые сутки без еды и держится из последних сил.`)
+    } else if (event.event_type === 'CaptiveReleased') {
+      meaningful.push(`${actor} разрезает верёвки: пленный уходит живым.`)
+    } else if (event.event_type === 'CaptiveHandedOver') {
+      meaningful.push(`Пленный передан страже «${String(payload.settlement_name || 'поселения')}»; за него уплачено ${Math.max(0, Number(payload.bounty_cp) || 0)} мм.`)
+    } else if (event.event_type === 'CaptiveExecuted') {
+      meaningful.push(`${actor} добивает связанного. Этого уже не отменить.`)
+    } else if (event.event_type === 'CaptiveMoved') {
+      meaningful.push('Пленного уводят с собой.')
     } else if (event.event_type === 'CombatEnded') {
       meaningful.push(`Бой завершён в раунде ${Number(payload.round) || 1}.`)
     } else if (event.event_type === 'TurnEnded') {
@@ -235,25 +331,37 @@ function tacticalNarration(events, state) {
       turns.push(`Начинается ход ${target}, раунд ${Number(payload.round) || 1}.`)
     }
   }
-  const selected = meaningful.length ? meaningful : turns
-  return selected.slice(0, 8).join(' ')
+  // Небо дописывается последним и в порядке приоритета не участвует: сначала
+  // отряд, потом мир вокруг него. На ходу, где кроме смены времени суток не
+  // случилось ничего (долгий отдых, переход по карте), строка про небо остаётся
+  // единственной — и это ровно та строка, которой смену видно в летописи.
+  return { main: meaningful.length ? meaningful : turns, sky }
+}
+
+function tacticalNarration(events, state) {
+  const { main, sky } = tacticalNarrationParts(events, state)
+  return [main, sky].filter(Boolean).join(' ')
 }
 
 /** Типы событий, про которые этот рассказчик умеет говорить. */
 export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'ActionReadied', 'ActorMoved', 'AreaAttackResolved', 'AttackResolved',
+  'CaptiveExecuted', 'CaptiveFed', 'CaptiveHandedOver', 'CaptiveInterrogated',
+  'CaptiveMoved', 'CaptiveNeglected', 'CaptiveReleased', 'CaptiveTaken',
   'CombatEnded', 'CombatStarted', 'ConcentrationEnded', 'ConcentrationSavingThrowResolved',
   'ConditionAdded', 'ConditionImmunityResolved', 'CreatureKnockedOut', 'DamageApplied', 'DeathSaveFailureRecorded',
   'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
   'ItemEffectIneffective', 'MonsterAbilityRecharged',
-  'KnockoutEnded', 'MapLevelChanged', 'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
+  'KnockoutEnded', 'MapLevelChanged', 'ParleyProposed', 'ParleyRejected', 'ParleySettled',
+  'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',
-  'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed', 'TurnEnded',
-  'TurnStarted',
+  'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed',
+  'TimeOfDayChanged', 'TruceBroken', 'TruceEstablished', 'TurnEnded',
+  'TurnStarted', 'WeatherChanged',
 ]))
 
 export function hasCombatNarrationEvent(events) {

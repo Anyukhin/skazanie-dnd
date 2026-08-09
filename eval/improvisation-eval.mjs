@@ -153,7 +153,7 @@ function productionChainClient() {
 
 // Промпт берётся из того же файла, что грузит боевой модуль: замер обязан
 // проверять действующий контракт, а не свою копию.
-const promptPath = new URL('../prompts/action_adjudicator/v3.txt', import.meta.url)
+const promptPath = new URL('../prompts/action_adjudicator/v4.txt', import.meta.url)
 const prompt = readFileSync(promptPath, 'utf8')
 const promptId = /^PROMPT_ID:\s*(\S+)/mu.exec(prompt)?.[1] ?? 'unknown'
 
