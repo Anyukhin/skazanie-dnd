@@ -28,7 +28,11 @@ test('агент открывает общее голосование, а неа
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-party-'))
   const child = spawn(process.execPath, ['server/index.mjs'], {
     cwd: process.cwd(),
-    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: 'deterministic-policy-test', ADMIN_SETUP_TOKEN: 'party-setup-token', COOKIE_SECURE: 'false' },
+    // Ключ пуст намеренно: сторож проверяет детерминированные пути (голосование
+    // Режиссёра и fallback Архитектора сцен), а не модель. С непустым ключом
+    // сервер честно стучался в routerai.ru, и тест ждал таймаут соединения на
+    // каждой модели каскада — прогон плавал от секунд до минуты.
+    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'party-setup-token', COOKIE_SECURE: 'false' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   t.after(() => { if (child.exitCode == null) child.kill() })

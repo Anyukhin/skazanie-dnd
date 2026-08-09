@@ -101,6 +101,45 @@ test('player campaign projection hides private memory, fog features and remote m
   assert.doesNotMatch(projected.messages[0].text, /КД 15|ОЗ 11|→ 7/u)
 })
 
+/**
+ * Ровно то выражение, которым клиент строит адрес картинки локации
+ * (`src/App.tsx`; сторож его формы — `test/scene-interaction-ui-contract.test.mjs`).
+ * Здесь оно применяется к настоящей проекции, а не к тексту исходника.
+ */
+function locationArtIdFor(projected) {
+  return String(projected.scene.location_id ?? projected.worldMap?.currentLocationId ?? '')
+}
+
+test('у игрока остаётся непустой источник иллюстрации локации даже на длинной кампании', () => {
+  const authored = privateState()
+  authored.scene.location_id = 'norvin'
+  const projected = campaignStateForViewer(authored, user, 'hero')
+  // Публичная сцена id локации не несёт — он есть только у ведущего. Значит у
+  // игрока остаётся ровно одно поле, и его пустота означает шапку сцены с
+  // библиотечной подложкой вместо картинки и карту мира без метки «вы здесь».
+  assert.equal(projected.scene.location_id, undefined)
+  assert.equal(locationArtIdFor(projected), 'norvin')
+
+  // Полсотни известных мест — обычная длинная кампания: `reconcileWorldMap`
+  // заводит точку на каждую посещённую локацию. Текущая точка уезжала за
+  // границу среза в `publicWorldMapFor`, и игроки молча оставались без
+  // иллюстраций, пока ведущий видел их как обычно.
+  const long = privateState()
+  long.worldMap.locations = [
+    ...Array.from({ length: 64 }, (_, index) => ({
+      id: `chronicle-${index}`, name: `Место ${index}`, kind: 'landmark', x: index, y: index,
+      regionId: 'north', summary: 'Место, сохранённое в хронике кампании.', known: true, visited: true,
+    })),
+    ...long.worldMap.locations,
+  ]
+  const far = campaignStateForViewer(long, user, 'hero')
+  assert.equal(locationArtIdFor(far), 'norvin')
+  assert.ok(far.worldMap.locations.some((location) => location.id === 'norvin'),
+    'текущая точка обязана остаться в списке — по ней рисуется метка «вы здесь»')
+  assert.ok(far.worldMap.locations.length <= 50, 'лимит публичной карты мира остаётся прежним')
+  assert.doesNotMatch(JSON.stringify(far.worldMap), /secret-vault|hidden-region/u)
+})
+
 test('player inventory projection derives safe catalog capabilities without hydrating snapshots', () => {
   const raw = privateState()
   raw.players[0].inventory = [

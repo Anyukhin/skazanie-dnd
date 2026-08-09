@@ -92,9 +92,17 @@ export function publicAdventureFor(adventure = {}) {
  */
 export function publicWorldMapFor(worldMap = {}) {
   const currentLocationId = text(worldMap.currentLocationId, 100)
-  const locations = (Array.isArray(worldMap.locations) ? worldMap.locations : [])
+  const visible = (Array.isArray(worldMap.locations) ? worldMap.locations : [])
     .filter((location) => location?.known !== false || location?.visited === true || text(location?.id, 100) === currentLocationId)
-    .slice(0, 50)
+  // Предел в полсотни точек не имеет права выбросить текущую. По её id клиент
+  // строит адрес иллюстрации локации (`scene.location_id` есть только у
+  // ведущего) и ставит метку «вы здесь». За длинную кампанию известных мест
+  // становится больше пятидесяти, точка стола молча уезжала за границу среза,
+  // и игроки оставались с библиотечной подложкой вместо картинки.
+  const currentIndex = visible.findIndex((location) => text(location?.id, 100) === currentLocationId)
+  const locations = currentIndex >= 50
+    ? [visible[currentIndex], ...visible.slice(0, 49)]
+    : visible.slice(0, 50)
   const locationIds = new Set(locations.map((location) => text(location?.id, 100)).filter(Boolean))
   const regionIds = new Set(locations.map((location) => text(location?.regionId, 100)).filter(Boolean))
   return {
