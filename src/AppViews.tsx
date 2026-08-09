@@ -3,7 +3,7 @@ import type React from 'react'
 import {
   BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Globe2, HelpCircle, History,
   MessageSquare, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Sparkles,
-  Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff,
+  Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
 
 import { fetchWithTimeout } from './ai-client'
@@ -506,6 +506,76 @@ export function WorldDeedsCard({ state }: { state: GameState }) {
   </div>
 }
 
+const WANTED_TIER_CLASSES = ['calm', 'noticed', 'hunted', 'wanted']
+
+/**
+ * Закон и розыск у ведущего. Ступень, очки и реестр преступлений приходят
+ * готовыми из проекции (`lawForViewer`, `server/law-and-order.mjs`): своей
+ * таблицы порогов и своей сортировки здесь нет — две копии расходились бы молча,
+ * а игроку этой карточки не достаётся вовсе, потому что сервер вырезает `law`
+ * из публичной проекции и отдаёт вместо него приметы мира.
+ */
+export function WantedCard({ state }: { state: GameState }) {
+  const regions = useMemo(() => state.law?.regions ?? [], [state.law])
+  const [busyRegionId, setBusyRegionId] = useState('')
+  const [error, setError] = useState('')
+  const hunted = regions.filter((region) => region.level > 0)
+
+  const amnesty = async (regionId: string) => {
+    setBusyRegionId(regionId)
+    setError('')
+    try {
+      const response = await fetch(`/api/campaigns/${state.sessionCode}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: { command_type: 'ClearWantedLevel', region_id: regionId } }),
+      })
+      const body = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(body.error || 'Не удалось объявить амнистию')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось объявить амнистию')
+    } finally {
+      setBusyRegionId('')
+    }
+  }
+
+  return <div className="admin-card admin-wanted">
+    <div className="admin-card-head">
+      <span><Gavel size={18} /><b>Закон и розыск</b></span>
+      <em>{hunted.length ? `краёв под розыском: ${hunted.length}` : 'закон спокоен'}</em>
+    </div>
+    <p className="admin-hint">Ступень считает сервер по летописи поступков: преступление со свидетелями добавляет очков по тяжести, сутки без новых — снимают одно. Игрок цифры не видит: ему достаются косые взгляды, плакаты и стража у ворот.</p>
+    {error && <p className="admin-error">{error}</p>}
+    <div className="wanted-feed">
+      {regions.map((region) => <article key={region.region_id} className={`wanted-region tier-${WANTED_TIER_CLASSES[region.level] ?? 'calm'}${region.here ? ' here' : ''}`}>
+        <header>
+          <strong>{region.region_name || region.region_id}</strong>
+          <i className="wanted-tier" aria-label={`Ступень розыска ${region.level}`}>{region.level} · {region.label || '—'}</i>
+        </header>
+        <small>
+          {region.points} оч. · преступлений: {region.crime_count ?? 0}
+          {region.next_decay_in_minutes != null ? ` · очко сгорит через ${Math.max(1, Math.round(region.next_decay_in_minutes / 60))} ч` : ''}
+          {region.here ? ' · отряд здесь' : ''}
+        </small>
+        <ul>
+          {(region.crimes ?? []).slice(0, 5).map((crime) => <li key={crime.id} className={crime.cleared_at_minutes != null ? 'cleared' : ''}>
+            <b>{crime.points}</b>
+            <span>{crime.summary || crime.kind}</span>
+            <em>{crime.cleared_at_minutes != null ? 'прощено' : `${campaignClockLabel(crime.at_minutes ?? 0)} · свидетелей: ${crime.witnesses ?? 0}`}</em>
+          </li>)}
+        </ul>
+        {region.level > 0 && <button
+          type="button"
+          disabled={busyRegionId === region.region_id}
+          title="Снять розыск в этом краю без виры и сдачи"
+          onClick={() => { void amnesty(region.region_id) }}
+        >{busyRegionId === region.region_id ? 'Объявляем…' : 'Амнистия'}</button>}
+      </article>)}
+      {!regions.length && <div className="deed-empty">Закон к отряду вопросов не имеет.</div>}
+    </div>
+  </div>
+}
+
 export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, onAssembleMerchant, onMoveMerchant, onSetMerchantAvailability, onReset }:{ account: Account; state: GameState; onUpdateWorld: (patch: { campaign?: string; partyName?: string; partyMemberIds?: string[]; scene?: Partial<GameState['scene']> }) => void; onAssembleEncounter: (options: EncounterAssemblyOptions) => Promise<EncounterProposal>; onAssembleMerchant: (options: ShopAssemblyOptions) => Promise<Merchant>; onMoveMerchant: (merchantId: string, location: string, locationId?: string) => Promise<void>; onSetMerchantAvailability: (merchantId: string, available: boolean) => Promise<void>; onReset: () => void }) {
   const [users, setUsers] = useState<Account[]>([])
   const [error, setError] = useState('')
@@ -762,6 +832,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
           {assetError && <p className="admin-error">{assetError}</p>}
         </div>
         <WorldDeedsCard state={state} />
+        <WantedCard state={state} />
         <div className="admin-card admin-merchants">
           <div className="admin-card-head"><span><Store size={18} /><b>Торговцы и ShopAssembler</b></span><em>{state.merchants?.length ?? 0} в кампании</em></div>
           <p>Сборщик выбирает только позиции серверного каталога. Цены, лимиты количества и политика магазина проверяются Rules Engine.</p>

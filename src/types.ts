@@ -1170,6 +1170,12 @@ export type GameState = {
    */
   captives?: CaptivesProjection
   /**
+   * Закон и розыск. Форма зависит от зрителя: игроку приезжают приметы мира и
+   * встреча со стражей, ведущему — лента по краям. Общий тип держит обе ветки
+   * необязательными, потому что второй проекции у клиента нет и быть не должно.
+   */
+  law?: LawProjection
+  /**
    * Optional viewer-safe contract introduced by server PR #18. Coordinates
    * are authoritative; raw HP, goals and beliefs are deliberately absent.
    */
@@ -1374,6 +1380,71 @@ export type CaptiveEntry = {
 }
 
 export type CaptivesProjection = { schema_version?: number; captives?: CaptiveEntry[] }
+
+/** Чем можно ответить страже. Список закрыт сервером (`server/law-and-order.mjs`). */
+export type GuardResolution = 'fine' | 'surrender' | 'fight' | 'flee'
+
+export type GuardEncounterOption = {
+  id: GuardResolution
+  label: string
+  summary: string
+  fine_cp?: number
+  difficulty?: number
+}
+
+/**
+ * Встреча со стражей у игрока. Ступени розыска, очков и реестра преступлений
+ * здесь нет намеренно: сервер их не отдаёт, и клиент их не выводит — розыск
+ * игрок узнаёт по офицеру перед собой и по приметам вокруг.
+ */
+export type GuardEncounterCard = {
+  id: string
+  place_name?: string
+  officer_name?: string
+  officer_rank?: string
+  demand?: string
+  fine_cp?: number
+  escape_dc?: number
+  escape_attempts?: number
+  options?: GuardEncounterOption[]
+  /** Только у ведущего: точная ступень розыска в этом краю. */
+  level?: number
+}
+
+/** Одна строка ленты закона у ведущего: край, ступень и что за отрядом числится. */
+export type WantedRegionEntry = {
+  region_id: string
+  region_name?: string
+  level: number
+  label?: string
+  points: number
+  crime_count?: number
+  last_crime_at_minutes?: number | null
+  next_decay_in_minutes?: number | null
+  here?: boolean
+  crimes?: Array<{
+    id: string
+    kind: string
+    points: number
+    place_name?: string
+    at_minutes?: number
+    witnesses?: number
+    summary?: string
+    cleared_at_minutes?: number | null
+    cleared_reason?: string | null
+  }>
+}
+
+/**
+ * Закон и розыск. У игрока — только приметы мира и открытая встреча со стражей;
+ * у ведущего — лента по краям со ступенями и реестром преступлений.
+ */
+export type LawProjection = {
+  schema_version?: number
+  signs?: string[]
+  encounter?: GuardEncounterCard | null
+  regions?: WantedRegionEntry[]
+}
 
 export type CombatInitiativeEntry = {
   actor_id: string

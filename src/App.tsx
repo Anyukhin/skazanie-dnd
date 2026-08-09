@@ -7,7 +7,7 @@ import {
   BrainCircuit, Check, Compass, SlidersHorizontal, Wifi, WifiOff,
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
-  Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
+  Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
@@ -298,7 +298,7 @@ function LevelUpScreen({ levelUp, canOpenSheet, onOpenSheet, onClose }: {
   </div>
 }
 
-function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, onOpenMerchant, onReset }: {
+function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, wantedSigns, onOpenMerchant, onReset }: {
   title: string
   location: string
   objective: string
@@ -314,6 +314,12 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
   locationArtUrl: string
   scenicBackdrop: boolean
   merchants: Merchant[]
+  /**
+   * Приметы розыска: что мир показывает отряду вместо цифры. Строки приходят
+   * готовыми из проекции (`server/law-and-order.mjs`) и растут со ступенью —
+   * своей таблицы у клиента нет, потому что самой ступени он не знает.
+   */
+  wantedSigns: string[]
   onOpenMerchant: () => void
   onReset: () => void
 }) {
@@ -372,6 +378,10 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
           читать её игроку надо: замерено — из 571 px текста видно 311. Полная
           формулировка уходит в подсказку, иначе цель просто теряется. */}
       <button ref={objectiveRef} type="button" className={`objective ${objectiveExpanded ? 'expanded' : ''}`} title={objective} aria-expanded={objectiveExpanded} onClick={() => setObjectiveExpanded((value) => !value)}><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></button>
+      {/* Розыск игрок видит миром, а не индикатором: в шапке стоит одна примета,
+          остальные — в подсказке. Цифры ступени в проекции нет, и выводить её
+          из числа строк клиенту нечем и незачем. */}
+      {wantedSigns.length > 0 && <div className="scene-wanted" role="note" aria-label="Приметы розыска" title={wantedSigns.join('\n')}><ShieldAlert size={13} /><span>{wantedSigns[0]}</span></div>}
       <button className="icon-button reset-button" onClick={onReset} title="Снять бой и поднять павших героев"><RotateCcw size={17} /></button>
     </div>
   )
@@ -621,7 +631,7 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, narrationPreview, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, proposeParley, settleParley, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, narrationPreview, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, resolveGuardEncounter, proposeParley, settleParley, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -1397,6 +1407,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onFreeAction={(text) => submitAction(text, activePlayer.id)}
             onNpcAction={(text, npcId) => submitAction(text, activePlayer.id, npcId)}
             onCaptiveAction={(captiveId, action, skill) => captiveAction(activePlayer.id, captiveId, action, skill)}
+            onResolveGuardEncounter={(resolution, skill) => resolveGuardEncounter(activePlayer.id, resolution, skill)}
             onProposeParley={(skill) => proposeParley(activePlayer.id, skill)}
             onSettleParley={(outcome) => settleParley(activePlayer.id, outcome)}
             onTransferItem={(itemId, npcId, quantity) => transferItem(activePlayer.id, itemId, npcId, quantity)}
@@ -1405,7 +1416,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={() => openMerchant()} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">

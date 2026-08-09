@@ -15,7 +15,7 @@ import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -50,6 +50,7 @@ type TacticalCommand =
   | { command_type: 'HandCaptiveToGuards'; actor_id: string; captive_id: string }
   | { command_type: 'FeedCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ExecuteCaptive'; actor_id: string; captive_id: string }
+  | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -1231,6 +1232,28 @@ export function useGameSession() {
     return executeTacticalCommand({ command_type: 'SettleParley', actor_id: actorId, outcome }, labels[outcome])
   }, [executeTacticalCommand])
 
+  /* Ответ страже. Клиент называет исход и, для побега, подход: размер виры, СЛ
+     проверки и состав стражи объявил сервер и пересчитает их сам. Побег —
+     групповая проверка, и двухфазный ручной кубик здесь есть у того, кто побег
+     объявил; за остальных героев бросает сервер. */
+  const resolveGuardEncounter = useCallback((
+    actorId: string,
+    resolution: GuardResolution,
+    skill: 'stealth' | 'athletics' = 'stealth',
+  ) => {
+    const labels: Record<GuardResolution, string> = {
+      fine: 'Заплатить виру страже',
+      surrender: 'Сдаться страже',
+      fight: 'Принять бой со стражей',
+      flee: skill === 'athletics' ? 'Прорваться мимо стражи' : 'Уйти от стражи тихо',
+    }
+    return executeTacticalCommand(
+      { command_type: 'ResolveGuardEncounter', actor_id: actorId, resolution, skill },
+      labels[resolution],
+      resolution === 'flee' ? { manualRoll: !autoRollEnabled() } : undefined,
+    )
+  }, [executeTacticalCommand])
+
   /* Судьба пленного. Клиент называет только пленного и, для допроса, подход;
      СЛ, исход броска, награду и последствия считает сервер. */
   const captiveAction = useCallback((
@@ -1648,6 +1671,7 @@ export function useGameSession() {
     operateDoor,
     operateSceneObject,
     captiveAction,
+    resolveGuardEncounter,
     proposeParley,
     settleParley,
     useLevelTransition,

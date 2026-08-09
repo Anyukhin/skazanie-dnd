@@ -12,6 +12,7 @@ import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
+import { LAW_POLICY_ID, guardEncounterFor } from './law-and-order.mjs'
 import { PARLEY_ABILITY, PARLEY_POLICY_ID, mentionsParley, parleyMoraleFor, parleySkillFor, truceFor } from './parley.mjs'
 import {
   NARRATOR_PROMPT_VERSION,
@@ -830,6 +831,36 @@ export class GameOrchestrator {
     return { ...check, skill: preview.skill }
   }
 
+  /**
+   * Карточка проверки для первой фазы побега от стражи. СЛ — пассивное
+   * Восприятие стражи, объявленное сервером при встрече, поэтому игрок бросает
+   * ровно против того числа, которое применит движок.
+   */
+  guardEscapeCheckCard({ campaignId, playerId, state, command }) {
+    const encounter = guardEncounterFor(state)
+    if (!encounter) return null
+    const actorId = String(command.actor_id ?? playerId)
+    const preview = previewD20Check(state, {
+      actorId,
+      kind: 'check',
+      skill: command.skill,
+      difficulty: encounter.escape_dc,
+    })
+    const check = this.rollRegistry.registerCheck({
+      campaignId,
+      actorId,
+      label: d20CheckLabel({ kind: 'check', ability: preview.ability, skill: preview.skill }),
+      modifier: preview.modifier,
+      difficulty: encounter.escape_dc,
+      ability: preview.ability,
+      advantage: preview.advantage,
+      // Повторная попытка идёт с помехой — тем же правилом, что применит движок.
+      disadvantage: preview.disadvantage || encounter.escape_attempts > 0,
+      context: { kind: 'guard-escape', policy: LAW_POLICY_ID, skill: command.skill },
+    })
+    return { ...check, skill: preview.skill }
+  }
+
   freeActionResponse({
     freeAction,
     campaignId,
@@ -1116,6 +1147,47 @@ export class GameOrchestrator {
         parleyCommand.verified_roll = verifiedRollPayload
       }
       input = { ...input, commands: [parleyCommand] }
+    }
+    // Побег от стражи: тот же двухфазный ручной кубик, что у парлея. Карточка
+    // объявляет ту же СЛ, которую применит движок во второй фазе, а бросает её
+    // тот, кто побег объявил, — остальных героев отряда бросает сервер, потому
+    // что собрать четыре ручных кубика в одну команду движок не умеет.
+    const escapeCommand = (input.commands ?? []).find((candidate) => (
+      String(candidate?.command_type ?? '') === 'ResolveGuardEncounter'
+      && String(candidate?.resolution ?? '') === 'flee'
+    )) ?? null
+    if (escapeCommand) {
+      if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
+        const card = this.guardEscapeCheckCard({ campaignId, playerId, state: authoritativeState, command: escapeCommand })
+        if (card) {
+          return {
+            narration: `Требуется проверка: ${card.label}, СЛ ${card.difficulty}. Бросьте d20, чтобы узнать, уйдёт ли отряд.`,
+            effects: emptyEffects(),
+            provider: 'RulesEngine',
+            model: 'deterministic',
+            turn_id: turnId,
+            engine_mode: mode,
+            state_version: authoritativeState.state_version,
+            mechanics: [],
+            visible_state_changes: [],
+            authoritative_state: authoritativeState,
+            check: { ...card, sides: 20 },
+            turn_consumed: false,
+          }
+        }
+      }
+      if (verifiedRoll) {
+        // Бросок обязан быть зарегистрирован **как побег**: реестр сверяет
+        // только кампанию и актора, поэтому без этой проверки во вторую фазу
+        // можно было бы подать кубик от любой другой проверки того же героя.
+        const { context: escapeCheckContext, ...verifiedRollPayload } = verifiedRoll
+        if (String(escapeCheckContext?.kind ?? '') !== 'guard-escape') {
+          const error = new Error('Этот бросок регистрировался не для побега от стражи')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        escapeCommand.verified_roll = verifiedRollPayload
+      }
     }
     let intent = input.commands
       ? { actor_id: playerId, intent: 'structured_commands', approach: 'api', targets: [], mentioned_entities: [], missing_information: [], requires_clarification: false, confidence: 1, raw_message: message }

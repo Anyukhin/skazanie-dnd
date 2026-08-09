@@ -541,6 +541,34 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .truce-term.term-resume b { color: #ddb3a4; }
 .parley-hotbar.parley-hotbar { border-color: rgba(126,168,178,.4); color: #9fc7d0; }
 
+/* Встреча со стражей. Акцент холодно-стальной — не боевой красный и не тёплый
+   «пленный»: закон не враг и не добыча, он просто стоит на пути и ждёт ответа.
+   Цифры ступени здесь нет ни в одном селекторе — её нет и в проекции. */
+.guard-panel { padding: 11px; border: 1px solid rgba(132,141,158,.34); border-radius: 7px; background: rgba(16,19,26,.9); }
+.guard-panel > header { display: flex; align-items: center; gap: 8px; color: #8b93a6; }
+.guard-panel > header span { display: grid; }
+.guard-panel > header small { color: #666e80; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.guard-panel > header strong { color: #c6cbd8; font: 600 var(--fs-lg) Spectral, serif; }
+.guard-demand { margin: 7px 0 4px; color: #a9aebd; font: italic var(--fs-md)/1.5 Spectral, serif; }
+.guard-warning { margin: 0 0 8px; color: #c08a63; font-size: var(--fs-sm); }
+.guard-options { display: grid; gap: 6px; }
+.guard-option { display: grid; gap: 2px; padding: 7px 9px; border: 1px solid rgba(132,141,158,.28); border-left: 3px solid #6b7488; border-radius: 6px; background: rgba(24,28,38,.7); text-align: left; cursor: pointer; }
+.guard-option:hover:not(:disabled) { border-color: rgba(168,178,198,.6); background: rgba(34,40,54,.8); }
+.guard-option:disabled { opacity: .38; cursor: default; }
+.guard-option b { color: #ccd2e0; font: 600 var(--fs-md) Spectral, serif; }
+.guard-option small { color: #838a99; font-size: var(--fs-sm); }
+.guard-option.option-fight { border-left-color: #a4442f; }
+.guard-option.option-fight b { color: #ddb3a4; }
+.guard-option.option-flee { border-left-color: #7c8f5f; }
+.guard-escape-skill { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.guard-escape-skill span { color: #666e80; font-size: var(--fs-xxs); letter-spacing: .1em; }
+.guard-escape-skill button { padding: 3px 8px; border: 1px solid rgba(132,141,158,.24); border-radius: 4px; background: transparent; color: #838a99; font-size: var(--fs-xs); cursor: pointer; }
+.guard-escape-skill button.active { border-color: rgba(168,178,198,.55); background: rgba(40,46,60,.7); color: #ccd2e0; }
+.guard-escape-skill button:disabled { opacity: .4; cursor: default; }
+/* Приметы розыска в шапке сцены: одна строка мира вместо индикатора. */
+.scene-wanted { display: flex; align-items: center; gap: 6px; max-width: 260px; padding: 4px 9px; border: 1px solid rgba(178,64,52,.32); border-radius: 14px; background: rgba(34,18,16,.7); color: #c08a7c; font: 600 var(--fs-xs) Manrope, sans-serif; }
+.scene-wanted span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .game-area.is-narrating .map-atmosphere-one { opacity: .31; background: #b7874b; animation: narration-light-one 2.8s ease-in-out infinite alternate; }
 .game-area.is-narrating .map-atmosphere-two { opacity: .28; background: #6d7296; animation: narration-light-two 3.4s ease-in-out infinite alternate; }
 .game-area.is-narrating .map-stage::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: radial-gradient(circle at 50% 45%, transparent 12%, rgba(31,20,40,.18) 72%, rgba(5,4,8,.46)); animation: narration-vignette 2.6s ease-in-out infinite alternate; }
@@ -1829,7 +1857,32 @@ button.campaign-title:hover strong { color: #edc996; }
   .auth-card h2 { font-size: var(--fs-4xl); }
 }
 
-.admin-merchants, .admin-encounters, .admin-deeds { grid-column: 1 / -1; }
+.admin-merchants, .admin-encounters, .admin-deeds, .admin-wanted { grid-column: 1 / -1; }
+/* Закон и розыск у ведущего. Ступень окрашена шкалой «спокойно → розыск по
+   краю»: карточка должна читаться с одного взгляда, потому что она отвечает на
+   единственный вопрос — можно ли отряду входить в город. */
+.admin-wanted .admin-card-head > em { color: #756a60; font: normal var(--fs-sm) Spectral, serif; }
+.wanted-feed { display: grid; gap: 8px; margin-top: 12px; }
+.wanted-region { display: grid; gap: 6px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.045); border-left: 3px solid rgba(120,120,120,.35); border-radius: 6px; background: rgba(0,0,0,.11); }
+.wanted-region.here { background: rgba(0,0,0,.2); box-shadow: inset 0 0 0 1px rgba(255,255,255,.04); }
+.wanted-region.tier-noticed { border-left-color: rgba(176,138,66,.5); }
+.wanted-region.tier-hunted { border-left-color: rgba(184,104,58,.6); }
+.wanted-region.tier-wanted { border-left-color: rgba(178,64,52,.75); }
+.wanted-region > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wanted-region strong { color: #c4b7a9; font: 600 var(--fs-md) Spectral, serif; }
+.wanted-tier { padding: 3px 7px; border-radius: 3px; background: rgba(255,255,255,.04); color: #8b8177; font-size: var(--fs-xs); font-style: normal; letter-spacing: .06em; white-space: nowrap; }
+.wanted-region.tier-hunted .wanted-tier { background: rgba(140,74,44,.14); color: #c08a63; }
+.wanted-region.tier-wanted .wanted-tier { background: rgba(150,48,40,.16); color: #cf8377; }
+.wanted-region > small { color: #635c55; font-size: var(--fs-xs); }
+.wanted-region ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.wanted-region li { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 4px; background: rgba(0,0,0,.12); }
+.wanted-region li.cleared { opacity: .45; }
+.wanted-region li b { color: #b0817a; font: 600 var(--fs-sm) Spectral, serif; }
+.wanted-region li span { color: #837a71; font: var(--fs-sm)/1.4 Spectral, serif; }
+.wanted-region li em { color: #6b6259; font-size: var(--fs-xs); font-style: normal; white-space: nowrap; }
+.wanted-region > button { justify-self: start; padding: 5px 11px; border: 1px solid rgba(255,255,255,.08); border-radius: 4px; background: rgba(255,255,255,.03); color: #9a8f84; font-size: var(--fs-sm); cursor: pointer; }
+.wanted-region > button:hover:not(:disabled) { border-color: rgba(176,138,66,.45); color: #c4a875; }
+.wanted-region > button:disabled { opacity: .45; cursor: default; }
 .admin-deeds .admin-card-head > em { color: #756a60; font: normal var(--fs-sm) Spectral, serif; }
 .deed-feed { display: grid; gap: 8px; margin-top: 12px; }
 .deed-feed article { display: grid; grid-template-columns: minmax(280px, 1fr) auto; align-items: center; gap: 10px 12px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.045); border-left: 3px solid rgba(161,77,67,.4); border-radius: 6px; background: rgba(0,0,0,.11); }
@@ -1900,6 +1953,8 @@ button.campaign-title:hover strong { color: #edc996; }
   .shop-admin-list article { grid-template-columns: 1fr; }
   .shop-admin-actions { grid-column: auto; flex-wrap: wrap; }
   .deed-feed article { grid-template-columns: 1fr; }
+  .wanted-region li { grid-template-columns: 1fr; }
+  .wanted-region > header { flex-wrap: wrap; }
   .rumor-list li { grid-template-columns: 1fr; }
 }
 .reaction-backdrop{position:fixed;inset:0;z-index:140;display:grid;place-items:center;padding:20px;background:rgba(4,3,3,.72);backdrop-filter:blur(5px)}.reaction-prompt{width:min(820px,100%);overflow:hidden;border:1px solid rgba(206,145,73,.5);border-radius:14px;background:linear-gradient(145deg,#171412,#0d0d0c 72%);box-shadow:0 24px 80px rgba(0,0,0,.72),0 0 36px rgba(155,93,39,.12)}.reaction-prompt>header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid rgba(206,145,73,.2);background:linear-gradient(90deg,rgba(130,76,33,.2),transparent)}.reaction-prompt>header>div{display:flex;align-items:center;gap:11px;color:#c68c4e}.reaction-prompt>header span{display:grid;gap:2px}.reaction-prompt>header small{color:#8f673f;font-size: var(--fs-sm);letter-spacing:.14em}.reaction-prompt>header strong{color:#e0c6a1;font:600 var(--fs-4xl) Spectral,serif}.reaction-prompt>header>em{padding:5px 7px;border:1px solid rgba(184,91,63,.32);border-radius:3px;color:#c9836d;font-size: var(--fs-sm);font-style:normal;letter-spacing:.1em}.reaction-prompt>p{margin:0;padding:16px 22px 8px;color:#c6bcae;font:var(--fs-xl)/1.5 Spectral,serif}.reaction-options{display:grid;gap:7px;padding:10px 18px 16px}.reaction-options>button{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(255,255,255,.018);color:#9b8b79;text-align:left;cursor:pointer}.reaction-options>button:hover{border-color:rgba(201,139,70,.38);background:rgba(132,81,35,.12)}.reaction-options>button:disabled{opacity:.5;cursor:wait}.reaction-options>button>i{width:52px;height:52px;display:grid;place-items:center;border-radius:6px;background:transparent;color:#c1884c}.reaction-options>button>span{min-width:0;display:grid;gap:2px}.reaction-options strong{color:#e0d0b8;font:600 var(--fs-2xl) Spectral,serif}.reaction-options small{color:#a89e92;font:var(--fs-md)/1.4 Manrope,sans-serif}.reaction-options>button>em{min-width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:rgba(105,78,49,.2);color:#b18b5e;font-size: var(--fs-sm);font-style:normal}.reaction-prompt>footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 18px;border-top:1px solid rgba(255,255,255,.055);background:rgba(0,0,0,.16)}.reaction-prompt>footer button{height:31px;padding:0 13px;border:1px solid rgba(255,255,255,.1);border-radius:4px;background:transparent;color:#9c8f80;font-size: var(--fs-md);cursor:pointer}.reaction-prompt>footer span{color:#665f57;font-size: var(--fs-sm);text-align:right}@media(max-width:600px){.reaction-prompt>header{align-items:flex-start}.reaction-prompt>footer{align-items:stretch;flex-direction:column}.reaction-prompt>footer span{text-align:left}}

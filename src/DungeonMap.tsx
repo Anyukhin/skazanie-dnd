@@ -17,9 +17,9 @@ import {
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
-  Gavel, Soup, Unlink, UserLock, Handshake,
+  Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -618,7 +618,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onProposeParley, onSettleParley, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -647,6 +647,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onFreeAction: (text: string) => Promise<CommandOutcome>
   onNpcAction: (text: string, npcId: string) => Promise<CommandOutcome>
   onCaptiveAction: (captiveId: string, action: CaptiveAction, skill?: CaptiveInterrogationSkill) => Promise<CommandOutcome>
+  onResolveGuardEncounter: (resolution: GuardResolution, skill?: 'stealth' | 'athletics') => Promise<CommandOutcome>
   onProposeParley: (skill: 'persuasion' | 'intimidation') => Promise<CommandOutcome>
   onSettleParley: (outcome: ParleyOutcome) => Promise<CommandOutcome>
   onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
@@ -665,6 +666,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
   const [linkedParticipantIds, setLinkedParticipantIds] = useState<string[]>([])
   const [npcDossier, setNpcDossier] = useState<{ npcId: string; mode: 'talk' | 'inspect' | 'transfer' } | null>(null)
+  // Как отряд собирается уходить от стражи. Выбор влияет только на навык
+  // проверки: СЛ и состав проверяющих остаются серверными.
+  const [guardEscapeSkill, setGuardEscapeSkill] = useState<'stealth' | 'athletics'>('stealth')
   const [npcDialogueText, setNpcDialogueText] = useState('')
   const [selectedGiftItemId, setSelectedGiftItemId] = useState('')
   const [giftQuantity, setGiftQuantity] = useState(1)
@@ -860,6 +864,17 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     [heldCaptives],
   )
   const captiveActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
+  // Встреча со стражей приезжает готовой карточкой: подписи исходов, размер
+  // виры и СЛ побега считает сервер (`server/law-and-order.mjs`). Своей таблицы
+  // ступеней здесь нет и быть не может — точной ступени игрок не видит вовсе.
+  const guardEncounter = state.law?.encounter ?? null
+  const guardFineCp = Number(guardEncounter?.fine_cp ?? 0)
+  const activeHeroPurse = players.find((player) => player.id === typingActorId)?.currency
+  const canPayGuardFine = (activeHeroPurse?.copper ?? 0)
+    + (activeHeroPurse?.silver ?? 0) * 10
+    + (activeHeroPurse?.gold ?? 0) * 100
+    + (activeHeroPurse?.platinum ?? 0) * 1_000
+    >= guardFineCp
   const dossierSceneNpc = npcDossier ? sceneNpcs.find((npc) => npc.id === npcDossier.npcId) ?? null : null
   const dossierCaptive = dossierSceneNpc ? captiveByNpcId.get(dossierSceneNpc.id) ?? null : null
   const dossierSocialNpc = dossierSceneNpc
@@ -2182,6 +2197,34 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 {outcome === 'tribute' && Number(truce.tribute_cp) > 0 ? <em>откуп: {truce.tribute_cp} мм</em> : null}
               </button>
             })}
+          </div>
+        </section>}
+        {guardEncounter && <section className="guard-panel" aria-label="Встреча со стражей" aria-live="polite">
+          <header><ShieldAlert size={15} /><span><small>СТРАЖА · {guardEncounter.place_name || 'поселение'}</small><strong>{guardEncounter.officer_rank || 'стражник'} {guardEncounter.officer_name || ''}</strong></span></header>
+          <p className="guard-demand">{guardEncounter.demand || '«Стоять. Разговор есть».'}</p>
+          {Number(guardEncounter.escape_attempts) > 0 && <p className="guard-warning">Уйти уже пробовали — теперь стража смотрит в оба, и проверка идёт с помехой.</p>}
+          <div className="guard-options">
+            {(guardEncounter.options ?? []).map((option) => <button
+              key={option.id}
+              type="button"
+              className={`guard-option option-${option.id}`}
+              disabled={!canAct || narrating || tacticalBusy || (option.id === 'fine' && !canPayGuardFine)}
+              title={option.id === 'fine' && !canPayGuardFine ? 'На виру не хватает монет' : option.summary}
+              onClick={() => { void onResolveGuardEncounter(option.id, option.id === 'flee' ? guardEscapeSkill : undefined) }}
+            >
+              <b>{option.label}</b>
+              <small>{option.summary}</small>
+            </button>)}
+          </div>
+          <div className="guard-escape-skill" role="group" aria-label="Как уходить">
+            <span>Уходить:</span>
+            {(['stealth', 'athletics'] as const).map((skill) => <button
+              key={skill}
+              type="button"
+              className={guardEscapeSkill === skill ? 'active' : ''}
+              disabled={!canAct || narrating || tacticalBusy}
+              onClick={() => setGuardEscapeSkill(skill)}
+            >{skill === 'stealth' ? 'тихо (Скрытность)' : 'напролом (Атлетика)'}</button>)}
           </div>
         </section>}
         {heldCaptives.length > 0 && <section className="captive-panel" aria-label="Пленники отряда">

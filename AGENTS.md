@@ -141,7 +141,8 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 как история контракта.
 Сторож соответствия — `test/security.test.mjs`. **Детерминированные модули без LLM:**
 `adjudicator.mjs`, `intent-parser.mjs`, `world-memory.mjs`,
-`projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`.
+`projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`,
+`world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`.
 Не описывать их как «агентов».
 
 `server/player-request-router.mjs` объявляет роли маршрутизации ввода игрока (`PLAYER_REQUEST_ROLES`). `prompt_id` там стоит
@@ -162,7 +163,13 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 (`NpcMoraleAgent`) — мораль и перелом боя (бегство, сдача), и ничего кроме:
 вне момента морали `decide()` возвращает `null`; `captives.mjs` — что бывает
 после сдачи и нелетального нокаута: реестр пленных, детерминированный профиль
-безымянного врага, СЛ допроса и последствия пощады; `creative-director.mjs`
+безымянного врага, СЛ допроса и последствия пощады; `law-and-order.mjs` — закон
+и розыск: ступень за преступления со свидетелями, её затухание, встреча со
+стражей у ворот и её четыре исхода. Модуль — **лист**: он читает только карту
+мира, время и летопись поступков, и ничего из `server/` не импортирует. Это не
+случайность и не аскеза: розыск влияет на цены через `reputation-policy.mjs`, а
+та лежит в основании цепочки `merchant-economy` → `npc-positioning`, и любой
+импорт отсюда замкнул бы её в кольцо; `creative-director.mjs`
 (`CriticalNarrationCoordinator`) — только текст критического момента после
 commit, механики он не касается.
 
