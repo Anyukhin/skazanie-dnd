@@ -76,12 +76,19 @@ export const NEGOTIABLE_CREATURE_TYPES = Object.freeze(new Set([
  */
 export const ZEALOT_TRAIT_IDS = Object.freeze(new Set(['bloodied-frenzy', 'relentless-pursuit']))
 
-export const PARLEY_REFUSAL_REASONS = Object.freeze({
-  no_leader: 'отвечать на окрик уже некому',
-  mindless: 'этим существам нечего предложить и не с кем договариваться',
-  zealots: 'эти дерутся до конца и переговоров не слышат',
-  roll_failed: 'противник не поверил ни слову',
+/**
+ * Почему разговора не вышло — и что при этом слышит стол. Таблица одна на обе
+ * задачи намеренно: два списка причин разошлись бы при первой же правке, а
+ * причина отказа и есть то, что игроку показывают. `roll_failed` здесь нет: у
+ * неудачного броска реплика своя, детерминированная от боя (`parleyTaunt`).
+ */
+export const PARLEY_REFUSAL_LINES = Object.freeze({
+  no_leader: 'Отвечать уже некому: на ногах никого не осталось.',
+  mindless: 'Окрик уходит в пустоту: этим существам нечего сказать и нечего просить.',
+  zealots: 'Ответом только рёв: эти дерутся до конца и слов не слышат.',
 })
+
+export const PARLEY_REFUSAL_REASONS = Object.freeze(Object.keys(PARLEY_REFUSAL_LINES))
 
 /**
  * Исходы перемирия. `resume` — всегда доступный отказ от уговора; остальные
@@ -340,12 +347,6 @@ const PARLEY_TAUNTS = Object.freeze([
   '«Слова кончились там, где вы взялись за оружие».',
   '«Проси у своих богов, а не у нас».',
 ])
-
-const PARLEY_REFUSAL_LINES = Object.freeze({
-  no_leader: 'Отвечать уже некому: на ногах никого не осталось.',
-  mindless: 'Окрик уходит в пустоту: этим существам нечего сказать и нечего просить.',
-  zealots: 'Ответом только рёв: эти дерутся до конца и слов не слышат.',
-})
 
 /** Насмешка после провала: одинаковая при каждом replay того же боя. */
 export function parleyTaunt(state = {}, { leaderId = '', round = 0, attempt = 1 } = {}) {

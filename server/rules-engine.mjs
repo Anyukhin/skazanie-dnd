@@ -97,6 +97,7 @@ import {
   parleyMoraleFor,
   parleyRefusalLine,
   parleyTaunt,
+  parleyTermsFor,
   parleyTributeCp,
   standingEnemies,
   truceFor,
@@ -10431,7 +10432,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       events.push(eventFrom({ ...command, visibility: 'party' }, 'TruceEstablished', {
         truce,
-        terms: truce.outcomes.map((outcome) => PARLEY_TERMS[outcome]).filter(Boolean),
+        terms: parleyTermsFor(truce),
         policy_id: PARLEY_POLICY_ID,
       }, [morale.leader_id, command.actor_id]))
       break
