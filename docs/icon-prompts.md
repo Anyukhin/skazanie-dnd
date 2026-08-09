@@ -150,7 +150,7 @@ pnpm icons:manifest
 | 8 | `hold-person.png` | Удержание личности | Очарование | скованная каменная ладонь |
 | 9 | `dash.png` | Рывок | действие | две подошвы в движении |
 | 10 | `ready-action.png` | Готовность | действие | песочные часы |
-| 11 | `sneak-attack.png` | Скрытая атака | умение | кинжал из складки плаща |
+| 11 | `sneak-attack.png` | Коварная атака | умение | кинжал из складки плаща |
 | 12 | `second-wind.png` | Второе дыхание | умение | сшитое сердце и поток воздуха |
 
 Три первых иконки намеренно используют одну огненную палитру. Они обязаны
@@ -251,7 +251,7 @@ pnpm icons:manifest
 > bronze, dark walnut, cloudy glass, pale parchment-gold sand.
 > [СТИЛЬ]
 
-### 11. `sneak-attack.png` — Скрытая атака
+### 11. `sneak-attack.png` — Коварная атака
 
 > One narrow blackened-steel dagger angled steeply downward, its upper half
 > emerging from and partly concealed by a single torn fold of dark

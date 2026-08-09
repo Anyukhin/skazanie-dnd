@@ -26,7 +26,7 @@ test('wide hotbar lays out title, chips and two-column detail at the requested t
   ])
   assert.match(appSource, /selectedAttackForecast\(\s*state\.combatForecast\?\.targets,/)
   assert.match(appSource, /inspectedForecast \? <i className="detail-chip forecast"/)
-  assert.match(appSource, /selectedItem\?\.combat\?\.damage/)
+  assert.match(appSource, /selectedWeaponCombat\?\.damage/)
   assert.match(styles, /@media \(min-width: 1500px\)/)
   assert.match(styles, /@container hotbar-detail \(min-width: 400px\)/)
   assert.match(styles, /\.hotbar-detail \.detail-description \{[^}]*columns: 2;/)

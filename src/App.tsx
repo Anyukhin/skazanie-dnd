@@ -1388,7 +1388,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           busy={tacticalBusy}
           error={tacticalError}
           onEquip={(itemId, equipped) => equipItem(activePlayer.id, itemId, equipped)}
-          onUse={(itemId, targetId, chargesToSpend) => useItem(activePlayer.id, itemId, targetId, chargesToSpend)}
+          onUse={(itemId, options) => useItem(activePlayer.id, itemId, options)}
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
           onActivate={(itemId, activated) => activateItem(activePlayer.id, itemId, activated)}

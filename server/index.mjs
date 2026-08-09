@@ -407,6 +407,12 @@ function itemCommandFingerprint(command) {
     ...(type === 'UseItem' ? {
       target_id: String(command?.target_id ?? command?.actor_id ?? ''),
       charges_to_spend: Number(command?.charges_to_spend ?? 0),
+      to: command?.to == null ? null : {
+        x: Number(command.to.x),
+        y: Number(command.to.y),
+      },
+      use_mode: String(command?.use_mode ?? ''),
+      weapon_id: String(command?.weapon_id ?? ''),
     } : {}),
     ...(type === 'TransferItem' ? {
       recipient_id: String(command?.recipient_id ?? ''),
@@ -414,6 +420,108 @@ function itemCommandFingerprint(command) {
     } : {}),
   }
   return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+function makeAttackCommandFingerprint(command) {
+  const semantic = {
+    type: 'MakeAttack',
+    actor_id: String(command?.actor_id ?? ''),
+    target_id: String(command?.target_id ?? ''),
+    item_id: String(command?.item_id ?? ''),
+    attack_mode: String(command?.attack_mode ?? ''),
+    attack_ability: String(command?.attack_ability ?? ''),
+    sneak_attack: command?.sneak_attack === true,
+    knock_out: command?.knock_out === true,
+  }
+  return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+function authoritativeCombatCommandBase(input) {
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: commandType(input),
+    actor_id: String(input?.actor_id ?? input?.actorId ?? ''),
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+function normalizeMakeAttackCommand(input, base = authoritativeCombatCommandBase(input)) {
+  const target = String(input?.target_id ?? input?.targetId ?? '')
+  const itemId = input?.item_id == null && input?.itemId == null
+    ? ''
+    : String(input.item_id ?? input.itemId).trim().slice(0, 120)
+  const attackMode = input?.attack_mode == null && input?.attackMode == null
+    ? ''
+    : String(input.attack_mode ?? input.attackMode).trim().toLocaleLowerCase('en-US')
+  const attackAbility = input?.attack_ability == null && input?.attackAbility == null
+    ? ''
+    : String(input.attack_ability ?? input.attackAbility).trim().toLocaleLowerCase('en-US')
+  // Только настоящее логическое значение включает дополнительный урон:
+  // строки и другие truthy-значения недоверенного клиента игнорируются.
+  const sneakAttack = input?.sneak_attack === true || input?.sneakAttack === true
+  if (attackMode && !['melee', 'ranged', 'thrown', 'two-handed'].includes(attackMode)) {
+    throw commandPolicyError('Неизвестный режим атаки оружием', 'INVALID_WEAPON_PROFILE')
+  }
+  if (attackAbility && !['str', 'dex'].includes(attackAbility)) {
+    throw commandPolicyError('Для атаки оружием доступны только Сила или Ловкость', 'INVALID_WEAPON_PROFILE')
+  }
+  if ((attackMode || attackAbility || sneakAttack) && !itemId) {
+    throw commandPolicyError('Режим и характеристика выбираются только для конкретного оружия', 'INVALID_WEAPON_PROFILE')
+  }
+  const command = {
+    ...base,
+    command_type: 'MakeAttack',
+    target_id: target,
+    ...(itemId ? { item_id: itemId } : {}),
+    ...(attackMode ? { attack_mode: attackMode } : {}),
+    ...(attackAbility ? { attack_ability: attackAbility } : {}),
+    ...(sneakAttack ? { sneak_attack: true } : {}),
+    ...(input?.knock_out === true ? { knock_out: true } : {}),
+  }
+  return { ...command, request_fingerprint: makeAttackCommandFingerprint(command) }
+}
+
+function makeAttackPrimaryEvent(event) {
+  return event?.event_type === 'AttackResolved'
+    || (event?.event_type === 'CombatActionUsed' && event?.payload?.action_id === 'sanctuary-blocked')
+}
+
+async function assertMakeAttackIdempotency(campaignId, idempotencyKey, commands, { authorizeDuplicate = null } = {}) {
+  const expected = (commands ?? [])
+    .filter((command) => commandType(command) === 'MakeAttack')
+    .map(makeAttackCommandFingerprint)
+  if (!expected.length) return false
+  const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+  if (!duplicate) return false
+  // Авторизация идёт до сравнения fingerprint, чтобы чужой пользователь не мог
+  // отличить точный ключ от конфликтующего. Callback получает только
+  // серверное историческое состояние сохранённого commit.
+  if (authorizeDuplicate) authorizeDuplicate(duplicate)
+  const actual = (duplicate.events ?? [])
+    .filter(makeAttackPrimaryEvent)
+    .map((event) => event.payload?.request_fingerprint)
+    .filter(Boolean)
+    .map(String)
+  if (actual.length !== expected.length || expected.some((fingerprint, index) => actual[index] !== fingerprint)) {
+    throw commandPolicyError('Этот ключ идемпотентности уже использован для другой атаки', 'IDEMPOTENCY_CONFLICT')
+  }
+  return true
+}
+
+function assertMakeAttackResultFingerprint(result, commands) {
+  const expected = (commands ?? [])
+    .filter((command) => commandType(command) === 'MakeAttack')
+    .map(makeAttackCommandFingerprint)
+  if (!expected.length) return
+  const actual = (result?.mechanics ?? [])
+    .filter(makeAttackPrimaryEvent)
+    .map((event) => event.payload?.request_fingerprint)
+    .filter(Boolean)
+    .map(String)
+  if (actual.length !== expected.length || expected.some((fingerprint, index) => actual[index] !== fingerprint)) {
+    throw commandPolicyError('Результат атаки не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
+  }
 }
 
 function restCommandFingerprint(command) {
@@ -760,28 +868,34 @@ function assertMerchantResultFingerprint(result, command) {
   }
 }
 
-function sanitizePlayerCombatCommand(user, state, input) {
-  const type = commandType(input)
-  if (!PLAYER_COMBAT_COMMANDS.has(type)) throw commandPolicyError('Игроку доступен только безопасный набор боевых команд', 'PLAYER_COMMAND_FORBIDDEN')
+function combatActorFor(state, actorIdValue) {
+  return [...(state.players ?? []), ...(state.actors ?? [])]
+    .find((candidate) => String(candidate.id ?? candidate.actor_id) === String(actorIdValue ?? '')) ?? null
+}
+
+function assertPlayerCombatActorPermission(user, state, input) {
   const actor = String(input?.actor_id ?? input?.actorId ?? '')
-  const combatActor = [...(state.players ?? []), ...(state.actors ?? [])].find((candidate) => String(candidate.id ?? candidate.actor_id) === actor)
+  const combatActor = combatActorFor(state, actor)
   const controller = String(combatActor?.controllerId ?? combatActor?.controller_id ?? combatActor?.ownerId ?? combatActor?.owner_id ?? '')
   const controlsActor = canUseHero(user, actor, state.sessionCode) || (isPartySummon(combatActor) && canUseHero(user, controller, state.sessionCode))
   if (!actor || !controlsActor) throw commandPolicyError('Команда доступна только владельцу героя или его призванного существа', 'ACTOR_FORBIDDEN')
   if (!combatActor) throw commandPolicyError('Боевой актёр не найден в кампании', 'ACTOR_FORBIDDEN')
-  const expected = input?.expected_state_version ?? input?.expectedStateVersion
-  const base = {
-    command_type: type,
-    actor_id: actor,
-    server_authoritative: true,
-    ...(expected == null ? {} : { expected_state_version: expected }),
-  }
+  return combatActor
+}
+
+function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolicy = false } = {}) {
+  const type = commandType(input)
+  if (!PLAYER_COMBAT_COMMANDS.has(type)) throw commandPolicyError('Игроку доступен только безопасный набор боевых команд', 'PLAYER_COMMAND_FORBIDDEN')
+  assertPlayerCombatActorPermission(user, state, input)
+  const base = authoritativeCombatCommandBase(input)
   if (type === 'MoveActor') return { ...base, to: { x: input?.to?.x, y: input?.to?.y } }
   if (type === 'MakeAttack') {
     const target = String(input?.target_id ?? input?.targetId ?? '')
     const enemy = (state.enemies ?? []).find((candidate) => String(candidate.id) === target)
-    if (!enemy || enemy.alive === false || Number(enemy.hp) <= 0) throw commandPolicyError('Игрок может атаковать только живого противника', 'INVALID_ATTACK_TARGET')
-    return { ...base, target_id: target, ...(input?.item_id ? { item_id: String(input.item_id) } : {}), ...(input?.knock_out === true ? { knock_out: true } : {}) }
+    // Ограничение player→enemy относится к HTTP-политике игрока. Живость и
+    // прочую законность новой атаки по-прежнему определяет Rules Engine.
+    if (!skipAttackTargetPolicy && !enemy) throw commandPolicyError('Цель атаки не найдена', 'INVALID_ATTACK_TARGET')
+    return normalizeMakeAttackCommand(input, base)
   }
   if (type === 'IdentifyEnemy') {
     // Из запроса берётся только цель: навык, характеристику и СЛ выбирает
@@ -977,6 +1091,7 @@ function sanitizePlayerItemCommand(user, state, input) {
     'quantity', 'equipped', 'attuned', 'activated',
     'expected_state_version', 'expectedStateVersion',
     'charges_to_spend', 'chargesToSpend',
+    'to', 'use_mode', 'useMode', 'weapon_id', 'weaponId',
   ])
   const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
   if (unexpected.length) {
@@ -1009,10 +1124,29 @@ function sanitizePlayerItemCommand(user, state, input) {
   if (type === 'UseItem') {
     const targetId = String(input?.target_id ?? input?.targetId ?? actor).trim().slice(0, 120)
     const requestedCharges = input?.charges_to_spend ?? input?.chargesToSpend
+    const requestedPoint = input?.to
+    let point = null
+    if (requestedPoint != null) {
+      if (!requestedPoint || typeof requestedPoint !== 'object' || Array.isArray(requestedPoint)
+        || Object.keys(requestedPoint).some((key) => !['x', 'y'].includes(key))
+        || !Number.isSafeInteger(Number(requestedPoint.x))
+        || !Number.isSafeInteger(Number(requestedPoint.y))) {
+        throw commandPolicyError('Клетка применения предмета должна содержать только целые координаты x и y', 'INVALID_ITEM_POINT')
+      }
+      point = { x: Number(requestedPoint.x), y: Number(requestedPoint.y) }
+    }
+    const requestedMode = String(input?.use_mode ?? input?.useMode ?? '').trim()
+    if (requestedMode && requestedMode !== 'spill') {
+      throw commandPolicyError('Неизвестный режим применения предмета', 'INVALID_ITEM_USE_MODE')
+    }
+    const weaponId = String(input?.weapon_id ?? input?.weaponId ?? '').trim().slice(0, 120)
     return withFingerprint({
       ...base,
       target_id: targetId || actor,
       ...(requestedCharges == null ? {} : { charges_to_spend: Number(requestedCharges) }),
+      ...(point ? { to: point } : {}),
+      ...(requestedMode ? { use_mode: requestedMode } : {}),
+      ...(weaponId ? { weapon_id: weaponId } : {}),
       server_authoritative: true,
     })
   }
@@ -3383,6 +3517,39 @@ const server = createServer((req, res) => {
       let commands = Array.isArray(body.commands) ? body.commands : body.command ? [body.command] : []
       if (!commands.length) return json(res, 400, { error: 'Нужна command или commands' })
       const authoritativeBefore = await latestCampaignState(commandMatch[1], room.state)
+      const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
+      const requestedMakeAttacks = commands.filter((command) => commandType(command) === 'MakeAttack')
+      if (requestedMakeAttacks.length && requestedMakeAttacks.length !== commands.length) {
+        throw commandPolicyError('Атаки нельзя смешивать с другими командами в одном атомарном batch', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      // Семантический duplicate ищется до проверки текущей цели: после
+      // SceneAdvanced её уже может не быть, но сохранённый commit остаётся
+      // точным результатом исходной команды. Исчезнувший summon авторизуется
+      // только по controller link из исторического серверного состояния.
+      const historicallyAuthorizedAttackActors = new Set()
+      const preflightMakeAttackCommands = requestedMakeAttacks
+        .map((command) => {
+          if (user.role === 'admin') return normalizeMakeAttackCommand(command)
+          return combatActorFor(authoritativeBefore, command?.actor_id ?? command?.actorId)
+            ? sanitizePlayerCombatCommand(user, authoritativeBefore, command, { skipAttackTargetPolicy: true })
+            : normalizeMakeAttackCommand(command)
+        })
+      const isMakeAttackReplay = preflightMakeAttackCommands.length
+        ? await assertMakeAttackIdempotency(commandMatch[1], idempotencyKey, preflightMakeAttackCommands, {
+            authorizeDuplicate: user.role === 'admin' ? null : (duplicate) => {
+              for (const command of requestedMakeAttacks) {
+                const actorIdValue = String(command?.actor_id ?? command?.actorId ?? '')
+                if (combatActorFor(authoritativeBefore, actorIdValue)) continue
+                const historicalActor = combatActorFor(duplicate.state, actorIdValue)
+                if (!isPartySummon(historicalActor)) {
+                  throw commandPolicyError('Команда доступна только владельцу героя или его призванного существа', 'ACTOR_FORBIDDEN')
+                }
+                assertPlayerCombatActorPermission(user, duplicate.state, command)
+                historicallyAuthorizedAttackActors.add(actorIdValue)
+              }
+            },
+          })
+        : false
       const requestedRestCommands = commands.filter((command) => PLAYER_REST_COMMANDS.has(commandType(command)))
       if (requestedRestCommands.length && commands.length !== 1) {
         throw commandPolicyError('Отдых принимается одной семантической командой', 'PLAYER_COMMAND_FORBIDDEN')
@@ -3393,6 +3560,14 @@ const server = createServer((req, res) => {
         if (PLAYER_MERCHANT_COMMANDS.has(type)) return sanitizeMerchantCommand(user, authoritativeBefore, command)
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
+        // Права администратора меняют авторизацию MakeAttack, но не делают
+        // клиентские поля или request_fingerprint авторитетными. Ограничение
+        // player→enemy остаётся только в player sanitizer.
+        if (type === 'MakeAttack') return user.role === 'admin'
+          ? normalizeMakeAttackCommand(command)
+          : isMakeAttackReplay && historicallyAuthorizedAttackActors.has(String(command?.actor_id ?? command?.actorId ?? ''))
+            ? normalizeMakeAttackCommand(command)
+            : sanitizePlayerCombatCommand(user, authoritativeBefore, command, { skipAttackTargetPolicy: isMakeAttackReplay })
         if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, authoritativeBefore, command)
         return PLAYER_COMBAT_COMMANDS.has(type) ? { ...command, server_authoritative: true } : command
       })
@@ -3401,8 +3576,11 @@ const server = createServer((req, res) => {
       const actor = String(commands[0]?.actor_id || room.state.activePlayerId || '')
       const commandActor = [...(room.state.players ?? []), ...(room.state.actors ?? [])].find((candidate) => String(candidate.id ?? candidate.actor_id) === actor)
       const controller = String(commandActor?.controllerId ?? commandActor?.controller_id ?? commandActor?.ownerId ?? commandActor?.owner_id ?? '')
-      if (!canUseHero(user, actor, commandMatch[1]) && !(isPartySummon(commandActor) && canUseHero(user, controller, commandMatch[1]))) return json(res, 403, { error: 'Команда доступна только владельцу героя или его призванного существа', code: 'ACTOR_FORBIDDEN' })
-      const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
+      if (!historicallyAuthorizedAttackActors.has(actor)
+        && !canUseHero(user, actor, commandMatch[1])
+        && !(isPartySummon(commandActor) && canUseHero(user, controller, commandMatch[1]))) {
+        return json(res, 403, { error: 'Команда доступна только владельцу героя или его призванного существа', code: 'ACTOR_FORBIDDEN' })
+      }
       const types = new Set(commands.map(commandType))
       if ([...types].some((type) => SERVER_WORLD_COMMANDS.has(type))) {
         throw commandPolicyError('Переход сцены может создать только серверный контур Директора после подтверждённого решения группы', 'DIRECTOR_COMMAND_REQUIRED')
@@ -3417,6 +3595,7 @@ const server = createServer((req, res) => {
       const characterCommands = commands.filter((command) => PLAYER_CHARACTER_COMMANDS.has(commandType(command)))
       const characterLifecycleCommands = commands.filter((command) => PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(commandType(command)))
       const itemCommands = commands.filter((command) => PLAYER_ITEM_COMMANDS.has(commandType(command)))
+      const makeAttackCommands = commands.filter((command) => commandType(command) === 'MakeAttack')
       const restCommands = semanticRestCommand ? [semanticRestCommand] : []
       const reactionActorId = String(room.state.mechanics?.combat?.reaction_window?.actor_id ?? '')
       const resolvesReaction = commands.some((command) => commandType(command) === 'UseCombatAction' && String(command.actor_id ?? '') === reactionActorId)
@@ -3440,11 +3619,13 @@ const server = createServer((req, res) => {
         await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])
       }
       if (restCommands.length) await assertRestIdempotency(commandMatch[1], idempotencyKey, restCommands[0])
+      if (makeAttackCommands.length) await assertMakeAttackIdempotency(commandMatch[1], idempotencyKey, makeAttackCommands)
       let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]) })
       if (merchantCommands.length) assertMerchantResultFingerprint(result, merchantCommands[0])
       if (characterCommands.length) assertCharacterBuildResultFingerprint(result, characterCommands)
       if (itemCommands.length) assertItemResultFingerprint(result, itemCommands[0])
       if (restCommands.length) assertRestResultFingerprint(result, restCommands[0])
+      if (makeAttackCommands.length) assertMakeAttackResultFingerprint(result, makeAttackCommands)
       if (result.authoritative_state) {
         const originalVersion = Number(result.state_version ?? result.authoritative_state.state_version ?? 0)
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))

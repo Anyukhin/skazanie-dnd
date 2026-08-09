@@ -100,7 +100,17 @@ export function fallbackCombatActions(player: Player): CombatAction[] {
   if (/жрец|cleric/u.test(role) && level >= 2) result.push({ id: 'divine-spark', name: 'Божественная искра', category: 'class', target: 'ally', actionType: 'action', range: 30, resource: 'channel_divinity', cost: 1, description: 'Направить божественную силу и восстановить союзнику 1к8 + модификатор Мудрости хитов.' })
   if (/монах|monk/u.test(role) && level >= 2) result.push({ id: 'flurry-of-blows', name: 'Шквал ударов', category: 'class', target: 'enemy', actionType: 'bonus_action', range: 5, resource: 'ki', cost: 1, description: 'Потратить ци и совершить две безоружные атаки.' })
   if (/паладин|paladin/u.test(role)) result.push({ id: 'lay-on-hands', name: 'Наложение рук', category: 'class', target: 'ally', actionType: 'action', range: 5, resource: 'lay_on_hands', cost: 5, description: 'Передать хиты из запаса целительной силы.' })
-  if (/плут|rogue/u.test(role)) result.push({ id: 'sneak-attack', name: 'Скрытая атака', category: 'class', target: 'enemy', actionType: 'action', range: 600, requiresWeapon: true, description: 'Атака оружием с дополнительным уроном.' })
+  if (/плут|rogue/u.test(role)) result.push({
+    id: 'sneak-attack',
+    name: 'Коварная атака',
+    category: 'class',
+    target: 'self',
+    actionType: 'free',
+    range: 0,
+    mechanicsSupport: 'ruling-only',
+    supportNote: 'Это не отдельная атака. Включите «Коварную атаку» в параметрах обычной атаки подходящим оружием; сервер проверит преимущество или союзника рядом с целью.',
+    description: 'Памятка: один раз за ход добавить урон к уже попавшей атаке дальнобойным оружием или оружием со свойством finesse.',
+  })
   if (/чарод|sorcer/u.test(role) && level >= 3) {
     const metamagic: CombatAction[] = [
       { id: 'careful-spell', name: 'Аккуратное заклинание', category: 'class', target: 'self', actionType: 'free', range: 0, resource: 'sorcery_points', cost: 1, description: 'Союзники в области следующего заклинания автоматически преуспевают в спасброске.' },

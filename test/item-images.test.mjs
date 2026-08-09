@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
+import { ITEM_CATALOG } from '../server/item-catalog.mjs'
+
 import {
   ITEM_TYPES,
   itemAssetsOnDisk,
@@ -14,16 +16,11 @@ import {
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
 const TYPES_SOURCE = readFileSync(`${ROOT}src/types.ts`, 'utf8')
-const STARTER_SOURCE = readFileSync(`${ROOT}server/starter-kit.mjs`, 'utf8')
 
 function inventoryItemTypes() {
   const declaration = TYPES_SOURCE.split('export type InventoryItem = {')[1]?.split(/\r?\n\}/u)[0] ?? ''
   const line = declaration.match(/\btype:\s*([^\r\n]+)/u)?.[1] ?? ''
   return [...line.matchAll(/'([^']+)'/gu)].map((match) => match[1])
-}
-
-function starterCatalogIds() {
-  return [...STARTER_SOURCE.matchAll(/\bcatalog_id:\s*'([^']+)'/gu)].map((match) => match[1])
 }
 
 function assertPng512(path) {
@@ -41,12 +38,26 @@ test('манифест предметов покрывает каждый Item.t
   assert.deepEqual(declaredTypes, ITEM_TYPES, 'сборщик обязан знать весь union InventoryItem.type')
   assert.deepEqual(Object.keys(assets.typeIds), ITEM_TYPES, 'для каждого вида нужен типовой рисунок')
 
-  const expectedStarterImages = starterCatalogIds().map((id) => `item-${normalizeItemIdentifier(id)}`).sort()
-  assert.deepEqual(assets.itemIds, expectedStarterImages, 'каждый каталоговый предмет starter-kit получает отдельный рисунок')
+  const expectedCatalogImages = Object.keys(ITEM_CATALOG)
+    .map((id) => `item-${normalizeItemIdentifier(id)}`)
+    .sort()
+  assert.deepEqual(
+    assets.itemIds,
+    expectedCatalogImages,
+    'кждая запись полного каталога получает отдельный рисунок',
+  )
+  for (const item of Object.values(ITEM_CATALOG)) {
+    assert.equal(
+      resolveItemImagePath(item, assets),
+      `/assets/items/item-${normalizeItemIdentifier(item.catalog_id)}.png`,
+      `${item.catalog_id}: каталог не должен откатываться к типовой заглушке`,
+    )
+  }
   assert.equal(manifestIsCurrent(), true, 'после изменения файлов нужен pnpm items:manifest')
 
   const rights = JSON.parse(readFileSync(`${ROOT}data/asset-rights.json`, 'utf8'))
   const declaredRights = new Map(rights.assets.map((tuple) => [tuple[0], tuple]))
+  const catalogContentOwners = new Map()
   for (const imageId of [...assets.itemIds, ...Object.values(assets.typeIds)]) {
     const relative = `items/${imageId}.png`
     const path = `${ROOT}public/assets/${relative}`
@@ -55,8 +66,17 @@ test('манифест предметов покрывает каждый Item.t
     const tuple = declaredRights.get(relative)
     assert.ok(tuple, `${relative}: права не зарегистрированы`)
     assert.equal(tuple[2], bytes.length, `${relative}: размер разошёлся с реестром прав`)
-    assert.equal(tuple[1], createHash('sha256').update(bytes).digest('hex'), `${relative}: хеш разошёлся с реестром прав`)
+    const hash = createHash('sha256').update(bytes).digest('hex')
+    assert.equal(tuple[1], hash, `${relative}: хеш разошёлся с реестром прав`)
+    if (assets.itemIds.includes(imageId)) {
+      const owners = catalogContentOwners.get(hash) ?? []
+      owners.push(imageId)
+      catalogContentOwners.set(hash, owners)
+    }
   }
+  const duplicatedCatalogImages = [...catalogContentOwners.values()].filter((owners) => owners.length > 1)
+  assert.deepEqual(duplicatedCatalogImages, [], 'разные item-id не должны скрывать одинаковый рисунок')
+  assert.equal(catalogContentOwners.size, assets.itemIds.length)
 })
 
 test('рисунок выбирается runtime → id/stock/catalog → type → нейтральный знак', () => {

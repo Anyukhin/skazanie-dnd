@@ -177,6 +177,9 @@ function itemFingerprint(chargesToSpend) {
     item_id: 'wand',
     target_id: 'foe',
     charges_to_spend: chargesToSpend,
+    to: null,
+    use_mode: '',
+    weapon_id: '',
   })).digest('hex')
 }
 

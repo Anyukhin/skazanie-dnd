@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer, publicEnemyFor, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
 
 const user = { role: 'player', heroIds: ['hero'] }
 
@@ -53,7 +53,8 @@ function privateState() {
     ],
     enemies: [{
       id: 'goblin-secret', name: 'Гоблин-воин', hp: 7, maxHp: 11, armor: 15, speed: 30,
-      stat_block_id: 'srd:secret-goblin', attack_bonus: 4, x: 3, y: 2, alive: true,
+      stat_block_id: 'srd:secret-goblin', creature_type: 'humanoid', image: '/assets/enemies/goblin.png',
+      attack_bonus: 4, x: 3, y: 2, alive: true,
     }],
     mechanics: {
       combat: {
@@ -92,13 +93,22 @@ test('player campaign projection hides private memory, fog features and remote m
   assert.deepEqual(projected.worldMap.regions.map((region) => region.id), ['north'])
   assert.doesNotMatch(encoded, /Тайное хранилище|Скрытая база канцлера|secret-vault|secret-road|hidden-region|Тайная область|visible-map/u)
   assert.deepEqual(projected.enemies[0], {
-    id: 'goblin-secret', name: 'Гоблин-воин', x: 3, y: 2, alive: true, healthStatus: 'wounded', healthKnown: 'banded',
+    id: 'goblin-secret', name: 'Гоблин-воин', x: 3, y: 2,
+    image: '/assets/enemies/goblin.png', creature_type: 'humanoid',
+    alive: true, healthStatus: 'wounded', healthKnown: 'banded',
   })
   assert.deepEqual(projected.mechanics.combat.initiative[1], { actor_id: 'goblin-secret' })
   assert.equal(projected.battleLog[0].hpBefore, undefined)
   assert.equal(projected.battleLog[0].hpAfter, undefined)
   assert.equal(projected.battleLog[0].roll.difficulty, undefined)
   assert.doesNotMatch(projected.messages[0].text, /КД 15|ОЗ 11|→ 7/u)
+})
+
+test('enemy projection exposes only repository-owned illustration paths', () => {
+  const common = { id: 'enemy', name: 'Враг', hp: 5, maxHp: 5, x: 1, y: 2 }
+  assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/wolf.png' }).image, '/assets/enemies/wolf.png')
+  assert.equal(publicEnemyFor({ ...common, image: 'https://tracker.invalid/pixel.png' }).image, undefined)
+  assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/../party-portraits.png' }).image, undefined)
 })
 
 test('player inventory projection derives safe catalog capabilities without hydrating snapshots', () => {

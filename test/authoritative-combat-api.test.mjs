@@ -503,6 +503,24 @@ test('player combat API is server-authoritative, bounded, and durable across res
   }
   assert.equal(actor(attackState, 'sentinel').alive, true, 'the durable enemy fixture must survive one attack')
 
+  const attackReplay = await command(baseUrl, playerCookie, 'server-profile-attack-1', {
+    command_type: 'MakeAttack',
+    actor_id: 'hero',
+    target_id: 'sentinel',
+  })
+  assertStatus(attackReplay, 200, log)
+  assert.equal(attackReplay.body.idempotent_replay, true)
+  assert.equal(attackReplay.body.authoritative_state.state_version, attackState.state_version)
+
+  const attackCollision = await command(baseUrl, playerCookie, 'server-profile-attack-1', {
+    command_type: 'MakeAttack',
+    actor_id: 'hero',
+    target_id: 'sentinel',
+    knock_out: true,
+  })
+  assertStatus(attackCollision, 409, log)
+  assert.equal(attackCollision.body.code, 'IDEMPOTENCY_CONFLICT')
+
   const heroHpBeforeNpc = actor(attackState, 'hero').hp
   const ended = await command(baseUrl, playerCookie, 'end-turn-with-npc-1', {
     command_type: 'EndTurn',

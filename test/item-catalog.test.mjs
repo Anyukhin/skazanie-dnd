@@ -252,6 +252,8 @@ test('materialization делает известную механику авто�
   assert.equal(item.type, 'weapon')
   assert.equal(item.base_price_cp, 5_000)
   assert.deepEqual(item.combat, {
+    abilities: ['dex'],
+    properties: ['ammunition', 'heavy', 'two-handed'],
     kind: 'ranged',
     ability: 'dex',
     damage: '1d8',
@@ -260,6 +262,17 @@ test('materialization делает известную механику авто�
     longRange: 600,
     twoHanded: true,
     ammunition: true,
+    modes: [{
+      id: 'ranged',
+      kind: 'ranged',
+      ability: 'dex',
+      damage: '1d8',
+      damageType: 'piercing',
+      normalRange: 150,
+      longRange: 600,
+      twoHanded: true,
+      ammunition: true,
+    }],
   })
   assert.equal(item.secret, undefined)
 

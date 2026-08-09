@@ -317,6 +317,14 @@ export type ItemRechargeProfile = {
   formula: '1d6+1'
 }
 
+export type ItemUseOptions = {
+  targetId?: string
+  chargesToSpend?: number
+  to?: { x: number; y: number }
+  useMode?: 'spill'
+  weaponId?: string
+}
+
 export type InventoryItem = {
   id: string
   catalog_id?: string
@@ -347,7 +355,7 @@ export type InventoryItem = {
     use: {
       kind: string
       action_type: 'action' | 'bonus_action' | null
-      target: 'self' | 'party' | 'creature' | 'enemy'
+      target: 'self' | 'party' | 'creature' | 'enemy' | 'point'
       range_feet: number
       charges_per_use?: number
       spell_id?: string
@@ -356,6 +364,9 @@ export type InventoryItem = {
       default_charges_to_spend?: number
       requires_equipped?: boolean
       combat_only?: boolean
+      point_target?: boolean
+      use_modes?: Array<'target' | 'spill'>
+      requires_weapon?: boolean
     } | null
     activatable?: boolean
     activation?: {
@@ -374,6 +385,8 @@ export type InventoryItem = {
   combat?: {
     kind: 'melee' | 'ranged' | 'thrown-area'
     ability?: 'str' | 'dex'
+    /** Разрешённые серверным профилем характеристики (finesse: Сила или Ловкость). */
+    abilities?: Array<'str' | 'dex'>
     damage: string
     damageType: string
     normalRange: number
@@ -384,6 +397,22 @@ export type InventoryItem = {
     halfOnSave?: boolean
     twoHanded?: boolean
     ammunition?: boolean
+    /**
+     * Канонические варианты одного оружия. UI передаёт лишь `id` и
+     * характеристику; Rules Engine заново проверяет их по каталогу.
+     */
+    modes?: Array<{
+      id: 'melee' | 'ranged' | 'thrown' | 'two-handed'
+      kind: 'melee' | 'ranged'
+      ability: 'str' | 'dex'
+      damage: string
+      damageType: string
+      normalRange: number
+      longRange?: number
+      twoHanded?: boolean
+      thrown?: boolean
+      ammunition?: boolean
+    }>
   }
 }
 
@@ -1336,6 +1365,8 @@ export type CombatActionEconomy = {
   attacks_used?: number
   /** Сколько их даёт одно действие: 1, либо больше с «Дополнительной атакой». */
   attacks_allowed?: number
+  /** Ключ хода, в котором плут уже нанёс урон Скрытой атакой. */
+  sneak_attack_turn_key?: string
 }
 
 export type CombatReactionWindow = {

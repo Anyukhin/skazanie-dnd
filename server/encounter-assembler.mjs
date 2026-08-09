@@ -60,7 +60,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
     name: 'Гоблин-налётчик', hp: 7, armor: 12, speed: 30, abilities: { str: 8, dex: 14, con: 10, int: 10, wis: 8, cha: 8 },
     initiative_bonus: 2, attackBonus: 4, damageDice: 4, damageBonus: 2,
     challenge_rating: '1/8', xp: 25, source_page: 290, creature_type: 'humanoid',
-    source_url: 'https://dnd.su/bestiary/4-goblin/', image: '/assets/enemies/goblin.png',
+    source_url: 'https://dnd.su/bestiary/4-goblin/', image: '/assets/enemies/goblin-minion.png',
     traits: [{ id: 'nimble-escape', name: 'Ловкое бегство' }],
     action_profiles: [
       { id: 'scimitar', name: 'Скимитар', kind: 'melee', attack_modifier: 4, damage_expression: '1d4+2', damage_type: 'slashing', range_feet: 5 },
