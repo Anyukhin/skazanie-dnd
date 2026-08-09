@@ -276,7 +276,7 @@ function npcNameFor(state, npcId) {
 const DEED_EVENT_TYPES = new Set([
   'NpcDied', 'NpcHarmed', 'SceneObjectOperated', 'DoorForced',
   'NpcPromiseResolved', 'ItemTransferred', 'WitnessConsequencePropagated',
-  'CaptiveExecuted', 'CaptiveNeglected',
+  'CaptiveNeglected',
 ])
 
 /**
@@ -297,7 +297,7 @@ const DEED_EVENT_TYPES = new Set([
 function recognizeDeed(state, event) {
   const type = String(event?.event_type ?? '')
   const payload = event?.payload ?? {}
-  if (type === 'CaptiveExecuted' || type === 'CaptiveNeglected') {
+  if (type === 'CaptiveNeglected') {
     // Жестокость называет своим именем то, чего в обычном убийстве нет:
     // жертва была связана и безоружна. Голод считается тем же поступком —
     // морить пленного не мягче, чем добить.
@@ -308,16 +308,32 @@ function recognizeDeed(state, event) {
       actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
       // Сама жертва свидетелем не считается: голодающий пленник ещё жив и попал
       // бы в список сцены, а «свидетель собственного мучения» и репутацию
-      // двигал бы за себя. У казни это выходит само — мёртвого в сцене уже нет.
+      // двигал бы за себя.
       witnessIds: sceneWitnessIds(state).filter((npcId) => npcId !== text(payload.npc_id, 120)),
     }
   }
   if (type === 'NpcDied') {
-    // Смерть пленного описана поступком жестокости, и её отдельное событие
-    // приходит той же командой. Считать её ещё и убийством значило бы записать
-    // один и тот же нож дважды.
-    if (heldCaptiveForNpc(state, payload.npc_id)) return null
-    return { kind: 'murder', key: text(payload.npc_id, 120), subject: text(payload.npc_name, 160) || npcNameFor(state, payload.npc_id), actorIds: [payload.source_actor_id ?? event.actor_id] }
+    // Смерть связанного — жестокость, а не рядовое убийство: беззащитность
+    // жертвы и есть содержание поступка.
+    //
+    // Распознаётся она по **самой смерти**, а не по команде казни. Первая
+    // редакция делала наоборот: гасила здесь убийство, если NPC числится
+    // пленным, и рассчитывала, что жестокость запишет `CaptiveExecuted`. Но это
+    // событие шлёт одна-единственная команда `ExecuteCaptive`, а связанного
+    // убивает и площадное заклинание, и добивающий удар по соседней клетке, и
+    // прямой `HarmNpc` — там не оставалось ни убийства, ни жестокости, то есть
+    // сторож слабел ровно на том, ради чего заводился.
+    //
+    // Порядок редьюсеров в `applyGameEvent` (`rules-engine.mjs`) — часть
+    // контракта: реестр пленных обновляется **после** летописи, поэтому здесь
+    // запись ещё числится удерживаемой.
+    const captive = heldCaptiveForNpc(state, payload.npc_id)
+    const subject = text(payload.npc_name, 160) || npcNameFor(state, payload.npc_id)
+    const actorIds = [payload.source_actor_id ?? event.actor_id]
+    if (captive) {
+      return { kind: 'cruelty', key: text(captive.id, 120), subject: subject || text(captive.name, 160), actorIds }
+    }
+    return { kind: 'murder', key: text(payload.npc_id, 120), subject, actorIds }
   }
   if (type === 'NpcHarmed') {
     // Смертельный удар описан отдельным поступком: считать его дважды нельзя.

@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   CAPTIVE_FEED_INTERVAL_MINUTES,
+  capturableEnemies,
   captiveBountyCp,
   captiveInterrogationPolicy,
   captivePersona,
@@ -10,6 +11,7 @@ import {
   captivesForViewer,
   heldCaptives,
   planCaptiveNeglectCommands,
+  planCaptureDrafts,
 } from '../server/captives.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { currencyToCopper } from '../server/merchant-economy.mjs'
@@ -174,7 +176,7 @@ test('у безымянного врага появляется детермин
     second.social.npcs.find((npc) => npc.id === 'enemy-surrendered').name,
     'имя обязано быть детерминированным от сида кампании',
   )
-  assert.equal(profile.name, captivePersona(campaign(), { id: 'enemy-surrendered', name: 'Бандит 1' }).name)
+  assert.equal(profile.name, captivePersona(campaign(), { id: 'enemy-surrendered', name: 'Бандит 1', creature_type: 'humanoid' }).name)
 
   const placement = first.npc_world.placements.find((entry) => entry.npc_id === 'enemy-surrendered')
   assert.ok(placement, 'пленный обязан занять клетку, где его взяли')
@@ -189,6 +191,20 @@ test('у безымянного врага появляется детермин
     heldCaptives(named).find((captive) => captive.actor_id === 'enemy-surrendered').name,
     'Ждан Прозвище',
   )
+})
+
+test('прозвище из таблицы имён достаётся только людям', () => {
+  const state = campaign()
+  const human = captivePersona(state, { id: 'enemy-surrendered', name: 'Бандит 1', creature_type: 'humanoid' })
+  assert.notEqual(human.name, 'Бандит 1', 'безымянный человек получает прозвище и имя')
+
+  // Таблица имён человеческая: связанный дьявол не должен зваться «Косматый
+  // Молчан». Своё имя из энкаунтера у него уже есть.
+  const devil = captivePersona(state, { id: 'enemy-surrendered', name: 'Барбед дьявол 2', creature_type: 'fiend' })
+  assert.equal(devil.name, 'Барбед дьявол 2')
+  assert.equal(devil.role, 'Барбед дьявол')
+  assert.equal(devil.temper, human.temper, 'характер и голос выводятся одинаково для всех')
+  assert.equal(devil.voice, human.voice)
 })
 
 function withCaptives(options = {}) {
@@ -396,6 +412,103 @@ test('убийство пленного — жестокость, а не ряд
   assert.equal(result.state.captives.captives.find((entry) => entry.id === captive.id).status, 'dead')
 })
 
+test('связанного убила не кнопка «убить» — всё равно жестокость, и реестр это узнаёт', () => {
+  const state = withCaptives({ npcs: [villager('watchman', 'Страж Бран')] })
+  const captive = captiveOf(state)
+  // Тот же путь, которым пленного накрывает площадное заклинание или добивающий
+  // удар по соседней клетке: `npcHarmEventDrafts` без команды `ExecuteCaptive`.
+  const result = resolveCommands([{
+    command_type: 'HarmNpc',
+    npc_id: captive.npc_id,
+    amount: 99,
+    damage_type: 'fire',
+    source_actor_id: 'hero',
+    command_id: 'cmd-harm-captive',
+    campaign_id: 'CAPTIVE',
+  }], state, { diceService: dice(), context: { isAdmin: true, serverAuthoritativeCombat: true } })
+
+  assert.ok(result.events.some((event) => event.event_type === 'NpcDied'))
+  assert.equal(result.events.some((event) => event.event_type === 'CaptiveExecuted'), false)
+  const feed = worldDeedsFeed(result.state)
+  assert.deepEqual(feed.map((deed) => deed.kind), ['cruelty'], 'смерть связанного попадает в летопись сама по себе')
+  assert.deepEqual(feed[0].actor_names, ['Ада'])
+  assert.deepEqual(feed[0].witness_ids, ['enemy-knocked', 'watchman'])
+
+  // Реестр обязан узнать о смерти оттуда же, иначе труп остаётся «удерживаемым».
+  const stored = result.state.captives.captives.find((entry) => entry.id === captive.id)
+  assert.equal(stored.status, 'dead')
+  assert.equal(stored.resolution, 'killed')
+  assert.equal(heldCaptives(result.state).some((entry) => entry.id === captive.id), false)
+  assert.equal(
+    planCaptiveNeglectCommands(result.state, { worldMinute: CAPTIVE_FEED_INTERVAL_MINUTES })
+      .some((command) => command.captive_id === captive.id),
+    false,
+    'мёртвого не морят голодом каждые сутки заново',
+  )
+  assert.throws(() => resolveCommands([{
+    command_type: 'HandCaptiveToGuards',
+    actor_id: 'hero',
+    captive_id: captive.id,
+    command_id: 'cmd-handover-dead',
+    campaign_id: 'CAPTIVE',
+  }], result.state, { diceService: dice(), context: { allowedActorIds: ['hero'] } }), (error) => error.code === 'CAPTIVE_ALREADY_RESOLVED')
+
+  // Обычное убийство мирного NPC при этом осталось убийством: сторож ослаб бы,
+  // если бы жестокость подменила собой всю ветку смерти.
+  const plain = withCaptives({ npcs: [villager('watchman', 'Страж Бран')] })
+  const murdered = resolveCommands([{
+    command_type: 'PlaceNpc',
+    npc_id: 'watchman',
+    to: { x: 2, y: 2 },
+    command_id: 'cmd-place-watchman',
+    campaign_id: 'CAPTIVE',
+  }, {
+    command_type: 'HarmNpc',
+    npc_id: 'watchman',
+    amount: 99,
+    damage_type: 'fire',
+    source_actor_id: 'hero',
+    command_id: 'cmd-harm-watchman',
+    campaign_id: 'CAPTIVE',
+  }], plain, { diceService: dice(), context: { isAdmin: true, serverAuthoritativeCombat: true } })
+  assert.deepEqual(worldDeedsFeed(murdered.state).map((deed) => deed.kind), ['murder'])
+})
+
+test('решённая судьба закрывает плен навсегда: заново берут только новых', () => {
+  const state = withCaptives()
+  const captive = captiveOf(state)
+  const released = resolveCommands([{
+    command_type: 'ReleaseCaptive',
+    actor_id: 'hero',
+    captive_id: captive.id,
+    command_id: 'cmd-release-once',
+    campaign_id: 'CAPTIVE',
+  }], state, { diceService: dice(), context: { allowedActorIds: ['hero'] } }).state
+
+  // Условие `surrendered` с боевого актора не снимает никто, поэтому отпущенный
+  // остаётся «сдавшимся» — и по одним лишь удерживаемым пленным следующий бой
+  // взял бы его заново, а журнал напечатал бы «сдаётся на милость» про
+  // отпущенного.
+  assert.ok(released.enemies.some((enemy) => enemy.id === 'enemy-surrendered'))
+  assert.equal(capturableEnemies(released).some((entry) => entry.enemy.id === 'enemy-surrendered'), false)
+  assert.equal(
+    planCaptureDrafts(released).some((draft) => draft.event_type === 'CaptiveTaken'
+      && draft.payload.captive.npc_id === captive.npc_id),
+    false,
+  )
+  // Второй пленник судьбу не решил — его перезахват тоже не повторяется.
+  assert.equal(capturableEnemies(released).some((entry) => entry.enemy.id === 'enemy-knocked'), false)
+
+  const executed = resolveCommands([{
+    command_type: 'ExecuteCaptive',
+    actor_id: 'hero',
+    captive_id: captiveOf(state, 'enemy-knocked').id,
+    command_id: 'cmd-execute-once',
+    campaign_id: 'CAPTIVE',
+  }], state, { diceService: dice(), context: { allowedActorIds: ['hero'] } }).state
+  assert.equal(capturableEnemies(executed).some((entry) => entry.enemy.id === 'enemy-knocked'), false)
+})
+
 test('казнь пленного без поста в сцене всё равно объявляет смерть и жестокость', () => {
   const state = withCaptives()
   const captive = captiveOf(state)
@@ -462,9 +575,20 @@ test('реестр пленных переживает replay и не течёт
   assert.equal(visible.known_fact_ids, undefined, 'нераскрытое знание принадлежит ведущему')
   assert.equal(visible.pending_knowledge, 0)
   assert.deepEqual(visible.revealed_fact_ids, captive.revealed_fact_ids)
+  // Плен не должен быть дверью в обход опознания врага: стат-блок закрыт фактом
+  // `stat_block` в знании отряда, а XP не показывается вообще никогда.
+  assert.equal(visible.stat_block_id, undefined, 'связать существо — не то же самое, что узнать его')
+  assert.equal(visible.xp, undefined, 'XP — чистое метаигровое число')
+  assert.equal(
+    JSON.stringify(campaignStateForViewer(told.state, { role: 'player' }, 'hero').captives).includes('srd_5_2_1:bandit'),
+    false,
+  )
 
   const gm = campaignStateForViewer(told.state, { role: 'admin' }, 'hero')
-  assert.deepEqual(gm.captives.captives.find((entry) => entry.id === captive.id).known_fact_ids, captive.known_fact_ids)
+  const gmCaptive = gm.captives.captives.find((entry) => entry.id === captive.id)
+  assert.deepEqual(gmCaptive.known_fact_ids, captive.known_fact_ids)
+  assert.equal(gmCaptive.stat_block_id, 'srd_5_2_1:bandit', 'ведущему провенанс виден целиком')
+  assert.equal(gmCaptive.xp, 25)
 
   // До допроса игрок видит только счётчик «есть что вытянуть», а не сам факт.
   const untouched = captivesForViewer(state, { isAdmin: false }).captives

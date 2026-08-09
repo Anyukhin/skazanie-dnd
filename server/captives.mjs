@@ -138,14 +138,23 @@ function captiveSeed(state, actorId) {
   return digest(text(state?.sessionCode, 60), text(actorId, 120))
 }
 
-/** Имя и характер безымянного врага. Одинаковы после каждого replay. */
+/**
+ * Имя и характер безымянного врага. Одинаковы после каждого replay.
+ *
+ * Прозвище из таблицы получают только люди и их родня: таблица человеческая, и
+ * надетая на всех подряд она давала «Косматого Молчана» связанному
+ * барбед-дьяволу, великану и дракону. Остальные держат имя, под которым пришли
+ * в бой, — характер и голос при этом выводятся так же, для всех.
+ */
 export function captivePersona(state, enemy = {}) {
   const seed = captiveSeed(state, enemy.id)
   const temper = pick(CAPTIVE_TEMPERS, seed, 'temper') ?? CAPTIVE_TEMPERS[2]
-  const role = text(enemy.name, 120).replace(/\s+\d+$/u, '') || 'Пленник'
+  const own = text(enemy.name, 120)
+  const role = own.replace(/\s+\d+$/u, '') || 'Пленник'
+  const nickname = `${pick(CAPTIVE_EPITHETS, seed, 'epithet')} ${pick(CAPTIVE_NAMES, seed, 'name')}`
   return {
     seed,
-    name: `${pick(CAPTIVE_EPITHETS, seed, 'epithet')} ${pick(CAPTIVE_NAMES, seed, 'name')}`,
+    name: creatureTypeOf(enemy) === 'humanoid' ? nickname : (own || nickname),
     role,
     temper: temper.id,
     temper_label: temper.label,
@@ -254,11 +263,19 @@ export function captiveOriginFor(state = {}, enemy = {}) {
   return null
 }
 
-/** Сбежавший пленным не становится: `fled` уводит существо с поля вместе с ним. */
+/**
+ * Сбежавший пленным не становится: `fled` уводит существо с поля вместе с ним.
+ *
+ * Исключение строится по **всему** реестру, а не по удерживаемым сейчас.
+ * Отпущенный, сданный страже и казнённый остаются в `state.enemies` со своим
+ * условием `surrendered` — снимать его в проекте некому, — и по `heldCaptives`
+ * они возвращались в список захвата: следующий бой заново «брал в плен»
+ * освобождённого, а журнал печатал «сдаётся на милость» про уже мёртвого.
+ */
 export function capturableEnemies(state = {}) {
-  const held = new Set(heldCaptives(state).map((captive) => captive.actor_id))
+  const known = new Set(captiveList(state).map((captive) => captive.actor_id))
   return (Array.isArray(state?.enemies) ? state.enemies : [])
-    .filter((enemy) => enemy?.id && !held.has(String(enemy.id)) && !conditionIds(state, enemy.id).has('fled'))
+    .filter((enemy) => enemy?.id && !known.has(String(enemy.id)) && !conditionIds(state, enemy.id).has('fled'))
     .map((enemy) => ({ enemy, origin: captiveOriginFor(state, enemy) }))
     .filter((entry) => entry.origin)
     .sort((left, right) => String(left.enemy.id).localeCompare(String(right.enemy.id)))
@@ -599,6 +616,13 @@ export function planCaptiveNeglectCommands(state = {}, { worldMinute } = {}) {
  * Что отряд видит про своих пленных. Раскрытое знание остаётся, нераскрытое —
  * нет: `known_fact_ids` принадлежит ведущему, и именно ради него допрос вообще
  * является проверкой.
+ *
+ * Вместе с ним вырезаны `stat_block_id` и `xp`. Плен не должен быть дверью в
+ * обход опознания врага: `publicEnemyFor` (`viewer-projection.mjs`) прячет
+ * стат-блок за фактом `stat_block` в знании отряда, а XP не показывает вообще
+ * ни при каком уровне знания — это чистое метаигровое число. Связать существо
+ * — не то же самое, что узнать его; серверная бухгалтерия награды за сдачу
+ * страже читает сырое состояние, а не проекцию, поэтому ничего не теряет.
  */
 export function captivesForViewer(state = {}, viewer = {}) {
   const captives = captiveList(state)
@@ -606,7 +630,7 @@ export function captivesForViewer(state = {}, viewer = {}) {
   return {
     schema_version: CAPTIVES_SCHEMA_VERSION,
     captives: captives.map((captive) => {
-      const { known_fact_ids: _known, ...visible } = captive
+      const { known_fact_ids: _known, stat_block_id: _statBlock, xp: _xp, ...visible } = captive
       return clone({
         ...visible,
         pending_knowledge: Math.max(0, captive.known_fact_ids.length - captive.revealed_fact_ids.length),
@@ -615,6 +639,10 @@ export function captivesForViewer(state = {}, viewer = {}) {
   }
 }
 
+/**
+ * Редьюсер реестра. Третий аргумент — уже применённое состояние: из него
+ * берётся время кампании, когда его нет в самом событии (`NpcDied`).
+ */
 export function applyCaptiveEvent(input, event, state = {}) {
   const type = String(event?.event_type ?? '')
   const payload = event?.payload ?? {}
@@ -633,6 +661,27 @@ export function applyCaptiveEvent(input, event, state = {}) {
     const captive = safeCaptive(payload.captive)
     if (!captive || normalized.captives.some((entry) => entry.id === captive.id)) return normalized
     return normalizeCaptivesState({ ...normalized, captives: [...normalized.captives, captive] })
+  }
+  if (type === 'NpcDied') {
+    // О смерти связанного реестр узнаёт из самой смерти, а не из
+    // `CaptiveExecuted`: пленного убивает и площадное заклинание, и добивающий
+    // удар по соседней клетке. Без этой ветки труп оставался бы «удерживаемым»
+    // со всеми вытекающими: висел бы в панели «Пленники», каждые сутки получал
+    // бы свежую запись о голоде и приносил бы награду за сдачу страже.
+    const npcId = text(payload.npc_id, 120)
+    if (!npcId || !normalized.captives.some((captive) => captive.npc_id === npcId && captive.status === 'held')) {
+      return normalized
+    }
+    const minutes = campaignElapsedMinutes(state)
+    return normalizeCaptivesState({
+      ...normalized,
+      captives: normalized.captives.map((captive) => captive.npc_id === npcId && captive.status === 'held'
+        // Причина смерти уточняется следующим событием: `CaptiveExecuted`
+        // перепишет `killed` на `executed`, а у случайной гибели она такой и
+        // останется — отряд убил связанного, но не собирался.
+        ? { ...captive, status: 'dead', resolution: 'killed', resolved_at_minutes: minutes }
+        : captive),
+    })
   }
   if (type === 'CaptiveMoved') {
     return patch(payload.captive_id, (captive) => ({

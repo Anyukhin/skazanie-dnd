@@ -12744,11 +12744,14 @@ export function applyGameEvent(rawState, event) {
   // Летопись поступков выводится из уже применённого события: свидетелями
   // считаются те, кто остался в сцене после него, — убитый NPC свидетелем быть
   // не может. Порядок здесь и есть гарантия replay-стабильности.
-  // Реестр пленных обновляется **до** летописи поступков: убийство пленного
-  // распознаётся жестокостью по тому, что запись ещё числится удерживаемой, а
-  // `CaptiveExecuted` приходит следующим событием той же команды.
-  state.captives = applyCaptiveEvent(state.captives, event, state)
+  // Реестр пленных обновляется **после** летописи поступков, и это часть
+  // контракта, а не порядок по вкусу: смерть связанного распознаётся
+  // жестокостью по тому, что на момент события запись ещё числилась
+  // удерживаемой (`world-deeds.mjs`, ветка `NpcDied`). Обратный порядок пометил
+  // бы пленного мёртвым раньше, чем летопись успела бы его разобрать, и один и
+  // тот же нож читался бы то жестокостью, то обычным убийством.
   state.world_deeds = applyWorldDeedEvent(state.world_deeds, event, state)
+  state.captives = applyCaptiveEvent(state.captives, event, state)
   state.autonomy = applyAutonomyEvent(state.autonomy, event)
   state.state_version = Number.isSafeInteger(event.state_version_after)
     ? event.state_version_after
