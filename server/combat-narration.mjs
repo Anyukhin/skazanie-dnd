@@ -227,6 +227,23 @@ function tacticalNarration(events, state) {
       meaningful.push(`${target} отступает и покидает бой.`)
     } else if (event.event_type === 'ConditionAdded' && payload.condition === 'surrendered') {
       meaningful.push(`${target} прекращает сопротивление и сдаётся.`)
+    } else if (event.event_type === 'ParleyProposed') {
+      // Про отказ и про насмешку расскажет `ParleyRejected`: здесь только сам
+      // окрик, иначе одна попытка звучала бы дважды.
+      meaningful.push(`${actor} перекрикивает лязг: «Стойте! Поговорим!»`)
+    } else if (event.event_type === 'ParleyRejected') {
+      meaningful.push(String(payload.taunt || 'Ответа нет — бой продолжается.'))
+    } else if (event.event_type === 'TruceEstablished') {
+      const truce = payload.truce ?? {}
+      meaningful.push(`Оружие опускается: ${String(truce.leader_name || 'предводитель уцелевших')} готов говорить. Перемирие держится, пока его никто не нарушил.`)
+    } else if (event.event_type === 'TruceBroken') {
+      meaningful.push(payload.broken_by === 'enemies'
+        ? 'Противник бьёт под перемирием — уговор разорван, бой возобновляется.'
+        : `${actor} бьёт под перемирием. Слово нарушено, и это видели.`)
+    } else if (event.event_type === 'ParleySettled') {
+      meaningful.push(payload.outcome === 'resume'
+        ? 'Переговоры кончились ничем: стороны расходятся по местам, и бой продолжается.'
+        : `Уговор заключён: ${String(payload.term_summary || payload.term_label || 'условия приняты')}${Number(payload.tribute_cp) > 0 ? ` Отряду остаётся ${Math.max(0, Number(payload.tribute_cp) || 0)} мм.` : ''}`)
     } else if (event.event_type === 'CaptiveTaken') {
       const captive = payload.captive ?? {}
       meaningful.push(captive.origin === 'knocked_out'
@@ -273,11 +290,13 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
   'ItemEffectIneffective', 'MonsterAbilityRecharged',
-  'KnockoutEnded', 'MapLevelChanged', 'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
+  'KnockoutEnded', 'MapLevelChanged', 'ParleyProposed', 'ParleyRejected', 'ParleySettled',
+  'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',
-  'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed', 'TurnEnded',
+  'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed',
+  'TruceBroken', 'TruceEstablished', 'TurnEnded',
   'TurnStarted',
 ]))
 

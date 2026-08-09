@@ -382,7 +382,10 @@ const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
 // набор описывает безопасные команды на тактической доске, а не боевые — им
 // пользуются и `OperateDoor`, и взаимодействие с предметом. Запрет перехода в
 // бою — правило движка, а не политика маршрута.
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
+// Парлей стоит здесь же: переговоры посреди боя — такое же действие на доске,
+// как опознание врага, и после уговора бой обязан продолжиться тем же
+// `settleCombatContinuation`, который двигает очередь после любой боевой команды.
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'ProposeParley', 'SettleParley', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_REST_COMMANDS = new Set(['StartRest', 'SpendHitPointDie', 'CompleteRest'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
@@ -811,6 +814,16 @@ function sanitizePlayerCombatCommand(user, state, input) {
     // Из запроса берётся только цель: навык, характеристику и СЛ выбирает
     // серверная таблица, и подставить их клиент не может.
     return { ...base, target_id: String(input?.target_id ?? input?.targetId ?? '').slice(0, 120) }
+  }
+  if (type === 'ProposeParley') {
+    // Клиент выбирает только подход. Кто отвечает за сторону противника, какая
+    // СЛ и пойдёт ли она вообще на разговор — считает серверная мораль.
+    return { ...base, skill: input?.skill === 'intimidation' ? 'intimidation' : 'persuasion' }
+  }
+  if (type === 'SettleParley') {
+    // Клиент называет исход из карточки условий; список доступных исходов
+    // объявил сервер при заключении перемирия и сверяет заново.
+    return { ...base, outcome: String(input?.outcome ?? '').slice(0, 40) }
   }
   if (type === 'OperateDoor') {
     // Из запроса берутся только дверь и намерение. Ни сложность замка, ни
@@ -3702,7 +3715,21 @@ const server = createServer((req, res) => {
         await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])
       }
       if (restCommands.length) await assertRestIdempotency(commandMatch[1], idempotencyKey, restCommands[0])
-      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]) })
+      // Двухфазный ручной бросок для команд доски, которые его поддерживают
+      // (сейчас — парлей). Первая фаза приходит без `roll` и получает карточку
+      // проверки, вторая приносит серверный `roll_id`; выдуманный клиентом
+      // результат сюда не проходит по построению — реестр знает только свои.
+      const manualRoll = body.manual_roll === true || body.manualRoll === true
+      let verifiedRoll = null
+      if (body.roll?.roll_id) {
+        verifiedRoll = rollRegistry.consume(body.roll.roll_id, { campaignId: commandMatch[1], actorId: actor, idempotencyKey })
+      } else if (body.roll) {
+        throw commandPolicyError('Принимается только серверный roll_id', 'UNVERIFIED_ROLL')
+      }
+      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]), manualRoll, verifiedRoll })
+      // Карточка проверки: мир не изменился, продолжать бой и проецировать
+      // нечего. Ответ уходит игроку как есть.
+      if (result.check) return json(res, 200, turnResultForViewer({ ...result, room_version: room.version }, user, actor))
       if (merchantCommands.length) assertMerchantResultFingerprint(result, merchantCommands[0])
       if (characterCommands.length) assertCharacterBuildResultFingerprint(result, characterCommands)
       if (itemCommands.length) assertItemResultFingerprint(result, itemCommands[0])

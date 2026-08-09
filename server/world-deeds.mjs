@@ -70,6 +70,10 @@ export const DEED_KINDS = Object.freeze({
   // поступка. Пленного добили связанным или уморили голодом, и мир судит это
   // отдельно от боя, где обе стороны были при оружии.
   cruelty: Object.freeze({ alignment: 'dark', severity: 'grave', label: 'Жестокость' }),
+  // Вероломство — удар под объявленным перемирием. Тяжесть та же, что у
+  // убийства и жестокости, и по той же причине: сломано не тело, а слово, на
+  // котором держится любая следующая попытка договориться.
+  treachery: Object.freeze({ alignment: 'dark', severity: 'grave', label: 'Вероломство' }),
   arson: Object.freeze({ alignment: 'dark', severity: 'major', label: 'Поджог' }),
   theft: Object.freeze({ alignment: 'dark', severity: 'major', label: 'Кража' }),
   destruction: Object.freeze({ alignment: 'dark', severity: 'major', label: 'Разрушение' }),
@@ -105,6 +109,11 @@ const RUMOR_PHRASES = Object.freeze({
     'В «{place}» расправились со связанным. Погиб(ла) {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» чужаки не пощадили пленного.',
     'Слыхал, будто те пришлые пленных не берут — а берут, так лучше бы убили сразу.',
+  ]),
+  treachery: Object.freeze([
+    'В «{place}» ударили под перемирием. Обманутая сторона — {what}. Свидетели указывают: {who}.',
+    'Говорят, в «{place}» чужаки позвали говорить, а ударили в спину.',
+    'Слыхал, будто тем пришлым слово не слово: зовут на переговоры и режут.',
   ]),
   violence: Object.freeze([
     'В «{place}» человека избили до крови: пострадал(а) {what}. Свидетели указывают: {who}.',
@@ -276,7 +285,7 @@ function npcNameFor(state, npcId) {
 const DEED_EVENT_TYPES = new Set([
   'NpcDied', 'NpcHarmed', 'SceneObjectOperated', 'DoorForced',
   'NpcPromiseResolved', 'ItemTransferred', 'WitnessConsequencePropagated',
-  'CaptiveNeglected',
+  'CaptiveNeglected', 'TruceBroken',
 ])
 
 /**
@@ -310,6 +319,21 @@ function recognizeDeed(state, event) {
       // бы в список сцены, а «свидетель собственного мучения» и репутацию
       // двигал бы за себя.
       witnessIds: sceneWitnessIds(state).filter((npcId) => npcId !== text(payload.npc_id, 120)),
+    }
+  }
+  if (type === 'TruceBroken') {
+    // Летопись — счёт поступков **отряда**: перемирие, разорванное самим
+    // противником, поступком отряда быть не может. Свидетелями здесь считается
+    // не только сцена: под перемирием стороны стоят лицом к лицу, и
+    // предводитель противника видел удар первым, даже если мирных NPC рядом нет.
+    if (text(payload.broken_by, 30) !== 'party') return null
+    const leaderId = text(payload.leader_id, 120)
+    return {
+      kind: 'treachery',
+      key: leaderId || text(payload.actor_id, 120),
+      subject: text(payload.leader_name, 160) || npcNameFor(state, leaderId) || 'противник',
+      actorIds: [payload.actor_id ?? event.actor_id].filter(Boolean),
+      witnessIds: [...new Set([leaderId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
     }
   }
   if (type === 'NpcDied') {
@@ -429,6 +453,7 @@ function summaryFor(state, deed) {
   const table = {
     murder: `${who}: убийство — ${what} (${place})`,
     cruelty: `${who}: жестокость к пленному — ${what} (${place})`,
+    treachery: `${who}: удар под перемирием — ${what} (${place})`,
     violence: `${who}: побои — ${what} (${place})`,
     arson: `${who}: поджог — ${what} (${place})`,
     vandalism: `${who}: погром — ${what} (${place})`,

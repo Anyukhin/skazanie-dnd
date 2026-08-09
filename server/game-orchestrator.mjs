@@ -12,6 +12,7 @@ import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
+import { PARLEY_ABILITY, PARLEY_POLICY_ID, mentionsParley, parleyMoraleFor, truceFor } from './parley.mjs'
 import {
   NARRATOR_PROMPT_VERSION,
   NARRATOR_RECENT_TEXT_LIMIT,
@@ -768,6 +769,66 @@ export class GameOrchestrator {
     return buildTurnExplanation(trace, viewer)
   }
 
+  /**
+   * Команда парлея, откуда бы она ни пришла: явной командой из хотбара или
+   * распознанной фразой в бою. `null` — обычный ход.
+   *
+   * Подход (Убеждение или Запугивание) выводится из самой фразы тем же
+   * детерминированным правилом, что и остальная свободная речь: «сдавайтесь» и
+   * «сложите оружие» — это нажим, всё прочее — уговор.
+   *
+   * @returns {{ command_type: 'ProposeParley', actor_id: string, skill: string } | null}
+   */
+  parleyCommandFor({ input, playerId, message, state }) {
+    const explicit = (Array.isArray(input?.commands) ? input.commands : [])
+      .find((command) => String(command?.command_type ?? '') === 'ProposeParley')
+    if (explicit) {
+      return {
+        ...explicit,
+        actor_id: String(explicit.actor_id ?? playerId),
+        skill: explicit.skill === 'intimidation' ? 'intimidation' : 'persuasion',
+      }
+    }
+    if (input?.commands || !playerId) return null
+    if (state?.mechanics?.combat?.active !== true || truceFor(state)) return null
+    if (!mentionsParley(message)) return null
+    const pressing = /(?:сдавайтесь|сложите\s+оружие|опустите\s+оружие|брос(?:ай|ьте)\s+оружие|предлага\p{L}*\s+сдаться)/iu.test(message)
+    return { command_type: 'ProposeParley', actor_id: playerId, skill: pressing ? 'intimidation' : 'persuasion' }
+  }
+
+  /**
+   * Карточка проверки для первой фазы ручного броска. СЛ берётся у той же
+   * серверной морали, которую применит движок во второй фазе, поэтому игрок
+   * бросает ровно против объявленного числа.
+   */
+  parleyCheckCard({ campaignId, playerId, state, command }) {
+    const morale = parleyMoraleFor(state)
+    // Фанатикам и бессловесным бросать нечего: отказ выносит движок, и он
+    // должен случиться сразу, а не после кубика.
+    if (morale.refuses) return null
+    const attempts = Math.max(0, Number(state?.mechanics?.combat?.parley_attempts) || 0)
+    const preview = previewD20Check(state, {
+      actorId: String(command.actor_id ?? playerId),
+      kind: 'check',
+      ability: PARLEY_ABILITY,
+      skill: command.skill,
+      difficulty: morale.difficulty,
+    })
+    const check = this.rollRegistry.registerCheck({
+      campaignId,
+      actorId: String(command.actor_id ?? playerId),
+      label: d20CheckLabel({ kind: 'check', ability: preview.ability, skill: preview.skill }),
+      modifier: preview.modifier,
+      difficulty: morale.difficulty,
+      ability: preview.ability,
+      advantage: preview.advantage,
+      // Повторный окрик идёт с помехой — тем же правилом, что применит движок.
+      disadvantage: preview.disadvantage || attempts > 0,
+      context: { kind: 'parley', policy: PARLEY_POLICY_ID, skill: command.skill },
+    })
+    return { ...check, skill: preview.skill }
+  }
+
   freeActionResponse({
     freeAction,
     campaignId,
@@ -968,7 +1029,11 @@ export class GameOrchestrator {
       role: input.user?.role,
     }
     const worldkeeperState = { ...visibleState, worldMemory: originalState.worldMemory }
+    // Окрик о переговорах посреди боя — не вопрос к миру: Хранитель мира на
+    // него отвечать не должен, иначе «предлагаю переговоры» уходило бы в
+    // «подтверждённых сведений нет» и до правила не доезжало.
     const loreAnswer = input.commands || explicitNpcId
+      || (originalState.mechanics?.combat?.active === true && mentionsParley(message))
       ? null
       : answerKnownLore(message, worldkeeperState, { viewer: worldkeeperViewer })
     if (loreAnswer) {
@@ -1003,6 +1068,44 @@ export class GameOrchestrator {
       message,
       npcId: explicitNpcId,
     })
+    // Парлей: единственная развилка на оба входа.
+    //
+    // Кнопка хотбара приходит сюда командой `ProposeParley`, свободная фраза —
+    // текстом, и обе идут через `_handle`. Развилка стоит **до** разбора
+    // намерения намеренно: «предлагаю переговоры» разбирается как социальное
+    // намерение и требует npc_id, которого у врага в бою нет, — без этой ветки
+    // фраза упиралась бы в уточнение, а не в правило.
+    //
+    // Ручной бросок тоже один на оба входа: сервер регистрирует проверку в
+    // реестре, ничего не коммитит и ждёт второй запрос с `roll_id`. Так игрок
+    // бросает d20 сам и за парлей из хотбара, и за парлей голосом.
+    const parleyCommand = this.parleyCommandFor({ input, playerId, message, state: authoritativeState })
+    if (parleyCommand) {
+      if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
+        const card = this.parleyCheckCard({ campaignId, playerId, state: authoritativeState, command: parleyCommand })
+        if (card) {
+          return {
+            narration: `Требуется проверка: ${card.label}, СЛ ${card.difficulty}. Бросьте d20, чтобы узнать, услышат ли вас.`,
+            effects: emptyEffects(),
+            provider: 'RulesEngine',
+            model: 'deterministic',
+            turn_id: turnId,
+            engine_mode: mode,
+            state_version: authoritativeState.state_version,
+            mechanics: [],
+            visible_state_changes: [],
+            authoritative_state: authoritativeState,
+            check: { ...card, sides: 20 },
+            turn_consumed: false,
+          }
+        }
+      }
+      if (verifiedRoll) {
+        const { context: _parleyCheckContext, ...verifiedRollPayload } = verifiedRoll
+        parleyCommand.verified_roll = verifiedRollPayload
+      }
+      input = { ...input, commands: [parleyCommand] }
+    }
     let intent = input.commands
       ? { actor_id: playerId, intent: 'structured_commands', approach: 'api', targets: [], mentioned_entities: [], missing_information: [], requires_clarification: false, confidence: 1, raw_message: message }
       : await this.intentParser.parse({ message, playerId, visibleState })
@@ -1103,7 +1206,14 @@ export class GameOrchestrator {
       const profile = persistedProfile ? npcProfileAtWorldTime(persistedProfile, authoritativeState) : null
       const sceneLocation = String(authoritativeState.scene?.location ?? '').trim().toLocaleLowerCase('ru')
       const npcLocation = String(profile?.location ?? '').trim().toLocaleLowerCase('ru')
-      const unavailable = !profile || profile.available === false || authoritativeState.mechanics?.combat?.active || (sceneLocation && npcLocation && sceneLocation !== npcLocation)
+      // Разговор в активном бою запрещён — кроме одного случая: под
+      // объявленным перемирием говорить можно, и говорить можно **только** с
+      // предводителем противника. Ради этого парлей и заводился; исключение
+      // именное, чтобы посреди схватки нельзя было заболтать кого угодно.
+      const truceLeaderId = String(truceFor(authoritativeState)?.leader_id ?? '')
+      const combatBlocksTalk = Boolean(authoritativeState.mechanics?.combat?.active)
+        && socialRequest.npcId !== truceLeaderId
+      const unavailable = !profile || profile.available === false || combatBlocksTalk || (sceneLocation && npcLocation && sceneLocation !== npcLocation)
       if (unavailable) {
         intent.requires_clarification = true
         intent.missing_information = ['available_npc']

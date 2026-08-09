@@ -45,6 +45,12 @@ export type PendingCheck = {
   playerId: string
   status: 'ready' | 'rolling' | 'resolving'
   result?: RollResult
+  /**
+   * Команда доски, ждущая броска. Есть только у двухфазных команд парлея:
+   * вторая фаза повторяет ту же команду с серверным `roll_id`, а не
+   * пересобирает свободное действие. Пусто — обычная проверка свободной фразы.
+   */
+  command?: { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
 }
 
 export type AgentInteractionOption = {
@@ -885,7 +891,7 @@ export type BattleEvent = {
   id: string
   sceneTurn?: number
   round?: number
-  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented'
+  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken'
   actorId?: string
   actorKind?: 'player' | 'enemy' | 'summon' | 'system'
   targetId?: string
@@ -1462,6 +1468,29 @@ export type AttackForecast = {
   average_damage: number
 }
 
+/** Исходы перемирия. Список закрыт сервером (`server/parley.mjs`). */
+export type ParleyOutcome = 'withdraw' | 'tribute' | 'surrender' | 'resume'
+
+/**
+ * Перемирие посреди боя. Приходит в проекции внутри `mechanics.combat`, потому
+ * что это состояние боя, а не отдельный слой: пока оно есть, очередь заморожена.
+ */
+export type TruceState = {
+  schema_version?: number
+  policy_id?: string
+  leader_id: string
+  leader_name?: string
+  hero_id?: string
+  hero_name?: string
+  skill?: 'persuasion' | 'intimidation'
+  difficulty?: number
+  total?: number
+  round?: number
+  established_at_minutes?: number
+  outcomes: ParleyOutcome[]
+  tribute_cp?: number
+}
+
 export type CombatMechanics = {
   active?: boolean
   round?: number
@@ -1469,6 +1498,8 @@ export type CombatMechanics = {
   active_index?: number
   action_economy?: Record<string, CombatActionEconomy>
   reaction_window?: CombatReactionWindow | null
+  truce?: TruceState | null
+  parley_attempts?: number
 }
 
 export type GameMechanics = Record<string, unknown> & {

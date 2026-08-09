@@ -28,6 +28,23 @@ export function battleEventText(state: GameState, event: NonNullable<GameState['
     return participants ? `Бой начался. Участники: ${participants}.` : 'Бой начался, порядок инициативы определён.'
   }
   if (event.type === 'combat-end') return `Бой завершён в раунде ${event.round ?? 1}${event.reason ? ` · ${event.reason}` : ''}.`
+  if (event.type === 'parley') {
+    if (event.result === 'refused') return `${actorName(event.actorId)} кричит о переговорах — ответа нет.`
+    const roll = event.roll ? ` ${event.roll.total} против СЛ ${event.roll.difficulty ?? '?'}` : ''
+    return `${actorName(event.actorId)} предлагает переговоры:${roll} — ${event.result === 'success' ? 'противник слушает' : 'противник не слушает'}.`
+  }
+  if (event.type === 'parley-rejected') return `Переговоры отвергнуты${event.reason === 'zealots' ? ': эти дерутся до конца' : event.reason === 'mindless' ? ': договариваться не с кем' : ''}.`
+  if (event.type === 'truce') return `Объявлено перемирие: говорит ${actorName(event.targetId)}.`
+  if (event.type === 'truce-broken') return `${actorName(event.actorId)} наносит удар под перемирием — уговор разорван.`
+  if (event.type === 'parley-settled') {
+    const outcomes: Record<string, string> = {
+      withdraw: 'противник уходит с миром',
+      tribute: 'противник уходит, оставив добычу',
+      surrender: 'противник складывает оружие',
+      resume: 'уговора нет, бой продолжается',
+    }
+    return `Переговоры завершены: ${outcomes[String(event.reason)] ?? 'условия приняты'}.`
+  }
   if (event.type === 'move') return `${actorName(event.actorId)} перемещается на ${event.distanceFeet ?? 0} фт.`
   if (event.type === 'turn-end') return `${actorName(event.actorId)} завершает ход.`
   if (event.type === 'spell') return `${actorName(event.actorId)} применяет «${event.spellName ?? event.spellId ?? 'заклинание'}»${event.targetId ? ` к ${actorName(event.targetId)}` : ''}.`

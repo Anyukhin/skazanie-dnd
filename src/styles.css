@@ -517,6 +517,29 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-mode-plate { position: absolute; z-index: 8; left: 50%; top: 8px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 12px 40px; background: radial-gradient(ellipse at center, rgba(9,7,6,.78) 0%, rgba(9,7,6,.52) 42%, rgba(9,7,6,0) 76%); color: #bb9058; font: 700 var(--fs-xs) Manrope, sans-serif; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 0 7px rgba(0,0,0,.85); }
 .npc-tactic-banner { position: absolute; z-index: 12; left: 50%; top: 14px; max-width: min(620px, calc(100% - 160px)); display: flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid rgba(193,119,94,.42); border-radius: 18px; background: rgba(28,17,14,.92); color: #ddb6a6; font: 600 var(--fs-sm) Manrope, sans-serif; transform: translateX(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.42); backdrop-filter: blur(8px); pointer-events: none; animation: npc-tactic-arrive .2s ease-out; }
 .npc-tactic-banner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Перемирие. Отдельный холодный акцент — не боевой красный и не тёплый
+   «пленный»: пока рамка на месте, очередь стоит и удар обойдётся дорого.
+   Рамка рисуется на самой доске, чтобы её нельзя было не заметить. */
+.truce-banner { position: absolute; z-index: 12; left: 50%; top: 14px; max-width: min(680px, calc(100% - 160px)); display: flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid rgba(126,168,178,.5); border-radius: 18px; background: rgba(14,24,27,.92); color: #9fc7d0; font: 600 var(--fs-sm) Manrope, sans-serif; transform: translateX(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.42); backdrop-filter: blur(8px); pointer-events: none; }
+.truce-banner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-stage.truce-held::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none; border: 3px solid rgba(126,168,178,.5); box-shadow: inset 0 0 42px rgba(96,150,163,.28); animation: truce-pulse 2.6s ease-in-out infinite alternate; }
+@keyframes truce-pulse { from { border-color: rgba(126,168,178,.32); } to { border-color: rgba(158,206,217,.72); } }
+.truce-panel { padding: 11px; border: 1px solid rgba(126,168,178,.34); border-radius: 7px; background: rgba(14,22,25,.9); }
+.truce-panel > header { display: flex; align-items: center; gap: 8px; color: #7ea8b2; }
+.truce-panel > header span { display: grid; }
+.truce-panel > header small { color: #5d7c84; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.truce-panel > header strong { color: #c3dde3; font: 600 var(--fs-lg) Spectral, serif; }
+.truce-panel > p { margin: 6px 0 9px; color: #7f8f93; font-size: var(--fs-sm); }
+.truce-terms { display: grid; gap: 6px; }
+.truce-term { display: grid; gap: 2px; padding: 7px 9px; border: 1px solid rgba(126,168,178,.28); border-left: 3px solid #5f96a3; border-radius: 6px; background: rgba(22,36,40,.7); text-align: left; cursor: pointer; }
+.truce-term:hover:not(:disabled) { border-color: rgba(158,206,217,.6); background: rgba(30,52,58,.8); }
+.truce-term:disabled { opacity: .38; cursor: default; }
+.truce-term b { color: #c9e2e8; font: 600 var(--fs-md) Spectral, serif; }
+.truce-term small { color: #7e8f94; font-size: var(--fs-sm); }
+.truce-term em { color: #cfa96a; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .08em; }
+.truce-term.term-resume { border-left-color: #a4442f; }
+.truce-term.term-resume b { color: #ddb3a4; }
+.parley-hotbar.parley-hotbar { border-color: rgba(126,168,178,.4); color: #9fc7d0; }
 
 .game-area.is-narrating .map-atmosphere-one { opacity: .31; background: #b7874b; animation: narration-light-one 2.8s ease-in-out infinite alternate; }
 .game-area.is-narrating .map-atmosphere-two { opacity: .28; background: #6d7296; animation: narration-light-two 3.4s ease-in-out infinite alternate; }

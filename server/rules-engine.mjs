@@ -76,6 +76,7 @@ import {
   captiveBountyCp,
   captiveFor,
   captiveInterrogationPolicy,
+  captivePersona,
   captiveSettlementFor,
   captiveSparedDisposition,
   localFactionIds,
@@ -83,6 +84,23 @@ import {
   planCaptiveRelocationDrafts,
   planCaptureDrafts,
 } from './captives.mjs'
+import {
+  PARLEY_ABILITY,
+  PARLEY_COMMAND_TYPES,
+  PARLEY_POLICY_ID,
+  PARLEY_SKILLS,
+  PARLEY_TERMS,
+  TRUCE_BREAKING_COMMAND_TYPES,
+  parleyAttempts,
+  parleyCombatPatch,
+  parleyMoraleFor,
+  parleyRefusalLine,
+  parleyTaunt,
+  parleyTributeCp,
+  normalizeTruce,
+  standingEnemies,
+  truceFor,
+} from './parley.mjs'
 import {
   ensureSceneWorldMemory,
   sceneWorldMemoryEventId,
@@ -415,6 +433,10 @@ const COMMAND_RULES = Object.freeze({
   FeedCaptive: [],
   ExecuteCaptive: [RULE_IDS.damage],
   NeglectCaptive: [],
+  // Парлей стоит действия и решается проверкой Харизмы против серверной СЛ:
+  // обе оси ruleset здесь настоящие, а не декоративные.
+  ProposeParley: [RULE_IDS.abilityCheck, RULE_IDS.turns],
+  SettleParley: [],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -442,6 +464,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
   ...NPC_WORLD_COMMAND_TYPES,
   ...CAPTIVE_COMMAND_TYPES,
+  ...PARLEY_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1197,6 +1220,13 @@ function defaultMechanics() {
       group_initiative: false,
       // Кто из текущей группы уже отходил. Пусто вне группового режима.
       turn_completed: [],
+      // Перемирие посреди боя (`server/parley.mjs`). `null` — обычный бой;
+      // объект означает, что очередь заморожена и говорить можно с
+      // предводителем уцелевших.
+      truce: null,
+      // Сколько раз отряд уже пробовал договориться в этом бою: второй окрик
+      // идёт с помехой, и счётчик — единственный источник этого знания.
+      parley_attempts: 0,
     },
   }
 }
@@ -1330,6 +1360,12 @@ export function normalizeCampaignState(input = {}) {
     .filter(([id, readied]) => id && readied && typeof readied === 'object' && READIED_TRIGGERS[String(readied.trigger)]))
   mechanics.combat.group_initiative = mechanics.combat.group_initiative === true
   mechanics.combat.turn_completed = uniqueStrings(mechanics.combat.turn_completed)
+  // Перемирие живёт ровно столько, сколько идёт бой: закрытый бой не может
+  // остаться «на паузе», а старый снимок про парлей просто ничего не знает.
+  mechanics.combat.truce = mechanics.combat.active ? normalizeTruce(mechanics.combat.truce) : null
+  mechanics.combat.parley_attempts = mechanics.combat.active
+    ? Math.max(0, safeInteger(mechanics.combat.parley_attempts, 0))
+    : 0
   // Счётчик живёт только внутри хода, в котором реакция действительно случилась:
   // ноль — это его отсутствие, и лишнего поля в форме combat он не создаёт.
   const reactionExtensions = Math.max(
@@ -2911,6 +2947,23 @@ function normalizeCommand(input, state) {
       command.target_ids = []
     }
   }
+  if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только герой, подход и выбранный исход. Ни СЛ, ни
+    // список доступных исходов, ни сумма откупа клиент подсказать не может:
+    // их считает серверная мораль стороны.
+    command.target_id = null
+    command.target_ids = []
+    if (command.command_type === 'ProposeParley') {
+      command.skill = PARLEY_SKILLS.includes(String(command.skill)) ? String(command.skill) : 'persuasion'
+    }
+    if (command.command_type === 'SettleParley') {
+      command.outcome = String(command.outcome ?? '').slice(0, 40)
+      // Уговор — серверная политика, а не ось ruleset: у самого исхода нет
+      // броска и нет правила редакции, но провенанс у механического решения
+      // обязан быть. Тот же приём, что у экономики торговца.
+      if (!command.house_rule_id) command.house_rule_id = PARLEY_POLICY_ID
+    }
+  }
   if (command.command_type === 'ResolveHeroDeath') {
     command.resolution = String(command.resolution ?? '')
     command.replacement_name = command.replacement_name == null ? '' : String(command.replacement_name).trim().slice(0, 120)
@@ -2932,6 +2985,7 @@ function needsActor(type) {
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
+    'ProposeParley', 'SettleParley',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3108,7 +3162,10 @@ function assertActorPermission(command, context, state) {
 
 function assertTurn(command, state, context = {}) {
   const combat = state.mechanics.combat
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  // `SettleParley` в списке нет намеренно: перемирие уже заморозило очередь, и
+  // уговор заключает отряд, а не тот, на ком стоит указатель инициативы.
+  // Дееспособность и сторона проверяются в собственной ветке команды.
+  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   // Дополнительные лучи одного заклинания — часть уже совершённого действия,
   // а не новое применение: экономика хода за них не платит второй раз.
@@ -3182,6 +3239,12 @@ function assertTurn(command, state, context = {}) {
   } else if (command.command_type === 'IdentifyEnemy') {
     // Опознание стоит действия так же, как импровизация: разглядывать врага
     // бесплатно означало бы лишний ход каждому герою каждый раунд.
+    const economy = combat.action_economy[command.actor_id]
+    if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+  } else if (command.command_type === 'ProposeParley') {
+    // Окрик посреди схватки стоит действия — и стоит его даже тогда, когда в
+    // ответ летит только насмешка. Бесплатный парлей превратился бы в
+    // ежераундовую лотерею без цены.
     const economy = combat.action_economy[command.actor_id]
     if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'ResolveImprovisedAction') {
@@ -3415,6 +3478,33 @@ export function validateCommand(input, rawState, context = {}) {
     }
     if (command.command_type === 'HandCaptiveToGuards' && !captiveSettlementFor(state)) {
       throw new RulesValidationError('Сдать пленного можно только в поселении, где есть стража', 'CAPTIVE_NO_SETTLEMENT')
+    }
+  }
+  if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
+    if (!state.mechanics.combat.active) {
+      throw new RulesValidationError('Переговоры посреди боя возможны только в бою', 'COMBAT_NOT_ACTIVE')
+    }
+    if (!playerActor(state, command.actor_id)) {
+      throw new RulesValidationError('Вести переговоры может только герой отряда', 'ACTOR_FORBIDDEN')
+    }
+    if (!isLivingActor(findActor(state, command.actor_id))) {
+      throw new RulesValidationError('Герой без сознания не ведёт переговоров', 'ACTOR_DEFEATED')
+    }
+    const truce = truceFor(state)
+    if (command.command_type === 'ProposeParley') {
+      if (truce) throw new RulesValidationError('Перемирие уже объявлено: договаривайтесь об условиях', 'TRUCE_ALREADY_ACTIVE')
+      if (!standingEnemies(state).length) {
+        throw new RulesValidationError('Переговоры вести не с кем: на ногах не осталось противников', 'PARLEY_NO_TARGET')
+      }
+    }
+    if (command.command_type === 'SettleParley') {
+      if (!truce) throw new RulesValidationError('Условия обсуждают под перемирием, а его нет', 'TRUCE_NOT_ACTIVE')
+      if (incapacitatingConditionFor(state, command.actor_id)) {
+        throw new RulesValidationError('Недееспособный герой не может заключить уговор', 'ACTOR_INCAPACITATED')
+      }
+      if (!truce.outcomes.includes(command.outcome)) {
+        throw new RulesValidationError('Противник на такие условия не пойдёт', 'PARLEY_OUTCOME_FORBIDDEN')
+      }
     }
   }
   if (CHARACTER_BUILD_COMMAND_TYPES.has(command.command_type)) {
@@ -5763,6 +5853,33 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
   const targetId = targetFor(command)
   const resistanceCantripUses = new Set()
   let nestedConsequencesResolved = false
+
+  // Вероломство: удар под перемирием.
+  //
+  // Перемирие не запрещает атаковать — оно назначает атаке цену. Событие
+  // выпускается **перед** самим ударом, поэтому в журнале сначала стоит разрыв
+  // уговора, а потом его следствие; летопись поступков читает уже готовый
+  // payload и не зависит от того, что осталось в `mechanics.combat` после.
+  // Проверять сторону цели обязательно: лечение своего под перемирием — не
+  // нарушение, и считать его вероломством значило бы наказывать за милосердие.
+  const truceBeforeCommand = truceFor(state)
+  if (truceBeforeCommand && TRUCE_BREAKING_COMMAND_TYPES.has(command.command_type)) {
+    const attackerIsEnemy = isEnemyActor(state, command.actor_id)
+    const victimId = String(targetId ?? '')
+    const victimIsEnemy = victimId ? isEnemyActor(state, victimId) : !attackerIsEnemy
+    if (attackerIsEnemy !== victimIsEnemy) {
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'TruceBroken', {
+        broken_by: attackerIsEnemy ? 'enemies' : 'party',
+        actor_id: String(command.actor_id ?? ''),
+        target_id: victimId,
+        leader_id: truceBeforeCommand.leader_id,
+        leader_name: truceBeforeCommand.leader_name,
+        round: state.mechanics.combat.round,
+        at_minutes: campaignElapsedMinutes(state),
+        policy_id: PARLEY_POLICY_ID,
+      }, [truceBeforeCommand.leader_id, String(command.actor_id ?? '')].filter(Boolean)))
+    }
+  }
 
   const appendTimeAdvance = (sourceCommand, amount, unit, elapsedMinutes) => {
     events.push(eventFrom(sourceCommand, 'TimeAdvanced', { amount, unit, elapsed_minutes: elapsedMinutes }, []))
@@ -10181,6 +10298,211 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, [captive.npc_id, command.actor_id]))
       break
     }
+    case 'ProposeParley': {
+      const combat = state.mechanics.combat
+      const morale = parleyMoraleFor(state)
+      const attempt = parleyAttempts(state) + 1
+      const actor = findActor(state, command.actor_id)
+      // Окрик стоит действия при любом исходе: за столом попытка договориться
+      // — это потраченный ход, а не бесплатная проверка.
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+        action_id: 'propose-parley',
+        name: 'Предложить переговоры',
+        action_type: 'action',
+      }, [command.actor_id]))
+      // Фанатики и бессловесные отвечают отказом **до** броска: платить кубиком
+      // за заведомо невозможное игрок не обязан, и честный отказ называет
+      // причину, а не прячет её за неудачным броском.
+      if (morale.refuses) {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'ParleyProposed', {
+          hero_id: command.actor_id,
+          skill: command.skill,
+          ability: PARLEY_ABILITY,
+          attempt,
+          leader_id: morale.leader_id,
+          leader_name: morale.leader_name,
+          difficulty: morale.difficulty,
+          refused: true,
+          policy_id: PARLEY_POLICY_ID,
+        }, [command.actor_id]))
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'ParleyRejected', {
+          hero_id: command.actor_id,
+          leader_id: morale.leader_id,
+          leader_name: morale.leader_name,
+          reason: morale.refusal_reason,
+          attempt,
+          taunt: parleyRefusalLine(morale.refusal_reason),
+          policy_id: PARLEY_POLICY_ID,
+        }, [command.actor_id]))
+        break
+      }
+      // Модификатор и режим берутся у того же `previewD20Check`, который
+      // собирал игроку карточку броска: иначе объявленное число и посчитанное
+      // разошлись бы, а при ручном броске ещё и режим кубиков — реестр уже
+      // бросил две кости или одну по карточке.
+      const preview = previewD20Check(state, {
+        actorId: command.actor_id,
+        kind: 'check',
+        ability: PARLEY_ABILITY,
+        skill: command.skill,
+        difficulty: morale.difficulty,
+      })
+      const checkOptions = {
+        modifier: preview.modifier,
+        difficulty: morale.difficulty,
+        purpose: `parley:${command.skill}`,
+        actorId: command.actor_id,
+        advantage: preview.advantage,
+        // Повторный окрик в том же бою идёт с помехой: первый уже показал
+        // противнику, что отряд ищет выход.
+        disadvantage: preview.disadvantage || attempt > 1,
+        visibility: command.visibility,
+      }
+      const roll = checkRollFromVerified(command.verified_roll, checkOptions) ?? diceService.rollCheck(checkOptions)
+      rolls.push(roll)
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck, attempt > 1 ? RULE_IDS.advantage : null), 'ParleyProposed', {
+        hero_id: command.actor_id,
+        skill: command.skill,
+        ability: PARLEY_ABILITY,
+        attempt,
+        leader_id: morale.leader_id,
+        leader_name: morale.leader_name,
+        ...roll,
+        refused: false,
+        policy_id: PARLEY_POLICY_ID,
+      }, [command.actor_id]))
+      if (!roll.success) {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'ParleyRejected', {
+          hero_id: command.actor_id,
+          leader_id: morale.leader_id,
+          leader_name: morale.leader_name,
+          reason: 'roll_failed',
+          attempt,
+          taunt: parleyTaunt(state, { leaderId: morale.leader_id, round: combat.round, attempt }),
+          policy_id: PARLEY_POLICY_ID,
+        }, [command.actor_id]))
+        break
+      }
+      const leader = findActor(state, morale.leader_id)
+      const persona = captivePersona(state, leader ?? { id: morale.leader_id })
+      const leaderName = morale.leader_name || persona.name
+      // Собеседником может быть только профиль `social.npcs` — это сквозной
+      // пробел движка, и парлей закрывает его тем же приёмом, что и плен:
+      // безымянному врагу собирается детерминированный профиль от сида
+      // кампании. Второго генератора для этого в проекте нет.
+      if (!(state.social?.npcs ?? []).some((npc) => String(npc?.id ?? '') === morale.leader_id)) {
+        events.push(...npcWorldEventsFrom(command, [{
+          event_type: 'NpcSocialProfileUpserted',
+          payload: {
+            npc: {
+              id: morale.leader_id,
+              name: leaderName,
+              role: persona.role,
+              location: String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180),
+              public_summary: 'Ведёт переговоры за свою сторону под перемирием.',
+              voice: persona.voice,
+              goals: ['выторговать своим жизнь'],
+              beliefs: [],
+              known_fact_ids: [],
+              social_dcs: {},
+              visibility: 'party',
+              available: true,
+              tags: ['parley-leader'],
+              schedule: [],
+              inventory: [],
+            },
+          },
+          target_ids: [],
+          visibility: 'party',
+        }]))
+      }
+      const truce = {
+        leader_id: morale.leader_id,
+        leader_name: leaderName,
+        hero_id: command.actor_id,
+        hero_name: String(actor?.character ?? actor?.name ?? command.actor_id).slice(0, 160),
+        skill: command.skill,
+        difficulty: morale.difficulty,
+        total: safeInteger(roll.total, 0),
+        round: combat.round,
+        established_at_minutes: campaignElapsedMinutes(state),
+        outcomes: morale.outcomes,
+        tribute_cp: morale.outcomes.includes('tribute') ? parleyTributeCp(state) : 0,
+      }
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'TruceEstablished', {
+        truce,
+        terms: truce.outcomes.map((outcome) => PARLEY_TERMS[outcome]).filter(Boolean),
+        policy_id: PARLEY_POLICY_ID,
+      }, [morale.leader_id, command.actor_id]))
+      break
+    }
+    case 'SettleParley': {
+      const truce = truceFor(state)
+      const combat = state.mechanics.combat
+      const outcome = command.outcome
+      const term = PARLEY_TERMS[outcome] ?? PARLEY_TERMS.resume
+      const minutes = campaignElapsedMinutes(state)
+      const leaving = outcome === 'resume' ? [] : standingEnemies(state)
+      const actor = playerActor(state, command.actor_id)
+      const tributeCp = outcome === 'tribute' ? Math.max(0, safeInteger(truce.tribute_cp, 0)) : 0
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const balanceAfterCp = Math.min(MAX_CURRENCY_CP, balanceBeforeCp + tributeCp)
+      const settleEventId = `parley-settled:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom({ ...command, visibility: 'party' }, 'ParleySettled', {
+          outcome,
+          term_id: term.id,
+          term_label: term.label,
+          term_summary: term.summary,
+          hero_id: command.actor_id,
+          leader_id: truce.leader_id,
+          leader_name: truce.leader_name,
+          enemy_ids: leaving.map((enemy) => String(enemy.id)),
+          round: combat.round,
+          at_minutes: minutes,
+          tribute_cp: balanceAfterCp - balanceBeforeCp,
+          ...(tributeCp > 0 ? {
+            currency_before: normalizeCurrency(actor.currency),
+            currency_after: copperToCurrency(balanceAfterCp),
+            balance_before_cp: balanceBeforeCp,
+            balance_after_cp: balanceAfterCp,
+          } : {}),
+          policy_id: PARLEY_POLICY_ID,
+        }, [truce.leader_id, command.actor_id]),
+        event_id: settleEventId,
+      })
+      // Уход исполняется теми же условиями, которыми движок уже уводит с поля
+      // сломленного врага: `fled` и `surrendered` снимают существо с доски, а
+      // сдавшийся дальше проходит штатным путём плена на конце боя. Закрывает
+      // бой планировщик — живых противников после этого не остаётся, и второго
+      // пути к `EndCombat` заводить не нужно.
+      for (const enemy of leaving) {
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.conditions), 'ConditionAdded', {
+          condition: outcome === 'surrender' ? 'surrendered' : 'fled',
+          duration: null,
+          source: 'parley',
+          parley_outcome: outcome,
+        }, [String(enemy.id)]))
+      }
+      // Клятва — не украшение карточки: она остаётся записью памяти мира, и
+      // нарушить её будет чем.
+      if (outcome === 'withdraw' || outcome === 'tribute') {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'WorldFactRecorded', {
+          fact: {
+            id: `fact:parley-oath:${String(settleEventId).slice(-24)}`,
+            subject_id: truce.leader_id,
+            predicate: 'parley_oath',
+            object: outcome,
+            summary: `${truce.leader_name || 'Противник'} увёл своих по уговору с отрядом и поклялся не возвращаться.`,
+            visibility: 'party',
+            source_event_ids: [settleEventId],
+            status: 'active',
+            recorded_at_minutes: minutes,
+          },
+        }, []))
+      }
+      break
+    }
     case 'AdvanceScene': {
       if (command.party_decision) {
         const currentDecision = state.agentInteraction
@@ -12275,6 +12597,10 @@ export function applyGameEvent(rawState, event) {
         readied: {},
         group_initiative: payload.group_initiative === true,
         turn_completed: [],
+        // Новый бой начинается без перемирия и без истории переговоров:
+        // прошлый уговор в этом бою ничего не значит.
+        truce: null,
+        parley_attempts: 0,
       }
       syncCombatBounds(state, (payload.initiative ?? []).map((entry) => entry.actor_id))
       if (state.mechanics.encounter && state.mechanics.encounter.status === 'staged') {
@@ -12306,9 +12632,87 @@ export function applyGameEvent(rawState, event) {
       }
       break
     }
+    // Парлей. Все четыре события меняют только своё: счётчик попыток, объект
+    // перемирия и запись в боевой хронике. Очередь, экономика хода и окно
+    // реакции остаются за обычным боевым контуром — патч приходит из
+    // `parley.mjs` и трогать их не умеет по построению.
+    case 'ParleyProposed':
+      Object.assign(state.mechanics.combat, parleyCombatPatch(state.mechanics.combat, event) ?? {})
+      appendBattleLog(state, event, {
+        round: safeInteger(state.mechanics.combat.round, 0),
+        type: 'parley',
+        actorId: event.actor_id,
+        actorKind: combatActorKind(state, event.actor_id),
+        targetId: payload.leader_id ? String(payload.leader_id) : undefined,
+        ability: payload.skill ? String(payload.skill) : undefined,
+        result: payload.refused === true ? 'refused' : payload.success === true ? 'success' : 'failure',
+        ...(payload.total != null ? {
+          roll: {
+            die: safeInteger(payload.kept, 0),
+            modifier: safeInteger(payload.modifier, 0),
+            total: safeInteger(payload.total, 0),
+            difficulty: safeInteger(payload.difficulty, 0),
+            hit: payload.success === true,
+          },
+        } : {}),
+      })
+      break
+    case 'ParleyRejected':
+      appendBattleLog(state, event, {
+        round: safeInteger(state.mechanics.combat.round, 0),
+        type: 'parley-rejected',
+        actorId: event.actor_id,
+        actorKind: combatActorKind(state, event.actor_id),
+        targetId: payload.leader_id ? String(payload.leader_id) : undefined,
+        reason: String(payload.reason ?? 'roll_failed'),
+      })
+      break
+    case 'TruceEstablished':
+      Object.assign(state.mechanics.combat, parleyCombatPatch(state.mechanics.combat, event) ?? {})
+      appendBattleLog(state, event, {
+        round: safeInteger(state.mechanics.combat.round, 0),
+        type: 'truce',
+        actorId: event.actor_id,
+        actorKind: combatActorKind(state, event.actor_id),
+        targetId: String(payload.truce?.leader_id ?? ''),
+      })
+      break
+    case 'TruceBroken':
+      Object.assign(state.mechanics.combat, parleyCombatPatch(state.mechanics.combat, event) ?? {})
+      appendBattleLog(state, event, {
+        round: safeInteger(payload.round, state.mechanics.combat.round),
+        type: 'truce-broken',
+        actorId: String(payload.actor_id ?? event.actor_id ?? ''),
+        actorKind: combatActorKind(state, payload.actor_id ?? event.actor_id),
+        targetId: payload.target_id ? String(payload.target_id) : undefined,
+        reason: String(payload.broken_by ?? 'party'),
+      })
+      break
+    case 'ParleySettled': {
+      Object.assign(state.mechanics.combat, parleyCombatPatch(state.mechanics.combat, event) ?? {})
+      // Откуп берётся монетой: каталог предметов принадлежит другой задаче, и
+      // раздавать вещи отсюда нельзя. Сумму посчитал движок, редьюсер только
+      // переносит уже подтверждённый баланс.
+      const payee = String(payload.hero_id ?? event.actor_id ?? '')
+      if (payee && payload.currency_after) {
+        state.players = state.players.map((player) => actorId(player) === payee
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player)
+      }
+      appendBattleLog(state, event, {
+        round: safeInteger(payload.round, state.mechanics.combat.round),
+        type: 'parley-settled',
+        actorId: payee,
+        actorKind: combatActorKind(state, payee),
+        targetId: payload.leader_id ? String(payload.leader_id) : undefined,
+        reason: String(payload.outcome ?? 'resume'),
+        participantIds: clone(payload.enemy_ids ?? []),
+      })
+      break
+    }
     case 'CombatEnded':
       appendBattleLog(state, event, { type: 'combat-end', round: safeInteger(payload.round, state.mechanics.combat.round), reason: String(payload.reason || 'resolved') })
-      state.mechanics.combat = { active: false, round: safeInteger(payload.round, state.mechanics.combat.round), initiative: [], active_index: -1, action_economy: {}, reaction_window: null, readied: {} }
+      state.mechanics.combat = { active: false, round: safeInteger(payload.round, state.mechanics.combat.round), initiative: [], active_index: -1, action_economy: {}, reaction_window: null, readied: {}, truce: null, parley_attempts: 0 }
       break
     case 'EncounterEnded':
       if (state.mechanics.encounter) state.mechanics.encounter = {
@@ -12927,6 +13331,13 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'CaptiveHandedOver': return `Пленный передан страже «${payload.settlement_name || ''}»`
     case 'CaptiveExecuted': return `${payload.captive_name || 'Пленный'} убит связанным`
     case 'CaptiveMoved': return 'Пленного увели с отрядом'
+    case 'ParleyProposed': return payload.refused === true
+      ? 'Окрик о переговорах остался без ответа'
+      : `Попытка переговоров: ${payload.success === true ? 'услышан' : 'не услышан'} (СЛ ${payload.difficulty})`
+    case 'ParleyRejected': return 'Переговоры отвергнуты, бой продолжается'
+    case 'TruceEstablished': return `Объявлено перемирие: говорит ${payload.truce?.leader_name || 'предводитель'}`
+    case 'TruceBroken': return `Перемирие нарушено (${payload.broken_by === 'enemies' ? 'противником' : 'отрядом'})`
+    case 'ParleySettled': return `Уговор на переговорах: ${payload.term_label || payload.outcome || 'без условий'}`
     default: return event.event_type
   }
 }

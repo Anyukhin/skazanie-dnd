@@ -17,9 +17,9 @@ import {
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
-  Gavel, Soup, Unlink, UserLock,
+  Gavel, Soup, Unlink, UserLock, Handshake,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -154,6 +154,17 @@ export const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
   use: 'Использовать',
   topple: 'Опрокинуть',
   ignite: 'Поджечь',
+}
+/**
+ * Подписи условий перемирия. Какие из них доступны, решает сервер: здесь
+ * только текст карточки. Держать их у клиента можно ровно потому, что список
+ * исходов закрыт и приезжает в проекции — придумать новый клиент не может.
+ */
+export const PARLEY_TERM_LABELS: Record<ParleyOutcome, { label: string; summary: string }> = {
+  withdraw: { label: 'Разойтись миром', summary: 'Противник уходит со сцены и клянётся не возвращаться.' },
+  tribute: { label: 'Уйти, оставив добычу', summary: 'Противник уходит и оставляет отряду всё взятое.' },
+  surrender: { label: 'Сложить оружие', summary: 'Противник сдаётся и переходит в плен, когда бой будет закрыт.' },
+  resume: { label: 'Продолжить бой', summary: 'Уговора нет: перемирие снимается, очередь оживает.' },
 }
 export const SPELL_OPTION_LABELS: Record<string, string> = {
   approach: 'Подойди',
@@ -607,7 +618,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onProposeParley, onSettleParley, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -636,6 +647,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onFreeAction: (text: string) => Promise<CommandOutcome>
   onNpcAction: (text: string, npcId: string) => Promise<CommandOutcome>
   onCaptiveAction: (captiveId: string, action: CaptiveAction, skill?: CaptiveInterrogationSkill) => Promise<CommandOutcome>
+  onProposeParley: (skill: 'persuasion' | 'intimidation') => Promise<CommandOutcome>
+  onSettleParley: (outcome: ParleyOutcome) => Promise<CommandOutcome>
   onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
   onStartRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
   onSpendHitPointDie: () => Promise<CommandOutcome>
@@ -770,6 +783,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const irregularMap = state.scene.cells.length < columns * rows
   const combat = combatState(state)
   const combatActive = Boolean(combat.active && combat.initiative?.length)
+  // Перемирие. Пока оно держится, очередь заморожена сервером, и доска обязана
+  // это показать: рамка вокруг поля, карточка условий и заглушённый хотбар.
+  const truce = combatActive ? combat.truce ?? null : null
+  const parleyAttempted = Math.max(0, Number(combat.parley_attempts) || 0) > 0
   const activeInitiativeIndex = Math.max(0, Number(combat.active_index) || 0)
   const visibleBattleRoll = useTransientBattleRoll(state.battleLog)
   const visibleBattleRollContext = visibleBattleRoll ? battleRollContext(visualBatch?.events, visibleBattleRoll) : null
@@ -1847,13 +1864,20 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         </section>
       </div>
       <div
-        className={`map-stage ${visualTheme} ${scenicBackdrop ? 'scenic-backdrop' : 'monotone-backdrop'}`}
+        className={`map-stage ${visualTheme} ${scenicBackdrop ? 'scenic-backdrop' : 'monotone-backdrop'}${truce ? ' truce-held' : ''}`}
         data-map-source={mapArt.id}
         style={{ '--board-art': `url("${mapArt.url}")` } as React.CSSProperties}
       >
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
       <PartyQuestHud state={state} />
+      {/* Перемирие видно на самой доске, а не только в панели: рамка вокруг
+          поля и полоса сверху. Без этого стол не понимал бы, почему очередь
+          стоит и почему кнопки боя ведут себя иначе. */}
+      {truce && <div className="truce-banner" role="status" aria-live="polite">
+        <Handshake size={15} />
+        <span>Перемирие · говорит {truce.leader_name || 'предводитель уцелевших'}. Удар разорвёт уговор.</span>
+      </div>}
       {npcTacticText && <div className="npc-tactic-banner" role="status" aria-live="polite"><Swords size={15} /><span>{npcTacticText}</span></div>}
       <TacticalBoard
         key={state.sessionCode}
@@ -2135,6 +2159,31 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <ol>{npcSummaryEvents.map((event) => <li key={event.id}>{battleEventText(state, event)}</li>)}</ol>
         </section>}
         </section>}
+        {truce && <section className="truce-panel" aria-label="Условия перемирия" aria-live="polite">
+          <header><Handshake size={15} /><span><small>ПЕРЕМИРИЕ · РАУНД {truce.round ?? combat.round ?? 1}</small><strong>Говорит {truce.leader_name || 'предводитель уцелевших'}</strong></span></header>
+          <p>
+            Оружие опущено, очередь заморожена. Любая атака рвёт уговор — и это запомнят.
+            {truce.hero_name ? ` Переговоры ведёт ${truce.hero_name}.` : ''}
+          </p>
+          <div className="truce-terms">
+            {(truce.outcomes ?? []).map((outcome) => {
+              const term = PARLEY_TERM_LABELS[outcome]
+              if (!term) return null
+              return <button
+                key={outcome}
+                type="button"
+                className={`truce-term term-${outcome}`}
+                disabled={!canAct || narrating || tacticalBusy}
+                title={term.summary}
+                onClick={() => { void onSettleParley(outcome) }}
+              >
+                <b>{term.label}</b>
+                <small>{term.summary}</small>
+                {outcome === 'tribute' && Number(truce.tribute_cp) > 0 ? <em>откуп: {truce.tribute_cp} мм</em> : null}
+              </button>
+            })}
+          </div>
+        </section>}
         {heldCaptives.length > 0 && <section className="captive-panel" aria-label="Пленники отряда">
           <header><UserLock size={15} /><span><small>ПЛЕННИКИ · {heldCaptives.length}</small><strong>Судьба решается вами</strong></span></header>
           {heldCaptives.map((captive) => {
@@ -2365,6 +2414,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <span>{selectedLevelTransition.label}</span>
             </button>}
             {selectedSceneObject && selectedSceneObjectVerbs.length === 0 && !selectedLevelTransition && <button type="button" className="scene-object-control" disabled title="Сервер не открыл доступных действий для этого объекта"><span>Нет доступных действий</span></button>}
+            {combatActive && !truce && <button
+              className="parley-hotbar"
+              disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck)}
+              onClick={() => { void onProposeParley('persuasion') }}
+              title={parleyAttempted
+                ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника'
+                : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
+            ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={27} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
             {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}

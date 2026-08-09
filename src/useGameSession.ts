@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { emptyState } from './data'
 import {
   ApiRequestError,
+  autoRollEnabled,
   fetchWithTimeout,
   generateItemImage,
   isStateVersionConflictError,
@@ -14,7 +15,7 @@ import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, InventoryItem, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -36,6 +37,8 @@ type TacticalCommand =
   | { command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent }
   | { command_type: 'UseLevelTransition'; actor_id: string; prop_id: string }
   | { command_type: 'EndTurn'; actor_id: string }
+  | { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
+  | { command_type: 'SettleParley'; actor_id: string; outcome: ParleyOutcome }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
   | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
   | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string; charges_to_spend?: number }
@@ -76,6 +79,11 @@ type TacticalCommandResult = {
   narration_message_id?: string | null
   narration_speaker?: 'narrator' | 'system'
   narration_author?: string
+  /**
+   * Первая фаза ручного броска: сервер объявил проверку и ничего не
+   * закоммитил. Приходит только у двухфазных команд доски (парлей).
+   */
+  check?: { check_id?: string; label: string; modifier: number; difficulty: number; sides: 20; ability?: string | null; skill?: string | null; advantage?: boolean; disadvantage?: boolean } | null
   error?: string
   code?: string
 }
@@ -329,6 +337,12 @@ export function useGameSession() {
   const freeRollBusy = useRef(false)
   const fullRoomRequest = useRef<Promise<boolean> | null>(null)
   const actionEpoch = useRef(0)
+  // Вторая фаза ручного броска для команд доски. `rollPendingCheck` объявлен
+  // раньше `executeTacticalCommand`, и прямая зависимость читалась бы до
+  // инициализации константы; ссылка проставляется сразу после объявления.
+  const tacticalCommandRef = useRef<
+    ((command: TacticalCommand, message: string, dice?: { manualRoll?: boolean; roll?: RollResult }) => Promise<CommandOutcome>) | null
+  >(null)
   const queuedRooms = useRef<Array<{ version: number; state: GameState }>>([])
   const persistLocal = useCallback((next: GameState) => {
     localStorage.setItem(ACTIVE_CAMPAIGN_KEY, next.sessionCode)
@@ -805,6 +819,21 @@ export function useGameSession() {
       pendingCheck: { ...current.pendingCheck, status: 'resolving', result },
     } : current)
 
+    // Вторая фаза команды доски: та же команда с серверным `roll_id`, а не
+    // пересборка свободного действия. Иначе парлей уходил бы в разбор текста и
+    // терял уже объявленную СЛ.
+    if (check.command) {
+      const outcome = await tacticalCommandRef.current?.(check.command, check.action, { roll: result })
+        ?? { ok: false as const, error: 'Команда переговоров недоступна' }
+      mutate((current) => ({
+        ...current,
+        isNarrating: false,
+        pendingCheck: outcome.ok ? null : { ...check, status: 'ready' },
+      }))
+      busy.current = false
+      return
+    }
+
     const player = state.players.find((item) => item.id === check.playerId) ?? state.players[0]
     let aiResult: AiTurnResult | null = null
     try {
@@ -964,7 +993,16 @@ export function useGameSession() {
   // Возвращает исход, а не только пишет его в tacticalError: вызывающему коду
   // (мастеру создания персонажа) нужно отличить отказ сервера от успеха, иначе
   // он закрывает себя и теряет черновик при 400.
-  const executeTacticalCommand = useCallback(async (command: TacticalCommand, message: string): Promise<CommandOutcome> => {
+  const executeTacticalCommand = useCallback(async (
+    command: TacticalCommand,
+    message: string,
+    /**
+     * Двухфазный ручной бросок. `manualRoll` просит сервер объявить проверку
+     * вместо того, чтобы бросить за игрока; `roll` приносит уже сделанный
+     * серверный бросок во второй фазе. Обычные команды доски обходятся без них.
+     */
+    dice: { manualRoll?: boolean; roll?: RollResult } = {},
+  ): Promise<CommandOutcome> => {
     if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
     const current = stateRef.current
     const combatActorId = currentCombatActorId(current)
@@ -981,10 +1019,33 @@ export function useGameSession() {
       const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, idempotency_key: requestId, message }),
+        body: JSON.stringify({
+          command,
+          idempotency_key: requestId,
+          message,
+          ...(dice.manualRoll ? { manual_roll: true } : {}),
+          ...(dice.roll?.roll_id ? { roll: { roll_id: dice.roll.roll_id } } : {}),
+        }),
       }, 25_000, 'Сервер слишком долго обрабатывает действие. Не повторяйте его сразу: результат мог сохраниться и появиться после синхронизации.')
       const result = await response.json().catch(() => null) as TacticalCommandResult | null
       if (!response.ok) throw await responseCommandError(response, result, `Сервер отклонил команду (${response.status})`)
+
+      // Карточка проверки вместо результата: сервер ничего не закоммитил и
+      // ждёт второй фазы с собственным `roll_id`. Кубик остаётся за игроком.
+      if (result?.check && command.command_type === 'ProposeParley') {
+        const parleyCommand = command
+        mutate((state) => ({
+          ...state,
+          pendingCheck: {
+            ...result.check!,
+            action: message,
+            playerId: parleyCommand.actor_id,
+            status: 'ready',
+            command: parleyCommand,
+          },
+        }))
+        return { ok: true }
+      }
 
       let authoritative = result?.authoritative_state
       let version = result?.room_version
@@ -1018,7 +1079,8 @@ export function useGameSession() {
       tacticalBusyRef.current = false
       setTacticalBusy(false)
     }
-  }, [applyRemote, responseCommandError])
+  }, [applyRemote, mutate, responseCommandError])
+  tacticalCommandRef.current = executeTacticalCommand
 
   const executeRestCommand = useCallback(async (command: RestCommand, message: string): Promise<CommandOutcome> => {
     if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
@@ -1145,6 +1207,28 @@ export function useGameSession() {
       prop_id: propId,
       intent,
     }, label[intent])
+  }, [executeTacticalCommand])
+
+  /* Переговоры посреди боя. Клиент называет только подход: кто отвечает за
+     сторону противника, какая СЛ и на что она вообще пойдёт — считает сервер.
+     Бросок Харизмы двухфазный, если игрок не включил автобросок: первая фаза
+     возвращает карточку, вторая приходит из `rollPendingCheck`. */
+  const proposeParley = useCallback((actorId: string, skill: 'persuasion' | 'intimidation' = 'persuasion') => {
+    return executeTacticalCommand(
+      { command_type: 'ProposeParley', actor_id: actorId, skill },
+      skill === 'intimidation' ? 'Потребовать сложить оружие' : 'Предложить переговоры',
+      { manualRoll: !autoRollEnabled() },
+    )
+  }, [executeTacticalCommand])
+
+  const settleParley = useCallback((actorId: string, outcome: ParleyOutcome) => {
+    const labels: Record<ParleyOutcome, string> = {
+      withdraw: 'Отпустить противника с миром',
+      tribute: 'Отпустить противника, забрав добычу',
+      surrender: 'Принять сдачу противника',
+      resume: 'Прервать переговоры и продолжить бой',
+    }
+    return executeTacticalCommand({ command_type: 'SettleParley', actor_id: actorId, outcome }, labels[outcome])
   }, [executeTacticalCommand])
 
   /* Судьба пленного. Клиент называет только пленного и, для допроса, подход;
@@ -1564,6 +1648,8 @@ export function useGameSession() {
     operateDoor,
     operateSceneObject,
     captiveAction,
+    proposeParley,
+    settleParley,
     useLevelTransition,
     finishMapTurn,
     resolveHeroDeath,
