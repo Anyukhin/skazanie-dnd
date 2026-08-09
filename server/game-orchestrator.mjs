@@ -868,13 +868,16 @@ export class GameOrchestrator {
    * любой другой карточки: это ровно `бросок соперника + 1`, уже лежащий в
    * состоянии, — раунд для того и разложен на две команды, чтобы игроку было
    * против чего бросать.
+   *
+   * Подход уезжает в предпросмотр вместе с героем, и это не украшение: у
+   * подкрученной кости свой модификатор, и печатать «+0» там, где исполнение
+   * посчитает «+5», карточка не имеет права.
    */
   tavernDiceCheckCard({ campaignId, playerId, state, command }) {
-    const round = tavernRoundFor(state)
-    if (!round) return null
     const actorId = String(command.actor_id ?? playerId)
-    if (round.hero_id !== actorId) return null
-    const preview = previewTavernDiceRoll(state, actorId)
+    const round = tavernRoundFor(state, actorId)
+    if (!round) return null
+    const preview = previewTavernDiceRoll(state, actorId, String(command.approach ?? 'fair'))
     const check = this.rollRegistry.registerCheck({
       campaignId,
       actorId,

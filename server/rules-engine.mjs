@@ -138,6 +138,7 @@ import {
   TAVERN_DRUNK_CONDITION,
   TAVERN_DRUNK_DURATION,
   TAVERN_EXPOSED_RELATIONSHIP_DELTA,
+  TAVERN_GAMBLER_PURSE_MAX_CP,
   TAVERN_POLICY_ID,
   TAVERN_SCANDALS_BEFORE_EJECTION,
   TAVERN_SOBER_DRINKS,
@@ -152,6 +153,7 @@ import {
   tavernDrinksFor,
   tavernEjected,
   tavernGamblerFor,
+  tavernGamblerPurseFor,
   tavernNextDrinkDc,
   tavernOpponentDie,
   tavernRoundFor,
@@ -3727,7 +3729,9 @@ export function validateCommand(input, rawState, context = {}) {
     if (tavernEjected(state, command.actor_id)) {
       throw new RulesValidationError('Героя уже выставили за дверь этого заведения', 'TAVERN_PATRON_EJECTED')
     }
-    const round = tavernRoundFor(state)
+    // Раунд у каждого героя свой: стол на пятерых, и общий слот запирал бы
+    // кости всему залу, пока один игрок не ответит.
+    const round = tavernRoundFor(state, command.actor_id)
     if (command.command_type === 'OpenTavernDiceRound') {
       if (round) throw new RulesValidationError('Кость соперника уже на столе: сначала ответьте на бросок', 'TAVERN_ROUND_ALREADY_OPEN')
       if (!TAVERN_STAKES_CP.includes(command.stake_cp)) {
@@ -3741,16 +3745,24 @@ export function validateCommand(input, rawState, context = {}) {
       if (currencyToCopper(playerActor(state, command.actor_id).currency) < command.stake_cp) {
         throw new RulesValidationError('На такую ставку у героя не хватает монет', 'INSUFFICIENT_FUNDS')
       }
+      // Тем же условием проверяется и чужой кошелёк: выигранный банк приходит
+      // из кармана соперника, а не из ниоткуда, и пустого соседа за стол не
+      // сажают.
+      if (tavernGamblerPurseFor(state, command.npc_id) < command.stake_cp) {
+        throw new RulesValidationError('Соперник такую ставку не закроет: у него столько нет', 'TAVERN_OPPONENT_BROKE')
+      }
     }
     if (command.command_type === 'AnswerTavernDiceRound') {
       if (!round) throw new RulesValidationError('Кости на стол ещё никто не бросал', 'TAVERN_ROUND_NOT_OPEN')
-      if (round.hero_id !== String(command.actor_id)) {
-        throw new RulesValidationError('Этот раунд играет другой герой', 'TAVERN_ROUND_FOREIGN')
-      }
       // Ставка проверяется второй раз: между броском соперника и ответом герой
       // мог расстаться с деньгами другой командой.
       if (currencyToCopper(playerActor(state, command.actor_id).currency) < round.stake_cp) {
         throw new RulesValidationError('Ставку уже нечем закрыть', 'INSUFFICIENT_FUNDS')
+      }
+      // И второй раз проверяется чужой: пока герой думал, того же соседа мог
+      // обыграть его товарищ по отряду.
+      if (tavernGamblerPurseFor(state, round.npc_id) < round.stake_cp) {
+        throw new RulesValidationError('Соперник уже спустил всё: банк ему нечем закрыть', 'TAVERN_OPPONENT_BROKE')
       }
     }
     if (command.command_type === 'OrderTavernDrink') {
@@ -5993,23 +6005,34 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
 
 /**
  * Предпросмотр ответного броска за костями. Отдельный от `previewD20Check`
- * намеренно: за столом кидают удачу, а не характеристику, поэтому ни
- * модификатора, ни навыка у этого броска нет и быть не должно — общий
- * предпросмотр приписал бы сюда Силу просто потому, что навык не назван.
+ * намеренно: за столом кидают удачу, а не характеристику, поэтому навыка у
+ * этого броска нет и быть не должно — общий предпросмотр приписал бы сюда Силу
+ * просто потому, что навык не назван.
  *
- * Единственное, что кость двигает, — состояния, мешающие любой проверке:
+ * Кость двигают ровно две вещи. Первая — состояния, мешающие любой проверке:
  * перебравший играет хуже трезвого, и это та же помеха, которой считается
- * истощение. СЛ равна объявленному числу соперника плюс один: перебить —
- * значит показать больше.
+ * истощение. Вторая — подкрученная кость: подход `cheat` даёт свои `+5`, и они
+ * приходят **отсюда**, а не из исполнения команды.
+ *
+ * Это второе и есть смысл функции. Карточка ручного броска собирается до того,
+ * как движок бросит Ловкость рук, поэтому раньше она печатала «модификатор +0»,
+ * а исполнение считало с `+5`: игрок видел «нужно 16», а хватало 11. Числа
+ * сходятся только если надбавка известна до карточки — и она известна, потому
+ * что подход герой называет сам. Проверка Ловкости рук решает не размер
+ * надбавки, а то, поймают ли за руку: пойманный теряет ставку независимо от
+ * того, что показала кость.
+ *
+ * СЛ равна объявленному числу соперника плюс один: перебить — значит показать
+ * больше.
  */
-export function previewTavernDiceRoll(state, actorId) {
-  const round = tavernRoundFor(state)
+export function previewTavernDiceRoll(state, actorId, approach = 'fair') {
+  const round = tavernRoundFor(state, actorId)
   const penalty = checkDisadvantageConditionFor(state, actorId)
   return {
     kind: 'check',
     ability: null,
     skill: null,
-    modifier: 0,
+    modifier: String(approach) === 'cheat' ? TAVERN_CHEAT_BONUS : 0,
     difficulty: round ? round.target : 11,
     advantage: false,
     disadvantage: Boolean(penalty),
@@ -10925,17 +10948,22 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       break
     }
     case 'AnswerTavernDiceRound': {
-      const round = tavernRoundFor(state)
+      const round = tavernRoundFor(state, command.actor_id)
       const gambler = tavernGamblerFor(state, round.npc_id)
       const actor = playerActor(state, command.actor_id)
       const minutes = campaignElapsedMinutes(state)
       const balanceBeforeCp = currencyToCopper(actor.currency)
+      const npcPurseBeforeCp = tavernGamblerPurseFor(state, round.npc_id)
       const settleEventId = `tavern-round-settled:${String(command.command_id).slice(0, 100)}`
 
       // 1. Жульничество героя. Ловкость рук против пассивной Проницательности
       //    соперника, и бросок здесь серверный: ручной кубик у героя один, и
       //    принадлежит он самой игре, а не подготовке к ней.
-      let cheatBonus = 0
+      //
+      //    Проверка решает не размер надбавки, а то, поймают ли за руку.
+      //    Подменить кость герой успевает в любом случае — иначе карточка
+      //    ручного броска не смогла бы назвать модификатор до броска, потому
+      //    что до броска этой проверки ещё не было.
       let caught = false
       if (command.approach === 'cheat') {
         const preview = previewD20Check(state, {
@@ -10960,8 +10988,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           skill: preview.skill,
           ...check,
         }, [command.actor_id]))
-        if (check.success) cheatBonus = TAVERN_CHEAT_BONUS
-        else caught = true
+        caught = !check.success
       }
 
       // 2. Ловля шулера. Проницательность героя против чужой ловкости рук;
@@ -10996,9 +11023,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
 
       // 3. Ответный бросок героя. Ручной кубик приходит карточкой, иначе
       //    бросает сервер; помеха у перебравшего та же, что у любой проверки.
-      const preview = previewTavernDiceRoll(state, command.actor_id)
+      //    Модификатор берётся из того же предпросмотра, который собрал
+      //    карточку (`server/game-orchestrator.mjs`), — второго ответа на
+      //    вопрос «с чем герой кидает» быть не должно.
+      const preview = previewTavernDiceRoll(state, command.actor_id, command.approach)
       const rollOptions = {
-        modifier: cheatBonus,
+        modifier: preview.modifier,
         difficulty: round.target,
         purpose: 'tavern-dice:hero',
         actorId: command.actor_id,
@@ -11033,6 +11063,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         : outcome === 'loss' || outcome === 'caught' ? -round.stake_cp
           : 0
       const balanceAfterCp = Math.max(0, Math.min(MAX_CURRENCY_CP, balanceBeforeCp + deltaCp))
+      // Ровно столько же уходит из кошелька соперника — и приходит в него,
+      // когда герой проиграл или попался. Деньги за этим столом не рождаются:
+      // считается тот же переезд, что и у героя, только в другую сторону.
+      const npcPurseAfterCp = Math.max(0, Math.min(
+        TAVERN_GAMBLER_PURSE_MAX_CP,
+        npcPurseBeforeCp - (balanceAfterCp - balanceBeforeCp),
+      ))
       events.push({
         ...eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'TavernDiceRoundResolved', {
           round_id: round.id,
@@ -11044,13 +11081,17 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           npc_total: round.npc_total,
           hero_total: heroTotal,
           outcome,
-          cheated: cheatBonus > 0,
+          // «Подкрутил и не попался»: пойманному за руку надбавка уже не
+          // помогает, ставку у него забирают независимо от показанного числа.
+          cheated: command.approach === 'cheat' && !caught,
           ...(watchResult ? { watch_result: watchResult } : {}),
           delta_cp: balanceAfterCp - balanceBeforeCp,
           currency_before: normalizeCurrency(actor.currency),
           currency_after: copperToCurrency(balanceAfterCp),
           balance_before_cp: balanceBeforeCp,
           balance_after_cp: balanceAfterCp,
+          npc_purse_before_cp: npcPurseBeforeCp,
+          npc_purse_after_cp: npcPurseAfterCp,
           at_minutes: minutes,
           policy_id: TAVERN_POLICY_ID,
         }, [command.actor_id, round.npc_id]),

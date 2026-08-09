@@ -24,15 +24,22 @@ import { normalizeNpcWorldState, presentSceneNpcs, sceneLocationId } from './npc
  *    шулер, насколько внимателен и насколько ловки его руки — всё выводится
  *    из `sessionCode` и идентификатора NPC, поэтому replay даёт того же
  *    человека. В состоянии этот флаг **не хранится**: то, чего нет в снимке,
- *    не может утечь игроку.
+ *    не может утечь игроку. И числа, которые игрок **видит**, от него тоже не
+ *    зависят: СЛ обеих проверок стола выводится из внимательности и ловкости
+ *    рук соседа и ни на единицу не сдвигается от того, шулер он или нет.
  * 3. **Шулер подменяет кость, а не прибавляет к сумме.** Если бы надбавка
  *    складывалась поверх выпавшего, стол видел бы «выпало 7, засчитано 12» и
  *    ловил бы шулера глазами, а не Проницательностью. Поэтому на стол
  *    кладётся уже подменённое число, а настоящая кость остаётся в броске с
  *    видимостью `gm_only`.
- * 4. **Кошелёк не уходит в минус.** Ставка проверяется до первого события, а
- *    банк переезжает целиком: победа приносит ставку соперника, поражение
- *    отдаёт свою, ничья не двигает ничего.
+ * 4. **Кошелёк не уходит в минус, а банк не берётся из ниоткуда.** Ставка
+ *    проверяется до первого события, банк переезжает целиком, и у соперника
+ *    он не бесконечный: у каждого за столом свой кошелёк, который худеет от
+ *    проигрышей и переживает уход из зала.
+ * 5. **Раунд ключуется героем.** Стол на пятерых — норма формата, и один слот
+ *    на всё заведение запирал бы кости для всех, пока один игрок не ответил
+ *    (а если его уронили в 0 ОЗ — то и до конца сцены). Поэтому открытый
+ *    раунд живёт в записи посетителя, а не в заведении.
  *
  * Осознанные границы (решено, а не забыто):
  * - **своего реестра бросков здесь нет**: ручной кубик героя идёт тем же
@@ -48,7 +55,7 @@ import { normalizeNpcWorldState, presentSceneNpcs, sceneLocationId } from './npc
  *   похмелье при этом остаётся, потому что оно состояние героя, а не заведения.
  */
 
-export const TAVERN_LIFE_SCHEMA_VERSION = 1
+export const TAVERN_LIFE_SCHEMA_VERSION = 2
 export const TAVERN_POLICY_ID = 'skazanie:tavern-life-v1'
 
 /** Команды жизни таверны. Все три доступны игроку и все три — вне боя. */
@@ -141,7 +148,32 @@ export const TAVERN_DRUNK_DURATION = 'until-long-rest'
 export const TAVERN_DRINK_MINUTES = 15
 export const TAVERN_DICE_ROUND_MINUTES = 10
 
+/**
+ * Кошелёк соперника: с чего он начинает вечер и сколько может себе позволить.
+ *
+ * Касса нужна по той же причине, по которой она есть у торговца
+ * (`merchant.purse_cp`): без неё выигранный банк рождается из ничего, и стол на
+ * 200 мм становится печатным станком — тем более что скандалы и запрет входа
+ * обнуляются уходом из зала. С кассой предел у станка есть: 400–1000 мм на
+ * человека, то есть от двух до пяти крупных выигрышей, и дальше садиться не с
+ * кем.
+ *
+ * База — чистая функция сида кампании, как и характер соперника, поэтому
+ * replay сажает за стол того же человека с теми же деньгами.
+ */
+export const TAVERN_GAMBLER_PURSE_BASE_CP = 400
+export const TAVERN_GAMBLER_PURSE_STEP_CP = 150
+export const TAVERN_GAMBLER_PURSE_SPREAD = 5
+
+/**
+ * Потолок чужого кошелька. Нужен с другой стороны, чем база: проигрывать соседу
+ * можно сколько угодно раз, и без потолка его касса росла бы вместе с чужим
+ * невезением. Сто золотых — заведомо больше любой ставки за этим столом.
+ */
+export const TAVERN_GAMBLER_PURSE_MAX_CP = 10_000
+
 const MAX_PATRONS = 12
+const MAX_GAMBLERS = 24
 
 const text = (value, maximum = 200) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const integer = (value, fallback = 0) => (Number.isSafeInteger(Number(value)) ? Number(value) : fallback)
@@ -163,8 +195,22 @@ function spread(seed, salt, size) {
  * Слова, по которым сцена опознаётся таверной. Список **уже** таверны из
  * `scene-themes.mjs`: там та же тема застройки берёт и дом, и лавку, и терем,
  * а кости с выпивкой предлагать в чужой избе нельзя.
+ *
+ * Основы закреплены окончаниями, и это не украшение. Название сцены сочиняет
+ * модель, и голая основа ловила в нём глагол: «Отряд постоял у ворот» открывал
+ * заведение посреди дороги. `постоял[ыо]` берёт постоялый двор и не берёт
+ * «постоял», «постояла», «постояли».
+ *
+ * «Пивная» из списка убрана намеренно: от «пивной бочки» и «пивного погреба»
+ * окончание её не отличает, а зонд ревью открывал заведение ровно в подвале с
+ * бочкой. Заведений в списке и без неё шесть, и все они — существительные,
+ * которыми называют дом, а не то, что в нём стоит.
+ *
+ * Что остаётся и названо: отрицание словами не ловится. «Кабаки закрыты» —
+ * по-прежнему таверна, потому что слово в строке есть, а смысла у списка слов
+ * нет. Отдельным разбором фразы это не лечится (`docs/known-limitations.md`).
  */
-const TAVERN_PATTERN = /таверн|трактир|корчм|харчевн|постоял|кабак|шинок|пивн|tavern|inn(?![а-яёa-z])|alehouse|pub(?![а-яёa-z])/iu
+const TAVERN_PATTERN = /таверн|трактир|корчм|харчевн|постоял[ыо]|кабак|шинок|tavern|inn(?![а-яёa-z])|alehouse|pub(?![а-яёa-z])/iu
 
 function sceneSignature(state = {}) {
   const scene = state?.scene ?? {}
@@ -213,6 +259,12 @@ export function isTavernOpponent(state = {}, npcId = '') {
  * `crooked` — серверная тайна: он не попадает ни в одно событие игрока и ни в
  * одно поле проекции. Игрок узнаёт про шулера Проницательностью или не узнаёт
  * вовсе.
+ *
+ * Обе СЛ от `crooked` **не зависят**, и это главное здесь. Они уезжают игроку
+ * в `AbilityCheckResolved` с видимостью `party` и рисуются на карточке броска,
+ * поэтому любая надбавка за шулерство развела бы диапазоны честного и
+ * краплёного: СЛ 10 доказывала бы, что сосед чист, СЛ 16 — что нет. Характер
+ * соперника выражен там, где его не видно: в `dice_bonus`.
  */
 export function tavernGamblerFor(state = {}, npcId = '') {
   const id = text(npcId, 120)
@@ -228,11 +280,14 @@ export function tavernGamblerFor(state = {}, npcId = '') {
     role: npc.role,
     crooked,
     // Пассивная Проницательность соперника: против неё идёт Ловкость рук героя.
-    // Шулер видит чужие руки лучше — он знает, куда смотреть.
-    insight_passive: 10 + attention + (crooked ? 2 : 0),
-    // Насколько трудно разглядеть его собственную подмену.
-    tell_dc: 10 + slyness + (crooked ? 2 : 0),
+    insight_passive: 10 + attention,
+    // Насколько трудно разглядеть его собственную подмену. Внимательный и
+    // ловкий сосед за столом попадается и среди честных: обе величины — про
+    // руки и глаза, а не про совесть.
+    tell_dc: 10 + slyness,
     dice_bonus: crooked ? TAVERN_CHEAT_BONUS : 0,
+    // С чем он сел за стол. Дальше кошелёк живёт в состоянии заведения.
+    base_purse_cp: TAVERN_GAMBLER_PURSE_BASE_CP + spread(seed, 'purse', TAVERN_GAMBLER_PURSE_SPREAD) * TAVERN_GAMBLER_PURSE_STEP_CP,
   })
 }
 
@@ -274,11 +329,18 @@ function safeRound(value) {
   }
 }
 
+/**
+ * Запись посетителя: его кружки, его скандалы, его запрет входа и **его**
+ * раунд. Раунд лежит здесь, а не в заведении, потому что стол в этой игре —
+ * стол на пятерых: общий слот запирал бы кости всему залу, пока один игрок не
+ * ответит, и запирал бы навсегда, если ответить он уже не может.
+ */
 function safePatron(value) {
   return {
     drinks: clamp(value?.drinks, 0, 99),
     scandals: clamp(value?.scandals, 0, 99),
     ejected: value?.ejected === true,
+    round: safeRound(value?.round),
   }
 }
 
@@ -289,10 +351,22 @@ export function normalizeTavernState(input = {}) {
     const id = text(heroId, 120)
     if (id) patrons[id] = safePatron(patron)
   }
+  // Снимок первой редакции держал раунд одним полем на всё заведение. Журнал
+  // такого не знает — события всегда несли `hero_id`, — но снимок мог, и
+  // переезд стоит трёх строк.
+  const legacy = safeRound(source.round)
+  if (legacy && !patrons[legacy.hero_id]?.round) {
+    patrons[legacy.hero_id] = { ...safePatron(patrons[legacy.hero_id]), round: legacy }
+  }
+  const gamblers = {}
+  for (const [npcId, gambler] of Object.entries(source.gamblers ?? {}).slice(0, MAX_GAMBLERS)) {
+    const id = text(npcId, 120)
+    if (id) gamblers[id] = { purse_cp: clamp(gambler?.purse_cp, 0, TAVERN_GAMBLER_PURSE_MAX_CP) }
+  }
   return {
     schema_version: TAVERN_LIFE_SCHEMA_VERSION,
-    round: safeRound(source.round),
     patrons,
+    gamblers,
   }
 }
 
@@ -300,8 +374,45 @@ function patronFor(state = {}, heroId = '') {
   return safePatron(normalizeTavernState(state?.tavern).patrons[text(heroId, 120)])
 }
 
-export function tavernRoundFor(state = {}) {
-  return normalizeTavernState(state?.tavern).round
+/** Открытый раунд **этого** героя. Чужой раунд ему не мешает и не виден. */
+export function tavernRoundFor(state = {}, heroId = '') {
+  return patronFor(state, heroId).round
+}
+
+/**
+ * Сколько сейчас в кошельке соперника. Пока он не проиграл и не выиграл ни
+ * разу, это его вечерняя касса из сида; дальше — то, что записало событие.
+ *
+ * Счёт **переживает уход из зала**: кружки и скандалы обнуляются сменой сцены,
+ * а деньги соседа — нет. Иначе выход за дверь и возврат обратно возвращали бы
+ * ему полную кассу, и предел был бы только на бумаге.
+ */
+export function tavernGamblerPurseFor(state = {}, npcId = '') {
+  const id = text(npcId, 120)
+  const stored = normalizeTavernState(state?.tavern).gamblers[id]
+  return stored ? stored.purse_cp : tavernGamblerFor(state, id).base_purse_cp
+}
+
+/**
+ * Первый открытый раунд зала. Нужен ровно одному зрителю — тому, у кого своего
+ * героя нет (ведущий, наблюдатель): у него карточка заведения не про его стол,
+ * а про чужой, и показать ей нечего, кроме чужой кости. Порядок закреплён по
+ * идентификатору героя, чтобы у двух открытых раундов был один и тот же ответ.
+ */
+function anyOpenRound(state = {}) {
+  const patrons = normalizeTavernState(state?.tavern).patrons
+  const heroId = Object.keys(patrons).filter((id) => patrons[id].round).sort()[0]
+  return heroId ? patrons[heroId].round : null
+}
+
+/**
+ * Самая крупная ставка, которую этот сосед может закрыть. Ноль — он на мели, и
+ * играть с ним не о чем. Уезжает игроку в карточке заведения: отказ движка
+ * должен быть виден кнопкой, а не приходить ошибкой после клика.
+ */
+export function tavernMaxStakeFor(state = {}, npcId = '') {
+  const purse = tavernGamblerPurseFor(state, npcId)
+  return TAVERN_STAKES_CP.filter((stake) => stake <= purse).at(-1) ?? 0
 }
 
 export function tavernDrinksFor(state = {}, heroId = '') {
@@ -377,16 +488,21 @@ export function tavernTableMood(state = {}, heroId = '') {
 export function tavernForViewer(state = {}, viewer = {}) {
   if (!isTavernScene(state)) return null
   const heroId = text(viewer?.playerId, 120)
-  const round = tavernRoundFor(state)
   const patron = patronFor(state, heroId)
   return {
     schema_version: TAVERN_LIFE_SCHEMA_VERSION,
     place_name: text(state?.scene?.location ?? state?.scene?.title, 180),
     location_id: sceneLocationId(state),
-    opponents: tavernOpponents(state),
+    // Кроме имени и роли соседа — то, во что с ним вообще можно сыграть.
+    // Точной суммы в кармане здесь нет: игроку нужна доступная ставка, а не
+    // чужая бухгалтерия.
+    opponents: tavernOpponents(state).map((npc) => ({ ...npc, max_stake_cp: tavernMaxStakeFor(state, npc.id) })),
     stakes: TAVERN_STAKES_CP.map((stake) => ({ stake_cp: stake, label: TAVERN_STAKE_LABELS[stake] ?? `${stake} мм` })),
     approaches: TAVERN_DICE_APPROACHES.slice(),
-    round: round && (!heroId || round.hero_id === heroId) ? publicTavernRoundFor(round) : null,
+    // Свой раунд — и только свой: чужая кость соседа по отряду кнопки игроку
+    // не блокирует. У зрителя без героя своего раунда нет по определению,
+    // поэтому ему показывается открытый раунд зала.
+    round: publicTavernRoundFor(heroId ? patron.round : anyOpenRound(state)),
     drink_price_cp: TAVERN_DRINK_PRICE_CP,
     drinks: patron.drinks,
     next_drink_dc: tavernNextDrinkDc(state, heroId),
@@ -435,23 +551,42 @@ export function applyTavernEvent(input, event, state = {}) {
     ? input
     : normalizeTavernState(input)
   const payload = event?.payload ?? {}
-  // Новая сцена — новое заведение: счёт кружек, скандалов и запретов обнуляется
-  // вместе с ним. Похмелье при этом остаётся: оно состояние героя, а не
-  // заведения, и снимается отдыхом.
-  if (type === 'SceneAdvanced') return normalizeTavernState({})
+  // Новая сцена — новое заведение: счёт кружек, скандалов, запретов и открытых
+  // раундов обнуляется вместе с ним. Похмелье при этом остаётся: оно состояние
+  // героя, а не заведения, и снимается отдыхом.
+  //
+  // Кошельки соперников переезжают через смену сцены нетронутыми. Это то самое
+  // место, где предел кассы либо есть, либо его нет: обнули его здесь — и выход
+  // за дверь с возвратом обратно возвращал бы соседу полную мошну.
+  if (type === 'SceneAdvanced') return normalizeTavernState({ gamblers: normalized.gamblers })
   if (type === 'TavernDiceRoundOpened') {
     const round = safeRound(payload.round)
-    return round ? normalizeTavernState({ ...normalized, round }) : normalized
+    if (!round) return normalized
+    const patron = safePatron(normalized.patrons?.[round.hero_id])
+    return normalizeTavernState({
+      ...normalized,
+      patrons: { ...normalized.patrons, [round.hero_id]: { ...patron, round } },
+    })
   }
   if (type === 'TavernDiceRoundResolved') {
     const heroId = text(payload.hero_id, 120)
+    const npcId = text(payload.npc_id, 120)
     const caught = text(payload.outcome, 30) === 'caught'
-    if (!heroId) return normalizeTavernState({ ...normalized, round: null })
+    // Кошелёк соперника переносится числом из события, а не пересчитывается:
+    // движок уже решил, куда уехал банк, и второго ответа на этот вопрос быть
+    // не должно.
+    const gamblers = npcId && Object.hasOwn(payload, 'npc_purse_after_cp')
+      ? { ...normalized.gamblers, [npcId]: { purse_cp: clamp(payload.npc_purse_after_cp, 0, TAVERN_GAMBLER_PURSE_MAX_CP) } }
+      : normalized.gamblers
+    if (!heroId) return normalizeTavernState({ ...normalized, gamblers })
     const patron = safePatron(normalized.patrons?.[heroId])
     return normalizeTavernState({
       ...normalized,
-      round: null,
-      patrons: { ...normalized.patrons, [heroId]: { ...patron, scandals: patron.scandals + (caught ? 1 : 0) } },
+      gamblers,
+      patrons: {
+        ...normalized.patrons,
+        [heroId]: { ...patron, round: null, scandals: patron.scandals + (caught ? 1 : 0) },
+      },
     })
   }
   if (type === 'TavernPatronEjected') {

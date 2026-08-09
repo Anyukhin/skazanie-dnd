@@ -23,7 +23,8 @@ export const ACTION_HINTS_POLICY_ID = 'skazanie:action-hints-v1'
 export const MAX_ACTION_HINTS = 4
 
 /**
- * Сколько строк подсказок отдаётся реквизиту.
+ * Сколько строк подсказок отдаётся тому, что не обязано быть на панели:
+ * реквизиту и приглашению за стол в таверне.
  *
  * Интеракции открылись всей обстановке (задача 3.2b), и предметов на карте
  * таверны стало три десятка. Без этого потолка подсказки превращались в опись
@@ -53,6 +54,24 @@ const VERB_PHRASES = Object.freeze({
 
 /** Порядок предпочтения глаголов: осмотр безопаснее поджога. */
 const VERB_ORDER = Object.freeze(['inspect', 'open', 'take', 'use', 'topple', 'ignite'])
+
+/**
+ * Порядок строк в панели. Числа сами по себе ничего не значат — значит только
+ * их порядок, и он же решает, кто вытеснит кого при нехватке места.
+ *
+ * Досуг таверны стоит между приметной находкой и рядовой обстановкой: сундук в
+ * углу зала он не вытесняет, метлу и скамью — вытесняет. Раньше он занимал
+ * слот безусловно, и в трактире про находку не говорили никогда.
+ */
+const HINT_PRIORITY = Object.freeze({
+  tavernRound: 0,
+  poiProp: 1,
+  leisure: 2,
+  prop: 3,
+  npc: 4,
+  objective: 5,
+  exit: 6,
+})
 
 /** «сундук» → «Сундук». Подсказка — начало фразы, а не середина. */
 function capitalized(value) {
@@ -87,7 +106,7 @@ function propHints(room) {
     hints.push({
       id: `prop:${text(prop?.id, 80)}:${verb}`,
       // Приметное — вперёд: точка интереса заметнее рядового ящика.
-      priority: prop?.interaction?.pointOfInterest === true ? 0 : 1,
+      priority: prop?.interaction?.pointOfInterest === true ? HINT_PRIORITY.poiProp : HINT_PRIORITY.prop,
       text: `Можно ${VERB_PHRASES[verb]}: ${label}`,
     })
   }
@@ -104,7 +123,7 @@ function npcHints(room) {
       const role = text(npc?.role, 40)
       return {
         id: `npc:${text(npc?.id, 80)}`,
-        priority: 2,
+        priority: HINT_PRIORITY.npc,
         text: role ? `Можно заговорить с кем-то из местных: ${name} (${role})` : `Можно заговорить: ${name}`,
       }
     })
@@ -123,32 +142,44 @@ function npcHints(room) {
  * заняться, а не тому, кто выбирает ставку.
  *
  * Открытый раунд забирает эту строку целиком: чужая кость уже на столе, и пока
- * герой не ответил, звать его выпить незачем.
+ * герой не ответил, звать его выпить незачем. Разница между двумя строками не
+ * только в тексте: ответ на брошенную кость место занимает безусловно (это уже
+ * начатое действие с деньгами на столе), а приглашение за стол — только
+ * наравне с реквизитом (`suggestedActionsFor`).
+ *
+ * @returns {{ urgent: Array<{id: string, priority: number, text: string}>, leisure: Array<{id: string, priority: number, text: string}> }}
  */
 function tavernHints(room) {
   const tavern = room?.tavern
-  if (!tavern || tavern.ejected === true) return []
+  const empty = { urgent: [], leisure: [] }
+  if (!tavern || tavern.ejected === true) return empty
   if (tavern.round) {
-    return [{
-      id: 'tavern:answer',
-      priority: 0,
-      text: `Можно ответить на бросок: ${text(tavern.round.npc_name, 60) || 'соперник'} выбросил ${Number(tavern.round.npc_total) || 0}`,
-    }]
+    return {
+      ...empty,
+      urgent: [{
+        id: 'tavern:answer',
+        priority: HINT_PRIORITY.tavernRound,
+        text: `Можно ответить на бросок: ${text(tavern.round.npc_name, 60) || 'соперник'} выбросил ${Number(tavern.round.npc_total) || 0}`,
+      }],
+    }
   }
   const price = Number(tavern.drink_price_cp) || 0
   const opponent = Array.isArray(tavern.opponents) ? text(tavern.opponents[0]?.name, 60) : ''
-  return [{
-    id: 'tavern:leisure',
-    priority: 0,
-    text: opponent
-      ? `Можно сыграть в кости с местными или заказать выпивку (${price} мм)`
-      : `Можно заказать выпивку: ${price} мм за кружку`,
-  }]
+  return {
+    ...empty,
+    leisure: [{
+      id: 'tavern:leisure',
+      priority: HINT_PRIORITY.leisure,
+      text: opponent
+        ? `Можно сыграть в кости с местными или заказать выпивку (${price} мм)`
+        : `Можно заказать выпивку: ${price} мм за кружку`,
+    }],
+  }
 }
 
 function objectiveHint(room) {
   const objective = text(room?.scene?.objective, 90)
-  return objective ? [{ id: 'objective', priority: 3, text: `Цель отряда: ${objective}` }] : []
+  return objective ? [{ id: 'objective', priority: HINT_PRIORITY.objective, text: `Цель отряда: ${objective}` }] : []
 }
 
 /**
@@ -158,7 +189,7 @@ function objectiveHint(room) {
 function exitHints(room) {
   const doors = Array.isArray(room?.scene?.map?.doors) ? room.scene.map.doors : []
   if (!doors.length) return []
-  return [{ id: 'exit', priority: 4, text: 'Можно уйти из этого места через дверь' }]
+  return [{ id: 'exit', priority: HINT_PRIORITY.exit, text: 'Можно уйти из этого места через дверь' }]
 }
 
 /**
@@ -171,6 +202,12 @@ function exitHints(room) {
  * Реквизит забирает только тот остаток строк, который не нужен собеседникам,
  * цели и выходу, и не больше `MAX_PROP_HINTS`. Место в списке предметы всё ещё
  * получают первое — приметное вперёд, — но получают его не за чужой счёт.
+ *
+ * Приглашение за стол в таверне стоит **в этой же очереди**, а не в брони.
+ * Безусловный слот у него был, и следствие оказалось хуже причины: в трактире
+ * про находку на карте не говорили никогда, потому что собеседник, цель и
+ * выход занимали остальные три строки. Теперь приметная находка досуг
+ * вытесняет, рядовая обстановка — нет (`HINT_PRIORITY`).
  *
  * @param {Record<string, any> | null | undefined} room
  * @returns {Array<{ id: string, text: string }>}
@@ -186,12 +223,12 @@ export function suggestedActionsFor(room) {
       seen.add(hint.text)
       return true
     })
-  // Сначала занимают места те, кого вытеснять нельзя: досуг таверны,
-  // собеседники, цель, выход. Кости и кружка стоят вместе с ними, а не с
-  // реквизитом: они действия сцены, а не осмотр мебели.
-  const reserved = ordered([...tavernHints(room), ...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
+  const tavern = tavernHints(room)
+  // Сначала занимают места те, кого вытеснять нельзя: начатый раунд костей,
+  // собеседники, цель, выход.
+  const reserved = ordered([...tavern.urgent, ...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
-  const props = ordered(propHints(room)).slice(0, budget)
+  const props = ordered([...propHints(room), ...tavern.leisure]).slice(0, budget)
   return [...props, ...reserved]
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
     .slice(0, MAX_ACTION_HINTS)
