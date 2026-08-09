@@ -13,6 +13,7 @@ import test from 'node:test'
 import { combatNarration, tacticalNarrationOr, tacticalNarrationParts } from '../server/combat-narration.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { generateSceneCells } from '../server/adventure-director.mjs'
+import { deterministicNarration } from '../server/narrator.mjs'
 import { SCENE_THEMES } from '../server/scene-themes.mjs'
 import {
   BIOME_WEATHER_WEIGHTS,
@@ -512,33 +513,69 @@ test('строка про небо дописывается последней �
   assert.equal(combatNarration([dusk], state), worldClockNarration(dusk))
 })
 
-test('небо дописывается к запасному тексту, а не вместо него', () => {
+test('небо дописывается к запасному тексту ровно один раз', () => {
   // Шаг Режиссёра, пересёкший 17:00, отдавал в ленту одну фразу про вечер:
   // `tacticalNarration(...) || deterministicNarration(...)` перестал доходить до
   // запасного, как только боевой рассказчик научился говорить про небо. Переход
   // сцены боевой рассказчик не описывает вовсе, поэтому запасной обязателен.
+  //
+  // Запасной рассказчик здесь **настоящий**: рукописная строка не поймала бы
+  // задваивание, потому что `qualitativeEventSummary` умеет говорить про небо
+  // сама — и в летописи «наступил вечер» шло дважды подряд. Значение по
+  // умолчанию воспроизводит прежнюю проводку: если складыватель не отдал
+  // очищенный список, бриф видит все события хода, включая небо.
   const state = field({ minutes: 0 })
   const dusk = { event_type: 'TimeOfDayChanged', payload: { phase_after: 'evening' }, target_ids: [] }
   const sceneAdvanced = { event_type: 'SceneAdvanced', payload: { location_before: 'Тракт', location_after: 'Пепельная Гать' }, target_ids: [] }
-  const fallback = 'Сцена перемещена из Тракт в Пепельная Гать. Цель отряда: Найти проводника.'
+  const events = [sceneAdvanced, dusk]
+  const narrateFallback = (briefEvents = events) => deterministicNarration(
+    { visible_events: briefEvents, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
+    (id) => id,
+  ).narration
 
-  const parts = tacticalNarrationParts([sceneAdvanced, dusk], state)
+  const parts = tacticalNarrationParts(events, state)
   assert.equal(parts.main, '', 'про сам переход боевому рассказчику сказать нечего')
   assert.equal(parts.sky, worldClockNarration(dusk))
 
-  const composed = tacticalNarrationOr([sceneAdvanced, dusk], state, fallback)
-  assert.ok(composed.startsWith(fallback), `запасной текст пропал: ${composed}`)
-  assert.ok(composed.endsWith(worldClockNarration(dusk)), 'небо дописано последним')
+  const sky = worldClockNarration(dusk)
+  const composed = tacticalNarrationOr(events, state, narrateFallback)
+  assert.match(composed, /Сцена перемещена/u, `запасной текст пропал: ${composed}`)
+  assert.equal(composed.split(sky).length - 1, 1, `строка про небо задвоена: ${composed}`)
+  assert.ok(composed.endsWith(sky), 'небо дописано последним')
+
+  // Строкой запасной вариант тоже принимается — вызывающему не обязательно
+  // звать рассказчика, чтобы дописать небо к готовому тексту.
+  const plain = tacticalNarrationOr(events, state, 'Отряд идёт дальше.')
+  assert.equal(plain, `Отряд идёт дальше. ${sky}`)
 
   // Когда ход описан, запасной рассказчик не зовётся вовсе: он стоит дорого.
   let calls = 0
   const knockout = { event_type: 'RestCompleted', actor_id: 'scout', target_ids: ['scout'], payload: { kind: 'short', reason: 'knockout' } }
-  const withTurn = tacticalNarrationOr([knockout, dusk], state, () => { calls += 1; return fallback })
+  const withTurn = tacticalNarrationOr([knockout, dusk], state, () => { calls += 1; return 'запасной' })
   assert.equal(calls, 0, 'запасной рассказчик вызван зря')
   assert.equal(withTurn, combatNarration([knockout, dusk], state), 'на описанном ходу текст прежний')
 
-  // Сторож проводки: маршрут Режиссёра обязан складывать текст этой функцией.
-  assert.match(source('server/index.mjs'), /const directorNarration = tacticalNarrationOr\(events, authoritative\.state, \(\) => deterministicNarration\(/u)
+  // Сторож проводки: маршрут Режиссёра обязан кормить бриф очищенным списком.
+  assert.match(
+    source('server/index.mjs'),
+    /tacticalNarrationOr\(events, authoritative\.state, \(briefEvents\) => deterministicNarration\(\s*\{ visible_events: briefEvents,/u,
+  )
+})
+
+test('сводка неба клеится с соседним событием без двойной точки', () => {
+  // `deterministicNarrationCandidate` соединяет сводки через «. », а ветка неба
+  // отдавала готовое предложение с точкой — в летописи выходило «вечер.. Ада».
+  const narration = deterministicNarration({
+    visible_events: [
+      { event_type: 'TimeOfDayChanged', payload: { phase_after: 'evening' }, target_ids: [] },
+      { event_type: 'AttackResolved', actor_id: 'scout', target_ids: ['orc'], payload: { hit: true } },
+    ],
+    visible_state_changes: [],
+    known_environment: {},
+    permitted_npc_reactions: [],
+  }, (id) => (id === 'scout' ? 'Ада' : 'Орк')).narration
+  assert.ok(!narration.includes('..'), `двойная точка в летописи: ${narration}`)
+  assert.match(narration, /наступил вечер\. Ада поражает Орк/u)
 })
 
 test('строка летописи детерминированная и по-русски', () => {

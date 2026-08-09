@@ -104,14 +104,27 @@ export function tacticalNarrationParts(events, state) {
 }
 
 /**
+ * События хода без неба: ровно то, что видит запасной рассказчик.
+ *
+ * Строку про небо дописывает `tacticalNarrationOr`, и второй её формы в тексте
+ * быть не должно. Запасной рассказчик (`qualitativeEventSummary`) описывает
+ * смену времени суток тем же самым предложением, поэтому шаг Режиссёра,
+ * пересёкший 17:00, отдавал в летопись «наступил вечер» дважды подряд.
+ */
+function eventsWithoutWorldClock(events) {
+  return (events ?? []).filter((event) => !WORLD_CLOCK_EVENT_TYPES.has(event?.event_type))
+}
+
+/**
  * Текст хода с запасным вариантом. `fallback` — строка или функция, которую
  * зовут лишь тогда, когда боевому рассказчику сказать про сам ход нечего:
  * запасной рассказчик стоит дорого, и звать его ради выброшенного результата
- * незачем.
+ * незачем. Функции отдаётся уже очищенный от неба список событий — так забыть
+ * про фильтр на очередном месте вызова физически негде.
  */
 export function tacticalNarrationOr(events, state, fallback) {
   const { main, sky } = tacticalNarrationParts(events, state)
-  const base = main || String((typeof fallback === 'function' ? fallback() : fallback) ?? '')
+  const base = main || String((typeof fallback === 'function' ? fallback(eventsWithoutWorldClock(events)) : fallback) ?? '')
   return [base, sky].filter(Boolean).join(' ')
 }
 

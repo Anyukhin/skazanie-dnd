@@ -3366,8 +3366,10 @@ const server = createServer((req, res) => {
       // и игрок видел новую задачу про персонажа, которого ему не представили.
       // Строка про небо запасной текст не вытесняет, а дописывается к нему:
       // переход, пересёкший границу времени суток, обязан остаться переходом.
-      const directorNarration = tacticalNarrationOr(events, authoritative.state, () => deterministicNarration(
-        { visible_events: events, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
+      // Брифу запасного рассказчика небо не показывают вовсе — `briefEvents`
+      // приезжают уже без него, иначе «наступил вечер» звучал бы дважды подряд.
+      const directorNarration = tacticalNarrationOr(events, authoritative.state, (briefEvents) => deterministicNarration(
+        { visible_events: briefEvents, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
         actorNameResolver(authoritative.state),
       ).narration)
       persistAuthoritativeProjection(campaignId, authoritative.state, events, directorNarration ? {

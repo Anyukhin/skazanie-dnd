@@ -1272,7 +1272,9 @@ function qualitativeEventSummary(event, resolveName) {
       // Готовая строка модуля погоды, а не сводка события: сводка несёт часы и
       // номер дня, и `withoutVisibleNumbers` вырезала бы из неё цифры, оставив
       // «Вечер —, день». Здесь у неба ровно тот же текст, что в летописи.
-      return worldClockNarration(event)
+      // Финальная точка снимается: сводки клеятся через «. », и с ней в
+      // середине абзаца получалось «наступил вечер.. Ада поражает орка».
+      return worldClockNarration(event).replace(/[.!?]+$/u, '')
     default:
       return eventSummary(event, resolveName)
   }
