@@ -99,6 +99,9 @@ export function normalizeFreeActionReading(input = {}, fallbackText = '') {
     effect: clean(input.effect, 40) || 'none',
     effect_target: clean(input.effect_target, 120),
     hazard: clean(input.hazard, 40),
+    // Предмет обстановки для `topple_prop`/`ignite_prop`. Здесь только форма:
+    // существует ли такой предмет на карте, решает привязка к состоянию ниже.
+    prop_id: clean(input.prop_id, 120),
     target_id: clean(input.target_id, 120),
     item_id: clean(input.item_id, 120),
     proficiency: inEnum(FREE_ACTION_PROFICIENCY_LEVELS, input.proficiency, 'none'),
@@ -196,6 +199,11 @@ function actionTargets(state) {
  */
 export function bindFreeActionReadingToState(state = {}, actorId = '', text = '', input = {}) {
   const reading = normalizeFreeActionReading(input, text)
+  // Предмет обстановки живёт в авторитетной карте сцены, а не в списке
+  // участников: сверяется он отдельно и по тому же принципу — назван моделью,
+  // но существует ли он, решает сервер.
+  const sceneProps = Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : []
+  const boundPropId = sceneProps.some((prop) => String(prop?.id ?? '') === reading.prop_id) ? reading.prop_id : ''
   const targets = actionTargets(state).filter((actor) => String(actor?.id) !== String(actorId))
   const allowedTarget = targets.find((actor) => String(actor?.id) === reading.target_id) ?? null
   const mentionedTargets = allowedTarget ? [allowedTarget] : targets.filter((actor) => mentionsReference(text, referenceNames(actor)))
@@ -210,6 +218,7 @@ export function bindFreeActionReadingToState(state = {}, actorId = '', text = ''
   ]
   return {
     ...reading,
+    prop_id: boundPropId,
     target_id: mentionedTargets.length === 1 ? String(mentionedTargets[0].id) : '',
     item_id: mentionedItems.length === 1 ? String(mentionedItems[0].id) : '',
     proficiency: proficiency.expertise ? 'expertise' : proficiency.proficient ? 'proficient' : 'none',

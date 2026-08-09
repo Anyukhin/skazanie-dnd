@@ -476,4 +476,10 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   const repeatedClock = await request(baseUrl, '/api/campaigns/SHOP-HTTP/system-tick', { method: 'POST', cookie: playerCookie })
   assertStatus(repeatedClock, 200, log)
   assert.equal(repeatedClock.body.economy_clock_events, 0)
+  // В том же такте по мировому времени идут часы молвы. Поступков в этой
+  // фикстуре нет, поэтому событий ноль — важно, что контур отвечает числом и
+  // не роняет запрос, а летопись поступков не течёт в проекцию игрока.
+  assert.equal(clock.body.rumor_clock_events, 0)
+  assert.equal(repeatedClock.body.rumor_clock_events, 0)
+  assert.equal(repeatedClock.body.state.world_deeds, undefined)
 })

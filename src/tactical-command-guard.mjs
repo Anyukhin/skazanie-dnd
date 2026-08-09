@@ -1,6 +1,10 @@
 export function canIssueUiTacticalCommand(combat, command, currentActorId) {
   if (!combat?.active) return true
   if (['StartCombat', 'ResolveHeroDeath'].includes(command?.command_type)) return true
+  // Уговор на переговорах заключает отряд, а не тот, на ком стоит указатель
+  // инициативы: перемирие эту очередь уже заморозило. Сервер проверяет то же
+  // самое — здесь только не мешаем нажать кнопку карточки условий.
+  if (command?.command_type === 'SettleParley') return Boolean(combat.truce)
   if (command?.actor_id === currentActorId) return true
   if (command?.command_type !== 'UseCombatAction') return false
 

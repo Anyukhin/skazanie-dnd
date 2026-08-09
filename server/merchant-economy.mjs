@@ -974,7 +974,12 @@ export function merchantViewFor(state, merchantId, actorId) {
       unit_price_cp: quote.unit_price_cp,
       total_price_cp: quote.unit_price_cp,
       can_afford: balanceCp >= quote.unit_price_cp,
-      max_quantity: maxQuantity,
+      // Отказ по розыску виден в витрине, а не только в ошибке команды: игрок
+      // должен понимать, почему лавка закрыта, до того как нажмёт кнопку.
+      ...(standing.trade_available === false
+        ? { can_buy: false, unavailable_reason: standing.trade_refusal_reason }
+        : {}),
+      max_quantity: standing.trade_available === false ? 0 : maxQuantity,
       price_provenance: resolveCatalogPrice(stock)?.provenance ?? (trustedStockAppraisalFor(stock) ? 'server_appraisal_policy' : null),
       breakdown: {
         catalog_base_unit_cp: quote.base_unit_price_cp,
@@ -1009,8 +1014,9 @@ export function merchantViewFor(state, merchantId, actorId) {
       quantity: 1,
       unit_price_cp: quote?.unit_price_cp ?? 0,
       total_price_cp: quote?.unit_price_cp ?? 0,
-      can_sell: allowed.can_sell && canAfford,
+      can_sell: allowed.can_sell && canAfford && standing.trade_available !== false,
       can_afford: canAfford,
+      ...(standing.trade_available === false ? { unavailable_reason: standing.trade_refusal_reason } : {}),
       appraisal_required: appraisalRequired,
       can_appraise: appraisalRequired,
       price_provenance: catalogPrice?.provenance ?? appraisal?.provenance ?? null,
@@ -1043,7 +1049,11 @@ export function merchantViewFor(state, merchantId, actorId) {
       // Отказ по славе виден в витрине, а не только в ошибке команды: кнопка
       // недоступна по объявленной причине, без невидимых сюжетных стен.
       available: merchant.available && service.available !== false && standing.services_available,
-      ...(standing.services_available ? {} : { unavailable_reason: 'Торговец не станет оказывать услуги отряду с такой славой' }),
+      ...(standing.services_available
+        ? {}
+        : { unavailable_reason: standing.trade_available === false
+          ? standing.trade_refusal_reason
+          : 'Торговец не станет оказывать услуги отряду с такой славой' }),
       price_provenance: quote.price_provenance,
       breakdown: {
         base_price_cp: quote.base_price_cp,

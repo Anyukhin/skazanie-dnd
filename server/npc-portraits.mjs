@@ -3,8 +3,12 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 
+import { IMAGE_GENERATION_MAX_BYTES, createRouterImageGenerator, isWebp } from './image-generation.mjs'
+
+export { isWebp }
+
 export const NPC_PORTRAIT_GENERATION_LIMIT = 6
-export const NPC_PORTRAIT_MAX_BYTES = 8 * 1024 * 1024
+export const NPC_PORTRAIT_MAX_BYTES = IMAGE_GENERATION_MAX_BYTES
 const NPC_PORTRAIT_ESTIMATED_OUTPUT_TOKENS = 1_024
 
 export const NPC_PORTRAIT_ROLE_ASSETS = Object.freeze({
@@ -223,16 +227,6 @@ export function buildNpcPortraitPrompt(profile) {
 }
 
 /**
- * @param {Buffer} bytes
- * @returns {boolean}
- */
-export function isWebp(bytes) {
-  return bytes.length >= 12
-    && bytes.subarray(0, 4).toString('ascii') === 'RIFF'
-    && bytes.subarray(8, 12).toString('ascii') === 'WEBP'
-}
-
-/**
  * @param {string} cacheRoot
  * @param {unknown} campaignId
  * @param {unknown} npcId
@@ -252,61 +246,17 @@ export function npcPortraitCacheLocation(cacheRoot, campaignId, npcId) {
 }
 
 /**
- * @param {{
- *   fetchImpl?: typeof fetch,
- *   baseUrl: string,
- *   apiKey: string,
- *   timeoutMs?: number,
- * }} options
+ * Портретный вызов общего генератора: webp, квадрат, дешёвое качество.
+ *
+ * @param {{fetchImpl?: typeof fetch, baseUrl: string, apiKey: string, timeoutMs?: number}} options
  * @returns {(input: {prompt: string, model: string}) => Promise<NpcPortraitGeneration>}
  */
-export function createRouterNpcPortraitGenerator({
-  fetchImpl = fetch,
-  baseUrl,
-  apiKey,
-  timeoutMs = 120_000,
-}) {
-  const endpoint = `${String(baseUrl || '').replace(/\/+$/u, '')}/images`
-  return async ({ prompt, model }) => {
-    const response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        prompt,
-        n: 1,
-        aspect_ratio: '1:1',
-        resolution: '1K',
-        quality: 'low',
-        output_format: 'webp',
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-    if (!response.ok) throw new Error(`Генератор портретов ответил ${response.status}`)
-    const payload = /** @type {any} */ (await response.json())
-    const encoded = typeof payload?.data?.[0]?.b64_json === 'string' ? payload.data[0].b64_json : ''
-    if (!encoded || encoded.length > Math.ceil(NPC_PORTRAIT_MAX_BYTES * 4 / 3) + 16) {
-      throw new Error('Генератор портретов вернул некорректный размер')
-    }
-    const bytes = Buffer.from(encoded, 'base64')
-    if (!isWebp(bytes) || bytes.length > NPC_PORTRAIT_MAX_BYTES) {
-      throw new Error('Генератор портретов вернул файл неподдерживаемого формата')
-    }
-    const providerUsage = payload?.usage && typeof payload.usage === 'object' && !Array.isArray(payload.usage)
-      ? payload.usage
-      : {}
-    const providerCost = payload?.cost ?? providerUsage.cost ?? providerUsage.total_cost
-    return {
-      bytes,
-      usage: {
-        ...providerUsage,
-        ...(providerCost == null ? {} : { cost: providerCost }),
-      },
-    }
-  }
+export function createRouterNpcPortraitGenerator(options) {
+  return createRouterImageGenerator({
+    ...options,
+    outputFormat: 'webp',
+    maxBytes: NPC_PORTRAIT_MAX_BYTES,
+  })
 }
 
 export class NpcPortraitService {

@@ -158,10 +158,19 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   const winnerKey = winner.key
   const transitioned = winner.result
   assertStatus(transitioned, 200, log)
-  assert.deepEqual(transitioned.body.mechanics.map((event) => event.event_type), [
-    'PartyDecisionConsumed', 'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+  // Выход из подземелья в город пересекает границу края, а небо принадлежит
+  // климату края (`server/weather.mjs`), поэтому переход объявляет погоду.
+  // Кампания идёт по фиксированному сиду, и ожидание закреплено жёсткой
+  // последовательностью: выведенное из самого ответа (`skyLines ? [...] : []`)
+  // подстраивалось под ответ и пропажу `WeatherChanged` на переходе не ловило.
+  // Смена таблицы климатов — решение владельца, и оно обязано красить этот тест.
+  const transitionedTypes = transitioned.body.mechanics.map((event) => event.event_type)
+  assert.deepEqual(transitionedTypes, [
+    'PartyDecisionConsumed', 'SceneAdvanced', 'WeatherChanged',
+    'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
     'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded', 'MerchantCreated',
   ])
+  assert.equal(transitionedTypes.filter((type) => type === 'WeatherChanged').length, 1, 'небо объявляется ровно один раз на переход')
   const sceneEvent = transitioned.body.mechanics.find((event) => event.event_type === 'SceneAdvanced')
   const merchantEvent = transitioned.body.mechanics.find((event) => event.event_type === 'MerchantCreated')
   assert.equal(sceneEvent.payload.request_fingerprint, merchantEvent.payload.request_fingerprint)
@@ -203,10 +212,8 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   assert.equal(replay.body.agent_trace.some((stage) => stage.agent === 'scene_architect'), false)
   assert.equal(replay.body.state_version, cityVersion)
   assert.equal(replay.body.authoritative_state.merchants.length, 1)
-  assert.deepEqual(replay.body.mechanics.map((event) => event.event_type), [
-    'PartyDecisionConsumed', 'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
-    'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded', 'MerchantCreated',
-  ])
+  // Повтор отдаёт ровно тот же журнал, включая строку про небо, если она была.
+  assert.deepEqual(replay.body.mechanics.map((event) => event.event_type), transitionedTypes)
 
   const idempotencyConflict = await request(baseUrl, '/api/narrate', {
     method: 'POST', cookie: adminCookie, idempotencyKey: winnerKey,
@@ -260,10 +267,15 @@ test('enforce Director atomically advances scene and assembles a durable catalog
     body: { campaignId: 'DIRECTOR-SHOP', action: forestAction },
   })
   assertStatus(forest, 200, log)
-  assert.deepEqual(forest.body.mechanics.map((event) => event.event_type), [
-    'PartyDecisionConsumed', 'SceneAdvanced', 'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
+  // Второй переход — из города в чащу: тот же фиксированный сид, то же жёсткое
+  // ожидание, и небо снова ровно одной строкой.
+  const forestTypes = forest.body.mechanics.map((event) => event.event_type)
+  assert.deepEqual(forestTypes, [
+    'PartyDecisionConsumed', 'SceneAdvanced', 'WeatherChanged',
+    'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
     'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded',
   ])
+  assert.equal(forestTypes.filter((type) => type === 'WeatherChanged').length, 1, 'небо объявляется ровно один раз на переход')
   assert.equal(forest.body.mechanics.find((event) => event.event_type === 'SceneAdvanced').payload.scene.scene_kind, 'wilderness')
   assert.equal(forest.body.mechanics.find((event) => event.event_type === 'SceneAdvanced').payload.scene_commerce.action, 'none')
   assert.equal(forest.body.authoritative_state.merchants.length, 1)

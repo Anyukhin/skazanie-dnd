@@ -15,10 +15,25 @@
  * точнее любой строки, и вторая подсказка рядом только мешала бы.
  */
 
+import { sceneInteractionCatalogEntry, sceneInteractionRewardKinds, sceneObjectLabelFor } from './scene-interactions.mjs'
+
 export const ACTION_HINTS_POLICY_ID = 'skazanie:action-hints-v1'
 
 /** Больше четырёх строк — это уже не подсказка, а инструкция. */
 export const MAX_ACTION_HINTS = 4
+
+/**
+ * Сколько строк подсказок отдаётся реквизиту.
+ *
+ * Интеракции открылись всей обстановке (задача 3.2b), и предметов на карте
+ * таверны стало три десятка. Без этого потолка подсказки превращались в опись
+ * мебели — «скамья, метла, сундук, паутина», — вытесняя единственные строки,
+ * ради которых панель и заводилась: с кем говорить, куда идти и зачем.
+ */
+export const MAX_PROP_HINTS = 2
+
+/** Виды реквизита, за которыми сервер держит находку, тайник или знание. */
+const REWARD_BEARING_KINDS = new Set(sceneInteractionRewardKinds())
 
 const text = (value, maximum = 120) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 
@@ -39,21 +54,41 @@ const VERB_PHRASES = Object.freeze({
 /** Порядок предпочтения глаголов: осмотр безопаснее поджога. */
 const VERB_ORDER = Object.freeze(['inspect', 'open', 'take', 'use', 'topple', 'ignite'])
 
+/** «сундук» → «Сундук». Подсказка — начало фразы, а не середина. */
+function capitalized(value) {
+  return value ? value[0].toLocaleUpperCase('ru-RU') + value.slice(1) : ''
+}
+
+/**
+ * Подсказки по реквизиту сцены — самая узкая часть панели.
+ *
+ * Три ограничения, и каждое поставлено по живому зонду:
+ *
+ * 1. Вид предмета решает каталог по `assetId`, а не присланное поле, и в
+ *    подсказки пускаются только виды с наградой, тайником или знанием.
+ *    Обстановка (`furnishing`) не попадает сюда вовсе: клик по доске её и так
+ *    показывает, а строкой «можно осмотреть метлу» панель обесценивается.
+ * 2. Подпись берётся из каталога подписей. Латинского идентификатора игрок не
+ *    увидит никогда: без русской подписи предмет молча пропускается.
+ * 3. Порядок детерминирован — приметное вперёд, дальше по идентификатору.
+ */
 function propHints(room) {
   const props = Array.isArray(room?.scene?.map?.props) ? room.scene.map.props : []
   const hints = []
   for (const prop of props) {
     if (prop?.interactive !== true) continue
-    const name = text(prop?.name ?? prop?.label ?? prop?.assetId, 60)
-    if (!name) continue
-    const verbs = Array.isArray(prop?.interaction?.verbs) ? prop.interaction.verbs.map(String) : []
+    const catalog = sceneInteractionCatalogEntry(prop?.assetId)
+    if (!catalog || !REWARD_BEARING_KINDS.has(catalog.kind)) continue
+    const label = text(capitalized(sceneObjectLabelFor(prop?.assetId)), 60)
+    if (!label) continue
+    const verbs = Array.isArray(prop?.interaction?.verbs) ? prop.interaction.verbs.map(String) : catalog.verbs
     const verb = VERB_ORDER.find((candidate) => verbs.includes(candidate))
     if (!verb) continue
     hints.push({
       id: `prop:${text(prop?.id, 80)}:${verb}`,
       // Приметное — вперёд: точка интереса заметнее рядового ящика.
       priority: prop?.interaction?.pointOfInterest === true ? 0 : 1,
-      text: `Можно ${VERB_PHRASES[verb]}: ${name}`,
+      text: `Можно ${VERB_PHRASES[verb]}: ${label}`,
     })
   }
   return hints
@@ -98,21 +133,30 @@ function exitHints(room) {
  * идентификатор. Иначе одна и та же сцена давала бы разный список от запроса к
  * запросу, а игрок читал бы это как изменение мира.
  *
+ * Реквизит забирает только тот остаток строк, который не нужен собеседникам,
+ * цели и выходу, и не больше `MAX_PROP_HINTS`. Место в списке предметы всё ещё
+ * получают первое — приметное вперёд, — но получают его не за чужой счёт.
+ *
  * @param {Record<string, any> | null | undefined} room
  * @returns {Array<{ id: string, text: string }>}
  */
 export function suggestedActionsFor(room) {
   if (!room || typeof room !== 'object') return []
   if (room?.mechanics?.combat?.active === true) return []
-  const all = [...propHints(room), ...npcHints(room), ...objectiveHint(room), ...exitHints(room)]
   const seen = new Set()
-  return all
+  const ordered = (hints) => hints
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
     .filter((hint) => {
       if (!hint.text || seen.has(hint.text)) return false
       seen.add(hint.text)
       return true
     })
+  // Сначала занимают места те, кого вытеснять нельзя: собеседники, цель, выход.
+  const reserved = ordered([...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
+  const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
+  const props = ordered(propHints(room)).slice(0, budget)
+  return [...props, ...reserved]
+    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
     .slice(0, MAX_ACTION_HINTS)
     .map((hint) => ({ id: hint.id, text: hint.text }))
 }

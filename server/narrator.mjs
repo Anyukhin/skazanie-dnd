@@ -11,6 +11,7 @@ import {
 import { findNarratorCliches } from './narrator-craft-quality.mjs'
 import { promptForModel } from './model-style-profiles.mjs'
 import { npcDossiersForNarrator } from './npc-social.mjs'
+import { worldClockNarration } from './weather.mjs'
 
 export const NARRATOR_PROMPT_VERSION = 'narrator/v6'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v1'
@@ -1266,6 +1267,14 @@ function qualitativeEventSummary(event, resolveName) {
       return `Развитие квеста ${sceneText(payload.quest_id || 'отряда', 72)} продвинулось`
     case 'WorldFactRevealed':
       return 'Отряду открывается подтверждённый факт'
+    case 'TimeOfDayChanged':
+    case 'WeatherChanged':
+      // Готовая строка модуля погоды, а не сводка события: сводка несёт часы и
+      // номер дня, и `withoutVisibleNumbers` вырезала бы из неё цифры, оставив
+      // «Вечер —, день». Здесь у неба ровно тот же текст, что в летописи.
+      // Финальная точка снимается: сводки клеятся через «. », и с ней в
+      // середине абзаца получалось «наступил вечер.. Ада поражает орка».
+      return worldClockNarration(event).replace(/[.!?]+$/u, '')
     default:
       return eventSummary(event, resolveName)
   }

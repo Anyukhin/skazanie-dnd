@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { revealedPropPredicate } from './action-adjudicator.mjs'
 import { normalizeDirectorIntent, serverReputationDelta } from './autonomous-campaign.mjs'
 import {
   ENCOUNTER_COINS_POLICY_ID,
@@ -29,6 +30,8 @@ import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
 import { planHeroTurn } from './party-tactics.mjs'
 import {
+  RulesValidationError,
+  actorPosition,
   findActor,
   isEnemyActor,
   isLivingActor,
@@ -57,8 +60,9 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { planImprovisedEffect, resolveActionCost } from './improvised-effects.mjs'
+import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
+import { sceneHazardNarration } from './scene-hazard-narration.mjs'
 import { nearestSceneObjectCommand, sceneInteractionNarration } from './scene-interactions.mjs'
 
 const clone = (value) => structuredClone(value)
@@ -770,37 +774,87 @@ export class AutonomousCampaignOrchestrator {
     // глагол и способ; дальность, состояние, СЛ, бросок, награда и последствия
     // снова проверяет та же OperateSceneObject, которой пользуются кнопки.
     const sceneProps = Array.isArray(loaded.state.scene?.map?.props) ? loaded.state.scene.map.props : []
-    const sceneActor = findActor(loaded.state, actorId)
-    const sceneObjectCommand = nearestSceneObjectCommand({
-      props: sceneProps,
-      actorPosition: sceneActor ? { x: sceneActor.x, y: sceneActor.y } : null,
-      text,
-    })
-    if (sceneObjectCommand) {
-      const commit = await run([
-        declaration,
-        {
-          ...sceneObjectCommand,
-          actor_id: actorId,
-          server_authoritative: true,
-        },
-      ])
-      verifyDuplicate(commit)
-      const interactionEvents = commit.events ?? []
+    // Позиция берётся тем же `actorPosition`, которым движок проверяет
+    // досягаемость: `mechanics.positions` с фолбэком на лист. Лист остаётся той
+    // клеткой, с которой герой начал бой, и «ближайший» по нему выбирал не тот
+    // сундук из двух — а иногда объявлял недосягаемым тот, что под рукой.
+    const sceneActorPosition = actorPosition(loaded.state, actorId)
+    // Раскрытие спрашивается по авторитетной карте — тем же предикатом, что
+    // вырезает нераскрытые пропсы из брифа арбитра. Иначе фраза «осмотреть
+    // сундук» работала бы оракулом по неразведанной части подземелья: игрок
+    // называл бы предметы, которых на его карте ещё нет, и узнавал, есть ли они.
+    const revealedProp = revealedPropPredicate(loaded.state)
+    const namedSceneObject = nearestSceneObjectCommand({ props: sceneProps, actorPosition: sceneActorPosition, text })
+    const sceneObjectCommand = namedSceneObject
+      ? nearestSceneObjectCommand({
+          props: sceneProps.filter((prop) => revealedProp(prop)),
+          actorPosition: sceneActorPosition,
+          text,
+        })
+      : null
+    // Предмет на карте есть, но отряд его ещё не видел. Это не выдумка игрока и
+    // не путь в импровизацию: честный ответ — «отсюда такого не видно», ход при
+    // герое, событий нет.
+    if (namedSceneObject && !sceneObjectCommand) {
       return {
-        kind: 'scene_interaction',
-        narration: sceneInteractionNarration(interactionEvents)
-          || 'Герой взаимодействует с объектом сцены; результат подтверждён правилами.',
-        turn_consumed: interactionEvents.some((event) => (
-          event.event_type === 'SceneObjectOperated' && event.payload?.action_spent === true
-        )),
+        kind: 'clarification',
+        narration: 'Отсюда такого не видно. Подойдите ближе или осмотритесь: на вашей карте этого места ещё нет.',
+        turn_consumed: false,
         admin_commands: 0,
-        state: commit.state ?? loaded.state,
-        state_version: commit.state_version ?? loaded.state_version,
-        events: interactionEvents,
-        commands: commit.commands ?? [],
-        rolls: commit.rolls ?? [],
-        duplicate: Boolean(commit.duplicate),
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
+    if (sceneObjectCommand) {
+      try {
+        const commit = await run([
+          declaration,
+          {
+            ...sceneObjectCommand,
+            actor_id: actorId,
+            server_authoritative: true,
+          },
+        ])
+        verifyDuplicate(commit)
+        const interactionEvents = commit.events ?? []
+        return {
+          kind: 'scene_interaction',
+          narration: sceneInteractionNarration(interactionEvents)
+            || 'Герой взаимодействует с объектом сцены; результат подтверждён правилами.',
+          turn_consumed: interactionEvents.some((event) => (
+            event.event_type === 'SceneObjectOperated' && event.payload?.action_spent === true
+          )),
+          admin_commands: 0,
+          state: commit.state ?? loaded.state,
+          state_version: commit.state_version ?? loaded.state_version,
+          events: interactionEvents,
+          commands: commit.commands ?? [],
+          rolls: commit.rolls ?? [],
+          duplicate: Boolean(commit.duplicate),
+        }
+      } catch (error) {
+        if (!(error instanceof RulesValidationError)) throw error
+        // Предмет выбирает текст игрока, а досягаемость и состояние проверяет
+        // движок. «Осмотреть кровать в дальнем углу» называет настоящий пропс,
+        // до которого не дотянуться, — это ответ правил игроку, а не ошибка
+        // запроса. Без этой ветки SCENE_OBJECT_OUT_OF_REACH уезжал наружу
+        // как HTTP 400 и обрывал ход.
+        return {
+          kind: 'clarification',
+          narration: `${error.message}.`,
+          turn_consumed: false,
+          admin_commands: 0,
+          state: loaded.state,
+          state_version: loaded.state_version,
+          events: [],
+          commands: [],
+          rolls: [],
+          duplicate: false,
+        }
       }
     }
     // Судейство как у живого ведущего: понять намерение, сверить средства, выбрать режим
@@ -834,6 +888,64 @@ export class AutonomousCampaignOrchestrator {
         commands: [],
         rolls: [],
         duplicate: false,
+      }
+    }
+    // Мост между свободной фразой и обстановкой как оружием (задача 3.2c).
+    // Арбитр называет предмет из переданного ему списка и глагол; всё
+    // остальное — досягаемость, проверка, источник огня, урон, зона огня и цена
+    // действия — считает та же `OperateSceneObject`, которой пользуются кнопки
+    // пропса. Второго пути импровизации здесь не заводится: это маршрут, а не
+    // ещё один движок.
+    const scenePropIntent = scenePropIntentFor(reading.effect)
+    if (scenePropIntent && reading.prop_id) {
+      try {
+        const commit = await run([
+          declaration,
+          {
+            command_type: 'OperateSceneObject',
+            actor_id: actorId,
+            prop_id: reading.prop_id,
+            intent: scenePropIntent,
+            approach: 'hand',
+            server_authoritative: true,
+          },
+        ])
+        verifyDuplicate(commit)
+        const hazardEvents = commit.events ?? []
+        const hazardState = commit.state ?? loaded.state
+        return {
+          kind: 'scene_interaction',
+          narration: sceneHazardNarration(hazardEvents, hazardState)
+            || sceneInteractionNarration(hazardEvents)
+            || 'Герой обращает обстановку против противника; результат подтверждён правилами.',
+          turn_consumed: hazardEvents.some((event) => (
+            event.event_type === 'SceneObjectOperated' && event.payload?.action_spent === true
+          )),
+          admin_commands: 0,
+          state: hazardState,
+          state_version: commit.state_version ?? loaded.state_version,
+          events: hazardEvents,
+          commands: commit.commands ?? [],
+          rolls: commit.rolls ?? [],
+          duplicate: Boolean(commit.duplicate),
+        }
+      } catch (error) {
+        if (!(error instanceof RulesValidationError)) throw error
+        // «Нечем поджечь», «встаньте вплотную», «уже горит» — это честный ответ
+        // игроку от правил, а не ошибка запроса. Ход не тратится, событий не
+        // остаётся: коммит атомарен и целиком откатился.
+        return {
+          kind: 'clarification',
+          narration: `${error.message}.`,
+          turn_consumed: false,
+          admin_commands: 0,
+          state: loaded.state,
+          state_version: loaded.state_version,
+          events: [],
+          commands: [],
+          rolls: [],
+          duplicate: false,
+        }
       }
     }
     const corpseSearch = resolveCorpseSearch(loaded.state, text, reading)

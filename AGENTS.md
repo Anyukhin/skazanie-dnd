@@ -127,13 +127,13 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 | `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |
 | `server/scene-architect.mjs` | `prompts/map_architect/v4.txt` | новые области |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v3.txt` | исходная ситуация кампании |
-| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v3.txt` | прочтение свободного действия |
+| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v4.txt` | прочтение свободного действия |
 | `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» после перерыва |
 
 Больше промпты не загружает никто; ролей восемь, а загружаемых промптов девять:
 Режиссёр держит по файлу на режим импровизации кампании (`improv_mode`), и
 вариант выбирается в `choose()`, а не импортом. Файлов в `prompts/` ещё больше:
-рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`,
+рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`, `v3`,
 `campaign_creator/v1`, `v2`, `director/v1`, `map_architect/v1`, `v2`,
 `narrator/v1`—`v4`, `npc_controller/social_v1`, `v2`) плюс
 `narrator/few-shot-v1.json`. Актуальна та
@@ -141,7 +141,9 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 как история контракта.
 Сторож соответствия — `test/security.test.mjs`. **Детерминированные модули без LLM:**
 `adjudicator.mjs`, `intent-parser.mjs`, `world-memory.mjs`,
-`projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`.
+`projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`,
+`world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`,
+`weather.mjs`, `offscreen-world.mjs`.
 Не описывать их как «агентов».
 
 `server/player-request-router.mjs` объявляет роли маршрутизации ввода игрока (`PLAYER_REQUEST_ROLES`). `prompt_id` там стоит
@@ -160,7 +162,15 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 отношений; `npc-social-check.mjs` — навыковые проверки; `npc-turn-scheduler.mjs`
 — детерминированная боевая политика NPC (не LLM); `npc-controller.mjs`
 (`NpcMoraleAgent`) — мораль и перелом боя (бегство, сдача), и ничего кроме:
-вне момента морали `decide()` возвращает `null`; `creative-director.mjs`
+вне момента морали `decide()` возвращает `null`; `captives.mjs` — что бывает
+после сдачи и нелетального нокаута: реестр пленных, детерминированный профиль
+безымянного врага, СЛ допроса и последствия пощады; `law-and-order.mjs` — закон
+и розыск: ступень за преступления со свидетелями, её затухание, встреча со
+стражей у ворот и её четыре исхода. Модуль — **лист**: он читает только карту
+мира, время и летопись поступков, и ничего из `server/` не импортирует. Это не
+случайность и не аскеза: розыск влияет на цены через `reputation-policy.mjs`, а
+та лежит в основании цепочки `merchant-economy` → `npc-positioning`, и любой
+импорт отсюда замкнул бы её в кольцо; `creative-director.mjs`
 (`CriticalNarrationCoordinator`) — только текст критического момента после
 commit, механики он не касается.
 
@@ -212,6 +222,7 @@ commit, механики он не касается.
 | Игрок видит только разрешённое | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |
+| Корпус тестов не ходит в интернет: каждый запуск `server/index.mjs` либо с пустым `ROUTERAI_API_KEY`, либо с локальным `ROUTERAI_BASE_URL` | `test/test-network-isolation.test.mjs` |
 
 Если новый инвариант нельзя привязать к тесту — он ещё не инвариант, а намерение.
 

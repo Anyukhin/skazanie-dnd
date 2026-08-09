@@ -284,7 +284,11 @@ test('SceneAdvanced reducer очищает старую сцену, размещ
   assert.deepEqual(next.enemies, [])
   assert.deepEqual(next.entities, [])
   assert.deepEqual(next.mapFeedback, [])
-  assert.deepEqual(next.mechanics.combat, { active: false, round: 0, initiative: [], active_index: -1, action_economy: {}, reaction_window: null, readied: {}, group_initiative: false, turn_completed: [] })
+  // Форма боевого состояния зафиксирована целиком намеренно: новое поле обязано
+  // пройти через это утверждение, а не появиться в снимке молча. `truce` и
+  // `parley_attempts` — состояние переговоров посреди боя (`server/parley.mjs`),
+  // и на новой сцене оно обнулено вместе с очередью.
+  assert.deepEqual(next.mechanics.combat, { active: false, round: 0, initiative: [], active_index: -1, action_economy: {}, reaction_window: null, readied: {}, group_initiative: false, turn_completed: [], truce: null, parley_attempts: 0 })
   assert.equal(next.tacticalTurn, undefined)
   assert.equal(next.agentInteraction, null)
   const sceneAdvanced = result.events.find((event) => event.event_type === 'SceneAdvanced')

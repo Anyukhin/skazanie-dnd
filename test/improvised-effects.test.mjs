@@ -171,10 +171,29 @@ test('окрик и ослепление достают дальше касан�
   assert.match(shout.rejected, /далеко/)
 })
 
+test('эффект обстановки до планировщика не доходит, а дойдя — получает отказ', () => {
+  // Маршрут в OperateSceneObject выбирается раньше броска, поэтому topple_prop
+  // и ignite_prop сюда попадают только когда предмет картой не подтверждён.
+  // Своей механики у них нет: придумывать вместо предмета команду нельзя.
+  const state = battlefield()
+  for (const effectId of ['topple_prop', 'ignite_prop']) {
+    const plan = planImprovisedEffect(state, { actorId: 'hero', effectId, targetId: 'ogre' })
+    assert.equal(plan.effect.id, 'none', `${effectId}: предмет обстановки не участник и целью быть не может`)
+    assert.match(plan.rejected, /не подтверждён картой/u)
+    assert.deepEqual(plan.commands, [], `${effectId}: ни одной команды здесь родиться не должно`)
+  }
+  // Даже без цели отказ именно про предмет: сторона проверяется до неё.
+  const bare = planImprovisedEffect(state, { actorId: 'hero', effectId: 'ignite_prop' })
+  assert.equal(bare.effect.id, 'none')
+  assert.match(bare.rejected, /не подтверждён картой/u)
+})
+
 test('каталог эффектов закрыт и каждый эффект знает свою сторону и досягаемость', () => {
   for (const [id, effect] of Object.entries(IMPROVISED_EFFECTS)) {
     assert.equal(effect.id, id)
-    assert.ok(['none', 'ally', 'enemy'].includes(effect.target), `${id}: сторона обязана быть объявлена`)
+    // `scene_prop` — не участник, а предмет карты: такой эффект исполняет
+    // OperateSceneObject, но досягаемость он обязан объявить наравне со всеми.
+    assert.ok(['none', 'ally', 'enemy', 'scene_prop'].includes(effect.target), `${id}: сторона обязана быть объявлена`)
     assert.ok(effect.summary, `${id}: нужен текст для игрока`)
     // Эффект без объявленной досягаемости получил бы её нулём и не сработал бы
     // никогда. Новый эффект обязан назвать дистанцию, а не унаследовать молчание.

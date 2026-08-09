@@ -22,6 +22,7 @@ import {
   turnExplanationForViewer,
   turnResultForViewer,
 } from '../server/viewer-projection.mjs'
+import { worldClockEventDrafts } from '../server/weather.mjs'
 
 const RECHARGE = Object.freeze({ schema_version: 1, trigger: 'dawn', formula: '1d6+1' })
 
@@ -106,8 +107,15 @@ test('без пересечения рассвета и для полного п
     elapsed: 1_000,
     players: [hero('hero', [rechargeable('waiting', 2)])],
   })
+  // Рассвет предмета и рассвет мировых часов — разные границы: первая считается
+  // от пересечения 1440 минут, вторая — от пяти утра (`server/weather.mjs`), то
+  // есть предмет перезаряжается через три часа после того, как рассвело.
+  // Событие неба поэтому в списке остаётся — вычеркнуть его значило бы
+  // перестать замечать лишнее, — но ждут его ровно столько, сколько написали
+  // сами часы.
+  const types = (result) => result.events.map((event) => event.event_type)
   const noCrossing = advance(beforeDawn, 439, 'minute', [])
-  assert.deepEqual(noCrossing.events.map((event) => event.event_type), ['TimeAdvanced'])
+  assert.deepEqual(types(noCrossing), ['TimeAdvanced', ...worldClockEventDrafts(beforeDawn, 439).map((draft) => draft.event_type)])
   assert.deepEqual(noCrossing.rolls, [])
 
   const full = campaign({
@@ -115,7 +123,7 @@ test('без пересечения рассвета и для полного п
     players: [hero('hero', [rechargeable('full', 7)])],
   })
   const crossedAtFull = advance(full, 1, 'minute', [])
-  assert.deepEqual(crossedAtFull.events.map((event) => event.event_type), ['TimeAdvanced'])
+  assert.deepEqual(types(crossedAtFull), ['TimeAdvanced', ...worldClockEventDrafts(full, 1).map((draft) => draft.event_type)])
   assert.deepEqual(crossedAtFull.rolls, [])
 })
 

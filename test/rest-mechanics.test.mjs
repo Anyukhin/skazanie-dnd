@@ -11,6 +11,7 @@ import {
   resolveCommands,
   validateCommand,
 } from '../server/rules-engine.mjs'
+import { worldClockEventDrafts } from '../server/weather.mjs'
 
 const diceService = new DiceService({ rng: new SequenceDiceRng([]) })
 
@@ -77,7 +78,17 @@ test('долгий отдых лечит и восстанавливает до�
     { command_type: 'CompleteRest', actor_id: 'wizard', kind: 'long', source_rule_ids: [RULE_IDS.resource] },
   ]
   const result = resolveCommands(commands, state, { diceService, context: { allowedActorIds: ['wizard'] } })
-  assert.deepEqual(result.events.map((event) => event.event_type), ['RestStarted', 'TimeAdvanced', 'ConcentrationEnded', 'HitPointDiceRestored', 'RestCompleted'])
+  // Смену времени суток и погоды пишут мировые часы (`server/weather.mjs`), и к
+  // отдыху они отношения не имеют — но вычёркивать их из списка нельзя: тогда
+  // лишнее или задвоенное событие неба в этом контуре не заметил бы никто.
+  // Поэтому они стоят на своём месте, а ждут их ровно столько, сколько написали
+  // сами часы: сразу после `TimeAdvanced`.
+  const sky = worldClockEventDrafts(state, 480).map((draft) => draft.event_type)
+  assert.ok(sky.includes('TimeOfDayChanged'), 'восемь часов сна обязаны перевести время суток')
+  assert.deepEqual(
+    result.events.map((event) => event.event_type),
+    ['RestStarted', 'TimeAdvanced', ...sky, 'ConcentrationEnded', 'HitPointDiceRestored', 'RestCompleted'],
+  )
   assert.equal(result.state.players[0].hp, 14)
   assert.equal(result.state.mechanics.temporary_hp.wizard, 0)
   assert.equal(result.state.mechanics.resources.wizard.spell_slots_1.current, 4)

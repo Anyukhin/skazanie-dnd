@@ -130,11 +130,31 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
   }
 }
 
-function fallbackReply(profile, facts, checkOutcome = null) {
-  if (checkOutcome?.skill === 'insight') return checkOutcome.success ? `${profile.name}: the hero notices a meaningful reaction.` : `${profile.name}: the hero cannot read the NPC's motives.`
-  if (checkOutcome) return checkOutcome.success ? `${profile.name} accepts the hero's approach.` : `${profile.name} is not convinced.`
-  if (facts.length) return `${profile.name} отвечает: «${facts[0].summary}»`
-  return `${profile.name} выслушивает героя, но не сообщает ничего нового.`
+/**
+ * Детерминированный ответ, когда модели нет или она не ответила.
+ *
+ * Слух здесь не украшение, а единственная дорога дошедшей молвы к столу: она
+ * пишется `gm_only` и из проекции состояния игроку не видна — он узнаёт её
+ * только из уст NPC (`server/world-deeds.mjs`). Пока фолбэк молчал о слухах,
+ * вторая половина петли обрывалась ровно на последнем шаге: слух доходил до
+ * держателя и там умирал.
+ *
+ * Порядок источников — от твёрдого к зыбкому: сначала факт, который NPC знает,
+ * потом молва, за которую он не отвечает. Возвращается и список раскрытых
+ * утверждений: реплика и провенанс расходиться не должны.
+ *
+ * @returns {{ reply: string, claimIds: string[] }}
+ */
+function fallbackDisclosure(profile, facts, claims, checkOutcome = null) {
+  // Исход проверки — механика, а не разговор: раскрывать по нему нечего.
+  if (checkOutcome?.skill === 'insight') return { reply: checkOutcome.success ? `${profile.name}: the hero notices a meaningful reaction.` : `${profile.name}: the hero cannot read the NPC's motives.`, claimIds: [] }
+  if (checkOutcome) return { reply: checkOutcome.success ? `${profile.name} accepts the hero's approach.` : `${profile.name} is not convinced.`, claimIds: [] }
+  if (facts.length) return { reply: `${profile.name} отвечает: «${facts[0].summary}»`, claimIds: [] }
+  const rumor = claims.find((claim) => claim.kind === 'rumor')
+  if (rumor) return { reply: `${profile.name} понижает голос: «${rumor.summary}»`, claimIds: [rumor.id] }
+  const belief = claims[0]
+  if (belief) return { reply: `${profile.name} отвечает: «${belief.summary}»`, claimIds: [belief.id] }
+  return { reply: `${profile.name} выслушивает героя, но не сообщает ничего нового.`, claimIds: [] }
 }
 
 function normalizedResult(raw, profile, state, playerId, message, turnId, checkOutcome = null) {
@@ -144,9 +164,15 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
     .map(String).filter((factId) => allowedFactIds.has(factId)))].slice(0, 20)
   const claims = npcClaims(state, profile, message)
   const allowedClaimIds = new Set(npcSpeakableClaimRecords(state, profile).map((claim) => String(claim.id)))
-  const disclosedClaimIds = [...new Set((Array.isArray(raw?.disclosed_claim_ids) ? raw.disclosed_claim_ids : [])
-    .map(String).filter((claimId) => allowedClaimIds.has(claimId)))].slice(0, 20)
-  const reply = clean(raw?.reply, 1_000) || fallbackReply(profile, facts, checkOutcome)
+  const modelReply = clean(raw?.reply, 1_000)
+  const fallback = fallbackDisclosure(profile, facts, claims, checkOutcome)
+  // Раскрытие фолбэка добавляется только тогда, когда прозвучала его реплика:
+  // иначе провенанс обещал бы то, чего NPC не говорил.
+  const disclosedClaimIds = [...new Set([
+    ...(Array.isArray(raw?.disclosed_claim_ids) ? raw.disclosed_claim_ids : []).map(String),
+    ...(modelReply ? [] : fallback.claimIds),
+  ].filter((claimId) => allowedClaimIds.has(claimId)))].slice(0, 20)
+  const reply = modelReply || fallback.reply
   const stance = STANCES.has(raw?.stance) ? raw.stance : 'neutral'
   let relationshipDelta = Math.max(-2, Math.min(2, Number.isSafeInteger(Number(raw?.relationship_delta)) ? Number(raw.relationship_delta) : 0))
   let promise = null

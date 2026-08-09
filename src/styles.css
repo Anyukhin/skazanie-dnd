@@ -231,6 +231,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .scene-illustration { position: absolute; z-index: 0; inset: 0; overflow: hidden; border-radius: inherit; background: #17130f; pointer-events: none; animation: sceneIllustrationArrival .9s ease-out both; }
 .scene-illustration::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(12,10,8,.28), rgba(12,10,8,.68) 54%, #12100e 92%), linear-gradient(0deg, rgba(10,8,7,.35), transparent 55%); }
 .scene-illustration img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center 54%; filter: saturate(.78) brightness(.68) contrast(1.08); animation: sceneIllustrationDrift 8s ease-out both; }
+/* Иллюстрация самого места ложится поверх библиотечной подложки в тот же кадр.
+   Пока её нет — а её может не быть, и это норма, — слой прозрачен, и шапка
+   выглядит ровно как раньше: ни пустой рамки, ни сдвига раскладки. */
+.scene-illustration img.scene-location-art { position: absolute; inset: 0; opacity: 0; transition: opacity .8s ease-out; animation: none; }
+.scene-illustration img.scene-location-art.ready { opacity: 1; }
+/* С иллюстрацией название сцены лежит поверх картинки, а не на ровной подложке,
+   и затемнение из `::after` контраста не гарантирует: кадр может оказаться
+   светлым именно там, где стоят буквы. Тень держит их читаемыми и, в отличие от
+   собственного фона, ничего не двигает в раскладке. */
 .scene-header.has-illustration .scene-title { text-shadow: 0 2px 8px #000; }
 .scene-title { flex: 0 1 auto; min-width: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
 .scene-title > span { color: #9b7448; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .16em; white-space: nowrap; }
@@ -273,6 +282,32 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .rest-controls button { min-height: 32px; padding: 0 7px; border: 1px solid rgba(204,151,86,.26); border-radius: 5px; background: rgba(163,101,43,.1); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
 .rest-controls button:hover:not(:disabled) { border-color: rgba(224,174,111,.5); background: rgba(163,101,43,.18); }
 .rest-controls button:disabled { opacity: .38; cursor: default; }
+/* Пленники. Панель повторяет строй «Передышки», но держит собственный тревожный
+   акцент: связанный человек в отряде — это решение, которое нельзя не заметить. */
+.captive-panel { padding: 11px; border: 1px solid rgba(150,116,86,.3); border-radius: 7px; background: rgba(24,18,14,.9); }
+.captive-panel > header { display: flex; align-items: center; gap: 8px; color: #b08a63; }
+.captive-panel > header span { display: grid; }
+.captive-panel > header small { color: #7a6047; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.captive-panel > header strong { color: #d2c0a9; font: 600 var(--fs-lg) Spectral, serif; }
+.captive-card { margin-top: 9px; padding: 8px 9px; border: 1px solid rgba(150,116,86,.22); border-left: 3px solid #8a6a45; border-radius: 6px; background: rgba(32,24,18,.7); }
+.captive-card.starving { border-left-color: #a4442f; }
+.captive-card > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.captive-card > header b { color: #d8c8b1; font: 600 var(--fs-md) Spectral, serif; }
+.captive-card > header small { color: #7a6f63; font-size: var(--fs-xxs); }
+.captive-tag { padding: 1px 6px; border: 1px solid rgba(196,147,92,.45); border-radius: 3px; background: rgba(138,106,69,.2); color: #d2a06a; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .1em; }
+.captive-card > p { margin: 5px 0 8px; color: #7e7367; font-size: var(--fs-sm); }
+.captive-card.starving > p { color: #b4705c; }
+.captive-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.captive-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 0 6px; border: 1px solid rgba(204,151,86,.26); border-radius: 5px; background: rgba(163,101,43,.1); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
+.captive-actions button:hover:not(:disabled) { border-color: rgba(224,174,111,.5); background: rgba(163,101,43,.18); }
+.captive-actions button:disabled { opacity: .38; cursor: default; }
+.captive-actions button.captive-execute { grid-column: 1 / -1; border-color: rgba(164,68,47,.4); background: rgba(120,42,28,.16); color: #c07a63; }
+.captive-actions button.captive-execute:hover:not(:disabled) { border-color: rgba(196,84,58,.65); background: rgba(120,42,28,.28); }
+.npc-dialog-captive b { color: #d2a06a; }
+.npc-dialog-captive-actions { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.npc-dialog-captive-actions button { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid rgba(204,151,86,.28); border-radius: 5px; background: rgba(163,101,43,.12); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
+.npc-dialog-captive-actions button:hover:not(:disabled) { border-color: rgba(224,174,111,.5); background: rgba(163,101,43,.2); }
+.npc-dialog-captive-actions button:disabled { opacity: .38; cursor: default; }
 /* --map-light-* — запечённый свет доски (`src/board-lighting.ts`): цвет тьмы и цвет огня. Значения по умолчанию продублированы в DEFAULT_BOARD_PALETTE, доска обязана рисоваться и без темы. */
 .map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); --map-light-shadow: #0d1016; --map-light-warm: #ffb257; position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
 .map-stage::before { content: ''; position: absolute; inset: 0; opacity: .12; background-image: repeating-linear-gradient(35deg, transparent 0 15px, rgba(255,255,255,.025) 16px 17px), repeating-linear-gradient(125deg, transparent 0 22px, rgba(0,0,0,.3) 23px 24px); }
@@ -482,6 +517,71 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-mode-plate { position: absolute; z-index: 8; left: 50%; top: 8px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 12px 40px; background: radial-gradient(ellipse at center, rgba(9,7,6,.78) 0%, rgba(9,7,6,.52) 42%, rgba(9,7,6,0) 76%); color: #bb9058; font: 700 var(--fs-xs) Manrope, sans-serif; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 0 7px rgba(0,0,0,.85); }
 .npc-tactic-banner { position: absolute; z-index: 12; left: 50%; top: 14px; max-width: min(620px, calc(100% - 160px)); display: flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid rgba(193,119,94,.42); border-radius: 18px; background: rgba(28,17,14,.92); color: #ddb6a6; font: 600 var(--fs-sm) Manrope, sans-serif; transform: translateX(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.42); backdrop-filter: blur(8px); pointer-events: none; animation: npc-tactic-arrive .2s ease-out; }
 .npc-tactic-banner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Перемирие. Отдельный холодный акцент — не боевой красный и не тёплый
+   «пленный»: пока рамка на месте, очередь стоит и удар обойдётся дорого.
+   Рамка рисуется на самой доске, чтобы её нельзя было не заметить. */
+.truce-banner { position: absolute; z-index: 12; left: 50%; top: 14px; max-width: min(680px, calc(100% - 160px)); display: flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid rgba(126,168,178,.5); border-radius: 18px; background: rgba(14,24,27,.92); color: #9fc7d0; font: 600 var(--fs-sm) Manrope, sans-serif; transform: translateX(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.42); backdrop-filter: blur(8px); pointer-events: none; }
+.truce-banner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-stage.truce-held::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none; border: 3px solid rgba(126,168,178,.5); box-shadow: inset 0 0 42px rgba(96,150,163,.28); animation: truce-pulse 2.6s ease-in-out infinite alternate; }
+@keyframes truce-pulse { from { border-color: rgba(126,168,178,.32); } to { border-color: rgba(158,206,217,.72); } }
+.truce-panel { padding: 11px; border: 1px solid rgba(126,168,178,.34); border-radius: 7px; background: rgba(14,22,25,.9); }
+.truce-panel > header { display: flex; align-items: center; gap: 8px; color: #7ea8b2; }
+.truce-panel > header span { display: grid; }
+.truce-panel > header small { color: #5d7c84; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.truce-panel > header strong { color: #c3dde3; font: 600 var(--fs-lg) Spectral, serif; }
+.truce-panel > p { margin: 6px 0 9px; color: #7f8f93; font-size: var(--fs-sm); }
+.truce-terms { display: grid; gap: 6px; }
+.truce-term { display: grid; gap: 2px; padding: 7px 9px; border: 1px solid rgba(126,168,178,.28); border-left: 3px solid #5f96a3; border-radius: 6px; background: rgba(22,36,40,.7); text-align: left; cursor: pointer; }
+.truce-term:hover:not(:disabled) { border-color: rgba(158,206,217,.6); background: rgba(30,52,58,.8); }
+.truce-term:disabled { opacity: .38; cursor: default; }
+.truce-term b { color: #c9e2e8; font: 600 var(--fs-md) Spectral, serif; }
+.truce-term small { color: #7e8f94; font-size: var(--fs-sm); }
+.truce-term em { color: #cfa96a; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .08em; }
+.truce-term.term-resume { border-left-color: #a4442f; }
+.truce-term.term-resume b { color: #ddb3a4; }
+.parley-hotbar.parley-hotbar { border-color: rgba(126,168,178,.4); color: #9fc7d0; }
+
+/* Встреча со стражей. Акцент холодно-стальной — не боевой красный и не тёплый
+   «пленный»: закон не враг и не добыча, он просто стоит на пути и ждёт ответа.
+   Цифры ступени здесь нет ни в одном селекторе — её нет и в проекции. */
+.guard-panel { padding: 11px; border: 1px solid rgba(132,141,158,.34); border-radius: 7px; background: rgba(16,19,26,.9); }
+.guard-panel > header { display: flex; align-items: center; gap: 8px; color: #8b93a6; }
+.guard-panel > header span { display: grid; }
+.guard-panel > header small { color: #666e80; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.guard-panel > header strong { color: #c6cbd8; font: 600 var(--fs-lg) Spectral, serif; }
+.guard-demand { margin: 7px 0 4px; color: #a9aebd; font: italic var(--fs-md)/1.5 Spectral, serif; }
+.guard-warning { margin: 0 0 8px; color: #c08a63; font-size: var(--fs-sm); }
+.guard-options { display: grid; gap: 6px; }
+.guard-option { display: grid; gap: 2px; padding: 7px 9px; border: 1px solid rgba(132,141,158,.28); border-left: 3px solid #6b7488; border-radius: 6px; background: rgba(24,28,38,.7); text-align: left; cursor: pointer; }
+.guard-option:hover:not(:disabled) { border-color: rgba(168,178,198,.6); background: rgba(34,40,54,.8); }
+.guard-option:disabled { opacity: .38; cursor: default; }
+.guard-option b { color: #ccd2e0; font: 600 var(--fs-md) Spectral, serif; }
+.guard-option small { color: #838a99; font-size: var(--fs-sm); }
+.guard-option.option-fight { border-left-color: #a4442f; }
+.guard-option.option-fight b { color: #ddb3a4; }
+.guard-option.option-flee { border-left-color: #7c8f5f; }
+.guard-escape-skill { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.guard-escape-skill span { color: #666e80; font-size: var(--fs-xxs); letter-spacing: .1em; }
+.guard-escape-skill button { padding: 3px 8px; border: 1px solid rgba(132,141,158,.24); border-radius: 4px; background: transparent; color: #838a99; font-size: var(--fs-xs); cursor: pointer; }
+.guard-escape-skill button.active { border-color: rgba(168,178,198,.55); background: rgba(40,46,60,.7); color: #ccd2e0; }
+.guard-escape-skill button:disabled { opacity: .4; cursor: default; }
+/* Приметы розыска в шапке сцены: одна строка мира вместо индикатора. */
+.scene-wanted { display: flex; align-items: center; gap: 6px; max-width: 260px; padding: 4px 9px; border: 1px solid rgba(178,64,52,.32); border-radius: 14px; background: rgba(34,18,16,.7); color: #c08a7c; font: 600 var(--fs-xs) Manrope, sans-serif; }
+.scene-wanted span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Время суток и погода: та же таблетка, что у примет розыска, но своим цветом
+   по времени суток — небо читается боковым зрением, не отвлекая от сцены.
+   Восклицательный знак появляется, только когда небо на что-то влияет. */
+/* `pointer-events` возвращаем той же оговоркой, что и кнопке торговца: вся
+   `.scene-header` их не принимает, а подсказка про помехи от неба обязана
+   показываться при наведении. */
+.scene-weather { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; max-width: 200px; padding: 4px 9px; border: 1px solid rgba(207,164,105,.22); border-radius: 14px; background: rgba(24,20,16,.7); color: #b79a6f; font: 600 var(--fs-xs) Manrope, sans-serif; pointer-events: auto; }
+.scene-weather span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-weather b { flex: 0 0 auto; width: 13px; height: 13px; border-radius: 50%; background: rgba(190,142,72,.28); color: #e2c48d; font-size: var(--fs-xxs); line-height: 13px; text-align: center; }
+.scene-weather.phase-night { border-color: rgba(112,124,166,.3); background: rgba(15,17,28,.76); color: #93a0c4; }
+.scene-weather.phase-evening { border-color: rgba(178,110,72,.3); color: #cd9a6e; }
+.scene-weather.sky-storm { border-color: rgba(146,118,196,.36); color: #b9a4dd; }
+.scene-weather.sky-rain { border-color: rgba(96,134,158,.34); color: #8fb2c6; }
+.scene-weather.sky-fog { border-color: rgba(150,155,160,.32); color: #b3b8bd; }
 
 .game-area.is-narrating .map-atmosphere-one { opacity: .31; background: #b7874b; animation: narration-light-one 2.8s ease-in-out infinite alternate; }
 .game-area.is-narrating .map-atmosphere-two { opacity: .28; background: #6d7296; animation: narration-light-two 3.4s ease-in-out infinite alternate; }
@@ -657,6 +757,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .message.system .message-meta strong { color: #7d746a; font: 700 var(--fs-xs) Manrope,sans-serif; letter-spacing: .04em; }
 .message.system .message-meta time { color: #504b46; font-size: var(--fs-xs); }
 .message.system .message-body p { color: #827a72; font: var(--fs-sm)/1.4 Manrope,sans-serif; }
+/* Врезка «Пока вас не было…». Единственная системная запись, которую не гасят:
+   пока отряд спал, мир сделал ход, и пропустить его нельзя. Холодный синий
+   отделяет её и от золота рассказчика, и от охры боевых записей — это не
+   реплика и не удар, а смена кадра. */
+.message.system.offscreen-step { margin-bottom: 14px; opacity: 1; }
+.offscreen-card { padding: 12px 13px; border: 1px solid rgba(126,148,184,.26); border-radius: 8px; background: linear-gradient(160deg, rgba(38,45,60,.5), rgba(16,17,21,.72)); }
+.offscreen-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; color: #8ea3c4; }
+.offscreen-card header > span { min-width: 0; display: grid; }
+.offscreen-card header small { color: #74849e; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.offscreen-card header strong { color: #d6dbe4; font: 600 var(--fs-lg) Spectral, serif; }
+.offscreen-card header time { color: #5d6472; font-size: var(--fs-xs); }
+.offscreen-card ul { display: grid; gap: 5px; margin: 10px 0 0; padding: 0; list-style: none; }
+.offscreen-card li { padding: 7px 9px; border-left: 2px solid rgba(126,148,184,.3); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #b3b8c2; font: var(--fs-sm)/1.55 Spectral, serif; }
+.offscreen-elapsed { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; color: #6a7180; font-size: var(--fs-xs); }
 /* Кнопка «Почему так?» не имела своего стиля и рендерилась системной серой
    кнопкой: светлый текст на светлом фоне. Теперь это тихая ссылка-подсказка. */
 .why-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 3px 9px; border: 1px solid rgba(201,149,85,.3); border-radius: 11px; background: rgba(34,28,22,.72); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }
@@ -818,6 +932,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .scene-illustration, .scene-illustration img, .cinematic-narration,
   .game-area.is-narrating .map-atmosphere-one, .game-area.is-narrating .map-atmosphere-two,
   .game-area.is-narrating .map-stage::after { animation: none; }
+  .scene-illustration img.scene-location-art { transition: none; }
 }
 
 .auth-screen { position: relative; min-height: 100vh; display: grid; grid-template-columns: minmax(420px, 1.1fr) minmax(390px, .9fr); overflow: hidden; background: #0c0b0a; }
@@ -1770,7 +1885,70 @@ button.campaign-title:hover strong { color: #edc996; }
   .auth-card h2 { font-size: var(--fs-4xl); }
 }
 
-.admin-merchants, .admin-encounters { grid-column: 1 / -1; }
+.admin-merchants, .admin-encounters, .admin-deeds, .admin-wanted, .admin-offscreen { grid-column: 1 / -1; }
+/* Ходы мира у ведущего. Тон записи и есть её смысл: провал задания — глухой
+   красный, ход противника — тревожная охра, часы и молва — служебный серый. */
+.admin-offscreen .admin-card-head > em { color: #756a60; font: normal var(--fs-sm) Spectral, serif; }
+.offscreen-feed { display: grid; gap: 8px; margin-top: 12px; }
+.offscreen-feed article { display: grid; gap: 7px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.045); border-left: 3px solid rgba(96,110,132,.42); border-radius: 6px; background: rgba(0,0,0,.11); }
+.offscreen-feed > article > header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.offscreen-feed header strong { color: #b4bccb; font: 600 var(--fs-md) Spectral, serif; }
+.offscreen-feed header small { color: #635c55; font-size: var(--fs-xs); }
+.offscreen-feed ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.offscreen-feed li { display: grid; grid-template-columns: minmax(112px, auto) minmax(200px, 1fr); align-items: baseline; gap: 10px; padding: 6px 8px; border-radius: 4px; background: rgba(0,0,0,.12); }
+.offscreen-feed li em { color: #6b6259; font-size: var(--fs-xs); font-style: normal; letter-spacing: .06em; white-space: nowrap; }
+.offscreen-feed li span { color: #837a71; font: var(--fs-sm)/1.45 Spectral, serif; }
+.offscreen-feed li.lost { background: rgba(150,48,40,.13); }
+.offscreen-feed li.lost em { color: #cf8377; }
+.offscreen-feed li.urgent em { color: #c08a63; }
+.offscreen-feed li.enemy { background: rgba(140,74,44,.1); }
+.offscreen-feed li.enemy em { color: #bd8f5e; }
+.offscreen-feed li.rumor em { color: #7e8b96; }
+/* Закон и розыск у ведущего. Ступень окрашена шкалой «спокойно → розыск по
+   краю»: карточка должна читаться с одного взгляда, потому что она отвечает на
+   единственный вопрос — можно ли отряду входить в город. */
+.admin-wanted .admin-card-head > em { color: #756a60; font: normal var(--fs-sm) Spectral, serif; }
+.wanted-feed { display: grid; gap: 8px; margin-top: 12px; }
+.wanted-region { display: grid; gap: 6px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.045); border-left: 3px solid rgba(120,120,120,.35); border-radius: 6px; background: rgba(0,0,0,.11); }
+.wanted-region.here { background: rgba(0,0,0,.2); box-shadow: inset 0 0 0 1px rgba(255,255,255,.04); }
+.wanted-region.tier-noticed { border-left-color: rgba(176,138,66,.5); }
+.wanted-region.tier-hunted { border-left-color: rgba(184,104,58,.6); }
+.wanted-region.tier-wanted { border-left-color: rgba(178,64,52,.75); }
+.wanted-region > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wanted-region strong { color: #c4b7a9; font: 600 var(--fs-md) Spectral, serif; }
+.wanted-tier { padding: 3px 7px; border-radius: 3px; background: rgba(255,255,255,.04); color: #8b8177; font-size: var(--fs-xs); font-style: normal; letter-spacing: .06em; white-space: nowrap; }
+.wanted-region.tier-hunted .wanted-tier { background: rgba(140,74,44,.14); color: #c08a63; }
+.wanted-region.tier-wanted .wanted-tier { background: rgba(150,48,40,.16); color: #cf8377; }
+.wanted-region > small { color: #635c55; font-size: var(--fs-xs); }
+.wanted-region > small.wanted-cleared { color: #7d8b70; letter-spacing: .04em; }
+.wanted-region ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.wanted-region li { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 4px; background: rgba(0,0,0,.12); }
+.wanted-region li.cleared { opacity: .45; }
+.wanted-region li b { color: #b0817a; font: 600 var(--fs-sm) Spectral, serif; }
+.wanted-region li span { color: #837a71; font: var(--fs-sm)/1.4 Spectral, serif; }
+.wanted-region li em { color: #6b6259; font-size: var(--fs-xs); font-style: normal; white-space: nowrap; }
+.wanted-region > button { justify-self: start; padding: 5px 11px; border: 1px solid rgba(255,255,255,.08); border-radius: 4px; background: rgba(255,255,255,.03); color: #9a8f84; font-size: var(--fs-sm); cursor: pointer; }
+.wanted-region > button:hover:not(:disabled) { border-color: rgba(176,138,66,.45); color: #c4a875; }
+.wanted-region > button:disabled { opacity: .45; cursor: default; }
+.admin-deeds .admin-card-head > em { color: #756a60; font: normal var(--fs-sm) Spectral, serif; }
+.deed-feed { display: grid; gap: 8px; margin-top: 12px; }
+.deed-feed article { display: grid; grid-template-columns: minmax(280px, 1fr) auto; align-items: center; gap: 10px 12px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.045); border-left: 3px solid rgba(161,77,67,.4); border-radius: 6px; background: rgba(0,0,0,.11); }
+.deed-feed article.bright { border-left-color: rgba(93,144,96,.45); }
+.deed-feed article > div { display: grid; gap: 2px; }
+.deed-feed strong { color: #c4b7a9; font: 600 var(--fs-md) Spectral, serif; }
+.deed-feed span { color: #8b8177; font-size: var(--fs-sm); }
+.deed-feed small { color: #635c55; font-size: var(--fs-xs); }
+.deed-feed article > em { padding: 4px 6px; border-radius: 3px; background: rgba(132,70,58,.11); color: #b0817a; font-size: var(--fs-xs); font-style: normal; letter-spacing: .06em; white-space: nowrap; }
+.deed-feed article > em.secret { background: rgba(255,255,255,.04); color: #6d655d; }
+.deed-feed article.bright > em { background: rgba(65,108,69,.11); color: #82a383; }
+.deed-feed .deed-spread { grid-column: 1 / -1; color: #6b6259; font-size: var(--fs-xs); }
+.deed-empty { padding: 22px; border: 1px dashed var(--line); border-radius: 6px; color: #675f57; font: var(--fs-md)/1.5 Spectral, serif; text-align: center; }
+.rumor-list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.rumor-list li { display: grid; grid-template-columns: minmax(120px, .5fr) minmax(220px, 2fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.04); border-radius: 5px; background: rgba(0,0,0,.1); }
+.rumor-list b { color: #a89a8c; font: 600 var(--fs-sm) Spectral, serif; }
+.rumor-list span { color: #837a71; font: var(--fs-sm)/1.45 Spectral, serif; }
+.rumor-list em { padding: 3px 6px; border-radius: 3px; background: rgba(255,255,255,.04); color: #6d655d; font-size: var(--fs-xs); font-style: normal; letter-spacing: .06em; white-space: nowrap; }
+.rumor-list em.confirmed { background: rgba(148,94,42,.1); color: #a87b48; }
 .admin-encounters .admin-card-head > em { color: #756a60; font: normal var(--fs-sm) Spectral, serif; }
 .admin-encounters > p { margin: 12px 0; color: #716961; font: var(--fs-md)/1.55 Spectral, serif; }
 .encounter-admin-warning, .encounter-admin-success { display: flex; align-items: center; gap: 8px; margin: 9px 0; padding: 9px 10px; border: 1px solid rgba(164,82,69,.2); border-radius: 5px; background: rgba(130,50,43,.07); color: #b77a70; font-size: var(--fs-sm); }
@@ -1821,6 +1999,14 @@ button.campaign-title:hover strong { color: #edc996; }
   .shop-assembler-controls { grid-template-columns: 1fr; }
   .shop-admin-list article { grid-template-columns: 1fr; }
   .shop-admin-actions { grid-column: auto; flex-wrap: wrap; }
+  .deed-feed article { grid-template-columns: 1fr; }
+  .wanted-region li { grid-template-columns: 1fr; }
+  .wanted-region > header { flex-wrap: wrap; }
+  .rumor-list li { grid-template-columns: 1fr; }
+  .offscreen-feed li { grid-template-columns: 1fr; }
+  .offscreen-feed > article > header { flex-wrap: wrap; }
+  .offscreen-card > header { grid-template-columns: auto minmax(0,1fr); }
+  .offscreen-card header time { display: none; }
 }
 .reaction-backdrop{position:fixed;inset:0;z-index:140;display:grid;place-items:center;padding:20px;background:rgba(4,3,3,.72);backdrop-filter:blur(5px)}.reaction-prompt{width:min(820px,100%);overflow:hidden;border:1px solid rgba(206,145,73,.5);border-radius:14px;background:linear-gradient(145deg,#171412,#0d0d0c 72%);box-shadow:0 24px 80px rgba(0,0,0,.72),0 0 36px rgba(155,93,39,.12)}.reaction-prompt>header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid rgba(206,145,73,.2);background:linear-gradient(90deg,rgba(130,76,33,.2),transparent)}.reaction-prompt>header>div{display:flex;align-items:center;gap:11px;color:#c68c4e}.reaction-prompt>header span{display:grid;gap:2px}.reaction-prompt>header small{color:#8f673f;font-size: var(--fs-sm);letter-spacing:.14em}.reaction-prompt>header strong{color:#e0c6a1;font:600 var(--fs-4xl) Spectral,serif}.reaction-prompt>header>em{padding:5px 7px;border:1px solid rgba(184,91,63,.32);border-radius:3px;color:#c9836d;font-size: var(--fs-sm);font-style:normal;letter-spacing:.1em}.reaction-prompt>p{margin:0;padding:16px 22px 8px;color:#c6bcae;font:var(--fs-xl)/1.5 Spectral,serif}.reaction-options{display:grid;gap:7px;padding:10px 18px 16px}.reaction-options>button{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(255,255,255,.018);color:#9b8b79;text-align:left;cursor:pointer}.reaction-options>button:hover{border-color:rgba(201,139,70,.38);background:rgba(132,81,35,.12)}.reaction-options>button:disabled{opacity:.5;cursor:wait}.reaction-options>button>i{width:52px;height:52px;display:grid;place-items:center;border-radius:6px;background:transparent;color:#c1884c}.reaction-options>button>span{min-width:0;display:grid;gap:2px}.reaction-options strong{color:#e0d0b8;font:600 var(--fs-2xl) Spectral,serif}.reaction-options small{color:#a89e92;font:var(--fs-md)/1.4 Manrope,sans-serif}.reaction-options>button>em{min-width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:rgba(105,78,49,.2);color:#b18b5e;font-size: var(--fs-sm);font-style:normal}.reaction-prompt>footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 18px;border-top:1px solid rgba(255,255,255,.055);background:rgba(0,0,0,.16)}.reaction-prompt>footer button{height:31px;padding:0 13px;border:1px solid rgba(255,255,255,.1);border-radius:4px;background:transparent;color:#9c8f80;font-size: var(--fs-md);cursor:pointer}.reaction-prompt>footer span{color:#665f57;font-size: var(--fs-sm);text-align:right}@media(max-width:600px){.reaction-prompt>header{align-items:flex-start}.reaction-prompt>footer{align-items:stretch;flex-direction:column}.reaction-prompt>footer span{text-align:left}}
 .reaction-beneficiary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:9px 18px 0;padding:9px 11px;border:1px solid rgba(197,143,78,.18);border-radius:5px;background:rgba(132,81,35,.07);color:#8e7f6f;font-size: var(--fs-sm)}.reaction-beneficiary select{min-width:180px;height:28px;padding:0 8px;border:1px solid rgba(211,166,107,.22);border-radius:4px;background:#17130f;color:#c5a77f;font-size: var(--fs-md)}
@@ -2238,6 +2424,9 @@ button.campaign-title:hover strong { color: #edc996; }
 
 
 /* Подготовка ассетов: генерический список пробелов без излишеств. */
+/* Заголовок группы в карточке подготовки: портреты и локации — разные наборы,
+   а кнопка запуска и потолок пачки у них общие. */
+.admin-asset-group { display: block; margin: 12px 0 0; color: #9b7448; font-size: calc(11px * var(--ui-readable-scale)); font-weight: 700; letter-spacing: .14em; }
 .admin-asset-list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
 .admin-asset-list li { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border: 1px solid #342f26; border-radius: 7px; background: #201c17; }
 .admin-asset-list label { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }

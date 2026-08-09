@@ -10,6 +10,22 @@ export function localizedQuestClockLabel(label) {
 }
 
 /**
+ * Мировые минуты кампании — читаемые часы ведущего. Календаря у кампании нет
+ * (`world_time` — это счётчик минут), поэтому день считается от начала истории,
+ * а не от даты: обещать больше, чем движок знает, интерфейс не вправе.
+ *
+ * @param {number | null | undefined} minutes
+ * @returns {string}
+ */
+export function campaignClockLabel(minutes) {
+  const safe = Math.max(0, Math.floor(Number(minutes) || 0))
+  const day = Math.floor(safe / 1_440) + 1
+  const hour = Math.floor((safe % 1_440) / 60)
+  const minute = safe % 60
+  return `день ${day}, ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+/**
  * @param {{ heroCount: number, membershipCount: number, requestedRoom?: string | null }} input
  */
 export function shouldAutoOpenCampaignModal(input) {

@@ -7,9 +7,10 @@ import {
   BrainCircuit, Check, Compass, SlidersHorizontal, Wifi, WifiOff,
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
-  Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
+  Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
+  Sun, Cloudy, CloudRain, CloudFog, CloudLightning,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -298,7 +299,48 @@ function LevelUpScreen({ levelUp, canOpenSheet, onOpenSheet, onClose }: {
   </div>
 }
 
-function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, scenicBackdrop, merchants, onOpenMerchant, onReset }: {
+/**
+ * Иконка неба по погоде. Таблица здесь единственная и только про картинку:
+ * подписи, строку индикатора и список помех считает сервер
+ * (`server/weather.mjs`), клиент их не выводит.
+ */
+const WEATHER_ICONS: Record<WeatherConditionId, typeof Sun> = {
+  clear: Sun,
+  overcast: Cloudy,
+  rain: CloudRain,
+  fog: CloudFog,
+  storm: CloudLightning,
+}
+
+function SceneWeather({ weather }: { weather?: WeatherProjection }) {
+  if (!weather?.indicator) return null
+  const Icon = WEATHER_ICONS[weather.weather] ?? Cloudy
+  // Подсказка объясняет не «что на небе» — это и так написано, — а чем оно
+  // сейчас мешает или помогает. Под крышей строка честно говорит, что не мешает
+  // ничем: игрок не должен гадать, действует ли дождь в трактире.
+  const lines = [
+    `День ${weather.day}, ${weather.clock}`,
+    weather.weather_summary,
+    weather.indoors ? 'Отряд под крышей: погода на броски не влияет.' : '',
+    ...weather.effects,
+  ].filter(Boolean)
+  return (
+    <div
+      className={`scene-weather phase-${weather.phase} sky-${weather.weather}`}
+      role="note"
+      // Тот же текст, что в подсказке: помехи от неба игрок обязан узнать и
+      // без мыши, а не только наведением.
+      aria-label={[`Время и погода: ${weather.indicator}`, ...lines].join('. ')}
+      title={lines.join('\n')}
+    >
+      <Icon size={13} />
+      <span>{weather.indicator}</span>
+      {weather.effects.length > 0 && <b aria-hidden="true">!</b>}
+    </div>
+  )
+}
+
+function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, wantedSigns, weather, onOpenMerchant, onReset }: {
   title: string
   location: string
   objective: string
@@ -307,12 +349,33 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
   round?: number
   illustration: SceneArt
   illustrationKey: string
+  /**
+   * Иллюстрация текущей локации, подготовленная заранее. Пустая строка —
+   * локации без id: спрашивать сервер не о чем.
+   */
+  locationArtUrl: string
   scenicBackdrop: boolean
   merchants: Merchant[]
+  /**
+   * Приметы розыска: что мир показывает отряду вместо цифры. Строки приходят
+   * готовыми из проекции (`server/law-and-order.mjs`) и растут со ступенью —
+   * своей таблицы у клиента нет, потому что самой ступени он не знает.
+   */
+  wantedSigns: string[]
+  /**
+   * Небо над отрядом. Строка «Вечер · Дождь», подписи помех и признак «под
+   * крышей» приходят готовыми из проекции (`server/weather.mjs`).
+   */
+  weather?: WeatherProjection
   onOpenMerchant: () => void
   onReset: () => void
 }) {
   const [objectiveExpanded, setObjectiveExpanded] = useState(false)
+  // Готовой картинки у локации может и не быть — это норма, а не ошибка.
+  // Поэтому изображение грузится незаметно и проявляется только после
+  // `onLoad`: пока его нет, шапка выглядит ровно как раньше.
+  const [locationArtReady, setLocationArtReady] = useState(false)
+  useEffect(() => { setLocationArtReady(false) }, [locationArtUrl])
   const objectiveRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (!objectiveExpanded) return
@@ -336,10 +399,28 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
     <div className={`scene-header ${scenicBackdrop ? 'has-illustration' : ''}`}>
       {scenicBackdrop && <span key={`${illustrationKey}:${illustration.id}`} className="scene-illustration" aria-hidden="true">
         <img src={illustration.url} alt="" decoding="async" />
+        {/* Иллюстрация самого места ложится поверх библиотечной подложки в тот
+            же кадр: рамка и затемнение у них общие — шапка остаётся одной
+            карточкой, а не обрастает вторым блоком. */}
+        {locationArtUrl && <img
+          className={`scene-location-art ${locationArtReady ? 'ready' : ''}`}
+          src={locationArtUrl}
+          alt=""
+          decoding="async"
+          onLoad={() => setLocationArtReady(true)}
+          onError={() => setLocationArtReady(false)}
+        />}
       </span>}
+      {/* Подписи у иллюстрации нет: она печатала ровно то же `location`, что
+          строкой ниже стоит в `.scene-title`. Скринридер читал название места
+          дважды подряд, а глазами оно и так видно рядом — вторая копия ничего
+          не добавляла ни тем, ни другим. */}
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
       <div className="scene-title"><span>ГЛАВА {chapter}{round != null ? ` · РАУНД ${round}` : ''} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
+      {/* Время суток и погода стоят рядом с названием места: это часть ответа
+          на вопрос «где мы», а не отдельная панель. */}
+      <SceneWeather weather={weather} />
       {/* Приглашение стоит до «текущей цели»: у неё `margin-left: auto`, и всё,
           что после, уезжает вправо под кнопку сброса с `position: absolute`. */}
       {merchants.length > 0 && <button className="scene-merchant" onClick={onOpenMerchant} aria-haspopup="dialog" aria-label={merchantLabel} title={merchantLabel}><Store size={16} /></button>}
@@ -347,6 +428,10 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
           читать её игроку надо: замерено — из 571 px текста видно 311. Полная
           формулировка уходит в подсказку, иначе цель просто теряется. */}
       <button ref={objectiveRef} type="button" className={`objective ${objectiveExpanded ? 'expanded' : ''}`} title={objective} aria-expanded={objectiveExpanded} onClick={() => setObjectiveExpanded((value) => !value)}><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></button>
+      {/* Розыск игрок видит миром, а не индикатором: в шапке стоит одна примета,
+          остальные — в подсказке. Цифры ступени в проекции нет, и выводить её
+          из числа строк клиенту нечем и незачем. */}
+      {wantedSigns.length > 0 && <div className="scene-wanted" role="note" aria-label="Приметы розыска" title={wantedSigns.join('\n')}><ShieldAlert size={13} /><span>{wantedSigns[0]}</span></div>}
       <button className="icon-button reset-button" onClick={onReset} title="Снять бой и поднять павших героев"><RotateCcw size={17} /></button>
     </div>
   )
@@ -596,7 +681,7 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, narrationPreview, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, narrationPreview, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, resolveGuardEncounter, proposeParley, settleParley, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -689,6 +774,17 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     () => sceneIllustrationForTheme(sceneTheme, sceneLocationKey),
     [sceneLocationKey, sceneTheme],
   )
+  // Иллюстрация локации отдаётся **только из кеша кампании**: во время игры
+  // картинки не генерируются, их готовит ведущий заранее. Нет в кеше — сервер
+  // честно отвечает 404, и шапка остаётся с библиотечной подложкой.
+  //
+  // `scene.location_id` есть только у ведущего: публичная проекция сцены его не
+  // несёт, и по одному этому полю иллюстрацию видел бы только он. Запасной
+  // источник — текущая точка карты мира, тот же порядок, что на доске.
+  const locationArtId = state.scene.location_id ?? state.worldMap?.currentLocationId ?? ''
+  const locationArtUrl = locationArtId
+    ? `/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(locationArtId)}/illustration`
+    : ''
   const audioCombatActive = Boolean(state.mechanics?.combat?.active)
   const audioFinale = ['completed', 'failed', 'archived'].includes(state.mechanics?.campaign_lifecycle?.status ?? '')
   const combatWasActive = useRef(false)
@@ -1360,13 +1456,17 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onFinishTurn={finishMapTurn}
             onFreeAction={(text) => submitAction(text, activePlayer.id)}
             onNpcAction={(text, npcId) => submitAction(text, activePlayer.id, npcId)}
+            onCaptiveAction={(captiveId, action, skill) => captiveAction(activePlayer.id, captiveId, action, skill)}
+            onResolveGuardEncounter={(resolution, skill) => resolveGuardEncounter(activePlayer.id, resolution, skill)}
+            onProposeParley={(skill) => proposeParley(activePlayer.id, skill)}
+            onSettleParley={(outcome) => settleParley(activePlayer.id, outcome)}
             onTransferItem={(itemId, npcId, quantity) => transferItem(activePlayer.id, itemId, npcId, quantity)}
             onStartRest={(kind) => startRest(activePlayer.id, kind)}
             onSpendHitPointDie={() => spendHitPointDie(activePlayer.id)}
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} onOpenMerchant={() => openMerchant()} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">

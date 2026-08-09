@@ -2,7 +2,7 @@
 import { encounterDifficultyLabel } from './encounter-assembler.mjs'
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
 import { itemViewerCapabilities } from './item-catalog.mjs'
-import { npcSocialForViewer } from './npc-social.mjs'
+import { npcProfileForViewerAt, npcSocialForViewer } from './npc-social.mjs'
 import { suggestedActionsFor } from './action-hints.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
 import { reputationTier } from './reputation-policy.mjs'
@@ -16,6 +16,11 @@ import {
   serializeTacticalMap,
   serializedTacticalMapHash,
 } from './tactical-map.mjs'
+import { captiveForViewer, captivesForViewer } from './captives.mjs'
+import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
+import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
+import { weatherForViewer } from './weather.mjs'
+import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
 /**
@@ -92,9 +97,27 @@ export function publicAdventureFor(adventure = {}) {
  */
 export function publicWorldMapFor(worldMap = {}) {
   const currentLocationId = text(worldMap.currentLocationId, 100)
-  const locations = (Array.isArray(worldMap.locations) ? worldMap.locations : [])
+  const visible = (Array.isArray(worldMap.locations) ? worldMap.locations : [])
     .filter((location) => location?.known !== false || location?.visited === true || text(location?.id, 100) === currentLocationId)
-    .slice(0, 50)
+  // Предел в полсотни точек не имеет права выбросить текущую. По её id клиент
+  // строит адрес иллюстрации локации (`scene.location_id` есть только у
+  // ведущего) и ставит метку «вы здесь». За длинную кампанию известных мест
+  // становится больше пятидесяти, точка стола молча уезжала за границу среза,
+  // и игроки оставались с библиотечной подложкой вместо картинки.
+  //
+  // Цена перестановки: пятидесятая по счёту известная точка уходит из карты
+  // игрока вместе с маршрутами, которые её касаются. Лимит есть лимит — кто-то
+  // обязан уступить место, и текущая локация важнее любой из прочих.
+  //
+  // Пустой `currentLocationId` — обычное состояние кампании: поле необязательное.
+  // Без проверки `findIndex` находил бы первую локацию с пустым id и поднимал
+  // мусорную запись наверх, выбрасывая честную.
+  const currentIndex = currentLocationId
+    ? visible.findIndex((location) => text(location?.id, 100) === currentLocationId)
+    : -1
+  const locations = currentIndex >= 50
+    ? [...visible.slice(0, 49), visible[currentIndex]]
+    : visible.slice(0, 50)
   const locationIds = new Set(locations.map((location) => text(location?.id, 100)).filter(Boolean))
   const regionIds = new Set(locations.map((location) => text(location?.regionId, 100)).filter(Boolean))
   return {
@@ -616,6 +639,37 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // Внутренний реестр точных HP и всех location posts наружу не копируется:
   // вместо него ниже собирается bounded `scene_npcs` только текущей сцены.
   'npc_world',
+  // Летопись поступков отряда со свидетелями и сроком рождения молвы. Наружу не
+  // копируется вовсе: игрок узнаёт слух в игре, из уст NPC, а не читая
+  // состояние. Публичной формы у неё нет и не должно быть.
+  'world_deeds',
+  // Лента ходов мира «Пока вас не было…». Форма у ведущего и у стола одна и та
+  // же, и это решение, а не упущение: ход мира — монтаж для всего стола, и
+  // модуль по построению кладёт в него только party-видимые задания, фракции и
+  // NPC (`server/offscreen-world.mjs`). Прятать от игрока то, что ему же
+  // показывает карточка летописи, было бы враньём в обе стороны.
+  //
+  // «По построению» здесь значит три фильтра `visibleToParty` на входе в ход
+  // мира — и ничего больше: второй формы у ленты нет, поэтому утечка была бы
+  // сквозной и молчаливой. Фильтры закреплены поимённо в
+  // `test/offscreen-world.test.mjs` («тайные нити ведущего в ход мира не
+  // попадают»); эта строка держится на том тесте.
+  'offscreen_world',
+  // Реестр пленных: отряду он принадлежит целиком, кроме одного — того, чего
+  // пленный ещё не сказал. `known_fact_ids` остаётся у ведущего, иначе допрос
+  // перестал бы быть проверкой: игрок читал бы ответ прямо из состояния.
+  'captives',
+  // Реестр закона: ступень розыска, очки и список преступлений принадлежат
+  // ведущему целиком. Игроку уезжает только то, что он и так видит в игре, —
+  // стража, которая уже стоит перед ним, и приметы мира вокруг. Цифры розыска
+  // в публичной форме нет и быть не должно: она превратила бы поиск выхода в
+  // арифметику.
+  'law',
+  // Время суток и погода. Собственного ключа в состоянии нет: обе величины
+  // выводятся из мировых минут и сида кампании (`server/weather.mjs`) и
+  // существуют только в проекции. Решение осознанное и в обе стороны одинаковое:
+  // небо над отрядом видно всем, и прятать его от игрока значило бы врать.
+  'weather',
   'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
   // Собственного ключа в состоянии нет: подсказки выводятся из уже собранной
   // комнаты и существуют только в проекции. Решение осознанное — скрытого в
@@ -673,6 +727,26 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (user?.role === 'admin') return {
     ...state,
     players: playerItemsWithCapabilities(state.players),
+    // Летопись поступков уезжает ведущему уже лентой: свежие сверху, с русской
+    // подписью вида и числом свидетелей. Сортировка и таблица подписей живут в
+    // одном месте — на сервере, рядом с `DEED_KINDS`. Карточка админки раньше
+    // держала свои копии обеих, и они расходились молча.
+    //
+    // Лента ограничена: карточка показывает дюжину, а состояние держит до двух
+    // сотен поступков, и слать их целиком в каждом кадре комнаты незачем.
+    ...(state.world_deeds ? { world_deeds: { schema_version: WORLD_DEEDS_SCHEMA_VERSION, deeds: worldDeedsFeed(state, { limit: 40 }) } } : {}),
+    // Ходы мира уезжают лентой ровно так же: свежие сверху, с русской подписью
+    // вида. Своей таблицы подписей карточка админки не держит.
+    ...(state.offscreen_world
+      ? { offscreen_world: { schema_version: OFFSCREEN_WORLD_SCHEMA_VERSION, steps: offscreenWorldFeed(state, { limit: 20 }) } }
+      : {}),
+    // Розыск уезжает ведущему уже лентой по краям: ступень, подпись, очки и
+    // срок затухания считаются на сервере рядом с политикой. Карточка админки
+    // своей таблицы порогов не держит — две копии расходились бы молча.
+    law: lawForViewer(state, { isAdmin: true }),
+    // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
+    // из минут кампании и сида, тайной ведущего они не являются.
+    weather: weatherForViewer(state),
     mechanics: {
       ...(state.mechanics ?? {}),
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
@@ -695,7 +769,21 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // `levelEntities` — стэш жителей неактивных этажей: точные HP противников,
   // незакрытое столкновение и посты NPC другого яруса. Игроку он не
   // принадлежит и обязан исчезнуть целиком, как `locationMaps` и `npc_world`.
-  const { locationMaps: _locationMaps, npc_world: _npcWorld, levelEntities: _levelEntities, ...publicState } = visible
+  // `world_deeds` — летопись поступков отряда со списком свидетелей и сроком
+  // рождения слуха. Она принадлежит ведущему: игрок узнаёт о молве в игре, из
+  // уст NPC, а не из собственной проекции состояния.
+  // `law` — реестр закона: ступень розыска, очки и все преступления отряда.
+  // Наружу он идёт только своей публичной формой (`lawForViewer` ниже), потому
+  // что цифра ступени игроку не принадлежит: розыск он узнаёт по офицеру перед
+  // собой и по тому, как на него смотрит улица.
+  const {
+    locationMaps: _locationMaps,
+    npc_world: _npcWorld,
+    levelEntities: _levelEntities,
+    world_deeds: _worldDeeds,
+    law: _law,
+    ...publicState
+  } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
   const scene = publicSceneFor(state.scene, state.locationLevels?.[currentLocationId])
   const location = scene.location
@@ -737,6 +825,16 @@ export function campaignStateForViewer(state, user, actorId = '') {
       state,
     }),
     scene_npcs: sceneNpcsForViewer(state),
+    captives: captivesForViewer(state, { isAdmin: false }),
+    law: lawForViewer(state, { isAdmin: false }),
+    // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
+    // было…» показывается всем, и вторая форма для неё была бы вторым ответом
+    // на один вопрос.
+    offscreen_world: { schema_version: OFFSCREEN_WORLD_SCHEMA_VERSION, steps: offscreenWorldFeed(state, { limit: 20 }) },
+    // Время суток и погода — то, что герой видит, подняв голову. Строка
+    // индикатора и подписи действующих помех приходят готовыми: своей таблицы
+    // ни у клиента, ни у проекции нет.
+    weather: weatherForViewer(state),
     merchants,
     enemies,
     mechanics,
@@ -787,6 +885,20 @@ function eventForViewer(event, user, actorId, state = {}) {
       enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId)),
     }
   }
+  // Закон. Ступень розыска и реестр преступлений не принадлежат игроку ни в
+  // проекции состояния, ни в канале событий: до ревью 2026-08-09 состояние
+  // чистилось, а те же числа уезжали игроку событиями той же команды —
+  // `GuardEncounterResolved` с `level`, `WantedCleared` с `level_before` и
+  // полным списком `crime_ids`, `GuardEncounterStarted` со всей встречей.
+  // Карточку встречи собирает та же функция, что и проекция состояния.
+  if (visible.event_type === 'GuardEncounterStarted') {
+    payload.encounter = publicGuardEncounterFor(payload.encounter)
+  }
+  if (visible.event_type === 'GuardEncounterResolved') delete payload.level
+  if (visible.event_type === 'WantedCleared') {
+    for (const key of ['level_before', 'crime_ids']) delete payload[key]
+  }
+  if (visible.event_type === 'WantedLevelRaised') delete payload.crime
   if (visible.event_type === 'EncounterOutcomeRecorded') {
     delete payload.plan
     delete payload.prepared_reward
@@ -803,6 +915,50 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (visible.event_type === 'NpcPlaced') delete payload.vitality
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
+  }
+  // Профиль NPC. До ревью 2026-08-09 ветки здесь не было вовсе, и
+  // `NpcSocialProfileUpserted` уезжал игроку сырым: `goals`, `beliefs`,
+  // `known_fact_ids` и `social_dcs` — то есть и СЛ социальных проверок, которые
+  // ниже в этой же функции прячутся даже у `AbilityCheckResolved`. Проекция
+  // состояния при этом чистила тот же профиль честно, так что состояние и канал
+  // событий расходились молча.
+  //
+  // Режет тот же белый список, что и проекция состояния
+  // (`npcProfileForViewerAt`, `server/npc-social.mjs`). Место правки выбрано
+  // тем, что производителей у события пять и живут они в четырёх модулях:
+  // команда `UpsertNpcSocialProfile` (`server/npc-social.mjs`), увод заложника
+  // ходом мира (`server/offscreen-world.mjs`), профиль нового пленного и его
+  // переезд вместе с отрядом (`server/captives.mjs`, два места) и профиль
+  // предводителя под парлеем (`server/rules-engine.mjs`). Санитайзер по месту
+  // потребовал бы пяти одинаковых правок и промолчал бы у шестого; точный
+  // список на сегодня — `grep -rn "NpcSocialProfileUpserted" server/`.
+  //
+  // Своей проверки видимости здесь нет и не нужно — но не потому, что «нет
+  // живых производителей с закрытым NPC»: `projectVisibleState` выше уже
+  // выбросил узел `payload.npc` целиком по его собственной `visibility`, и на
+  // party-видимом событии о `gm_only`-NPC игрок получает `payload: {}`.
+  // Поэтому `&& payload.npc` — не косметика, а единственный сторож ветки:
+  // снять его значит уронить проекцию на пустом payload.
+  if (visible.event_type === 'NpcSocialProfileUpserted' && payload.npc) {
+    payload.npc = npcProfileForViewerAt(payload.npc, {
+      playerId: String(actorId ?? ''),
+      isAdmin: false,
+      isPartyMember: true,
+      state,
+    })
+  }
+  // Пленный. Та же дыра и то же лечение: `CaptiveTaken` несёт целиком запись
+  // реестра, а белый список отряда (`captiveForViewer`, `server/captives.mjs`
+  // — та же функция, что стоит под проекцией состояния) вырезает из неё
+  // `stat_block_id`, `xp` и `known_fact_ids`: стат-блок в обход опознания врага
+  // (`publicEnemyFor` ниже отдаёт его только по факту `stat_block` в знании
+  // отряда), XP как чистое метаигровое число и неразвязанные ниточки допроса.
+  // До ревью 2026-08-09 всё это уезжало игроку событием, пока проекция
+  // состояния честно молчала.
+  if (visible.event_type === 'CaptiveTaken' && payload.captive) {
+    const forViewer = captiveForViewer(payload.captive)
+    if (forViewer) payload.captive = forViewer
+    else delete payload.captive
   }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
   if (['HitPointDieSpent', 'HitPointDiceRestored'].includes(String(visible.event_type))

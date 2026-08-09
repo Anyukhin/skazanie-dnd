@@ -12,18 +12,30 @@
  * единственный способ картинки получить.
  *
  * Здесь нет ни своего генератора, ни своего кеша: всё идёт через уже
- * существующий `NpcPortraitService` — тот же путь, тот же каталог, тот же
- * usage-леджер. Второго авторитетного места для портретов быть не должно.
+ * существующие `NpcPortraitService` и `LocationIllustrationService` — тот же
+ * путь к модели, те же каталоги, тот же usage-леджер. Второго авторитетного
+ * места для картинок быть не должно.
  */
 
 export const ASSET_PREPARATION_POLICY_ID = 'skazanie:asset-preparation-v1'
 
 /**
- * Потолок одного запуска. Он не про безопасность, а про деньги: двадцать
- * портретов — это уже заметная сумма, и списывать её молча одним нажатием
- * нельзя.
+ * Потолок одного запуска — **общий на все виды картинок**. Он не про
+ * безопасность, а про деньги: двадцать генераций — это уже заметная сумма, и
+ * списывать её молча одним нажатием нельзя. Раздельные потолки по видам
+ * означали бы, что счёт вечера растёт вдвое быстрее при тех же цифрах на
+ * экране.
  */
 export const MAX_PREPARATION_BATCH = 20
+
+/**
+ * Виды подготовки. Таблица одна на разбор запроса и на ответ, чтобы добавление
+ * третьего вида не превращалось в третью копию проверок капа и неизвестных id.
+ */
+const PREPARATION_GROUPS = Object.freeze([
+  { requestKey: 'npc_ids', inventoryKey: 'npcs', readyKey: 'has_portrait', label: 'NPC' },
+  { requestKey: 'location_ids', inventoryKey: 'locations', readyKey: 'has_illustration', label: 'локации' },
+])
 
 const text = (value, maximum = 160) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 
@@ -80,27 +92,50 @@ export async function npcPortraitInventory({ service, campaignId, projectedState
  * Что подготовка сделает с запрошенным списком. Разбор отделён от исполнения,
  * чтобы отказ по капу был проверяем без единого обращения к генератору.
  *
- * @param {unknown} requested
- * @param {Array<{ id: string, has_portrait: boolean }>} inventory
+ * @param {unknown} requested `{ npc_ids, location_ids }` из тела запроса
+ * @param {{ npcs?: Array<{ id: string, has_portrait?: boolean }>, locations?: Array<{ id: string, has_illustration?: boolean }> }} inventories
  * @param {{ regenerate?: boolean }} [options]
+ * @returns {{ ok: boolean, code: string | null, message: string, npc_ids: string[], location_ids: string[] }}
  */
-export function planPreparation(requested, inventory, { regenerate = false } = {}) {
-  const known = new Map(inventory.map((entry) => [entry.id, entry]))
-  const ids = [...new Set((Array.isArray(requested) ? requested : []).map((value) => text(value, 120)).filter(Boolean))]
-  const unknown = ids.filter((id) => !known.has(id))
-  if (unknown.length) {
-    return { ok: false, code: 'UNKNOWN_ASSET', message: `Неизвестные NPC: ${unknown.slice(0, 5).join(', ')}`, ids: [] }
+export function planPreparation(requested, inventories, { regenerate = false } = {}) {
+  const body = requested && typeof requested === 'object' && !Array.isArray(requested) ? requested : {}
+  // Пустые списки — свежие литералы на каждый отказ, а не общий замороженный
+  // экземпляр: разбор отдаёт наружу обычный изменяемый ответ, и вызывающий,
+  // который дописал бы в него позицию, дописал бы её сразу во все прошлые и
+  // будущие отказы.
+  const refuse = (code, message) => ({ ok: false, code, message, npc_ids: [], location_ids: [] })
+  /** @type {Record<string, string[]>} */
+  const asked = {}
+  /** @type {Record<string, string[]>} */
+  const selected = {}
+  let total = 0
+
+  for (const group of PREPARATION_GROUPS) {
+    const inventory = Array.isArray(inventories?.[group.inventoryKey]) ? inventories[group.inventoryKey] : []
+    const known = new Map(inventory.map((entry) => [entry.id, entry]))
+    const ids = [...new Set((Array.isArray(body[group.requestKey]) ? body[group.requestKey] : [])
+      .map((value) => text(value, 120)).filter(Boolean))]
+    const unknown = ids.filter((id) => !known.has(id))
+    if (unknown.length) return refuse('UNKNOWN_ASSET', `Неизвестные ${group.label}: ${unknown.slice(0, 5).join(', ')}`)
+    asked[group.requestKey] = ids
+    total += ids.length
+    // Без явной перегенерации уже готовое пропускается: платить второй раз за
+    // ту же картинку незачем.
+    selected[group.requestKey] = regenerate ? ids : ids.filter((id) => known.get(id)?.[group.readyKey] !== true)
   }
-  if (!ids.length) return { ok: false, code: 'NOTHING_REQUESTED', message: 'Не выбрано ни одной позиции', ids: [] }
-  if (ids.length > MAX_PREPARATION_BATCH) {
-    return {
-      ok: false,
-      code: 'BATCH_TOO_LARGE',
-      message: `За один запуск готовится не больше ${MAX_PREPARATION_BATCH} позиций: генерация стоит денег, и списывать их молча нельзя`,
-      ids: [],
-    }
+
+  if (!total) return refuse('NOTHING_REQUESTED', 'Не выбрано ни одной позиции')
+  if (total > MAX_PREPARATION_BATCH) {
+    return refuse(
+      'BATCH_TOO_LARGE',
+      `За один запуск готовится не больше ${MAX_PREPARATION_BATCH} позиций: генерация стоит денег, и списывать их молча нельзя`,
+    )
   }
-  // Без явной перегенерации уже готовое пропускается: платить второй раз за ту
-  // же картинку незачем.
-  return { ok: true, code: null, message: '', ids: regenerate ? ids : ids.filter((id) => known.get(id)?.has_portrait !== true) }
+  return {
+    ok: true,
+    code: null,
+    message: '',
+    npc_ids: selected.npc_ids,
+    location_ids: selected.location_ids,
+  }
 }

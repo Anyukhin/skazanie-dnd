@@ -5,6 +5,7 @@ export const CHRONICLE_FILTERS: readonly ChronicleFilter[]
 export function chronicleMatchesFilter(
   speaker: 'narrator' | 'player' | 'system',
   filter: ChronicleFilter,
+  isStoryCard?: boolean,
 ): boolean
 
 export function isChronicleNearBottom(

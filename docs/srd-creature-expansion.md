@@ -21,8 +21,8 @@ PDF, указанного в `SRD_5_2_1_SOURCE` в `server/encounter-assembler.m
 
 | catalog id | имя | SRD | CR / XP | зачем взято | исполняемая повадка | темы |
 | --- | --- | ---: | --- | --- | --- | --- |
-| `srd_5_2_1:scout` | Разведчик | 322 | 1/2 / 100 | первый дешёвый противник, для которого дальний бой — основной режим | `multiattack`, `keep-distance` | `ambush`, `wilderness`, `raiders` |
-| `srd_5_2_1:spy` | Шпион | 329 | 1 / 200 | мобильный отравляющий стрелок вместо ещё одного числового варианта бандита | `keep-distance`, `nimble-escape` | `ambush`, `raiders` |
+| `srd_5_2_1:scout` | Разведчик | 322 | 1/2 / 100 | первый дешёвый противник, для которого дальний бой — основной режим | `multiattack`, `keep-distance` | `ambush`, `wilderness`, `raiders`, `law` |
+| `srd_5_2_1:spy` | Шпион | 329 | 1 / 200 | мобильный отравляющий стрелок вместо ещё одного числового варианта бандита | `keep-distance`, `nimble-escape` | `ambush`, `raiders`, `law` |
 | `srd_5_2_1:giant-centipede` | Гигантская многоножка | 349 | 1/4 / 50 | дешёвый vermin с контролем Poisoned | `relentless-pursuit` | `vermin`, `cave`, `crypt` |
 | `srd_5_2_1:violet-fungus` | Лиловый гриб | 286 | 1/4 / 50 | первый `plant`, медленная зона угрозы с reach 10 футов | `multiattack`, `relentless-pursuit` | `vermin`, `cave` |
 | `srd_5_2_1:minotaur-skeleton` | Скелет минотавра | 326 | 2 / 450 | нежить с позиционной атакой, а не копия обычного скелета | `charge` | `undead`, `crypt`, `cave` |
@@ -39,9 +39,9 @@ PDF, указанного в `SRD_5_2_1_SOURCE` в `server/encounter-assembler.m
 | `srd_5_2_1:tiger` | Тигр | 363 | 1 / 200 | мобильный хищник: сбивает цель, тратит бонусное действие на Disengage и отходит | `nimble-escape` | `beasts`, `ambush`, `wilderness` |
 | `srd_5_2_1:sahuagin-warrior` | Воин сахуагинов | 321 | 1/2 / 100 | первый исчадный пехотинец и дешёвая двойная когтевая атака | `multiattack` | `warband` |
 | `srd_5_2_1:bandit-captain` | Атаман бандитов | 261 | 2 / 450 | настоящий ближне-дальний главарь с любым сочетанием двух ударов | `multiattack`, `keep-distance` | `raiders`, `warband`, `ambush` |
-| `srd_5_2_1:warrior-veteran` | Воитель-ветеран | 337 | 3 / 700 | запрещает незаконно смешивать меч и арбалет внутри одной мультиатаки | same-action `multiattack`, `keep-distance` | `raiders`, `warband` |
+| `srd_5_2_1:warrior-veteran` | Воитель-ветеран | 337 | 3 / 700 | запрещает незаконно смешивать меч и арбалет внутри одной мультиатаки | same-action `multiattack`, `keep-distance` | `raiders`, `warband`, `law` |
 | `srd_5_2_1:ettin` | Эттин | 284 | 4 / 1100 | открывает лестницу CR 4 точной квотой из двух разных оружий | counted `multiattack` | `raiders`, `warband`, `cave` |
-| `srd_5_2_1:guard-captain` | Капитан стражи | 296 | 4 / 1100 | тяжёлый универсальный командир с мечом и двумя режимами копья | `multiattack`, `keep-distance` | `warband` |
+| `srd_5_2_1:guard-captain` | Капитан стражи | 296 | 4 / 1100 | тяжёлый универсальный командир с мечом и двумя режимами копья | `multiattack`, `keep-distance` | `warband`, `law` |
 
 ## Волна 3: 34 → 42
 
@@ -50,7 +50,7 @@ PDF, указанного в `SRD_5_2_1_SOURCE` в `server/encounter-assembler.m
 | `srd_5_2_1:awakened-tree` | Пробуждённое дерево | 260 | 2 / 450 | тяжёлый медленный `plant` с reach 10 футов вместо ещё одного гуманоидного бойца | scheduler policy `relentless-pursuit` | `wilderness`, `cave` |
 | `srd_5_2_1:giant-elk` | Гигантский лось | 351 | 2 / 450 | первый `celestial`, совмещающий два типа урона и Huge-разбег | `charge` | `beasts`, `wilderness` |
 | `srd_5_2_1:ogre-zombie` | Огр-зомби | 344 | 2 / 450 | живучая крупная нежить усиливает бедные ростеры `undead` и `crypt` | `undead-fortitude` | `undead`, `crypt`, `cave` |
-| `srd_5_2_1:knight` | Рыцарь | 302 | 3 / 700 | тяжёлый ближне-дальний воин с отдельным лучистым компонентом каждого удара | `multiattack`, `keep-distance` | `warband` |
+| `srd_5_2_1:knight` | Рыцарь | 302 | 3 / 700 | тяжёлый ближне-дальний воин с отдельным лучистым компонентом каждого удара | `multiattack`, `keep-distance` | `warband`, `law` |
 | `srd_5_2_1:hippopotamus` | Гиппопотам | 355 | 4 / 1100 | опасный сухопутный зверь CR 4 с двумя тяжёлыми укусами | `multiattack` | `beasts`, `wilderness` |
 | `srd_5_2_1:earth-elemental` | Земляной элементаль | 282 | 5 / 1800 | первый `elemental`, сочетает reach и контроль с дистанции | `multiattack`, `keep-distance` | `cave` |
 | `srd_5_2_1:hill-giant` | Холмовой великан | 298 | 5 / 1800 | CR 5 ломает строй и вблизи, и броском мусора с Poisoned | `multiattack`, `keep-distance` | `raiders`, `warband`, `cave`, `wilderness` |

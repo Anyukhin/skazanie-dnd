@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import {
-  BrainCircuit, ChevronDown, ChevronRight, Dices, Globe2, HelpCircle, History,
-  MessageSquare, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Sparkles,
-  Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff,
+  BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Globe2, HelpCircle, History, Hourglass,
+  MessageSquare, Moon, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Sparkles,
+  Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
 
 import { fetchWithTimeout } from './ai-client'
@@ -13,11 +13,11 @@ import {
 } from './app-shared'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import type { NarrationVoiceMode } from './narration-tts.mjs'
-import { localizedQuestClockLabel } from './desktop-ui.mjs'
+import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
   Account, AgentInteraction, AiHealth, AssetPreparationReport, CampaignAiSettings, CampaignAiSettingsResponse,
-  CampaignSummary, EncounterProposal, GameState, Merchant, Message, Player,
+  CampaignSummary, EncounterProposal, GameState, Merchant, Message, OffscreenChronicleCard, Player,
 } from './types'
 import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 
@@ -240,6 +240,30 @@ export function stakesTitle(stakes: NonNullable<Message['stakes']>) {
   return `${both} · СЛ ${stakes.difficulty}${category ? ` · ${category}` : ''}`
 }
 
+/**
+ * Врезка «Пока вас не было…» в летописи. Системная карточка, а не реплика: у
+ * неё нет автора, которому можно ответить, и нет броска, который можно
+ * разобрать, — только то, что мир успел сделать за спиной отряда.
+ *
+ * Строки приходят готовыми с сервера (`server/offscreen-world.mjs`): их порядок
+ * и формулировки одни и те же в летописи стола и в ленте ведущего. Своей сборки
+ * у клиента нет намеренно — две копии разошлись бы молча.
+ */
+export function OffscreenChronicleEntry({ card, timestamp }: { card: OffscreenChronicleCard; timestamp: string }) {
+  const hours = Math.max(1, Math.round(card.elapsed_minutes / 60))
+  return <article className="message system offscreen-step">
+    <div className="offscreen-card">
+      <header>
+        <Moon size={16} />
+        <span><small>ХОД МИРА · ДЕНЬ {card.day}</small><strong>{card.title}</strong></span>
+        <time>{timestamp}</time>
+      </header>
+      <ul>{card.lines.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}</ul>
+      <small className="offscreen-elapsed"><Hourglass size={12} />прошло часов: {hours}</small>
+    </div>
+  </article>
+}
+
 export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak, open, onToggle }: {
   messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null; open: boolean; onToggle: () => void
 }) {
@@ -255,7 +279,9 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
   const [followLatest, setFollowLatest] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const visibleMessages = useMemo(
-    () => messages.filter((message) => chronicleMatchesFilter(message.speaker, filter)),
+    // Врезка «Пока вас не было…» приходит системной записью, но читается как
+    // рассказ: под фильтром «Бой» ей не место.
+    () => messages.filter((message) => chronicleMatchesFilter(message.speaker, filter, Boolean(message.offscreen))),
     [filter, messages],
   )
   const visibleCountRef = useRef(visibleMessages.length)
@@ -328,7 +354,9 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
         </aside>
       )}
       <div className="messages" ref={messagesRef} onScroll={handleScroll}>
-        {visibleMessages.map((message) => (
+        {visibleMessages.map((message) => message.offscreen ? (
+          <OffscreenChronicleEntry key={message.id} card={message.offscreen} timestamp={message.timestamp} />
+        ) : (
           <article key={message.id} className={`message ${message.speaker}`}>
             <div className="message-body">
               <div className="message-meta"><strong>{message.author}</strong><time>{message.timestamp}</time></div>
@@ -448,7 +476,195 @@ export function JournalView({ state }: { state: GameState }) {
   )
 }
 
-export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, onAssembleMerchant, onMoveMerchant, onSetMerchantAvailability, onReset }: { account: Account; state: GameState; onUpdateWorld: (patch: { campaign?: string; partyName?: string; partyMemberIds?: string[]; scene?: Partial<GameState['scene']> }) => void; onAssembleEncounter: (options: EncounterAssemblyOptions) => Promise<EncounterProposal>; onAssembleMerchant: (options: ShopAssemblyOptions) => Promise<Merchant>; onMoveMerchant: (merchantId: string, location: string, locationId?: string) => Promise<void>; onSetMerchantAvailability: (merchantId: string, available: boolean) => Promise<void>; onReset: () => void }) {
+const DEED_SEVERITY_LABELS: Record<string, string> = { grave: 'тяжкий', major: 'заметный', minor: 'мелкий' }
+
+/**
+ * Лента ведущего: что мир заметил за отрядом и что об этом уже говорят.
+ * Игроку эта секция недоступна по построению — сервер вырезает `world_deeds` и
+ * gm_only-слухи из проекции, поэтому у игрока карточка просто пуста.
+ *
+ * Порядок и подписи видов приходят готовыми: `worldDeedsFeed`
+ * (`server/world-deeds.mjs`) отдаёт ленту свежими сверху, с `label` из
+ * `DEED_KINDS` и посчитанным `witness_count`. Своей таблицы подписей и своей
+ * сортировки здесь нет намеренно — две копии расходились бы молча.
+ */
+export function WorldDeedsCard({ state }: { state: GameState }) {
+  const deeds = useMemo(() => (state.world_deeds?.deeds ?? []).slice(0, 12), [state.world_deeds])
+  const npcNames = useMemo(() => new Map((state.worldMemory?.entities ?? []).map((entity) => [entity.id, entity.name])), [state.worldMemory])
+  const rumors = useMemo(() => (state.worldMemory?.epistemic_claims ?? [])
+    .filter((claim) => claim.kind === 'rumor')
+    .slice(-12)
+    .reverse(), [state.worldMemory])
+  const dark = deeds.filter((deed) => deed.alignment === 'dark').length
+
+  return <div className="admin-card admin-deeds">
+    <div className="admin-card-head">
+      <span><Ear size={18} /><b>Поступки и слухи</b></span>
+      <em>{deeds.length ? `${dark} тёмных из ${deeds.length}` : 'мир пока молчит'}</em>
+    </div>
+    <p className="admin-hint">Слух рождается не сразу: сначала местная молва, дальше — сутки на каждую локацию по графу мира. Поступок без свидетелей остаётся тайной и не расходится вовсе. Игроки узнают молву только в игре, из уст NPC.</p>
+    <div className="deed-feed">
+      {deeds.map((deed) => <article key={deed.id} className={deed.alignment}>
+        <div>
+          <strong>{deed.label || deed.kind}</strong>
+          <span>{deed.summary || deed.subject || '—'}</span>
+          <small>{campaignClockLabel(deed.at_minutes)} · {deed.location_name || 'место неизвестно'} · {DEED_SEVERITY_LABELS[deed.severity] ?? deed.severity}</small>
+        </div>
+        <em className={deed.secret ? 'secret' : ''}>
+          {deed.secret ? 'БЕЗ СВИДЕТЕЛЕЙ' : `СВИДЕТЕЛЕЙ: ${deed.witness_count ?? 0}`}
+        </em>
+        <small className="deed-spread">
+          {deed.secret
+            ? 'молве взяться неоткуда'
+            : `молва с ${campaignClockLabel(deed.spread_at_minutes ?? deed.at_minutes)}`}
+          {deed.reputation_faction_ids?.length ? ` · слава: ${deed.reputation_faction_ids.join(', ')}` : ''}
+        </small>
+      </article>)}
+      {!deeds.length && <div className="deed-empty">Отряд пока не сделал ничего, о чём стоило бы говорить.</div>}
+    </div>
+    <span className="admin-asset-group">ЧТО УЖЕ ГОВОРЯТ</span>
+    <ul className="rumor-list">
+      {rumors.map((rumor) => <li key={rumor.id}>
+        <b>{npcNames.get(rumor.holder_entity_id) ?? rumor.holder_entity_id}</b>
+        <span>{rumor.summary || rumor.claim}</span>
+        <em className={rumor.truth_status === 'confirmed' ? 'confirmed' : ''}>{rumor.truth_status === 'confirmed' ? 'ВИДЕЛ САМ' : 'ПЕРЕСКАЗ'}</em>
+      </li>)}
+      {!rumors.length && <li><em>Слухов о делах отряда пока нет.</em></li>}
+    </ul>
+  </div>
+}
+
+const WANTED_TIER_CLASSES = ['calm', 'noticed', 'hunted', 'wanted']
+
+/** Русские подписи причин снятия. Сами причины закрыты сервером. */
+const WANTED_CLEAR_LABELS: Record<string, string> = {
+  fine: 'розыск снят вирой',
+  surrender: 'розыск снят сдачей',
+  amnesty: 'объявлена амнистия',
+}
+
+/**
+ * Закон и розыск у ведущего. Ступень, очки и реестр преступлений приходят
+ * готовыми из проекции (`lawForViewer`, `server/law-and-order.mjs`): своей
+ * таблицы порогов и своей сортировки здесь нет — две копии расходились бы молча,
+ * а игроку этой карточки не достаётся вовсе, потому что сервер вырезает `law`
+ * из публичной проекции и отдаёт вместо него приметы мира.
+ */
+export function WantedCard({ state }: { state: GameState }) {
+  const regions = useMemo(() => state.law?.regions ?? [], [state.law])
+  const [busyRegionId, setBusyRegionId] = useState('')
+  const [error, setError] = useState('')
+  const hunted = regions.filter((region) => region.level > 0)
+
+  const amnesty = async (regionId: string) => {
+    setBusyRegionId(regionId)
+    setError('')
+    try {
+      const response = await fetch(`/api/campaigns/${state.sessionCode}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: { command_type: 'ClearWantedLevel', region_id: regionId } }),
+      })
+      const body = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(body.error || 'Не удалось объявить амнистию')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось объявить амнистию')
+    } finally {
+      setBusyRegionId('')
+    }
+  }
+
+  return <div className="admin-card admin-wanted">
+    <div className="admin-card-head">
+      <span><Gavel size={18} /><b>Закон и розыск</b></span>
+      <em>{hunted.length ? `краёв под розыском: ${hunted.length}` : 'закон спокоен'}</em>
+    </div>
+    <p className="admin-hint">Ступень считает сервер по летописи поступков: преступление со свидетелями добавляет очков по тяжести, сутки без новых — снимают одно. Игрок цифры не видит: ему достаются косые взгляды, плакаты и стража у ворот.</p>
+    {error && <p className="admin-error">{error}</p>}
+    <div className="wanted-feed">
+      {regions.map((region) => <article key={region.region_id} className={`wanted-region tier-${WANTED_TIER_CLASSES[region.level] ?? 'calm'}${region.here ? ' here' : ''}`}>
+        <header>
+          <strong>{region.region_name || region.region_id}</strong>
+          <i className="wanted-tier" aria-label={`Ступень розыска ${region.level}`}>{region.level} · {region.label || '—'}</i>
+        </header>
+        <small>
+          {region.points} оч. · преступлений: {region.crime_count ?? 0}
+          {region.next_decay_in_minutes != null ? ` · очко сгорит через ${Math.max(1, Math.round(region.next_decay_in_minutes / 60))} ч` : ''}
+          {region.here ? ' · отряд здесь' : ''}
+        </small>
+        {/* Последнее снятие: край уже прощал отряд, и ведущему это видно строкой,
+            а не только записями «прощено» под каждым преступлением. Подпись
+            причины приходит с сервера вместе с лентой. */}
+        {region.cleared && <small className="wanted-cleared">
+          {WANTED_CLEAR_LABELS[region.cleared.reason ?? ''] ?? 'розыск снят'} · {campaignClockLabel(region.cleared.at_minutes ?? 0)}
+        </small>}
+        <ul>
+          {(region.crimes ?? []).slice(0, 5).map((crime) => <li key={crime.id} className={crime.cleared_at_minutes != null ? 'cleared' : ''}>
+            <b>{crime.points}</b>
+            <span>{crime.summary || crime.kind}</span>
+            <em>{crime.cleared_at_minutes != null ? 'прощено' : `${campaignClockLabel(crime.at_minutes ?? 0)} · свидетелей: ${crime.witnesses ?? 0}`}</em>
+          </li>)}
+        </ul>
+        {region.level > 0 && <button
+          type="button"
+          disabled={busyRegionId === region.region_id}
+          title="Снять розыск в этом краю без виры и сдачи"
+          onClick={() => { void amnesty(region.region_id) }}
+        >{busyRegionId === region.region_id ? 'Объявляем…' : 'Амнистия'}</button>}
+      </article>)}
+      {!regions.length && <div className="deed-empty">Закон к отряду вопросов не имеет.</div>}
+    </div>
+  </div>
+}
+
+/** Классы записей ленты: тон подсказывает, насколько плохи новости. */
+const OFFSCREEN_ENTRY_CLASSES: Record<string, string> = {
+  quest_expired: 'lost',
+  quest_deadline: 'urgent',
+  faction_move: 'enemy',
+  quest_clock: 'clock',
+  rumor_spread: 'rumor',
+}
+
+/**
+ * Ходы мира у ведущего. Лента приходит готовой из проекции
+ * (`offscreenWorldFeed`, `server/offscreen-world.mjs`): порядок, подписи видов и
+ * номер игрового дня считаются на сервере рядом с самой политикой, как у ленты
+ * розыска. Своей таблицы подписей карточка не держит.
+ */
+export function OffscreenWorldCard({ state }: { state: GameState }) {
+  const steps = useMemo(() => (state.offscreen_world?.steps ?? []).slice(0, 12), [state.offscreen_world])
+  const losses = steps.reduce((count, step) => count + step.entries.filter((entry) => entry.kind === 'quest_expired').length, 0)
+
+  return <div className="admin-card admin-offscreen">
+    <div className="admin-card-head">
+      <span><Moon size={18} /><b>Пока вас не было</b></span>
+      <em>{steps.length ? `ходов мира: ${steps.length}${losses ? ` · провалено: ${losses}` : ''}` : 'мир ещё не ходил'}</em>
+    </div>
+    <p className="admin-hint">Мир ходит на существенном скачке времени — от восьми часов — и не чаще раза в игровые сутки: два привала подряд не считаются за две беды. Часы задания мир доводит до последнего деления, но развязку оставляет столу; заполненные часы протухают через сутки, если исход так и не назвали.</p>
+    <div className="offscreen-feed">
+      {steps.map((step) => <article key={step.id}>
+        {/* Заголовок — минута кампании тем же счётом, что у ленты поступков и
+            розыска. Номер игрового дня в карточке ведущего не дублируется: у
+            неба свой счёт суток (от рассвета), и две цифры рядом расходились бы
+            каждую ночь. Столу в летописи достаётся именно небесный день. */}
+        <header>
+          <strong>{campaignClockLabel(step.at_minutes)}</strong>
+          <small>прошло часов: {Math.max(1, Math.round(step.elapsed_minutes / 60))}</small>
+        </header>
+        <ul>
+          {step.entries.map((entry, index) => <li key={`${step.id}-${index}`} className={OFFSCREEN_ENTRY_CLASSES[entry.kind] ?? ''}>
+            <em>{entry.label ?? entry.kind}</em>
+            <span>{entry.summary}</span>
+          </li>)}
+        </ul>
+      </article>)}
+      {!steps.length && <div className="deed-empty">Отряд ещё не оставлял мир без присмотра надолго.</div>}
+    </div>
+  </div>
+}
+
+export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, onAssembleMerchant, onMoveMerchant, onSetMerchantAvailability, onReset }:{ account: Account; state: GameState; onUpdateWorld: (patch: { campaign?: string; partyName?: string; partyMemberIds?: string[]; scene?: Partial<GameState['scene']> }) => void; onAssembleEncounter: (options: EncounterAssemblyOptions) => Promise<EncounterProposal>; onAssembleMerchant: (options: ShopAssemblyOptions) => Promise<Merchant>; onMoveMerchant: (merchantId: string, location: string, locationId?: string) => Promise<void>; onSetMerchantAvailability: (merchantId: string, available: boolean) => Promise<void>; onReset: () => void }) {
   const [users, setUsers] = useState<Account[]>([])
   const [error, setError] = useState('')
   const [shopBusy, setShopBusy] = useState(false)
@@ -470,6 +686,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
   // игры картинки не генерируются — это решение владельца, а не ограничение UI.
   const [assets, setAssets] = useState<AssetPreparationReport | null>(null)
   const [assetSelection, setAssetSelection] = useState<string[]>([])
+  const [locationSelection, setLocationSelection] = useState<string[]>([])
   const [assetBusy, setAssetBusy] = useState(false)
   const [assetError, setAssetError] = useState('')
   const [assetMessage, setAssetMessage] = useState('')
@@ -481,10 +698,11 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
     if (!response.ok) throw new Error(body.error || 'Не удалось получить список ассетов')
     setAssets(body)
     setAssetSelection([])
+    setLocationSelection([])
   }
 
-  const prepareAssets = async (npcIds: string[], regenerate: boolean) => {
-    if (!npcIds.length) { setAssetError('Не выбрано ни одной позиции'); return }
+  const prepareAssets = async (npcIds: string[], locationIds: string[], regenerate: boolean) => {
+    if (!npcIds.length && !locationIds.length) { setAssetError('Не выбрано ни одной позиции'); return }
     setAssetBusy(true)
     setAssetError('')
     setAssetMessage('')
@@ -492,7 +710,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
       const response = await fetch(`/api/campaigns/${state.sessionCode}/asset-preparation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ npc_ids: npcIds, regenerate }),
+        body: JSON.stringify({ npc_ids: npcIds, location_ids: locationIds, regenerate }),
       })
       const body = await response.json() as { prepared?: Array<{ id: string; status: string; error?: string }>; error?: string }
       if (!response.ok) throw new Error(body.error || 'Не удалось подготовить ассеты')
@@ -639,6 +857,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
           {assets && !assets.generator_configured && <p className="admin-error">Генератор изображений не настроен: подготовка недоступна.</p>}
           {assets && (
             <>
+              <span className="admin-asset-group">ПОРТРЕТЫ NPC</span>
               <ul className="admin-asset-list">
                 {assets.npc_portraits.map((npc) => (
                   <li key={npc.id}>
@@ -655,18 +874,42 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
                     {npc.has_portrait
                       ? <>
                         <img src={`/api/campaigns/${state.sessionCode}/npcs/${encodeURIComponent(npc.id)}/portrait`} alt="" width={40} height={40} />
-                        <button disabled={assetBusy} onClick={() => { void prepareAssets([npc.id], true) }}>Перегенерировать</button>
+                        <button disabled={assetBusy} onClick={() => { void prepareAssets([npc.id], [], true) }}>Перегенерировать</button>
                       </>
                       : <em>нет портрета</em>}
                   </li>
                 ))}
                 {!assets.npc_portraits.length && <li><em>Значимых NPC в кампании пока нет.</em></li>}
               </ul>
+              <span className="admin-asset-group">ИЛЛЮСТРАЦИИ ЛОКАЦИЙ</span>
+              <ul className="admin-asset-list">
+                {assets.location_illustrations.map((location) => (
+                  <li key={location.id}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={locationSelection.includes(location.id)}
+                        onChange={(event) => setLocationSelection((current) => (
+                          event.currentTarget.checked ? [...current, location.id] : current.filter((id) => id !== location.id)
+                        ))}
+                      />
+                      <span>{location.name}{location.kind ? ` · ${location.kind}` : ''}</span>
+                    </label>
+                    {location.has_illustration
+                      ? <>
+                        <img src={`/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(location.id)}/illustration`} alt="" width={64} height={36} />
+                        <button disabled={assetBusy} onClick={() => { void prepareAssets([], [location.id], true) }}>Перегенерировать</button>
+                      </>
+                      : <em>нет иллюстрации</em>}
+                  </li>
+                ))}
+                {!assets.location_illustrations.length && <li><em>Известных локаций в кампании пока нет.</em></li>}
+              </ul>
               <div className="admin-actions">
-                <button disabled={assetBusy || !assetSelection.length} onClick={() => { void prepareAssets(assetSelection, false) }}>
-                  Сгенерировать выбранные ({assetSelection.length})
+                <button disabled={assetBusy || !(assetSelection.length + locationSelection.length)} onClick={() => { void prepareAssets(assetSelection, locationSelection, false) }}>
+                  Сгенерировать выбранные ({assetSelection.length + locationSelection.length})
                 </button>
-                <small>Не больше {assets.maximum_batch} за один запуск.</small>
+                <small>Не больше {assets.maximum_batch} за один запуск — общим счётом на портреты и локации.</small>
               </div>
               {assets.items_without_illustration.length > 0 && (
                 <p className="admin-hint">Предметы без иллюстрации ({assets.items_without_illustration.length}): {assets.items_without_illustration.slice(0, 8).map((item) => item.name).join(', ')}. {assets.items_note}</p>
@@ -676,6 +919,9 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
           {assetMessage && <p className="admin-hint">{assetMessage}</p>}
           {assetError && <p className="admin-error">{assetError}</p>}
         </div>
+        <WorldDeedsCard state={state} />
+        <WantedCard state={state} />
+        <OffscreenWorldCard state={state} />
         <div className="admin-card admin-merchants">
           <div className="admin-card-head"><span><Store size={18} /><b>Торговцы и ShopAssembler</b></span><em>{state.merchants?.length ?? 0} в кампании</em></div>
           <p>Сборщик выбирает только позиции серверного каталога. Цены, лимиты количества и политика магазина проверяются Rules Engine.</p>
