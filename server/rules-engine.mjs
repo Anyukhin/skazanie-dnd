@@ -5611,6 +5611,10 @@ function checkRollFromVerified(verified, { modifier = 0, difficulty = 10, purpos
     .filter((value) => value >= 1 && value <= 20)
   if (!dice.length) return null
   const mode = advantage && !disadvantage ? 'advantage' : disadvantage && !advantage ? 'disadvantage' : 'normal'
+  // Режим кубиков задаётся правилом, а костей приносит реестр. На одной кости
+  // `Math.min`/`Math.max` — это она сама, то есть преимущество и помеха просто
+  // исчезли бы. Такой бросок к правилу не относится: пусть сервер бросит сам.
+  if (mode !== 'normal' && dice.length < 2) return null
   const kept = mode === 'advantage' ? Math.max(...dice) : mode === 'disadvantage' ? Math.min(...dice) : dice[0]
   const safeModifier = safeInteger(modifier, 0)
   const dc = safeInteger(difficulty, 10)
@@ -10391,6 +10395,16 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // пробел движка, и парлей закрывает его тем же приёмом, что и плен:
       // безымянному врагу собирается детерминированный профиль от сида
       // кампании. Второго генератора для этого в проекте нет.
+      //
+      // Профиль заводится **без адреса и недоступным** намеренно. Предводитель
+      // — боевой актор из `state.enemies`, а не житель локации: записи в
+      // `npc_world.vitals` у него нет, поэтому доступный профиль с локацией
+      // текущей сцены `presentSceneNpcs()` возвращал бы вечно — и после
+      // бегства, и после смерти. Труп при этом считался бы живым свидетелем
+      // каждого следующего поступка отряда (`world-deeds.mjs`), а после
+      // закрытия боя с ним можно было бы спокойно разговаривать. Допуск к
+      // разговору парлей выдаёт сам и ровно на живое перемирие
+      // (`game-orchestrator.mjs`), а не через availability профиля.
       if (!(state.social?.npcs ?? []).some((npc) => String(npc?.id ?? '') === morale.leader_id)) {
         events.push(...npcWorldEventsFrom(command, [{
           event_type: 'NpcSocialProfileUpserted',
@@ -10399,7 +10413,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               id: morale.leader_id,
               name: leaderName,
               role: persona.role,
-              location: String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180),
+              location: '',
               public_summary: 'Ведёт переговоры за свою сторону под перемирием.',
               voice: persona.voice,
               goals: ['выторговать своим жизнь'],
@@ -10407,7 +10421,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               known_fact_ids: [],
               social_dcs: {},
               visibility: 'party',
-              available: true,
+              available: false,
               tags: ['parley-leader'],
               schedule: [],
               inventory: [],
@@ -11242,6 +11256,24 @@ function removeSummonedActor(state, id) {
 function combatActorKind(state, id) {
   const actor = findActor(state, id)
   return isEnemyActor(state, id) ? 'enemy' : isPartySummon(actor) ? 'summon' : 'player'
+}
+
+/**
+ * Снятое перемирие открывает текущему ходу новый срок.
+ *
+ * Часы боя (`combat-turn-coordinator.mjs`) на перемирии остановлены: пока
+ * стороны говорят, дедлайн хода не идёт. Но `turn_started_at` остаётся тем же,
+ * что и до переговоров, и без этого сброса разговор длиной больше
+ * `DEFAULT_TURN_TIMEOUT_MS` возвращал бы бой с уже истёкшим ходом — координатор
+ * авторитетно закоммитил бы `EndTurn` за героя, который так и не походил.
+ *
+ * Замена берётся из самого события, поэтому replay даёт то же время, а повтор
+ * события — тот же результат.
+ */
+function restartTurnClock(state, event) {
+  if (!event?.created_at) return
+  state.mechanics.combat.turn_started_at = event.created_at
+  state.mechanics.combat.turn_started_event_id = event.event_id ?? null
 }
 
 function replaceMerchant(state, id, updater) {
@@ -12680,6 +12712,7 @@ export function applyGameEvent(rawState, event) {
       break
     case 'TruceBroken':
       Object.assign(state.mechanics.combat, parleyCombatPatch(state.mechanics.combat, event) ?? {})
+      restartTurnClock(state, event)
       appendBattleLog(state, event, {
         round: safeInteger(payload.round, state.mechanics.combat.round),
         type: 'truce-broken',
@@ -12691,6 +12724,7 @@ export function applyGameEvent(rawState, event) {
       break
     case 'ParleySettled': {
       Object.assign(state.mechanics.combat, parleyCombatPatch(state.mechanics.combat, event) ?? {})
+      restartTurnClock(state, event)
       // Откуп берётся монетой: каталог предметов принадлежит другой задаче, и
       // раздавать вещи отсюда нельзя. Сумму посчитал движок, редьюсер только
       // переносит уже подтверждённый баланс.

@@ -12,7 +12,7 @@ import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
-import { PARLEY_ABILITY, PARLEY_POLICY_ID, mentionsParley, parleyMoraleFor, truceFor } from './parley.mjs'
+import { PARLEY_ABILITY, PARLEY_POLICY_ID, mentionsParley, parleyMoraleFor, parleySkillFor, truceFor } from './parley.mjs'
 import {
   NARRATOR_PROMPT_VERSION,
   NARRATOR_RECENT_TEXT_LIMIT,
@@ -774,8 +774,10 @@ export class GameOrchestrator {
    * распознанной фразой в бою. `null` — обычный ход.
    *
    * Подход (Убеждение или Запугивание) выводится из самой фразы тем же
-   * детерминированным правилом, что и остальная свободная речь: «сдавайтесь» и
-   * «сложите оружие» — это нажим, всё прочее — уговор.
+   * детерминированным правилом, что и распознавание окрика, — `parleySkillFor`
+   * в `parley.mjs`. Второго списка нажима здесь нет намеренно: прежний
+   * разошёлся с распознаванием и читал «прекрати бой, или я тебя убью»
+   * Убеждением.
    *
    * @returns {{ command_type: 'ProposeParley', actor_id: string, skill: string } | null}
    */
@@ -792,8 +794,7 @@ export class GameOrchestrator {
     if (input?.commands || !playerId) return null
     if (state?.mechanics?.combat?.active !== true || truceFor(state)) return null
     if (!mentionsParley(message)) return null
-    const pressing = /(?:сдавайтесь|сложите\s+оружие|опустите\s+оружие|брос(?:ай|ьте)\s+оружие|предлага\p{L}*\s+сдаться)/iu.test(message)
-    return { command_type: 'ProposeParley', actor_id: playerId, skill: pressing ? 'intimidation' : 'persuasion' }
+    return { command_type: 'ProposeParley', actor_id: playerId, skill: parleySkillFor(message) }
   }
 
   /**
@@ -1101,7 +1102,17 @@ export class GameOrchestrator {
         }
       }
       if (verifiedRoll) {
-        const { context: _parleyCheckContext, ...verifiedRollPayload } = verifiedRoll
+        // Бросок обязан быть зарегистрирован **как парлей**. Реестр сверяет
+        // только кампанию и актора (`roll-registry.mjs`), поэтому без этой
+        // проверки во вторую фазу переговоров можно было бы подать кубик от
+        // любой другой проверки того же героя — в том числе брошенный одной
+        // костью там, где парлей требует помехи.
+        const { context: parleyCheckContext, ...verifiedRollPayload } = verifiedRoll
+        if (String(parleyCheckContext?.kind ?? '') !== 'parley') {
+          const error = new Error('Этот бросок регистрировался не для переговоров')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
         parleyCommand.verified_roll = verifiedRollPayload
       }
       input = { ...input, commands: [parleyCommand] }
@@ -1210,10 +1221,18 @@ export class GameOrchestrator {
       // объявленным перемирием говорить можно, и говорить можно **только** с
       // предводителем противника. Ради этого парлей и заводился; исключение
       // именное, чтобы посреди схватки нельзя было заболтать кого угодно.
+      //
+      // Допуск держится на живом перемирии, а не на профиле: собеседник
+      // переговоров заведён недоступным и без адреса, чтобы после боя он не
+      // остался в мире говорящим трупом (`rules-engine.mjs`, ветка
+      // `ProposeParley`). Кончилось перемирие — кончился и допуск.
       const truceLeaderId = String(truceFor(authoritativeState)?.leader_id ?? '')
-      const combatBlocksTalk = Boolean(authoritativeState.mechanics?.combat?.active)
-        && socialRequest.npcId !== truceLeaderId
-      const unavailable = !profile || profile.available === false || combatBlocksTalk || (sceneLocation && npcLocation && sceneLocation !== npcLocation)
+      const speaksUnderTruce = Boolean(truceLeaderId) && socialRequest.npcId === truceLeaderId
+      const unavailable = !profile || (!speaksUnderTruce && (
+        profile.available === false
+        || Boolean(authoritativeState.mechanics?.combat?.active)
+        || (sceneLocation && npcLocation && sceneLocation !== npcLocation)
+      ))
       if (unavailable) {
         intent.requires_clarification = true
         intent.missing_information = ['available_npc']

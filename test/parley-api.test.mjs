@@ -88,7 +88,17 @@ function cells(width = 8, height = 8) {
   return grid
 }
 
-/** Бой в разгаре: двое разбойников выбыли, третий держится на последних хитах. */
+/**
+ * Бой в разгаре: трое разбойников выбыли, четвёртый держится на последнем хите.
+ *
+ * Числа подобраны так, чтобы бросок решал текст, но не ветку теста. Давление
+ * ран 7 (1 хит из 11) плюс давление потерь 5 (трое из четверых) дают СЛ 8, а
+ * Харизма 18 с владением Убеждением и бонусом мастерства 4 — модификатор +8.
+ * Минимальный итог 9 ≥ 8, то есть проверка проходит при любом кубике. Иначе
+ * самые содержательные утверждения (перемирие, замороженная очередь, условия)
+ * исполнялись бы примерно в четырёх прогонах из пяти, а в пятом тест оставался
+ * бы зелёным, ничего не проверив.
+ */
 function seededState() {
   return {
     sessionCode: SESSION,
@@ -105,14 +115,14 @@ function seededState() {
       grid: { width: 8, height: 8 }, cells: cells(),
     },
     players: [{
-      id: 'hero', name: 'Player', character: 'Ада', hp: 14, maxHp: 14, armor: 12, speed: 30, x: 1, y: 1,
-      abilities: { str: 10, dex: 12, con: 12, int: 10, wis: 12, cha: 16 },
-      proficiency: 2, backgroundSkillProficiencies: ['persuasion'], inventory: [], online: true,
+      id: 'hero', name: 'Player', character: 'Ада', hp: 48, maxHp: 48, armor: 12, speed: 30, x: 1, y: 1, level: 9,
+      abilities: { str: 10, dex: 12, con: 12, int: 10, wis: 12, cha: 18 },
+      proficiency: 4, backgroundSkillProficiencies: ['persuasion'], inventory: [], online: true,
     }],
     worldMap: { seed: 'parley-api', locations: [{ id: 'road', name: ROAD, kind: 'wilds', x: 100, y: 300 }], routes: [] },
     enemies: [
       {
-        id: 'enemy-leader', name: 'Разбойник 1', hp: 3, maxHp: 11, armor: 12, speed: 30, x: 2, y: 1, alive: true,
+        id: 'enemy-leader', name: 'Разбойник 1', hp: 1, maxHp: 11, armor: 12, speed: 30, x: 2, y: 1, alive: true,
         creature_type: 'humanoid', stat_block_id: 'srd_5_2_1:bandit', provenance: { xp: 25 },
         attackBonus: 3, damageDice: 6, damageBonus: 1,
       },
@@ -122,6 +132,10 @@ function seededState() {
       },
       {
         id: 'enemy-fallen-2', name: 'Разбойник 3', hp: 0, maxHp: 11, armor: 12, speed: 30, x: 5, y: 3, alive: false,
+        creature_type: 'humanoid', stat_block_id: 'srd_5_2_1:bandit', provenance: { xp: 25 },
+      },
+      {
+        id: 'enemy-fallen-3', name: 'Разбойник 4', hp: 0, maxHp: 11, armor: 12, speed: 30, x: 5, y: 4, alive: false,
         creature_type: 'humanoid', stat_block_id: 'srd_5_2_1:bandit', provenance: { xp: 25 },
       },
     ],
@@ -179,7 +193,8 @@ test('парлей из хотбара идёт двухфазным ручны�
   assert.equal(announced.status, 200, `${announced.text}\n${log()}`)
   assert.ok(announced.body.check?.check_id, `сервер обязан вернуть карточку проверки\n${announced.text}`)
   assert.equal(announced.body.check.sides, 20)
-  assert.ok(Number.isSafeInteger(announced.body.check.difficulty))
+  assert.equal(announced.body.check.difficulty, 8, 'СЛ считает серверная мораль стороны')
+  assert.equal(announced.body.check.modifier, 8, 'модификатор берётся у той же превью-функции, что и у движка')
 
   const beforeRoll = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
   assert.equal(beforeRoll.body.state.mechanics.combat.truce ?? null, null, 'до броска перемирия быть не может')
@@ -221,21 +236,57 @@ test('парлей из хотбара идёт двухфазным ручны�
   assert.ok(proposed, `парлей не создал события\n${resolved.text}`)
   assert.equal(proposed.payload.total, rolled.body.total, 'движок считает по броску игрока, а не бросает заново')
 
+  assert.equal(proposed.payload.success, true, 'на посеянном состоянии проверка проходит при любом кубике')
+
   const room = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
   const combat = room.body.state.mechanics.combat
   assert.equal(combat.active, true)
   assert.equal(combat.parley_attempts, 1)
-  if (proposed.payload.success === true) {
-    assert.ok(combat.truce, 'успешный парлей обязан оставить перемирие на доске')
-    assert.equal(combat.truce.leader_id, 'enemy-leader')
-    // Очередь заморожена: планировщик ходов NPC на перемирии не работает, и
-    // раунд не уехал вперёд сам собой.
-    assert.equal(combat.round, 2)
-    assert.ok((combat.truce.outcomes ?? []).includes('withdraw'))
-  } else {
-    assert.equal(combat.truce ?? null, null)
-    assert.ok((room.body.state.battleLog ?? []).some((entry) => entry.type === 'parley-rejected'))
-  }
+  assert.ok(combat.truce, `успешный парлей обязан оставить перемирие на доске\n${room.text}`)
+  assert.equal(combat.truce.leader_id, 'enemy-leader')
+  // Очередь заморожена: ни планировщик ходов NPC, ни часы хода на перемирии не
+  // работают, и раунд не уехал вперёд сам собой.
+  assert.equal(combat.round, 2)
+  assert.equal(combat.active_index, 0, 'указатель очереди остаётся на герое')
+  assert.ok((combat.truce.outcomes ?? []).includes('withdraw'))
+
+  // Собеседник переговоров жителем локации не становится: иначе после боя он
+  // остался бы в мире доступным NPC этой сцены.
+  const leader = (room.body.state.social?.npcs ?? []).find((npc) => npc.id === 'enemy-leader')
+  assert.ok(leader, 'предводитель обязан получить профиль собеседника')
+  assert.equal(leader.available, false)
+  assert.equal(leader.location, '')
+})
+
+test('во вторую фазу переговоров принимается только бросок, зарегистрированный переговорами', { timeout: runnerTimeout(40_000) }, async (t) => {
+  const { baseUrl, adminCookie, log } = await setUp(t)
+
+  // Обычный бросок того же героя в той же кампании: реестр сверяет только их
+  // (`server/roll-registry.mjs`), поэтому подсунуть его во вторую фазу парлея
+  // не должно давать ничего — режим кубиков задаёт правило, а не карточка.
+  const foreign = await request(baseUrl, '/api/roll', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { campaignId: SESSION, playerId: 'hero', label: 'Проверка Ловкости', modifier: 12, difficulty: 5 },
+  })
+  assert.equal(foreign.status, 200, `${foreign.text}\n${log()}`)
+  assert.ok(foreign.body.roll_id)
+
+  const rejected = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'parley-foreign-roll',
+      roll: { roll_id: foreign.body.roll_id },
+      command: { command_type: 'ProposeParley', actor_id: 'hero', skill: 'persuasion' },
+    },
+  })
+  assert.equal(rejected.status, 400, rejected.text)
+  assert.equal(rejected.body.code, 'ROLL_CONTEXT_MISMATCH')
+
+  const room = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
+  assert.equal(room.body.state.mechanics.combat.truce ?? null, null, 'чужой бросок перемирия не заключает')
+  assert.equal(room.body.state.mechanics.combat.parley_attempts ?? 0, 0)
 })
 
 test('свободная фраза о переговорах доходит до правила, а не до уточнения', { timeout: runnerTimeout(40_000) }, async (t) => {
@@ -302,4 +353,51 @@ test('свободная фраза тоже уважает ручной бро�
   const proposed = (resolved.body.mechanics ?? []).find((event) => event.event_type === 'ParleyProposed')
   assert.ok(proposed, `вторая фаза не довела парлей до правила\n${resolved.text}`)
   assert.equal(proposed.payload.total, rolled.body.total, 'движок считает по броску игрока')
+})
+
+test('помянутые в боевой фразе переговоры до правила не доходят', { timeout: runnerTimeout(40_000) }, async (t) => {
+  const { baseUrl, adminCookie, log } = await setUp(t)
+
+  // Распознавание окрика стоит до разбора намерения и тратит действие героя,
+  // поэтому цена ложного срабатывания выше цены пропуска: боевая фраза, в
+  // которой переговоры лишь помянуты, обязана уйти обычным свободным действием.
+  const cutting = await request(baseUrl, '/api/narrate', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      campaign_id: SESSION,
+      actor_id: 'hero',
+      idempotency_key: 'parley-counter-1',
+      action: 'Перемирием тут и не пахнет, режу его',
+    },
+  })
+  assert.equal(cutting.status, 200, `${cutting.text}\n${log()}`)
+  assert.equal(
+    (cutting.body.mechanics ?? []).some((event) => event.event_type === 'ParleyProposed'),
+    false,
+    `помянутое перемирие окриком не считается\n${cutting.text}`,
+  )
+
+  const room = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
+  assert.equal(room.body.state.mechanics.combat.parley_attempts ?? 0, 0)
+  assert.equal(room.body.state.mechanics.combat.truce ?? null, null)
+})
+
+test('угроза на переговорах идёт Запугиванием, а не уговором', { timeout: runnerTimeout(40_000) }, async (t) => {
+  const { baseUrl, adminCookie, log } = await setUp(t)
+
+  const threat = await request(baseUrl, '/api/narrate', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      campaign_id: SESSION,
+      actor_id: 'hero',
+      idempotency_key: 'parley-threat-1',
+      action: 'Прекрати бой, гоблин, или я тебя убью',
+    },
+  })
+  assert.equal(threat.status, 200, `${threat.text}\n${log()}`)
+  const proposed = (threat.body.mechanics ?? []).find((event) => event.event_type === 'ParleyProposed')
+  assert.ok(proposed, `угроза обязана дойти до правила переговоров\n${threat.text}`)
+  assert.equal(proposed.payload.skill, 'intimidation')
 })

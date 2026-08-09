@@ -1,23 +1,33 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
   PARLEY_BASE_DC,
   mentionsParley,
+  parleyCounterReasonFor,
   parleyLeaderFor,
   parleyMoraleFor,
+  parleySkillFor,
   parleyTributeCp,
   standingEnemies,
   truceFor,
   truceHolds,
 } from '../server/parley.mjs'
 import {
+  RulesEngine,
   applyGameEvent,
   normalizeCampaignState,
   replayEvents,
   resolveCommands,
 } from '../server/rules-engine.mjs'
+import { FileEventStore } from '../server/event-store.mjs'
+import { combatTurnClock } from '../server/combat-turn-coordinator.mjs'
+import { runNpcTurnScheduler } from '../server/npc-turn-scheduler.mjs'
+import { presentSceneNpcs } from '../server/npc-positioning.mjs'
 import { STAGES } from '../server/post-commit-coordinator.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { worldDeedsFeed } from '../server/world-deeds.mjs'
@@ -237,6 +247,10 @@ test('разбитая сторона отвечает: успех замора�
   const leaderProfile = result.state.social.npcs.find((npc) => npc.id === 'enemy-leader')
   assert.ok(leaderProfile, 'у предводителя обязан появиться профиль собеседника')
   assert.ok(leaderProfile.tags.includes('parley-leader'))
+  // Но жителем локации он не становится: допуск к разговору держится на живом
+  // перемирии, а не на availability профиля.
+  assert.equal(leaderProfile.available, false)
+  assert.equal(leaderProfile.location, '')
 })
 
 test('провал даёт насмешку, а повторный окрик в том же бою идёт с помехой', () => {
@@ -254,6 +268,33 @@ test('провал даёт насмешку, а повторный окрик �
   const proposed = second.events.find((event) => event.event_type === 'ParleyProposed')
   assert.equal(proposed.payload.mode, 'disadvantage', 'второй окрик в том же бою идёт с помехой')
   assert.equal(proposed.payload.attempt, 2)
+})
+
+/**
+ * Режим кубиков у парлея задаёт само правило, а не карточка превью: повторный
+ * окрик идёт с помехой независимо от того, что было зарегистрировано. Одна
+ * кость помеху не измеряет — `Math.min` от неё же и есть она сама, — поэтому
+ * такой бросок правилу не годится и движок бросает сам.
+ */
+test('помеха повторного окрика не исчезает от броска одной костью', () => {
+  const failed = run(campaign(), [propose()], { diceValues: [1] })
+
+  const forged = run(withFreshAction(failed.state), [{
+    ...propose(),
+    verified_roll: { roll_id: 'roll-single', dice: [20] },
+  }], { diceValues: [3, 2] })
+  const forgedProposed = forged.events.find((event) => event.event_type === 'ParleyProposed')
+  assert.equal(forgedProposed.payload.mode, 'disadvantage')
+  assert.notEqual(forgedProposed.payload.roll_id, 'roll-single', 'кость мимо режима правило не принимает')
+  assert.deepEqual(forgedProposed.payload.dice, [3, 2], 'серверный бросок честно кидает две кости')
+
+  const honest = run(withFreshAction(failed.state), [{
+    ...propose(),
+    verified_roll: { roll_id: 'roll-pair', dice: [20, 19] },
+  }])
+  const honestProposed = honest.events.find((event) => event.event_type === 'ParleyProposed')
+  assert.equal(honestProposed.payload.player_rolled, true, 'бросок игрока в своём режиме принимается как есть')
+  assert.equal(honestProposed.payload.kept, 19, 'помеха оставляет меньшую кость')
 })
 
 test('вне боя и при живом перемирии предложить переговоры нельзя', () => {
@@ -342,6 +383,14 @@ test('сдача по уговору ведёт противника тем же
   // Дальше работает уже существующий контур плена: закрытие боя берёт пленных.
   const ended = run(settled.state, [{ command_type: 'EndCombat', actor_id: 'hero', reason: 'enemies_defeated' }])
   assert.ok(ended.events.some((event) => event.event_type === 'CaptiveTaken'))
+  // Пленный — житель сцены, в отличие от собеседника переговоров: он идёт с
+  // отрядом, стоит на посту и виден на доске. Заглушка профиля заменяется
+  // полноценной, иначе сдавшийся по уговору пропал бы из сцены.
+  assert.deepEqual(presentSceneNpcs(ended.state).map((npc) => npc.id), ['enemy-leader'])
+  const captiveProfile = ended.state.social.npcs.find((npc) => npc.id === 'enemy-leader')
+  assert.equal(captiveProfile.available, true)
+  assert.ok(captiveProfile.tags.includes('captive'))
+  assert.equal(captiveProfile.tags.includes('parley-leader'), false)
 })
 
 test('откуп берётся монетой из XP стат-блоков, а не выдуманным предметом', () => {
@@ -446,9 +495,133 @@ test('перемирие останавливает продолжение бо�
   assert.equal(continuation.applies({ state: resumed, eventTypes: new Set() }), true)
 })
 
+/**
+ * Собеседник переговоров — боевой актор, а не житель локации. Записи в
+ * `npc_world.vitals` у него нет, поэтому доступный профиль с адресом текущей
+ * сцены `presentSceneNpcs()` возвращал бы вечно: и после бегства, и после
+ * смерти. Именно этот список — вход `sceneWitnessIds()` летописи поступков и
+ * допуска к разговору, поэтому проверяется он, а не косвенные следствия.
+ */
+test('собеседник переговоров не остаётся в мире ни живым свидетелем, ни говорящим трупом', () => {
+  const held = truced()
+  assert.deepEqual(presentSceneNpcs(held).map((npc) => npc.id), [], 'на доске предводитель — враг, а не второй NPC сцены')
+
+  const finished = run(held, [{
+    command_type: 'ApplyDamage',
+    actor_id: 'hero',
+    target_id: 'enemy-leader',
+    amount: 99,
+  }], { context: { serverAuthoritativeCombat: true, isAdmin: true } })
+  assert.equal(finished.state.enemies.find((enemy) => enemy.id === 'enemy-leader').alive, false)
+  assert.deepEqual(
+    presentSceneNpcs(finished.state).map((npc) => npc.id),
+    [],
+    'убитый предводитель не может свидетельствовать о следующих поступках отряда',
+  )
+
+  // Бой закрыт, перемирия нет — разговаривать с ним больше не с чего.
+  const ended = run(finished.state, [{ command_type: 'EndCombat', actor_id: 'hero', reason: 'enemies_defeated' }])
+  assert.deepEqual(presentSceneNpcs(ended.state).map((npc) => npc.id), [])
+  const projected = campaignStateForViewer(ended.state, { role: 'player' }, 'hero').social.npcs
+    .find((npc) => npc.id === 'enemy-leader')
+  assert.ok(projected, 'знакомство остаётся в памяти отряда')
+  assert.equal(projected.available, false)
+  assert.equal(projected.location, '')
+})
+
+test('перемирие останавливает часы хода, а снятое перемирие открывает новый срок', () => {
+  const startedAt = '2026-08-09T00:00:00.000Z'
+  const fighting = campaign({ combat: { turn_started_at: startedAt, turn_started_event_id: 'evt-turn-1' } })
+  const now = Date.parse(startedAt) + 1_000
+  const fightingClock = combatTurnClock(fighting, [], { now })
+  assert.ok(fightingClock, 'вне перемирия у хода героя обязан быть дедлайн')
+  assert.deepEqual(fightingClock.actor_ids, ['hero'])
+
+  const held = truced(fighting)
+  assert.equal(
+    combatTurnClock(held, [], { now }),
+    null,
+    'на перемирии часы стоят: иначе сервер закоммитил бы EndTurn за героя посреди переговоров',
+  )
+
+  // Переговоры за столом идут дольше срока хода — это норма, а не сбой.
+  const settledAt = new Date(Date.parse(startedAt) + 30 * 60_000).toISOString()
+  const settled = run(held, [{ command_type: 'SettleParley', actor_id: 'hero', outcome: 'resume' }])
+  const resumed = replayEvents(held, settled.events.map((event, index) => ({
+    ...event, event_id: `settle-${index + 1}`, created_at: settledAt,
+  })))
+  const resumedClock = combatTurnClock(resumed, [], { now: Date.parse(settledAt) + 1_000 })
+  assert.ok(resumedClock, 'снятое перемирие возвращает ход герою')
+  assert.deepEqual(resumedClock.actor_ids, ['hero'])
+  assert.ok(
+    Date.parse(resumedClock.deadline_at) > Date.parse(settledAt),
+    'возвращённый ход получает новый срок, а не истёкший ещё во время разговора',
+  )
+})
+
+test('перемирие морозит планировщик ходов NPC, а снятое — возвращает его', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-parley-scheduler-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  /** Ход противника: без перемирия планировщик обязан за него сходить. */
+  const enemyTurn = (state) => normalizeCampaignState({
+    ...state,
+    mechanics: { ...state.mechanics, combat: { ...state.mechanics.combat, active_index: 1 } },
+  })
+  const scheduler = async (campaignId, state) => {
+    const eventStore = new FileEventStore({ rootDir: root, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+    await eventStore.initializeCampaign({ campaign_id: campaignId, initial_state: state })
+    return runNpcTurnScheduler({
+      campaignId,
+      eventStore,
+      rulesEngine: new RulesEngine({ diceService: dice([15, 3, 15, 3]) }),
+      npcController: { decide: async () => null },
+    })
+  }
+
+  const held = truced()
+  const frozen = await scheduler('PARLEY-FROZEN', enemyTurn(held))
+  assert.deepEqual(frozen.turns, [], 'на перемирии планировщик не делает ни одного хода')
+  assert.deepEqual(frozen.events, [])
+  assert.equal(truceHolds(frozen.state), true)
+
+  const resumed = run(held, [{ command_type: 'SettleParley', actor_id: 'hero', outcome: 'resume' }]).state
+  const running = await scheduler('PARLEY-RESUMED', enemyTurn(resumed))
+  assert.ok(running.turns.length > 0, 'без перемирия тот же планировщик за противника ходит')
+})
+
 test('фраза о переговорах распознаётся сервером без модели', () => {
   assert.equal(mentionsParley('кричу им: остановитесь, поговорим!'), true)
   assert.equal(mentionsParley('Предлагаю переговоры'), true)
   assert.equal(mentionsParley('Сдавайтесь, и мы вас не тронем'), true)
+  assert.equal(mentionsParley('Предлагаю переговоры: хватит драться!'), true)
   assert.equal(mentionsParley('бью топором по щиту'), false)
+})
+
+/**
+ * Распознавание стоит **до** разбора намерения и тратит действие героя, поэтому
+ * цена ложного срабатывания выше цены пропуска: слово о переговорах в боевой
+ * фразе окриком не считается.
+ */
+test('слово о переговорах в боевой фразе окриком не считается', () => {
+  const counters = [
+    ['Кричу товарищу: поговорим после боя! А сейчас бью гоблина топором', 'attack'],
+    ['Помню, староста говорил про переговоры с гильдией — но сейчас атакую', 'attack'],
+    ['Перемирием тут и не пахнет, режу его', 'attack'],
+    ['Хватит драться, я сдаюсь', 'own_surrender'],
+    ['Никаких переговоров с этой швалью', 'negation'],
+    ['Предлагаю переговоры, но не сейчас', 'postponed'],
+    ['Помню, в трактире говорили про переговоры с бандой', 'recollection'],
+  ]
+  for (const [phrase, reason] of counters) {
+    assert.equal(parleyCounterReasonFor(phrase), reason, phrase)
+    assert.equal(mentionsParley(phrase), false, phrase)
+  }
+})
+
+test('нажим и уговор различает та же функция, что и распознаёт окрик', () => {
+  assert.equal(parleySkillFor('кричу им: остановитесь, поговорим!'), 'persuasion')
+  assert.equal(parleySkillFor('Сдавайтесь, и мы вас не тронем'), 'intimidation')
+  // Угроза в будущем времени — нажим на переговорах, а не наносимый удар.
+  assert.equal(mentionsParley('Прекрати бой, гоблин, или я тебя убью'), true)
+  assert.equal(parleySkillFor('Прекрати бой, гоблин, или я тебя убью'), 'intimidation')
 })

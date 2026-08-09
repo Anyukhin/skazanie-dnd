@@ -367,6 +367,14 @@ export function planCaptureDrafts(state = {}) {
   const locationId = sceneLocationId(state)
   const locationName = text(state?.scene?.location ?? state?.scene?.title, 180)
   const existingNpcIds = new Set((state?.social?.npcs ?? []).map((npc) => String(npc?.id ?? '')))
+  // Профиль собеседника переговоров — заглушка: недоступен и без адреса, потому
+  // что предводитель уцелевших житель поля боя, а не локации (`parley.mjs`).
+  // Пленный — житель: он идёт с отрядом, стоит на посту сцены и виден на доске.
+  // Поэтому сдавшийся по уговору получает полноценный профиль пленного, а не
+  // остаётся с заглушкой, из-за которой его не было бы ни в сцене, ни на карте.
+  const parleyStubNpcIds = new Set((state?.social?.npcs ?? [])
+    .filter((npc) => npc?.available === false && (Array.isArray(npc?.tags) ? npc.tags : []).includes('parley-leader'))
+    .map((npc) => String(npc?.id ?? '')))
   const existingEntityIds = new Set((state?.worldMemory?.entities ?? []).map((entity) => String(entity?.id ?? '')))
   for (const { enemy, origin } of capturableEnemies(state)) {
     const npcId = String(enemy.id)
@@ -391,7 +399,7 @@ export function planCaptureDrafts(state = {}) {
       last_fed_at_minutes: minutes,
     })
     if (!captive) continue
-    if (!existingNpcIds.has(npcId)) {
+    if (!existingNpcIds.has(npcId) || parleyStubNpcIds.has(npcId)) {
       drafts.push({
         event_type: 'NpcSocialProfileUpserted',
         payload: {
