@@ -16,6 +16,7 @@ import {
   serializeTacticalMap,
   serializedTacticalMapHash,
 } from './tactical-map.mjs'
+import { captivesForViewer } from './captives.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
@@ -639,6 +640,10 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // копируется вовсе: игрок узнаёт слух в игре, из уст NPC, а не читая
   // состояние. Публичной формы у неё нет и не должно быть.
   'world_deeds',
+  // Реестр пленных: отряду он принадлежит целиком, кроме одного — того, чего
+  // пленный ещё не сказал. `known_fact_ids` остаётся у ведущего, иначе допрос
+  // перестал бы быть проверкой: игрок читал бы ответ прямо из состояния.
+  'captives',
   'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
   // Собственного ключа в состоянии нет: подсказки выводятся из уже собранной
   // комнаты и существуют только в проекции. Решение осознанное — скрытого в
@@ -777,6 +782,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       state,
     }),
     scene_npcs: sceneNpcsForViewer(state),
+    captives: captivesForViewer(state, { isAdmin: false }),
     merchants,
     enemies,
     mechanics,

@@ -89,6 +89,7 @@ import {
   merchantViewFor,
   planMerchantEconomyClock,
 } from './merchant-economy.mjs'
+import { CAPTIVE_PLAYER_COMMAND_TYPES, planCaptiveNeglectCommands } from './captives.mjs'
 import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
@@ -387,6 +388,9 @@ const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelec
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
 const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem'])
 const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'])
+// Действия с пленным. Отдельный набор, а не часть боевого: они доступны только
+// вне боя и не трогают экономику хода.
+const PLAYER_CAPTIVE_COMMANDS = CAPTIVE_PLAYER_COMMAND_TYPES
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -983,6 +987,44 @@ function sanitizePlayerCharacterCommand(user, state, input) {
   return { ...command, request_fingerprint: characterBuildFingerprint(command) }
 }
 
+/**
+ * Из запроса берутся только пленный, герой и, для допроса, выбранный подход.
+ * Ни СЛ, ни исход броска, ни сумма награды клиент подсказать не может: их знает
+ * серверная политика плена.
+ */
+function sanitizePlayerCaptiveCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_CAPTIVE_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к действиям с пленным', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'captive_id', 'captiveId',
+    'skill',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда пленного содержит запрещённые поля: ${unexpected.join(', ')}`, 'CAPTIVE_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Распорядиться пленным можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  }
+  const captiveId = String(input?.captive_id ?? input?.captiveId ?? '').trim().slice(0, 120)
+  if (!captiveId) throw commandPolicyError('Не выбран пленный', 'CAPTIVE_NOT_FOUND')
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    captive_id: captiveId,
+    server_authoritative: true,
+    ...(type === 'InterrogateCaptive' ? { skill: String(input?.skill ?? 'intimidation') } : {}),
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
 function sanitizePlayerItemCommand(user, state, input) {
   const type = commandType(input)
   if (!PLAYER_ITEM_COMMANDS.has(type)) {
@@ -1457,6 +1499,42 @@ function worldRumorClockHasWork(campaignId) {
 }
 
 /**
+ * Есть ли часам голода над чем работать. Такая же дешёвая калитка, как у молвы:
+ * без удерживаемых пленных такт не платит за `eventStore.load` вовсе.
+ */
+function captiveClockHasWork(campaignId) {
+  const room = getRoom(campaignId)
+  if (!room?.state) return false
+  try { assertCampaignPlayable(room.state) } catch { return false }
+  return planCaptiveNeglectCommands(room.state).length > 0
+}
+
+/**
+ * Часы голода пленных. Живут рядом с часами молвы по той же причине: связанного
+ * надо кормить, а мировое время идёт само, и без серверного драйвера жестокость
+ * от голода не наступала бы никогда — клиент системный такт не дёргает.
+ *
+ * Такт сходится по построению: `NeglectCaptive` сдвигает `neglected_at_minutes`
+ * на текущую минуту, и следующая запись о том же пленном возможна только через
+ * сутки игрового времени.
+ */
+async function runCaptiveClock(campaignId) {
+  const loaded = await eventStore.load(campaignId)
+  const state = normalizeCampaignState(loaded.state)
+  const worldMinute = Math.max(0, Number(state.mechanics?.world_time?.elapsed_minutes ?? 0))
+  const commands = planCaptiveNeglectCommands(state, { worldMinute })
+  if (!commands.length) return { state, events: [] }
+  const committed = await authoritativeExecutor.executeCommands({
+    campaignId,
+    idempotencyKey: `captive-clock:${worldMinute}:${loaded.state_version}`,
+    commands,
+    context: { isDirector: true },
+  })
+  if (committed.replayed) return { state, events: [] }
+  return { state: normalizeCampaignState(committed.state ?? state), events: committed.events ?? [] }
+}
+
+/**
  * Серверный драйвер мировых часов кампании: лавка и молва.
  *
  * Часы обязаны идти сами. Клиент системный такт не дёргает — это правило
@@ -1484,6 +1562,10 @@ function nudgeWorldClocks(campaignId) {
         entry.pending = false
         const economy = await runMerchantEconomyClock(normalized)
         if (economy.events.length) persistAuthoritativeProjection(normalized, economy.state, economy.events)
+        if (captiveClockHasWork(normalized)) {
+          const captives = await runCaptiveClock(normalized)
+          if (captives.events.length) persistAuthoritativeProjection(normalized, captives.state, captives.events)
+        }
         if (!worldRumorClockHasWork(normalized)) continue
         // Предохранитель от несходящегося такта. Свой коммит часов молвы сам
         // сохраняет комнату, а сохранение комнаты будит драйвер снова: если
@@ -3568,6 +3650,7 @@ const server = createServer((req, res) => {
         if (PLAYER_MERCHANT_COMMANDS.has(type)) return sanitizeMerchantCommand(user, authoritativeBefore, command)
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
+        if (PLAYER_CAPTIVE_COMMANDS.has(type)) return sanitizePlayerCaptiveCommand(user, authoritativeBefore, command)
         if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, authoritativeBefore, command)
         return PLAYER_COMBAT_COMMANDS.has(type) ? { ...command, server_authoritative: true } : command
       })
@@ -3610,6 +3693,10 @@ const server = createServer((req, res) => {
       }
       if (itemCommands.length && commands.length !== 1) {
         throw commandPolicyError('Действие с предметом должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      const captiveCommands = commands.filter((command) => PLAYER_CAPTIVE_COMMANDS.has(commandType(command)))
+      if (captiveCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Действие с пленным должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
       if (itemCommands.length) {
         await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])

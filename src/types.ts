@@ -1159,6 +1159,11 @@ export type GameState = {
    */
   world_deeds?: WorldDeedsProjection
   /**
+   * Пленные отряда. В отличие от летописи поступков, эта ветка игроку
+   * принадлежит: он видит, кого держит, — но не то, чего пленный ещё не сказал.
+   */
+  captives?: CaptivesProjection
+  /**
    * Optional viewer-safe contract introduced by server PR #18. Coordinates
    * are authoritative; raw HP, goals and beliefs are deliberately absent.
    */
@@ -1330,6 +1335,39 @@ export type WorldDeedEntry = {
 }
 
 export type WorldDeedsProjection = { schema_version?: number; deeds?: WorldDeedEntry[] }
+
+/**
+ * Пленный отряда. Приходит и игроку, и ведущему, но не одинаково: серверная
+ * проекция вырезает `known_fact_ids` — то, чего пленный ещё не сказал, — и
+ * оставляет вместо него счётчик `pending_knowledge`. Иначе допрос перестал бы
+ * быть проверкой: ответ читался бы прямо из состояния.
+ */
+export type CaptiveEntry = {
+  id: string
+  npc_id: string
+  actor_id?: string
+  name: string
+  role?: string
+  temper?: string
+  origin: 'surrendered' | 'knocked_out'
+  status: 'held' | 'released' | 'handed_over' | 'dead'
+  band_id?: string
+  taken_at_minutes?: number
+  location_name?: string
+  revealed_fact_ids?: string[]
+  interrogations?: number
+  last_fed_at_minutes?: number
+  neglected_at_minutes?: number | null
+  resolved_at_minutes?: number | null
+  resolution?: string
+  disposition?: 'ally' | 'informant' | 'none'
+  /** Сколько зацепок пленный ещё держит при себе. Само знание остаётся у ведущего. */
+  pending_knowledge?: number
+  /** Только у ведущего: идентификаторы нераскрытых фактов. */
+  known_fact_ids?: string[]
+}
+
+export type CaptivesProjection = { schema_version?: number; captives?: CaptiveEntry[] }
 
 export type CombatInitiativeEntry = {
   actor_id: string

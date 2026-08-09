@@ -67,6 +67,23 @@ import {
   normalizeWorldDeedsState,
 } from './world-deeds.mjs'
 import {
+  CAPTIVES_POLICY_ID,
+  CAPTIVE_COMMAND_TYPES,
+  CAPTIVE_INTERROGATION_SKILLS,
+  CAPTIVE_PLAYER_COMMAND_TYPES,
+  CAPTIVE_SPARED_RELATIONSHIP_DELTA,
+  applyCaptiveEvent,
+  captiveBountyCp,
+  captiveFor,
+  captiveInterrogationPolicy,
+  captiveSettlementFor,
+  captiveSparedDisposition,
+  localFactionIds,
+  normalizeCaptivesState,
+  planCaptiveRelocationDrafts,
+  planCaptureDrafts,
+} from './captives.mjs'
+import {
   ensureSceneWorldMemory,
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
@@ -75,9 +92,11 @@ import {
   NPC_SOCIAL_COMMAND_TYPES,
   NpcSocialValidationError,
   applyNpcSocialEvent,
+  campaignElapsedMinutes,
   ensureNpcSocialState,
   npcPromiseDeadlineEvents,
   npcSocialEvents,
+  relationshipTier,
   validateNpcSocialCommand,
 } from './npc-social.mjs'
 import {
@@ -91,6 +110,7 @@ import {
   npcMissCollateralTarget,
   npcPlacementFor,
   npcTargetsWithinArea,
+  npcVitalFor,
   placedSceneNpcTargets,
   normalizeNpcWorldState,
   planSceneNpcPlacementEvents,
@@ -231,7 +251,11 @@ const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // него — поступки, случившиеся до границы снимка, не восстановились бы никогда,
 // и летопись перестала бы быть чистой функцией журнала. Бамп отбрасывает старые
 // снимки и заставляет переиграть поток целиком.
-export const GAME_STATE_PROJECTOR_VERSION = 10
+// 11: реестр пленных `captives` выводится редьюсером из `CaptiveTaken` и
+// последующих событий. Причина бампа та же, что у летописи поступков: снимок
+// десятой версии реестра не содержит, а доигранный хвост журнала восстановил бы
+// только тех пленных, кого взяли после границы снимка.
+export const GAME_STATE_PROJECTOR_VERSION = 11
 
 /**
  * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
@@ -383,6 +407,14 @@ const COMMAND_RULES = Object.freeze({
   PlaceNpc: [],
   MoveNpc: [],
   HarmNpc: [RULE_IDS.damage],
+  // Допрос — обычная проверка характеристики против серверной СЛ; остальные
+  // действия с пленным броска не требуют и правил ruleset не расходуют.
+  InterrogateCaptive: [RULE_IDS.abilityCheck],
+  ReleaseCaptive: [],
+  HandCaptiveToGuards: [],
+  FeedCaptive: [],
+  ExecuteCaptive: [RULE_IDS.damage],
+  NeglectCaptive: [],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -409,6 +441,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'RecordNpcBelief', 'RecordRumor', 'ResolveEpistemicClaim', 'RecordNarrativeSummary',
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
   ...NPC_WORLD_COMMAND_TYPES,
+  ...CAPTIVE_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1416,6 +1449,7 @@ export function normalizeCampaignState(input = {}) {
   state.social = ensureNpcSocialState(state.social, state)
   state.npc_world = normalizeNpcWorldState(state.npc_world)
   state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
+  state.captives = normalizeCaptivesState(state.captives)
   state.autonomy = normalizeAutonomyState(state.autonomy)
   state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
   if (state.agentInteraction && typeof state.agentInteraction === 'object' && !Array.isArray(state.agentInteraction)) {
@@ -2865,6 +2899,18 @@ function normalizeCommand(input, state) {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
     delete command.npcId
   }
+  if (CAPTIVE_COMMAND_TYPES.has(command.command_type)) {
+    command.captive_id = String(command.captive_id ?? command.captiveId ?? '').slice(0, 120)
+    delete command.captiveId
+    if (command.command_type === 'InterrogateCaptive') {
+      command.skill = CAPTIVE_INTERROGATION_SKILLS.includes(String(command.skill)) ? String(command.skill) : 'intimidation'
+    }
+    if (command.command_type === 'NeglectCaptive') {
+      command.actor_id = null
+      command.target_id = null
+      command.target_ids = []
+    }
+  }
   if (command.command_type === 'ResolveHeroDeath') {
     command.resolution = String(command.resolution ?? '')
     command.replacement_name = command.replacement_name == null ? '' : String(command.replacement_name).trim().slice(0, 120)
@@ -3339,6 +3385,36 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError(error.message, error.code)
       }
       throw error
+    }
+  }
+  if (CAPTIVE_COMMAND_TYPES.has(command.command_type)) {
+    const captive = captiveFor(state, command.captive_id)
+    if (!captive) throw new RulesValidationError('Пленный не найден', 'CAPTIVE_NOT_FOUND')
+    if (captive.status !== 'held') throw new RulesValidationError('Судьба этого пленного уже решена', 'CAPTIVE_ALREADY_RESOLVED')
+    if (command.command_type === 'NeglectCaptive') {
+      // Голод фиксируют мировые часы. Отряд не может объявить его сам — иначе
+      // жестокость превратилась бы в кнопку без прошедшего времени.
+      if (context?.isDirector !== true && context?.isAdmin !== true) {
+        throw new RulesValidationError('Голод пленного отмечают только серверные часы кампании', 'CAPTIVE_NEGLECT_FORBIDDEN')
+      }
+    }
+    if (CAPTIVE_PLAYER_COMMAND_TYPES.has(command.command_type)) {
+      if (state.mechanics.combat.active) {
+        throw new RulesValidationError('С пленным разбираются после боя, а не посреди него', 'CAPTIVE_DURING_COMBAT')
+      }
+      if (!playerActor(state, command.actor_id)) {
+        throw new RulesValidationError('Действие с пленным доступно только герою отряда', 'ACTOR_FORBIDDEN')
+      }
+      if (!isLivingActor(findActor(state, command.actor_id))) {
+        throw new RulesValidationError('Герой без сознания не может распорядиться пленным', 'CAPTIVE_ACTOR_INCAPACITATED')
+      }
+    }
+    if (command.command_type === 'InterrogateCaptive'
+      && captive.revealed_fact_ids.length >= captive.known_fact_ids.length) {
+      throw new RulesValidationError('Пленный уже рассказал всё, что знает', 'CAPTIVE_KNOWLEDGE_EXHAUSTED')
+    }
+    if (command.command_type === 'HandCaptiveToGuards' && !captiveSettlementFor(state)) {
+      throw new RulesValidationError('Сдать пленного можно только в поселении, где есть стража', 'CAPTIVE_NO_SETTLEMENT')
     }
   }
   if (CHARACTER_BUILD_COMMAND_TYPES.has(command.command_type)) {
@@ -3945,7 +4021,12 @@ export function validateCommand(input, rawState, context = {}) {
   // лестнице — перемещение по миру, а не механика редакции. Приписать ему
   // `turn-economy` значило бы соврать: в бою переход запрещён вовсе, и хода он
   // не тратит.
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  //
+  // Пленные стоят там же и по той же причине: отпустить, накормить или сдать
+  // страже — решения о судьбе NPC, а не механика редакции. Допрос и казнь из
+  // этого списка исключены — у них своя проверка и свой урон, и правило у них
+  // есть (`COMMAND_RULES`).
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CAPTIVE_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -9447,6 +9528,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           enemy_ids: clone(state.mechanics.encounter.enemy_ids ?? []),
         }, state.mechanics.encounter.enemy_ids ?? []))
       }
+      // Пленные выводятся из конца боя, а не из отдельной команды игрока: это
+      // единственный момент, когда «мы победили и он ещё жив» уже подтверждено
+      // журналом. Сдавшийся и нокаутнутый-стабилизированный переходят в плен
+      // здесь же, вместе со своим социальным профилем и постом в сцене.
+      events.push(...npcWorldEventsFrom(command, planCaptureDrafts(state)))
       break
     }
     case 'EndTurn': {
@@ -9863,6 +9949,238 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         commandId: command.command_id,
       })))
       break
+    case 'InterrogateCaptive': {
+      const captive = captiveFor(state, command.captive_id)
+      const actor = findActor(state, command.actor_id)
+      const standing = reputationStandingFor(state, captive.npc_id)
+      const policy = captiveInterrogationPolicy(state, captive, {
+        skill: command.skill,
+        reputationShift: standing.social_dc_shift,
+      })
+      const proficiency = skillProficiencyForActor(actor, policy.skill)
+      const modifier = abilityModifier(actor?.abilities?.[policy.ability]) + (proficiency?.bonus ?? 0)
+      const checkOptions = {
+        modifier,
+        difficulty: policy.difficulty,
+        purpose: `captive_interrogation:${policy.skill}`,
+        actorId: command.actor_id,
+        visibility: command.visibility,
+      }
+      const roll = checkRollFromVerified(command.verified_roll, checkOptions) ?? diceService.rollCheck(checkOptions)
+      rolls.push(roll)
+      const interrogationEventId = `captive-interrogated:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'CaptiveInterrogated', {
+          captive_id: captive.id,
+          npc_id: captive.npc_id,
+          hero_id: command.actor_id,
+          skill: policy.skill,
+          ability: policy.ability,
+          temper: policy.temper,
+          fear_shift: policy.fear_shift,
+          ...roll,
+          success: roll.success,
+          ...(roll.success ? { fact_id: policy.fact_id } : {}),
+          policy_id: CAPTIVES_POLICY_ID,
+        }, [captive.npc_id, command.actor_id]),
+        event_id: interrogationEventId,
+      })
+      if (roll.success && policy.fact_id) {
+        // Тот же механизм, которым NPC раскрывает факт в разговоре: запись в
+        // журнале знания героя. Сам факт остаётся `gm_only` — видимым его
+        // делает именно эта запись, и только тому, кто вёл допрос.
+        events.push(eventFrom({ ...command, visibility: 'specific_player' }, 'KnowledgeRevealed', {
+          knowledge_id: `${captive.id}:knowledge:${captive.revealed_fact_ids.length + 1}`,
+          hero_id: command.actor_id,
+          fact_id: policy.fact_id,
+          source_event_ids: [interrogationEventId],
+          source_kind: 'npc',
+          revealed_at_minutes: campaignElapsedMinutes(state),
+        }, [command.actor_id]))
+      }
+      break
+    }
+    case 'ReleaseCaptive': {
+      const captive = captiveFor(state, command.captive_id)
+      const disposition = captiveSparedDisposition(captive)
+      const minutes = campaignElapsedMinutes(state)
+      const releaseEventId = `captive-released:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(command, 'CaptiveReleased', {
+          captive_id: captive.id,
+          npc_id: captive.npc_id,
+          hero_id: command.actor_id,
+          disposition,
+          at_minutes: minutes,
+          policy_id: CAPTIVES_POLICY_ID,
+        }, [captive.npc_id, command.actor_id]),
+        event_id: releaseEventId,
+      })
+      // Пощажённый помнит. Отношение и слава двигаются существующими событиями:
+      // отдельной «памяти о милосердии» рядом с ними заводить нельзя. Счёт до и
+      // после берётся из состояния, а не проставляется константой: редьюсер
+      // считает по `delta`, но payload не имеет права расходиться с журналом.
+      const socialBefore = ensureNpcSocialState(state.social, state).relationships[captive.npc_id]?.[command.actor_id] ?? 0
+      const socialAfter = Math.max(-100, Math.min(100, socialBefore + CAPTIVE_SPARED_RELATIONSHIP_DELTA))
+      const relationshipPayload = {
+        npc_id: captive.npc_id,
+        hero_id: command.actor_id,
+        delta: socialAfter - socialBefore,
+        score_before: socialBefore,
+        score_after: socialAfter,
+        tier_before: relationshipTier(socialBefore),
+        tier_after: relationshipTier(socialAfter),
+        reason: 'captive-spared',
+        promise_id: '',
+      }
+      events.push(eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipAdjusted', relationshipPayload, [command.actor_id]))
+      if (relationshipPayload.tier_before !== relationshipPayload.tier_after) {
+        events.push(eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipTierChanged', relationshipPayload, [command.actor_id]))
+      }
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'NpcStanceChanged', {
+        npc_id: captive.npc_id,
+        npc_name: captive.name,
+        stance: 'guarded',
+        reason: 'captive-released',
+        source_event_id: releaseEventId,
+        propagation_depth: 0,
+        policy_id: NPC_WORLD_POLICY_ID,
+      }, [captive.npc_id]))
+      events.push(eventFrom({ ...command, visibility: 'gm_only' }, 'WorldFactRecorded', {
+        fact: {
+          id: `fact:captive-spared:${String(captive.id).slice(0, 60)}`,
+          subject_id: captive.npc_id,
+          predicate: 'spared_by_party',
+          object: disposition,
+          summary: disposition === 'ally'
+            ? `${captive.name} отпущен(а) живым и готов(а) однажды встать рядом с отрядом.`
+            : disposition === 'informant'
+              ? `${captive.name} отпущен(а) живым и может ещё принести отряду весть.`
+              : `${captive.name} отпущен(а) живым и просто ушёл(ушла) своей дорогой.`,
+          visibility: 'gm_only',
+          source_event_ids: [releaseEventId],
+          status: 'active',
+          recorded_at_minutes: minutes,
+        },
+      }, []))
+      break
+    }
+    case 'HandCaptiveToGuards': {
+      const captive = captiveFor(state, command.captive_id)
+      const settlement = captiveSettlementFor(state)
+      const actor = playerActor(state, command.actor_id)
+      const bountyCp = captiveBountyCp(captive)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const balanceAfterCp = Math.min(MAX_CURRENCY_CP, balanceBeforeCp + bountyCp)
+      const minutes = campaignElapsedMinutes(state)
+      const handoverEventId = `captive-handed-over:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(command, 'CaptiveHandedOver', {
+          captive_id: captive.id,
+          npc_id: captive.npc_id,
+          hero_id: command.actor_id,
+          settlement_id: settlement.id,
+          settlement_name: settlement.name,
+          bounty_cp: balanceAfterCp - balanceBeforeCp,
+          currency_before: normalizeCurrency(actor.currency),
+          currency_after: copperToCurrency(balanceAfterCp),
+          balance_before_cp: balanceBeforeCp,
+          balance_after_cp: balanceAfterCp,
+          at_minutes: minutes,
+          policy_id: CAPTIVES_POLICY_ID,
+        }, [captive.npc_id, command.actor_id]),
+        event_id: handoverEventId,
+      })
+      // Слава закона — та же механика репутации, что у слухов: местные фракции
+      // замечают, что отряд привёл разбойника к страже, а не прирезал в канаве.
+      for (const factionId of localFactionIds(state)) {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'FactionReputationAdjusted', {
+          faction_id: factionId,
+          delta: 3,
+          source_event_id: handoverEventId,
+          captive_id: captive.id,
+          provenance: { source: 'server-captive-policy', policy: CAPTIVES_POLICY_ID },
+        }, []))
+      }
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'WorldFactRecorded', {
+        fact: {
+          id: `fact:captive-handed-over:${String(captive.id).slice(0, 60)}`,
+          subject_id: captive.npc_id,
+          predicate: 'handed_to_watch',
+          object: settlement.id,
+          summary: `${captive.name} передан(а) страже поселения «${settlement.name}».`,
+          visibility: 'party',
+          source_event_ids: [handoverEventId],
+          status: 'active',
+          recorded_at_minutes: minutes,
+        },
+      }, []))
+      break
+    }
+    case 'FeedCaptive': {
+      const captive = captiveFor(state, command.captive_id)
+      events.push(eventFrom(command, 'CaptiveFed', {
+        captive_id: captive.id,
+        npc_id: captive.npc_id,
+        hero_id: command.actor_id,
+        at_minutes: campaignElapsedMinutes(state),
+        policy_id: CAPTIVES_POLICY_ID,
+      }, [captive.npc_id]))
+      break
+    }
+    case 'NeglectCaptive': {
+      const captive = captiveFor(state, command.captive_id)
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'CaptiveNeglected', {
+        captive_id: captive.id,
+        npc_id: captive.npc_id,
+        captive_name: captive.name,
+        hours_without_food: Math.floor(Math.max(0, campaignElapsedMinutes(state) - captive.last_fed_at_minutes) / 60),
+        at_minutes: campaignElapsedMinutes(state),
+        policy_id: CAPTIVES_POLICY_ID,
+      }, [captive.npc_id]))
+      break
+    }
+    case 'ExecuteCaptive': {
+      const captive = captiveFor(state, command.captive_id)
+      // Смерть пленного идёт тем же путём, что и любая гибель NPC: стойки
+      // свидетелей, репутация и факт смерти уже описаны `npcHarmEventDrafts`.
+      // Своей ветки смерти у пленного нет — иначе мир узнавал бы о ней иначе,
+      // чем об остальных.
+      const vital = npcVitalFor(state, captive.npc_id)
+      const harmDrafts = npcHarmEventDrafts(state, {
+        npcId: captive.npc_id,
+        amount: Math.max(1, safeInteger(vital.hp, 1)),
+        damageType: 'slashing',
+        sourceActorId: command.actor_id,
+        trigger: 'captive-execution',
+        commandId: command.command_id,
+      })
+      // Драфты требуют поста в сцене: без него мир не узнал бы даже о смерти, а
+      // пленный остался бы живым NPC в памяти. Тогда смерть объявляется прямо —
+      // без свидетелей и репутации, которых в этом случае и правда неоткуда взять.
+      events.push(...npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), harmDrafts.length ? harmDrafts : [{
+        event_type: 'NpcDied',
+        payload: {
+          npc_id: captive.npc_id,
+          npc_name: captive.name,
+          location_id: sceneLocationId(state),
+          source_actor_id: command.actor_id,
+          trigger: 'captive-execution',
+          policy_id: NPC_WORLD_POLICY_ID,
+        },
+        target_ids: [captive.npc_id],
+        visibility: 'party',
+      }]))
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'CaptiveExecuted', {
+        captive_id: captive.id,
+        npc_id: captive.npc_id,
+        captive_name: captive.name,
+        hero_id: command.actor_id,
+        at_minutes: campaignElapsedMinutes(state),
+        policy_id: CAPTIVES_POLICY_ID,
+      }, [captive.npc_id, command.actor_id]))
+      break
+    }
     case 'AdvanceScene': {
       if (command.party_decision) {
         const currentDecision = state.agentInteraction
@@ -9892,7 +10210,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         request_fingerprint: command.request_fingerprint,
       }, partyPositions.map((position) => position.actor_id)), event_id: sceneEventId }
       events.push(sceneEvent)
-      const transitionedState = applyGameEvent(state, sceneEvent)
+      // Связанный идёт с отрядом. Без этого пленный оставался бы в подземелье,
+      // где его взяли, и «сдать страже» работало бы только при захвате прямо в
+      // городе. Перенос применяется к промежуточному состоянию до расстановки
+      // NPC — иначе планировщик постов ещё не знает, что пленный тут.
+      let transitionedState = applyGameEvent(state, sceneEvent)
+      for (const relocation of npcWorldEventsFrom(command, planCaptiveRelocationDrafts(transitionedState))) {
+        events.push(relocation)
+        transitionedState = applyGameEvent(transitionedState, relocation)
+      }
       events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(transitionedState)))
       for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId })) {
         events.push(eventFrom({ ...command, visibility: memoryEvent.visibility }, memoryEvent.event_type, memoryEvent.payload, memoryEvent.target_ids))
@@ -11957,6 +12283,29 @@ export function applyGameEvent(rawState, event) {
       appendBattleLog(state, event, { type: 'combat-start', round: safeInteger(payload.round, 1), participantIds: targets })
       break
     }
+    case 'CaptiveTaken': {
+      // Пленный перестаёт быть боевым актором. Заодно снимается бухгалтерия
+      // нокаута: связанный приходит в себя — иначе допрашивать было бы некого,
+      // а таймер короткого отдыха продолжал бы тикать за уже пленным существом.
+      const captiveActorId = String(payload.captive?.actor_id ?? '')
+      if (captiveActorId) {
+        replaceActor(state, captiveActorId, (actor) => ({ ...actor, alive: false, captive: true }))
+        delete state.mechanics.resting[captiveActorId]
+        state.mechanics.conditions[captiveActorId] = (state.mechanics.conditions[captiveActorId] ?? [])
+          .filter((condition) => String(condition?.id ?? condition) !== 'unconscious')
+        appendBattleLog(state, event, { type: 'captive-taken', actorId: captiveActorId, reason: String(payload.captive?.origin ?? 'surrendered') })
+      }
+      break
+    }
+    case 'CaptiveHandedOver': {
+      const recipient = String(payload.hero_id ?? event.actor_id ?? '')
+      if (recipient && payload.currency_after) {
+        state.players = state.players.map((player) => actorId(player) === recipient
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player)
+      }
+      break
+    }
     case 'CombatEnded':
       appendBattleLog(state, event, { type: 'combat-end', round: safeInteger(payload.round, state.mechanics.combat.round), reason: String(payload.reason || 'resolved') })
       state.mechanics.combat = { active: false, round: safeInteger(payload.round, state.mechanics.combat.round), initiative: [], active_index: -1, action_economy: {}, reaction_window: null, readied: {} }
@@ -12395,6 +12744,10 @@ export function applyGameEvent(rawState, event) {
   // Летопись поступков выводится из уже применённого события: свидетелями
   // считаются те, кто остался в сцене после него, — убитый NPC свидетелем быть
   // не может. Порядок здесь и есть гарантия replay-стабильности.
+  // Реестр пленных обновляется **до** летописи поступков: убийство пленного
+  // распознаётся жестокостью по тому, что запись ещё числится удерживаемой, а
+  // `CaptiveExecuted` приходит следующим событием той же команды.
+  state.captives = applyCaptiveEvent(state.captives, event, state)
   state.world_deeds = applyWorldDeedEvent(state.world_deeds, event, state)
   state.autonomy = applyAutonomyEvent(state.autonomy, event)
   state.state_version = Number.isSafeInteger(event.state_version_after)
@@ -12563,6 +12916,14 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'ActionDeclared': return 'Намерение героя принято к рассмотрению.'
     case 'TimeAdvanced': return `Проходит ${payload.amount || 0} ${payload.unit || 'мин.'}`
     case 'CombatEnded': return `Бой завершён в раунде ${payload.round}`
+    case 'CaptiveTaken': return `${payload.captive?.name || 'Побеждённый'} становится пленником отряда`
+    case 'CaptiveInterrogated': return `Допрос пленного: ${payload.success === true ? 'успех' : 'провал'} (СЛ ${payload.difficulty})`
+    case 'CaptiveFed': return 'Пленного накормили'
+    case 'CaptiveNeglected': return `Пленный ${payload.hours_without_food} ч без еды`
+    case 'CaptiveReleased': return `${named((event.target_ids ?? [])[0]) || 'Пленный'} отпущен`
+    case 'CaptiveHandedOver': return `Пленный передан страже «${payload.settlement_name || ''}»`
+    case 'CaptiveExecuted': return `${payload.captive_name || 'Пленный'} убит связанным`
+    case 'CaptiveMoved': return 'Пленного увели с отрядом'
     default: return event.event_type
   }
 }

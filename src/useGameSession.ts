@@ -19,6 +19,9 @@ import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
 
+export type CaptiveInterrogationSkill = 'persuasion' | 'intimidation'
+export type CaptiveAction = 'interrogate' | 'release' | 'hand-over' | 'feed' | 'execute'
+
 type TacticalCommand =
   | { command_type: 'StartCombat'; actor_id: string }
   | { command_type: 'MoveActor'; actor_id: string; to: { x: number; y: number } }
@@ -39,6 +42,11 @@ type TacticalCommand =
   | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
   | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
   | { command_type: 'ActivateItem'; actor_id: string; item_id: string; activated: boolean }
+  | { command_type: 'InterrogateCaptive'; actor_id: string; captive_id: string; skill: CaptiveInterrogationSkill }
+  | { command_type: 'ReleaseCaptive'; actor_id: string; captive_id: string }
+  | { command_type: 'HandCaptiveToGuards'; actor_id: string; captive_id: string }
+  | { command_type: 'FeedCaptive'; actor_id: string; captive_id: string }
+  | { command_type: 'ExecuteCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -1139,6 +1147,31 @@ export function useGameSession() {
     }, label[intent])
   }, [executeTacticalCommand])
 
+  /* Судьба пленного. Клиент называет только пленного и, для допроса, подход;
+     СЛ, исход броска, награду и последствия считает сервер. */
+  const captiveAction = useCallback((
+    actorId: string,
+    captiveId: string,
+    action: CaptiveAction,
+    skill: CaptiveInterrogationSkill = 'intimidation',
+  ) => {
+    if (action === 'interrogate') {
+      return executeTacticalCommand({
+        command_type: 'InterrogateCaptive', actor_id: actorId, captive_id: captiveId, skill,
+      }, skill === 'persuasion' ? 'Разговорить пленного убеждением' : 'Допросить пленного с нажимом')
+    }
+    if (action === 'release') {
+      return executeTacticalCommand({ command_type: 'ReleaseCaptive', actor_id: actorId, captive_id: captiveId }, 'Отпустить пленного')
+    }
+    if (action === 'hand-over') {
+      return executeTacticalCommand({ command_type: 'HandCaptiveToGuards', actor_id: actorId, captive_id: captiveId }, 'Сдать пленного страже')
+    }
+    if (action === 'feed') {
+      return executeTacticalCommand({ command_type: 'FeedCaptive', actor_id: actorId, captive_id: captiveId }, 'Накормить пленного')
+    }
+    return executeTacticalCommand({ command_type: 'ExecuteCaptive', actor_id: actorId, captive_id: captiveId }, 'Убить пленного')
+  }, [executeTacticalCommand])
+
   /* Переход между этажами — та же лёгкая команда, что и остальные действия у
      карты: сервер решает, дошёл ли герой до лестницы и не идёт ли бой, и
      отказывает кодами `TRANSITION_*` / `LEVEL_*`. Клиент только называет
@@ -1530,6 +1563,7 @@ export function useGameSession() {
     changeWeapon,
     operateDoor,
     operateSceneObject,
+    captiveAction,
     useLevelTransition,
     finishMapTurn,
     resolveHeroDeath,

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { heldCaptiveForNpc } from './captives.mjs'
 import { normalizeNpcWorldState, presentSceneNpcs, sceneLocationId } from './npc-positioning.mjs'
 import { factionIdsForNpc } from './reputation-policy.mjs'
 
@@ -65,6 +66,10 @@ const DEED_REPUTATION_BASE = Object.freeze({ grave: 8, major: 5, minor: 2 })
  */
 export const DEED_KINDS = Object.freeze({
   murder: Object.freeze({ alignment: 'dark', severity: 'grave', label: 'Убийство' }),
+  // Жестокость — не «ещё одно убийство»: беззащитность жертвы и есть содержание
+  // поступка. Пленного добили связанным или уморили голодом, и мир судит это
+  // отдельно от боя, где обе стороны были при оружии.
+  cruelty: Object.freeze({ alignment: 'dark', severity: 'grave', label: 'Жестокость' }),
   arson: Object.freeze({ alignment: 'dark', severity: 'major', label: 'Поджог' }),
   theft: Object.freeze({ alignment: 'dark', severity: 'major', label: 'Кража' }),
   destruction: Object.freeze({ alignment: 'dark', severity: 'major', label: 'Разрушение' }),
@@ -95,6 +100,11 @@ const RUMOR_PHRASES = Object.freeze({
     'В «{place}» случилось убийство: погиб(ла) {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» кто-то из чужаков убил человека.',
     'Слыхал, будто в «{place}» пришлые устроили резню. Врут, поди.',
+  ]),
+  cruelty: Object.freeze([
+    'В «{place}» расправились со связанным. Погиб(ла) {what}. Свидетели указывают: {who}.',
+    'Говорят, в «{place}» чужаки не пощадили пленного.',
+    'Слыхал, будто те пришлые пленных не берут — а берут, так лучше бы убили сразу.',
   ]),
   violence: Object.freeze([
     'В «{place}» человека избили до крови: пострадал(а) {what}. Свидетели указывают: {who}.',
@@ -266,6 +276,7 @@ function npcNameFor(state, npcId) {
 const DEED_EVENT_TYPES = new Set([
   'NpcDied', 'NpcHarmed', 'SceneObjectOperated', 'DoorForced',
   'NpcPromiseResolved', 'ItemTransferred', 'WitnessConsequencePropagated',
+  'CaptiveExecuted', 'CaptiveNeglected',
 ])
 
 /**
@@ -286,7 +297,26 @@ const DEED_EVENT_TYPES = new Set([
 function recognizeDeed(state, event) {
   const type = String(event?.event_type ?? '')
   const payload = event?.payload ?? {}
+  if (type === 'CaptiveExecuted' || type === 'CaptiveNeglected') {
+    // Жестокость называет своим именем то, чего в обычном убийстве нет:
+    // жертва была связана и безоружна. Голод считается тем же поступком —
+    // морить пленного не мягче, чем добить.
+    return {
+      kind: 'cruelty',
+      key: text(payload.captive_id, 120),
+      subject: text(payload.captive_name, 160) || npcNameFor(state, payload.npc_id),
+      actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
+      // Сама жертва свидетелем не считается: голодающий пленник ещё жив и попал
+      // бы в список сцены, а «свидетель собственного мучения» и репутацию
+      // двигал бы за себя. У казни это выходит само — мёртвого в сцене уже нет.
+      witnessIds: sceneWitnessIds(state).filter((npcId) => npcId !== text(payload.npc_id, 120)),
+    }
+  }
   if (type === 'NpcDied') {
+    // Смерть пленного описана поступком жестокости, и её отдельное событие
+    // приходит той же командой. Считать её ещё и убийством значило бы записать
+    // один и тот же нож дважды.
+    if (heldCaptiveForNpc(state, payload.npc_id)) return null
     return { kind: 'murder', key: text(payload.npc_id, 120), subject: text(payload.npc_name, 160) || npcNameFor(state, payload.npc_id), actorIds: [payload.source_actor_id ?? event.actor_id] }
   }
   if (type === 'NpcHarmed') {
@@ -382,6 +412,7 @@ function summaryFor(state, deed) {
   // («слово, данное Мельник Ждан») читается как ошибка.
   const table = {
     murder: `${who}: убийство — ${what} (${place})`,
+    cruelty: `${who}: жестокость к пленному — ${what} (${place})`,
     violence: `${who}: побои — ${what} (${place})`,
     arson: `${who}: поджог — ${what} (${place})`,
     vandalism: `${who}: погром — ${what} (${place})`,

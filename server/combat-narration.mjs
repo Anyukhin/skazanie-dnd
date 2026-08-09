@@ -227,6 +227,29 @@ function tacticalNarration(events, state) {
       meaningful.push(`${target} отступает и покидает бой.`)
     } else if (event.event_type === 'ConditionAdded' && payload.condition === 'surrendered') {
       meaningful.push(`${target} прекращает сопротивление и сдаётся.`)
+    } else if (event.event_type === 'CaptiveTaken') {
+      const captive = payload.captive ?? {}
+      meaningful.push(captive.origin === 'knocked_out'
+        ? `${String(captive.name || 'Побеждённый')} связан(а) без сознания и остаётся пленником отряда.`
+        : `${String(captive.name || 'Сдавшийся')} сдаётся на милость и остаётся пленником отряда.`)
+    } else if (event.event_type === 'CaptiveInterrogated') {
+      // Что именно сказал пленный, знает только тот, кто вёл допрос: сам факт
+      // приезжает отдельным `KnowledgeRevealed` с видимостью того же игрока.
+      meaningful.push(payload.success === true
+        ? `${actor} разговорил(а) пленного — тот выдаёт то, что знает.`
+        : `${actor} давит на пленного, но тот молчит.`)
+    } else if (event.event_type === 'CaptiveFed') {
+      meaningful.push('Пленного накормили и напоили.')
+    } else if (event.event_type === 'CaptiveNeglected') {
+      meaningful.push(`${String(payload.captive_name || 'Пленник')} вторые сутки без еды и держится из последних сил.`)
+    } else if (event.event_type === 'CaptiveReleased') {
+      meaningful.push(`${actor} разрезает верёвки: пленный уходит живым.`)
+    } else if (event.event_type === 'CaptiveHandedOver') {
+      meaningful.push(`Пленный передан страже «${String(payload.settlement_name || 'поселения')}»; за него уплачено ${Math.max(0, Number(payload.bounty_cp) || 0)} мм.`)
+    } else if (event.event_type === 'CaptiveExecuted') {
+      meaningful.push(`${actor} добивает связанного. Этого уже не отменить.`)
+    } else if (event.event_type === 'CaptiveMoved') {
+      meaningful.push('Пленного уводят с собой.')
     } else if (event.event_type === 'CombatEnded') {
       meaningful.push(`Бой завершён в раунде ${Number(payload.round) || 1}.`)
     } else if (event.event_type === 'TurnEnded') {
@@ -242,6 +265,8 @@ function tacticalNarration(events, state) {
 /** Типы событий, про которые этот рассказчик умеет говорить. */
 export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'ActionReadied', 'ActorMoved', 'AreaAttackResolved', 'AttackResolved',
+  'CaptiveExecuted', 'CaptiveFed', 'CaptiveHandedOver', 'CaptiveInterrogated',
+  'CaptiveMoved', 'CaptiveNeglected', 'CaptiveReleased', 'CaptiveTaken',
   'CombatEnded', 'CombatStarted', 'ConcentrationEnded', 'ConcentrationSavingThrowResolved',
   'ConditionAdded', 'ConditionImmunityResolved', 'CreatureKnockedOut', 'DamageApplied', 'DeathSaveFailureRecorded',
   'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
