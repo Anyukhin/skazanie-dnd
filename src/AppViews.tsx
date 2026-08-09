@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import {
-  BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Globe2, HelpCircle, History,
-  MessageSquare, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Sparkles,
+  BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Globe2, HelpCircle, History, Hourglass,
+  MessageSquare, Moon, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Sparkles,
   Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
 
@@ -17,7 +17,7 @@ import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
   Account, AgentInteraction, AiHealth, AssetPreparationReport, CampaignAiSettings, CampaignAiSettingsResponse,
-  CampaignSummary, EncounterProposal, GameState, Merchant, Message, Player,
+  CampaignSummary, EncounterProposal, GameState, Merchant, Message, OffscreenChronicleCard, Player,
 } from './types'
 import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 
@@ -240,6 +240,30 @@ export function stakesTitle(stakes: NonNullable<Message['stakes']>) {
   return `${both} · СЛ ${stakes.difficulty}${category ? ` · ${category}` : ''}`
 }
 
+/**
+ * Врезка «Пока вас не было…» в летописи. Системная карточка, а не реплика: у
+ * неё нет автора, которому можно ответить, и нет броска, который можно
+ * разобрать, — только то, что мир успел сделать за спиной отряда.
+ *
+ * Строки приходят готовыми с сервера (`server/offscreen-world.mjs`): их порядок
+ * и формулировки одни и те же в летописи стола и в ленте ведущего. Своей сборки
+ * у клиента нет намеренно — две копии разошлись бы молча.
+ */
+export function OffscreenChronicleEntry({ card, timestamp }: { card: OffscreenChronicleCard; timestamp: string }) {
+  const hours = Math.max(1, Math.round(card.elapsed_minutes / 60))
+  return <article className="message system offscreen-step">
+    <div className="offscreen-card">
+      <header>
+        <Moon size={16} />
+        <span><small>ХОД МИРА · ДЕНЬ {card.day}</small><strong>{card.title}</strong></span>
+        <time>{timestamp}</time>
+      </header>
+      <ul>{card.lines.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}</ul>
+      <small className="offscreen-elapsed"><Hourglass size={12} />прошло часов: {hours}</small>
+    </div>
+  </article>
+}
+
 export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak, open, onToggle }: {
   messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null; open: boolean; onToggle: () => void
 }) {
@@ -255,7 +279,9 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
   const [followLatest, setFollowLatest] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const visibleMessages = useMemo(
-    () => messages.filter((message) => chronicleMatchesFilter(message.speaker, filter)),
+    // Врезка «Пока вас не было…» приходит системной записью, но читается как
+    // рассказ: под фильтром «Бой» ей не место.
+    () => messages.filter((message) => chronicleMatchesFilter(message.speaker, filter, Boolean(message.offscreen))),
     [filter, messages],
   )
   const visibleCountRef = useRef(visibleMessages.length)
@@ -328,7 +354,9 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
         </aside>
       )}
       <div className="messages" ref={messagesRef} onScroll={handleScroll}>
-        {visibleMessages.map((message) => (
+        {visibleMessages.map((message) => message.offscreen ? (
+          <OffscreenChronicleEntry key={message.id} card={message.offscreen} timestamp={message.timestamp} />
+        ) : (
           <article key={message.id} className={`message ${message.speaker}`}>
             <div className="message-body">
               <div className="message-meta"><strong>{message.author}</strong><time>{message.timestamp}</time></div>
@@ -585,6 +613,53 @@ export function WantedCard({ state }: { state: GameState }) {
         >{busyRegionId === region.region_id ? 'Объявляем…' : 'Амнистия'}</button>}
       </article>)}
       {!regions.length && <div className="deed-empty">Закон к отряду вопросов не имеет.</div>}
+    </div>
+  </div>
+}
+
+/** Классы записей ленты: тон подсказывает, насколько плохи новости. */
+const OFFSCREEN_ENTRY_CLASSES: Record<string, string> = {
+  quest_expired: 'lost',
+  quest_deadline: 'urgent',
+  faction_move: 'enemy',
+  quest_clock: 'clock',
+  rumor_spread: 'rumor',
+}
+
+/**
+ * Ходы мира у ведущего. Лента приходит готовой из проекции
+ * (`offscreenWorldFeed`, `server/offscreen-world.mjs`): порядок, подписи видов и
+ * номер игрового дня считаются на сервере рядом с самой политикой, как у ленты
+ * розыска. Своей таблицы подписей карточка не держит.
+ */
+export function OffscreenWorldCard({ state }: { state: GameState }) {
+  const steps = useMemo(() => (state.offscreen_world?.steps ?? []).slice(0, 12), [state.offscreen_world])
+  const losses = steps.reduce((count, step) => count + step.entries.filter((entry) => entry.kind === 'quest_expired').length, 0)
+
+  return <div className="admin-card admin-offscreen">
+    <div className="admin-card-head">
+      <span><Moon size={18} /><b>Пока вас не было</b></span>
+      <em>{steps.length ? `ходов мира: ${steps.length}${losses ? ` · провалено: ${losses}` : ''}` : 'мир ещё не ходил'}</em>
+    </div>
+    <p className="admin-hint">Мир ходит на существенном скачке времени — от восьми часов — и не чаще раза в игровые сутки: два привала подряд не считаются за две беды. Часы задания мир доводит до последнего деления, но развязку оставляет столу; заполненные часы протухают через сутки, если исход так и не назвали.</p>
+    <div className="offscreen-feed">
+      {steps.map((step) => <article key={step.id}>
+        {/* Заголовок — минута кампании тем же счётом, что у ленты поступков и
+            розыска. Номер игрового дня в карточке ведущего не дублируется: у
+            неба свой счёт суток (от рассвета), и две цифры рядом расходились бы
+            каждую ночь. Столу в летописи достаётся именно небесный день. */}
+        <header>
+          <strong>{campaignClockLabel(step.at_minutes)}</strong>
+          <small>прошло часов: {Math.max(1, Math.round(step.elapsed_minutes / 60))}</small>
+        </header>
+        <ul>
+          {step.entries.map((entry, index) => <li key={`${step.id}-${index}`} className={OFFSCREEN_ENTRY_CLASSES[entry.kind] ?? ''}>
+            <em>{entry.label ?? entry.kind}</em>
+            <span>{entry.summary}</span>
+          </li>)}
+        </ul>
+      </article>)}
+      {!steps.length && <div className="deed-empty">Отряд ещё не оставлял мир без присмотра надолго.</div>}
     </div>
   </div>
 }
@@ -846,6 +921,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
         </div>
         <WorldDeedsCard state={state} />
         <WantedCard state={state} />
+        <OffscreenWorldCard state={state} />
         <div className="admin-card admin-merchants">
           <div className="admin-card-head"><span><Store size={18} /><b>Торговцы и ShopAssembler</b></span><em>{state.merchants?.length ?? 0} в кампании</em></div>
           <p>Сборщик выбирает только позиции серверного каталога. Цены, лимиты количества и политика магазина проверяются Rules Engine.</p>

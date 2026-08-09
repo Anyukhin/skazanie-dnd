@@ -757,6 +757,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .message.system .message-meta strong { color: #7d746a; font: 700 var(--fs-xs) Manrope,sans-serif; letter-spacing: .04em; }
 .message.system .message-meta time { color: #504b46; font-size: var(--fs-xs); }
 .message.system .message-body p { color: #827a72; font: var(--fs-sm)/1.4 Manrope,sans-serif; }
+/* Врезка «Пока вас не было…». Единственная системная запись, которую не гасят:
+   пока отряд спал, мир сделал ход, и пропустить его нельзя. Холодный синий
+   отделяет её и от золота рассказчика, и от охры боевых записей — это не
+   реплика и не удар, а смена кадра. */
+.message.system.offscreen-step { margin-bottom: 14px; opacity: 1; }
+.offscreen-card { padding: 12px 13px; border: 1px solid rgba(126,148,184,.26); border-radius: 8px; background: linear-gradient(160deg, rgba(38,45,60,.5), rgba(16,17,21,.72)); }
+.offscreen-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; color: #8ea3c4; }
+.offscreen-card header > span { min-width: 0; display: grid; }
+.offscreen-card header small { color: #74849e; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.offscreen-card header strong { color: #d6dbe4; font: 600 var(--fs-lg) Spectral, serif; }
+.offscreen-card header time { color: #5d6472; font-size: var(--fs-xs); }
+.offscreen-card ul { display: grid; gap: 5px; margin: 10px 0 0; padding: 0; list-style: none; }
+.offscreen-card li { padding: 7px 9px; border-left: 2px solid rgba(126,148,184,.3); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #b3b8c2; font: var(--fs-sm)/1.55 Spectral, serif; }
+.offscreen-elapsed { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; color: #6a7180; font-size: var(--fs-xs); }
 /* Кнопка «Почему так?» не имела своего стиля и рендерилась системной серой
    кнопкой: светлый текст на светлом фоне. Теперь это тихая ссылка-подсказка. */
 .why-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 3px 9px; border: 1px solid rgba(201,149,85,.3); border-radius: 11px; background: rgba(34,28,22,.72); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }
@@ -1871,7 +1885,25 @@ button.campaign-title:hover strong { color: #edc996; }
   .auth-card h2 { font-size: var(--fs-4xl); }
 }
 
-.admin-merchants, .admin-encounters, .admin-deeds, .admin-wanted { grid-column: 1 / -1; }
+.admin-merchants, .admin-encounters, .admin-deeds, .admin-wanted, .admin-offscreen { grid-column: 1 / -1; }
+/* Ходы мира у ведущего. Тон записи и есть её смысл: провал задания — глухой
+   красный, ход противника — тревожная охра, часы и молва — служебный серый. */
+.admin-offscreen .admin-card-head > em { color: #756a60; font: normal var(--fs-sm) Spectral, serif; }
+.offscreen-feed { display: grid; gap: 8px; margin-top: 12px; }
+.offscreen-feed article { display: grid; gap: 7px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.045); border-left: 3px solid rgba(96,110,132,.42); border-radius: 6px; background: rgba(0,0,0,.11); }
+.offscreen-feed > article > header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.offscreen-feed header strong { color: #b4bccb; font: 600 var(--fs-md) Spectral, serif; }
+.offscreen-feed header small { color: #635c55; font-size: var(--fs-xs); }
+.offscreen-feed ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.offscreen-feed li { display: grid; grid-template-columns: minmax(112px, auto) minmax(200px, 1fr); align-items: baseline; gap: 10px; padding: 6px 8px; border-radius: 4px; background: rgba(0,0,0,.12); }
+.offscreen-feed li em { color: #6b6259; font-size: var(--fs-xs); font-style: normal; letter-spacing: .06em; white-space: nowrap; }
+.offscreen-feed li span { color: #837a71; font: var(--fs-sm)/1.45 Spectral, serif; }
+.offscreen-feed li.lost { background: rgba(150,48,40,.13); }
+.offscreen-feed li.lost em { color: #cf8377; }
+.offscreen-feed li.urgent em { color: #c08a63; }
+.offscreen-feed li.enemy { background: rgba(140,74,44,.1); }
+.offscreen-feed li.enemy em { color: #bd8f5e; }
+.offscreen-feed li.rumor em { color: #7e8b96; }
 /* Закон и розыск у ведущего. Ступень окрашена шкалой «спокойно → розыск по
    краю»: карточка должна читаться с одного взгляда, потому что она отвечает на
    единственный вопрос — можно ли отряду входить в город. */
@@ -1971,6 +2003,10 @@ button.campaign-title:hover strong { color: #edc996; }
   .wanted-region li { grid-template-columns: 1fr; }
   .wanted-region > header { flex-wrap: wrap; }
   .rumor-list li { grid-template-columns: 1fr; }
+  .offscreen-feed li { grid-template-columns: 1fr; }
+  .offscreen-feed > article > header { flex-wrap: wrap; }
+  .offscreen-card > header { grid-template-columns: auto minmax(0,1fr); }
+  .offscreen-card header time { display: none; }
 }
 .reaction-backdrop{position:fixed;inset:0;z-index:140;display:grid;place-items:center;padding:20px;background:rgba(4,3,3,.72);backdrop-filter:blur(5px)}.reaction-prompt{width:min(820px,100%);overflow:hidden;border:1px solid rgba(206,145,73,.5);border-radius:14px;background:linear-gradient(145deg,#171412,#0d0d0c 72%);box-shadow:0 24px 80px rgba(0,0,0,.72),0 0 36px rgba(155,93,39,.12)}.reaction-prompt>header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid rgba(206,145,73,.2);background:linear-gradient(90deg,rgba(130,76,33,.2),transparent)}.reaction-prompt>header>div{display:flex;align-items:center;gap:11px;color:#c68c4e}.reaction-prompt>header span{display:grid;gap:2px}.reaction-prompt>header small{color:#8f673f;font-size: var(--fs-sm);letter-spacing:.14em}.reaction-prompt>header strong{color:#e0c6a1;font:600 var(--fs-4xl) Spectral,serif}.reaction-prompt>header>em{padding:5px 7px;border:1px solid rgba(184,91,63,.32);border-radius:3px;color:#c9836d;font-size: var(--fs-sm);font-style:normal;letter-spacing:.1em}.reaction-prompt>p{margin:0;padding:16px 22px 8px;color:#c6bcae;font:var(--fs-xl)/1.5 Spectral,serif}.reaction-options{display:grid;gap:7px;padding:10px 18px 16px}.reaction-options>button{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(255,255,255,.018);color:#9b8b79;text-align:left;cursor:pointer}.reaction-options>button:hover{border-color:rgba(201,139,70,.38);background:rgba(132,81,35,.12)}.reaction-options>button:disabled{opacity:.5;cursor:wait}.reaction-options>button>i{width:52px;height:52px;display:grid;place-items:center;border-radius:6px;background:transparent;color:#c1884c}.reaction-options>button>span{min-width:0;display:grid;gap:2px}.reaction-options strong{color:#e0d0b8;font:600 var(--fs-2xl) Spectral,serif}.reaction-options small{color:#a89e92;font:var(--fs-md)/1.4 Manrope,sans-serif}.reaction-options>button>em{min-width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:rgba(105,78,49,.2);color:#b18b5e;font-size: var(--fs-sm);font-style:normal}.reaction-prompt>footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 18px;border-top:1px solid rgba(255,255,255,.055);background:rgba(0,0,0,.16)}.reaction-prompt>footer button{height:31px;padding:0 13px;border:1px solid rgba(255,255,255,.1);border-radius:4px;background:transparent;color:#9c8f80;font-size: var(--fs-md);cursor:pointer}.reaction-prompt>footer span{color:#665f57;font-size: var(--fs-sm);text-align:right}@media(max-width:600px){.reaction-prompt>header{align-items:flex-start}.reaction-prompt>footer{align-items:stretch;flex-direction:column}.reaction-prompt>footer span{text-align:left}}
 .reaction-beneficiary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:9px 18px 0;padding:9px 11px;border:1px solid rgba(197,143,78,.18);border-radius:5px;background:rgba(132,81,35,.07);color:#8e7f6f;font-size: var(--fs-sm)}.reaction-beneficiary select{min-width:180px;height:28px;padding:0 8px;border:1px solid rgba(211,166,107,.22);border-radius:4px;background:#17130f;color:#c5a77f;font-size: var(--fs-md)}

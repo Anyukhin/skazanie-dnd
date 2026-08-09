@@ -9,7 +9,21 @@ export type Message = {
   roll?: { roll_id?: string; value: number; modifier: number; total: number; difficulty?: number; label: string; success: boolean; ability?: string | null; actor_id?: string }
   /** Ставки хода: что проверялось, против какой СЛ и чем грозил провал. */
   stakes?: { skill?: string; ability?: string; difficulty?: number; difficulty_category?: string; on_failure?: string }
+  /**
+   * Врезка «Пока вас не было…»: что мир сделал за спиной отряда, пока шло
+   * время. Строки и заголовок собраны на сервере (`server/offscreen-world.mjs`);
+   * своей сборки у клиента нет, иначе стол и ведущий читали бы разный монтаж.
+   */
+  offscreen?: OffscreenChronicleCard
   turnConsumed?: boolean
+}
+
+/** Карточка хода мира в летописи. Детерминированные 1–3 строки и номер дня. */
+export type OffscreenChronicleCard = {
+  title: string
+  day: number
+  elapsed_minutes: number
+  lines: string[]
 }
 
 export type RollResult = NonNullable<Message['roll']>
@@ -1184,6 +1198,11 @@ export type GameState = {
    */
   law?: LawProjection
   /**
+   * Ходы мира за спиной отряда. Ветка одинакова у игрока и у ведущего: «Пока
+   * вас не было…» — монтаж для всего стола.
+   */
+  offscreen_world?: OffscreenWorldProjection
+  /**
    * Время суток и погода. Ветка одинакова у игрока и у ведущего: небо над
    * отрядом тайной не является.
    */
@@ -1360,6 +1379,42 @@ export type WorldDeedEntry = {
 }
 
 export type WorldDeedsProjection = { schema_version?: number; deeds?: WorldDeedEntry[] }
+
+/**
+ * Одна запись хода мира: что именно случилось, пока отряда не было. Подпись
+ * вида (`label`) приходит с сервера — своей таблицы у клиента нет.
+ */
+export type OffscreenWorldEntry = {
+  kind: 'quest_clock' | 'quest_deadline' | 'quest_expired' | 'faction_move' | 'rumor_spread'
+  label?: string
+  summary: string
+  quest_id?: string
+  quest_title?: string
+  faction_id?: string
+  faction_name?: string
+  move_kind?: 'reinforced_posts' | 'moved_camp' | 'took_hostage' | ''
+  npc_id?: string
+  npc_name?: string
+  count?: number
+}
+
+/** Один ход мира: минута кампании, игровой день, что случилось и строки врезки. */
+export type OffscreenWorldStep = {
+  id: string
+  at_minutes: number
+  elapsed_minutes: number
+  day: number
+  entries: OffscreenWorldEntry[]
+  lines: string[]
+  policy_id?: string
+}
+
+/**
+ * Лента «Пока вас не было…». Форма у стола и у ведущего одна: в ход мира
+ * попадают только party-видимые задания, фракции и NPC, поэтому прятать в ней
+ * нечего (`server/offscreen-world.mjs`).
+ */
+export type OffscreenWorldProjection = { schema_version?: number; steps?: OffscreenWorldStep[] }
 
 /**
  * Пленный отряда. Приходит и игроку, и ведущему, но не одинаково: серверная

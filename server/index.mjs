@@ -91,6 +91,7 @@ import {
 } from './merchant-economy.mjs'
 import { CAPTIVE_PLAYER_COMMAND_TYPES, planCaptiveNeglectCommands } from './captives.mjs'
 import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
+import { offscreenChronicleEntry } from './offscreen-world.mjs'
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
@@ -1222,9 +1223,30 @@ function journalStakes(stakes) {
   }
 }
 
-function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null }) {
+/**
+ * Карточка «Пока вас не было…» в летописи. Строки и заголовок приходят готовыми
+ * с сервера (`server/offscreen-world.mjs`) — здесь только границы длины: летопись
+ * переживает перезагрузку, и разросшаяся врезка осталась бы в ней навсегда.
+ */
+function journalOffscreen(offscreen) {
+  if (!offscreen || typeof offscreen !== 'object') return null
+  const lines = (Array.isArray(offscreen.lines) ? offscreen.lines : [])
+    .map((line) => String(line ?? '').slice(0, 400))
+    .filter(Boolean)
+    .slice(0, 3)
+  if (!lines.length) return null
+  return {
+    title: String(offscreen.title || 'Пока вас не было…').slice(0, 80),
+    day: Math.max(1, Number(offscreen.day) || 1),
+    elapsed_minutes: Math.max(0, Number(offscreen.elapsed_minutes) || 0),
+    lines,
+  }
+}
+
+function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null }) {
   const storedRoll = journalRoll(roll)
   const storedStakes = journalStakes(stakes)
+  const storedOffscreen = journalOffscreen(offscreen)
   return {
     id: String(id),
     speaker: speaker === 'system' ? 'system' : speaker === 'player' ? 'player' : 'narrator',
@@ -1234,6 +1256,7 @@ function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = 
     turnConsumed: Boolean(turnConsumed),
     ...(storedRoll ? { roll: storedRoll } : {}),
     ...(storedStakes ? { stakes: storedStakes } : {}),
+    ...(storedOffscreen ? { offscreen: storedOffscreen } : {}),
   }
 }
 
@@ -2130,7 +2153,13 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // накопительный журнал и признак присутствия игрока. Всё остальное берётся
     // из движка целиком.
     const messages = [...(room.state.messages ?? [])]
-    for (const candidate of [journalMessage].flat()) {
+    // Карточка «Пока вас не было…» выводится из уже подтверждённых событий, а
+    // не прокидывается через каждый маршрут. Точка одна намеренно: ход мира
+    // рождается из мировых минут, а минуты двигают и привал, и сутки под
+    // замком, и Режиссёр — трижды повторённый вызов разошёлся бы на первом же
+    // новом маршруте. Идентификатор записи детерминирован (`chronicle:<шаг>`),
+    // поэтому повторная проекция того же события её не удваивает.
+    for (const candidate of [...(Array.isArray(events) ? events : []).map(offscreenChronicleEntry), journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
