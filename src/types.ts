@@ -1153,6 +1153,12 @@ export type GameState = {
   adventure?: AdventureState
   worldMemory?: WorldMemoryProjection
   /**
+   * Летопись поступков отряда. Приходит **только администратору**: игрок
+   * узнаёт о молве в игре, из уст NPC, а серверная проекция вырезает эту
+   * ветку целиком (`campaignStateForViewer`).
+   */
+  world_deeds?: WorldDeedsProjection
+  /**
    * Optional viewer-safe contract introduced by server PR #18. Coordinates
    * are authoritative; raw HP, goals and beliefs are deliberately absent.
    */
@@ -1282,7 +1288,41 @@ export type WorldMemoryProjection = {
   }>
   threads?: Array<{ id: string; title: string; summary?: string; status?: string }>
   summaries?: Array<{ id: string; kind?: string; title: string; summary: string }>
+  /**
+   * Сущности и утверждения приходят только администратору: слухи пишутся с
+   * видимостью `gm_only`, и `worldMemoryForViewer` отсекает их у игрока.
+   */
+  entities?: Array<{ id: string; kind?: string; name: string }>
+  epistemic_claims?: Array<{
+    id: string
+    kind?: 'belief' | 'rumor'
+    holder_entity_id: string
+    predicate?: string
+    claim: string
+    summary?: string
+    truth_status?: 'unknown' | 'confirmed' | 'refuted'
+    recorded_at_minutes?: number
+  }>
 }
+
+/** Один поступок отряда: место, время кампании и свидетели. Только для ведущего. */
+export type WorldDeedEntry = {
+  id: string
+  kind: string
+  alignment: 'dark' | 'bright'
+  severity: 'grave' | 'major' | 'minor'
+  actor_names?: string[]
+  subject?: string
+  location_name?: string
+  at_minutes: number
+  witness_ids?: string[]
+  secret?: boolean
+  summary?: string
+  spread_at_minutes?: number
+  reputation_faction_ids?: string[]
+}
+
+export type WorldDeedsProjection = { schema_version?: number; deeds?: WorldDeedEntry[] }
 
 export type CombatInitiativeEntry = {
   actor_id: string

@@ -634,6 +634,10 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // Внутренний реестр точных HP и всех location posts наружу не копируется:
   // вместо него ниже собирается bounded `scene_npcs` только текущей сцены.
   'npc_world',
+  // Летопись поступков отряда со свидетелями и сроком рождения молвы. Наружу не
+  // копируется вовсе: игрок узнаёт слух в игре, из уст NPC, а не читая
+  // состояние. Публичной формы у неё нет и не должно быть.
+  'world_deeds',
   'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
   // Собственного ключа в состоянии нет: подсказки выводятся из уже собранной
   // комнаты и существуют только в проекции. Решение осознанное — скрытого в
@@ -713,7 +717,16 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // `levelEntities` — стэш жителей неактивных этажей: точные HP противников,
   // незакрытое столкновение и посты NPC другого яруса. Игроку он не
   // принадлежит и обязан исчезнуть целиком, как `locationMaps` и `npc_world`.
-  const { locationMaps: _locationMaps, npc_world: _npcWorld, levelEntities: _levelEntities, ...publicState } = visible
+  // `world_deeds` — летопись поступков отряда со списком свидетелей и сроком
+  // рождения слуха. Она принадлежит ведущему: игрок узнаёт о молве в игре, из
+  // уст NPC, а не из собственной проекции состояния.
+  const {
+    locationMaps: _locationMaps,
+    npc_world: _npcWorld,
+    levelEntities: _levelEntities,
+    world_deeds: _worldDeeds,
+    ...publicState
+  } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
   const scene = publicSceneFor(state.scene, state.locationLevels?.[currentLocationId])
   const location = scene.location

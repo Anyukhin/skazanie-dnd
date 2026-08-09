@@ -32,6 +32,7 @@ export const PARTY_DECISION_CAPABILITY = Symbol('skazanie:party-decision-capabil
 export const CAMPAIGN_LIFECYCLE_CAPABILITY = Symbol('skazanie:campaign-lifecycle-capability')
 export const PUBLIC_DICE_CAPABILITY = Symbol('skazanie:public-dice-capability')
 export const ECONOMY_CLOCK_CAPABILITY = Symbol('skazanie:economy-clock-capability')
+export const WORLD_RUMOR_CAPABILITY = Symbol('skazanie:world-rumor-capability')
 export const PRESENCE_CAPABILITY = Symbol('skazanie:presence-capability')
 export const CAMPAIGN_CONTROL_CAPABILITY = Symbol('skazanie:campaign-control-capability')
 
@@ -61,6 +62,13 @@ const DERIVED_EVENT_ALLOWLIST = new Map([
     // Только событие часов. Пополнение лавки остаётся за Rules Engine — это
     // единственный производитель, который расщепляется на два входа.
     'MerchantEconomyClockAdvanced',
+  ])],
+  [WORLD_RUMOR_CAPABILITY, new Set([
+    // Часы молвы: сами слухи и факт поступка — команды памяти мира и идут через
+    // `executeCommands`. Сюда приходит только реакция мира на дошедший слух, у
+    // которой типизированной команды нет; ничего из владений Rules Engine она
+    // не трогает — поправка репутации живёт в `autonomy.reputations`.
+    'FactionReputationAdjusted',
   ])],
   [CAMPAIGN_LIFECYCLE_CAPABILITY, new Set([
     'CampaignActivated',
@@ -347,6 +355,7 @@ export const DERIVED_PRODUCERS = Object.freeze({
   partyDecision: PARTY_DECISION_CAPABILITY,
   presence: PRESENCE_CAPABILITY,
   economyClock: ECONOMY_CLOCK_CAPABILITY,
+  worldRumor: WORLD_RUMOR_CAPABILITY,
   campaignLifecycle: CAMPAIGN_LIFECYCLE_CAPABILITY,
   publicDice: PUBLIC_DICE_CAPABILITY,
 })

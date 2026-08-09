@@ -224,6 +224,7 @@ CAMPAIGN_LIFECYCLE_CAPABILITY
 PUBLIC_DICE_CAPABILITY
 ECONOMY_CLOCK_CAPABILITY
 CAMPAIGN_CONTROL_CAPABILITY   // добавлено: откат хода из PR #14
+WORLD_RUMOR_CAPABILITY        // добавлено: реакция мира на дошедший слух
 ```
 
 Строковое имя производителя недостаточно — JSON-запрос его подделает.
@@ -296,10 +297,13 @@ CAMPAIGN_CONTROL_CAPABILITY   // добавлено: откат хода из PR
 | Campaign lifecycle | только события жизненного цикла и summary |
 | Public dice | только публичный внеигровой бросок от `DiceService` |
 | Campaign control | `CampaignRewound` — через отдельный `commitControl`, см. шаг 3 |
+| World rumor | только `FactionReputationAdjusted` от дошедшего слуха; сами слухи — команды памяти мира через `executeCommands` |
 
 Экономические часы — гибрид, и таким остаются: restock идёт через
-`executeCommands`, событие часов — через `commitDerived`. Это единственный путь,
-который расщепляется на два.
+`executeCommands`, событие часов — через `commitDerived`. По тому же шву прошли
+и часы молвы (`runWorldRumorClock`, добавлены 2026-08-09): факт поступка и
+`RecordRumor` — команды Rules Engine, а реакция мира на дошедший слух — событие
+без типизированной команды. Расщеплённых путей теперь два, и оба записаны здесь.
 
 **Открытый вопрос, решаемый здесь, а не позже.** Групповой бросок влияет на исход
 решения отряда, то есть на ход истории. Рекомендация — перевести его в

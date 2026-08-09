@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import {
-  BrainCircuit, ChevronDown, ChevronRight, Dices, Globe2, HelpCircle, History,
+  BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Globe2, HelpCircle, History,
   MessageSquare, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Sparkles,
   Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff,
 } from 'lucide-react'
@@ -13,7 +13,7 @@ import {
 } from './app-shared'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import type { NarrationVoiceMode } from './narration-tts.mjs'
-import { localizedQuestClockLabel } from './desktop-ui.mjs'
+import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
   Account, AgentInteraction, AiHealth, AssetPreparationReport, CampaignAiSettings, CampaignAiSettingsResponse,
@@ -448,7 +448,71 @@ export function JournalView({ state }: { state: GameState }) {
   )
 }
 
-export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, onAssembleMerchant, onMoveMerchant, onSetMerchantAvailability, onReset }: { account: Account; state: GameState; onUpdateWorld: (patch: { campaign?: string; partyName?: string; partyMemberIds?: string[]; scene?: Partial<GameState['scene']> }) => void; onAssembleEncounter: (options: EncounterAssemblyOptions) => Promise<EncounterProposal>; onAssembleMerchant: (options: ShopAssemblyOptions) => Promise<Merchant>; onMoveMerchant: (merchantId: string, location: string, locationId?: string) => Promise<void>; onSetMerchantAvailability: (merchantId: string, available: boolean) => Promise<void>; onReset: () => void }) {
+/**
+ * Русские подписи видов поступка. Таблица-источник — серверная (`DEED_KINDS`,
+ * `server/world-deeds.mjs`); сюда она приходит подписями, а не переводом
+ * латинских ключей на лету.
+ */
+const DEED_LABELS: Record<string, string> = {
+  murder: 'Убийство', arson: 'Поджог', theft: 'Кража', destruction: 'Разрушение',
+  violence: 'Насилие', vandalism: 'Погром', promise_broken: 'Нарушенное слово',
+  rescue: 'Спасение', generosity: 'Щедрость', promise_kept: 'Сдержанное слово',
+}
+
+const DEED_SEVERITY_LABELS: Record<string, string> = { grave: 'тяжкий', major: 'заметный', minor: 'мелкий' }
+
+/**
+ * Лента ведущего: что мир заметил за отрядом и что об этом уже говорят.
+ * Игроку эта секция недоступна по построению — сервер вырезает `world_deeds` и
+ * gm_only-слухи из проекции, поэтому у игрока карточка просто пуста.
+ */
+export function WorldDeedsCard({ state }: { state: GameState }) {
+  const deeds = useMemo(() => [...(state.world_deeds?.deeds ?? [])].sort((left, right) => right.at_minutes - left.at_minutes).slice(0, 12), [state.world_deeds])
+  const npcNames = useMemo(() => new Map((state.worldMemory?.entities ?? []).map((entity) => [entity.id, entity.name])), [state.worldMemory])
+  const rumors = useMemo(() => (state.worldMemory?.epistemic_claims ?? [])
+    .filter((claim) => claim.kind === 'rumor')
+    .slice(-12)
+    .reverse(), [state.worldMemory])
+  const dark = deeds.filter((deed) => deed.alignment === 'dark').length
+
+  return <div className="admin-card admin-deeds">
+    <div className="admin-card-head">
+      <span><Ear size={18} /><b>Поступки и слухи</b></span>
+      <em>{deeds.length ? `${dark} тёмных из ${deeds.length}` : 'мир пока молчит'}</em>
+    </div>
+    <p className="admin-hint">Слух рождается не сразу: сначала местная молва, дальше — сутки на каждую локацию по графу мира. Поступок без свидетелей остаётся тайной и не расходится вовсе. Игроки узнают молву только в игре, из уст NPC.</p>
+    <div className="deed-feed">
+      {deeds.map((deed) => <article key={deed.id} className={deed.alignment}>
+        <div>
+          <strong>{DEED_LABELS[deed.kind] ?? deed.kind}</strong>
+          <span>{deed.summary || deed.subject || '—'}</span>
+          <small>{campaignClockLabel(deed.at_minutes)} · {deed.location_name || 'место неизвестно'} · {DEED_SEVERITY_LABELS[deed.severity] ?? deed.severity}</small>
+        </div>
+        <em className={deed.secret ? 'secret' : ''}>
+          {deed.secret ? 'БЕЗ СВИДЕТЕЛЕЙ' : `СВИДЕТЕЛЕЙ: ${deed.witness_ids?.length ?? 0}`}
+        </em>
+        <small className="deed-spread">
+          {deed.secret
+            ? 'молве взяться неоткуда'
+            : `молва с ${campaignClockLabel(deed.spread_at_minutes ?? deed.at_minutes)}`}
+          {deed.reputation_faction_ids?.length ? ` · слава: ${deed.reputation_faction_ids.join(', ')}` : ''}
+        </small>
+      </article>)}
+      {!deeds.length && <div className="deed-empty">Отряд пока не сделал ничего, о чём стоило бы говорить.</div>}
+    </div>
+    <span className="admin-asset-group">ЧТО УЖЕ ГОВОРЯТ</span>
+    <ul className="rumor-list">
+      {rumors.map((rumor) => <li key={rumor.id}>
+        <b>{npcNames.get(rumor.holder_entity_id) ?? rumor.holder_entity_id}</b>
+        <span>{rumor.summary || rumor.claim}</span>
+        <em className={rumor.truth_status === 'confirmed' ? 'confirmed' : ''}>{rumor.truth_status === 'confirmed' ? 'ВИДЕЛ САМ' : 'ПЕРЕСКАЗ'}</em>
+      </li>)}
+      {!rumors.length && <li><em>Слухов о делах отряда пока нет.</em></li>}
+    </ul>
+  </div>
+}
+
+export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, onAssembleMerchant, onMoveMerchant, onSetMerchantAvailability, onReset }:{ account: Account; state: GameState; onUpdateWorld: (patch: { campaign?: string; partyName?: string; partyMemberIds?: string[]; scene?: Partial<GameState['scene']> }) => void; onAssembleEncounter: (options: EncounterAssemblyOptions) => Promise<EncounterProposal>; onAssembleMerchant: (options: ShopAssemblyOptions) => Promise<Merchant>; onMoveMerchant: (merchantId: string, location: string, locationId?: string) => Promise<void>; onSetMerchantAvailability: (merchantId: string, available: boolean) => Promise<void>; onReset: () => void }) {
   const [users, setUsers] = useState<Account[]>([])
   const [error, setError] = useState('')
   const [shopBusy, setShopBusy] = useState(false)
@@ -703,6 +767,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
           {assetMessage && <p className="admin-hint">{assetMessage}</p>}
           {assetError && <p className="admin-error">{assetError}</p>}
         </div>
+        <WorldDeedsCard state={state} />
         <div className="admin-card admin-merchants">
           <div className="admin-card-head"><span><Store size={18} /><b>Торговцы и ShopAssembler</b></span><em>{state.merchants?.length ?? 0} в кампании</em></div>
           <p>Сборщик выбирает только позиции серверного каталога. Цены, лимиты количества и политика магазина проверяются Rules Engine.</p>

@@ -66,6 +66,7 @@ import {
   PARTY_DECISION_CAPABILITY,
   PRESENCE_CAPABILITY,
   PUBLIC_DICE_CAPABILITY,
+  WORLD_RUMOR_CAPABILITY,
 } from './authoritative-executor.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
@@ -88,6 +89,7 @@ import {
   merchantViewFor,
   planMerchantEconomyClock,
 } from './merchant-economy.mjs'
+import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
@@ -237,7 +239,7 @@ const eventStore = new FileEventStore({
  * пишутся прямо в журнал. Все девять путей этого модуля идут через общий
  * исполнитель, а разрешает их явная таблица и неподделываемая capability.
  */
-const authoritativeExecutor = new AuthoritativeExecutor({ eventStore })
+const authoritativeExecutor = new AuthoritativeExecutor({ eventStore, rulesEngine })
 
 /**
  * Шаг 7 плана `docs/agent-architecture-plan.md`, первое подключение.
@@ -2154,6 +2156,42 @@ async function runMerchantEconomyClock(campaignId) {
   throw new Error('Не удалось синхронизировать экономические часы')
 }
 
+/**
+ * Часы молвы. Живут там же, где часы лавки, — в системном такте по мировому
+ * времени: слух не может родиться раньше, чем пройдут положенные игровые часы.
+ *
+ * Оба входа — общий исполнитель, нового авторитетного писателя здесь не
+ * появляется. Первый вход командный: факт поступка и сами слухи — обычные
+ * команды памяти мира, и они проходят Rules Engine. Второй — производный:
+ * реакция мира на дошедший слух считается уже по состоянию **с записанными
+ * слухами**, иначе платить пришлось бы за слух, который ещё не дошёл.
+ */
+async function runWorldRumorClock(campaignId) {
+  const events = []
+  const loaded = await eventStore.load(campaignId)
+  const state = normalizeCampaignState(loaded.state)
+  const worldMinute = Math.max(0, Number(state.mechanics?.world_time?.elapsed_minutes ?? 0))
+  const { commands } = planWorldRumorTick(state, { worldMinute })
+  if (commands.length) {
+    const committed = await authoritativeExecutor.executeCommands({
+      campaignId,
+      idempotencyKey: `world-rumor-clock:${worldMinute}:${loaded.state_version}`,
+      commands,
+      context: { isDirector: true },
+    })
+    if (!committed.replayed) events.push(...(committed.events ?? []))
+  }
+  const reputation = await authoritativeExecutor.commitDerived({
+    campaignId,
+    idempotencyKey: `world-rumor-reputation:${worldMinute}`,
+    deriveEvents: (current) => planWorldRumorReputation(normalizeCampaignState(current)),
+    producerCapability: WORLD_RUMOR_CAPABILITY,
+  })
+  if (reputation && !reputation.replayed) events.push(...(reputation.events ?? []))
+  const final = reputation?.state ? normalizeCampaignState(reputation.state) : (await eventStore.load(campaignId)).state
+  return { state: normalizeCampaignState(final), events }
+}
+
 function serveStatic(req, res) {
   if (!existsSync(dist)) return json(res, 404, { error: 'Сначала выполните pnpm build' })
   let requested
@@ -3618,11 +3656,17 @@ const server = createServer((req, res) => {
         persistAuthoritativeProjection(campaignId, economyClock.state, economyClock.events)
         room = getRoom(campaignId)
       }
+      const rumorClock = await runWorldRumorClock(campaignId)
+      if (rumorClock.events.length) {
+        persistAuthoritativeProjection(campaignId, rumorClock.state, rumorClock.events)
+        room = getRoom(campaignId)
+      }
       const actorId = campaignHeroIds(user, campaignId).find((id) => room.state.players?.some((player) => String(player.id) === String(id))) ?? ''
       return json(res, 200, {
         ...room,
         state: viewerStateFor(normalizeCampaignState(room.state), user, actorId),
         economy_clock_events: economyClock.events.length,
+        rumor_clock_events: rumorClock.events.length,
       })
     } catch (error) {
       if (['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code)) {

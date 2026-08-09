@@ -1,5 +1,7 @@
 export function localizedQuestClockLabel(label: string | null | undefined): string
 
+export function campaignClockLabel(minutes: number | null | undefined): string
+
 export function shouldAutoOpenCampaignModal(input: {
   heroCount: number
   membershipCount: number

@@ -1780,7 +1780,26 @@ button.campaign-title:hover strong { color: #edc996; }
   .auth-card h2 { font-size: var(--fs-4xl); }
 }
 
-.admin-merchants, .admin-encounters { grid-column: 1 / -1; }
+.admin-merchants, .admin-encounters, .admin-deeds { grid-column: 1 / -1; }
+.admin-deeds .admin-card-head > em { color: #756a60; font: normal var(--fs-sm) Spectral, serif; }
+.deed-feed { display: grid; gap: 8px; margin-top: 12px; }
+.deed-feed article { display: grid; grid-template-columns: minmax(280px, 1fr) auto; align-items: center; gap: 10px 12px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.045); border-left: 3px solid rgba(161,77,67,.4); border-radius: 6px; background: rgba(0,0,0,.11); }
+.deed-feed article.bright { border-left-color: rgba(93,144,96,.45); }
+.deed-feed article > div { display: grid; gap: 2px; }
+.deed-feed strong { color: #c4b7a9; font: 600 var(--fs-md) Spectral, serif; }
+.deed-feed span { color: #8b8177; font-size: var(--fs-sm); }
+.deed-feed small { color: #635c55; font-size: var(--fs-xs); }
+.deed-feed article > em { padding: 4px 6px; border-radius: 3px; background: rgba(132,70,58,.11); color: #b0817a; font-size: var(--fs-xs); font-style: normal; letter-spacing: .06em; white-space: nowrap; }
+.deed-feed article > em.secret { background: rgba(255,255,255,.04); color: #6d655d; }
+.deed-feed article.bright > em { background: rgba(65,108,69,.11); color: #82a383; }
+.deed-feed .deed-spread { grid-column: 1 / -1; color: #6b6259; font-size: var(--fs-xs); }
+.deed-empty { padding: 22px; border: 1px dashed var(--line); border-radius: 6px; color: #675f57; font: var(--fs-md)/1.5 Spectral, serif; text-align: center; }
+.rumor-list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.rumor-list li { display: grid; grid-template-columns: minmax(120px, .5fr) minmax(220px, 2fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.04); border-radius: 5px; background: rgba(0,0,0,.1); }
+.rumor-list b { color: #a89a8c; font: 600 var(--fs-sm) Spectral, serif; }
+.rumor-list span { color: #837a71; font: var(--fs-sm)/1.45 Spectral, serif; }
+.rumor-list em { padding: 3px 6px; border-radius: 3px; background: rgba(255,255,255,.04); color: #6d655d; font-size: var(--fs-xs); font-style: normal; letter-spacing: .06em; white-space: nowrap; }
+.rumor-list em.confirmed { background: rgba(148,94,42,.1); color: #a87b48; }
 .admin-encounters .admin-card-head > em { color: #756a60; font: normal var(--fs-sm) Spectral, serif; }
 .admin-encounters > p { margin: 12px 0; color: #716961; font: var(--fs-md)/1.55 Spectral, serif; }
 .encounter-admin-warning, .encounter-admin-success { display: flex; align-items: center; gap: 8px; margin: 9px 0; padding: 9px 10px; border: 1px solid rgba(164,82,69,.2); border-radius: 5px; background: rgba(130,50,43,.07); color: #b77a70; font-size: var(--fs-sm); }
@@ -1831,6 +1850,8 @@ button.campaign-title:hover strong { color: #edc996; }
   .shop-assembler-controls { grid-template-columns: 1fr; }
   .shop-admin-list article { grid-template-columns: 1fr; }
   .shop-admin-actions { grid-column: auto; flex-wrap: wrap; }
+  .deed-feed article { grid-template-columns: 1fr; }
+  .rumor-list li { grid-template-columns: 1fr; }
 }
 .reaction-backdrop{position:fixed;inset:0;z-index:140;display:grid;place-items:center;padding:20px;background:rgba(4,3,3,.72);backdrop-filter:blur(5px)}.reaction-prompt{width:min(820px,100%);overflow:hidden;border:1px solid rgba(206,145,73,.5);border-radius:14px;background:linear-gradient(145deg,#171412,#0d0d0c 72%);box-shadow:0 24px 80px rgba(0,0,0,.72),0 0 36px rgba(155,93,39,.12)}.reaction-prompt>header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid rgba(206,145,73,.2);background:linear-gradient(90deg,rgba(130,76,33,.2),transparent)}.reaction-prompt>header>div{display:flex;align-items:center;gap:11px;color:#c68c4e}.reaction-prompt>header span{display:grid;gap:2px}.reaction-prompt>header small{color:#8f673f;font-size: var(--fs-sm);letter-spacing:.14em}.reaction-prompt>header strong{color:#e0c6a1;font:600 var(--fs-4xl) Spectral,serif}.reaction-prompt>header>em{padding:5px 7px;border:1px solid rgba(184,91,63,.32);border-radius:3px;color:#c9836d;font-size: var(--fs-sm);font-style:normal;letter-spacing:.1em}.reaction-prompt>p{margin:0;padding:16px 22px 8px;color:#c6bcae;font:var(--fs-xl)/1.5 Spectral,serif}.reaction-options{display:grid;gap:7px;padding:10px 18px 16px}.reaction-options>button{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(255,255,255,.018);color:#9b8b79;text-align:left;cursor:pointer}.reaction-options>button:hover{border-color:rgba(201,139,70,.38);background:rgba(132,81,35,.12)}.reaction-options>button:disabled{opacity:.5;cursor:wait}.reaction-options>button>i{width:52px;height:52px;display:grid;place-items:center;border-radius:6px;background:transparent;color:#c1884c}.reaction-options>button>span{min-width:0;display:grid;gap:2px}.reaction-options strong{color:#e0d0b8;font:600 var(--fs-2xl) Spectral,serif}.reaction-options small{color:#a89e92;font:var(--fs-md)/1.4 Manrope,sans-serif}.reaction-options>button>em{min-width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:rgba(105,78,49,.2);color:#b18b5e;font-size: var(--fs-sm);font-style:normal}.reaction-prompt>footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 18px;border-top:1px solid rgba(255,255,255,.055);background:rgba(0,0,0,.16)}.reaction-prompt>footer button{height:31px;padding:0 13px;border:1px solid rgba(255,255,255,.1);border-radius:4px;background:transparent;color:#9c8f80;font-size: var(--fs-md);cursor:pointer}.reaction-prompt>footer span{color:#665f57;font-size: var(--fs-sm);text-align:right}@media(max-width:600px){.reaction-prompt>header{align-items:flex-start}.reaction-prompt>footer{align-items:stretch;flex-direction:column}.reaction-prompt>footer span{text-align:left}}
 .reaction-beneficiary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:9px 18px 0;padding:9px 11px;border:1px solid rgba(197,143,78,.18);border-radius:5px;background:rgba(132,81,35,.07);color:#8e7f6f;font-size: var(--fs-sm)}.reaction-beneficiary select{min-width:180px;height:28px;padding:0 8px;border:1px solid rgba(211,166,107,.22);border-radius:4px;background:#17130f;color:#c5a77f;font-size: var(--fs-md)}

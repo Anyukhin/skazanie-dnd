@@ -63,6 +63,10 @@ import {
   worldMemoryEvent,
 } from './world-memory.mjs'
 import {
+  applyWorldDeedEvent,
+  normalizeWorldDeedsState,
+} from './world-deeds.mjs'
+import {
   ensureSceneWorldMemory,
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
@@ -1405,6 +1409,7 @@ export function normalizeCampaignState(input = {}) {
   state.worldMemory = ensureSceneWorldMemory(state.worldMemory, state)
   state.social = ensureNpcSocialState(state.social, state)
   state.npc_world = normalizeNpcWorldState(state.npc_world)
+  state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
   state.autonomy = normalizeAutonomyState(state.autonomy)
   state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
   if (state.agentInteraction && typeof state.agentInteraction === 'object' && !Array.isArray(state.agentInteraction)) {
@@ -12381,6 +12386,10 @@ export function applyGameEvent(rawState, event) {
       break
   }
   rememberCurrentSceneMap(state)
+  // Летопись поступков выводится из уже применённого события: свидетелями
+  // считаются те, кто остался в сцене после него, — убитый NPC свидетелем быть
+  // не может. Порядок здесь и есть гарантия replay-стабильности.
+  state.world_deeds = applyWorldDeedEvent(state.world_deeds, event, state)
   state.autonomy = applyAutonomyEvent(state.autonomy, event)
   state.state_version = Number.isSafeInteger(event.state_version_after)
     ? event.state_version_after
