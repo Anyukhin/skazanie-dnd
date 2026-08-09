@@ -2,7 +2,7 @@
 import { encounterDifficultyLabel } from './encounter-assembler.mjs'
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
 import { itemViewerCapabilities } from './item-catalog.mjs'
-import { npcSocialForViewer } from './npc-social.mjs'
+import { npcProfileForViewerAt, npcSocialForViewer } from './npc-social.mjs'
 import { suggestedActionsFor } from './action-hints.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
 import { reputationTier } from './reputation-policy.mjs'
@@ -915,6 +915,28 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (visible.event_type === 'NpcPlaced') delete payload.vitality
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
+  }
+  // Профиль NPC. До ревью 2026-08-09 ветки здесь не было вовсе, и
+  // `NpcSocialProfileUpserted` уезжал игроку сырым: `goals`, `beliefs`,
+  // `known_fact_ids` и `social_dcs` — то есть и СЛ социальных проверок, которые
+  // ниже в этой же функции прячутся даже у `AbilityCheckResolved`. Проекция
+  // состояния при этом чистила тот же профиль честно, так что состояние и канал
+  // событий расходились молча.
+  //
+  // Режет тот же белый список, что и проекция состояния
+  // (`npcProfileForViewerAt`, `server/npc-social.mjs`), и место правки выбрано
+  // тем, что производителей у события уже трое: команда `UpsertNpcSocialProfile`
+  // (`server/npc-social.mjs`), увод заложника ходом мира
+  // (`server/offscreen-world.mjs`) и переезд пленного вместе с отрядом
+  // (`server/captives.mjs`). Санитайзер по месту потребовал бы трёх одинаковых
+  // правок и промолчал бы у четвёртого.
+  if (visible.event_type === 'NpcSocialProfileUpserted' && payload.npc) {
+    payload.npc = npcProfileForViewerAt(payload.npc, {
+      playerId: String(actorId ?? ''),
+      isAdmin: false,
+      isPartyMember: true,
+      state,
+    })
   }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
   if (['HitPointDieSpent', 'HitPointDiceRestored'].includes(String(visible.event_type))

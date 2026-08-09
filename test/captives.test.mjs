@@ -21,7 +21,7 @@ import {
   replayEvents,
   resolveCommands,
 } from '../server/rules-engine.mjs'
-import { campaignStateForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
 import { worldDeedsFeed } from '../server/world-deeds.mjs'
 
 const VILLAGE = 'Тихий Брод'
@@ -542,6 +542,38 @@ test('пленный уходит с отрядом при смене сцены
   assert.ok(moved, 'связанного уводят с собой')
   assert.equal(result.state.captives.captives.find((entry) => entry.id === captive.id).location_name, 'Старый тракт')
   assert.equal(result.state.social.npcs.find((npc) => npc.id === captive.npc_id).location, 'Старый тракт')
+})
+
+test('профиль переехавшего пленного уезжает столу белым списком, а не сырым', () => {
+  // Тот же класс дырки, что у увода заложника ходом мира: у
+  // `NpcSocialProfileUpserted` до ревью 2026-08-09 не было ветки в
+  // `eventForViewer`, и профиль уезжал игроку целиком. Чинится это в самой
+  // проекции — одной веткой на всех производителей события, — поэтому и
+  // проверяется у каждого (второй — `test/offscreen-world.test.mjs`).
+  const state = withCaptives()
+  const result = resolveCommands([{
+    command_type: 'AdvanceScene',
+    actor_id: 'hero',
+    command_id: 'cmd-advance-projection',
+    campaign_id: 'CAPTIVE',
+    scene_args: { location: 'Старый тракт', title: 'Дорога', objective: 'Идти дальше' },
+  }], state, { diceService: dice(), context: { isAdmin: true, allowedActorIds: ['hero'] } })
+
+  const raw = result.events.find((event) => event.event_type === 'NpcSocialProfileUpserted')
+  assert.ok(raw, 'переезд пленного переписывает его профиль')
+  assert.deepEqual(raw.payload.npc.goals, ['выбраться живым'], 'в журнале профиль остаётся полным')
+
+  const projected = mechanicsForViewer(result.events, { role: 'player', heroIds: ['hero'] }, 'hero', result.state)
+    .find((event) => event.event_type === 'NpcSocialProfileUpserted')
+  assert.ok(projected, 'сам переезд стол видеть обязан')
+  for (const key of ['goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'speech_profile', 'schedule']) {
+    assert.equal(projected.payload.npc[key], undefined, `«${key}» в канале событий игроку не принадлежит`)
+  }
+  assert.equal(projected.payload.npc.location, 'Старый тракт')
+
+  const gm = mechanicsForViewer(result.events, { role: 'admin' }, 'hero', result.state)
+    .find((event) => event.event_type === 'NpcSocialProfileUpserted')
+  assert.deepEqual(gm.payload.npc.goals, ['выбраться живым'], 'ведущему профиль виден целиком')
 })
 
 test('во время боя пленным не распоряжаются', () => {

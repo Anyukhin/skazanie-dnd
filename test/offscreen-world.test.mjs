@@ -5,9 +5,11 @@
 //   2. два одинаковых скачка от одного состояния дают один и тот же мир;
 //   3. тайные нити ведущего в ход мира не попадают — ни квесты, ни фракции, ни NPC;
 //   4. протухшее задание пишет факт памяти, и Режиссёр его находит;
-//   5. увод заложника действительно закрывает NPC, а не только говорит об этом;
+//   5. увод заложника действительно закрывает NPC, а не только говорит об этом,
+//      и профиль уведённого едет столу белым списком, а не сырым;
 //   6. карточка летописи доезжает столу, а не остаётся у ведущего;
-//   7. всё это переживает replay журнала.
+//   7. пороги слоя — потолок тиков и фора протухания — закреплены числами;
+//   8. всё это переживает replay журнала.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
@@ -18,6 +20,7 @@ import {
   OFFSCREEN_CARD_TITLE,
   OFFSCREEN_CARD_TITLE_PREFIX,
   OFFSCREEN_QUEST_EXPIRY_MINUTES,
+  OFFSCREEN_QUEST_TICK_LIMIT,
   OFFSCREEN_STEP_INTERVAL_MINUTES,
   OFFSCREEN_STEP_MINIMUM_MINUTES,
   OFFSCREEN_WORLD_EVENT_TYPE,
@@ -29,7 +32,7 @@ import {
 import { deterministicRecapText, recapSources } from '../server/campaign-recap.mjs'
 import { npcProfileAtWorldTime } from '../server/npc-social.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
-import { campaignStateForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
 import { planWorldRumorTick } from '../server/world-deeds.mjs'
 import { retrieveWorldMemory } from '../server/world-memory.mjs'
 
@@ -246,6 +249,43 @@ test('часы задания мир доводит до последнего д
   assert.equal(clock.triggered, false)
 })
 
+test('один ход мира двигает часы ровно четырём заданиям, а не всему журналу', () => {
+  // Потолок `OFFSCREEN_QUEST_TICK_LIMIT` — обещание столу: врезка на три строки
+  // не должна тонуть в списке заданий, а весь открытый журнал не должен
+  // проваливаться за одну ночёвку. Число закреплено буквально: без него потолок
+  // держался только тем, что в фикстурах никогда не бывало пяти заданий.
+  const base = campaign()
+  const state = normalizeCampaignState({
+    ...base,
+    worldMemory: {
+      ...base.worldMemory,
+      quests: Array.from({ length: 6 }, (_, index) => ({
+        id: `quest-${index + 1}`,
+        title: `Задание ${index + 1}`,
+        summary: 'Отряд обещал успеть.',
+        status: 'active',
+        visibility: 'party',
+        entity_ids: [],
+        objectives: ['Успеть'],
+        clock: { current: 0, max: 4, label: 'Срок' },
+      })),
+    },
+  })
+
+  const plan = planOffscreenWorldStep(state, { elapsedMinutes: OFFSCREEN_STEP_MINIMUM_MINUTES })
+  const ticked = plan.step.entries.filter((entry) => entry.kind === 'quest_clock')
+  assert.equal(ticked.length, 4, 'ход мира двигает ровно четыре задания за раз')
+  assert.deepEqual(ticked.map((entry) => entry.quest_id), ['quest-1', 'quest-2', 'quest-3', 'quest-4'])
+  assert.equal(plan.drafts.filter((draft) => draft.event_type === 'QuestClockAdvanced').length, 4)
+
+  // Остальные два задания ход мира не трогает вовсе — они дождутся следующего.
+  const advanced = applyAll(state, advance(state, OFFSCREEN_STEP_MINIMUM_MINUTES).events)
+  const clockOf = (id) => advanced.worldMemory.quests.find((quest) => quest.id === id).clock.current
+  assert.deepEqual([1, 2, 3, 4, 5, 6].map((index) => clockOf(`quest-${index}`)), [1, 1, 1, 1, 0, 0])
+  // Само число тоже под замком: сменить константу — значит сменить обещание.
+  assert.equal(OFFSCREEN_QUEST_TICK_LIMIT, 4)
+})
+
 test('заполненные часы сначала попадают под наблюдение, а сутки спустя протухают', () => {
   const state = campaign({ questClock: { current: 4, max: 4 } })
   const watched = applyAll(state, advance(state, OFFSCREEN_STEP_MINIMUM_MINUTES).events)
@@ -264,6 +304,47 @@ test('заполненные часы сначала попадают под н�
   assert.match(fact.summary, /срок вышел/u)
   assert.equal(fact.fact.visibility, 'party')
   assert.deepEqual(offscreenEvents(expiredEvents)[0].payload.step.entries.map((entry) => entry.kind).filter((kind) => kind === 'quest_expired'), ['quest_expired'])
+})
+
+test('фора протухания — ровно сутки: на 1439 минуте задание живо, на 1441 — провалено', () => {
+  // Обе стороны закреплены числами, а не выведены из самой константы: тест,
+  // который берёт срок из `OFFSCREEN_QUEST_EXPIRY_MINUTES`, соглашается с любой
+  // калибровкой и о сдвиге молчит — снизу фора была прижата, сверху нет.
+  //
+  // Сутки — обещание Режиссёру: у него свой контур развязки триггернувшихся
+  // квестов (`server/autonomous-orchestrator.mjs`), и перебивать его нельзя.
+  // Если владелец меняет калибровку сознательно, этот тест краснеет законно и
+  // правится вместе с числом.
+  //
+  // Наблюдение начато ровно на 10 000-й минуте, а прошлый ход мира — далеко
+  // позади: иначе суточный интервал между ходами закрыл бы мир раньше форы, и
+  // проверка мерила бы не то.
+  const state = campaign({
+    minutes: 10_000,
+    questClock: { current: 4, max: 4 },
+    offscreen: {
+      schema_version: 1,
+      steps: [{
+        id: 'offscreen:seed',
+        at_minutes: 6_000,
+        elapsed_minutes: 1_440,
+        day: 5,
+        entries: [{ kind: 'quest_deadline', quest_id: 'quest-caravan', quest_title: 'Караван у брода', summary: 'Часы заполнены, счёт пошёл на сутки.' }],
+        lines: ['Часы заполнены, счёт пошёл на сутки.'],
+      }],
+      watch: [{ quest_id: 'quest-caravan', since_minutes: 10_000 }],
+    },
+  })
+
+  const grace = planOffscreenWorldStep(state, { elapsedMinutes: 1_439 })
+  assert.ok(grace, 'мир на этом скачке всё-таки ходит — иначе фора ничего не значила бы')
+  assert.deepEqual(grace.step.entries.filter((entry) => entry.kind === 'quest_expired'), [])
+  assert.deepEqual(grace.drafts.filter((draft) => draft.event_type === 'QuestResolved'), [])
+
+  const over = planOffscreenWorldStep(state, { elapsedMinutes: 1_441 })
+  assert.deepEqual(over.step.entries.filter((entry) => entry.kind === 'quest_expired').map((entry) => entry.quest_id), ['quest-caravan'])
+  assert.deepEqual(over.drafts.filter((draft) => draft.event_type === 'QuestResolved').map((draft) => draft.payload.status), ['failed'])
+  assert.equal(OFFSCREEN_QUEST_EXPIRY_MINUTES, 1_440)
 })
 
 test('ход фракции-антагониста берётся из закрытого набора и не выдумывает существ', () => {
@@ -353,6 +434,69 @@ test('увод заложника действительно закрывает 
     .find((entry) => entry.kind === 'faction_move' && entry.move_kind === 'took_hostage')
   assert.equal(repeat, undefined)
   assert.deepEqual(again.filter((event) => event.event_type === 'NpcSocialProfileUpserted'), [])
+})
+
+test('профиль уведённого заложника уезжает столу белым списком, а не сырым', () => {
+  // Зонд ревью 2026-08-09. Дыра не в ходе мира: ветки для
+  // `NpcSocialProfileUpserted` в `eventForViewer` не было вовсе, и профиль
+  // уезжал игроку целиком — с целями, убеждениями, списком известных фактов и
+  // СЛ социальных проверок. Ту же СЛ проекция прячет даже в
+  // `AbilityCheckResolved`, так что канал событий отдавал даром ровно то, что
+  // бережёт соседняя ветка, а проекция состояния и лента событий расходились
+  // молча. Поэтому чинится это в проекции — одной веткой на всех
+  // производителей события — и проверяется у двух разных: здесь у увода
+  // заложника, а в `test/captives.test.mjs` у переезда пленного.
+  const base = campaign()
+  const state = normalizeCampaignState({
+    ...base,
+    social: {
+      ...base.social,
+      npcs: base.social.npcs.map((npc) => npc.id === 'miller' ? {
+        ...npc,
+        goals: [`Свести счёты: ${SECRET}`],
+        beliefs: [`Уверен, что ${SECRET}`],
+        known_fact_ids: [`fact:${SECRET}`],
+        social_dcs: { persuasion: 19, intimidation: 21 },
+        schedule: [{ id: 'day', days: [], start_minute: 0, end_minute: 1_439, location: 'Мельница', available: true, summary: 'У жерновов', visibility: 'party' }],
+      } : npc),
+    },
+  })
+
+  let current = state
+  let batch = null
+  for (let day = 0; day < 8 && !batch; day += 1) {
+    const events = advance(current, OFFSCREEN_STEP_INTERVAL_MINUTES).events
+    current = applyAll(current, events)
+    batch = events.some((event) => event.event_type === 'NpcSocialProfileUpserted') ? events : null
+  }
+  assert.ok(batch, 'на восьми сутках фракция обязана дойти до увода заложника')
+
+  const raw = batch.find((event) => event.event_type === 'NpcSocialProfileUpserted')
+  assert.deepEqual(raw.payload.npc.social_dcs, { persuasion: 19, intimidation: 21 }, 'в журнале профиль остаётся полным')
+
+  const projected = mechanicsForViewer(batch, { id: 'user-1', role: 'player', heroIds: ['hero'] }, 'hero', current)
+    .find((event) => event.event_type === 'NpcSocialProfileUpserted')
+  assert.ok(projected, 'сам факт недоступности стол видеть обязан')
+  for (const key of ['goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'speech_profile', 'schedule']) {
+    assert.equal(projected.payload.npc[key], undefined, `«${key}» в канале событий игроку не принадлежит`)
+  }
+  assert.equal(JSON.stringify(projected).includes(SECRET), false, 'тайное досье NPC утекло событием')
+
+  // Ровно то, ради чего событие вообще едет столу: кого увели и что он больше
+  // недоступен. Белый список — тот же, что у проекции состояния.
+  assert.equal(projected.payload.npc.id, 'miller')
+  assert.equal(projected.payload.npc.name, 'Мельник Гость')
+  assert.equal(projected.payload.npc.available, false)
+  assert.deepEqual(
+    Object.keys(projected.payload.npc).sort(),
+    Object.keys(campaignStateForViewer(current, { id: 'user-1', role: 'player', heroIds: ['hero'] }, 'hero')
+      .social.npcs.find((npc) => npc.id === 'miller')).sort(),
+  )
+
+  const gm = mechanicsForViewer(batch, { id: 'user-gm', role: 'admin', heroIds: [] }, '', current)
+    .find((event) => event.event_type === 'NpcSocialProfileUpserted')
+  assert.deepEqual(gm.payload.npc.goals, [`Свести счёты: ${SECRET}`], 'ведущему профиль виден целиком')
+  assert.deepEqual(gm.payload.npc.social_dcs, { persuasion: 19, intimidation: 21 })
 })
 
 test('формулировки ходов фракции идут по кругу и не повторяются дословно подряд', () => {

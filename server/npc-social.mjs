@@ -462,7 +462,13 @@ export function npcProfileAtWorldTime(profile = {}, stateOrElapsedMinutes = {}) 
   return { ...normalized, location: activeSchedule.location, available: activeSchedule.available }
 }
 
-function npcProfileForViewerAt(profile, viewer = {}) {
+/**
+ * Белый список профиля NPC для игрока — **одна** функция на все каналы. Её
+ * читает и проекция состояния (`npcSocialForViewer`), и канал событий
+ * (`eventForViewer`, `server/viewer-projection.mjs`): `NpcSocialProfileUpserted`
+ * несёт тот же профиль, и вторая форма отбора разошлась бы с первой молча.
+ */
+export function npcProfileForViewerAt(profile, viewer = {}) {
   const normalized = safeProfile(profile)
   const activeSchedule = npcScheduleEntryAt(normalized, viewer.state ?? viewer.elapsed_minutes ?? {})
   // An undisclosed schedule may affect play but must not reveal a private
