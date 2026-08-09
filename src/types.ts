@@ -1320,6 +1320,13 @@ export type WorldDeedEntry = {
   summary?: string
   spread_at_minutes?: number
   reputation_faction_ids?: string[]
+  /**
+   * Готовые для карточки поля ленты (`worldDeedsFeed`, `server/world-deeds.mjs`):
+   * русская подпись вида из `DEED_KINDS` и число свидетелей. Приходят только
+   * ведущему — вместе со всей летописью.
+   */
+  label?: string
+  witness_count?: number
 }
 
 export type WorldDeedsProjection = { schema_version?: number; deeds?: WorldDeedEntry[] }

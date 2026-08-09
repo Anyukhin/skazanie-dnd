@@ -24,7 +24,11 @@ import { factionIdsForNpc } from './reputation-policy.mjs'
  *    детерминированную задержку по тяжести, и дальше — по суткам на каждый шаг
  *    графа мира (`server/world-map.mjs`). Слух — это `RecordRumor` в памяти
  *    мира, то есть обычное событие движка; держатель — конкретный NPC, поэтому
- *    его читает уже существующий социальный контроллер.
+ *    его читает уже существующий социальный контроллер и **произносит вслух**.
+ *    Часы молвы приводит серверный драйвер `nudgeWorldClocks`
+ *    (`server/index.mjs`) — тот же, что у часов лавки. Это не деталь
+ *    реализации: клиент системный такт не дёргает, и без своего драйвера часы
+ *    молвы стояли бы, а весь этот модуль дальше первого шага не работал бы.
  * 3. **Реакция.** Дошедший слух двигает репутацию фракций держателя
  *    существующим механизмом (`FactionReputationAdjusted` →
  *    `server/reputation-policy.mjs`): цены, СЛ разговора и доступность услуг.
@@ -76,69 +80,95 @@ export const DEED_KINDS = Object.freeze({
  * Три ступени точности пересказа. Нулевая — то, что видели своими глазами;
  * первая — соседняя локация; вторая — край карты, где от правды остаётся
  * только направление.
+ *
+ * Согласование падежей держится правилом, а не удачей: **обе подстановки стоят
+ * в именительном падеже**. Имя героя и название пропса склонять некому — в
+ * состоянии лежит одна форма, — поэтому фраза строится так, чтобы другой падеж
+ * ей и не понадобился: `{what}` — подлежащее своего предложения или приложение
+ * после тире, `{who}` — именная часть после двоеточия. Прежняя редакция ставила
+ * подстановку под предлог («после {who}», «огонь по {what}») и выдавала «после
+ * Ада» и «огонь по обстановку». Это не служебная строка: её NPC произносит
+ * игрокам вслух.
  */
 const RUMOR_PHRASES = Object.freeze({
   murder: Object.freeze([
-    'В «{place}» от руки {who} погиб(ла) {what}. Тому есть свидетели.',
+    'В «{place}» случилось убийство: погиб(ла) {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» кто-то из чужаков убил человека.',
     'Слыхал, будто в «{place}» пришлые устроили резню. Врут, поди.',
   ]),
   violence: Object.freeze([
-    'В «{place}» {who} поднял(а) руку на {what}. Тому есть свидетели.',
+    'В «{place}» человека избили до крови: пострадал(а) {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» чужаки кого-то избили.',
     'Слыхал, будто в «{place}» пришлые чуть не убили человека.',
   ]),
   arson: Object.freeze([
-    'В «{place}» {who} пустил(а) огонь по {what}. Тому есть свидетели.',
+    'В «{place}» был пожар. Горело вот что: {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» из-за чужаков случился пожар.',
     'Слыхал, будто «{place}» едва не выгорело дотла по вине проезжих.',
   ]),
   vandalism: Object.freeze([
-    'В «{place}» {who} разнёс(ла) {what}. Тому есть свидетели.',
+    'В «{place}» переломали хозяйское добро. Сломано вот что: {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» чужаки переломали хозяйское добро.',
     'Слыхал, будто в «{place}» проезжие разгромили целый дом.',
   ]),
   theft: Object.freeze([
-    'В «{place}» {who} обчистил(а) {what}. Тому есть свидетели.',
+    'В «{place}» взяли чужое. Пропало вот что: {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» чужаки взяли чужое.',
     'Слыхал, будто в «{place}» проезжие обобрали полгорода.',
   ]),
   destruction: Object.freeze([
-    'В «{place}» после {who} осталось разрушение: {what}. Тому есть свидетели.',
-    'Говорят, в «{place}» после чужаков остались руины.',
-    'Слыхал, будто «{place}» после проезжих и не узнать.',
+    'В «{place}» ломились силой. Не уцелело вот что: {what}. Свидетели указывают: {who}.',
+    'Говорят, в «{place}» чужаки вышибли чужую дверь.',
+    'Слыхал, будто в «{place}» проезжие вламываются куда захотят.',
   ]),
   promise_broken: Object.freeze([
-    'В «{place}» {who} не сдержал(а) слово, данное {what}. Тому есть свидетели.',
+    'В «{place}» слово дали и не сдержали. Обманутая сторона — {what}. Свидетели указывают: {who}.',
     'Говорят, слову этих чужаков в «{place}» верить нельзя.',
     'Слыхал, будто те пришлые обманули всех, кому что-то обещали.',
   ]),
   rescue: Object.freeze([
-    'В «{place}» {who} отбил(а) нападение и заслонил(а) людей. Тому есть свидетели.',
+    'В «{place}» заслонили местных и отбили нападение. Свидетели указывают: {who}.',
     'Говорят, в «{place}» чужаки заступились за местных.',
     'Слыхал, будто в «{place}» пришлые кого-то спасли. Может, и правда.',
   ]),
   generosity: Object.freeze([
-    'В «{place}» {who} отдал(а) {what} и не взял(а) ничего взамен. Тому есть свидетели.',
+    'В «{place}» одарили и ничего не взяли взамен. Подарок — {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» чужаки щедро одарили местных.',
     'Слыхал, будто те проезжие золото раздают направо и налево.',
   ]),
   promise_kept: Object.freeze([
-    'В «{place}» {who} сдержал(а) слово, данное {what}. Тому есть свидетели.',
+    'В «{place}» слово дали и сдержали. Вторая сторона — {what}. Свидетели указывают: {who}.',
     'Говорят, слову этих чужаков в «{place}» верить можно.',
     'Слыхал, будто те пришлые слово держат. Редкость нынче.',
   ]),
 })
 
-/** Русские имена видов обстановки: латинский `kind` в молву попадать не должен. */
+/**
+ * Запасные формулировки. Отдельные, а не «взять чужой вид»: у каждого вида
+ * фраза называет само событие, и подстановка чужой ветки соврала бы игроку.
+ * Дойти сюда можно только при рассинхроне `DEED_KINDS` и таблицы фраз.
+ */
+const FALLBACK_RUMOR_PHRASES = Object.freeze([
+  'В «{place}» случилось нехорошее. Речь вот о чём: {what}. Свидетели указывают: {who}.',
+  'Говорят, в «{place}» чужаки чем-то отличились.',
+  'Слыхал, будто в «{place}» проезжие такое устроили — не перескажешь.',
+])
+
+/**
+ * Русские имена видов обстановки: латинский `kind` в молву попадать не должен.
+ * Формы **именительные** — того требует правило подстановки в `RUMOR_PHRASES`.
+ */
 const PROP_KIND_LABELS = Object.freeze({
   container: 'чужие пожитки',
   corpse: 'останки погибшего',
-  relic: 'святыню',
+  relic: 'святыня',
   campfire: 'костёр',
-  lore: 'обстановку',
-  furnishing: 'обстановку',
+  lore: 'обстановка',
+  furnishing: 'обстановка',
 })
+
+/** Что ломают силой: у двери в движке нет ни имени, ни хозяина. */
+const FORCED_DOOR_LABEL = 'дверь'
 
 const clone = (value) => structuredClone(value)
 const text = (value, maximum = 300) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -234,13 +264,22 @@ function npcNameFor(state, npcId) {
  * разбирать все подряд значило бы платить за поступки на каждом шаге replay.
  */
 const DEED_EVENT_TYPES = new Set([
-  'NpcDied', 'NpcHarmed', 'SceneObjectOperated', 'WorldFactRecorded',
+  'NpcDied', 'NpcHarmed', 'SceneObjectOperated', 'DoorForced',
   'NpcPromiseResolved', 'ItemTransferred', 'WitnessConsequencePropagated',
 ])
 
 /**
  * Распознавание поступка в подтверждённом событии. Возвращает описание без
  * идентификатора и времени — их доставляет `deedFromEvent`.
+ *
+ * Самообороны здесь нет намеренно. Единственное место в движке, где мирный NPC
+ * становится враждебным, — `npcHarmEventDrafts` (`npc-positioning.mjs`, ветка
+ * `stanceDraft(..., 'hostile', 'harmed', ...)`): стойка `hostile` **следствие
+ * удара отряда**, а не его причина. Скидка «был враждебен — значит защищались»
+ * снимала бы вину ровно там, где отряд ударил первым, и второй удар по уже
+ * избитому переставал бы считаться. Пока в состоянии нет факта «NPC напал на
+ * отряд», отличить оборону от расправы нечем; заводить его — работа боевого
+ * контура, а не летописи (`docs/dnd-table-situations.md`).
  *
  * @returns {{ kind: string, key: string, subject?: string, actorIds?: string[], witnessIds?: string[] } | null}
  */
@@ -256,7 +295,7 @@ function recognizeDeed(state, event) {
     return { kind: 'violence', key: text(payload.npc_id, 120), subject: text(payload.npc_name, 160) || npcNameFor(state, payload.npc_id), actorIds: [payload.source_actor_id ?? event.actor_id] }
   }
   if (type === 'SceneObjectOperated') {
-    const what = PROP_KIND_LABELS[text(payload.kind, 40)] ?? 'обстановку'
+    const what = PROP_KIND_LABELS[text(payload.kind, 40)] ?? 'обстановка'
     const key = text(payload.prop_id, 120)
     if (payload.intent === 'ignite') return { kind: 'arson', key, subject: what, actorIds: [event.actor_id] }
     if (payload.intent === 'topple') return { kind: 'vandalism', key, subject: what, actorIds: [event.actor_id] }
@@ -270,8 +309,25 @@ function recognizeDeed(state, event) {
     }
     return null
   }
-  if (type === 'WorldFactRecorded' && text(payload.fact?.predicate, 120) === 'scene_change') {
-    return { kind: 'destruction', key: text(payload.fact?.id, 120), subject: text(payload.fact?.object || payload.fact?.summary, 180), actorIds: [] }
+  if (type === 'DoorForced' && payload.success === true) {
+    // Выломанная дверь — единственное разрушение, о котором движок знает
+    // структурно: `DoorForced` с успехом переводит дверь в `broken`
+    // (`rules-engine.mjs`, редьюсер `DoorForced`).
+    //
+    // Раньше здесь стоял `WorldFactRecorded` с предикатом `scene_change`, и это
+    // было прямой ошибкой: единственный писатель таких фактов —
+    // `materialConsequenceCommands` (`autonomous-orchestrator.mjs`), а он пишет
+    // их на **любую успешную** рискованную проверку. Обезвреженная ловушка,
+    // перепрыгнутая пропасть и потушенный пожар записывались тёмным поступком
+    // «разрушение» и роняли славу отряда. Свободного текста, по которому можно
+    // отличить разрушение от подвига, в факте нет — значит, и поступка из него
+    // выводить нельзя.
+    //
+    // Свидетели обязательны по той же причине, что и у кражи: хозяина у двери в
+    // движке нет, и выломанная дверь в пустом подземелье никого не обидела.
+    const witnessIds = sceneWitnessIds(state)
+    if (!witnessIds.length) return null
+    return { kind: 'destruction', key: text(payload.door_id, 120), subject: FORCED_DOOR_LABEL, actorIds: [event.actor_id], witnessIds }
   }
   if (type === 'NpcPromiseResolved') {
     const status = text(payload.status, 30)
@@ -321,15 +377,18 @@ function summaryFor(state, deed) {
   const who = partyLabel(state, deed.actor_names)
   const place = deed.location_name || 'неизвестном месте'
   const what = deed.subject || '—'
+  // Форма у всех одна — «подпись — что», — и она держит именительный падеж:
+  // склонять имя героя и название пропса нечем, склеенная же по месту фраза
+  // («слово, данное Мельник Ждан») читается как ошибка.
   const table = {
-    murder: `${who}: убит(а) ${what} (${place})`,
+    murder: `${who}: убийство — ${what} (${place})`,
     violence: `${who}: побои — ${what} (${place})`,
     arson: `${who}: поджог — ${what} (${place})`,
     vandalism: `${who}: погром — ${what} (${place})`,
     theft: `${who}: кража — ${what} (${place})`,
     destruction: `${who}: разрушение — ${what} (${place})`,
-    promise_broken: `${who}: нарушено слово, данное ${what} (${place})`,
-    promise_kept: `${who}: сдержано слово, данное ${what} (${place})`,
+    promise_broken: `${who}: нарушенное слово — ${what} (${place})`,
+    promise_kept: `${who}: сдержанное слово — ${what} (${place})`,
     generosity: `${who}: дар — ${what} (${place})`,
     rescue: `${who}: защита людей (${place})`,
   }
@@ -483,7 +542,7 @@ export function rumorClaimId(deed, npcId) {
 
 /** Формулировка слуха по дальности пересказа: 0 — точно, 2 — уже небыль. */
 export function rumorWording(deed = {}, hop = 0) {
-  const variants = RUMOR_PHRASES[deed.kind] ?? RUMOR_PHRASES.destruction
+  const variants = RUMOR_PHRASES[deed.kind] ?? FALLBACK_RUMOR_PHRASES
   const index = Math.max(0, Math.min(variants.length - 1, integer(hop, 0)))
   return text(variants[index]
     .replaceAll('{place}', deed.location_name || 'дальних краях')

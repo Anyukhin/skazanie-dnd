@@ -225,7 +225,13 @@ const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // обязан переиграться, иначе `NpcPlaced`/`NpcHarmed` не попадут в read-модель.
 // 9: server-only `npc_world`, включая событийные инвентари NPC, участвует в
 // canonical projection hash и восстанавливается в room read-модель из replay.
-export const GAME_STATE_PROJECTOR_VERSION = 9
+// 10: летопись поступков `world_deeds` выводится редьюсером из журнала. Снимки
+// девятой версии её не содержат, а `FileEventStore._readSnapshot` принимает
+// снимок с совпавшей `projector_version` и доигрывает только события после
+// него — поступки, случившиеся до границы снимка, не восстановились бы никогда,
+// и летопись перестала бы быть чистой функцией журнала. Бамп отбрасывает старые
+// снимки и заставляет переиграть поток целиком.
+export const GAME_STATE_PROJECTOR_VERSION = 10
 
 /**
  * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль

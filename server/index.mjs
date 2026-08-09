@@ -194,7 +194,9 @@ const locationIllustrationService = new LocationIllustrationService({
 })
 const campaignStreams = new Map()
 const campaignTyping = new Map()
-const campaignEconomyJobs = new Map()
+const campaignWorldClockJobs = new Map()
+/** Сколько коммитов часов молвы допустимо в одном заходе драйвера. */
+const WORLD_RUMOR_BURST_LIMIT = 4
 const TYPING_TTL_MS = 4_000
 let campaignStreamSequence = 0
 const campaignNarrationStream = new CampaignNarrationStream({
@@ -1438,29 +1440,76 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
   }
 }
 
-function nudgeMerchantEconomyClock(campaignId) {
+/**
+ * Есть ли часам молвы над чем работать. Дешёвая калитка перед `eventStore.load`:
+ * и факты поступков, и слухи, и реакция мира выводятся из летописи, поэтому
+ * пустая летопись означает пустой такт. Кампания, где отряд ещё ничего
+ * заметного не сделал, не платит за часы вовсе.
+ */
+function worldRumorClockHasWork(campaignId) {
+  const room = getRoom(campaignId)
+  if (!room?.state) return false
+  // Приостановленная и завершённая кампании доступны только для чтения: такт
+  // молвы там всё равно не закоммитится, а ошибка легла бы в лог на каждое
+  // сохранение комнаты.
+  try { assertCampaignPlayable(room.state) } catch { return false }
+  return Boolean((room.state.world_deeds?.deeds ?? []).length)
+}
+
+/**
+ * Серверный драйвер мировых часов кампании: лавка и молва.
+ *
+ * Часы обязаны идти сами. Клиент системный такт не дёргает — это правило
+ * закреплено сторожами (`test/realtime-combat-transport.test.mjs`,
+ * `test/ui-hud-wave.test.mjs`), — поэтому единственный HTTP-роут `system-tick`
+ * не может быть их приводом: без драйвера часы молвы стояли, `RecordRumor` не
+ * писался никогда, а лента «что уже говорят» и репутация оставались пустыми.
+ *
+ * Драйвер один на оба часовых контура: у них общий вход (сохранение комнаты) и
+ * общее свойство — такт без работы ничего не пишет, поэтому цепочка
+ * «коммит → сохранение комнаты → новый такт» затухает за один-два оборота.
+ */
+function nudgeWorldClocks(campaignId) {
   const normalized = String(campaignId || '').toUpperCase()
   if (!normalized) return
-  const entry = campaignEconomyJobs.get(normalized) ?? { running: false, pending: false }
+  const entry = campaignWorldClockJobs.get(normalized) ?? { running: false, pending: false }
   entry.pending = true
-  campaignEconomyJobs.set(normalized, entry)
+  campaignWorldClockJobs.set(normalized, entry)
   if (entry.running) return
   entry.running = true
   queueMicrotask(() => {
     void (async () => {
+      let rumorCommits = 0
       while (entry.pending) {
         entry.pending = false
-        const result = await runMerchantEconomyClock(normalized)
-        if (result.events.length) persistAuthoritativeProjection(normalized, result.state, result.events)
+        const economy = await runMerchantEconomyClock(normalized)
+        if (economy.events.length) persistAuthoritativeProjection(normalized, economy.state, economy.events)
+        if (!worldRumorClockHasWork(normalized)) continue
+        // Предохранитель от несходящегося такта. Свой коммит часов молвы сам
+        // сохраняет комнату, а сохранение комнаты будит драйвер снова: если
+        // такт по какой-то причине перестанет быть идемпотентным (например,
+        // сущность места вытеснится потолком памяти мира и факт поступка
+        // отвалится вместе с ней), петля станет горячей и съест ядро. Честного
+        // такта хватает двух оборотов — команды и реакция мира; всё сверх того
+        // означает, что состояние не сходится, и ждать следующего сохранения
+        // комнаты безопаснее, чем крутиться.
+        if (rumorCommits >= WORLD_RUMOR_BURST_LIMIT) continue
+        const rumor = await runWorldRumorClock(normalized)
+        if (!rumor.events.length) continue
+        rumorCommits += 1
+        if (rumorCommits >= WORLD_RUMOR_BURST_LIMIT) {
+          console.warn(`[Сказание] Часы молвы ${normalized} не сошлись за ${WORLD_RUMOR_BURST_LIMIT} оборотов: такт отложен до следующего сохранения комнаты`)
+        }
+        persistAuthoritativeProjection(normalized, rumor.state, rumor.events)
       }
     })()
       .catch((error) => {
-        console.error(`[Сказание] Не удалось продвинуть экономические часы ${normalized}:`, error?.message || error)
+        console.error(`[Сказание] Не удалось продвинуть мировые часы ${normalized}:`, error?.message || error)
       })
       .finally(() => {
         entry.running = false
-        if (entry.pending) nudgeMerchantEconomyClock(normalized)
-        else campaignEconomyJobs.delete(normalized)
+        if (entry.pending) nudgeWorldClocks(normalized)
+        else campaignWorldClockJobs.delete(normalized)
       })
   })
 }
@@ -1469,7 +1518,7 @@ onRoomSaved((campaignId, room) => {
   queueMicrotask(() => {
     broadcastCampaignRoom(campaignId, room)
     combatTurnCoordinator.nudge(campaignId)
-    nudgeMerchantEconomyClock(campaignId)
+    nudgeWorldClocks(campaignId)
   })
 })
 
@@ -2172,8 +2221,9 @@ async function runWorldRumorClock(campaignId) {
   const state = normalizeCampaignState(loaded.state)
   const worldMinute = Math.max(0, Number(state.mechanics?.world_time?.elapsed_minutes ?? 0))
   const { commands } = planWorldRumorTick(state, { worldMinute })
+  let committed = null
   if (commands.length) {
-    const committed = await authoritativeExecutor.executeCommands({
+    committed = await authoritativeExecutor.executeCommands({
       campaignId,
       idempotencyKey: `world-rumor-clock:${worldMinute}:${loaded.state_version}`,
       commands,
@@ -2181,14 +2231,23 @@ async function runWorldRumorClock(campaignId) {
     })
     if (!committed.replayed) events.push(...(committed.events ?? []))
   }
+  // Версия состояния в ключе обязательна, а не декоративна: `planWorldRumorTick`
+  // режет пачку такта (24 факта, 60 слухов), и остаток доезжает следующим
+  // тактом **той же мировой минуты**. С ключом от одной минуты второй такт
+  // получил бы `replayed` и репутация за остаток не начислилась бы до сдвига
+  // мирового времени. Командный вход считает так же.
+  const stateVersionForKey = Number(committed?.state_version ?? loaded.state_version)
   const reputation = await authoritativeExecutor.commitDerived({
     campaignId,
-    idempotencyKey: `world-rumor-reputation:${worldMinute}`,
+    idempotencyKey: `world-rumor-reputation:${worldMinute}:${stateVersionForKey}`,
     deriveEvents: (current) => planWorldRumorReputation(normalizeCampaignState(current)),
     producerCapability: WORLD_RUMOR_CAPABILITY,
   })
   if (reputation && !reputation.replayed) events.push(...(reputation.events ?? []))
-  const final = reputation?.state ? normalizeCampaignState(reputation.state) : (await eventStore.load(campaignId)).state
+  // Лишний `load` только ради возврата состояния не нужен: когда такт ничего не
+  // записал, вызывающий и не станет обновлять проекцию.
+  if (!events.length) return { state, events }
+  const final = reputation?.state ?? committed?.state ?? (await eventStore.load(campaignId)).state
   return { state: normalizeCampaignState(final), events }
 }
 
@@ -4139,7 +4198,7 @@ server.listen(port, host, () => {
   const startupJobs = setTimeout(() => {
     for (const campaignId of listRoomCodes()) {
       combatTurnCoordinator.nudge(campaignId)
-      nudgeMerchantEconomyClock(campaignId)
+      nudgeWorldClocks(campaignId)
     }
   }, 250)
   startupJobs.unref()

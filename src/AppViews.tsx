@@ -448,26 +448,20 @@ export function JournalView({ state }: { state: GameState }) {
   )
 }
 
-/**
- * Русские подписи видов поступка. Таблица-источник — серверная (`DEED_KINDS`,
- * `server/world-deeds.mjs`); сюда она приходит подписями, а не переводом
- * латинских ключей на лету.
- */
-const DEED_LABELS: Record<string, string> = {
-  murder: 'Убийство', arson: 'Поджог', theft: 'Кража', destruction: 'Разрушение',
-  violence: 'Насилие', vandalism: 'Погром', promise_broken: 'Нарушенное слово',
-  rescue: 'Спасение', generosity: 'Щедрость', promise_kept: 'Сдержанное слово',
-}
-
 const DEED_SEVERITY_LABELS: Record<string, string> = { grave: 'тяжкий', major: 'заметный', minor: 'мелкий' }
 
 /**
  * Лента ведущего: что мир заметил за отрядом и что об этом уже говорят.
  * Игроку эта секция недоступна по построению — сервер вырезает `world_deeds` и
  * gm_only-слухи из проекции, поэтому у игрока карточка просто пуста.
+ *
+ * Порядок и подписи видов приходят готовыми: `worldDeedsFeed`
+ * (`server/world-deeds.mjs`) отдаёт ленту свежими сверху, с `label` из
+ * `DEED_KINDS` и посчитанным `witness_count`. Своей таблицы подписей и своей
+ * сортировки здесь нет намеренно — две копии расходились бы молча.
  */
 export function WorldDeedsCard({ state }: { state: GameState }) {
-  const deeds = useMemo(() => [...(state.world_deeds?.deeds ?? [])].sort((left, right) => right.at_minutes - left.at_minutes).slice(0, 12), [state.world_deeds])
+  const deeds = useMemo(() => (state.world_deeds?.deeds ?? []).slice(0, 12), [state.world_deeds])
   const npcNames = useMemo(() => new Map((state.worldMemory?.entities ?? []).map((entity) => [entity.id, entity.name])), [state.worldMemory])
   const rumors = useMemo(() => (state.worldMemory?.epistemic_claims ?? [])
     .filter((claim) => claim.kind === 'rumor')
@@ -484,12 +478,12 @@ export function WorldDeedsCard({ state }: { state: GameState }) {
     <div className="deed-feed">
       {deeds.map((deed) => <article key={deed.id} className={deed.alignment}>
         <div>
-          <strong>{DEED_LABELS[deed.kind] ?? deed.kind}</strong>
+          <strong>{deed.label || deed.kind}</strong>
           <span>{deed.summary || deed.subject || '—'}</span>
           <small>{campaignClockLabel(deed.at_minutes)} · {deed.location_name || 'место неизвестно'} · {DEED_SEVERITY_LABELS[deed.severity] ?? deed.severity}</small>
         </div>
         <em className={deed.secret ? 'secret' : ''}>
-          {deed.secret ? 'БЕЗ СВИДЕТЕЛЕЙ' : `СВИДЕТЕЛЕЙ: ${deed.witness_ids?.length ?? 0}`}
+          {deed.secret ? 'БЕЗ СВИДЕТЕЛЕЙ' : `СВИДЕТЕЛЕЙ: ${deed.witness_count ?? 0}`}
         </em>
         <small className="deed-spread">
           {deed.secret

@@ -16,6 +16,7 @@ import {
   serializeTacticalMap,
   serializedTacticalMapHash,
 } from './tactical-map.mjs'
+import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
 /**
@@ -695,6 +696,14 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (user?.role === 'admin') return {
     ...state,
     players: playerItemsWithCapabilities(state.players),
+    // Летопись поступков уезжает ведущему уже лентой: свежие сверху, с русской
+    // подписью вида и числом свидетелей. Сортировка и таблица подписей живут в
+    // одном месте — на сервере, рядом с `DEED_KINDS`. Карточка админки раньше
+    // держала свои копии обеих, и они расходились молча.
+    //
+    // Лента ограничена: карточка показывает дюжину, а состояние держит до двух
+    // сотен поступков, и слать их целиком в каждом кадре комнаты незачем.
+    ...(state.world_deeds ? { world_deeds: { schema_version: WORLD_DEEDS_SCHEMA_VERSION, deeds: worldDeedsFeed(state, { limit: 40 }) } } : {}),
     mechanics: {
       ...(state.mechanics ?? {}),
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),

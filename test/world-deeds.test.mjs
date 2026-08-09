@@ -3,15 +3,23 @@ import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
-import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
+import {
+  GAME_STATE_PROJECTOR_VERSION,
+  applyGameEvent,
+  normalizeCampaignState,
+  replayEvents,
+  resolveCommands,
+} from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import {
+  DEED_KINDS,
   DEED_LOCAL_DELAY_MINUTES,
   RUMOR_HOP_MINUTES,
   planWorldRumorReputation,
   planWorldRumorTick,
   rumorClaimId,
   rumorSpreadTargets,
+  rumorWording,
   worldDeedsFeed,
 } from '../server/world-deeds.mjs'
 
@@ -94,17 +102,47 @@ function witnessedCampaign(minutes = 0) {
   })
 }
 
+/**
+ * Жители той же локации, которых в сцене нет: у них пустая `location`, поэтому
+ * `npcNodeIdFor` ставит их в узел текущей сцены (нулевой шаг от места), а
+ * `presentSceneNpcs` свидетелями не считает. Ровно эта разница и делает пробу
+ * сторожа «без свидетелей молве взяться неоткуда» непустой: прежняя фикстура
+ * держала одного NPC, который и был жертвой, и целей не было ни при каком
+ * сторо́же.
+ */
+function bystanders() {
+  return [
+    { ...npc('gossip', 'Кумушка Веся', VILLAGE, 'brod-guild'), location: '' },
+    { ...npc('smith', 'Кузнец Гор', VILLAGE, 'brod-craft'), location: '' },
+  ]
+}
+
 test('поступок без свидетелей остаётся тайной и слуха не рождает', () => {
-  const state = applyGameEvent(campaign({ npcs: [npc('guard', 'Страж Бран', VILLAGE, 'brod-watch')] }), deathEvent())
+  const state = applyGameEvent(campaign({
+    npcs: [npc('guard', 'Страж Бран', VILLAGE, 'brod-watch'), ...bystanders()],
+  }), deathEvent())
   const [deed] = state.world_deeds.deeds
   assert.equal(state.world_deeds.deeds.length, 1)
   assert.equal(deed.kind, 'murder')
   assert.equal(deed.severity, 'grave')
   assert.equal(deed.location_name, VILLAGE)
   // Единственный живой NPC сцены — сама жертва, и свидетелем она быть не может.
+  // Кумушка и кузнец живы и стоят в той же локации, но не в сцене.
   assert.deepEqual(deed.witness_ids, [])
   assert.equal(deed.secret, true)
   assert.deepEqual(rumorSpreadTargets(state, { worldMinute: 100_000 }), [])
+
+  // Положительный контроль к тому же составу: стоит появиться живому свидетелю
+  // сцены — и те же самые жители получают слух нулевым шагом. Значит, пустой
+  // список выше даёт именно сторож тайны, а не безлюдная фикстура.
+  const seen = applyGameEvent(campaign({
+    npcs: [npc('guard', 'Страж Бран', VILLAGE, 'brod-watch'), npc('baker', 'Пекарь Мила', VILLAGE, 'brod-guild'), ...bystanders()],
+  }), deathEvent())
+  assert.equal(seen.world_deeds.deeds[0].secret, false)
+  assert.deepEqual(
+    rumorSpreadTargets(seen, { worldMinute: 100_000 }).map((target) => `${target.npc_id}@${target.hop}`).sort(),
+    ['baker@0', 'gossip@0', 'smith@0'],
+  )
 })
 
 test('свидетель рождает слух только через положенные игровые часы', () => {
@@ -248,6 +286,80 @@ test('поджог и погром обстановки распознаются
   for (const deed of state.world_deeds.deeds) assert.deepEqual(deed.witness_ids, ['baker', 'guard'])
 })
 
+test('успешная рискованная проверка тёмным поступком не становится', () => {
+  // Единственный писатель `scene_change` — `materialConsequenceCommands`
+  // (`server/autonomous-orchestrator.mjs`), и он срабатывает на ЛЮБОЙ успешной
+  // рискованной проверке. Пока летопись выводила отсюда «разрушение»,
+  // обезвреженная ловушка и потушенный пожар роняли славу отряда.
+  const sceneChange = {
+    event_id: 'evt-scene-change',
+    command_id: 'cmd-free-action',
+    event_type: 'WorldFactRecorded',
+    actor_id: 'hero',
+    target_ids: [],
+    payload: { fact: {
+      id: 'fact-scene-change-trap',
+      subject_id: 'location-shrine',
+      predicate: 'scene_change',
+      object: 'обезвредить ловушку',
+      summary: 'обезвредить ловушку: вставить клин в механизм (Площадь)',
+      visibility: 'party',
+      source_event_ids: ['evt-check'],
+    } },
+    visibility: 'party',
+  }
+  assert.deepEqual(applyGameEvent(witnessedCampaign(), sceneChange).world_deeds.deeds, [])
+})
+
+test('разрушение — это выломанная на людях дверь, и только она', () => {
+  const forced = (success) => ({
+    event_id: `evt-door-${success}`,
+    command_id: `cmd-door-${success}`,
+    event_type: 'DoorForced',
+    actor_id: 'hero',
+    target_ids: [],
+    payload: { door_id: 'door-1', success, previous_state: 'locked', difficulty: 15, check_total: 18 },
+    visibility: 'public',
+  })
+  // Неудачная попытка ничего не сломала; пустое подземелье никого не обидело.
+  assert.deepEqual(applyGameEvent(witnessedCampaign(), forced(false)).world_deeds.deeds, [])
+  assert.deepEqual(applyGameEvent(campaign(), forced(true)).world_deeds.deeds, [])
+
+  const [deed] = applyGameEvent(witnessedCampaign(), forced(true)).world_deeds.deeds
+  assert.equal(deed.kind, 'destruction')
+  assert.equal(deed.alignment, 'dark')
+  assert.equal(deed.severity, 'major')
+  assert.equal(deed.subject, 'дверь')
+  assert.deepEqual(deed.witness_ids, ['baker', 'guard'])
+  assert.equal(deed.summary, 'Ада: разрушение — дверь (Тихий Брод)')
+})
+
+test('подстановка в слух держит именительный падеж и не оставляет заглушек', () => {
+  // Имя героя и подпись пропса склонять нечем: в состоянии лежит одна форма.
+  // Поэтому фраза обязана ставить подстановку туда, где нужен именительный,
+  // иначе NPC произносит игрокам «после Ада» и «огонь по обстановку».
+  const preposition = /(?:после|от|для|без|у|про|через|над|перед|с|по|данное|данного|руки)\s+(?:ИМЯГЕРОЯ|НАЗВАНИЕ)/u
+  for (const kind of Object.keys(DEED_KINDS)) {
+    for (const hop of [0, 1, 2]) {
+      const claim = rumorWording({ kind, location_name: VILLAGE, actor_names: ['ИМЯГЕРОЯ'], subject: 'НАЗВАНИЕ' }, hop)
+      assert.doesNotMatch(claim, /\{[a-z]+\}/u, `${kind}@${hop}: в слухе осталась заглушка — ${claim}`)
+      assert.doesNotMatch(claim, preposition, `${kind}@${hop}: подстановка стоит под предлогом — ${claim}`)
+    }
+  }
+  // Подписи видов обстановки тоже именительные: они уходят в ту же подстановку.
+  const arson = { kind: 'arson', location_name: VILLAGE, actor_names: ['Ада'], subject: 'обстановка' }
+  assert.equal(rumorWording(arson, 0), 'В «Тихий Брод» был пожар. Горело вот что: обстановка. Свидетели указывают: Ада.')
+})
+
+test('новое производное состояние отбрасывает снимки прежней версии проектора', () => {
+  // `FileEventStore._readSnapshot` принимает снимок с совпавшей
+  // `projector_version` и доигрывает только события после него. Снимки версии 9
+  // писались без `world_deeds`, и без бампа поступки до границы снимка не
+  // восстановились бы никогда — летопись перестала бы быть функцией журнала.
+  assert.ok(GAME_STATE_PROJECTOR_VERSION >= 10,
+    'летопись поступков обязана отбросить снимки, записанные без world_deeds')
+})
+
 test('взятое из чужого сундука без единого живого NPC поступком не считается', () => {
   const take = {
     event_id: 'evt-take',
@@ -311,12 +423,26 @@ test('летопись и слухи принадлежат ведущему и 
 test('дошедший слух попадает в разговор своего NPC', async () => {
   const start = applyGameEvent(witnessedCampaign(), deathEvent())
   const { state } = runRumorTick(start, DEED_LOCAL_DELAY_MINUTES.grave + RUMOR_HOP_MINUTES)
+  const claimId = rumorClaimId(state.world_deeds.deeds[0], 'miller')
   const controller = new NpcSocialController()
   const reply = await controller.respond({ state, playerId: 'hero', npcId: 'miller', message: 'Что слышно нового?', turnId: 'turn-1' })
   assert.ok(reply)
-  const claimId = rumorClaimId(state.world_deeds.deeds[0], 'miller')
-  // Контроллер отдаёт NPC ровно его собственные утверждения — и слух в их числе.
-  const conversationClaims = state.worldMemory.epistemic_claims.filter((claim) => claim.holder_entity_id === 'miller')
-  assert.deepEqual(conversationClaims.map((claim) => claim.id), [claimId])
   assert.equal(reply.provider, 'deterministic-social-fallback')
+
+  // Слух пишется `gm_only` и в проекцию игроку не попадает: единственная дорога
+  // молвы к столу — реплика держателя. Поэтому проверяется сама реплика, а не
+  // только то, что тик записал утверждение.
+  assert.deepEqual(reply.disclosed_claim_ids, [claimId])
+  const claim = state.worldMemory.epistemic_claims.find((entry) => entry.id === claimId)
+  assert.ok(reply.reply.includes(claim.summary || claim.claim), `слух не прозвучал: ${reply.reply}`)
+  assert.match(reply.reply, /Мельник Ждан/u)
+  // Мельник знает о случившемся с чужих слов: первый пересказ теряет имена.
+  assert.doesNotMatch(reply.reply, /Страж Бран|Ада/u)
+  assert.equal(reply.conversation.npc_reply, reply.reply)
+  assert.deepEqual(reply.conversation.disclosed_claim_ids, [claimId])
+
+  // Отрицательный контроль: до отшельника молва не дошла, и говорить ему нечего.
+  const silent = await controller.respond({ state, playerId: 'hero', npcId: 'hermit', message: 'Что слышно нового?', turnId: 'turn-2' })
+  assert.deepEqual(silent.disclosed_claim_ids, [])
+  assert.match(silent.reply, /не сообщает ничего нового/u)
 })
