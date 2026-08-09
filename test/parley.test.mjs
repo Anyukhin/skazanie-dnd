@@ -18,6 +18,7 @@ import {
   replayEvents,
   resolveCommands,
 } from '../server/rules-engine.mjs'
+import { STAGES } from '../server/post-commit-coordinator.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { worldDeedsFeed } from '../server/world-deeds.mjs'
 import { combatNarration } from '../server/combat-narration.mjs'
@@ -425,6 +426,24 @@ test('парлей рассказывается детерминированны
   const text = combatNarration(result.events, result.state)
   assert.match(text, /Поговорим/u)
   assert.match(text, /[Пп]еремирие/u)
+})
+
+test('перемирие останавливает продолжение боя, а его снятие — возвращает', () => {
+  const continuation = STAGES.find((stage) => stage.name === 'combat-continuation')
+  assert.ok(continuation, 'стадия продолжения боя обязана существовать')
+
+  const fighting = campaign()
+  assert.equal(continuation.applies({ state: fighting, eventTypes: new Set() }), true)
+
+  const held = truced()
+  assert.equal(
+    continuation.applies({ state: held, eventTypes: new Set() }),
+    false,
+    'на перемирии ходов нет ни у кого — стадия не должна даже начинаться',
+  )
+
+  const resumed = run(held, [{ command_type: 'SettleParley', actor_id: 'hero', outcome: 'resume' }]).state
+  assert.equal(continuation.applies({ state: resumed, eventTypes: new Set() }), true)
 })
 
 test('фраза о переговорах распознаётся сервером без модели', () => {

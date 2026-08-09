@@ -261,3 +261,45 @@ test('свободная фраза о переговорах доходит д�
   // ровно на этом фраза и застревала.
   assert.doesNotMatch(String(shouted.body.narration ?? ''), /[Уу]точните/u)
 })
+
+test('свободная фраза тоже уважает ручной бросок: карточка, кубик, тот же ход', { timeout: runnerTimeout(40_000) }, async (t) => {
+  const { baseUrl, adminCookie, log } = await setUp(t)
+
+  const announced = await request(baseUrl, '/api/narrate', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      campaign_id: SESSION,
+      actor_id: 'hero',
+      idempotency_key: 'parley-manual-1',
+      manual_roll: true,
+      action: 'Предлагаю переговоры: хватит драться!',
+    },
+  })
+  assert.equal(announced.status, 200, `${announced.text}\n${log()}`)
+  assert.ok(announced.body.check?.check_id, `фраза обязана вернуть карточку проверки\n${announced.text}`)
+  assert.equal((announced.body.mechanics ?? []).length, 0, 'до броска мир меняться не должен')
+
+  const rolled = await request(baseUrl, '/api/roll', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { campaignId: SESSION, playerId: 'hero', checkId: announced.body.check.check_id },
+  })
+  assert.equal(rolled.status, 200, `${rolled.text}\n${log()}`)
+
+  const resolved = await request(baseUrl, '/api/narrate', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      campaign_id: SESSION,
+      actor_id: 'hero',
+      idempotency_key: 'parley-manual-2',
+      action: 'Предлагаю переговоры: хватит драться!',
+      roll: { roll_id: rolled.body.roll_id },
+    },
+  })
+  assert.equal(resolved.status, 200, `${resolved.text}\n${log()}`)
+  const proposed = (resolved.body.mechanics ?? []).find((event) => event.event_type === 'ParleyProposed')
+  assert.ok(proposed, `вторая фаза не довела парлей до правила\n${resolved.text}`)
+  assert.equal(proposed.payload.total, rolled.body.total, 'движок считает по броску игрока')
+})
