@@ -3,12 +3,14 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { WANTED_LEVEL_LABELS, guardOptionsFor, guardEncounterTriggerFor } from '../server/law-and-order.mjs'
+import { merchantViewFor } from '../server/merchant-economy.mjs'
 import { applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
 const views = readFileSync(new URL('../src/AppViews.tsx', import.meta.url), 'utf8')
+const shop = readFileSync(new URL('../src/MerchantView.tsx', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 
 const VILLAGE = 'Тихий Брод'
@@ -102,6 +104,78 @@ test('ведущий получает ленту по краям со ступе
   assert.ok(north.next_decay_in_minutes > 0, 'ведущий видит, когда сгорит очко')
   assert.equal(north.crimes.length, 1)
   assert.ok(north.crimes[0].summary)
+  assert.equal(north.cleared, null, 'край отряд ещё не прощал')
+})
+
+/**
+ * Реестр снятий раньше копился в состоянии, не отвечая ни на один вопрос за
+ * столом. Теперь он едет лентой и виден строкой в карточке ведущего.
+ */
+test('снятие розыска остаётся в ленте и подписано в карточке ведущего', () => {
+  const guilty = applyGameEvent(campaign(), murder)
+  const forgiven = applyGameEvent(guilty, {
+    event_id: 'evt-amnesty', command_id: 'cmd-amnesty', event_type: 'WantedCleared', actor_id: null,
+    target_ids: [], visibility: 'gm_only',
+    payload: {
+      region_id: 'north', region_name: 'Северный край', reason: 'amnesty',
+      crime_ids: guilty.law.crimes.map((crime) => crime.id), at_minutes: 120,
+    },
+  })
+  const admin = campaignStateForViewer(forgiven, { id: 'user-gm', role: 'admin', heroIds: [] }, '')
+  const north = admin.law.regions.find((region) => region.region_id === 'north')
+
+  assert.equal(north.level, 0, 'амнистия снимает ступень')
+  assert.equal(north.cleared.reason, 'amnesty')
+  assert.equal(north.cleared.at_minutes, 120)
+  assert.match(views, /WANTED_CLEAR_LABELS/u)
+  assert.match(views, /wanted-cleared/u)
+  assert.match(styles, /\.wanted-region > small\.wanted-cleared \{/u)
+})
+
+/**
+ * Витрина обязана называть настоящую причину отказа. Сервер шлёт её отдельным
+ * полем (`can_buy` + `unavailable_reason`), а витрина до ревью 2026-08-09 читала
+ * только `max_quantity` — и герой с полным кошелём получал «Недостаточно монет»
+ * вместо «Торговец не станет иметь дела с теми, кого ищет стража».
+ */
+test('лавка под розыском отказывает причиной, и витрина эту причину читает', () => {
+  const base = campaign()
+  const stocked = normalizeCampaignState({
+    ...base,
+    players: [{
+      ...base.players[0],
+      inventory: [{ id: 'item-rope', catalog_id: 'srd_5_2_1:rope-hempen-50-feet', name: 'Верёвка пеньковая (50 футов)', quantity: 1, type: 'gear' }],
+    }],
+    merchants: [{
+      id: 'merchant-1', name: 'Лавочник', location: VILLAGE, available: true, purse_cp: 20_000,
+      stock: [{ stock_id: 'stock-1', catalog_id: 'srd_5_2_1:rope-hempen-50-feet', quantity: 4 }],
+      services: [],
+    }],
+    social: { ...base.social, npcs: [...base.social.npcs, { id: 'merchant-1', name: 'Лавочник', location: VILLAGE, visibility: 'party', tags: ['faction:brod-folk'] }] },
+  })
+  const arson = {
+    event_id: 'evt-arson', command_id: 'cmd-arson', event_type: 'SceneObjectOperated', actor_id: 'hero',
+    target_ids: [], payload: { prop_id: 'hay-1', kind: 'furnishing', intent: 'ignite' }, visibility: 'party',
+  }
+  const hunted = applyGameEvent(applyGameEvent(stocked, murder), arson)
+  const view = merchantViewFor(hunted, 'merchant-1', 'hero')
+
+  const buy = view.buy_quotes[0]
+  assert.equal(buy.can_buy, false, 'сервер закрывает покупку отдельным полем, а не нулём в количестве')
+  assert.ok(buy.unavailable_reason, 'и объявляет причину')
+  assert.equal(buy.max_quantity, 0)
+  assert.ok(buy.can_afford, 'денег у героя хватает — отказ не про них')
+
+  const sell = view.sell_quotes[0]
+  assert.equal(sell.can_sell, false)
+  assert.ok(sell.unavailable_reason, 'на вкладке продажи причина приходит тем же полем')
+
+  // Клиент читает именно эти поля: `reason` про предмет, `unavailable_reason` —
+  // про отряд, и денежная ветка их больше не подменяет.
+  assert.match(shop, /quote\?\.can_buy === false/u)
+  assert.match(shop, /quote\.unavailable_reason \|\| 'Торговец отказывает отряду'/u)
+  assert.match(shop, /const sellRefusal = quote\?\.unavailable_reason \|\| quote\?\.reason/u)
+  assert.match(shop, /tradeRefusal \? 'Отказано'/u)
 })
 
 test('встреча со стражей живёт на доске отдельной панелью с четырьмя ответами', () => {
@@ -109,6 +183,11 @@ test('встреча со стражей живёт на доске отдель
   assert.match(board, /aria-label="Встреча со стражей"/u)
   assert.match(board, /state\.law\?\.encounter/u)
   assert.match(board, /onResolveGuardEncounter\(option\.id/u)
+  // Пока офицер стоит перед отрядом, уход из локации закрыт: сервер такой
+  // переход не пропустит, и кнопка обязана говорить об этом, а не падать
+  // ошибкой после нажатия.
+  assert.match(board, /disabled=\{narrating \|\| tacticalBusy \|\| Boolean\(guardEncounter\)\}/u)
+  assert.match(board, /Стража стоит перед отрядом — сначала ответьте офицеру/u)
   // Подходы к побегу выбирает игрок, навык уезжает командой.
   assert.match(board, /guard-escape-skill/u)
   assert.match(board, /Скрытность/u)

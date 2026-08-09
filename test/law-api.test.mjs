@@ -344,4 +344,31 @@ test('игроку не приходит ни ступень розыска, н�
   assert.equal(law.crimes, undefined)
   assert.ok((law.signs ?? []).length > 0, 'вместо цифры игрок получает приметы мира')
   assert.ok(!JSON.stringify(law).includes('"points"'))
+
+  // Проекция состояния — только половина ответа. Ревью 2026-08-09 поймало, что
+  // те же числа уезжали игроку **каналом событий** той же команды: ответ на
+  // POST /commands нёс `GuardEncounterResolved` со ступенью и `WantedCleared`
+  // со `level_before` и полным списком `crime_ids`.
+  const paid = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: playerCookie,
+    body: {
+      idempotency_key: 'law-player-fine',
+      command: { command_type: 'ResolveGuardEncounter', actor_id: 'hero', resolution: 'fine' },
+    },
+  })
+  assert.equal(paid.status, 200, `${paid.text}\n${log()}`)
+  const events = paid.body.mechanics ?? []
+  assert.ok(events.some((event) => event.event_type === 'GuardEncounterResolved'), `сам исход игроку виден\n${paid.text}`)
+  const serialized = JSON.stringify(events)
+  assert.ok(!serialized.includes('"level"'), `ступень розыска уехала игроку событием: ${serialized}`)
+  assert.ok(!serialized.includes('level_before'), `ступень до снятия уехала игроку событием: ${serialized}`)
+  assert.ok(!serialized.includes('crime_ids'), `реестр преступлений уехал игроку событием: ${serialized}`)
+  assert.ok(!events.some((event) => event.event_type === 'WantedLevelRaised'), 'gm_only событий у игрока нет вовсе')
+
+  // Ведущему провенанс остаётся целиком: он и решает по числам.
+  const master = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
+  const north = master.body.state.law.regions.find((region) => region.region_id === REGION)
+  assert.equal(north.level, 0)
+  assert.equal(north.crimes[0].cleared_reason, 'fine')
 })

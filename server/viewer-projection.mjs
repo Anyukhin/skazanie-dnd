@@ -17,7 +17,7 @@ import {
   serializedTacticalMapHash,
 } from './tactical-map.mjs'
 import { captivesForViewer } from './captives.mjs'
-import { lawForViewer } from './law-and-order.mjs'
+import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
@@ -850,6 +850,20 @@ function eventForViewer(event, user, actorId, state = {}) {
       enemies: (Array.isArray(payload.encounter.enemies) ? payload.encounter.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId)),
     }
   }
+  // Закон. Ступень розыска и реестр преступлений не принадлежат игроку ни в
+  // проекции состояния, ни в канале событий: до ревью 2026-08-09 состояние
+  // чистилось, а те же числа уезжали игроку событиями той же команды —
+  // `GuardEncounterResolved` с `level`, `WantedCleared` с `level_before` и
+  // полным списком `crime_ids`, `GuardEncounterStarted` со всей встречей.
+  // Карточку встречи собирает та же функция, что и проекция состояния.
+  if (visible.event_type === 'GuardEncounterStarted') {
+    payload.encounter = publicGuardEncounterFor(payload.encounter)
+  }
+  if (visible.event_type === 'GuardEncounterResolved') delete payload.level
+  if (visible.event_type === 'WantedCleared') {
+    for (const key of ['level_before', 'crime_ids']) delete payload[key]
+  }
+  if (visible.event_type === 'WantedLevelRaised') delete payload.crime
   if (visible.event_type === 'EncounterOutcomeRecorded') {
     delete payload.plan
     delete payload.prepared_reward

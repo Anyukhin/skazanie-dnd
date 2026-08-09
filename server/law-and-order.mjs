@@ -34,9 +34,12 @@ import { createHash } from 'node:crypto'
  *    либо прощало бы совершённое секундой позже.
  *
  * Осознанные границы (решено, а не забыто):
- * - **тема боя со стражей взята из существующих** (`warband` — единственная, где
- *   в ростере есть `guard-captain` и `knight`). Заводить свою тему и свои
- *   стат-блоки нельзя: каталог врагов принадлежит другой задаче;
+ * - **у боя со стражей своя тема ростера** (`law`), собранная из **уже
+ *   существующих** стат-блоков allowlist. Своих стат-блоков закон не заводит:
+ *   каталог врагов принадлежит другой задаче. Прежний `warband` пришлось
+ *   оставить: ассемблер выбирает по бюджету из всей темы, и рядом с капитаном
+ *   стражи там стоят эттин, холмовой великан и шипастый дьявол — деревенская
+ *   стража выходила дьяволом (ревью 2026-08-09);
  * - **офицер — карточка сцены, а не житель мира.** Социального профиля ему не
  *   заводится намеренно: парлей уже показал, чем кончается доступный профиль без
  *   адреса — труп остаётся вечным свидетелем каждого следующего поступка
@@ -71,9 +74,6 @@ export const WANTED_CRIME_POINTS = Object.freeze({
   // поэтому вес приходит в payload события, а не из этой таблицы.
   defiance: 0,
 })
-
-export const WANTED_CRIME_KINDS = Object.freeze(Object.keys(WANTED_CRIME_POINTS)
-  .filter((kind) => WANTED_CRIME_POINTS[kind] > 0))
 
 /**
  * Пороги ступеней. Ступень — наибольшая, чей порог набран: кража (2) поднимает
@@ -113,17 +113,30 @@ export const GUARD_CUSTODY_MINUTES = 1_440
 export const WANTED_ESCAPE_FAILURE_POINTS = 2
 
 /**
- * Тема боя со стражей. Взята из **существующих** тем ассемблера: `warband` —
- * единственная, где в ростере стоят `guard-captain` и `knight`. Своей темы и
- * своих стат-блоков закон не заводит.
+ * Тема боя со стражей. Ростер `law` собран из **уже существующих** стат-блоков
+ * allowlist (дозорный, соглядатай, ветеран, рыцарь, капитан стражи): своих
+ * стат-блоков закон не заводит и каталог врагов не трогает.
+ *
+ * Прежний `warband` не подошёл, и это не вкусовщина: ассемблер тратит бюджет XP
+ * по **всей** теме, а в «ватаге» рядом с капитаном стражи стоят эттин, холмовой
+ * великан и шипастый дьявол. На сквозном прогоне деревенская стража выходила
+ * «Шипастым дьяволом 1» — тема закона закрывает именно это.
  */
-export const GUARD_ENCOUNTER_THEME = 'warband'
+export const GUARD_ENCOUNTER_THEME = 'law'
 
 /** Сложность боя со стражей по ступени: чем громче розыск, тем больше пришло. */
 export const GUARD_ENCOUNTER_DIFFICULTY = Object.freeze({ 1: 'easy', 2: 'medium', 3: 'hard' })
 
-/** Виды узлов карты мира, где есть кому исполнять закон. */
-export const SETTLEMENT_LOCATION_KINDS = Object.freeze(new Set(['town', 'village', 'city', 'port', 'fortress']))
+/**
+ * Виды узлов карты мира, где есть кому исполнять закон. Столица — такой же вид
+ * узла (`server/world-map.mjs`), и без неё вход в самый людный город края
+ * стражу не поднимал вовсе.
+ *
+ * Множество дословно совпадает с `SETTLEMENT_LOCATION_KINDS` из
+ * `server/captives.mjs`: оба модуля — листья и друг друга не импортируют.
+ * Расхождение двух копий ловит сторож в `test/law-and-order.test.mjs`.
+ */
+export const SETTLEMENT_LOCATION_KINDS = Object.freeze(new Set(['town', 'village', 'city', 'capital', 'port', 'fortress']))
 
 /** Чем кончается встреча со стражей. Список закрытый и серверный. */
 export const GUARD_RESOLUTIONS = Object.freeze(['fine', 'surrender', 'fight', 'flee'])
@@ -273,7 +286,10 @@ export function normalizeLawState(input = {}) {
     ? source.cleared
     : {}
   const cleared = {}
-  for (const [regionId, entry] of Object.entries(clearedSource).slice(0, MAX_CLEARED_REGIONS)) {
+  // Режется хвост, а не голова: при переполнении терять полагается самые старые
+  // амнистии, а не свежие. Реестр преступлений ниже режется так же (`slice(-N)`),
+  // и раньше эти две строки смотрели в разные стороны.
+  for (const [regionId, entry] of Object.entries(clearedSource).slice(-MAX_CLEARED_REGIONS)) {
     const key = text(regionId, 180)
     if (!key) continue
     cleared[key] = {
@@ -369,7 +385,10 @@ export function wantedFeed(state = {}) {
         .filter((crime) => crime.region_id === regionId)
         .slice(-12)
         .reverse()
-      return { ...wanted, here: regionId === currentRegionId(state), crimes }
+      // Последнее снятие едет в ленте рядом со ступенью: ведущему нужно видеть,
+      // что край уже прощал отряд и по какой причине, — иначе реестр снятий
+      // копился бы в состоянии, не отвечая ни на один вопрос за столом.
+      return { ...wanted, here: regionId === currentRegionId(state), cleared: law.cleared[regionId] ?? null, crimes }
     })
     .sort((left, right) => right.level - left.level
       || (right.last_crime_at_minutes ?? 0) - (left.last_crime_at_minutes ?? 0)
@@ -468,12 +487,32 @@ export function guardDemandFor(level, { placeName = '', fineCp = 0 } = {}) {
 }
 
 /**
+ * Стоит ли отряд там, где его остановили. Встреча привязана к узлу карты, а не
+ * к состоянию вообще: у неё есть адрес, и «заплатить виру» имеет смысл только
+ * перед тем офицером, который стоит напротив.
+ *
+ * У записей из старых сохранений `node_id` может не быть — тогда границей
+ * служит край: он у встречи есть всегда (`safeEncounter`).
+ */
+export function guardEncounterIsHere(state = {}, encounter = undefined) {
+  const safe = safeEncounter(encounter === undefined ? normalizeLawState(state?.law).encounter : encounter)
+  if (!safe) return false
+  if (!safe.node_id) return currentRegionId(state) === safe.region_id
+  return text(currentWorldNode(state)?.id, 180) === safe.node_id
+}
+
+/**
  * Встреча, которую закон обязан начать прямо сейчас, либо `null`. Триггер
  * детерминированный: поселение, ненулевая ступень, нет боя и нет уже открытой
- * встречи.
+ * встречи **здесь же**.
+ *
+ * Оговорка про «здесь же» — не мелочь. Уйти от стражи сменой сцены нельзя
+ * (`AdvanceScene` это запрещает), но состояние, пришедшее из старого сохранения
+ * или собранное ведущим руками, не должно выключать закон навсегда: встреча,
+ * оставшаяся в покинутом краю, новой у чужих ворот не мешает.
  */
 export function guardEncounterTriggerFor(state = {}, { commandId = '' } = {}) {
-  if (normalizeLawState(state?.law).encounter) return null
+  if (guardEncounterIsHere(state)) return null
   if (state?.mechanics?.combat?.active === true) return null
   const settlement = currentSettlement(state)
   if (!settlement) return null
@@ -599,6 +638,31 @@ export const WANTED_TRADE_REFUSAL_REASON = 'Торговец не станет �
 // ---------------------------------------------------------------------------
 
 /**
+ * Публичная карточка встречи: то и только то, что игрок видит своими глазами у
+ * ворот. Ступени розыска, края и адреса узла здесь нет.
+ *
+ * Функция одна на оба канала — и на проекцию состояния, и на канал событий
+ * (`server/viewer-projection.mjs`). Второго ответа на вопрос «что видно у ворот»
+ * быть не должно: пока карточку собирала только проекция состояния, то же
+ * событие `GuardEncounterStarted` уезжало игроку с полем `level` внутри.
+ */
+export function publicGuardEncounterFor(encounter) {
+  const safe = safeEncounter(encounter)
+  if (!safe) return null
+  return {
+    id: safe.id,
+    place_name: safe.place_name,
+    officer_name: safe.officer_name,
+    officer_rank: safe.officer_rank,
+    demand: safe.demand,
+    fine_cp: safe.fine_cp,
+    escape_dc: safe.escape_dc,
+    escape_attempts: safe.escape_attempts,
+    options: guardOptionsFor(safe),
+  }
+}
+
+/**
  * Что игрок имеет право знать о законе. Ступени, очков и реестра преступлений
  * здесь нет и быть не может: розыск игрок узнаёт по тому, как на него смотрит
  * мир, и по офицеру, который уже стоит перед ним.
@@ -608,23 +672,10 @@ export function lawForViewer(state = {}, viewer = {}) {
   if (viewer?.isAdmin === true) {
     return { schema_version: LAW_SCHEMA_VERSION, encounter: law.encounter, regions: wantedFeed(state) }
   }
-  const encounter = law.encounter
   return {
     schema_version: LAW_SCHEMA_VERSION,
     signs: wantedSignsFor(state),
-    encounter: encounter
-      ? {
-        id: encounter.id,
-        place_name: encounter.place_name,
-        officer_name: encounter.officer_name,
-        officer_rank: encounter.officer_rank,
-        demand: encounter.demand,
-        fine_cp: encounter.fine_cp,
-        escape_dc: encounter.escape_dc,
-        escape_attempts: encounter.escape_attempts,
-        options: guardOptionsFor(encounter),
-      }
-      : null,
+    encounter: publicGuardEncounterFor(law.encounter),
   }
 }
 
@@ -669,8 +720,15 @@ export function applyLawEvent(input, event, state = {}) {
     const forgiven = new Set((Array.isArray(payload.crime_ids) ? payload.crime_ids : []).map((entry) => text(entry, 140)))
     const minute = Math.max(0, integer(payload.at_minutes, 0))
     const reason = WANTED_CLEAR_REASONS.includes(text(payload.reason, 30)) ? text(payload.reason, 30) : 'amnesty'
+    // Снятый розыск распускает и стражу этого края. При вире и сдаче встречу
+    // уже закрыл `GuardEncounterResolved` того же коммита, а вот амнистия
+    // ведущего иначе оставляла бы офицера стоять перед отрядом с претензией,
+    // которой больше нет: сменить сцену при открытой встрече нельзя, и стол
+    // остался бы запертым, если отвечать страже уже некому.
+    const encounter = normalized.encounter && normalized.encounter.region_id === regionId ? null : normalized.encounter
     return normalizeLawState({
       ...normalized,
+      encounter,
       crimes: normalized.crimes.map((crime) => (forgiven.has(crime.id) && crime.cleared_at_minutes == null
         ? { ...crime, cleared_at_minutes: minute, cleared_reason: reason }
         : crime)),

@@ -77,8 +77,17 @@ export const CAPTIVE_COMMAND_TYPES = Object.freeze(new Set([...CAPTIVE_PLAYER_CO
 /** Сутки игрового времени без еды — и связанный начинает страдать. */
 export const CAPTIVE_FEED_INTERVAL_MINUTES = 1_440
 
-/** Виды поселений, где есть кому принять пленного. */
-export const SETTLEMENT_LOCATION_KINDS = Object.freeze(new Set(['town', 'village', 'city', 'port', 'fortress']))
+/**
+ * Виды поселений, где есть кому принять пленного. Столица — такой же вид узла
+ * карты мира (`server/world-map.mjs`), и её отсутствие здесь было той же
+ * опечаткой, что и в законе: сдать пленного в самом людном городе края было
+ * некому.
+ *
+ * Множество дословно совпадает с `SETTLEMENT_LOCATION_KINDS` из
+ * `server/law-and-order.mjs`: оба модуля — листья и друг друга не импортируют.
+ * Расхождение двух копий ловит сторож в `test/law-and-order.test.mjs`.
+ */
+export const SETTLEMENT_LOCATION_KINDS = Object.freeze(new Set(['town', 'village', 'city', 'capital', 'port', 'fortress']))
 
 const MAX_CAPTIVES = 60
 const MAX_KNOWN_FACTS = 2

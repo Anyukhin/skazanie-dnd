@@ -1874,6 +1874,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .wanted-region.tier-hunted .wanted-tier { background: rgba(140,74,44,.14); color: #c08a63; }
 .wanted-region.tier-wanted .wanted-tier { background: rgba(150,48,40,.16); color: #cf8377; }
 .wanted-region > small { color: #635c55; font-size: var(--fs-xs); }
+.wanted-region > small.wanted-cleared { color: #7d8b70; letter-spacing: .04em; }
 .wanted-region ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .wanted-region li { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 4px; background: rgba(0,0,0,.12); }
 .wanted-region li.cleared { opacity: .45; }

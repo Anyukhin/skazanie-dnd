@@ -1,16 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { SETTLEMENT_LOCATION_KINDS as CAPTIVE_SETTLEMENT_KINDS } from '../server/captives.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { SRD_5_2_1_MONSTER_ALLOWLIST, assembleEncounter } from '../server/encounter-assembler.mjs'
 import { currencyToCopper } from '../server/merchant-economy.mjs'
 import {
   GUARD_CUSTODY_MINUTES,
+  GUARD_ENCOUNTER_DIFFICULTY,
+  GUARD_ENCOUNTER_THEME,
+  SETTLEMENT_LOCATION_KINDS,
   WANTED_DECAY_MINUTES,
   WANTED_ESCAPE_FAILURE_POINTS,
   WANTED_FINE_CP,
   WANTED_LEVEL_THRESHOLDS,
   guardEncounterFor,
   guardOptionsFor,
+  normalizeLawState,
   wantedFeed,
   wantedFor,
   wantedLevelHere,
@@ -23,12 +29,24 @@ import {
   replayEvents,
   resolveCommands,
 } from '../server/rules-engine.mjs'
-import { campaignStateForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
 
 const VILLAGE = 'Тихий Брод'
 const ROAD = 'Старый тракт'
+const CAPITAL = 'Стольный Град'
 const FAR_CITY = 'Дальний Град'
 const NORTH = 'north'
+
+/**
+ * Кого закон вправе выставить у ворот. Список тут повторён нарочно: тест
+ * проверяет не «тема совпала», а «пришли люди закона». Пока стража собиралась
+ * из темы `warband`, деревенского стражника изображал шипастый дьявол.
+ */
+const LAW_STAT_BLOCK_IDS = [
+  'srd_5_2_1:scout', 'srd_5_2_1:spy', 'srd_5_2_1:warrior-veteran',
+  'srd_5_2_1:knight', 'srd_5_2_1:guard-captain',
+]
+const LAW_NAMES = new Set(LAW_STAT_BLOCK_IDS.map((id) => SRD_5_2_1_MONSTER_ALLOWLIST[id].name))
 
 /** Кубик с заранее заданной последовательностью d20: проверки детерминированы. */
 function dice(sequence = []) {
@@ -50,11 +68,13 @@ function worldMap() {
     locations: [
       { id: 'village', name: VILLAGE, kind: 'village', x: 200, y: 200, regionId: NORTH },
       { id: 'road', name: ROAD, kind: 'landmark', x: 260, y: 240, regionId: NORTH },
+      { id: 'capital', name: CAPITAL, kind: 'capital', x: 150, y: 160, regionId: NORTH },
       { id: 'farcity', name: FAR_CITY, kind: 'city', x: 820, y: 300, regionId: 'east' },
     ],
     routes: [
       { id: 'r1', from: 'village', to: 'road', kind: 'road' },
       { id: 'r2', from: 'road', to: 'farcity', kind: 'road' },
+      { id: 'r3', from: 'road', to: 'capital', kind: 'road' },
     ],
   }
 }
@@ -192,6 +212,29 @@ test('преступление без свидетелей не двигает �
   assert.equal(wantedLevelHere(seen), 1)
 })
 
+/**
+ * Сторож главного правила шага. Кража без живых NPC поступка не заводит вовсе,
+ * поэтому проба выше до отсечки по свидетелям попросту не доходит: с убранной
+ * строкой `if (deed.secret === true) return null` она осталась бы зелёной.
+ * Убийство в пустой сцене поступок заводит — тайный, — и ловит именно эту
+ * строку: без неё закон дал бы crime `murder` и вторую ступень розыска.
+ */
+test('тайный поступок ступень не двигает: убийство без свидетелей закону не достаётся', () => {
+  const alone = applyGameEvent(campaign(), murderEvent())
+  const deed = alone.world_deeds.deeds.at(-1)
+  assert.equal(deed.kind, 'murder', 'летопись поступок заводит: ведущий про нож знает')
+  assert.equal(deed.secret, true, 'и помечает его тайным — свидетелей не было')
+  assert.deepEqual(alone.law.crimes, [], 'а закону тёмного переулка не достаётся')
+  assert.equal(wantedLevelHere(alone), 0)
+  assert.equal(wantedFor(alone, NORTH).points, 0)
+
+  // Тот же нож при свидетелях — уже преступление, и разница ровно в них.
+  const seen = applyGameEvent(witnessed(), murderEvent())
+  assert.equal(seen.world_deeds.deeds.at(-1).secret, false)
+  assert.deepEqual(seen.law.crimes.map((crime) => crime.kind), ['murder'])
+  assert.equal(wantedFor(seen, NORTH).level, 2)
+})
+
 test('ступень растёт по тяжести, а не по числу поступков', () => {
   const theft = applyGameEvent(witnessed(), theftEvent())
   assert.equal(wantedFor(theft, NORTH).points, 2)
@@ -275,6 +318,100 @@ test('вход в поселение с розыском поднимает ст
   assert.ok(guardEncounterFor(met.state), 'встреча остаётся открытой до ответа')
 })
 
+test('в столице закон тоже есть: вход поднимает стражу', () => {
+  assert.ok(SETTLEMENT_LOCATION_KINDS.has('capital'), 'столица — такой же вид узла карты мира')
+  const guilty = applyGameEvent(witnessed({ locationId: 'road', location: ROAD }), murderEvent())
+  const met = resolveCommands([{
+    command_type: 'AdvanceScene',
+    actor_id: 'hero',
+    command_id: 'cmd-capital',
+    campaign_id: 'LAW',
+    scene_args: { location: CAPITAL, title: 'Ворота столицы', objective: 'Осмотреться' },
+  }], guilty, { diceService: dice(), context: { isAdmin: true, allowedActorIds: ['hero'] } })
+
+  const started = met.events.find((event) => event.event_type === 'GuardEncounterStarted')
+  assert.ok(started, 'в самом людном городе края стража обязана выйти навстречу')
+  assert.equal(started.payload.encounter.place_name, CAPITAL)
+})
+
+test('виды поселений у закона и у плена — одно множество', () => {
+  // Две копии живут в двух модулях-листьях намеренно: они друг друга не
+  // импортируют. Расхождение молча ломало бы то одно правило, то другое.
+  assert.deepEqual([...SETTLEMENT_LOCATION_KINDS].sort(), [...CAPTIVE_SETTLEMENT_KINDS].sort())
+})
+
+test('от стражи не уходят сменой сцены', () => {
+  const stopped = withGuardEncounter(applyGameEvent(witnessed(), murderEvent()))
+  assert.throws(() => resolveCommands([{
+    command_type: 'AdvanceScene',
+    actor_id: 'hero',
+    command_id: 'cmd-walk-away',
+    campaign_id: 'LAW',
+    scene_args: { location: ROAD, title: 'Тракт', objective: 'Уйти' },
+  }], stopped, { diceService: dice(), context: { isAdmin: true, allowedActorIds: ['hero'] } }),
+  /GUARD_ENCOUNTER_BLOCKS_SCENE|никуда не уходит/u)
+})
+
+test('встреча, оставшаяся в чужом краю, закон не выключает и ответа не принимает', () => {
+  // Состояние, в котором стража открыта в деревне, а отряд уже в другом краю:
+  // так выглядит старое сохранение и рука ведущего. Закон обязан пережить это.
+  const stopped = withGuardEncounter(applyGameEvent(witnessed(), murderEvent()))
+  const elsewhere = {
+    ...stopped,
+    scene: { ...stopped.scene, location: FAR_CITY, location_id: 'farcity' },
+    worldMap: { ...stopped.worldMap, currentLocationId: 'farcity' },
+    social: { ...stopped.social, npcs: [villager('clerk', 'Писец Ольд', FAR_CITY)] },
+  }
+  const guiltyHere = applyGameEvent(elsewhere, murderEvent({ id: 'evt-far', commandId: 'cmd-far', npcId: 'victim-2' }))
+  assert.equal(wantedFor(guiltyHere, 'east').level, 2, 'в новом краю за отрядом числится своё')
+  assert.ok(guardEncounterFor(guiltyHere), 'старая встреча всё ещё лежит в состоянии')
+
+  // Виру нельзя заплатить офицеру, оставшемуся в покинутом крае.
+  assert.throws(() => resolveCommands([{
+    command_type: 'ResolveGuardEncounter',
+    actor_id: 'hero',
+    resolution: 'fine',
+    command_id: 'cmd-remote-fine',
+    campaign_id: 'LAW',
+  }], guiltyHere, { diceService: dice(), context: { allowedActorIds: ['hero'] } }), /GUARD_ENCOUNTER_ELSEWHERE|в другом месте/u)
+
+  // И закон в новом краю не выключен: у тамошних ворот встаёт своя стража.
+  const met = resolveCommands([{
+    command_type: 'AdvanceScene',
+    actor_id: 'hero',
+    command_id: 'cmd-enter-far',
+    campaign_id: 'LAW',
+    scene_args: { location: FAR_CITY, title: 'Ворота', objective: 'Осмотреться' },
+  }], guiltyHere, { diceService: dice(), context: { isAdmin: true, allowedActorIds: ['hero'] } })
+  const started = met.events.find((event) => event.event_type === 'GuardEncounterStarted')
+  assert.ok(started, 'чужая незакрытая встреча новую не запирает')
+  assert.equal(started.payload.encounter.region_id, 'east')
+  assert.equal(guardEncounterFor(met.state).region_id, 'east', 'открытой числится встреча здешней стражи')
+})
+
+test('посреди боя страже не отвечают ни одним из четырёх исходов', () => {
+  const stopped = withGuardEncounter(applyGameEvent(witnessed(), murderEvent()))
+  const fighting = {
+    ...stopped,
+    mechanics: { ...stopped.mechanics, combat: { ...stopped.mechanics.combat, active: true, round: 2 } },
+  }
+  for (const resolution of ['fine', 'surrender', 'flee', 'fight']) {
+    assert.throws(() => resolveCommands([{
+      command_type: 'ResolveGuardEncounter',
+      actor_id: 'mate',
+      resolution,
+      skill: 'stealth',
+      command_id: `cmd-mid-combat-${resolution}`,
+      campaign_id: 'LAW',
+    }], fighting, { diceService: dice([18, 18]), context: { allowedActorIds: ['hero', 'mate'] } }),
+    /GUARD_ENCOUNTER_DURING_COMBAT|идёт бой/u, `исход ${resolution} прошёл посреди боя`)
+  }
+  // Именно из-за этого сдача была опасна: она двигала мировые часы на сутки
+  // прямо в раунде, не закрывая боя.
+  assert.equal(fighting.mechanics.world_time.elapsed_minutes, 0)
+  assert.ok(guardEncounterFor(fighting), 'и встреча остаётся открытой')
+})
+
 test('вира снимает розыск и списывает монеты', () => {
   const state = withGuardEncounter(applyGameEvent(witnessed(), murderEvent()))
   const before = guardEncounterFor(state)
@@ -337,8 +474,11 @@ test('драка со стражей поднимает розыск до пре
 
   assert.ok(result.events.some((event) => event.event_type === 'EncounterCreated'), 'бой собирается существующим ассемблером')
   const created = result.events.find((event) => event.event_type === 'EncounterCreated')
-  assert.equal(created.payload.encounter.theme, 'warband', 'тема взята из существующих, своих стат-блоков закон не заводит')
+  assert.equal(created.payload.encounter.theme, 'law', 'у стражи свой ростер из существующих стат-блоков')
   assert.ok(created.payload.encounter.enemies.length > 0)
+  for (const enemy of created.payload.encounter.enemies) {
+    assert.ok(LAW_NAMES.has(String(enemy.name).replace(/\s+\d+$/u, '')), `у ворот встал не человек закона: ${enemy.name}`)
+  }
   assert.equal(wantedFor(result.state, NORTH).level, 3)
   // Счёт встаёт ровно на порог, а не выше: иначе затухание тянулось бы дольше
   // задуманного, и старые подтаявшие дела вернулись бы в счёт вторым разом.
@@ -437,6 +577,31 @@ test('амнистию объявляет только ведущий', () => {
   assert.equal(granted.state.law.cleared[NORTH].reason, 'amnesty')
 })
 
+test('амнистия распускает и стражу, которая уже стоит перед отрядом', () => {
+  // Единственный выход стола из встречи, когда отвечать страже некому: смена
+  // сцены при открытом офицере запрещена, поэтому у ведущего обязан быть ключ.
+  const stopped = withGuardEncounter(applyGameEvent(witnessed(), murderEvent()))
+  assert.ok(guardEncounterFor(stopped))
+  const granted = resolveCommands([{
+    command_type: 'ClearWantedLevel',
+    command_id: 'cmd-amnesty-at-gate',
+    campaign_id: 'LAW',
+    region_id: NORTH,
+  }], stopped, { diceService: dice(), context: { isAdmin: true, allowedActorIds: ['hero'] } })
+
+  assert.equal(guardEncounterFor(granted.state), null, 'претензии больше нет — офицер уходит')
+  assert.equal(wantedFor(granted.state, NORTH).level, 0)
+  // И сцену после этого сменить можно.
+  const left = resolveCommands([{
+    command_type: 'AdvanceScene',
+    actor_id: 'hero',
+    command_id: 'cmd-leave-after-amnesty',
+    campaign_id: 'LAW',
+    scene_args: { location: ROAD, title: 'Тракт', objective: 'Уйти' },
+  }], granted.state, { diceService: dice(), context: { isAdmin: true, allowedActorIds: ['hero'] } })
+  assert.ok(left.events.some((event) => event.event_type === 'SceneAdvanced'))
+})
+
 // ---------------------------------------------------------------------------
 // Торговля
 // ---------------------------------------------------------------------------
@@ -502,6 +667,85 @@ test('розыск переживает replay и не удваивается', 
 
   const twice = replayEvents(witnessed(), [...events, ...events])
   assert.equal(twice.law.crimes.length, direct.law.crimes.length, 'повтор того же события второго преступления не заводит')
+})
+
+test('стража остаётся стражей на всех уровнях отряда и всех ступенях розыска', () => {
+  const board = cells()
+  const seen = new Set()
+  for (const level of [1, 3, 5, 9]) {
+    for (const wanted of [1, 2, 3]) {
+      const proposal = assembleEncounter({
+        scene: { cells: board },
+        party: [{ id: 'hero', level, x: 2, y: 2 }, { id: 'mate', level, x: 3, y: 2 }],
+        difficulty: GUARD_ENCOUNTER_DIFFICULTY[wanted],
+        theme: GUARD_ENCOUNTER_THEME,
+        seed: `guard:sample:${level}:${wanted}`,
+      })
+      assert.ok(proposal.enemies.length > 0, `уровень ${level}, ступень ${wanted}: страже нечем выйти`)
+      for (const enemy of proposal.enemies) {
+        const name = String(enemy.name).replace(/\s+\d+$/u, '')
+        seen.add(name)
+        assert.ok(LAW_NAMES.has(name), `уровень ${level}, ступень ${wanted}: у ворот встал ${name}`)
+      }
+    }
+  }
+  assert.ok(seen.size >= 2, 'выборка не выродилась в одно существо')
+})
+
+test('переполненный реестр снятий теряет старые записи, а не свежие', () => {
+  const cleared = {}
+  for (let index = 0; index < 45; index += 1) {
+    cleared[`region-${String(index).padStart(2, '0')}`] = { at_minutes: index, reason: 'amnesty' }
+  }
+  const keys = Object.keys(normalizeLawState({ cleared }).cleared)
+  assert.equal(keys.length, 40)
+  assert.ok(keys.includes('region-44'), 'свежая амнистия остаётся')
+  assert.ok(!keys.includes('region-00'), 'а самая старая уходит')
+})
+
+test('канал событий не несёт игроку ни ступени, ни списка преступлений', () => {
+  const state = withGuardEncounter(applyGameEvent(witnessed(), murderEvent()))
+  const result = resolveCommands([{
+    command_type: 'ResolveGuardEncounter',
+    actor_id: 'hero',
+    resolution: 'fine',
+    command_id: 'cmd-fine-projection',
+    campaign_id: 'LAW',
+  }], state, { diceService: dice(), context: { allowedActorIds: ['hero'] } })
+
+  const player = mechanicsForViewer(result.events, { role: 'player' }, 'hero', state)
+  const serialized = JSON.stringify(player)
+  assert.ok(player.some((event) => event.event_type === 'GuardEncounterResolved'), 'сам исход игрок видеть обязан')
+  assert.ok(!serialized.includes('"level"'), 'ступени розыска в событиях игрока нет')
+  assert.ok(!serialized.includes('level_before'))
+  assert.ok(!serialized.includes('crime_ids'), 'и реестра преступлений тоже')
+
+  // У ведущего провенанс остаётся целиком: он и решает по числам.
+  const master = mechanicsForViewer(result.events, { role: 'admin' }, '', state)
+  const cleared = master.find((event) => event.event_type === 'WantedCleared')
+  assert.equal(cleared.payload.level_before, 2)
+  assert.deepEqual(cleared.payload.crime_ids, state.law.crimes.map((crime) => crime.id))
+})
+
+test('карточка встречи уезжает событием уже публичной: офицер есть, ступени нет', () => {
+  const guilty = applyGameEvent(witnessed({ locationId: 'road', location: ROAD }), murderEvent())
+  const met = resolveCommands([{
+    command_type: 'AdvanceScene',
+    actor_id: 'hero',
+    command_id: 'cmd-enter-projection',
+    campaign_id: 'LAW',
+    scene_args: { location: VILLAGE, title: 'Ворота', objective: 'Осмотреться' },
+  }], guilty, { diceService: dice(), context: { isAdmin: true, allowedActorIds: ['hero'] } })
+
+  const player = mechanicsForViewer(met.events, { role: 'player' }, 'hero', guilty)
+  const started = player.find((event) => event.event_type === 'GuardEncounterStarted')
+  assert.ok(started, 'выход стражи игрок видит')
+  assert.ok(started.payload.encounter.officer_name, 'офицер по имени')
+  assert.equal(started.payload.encounter.options.length, 4, 'и четыре ответа')
+  assert.equal(started.payload.encounter.level, undefined, 'а ступени в карточке нет')
+  assert.equal(started.payload.encounter.region_id, undefined)
+  assert.ok(!JSON.stringify(started).includes('"level"'))
+  assert.ok(!player.some((event) => event.event_type === 'WantedLevelRaised'), 'gm_only событий у игрока нет вовсе')
 })
 
 test('игрок видит последствия, а не ступень; ведущий видит ленту по краям', () => {

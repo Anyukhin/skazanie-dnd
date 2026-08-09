@@ -675,7 +675,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
 
 /**
  * Темы — это состав ростера, а не отдельный бестиарий: каждая перечисляет
- * подмножество того же server-owned allowlist. Их одиннадцать вместо прежних
+ * подмножество того же server-owned allowlist. Их двенадцать вместо прежних
  * пяти, и разница между ними настоящая — «стая» из быстрых зверей ощущается
  * иначе, чем «ватага» из трёх тяжёлых бойцов, даже когда бюджет XP один.
  *
@@ -689,6 +689,12 @@ const THEMES = deepFreeze({
   raiders: ['srd_5_2_1:bandit', 'srd_5_2_1:gnoll-warrior', 'srd_5_2_1:ogre', 'srd_5_2_1:orc', 'srd_5_2_1:goblin-warrior', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:bugbear', 'srd_5_2_1:scout', 'srd_5_2_1:spy', 'srd_5_2_1:berserker', 'srd_5_2_1:bandit-captain', 'srd_5_2_1:warrior-veteran', 'srd_5_2_1:ettin', 'srd_5_2_1:hill-giant', 'srd_5_2_1:gladiator', 'srd_5_2_1:tough-boss'],
   // Ватага: только тяжёлые бойцы, мало целей и каждая больно бьёт.
   warband: ['srd_5_2_1:gnoll-warrior', 'srd_5_2_1:ogre', 'srd_5_2_1:orc', 'srd_5_2_1:bugbear', 'srd_5_2_1:hobgoblin', 'srd_5_2_1:berserker', 'srd_5_2_1:sahuagin-warrior', 'srd_5_2_1:bandit-captain', 'srd_5_2_1:warrior-veteran', 'srd_5_2_1:ettin', 'srd_5_2_1:guard-captain', 'srd_5_2_1:knight', 'srd_5_2_1:hill-giant', 'srd_5_2_1:barbed-devil', 'srd_5_2_1:gladiator', 'srd_5_2_1:tough-boss'],
+  // Закон: те, кто носит чужую присягу, а не своё оружие. Тема нужна отдельная,
+  // потому что бюджет XP тратится по **всей** теме: пока стража собиралась из
+  // «ватаги», рядом с капитаном стражи в ростере стояли эттин, холмовой великан
+  // и шипастый дьявол — и деревенскую стражу у ворот игрок встречал дьяволом.
+  // Ни одного нового стат-блока здесь нет: перечислены только записи allowlist.
+  law: ['srd_5_2_1:scout', 'srd_5_2_1:spy', 'srd_5_2_1:warrior-veteran', 'srd_5_2_1:knight', 'srd_5_2_1:guard-captain'],
   // Мелочь: много слабых существ, бой решается площадью, а не силой удара.
   vermin: ['srd_5_2_1:giant-rat', 'srd_5_2_1:kobold', 'srd_5_2_1:goblin-minion', 'srd_5_2_1:giant-centipede', 'srd_5_2_1:violet-fungus', 'srd_5_2_1:ochre-jelly', 'srd_5_2_1:giant-scorpion'],
   // Засада: быстрые и хрупкие, наказывают за растянутый строй.

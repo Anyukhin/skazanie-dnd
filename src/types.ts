@@ -510,7 +510,15 @@ export type MerchantQuote = {
   total_price_cp: number
   breakdown?: MerchantQuoteBreakdown
   can_afford?: boolean
+  /** Купить нельзя вовсе — например, отряд ищет стража. Причина рядом. */
+  can_buy?: boolean
   can_sell?: boolean
+  /**
+   * Почему лавка закрыта для отряда: розыск или дурная слава. Поле отдельное от
+   * `reason` (тот про сам предмет: надет, сюжетный, не оценён) — без него отказ
+   * по розыску показывался игроку как «Недостаточно монет».
+   */
+  unavailable_reason?: string
   appraisal_required?: boolean
   can_appraise?: boolean
   price_provenance?: 'catalog' | 'server_appraisal_policy'
@@ -1422,6 +1430,8 @@ export type WantedRegionEntry = {
   last_crime_at_minutes?: number | null
   next_decay_in_minutes?: number | null
   here?: boolean
+  /** Последнее снятие розыска в этом краю: вира, сдача или амнистия ведущего. */
+  cleared?: { at_minutes?: number; reason?: string } | null
   crimes?: Array<{
     id: string
     kind: string

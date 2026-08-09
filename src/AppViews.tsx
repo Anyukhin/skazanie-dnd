@@ -508,6 +508,13 @@ export function WorldDeedsCard({ state }: { state: GameState }) {
 
 const WANTED_TIER_CLASSES = ['calm', 'noticed', 'hunted', 'wanted']
 
+/** Русские подписи причин снятия. Сами причины закрыты сервером. */
+const WANTED_CLEAR_LABELS: Record<string, string> = {
+  fine: 'розыск снят вирой',
+  surrender: 'розыск снят сдачей',
+  amnesty: 'объявлена амнистия',
+}
+
 /**
  * Закон и розыск у ведущего. Ступень, очки и реестр преступлений приходят
  * готовыми из проекции (`lawForViewer`, `server/law-and-order.mjs`): своей
@@ -557,6 +564,12 @@ export function WantedCard({ state }: { state: GameState }) {
           {region.next_decay_in_minutes != null ? ` · очко сгорит через ${Math.max(1, Math.round(region.next_decay_in_minutes / 60))} ч` : ''}
           {region.here ? ' · отряд здесь' : ''}
         </small>
+        {/* Последнее снятие: край уже прощал отряд, и ведущему это видно строкой,
+            а не только записями «прощено» под каждым преступлением. Подпись
+            причины приходит с сервера вместе с лентой. */}
+        {region.cleared && <small className="wanted-cleared">
+          {WANTED_CLEAR_LABELS[region.cleared.reason ?? ''] ?? 'розыск снят'} · {campaignClockLabel(region.cleared.at_minutes ?? 0)}
+        </small>}
         <ul>
           {(region.crimes ?? []).slice(0, 5).map((crime) => <li key={crime.id} className={crime.cleared_at_minutes != null ? 'cleared' : ''}>
             <b>{crime.points}</b>

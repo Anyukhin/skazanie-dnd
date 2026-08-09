@@ -44,7 +44,7 @@ test('exports an expanded dnd.su-linked SRD 5.2.1 monster catalog with fixed sou
   assert.deepEqual(ENCOUNTER_DIFFICULTIES, ['easy', 'medium', 'hard', 'deadly'])
   assert.deepEqual(ENCOUNTER_THEMES, [
     'goblinoids', 'undead', 'beasts', 'raiders',
-    'warband', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness',
+    'warband', 'law', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness',
     'generic',
   ])
   assert.equal(Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length, 50)
@@ -94,7 +94,7 @@ test('каждая тема встреч собирает исполнимый �
     }
   }
   // Темы обязаны отличаться друг от друга составом, иначе расширение
-  // декоративно: одиннадцать имён одного и того же ростера разнообразия не дают.
+  // декоративно: двенадцать имён одного и того же ростера разнообразия не дают.
   assert.ok(new Set(rosters.values()).size >= 6, `слишком мало различных ростеров: ${new Set(rosters.values()).size}`)
 })
 

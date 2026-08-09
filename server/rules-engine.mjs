@@ -118,6 +118,7 @@ import {
   currentRegionId,
   escapeSucceeded,
   guardEncounterFor,
+  guardEncounterIsHere,
   guardEncounterTriggerFor,
   guardOptionsFor,
   normalizeLawState,
@@ -3576,6 +3577,18 @@ export function validateCommand(input, rawState, context = {}) {
     if (command.command_type === 'ResolveGuardEncounter') {
       const encounter = guardEncounterFor(state)
       if (!encounter) throw new RulesValidationError('Стража сейчас никого не останавливает', 'GUARD_ENCOUNTER_NOT_ACTIVE')
+      // Отвечают той страже, что стоит напротив. Встреча привязана к узлу карты,
+      // поэтому виру нельзя заплатить из чужого города, а сдаться — заочно.
+      if (!guardEncounterIsHere(state, encounter)) {
+        throw new RulesValidationError('Эта стража осталась в другом месте', 'GUARD_ENCOUNTER_ELSEWHERE')
+      }
+      // Посреди боя страже не отвечают ни одним из четырёх исходов. Раньше бой
+      // проверялся только для драки, и «сдаться» проходило в любом раунде: оно
+      // двигало мировые часы на сутки под замком, не закрывая боя, а «бежать»
+      // бесплатно закрывало встречу — без хода, без очереди и без броска.
+      if (state.mechanics.combat.active) {
+        throw new RulesValidationError('Пока идёт бой, страже не отвечают', 'GUARD_ENCOUNTER_DURING_COMBAT')
+      }
       if (!GUARD_RESOLUTIONS.includes(command.resolution)) {
         throw new RulesValidationError('Такого ответа страже не предусмотрено', 'GUARD_RESOLUTION_FORBIDDEN')
       }
@@ -3592,9 +3605,6 @@ export function validateCommand(input, rawState, context = {}) {
         }
       }
       if (command.resolution === 'fight') {
-        if (state.mechanics.combat.active) {
-          throw new RulesValidationError('Бой уже идёт: страже не с кем начинать новый', 'ENCOUNTER_DURING_COMBAT')
-        }
         if (state.enemies.some(isLivingActor) || ['staged', 'active'].includes(String(state.mechanics.encounter?.status ?? ''))) {
           throw new RulesValidationError('В сцене уже есть незавершённое столкновение', 'ENCOUNTER_ALREADY_PRESENT')
         }
@@ -3733,6 +3743,14 @@ export function validateCommand(input, rawState, context = {}) {
     }
     if (state.mechanics.combat.active) {
       throw new RulesValidationError('Нельзя сменить сцену до завершения активного боя', 'SCENE_ADVANCE_DURING_COMBAT')
+    }
+    // От стражи не уходят сменой сцены. У встречи четыре ответа, и «бежать»
+    // среди них — с групповой проверкой, а не бесплатно: пока офицер стоит
+    // перед отрядом в этом же узле карты, отряд никуда не идёт. Без этого
+    // запрета встреча оставалась открытой навсегда и выключала закон во всех
+    // остальных краях разом.
+    if (guardEncounterIsHere(state)) {
+      throw new RulesValidationError('Стража стоит перед отрядом: пока ей не ответили, отряд никуда не уходит', 'GUARD_ENCOUNTER_BLOCKS_SCENE')
     }
     command.scene_args = normalizeSceneAdvanceArgs(command.scene_args)
     command.scene_commerce = normalizeSceneCommerce(command.scene_commerce)

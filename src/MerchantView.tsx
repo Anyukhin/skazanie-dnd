@@ -285,12 +285,18 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
             const stockAvailable = Math.max(0, quote?.available_quantity ?? item.quantity)
             const purchaseMax = Math.max(0, Math.min(stockAvailable, quote?.max_quantity ?? stockAvailable))
             const quantity = Math.min(buyQuantities[item.stock_id] ?? 1, Math.max(1, purchaseMax))
+            // Отказ лавки объявляет сервер и объявляет причиной: розыск, дурная
+            // слава. Без этой ветки герой с полным кошелём читал «Недостаточно
+            // монет» — `max_quantity` при отказе равен нулю, и кнопка сваливалась
+            // в денежный текст, ни разу не назвав настоящую причину.
+            const tradeRefusal = quote?.can_buy === false ? (quote.unavailable_reason || 'Торговец отказывает отряду') : ''
             return <article className="merchant-item" key={item.stock_id}>
               <div className="merchant-item-title"><MerchantItemArtwork item={item} name={item.name} /><span><small>{itemTypeLabel(item.type)}</small><h3>{item.name}</h3><p>{item.description}</p></span><em>{stockAvailable} в наличии</em></div>
               <QuoteBreakdown quote={quote} quantity={quantity} direction="buy" />
+              {tradeRefusal && <p className="merchant-refusal">{tradeRefusal}</p>}
               <div className="merchant-item-actions">
                 <QuantityPicker value={quantity} max={purchaseMax} disabled={controlsDisabled || !quote || purchaseMax < 1} onChange={(next) => setBuyQuantities((values) => ({ ...values, [item.stock_id]: next }))} />
-                <button onClick={() => onBuy(shownMerchant.id, player.id, item.stock_id, quantity)} disabled={controlsDisabled || !quote || purchaseMax < 1 || quote.can_afford === false}><ShoppingBag size={15} />{!quote ? 'Нет котировки' : stockAvailable < 1 ? 'Нет в наличии' : quote.can_afford === false || purchaseMax < 1 ? 'Недостаточно монет' : `Купить ×${quantity} · ${formatCopper(quoteTotal(quote, quantity) ?? undefined)}`}</button>
+                <button onClick={() => onBuy(shownMerchant.id, player.id, item.stock_id, quantity)} disabled={controlsDisabled || !quote || purchaseMax < 1 || quote.can_afford === false} title={tradeRefusal || undefined}><ShoppingBag size={15} />{!quote ? 'Нет котировки' : tradeRefusal ? 'Отказано' : stockAvailable < 1 ? 'Нет в наличии' : quote.can_afford === false || purchaseMax < 1 ? 'Недостаточно монет' : `Купить ×${quantity} · ${formatCopper(quoteTotal(quote, quantity) ?? undefined)}`}</button>
               </div>
             </article>
           })}</div> : <div className="merchant-list-empty"><PackageOpen size={28} /><b>Прилавок пуст</b><span>У торговца закончились товары или сервер ещё не открыл склад.</span></div>
@@ -304,17 +310,22 @@ export function MerchantScreen({ merchants, player, sceneLocation, stateVersion,
             const appraisalRequired = quote?.appraisal_required === true
             const canAppraise = appraisalRequired && quote?.can_appraise === true
             const merchantCanAfford = quote?.can_afford !== false
+            // Причин отказа две, и они про разное: `unavailable_reason` — про
+            // отряд (розыск, слава), `reason` — про сам предмет (надет, сюжетный,
+            // не оценён). Витрина читала только вторую, поэтому отказ по розыску
+            // не показывался вовсе.
+            const sellRefusal = quote?.unavailable_reason || quote?.reason || ''
             return <article className="merchant-item" key={item.id}>
               <div className="merchant-item-title"><MerchantItemArtwork item={item} name={item.name} /><span><small>{itemTypeLabel(item.type)} · в инвентаре: {item.quantity}</small><h3>{item.name}</h3><p>{item.description}</p></span>{item.equipped && <em>НАДЕТО</em>}</div>
               {appraisalRequired
                 ? <div className="merchant-appraisal-note"><Search size={16} /><span><b>Нужна серверная оценка</b><small>Торговец осмотрит предмет, а цену рассчитает правило кампании.</small></span></div>
                 : <QuoteBreakdown quote={quote} quantity={quantity} direction="sell" />}
-              {!canSell && quote?.reason && <p className="merchant-refusal">{quote.reason}</p>}
+              {!canSell && sellRefusal && <p className="merchant-refusal">{sellRefusal}</p>}
               <div className="merchant-item-actions">
                 {canAppraise
                   ? <><span className="merchant-appraisal-hint">Цена будет записана в состояние мира</span><button onClick={() => onAppraise(shownMerchant.id, player.id, item.id)} disabled={controlsDisabled}><Search size={15} />{busy ? 'Оценивает…' : 'Оценить'}</button></>
                   : <><QuantityPicker value={quantity} max={maximum} disabled={controlsDisabled || !quote || !canSell || maximum < 1} onChange={(next) => setSellQuantities((values) => ({ ...values, [item.id]: next }))} />
-                    <button onClick={() => onSell(shownMerchant.id, player.id, item.id, quantity)} disabled={controlsDisabled || !quote || !canSell || maximum < 1}><HandCoins size={15} />{!quote ? 'Нет котировки' : !merchantCanAfford ? 'У торговца нет монет' : canSell && maximum > 0 ? `Продать ×${quantity} · ${formatCopper(quoteTotal(quote, quantity) ?? undefined)}` : 'Не покупает'}</button></>}
+                    <button onClick={() => onSell(shownMerchant.id, player.id, item.id, quantity)} disabled={controlsDisabled || !quote || !canSell || maximum < 1} title={canSell ? undefined : (sellRefusal || undefined)}><HandCoins size={15} />{!quote ? 'Нет котировки' : quote.unavailable_reason ? 'Отказано' : !merchantCanAfford ? 'У торговца нет монет' : canSell && maximum > 0 ? `Продать ×${quantity} · ${formatCopper(quoteTotal(quote, quantity) ?? undefined)}` : 'Не покупает'}</button></>}
               </div>
             </article>
           })}</div> : <div className="merchant-list-empty"><PackageOpen size={28} /><b>Нечего продавать</b><span>В инвентаре героя пока нет предметов.</span></div>

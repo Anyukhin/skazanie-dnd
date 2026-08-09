@@ -2366,11 +2366,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 тот же, что у свободного ввода вне боя, и не строже: кнопка — ярлык
                 к той же фразе, и запирать её там, где те же слова можно набрать
                 руками, не за что. */}
+            {/* Пока стража стоит перед отрядом, уход закрыт: сервер такой переход
+                и не пропустит (`GUARD_ENCOUNTER_BLOCKS_SCENE`), а «бежать» —
+                это ответ офицеру с групповой проверкой, а не эта кнопка. */}
             <button
               className="exploration-leave-location"
-              disabled={narrating || tacticalBusy}
+              disabled={narrating || tacticalBusy || Boolean(guardEncounter)}
               onClick={onLeaveLocation}
-              title="Предложить отряду покинуть локацию. Переход начнётся после решения группы"
+              title={guardEncounter
+                ? 'Стража стоит перед отрядом — сначала ответьте офицеру'
+                : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
             ><DoorOpen size={22} /><span><small>Решение группы</small><strong>Покинуть локацию</strong></span></button>
             {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
           </div>
