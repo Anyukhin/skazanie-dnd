@@ -103,6 +103,28 @@ import {
   truceFor,
 } from './parley.mjs'
 import {
+  GUARD_CUSTODY_MINUTES,
+  GUARD_ENCOUNTER_DIFFICULTY,
+  GUARD_ENCOUNTER_THEME,
+  GUARD_ESCAPE_SKILLS,
+  GUARD_RESOLUTIONS,
+  WANTED_ESCAPE_FAILURE_POINTS,
+  LAW_COMMAND_TYPES,
+  LAW_POLICY_ID,
+  MAX_WANTED_LEVEL,
+  WANTED_LEVEL_THRESHOLDS,
+  WANTED_TRADE_REFUSAL_REASON,
+  applyLawEvent,
+  currentRegionId,
+  escapeSucceeded,
+  guardEncounterFor,
+  guardEncounterTriggerFor,
+  guardOptionsFor,
+  normalizeLawState,
+  pendingCrimeIdsFor,
+  wantedFor,
+} from './law-and-order.mjs'
+import {
   ensureSceneWorldMemory,
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
@@ -274,7 +296,12 @@ const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // последующих событий. Причина бампа та же, что у летописи поступков: снимок
 // десятой версии реестра не содержит, а доигранный хвост журнала восстановил бы
 // только тех пленных, кого взяли после границы снимка.
-export const GAME_STATE_PROJECTOR_VERSION = 11
+// 12: реестр закона `law` выводится редьюсером из тех же событий, что и летопись
+// поступков. Причина бампа третий раз та же: снимок одиннадцатой версии реестра
+// преступлений не содержит, а хвост журнала после снимка восстановил бы розыск
+// только за те преступления, что случились после его границы, — то есть отряд
+// въезжал бы в город чистым просто потому, что сервер перезапустили.
+export const GAME_STATE_PROJECTOR_VERSION = 12
 
 /**
  * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
@@ -438,6 +465,10 @@ const COMMAND_RULES = Object.freeze({
   // обе оси ruleset здесь настоящие, а не декоративные.
   ProposeParley: [RULE_IDS.abilityCheck, RULE_IDS.turns],
   SettleParley: [],
+  // Побег от стражи — групповая проверка навыка; вира и сдача бросков не
+  // требуют, а деньги на них считает та же ось экономики, что и покупки.
+  ResolveGuardEncounter: [RULE_IDS.abilityCheck, RULE_IDS.economyCoins],
+  ClearWantedLevel: [],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -466,6 +497,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...NPC_WORLD_COMMAND_TYPES,
   ...CAPTIVE_COMMAND_TYPES,
   ...PARLEY_COMMAND_TYPES,
+  ...LAW_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1487,6 +1519,7 @@ export function normalizeCampaignState(input = {}) {
   state.npc_world = normalizeNpcWorldState(state.npc_world)
   state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
   state.captives = normalizeCaptivesState(state.captives)
+  state.law = normalizeLawState(state.law)
   state.autonomy = normalizeAutonomyState(state.autonomy)
   state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
   if (state.agentInteraction && typeof state.agentInteraction === 'object' && !Array.isArray(state.agentInteraction)) {
@@ -2965,6 +2998,25 @@ function normalizeCommand(input, state) {
       if (!command.house_rule_id) command.house_rule_id = PARLEY_POLICY_ID
     }
   }
+  if (LAW_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только герой, исход и подход к побегу. Ни ступень
+    // розыска, ни размер виры, ни СЛ побега клиент подсказать не может: их
+    // считает серверная политика закона.
+    command.target_id = null
+    command.target_ids = []
+    if (command.command_type === 'ResolveGuardEncounter') {
+      command.resolution = String(command.resolution ?? '').slice(0, 30)
+      command.skill = GUARD_ESCAPE_SKILLS.includes(String(command.skill)) ? String(command.skill) : 'stealth'
+    }
+    if (command.command_type === 'ClearWantedLevel') {
+      command.actor_id = null
+      command.region_id = String(command.region_id ?? command.regionId ?? '').slice(0, 180)
+      delete command.regionId
+    }
+    // Розыск — серверная политика, а не ось ruleset: у виры и амнистии нет
+    // правила редакции, но провенанс у механического решения обязан быть.
+    if (!command.house_rule_id) command.house_rule_id = LAW_POLICY_ID
+  }
   if (command.command_type === 'ResolveHeroDeath') {
     command.resolution = String(command.resolution ?? '')
     command.replacement_name = command.replacement_name == null ? '' : String(command.replacement_name).trim().slice(0, 120)
@@ -2986,7 +3038,7 @@ function needsActor(type) {
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
-    'ProposeParley', 'SettleParley',
+    'ProposeParley', 'SettleParley', 'ResolveGuardEncounter',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3508,6 +3560,62 @@ export function validateCommand(input, rawState, context = {}) {
       }
     }
   }
+  if (LAW_COMMAND_TYPES.has(command.command_type)) {
+    if (command.command_type === 'ClearWantedLevel') {
+      // Амнистия — владельческая операция: закон прощает не по просьбе тех,
+      // кого он ищет.
+      if (context?.isAdmin !== true && context?.isDirector !== true) {
+        throw new RulesValidationError('Снять розыск может только ведущий кампании', 'WANTED_CLEAR_FORBIDDEN')
+      }
+      command.region_id = command.region_id || currentRegionId(state)
+      if (!command.region_id) throw new RulesValidationError('Не указан край, с которого снимается розыск', 'WANTED_REGION_REQUIRED')
+      if (wantedFor(state, command.region_id).level <= 0) {
+        throw new RulesValidationError('В этом краю отряд и так никто не ищет', 'WANTED_ALREADY_CLEAR')
+      }
+    }
+    if (command.command_type === 'ResolveGuardEncounter') {
+      const encounter = guardEncounterFor(state)
+      if (!encounter) throw new RulesValidationError('Стража сейчас никого не останавливает', 'GUARD_ENCOUNTER_NOT_ACTIVE')
+      if (!GUARD_RESOLUTIONS.includes(command.resolution)) {
+        throw new RulesValidationError('Такого ответа страже не предусмотрено', 'GUARD_RESOLUTION_FORBIDDEN')
+      }
+      if (!playerActor(state, command.actor_id)) {
+        throw new RulesValidationError('Отвечать страже может только герой отряда', 'ACTOR_FORBIDDEN')
+      }
+      if (!isLivingActor(findActor(state, command.actor_id))) {
+        throw new RulesValidationError('Герой без сознания страже не отвечает', 'ACTOR_DEFEATED')
+      }
+      if (command.resolution === 'fine') {
+        const balanceCp = currencyToCopper(playerActor(state, command.actor_id).currency)
+        if (balanceCp < encounter.fine_cp) {
+          throw new RulesValidationError('На виру не хватает монет', 'INSUFFICIENT_FUNDS')
+        }
+      }
+      if (command.resolution === 'fight') {
+        if (state.mechanics.combat.active) {
+          throw new RulesValidationError('Бой уже идёт: страже не с кем начинать новый', 'ENCOUNTER_DURING_COMBAT')
+        }
+        if (state.enemies.some(isLivingActor) || ['staged', 'active'].includes(String(state.mechanics.encounter?.status ?? ''))) {
+          throw new RulesValidationError('В сцене уже есть незавершённое столкновение', 'ENCOUNTER_ALREADY_PRESENT')
+        }
+        // Столкновение собирается **до** первого события: если стражу негде
+        // расставить, отряд должен узнать об этом отказом, а не наполовину
+        // исполненной командой.
+        try {
+          command.encounter = assembleEncounterFromState(state, {
+            difficulty: GUARD_ENCOUNTER_DIFFICULTY[encounter.level] ?? 'medium',
+            theme: GUARD_ENCOUNTER_THEME,
+            seed: `guard:${encounter.id}`,
+          })
+        } catch (error) {
+          throw new RulesValidationError(
+            error instanceof Error ? error.message : 'Страже негде окружить отряд',
+            error?.code ?? 'ENCOUNTER_ASSEMBLY_REJECTED',
+          )
+        }
+      }
+    }
+  }
   if (CHARACTER_BUILD_COMMAND_TYPES.has(command.command_type)) {
     try {
       Object.assign(command, validateCharacterBuildCommand(command, state, context))
@@ -3781,6 +3889,13 @@ export function validateCommand(input, rawState, context = {}) {
       throw new RulesValidationError('Торговец находится в другой локации', 'MERCHANT_NOT_PRESENT')
     }
     if (state.mechanics.combat.active) throw new RulesValidationError('Во время боя торговля недоступна', 'COMBAT_ACTIVE')
+    // Розыск закрывает лавку целиком, а не только услуги: продавший тем, кого
+    // ищет стража, отвечает перед той же стражей. Проверка стоит до всего
+    // остального, потому что при закрытой лавке ни цена, ни склад уже не важны,
+    // а причина отказа должна называться своим именем.
+    if (reputationStandingFor(state, merchant.id).trade_available === false) {
+      throw new RulesValidationError(WANTED_TRADE_REFUSAL_REASON, 'TRADE_REFUSED_BY_WANTED_LEVEL')
+    }
     if (command.command_type === 'BargainWithMerchant') {
       if (bargainFor(merchant, actor.id)) throw new RulesValidationError('Условия с этим торговцем уже согласованы', 'BARGAIN_ALREADY_RESOLVED')
     } else if (['BuyItem', 'SellItem'].includes(command.command_type) && (!Number.isSafeInteger(command.quantity) || command.quantity < 1 || command.quantity > MAX_TRANSACTION_QUANTITY)) {
@@ -10518,6 +10633,193 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       break
     }
+    case 'ClearWantedLevel': {
+      const regionId = String(command.region_id)
+      const wanted = wantedFor(state, regionId)
+      events.push(eventFrom({ ...command, visibility: 'gm_only' }, 'WantedCleared', {
+        region_id: regionId,
+        region_name: wanted.region_name,
+        reason: 'amnesty',
+        level_before: wanted.level,
+        crime_ids: pendingCrimeIdsFor(state, regionId),
+        at_minutes: campaignElapsedMinutes(state),
+        policy_id: LAW_POLICY_ID,
+      }, []))
+      break
+    }
+    case 'ResolveGuardEncounter': {
+      const encounter = guardEncounterFor(state)
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      const resolution = command.resolution
+      const clearedCrimeIds = pendingCrimeIdsFor(state, encounter.region_id)
+      const wantedBefore = wantedFor(state, encounter.region_id)
+      /** Что уходит в летопись и в карточку при любом исходе. */
+      const base = {
+        encounter_id: encounter.id,
+        resolution,
+        region_id: encounter.region_id,
+        region_name: encounter.region_name,
+        place_name: encounter.place_name,
+        officer_name: encounter.officer_name,
+        officer_rank: encounter.officer_rank,
+        level: encounter.level,
+        hero_id: command.actor_id,
+        at_minutes: minutes,
+        policy_id: LAW_POLICY_ID,
+      }
+      if (resolution === 'fine' || resolution === 'surrender') {
+        const balanceBeforeCp = currencyToCopper(actor.currency)
+        // Сдача — это конфискация: у отряда забирают виру целиком, а если её
+        // нет, то всё, что нашлось. Вира по своей воле стоит ровно ступень и
+        // требует, чтобы деньги были (проверка выше).
+        const takenCp = resolution === 'fine'
+          ? encounter.fine_cp
+          : Math.min(balanceBeforeCp, encounter.fine_cp)
+        const balanceAfterCp = Math.max(0, balanceBeforeCp - takenCp)
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'GuardEncounterResolved', {
+          ...base,
+          success: true,
+          paid_cp: takenCp,
+          currency_before: normalizeCurrency(actor.currency),
+          currency_after: copperToCurrency(balanceAfterCp),
+          balance_before_cp: balanceBeforeCp,
+          balance_after_cp: balanceAfterCp,
+          ...(resolution === 'surrender' ? { custody_minutes: GUARD_CUSTODY_MINUTES } : {}),
+        }, [command.actor_id]))
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'WantedCleared', {
+          region_id: encounter.region_id,
+          region_name: encounter.region_name,
+          reason: resolution,
+          level_before: wantedBefore.level,
+          crime_ids: clearedCrimeIds,
+          at_minutes: minutes,
+          policy_id: LAW_POLICY_ID,
+        }, []))
+        // Сутки под замком — настоящее время кампании: голод пленных, обещания
+        // NPC и восстановление героев считает тот же контур, что и привал.
+        if (resolution === 'surrender') {
+          appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), GUARD_CUSTODY_MINUTES, 'minute')
+        }
+        break
+      }
+      if (resolution === 'flee') {
+        const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
+        const runners = state.players
+          .filter((hero) => memberIds.has(actorId(hero)) && isLivingActor(hero))
+          .sort((left, right) => actorId(left).localeCompare(actorId(right)))
+        const checks = []
+        for (const hero of runners) {
+          const heroId = actorId(hero)
+          const preview = previewD20Check(state, {
+            actorId: heroId,
+            kind: 'check',
+            skill: command.skill,
+            difficulty: encounter.escape_dc,
+          })
+          const options = {
+            modifier: preview.modifier,
+            difficulty: encounter.escape_dc,
+            purpose: `guard-escape:${command.skill}`,
+            actorId: heroId,
+            advantage: preview.advantage,
+            // Повторная попытка идёт с помехой: стража уже знает, что отряд
+            // ищет выход, и смотрит в оба.
+            disadvantage: preview.disadvantage || encounter.escape_attempts > 0,
+            visibility: command.visibility,
+          }
+          // Ручной кубик есть у того, кто объявил побег: остальных бросает
+          // сервер. Собрать четыре ручных броска в одну команду движок не
+          // умеет, а заводить ради этого второй реестр бросков нельзя.
+          const roll = (heroId === String(command.actor_id)
+            ? checkRollFromVerified(command.verified_roll, options)
+            : null) ?? diceService.rollCheck(options)
+          rolls.push(roll)
+          checks.push({
+            actor_id: heroId,
+            actor_name: String(hero.character ?? hero.name ?? heroId).slice(0, 160),
+            total: safeInteger(roll.total, 0),
+            difficulty: encounter.escape_dc,
+            success: roll.success === true,
+          })
+        }
+        const escaped = escapeSucceeded(checks)
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.abilityCheck, encounter.escape_attempts > 0 ? RULE_IDS.advantage : null), 'GuardEncounterResolved', {
+          ...base,
+          success: escaped,
+          skill: command.skill,
+          difficulty: encounter.escape_dc,
+          attempt: encounter.escape_attempts + 1,
+          checks,
+          successes: checks.filter((check) => check.success).length,
+          participants: checks.length,
+        }, runners.map((hero) => actorId(hero))))
+        // Ушли — розыск остаётся как был: закон не забывает того, кто сбежал.
+        // Не ушли — стража запомнила ещё и попытку.
+        if (!escaped) {
+          events.push(eventFrom({ ...command, visibility: 'gm_only' }, 'WantedLevelRaised', {
+            reason: 'escape_failed',
+            crime: {
+              id: `crime:defiance:${String(command.command_id).slice(-24)}`,
+              kind: 'defiance',
+              points: WANTED_ESCAPE_FAILURE_POINTS,
+              region_id: encounter.region_id,
+              region_name: encounter.region_name,
+              node_id: encounter.node_id,
+              place_name: encounter.place_name,
+              at_minutes: minutes,
+              witnesses: 1,
+              summary: `Отряд пытался уйти от стражи в «${encounter.place_name || 'поселении'}» и не ушёл.`,
+            },
+            policy_id: LAW_POLICY_ID,
+          }, []))
+        }
+        break
+      }
+      // Драка. Ступень поднимается до предела: считается ровно недостающее,
+      // чтобы затухание потом шло от максимума, а не от случайной суммы.
+      const escalation = Math.max(1, WANTED_LEVEL_THRESHOLDS[MAX_WANTED_LEVEL] - wantedBefore.points)
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'GuardEncounterResolved', {
+        ...base,
+        success: true,
+        enemy_count: command.encounter.enemies.length,
+      }, [command.actor_id]))
+      events.push(eventFrom({ ...command, visibility: 'gm_only' }, 'WantedLevelRaised', {
+        reason: 'resisted_arrest',
+        crime: {
+          id: `crime:defiance:${String(command.command_id).slice(-24)}`,
+          kind: 'defiance',
+          points: escalation,
+          region_id: encounter.region_id,
+          region_name: encounter.region_name,
+          node_id: encounter.node_id,
+          place_name: encounter.place_name,
+          at_minutes: minutes,
+          witnesses: command.encounter.enemies.length,
+          summary: `Отряд поднял оружие на стражу в «${encounter.place_name || 'поселении'}».`,
+        },
+        policy_id: LAW_POLICY_ID,
+      }, []))
+      {
+        const encounterId = String(command.encounter.proposal_id).replace(/^encounter-proposal-/u, 'encounter-')
+        const staged = {
+          ...clone(command.encounter),
+          id: encounterId,
+          encounter_id: encounterId,
+          status: 'staged',
+          created_in_chapter: Math.max(1, Number(state.adventure?.chapter) || 1),
+          location: String(state.scene?.location ?? '').slice(0, 180),
+          enemy_ids: command.encounter.enemies.map((enemy) => String(enemy.id)),
+        }
+        events.push(eventFrom(command, 'EncounterCreated', {
+          encounter: staged,
+          encounter_id: encounterId,
+          proposal_id: command.encounter.proposal_id,
+          request_fingerprint: command.request_fingerprint ?? null,
+        }, staged.enemy_ids))
+      }
+      break
+    }
     case 'AdvanceScene': {
       if (command.party_decision) {
         const currentDecision = state.agentInteraction
@@ -10557,6 +10859,20 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         transitionedState = applyGameEvent(transitionedState, relocation)
       }
       events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(transitionedState)))
+      // Закон встречает отряд на входе. Триггер детерминированный и считается по
+      // **уже применённому** переходу: край, поселение и ступень берутся из
+      // состояния после смены сцены, а не из аргументов команды, — иначе
+      // «войти в город» и «оказаться в городе» отвечали бы по-разному.
+      {
+        const guardEncounter = guardEncounterTriggerFor(transitionedState, { commandId: command.command_id })
+        if (guardEncounter) {
+          events.push(eventFrom({ ...command, visibility: 'party' }, 'GuardEncounterStarted', {
+            encounter: guardEncounter,
+            options: guardOptionsFor(guardEncounter),
+            policy_id: LAW_POLICY_ID,
+          }, []))
+        }
+      }
       for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId })) {
         events.push(eventFrom({ ...command, visibility: memoryEvent.visibility }, memoryEvent.event_type, memoryEvent.payload, memoryEvent.target_ids))
       }
@@ -12722,6 +13038,18 @@ export function applyGameEvent(rawState, event) {
         reason: String(payload.broken_by ?? 'party'),
       })
       break
+    case 'GuardEncounterResolved': {
+      // Реестр закона обновляет `applyLawEvent` в конце редьюсера — здесь
+      // остаётся только кошелёк: виру и конфискацию посчитал движок, редьюсер
+      // переносит уже подтверждённый баланс.
+      const payer = String(payload.hero_id ?? event.actor_id ?? '')
+      if (payer && payload.currency_after) {
+        state.players = state.players.map((player) => (actorId(player) === payer
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player))
+      }
+      break
+    }
     case 'ParleySettled': {
       Object.assign(state.mechanics.combat, parleyCombatPatch(state.mechanics.combat, event) ?? {})
       restartTurnClock(state, event)
@@ -13190,6 +13518,11 @@ export function applyGameEvent(rawState, event) {
   // бы пленного мёртвым раньше, чем летопись успела бы его разобрать, и один и
   // тот же нож читался бы то жестокостью, то обычным убийством.
   state.world_deeds = applyWorldDeedEvent(state.world_deeds, event, state)
+  // Закон читает уже готовую летопись поступков, а не событие: у стражи и у
+  // молвы обязан быть один ответ на вопрос «что отряд сделал и кто это видел».
+  // Порядок здесь и есть та самая гарантия — без него преступление считалось бы
+  // по второму разбору того же события.
+  state.law = applyLawEvent(state.law, event, state)
   state.captives = applyCaptiveEvent(state.captives, event, state)
   state.autonomy = applyAutonomyEvent(state.autonomy, event)
   state.state_version = Number.isSafeInteger(event.state_version_after)
@@ -13373,6 +13706,16 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'TruceEstablished': return `Объявлено перемирие: говорит ${payload.truce?.leader_name || 'предводитель'}`
     case 'TruceBroken': return `Перемирие нарушено (${payload.broken_by === 'enemies' ? 'противником' : 'отрядом'})`
     case 'ParleySettled': return `Уговор на переговорах: ${payload.term_label || payload.outcome || 'без условий'}`
+    case 'GuardEncounterStarted': return `Стража останавливает отряд в «${payload.encounter?.place_name || 'поселении'}»: говорит ${payload.encounter?.officer_rank || 'стражник'} ${payload.encounter?.officer_name || ''}`.trim()
+    case 'GuardEncounterResolved': return payload.resolution === 'fine'
+      ? `Вира страже уплачена: ${safeInteger(payload.paid_cp, 0)} мм`
+      : payload.resolution === 'surrender'
+        ? `Отряд сдался страже: изъято ${safeInteger(payload.paid_cp, 0)} мм, под замком ${Math.round(safeInteger(payload.custody_minutes, 0) / 60)} ч`
+        : payload.resolution === 'fight'
+          ? 'Отряд поднял оружие на стражу'
+          : `Побег от стражи: ${payload.success === true ? 'ушли' : 'не ушли'} (${safeInteger(payload.successes, 0)} из ${safeInteger(payload.participants, 0)}, СЛ ${safeInteger(payload.difficulty, 0)})`
+    case 'WantedLevelRaised': return `Розыск усилен: ${payload.crime?.summary || payload.reason || 'сопротивление страже'}`
+    case 'WantedCleared': return `Розыск снят в крае «${payload.region_name || payload.region_id || ''}» (${payload.reason === 'fine' ? 'вира' : payload.reason === 'surrender' ? 'сдача' : 'амнистия'})`
     default: return event.event_type
   }
 }

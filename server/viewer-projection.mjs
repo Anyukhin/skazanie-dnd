@@ -17,6 +17,7 @@ import {
   serializedTacticalMapHash,
 } from './tactical-map.mjs'
 import { captivesForViewer } from './captives.mjs'
+import { lawForViewer } from './law-and-order.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
@@ -644,6 +645,12 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // пленный ещё не сказал. `known_fact_ids` остаётся у ведущего, иначе допрос
   // перестал бы быть проверкой: игрок читал бы ответ прямо из состояния.
   'captives',
+  // Реестр закона: ступень розыска, очки и список преступлений принадлежат
+  // ведущему целиком. Игроку уезжает только то, что он и так видит в игре, —
+  // стража, которая уже стоит перед ним, и приметы мира вокруг. Цифры розыска
+  // в публичной форме нет и быть не должно: она превратила бы поиск выхода в
+  // арифметику.
+  'law',
   'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
   // Собственного ключа в состоянии нет: подсказки выводятся из уже собранной
   // комнаты и существуют только в проекции. Решение осознанное — скрытого в
@@ -709,6 +716,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Лента ограничена: карточка показывает дюжину, а состояние держит до двух
     // сотен поступков, и слать их целиком в каждом кадре комнаты незачем.
     ...(state.world_deeds ? { world_deeds: { schema_version: WORLD_DEEDS_SCHEMA_VERSION, deeds: worldDeedsFeed(state, { limit: 40 }) } } : {}),
+    // Розыск уезжает ведущему уже лентой по краям: ступень, подпись, очки и
+    // срок затухания считаются на сервере рядом с политикой. Карточка админки
+    // своей таблицы порогов не держит — две копии расходились бы молча.
+    law: lawForViewer(state, { isAdmin: true }),
     mechanics: {
       ...(state.mechanics ?? {}),
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
@@ -734,11 +745,16 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // `world_deeds` — летопись поступков отряда со списком свидетелей и сроком
   // рождения слуха. Она принадлежит ведущему: игрок узнаёт о молве в игре, из
   // уст NPC, а не из собственной проекции состояния.
+  // `law` — реестр закона: ступень розыска, очки и все преступления отряда.
+  // Наружу он идёт только своей публичной формой (`lawForViewer` ниже), потому
+  // что цифра ступени игроку не принадлежит: розыск он узнаёт по офицеру перед
+  // собой и по тому, как на него смотрит улица.
   const {
     locationMaps: _locationMaps,
     npc_world: _npcWorld,
     levelEntities: _levelEntities,
     world_deeds: _worldDeeds,
+    law: _law,
     ...publicState
   } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
@@ -783,6 +799,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     }),
     scene_npcs: sceneNpcsForViewer(state),
     captives: captivesForViewer(state, { isAdmin: false }),
+    law: lawForViewer(state, { isAdmin: false }),
     merchants,
     enemies,
     mechanics,

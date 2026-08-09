@@ -394,6 +394,10 @@ const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem',
 // Действия с пленным. Отдельный набор, а не часть боевого: они доступны только
 // вне боя и не трогают экономику хода.
 const PLAYER_CAPTIVE_COMMANDS = CAPTIVE_PLAYER_COMMAND_TYPES
+// Ответ страже. Отдельный набор по той же причине, что у пленных: встреча с
+// законом идёт вне боя и не трогает экономику хода. `ClearWantedLevel` сюда не
+// входит намеренно — амнистия владельческая, и её проверяет Rules Engine.
+const PLAYER_LAW_COMMANDS = new Set(['ResolveGuardEncounter'])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -1034,6 +1038,41 @@ function sanitizePlayerCaptiveCommand(user, state, input) {
     captive_id: captiveId,
     server_authoritative: true,
     ...(type === 'InterrogateCaptive' ? { skill: String(input?.skill ?? 'intimidation') } : {}),
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
+ * Ответ страже. Из запроса берутся только герой, исход и подход к побегу:
+ * ступень розыска, размер виры и СЛ побега объявил сервер, и подсказать их
+ * клиент не может — их пересчитает Rules Engine по своей же карточке встречи.
+ */
+function sanitizePlayerLawCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_LAW_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к встрече со стражей', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'resolution', 'skill',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Ответ страже содержит запрещённые поля: ${unexpected.join(', ')}`, 'LAW_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Отвечать страже можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    resolution: String(input?.resolution ?? '').slice(0, 30),
+    skill: input?.skill === 'athletics' ? 'athletics' : 'stealth',
+    server_authoritative: true,
     ...(expected == null ? {} : { expected_state_version: expected }),
   }
 }
@@ -3664,11 +3703,24 @@ const server = createServer((req, res) => {
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
         if (PLAYER_CAPTIVE_COMMANDS.has(type)) return sanitizePlayerCaptiveCommand(user, authoritativeBefore, command)
+        if (PLAYER_LAW_COMMANDS.has(type)) return sanitizePlayerLawCommand(user, authoritativeBefore, command)
         if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, authoritativeBefore, command)
         return PLAYER_COMBAT_COMMANDS.has(type) ? { ...command, server_authoritative: true } : command
       })
       const semanticRestCommand = commands.find((command) => PLAYER_REST_COMMANDS.has(commandType(command))) ?? null
       if (semanticRestCommand) commands = expandPlayerRestCommand(semanticRestCommand)
+      const lawCommands = commands.filter((command) => PLAYER_LAW_COMMANDS.has(commandType(command)))
+      if (lawCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Ответ страже должен быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      // Драка со стражей — тот же двухшаговый план, что и у сборки столкновения
+      // администратором: `ResolveGuardEncounter` ставит стражу на доску событием
+      // `EncounterCreated`, а инициативу поднимает штатный `StartCombat`.
+      // Расширение стоит **до** подсчёта `types`: иначе бой начался бы, а
+      // очередь после него никто бы не подвинул.
+      if (lawCommands.length && String(lawCommands[0].resolution) === 'fight') {
+        commands = [...commands, { command_type: 'StartCombat', actor_id: lawCommands[0].actor_id, server_authoritative: true }]
+      }
       const actor = String(commands[0]?.actor_id || room.state.activePlayerId || '')
       const commandActor = [...(room.state.players ?? []), ...(room.state.actors ?? [])].find((candidate) => String(candidate.id ?? candidate.actor_id) === actor)
       const controller = String(commandActor?.controllerId ?? commandActor?.controller_id ?? commandActor?.ownerId ?? commandActor?.owner_id ?? '')
