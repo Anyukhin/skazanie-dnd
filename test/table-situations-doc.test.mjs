@@ -93,6 +93,12 @@ const WORLD_CLOCK_CONSUMERS = Object.freeze([
     markers: ['server/item-dawn-recharge.mjs'],
   },
   {
+    title: 'смена времени суток и погоды',
+    code: () => worldTimeBlock().includes('worldClockEventDrafts(state, elapsedMinutes)')
+      && source('server/weather.mjs').includes('export function worldClockEventDrafts'),
+    markers: ['worldClockEventDrafts', 'server/weather.mjs'],
+  },
+  {
     title: 'пополнение склада торговца',
     code: () => source('server/merchant-economy.mjs').includes('export function planMerchantEconomyClock')
       && source('server/merchant-economy.mjs').includes('state?.mechanics?.world_time?.elapsed_minutes')
@@ -126,7 +132,7 @@ const WORLD_CLOCK_CONSUMERS = Object.freeze([
   },
 ])
 
-const NUMERALS = Object.freeze(['ноль', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять'])
+const NUMERALS = Object.freeze(['ноль', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять', 'десять', 'одиннадцать', 'двенадцать'])
 
 /** Формулировки, опровергнутые кодом. Возврат любой из них — регресс документа. */
 const REFUTED_CLAIMS = Object.freeze([

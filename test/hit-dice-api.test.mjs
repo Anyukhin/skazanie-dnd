@@ -253,7 +253,13 @@ test('HTTP-отдых санитизирует поля, защищает гер
 
   const longRest = await restCommand(baseUrl, ownerCookie, 'rest-start-long', { command_type: 'StartRest', actor_id: 'fighter', kind: 'long' })
   assert.equal(longRest.status, 200, `${longRest.text}\n${logs}`)
-  assert.deepEqual(longRest.body.mechanics.map((event) => event.event_type), ['RestStarted', 'TimeAdvanced', 'HitPointDiceRestored', 'RestCompleted'])
+  // Восемь часов сна всегда пересекают границу времени суток, и мировые часы
+  // пишут об этом своё событие (`server/weather.mjs`). Здесь проверяется контур
+  // отдыха, поэтому небо из списка отфильтровано.
+  assert.deepEqual(
+    longRest.body.mechanics.map((event) => event.event_type).filter((type) => !['TimeOfDayChanged', 'WeatherChanged'].includes(type)),
+    ['RestStarted', 'TimeAdvanced', 'HitPointDiceRestored', 'RestCompleted'],
+  )
   assert.equal(longRest.body.authoritative_state.mechanics.world_time.elapsed_minutes, 540)
   assert.equal(longRest.body.authoritative_state.mechanics.hit_point_dice.fighter.spent, 0)
   assert.equal(longRest.body.authoritative_state.players.find((hero) => hero.id === 'fighter').hp, 30)

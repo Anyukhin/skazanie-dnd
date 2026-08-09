@@ -8,8 +8,9 @@ import {
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
+  Sun, Cloudy, CloudRain, CloudFog, CloudLightning,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -298,7 +299,48 @@ function LevelUpScreen({ levelUp, canOpenSheet, onOpenSheet, onClose }: {
   </div>
 }
 
-function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, wantedSigns, onOpenMerchant, onReset }: {
+/**
+ * Иконка неба по погоде. Таблица здесь единственная и только про картинку:
+ * подписи, строку индикатора и список помех считает сервер
+ * (`server/weather.mjs`), клиент их не выводит.
+ */
+const WEATHER_ICONS: Record<WeatherConditionId, typeof Sun> = {
+  clear: Sun,
+  overcast: Cloudy,
+  rain: CloudRain,
+  fog: CloudFog,
+  storm: CloudLightning,
+}
+
+function SceneWeather({ weather }: { weather?: WeatherProjection }) {
+  if (!weather?.indicator) return null
+  const Icon = WEATHER_ICONS[weather.weather] ?? Cloudy
+  // Подсказка объясняет не «что на небе» — это и так написано, — а чем оно
+  // сейчас мешает или помогает. Под крышей строка честно говорит, что не мешает
+  // ничем: игрок не должен гадать, действует ли дождь в трактире.
+  const lines = [
+    `День ${weather.day}, ${weather.clock}`,
+    weather.weather_summary,
+    weather.indoors ? 'Отряд под крышей: погода на броски не влияет.' : '',
+    ...weather.effects,
+  ].filter(Boolean)
+  return (
+    <div
+      className={`scene-weather phase-${weather.phase} sky-${weather.weather}`}
+      role="note"
+      // Тот же текст, что в подсказке: помехи от неба игрок обязан узнать и
+      // без мыши, а не только наведением.
+      aria-label={[`Время и погода: ${weather.indicator}`, ...lines].join('. ')}
+      title={lines.join('\n')}
+    >
+      <Icon size={13} />
+      <span>{weather.indicator}</span>
+      {weather.effects.length > 0 && <b aria-hidden="true">!</b>}
+    </div>
+  )
+}
+
+function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, wantedSigns, weather, onOpenMerchant, onReset }: {
   title: string
   location: string
   objective: string
@@ -320,6 +362,11 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
    * своей таблицы у клиента нет, потому что самой ступени он не знает.
    */
   wantedSigns: string[]
+  /**
+   * Небо над отрядом. Строка «Вечер · Дождь», подписи помех и признак «под
+   * крышей» приходят готовыми из проекции (`server/weather.mjs`).
+   */
+  weather?: WeatherProjection
   onOpenMerchant: () => void
   onReset: () => void
 }) {
@@ -371,6 +418,9 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
       <div className="scene-title"><span>ГЛАВА {chapter}{round != null ? ` · РАУНД ${round}` : ''} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
+      {/* Время суток и погода стоят рядом с названием места: это часть ответа
+          на вопрос «где мы», а не отдельная панель. */}
+      <SceneWeather weather={weather} />
       {/* Приглашение стоит до «текущей цели»: у неё `margin-left: auto`, и всё,
           что после, уезжает вправо под кнопку сброса с `position: absolute`. */}
       {merchants.length > 0 && <button className="scene-merchant" onClick={onOpenMerchant} aria-haspopup="dialog" aria-label={merchantLabel} title={merchantLabel}><Store size={16} /></button>}
@@ -1416,7 +1466,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} onOpenMerchant={() => openMerchant()} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">

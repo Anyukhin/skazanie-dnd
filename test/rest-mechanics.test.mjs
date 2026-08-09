@@ -77,7 +77,13 @@ test('долгий отдых лечит и восстанавливает до�
     { command_type: 'CompleteRest', actor_id: 'wizard', kind: 'long', source_rule_ids: [RULE_IDS.resource] },
   ]
   const result = resolveCommands(commands, state, { diceService, context: { allowedActorIds: ['wizard'] } })
-  assert.deepEqual(result.events.map((event) => event.event_type), ['RestStarted', 'TimeAdvanced', 'ConcentrationEnded', 'HitPointDiceRestored', 'RestCompleted'])
+  // Смену времени суток и погоды пишут мировые часы (`server/weather.mjs`), и
+  // к отдыху они отношения не имеют: восемь часов сна их пересекают всегда.
+  // Здесь проверяется контур отдыха, поэтому небо из списка отфильтровано.
+  assert.deepEqual(
+    result.events.map((event) => event.event_type).filter((type) => !['TimeOfDayChanged', 'WeatherChanged'].includes(type)),
+    ['RestStarted', 'TimeAdvanced', 'ConcentrationEnded', 'HitPointDiceRestored', 'RestCompleted'],
+  )
   assert.equal(result.state.players[0].hp, 14)
   assert.equal(result.state.mechanics.temporary_hp.wizard, 0)
   assert.equal(result.state.mechanics.resources.wizard.spell_slots_1.current, 4)

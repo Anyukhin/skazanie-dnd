@@ -28,6 +28,7 @@ import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
+import { worldClockForAgents } from './weather.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
@@ -912,6 +913,9 @@ export class GameOrchestrator {
       known_environment: {
         scene: projectVisibleState(state.scene ?? {}, viewer, { forNarrator: true }) ?? {},
         campaign_premise: campaignConceptForAgent(state),
+        // Небо и час — данные, а не право сочинять: Рассказчик получает уже
+        // решённые время суток и погоду, чтобы не выдумывать закат в полдень.
+        world_clock: worldClockForAgents(state),
         world_memory: { facts: narrationWorldFacts(state, viewer, message, publicCommittedEvents) },
         story_context: storyContext,
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
@@ -1479,6 +1483,9 @@ export class GameOrchestrator {
       known_environment: {
         scene: projectVisibleState(committed.state.scene ?? {}, viewer, { forNarrator: true }) ?? {},
         campaign_premise: campaignConceptForAgent(committed.state),
+        // Небо и час — данные, а не право сочинять: тот же расчёт, что у
+        // индикатора в шапке сцены, чтобы текст и картинка не разошлись.
+        world_clock: worldClockForAgents(committed.state),
         world_memory: {
           facts: narrationWorldFacts(committed.state, viewer, message, publicCommittedEvents),
         },

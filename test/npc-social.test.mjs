@@ -955,7 +955,13 @@ test('promise hints become deterministic deadlines and AdvanceTime breaks an ove
   const later = resolveCommand({ command_type: 'AdvanceTime', amount: 60, unit: 'minute' }, state, {
     diceService: dice(), context: { isDirector: true },
   })
-  assert.deepEqual(later.events.map((event) => event.event_type), ['TimeAdvanced'])
+  // Час переводит стрелку с утра на день, и мировые часы пишут об этом своё
+  // событие (`server/weather.mjs`). Здесь проверяется, что просроченное обещание
+  // ломается ровно один раз, поэтому небо из списка отфильтровано.
+  assert.deepEqual(
+    later.events.map((event) => event.event_type).filter((type) => !['TimeOfDayChanged', 'WeatherChanged'].includes(type)),
+    ['TimeAdvanced'],
+  )
 })
 
 test('NPC controller receives the authoritative tier and only open promise summaries', async () => {

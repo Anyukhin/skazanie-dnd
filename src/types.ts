@@ -1184,6 +1184,11 @@ export type GameState = {
    */
   law?: LawProjection
   /**
+   * Время суток и погода. Ветка одинакова у игрока и у ведущего: небо над
+   * отрядом тайной не является.
+   */
+  weather?: WeatherProjection
+  /**
    * Optional viewer-safe contract introduced by server PR #18. Coordinates
    * are authoritative; raw HP, goals and beliefs are deliberately absent.
    */
@@ -1454,6 +1459,39 @@ export type LawProjection = {
   signs?: string[]
   encounter?: GuardEncounterCard | null
   regions?: WantedRegionEntry[]
+}
+
+/** Время суток по серверным часам кампании (`server/weather.mjs`). */
+export type DayPhaseId = 'morning' | 'day' | 'evening' | 'night'
+
+/** Погода. Список закрыт сервером — клиент своей таблицы не держит. */
+export type WeatherConditionId = 'clear' | 'overcast' | 'rain' | 'fog' | 'storm'
+
+/**
+ * Небо над отрядом. Всё уже посчитано сервером: и строка индикатора, и подписи
+ * действующих помех. Клиент только показывает — своей таблицы погоды у него нет
+ * и быть не должно, иначе она разошлась бы с броском.
+ */
+export type WeatherProjection = {
+  schema_version?: number
+  policy_id?: string
+  /** Игровой день кампании, начиная с первого. */
+  day: number
+  /** Часы и минуты мировых часов: «18:20». */
+  clock: string
+  phase: DayPhaseId
+  phase_label: string
+  weather: WeatherConditionId
+  weather_label: string
+  weather_summary: string
+  biome: string
+  region_name: string
+  /** Под крышей погоды нет: все помехи этого модуля выключены. */
+  indoors: boolean
+  /** Готовая строка шапки сцены: «Вечер · Дождь». */
+  indicator: string
+  /** Русские подписи действующих помех и преимуществ. */
+  effects: string[]
 }
 
 export type CombatInitiativeEntry = {

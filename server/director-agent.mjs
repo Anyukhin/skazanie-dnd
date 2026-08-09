@@ -6,6 +6,7 @@ import { campaignConceptForAgent } from './agent-context.mjs'
 import { currentImprovMode, normalizeImprovMode } from './campaign-ai-context.mjs'
 import { campaignArcPosition } from './campaign-loop-policy.mjs'
 import { buildDataOnlyContext } from './security.mjs'
+import { worldClockForAgents } from './weather.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
 // Режиссёр читает по промпту на режим импровизации. Bounded-intent контракт в
@@ -170,6 +171,10 @@ function publicDirectorBrief(state = {}, playerAction = '') {
         ...(levelLine ? { level: levelLine } : {}),
       },
       chapter: Math.max(1, Number(state.adventure?.chapter) || 1),
+      // Час, время суток и погода — данные для темпа: ночной привал и гроза
+      // читаются иначе, чем полдень на тракте. Решает Режиссёр, но решает по
+      // тому же небу, что видит игрок в шапке сцены.
+      world_clock: worldClockForAgents(state),
       pacing: {
         phase: clean(state.autonomy?.pacing?.phase, 30) || 'breather',
         tension: Math.max(0, Math.min(100, Number(state.autonomy?.pacing?.tension) || 0)),

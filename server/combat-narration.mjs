@@ -1,5 +1,6 @@
 import { NARRATOR_PRIORITY, assertNarratorContract } from './deterministic-narration.mjs'
 import { sceneInteractionNarration } from './scene-interactions.mjs'
+import { WORLD_CLOCK_EVENT_TYPES, worldClockNarration } from './weather.mjs'
 
 /**
  * Боевой текст для ленты: удары, состояния, спасброски, ход времени.
@@ -84,6 +85,8 @@ function attackConditionReason(payload) {
 function tacticalNarration(events, state) {
   const meaningful = []
   const turns = []
+  /** Строки про небо: дописываются последними и не вытесняют события хода. */
+  const sky = []
   const sceneInteraction = sceneInteractionNarration(events)
   if (sceneInteraction) meaningful.push(sceneInteraction)
   const partyFailed = (events ?? []).some((event) => event?.event_type === 'CampaignFailed')
@@ -93,7 +96,14 @@ function tacticalNarration(events, state) {
     const targetId = event.target_ids?.[0] ?? payload.target_id
     const target = tacticalActorName(state, targetId)
     const targetIsEnemy = tacticalActorIsEnemy(state, targetId)
-    if (event.event_type === 'EncounterCreated') {
+    if (WORLD_CLOCK_EVENT_TYPES.has(event.event_type)) {
+      // Небо описывает сам модуль погоды: строка детерминированная, и второй её
+      // формы быть не должно — иначе журнал и подсказка индикатора разошлись бы.
+      // Копится она отдельно, потому что дописывается **после** событий хода:
+      // сначала что сделал отряд, потом что стало с миром.
+      const line = worldClockNarration(event)
+      if (line) sky.push(line)
+    } else if (event.event_type === 'EncounterCreated') {
       const names = (payload.encounter?.enemies ?? []).map((enemy) => String(enemy?.name ?? '')).filter(Boolean).slice(0, 12)
       meaningful.push(`На поле появляются противники: ${names.join(', ')}.`)
     } else if (event.event_type === 'EncounterEnded') {
@@ -275,7 +285,11 @@ function tacticalNarration(events, state) {
       turns.push(`Начинается ход ${target}, раунд ${Number(payload.round) || 1}.`)
     }
   }
-  const selected = meaningful.length ? meaningful : turns
+  // Небо дописывается последним и в порядке приоритета не участвует: сначала
+  // отряд, потом мир вокруг него. На ходу, где кроме смены времени суток не
+  // случилось ничего (долгий отдых, переход по карте), строка про небо остаётся
+  // единственной — и это ровно та строка, которой смену видно в летописи.
+  const selected = [...(meaningful.length ? meaningful : turns), ...sky]
   return selected.slice(0, 8).join(' ')
 }
 
@@ -296,8 +310,8 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',
   'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed',
-  'TruceBroken', 'TruceEstablished', 'TurnEnded',
-  'TurnStarted',
+  'TimeOfDayChanged', 'TruceBroken', 'TruceEstablished', 'TurnEnded',
+  'TurnStarted', 'WeatherChanged',
 ]))
 
 export function hasCombatNarrationEvent(events) {

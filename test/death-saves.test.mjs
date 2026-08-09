@@ -206,7 +206,13 @@ test('стабильный герой автоматически получае�
   const recovered = resolveCommand({ command_type: 'AdvanceTime', amount: 2, unit: 'hour' }, waiting, {
     diceService: dice([]),
   })
-  assert.deepEqual(recovered.events.map((event) => event.event_type), ['TimeAdvanced', 'HealingApplied'])
+  // Два часа переводят стрелку с утра на день, и мировые часы пишут об этом
+  // своё событие (`server/weather.mjs`). Здесь проверяется восстановление
+  // стабилизированного героя, поэтому небо из списка отфильтровано.
+  assert.deepEqual(
+    recovered.events.map((event) => event.event_type).filter((type) => !['TimeOfDayChanged', 'WeatherChanged'].includes(type)),
+    ['TimeAdvanced', 'HealingApplied'],
+  )
   const after = applyAll(waiting, recovered.events)
   assert.equal(after.players.find((hero) => hero.id === 'fallen').hp, 1)
   assert.equal(after.mechanics.death.saving_throws.fallen, undefined)

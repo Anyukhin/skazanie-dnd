@@ -270,6 +270,11 @@ import {
   fireSourceNear,
   hazardPropCells,
 } from './scene-hazards.mjs'
+import {
+  weatherCheckSwing,
+  weatherRangedPenalty,
+  worldClockEventDrafts,
+} from './weather.mjs'
 
 export const DEFAULT_RULESET_ID = 'srd_5_2_1'
 const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
@@ -2612,6 +2617,10 @@ function attackSwingShape(state, attackerIdValue, targetIdValue, profile, {
   if (profile?.disadvantage) disadvantageSources.push('свойство атаки')
   if (enemyAdjacent) disadvantageSources.push('противник вплотную')
   if (longRange) disadvantageSources.push('дальний диапазон')
+  // Туман мешает стрелять только под открытым небом: под крышей его нет, и
+  // проверяет это сам модуль погоды. Ближний бой он не трогает — на длине руки
+  // видно и в тумане.
+  if (profile?.kind === 'ranged' && weatherRangedPenalty(state)) disadvantageSources.push('туман')
   if (targetConditions.has('dodging')) disadvantageSources.push('цель уклоняется')
   if (oneShotDisadvantage) disadvantageSources.push('помеха на следующую атаку')
   if (highGround === 'lower') disadvantageSources.push('позиция ниже цели')
@@ -5799,6 +5808,10 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
   const skillProficiency = checkSkill ? skillProficiencyForActor(actor, checkSkill) : null
   const modifier = abilityModifier(actor?.abilities?.[checkAbility])
     + (skillProficiency?.bonus ?? (proficient ? safeInteger(actor?.proficiency, 0) : 0))
+  // Небо участвует в проверке наравне с состояниями, поэтому оно обязано быть
+  // и в предпросмотре: карточка ручного броска показывает игроку тот же режим,
+  // с которым сервер потом сложит две кости.
+  const weatherSwing = weatherCheckSwing(state, checkSkill)
   return {
     kind: 'check',
     ability: checkAbility,
@@ -5806,8 +5819,11 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
     modifier,
     difficulty: safeInteger(difficulty, 10),
     advantage: Boolean(checkAdvantageConditionFor(state, actorId, checkAbility))
-      || conditionIdsFor(state, actorId).has('silvery-fortune'),
-    disadvantage: Boolean(checkDisadvantageConditionFor(state, actorId)),
+      || conditionIdsFor(state, actorId).has('silvery-fortune')
+      || weatherSwing?.swing === 'advantage',
+    disadvantage: Boolean(checkDisadvantageConditionFor(state, actorId))
+      || weatherSwing?.swing === 'disadvantage',
+    ...(weatherSwing ? { weather_reason: weatherSwing.reason } : {}),
   }
 }
 
@@ -6022,6 +6038,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
   const appendTimeAdvance = (sourceCommand, amount, unit, elapsedMinutes) => {
     events.push(eventFrom(sourceCommand, 'TimeAdvanced', { amount, unit, elapsed_minutes: elapsedMinutes }, []))
     if (elapsedMinutes <= 0) return
+    // Мировые часы: время суток и погода — производные тех же минут, поэтому
+    // событие нужно только на смену. `state` здесь — состояние **до** команды,
+    // и это и есть «было»: события этого хода применяются вызывающим уже после
+    // возврата, так что второй раз одну и ту же границу пересечь нельзя.
+    for (const draft of worldClockEventDrafts(state, elapsedMinutes)) {
+      events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, []))
+    }
     const recharge = resolveItemDawnRecharge(state, elapsedMinutes, diceService)
     rolls.push(...recharge.rolls)
     if (recharge.payload) {
@@ -6256,10 +6279,16 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Истощение мешает любой проверке характеристики с первой же ступени.
       const checkPenalty = checkDisadvantageConditionFor(state, command.actor_id)
       const checkBoost = checkAdvantageConditionFor(state, command.actor_id, ability)
-      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty), visibility: command.visibility }
+      // Небо: дождь мешает Восприятию и Выживанию, ночь — Восприятию, гроза
+      // помогает Скрытности. Всё это действует только под открытым небом и
+      // считается той же функцией, что и предпросмотр ручного броска.
+      const weatherSwing = weatherCheckSwing(state, skill)
+      const weatherPenalty = weatherSwing?.swing === 'disadvantage' ? weatherSwing.reason : null
+      const weatherBoost = weatherSwing?.swing === 'advantage' ? weatherSwing.reason : null
+      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || Boolean(weatherBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty) || Boolean(weatherPenalty), visibility: command.visibility }
       const roll = checkRollFromVerified(command.verified_roll, checkRollOptions) ?? diceService.rollCheck(checkRollOptions)
       rolls.push(roll)
-      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
+      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost || weatherPenalty || weatherBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
         ability, ...(skill ? { skill } : {}), ...roll,
         ...(skillProficiency ? {
           proficient: skillProficiency.proficient,
@@ -6268,6 +6297,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         } : {}),
         ...(checkPenalty ? { check_disadvantage_condition: checkPenalty } : {}),
         ...(checkBoost ? { check_advantage_condition: checkBoost } : {}),
+        ...(weatherPenalty ? { weather_disadvantage: weatherPenalty } : {}),
+        ...(weatherBoost ? { weather_advantage: weatherBoost } : {}),
         ...(command.social_check ? { social_check: {
           check_id: command.social_check.check_id, npc_id: command.social_check.npc_id,
           skill: command.social_check.skill, request_fingerprint: command.social_check.request_fingerprint,
@@ -13714,6 +13745,8 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'ObjectiveUpdated': return `Цель отряда: ${payload.objective || 'следующий шаг не задан'}`
     case 'ActionDeclared': return 'Намерение героя принято к рассмотрению.'
     case 'TimeAdvanced': return `Проходит ${payload.amount || 0} ${payload.unit || 'мин.'}`
+    case 'TimeOfDayChanged': return `${payload.phase_label || 'Время суток сменилось'} — ${payload.clock || ''}, день ${safeInteger(payload.day, 1)}`.trim()
+    case 'WeatherChanged': return `Погода сменилась: ${payload.weather_label || payload.weather_after || 'неизвестно'}${payload.region_name ? ` (${payload.region_name})` : ''}`
     case 'CombatEnded': return `Бой завершён в раунде ${payload.round}`
     case 'CaptiveTaken': return `${payload.captive?.name || 'Побеждённый'} становится пленником отряда`
     case 'CaptiveInterrogated': return `Допрос пленного: ${payload.success === true ? 'успех' : 'провал'} (СЛ ${payload.difficulty})`

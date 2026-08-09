@@ -568,6 +568,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* Приметы розыска в шапке сцены: одна строка мира вместо индикатора. */
 .scene-wanted { display: flex; align-items: center; gap: 6px; max-width: 260px; padding: 4px 9px; border: 1px solid rgba(178,64,52,.32); border-radius: 14px; background: rgba(34,18,16,.7); color: #c08a7c; font: 600 var(--fs-xs) Manrope, sans-serif; }
 .scene-wanted span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Время суток и погода: та же таблетка, что у примет розыска, но своим цветом
+   по времени суток — небо читается боковым зрением, не отвлекая от сцены.
+   Восклицательный знак появляется, только когда небо на что-то влияет. */
+/* `pointer-events` возвращаем той же оговоркой, что и кнопке торговца: вся
+   `.scene-header` их не принимает, а подсказка про помехи от неба обязана
+   показываться при наведении. */
+.scene-weather { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; max-width: 200px; padding: 4px 9px; border: 1px solid rgba(207,164,105,.22); border-radius: 14px; background: rgba(24,20,16,.7); color: #b79a6f; font: 600 var(--fs-xs) Manrope, sans-serif; pointer-events: auto; }
+.scene-weather span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-weather b { flex: 0 0 auto; width: 13px; height: 13px; border-radius: 50%; background: rgba(190,142,72,.28); color: #e2c48d; font-size: var(--fs-xxs); line-height: 13px; text-align: center; }
+.scene-weather.phase-night { border-color: rgba(112,124,166,.3); background: rgba(15,17,28,.76); color: #93a0c4; }
+.scene-weather.phase-evening { border-color: rgba(178,110,72,.3); color: #cd9a6e; }
+.scene-weather.sky-storm { border-color: rgba(146,118,196,.36); color: #b9a4dd; }
+.scene-weather.sky-rain { border-color: rgba(96,134,158,.34); color: #8fb2c6; }
+.scene-weather.sky-fog { border-color: rgba(150,155,160,.32); color: #b3b8bd; }
 
 .game-area.is-narrating .map-atmosphere-one { opacity: .31; background: #b7874b; animation: narration-light-one 2.8s ease-in-out infinite alternate; }
 .game-area.is-narrating .map-atmosphere-two { opacity: .28; background: #6d7296; animation: narration-light-two 3.4s ease-in-out infinite alternate; }

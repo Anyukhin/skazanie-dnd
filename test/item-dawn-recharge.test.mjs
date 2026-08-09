@@ -106,8 +106,13 @@ test('без пересечения рассвета и для полного п
     elapsed: 1_000,
     players: [hero('hero', [rechargeable('waiting', 2)])],
   })
+  // Рассвет предмета и рассвет мировых часов — разные границы: первая считается
+  // от пересечения 1440 минут, вторая — от пяти утра (`server/weather.mjs`).
+  // Здесь проверяется перезарядка, поэтому события неба отфильтрованы.
+  const withoutSky = (result) => result.events.map((event) => event.event_type)
+    .filter((type) => !['TimeOfDayChanged', 'WeatherChanged'].includes(type))
   const noCrossing = advance(beforeDawn, 439, 'minute', [])
-  assert.deepEqual(noCrossing.events.map((event) => event.event_type), ['TimeAdvanced'])
+  assert.deepEqual(withoutSky(noCrossing), ['TimeAdvanced'])
   assert.deepEqual(noCrossing.rolls, [])
 
   const full = campaign({
@@ -115,7 +120,7 @@ test('без пересечения рассвета и для полного п
     players: [hero('hero', [rechargeable('full', 7)])],
   })
   const crossedAtFull = advance(full, 1, 'minute', [])
-  assert.deepEqual(crossedAtFull.events.map((event) => event.event_type), ['TimeAdvanced'])
+  assert.deepEqual(withoutSky(crossedAtFull), ['TimeAdvanced'])
   assert.deepEqual(crossedAtFull.rolls, [])
 })
 

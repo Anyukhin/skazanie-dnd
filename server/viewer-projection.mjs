@@ -18,6 +18,7 @@ import {
 } from './tactical-map.mjs'
 import { captivesForViewer } from './captives.mjs'
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
+import { weatherForViewer } from './weather.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 
@@ -651,6 +652,11 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // в публичной форме нет и быть не должно: она превратила бы поиск выхода в
   // арифметику.
   'law',
+  // Время суток и погода. Собственного ключа в состоянии нет: обе величины
+  // выводятся из мировых минут и сида кампании (`server/weather.mjs`) и
+  // существуют только в проекции. Решение осознанное и в обе стороны одинаковое:
+  // небо над отрядом видно всем, и прятать его от игрока значило бы врать.
+  'weather',
   'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
   // Собственного ключа в состоянии нет: подсказки выводятся из уже собранной
   // комнаты и существуют только в проекции. Решение осознанное — скрытого в
@@ -720,6 +726,9 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // срок затухания считаются на сервере рядом с политикой. Карточка админки
     // своей таблицы порогов не держит — две копии расходились бы молча.
     law: lawForViewer(state, { isAdmin: true }),
+    // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
+    // из минут кампании и сида, тайной ведущего они не являются.
+    weather: weatherForViewer(state),
     mechanics: {
       ...(state.mechanics ?? {}),
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
@@ -800,6 +809,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     scene_npcs: sceneNpcsForViewer(state),
     captives: captivesForViewer(state, { isAdmin: false }),
     law: lawForViewer(state, { isAdmin: false }),
+    // Время суток и погода — то, что герой видит, подняв голову. Строка
+    // индикатора и подписи действующих помех приходят готовыми: своей таблицы
+    // ни у клиента, ни у проекции нет.
+    weather: weatherForViewer(state),
     merchants,
     enemies,
     mechanics,
