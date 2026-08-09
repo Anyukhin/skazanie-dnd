@@ -99,6 +99,12 @@ const WORLD_CLOCK_CONSUMERS = Object.freeze([
     markers: ['worldClockEventDrafts', 'server/weather.mjs'],
   },
   {
+    title: 'ход мира за спиной отряда на существенном скачке',
+    code: () => worldTimeBlock().includes('planOffscreenWorldStep(state, { elapsedMinutes })')
+      && source('server/offscreen-world.mjs').includes('export function planOffscreenWorldStep'),
+    markers: ['planOffscreenWorldStep', 'server/offscreen-world.mjs'],
+  },
+  {
     title: 'пополнение склада торговца',
     code: () => source('server/merchant-economy.mjs').includes('export function planMerchantEconomyClock')
       && source('server/merchant-economy.mjs').includes('state?.mechanics?.world_time?.elapsed_minutes')

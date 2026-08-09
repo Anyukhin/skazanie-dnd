@@ -126,6 +126,12 @@ import {
   wantedFor,
 } from './law-and-order.mjs'
 import {
+  OFFSCREEN_WORLD_EVENT_TYPE,
+  applyOffscreenWorldEvent,
+  normalizeOffscreenWorldState,
+  planOffscreenWorldStep,
+} from './offscreen-world.mjs'
+import {
   ensureSceneWorldMemory,
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
@@ -1525,6 +1531,7 @@ export function normalizeCampaignState(input = {}) {
   state.social = ensureNpcSocialState(state.social, state)
   state.npc_world = normalizeNpcWorldState(state.npc_world)
   state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
+  state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
   state.captives = normalizeCaptivesState(state.captives)
   state.law = normalizeLawState(state.law)
   state.autonomy = normalizeAutonomyState(state.autonomy)
@@ -6112,6 +6119,18 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           recovery_minutes_remaining: remaining - elapsedMinutes,
         }, [targetIdValue]))
       }
+    }
+    // «Пока вас не было…»: мир живёт, когда отряд спит.
+    //
+    // Слой стоит **последним** и поверх всех остальных потребителей минут:
+    // обещания NPC, восстановление героев, рассвет предметов и небо уже
+    // посчитаны выше, и ход мира к ним ничего не пересчитывает. Своих тиков у
+    // него нет — только существенный скачок (`planOffscreenWorldStep`,
+    // `server/offscreen-world.mjs`) и не чаще раза в игровые сутки; на коротком
+    // привале модуль молчит по построению.
+    const offscreen = planOffscreenWorldStep(state, { elapsedMinutes })
+    for (const draft of offscreen?.drafts ?? []) {
+      events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids ?? []))
     }
   }
 
@@ -13594,6 +13613,10 @@ export function applyGameEvent(rawState, event) {
   // Порядок здесь и есть та самая гарантия — без него преступление считалось бы
   // по второму разбору того же события.
   state.law = applyLawEvent(state.law, event, state)
+  // Лента ходов мира — такой же вывод из журнала, как летопись поступков: сам
+  // ход посчитан до коммита, здесь остаётся только запомнить его и список
+  // заданий под наблюдением.
+  state.offscreen_world = applyOffscreenWorldEvent(state.offscreen_world, event)
   state.captives = applyCaptiveEvent(state.captives, event, state)
   state.autonomy = applyAutonomyEvent(state.autonomy, event)
   state.state_version = Number.isSafeInteger(event.state_version_after)
@@ -13761,6 +13784,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'ObjectiveUpdated': return `Цель отряда: ${payload.objective || 'следующий шаг не задан'}`
     case 'ActionDeclared': return 'Намерение героя принято к рассмотрению.'
     case 'TimeAdvanced': return `Проходит ${payload.amount || 0} ${payload.unit || 'мин.'}`
+    case OFFSCREEN_WORLD_EVENT_TYPE: return `Пока отряда не было: ${(payload.step?.lines ?? []).join(' ') || 'мир сделал свой ход'}`
     case 'TimeOfDayChanged': return `${payload.phase_label || 'Время суток сменилось'} — ${payload.clock || ''}, день ${safeInteger(payload.day, 1)}`.trim()
     case 'WeatherChanged': return `Погода сменилась: ${payload.weather_label || payload.weather_after || 'неизвестно'}${payload.region_name ? ` (${payload.region_name})` : ''}`
     case 'CombatEnded': return `Бой завершён в раунде ${payload.round}`

@@ -8,6 +8,16 @@ import test from 'node:test'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import { worldClockEventDrafts } from '../server/weather.mjs'
 
+/**
+ * Что может выпустить ход мира за продолжительный отдых
+ * (`server/offscreen-world.mjs`). Набор закрытый: он и отделяет ход мира от
+ * событий самого отдыха, которые сторож ниже по-прежнему сверяет буквально.
+ */
+const OFFSCREEN_STEP_EVENT_TYPES = new Set([
+  'OffscreenWorldStepResolved', 'QuestClockAdvanced', 'QuestResolved',
+  'WorldEntityUpserted', 'WorldFactRecorded', 'NarrativeSummaryRecorded',
+])
+
 async function freePort() {
   const probe = createNetServer()
   await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(0, '127.0.0.1', resolve) })
@@ -262,9 +272,22 @@ test('HTTP-отдых санитизирует поля, защищает гер
   const beforeRest = { ...restedState, mechanics: { ...restedState.mechanics, world_time: { ...restedState.mechanics.world_time, elapsed_minutes: 60 } } }
   const sky = worldClockEventDrafts(beforeRest, 480).map((draft) => draft.event_type)
   assert.deepEqual(sky, ['TimeOfDayChanged'], 'восемь часов сна переводят время суток ровно один раз')
+  // Восемь часов — существенный скачок, и мир делает за них свой ход
+  // (`server/offscreen-world.mjs`): часы заданий, память мира и врезка «Пока вас
+  // не было…». Список хода не выписывается сюда буквально — он зависит от того,
+  // что вообще есть в кампании, — но он обязан стоять **между** небом и
+  // восстановлением костей и содержать ровно один шаг мира. Полное равенство
+  // ниже остаётся тем же сторожем задвоенного события в контуре отдыха.
+  const restEventTypes = longRest.body.mechanics.map((event) => event.event_type)
+  const worldStep = restEventTypes.filter((type) => OFFSCREEN_STEP_EVENT_TYPES.has(type))
   assert.deepEqual(
-    longRest.body.mechanics.map((event) => event.event_type),
-    ['RestStarted', 'TimeAdvanced', ...sky, 'HitPointDiceRestored', 'RestCompleted'],
+    worldStep.filter((type) => type === 'OffscreenWorldStepResolved'),
+    ['OffscreenWorldStepResolved'],
+    'продолжительный отдых обязан двигать мир ровно один раз',
+  )
+  assert.deepEqual(
+    restEventTypes,
+    ['RestStarted', 'TimeAdvanced', ...sky, ...worldStep, 'HitPointDiceRestored', 'RestCompleted'],
   )
   assert.equal(longRest.body.authoritative_state.mechanics.world_time.elapsed_minutes, 540)
   assert.equal(longRest.body.authoritative_state.mechanics.hit_point_dice.fighter.spent, 0)

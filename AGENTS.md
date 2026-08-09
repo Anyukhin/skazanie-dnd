@@ -143,7 +143,7 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 `adjudicator.mjs`, `intent-parser.mjs`, `world-memory.mjs`,
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`,
 `world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`,
-`weather.mjs`.
+`weather.mjs`, `offscreen-world.mjs`.
 Не описывать их как «агентов».
 
 `server/player-request-router.mjs` объявляет роли маршрутизации ввода игрока (`PLAYER_REQUEST_ROLES`). `prompt_id` там стоит

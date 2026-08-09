@@ -18,6 +18,7 @@ import {
 } from './tactical-map.mjs'
 import { captivesForViewer } from './captives.mjs'
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
+import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { weatherForViewer } from './weather.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
@@ -642,6 +643,12 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // копируется вовсе: игрок узнаёт слух в игре, из уст NPC, а не читая
   // состояние. Публичной формы у неё нет и не должно быть.
   'world_deeds',
+  // Лента ходов мира «Пока вас не было…». Форма у ведущего и у стола одна и та
+  // же, и это решение, а не упущение: ход мира — монтаж для всего стола, и
+  // модуль по построению кладёт в него только party-видимые задания, фракции и
+  // NPC (`server/offscreen-world.mjs`). Прятать от игрока то, что ему же
+  // показывает карточка летописи, было бы враньём в обе стороны.
+  'offscreen_world',
   // Реестр пленных: отряду он принадлежит целиком, кроме одного — того, чего
   // пленный ещё не сказал. `known_fact_ids` остаётся у ведущего, иначе допрос
   // перестал бы быть проверкой: игрок читал бы ответ прямо из состояния.
@@ -722,6 +729,11 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Лента ограничена: карточка показывает дюжину, а состояние держит до двух
     // сотен поступков, и слать их целиком в каждом кадре комнаты незачем.
     ...(state.world_deeds ? { world_deeds: { schema_version: WORLD_DEEDS_SCHEMA_VERSION, deeds: worldDeedsFeed(state, { limit: 40 }) } } : {}),
+    // Ходы мира уезжают лентой ровно так же: свежие сверху, с русской подписью
+    // вида. Своей таблицы подписей карточка админки не держит.
+    ...(state.offscreen_world
+      ? { offscreen_world: { schema_version: OFFSCREEN_WORLD_SCHEMA_VERSION, steps: offscreenWorldFeed(state, { limit: 20 }) } }
+      : {}),
     // Розыск уезжает ведущему уже лентой по краям: ступень, подпись, очки и
     // срок затухания считаются на сервере рядом с политикой. Карточка админки
     // своей таблицы порогов не держит — две копии расходились бы молча.
@@ -809,6 +821,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     scene_npcs: sceneNpcsForViewer(state),
     captives: captivesForViewer(state, { isAdmin: false }),
     law: lawForViewer(state, { isAdmin: false }),
+    // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
+    // было…» показывается всем, и вторая форма для неё была бы вторым ответом
+    // на один вопрос.
+    offscreen_world: { schema_version: OFFSCREEN_WORLD_SCHEMA_VERSION, steps: offscreenWorldFeed(state, { limit: 20 }) },
     // Время суток и погода — то, что герой видит, подняв голову. Строка
     // индикатора и подписи действующих помех приходят готовыми: своей таблицы
     // ни у клиента, ни у проекции нет.
