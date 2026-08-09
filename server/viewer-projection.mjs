@@ -18,6 +18,7 @@ import {
 } from './tactical-map.mjs'
 import { captiveForViewer, captivesForViewer } from './captives.mjs'
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
+import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { weatherForViewer } from './weather.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
@@ -665,6 +666,13 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // в публичной форме нет и быть не должно: она превратила бы поиск выхода в
   // арифметику.
   'law',
+  // Счёт заведения: открытый раунд, кружки и скандалы всех героев. Сырым он
+  // наружу не идёт — вместо него собирается карточка под конкретного зрителя
+  // (`tavernForViewer`, `server/tavern-life.mjs`), где нет ни чужого счёта, ни
+  // характера соперника. Характера в состоянии нет и вовсе: честен сосед по
+  // столу или шулер, выводится из сида кампании в момент вопроса, поэтому
+  // утечь ему неоткуда даже при ошибке в проекции.
+  'tavern',
   // Время суток и погода. Собственного ключа в состоянии нет: обе величины
   // выводятся из мировых минут и сида кампании (`server/weather.mjs`) и
   // существуют только в проекции. Решение осознанное и в обе стороны одинаковое:
@@ -744,6 +752,11 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // срок затухания считаются на сервере рядом с политикой. Карточка админки
     // своей таблицы порогов не держит — две копии расходились бы молча.
     law: lawForViewer(state, { isAdmin: true }),
+    // Заведение ведущий видит той же карточкой, что и игрок: за столом он сидит
+    // своим героем, и вторая форма панели для него была бы вторым ответом на
+    // один вопрос. Характер соперника не приезжает и сюда — его нет в состоянии
+    // вовсе, он выводится из сида в момент вопроса.
+    tavern: tavernForViewer(state, { playerId: String(actorId ?? '') }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
     weather: weatherForViewer(state),
@@ -776,12 +789,16 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // Наружу он идёт только своей публичной формой (`lawForViewer` ниже), потому
   // что цифра ступени игроку не принадлежит: розыск он узнаёт по офицеру перед
   // собой и по тому, как на него смотрит улица.
+  // `tavern` — счёт заведения: чужие кружки, чужие скандалы и открытый раунд
+  // соседа по столу. Наружу он идёт только своей публичной формой
+  // (`tavernForViewer` ниже), собранной под конкретного героя.
   const {
     locationMaps: _locationMaps,
     npc_world: _npcWorld,
     levelEntities: _levelEntities,
     world_deeds: _worldDeeds,
     law: _law,
+    tavern: _tavern,
     ...publicState
   } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
@@ -827,6 +844,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     scene_npcs: sceneNpcsForViewer(state),
     captives: captivesForViewer(state, { isAdmin: false }),
     law: lawForViewer(state, { isAdmin: false }),
+    // Жизнь таверны: с кем можно сыграть, какие ставки открыты, сколько стоит
+    // кружка и чем грозит следующая. Карточку собирает сервер целиком —
+    // клиенту нечего досчитывать, и характера соперника в ней нет.
+    tavern: tavernForViewer(state, { playerId: String(actorId ?? '') }),
     // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
     // на один вопрос.
@@ -899,6 +920,16 @@ function eventForViewer(event, user, actorId, state = {}) {
     for (const key of ['level_before', 'crime_ids']) delete payload[key]
   }
   if (visible.event_type === 'WantedLevelRaised') delete payload.crime
+  // Таверна. Запись раунда несёт только то, что лежит на столе: чужая кость,
+  // ставка и число, которое надо перебить. Характер соперника в неё и не
+  // пишется — но ветка стоит здесь по тому же правилу, что и у стражи: карточку
+  // для канала событий собирает **та же** функция, что и для проекции
+  // состояния, иначе два ответа на один вопрос разойдутся при первой правке.
+  if (visible.event_type === 'TavernDiceRoundOpened' && payload.round) {
+    const round = publicTavernRoundFor(payload.round)
+    if (round) payload.round = round
+    else delete payload.round
+  }
   if (visible.event_type === 'EncounterOutcomeRecorded') {
     delete payload.plan
     delete payload.prepared_reward

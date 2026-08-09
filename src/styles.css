@@ -565,6 +565,36 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .guard-escape-skill button { padding: 3px 8px; border: 1px solid rgba(132,141,158,.24); border-radius: 4px; background: transparent; color: #838a99; font-size: var(--fs-xs); cursor: pointer; }
 .guard-escape-skill button.active { border-color: rgba(168,178,198,.55); background: rgba(40,46,60,.7); color: #ccd2e0; }
 .guard-escape-skill button:disabled { opacity: .4; cursor: default; }
+/* Жизнь таверны: кости и выпивка. Панель тёплая, а не тревожная — это досуг, а
+   не встреча со стражей, и по цвету это должно быть видно с первого взгляда. */
+.tavern-panel { padding: 11px; border: 1px solid rgba(158,132,84,.34); border-radius: 7px; background: rgba(26,20,14,.9); }
+.tavern-panel > header { display: flex; align-items: center; gap: 8px; color: #a6906b; }
+.tavern-panel > header span { display: grid; }
+.tavern-panel > header small { color: #80704f; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.tavern-panel > header strong { color: #d8cbb0; font: 600 var(--fs-lg) Spectral, serif; }
+.tavern-note { margin: 7px 0 8px; color: #bdae92; font: var(--fs-md)/1.5 Spectral, serif; }
+.tavern-note b { color: #e6d6ae; }
+.tavern-approaches { display: grid; gap: 6px; }
+.tavern-approach { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 7px; padding: 7px 9px; border: 1px solid rgba(158,132,84,.28); border-left: 3px solid #8a7549; border-radius: 6px; background: rgba(36,28,20,.7); text-align: left; color: #bdae92; cursor: pointer; }
+.tavern-approach:hover:not(:disabled) { border-color: rgba(198,172,118,.6); background: rgba(48,38,26,.8); }
+.tavern-approach:disabled { opacity: .38; cursor: default; }
+.tavern-approach b { color: #e0d3b4; font: 600 var(--fs-md) Spectral, serif; }
+.tavern-approach small { grid-column: 2; color: #93866d; font-size: var(--fs-sm); }
+.tavern-approach.approach-cheat { border-left-color: #a4442f; }
+.tavern-approach.approach-watch { border-left-color: #5f7c8f; }
+.tavern-dice-setup { display: grid; gap: 7px; }
+.tavern-dice-setup label { display: grid; gap: 3px; }
+.tavern-dice-setup label span { color: #80704f; font-size: var(--fs-xxs); letter-spacing: .1em; }
+.tavern-dice-setup select { padding: 4px 7px; border: 1px solid rgba(158,132,84,.28); border-radius: 5px; background: rgba(20,16,12,.8); color: #d8cbb0; font-size: var(--fs-sm); }
+.tavern-stakes { display: flex; flex-wrap: wrap; gap: 6px; }
+.tavern-stakes button { padding: 3px 8px; border: 1px solid rgba(158,132,84,.24); border-radius: 4px; background: transparent; color: #93866d; font-size: var(--fs-xs); cursor: pointer; }
+.tavern-stakes button.active { border-color: rgba(198,172,118,.55); background: rgba(52,42,28,.7); color: #e0d3b4; }
+.tavern-stakes button:disabled { opacity: .4; cursor: default; }
+.tavern-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(158,132,84,.34); border-radius: 6px; background: rgba(40,31,20,.75); color: #e0d3b4; font: 600 var(--fs-md) Spectral, serif; cursor: pointer; }
+.tavern-action:hover:not(:disabled) { border-color: rgba(198,172,118,.6); background: rgba(54,42,27,.85); }
+.tavern-action:disabled { opacity: .38; cursor: default; }
+.tavern-drink { display: grid; gap: 4px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(158,132,84,.2); }
+.tavern-drink small { color: #93866d; font-size: var(--fs-sm); }
 /* Приметы розыска в шапке сцены: одна строка мира вместо индикатора. */
 .scene-wanted { display: flex; align-items: center; gap: 6px; max-width: 260px; padding: 4px 9px; border: 1px solid rgba(178,64,52,.32); border-radius: 14px; background: rgba(34,18,16,.7); color: #c08a7c; font: 600 var(--fs-xs) Manrope, sans-serif; }
 .scene-wanted span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2002,6 +2032,8 @@ button.campaign-title:hover strong { color: #edc996; }
   .deed-feed article { grid-template-columns: 1fr; }
   .wanted-region li { grid-template-columns: 1fr; }
   .wanted-region > header { flex-wrap: wrap; }
+  .tavern-approach { grid-template-columns: 1fr; }
+  .tavern-approach small { grid-column: 1; }
   .rumor-list li { grid-template-columns: 1fr; }
   .offscreen-feed li { grid-template-columns: 1fr; }
   .offscreen-feed > article > header { flex-wrap: wrap; }

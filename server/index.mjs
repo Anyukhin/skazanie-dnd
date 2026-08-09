@@ -90,6 +90,7 @@ import {
   planMerchantEconomyClock,
 } from './merchant-economy.mjs'
 import { CAPTIVE_PLAYER_COMMAND_TYPES, planCaptiveNeglectCommands } from './captives.mjs'
+import { TAVERN_COMMAND_TYPES, TAVERN_DICE_APPROACHES, TAVERN_STAKES_CP } from './tavern-life.mjs'
 import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
 import { offscreenChronicleEntry } from './offscreen-world.mjs'
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
@@ -399,6 +400,11 @@ const PLAYER_CAPTIVE_COMMANDS = CAPTIVE_PLAYER_COMMAND_TYPES
 // законом идёт вне боя и не трогает экономику хода. `ClearWantedLevel` сюда не
 // входит намеренно — амнистия владельческая, и её проверяет Rules Engine.
 const PLAYER_LAW_COMMANDS = new Set(['ResolveGuardEncounter'])
+// Досуг таверны. Отдельный набор по той же причине, что у пленных и у закона:
+// кости и кружка идут вне боя и экономику хода не трогают. Список берётся у
+// модуля заведения — второго перечисления команд таверны в проекте быть не
+// должно.
+const PLAYER_TAVERN_COMMANDS = TAVERN_COMMAND_TYPES
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -1073,6 +1079,50 @@ function sanitizePlayerLawCommand(user, state, input) {
     actor_id: actor,
     resolution: String(input?.resolution ?? '').slice(0, 30),
     skill: input?.skill === 'athletics' ? 'athletics' : 'stealth',
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
+ * Досуг таверны. Из запроса берутся только герой, соперник, ставка из закрытого
+ * серверного набора и подход к броску: характер соперника, его кость, СЛ
+ * спасброска за кружку и размер банка объявляет сервер, и подсказать их клиент
+ * не может.
+ */
+function sanitizePlayerTavernCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_TAVERN_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к досугу таверны', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'npc_id', 'npcId',
+    'stake_cp', 'stakeCp',
+    'approach',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда таверны содержит запрещённые поля: ${unexpected.join(', ')}`, 'TAVERN_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Сесть за стол можно только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const stake = Number(input?.stake_cp ?? input?.stakeCp)
+  return {
+    command_type: type,
+    actor_id: actor,
+    ...(type === 'OpenTavernDiceRound' ? {
+      npc_id: String(input?.npc_id ?? input?.npcId ?? '').trim().slice(0, 120),
+      stake_cp: TAVERN_STAKES_CP.includes(stake) ? stake : 0,
+    } : {}),
+    ...(type === 'AnswerTavernDiceRound' ? {
+      approach: TAVERN_DICE_APPROACHES.includes(String(input?.approach)) ? String(input.approach) : 'fair',
+    } : {}),
     server_authoritative: true,
     ...(expected == null ? {} : { expected_state_version: expected }),
   }
@@ -3736,6 +3786,7 @@ const server = createServer((req, res) => {
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
         if (PLAYER_CAPTIVE_COMMANDS.has(type)) return sanitizePlayerCaptiveCommand(user, authoritativeBefore, command)
         if (PLAYER_LAW_COMMANDS.has(type)) return sanitizePlayerLawCommand(user, authoritativeBefore, command)
+        if (PLAYER_TAVERN_COMMANDS.has(type)) return sanitizePlayerTavernCommand(user, authoritativeBefore, command)
         if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, authoritativeBefore, command)
         return PLAYER_COMBAT_COMMANDS.has(type) ? { ...command, server_authoritative: true } : command
       })
@@ -3744,6 +3795,10 @@ const server = createServer((req, res) => {
       const lawCommands = commands.filter((command) => PLAYER_LAW_COMMANDS.has(commandType(command)))
       if (lawCommands.length && commands.length !== 1) {
         throw commandPolicyError('Ответ страже должен быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      const tavernCommands = commands.filter((command) => PLAYER_TAVERN_COMMANDS.has(commandType(command)))
+      if (tavernCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Кости и выпивка идут отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
       // Драка со стражей — тот же двухшаговый план, что и у сборки столкновения
       // администратором: `ResolveGuardEncounter` ставит стражу на доску событием

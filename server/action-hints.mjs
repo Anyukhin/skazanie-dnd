@@ -111,6 +111,41 @@ function npcHints(room) {
     .filter(Boolean)
 }
 
+/**
+ * Досуг таверны. Карточку заведения собрал сервер (`server/tavern-life.mjs`),
+ * и подсказка только пересказывает её: своей проверки «а таверна ли это»
+ * здесь нет и быть не должно — чего нет в проекции, того нет и на входе.
+ *
+ * Строка **одна**, и это не экономия места, а цена панели: слотов всего
+ * четыре, и две строки досуга вытесняли бы разом и находку на карте, и выход
+ * из зала. Кости и кружка при этом всё равно стоят кнопками на доске —
+ * подсказка нужна тому, кто не знает, что за столом вообще можно чем-то
+ * заняться, а не тому, кто выбирает ставку.
+ *
+ * Открытый раунд забирает эту строку целиком: чужая кость уже на столе, и пока
+ * герой не ответил, звать его выпить незачем.
+ */
+function tavernHints(room) {
+  const tavern = room?.tavern
+  if (!tavern || tavern.ejected === true) return []
+  if (tavern.round) {
+    return [{
+      id: 'tavern:answer',
+      priority: 0,
+      text: `Можно ответить на бросок: ${text(tavern.round.npc_name, 60) || 'соперник'} выбросил ${Number(tavern.round.npc_total) || 0}`,
+    }]
+  }
+  const price = Number(tavern.drink_price_cp) || 0
+  const opponent = Array.isArray(tavern.opponents) ? text(tavern.opponents[0]?.name, 60) : ''
+  return [{
+    id: 'tavern:leisure',
+    priority: 0,
+    text: opponent
+      ? `Можно сыграть в кости с местными или заказать выпивку (${price} мм)`
+      : `Можно заказать выпивку: ${price} мм за кружку`,
+  }]
+}
+
 function objectiveHint(room) {
   const objective = text(room?.scene?.objective, 90)
   return objective ? [{ id: 'objective', priority: 3, text: `Цель отряда: ${objective}` }] : []
@@ -151,8 +186,10 @@ export function suggestedActionsFor(room) {
       seen.add(hint.text)
       return true
     })
-  // Сначала занимают места те, кого вытеснять нельзя: собеседники, цель, выход.
-  const reserved = ordered([...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
+  // Сначала занимают места те, кого вытеснять нельзя: досуг таверны,
+  // собеседники, цель, выход. Кости и кружка стоят вместе с ними, а не с
+  // реквизитом: они действия сцены, а не осмотр мебели.
+  const reserved = ordered([...tavernHints(room), ...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
   const props = ordered(propHints(room)).slice(0, budget)
   return [...props, ...reserved]

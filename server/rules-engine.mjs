@@ -126,6 +126,39 @@ import {
   wantedFor,
 } from './law-and-order.mjs'
 import {
+  TAVERN_CHEAT_ABILITY,
+  TAVERN_CHEAT_BONUS,
+  TAVERN_CHEAT_RELATIONSHIP_DELTA,
+  TAVERN_CHEAT_SKILL,
+  TAVERN_COMMAND_TYPES,
+  TAVERN_DICE_APPROACHES,
+  TAVERN_DICE_ROUND_MINUTES,
+  TAVERN_DRINK_MINUTES,
+  TAVERN_DRINK_PRICE_CP,
+  TAVERN_DRUNK_CONDITION,
+  TAVERN_DRUNK_DURATION,
+  TAVERN_EXPOSED_RELATIONSHIP_DELTA,
+  TAVERN_POLICY_ID,
+  TAVERN_SCANDALS_BEFORE_EJECTION,
+  TAVERN_SOBER_DRINKS,
+  TAVERN_SOCIAL_BONUS,
+  TAVERN_SOCIAL_SKILL,
+  TAVERN_SPOT_SKILL,
+  TAVERN_STAKES_CP,
+  applyTavernEvent,
+  isTavernOpponent,
+  isTavernScene,
+  normalizeTavernState,
+  tavernDrinksFor,
+  tavernEjected,
+  tavernGamblerFor,
+  tavernNextDrinkDc,
+  tavernOpponentDie,
+  tavernRoundFor,
+  tavernScandalsFor,
+  tavernSocialBonus,
+} from './tavern-life.mjs'
+import {
   OFFSCREEN_WORLD_EVENT_TYPE,
   applyOffscreenWorldEvent,
   normalizeOffscreenWorldState,
@@ -482,6 +515,13 @@ const COMMAND_RULES = Object.freeze({
   // требуют, а деньги на них считает та же ось экономики, что и покупки.
   ResolveGuardEncounter: [RULE_IDS.abilityCheck, RULE_IDS.economyCoins],
   ClearWantedLevel: [],
+  // Кости на деньги: бросок соперника — обычный d20 стола, ответ героя — тот же
+  // d20 плюс, если он полез мухлевать, проверка Ловкости рук. Банк считает та же
+  // ось экономики, что и покупки.
+  OpenTavernDiceRound: [RULE_IDS.economyCoins],
+  AnswerTavernDiceRound: [RULE_IDS.abilityCheck, RULE_IDS.economyCoins],
+  // Выпивка: монета из кошелька и спасбросок Телосложения за перебор.
+  OrderTavernDrink: [RULE_IDS.savingThrow, RULE_IDS.economyCoins],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -511,6 +551,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...CAPTIVE_COMMAND_TYPES,
   ...PARLEY_COMMAND_TYPES,
   ...LAW_COMMAND_TYPES,
+  ...TAVERN_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1534,6 +1575,7 @@ export function normalizeCampaignState(input = {}) {
   state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
   state.captives = normalizeCaptivesState(state.captives)
   state.law = normalizeLawState(state.law)
+  state.tavern = normalizeTavernState(state.tavern)
   state.autonomy = normalizeAutonomyState(state.autonomy)
   state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
   if (state.agentInteraction && typeof state.agentInteraction === 'object' && !Array.isArray(state.agentInteraction)) {
@@ -3037,6 +3079,27 @@ function normalizeCommand(input, state) {
     // правила редакции, но провенанс у механического решения обязан быть.
     if (!command.house_rule_id) command.house_rule_id = LAW_POLICY_ID
   }
+  if (TAVERN_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только герой, соперник, ставка из закрытого набора и
+    // подход. Ни характер соперника, ни его бросок, ни СЛ спасброска клиент
+    // подсказать не может: их считает серверная политика заведения.
+    command.target_id = null
+    command.target_ids = []
+    if (command.command_type === 'OpenTavernDiceRound') {
+      command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
+      delete command.npcId
+      const stake = safeInteger(command.stake_cp ?? command.stakeCp, 0)
+      command.stake_cp = TAVERN_STAKES_CP.includes(stake) ? stake : 0
+      delete command.stakeCp
+    }
+    if (command.command_type === 'AnswerTavernDiceRound') {
+      command.approach = TAVERN_DICE_APPROACHES.includes(String(command.approach)) ? String(command.approach) : 'fair'
+    }
+    // Кости и выпивка — серверная политика заведения, а не ось ruleset:
+    // провенанс у механического решения обязан быть. Тот же приём, что у
+    // экономики торговца и у закона.
+    if (!command.house_rule_id) command.house_rule_id = TAVERN_POLICY_ID
+  }
   if (command.command_type === 'ResolveHeroDeath') {
     command.resolution = String(command.resolution ?? '')
     command.replacement_name = command.replacement_name == null ? '' : String(command.replacement_name).trim().slice(0, 120)
@@ -3059,6 +3122,7 @@ function needsActor(type) {
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter',
+    'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'OrderTavernDrink',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3642,6 +3706,56 @@ export function validateCommand(input, rawState, context = {}) {
             error?.code ?? 'ENCOUNTER_ASSEMBLY_REJECTED',
           )
         }
+      }
+    }
+  }
+  if (TAVERN_COMMAND_TYPES.has(command.command_type)) {
+    // Досуг — это досуг: кости и кружка существуют только там, где для них
+    // накрыт стол, и только пока никто не взялся за оружие.
+    if (!isTavernScene(state)) {
+      throw new RulesValidationError('Ни костей, ни выпивки здесь не подают: это не таверна', 'TAVERN_SCENE_REQUIRED')
+    }
+    if (state.mechanics.combat.active) {
+      throw new RulesValidationError('Посреди боя не играют и не пьют', 'TAVERN_DURING_COMBAT')
+    }
+    if (!playerActor(state, command.actor_id)) {
+      throw new RulesValidationError('За стол садится только герой отряда', 'ACTOR_FORBIDDEN')
+    }
+    if (!isLivingActor(findActor(state, command.actor_id))) {
+      throw new RulesValidationError('Герой без сознания за стол не садится', 'ACTOR_DEFEATED')
+    }
+    if (tavernEjected(state, command.actor_id)) {
+      throw new RulesValidationError('Героя уже выставили за дверь этого заведения', 'TAVERN_PATRON_EJECTED')
+    }
+    const round = tavernRoundFor(state)
+    if (command.command_type === 'OpenTavernDiceRound') {
+      if (round) throw new RulesValidationError('Кость соперника уже на столе: сначала ответьте на бросок', 'TAVERN_ROUND_ALREADY_OPEN')
+      if (!TAVERN_STAKES_CP.includes(command.stake_cp)) {
+        throw new RulesValidationError('Такой ставки за этим столом не принимают', 'TAVERN_STAKE_FORBIDDEN')
+      }
+      if (!isTavernOpponent(state, command.npc_id)) {
+        throw new RulesValidationError('С этим за костями никто не сидит', 'TAVERN_OPPONENT_NOT_FOUND')
+      }
+      // Ставку проверяем **до** первого события: кошелёк не уходит в минус
+      // потому, что в него не лезут, а не потому, что итог потом подрежут.
+      if (currencyToCopper(playerActor(state, command.actor_id).currency) < command.stake_cp) {
+        throw new RulesValidationError('На такую ставку у героя не хватает монет', 'INSUFFICIENT_FUNDS')
+      }
+    }
+    if (command.command_type === 'AnswerTavernDiceRound') {
+      if (!round) throw new RulesValidationError('Кости на стол ещё никто не бросал', 'TAVERN_ROUND_NOT_OPEN')
+      if (round.hero_id !== String(command.actor_id)) {
+        throw new RulesValidationError('Этот раунд играет другой герой', 'TAVERN_ROUND_FOREIGN')
+      }
+      // Ставка проверяется второй раз: между броском соперника и ответом герой
+      // мог расстаться с деньгами другой командой.
+      if (currencyToCopper(playerActor(state, command.actor_id).currency) < round.stake_cp) {
+        throw new RulesValidationError('Ставку уже нечем закрыть', 'INSUFFICIENT_FUNDS')
+      }
+    }
+    if (command.command_type === 'OrderTavernDrink') {
+      if (currencyToCopper(playerActor(state, command.actor_id).currency) < TAVERN_DRINK_PRICE_CP) {
+        throw new RulesValidationError('На выпивку не хватает монет', 'INSUFFICIENT_FUNDS')
       }
     }
   }
@@ -4325,6 +4439,42 @@ function npcWorldEventsFrom(command, drafts) {
     )
     return draft.event_id ? { ...event, event_id: draft.event_id } : event
   })
+}
+
+/**
+ * Поправка личного отношения NPC к герою — одним способом отовсюду.
+ *
+ * Счёт до и после берётся из состояния, а не проставляется константой: редьюсер
+ * считает по `delta`, но payload не имеет права расходиться с журналом. Границы
+ * те же, что у социального движка (`relationshipEvents`, `npc-social.mjs`), —
+ * там же живёт и второй производитель этих событий, разговор с NPC.
+ *
+ * @returns {Array<Record<string, any>>}
+ */
+function npcRelationshipEventsFrom(command, state, { npcId, heroId, delta, reason }) {
+  const npc = String(npcId ?? '')
+  const hero = String(heroId ?? '')
+  if (!npc || !hero) return []
+  const before = ensureNpcSocialState(state.social, state).relationships[npc]?.[hero] ?? 0
+  const bounded = Math.max(-25, Math.min(25, safeInteger(delta, 0)))
+  if (!bounded) return []
+  const after = Math.max(-100, Math.min(100, before + bounded))
+  const payload = {
+    npc_id: npc,
+    hero_id: hero,
+    delta: after - before,
+    score_before: before,
+    score_after: after,
+    tier_before: relationshipTier(before),
+    tier_after: relationshipTier(after),
+    reason: String(reason ?? '').slice(0, 80),
+    promise_id: '',
+  }
+  const events = [eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipAdjusted', payload, [hero])]
+  if (payload.tier_before !== payload.tier_after) {
+    events.push(eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipTierChanged', payload, [hero]))
+  }
+  return events
 }
 
 function heroDiedEventFrom(command, payload = {}, targets = command.target_ids) {
@@ -5818,6 +5968,10 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
   const skillProficiency = checkSkill ? skillProficiencyForActor(actor, checkSkill) : null
   const modifier = abilityModifier(actor?.abilities?.[checkAbility])
     + (skillProficiency?.bonus ?? (proficient ? safeInteger(actor?.proficiency, 0) : 0))
+    // Застолье — такая же прибавка к проверке, как погода к Восприятию, и
+    // считается той же функцией, что применит движок: карточка ручного броска
+    // обязана показать то самое число.
+    + tavernSocialBonus(state, actorId, checkSkill)
   // Небо участвует в проверке наравне с состояниями, поэтому оно обязано быть
   // и в предпросмотре: карточка ручного броска показывает игроку тот же режим,
   // с которым сервер потом сложит две кости.
@@ -5834,6 +5988,32 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
     disadvantage: Boolean(checkDisadvantageConditionFor(state, actorId))
       || weatherSwing?.swing === 'disadvantage',
     ...(weatherSwing ? { weather_reason: weatherSwing.reason } : {}),
+  }
+}
+
+/**
+ * Предпросмотр ответного броска за костями. Отдельный от `previewD20Check`
+ * намеренно: за столом кидают удачу, а не характеристику, поэтому ни
+ * модификатора, ни навыка у этого броска нет и быть не должно — общий
+ * предпросмотр приписал бы сюда Силу просто потому, что навык не назван.
+ *
+ * Единственное, что кость двигает, — состояния, мешающие любой проверке:
+ * перебравший играет хуже трезвого, и это та же помеха, которой считается
+ * истощение. СЛ равна объявленному числу соперника плюс один: перебить —
+ * значит показать больше.
+ */
+export function previewTavernDiceRoll(state, actorId) {
+  const round = tavernRoundFor(state)
+  const penalty = checkDisadvantageConditionFor(state, actorId)
+  return {
+    kind: 'check',
+    ability: null,
+    skill: null,
+    modifier: 0,
+    difficulty: round ? round.target : 11,
+    advantage: false,
+    disadvantage: Boolean(penalty),
+    ...(penalty ? { check_disadvantage_condition: penalty } : {}),
   }
 }
 
@@ -6288,9 +6468,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const skill = canonicalSkillId(command.skill)
       const ability = String(skillAbility(skill) || command.ability || 'str').toLowerCase()
       const skillProficiency = skill ? skillProficiencyForActor(actor, skill) : null
+      // Прибавка застолья входит в базовый модификатор, а не поверх присланного
+      // числа: команда с явным `modifier` приходит от серверных контуров,
+      // которые уже посчитали своё, и складывать с ними ещё раз нельзя.
+      const tavernBonus = tavernSocialBonus(state, command.actor_id, skill)
       let modifier = Number.isSafeInteger(Number(command.modifier))
         ? Number(command.modifier)
-        : abilityModifier(actor?.abilities?.[ability]) + (skillProficiency?.bonus ?? (command.proficient ? safeInteger(actor?.proficiency, 0) : 0))
+        : abilityModifier(actor?.abilities?.[ability]) + (skillProficiency?.bonus ?? (command.proficient ? safeInteger(actor?.proficiency, 0) : 0)) + tavernBonus
       if (conditionIdsFor(state, command.actor_id).has('guidance-d4')) {
         const guidance = diceService.roll('1d4', 'spell:guidance', command.actor_id, command.visibility ?? 'public')
         rolls.push(guidance)
@@ -10325,26 +10509,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         event_id: releaseEventId,
       })
       // Пощажённый помнит. Отношение и слава двигаются существующими событиями:
-      // отдельной «памяти о милосердии» рядом с ними заводить нельзя. Счёт до и
-      // после берётся из состояния, а не проставляется константой: редьюсер
-      // считает по `delta`, но payload не имеет права расходиться с журналом.
-      const socialBefore = ensureNpcSocialState(state.social, state).relationships[captive.npc_id]?.[command.actor_id] ?? 0
-      const socialAfter = Math.max(-100, Math.min(100, socialBefore + CAPTIVE_SPARED_RELATIONSHIP_DELTA))
-      const relationshipPayload = {
-        npc_id: captive.npc_id,
-        hero_id: command.actor_id,
-        delta: socialAfter - socialBefore,
-        score_before: socialBefore,
-        score_after: socialAfter,
-        tier_before: relationshipTier(socialBefore),
-        tier_after: relationshipTier(socialAfter),
+      // отдельной «памяти о милосердии» рядом с ними заводить нельзя.
+      events.push(...npcRelationshipEventsFrom(command, state, {
+        npcId: captive.npc_id,
+        heroId: command.actor_id,
+        delta: CAPTIVE_SPARED_RELATIONSHIP_DELTA,
         reason: 'captive-spared',
-        promise_id: '',
-      }
-      events.push(eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipAdjusted', relationshipPayload, [command.actor_id]))
-      if (relationshipPayload.tier_before !== relationshipPayload.tier_after) {
-        events.push(eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipTierChanged', relationshipPayload, [command.actor_id]))
-      }
+      }))
       events.push(eventFrom({ ...command, visibility: 'party' }, 'NpcStanceChanged', {
         npc_id: captive.npc_id,
         npc_name: captive.name,
@@ -10702,6 +10873,308 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           },
         }, []))
       }
+      break
+    }
+    case 'OpenTavernDiceRound': {
+      const gambler = tavernGamblerFor(state, command.npc_id)
+      const minutes = campaignElapsedMinutes(state)
+      // Соперник мечет первым — и это не вежливость, а требование ручного
+      // броска: карточка героя обязана объявить число, которое надо перебить, а
+      // до чужой кости такого числа не существует.
+      //
+      // Настоящая кость бросается с видимостью `gm_only`: если шулер подменил
+      // её, разница между выпавшим и показанным — это ровно то, что игрок ищет
+      // Проницательностью, и отдавать её ему броском нельзя.
+      const roll = diceService.rollD20({ purpose: 'tavern-dice:opponent', actorId: gambler.npc_id, visibility: 'gm_only' })
+      rolls.push(roll)
+      const shown = tavernOpponentDie(gambler, roll.kept)
+      const round = {
+        id: `tavern-round:${String(command.command_id).slice(0, 100)}`,
+        hero_id: command.actor_id,
+        npc_id: gambler.npc_id,
+        npc_name: gambler.name,
+        stake_cp: command.stake_cp,
+        npc_total: shown,
+        target: shown + 1,
+        opened_at_minutes: minutes,
+      }
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'TavernDiceRoundOpened', {
+        round,
+        hero_id: command.actor_id,
+        npc_id: gambler.npc_id,
+        npc_name: gambler.name,
+        stake_cp: command.stake_cp,
+        npc_total: shown,
+        at_minutes: minutes,
+        policy_id: TAVERN_POLICY_ID,
+      }, [command.actor_id, gambler.npc_id]))
+      // Общий бросок стола в проекте уже есть, и второго такого механизма
+      // заводить нельзя: кость соперника ложится в тот же лоток, где стол видит
+      // любой кубик, бросаемый вручную.
+      events.push(eventFrom({ ...command, visibility: 'public' }, 'PublicDieRolled', {
+        roll: {
+          id: roll.roll_id,
+          kind: 'tavern',
+          sides: 20,
+          value: shown,
+          playerId: gambler.npc_id,
+          playerName: gambler.name,
+          rolledAt: Date.parse(String(roll.created_at ?? '')) || 0,
+        },
+      }, []))
+      break
+    }
+    case 'AnswerTavernDiceRound': {
+      const round = tavernRoundFor(state)
+      const gambler = tavernGamblerFor(state, round.npc_id)
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const settleEventId = `tavern-round-settled:${String(command.command_id).slice(0, 100)}`
+
+      // 1. Жульничество героя. Ловкость рук против пассивной Проницательности
+      //    соперника, и бросок здесь серверный: ручной кубик у героя один, и
+      //    принадлежит он самой игре, а не подготовке к ней.
+      let cheatBonus = 0
+      let caught = false
+      if (command.approach === 'cheat') {
+        const preview = previewD20Check(state, {
+          actorId: command.actor_id,
+          kind: 'check',
+          ability: TAVERN_CHEAT_ABILITY,
+          skill: TAVERN_CHEAT_SKILL,
+          difficulty: gambler.insight_passive,
+        })
+        const check = diceService.rollCheck({
+          modifier: preview.modifier,
+          difficulty: gambler.insight_passive,
+          purpose: `tavern-dice:${TAVERN_CHEAT_SKILL}`,
+          actorId: command.actor_id,
+          advantage: preview.advantage,
+          disadvantage: preview.disadvantage,
+          visibility: 'party',
+        })
+        rolls.push(check)
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+          ability: preview.ability,
+          skill: preview.skill,
+          ...check,
+        }, [command.actor_id]))
+        if (check.success) cheatBonus = TAVERN_CHEAT_BONUS
+        else caught = true
+      }
+
+      // 2. Ловля шулера. Проницательность героя против чужой ловкости рук;
+      //    честного соперника разоблачить нельзя даже двадцаткой — разглядеть
+      //    можно только то, что есть.
+      let watchResult = null
+      if (command.approach === 'watch') {
+        const preview = previewD20Check(state, {
+          actorId: command.actor_id,
+          kind: 'check',
+          skill: TAVERN_SPOT_SKILL,
+          difficulty: gambler.tell_dc,
+        })
+        const check = diceService.rollCheck({
+          modifier: preview.modifier,
+          difficulty: gambler.tell_dc,
+          purpose: `tavern-dice:${TAVERN_SPOT_SKILL}`,
+          actorId: command.actor_id,
+          advantage: preview.advantage,
+          disadvantage: preview.disadvantage,
+          visibility: 'party',
+        })
+        rolls.push(check)
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+          ability: preview.ability,
+          skill: preview.skill,
+          ...check,
+        }, [command.actor_id]))
+        watchResult = !check.success ? 'missed' : gambler.crooked ? 'exposed' : 'clean'
+      }
+      const exposed = watchResult === 'exposed'
+
+      // 3. Ответный бросок героя. Ручной кубик приходит карточкой, иначе
+      //    бросает сервер; помеха у перебравшего та же, что у любой проверки.
+      const preview = previewTavernDiceRoll(state, command.actor_id)
+      const rollOptions = {
+        modifier: cheatBonus,
+        difficulty: round.target,
+        purpose: 'tavern-dice:hero',
+        actorId: command.actor_id,
+        advantage: false,
+        disadvantage: preview.disadvantage,
+        visibility: 'public',
+      }
+      const heroRoll = checkRollFromVerified(command.verified_roll, rollOptions) ?? diceService.rollCheck(rollOptions)
+      rolls.push(heroRoll)
+      events.push(eventFrom({ ...command, visibility: 'public' }, 'PublicDieRolled', {
+        roll: {
+          id: heroRoll.roll_id,
+          kind: 'tavern',
+          sides: 20,
+          value: safeInteger(heroRoll.kept, 1),
+          playerId: String(command.actor_id),
+          playerName: String(actor?.character ?? actor?.name ?? command.actor_id).slice(0, 80),
+          rolledAt: Date.parse(String(heroRoll.created_at ?? '')) || 0,
+        },
+      }, []))
+
+      const heroTotal = safeInteger(heroRoll.total, 0)
+      const outcome = caught ? 'caught'
+        : exposed ? 'exposed'
+          : heroTotal > round.npc_total ? 'win'
+            : heroTotal === round.npc_total ? 'push' : 'loss'
+      // Банк переезжает целиком и в одну сторону: победа приносит ставку
+      // соперника, поражение отдаёт свою, ничья не двигает ничего. Пойманный за
+      // руку теряет ставку — за столом её забирают, и это дешевле, чем то, что
+      // теряется вместе с ней.
+      const deltaCp = outcome === 'win' ? round.stake_cp
+        : outcome === 'loss' || outcome === 'caught' ? -round.stake_cp
+          : 0
+      const balanceAfterCp = Math.max(0, Math.min(MAX_CURRENCY_CP, balanceBeforeCp + deltaCp))
+      events.push({
+        ...eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'TavernDiceRoundResolved', {
+          round_id: round.id,
+          hero_id: command.actor_id,
+          npc_id: round.npc_id,
+          npc_name: round.npc_name,
+          approach: command.approach,
+          stake_cp: round.stake_cp,
+          npc_total: round.npc_total,
+          hero_total: heroTotal,
+          outcome,
+          cheated: cheatBonus > 0,
+          ...(watchResult ? { watch_result: watchResult } : {}),
+          delta_cp: balanceAfterCp - balanceBeforeCp,
+          currency_before: normalizeCurrency(actor.currency),
+          currency_after: copperToCurrency(balanceAfterCp),
+          balance_before_cp: balanceBeforeCp,
+          balance_after_cp: balanceAfterCp,
+          at_minutes: minutes,
+          policy_id: TAVERN_POLICY_ID,
+        }, [command.actor_id, round.npc_id]),
+        event_id: settleEventId,
+      })
+      if (caught) {
+        const scandals = tavernScandalsFor(state, command.actor_id) + 1
+        const ejected = scandals >= TAVERN_SCANDALS_BEFORE_EJECTION
+        events.push({
+          ...eventFrom({ ...command, visibility: 'party' }, 'TavernCheatCaught', {
+            hero_id: command.actor_id,
+            npc_id: round.npc_id,
+            npc_name: round.npc_name,
+            stake_cp: round.stake_cp,
+            forfeited_cp: round.stake_cp,
+            scandal_count: scandals,
+            place_name: String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180),
+            at_minutes: minutes,
+            policy_id: TAVERN_POLICY_ID,
+          }, [command.actor_id, round.npc_id]),
+          event_id: `tavern-cheat-caught:${String(command.command_id).slice(0, 100)}`,
+        })
+        events.push(...npcRelationshipEventsFrom(command, state, {
+          npcId: round.npc_id,
+          heroId: command.actor_id,
+          delta: TAVERN_CHEAT_RELATIONSHIP_DELTA,
+          reason: 'tavern-cheat-caught',
+        }))
+        if (ejected) {
+          events.push(eventFrom({ ...command, visibility: 'party' }, 'TavernPatronEjected', {
+            hero_id: command.actor_id,
+            npc_id: round.npc_id,
+            reason: 'cheating',
+            scandal_count: scandals,
+            at_minutes: minutes,
+            policy_id: TAVERN_POLICY_ID,
+          }, [command.actor_id]))
+        }
+      }
+      if (exposed) {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'TavernCheatExposed', {
+          hero_id: command.actor_id,
+          npc_id: round.npc_id,
+          npc_name: round.npc_name,
+          stake_cp: round.stake_cp,
+          at_minutes: minutes,
+          policy_id: TAVERN_POLICY_ID,
+        }, [command.actor_id, round.npc_id]))
+        events.push(...npcRelationshipEventsFrom(command, state, {
+          npcId: round.npc_id,
+          heroId: command.actor_id,
+          delta: TAVERN_EXPOSED_RELATIONSHIP_DELTA,
+          reason: 'tavern-cheat-exposed',
+        }))
+        // Разоблачённый шулер отряду больше не друг: разговор с ним отсюда идёт
+        // штатной социальной сценой, а не отдельной механикой ссоры.
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'NpcStanceChanged', {
+          npc_id: round.npc_id,
+          npc_name: round.npc_name,
+          stance: 'guarded',
+          reason: 'tavern-cheat-exposed',
+          source_event_id: settleEventId,
+          propagation_depth: 0,
+          policy_id: NPC_WORLD_POLICY_ID,
+        }, [round.npc_id]))
+      }
+      appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), TAVERN_DICE_ROUND_MINUTES, 'minute')
+      break
+    }
+    case 'OrderTavernDrink': {
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const balanceAfterCp = Math.max(0, balanceBeforeCp - TAVERN_DRINK_PRICE_CP)
+      const drinks = tavernDrinksFor(state, command.actor_id) + 1
+      const difficulty = tavernNextDrinkDc(state, command.actor_id)
+      // Первые две кружки развязывают язык и ничего не стоят телу; дальше за
+      // каждую отвечает спасбросок Телосложения по нарастающей СЛ.
+      const save = difficulty == null ? null : rollSavingThrowCheck(state, diceService, command.actor_id, {
+        modifier: abilityModifier(actor?.abilities?.con) + (isSavingThrowProficient(actor, 'con') ? safeInteger(actor?.proficiency, 0) : 0),
+        difficulty,
+        purpose: 'tavern-drink:con',
+        ability: 'con',
+        // Помеха от состояний читается здесь же, а не внутри: `rollSavingThrowCheck`
+        // знает про ауру и ярость, но помеху ждёт параметром — так же, как её
+        // передаёт прямой спасбросок командой.
+        disadvantage: Boolean(saveDisadvantageConditionFor(state, command.actor_id, 'con')),
+        visibility: 'party',
+      })
+      if (save) rolls.push(save)
+      const withstood = save ? savingThrowSucceeded(save, difficulty) : true
+      events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'TavernDrinkOrdered', {
+        hero_id: command.actor_id,
+        drinks,
+        price_cp: TAVERN_DRINK_PRICE_CP,
+        currency_before: normalizeCurrency(actor.currency),
+        currency_after: copperToCurrency(balanceAfterCp),
+        balance_before_cp: balanceBeforeCp,
+        balance_after_cp: balanceAfterCp,
+        social_bonus: drinks <= TAVERN_SOBER_DRINKS ? TAVERN_SOCIAL_BONUS : 0,
+        social_skill: TAVERN_SOCIAL_SKILL,
+        ...(difficulty == null ? {} : { difficulty }),
+        at_minutes: minutes,
+        policy_id: TAVERN_POLICY_ID,
+      }, [command.actor_id]))
+      if (save) {
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+          ability: 'con',
+          reason: 'tavern-drink',
+          ...save,
+        }, [command.actor_id]))
+      }
+      // Опьянение — существующее состояние, а не своё: помеха на проверки нужна
+      // была вся, и второй записи с тем же смыслом в таблице быть не должно.
+      // Держится оно до продолжительного отдыха и раундами не тикает.
+      if (!withstood && !conditionIdsFor(state, command.actor_id).has(TAVERN_DRUNK_CONDITION)) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+          condition: TAVERN_DRUNK_CONDITION,
+          duration: TAVERN_DRUNK_DURATION,
+          source: 'tavern-drink',
+          drinks,
+        }, [command.actor_id]))
+      }
+      appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), TAVERN_DRINK_MINUTES, 'minute')
       break
     }
     case 'ClearWantedLevel': {
@@ -13140,6 +13613,19 @@ export function applyGameEvent(rawState, event) {
       }
       break
     }
+    case 'TavernDiceRoundResolved':
+    case 'TavernDrinkOrdered': {
+      // Счёт таверны обновляет `applyTavernEvent` в конце редьюсера — здесь
+      // остаётся только кошелёк: банк и цену кружки посчитал движок, редьюсер
+      // переносит уже подтверждённый баланс.
+      const patron = String(payload.hero_id ?? event.actor_id ?? '')
+      if (patron && payload.currency_after) {
+        state.players = state.players.map((player) => (actorId(player) === patron
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player))
+      }
+      break
+    }
     case 'ParleySettled': {
       Object.assign(state.mechanics.combat, parleyCombatPatch(state.mechanics.combat, event) ?? {})
       restartTurnClock(state, event)
@@ -13613,6 +14099,9 @@ export function applyGameEvent(rawState, event) {
   // Порядок здесь и есть та самая гарантия — без него преступление считалось бы
   // по второму разбору того же события.
   state.law = applyLawEvent(state.law, event, state)
+  // Счёт таверны — такой же вывод из журнала: открытый раунд, кружки и
+  // скандалы восстанавливаются replay-ем без отдельного снимка.
+  state.tavern = applyTavernEvent(state.tavern, event, state)
   // Лента ходов мира — такой же вывод из журнала, как летопись поступков: сам
   // ход посчитан до коммита, здесь остаётся только запомнить его и список
   // заданий под наблюдением.
@@ -13813,6 +14302,12 @@ export function eventSummary(event, resolveName = (id) => id) {
           : `Побег от стражи: ${payload.success === true ? 'ушли' : 'не ушли'} (${safeInteger(payload.successes, 0)} из ${safeInteger(payload.participants, 0)}, СЛ ${safeInteger(payload.difficulty, 0)})`
     case 'WantedLevelRaised': return `Розыск усилен: ${payload.crime?.summary || payload.reason || 'сопротивление страже'}`
     case 'WantedCleared': return `Розыск снят в крае «${payload.region_name || payload.region_id || ''}» (${payload.reason === 'fine' ? 'вира' : payload.reason === 'surrender' ? 'сдача' : 'амнистия'})`
+    case 'TavernDiceRoundOpened': return `Кости на стол: ${payload.npc_name || 'соперник'} показывает ${safeInteger(payload.npc_total, 0)}, ставка ${safeInteger(payload.stake_cp, 0)} мм`
+    case 'TavernDiceRoundResolved': return `Раунд костей: ${safeInteger(payload.hero_total, 0)} против ${safeInteger(payload.npc_total, 0)} — ${payload.outcome === 'win' ? 'банк уходит герою' : payload.outcome === 'loss' ? 'ставка потеряна' : payload.outcome === 'push' ? 'ничья' : payload.outcome === 'caught' ? 'героя поймали за руку' : 'соперник разоблачён'}`
+    case 'TavernCheatCaught': return `Скандал за столом: ${named(payload.hero_id) || 'герой'} пойман на шулерстве (${safeInteger(payload.scandal_count, 1)}-й раз)`
+    case 'TavernCheatExposed': return `${payload.npc_name || 'Соперник'} уличён в шулерстве`
+    case 'TavernPatronEjected': return `${named(payload.hero_id) || 'Героя'} выставили из заведения`
+    case 'TavernDrinkOrdered': return `Заказана выпивка: кружка №${safeInteger(payload.drinks, 1)} за ${safeInteger(payload.price_cp, 0)} мм`
     default: return event.event_type
   }
 }

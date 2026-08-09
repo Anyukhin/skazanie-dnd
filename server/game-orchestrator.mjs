@@ -21,7 +21,8 @@ import {
   deterministicNarration,
   verifyNarratorCraft,
 } from './narrator.mjs'
-import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check } from './rules-engine.mjs'
+import { TAVERN_POLICY_ID, tavernRoundFor } from './tavern-life.mjs'
+import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll } from './rules-engine.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
@@ -862,6 +863,32 @@ export class GameOrchestrator {
     return { ...check, skill: preview.skill }
   }
 
+  /**
+   * Карточка проверки для ответного броска за костями. СЛ здесь честнее, чем у
+   * любой другой карточки: это ровно `бросок соперника + 1`, уже лежащий в
+   * состоянии, — раунд для того и разложен на две команды, чтобы игроку было
+   * против чего бросать.
+   */
+  tavernDiceCheckCard({ campaignId, playerId, state, command }) {
+    const round = tavernRoundFor(state)
+    if (!round) return null
+    const actorId = String(command.actor_id ?? playerId)
+    if (round.hero_id !== actorId) return null
+    const preview = previewTavernDiceRoll(state, actorId)
+    const check = this.rollRegistry.registerCheck({
+      campaignId,
+      actorId,
+      label: `Кости против ${round.npc_name || 'соперника'}`,
+      modifier: preview.modifier,
+      difficulty: round.target,
+      ability: null,
+      advantage: preview.advantage,
+      disadvantage: preview.disadvantage,
+      context: { kind: 'tavern-dice', policy: TAVERN_POLICY_ID, round_id: round.id },
+    })
+    return check
+  }
+
   freeActionResponse({
     freeAction,
     campaignId,
@@ -1191,6 +1218,46 @@ export class GameOrchestrator {
           throw error
         }
         escapeCommand.verified_roll = verifiedRollPayload
+      }
+    }
+    // Ответный бросок за костями — тот же двухфазный ручной кубик, что у парлея
+    // и побега. Разница одна и она в пользу игрока: СЛ здесь не выведена
+    // политикой, а лежит на столе — это кость соперника, брошенная предыдущей
+    // командой.
+    const tavernAnswerCommand = (input.commands ?? [])
+      .find((candidate) => String(candidate?.command_type ?? '') === 'AnswerTavernDiceRound') ?? null
+    if (tavernAnswerCommand) {
+      if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
+        const card = this.tavernDiceCheckCard({ campaignId, playerId, state: authoritativeState, command: tavernAnswerCommand })
+        if (card) {
+          return {
+            narration: `Кость соперника на столе: нужно ${card.difficulty} или больше. Бросайте.`,
+            effects: emptyEffects(),
+            provider: 'RulesEngine',
+            model: 'deterministic',
+            turn_id: turnId,
+            engine_mode: mode,
+            state_version: authoritativeState.state_version,
+            mechanics: [],
+            visible_state_changes: [],
+            authoritative_state: authoritativeState,
+            check: { ...card, sides: 20 },
+            turn_consumed: false,
+          }
+        }
+      }
+      if (verifiedRoll) {
+        // Бросок обязан быть зарегистрирован **как кости**: реестр сверяет
+        // только кампанию и актора, поэтому без этой проверки во вторую фазу
+        // раунда можно было бы подать кубик от любой другой проверки того же
+        // героя — в том числе брошенный с модификатором навыка.
+        const { context: tavernCheckContext, ...verifiedRollPayload } = verifiedRoll
+        if (String(tavernCheckContext?.kind ?? '') !== 'tavern-dice') {
+          const error = new Error('Этот бросок регистрировался не для игры в кости')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        tavernAnswerCommand.verified_roll = verifiedRollPayload
       }
     }
     let intent = input.commands

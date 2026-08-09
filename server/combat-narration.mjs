@@ -300,6 +300,33 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(payload.outcome === 'resume'
         ? 'Переговоры кончились ничем: стороны расходятся по местам, и бой продолжается.'
         : `Уговор заключён: ${String(payload.term_summary || payload.term_label || 'условия приняты')}${Number(payload.tribute_cp) > 0 ? ` Отряду остаётся ${Math.max(0, Number(payload.tribute_cp) || 0)} мм.` : ''}`)
+    } else if (event.event_type === 'TavernDiceRoundOpened') {
+      meaningful.push(`${String(payload.npc_name || 'Сосед по столу')} мечет кости: выпало ${Number(payload.npc_total) || 0}. Ставка — ${Math.max(0, Number(payload.stake_cp) || 0)} мм.`)
+    } else if (event.event_type === 'TavernDiceRoundResolved') {
+      const hero = Number(payload.hero_total) || 0
+      const opponent = Number(payload.npc_total) || 0
+      const stake = Math.max(0, Number(payload.stake_cp) || 0)
+      // Про скандал и разоблачение говорят свои события: здесь только сам
+      // раунд, иначе один бросок звучал бы дважды.
+      if (payload.outcome === 'win') meaningful.push(`${actor} выбрасывает ${hero} против ${opponent} — банк в ${stake * 2} мм уходит герою.`)
+      else if (payload.outcome === 'loss') meaningful.push(`${actor} выбрасывает ${hero} против ${opponent}: ставка в ${stake} мм остаётся на столе.`)
+      else if (payload.outcome === 'push') meaningful.push(`Ровно ${hero} у обоих — ставки возвращаются владельцам.`)
+      else if (payload.outcome === 'caught') meaningful.push(`${actor} тянется к костям — и руку перехватывают. Ставка потеряна.`)
+      else meaningful.push(`${actor} не сводит глаз с чужих рук и раунд не доигрывает.`)
+      if (payload.watch_result === 'clean') meaningful.push('Ничего подозрительного: играют честно.')
+    } else if (event.event_type === 'TavernCheatCaught') {
+      meaningful.push(`Скандал за столом: ${String(payload.npc_name || 'сосед')} во весь голос объявляет героя шулером. Это видели.`)
+    } else if (event.event_type === 'TavernCheatExposed') {
+      meaningful.push(`${String(payload.npc_name || 'Сосед по столу')} играет краплёными: подмену заметили, и уговор кончен.`)
+    } else if (event.event_type === 'TavernPatronEjected') {
+      meaningful.push(`${actor} выставлен за дверь: за этим столом ему больше не наливают.`)
+    } else if (event.event_type === 'TavernDrinkOrdered') {
+      const drinks = Math.max(1, Number(payload.drinks) || 1)
+      meaningful.push(Number(payload.social_bonus) > 0
+        ? `${actor} берёт кружку (${drinks}-я за вечер) — язык развязывается, разговор идёт легче.`
+        : `${actor} берёт ещё одну кружку. Это уже ${drinks}-я.`)
+    } else if (event.event_type === 'ConditionAdded' && payload.source === 'tavern-drink') {
+      meaningful.push(`${target} перебрал(а): всё плывёт, и до отдыха любая проверка идёт с помехой.`)
     } else if (event.event_type === 'CaptiveTaken') {
       const captive = payload.captive ?? {}
       meaningful.push(captive.origin === 'knocked_out'
@@ -360,6 +387,8 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',
   'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed',
+  'TavernCheatCaught', 'TavernCheatExposed', 'TavernDiceRoundOpened', 'TavernDiceRoundResolved',
+  'TavernDrinkOrdered', 'TavernPatronEjected',
   'TimeOfDayChanged', 'TruceBroken', 'TruceEstablished', 'TurnEnded',
   'TurnStarted', 'WeatherChanged',
 ]))
