@@ -209,6 +209,62 @@ test('раунд костей проходит настоящим путём: ч
   assert.ok(purseCp >= 0, 'кошелёк не уходит в минус ни при каком исходе')
 })
 
+/**
+ * Зонд ревью: подкрутка. Карточка ручного броска объявляла «модификатор +0», а
+ * исполнение считало с `+5` — игрок видел «нужно 16», а хватало 11. Проверяется
+ * это на живом пути целиком: чем карточка объявила, тем `/api/roll` и посчитал,
+ * и с тем же числом закрылся раунд.
+ */
+test('карточка подкрученного броска объявляет тот же модификатор, с каким считает движок', { timeout: runnerTimeout(40_000) }, async (t) => {
+  const { baseUrl, adminCookie, log } = await setUp(t)
+
+  const opened = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-open-cheat',
+      command: { command_type: 'OpenTavernDiceRound', actor_id: 'hero', npc_id: 'barkeep', stake_cp: 10 },
+    },
+  })
+  assert.equal(opened.status, 200, `${opened.text}\n${log()}`)
+  const round = (await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })).body.state.tavern.round
+
+  const announced = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-cheat-1',
+      manual_roll: true,
+      command: { command_type: 'AnswerTavernDiceRound', actor_id: 'hero', approach: 'cheat' },
+    },
+  })
+  assert.equal(announced.status, 200, `${announced.text}\n${log()}`)
+  assert.equal(announced.body.check.difficulty, round.target, 'СЛ карточки — это кость соперника')
+  assert.equal(announced.body.check.modifier, 5, 'подкрученная кость объявлена до броска, а не после')
+
+  const rolled = await request(baseUrl, '/api/roll', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { campaignId: SESSION, playerId: 'hero', checkId: announced.body.check.check_id },
+  })
+  assert.equal(rolled.status, 200, `${rolled.text}\n${log()}`)
+  assert.equal(rolled.body.total, rolled.body.value + 5, 'реестр бросков считает по объявленному модификатору')
+
+  const resolved = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-cheat-2',
+      roll: { roll_id: rolled.body.roll_id },
+      command: { command_type: 'AnswerTavernDiceRound', actor_id: 'hero', approach: 'cheat' },
+    },
+  })
+  assert.equal(resolved.status, 200, `${resolved.text}\n${log()}`)
+  const settled = (resolved.body.mechanics ?? []).find((event) => event.event_type === 'TavernDiceRoundResolved')
+  assert.ok(settled, `раунд обязан закрыться событием\n${resolved.text}`)
+  assert.equal(settled.payload.hero_total, rolled.body.total, 'карточка и движок сошлись на одном числе')
+})
+
 test('во вторую фазу раунда принимается только бросок, зарегистрированный костями', { timeout: runnerTimeout(40_000) }, async (t) => {
   const { baseUrl, adminCookie, log } = await setUp(t)
 

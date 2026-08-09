@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { TAVERN_STAKES_CP, TAVERN_STAKE_LABELS, tavernForViewer } from '../server/tavern-life.mjs'
+import { TAVERN_STAKES_CP, TAVERN_STAKE_LABELS, tavernForViewer, tavernMaxStakeFor } from '../server/tavern-life.mjs'
 import { normalizeCampaignState } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
@@ -43,6 +43,10 @@ test('карточка заведения доезжает игроку гото
   assert.ok(card.drink_price_cp > 0)
   assert.equal(card.round, null)
   assert.equal(card.next_drink_dc, null, 'первая кружка ещё безопасна')
+  // Доступная ставка соседа приезжает готовым числом: банк берётся из его
+  // кошелька, и клиент не должен ни считать его, ни узнавать о нём отказом.
+  assert.equal(card.opponents[0].max_stake_cp, tavernMaxStakeFor(campaign(), 'barkeep'))
+  assert.ok(TAVERN_STAKES_CP.includes(card.opponents[0].max_stake_cp))
   // Подписи ставок серверные: клиент их не сочиняет.
   assert.deepEqual(tavernForViewer(campaign(), { playerId: 'hero' }).stakes, card.stakes)
 })
@@ -59,6 +63,11 @@ test('таверна живёт на доске отдельной панель�
   assert.match(board, /id: 'cheat' as const/u)
   assert.match(board, /id: 'watch' as const/u)
   assert.match(board, /tavern-approach approach-\$\{approach\.id\}/u)
+  // Ставка ограничена и чужим кошельком: сервер прислал доступный предел, и
+  // кнопка обязана погаснуть до клика, а не после отказа.
+  assert.match(board, /max_stake_cp/u)
+  assert.match(board, /tavernOpponentMaxStakeCp < stake\.stake_cp/u)
+  assert.match(board, /Соперник такую ставку не закроет/u)
   // Своей таблицы цен, ставок и СЛ у доски быть не должно.
   assert.doesNotMatch(board, /TAVERN_STAKES/u)
   assert.doesNotMatch(board, /DRINK_PRICE/u)

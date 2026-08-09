@@ -6,6 +6,7 @@ import {
   TAVERN_CHEAT_BONUS,
   TAVERN_DRINK_PRICE_CP,
   TAVERN_DRUNK_CONDITION,
+  TAVERN_GAMBLER_PURSE_BASE_CP,
   TAVERN_SCANDALS_BEFORE_EJECTION,
   TAVERN_SOBER_DRINKS,
   TAVERN_STAKES_CP,
@@ -13,6 +14,8 @@ import {
   tavernDrinksFor,
   tavernEjected,
   tavernGamblerFor,
+  tavernGamblerPurseFor,
+  tavernMaxStakeFor,
   tavernNextDrinkDc,
   tavernOpponents,
   tavernRoundFor,
@@ -21,6 +24,7 @@ import {
 import {
   normalizeCampaignState,
   previewD20Check,
+  previewTavernDiceRoll,
   replayEvents,
   resolveCommands,
 } from '../server/rules-engine.mjs'
@@ -56,13 +60,23 @@ function cells(width = 6, height = 6) {
 /**
  * Общий зал трактира. Кошелёк героя — ровно 1 зм: так и «не хватает на ставку»,
  * и «кошелёк не ушёл в минус» проверяются числами, а не приблизительно.
+ *
+ * `heroIds` сажает за стол не одного игрока, а нескольких: формат игры — стол
+ * на пятерых, и проверять поведение раунда на одиночке значило бы не проверять
+ * его вовсе.
  */
-function campaign({ scene = {}, currency = { copper: 0, silver: 0, gold: 1, platinum: 0 }, abilities = {}, minutes = 0 } = {}) {
+function campaign({
+  scene = {},
+  currency = { copper: 0, silver: 0, gold: 1, platinum: 0 },
+  abilities = {},
+  minutes = 0,
+  heroIds = ['hero'],
+} = {}) {
   return normalizeCampaignState({
     sessionCode: CAMPAIGN,
     campaign: 'Жизнь таверны',
-    activePlayerId: 'hero',
-    partyMemberIds: ['hero'],
+    activePlayerId: heroIds[0],
+    partyMemberIds: [...heroIds],
     partyName: 'Отряд героев',
     scene: {
       title: INN,
@@ -72,12 +86,12 @@ function campaign({ scene = {}, currency = { copper: 0, silver: 0, gold: 1, plat
       cells: cells(),
       ...scene,
     },
-    players: [{
-      id: 'hero',
-      character: 'Ада',
+    players: heroIds.map((heroId, index) => ({
+      id: heroId,
+      character: index === 0 ? 'Ада' : `Спутник ${index}`,
       hp: 12,
       maxHp: 12,
-      x: 1,
+      x: 1 + index,
       y: 1,
       speed: 30,
       abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, ...abilities },
@@ -89,7 +103,7 @@ function campaign({ scene = {}, currency = { copper: 0, silver: 0, gold: 1, plat
       backgroundSkillProficiencies: [],
       currency,
       inventory: [],
-    }],
+    })),
     worldMap: {
       seed: 'tavern-seed',
       regions: [{ id: 'north', name: 'Северный край', biome: 'plains', x: 200, y: 200, radius: 205 }],
@@ -111,8 +125,19 @@ function run(state, commands, { diceValues = [], context = {} } = {}) {
   return resolveCommands(
     commands.map((command, index) => ({ campaign_id: CAMPAIGN, command_id: `cmd-${index + 1}`, ...command })),
     state,
-    { diceService: dice(diceValues), context: { allowedActorIds: ['hero'], ...context } },
+    {
+      diceService: dice(diceValues),
+      context: { allowedActorIds: commands.map((command) => String(command.actor_id ?? 'hero')), ...context },
+    },
   )
+}
+
+/** Героя уронили в 0 ОЗ — отвечать на брошенную кость он больше не может. */
+function downed(state, heroId = 'hero') {
+  return normalizeCampaignState({
+    ...state,
+    players: state.players.map((player) => (player.id === heroId ? { ...player, hp: 0 } : player)),
+  })
 }
 
 const open = (npcId = HONEST, stakeCp = TAVERN_STAKES_CP[0]) => ({
@@ -147,10 +172,28 @@ function rejects(state, commands, code, options = {}) {
 test('таверна опознаётся сценой, а поле и лес — нет', () => {
   assert.equal(isTavernScene(campaign()), true)
   assert.equal(isTavernScene(campaign({ scene: { title: 'Корчма на развилке', location: 'Корчма на развилке' } })), true)
+  assert.equal(isTavernScene(campaign({ scene: { title: 'Постоялый двор у брода', location: 'Постоялый двор у брода' } })), true)
   assert.equal(isTavernScene(campaign({ scene: { title: 'Тёмный лес', location: 'Тёмный лес' } })), false)
   // Тема застройки берёт и дом, и лавку, и терем: своей, более узкой проверки
   // здесь заводили именно ради этого.
   assert.equal(isTavernScene(campaign({ scene: { title: 'Лавка старьёвщика', location: 'Лавка старьёвщика' } })), false)
+})
+
+/**
+ * Зонды ревью дословно. Название сцены сочиняет модель, и голая основа ловила
+ * в нём глагол и признак: «Отряд постоял у ворот» открывал заведение посреди
+ * дороги, а «Пивная бочка в подвале» — в подвале.
+ */
+test('глагол в названии сцены таверной не делает', () => {
+  const notTavern = [
+    'Отряд постоял у ворот',
+    'Стража постояла и разошлась',
+    'Пивная бочка в подвале',
+    'Пивной погреб под лестницей',
+  ]
+  for (const title of notTavern) {
+    assert.equal(isTavernScene(campaign({ scene: { title, location: title } })), false, `«${title}» опознано таверной`)
+  }
 })
 
 test('ни костей, ни выпивки вне таверны и посреди боя', () => {
@@ -190,7 +233,7 @@ test('соперник мечет первым, ставка при этом е�
   assert.equal(opened.payload.round.target, 15, 'перебить — значит показать больше')
   assert.equal(opened.payload.round.stake_cp, 50)
   assert.equal(purseCp(result.state), 100, 'до ответа деньги на месте')
-  assert.equal(tavernRoundFor(result.state).hero_id, 'hero')
+  assert.equal(tavernRoundFor(result.state, 'hero').hero_id, 'hero')
 
   // Общий бросок стола переиспользован, а не заведён заново: кость соперника
   // ложится в тот же лоток, где стол видит любой ручной кубик.
@@ -215,7 +258,7 @@ test('банк переходит честно: победа, поражение
   assert.equal(purseCp(push.state), 100, 'ничья не двигает ничего')
 
   // Раунд закрыт в любом исходе: второй ответ на тот же бросок невозможен.
-  assert.equal(tavernRoundFor(win.state), null)
+  assert.equal(tavernRoundFor(win.state, 'hero'), null)
   rejects(win.state, [answer()], 'TAVERN_ROUND_NOT_OPEN')
 })
 
@@ -236,9 +279,130 @@ test('второй раунд не открыть, пока не отвечен�
   rejects(opened.state, [open(HONEST, 10)], 'TAVERN_ROUND_ALREADY_OPEN')
 })
 
+/**
+ * Зонд ревью: герой открыл раунд и тут же получил по голове. Пока раунд был
+ * одним слотом на всё заведение, отвечать на брошенную кость было некому
+ * (`ACTOR_DEFEATED`), снять её нечем, а сесть за стол другому — нельзя
+ * (`TAVERN_ROUND_ALREADY_OPEN`): кости умирали для всего зала до смены сцены.
+ */
+test('раунд ключуется героем: упавший за столом не запирает кости всему залу', () => {
+  const table = campaign({ heroIds: ['hero', 'hero-2'], currency: { copper: 0, silver: 0, gold: 2, platinum: 0 } })
+  const opened = run(table, [open(HONEST, 10)], { diceValues: [12] }).state
+  const fallen = downed(opened, 'hero')
+  rejects(fallen, [answer()], 'ACTOR_DEFEATED')
+
+  const second = run(fallen, [{ ...open(CROOK, 10), actor_id: 'hero-2' }], { diceValues: [8] })
+  assert.equal(tavernRoundFor(second.state, 'hero-2').npc_id, CROOK, 'второй герой садится за свой стол')
+  assert.equal(tavernRoundFor(second.state, 'hero').npc_id, HONEST, 'чужой раунд при этом остался нетронутым')
+
+  const answered = run(second.state, [{ ...answer(), actor_id: 'hero-2' }], { diceValues: [20] })
+  assert.equal(eventOf(answered, 'TavernDiceRoundResolved').payload.hero_id, 'hero-2')
+  assert.equal(tavernRoundFor(answered.state, 'hero-2'), null, 'свой раунд закрыт')
+  assert.ok(tavernRoundFor(answered.state, 'hero'), 'а чужой ждёт своего героя')
+
+  // Каждый видит за столом только свой раунд: чужая кость в его карточке не
+  // появляется и кнопки ему не блокирует.
+  const cardFor = (heroId) => campaignStateForViewer(answered.state, { id: 'user-1', role: 'player', heroIds: [heroId] }, heroId).tavern
+  assert.equal(cardFor('hero').round.npc_id, HONEST)
+  assert.equal(cardFor('hero-2').round, null)
+
+  // Поднявшийся на ноги герой доигрывает свой раунд там, где его прервали.
+  const healed = normalizeCampaignState({
+    ...answered.state,
+    players: answered.state.players.map((player) => (player.id === 'hero' ? { ...player, hp: 9 } : player)),
+  })
+  const revived = run(healed, [answer()], { diceValues: [19] })
+  assert.equal(eventOf(revived, 'TavernDiceRoundResolved').payload.npc_id, HONEST)
+})
+
+/**
+ * Банк не берётся из ниоткуда. Зонд ревью: `delta_cp 200`, а ни один кошелёк
+ * NPC при этом не худел — стол на 200 мм был печатным станком, тем более что
+ * скандалы и запрет входа обнуляются уходом из зала.
+ */
+test('выигранный банк приходит из кармана соперника и когда-нибудь кончается', () => {
+  const rich = { copper: 0, silver: 0, gold: 100, platinum: 0 }
+  const start = tavernGamblerPurseFor(campaign({ currency: rich }), HONEST)
+  assert.ok(start >= TAVERN_GAMBLER_PURSE_BASE_CP, 'вечерняя касса соседа выводится из сида кампании')
+
+  const opened = run(campaign({ currency: rich }), [open(HONEST, 200)], { diceValues: [5] })
+  const win = run(opened.state, [answer()], { diceValues: [19] })
+  const resolved = eventOf(win, 'TavernDiceRoundResolved')
+  assert.equal(resolved.payload.outcome, 'win')
+  assert.equal(resolved.payload.npc_purse_before_cp - resolved.payload.npc_purse_after_cp, resolved.payload.delta_cp,
+    'сколько пришло герою, столько и ушло у соперника')
+  assert.equal(tavernGamblerPurseFor(win.state, HONEST), start - 200)
+
+  // Проигрыш едет в ту же кассу обратно: деньги переезжают, а не появляются.
+  const lost = run(run(win.state, [open(HONEST, 200)], { diceValues: [18] }).state, [answer()], { diceValues: [3] })
+  assert.equal(tavernGamblerPurseFor(lost.state, HONEST), start)
+
+  // До дна касса доходит за считаные раунды, и дальше играть с соседом не о чем.
+  let state = campaign({ currency: rich })
+  let rounds = 0
+  while (tavernMaxStakeFor(state, HONEST) >= 200 && rounds < 12) {
+    state = run(state, [open(HONEST, 200)], { diceValues: [5] }).state
+    state = run(state, [answer()], { diceValues: [19] }).state
+    rounds += 1
+  }
+  assert.equal(rounds, Math.floor(start / 200), 'касса кончается ровно на своём числе раундов')
+  rejects(state, [open(HONEST, 200)], 'TAVERN_OPPONENT_BROKE')
+
+  // Уход из зала и возврат обратно кассу не воскрешают — иначе предела бы не
+  // было: скандалы и запрет входа сменой сцены как раз обнуляются.
+  const moved = replayEvents(state, [{
+    event_id: 'evt-scene', command_id: 'cmd-scene', event_type: 'SceneAdvanced', actor_id: null,
+    target_ids: [], visibility: 'party',
+    payload: { scene: { title: INN, location: INN, location_id: 'inn' } },
+    state_version_after: state.state_version + 1,
+  }])
+  assert.equal(tavernGamblerPurseFor(moved, HONEST), tavernGamblerPurseFor(state, HONEST))
+  rejects(moved, [open(HONEST, 200)], 'TAVERN_OPPONENT_BROKE')
+
+  // Игроку это видно кнопкой, а не отказом после клика.
+  const card = campaignStateForViewer(moved, { id: 'user-1', role: 'player', heroIds: ['hero'] }, 'hero').tavern
+  assert.ok(card.opponents.find((npc) => npc.id === HONEST).max_stake_cp < 200)
+  assert.equal(JSON.stringify(card).includes('purse'), false, 'чужая бухгалтерия игроку не уезжает')
+})
+
 // ---------------------------------------------------------------------------
 // Шулерство в обе стороны
 // ---------------------------------------------------------------------------
+
+/**
+ * Зонд ревью: СЛ обеих проверок стола уезжает игроку в `AbilityCheckResolved`
+ * с видимостью `party` и рисуется на карточке броска. Пока к ней прибавлялись
+ * два очка за шулерство, диапазоны честного (10–14) и краплёного (12–16) не
+ * совпадали на краях: СЛ 10 доказывала, что сосед чист, СЛ 16 — что нет. Это
+ * 40% соперников, опознанных бесплатно.
+ */
+test('СЛ проверок за столом одна и та же у честного и у шулера', () => {
+  const state = campaign()
+  const honest = { insight: new Set(), tell: new Set() }
+  const crooked = { insight: new Set(), tell: new Set() }
+  for (let index = 0; index < 300; index += 1) {
+    const gambler = tavernGamblerFor(state, `patron-${index}`)
+    const bucket = gambler.crooked ? crooked : honest
+    bucket.insight.add(gambler.insight_passive)
+    bucket.tell.add(gambler.tell_dc)
+  }
+  assert.ok(crooked.insight.size > 1 && honest.insight.size > 1, 'выборка обязана взять и честных, и шулеров')
+  const sorted = (values) => [...values].sort((left, right) => left - right)
+  assert.deepEqual(sorted(crooked.insight), sorted(honest.insight), 'по СЛ Ловкости рук шулер не отличим')
+  assert.deepEqual(sorted(crooked.tell), sorted(honest.tell), 'и по СЛ Проницательности тоже')
+
+  // То же самое на живом пути: число, которое видит игрок, лежит в общем
+  // диапазоне независимо от того, с кем он сел играть.
+  const shownDc = (npcId) => {
+    const opened = run(campaign(), [open(npcId, 10)], { diceValues: [12] })
+    const watched = run(opened.state, [answer('watch')], { diceValues: [10, 5] })
+    return eventOf(watched, 'AbilityCheckResolved').payload.difficulty
+  }
+  const shared = sorted(honest.tell)
+  for (const npcId of [HONEST, CROOK]) {
+    assert.ok(shared.includes(shownDc(npcId)), `СЛ ${shownDc(npcId)} вне общего диапазона ${shared.join('/')}`)
+  }
+})
 
 test('характер соперника детерминирован сидом и в состояние не попадает', () => {
   const state = campaign()
@@ -276,6 +440,31 @@ test('удачное жульничество героя добавляет к �
   assert.equal(resolved.payload.outcome, 'win')
   assert.equal(purseCp(result.state), 150)
   assert.equal(eventOf(result, 'TavernCheatCaught'), null)
+})
+
+/**
+ * Зонд ревью: карточка ручного броска печатала «модификатор +0», а исполнение
+ * считало с `+5` — игрок видел «нужно 16», а хватало 11. Числа сходятся только
+ * если надбавка известна до карточки, и она известна: подход герой называет
+ * сам, а проверка Ловкости рук решает не размер надбавки, а то, поймают ли за
+ * руку.
+ */
+test('подкрутка считается одним числом и в карточке броска, и в исполнении', () => {
+  const opened = run(campaign(), [open(HONEST, 50)], { diceValues: [14] }).state
+  assert.equal(previewTavernDiceRoll(opened, 'hero', 'cheat').modifier, TAVERN_CHEAT_BONUS)
+  assert.equal(previewTavernDiceRoll(opened, 'hero', 'fair').modifier, 0)
+  assert.equal(previewTavernDiceRoll(opened, 'hero', 'watch').modifier, 0)
+  // Неизвестный подход движок приводит к честному броску — предпросмотр тоже.
+  assert.equal(previewTavernDiceRoll(opened, 'hero', 'подкрутить').modifier, 0)
+  assert.equal(previewTavernDiceRoll(opened, 'hero', 'cheat').difficulty, 15)
+
+  // Пойманный за руку считается по тому же модификатору: кость он подменить
+  // успел, ставку у него забирают не за это.
+  const caught = run(opened, [answer('cheat')], { diceValues: [1, 9] })
+  const resolved = eventOf(caught, 'TavernDiceRoundResolved')
+  assert.equal(resolved.payload.hero_total, 9 + TAVERN_CHEAT_BONUS)
+  assert.equal(resolved.payload.outcome, 'caught')
+  assert.equal(resolved.payload.cheated, false, '«подкрутил» в летописи — это «подкрутил и не попался»')
 })
 
 test('провал жульничества — скандал: поступок свидетелям, отношение вниз, ставка потеряна', () => {
@@ -422,7 +611,7 @@ test('счёт кружек и скандалов остаётся в сцене
     state_version_after: drunk.state_version + 1,
   }])
   assert.equal(tavernDrinksFor(moved, 'hero'), 0)
-  assert.equal(tavernRoundFor(moved), null)
+  assert.equal(tavernRoundFor(moved, 'hero'), null)
 })
 
 // ---------------------------------------------------------------------------

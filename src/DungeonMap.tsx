@@ -914,6 +914,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const chosenTavernStakeCp = tavernStakes.some((stake) => stake.stake_cp === tavernStakeCp)
     ? tavernStakeCp
     : tavernStakes[0]?.stake_cp ?? 0
+  // Ставка ограничена не только своим кошельком, но и чужим: банк соперника
+  // приходит из его кармана, и сервер откажет в ставке, которую ему нечем
+  // закрыть. Кнопка обязана показать это до клика, а не после отказа.
+  const tavernOpponentMaxStakeCp = Number(tavernOpponents.find((npc) => npc.id === chosenTavernOpponentId)?.max_stake_cp ?? 0)
   const tavernActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
   const dossierSceneNpc = npcDossier ? sceneNpcs.find((npc) => npc.id === npcDossier.npcId) ?? null : null
   const dossierCaptive = dossierSceneNpc ? captiveByNpcId.get(dossierSceneNpc.id) ?? null : null
@@ -2324,7 +2328,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 <div className="tavern-approaches">
                   {([
                     { id: 'fair' as const, label: 'Бросить честно', summary: 'Просто кость: чей бросок старше, тот и забрал банк.', icon: <Dices size={13} /> },
-                    { id: 'cheat' as const, label: 'Подкрутить кость', summary: 'Ловкость рук против чужой Проницательности. Поймают — скандал и потерянная ставка.', icon: <Sparkles size={13} /> },
+                    { id: 'cheat' as const, label: 'Подкрутить кость', summary: 'Подменённая кость даёт +5 к вашему броску, но идёт Ловкость рук против чужой Проницательности: поймают — скандал и потерянная ставка.', icon: <Sparkles size={13} /> },
                     { id: 'watch' as const, label: 'Следить за руками', summary: 'Проницательность: если сосед мечет краплёными, это можно разглядеть.', icon: <Eye size={13} /> },
                   ]).map((approach) => <button
                     key={approach.id}
@@ -2350,7 +2354,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                       onChange={(event) => setTavernOpponentId(event.target.value)}
                     >
                       {tavernOpponents.length
-                        ? tavernOpponents.map((npc) => <option key={npc.id} value={npc.id}>{npc.name}{npc.role ? ` (${npc.role})` : ''}</option>)
+                        ? tavernOpponents.map((npc) => <option key={npc.id} value={npc.id}>{npc.name}{npc.role ? ` (${npc.role})` : ''}{Number(npc.max_stake_cp ?? 0) > 0 ? '' : ' · на мели'}</option>)
                         : <option value="">за столом никого нет</option>}
                     </select>
                   </label>
@@ -2359,16 +2363,20 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                       key={stake.stake_cp}
                       type="button"
                       className={chosenTavernStakeCp === stake.stake_cp ? 'active' : ''}
-                      disabled={tavernActionsBlocked || activeHeroPurseCp < stake.stake_cp}
-                      title={activeHeroPurseCp < stake.stake_cp ? 'На такую ставку не хватает монет' : `${stake.stake_cp} мм`}
+                      disabled={tavernActionsBlocked || activeHeroPurseCp < stake.stake_cp || tavernOpponentMaxStakeCp < stake.stake_cp}
+                      title={activeHeroPurseCp < stake.stake_cp
+                        ? 'На такую ставку не хватает монет'
+                        : tavernOpponentMaxStakeCp < stake.stake_cp ? 'Соперник такую ставку не закроет' : `${stake.stake_cp} мм`}
                       onClick={() => setTavernStakeCp(stake.stake_cp)}
                     >{stake.label} · {stake.stake_cp} мм</button>)}
                   </div>
                   <button
                     type="button"
                     className="tavern-action action-dice"
-                    disabled={tavernActionsBlocked || !chosenTavernOpponentId || !chosenTavernStakeCp || activeHeroPurseCp < chosenTavernStakeCp}
-                    title={activeHeroPurseCp < chosenTavernStakeCp ? 'На ставку не хватает монет' : 'Соперник мечет первым, отвечать будете вы'}
+                    disabled={tavernActionsBlocked || !chosenTavernOpponentId || !chosenTavernStakeCp || activeHeroPurseCp < chosenTavernStakeCp || tavernOpponentMaxStakeCp < chosenTavernStakeCp}
+                    title={activeHeroPurseCp < chosenTavernStakeCp
+                      ? 'На ставку не хватает монет'
+                      : tavernOpponentMaxStakeCp < chosenTavernStakeCp ? 'У соперника столько не наберётся' : 'Соперник мечет первым, отвечать будете вы'}
                     onClick={() => { void onOpenTavernDiceRound(chosenTavernOpponentId, chosenTavernStakeCp) }}
                   ><Dices size={13} />Сыграть в кости</button>
                 </div>

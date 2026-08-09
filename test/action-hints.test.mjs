@@ -205,12 +205,16 @@ test('порядок детерминирован, приметное впере
  *
  * `leisure: false` переносит тот же зал в место, где ни костей, ни выпивки не
  * подают. Понадобилось это после того, как в таверне появился досуг
- * (`server/tavern-life.mjs`): его строка занимает слот панели, и без такой
- * копии проверить подпись реквизита на настоящем пути проекции было бы негде.
+ * (`server/tavern-life.mjs`): его строка соперничает за слот панели, и без
+ * такой копии проверить подпись реквизита на настоящем пути проекции было бы
+ * негде.
  *
- * @param {{hiddenChest?: boolean, leisure?: boolean}} [options]
+ * `pointOfInterest` делает сундук приметным — тем самым, ради чего панель и
+ * заводилась.
+ *
+ * @param {{hiddenChest?: boolean, leisure?: boolean, pointOfInterest?: boolean}} [options]
  */
-function tavernState({ hiddenChest = false, leisure = true } = {}) {
+function tavernState({ hiddenChest = false, leisure = true, pointOfInterest = false } = {}) {
   const hallId = leisure ? 'tavern-hall' : 'guild-hall'
   const map = createTacticalMap({
     width: 8, height: 6, locationId: hallId, seed: 'hints-tavern',
@@ -222,7 +226,14 @@ function tavernState({ hiddenChest = false, leisure = true } = {}) {
   addProp(map, { id: 'broom-1', assetId: 'broom', x: 2.5, y: 1.5, footprint: [{ x: 2, y: 1 }] })
   addProp(map, { id: 'cobweb-1', assetId: 'cobweb', x: 3.5, y: 1.5, footprint: [{ x: 3, y: 1 }] })
   addProp(map, { id: 'bar-1', assetId: 'bar_counter', x: 4.5, y: 1.5, footprint: [{ x: 4, y: 1 }] })
-  addProp(map, { id: 'chest-1', assetId: 'chest', x: 6.5, y: 4.5, footprint: [{ x: 6, y: 4 }] })
+  addProp(map, {
+    id: 'chest-1',
+    assetId: 'chest',
+    x: 6.5,
+    y: 4.5,
+    footprint: [{ x: 6, y: 4 }],
+    ...(pointOfInterest ? { interaction: { pointOfInterest: true } } : {}),
+  })
   setDoor(map, { id: 'door-out', x: 0, y: 2, dir: 'e' })
   return normalizeCampaignState({
     sessionCode: 'HINTS-TAVERN',
@@ -284,9 +295,9 @@ test('настоящая проекция зала: сундук по-русск
 })
 
 /**
- * Тот же зал, но в таверне. Досуг заведения занимает одну строку и вытесняет
- * находку — и это осознанный порядок: сундук виден на доске сам, а про кости и
- * кружку новичку иначе никто не скажет.
+ * Тот же зал, но в таверне. Досуг заведения занимает одну строку и стоит в ней
+ * впереди рядовой обстановки: про кости и кружку новичку иначе никто не
+ * скажет, а сундук в углу зала он не вытесняет (следующий тест).
  */
 test('в таверне досуг занимает строку панели, а не две', () => {
   const hints = projectedHints(tavernState())
@@ -300,6 +311,24 @@ test('в таверне досуг занимает строку панели, �
     'Можно уйти из этого места через дверь',
   ])
   for (const line of texts) assert.doesNotMatch(line, /[A-Za-z]/u, `подсказка показала латиницу: ${line}`)
+})
+
+/**
+ * Зонд ревью: безусловный слот у досуга означал, что в трактире про находку не
+ * скажут никогда — собеседник, цель и выход занимали остальные три строки.
+ * Теперь строки соперничают: приметная находка досуг вытесняет, рядовая
+ * обстановка — нет.
+ */
+test('приметная находка в таверне сильнее приглашения за стол', () => {
+  const texts = projectedHints(tavernState({ pointOfInterest: true })).map((hint) => hint.text)
+
+  assert.deepEqual(texts, [
+    'Можно осмотреть: Сундук',
+    'Можно заговорить с кем-то из местных: Бром (трактирщик)',
+    'Цель отряда: Найти пропавшего писаря',
+    'Можно уйти из этого места через дверь',
+  ])
+  assert.equal(texts.some((line) => /кост|выпивк/iu.test(line)), false, 'досуг уступил слот находке')
 })
 
 test('зал из одной обстановки даёт подсказки без реквизита', () => {

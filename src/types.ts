@@ -1577,7 +1577,16 @@ export type TavernProjection = {
   schema_version?: number
   place_name?: string
   location_id?: string
-  opponents?: Array<{ id: string; name: string; role?: string }>
+  opponents?: Array<{
+    id: string
+    name: string
+    role?: string
+    /**
+     * Самая крупная ставка, которую этот сосед может закрыть своим кошельком.
+     * `0` — он на мели. Считает сервер: своей таблицы касс у доски нет.
+     */
+    max_stake_cp?: number
+  }>
   stakes?: Array<{ stake_cp: number; label: string }>
   approaches?: TavernDiceApproach[]
   round?: TavernRoundCard | null
