@@ -10778,7 +10778,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       // Драка. Ступень поднимается до предела: считается ровно недостающее,
       // чтобы затухание потом шло от максимума, а не от случайной суммы.
-      const escalation = Math.max(1, WANTED_LEVEL_THRESHOLDS[MAX_WANTED_LEVEL] - wantedBefore.points)
+      //
+      // Недостающее меряется по **несписанному** счёту реестра, а не по
+      // текущему: затухание отсчитывается от последнего преступления, и новая
+      // запись обнуляет его для всего края разом. Считать от уже подтаявшей
+      // ступени значило бы вернуть в счёт и всё, что край успел забыть, — за
+      // драку у ворот отряд платил бы старыми делами по второму разу.
+      const escalation = Math.max(1, WANTED_LEVEL_THRESHOLDS[MAX_WANTED_LEVEL] - wantedBefore.raw_points)
       events.push(eventFrom({ ...command, visibility: 'party' }, 'GuardEncounterResolved', {
         ...base,
         success: true,

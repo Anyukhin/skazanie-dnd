@@ -8,6 +8,7 @@ import {
   WANTED_DECAY_MINUTES,
   WANTED_ESCAPE_FAILURE_POINTS,
   WANTED_FINE_CP,
+  WANTED_LEVEL_THRESHOLDS,
   guardEncounterFor,
   guardOptionsFor,
   wantedFeed,
@@ -339,7 +340,32 @@ test('драка со стражей поднимает розыск до пре
   assert.equal(created.payload.encounter.theme, 'warband', 'тема взята из существующих, своих стат-блоков закон не заводит')
   assert.ok(created.payload.encounter.enemies.length > 0)
   assert.equal(wantedFor(result.state, NORTH).level, 3)
+  // Счёт встаёт ровно на порог, а не выше: иначе затухание тянулось бы дольше
+  // задуманного, и старые подтаявшие дела вернулись бы в счёт вторым разом.
+  assert.equal(wantedFor(result.state, NORTH).points, WANTED_LEVEL_THRESHOLDS[3])
   assert.equal(guardEncounterFor(result.state), null)
+})
+
+test('драка после подтаявшего розыска не возвращает в счёт забытое краем', () => {
+  const old = applyGameEvent(witnessed(), murderEvent())
+  const quiet = {
+    ...old,
+    mechanics: { ...old.mechanics, world_time: { amount: WANTED_DECAY_MINUTES * 4, unit: 'minute', elapsed_minutes: WANTED_DECAY_MINUTES * 4 } },
+  }
+  assert.equal(wantedFor(quiet, NORTH).points, 0, 'край успел забыть')
+  // Стража всё же остановила отряд: встреча заводится отдельным событием, а
+  // ступень к этому моменту уже подтаяла до нуля.
+  const stopped = withGuardEncounter(quiet, { commandId: 'cmd-old' })
+  const result = resolveCommands([{
+    command_type: 'ResolveGuardEncounter',
+    actor_id: 'hero',
+    resolution: 'fight',
+    command_id: 'cmd-fight-old',
+    campaign_id: 'LAW',
+  }], stopped, { diceService: dice(), context: { allowedActorIds: ['hero'] } })
+
+  assert.equal(wantedFor(result.state, NORTH).points, WANTED_LEVEL_THRESHOLDS[3])
+  assert.equal(wantedFor(result.state, NORTH).level, 3)
 })
 
 test('удачный побег уводит отряд, а розыск остаётся', () => {
