@@ -264,6 +264,25 @@ test('взятое из чужого сундука без единого жив
   assert.equal(seen[0].kind, 'theft')
 })
 
+test('одна команда, двое убитых — два поступка, а не один', () => {
+  const victim = (npcId, name) => ({
+    event_id: `evt-death-${npcId}`,
+    command_id: 'cmd-area-spell',
+    event_type: 'NpcDied',
+    actor_id: 'hero',
+    target_ids: [npcId],
+    payload: { npc_id: npcId, npc_name: name, location_id: 'village', source_actor_id: 'hero' },
+    visibility: 'party',
+  })
+  const state = replayEvents(witnessedCampaign(), [victim('guard', 'Страж Бран'), victim('baker', 'Пекарь Мила')])
+  assert.equal(state.world_deeds.deeds.length, 2)
+  assert.deepEqual(state.world_deeds.deeds.map((deed) => deed.subject), ['Страж Бран', 'Пекарь Мила'])
+  assert.equal(new Set(state.world_deeds.deeds.map((deed) => deed.id)).size, 2)
+  // Свидетели считаются по состоянию после каждого события: первую смерть видела
+  // пекарь, вторую — уже некому, и она остаётся тайной.
+  assert.deepEqual(state.world_deeds.deeds.map((deed) => deed.witness_ids), [['baker'], []])
+})
+
 test('летопись поступков переживает replay и не удваивается', () => {
   const events = [deathEvent(), deathEvent({ id: 'evt-death-replay', commandId: 'cmd-death' })]
   const once = applyGameEvent(witnessedCampaign(), events[0])

@@ -229,38 +229,49 @@ function npcNameFor(state, npcId) {
 }
 
 /**
+ * Типы событий, в которых поступок вообще может обнаружиться. Проверка стоит
+ * перед любой работой: редьюсер зовётся на **каждое** событие журнала, и
+ * разбирать все подряд значило бы платить за поступки на каждом шаге replay.
+ */
+const DEED_EVENT_TYPES = new Set([
+  'NpcDied', 'NpcHarmed', 'SceneObjectOperated', 'WorldFactRecorded',
+  'NpcPromiseResolved', 'ItemTransferred', 'WitnessConsequencePropagated',
+])
+
+/**
  * Распознавание поступка в подтверждённом событии. Возвращает описание без
  * идентификатора и времени — их доставляет `deedFromEvent`.
  *
- * @returns {{ kind: string, subject?: string, actorIds?: string[], witnessIds?: string[] } | null}
+ * @returns {{ kind: string, key: string, subject?: string, actorIds?: string[], witnessIds?: string[] } | null}
  */
 function recognizeDeed(state, event) {
   const type = String(event?.event_type ?? '')
   const payload = event?.payload ?? {}
   if (type === 'NpcDied') {
-    return { kind: 'murder', subject: text(payload.npc_name, 160) || npcNameFor(state, payload.npc_id), actorIds: [payload.source_actor_id ?? event.actor_id] }
+    return { kind: 'murder', key: text(payload.npc_id, 120), subject: text(payload.npc_name, 160) || npcNameFor(state, payload.npc_id), actorIds: [payload.source_actor_id ?? event.actor_id] }
   }
   if (type === 'NpcHarmed') {
     // Смертельный удар описан отдельным поступком: считать его дважды нельзя.
     if (integer(payload.hp_after, 0) <= 0) return null
-    return { kind: 'violence', subject: text(payload.npc_name, 160) || npcNameFor(state, payload.npc_id), actorIds: [payload.source_actor_id ?? event.actor_id] }
+    return { kind: 'violence', key: text(payload.npc_id, 120), subject: text(payload.npc_name, 160) || npcNameFor(state, payload.npc_id), actorIds: [payload.source_actor_id ?? event.actor_id] }
   }
   if (type === 'SceneObjectOperated') {
     const what = PROP_KIND_LABELS[text(payload.kind, 40)] ?? 'обстановку'
-    if (payload.intent === 'ignite') return { kind: 'arson', subject: what, actorIds: [event.actor_id] }
-    if (payload.intent === 'topple') return { kind: 'vandalism', subject: what, actorIds: [event.actor_id] }
+    const key = text(payload.prop_id, 120)
+    if (payload.intent === 'ignite') return { kind: 'arson', key, subject: what, actorIds: [event.actor_id] }
+    if (payload.intent === 'topple') return { kind: 'vandalism', key, subject: what, actorIds: [event.actor_id] }
     if (payload.intent === 'take') {
       // Хозяина у пропса в движке нет (`docs/dnd-table-situations.md`, B1),
       // поэтому кражей считается взятое **на людях**: пустое подземелье
       // поступком не становится и ленту ведущего не засоряет.
       const witnessIds = sceneWitnessIds(state)
       if (!witnessIds.length) return null
-      return { kind: 'theft', subject: what, actorIds: [event.actor_id], witnessIds }
+      return { kind: 'theft', key, subject: what, actorIds: [event.actor_id], witnessIds }
     }
     return null
   }
   if (type === 'WorldFactRecorded' && text(payload.fact?.predicate, 120) === 'scene_change') {
-    return { kind: 'destruction', subject: text(payload.fact?.object || payload.fact?.summary, 180), actorIds: [] }
+    return { kind: 'destruction', key: text(payload.fact?.id, 120), subject: text(payload.fact?.object || payload.fact?.summary, 180), actorIds: [] }
   }
   if (type === 'NpcPromiseResolved') {
     const status = text(payload.status, 30)
@@ -269,6 +280,7 @@ function recognizeDeed(state, event) {
     if (!promise) return null
     return {
       kind: status === 'broken' ? 'promise_broken' : 'promise_kept',
+      key: text(payload.promise_id, 120),
       subject: npcNameFor(state, promise.npc_id),
       actorIds: [promise.hero_id],
       // Обещание помнит тот, кому его дали, даже если рядом больше никого нет.
@@ -280,6 +292,7 @@ function recognizeDeed(state, event) {
     if (price < GENEROSITY_THRESHOLD_CP) return null
     return {
       kind: 'generosity',
+      key: text(payload.item_id, 120),
       subject: text(payload.item?.name, 160) || 'дар',
       actorIds: [payload.from_actor_id ?? event.actor_id],
       witnessIds: [...new Set([text(payload.to_actor_id, 120), ...sceneWitnessIds(state)])].filter(Boolean).sort(),
@@ -288,7 +301,7 @@ function recognizeDeed(state, event) {
   if (type === 'WitnessConsequencePropagated' && text(payload.outcome, 30) === 'helpful') {
     const witnessIds = [...new Set((Array.isArray(payload.witness_ids) ? payload.witness_ids : []).map((entry) => text(entry, 120)).filter(Boolean))].sort()
     if (!witnessIds.length) return null
-    return { kind: 'rescue', subject: text(state?.scene?.location, 180) || 'местных', actorIds: [], witnessIds }
+    return { kind: 'rescue', key: text(payload.source_event_id, 120), subject: text(state?.scene?.location, 180) || 'местных', actorIds: [], witnessIds }
   }
   return null
 }
@@ -296,10 +309,12 @@ function recognizeDeed(state, event) {
 /**
  * Идентификатор поступка выводится из содержимого команды, а не из `event_id`:
  * до коммита события идентификатора ещё нет, и ключ от него разошёлся бы между
- * предварительной проекцией и replay.
+ * предварительной проекцией и replay. `key` — устойчивый различитель внутри
+ * одной команды: одно площадное заклинание убивает двоих, и без него оба
+ * убийства слились бы в один поступок.
  */
 function deedIdFor(event, recognized, atMinutes) {
-  return `deed:${digest(event?.command_id ?? event?.event_id ?? '', event?.event_type ?? '', recognized.kind, recognized.subject ?? '', atMinutes)}`
+  return `deed:${digest(event?.command_id ?? event?.event_id ?? '', event?.event_type ?? '', recognized.kind, recognized.key ?? '', atMinutes)}`
 }
 
 function summaryFor(state, deed) {
@@ -358,22 +373,26 @@ export function deedFromEvent(state = {}, event = {}) {
  * же слух второй раз.
  */
 export function applyWorldDeedEvent(input, event, state = {}) {
-  const ledger = normalizeWorldDeedsState(input)
-  if (String(event?.event_type ?? '') === 'FactionReputationAdjusted'
-    && text(event?.payload?.provenance?.policy, 120) === WORLD_RUMOR_POLICY_ID) {
+  const type = String(event?.event_type ?? '')
+  const normalized = input?.schema_version === WORLD_DEEDS_SCHEMA_VERSION && Array.isArray(input.deeds)
+    ? input
+    : normalizeWorldDeedsState(input)
+  if (type === 'FactionReputationAdjusted') {
+    if (text(event?.payload?.provenance?.policy, 120) !== WORLD_RUMOR_POLICY_ID) return normalized
     const deedId = text(event.payload?.deed_id, 120)
     const factionId = text(event.payload?.faction_id, 120)
-    if (!deedId || !factionId) return ledger
+    if (!deedId || !factionId) return normalized
     return normalizeWorldDeedsState({
-      ...ledger,
-      deeds: ledger.deeds.map((deed) => deed.id === deedId
+      ...normalized,
+      deeds: normalized.deeds.map((deed) => deed.id === deedId
         ? { ...deed, reputation_faction_ids: [...new Set([...deed.reputation_faction_ids, factionId])] }
         : deed),
     })
   }
+  if (!DEED_EVENT_TYPES.has(type)) return normalized
   const deed = deedFromEvent(state, event)
-  if (!deed || ledger.deeds.some((entry) => entry.id === deed.id)) return ledger
-  return normalizeWorldDeedsState({ ...ledger, deeds: [...ledger.deeds, deed] })
+  if (!deed || normalized.deeds.some((entry) => entry.id === deed.id)) return normalized
+  return normalizeWorldDeedsState({ ...normalized, deeds: [...normalized.deeds, deed] })
 }
 
 /** Лента ведущего: свежие поступки сверху, поля уже пригодны для карточки. */
@@ -538,7 +557,12 @@ export function planWorldRumorTick(state = {}, { worldMinute, limit = 24 } = {})
     upserted.add(entity.id)
     commands.push({ command_type: 'UpsertWorldEntity', entity })
   }
+  // Пачка одного такта ограничена намеренно: кампания, поднятая из старого
+  // журнала, может принести две сотни поступков разом, и один `resolvePlan` на
+  // четыре сотни команд заблокировал бы такт. Остальное доедет следующим тиком.
+  const maximumFacts = Math.max(1, Math.min(40, integer(limit, 24)))
   for (const deed of ledger.deeds) {
+    if (commands.length >= maximumFacts * 2) break
     const factId = deedFactId(deed)
     if (existingFacts.has(factId)) continue
     const entity = locationEntityFor(state, deed)
