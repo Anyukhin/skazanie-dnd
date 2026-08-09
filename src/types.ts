@@ -35,7 +35,9 @@ export type RollResult = NonNullable<Message['roll']>
  */
 export type DiceRollEvent = {
   id: string
-  kind: 'free' | 'party'
+  /* `tavern` — кость, брошенная за игровым столом внутри мира: соперник по
+     костям и ответ героя ложатся в тот же лоток, что и свободный бросок. */
+  kind: 'free' | 'party' | 'tavern'
   /* Свободный бросок теперь любой обычной костью, а не только d20. Набор
      закрыт на сервере (`PUBLIC_DIE_SIDES`), клиент выбирает из него. */
   sides: 4 | 6 | 8 | 10 | 12 | 20 | 100
@@ -1227,6 +1229,12 @@ export type GameState = {
    */
   law?: LawProjection
   /**
+   * Жизнь таверны: кости и выпивка. Приезжает только в сцене заведения, и
+   * только собранной сервером карточкой — характера соперника, его пассивных
+   * значений и чужого счёта здесь нет.
+   */
+  tavern?: TavernProjection | null
+  /**
    * Ходы мира за спиной отряда. Ветка одинакова у игрока и у ведущего: «Пока
    * вас не было…» — монтаж для всего стола.
    */
@@ -1543,6 +1551,42 @@ export type LawProjection = {
   signs?: string[]
   encounter?: GuardEncounterCard | null
   regions?: WantedRegionEntry[]
+}
+
+/** Как герой отвечает на бросок соперника. Список закрыт сервером (`server/tavern-life.mjs`). */
+export type TavernDiceApproach = 'fair' | 'cheat' | 'watch'
+
+/** Открытый раунд: кость соперника уже на столе, и её надо перебить. */
+export type TavernRoundCard = {
+  id: string
+  hero_id: string
+  npc_id: string
+  npc_name?: string
+  stake_cp: number
+  npc_total: number
+  /** Сколько нужно показать, чтобы забрать банк. Считает сервер. */
+  target: number
+}
+
+/**
+ * Карточка заведения. Всё уже посчитано сервером: с кем можно сыграть, какие
+ * ставки открыты, сколько стоит кружка и против какой СЛ пойдёт следующая.
+ * Честен соперник или шулер — не приезжает никогда: это узнают Проницательностью.
+ */
+export type TavernProjection = {
+  schema_version?: number
+  place_name?: string
+  location_id?: string
+  opponents?: Array<{ id: string; name: string; role?: string }>
+  stakes?: Array<{ stake_cp: number; label: string }>
+  approaches?: TavernDiceApproach[]
+  round?: TavernRoundCard | null
+  drink_price_cp?: number
+  drinks?: number
+  /** `null` — следующая кружка ещё безопасна. */
+  next_drink_dc?: number | null
+  social_bonus?: number
+  ejected?: boolean
 }
 
 /** Время суток по серверным часам кампании (`server/weather.mjs`). */

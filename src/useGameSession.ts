@@ -15,7 +15,7 @@ import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -50,6 +50,9 @@ type TacticalCommand =
   | { command_type: 'FeedCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ExecuteCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
+  | { command_type: 'OpenTavernDiceRound'; actor_id: string; npc_id: string; stake_cp: number }
+  | { command_type: 'AnswerTavernDiceRound'; actor_id: string; approach: TavernDiceApproach }
+  | { command_type: 'OrderTavernDrink'; actor_id: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -1269,6 +1272,34 @@ export function useGameSession() {
     )
   }, [executeTacticalCommand])
 
+  /* Кости за столом. Раунд разложен на две команды, потому что бросок соперника
+     обязан лечь на стол первым: только после него у ручного кубика героя
+     появляется объявленная СЛ. Ставку клиент выбирает из серверного набора, а
+     подход к ответу — из серверного списка. */
+  const openTavernDiceRound = useCallback((actorId: string, npcId: string, stakeCp: number) => {
+    return executeTacticalCommand(
+      { command_type: 'OpenTavernDiceRound', actor_id: actorId, npc_id: npcId, stake_cp: stakeCp },
+      'Сыграть в кости',
+    )
+  }, [executeTacticalCommand])
+
+  const answerTavernDiceRound = useCallback((actorId: string, approach: TavernDiceApproach = 'fair') => {
+    const labels: Record<TavernDiceApproach, string> = {
+      fair: 'Ответить на бросок честно',
+      cheat: 'Подкрутить кость',
+      watch: 'Бросить и следить за чужими руками',
+    }
+    return executeTacticalCommand(
+      { command_type: 'AnswerTavernDiceRound', actor_id: actorId, approach },
+      labels[approach],
+      { manualRoll: !autoRollEnabled() },
+    )
+  }, [executeTacticalCommand])
+
+  const orderTavernDrink = useCallback((actorId: string) => {
+    return executeTacticalCommand({ command_type: 'OrderTavernDrink', actor_id: actorId }, 'Заказать выпивку')
+  }, [executeTacticalCommand])
+
   /* Судьба пленного. Клиент называет только пленного и, для допроса, подход;
      СЛ, исход броска, награду и последствия считает сервер. */
   const captiveAction = useCallback((
@@ -1690,6 +1721,9 @@ export function useGameSession() {
     operateSceneObject,
     captiveAction,
     resolveGuardEncounter,
+    openTavernDiceRound,
+    answerTavernDiceRound,
+    orderTavernDrink,
     proposeParley,
     settleParley,
     useLevelTransition,

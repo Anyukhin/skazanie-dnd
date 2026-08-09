@@ -17,9 +17,9 @@ import {
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
-  Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert,
+  Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Beer, Eye,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -630,7 +630,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onOrderTavernDrink, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -662,6 +662,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onResolveGuardEncounter: (resolution: GuardResolution, skill?: 'stealth' | 'athletics') => Promise<CommandOutcome>
   onProposeParley: (skill: 'persuasion' | 'intimidation') => Promise<CommandOutcome>
   onSettleParley: (outcome: ParleyOutcome) => Promise<CommandOutcome>
+  onOpenTavernDiceRound: (npcId: string, stakeCp: number) => Promise<CommandOutcome>
+  onAnswerTavernDiceRound: (approach: TavernDiceApproach) => Promise<CommandOutcome>
+  onOrderTavernDrink: () => Promise<CommandOutcome>
   onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
   onStartRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
   onSpendHitPointDie: () => Promise<CommandOutcome>
@@ -681,6 +684,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // Как отряд собирается уходить от стражи. Выбор влияет только на навык
   // проверки: СЛ и состав проверяющих остаются серверными.
   const [guardEscapeSkill, setGuardEscapeSkill] = useState<'stealth' | 'athletics'>('stealth')
+  // С кем и на что играем. Оба поля — только выбор из серверных списков:
+  // соперника и ставку сервер всё равно проверит своей карточкой заведения.
+  const [tavernOpponentId, setTavernOpponentId] = useState('')
+  const [tavernStakeCp, setTavernStakeCp] = useState(0)
   const [npcDialogueText, setNpcDialogueText] = useState('')
   const [selectedGiftItemId, setSelectedGiftItemId] = useState('')
   const [giftQuantity, setGiftQuantity] = useState(1)
@@ -885,11 +892,29 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const guardEncounter = state.law?.encounter ?? null
   const guardFineCp = Number(guardEncounter?.fine_cp ?? 0)
   const activeHeroPurse = players.find((player) => player.id === typingActorId)?.currency
-  const canPayGuardFine = (activeHeroPurse?.copper ?? 0)
+  // Кошелёк героя в медяках. Считается один раз: и вира стражи, и ставка за
+  // костями, и кружка спрашивают у него одно и то же, а три копии одной суммы
+  // разошлись бы при первой правке номиналов.
+  const activeHeroPurseCp = (activeHeroPurse?.copper ?? 0)
     + (activeHeroPurse?.silver ?? 0) * 10
     + (activeHeroPurse?.gold ?? 0) * 100
     + (activeHeroPurse?.platinum ?? 0) * 1_000
-    >= guardFineCp
+  const canPayGuardFine = activeHeroPurseCp >= guardFineCp
+  // Досуг таверны приезжает готовой карточкой: список соперников, набор ставок,
+  // цена кружки и СЛ следующего спасброска посчитаны сервером
+  // (`server/tavern-life.mjs`). Своей таблицы цен и своей проверки «а таверна
+  // ли это» здесь нет: карточки нет — панели нет.
+  const tavern = state.tavern ?? null
+  const tavernOpponents = tavern?.opponents ?? []
+  const tavernStakes = tavern?.stakes ?? []
+  const tavernRound = tavern?.round ?? null
+  const chosenTavernOpponentId = tavernOpponents.some((npc) => npc.id === tavernOpponentId)
+    ? tavernOpponentId
+    : tavernOpponents[0]?.id ?? ''
+  const chosenTavernStakeCp = tavernStakes.some((stake) => stake.stake_cp === tavernStakeCp)
+    ? tavernStakeCp
+    : tavernStakes[0]?.stake_cp ?? 0
+  const tavernActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
   const dossierSceneNpc = npcDossier ? sceneNpcs.find((npc) => npc.id === npcDossier.npcId) ?? null : null
   const dossierCaptive = dossierSceneNpc ? captiveByNpcId.get(dossierSceneNpc.id) ?? null : null
   const dossierSocialNpc = dossierSceneNpc
@@ -2285,6 +2310,83 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               onClick={() => setGuardEscapeSkill(skill)}
             >{skill === 'stealth' ? 'тихо (Скрытность)' : 'напролом (Атлетика)'}</button>)}
           </div>
+        </section>}
+        {tavern && <section className="tavern-panel" aria-label="Жизнь таверны" aria-live="polite">
+          <header><Beer size={15} /><span><small>ЗАВЕДЕНИЕ · {tavern.place_name || 'таверна'}</small><strong>{tavernRound ? 'Кость на столе' : 'Кости и выпивка'}</strong></span></header>
+          {tavern.ejected
+            ? <p className="tavern-note">Отсюда героя выставили: за этим столом ему больше не наливают и в кости с ним не садятся.</p>
+            : tavernRound
+              ? <>
+                <p className="tavern-note">
+                  {tavernRound.npc_name || 'Соперник'} выбросил <b>{tavernRound.npc_total}</b>. Нужно <b>{tavernRound.target}</b> или больше,
+                  чтобы забрать банк в {tavernRound.stake_cp * 2} мм.
+                </p>
+                <div className="tavern-approaches">
+                  {([
+                    { id: 'fair' as const, label: 'Бросить честно', summary: 'Просто кость: чей бросок старше, тот и забрал банк.', icon: <Dices size={13} /> },
+                    { id: 'cheat' as const, label: 'Подкрутить кость', summary: 'Ловкость рук против чужой Проницательности. Поймают — скандал и потерянная ставка.', icon: <Sparkles size={13} /> },
+                    { id: 'watch' as const, label: 'Следить за руками', summary: 'Проницательность: если сосед мечет краплёными, это можно разглядеть.', icon: <Eye size={13} /> },
+                  ]).map((approach) => <button
+                    key={approach.id}
+                    type="button"
+                    className={`tavern-approach approach-${approach.id}`}
+                    disabled={tavernActionsBlocked}
+                    title={approach.summary}
+                    onClick={() => { void onAnswerTavernDiceRound(approach.id) }}
+                  >
+                    {approach.icon}
+                    <b>{approach.label}</b>
+                    <small>{approach.summary}</small>
+                  </button>)}
+                </div>
+              </>
+              : <>
+                <div className="tavern-dice-setup" role="group" aria-label="Игра в кости">
+                  <label>
+                    <span>Соперник</span>
+                    <select
+                      value={chosenTavernOpponentId}
+                      disabled={tavernActionsBlocked || !tavernOpponents.length}
+                      onChange={(event) => setTavernOpponentId(event.target.value)}
+                    >
+                      {tavernOpponents.length
+                        ? tavernOpponents.map((npc) => <option key={npc.id} value={npc.id}>{npc.name}{npc.role ? ` (${npc.role})` : ''}</option>)
+                        : <option value="">за столом никого нет</option>}
+                    </select>
+                  </label>
+                  <div className="tavern-stakes" role="group" aria-label="Ставка">
+                    {tavernStakes.map((stake) => <button
+                      key={stake.stake_cp}
+                      type="button"
+                      className={chosenTavernStakeCp === stake.stake_cp ? 'active' : ''}
+                      disabled={tavernActionsBlocked || activeHeroPurseCp < stake.stake_cp}
+                      title={activeHeroPurseCp < stake.stake_cp ? 'На такую ставку не хватает монет' : `${stake.stake_cp} мм`}
+                      onClick={() => setTavernStakeCp(stake.stake_cp)}
+                    >{stake.label} · {stake.stake_cp} мм</button>)}
+                  </div>
+                  <button
+                    type="button"
+                    className="tavern-action action-dice"
+                    disabled={tavernActionsBlocked || !chosenTavernOpponentId || !chosenTavernStakeCp || activeHeroPurseCp < chosenTavernStakeCp}
+                    title={activeHeroPurseCp < chosenTavernStakeCp ? 'На ставку не хватает монет' : 'Соперник мечет первым, отвечать будете вы'}
+                    onClick={() => { void onOpenTavernDiceRound(chosenTavernOpponentId, chosenTavernStakeCp) }}
+                  ><Dices size={13} />Сыграть в кости</button>
+                </div>
+                <div className="tavern-drink">
+                  <button
+                    type="button"
+                    className="tavern-action action-drink"
+                    disabled={tavernActionsBlocked || activeHeroPurseCp < Number(tavern.drink_price_cp ?? 0)}
+                    title={activeHeroPurseCp < Number(tavern.drink_price_cp ?? 0) ? 'На выпивку не хватает монет' : 'Кружка эля из кошелька'}
+                    onClick={() => { void onOrderTavernDrink() }}
+                  ><Beer size={13} />Заказать выпивку · {tavern.drink_price_cp ?? 0} мм</button>
+                  <small>
+                    Выпито за вечер: {tavern.drinks ?? 0}.
+                    {Number(tavern.social_bonus) > 0 ? ` Разговор идёт легче: +${tavern.social_bonus} к Убеждению до конца сцены.` : ''}
+                    {tavern.next_drink_dc != null ? ` Следующая кружка — спасбросок Телосложения СЛ ${tavern.next_drink_dc}.` : ''}
+                  </small>
+                </div>
+              </>}
         </section>}
         {heldCaptives.length > 0 && <section className="captive-panel" aria-label="Пленники отряда">
           <header><UserLock size={15} /><span><small>ПЛЕННИКИ · {heldCaptives.length}</small><strong>Судьба решается вами</strong></span></header>
