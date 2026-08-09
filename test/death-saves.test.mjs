@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { RulesValidationError, applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
+import { worldClockEventDrafts } from '../server/weather.mjs'
 
 function dice(values = []) {
   let id = 0
@@ -207,12 +208,11 @@ test('стабильный герой автоматически получае�
     diceService: dice([]),
   })
   // Два часа переводят стрелку с утра на день, и мировые часы пишут об этом
-  // своё событие (`server/weather.mjs`). Здесь проверяется восстановление
-  // стабилизированного героя, поэтому небо из списка отфильтровано.
-  assert.deepEqual(
-    recovered.events.map((event) => event.event_type).filter((type) => !['TimeOfDayChanged', 'WeatherChanged'].includes(type)),
-    ['TimeAdvanced', 'HealingApplied'],
-  )
+  // своё событие (`server/weather.mjs`). Вычёркивать его из списка нельзя —
+  // задвоенное небо тогда никто не заметит, — поэтому оно стоит на своём месте:
+  // сразу после `TimeAdvanced` и ровно в том количестве, что написали часы.
+  const sky = worldClockEventDrafts(waiting, 120).map((draft) => draft.event_type)
+  assert.deepEqual(recovered.events.map((event) => event.event_type), ['TimeAdvanced', ...sky, 'HealingApplied'])
   const after = applyAll(waiting, recovered.events)
   assert.equal(after.players.find((hero) => hero.id === 'fallen').hp, 1)
   assert.equal(after.mechanics.death.saving_throws.fallen, undefined)

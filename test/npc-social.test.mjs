@@ -26,6 +26,7 @@ import {
   replayEvents,
   resolveCommand,
 } from '../server/rules-engine.mjs'
+import { worldClockEventDrafts } from '../server/weather.mjs'
 
 function dice(values = []) {
   return new DiceService({ rng: new SequenceDiceRng(values) })
@@ -956,12 +957,11 @@ test('promise hints become deterministic deadlines and AdvanceTime breaks an ove
     diceService: dice(), context: { isDirector: true },
   })
   // Час переводит стрелку с утра на день, и мировые часы пишут об этом своё
-  // событие (`server/weather.mjs`). Здесь проверяется, что просроченное обещание
-  // ломается ровно один раз, поэтому небо из списка отфильтровано.
-  assert.deepEqual(
-    later.events.map((event) => event.event_type).filter((type) => !['TimeOfDayChanged', 'WeatherChanged'].includes(type)),
-    ['TimeAdvanced'],
-  )
+  // событие (`server/weather.mjs`). Оно остаётся в списке на своём месте:
+  // вычеркнуть небо значило бы перестать замечать лишнее или задвоенное событие
+  // в этом контуре. Проверяется же, что просроченное обещание ломается один раз.
+  const sky = worldClockEventDrafts(state, 60).map((draft) => draft.event_type)
+  assert.deepEqual(later.events.map((event) => event.event_type), ['TimeAdvanced', ...sky])
 })
 
 test('NPC controller receives the authoritative tier and only open promise summaries', async () => {

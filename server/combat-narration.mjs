@@ -82,7 +82,40 @@ function attackConditionReason(payload) {
   return ` ${advantage.length ? 'с преимуществом' : 'с помехой'} (${described})`
 }
 
-function tacticalNarration(events, state) {
+/** Сколько строк уезжает в ленту за один ход. */
+const MAX_NARRATION_LINES = 8
+
+/**
+ * Тот же разбор, но двумя частями: что сделал отряд и что стало с небом.
+ *
+ * Разделение нужно вызывающему, у которого есть **запасной** рассказчик. Раньше
+ * `tacticalNarration(...) || deterministicNarration(...)` читалось как «если
+ * боевой рассказчик молчал», но с появлением строки про небо молчать он перестал:
+ * шаг Режиссёра, пересёкший 17:00, отдавал в ленту одну фразу про вечер, а
+ * описание перехода — «Сцена перемещена из … в …» — пропадало. Небо теперь
+ * дописывается **к** запасному тексту, а не вместо него.
+ */
+export function tacticalNarrationParts(events, state) {
+  const { main, sky } = tacticalNarrationLines(events, state)
+  return {
+    main: main.slice(0, MAX_NARRATION_LINES).join(' '),
+    sky: sky.slice(0, Math.max(0, MAX_NARRATION_LINES - main.length)).join(' '),
+  }
+}
+
+/**
+ * Текст хода с запасным вариантом. `fallback` — строка или функция, которую
+ * зовут лишь тогда, когда боевому рассказчику сказать про сам ход нечего:
+ * запасной рассказчик стоит дорого, и звать его ради выброшенного результата
+ * незачем.
+ */
+export function tacticalNarrationOr(events, state, fallback) {
+  const { main, sky } = tacticalNarrationParts(events, state)
+  const base = main || String((typeof fallback === 'function' ? fallback() : fallback) ?? '')
+  return [base, sky].filter(Boolean).join(' ')
+}
+
+function tacticalNarrationLines(events, state) {
   const meaningful = []
   const turns = []
   /** Строки про небо: дописываются последними и не вытесняют события хода. */
@@ -289,8 +322,12 @@ function tacticalNarration(events, state) {
   // отряд, потом мир вокруг него. На ходу, где кроме смены времени суток не
   // случилось ничего (долгий отдых, переход по карте), строка про небо остаётся
   // единственной — и это ровно та строка, которой смену видно в летописи.
-  const selected = [...(meaningful.length ? meaningful : turns), ...sky]
-  return selected.slice(0, 8).join(' ')
+  return { main: meaningful.length ? meaningful : turns, sky }
+}
+
+function tacticalNarration(events, state) {
+  const { main, sky } = tacticalNarrationParts(events, state)
+  return [main, sky].filter(Boolean).join(' ')
 }
 
 /** Типы событий, про которые этот рассказчик умеет говорить. */

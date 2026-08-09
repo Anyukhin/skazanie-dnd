@@ -48,7 +48,7 @@ import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from '
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator } from './creative-director.mjs'
-import { combatNarration as tacticalNarration } from './combat-narration.mjs'
+import { tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
 import { NpcMoraleAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
 import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
@@ -3364,11 +3364,12 @@ const server = createServer((req, res) => {
       const authoritative = await autonomousCampaign.load(campaignId)
       // Шаг Директора менял цель и сцену молча: в ленте не появлялось ни строки,
       // и игрок видел новую задачу про персонажа, которого ему не представили.
-      const directorNarration = tacticalNarration(events, authoritative.state)
-        || deterministicNarration(
-          { visible_events: events, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
-          actorNameResolver(authoritative.state),
-        ).narration
+      // Строка про небо запасной текст не вытесняет, а дописывается к нему:
+      // переход, пересёкший границу времени суток, обязан остаться переходом.
+      const directorNarration = tacticalNarrationOr(events, authoritative.state, () => deterministicNarration(
+        { visible_events: events, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
+        actorNameResolver(authoritative.state),
+      ).narration)
       persistAuthoritativeProjection(campaignId, authoritative.state, events, directorNarration ? {
         id: `director-${createHash('sha256').update(String(key)).digest('hex').slice(0, 20)}`,
         text: directorNarration,
@@ -3585,7 +3586,7 @@ const server = createServer((req, res) => {
         : []
       const mechanics = [...(result.mechanics ?? []), ...subsequentEvents]
         .filter((event, index, all) => all.findIndex((candidate) => String(candidate.event_id ?? `${candidate.state_version_after}:${candidate.event_type}`) === String(event.event_id ?? `${event.state_version_after}:${event.event_type}`)) === index)
-      const narration = tacticalNarration(mechanics, latest.state) || result.narration
+      const narration = tacticalNarrationOr(mechanics, latest.state, result.narration)
       result = { ...result, state_version: latest.state_version, authoritative_state: latest.state, mechanics, npc_turns: scheduler.turns, narration }
       const narrationMessageId = narration ? combatMessageId(idempotencyKey) : null
       const projected = persistAuthoritativeProjection(campaignId, latest.state, mechanics, narrationMessageId ? { id: narrationMessageId, text: narration, turnConsumed: false } : null)
@@ -3816,8 +3817,12 @@ const server = createServer((req, res) => {
           viewer: { playerId: actor, partyIds: campaignHeroIds(user, commandMatch[1]), isPartyMember: true, role: user.role },
         })
         : null
-      const tacticalLog = result.authoritative_state ? tacticalNarration(result.mechanics, result.authoritative_state) : ''
-      const narration = creativeMoment?.narration || tacticalLog
+      // Рассказчик критического момента вытесняет боевой лог, но не небо: смена
+      // времени суток дописывается к любому из двух текстов.
+      const tactical = result.authoritative_state
+        ? tacticalNarrationParts(result.mechanics, result.authoritative_state)
+        : { main: '', sky: '' }
+      const narration = [creativeMoment?.narration || tactical.main, tactical.sky].filter(Boolean).join(' ')
       const narrationMessageId = narration
         ? combatMessageId(idempotencyKey)
         : merchantCommands.length && result.narration ? merchantMessageId(idempotencyKey) : null

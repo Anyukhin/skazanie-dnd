@@ -271,6 +271,7 @@ import {
   hazardPropCells,
 } from './scene-hazards.mjs'
 import {
+  regionWeatherEventDraft,
   weatherCheckSwing,
   weatherRangedPenalty,
   worldClockEventDrafts,
@@ -2619,8 +2620,10 @@ function attackSwingShape(state, attackerIdValue, targetIdValue, profile, {
   if (longRange) disadvantageSources.push('дальний диапазон')
   // Туман мешает стрелять только под открытым небом: под крышей его нет, и
   // проверяет это сам модуль погоды. Ближний бой он не трогает — на длине руки
-  // видно и в тумане.
-  if (profile?.kind === 'ranged' && weatherRangedPenalty(state)) disadvantageSources.push('туман')
+  // видно и в тумане. Подпись берётся из ответа модуля, а не пишется здесь
+  // вторым авторитетом: вторая дальняя помеха получила бы чужое слово.
+  const weatherRanged = profile?.kind === 'ranged' ? weatherRangedPenalty(state) : null
+  if (weatherRanged) disadvantageSources.push(weatherRanged.reason)
   if (targetConditions.has('dodging')) disadvantageSources.push('цель уклоняется')
   if (oneShotDisadvantage) disadvantageSources.push('помеха на следующую атаку')
   if (highGround === 'lower') disadvantageSources.push('позиция ниже цели')
@@ -10909,6 +10912,19 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // городе. Перенос применяется к промежуточному состоянию до расстановки
       // NPC — иначе планировщик постов ещё не знает, что пленный тут.
       let transitionedState = applyGameEvent(state, sceneEvent)
+      // Небо принадлежит климату края, поэтому переход через границу меняет его
+      // без всякого хода времени. Считается по двум состояниям — до и после
+      // применённого перехода, — иначе `weather_after` описывал бы покинутый
+      // край, а индикатор у игрока показывал бы уже новый.
+      {
+        // Состояния событие не меняет — небо выводится из минут и края, — поэтому
+        // применять его к `transitionedState` не нужно: следующим планировщикам
+        // оно ничего не сообщает.
+        const regionSky = regionWeatherEventDraft(state, transitionedState)
+        if (regionSky) {
+          events.push(eventFrom({ ...command, visibility: regionSky.visibility }, regionSky.event_type, regionSky.payload, []))
+        }
+      }
       for (const relocation of npcWorldEventsFrom(command, planCaptiveRelocationDrafts(transitionedState))) {
         events.push(relocation)
         transitionedState = applyGameEvent(transitionedState, relocation)

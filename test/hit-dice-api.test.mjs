@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
+import { worldClockEventDrafts } from '../server/weather.mjs'
 
 async function freePort() {
   const probe = createNetServer()
@@ -254,11 +255,16 @@ test('HTTP-отдых санитизирует поля, защищает гер
   const longRest = await restCommand(baseUrl, ownerCookie, 'rest-start-long', { command_type: 'StartRest', actor_id: 'fighter', kind: 'long' })
   assert.equal(longRest.status, 200, `${longRest.text}\n${logs}`)
   // Восемь часов сна всегда пересекают границу времени суток, и мировые часы
-  // пишут об этом своё событие (`server/weather.mjs`). Здесь проверяется контур
-  // отдыха, поэтому небо из списка отфильтровано.
+  // пишут об этом своё событие (`server/weather.mjs`). В списке оно остаётся на
+  // своём месте — вычеркнуть небо значило бы перестать замечать задвоенное
+  // событие в контуре отдыха, — а сколько его быть должно, отвечают сами часы.
+  const restedState = longRest.body.authoritative_state
+  const beforeRest = { ...restedState, mechanics: { ...restedState.mechanics, world_time: { ...restedState.mechanics.world_time, elapsed_minutes: 60 } } }
+  const sky = worldClockEventDrafts(beforeRest, 480).map((draft) => draft.event_type)
+  assert.deepEqual(sky, ['TimeOfDayChanged'], 'восемь часов сна переводят время суток ровно один раз')
   assert.deepEqual(
-    longRest.body.mechanics.map((event) => event.event_type).filter((type) => !['TimeOfDayChanged', 'WeatherChanged'].includes(type)),
-    ['RestStarted', 'TimeAdvanced', 'HitPointDiceRestored', 'RestCompleted'],
+    longRest.body.mechanics.map((event) => event.event_type),
+    ['RestStarted', 'TimeAdvanced', ...sky, 'HitPointDiceRestored', 'RestCompleted'],
   )
   assert.equal(longRest.body.authoritative_state.mechanics.world_time.elapsed_minutes, 540)
   assert.equal(longRest.body.authoritative_state.mechanics.hit_point_dice.fighter.spent, 0)

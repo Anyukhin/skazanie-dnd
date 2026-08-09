@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { matchTheme } from './scene-themes.mjs'
 import { worldLocationById } from './world-map.mjs'
 
 /**
@@ -31,7 +32,9 @@ import { worldLocationById } from './world-map.mjs'
  * 4. **В помещении погоды нет.** Все штрафы и бонусы этого модуля действуют
  *    только под открытым небом. Внутри здания, храма, склепа и пещеры дождь не
  *    заливает глаза, а гроза не глушит шаги: это и физически честно, и
- *    избавляет стол от спора «а мы же в трактире».
+ *    избавляет стол от спора «а мы же в трактире». Крыша опознаётся **тем же**
+ *    распознавателем тем, которым сцену строил генератор (`matchTheme`), — см.
+ *    `isIndoorScene`.
  * 5. **Каждый эффект — помеха или преимущество, а не число.** Модуль не
  *    придумывает новых модификаторов: он добавляет причину в тот же список,
  *    которым движок уже считает преимущество и помеху
@@ -58,7 +61,18 @@ import { worldLocationById } from './world-map.mjs'
 export const WEATHER_SCHEMA_VERSION = 1
 export const WEATHER_POLICY_ID = 'skazanie:weather-and-time-v1'
 
-/** Сколько минут в сутках. Тем же числом считает рассвет `item-dawn-recharge`. */
+/**
+ * Сколько минут в сутках.
+ *
+ * Осторожно: рассвет у мировых часов и «рассвет» перезарядки предметов — разные
+ * границы, и общее у них только это число. `dawnCrossings`
+ * (`server/item-dawn-recharge.mjs`) считает рассветом кратные 1440 минутам от
+ * начала кампании, то есть 08:00 по этим часам; погодные сутки начинаются в
+ * 05:00 (`DAY_START_MINUTE`). Предметы, стало быть, перезаряжаются через три
+ * часа после того, как в кампании рассвело. Сводить обе границы к одной —
+ * решение владельца: у предметов SRD говорит «на рассвете», а рассвет как час
+ * придуман здесь.
+ */
 export const MINUTES_PER_DAY = 1_440
 
 /**
@@ -131,9 +145,9 @@ export const DEFAULT_BIOME = 'plains'
  * покрывать его целиком: тема, не попавшая ни в один набор, молча стала бы
  * улицей. Сторож — `test/weather.test.mjs`.
  *
- * Список продублирован здесь намеренно, а не импортирован: `scene-themes.mjs`
- * тянет за собой генераторы планировок и расстановку предметов, а этот модуль —
- * лист, как `law-and-order.mjs`.
+ * Разделение на «под крышей» и «под небом» — знание погоды, а не каталога тем,
+ * поэтому наборы живут здесь. Само же опознание темы берётся из каталога
+ * (`matchTheme`): второй разбор названия локации разошёлся бы с генератором.
  */
 export const INDOOR_SCENE_THEMES = Object.freeze(new Set(['building', 'temple', 'crypt', 'cave']))
 
@@ -150,9 +164,6 @@ export const INDOOR_SCENE_KINDS = Object.freeze(new Set(['dungeon']))
 export const TIME_OF_DAY_CHANGED_EVENT = 'TimeOfDayChanged'
 export const WEATHER_CHANGED_EVENT = 'WeatherChanged'
 export const WORLD_CLOCK_EVENT_TYPES = Object.freeze(new Set([TIME_OF_DAY_CHANGED_EVENT, WEATHER_CHANGED_EVENT]))
-
-/** Навыки, которым погода и темнота вообще что-то меняют. */
-export const WEATHER_AFFECTED_SKILLS = Object.freeze(new Set(['perception', 'survival', 'stealth']))
 
 const MAX_WORLD_MINUTE = 5_000_000
 
@@ -274,13 +285,40 @@ export function weatherOf(state = {}, elapsedMinutes = elapsedMinutesOf(state)) 
 // ---------------------------------------------------------------------------
 
 /**
- * Стоит ли сцена под крышей. Ответ берётся из темы уже построенной тактической
- * карты (`scene.map.theme` хранит идентификатор темы), а при её отсутствии — из
- * вида сцены. Своего разбора названия локации здесь нет: он разошёлся бы с
- * опознанием темы на первой же локации, созданной на лету.
+ * Тема сцены так, как её понимает каталог тем. Источники идут от прочного к
+ * восстанавливаемому:
+ *
+ * 1. `scene.map.theme` — тема уже построенной тактической карты. Доживает до
+ *    состояния только у тем, чей идентификатор совпал со старым `pattern`
+ *    (сейчас это `crypt`): карта сцены доезжает **старыми клетками**, а
+ *    `legacyCellsFromTacticalMap` пишет `cell.pattern` лишь для legacy-узоров.
+ *    Первым источником поле стоит потому, что это ответ самой карты.
+ * 2. `matchTheme` по словам картографа — та же функция и те же три аргумента,
+ *    которыми тему выбирал генератор сцены (`generateSceneCellsFor`,
+ *    `server/adventure-director.mjs`). Это не второй разбор названия, а тот же
+ *    самый: разойтись с генератором ему негде.
+ *
+ * Честная граница: если генератор узнал тему **не** по словам, а по заявке на
+ * карту (`layout: 'cavern'` без слова «пещера» в названии), восстановить её
+ * отсюда нечем — заявка в состоянии не хранится. Такая сцена считается
+ * открытой; тема `crypt` из узора спасается пунктом 1.
+ */
+function sceneThemeIdOf(scene = {}) {
+  const stored = text(scene?.map?.theme, 60)
+  if (INDOOR_SCENE_THEMES.has(stored) || OUTDOOR_SCENE_THEMES.has(stored)) return stored
+  return matchTheme({
+    location: text(scene?.location, 120),
+    theme: text(scene?.theme, 120),
+    sceneKind: text(scene?.scene_kind, 40),
+  })?.id ?? ''
+}
+
+/**
+ * Стоит ли сцена под крышей. Ответ берётся из опознанной темы сцены, а когда
+ * тема не опознана — из вида сцены: подземелье без карты всё равно помещение.
  */
 export function isIndoorScene(scene = {}) {
-  const theme = text(scene?.map?.theme, 60)
+  const theme = sceneThemeIdOf(scene)
   if (INDOOR_SCENE_THEMES.has(theme)) return true
   if (OUTDOOR_SCENE_THEMES.has(theme)) return false
   return INDOOR_SCENE_KINDS.has(text(scene?.scene_kind, 40))
@@ -338,8 +376,23 @@ const WEATHER_EFFECTS = Object.freeze([
 
 export const WEATHER_EFFECT_IDS = Object.freeze(WEATHER_EFFECTS.map((effect) => effect.id))
 
-/** Что действует при таком небе. Чистая функция: состояния не читает вовсе. */
-function effectsUnder({ indoors = false, phase = 'day', weather = 'clear' } = {}) {
+/**
+ * Навыки, которым погода и темнота вообще что-то меняют. Выводится из самой
+ * таблицы, а не перечисляется рядом с ней: руками написанный набор молча
+ * отключал бы новую строку — `weatherCheckSwing` выходит по нему до обращения к
+ * таблице, и эффект для навыка вне набора не сработал бы ни разу.
+ */
+export const WEATHER_AFFECTED_SKILLS = Object.freeze(new Set(WEATHER_EFFECTS.flatMap((effect) => effect.skills ?? [])))
+
+/**
+ * Что действует при таком небе. Чистая функция: состояния не читает вовсе.
+ *
+ * Экспортируется ради сторожа: `weatherCheckSwing` отдаёт **один** эффект, и
+ * конфликт в таблице (одно небо, один навык, обе стороны) из её ответа не виден.
+ * Перебор фаз × погоды × навыков живёт в `test/weather.test.mjs` и опирается
+ * именно на эту функцию.
+ */
+export function weatherEffectsUnder({ indoors = false, phase = 'day', weather = 'clear' } = {}) {
   if (indoors) return []
   return WEATHER_EFFECTS.filter((effect) => (
     (effect.phase == null || effect.phase === phase)
@@ -348,7 +401,7 @@ function effectsUnder({ indoors = false, phase = 'day', weather = 'clear' } = {}
 }
 
 function activeEffects(state, elapsedMinutes = elapsedMinutesOf(state)) {
-  return effectsUnder({
+  return weatherEffectsUnder({
     indoors: isIndoors(state),
     phase: timeOfDayOf(elapsedMinutes),
     weather: weatherOf(state, elapsedMinutes),
@@ -409,7 +462,7 @@ export function worldClockFor(state = {}, elapsedMinutes = elapsedMinutesOf(stat
     region_name: text(currentRegionOf(state)?.name, 120),
     indoors,
     indicator: `${phaseLabel} · ${weatherLabel}`,
-    effects: effectsUnder({ indoors, phase, weather }).map((effect) => effect.label),
+    effects: weatherEffectsUnder({ indoors, phase, weather }).map((effect) => effect.label),
   }
 }
 
@@ -457,6 +510,12 @@ export function worldClockForAgents(state = {}) {
  * записывается одним событием: игрок пропустил не четыре смены погоды, а один
  * промежуток, и рассказывать про каждый пропущенный рассвет было бы враньём про
  * то, чего отряд не видел.
+ *
+ * Край здесь один — тот, в котором отряд стоит **сейчас**: время идёт до
+ * перехода, и небо этих минут принадлежит покидаемому краю. Смену неба от
+ * пересечения границы края пишет отдельный черновик
+ * (`regionWeatherEventDraft`), иначе «было → стало» опровергалось бы индикатором
+ * сразу по прибытии.
  */
 export function worldClockEventDrafts(state = {}, advancedMinutes = 0) {
   const advanced = minutes(advancedMinutes)
@@ -500,12 +559,51 @@ export function worldClockEventDrafts(state = {}, advancedMinutes = 0) {
         weather_label: weatherConditionLabel(weatherAfter),
         biome: currentBiomeOf(state),
         region_name: text(currentRegionOf(state)?.name, 120),
+        reason: 'day',
         day: dayAfter + 1,
         at_minutes: after,
       },
     })
   }
   return drafts
+}
+
+/**
+ * Смена неба от перехода в другой край. Погода принадлежит климату края
+ * (`BIOME_WEATHER_WEIGHTS`), поэтому граница между равниной и топью — такая же
+ * причина сменить небо, как наступившее утро, и молчать о ней нельзя: индикатор
+ * у игрока пересчитывается сразу по прибытии, а летопись бы об этом не сказала
+ * ни слова — да ещё и опровергала бы только что записанное «стало ясно».
+ *
+ * Считается по двум состояниям — до перехода и после, — потому что край берётся
+ * из `worldMap.currentLocationId`, а его меняет само событие сцены. Время между
+ * ними не идёт: сравнивать минуты не нужно, разойтись эти два ответа могут
+ * только климатом.
+ *
+ * Возвращает `null`, когда небо то же самое: переход внутри одного края — не
+ * событие погоды.
+ */
+export function regionWeatherEventDraft(before = {}, after = {}) {
+  const weatherBefore = weatherOf(before)
+  const weatherAfter = weatherOf(after)
+  if (weatherBefore === weatherAfter) return null
+  return {
+    event_type: WEATHER_CHANGED_EVENT,
+    visibility: 'party',
+    payload: {
+      schema_version: WEATHER_SCHEMA_VERSION,
+      policy_id: WEATHER_POLICY_ID,
+      weather_before: weatherBefore,
+      weather_after: weatherAfter,
+      weather_label: weatherConditionLabel(weatherAfter),
+      biome: currentBiomeOf(after),
+      region_name: text(currentRegionOf(after)?.name, 120),
+      region_before: text(currentRegionOf(before)?.name, 120),
+      reason: 'region',
+      day: campaignDayOf(elapsedMinutesOf(after)) + 1,
+      at_minutes: elapsedMinutesOf(after),
+    },
+  }
 }
 
 /**
@@ -537,7 +635,10 @@ export function worldClockNarration(event = {}) {
   if (type === WEATHER_CHANGED_EVENT) {
     const line = WEATHER_ARRIVAL_LINES[String(payload.weather_after)] ?? ''
     const summary = weatherConditionSummary(payload.weather_after)
-    return [line, summary].filter(Boolean).join(' ')
+    // Небо, сменившееся от перехода границы края, объявляется иначе: «зарядил
+    // дождь» посреди пути звучало бы как погода, а не как другой климат.
+    const prefix = String(payload.reason) === 'region' ? 'За краем — другое небо.' : ''
+    return [prefix, line, summary].filter(Boolean).join(' ')
   }
   return ''
 }

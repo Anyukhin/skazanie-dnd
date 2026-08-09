@@ -10,29 +10,35 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { combatNarration } from '../server/combat-narration.mjs'
+import { combatNarration, tacticalNarrationOr, tacticalNarrationParts } from '../server/combat-narration.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { generateSceneCells } from '../server/adventure-director.mjs'
 import { SCENE_THEMES } from '../server/scene-themes.mjs'
 import {
   BIOME_WEATHER_WEIGHTS,
   CAMPAIGN_START_MINUTE_OF_DAY,
   DAY_PHASES,
+  DAY_PHASE_IDS,
   INDOOR_SCENE_THEMES,
   MINUTES_PER_DAY,
   OUTDOOR_SCENE_THEMES,
+  WEATHER_AFFECTED_SKILLS,
   WEATHER_CONDITION_IDS,
   WEATHER_TABLE_WEIGHT,
   campaignDayOf,
   clockLabelOf,
   isIndoorScene,
+  regionWeatherEventDraft,
   timeOfDayOf,
   weatherCheckSwing,
+  weatherEffectsUnder,
   weatherOnDay,
+  weatherRangedPenalty,
   worldClockEventDrafts,
   worldClockFor,
   worldClockNarration,
 } from '../server/weather.mjs'
-import { normalizeCampaignState, previewD20Check, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
+import { normalizeCampaignState, previewD20Check, replayEvents, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
 const source = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8')
@@ -73,8 +79,8 @@ function worldMap() {
  * руках. Сцена без темы карты и без вида — то есть под открытым небом, как и
  * должно быть на тракте.
  */
-function field({ minutes = 0, sceneKind = null, locationId = 'road', foeAt = { x: 5, y: 1 } } = {}) {
-  const cells = Array.from({ length: 160 }, (_, index) => ({ x: index % 16, y: Math.floor(index / 16), type: 'floor', revealed: true }))
+function field({ minutes = 0, sceneKind = null, locationId = 'road', foeAt = { x: 5, y: 1 }, cells = null, location = 'Старый тракт', combat = true } = {}) {
+  const grid = cells ?? Array.from({ length: 160 }, (_, index) => ({ x: index % 16, y: Math.floor(index / 16), type: 'floor', revealed: true }))
   return normalizeCampaignState({
     sessionCode: 'WEATHER-1',
     campaign: 'Небо над трактом',
@@ -86,18 +92,22 @@ function field({ minutes = 0, sceneKind = null, locationId = 'road', foeAt = { x
       inventory: [BOW, SWORD], x: 1, y: 1,
     }],
     enemies: [{ id: 'foe', name: 'Разбойник', creature_type: 'humanoid', hp: 30, maxHp: 30, armor: 13, speed: 30, abilities: { str: 12, dex: 12, con: 12, int: 10, wis: 10, cha: 10 }, x: foeAt.x, y: foeAt.y, alive: true }],
-    scene: { turn: 1, title: 'Тракт', location: 'Старый тракт', location_id: locationId, cells, ...(sceneKind ? { scene_kind: sceneKind } : {}) },
+    // Сцена собрана так же, как её кладёт переход Режиссёра: тема — слова
+    // картографа, вид сцены — из тех же аргументов команды.
+    scene: { turn: 1, title: location, location, location_id: locationId, theme: location, cells: grid, ...(sceneKind ? { scene_kind: sceneKind } : {}) },
     worldMap: { ...worldMap(), currentLocationId: locationId },
     mechanics: {
       world_time: { elapsed_minutes: minutes },
-      combat: {
-        active: true, round: 1, active_index: 0,
-        initiative: [{ actor_id: 'scout', total: 20 }, { actor_id: 'foe', total: 8 }],
-        action_economy: {
-          scout: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
-          foe: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+      ...(combat ? {
+        combat: {
+          active: true, round: 1, active_index: 0,
+          initiative: [{ actor_id: 'scout', total: 20 }, { actor_id: 'foe', total: 8 }],
+          action_economy: {
+            scout: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+            foe: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+          },
         },
-      },
+      } : {}),
     },
   })
 }
@@ -123,6 +133,22 @@ function minutesBeforeSkyChanges({ biome = 'plains', limit = 400 } = {}) {
     if (weatherOnDay({ seed: SEED, day, biome }) !== weatherOnDay({ seed: SEED, day: day + 1, biome })) return noonOfDay(day)
   }
   throw new Error(`за ${limit} дней климат ${biome} ни разу не сменился`)
+}
+
+/** Полдень дня, за которым наступает утро с тем же самым небом. */
+function minutesBeforeSkyHolds({ biome = 'plains', limit = 400 } = {}) {
+  for (let day = 0; day < limit; day += 1) {
+    if (weatherOnDay({ seed: SEED, day, biome }) === weatherOnDay({ seed: SEED, day: day + 1, biome })) return noonOfDay(day)
+  }
+  throw new Error(`за ${limit} дней климат ${biome} ни разу не повторился через сутки`)
+}
+
+/** Полдень дня, в который два климата дают разное небо. */
+function minutesWhereBiomesDiffer(first, second, { limit = 400 } = {}) {
+  for (let day = 0; day < limit; day += 1) {
+    if (weatherOnDay({ seed: SEED, day, biome: first }) !== weatherOnDay({ seed: SEED, day, biome: second })) return noonOfDay(day)
+  }
+  throw new Error(`за ${limit} дней климаты ${first} и ${second} ни разу не разошлись`)
 }
 
 const skillCheck = (state, skill, values) => resolveCommand(
@@ -189,12 +215,55 @@ test('темы сцены разделены на «под крышей» и «�
     const indoor = INDOOR_SCENE_THEMES.has(theme.id)
     const outdoor = OUTDOOR_SCENE_THEMES.has(theme.id)
     assert.ok(indoor !== outdoor, `тема ${theme.id} не отнесена ни к помещению, ни к улице (или сразу к обоим)`)
-    assert.equal(isIndoorScene({ map: { theme: theme.id } }), indoor)
   }
-  // Сцена без построенной карты опознаётся по виду: подземелье — под крышей.
-  assert.equal(isIndoorScene({ scene_kind: 'dungeon' }), true)
-  assert.equal(isIndoorScene({ scene_kind: 'wilderness' }), false)
+  // Сцена без опознанной темы опознаётся по виду: подземелье — под крышей.
+  assert.equal(isIndoorScene({ location: 'Безымянное место', scene_kind: 'dungeon' }), true)
+  assert.equal(isIndoorScene({ location: 'Безымянное место', scene_kind: 'wilderness' }), false)
   assert.equal(isIndoorScene({}), false, 'без данных сцена считается открытой — погода честнее молчания')
+})
+
+/**
+ * Локации, по которым генератор сцены узнаёт каждую из семи тем. Это те же
+ * слова, что пишет картограф, а не идентификаторы: ими и только ими тема
+ * доезжает до состояния.
+ */
+const THEME_LOCATIONS = Object.freeze({
+  building: 'Дом старосты',
+  temple: 'Храм забытого света',
+  crypt: 'Древний склеп',
+  cave: 'Глубокая пещера',
+  forest: 'Тёмный лес',
+  road: 'Старый тракт',
+  settlement: 'Деревня Пепел',
+})
+
+/** Сцена, собранная настоящим генератором, а не выдуманной формой объекта. */
+function generatedScene(themeId, minutes) {
+  const location = THEME_LOCATIONS[themeId]
+  assert.ok(location, `у темы ${themeId} нет локации в наборе теста`)
+  const cells = generateSceneCells({
+    theme: location, location, sceneKind: 'other', seed: `weather:${themeId}`, locationId: 'road', map: {},
+  })
+  return field({ minutes, cells, location })
+}
+
+test('крыша опознаётся у состояния из живого конвейера, а не только на форме объекта', () => {
+  // Проверка формы (`{map:{theme}}`) пропускала главное: карта сцены доезжает до
+  // состояния старыми клетками, и `map.theme` там пуст у всех тем, кроме склепа.
+  // Поэтому сцена собирается тем же генератором, что в игре, и вопрос задаётся
+  // не функции, а броску.
+  const minutes = minutesWithWeather('rain')
+  for (const theme of SCENE_THEMES) {
+    const state = generatedScene(theme.id, minutes)
+    const indoors = INDOOR_SCENE_THEMES.has(theme.id)
+    assert.equal(worldClockFor(state).weather, 'rain')
+    assert.equal(worldClockFor(state).indoors, indoors, `тема ${theme.id}: крыша опознана неверно`)
+    assert.equal(
+      skillCheck(state, 'perception', [18, 4]).rolls[0].mode,
+      indoors ? 'normal' : 'disadvantage',
+      `тема ${theme.id}: дождь ${indoors ? 'заливает глаза под крышей' : 'не дошёл до броска под открытым небом'}`,
+    )
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -222,7 +291,7 @@ test('дождь приводит Восприятие и Выживание к 
 
 test('в помещении дождя нет: та же минута, тот же навык, обычный бросок', () => {
   const minutes = minutesWithWeather('rain')
-  const indoors = field({ minutes, sceneKind: 'dungeon' })
+  const indoors = generatedScene('crypt', minutes)
   assert.equal(worldClockFor(indoors).indoors, true)
   assert.deepEqual(worldClockFor(indoors).effects, [], 'под крышей действующих помех нет вовсе')
 
@@ -261,13 +330,20 @@ test('туман мешает выстрелу, но не удару в упор
 
   const arrow = shoot(inFog, [16, 3, 4])
   assert.equal(attackRoll(arrow).mode, 'disadvantage')
-  assert.ok(arrow.events.find((event) => event.event_type === 'AttackResolved').payload.disadvantage_sources.includes('туман'))
+  // Подпись помехи берётся из таблицы модуля, а не пишется движком заново:
+  // вторая дальняя помеха иначе получила бы чужое слово.
+  assert.equal(weatherRangedPenalty(inFog).reason, 'туман')
+  assert.ok(arrow.events.find((event) => event.event_type === 'AttackResolved')
+    .payload.disadvantage_sources.includes(weatherRangedPenalty(inFog).reason))
 
   // Меч тумана не замечает: на длине руки видно и в молоке.
   const melee = field({ minutes: minutesWithWeather('fog', { biome: 'marsh' }), locationId: 'fen', foeAt: { x: 2, y: 1 } })
   assert.equal(attackRoll(shoot(melee, [16, 4], 'sword')).mode, 'normal')
 
-  const roofed = normalizeCampaignState({ ...inFog, scene: { ...inFog.scene, scene_kind: 'dungeon' } })
+  const roofed = normalizeCampaignState({
+    ...inFog,
+    scene: { ...inFog.scene, location: 'Штольня под топью', theme: 'Штольня под топью' },
+  })
   assert.equal(attackRoll(shoot(roofed, [16, 4])).mode, 'normal', 'под крышей тумана нет')
 })
 
@@ -340,6 +416,88 @@ test('черновики событий — чистая функция сост
   assert.deepEqual(worldClockEventDrafts(state, 0), [], 'нулевой шаг не двигает ничего')
 })
 
+test('утро с тем же небом, что вчера, летописи не нужно', () => {
+  // Сторож обоих условий сразу: сутки сменились, а небо — нет. Без него правило
+  // «событие только на смену» держалось на слове, и `&&` можно было заменить на
+  // `||`, не уронив ни одного теста.
+  const start = minutesBeforeSkyHolds()
+  const state = field({ minutes: start })
+  const nextDay = field({ minutes: start + MINUTES_PER_DAY })
+  assert.equal(campaignDayOf(start) + 1, campaignDayOf(start + MINUTES_PER_DAY), 'сутки обязаны смениться')
+  assert.equal(worldClockFor(state).weather, worldClockFor(nextDay).weather, 'небо обязано остаться прежним')
+  assert.deepEqual(worldClockEventDrafts(state, MINUTES_PER_DAY), [], 'сутки прошли, а небо то же — событию неоткуда взяться')
+})
+
+test('переход в другой край объявляет небо, а не меняет его молча', () => {
+  // Погода принадлежит климату края, поэтому граница между равниной и топью —
+  // такая же причина смены, как наступившее утро. Прежде событие писал только
+  // ход времени, и `weather_after` описывал покинутый край.
+  const minutes = minutesWhereBiomesDiffer('plains', 'marsh')
+  const before = field({ minutes, locationId: 'road', combat: false })
+  const after = field({ minutes, locationId: 'fen', combat: false })
+  assert.notEqual(worldClockFor(before).weather, worldClockFor(after).weather, 'края обязаны разойтись небом')
+
+  const draft = regionWeatherEventDraft(before, after)
+  assert.ok(draft, 'смена края с другим небом обязана давать событие')
+  assert.equal(draft.payload.weather_before, worldClockFor(before).weather)
+  assert.equal(draft.payload.weather_after, worldClockFor(after).weather)
+  assert.equal(draft.payload.reason, 'region')
+  assert.equal(draft.visibility, 'party')
+  assert.equal(regionWeatherEventDraft(before, before), null, 'переход внутри одного края событием неба не является')
+
+  // Тот же ответ на живой команде: событие приезжает вместе с переходом сцены.
+  const moved = resolveCommands([{
+    command_type: 'AdvanceScene',
+    actor_id: 'scout',
+    command_id: 'cmd-weather-move',
+    campaign_id: 'WEATHER',
+    scene_args: { location: 'Гиблая топь', location_id: 'fen', title: 'Топь', objective: 'Найти проводника' },
+  }], before, { diceService: dice([]), context: { isAdmin: true, allowedActorIds: ['scout'] } })
+  const sky = moved.events.filter((event) => event.event_type === 'WeatherChanged')
+  assert.equal(sky.length, 1, 'небо объявляется один раз на переход')
+  assert.equal(sky[0].payload.weather_after, worldClockFor(moved.state).weather, 'записанное совпадает с тем, что покажет индикатор')
+  assert.match(worldClockNarration(sky[0]), /^За краем — другое небо\./u)
+
+  // Переход без смены края события не порождает: небо то же самое.
+  const stayed = resolveCommands([{
+    command_type: 'AdvanceScene',
+    actor_id: 'scout',
+    command_id: 'cmd-weather-stay',
+    campaign_id: 'WEATHER',
+    scene_args: { location: 'Старый тракт', location_id: 'road', title: 'Тракт', objective: 'Осмотреться' },
+  }], before, { diceService: dice([]), context: { isAdmin: true, allowedActorIds: ['scout'] } })
+  assert.equal(stayed.events.some((event) => event.event_type === 'WeatherChanged'), false)
+})
+
+test('одно и то же небо не даёт навыку и помеху, и преимущество', () => {
+  // Обещанный сторож таблицы: `weatherCheckSwing` отдаёт первый подошедший
+  // эффект, и конфликт из её ответа не виден. Перебор идёт по самой таблице.
+  const seen = new Set()
+  for (const phase of DAY_PHASE_IDS) {
+    for (const weather of WEATHER_CONDITION_IDS) {
+      const swingBySkill = new Map()
+      for (const effect of weatherEffectsUnder({ phase, weather })) {
+        for (const skill of effect.skills ?? []) {
+          seen.add(skill)
+          const previous = swingBySkill.get(skill)
+          assert.equal(previous ?? effect.swing, effect.swing, `${phase}/${weather}: навыку ${skill} назначены обе стороны сразу`)
+          swingBySkill.set(skill, effect.swing)
+        }
+      }
+      assert.deepEqual(weatherEffectsUnder({ indoors: true, phase, weather }), [], 'под крышей не действует ничего')
+    }
+  }
+  // Набор затронутых навыков выводится из таблицы: руками написанный список
+  // молча отключал бы новую строку — функция выходит по нему до таблицы.
+  assert.deepEqual([...seen].sort(), [...WEATHER_AFFECTED_SKILLS].sort())
+  const rain = field({ minutes: minutesWithWeather('rain') })
+  for (const skill of WEATHER_AFFECTED_SKILLS) {
+    const swing = weatherCheckSwing(rain, skill)
+    if (swing) assert.ok(['advantage', 'disadvantage'].includes(swing.swing))
+  }
+  assert.equal(weatherCheckSwing(rain, 'persuasion'), null, 'навык вне таблицы неба не замечает')
+})
+
 test('строка про небо дописывается последней и не вытесняет события хода', () => {
   const state = field({ minutes: 0 })
   const dusk = { event_type: 'TimeOfDayChanged', payload: { phase_after: 'night' }, target_ids: [] }
@@ -352,6 +510,35 @@ test('строка про небо дописывается последней �
   // На ходу, где кроме неба не случилось ничего, строка про небо остаётся
   // единственной: иначе смену времени суток игрок не увидел бы вовсе.
   assert.equal(combatNarration([dusk], state), worldClockNarration(dusk))
+})
+
+test('небо дописывается к запасному тексту, а не вместо него', () => {
+  // Шаг Режиссёра, пересёкший 17:00, отдавал в ленту одну фразу про вечер:
+  // `tacticalNarration(...) || deterministicNarration(...)` перестал доходить до
+  // запасного, как только боевой рассказчик научился говорить про небо. Переход
+  // сцены боевой рассказчик не описывает вовсе, поэтому запасной обязателен.
+  const state = field({ minutes: 0 })
+  const dusk = { event_type: 'TimeOfDayChanged', payload: { phase_after: 'evening' }, target_ids: [] }
+  const sceneAdvanced = { event_type: 'SceneAdvanced', payload: { location_before: 'Тракт', location_after: 'Пепельная Гать' }, target_ids: [] }
+  const fallback = 'Сцена перемещена из Тракт в Пепельная Гать. Цель отряда: Найти проводника.'
+
+  const parts = tacticalNarrationParts([sceneAdvanced, dusk], state)
+  assert.equal(parts.main, '', 'про сам переход боевому рассказчику сказать нечего')
+  assert.equal(parts.sky, worldClockNarration(dusk))
+
+  const composed = tacticalNarrationOr([sceneAdvanced, dusk], state, fallback)
+  assert.ok(composed.startsWith(fallback), `запасной текст пропал: ${composed}`)
+  assert.ok(composed.endsWith(worldClockNarration(dusk)), 'небо дописано последним')
+
+  // Когда ход описан, запасной рассказчик не зовётся вовсе: он стоит дорого.
+  let calls = 0
+  const knockout = { event_type: 'RestCompleted', actor_id: 'scout', target_ids: ['scout'], payload: { kind: 'short', reason: 'knockout' } }
+  const withTurn = tacticalNarrationOr([knockout, dusk], state, () => { calls += 1; return fallback })
+  assert.equal(calls, 0, 'запасной рассказчик вызван зря')
+  assert.equal(withTurn, combatNarration([knockout, dusk], state), 'на описанном ходу текст прежний')
+
+  // Сторож проводки: маршрут Режиссёра обязан складывать текст этой функцией.
+  assert.match(source('server/index.mjs'), /const directorNarration = tacticalNarrationOr\(events, authoritative\.state, \(\) => deterministicNarration\(/u)
 })
 
 test('строка летописи детерминированная и по-русски', () => {
