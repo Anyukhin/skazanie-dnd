@@ -16,7 +16,7 @@ import {
   serializeTacticalMap,
   serializedTacticalMapHash,
 } from './tactical-map.mjs'
-import { captivesForViewer } from './captives.mjs'
+import { captiveForViewer, captivesForViewer } from './captives.mjs'
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -924,12 +924,21 @@ function eventForViewer(event, user, actorId, state = {}) {
   // событий расходились молча.
   //
   // Режет тот же белый список, что и проекция состояния
-  // (`npcProfileForViewerAt`, `server/npc-social.mjs`), и место правки выбрано
-  // тем, что производителей у события уже трое: команда `UpsertNpcSocialProfile`
-  // (`server/npc-social.mjs`), увод заложника ходом мира
-  // (`server/offscreen-world.mjs`) и переезд пленного вместе с отрядом
-  // (`server/captives.mjs`). Санитайзер по месту потребовал бы трёх одинаковых
-  // правок и промолчал бы у четвёртого.
+  // (`npcProfileForViewerAt`, `server/npc-social.mjs`). Место правки выбрано
+  // тем, что производителей у события пять и живут они в четырёх модулях:
+  // команда `UpsertNpcSocialProfile` (`server/npc-social.mjs`), увод заложника
+  // ходом мира (`server/offscreen-world.mjs`), профиль нового пленного и его
+  // переезд вместе с отрядом (`server/captives.mjs`, два места) и профиль
+  // предводителя под парлеем (`server/rules-engine.mjs`). Санитайзер по месту
+  // потребовал бы пяти одинаковых правок и промолчал бы у шестого; точный
+  // список на сегодня — `grep -rn "NpcSocialProfileUpserted" server/`.
+  //
+  // Своей проверки видимости здесь нет и не нужно — но не потому, что «нет
+  // живых производителей с закрытым NPC»: `projectVisibleState` выше уже
+  // выбросил узел `payload.npc` целиком по его собственной `visibility`, и на
+  // party-видимом событии о `gm_only`-NPC игрок получает `payload: {}`.
+  // Поэтому `&& payload.npc` — не косметика, а единственный сторож ветки:
+  // снять его значит уронить проекцию на пустом payload.
   if (visible.event_type === 'NpcSocialProfileUpserted' && payload.npc) {
     payload.npc = npcProfileForViewerAt(payload.npc, {
       playerId: String(actorId ?? ''),
@@ -937,6 +946,19 @@ function eventForViewer(event, user, actorId, state = {}) {
       isPartyMember: true,
       state,
     })
+  }
+  // Пленный. Та же дыра и то же лечение: `CaptiveTaken` несёт целиком запись
+  // реестра, а белый список отряда (`captiveForViewer`, `server/captives.mjs`
+  // — та же функция, что стоит под проекцией состояния) вырезает из неё
+  // `stat_block_id`, `xp` и `known_fact_ids`: стат-блок в обход опознания врага
+  // (`publicEnemyFor` ниже отдаёт его только по факту `stat_block` в знании
+  // отряда), XP как чистое метаигровое число и неразвязанные ниточки допроса.
+  // До ревью 2026-08-09 всё это уезжало игроку событием, пока проекция
+  // состояния честно молчала.
+  if (visible.event_type === 'CaptiveTaken' && payload.captive) {
+    const forViewer = captiveForViewer(payload.captive)
+    if (forViewer) payload.captive = forViewer
+    else delete payload.captive
   }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
   if (['HitPointDieSpent', 'HitPointDiceRestored'].includes(String(visible.event_type))

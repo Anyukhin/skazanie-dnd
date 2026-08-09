@@ -576,6 +576,68 @@ test('профиль переехавшего пленного уезжает с
   assert.deepEqual(gm.payload.npc.goals, ['выбраться живым'], 'ведущему профиль виден целиком')
 })
 
+test('сам плен уезжает столу белым списком: ни стат-блока, ни XP, ни неразвязанных ниточек', () => {
+  // Ревью 2026-08-09, вторая половина той же дыры. У `CaptiveTaken` ветки в
+  // `eventForViewer` не было, а событие несёт целиком запись реестра — со
+  // `stat_block_id`, `xp` и `known_fact_ids`. Ровно эти три поля
+  // `captivesForViewer` из состояния вырезает, и соседний тест ниже требует,
+  // чтобы `srd_5_2_1:bandit` не встречался в проекции реестра, — но канал
+  // событий отдавал его даром, в обход опознания врага (`publicEnemyFor`
+  // показывает стат-блок только по факту `stat_block` в знании отряда).
+  const result = endCombat(campaign())
+  const raw = result.events.filter((event) => event.event_type === 'CaptiveTaken')
+  assert.equal(raw.length, 2)
+  assert.equal(
+    raw.every((event) => event.payload.captive.stat_block_id === 'srd_5_2_1:bandit' && event.payload.captive.xp === 25),
+    true,
+    'в журнале запись остаётся полной — режет только проекция',
+  )
+  assert.equal(raw.every((event) => event.payload.captive.known_fact_ids.length === 1), true)
+
+  const projected = mechanicsForViewer(result.events, { role: 'player', heroIds: ['hero'] }, 'hero', result.state)
+    .filter((event) => event.event_type === 'CaptiveTaken')
+  assert.equal(projected.length, 2, 'сам плен стол видеть обязан')
+  for (const event of projected) {
+    for (const key of ['stat_block_id', 'xp', 'known_fact_ids']) {
+      assert.equal(event.payload.captive[key], undefined, `«${key}» в канале событий игроку не принадлежит`)
+    }
+    // Вместо списка фактов — счётчик «есть что вытянуть»: тот же, что в реестре.
+    assert.equal(event.payload.captive.pending_knowledge, 1)
+    assert.equal(event.payload.captive.name.length > 0, true, 'кого именно связали, стол знать обязан')
+  }
+  assert.equal(JSON.stringify(projected).includes('srd_5_2_1:bandit'), false, 'плен — не дверь в обход опознания врага')
+  assert.equal(JSON.stringify(projected).includes('fact:captive-lead'), false, 'неразвязанная ниточка принадлежит ведущему')
+
+  // Белый список буквально один на оба канала: расхождение ключей и есть тот
+  // способ, которым реестр и лента событий разъезжаются молча.
+  const registry = campaignStateForViewer(result.state, { role: 'player' }, 'hero').captives.captives
+    .find((entry) => entry.actor_id === projected[0].payload.captive.actor_id)
+  assert.deepEqual(Object.keys(projected[0].payload.captive).sort(), Object.keys(registry).sort())
+
+  const gm = mechanicsForViewer(result.events, { role: 'admin' }, 'hero', result.state)
+    .filter((event) => event.event_type === 'CaptiveTaken')
+  assert.equal(gm[0].payload.captive.stat_block_id, 'srd_5_2_1:bandit', 'ведущему провенанс виден целиком')
+  assert.equal(gm[0].payload.captive.xp, 25)
+})
+
+test('профиль новоиспечённого пленного едет столу тем же белым списком', () => {
+  // Пятый производитель `NpcSocialProfileUpserted` — профиль, который заводится
+  // самому пленному в момент захвата. В перечислении производителей его не было,
+  // а ветка проекции его накрывает; закрепляется, чтобы не разъехалось молча.
+  const result = endCombat(campaign())
+  const raw = result.events.find((event) => event.event_type === 'NpcSocialProfileUpserted')
+  assert.ok(raw, 'у безымянного пленного заводится профиль')
+  assert.deepEqual(raw.payload.npc.goals, ['выбраться живым'], 'в журнале профиль остаётся полным')
+
+  const projected = mechanicsForViewer(result.events, { role: 'player', heroIds: ['hero'] }, 'hero', result.state)
+    .find((event) => event.event_type === 'NpcSocialProfileUpserted')
+  assert.ok(projected)
+  for (const key of ['goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'schedule']) {
+    assert.equal(projected.payload.npc[key], undefined, `«${key}» в канале событий игроку не принадлежит`)
+  }
+  assert.equal(projected.payload.npc.location, VILLAGE, 'где связанного держат, стол знать обязан')
+})
+
 test('во время боя пленным не распоряжаются', () => {
   const state = withCaptives()
   const fighting = applyGameEvent(state, {

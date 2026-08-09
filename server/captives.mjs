@@ -630,8 +630,8 @@ export function planCaptiveNeglectCommands(state = {}, { worldMinute } = {}) {
 // ---------------------------------------------------------------------------
 
 /**
- * Что отряд видит про своих пленных. Раскрытое знание остаётся, нераскрытое —
- * нет: `known_fact_ids` принадлежит ведущему, и именно ради него допрос вообще
+ * Один пленный глазами отряда. Раскрытое знание остаётся, нераскрытое — нет:
+ * `known_fact_ids` принадлежит ведущему, и именно ради него допрос вообще
  * является проверкой.
  *
  * Вместе с ним вырезаны `stat_block_id` и `xp`. Плен не должен быть дверью в
@@ -640,19 +640,33 @@ export function planCaptiveNeglectCommands(state = {}, { worldMinute } = {}) {
  * ни при каком уровне знания — это чистое метаигровое число. Связать существо
  * — не то же самое, что узнать его; серверная бухгалтерия награды за сдачу
  * страже читает сырое состояние, а не проекцию, поэтому ничего не теряет.
+ *
+ * Отбор вынесен из `captivesForViewer` отдельной функцией, потому что каналов
+ * у одной и той же записи два: проекция состояния и событие `CaptiveTaken`,
+ * которое несёт ровно ту же запись (`eventForViewer`,
+ * `server/viewer-projection.mjs`). До ревью 2026-08-09 второй канал отдавал её
+ * сырой — со стат-блоком, XP и списком неразвязанных фактов.
+ *
+ * @param {Record<string, any>} [captive]
+ * @returns {Record<string, any> | null} `null`, если запись не проходит нормализацию
  */
+export function captiveForViewer(captive = {}) {
+  const normalized = safeCaptive(captive)
+  if (!normalized) return null
+  const { known_fact_ids: _known, stat_block_id: _statBlock, xp: _xp, ...visible } = normalized
+  return clone({
+    ...visible,
+    pending_knowledge: Math.max(0, normalized.known_fact_ids.length - normalized.revealed_fact_ids.length),
+  })
+}
+
+/** Реестр пленных глазами отряда: тот же отбор, что и у одиночной записи. */
 export function captivesForViewer(state = {}, viewer = {}) {
   const captives = captiveList(state)
   if (viewer?.isAdmin === true) return { schema_version: CAPTIVES_SCHEMA_VERSION, captives: clone(captives) }
   return {
     schema_version: CAPTIVES_SCHEMA_VERSION,
-    captives: captives.map((captive) => {
-      const { known_fact_ids: _known, stat_block_id: _statBlock, xp: _xp, ...visible } = captive
-      return clone({
-        ...visible,
-        pending_knowledge: Math.max(0, captive.known_fact_ids.length - captive.revealed_fact_ids.length),
-      })
-    }),
+    captives: captives.map((captive) => captiveForViewer(captive)).filter(Boolean),
   }
 }
 

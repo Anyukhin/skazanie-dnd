@@ -312,6 +312,38 @@ test('combat event projection removes enemy HP, armor class and initiative modif
   assert.deepEqual(events[2].payload.initiative[1], { actor_id: 'goblin-secret' })
 })
 
+test('профиль закрытого NPC не доезжает столу даже party-видимым событием', () => {
+  // Сторож ветки `NpcSocialProfileUpserted` в `eventForViewer` — это
+  // `&& payload.npc`, и держится он не на «живых производителей с закрытым NPC
+  // нет»: узел `payload.npc` выбрасывает целиком слой ниже,
+  // `projectVisibleState`, по собственной `visibility` самого NPC, и игроку
+  // приезжает пустой payload. Своей проверки `viewerMaySee` в ветке поэтому
+  // нет — дублировать нижний слой нечем. Но и снять `&& payload.npc` нельзя:
+  // без него белый список получит `undefined` ровно на этом событии.
+  const state = privateState()
+  const raw = [{
+    event_type: 'NpcSocialProfileUpserted',
+    actor_id: 'gm',
+    target_ids: [],
+    visibility: 'party',
+    payload: {
+      npc: {
+        id: 'npc-traitor',
+        name: 'Тайный связной',
+        role: 'предатель',
+        visibility: 'gm_only',
+        goals: ['предать отряд'],
+        social_dcs: { persuasion: 22 },
+      },
+    },
+  }]
+  const projected = mechanicsForViewer(raw, user, 'hero', state)
+  assert.equal(projected.length, 1, 'само событие из ленты не пропадает — режется его начинка')
+  assert.deepEqual(projected[0].payload, {}, 'закрытый NPC выбрасывается целиком слоем ниже ветки')
+  assert.equal(JSON.stringify(projected).includes('предать отряд'), false)
+  assert.equal(mechanicsForViewer(raw, { role: 'admin' }, 'hero', state)[0].payload.npc.goals[0], 'предать отряд')
+})
+
 test('magic-item combat outcomes do not disclose an enemy inventory', () => {
   const state = privateState()
   const hiddenSource = {

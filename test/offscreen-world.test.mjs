@@ -457,7 +457,15 @@ test('профиль уведённого заложника уезжает ст
         beliefs: [`Уверен, что ${SECRET}`],
         known_fact_ids: [`fact:${SECRET}`],
         social_dcs: { persuasion: 19, intimidation: 21 },
-        schedule: [{ id: 'day', days: [], start_minute: 0, end_minute: 1_439, location: 'Мельница', available: true, summary: 'У жерновов', visibility: 'party' }],
+        // Расписание нарочно живое и **разное по дням**: в базарный день
+        // мельник на ярмарке, в остальные — у жерновов. Одной записью на все
+        // сутки этот тест ничего не проверял бы про время — проекция считает
+        // активную запись от мирового времени, и подмена третьего аргумента
+        // `eventForViewer` на `{}` (нулевая минута мира) прошла бы незамеченной.
+        schedule: [
+          { id: 'market-day', days: [0], start_minute: 0, end_minute: 1_439, location: 'Ярмарка у брода', available: true, summary: 'Возит муку на торг', visibility: 'party' },
+          { id: 'mill-days', days: [1, 2, 3, 4, 5, 6], start_minute: 0, end_minute: 1_439, location: 'Мельница', available: true, summary: 'У жерновов', visibility: 'party' },
+        ],
       } : npc),
     },
   })
@@ -487,10 +495,25 @@ test('профиль уведённого заложника уезжает ст
   assert.equal(projected.payload.npc.id, 'miller')
   assert.equal(projected.payload.npc.name, 'Мельник Гость')
   assert.equal(projected.payload.npc.available, false)
-  assert.deepEqual(
-    Object.keys(projected.payload.npc).sort(),
-    Object.keys(campaignStateForViewer(current, { id: 'user-1', role: 'player', heroIds: ['hero'] }, 'hero')
-      .social.npcs.find((npc) => npc.id === 'miller')).sort(),
+  const fromState = campaignStateForViewer(current, { id: 'user-1', role: 'player', heroIds: ['hero'] }, 'hero')
+    .social.npcs.find((npc) => npc.id === 'miller')
+  assert.deepEqual(Object.keys(projected.payload.npc).sort(), Object.keys(fromState).sort())
+
+  // Профиль в событии проецируется на **текущее** мировое время, а не на
+  // нулевую минуту: активная запись расписания перебивает `location` профиля, и
+  // без состояния третьим аргументом `eventForViewer` стол получил бы мельника
+  // не там, где он есть. Сверяется с проекцией состояния — это и есть контракт
+  // «канал событий не расходится с реестром», — и отдельно с нулевой минутой,
+  // иначе обе стороны могли бы ошибаться одинаково.
+  const worldMinute = current.mechanics.world_time.elapsed_minutes
+  assert.notEqual(Math.floor(worldMinute / 1_440) % 7, 0, 'фикстура обязана дойти до дня, когда мельник не на ярмарке')
+  assert.equal(projected.payload.npc.location, 'Мельница')
+  assert.equal(projected.payload.npc.location, fromState.location, 'событие и реестр обязаны звать одно и то же место')
+  assert.equal(npcProfileAtWorldTime(raw.payload.npc, 0).location, 'Ярмарка у брода')
+  assert.notEqual(
+    npcProfileAtWorldTime(raw.payload.npc, 0).location,
+    projected.payload.npc.location,
+    'проекция события считает расписание от нулевой минуты, а не от мирового времени',
   )
 
   const gm = mechanicsForViewer(batch, { id: 'user-gm', role: 'admin', heroIds: [] }, '', current)
