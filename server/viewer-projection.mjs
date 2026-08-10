@@ -58,6 +58,18 @@ function integer(value, fallback = 0) {
 }
 
 /**
+ * Enemy illustrations are public presentation data, but the state is still
+ * untrusted at this boundary. Only repository-owned files may reach CSS/HTML.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+function publicEnemyImage(value) {
+  const candidate = text(value, 180)
+  return /^\/assets\/enemies\/[a-z0-9][a-z0-9-]*\.png$/u.test(candidate) ? candidate : ''
+}
+
+/**
  * @param {Loose} [entry]
  * @returns {Loose}
  */
@@ -402,11 +414,15 @@ export function publicEnemyFor(enemy = {}, state = {}, actorId = '') {
   const id = text(enemy.id ?? enemy.actor_id, 120)
   const knowledge = enemyKnowledgeFor(state, id, actorId)
   const exactHealth = exactEnemyHealthKnown(state, id, actorId)
+  const image = publicEnemyImage(enemy.image)
+  const creatureType = text(enemy.creature_type, 80)
   return {
     id,
     name: text(enemy.name, 120),
     x: integer(enemy.x, 0),
     y: integer(enemy.y, 0),
+    ...(image ? { image } : {}),
+    ...(creatureType ? { creature_type: creatureType } : {}),
     alive: enemy.alive !== false && (enemy.hp == null || integer(enemy.hp, 0) > 0),
     healthStatus: enemyHealthStatus(enemy),
     healthKnown: exactHealth ? 'exact' : 'banded',

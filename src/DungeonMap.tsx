@@ -30,7 +30,7 @@ import type { BoardCombatant } from './app-shared'
 import { CharacterEditor, InventoryView } from './InventoryViews'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
-import { useGameSession, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
+import { useGameSession, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
 import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
@@ -185,10 +185,22 @@ export const SPELL_OPTION_LABELS: Record<string, string> = {
   thunder: 'Звук',
 }
 
+export const WEAPON_ATTACK_MODE_LABELS: Record<NonNullable<WeaponAttackChoice['attackMode']>, string> = {
+  melee: 'Одной рукой',
+  ranged: 'Дальний выстрел',
+  thrown: 'Метнуть',
+  'two-handed': 'Двумя руками',
+}
+
+export const WEAPON_ATTACK_ABILITY_LABELS: Record<NonNullable<WeaponAttackChoice['attackAbility']>, string> = {
+  str: 'Сила',
+  dex: 'Ловкость',
+}
+
 export type CombatMode = 'weapon' | 'magic' | 'action'
 export type CombatDeck = 'common' | 'weapon' | 'magic' | 'class' | 'items'
 export type PendingCombatCommand =
-  | { kind: 'target'; targetId: string }
+  | { kind: 'target'; targetId: string; attackMode?: WeaponAttackChoice['attackMode']; attackAbility?: WeaponAttackChoice['attackAbility']; sneakAttack?: boolean }
   | { kind: 'area'; x: number; y: number }
   | { kind: 'spell-target'; targetId: string }
   | { kind: 'spell-point'; x: number; y: number }
@@ -633,7 +645,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onClearTacticalError: () => void
   onStartCombat: () => Promise<CommandOutcome>
   onMove: (actorId: string, x: number, y: number) => Promise<CommandOutcome>
-  onAttack: (actorId: string, enemyId: string, itemId?: string, knockOut?: boolean, note?: string) => Promise<CommandOutcome>
+  onAttack: (actorId: string, enemyId: string, itemId?: string, choice?: WeaponAttackChoice) => Promise<CommandOutcome>
   onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => Promise<CommandOutcome>
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => Promise<CommandOutcome>
@@ -766,6 +778,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [selectedSpellId, setSelectedSpellId] = useState('')
   const [selectedSpellOption, setSelectedSpellOption] = useState('')
   const [selectedCombatActionId, setSelectedCombatActionId] = useState('')
+  const [attackMode, setAttackMode] = useState<WeaponAttackChoice['attackMode']>()
+  const [attackAbility, setAttackAbility] = useState<WeaponAttackChoice['attackAbility']>()
+  const [sneakAttack, setSneakAttack] = useState(false)
   const [knockOut, setKnockOut] = useState(false)
   const [spellbookOpen, setSpellbookOpen] = useState(false)
   const [spellSearch, setSpellSearch] = useState('')
@@ -956,6 +971,19 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   }
   const combatItems = (activeHero?.inventory ?? []).map(inferredCombatItem).filter((item): item is NonNullable<typeof item> => Boolean(item && item.quantity > 0))
   const selectedItem = selectedItemId === BASE_ATTACK_ID ? undefined : combatItems.find((item) => item.id === selectedItemId)
+  const selectedWeaponCatalogCombat = selectedItem?.type === 'weapon'
+    ? selectedItem.combat as Player['inventory'][number]['combat']
+    : undefined
+  const weaponModeOptions = selectedWeaponCatalogCombat?.modes ?? []
+  const weaponModeKey = weaponModeOptions.map((mode) => `${mode.id}:${mode.ability}`).join('|')
+  const selectedWeaponMode = weaponModeOptions.find((mode) => mode.id === attackMode) ?? weaponModeOptions[0]
+  const weaponAbilityOptions = selectedItem?.type === 'weapon'
+    ? selectedWeaponCatalogCombat?.abilities ?? (selectedWeaponMode?.ability ? [selectedWeaponMode.ability] : [])
+    : []
+  const selectedWeaponAbility = weaponAbilityOptions.includes(attackAbility as NonNullable<WeaponAttackChoice['attackAbility']>)
+    ? attackAbility
+    : selectedWeaponMode?.ability
+  const selectedWeaponCombat = selectedWeaponMode ?? selectedItem?.combat
   const weaponSelectionId = selectedItem?.id ?? BASE_ATTACK_ID
   const projectedSpells = activeHero?.combatSpells ?? []
   const fallbackSpells = fallbackCombatSpells(activeHero)
@@ -982,17 +1010,22 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const spellSlotReady = !selectedSpell?.slotResource || spellPools.some((pool) => Number(pool?.current ?? 0) > 0)
   const genericProfile = active as (BoardCombatant & { attackRange?: number; rangeFeet?: number; attack_profile?: { kind?: 'melee' | 'ranged'; range_feet?: number; normal_range_feet?: number } }) | undefined
   const baseRangeFeet = Math.max(CELL_FEET, Number(genericProfile?.attack_profile?.range_feet ?? genericProfile?.attackRange ?? genericProfile?.rangeFeet) || CELL_FEET)
-  const selectedAttackKind = selectedItem?.combat?.kind ?? genericProfile?.attack_profile?.kind ?? (baseRangeFeet <= CELL_FEET ? 'melee' : 'ranged')
+  const selectedAttackKind = selectedWeaponCombat?.kind ?? genericProfile?.attack_profile?.kind ?? (baseRangeFeet <= CELL_FEET ? 'melee' : 'ranged')
   const knockoutEligible = combatMode === 'weapon'
     ? selectedAttackKind === 'melee'
     : combatMode === 'magic' && selectedSpell?.kind === 'attack' && selectedSpell.attackKind === 'melee'
-  const attackRangeFeet = Math.max(CELL_FEET, Number(selectedItem?.combat?.longRange ?? selectedItem?.combat?.normalRange) || baseRangeFeet)
-  const normalRangeFeet = Math.max(CELL_FEET, Number(selectedItem?.combat?.normalRange ?? genericProfile?.attack_profile?.normal_range_feet) || attackRangeFeet)
+  const attackRangeFeet = Math.max(CELL_FEET, Number(selectedWeaponCombat?.longRange ?? selectedWeaponCombat?.normalRange) || baseRangeFeet)
+  const normalRangeFeet = Math.max(CELL_FEET, Number(selectedWeaponCombat?.normalRange ?? genericProfile?.attack_profile?.normal_range_feet) || attackRangeFeet)
   const areaRadiusFeet = selectedItem?.combat?.kind === 'thrown-area' ? Number(selectedItem.combat.radius) || 5 : 0
   const spellAreaRadiusFeet = combatMode === 'magic' && selectedSpell?.target === 'point' ? Math.max(0, Number(selectedSpell.radius) || 0) : 0
   const equippedWeapon = activeHero?.inventory.find((item) => item.type === 'weapon' && item.equipped)
   const needsWeaponChange = Boolean(selectedItem?.type === 'weapon' && !selectedItem.equipped && equippedWeapon && equippedWeapon.id !== selectedItem.id)
   const economy = combat.action_economy?.[turnActorId]
+  const sneakAttackEligible = combatMode === 'weapon'
+    && activeHero?.characterClass === 'rogue'
+    && selectedItem?.type === 'weapon'
+    && (selectedWeaponCatalogCombat?.kind === 'ranged' || selectedWeaponCatalogCombat?.abilities?.includes('dex'))
+  const sneakAttackSpent = Boolean(economy?.sneak_attack_turn_key)
   const authoritativeMovementSpent = economy?.movement_remaining != null
     ? Math.max(0, (active?.speed ?? 0) - economy.movement_remaining)
     : economy?.movement_spent ?? (economy?.movement === false ? active?.speed ?? 0 : 0)
@@ -1205,6 +1238,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     setHotbarSpellIds(nextHotbar)
     setSelectedSpellId(nextHotbar[0] ?? spells[0]?.id ?? '')
     setSelectedCombatActionId('')
+    setSneakAttack(false)
     setSpellbookOpen(false)
     setActiveDeck('weapon')
     setCombatMode('weapon')
@@ -1217,19 +1251,35 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     if (!options.length) setSelectedSpellOption('')
     else if (!options.includes(selectedSpellOption as typeof options[number])) setSelectedSpellOption(options[0])
   }, [selectedSpell?.id, selectedSpellOption])
+  useEffect(() => {
+    const defaultMode = weaponModeOptions[0]
+    const mode = weaponModeOptions.find((candidate) => candidate.id === attackMode) ?? defaultMode
+    const abilities = selectedWeaponCatalogCombat?.abilities ?? (mode?.ability ? [mode.ability] : [])
+    setAttackMode(mode?.id)
+    setAttackAbility((current) => abilities.includes(current as NonNullable<WeaponAttackChoice['attackAbility']>) ? current : mode?.ability)
+  }, [selectedItem?.id, selectedWeaponCatalogCombat?.abilities?.join('|'), weaponModeKey, attackMode])
   useEffect(() => { if (!knockoutEligible) setKnockOut(false) }, [knockoutEligible])
+  useEffect(() => { if (!sneakAttackEligible || sneakAttackSpent) setSneakAttack(false) }, [sneakAttackEligible, sneakAttackSpent])
   useEffect(() => {
     setPendingCommand(null)
     setPendingMoveKey(null)
     setHoveredMoveKey(null)
     setInspectedTarget(null)
     setAimCell(null)
-  }, [selectedItemId, selectedSpellId, selectedCombatActionId, combatMode, turnActorId, combat.round])
+  }, [selectedItemId, selectedSpellId, selectedCombatActionId, combatMode, turnActorId, combat.round, attackMode, attackAbility, sneakAttack])
 
   const chooseTarget = (enemyId: string) => {
     if (!selected || needsWeaponChange || selectedItem?.combat?.kind === 'thrown-area') return
-    if (autoAttackRoll) onAttack(selected, enemyId, selectedItem?.id, knockOut && knockoutEligible)
-    else setPendingCommand({ kind: 'target', targetId: enemyId })
+    const choice = {
+      ...(selectedWeaponMode?.id ? { attackMode: selectedWeaponMode.id } : {}),
+      ...(selectedWeaponAbility ? { attackAbility: selectedWeaponAbility } : {}),
+      ...(sneakAttack ? { sneakAttack: true } : {}),
+      ...(knockOut && knockoutEligible ? { knockOut: true } : {}),
+    }
+    if (autoAttackRoll) void onAttack(selected, enemyId, selectedItem?.id, choice).then((outcome) => {
+      if (outcome.ok && sneakAttack) setSneakAttack(false)
+    })
+    else setPendingCommand({ kind: 'target', targetId: enemyId, ...choice })
   }
   const chooseArea = (x: number, y: number) => {
     if (!selected || !selectedItem || selectedItem.combat?.kind !== 'thrown-area') return
@@ -1307,7 +1357,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const confirmPreparedCommand = async (note?: string): Promise<CommandOutcome | null> => {
     if (!selected || !pendingCommand) return null
     let outcome: CommandOutcome | null = null
-    if (pendingCommand.kind === 'target') outcome = await onAttack(selected, pendingCommand.targetId, selectedItem?.id, knockOut && knockoutEligible, note)
+    if (pendingCommand.kind === 'target') outcome = await onAttack(selected, pendingCommand.targetId, selectedItem?.id, {
+      ...(pendingCommand.attackMode ? { attackMode: pendingCommand.attackMode } : {}),
+      ...(pendingCommand.attackAbility ? { attackAbility: pendingCommand.attackAbility } : {}),
+      ...(pendingCommand.sneakAttack ? { sneakAttack: true } : {}),
+      ...(knockOut && knockoutEligible ? { knockOut: true } : {}),
+      ...(note ? { note } : {}),
+    })
     else if (pendingCommand.kind === 'area' && selectedItem) outcome = await onAreaAttack(selected, selectedItem.id, pendingCommand.x, pendingCommand.y, note)
     else if (pendingCommand.kind === 'spell-target' && selectedSpell) {
       outcome = await onCastSpell(selected, selectedSpell.id, { targetId: pendingCommand.targetId, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(knockOut && knockoutEligible ? { knockOut: true } : {}), ...(note ? { note } : {}) })
@@ -1316,7 +1372,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     } else if (pendingCommand.kind === 'action-target' && selectedCombatAction) {
       outcome = await onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
     }
-    if (outcome?.ok) setPendingCommand(null)
+    if (outcome?.ok) {
+      if (pendingCommand.kind === 'target' && pendingCommand.sneakAttack) setSneakAttack(false)
+      setPendingCommand(null)
+    }
     return outcome
   }
 
@@ -2496,8 +2555,19 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <i className="detail-chip" title={`Дальность: ${attackRangeFeet} фт`}>{attackRangeFeet} фт</i>
               {areaRadiusFeet ? <i className="detail-chip" title={`Радиус поражения: ${areaRadiusFeet} фт`}>◍ {areaRadiusFeet}</i> : null}
               {inspectedForecast ? <i className="detail-chip forecast" title="Бонус атаки рассчитан сервером для выбранной цели">атака {inspectedForecast.attack_modifier >= 0 ? '+' : '−'}{Math.abs(inspectedForecast.attack_modifier)}</i> : null}
-              {inspectedForecast ? <i className="detail-chip forecast" title="Урон взят из серверного профиля выбранного оружия">{selectedItem?.combat?.damage ? `урон ${selectedItem.combat.damage}` : `средний урон ${inspectedForecast.average_damage}`}</i> : null}
-            </>} /></>}
+              {inspectedForecast ? <i className="detail-chip forecast" title="Урон взят из серверного профиля выбранного оружия">{selectedWeaponCombat?.damage ? `урон ${selectedWeaponCombat.damage}` : `средний урон ${inspectedForecast.average_damage}`}</i> : null}
+            </>} />
+            {weaponModeOptions.length > 1 && <div className="spell-option-picker weapon-attack-picker" aria-label="Режим атаки оружием">
+              {weaponModeOptions.map((mode) => <button key={mode.id} type="button" className={selectedWeaponMode?.id === mode.id ? 'selected' : ''} onClick={() => { setAttackMode(mode.id); setAttackAbility(mode.ability) }}>{WEAPON_ATTACK_MODE_LABELS[mode.id]}</button>)}
+            </div>}
+            {weaponAbilityOptions.length > 1 && <div className="spell-option-picker weapon-attack-picker" aria-label="Характеристика атаки оружием">
+              {weaponAbilityOptions.map((ability) => <button key={ability} type="button" className={selectedWeaponAbility === ability ? 'selected' : ''} onClick={() => setAttackAbility(ability)}>{WEAPON_ATTACK_ABILITY_LABELS[ability]}</button>)}
+            </div>}
+            {sneakAttackEligible && <label className={`weapon-rider-toggle ${sneakAttack ? 'selected' : ''} ${sneakAttackSpent ? 'spent' : ''}`} title={sneakAttackSpent ? 'Коварная атака уже нанесла урон в этом ходу' : 'Добавить урон Коварной атаки, если сервер подтвердит условия'}>
+              <input type="checkbox" checked={sneakAttack} disabled={tacticalBusy || sneakAttackSpent} onChange={(event) => setSneakAttack(event.target.checked)} />
+              <span>{sneakAttackSpent ? 'Коварная атака использована' : 'Коварная атака'}</span>
+            </label>}
+            </>}
           </aside>
         </div>
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}

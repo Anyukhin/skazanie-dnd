@@ -1289,6 +1289,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .spell-option-picker { display: flex; flex-wrap: wrap; gap: 3px; }
 .spell-option-picker button { min-height: 20px; padding: 2px 6px; border: 1px solid rgba(202,164,105,.2); border-radius: 4px; background: rgba(29,22,18,.88); color: #9f8c75; font: 600 var(--fs-xs) Spectral, serif; cursor: pointer; }
 .spell-option-picker button:hover, .spell-option-picker button.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
+.weapon-rider-toggle { width: fit-content; display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px; border: 1px solid rgba(202,164,105,.2); border-radius: 5px; background: rgba(29,22,18,.88); color: #a99a87; font: 600 var(--fs-xs) Manrope, sans-serif; cursor: pointer; }
+.weapon-rider-toggle input { margin: 0; accent-color: #bd7d3b; }
+.weapon-rider-toggle.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
+.weapon-rider-toggle.spent { opacity: .56; cursor: not-allowed; }
 .combat-hotbar .hotbar-turn-controls button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Кнопки прижаты к правому краю карточки и не участвуют в прокрутке плиток:
    ширина по содержимому, но не уже 132px — «Сменить оружие» иначе режется. */

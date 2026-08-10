@@ -82,13 +82,6 @@ const LOOT_IDS = new Set([
   'srd_5_2_1:war-pick',
 ])
 
-const IMPLEMENTED_WEAPON_COMBAT = new Set([
-  'srd_5_2_1:dagger',
-  'srd_5_2_1:longsword',
-  'srd_5_2_1:longbow',
-  'srd_5_2_1:shortbow',
-])
-
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
   for (const nested of Object.values(value)) deepFreeze(nested)
@@ -137,6 +130,41 @@ function titleCaseDamageType(value) {
   }[value] ?? value
 }
 
+function weaponCombat({ group, damage, damageType, properties = [], normalRange = 5, longRange = null, attackBonus = 0, damageBonus = 0 }) {
+  const ranged = group.endsWith('ranged')
+  const finesse = properties.includes('finesse')
+  const abilities = finesse ? ['str', 'dex'] : ranged ? ['dex'] : ['str']
+  const meleeRange = properties.includes('reach') ? 10 : 5
+  const twoHanded = properties.includes('two-handed') || properties.includes('two-handed-unless-mounted')
+  const versatile = properties.find((property) => property.startsWith('versatile-'))?.slice('versatile-'.length) ?? null
+  const common = {
+    abilities,
+    properties: [...properties],
+    ...(attackBonus ? { attackBonus } : {}),
+    ...(damageBonus ? { damageBonus } : {}),
+  }
+  const modes = ranged
+    ? [{ id: 'ranged', kind: 'ranged', ability: abilities.at(-1), damage, damageType, normalRange, ...(longRange != null ? { longRange } : {}), ...(twoHanded ? { twoHanded: true } : {}), ...(properties.includes('ammunition') ? { ammunition: true } : {}) }]
+    : [
+        { id: 'melee', kind: 'melee', ability: abilities.at(-1), damage, damageType, normalRange: meleeRange, ...(twoHanded ? { twoHanded: true } : {}) },
+        ...(versatile ? [{ id: 'two-handed', kind: 'melee', ability: abilities.at(-1), damage: versatile, damageType, normalRange: meleeRange, twoHanded: true }] : []),
+        ...(properties.includes('thrown') ? [{ id: 'thrown', kind: 'ranged', ability: abilities.at(-1), damage, damageType, normalRange, ...(longRange != null ? { longRange } : {}), thrown: true }] : []),
+      ]
+  const primary = modes[0]
+  return {
+    ...common,
+    kind: primary.kind,
+    ability: primary.ability,
+    damage: primary.damage,
+    damageType: primary.damageType,
+    normalRange: primary.normalRange,
+    ...(primary.longRange != null ? { longRange: primary.longRange } : {}),
+    ...(primary.twoHanded ? { twoHanded: true } : {}),
+    ...(primary.ammunition ? { ammunition: true } : {}),
+    modes,
+  }
+}
+
 function weaponEntry({
   id,
   name,
@@ -151,21 +179,7 @@ function weaponEntry({
   longRange = null,
 }) {
   const catalogId = `srd_5_2_1:${id}`
-  const ranged = group.endsWith('ranged')
-  const finesse = properties.includes('finesse')
-  const combatRange = ranged ? normalRange : properties.includes('reach') ? 10 : 5
-  const combat = IMPLEMENTED_WEAPON_COMBAT.has(catalogId)
-    ? {
-        kind: ranged ? 'ranged' : 'melee',
-        ability: ranged || finesse ? 'dex' : 'str',
-        damage,
-        damageType,
-        normalRange: combatRange,
-        ...(ranged && longRange != null ? { longRange } : {}),
-        ...(properties.includes('two-handed') ? { twoHanded: true } : {}),
-        ...(properties.includes('ammunition') ? { ammunition: true } : {}),
-      }
-    : null
+  const combat = weaponCombat({ group, damage, damageType, properties, normalRange, longRange })
   return {
     catalog_id: catalogId,
     ...ITEM_CATALOG_SOURCE,
@@ -188,9 +202,7 @@ function weaponEntry({
     crafting: { implemented: false, hooks: [] },
     weapon: { group, damage, damage_type: damageType, properties, mastery, normal_range_feet: normalRange, long_range_feet: longRange },
     mechanics_status: 'partial',
-    limitation: combat
-      ? 'Базовая атака исполнима, но mastery, versatile, reach, thrown и расход ammunition полностью не поддержаны.'
-      : 'Сохранены точные параметры SRD; боевой профиль ещё не подключён к Rules Engine.',
+    limitation: 'Базовая атака, выбор хвата, finesse, reach и метание исполняются сервером; mastery, расход ammunition и возврат брошенного оружия пока не автоматизированы.',
     availability: availability(catalogId),
     source_page: 91,
     provenance: provenance(91),
@@ -213,7 +225,7 @@ function armorEntry({
   const shield = category === 'shield'
   const armorProfile = shield
     ? { kind: 'shield', armorClassBonus, speedPenalty: 0 }
-    : { kind: 'armor', armorClassBase, dexterityCap, speedPenalty: 0 }
+    : { kind: 'armor', armorClassBase, dexterityCap, speedPenalty: 0, strengthRequirement: strength, stealthDisadvantage }
   return {
     catalog_id: catalogId,
     ...ITEM_CATALOG_SOURCE,
@@ -245,7 +257,7 @@ function armorEntry({
       stealth_disadvantage: stealthDisadvantage,
     },
     mechanics_status: 'partial',
-    limitation: 'КД считается сервером; training, Stealth, условный штраф скорости и время don/doff пока не исполняются полностью.',
+    limitation: 'КД, требование Силы и помеха Скрытности считаются сервером; training и время don/doff пока не автоматизированы.',
     availability: availability(catalogId),
     source_page: 92,
     provenance: provenance(92),
@@ -340,6 +352,7 @@ function gearEntry({
   mechanicsStatus = null,
   limitation,
   mechanicsSourcePage = null,
+  dndsuReferenceUrl = null,
 }) {
   const catalogId = `srd_5_2_1:${id}`
   const partial = SHOP_IDS.has(catalogId) || use != null
@@ -370,6 +383,7 @@ function gearEntry({
     source_page: 95,
     ...(sourcePages ? { source_pages: sourcePages } : {}),
     ...(mechanicsSourcePage ? { mechanics_source_page: mechanicsSourcePage } : {}),
+    ...(dndsuReferenceUrl ? { dndsu_reference_url: dndsuReferenceUrl } : {}),
     provenance: provenance(95, { sourcePages, mechanicsSourcePage }),
   }
 }
@@ -484,10 +498,11 @@ const GEAR = [
     type: 'consumable',
     weight: 1,
     price: 2_500,
-    description: 'Склянка кислоты. Действием её выплёскивают на существо вплотную или бросают на 20 футов: бросок как импровизированным оружием, при попадании 2к6 урона кислотой.',
-    use: { kind: 'thrown_flask', damage: '2d6', damage_type: 'acid', consumes: 1, combat_action: 'action', range_feet: 20, target: 'creature', requires_line_of_sight: true, combat_only: true },
+    description: 'Во время действия «Атака» одна атака заменяется метанием склянки в видимую цель в пределах 20 футов. При провале спасброска Ловкости цель получает 2к6 урона кислотой.',
+    use: { kind: 'thrown_flask', damage: '2d6', damage_type: 'acid', consumes: 1, combat_action: 'action', attack_replacement: true, save: { ability: 'dex', dc: { base: 8, ability: 'dex', proficiency: true } }, range_feet: 20, target: 'creature', requires_line_of_sight: true, combat_only: true },
     mechanicsStatus: 'verified',
-    limitation: 'Бросок, попадание, критическое удвоение костей и 2к6 кислотой исполняются Rules Engine. Владение импровизированным оружием движок не моделирует: к броску идёт только модификатор Ловкости.',
+    limitation: 'Замена одной атаки, серверный спасбросок Ловкости со СЛ 8 + модификатор Ловкости + бонус мастерства, расход склянки и 2к6 кислотой исполняются Rules Engine.',
+    dndsuReferenceUrl: 'https://next.dnd.su/equipment/201-acid',
   },
   {
     id: 'alchemists-fire',
@@ -495,21 +510,45 @@ const GEAR = [
     type: 'consumable',
     weight: 1,
     price: 5_000,
-    description: 'Склянка горючей смеси. Действием её бросают на 20 футов: бросок как импровизированным оружием, при попадании цель горит и получает 1к4 огнём в начале каждого своего хода, пока пламя не потушат действием.',
+    description: 'Во время действия «Атака» одна атака заменяется метанием склянки в видимую цель в пределах 20 футов. При провале спасброска Ловкости цель получает 1к4 урона огнём и начинает гореть.',
     use: {
       kind: 'thrown_flask',
+      damage: '1d4',
+      damage_type: 'fire',
       consumes: 1,
       combat_action: 'action',
+      attack_replacement: true,
+      save: { ability: 'dex', dc: { base: 8, ability: 'dex', proficiency: true } },
       range_feet: 20,
       target: 'creature',
       requires_line_of_sight: true,
       combat_only: true,
-      on_hit_condition: { id: 'alchemists-fire-flames', recurring_damage: '1d4', recurring_damage_type: 'fire' },
+      on_failed_save_condition: { id: 'alchemists-fire-flames', recurring_damage: '1d4', recurring_damage_type: 'fire' },
     },
     mechanicsStatus: 'verified',
-    limitation: 'Бросок, попадание, горение 1к4 в начале хода цели и тушение действием исполняются Rules Engine. Тушение без проверки характеристики — чтение SRD 5.2.1: проверка Ловкости СЛ 10 осталась в редакции 2014. Владение импровизированным оружием не моделируется, поджигание предметов и объектов — тоже.',
+    limitation: 'Замена одной атаки, серверный спасбросок Ловкости, начальные 1к4 огнём, горение 1к4 в начале хода и тушение действием с получением состояния «Опрокинутый» исполняются Rules Engine. Погружение в воду и перекрытие воздуха пока не автоматизированы.',
+    dndsuReferenceUrl: 'https://next.dnd.su/equipment/202-alchemists-fire',
   },
-  { id: 'antitoxin', name: 'Противоядие', type: 'consumable', weight: 0, price: 5_000, description: 'Флакон противоядия; заявленное преимущество против яда пока не исполняется.', limitation: 'Bonus Action и часовой эффект против Poisoned не реализованы.' },
+  {
+    id: 'antitoxin',
+    name: 'Противоядие',
+    type: 'consumable',
+    weight: 0,
+    price: 5_000,
+    description: 'Бонусным действием вы выпиваете флакон. В течение часа вы совершаете с преимуществом спасброски для избежания или прекращения состояния «Отравленный».',
+    use: {
+      kind: 'antitoxin',
+      consumes: 1,
+      combat_action: 'bonus_action',
+      range_feet: 0,
+      target: 'self',
+      duration_minutes: 60,
+      save_condition: 'poisoned',
+    },
+    mechanicsStatus: 'partial',
+    limitation: 'Выпивание, расход флакона, бонусное действие, часовой срок и преимущество исполняются сервером только на известных путях, где профиль правила явно помечает спасбросок как избегающий или завершающий Poisoned. Произвольные и будущие источники яда без такого контекста преимущества не получают; обычные спасброски Телосложения не затрагиваются.',
+    dndsuReferenceUrl: 'https://next.dnd.su/equipment/204-antitoxin',
+  },
   { id: 'backpack', name: 'Рюкзак', weight: 5, price: 200, description: 'Дорожный рюкзак для переноски снаряжения.', limitation: 'Объём контейнера не моделируется.' },
   { id: 'ball-bearings', name: 'Шарики, мешочек', weight: 2, price: 100, description: 'Мешочек металлических шариков для создания препятствия.', limitation: 'Рассыпание, площадь и падение не исполняются Rules Engine.' },
   { id: 'bedroll', name: 'Спальный мешок', weight: 7, price: 100, description: 'Свёрнутая походная постель.', limitation: 'Бонусы отдыха от снаряжения не моделируются.' },
@@ -561,21 +600,24 @@ const GEAR = [
     type: 'consumable',
     weight: 1,
     price: 2_500,
-    description: 'Склянка освящённой воды. Действием её выплёскивают вплотную или бросают на 20 футов: бросок как импровизированным оружием, при попадании 2к6 урона излучением — но только нежити и исчадиям.',
+    description: 'Во время действия «Атака» одна атака заменяется метанием святой воды в видимую цель в пределах 20 футов. При провале спасброска Ловкости нежить или исчадие получает 2к8 урона излучением.',
     use: {
       kind: 'thrown_flask',
-      damage: '2d6',
+      damage: '2d8',
       damage_type: 'radiant',
       damage_creature_types: ['undead', 'fiend'],
       consumes: 1,
       combat_action: 'action',
+      attack_replacement: true,
+      save: { ability: 'dex', dc: { base: 8, ability: 'dex', proficiency: true } },
       range_feet: 20,
       target: 'creature',
       requires_line_of_sight: true,
       combat_only: true,
     },
     mechanicsStatus: 'verified',
-    limitation: 'Бросок, попадание и 2к6 излучением по нежити и исчадиям исполняются Rules Engine; всем остальным существам склянка вреда не наносит, и это объявляется отдельным событием. Владение импровизированным оружием не моделируется.',
+    limitation: 'Замена одной атаки, серверный спасбросок Ловкости и 2к8 излучением по нежити и исчадиям исполняются Rules Engine; остальным существам вреда нет, что объявляется отдельным событием.',
+    dndsuReferenceUrl: 'https://next.dnd.su/equipment/234-holy-water',
   },
   { id: 'hunting-trap', name: 'Охотничий капкан', weight: 25, price: 500, description: 'Механический капкан для удержания цели.', limitation: 'Установка, спасбросок, урон и удержание не реализованы.' },
   { id: 'lantern-hooded', name: 'Закрытый фонарь', weight: 2, price: 500, description: 'Фонарь с заслонкой для управления светом.', limitation: 'Топливо и световой радиус не связаны с картой.' },
@@ -586,19 +628,19 @@ const GEAR = [
     type: 'consumable',
     weight: 1,
     price: 10,
-    description: 'Фляга горючего масла. Действием её бросают в существо на 20 футов: при попадании цель облита, и следующий огненный урон по ней в течение минуты возрастает на 5. Правилом стола флягу можно вместо этого вылить на клетку рядом — лужа вспыхивает от любого огня и горит два раунда.',
+    description: 'Во время действия «Атака» одна атака заменяется метанием масла в видимую цель в пределах 20 футов. При провале спасброска Ловкости цель облита, и следующий огненный урон по ней в течение минуты возрастает на 5. Вместо этого действием масло можно вылить на соседнюю клетку.',
     use: {
       kind: 'thrown_flask',
       consumes: 1,
       combat_action: 'action',
+      attack_replacement: true,
+      save: { ability: 'dex', dc: { base: 8, ability: 'dex', proficiency: true } },
       range_feet: 20,
       target: 'creature',
       requires_line_of_sight: true,
       combat_only: true,
-      on_hit_condition: { id: 'oiled', duration: 'rounds:10', fire_damage_bonus: 5 },
-      // Режим лужи — правило стола, а не строка SRD 5.2.1: см. `spill_mode`.
+      on_failed_save_condition: { id: 'oiled', duration: 'rounds:10', fire_damage_bonus: 5 },
       spill_mode: {
-        house_rule: true,
         range_feet: 5,
         zone: {
           id: 'oil-slick',
@@ -611,7 +653,8 @@ const GEAR = [
       },
     },
     mechanicsStatus: 'verified',
-    limitation: 'Бросок, попадание и добавка 5 огнём к следующему огненному урону в течение минуты исполняются Rules Engine по SRD 5.2.1. Режим «вылить лужу и поджечь» — ЯВНОЕ ПРАВИЛО СТОЛА по решению владельца: в SRD 5.2.1 такой строки нет (она осталась в редакции 2014), поэтому ссылки на страницу у этого режима не приводится. Владение импровизированным оружием не моделируется.',
+    limitation: 'Замена одной атаки, спасбросок Ловкости, одноразовая добавка 5 огнём и официальное выливание на клетку 5 × 5 футов с горением два раунда исполняются Rules Engine. Шесть часов топлива для ламп и фонарей пока не моделируются.',
+    dndsuReferenceUrl: 'https://next.dnd.su/equipment/249-oil',
   },
   {
     id: 'poison-basic',
@@ -619,11 +662,11 @@ const GEAR = [
     type: 'consumable',
     weight: 0,
     price: 10_000,
-    description: 'Доза яда. Действием ею покрывают одно оружие: в течение минуты первое же попадание этим оружием добавляет 1к4 урона ядом.',
+    description: 'Доза яда. Бонусным действием ею покрывают одно оружие: в течение минуты первый рубящий или колющий урон этим оружием добавляет 1к4 урона ядом.',
     use: {
       kind: 'coat_weapon',
       consumes: 1,
-      combat_action: 'action',
+      combat_action: 'bonus_action',
       range_feet: 5,
       target: 'self',
       rider_damage: '1d4',
@@ -631,7 +674,8 @@ const GEAR = [
       duration: 'rounds:10',
     },
     mechanicsStatus: 'verified',
-    limitation: 'Нанесение на экипированное оружие действием, минута действия и добавка 1к4 ядом к первому попаданию исполняются Rules Engine; иммунитет цели к яду обнуляет добавку общим счётчиком урона. Покрытие боеприпасов отдельно от оружия и спасбросок Телосложения редакции 2014 не моделируются: добавка идёт уроном без спасброска.',
+    limitation: 'Нанесение на оружие бонусным действием, минута действия и добавка 1к4 ядом к первому подходящему попаданию исполняются Rules Engine; иммунитет цели к яду обнуляет добавку общим счётчиком урона. Покрытие до трёх отдельных боеприпасов пока не моделируется.',
+    dndsuReferenceUrl: 'https://next.dnd.su/equipment/253-basic-poison',
   },
   {
     id: 'potion-of-healing',
@@ -670,15 +714,7 @@ const MAGIC_ITEMS = [
     weight: 3,
     lifecycle: { equippable: true, equip_slot: 'main_hand', transferable: true, stackable: false },
     equip: { slot: 'main_hand' },
-    combat: {
-      kind: 'melee',
-      ability: 'str',
-      damage: '1d8',
-      damageType: 'slashing',
-      normalRange: 5,
-      attackBonus: 1,
-      damageBonus: 1,
-    },
+    combat: weaponCombat({ group: 'martial-melee', damage: '1d8', damageType: 'slashing', properties: ['versatile-1d10'], attackBonus: 1, damageBonus: 1 }),
     use: null,
     attunement: { required: false },
     charges: null,
@@ -930,7 +966,7 @@ const MAGIC_ITEMS = [
     base_price_cp: 47_500,
     weight: 55,
     lifecycle: { equippable: true, equip_slot: 'body', transferable: true, stackable: false },
-    equip: { slot: 'body', armor: { kind: 'armor', armorClassBase: 16, dexterityCap: 0, speedPenalty: 0 } },
+    equip: { slot: 'body', armor: { kind: 'armor', armorClassBase: 16, dexterityCap: 0, speedPenalty: 0, strengthRequirement: 13, stealthDisadvantage: true } },
     combat: null,
     use: null,
     activation: null,
@@ -949,7 +985,7 @@ const MAGIC_ITEMS = [
     }],
     magic_item: { category: 'armor', rarity: 'uncommon', base_item_catalog_id: 'srd_5_2_1:chain-mail', value_formula: '400 gp (Uncommon magic item) + 75 gp (Chain Mail)' },
     mechanics_status: 'partial',
-    limitation: 'Надетая кольчуга задаёт КД 16 и отменяет удвоение всех костей критического попадания. Training, Stealth, требование Силы и время надевания ещё не исполняются полностью.',
+    limitation: 'Надетая кольчуга задаёт КД 16, отменяет удвоение всех костей критического попадания, учитывает требование Силы и помеху Скрытности. Training и время надевания ещё не автоматизированы.',
     availability: availability('srd_5_2_1:adamantine-chain-mail'),
     source_page: 209,
     source_pages: [92, 206, 209],
@@ -971,7 +1007,7 @@ const MAGIC_ITEMS = [
     weight: 3,
     lifecycle: { equippable: true, equip_slot: 'main_hand', transferable: true, stackable: false },
     equip: { slot: 'main_hand' },
-    combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 },
+    combat: weaponCombat({ group: 'martial-melee', damage: '1d8', damageType: 'slashing', properties: ['versatile-1d10'] }),
     use: null,
     activation: null,
     attunement: { required: true },
@@ -1011,7 +1047,7 @@ const MAGIC_ITEMS = [
     weight: 3,
     lifecycle: { equippable: true, equip_slot: 'main_hand', transferable: true, stackable: false },
     equip: { slot: 'main_hand' },
-    combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 },
+    combat: weaponCombat({ group: 'martial-melee', damage: '1d8', damageType: 'slashing', properties: ['versatile-1d10'] }),
     use: null,
     activation: null,
     attunement: { required: false },
@@ -1051,7 +1087,7 @@ const MAGIC_ITEMS = [
     weight: 3,
     lifecycle: { equippable: true, equip_slot: 'main_hand', transferable: true, stackable: false },
     equip: { slot: 'main_hand' },
-    combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 },
+    combat: weaponCombat({ group: 'martial-melee', damage: '1d8', damageType: 'slashing', properties: ['versatile-1d10'] }),
     use: null,
     activation: {
       schema_version: 1,
@@ -1287,6 +1323,9 @@ export function itemViewerCapabilities(item = {}) {
         ...(entry.use.default_charges_to_spend ? { default_charges_to_spend: entry.use.default_charges_to_spend } : {}),
         ...(entry.use.requires_equipped === true ? { requires_equipped: true } : {}),
         ...(entry.use.combat_only === true ? { combat_only: true } : {}),
+        ...(entry.use.kind === 'spill_zone' ? { point_target: true } : {}),
+        ...(entry.use.spill_mode ? { use_modes: ['target', 'spill'], point_target: true } : {}),
+        ...(entry.use.kind === 'coat_weapon' ? { requires_weapon: true } : {}),
       }
     : null
   const activation = entry.activation

@@ -201,7 +201,7 @@ import {
   trustedItemAppraisalFor,
   trustedStockAppraisalFor,
 } from './merchant-economy.mjs'
-import { materializeCatalogItem } from './item-catalog.mjs'
+import { catalogItem, materializeCatalogItem } from './item-catalog.mjs'
 import {
   ITEM_DAWN_RECHARGE_EVENT_SCHEMA_VERSION,
   applyItemDawnRechargeToPlayers,
@@ -2433,16 +2433,31 @@ function combatItem(actor, itemId) {
   return (Array.isArray(actor?.inventory) ? actor.inventory : []).find((item) => String(item?.id) === String(itemId) && Number(item?.quantity ?? 1) > 0) ?? null
 }
 
-function itemAttackProfile(state, actor, itemId) {
+function itemAttackProfile(state, actor, itemId, { attackMode = null, attackAbility = null } = {}) {
   const item = combatItem(actor, itemId)
-  const combat = item?.combat
+  // Каталожный предмет всегда читает боевой профиль из реестра. Поля
+  // сохранённого экземпляра годятся только для legacy/custom-инвентаря и не
+  // дают клиенту подменить дальность, кубы или допустимый хват.
+  const catalogEntry = catalogItem(String(item?.catalog_id ?? item?.catalogId ?? ''))
+  const combat = catalogEntry?.combat ?? item?.combat
   if (!item || !combat || !['melee', 'ranged'].includes(combat.kind)) return null
-  const ability = combat.ability === 'dex' ? 'dex' : 'str'
+  const modes = Array.isArray(combat.modes) && combat.modes.length
+    ? combat.modes.filter((candidate) => candidate && ['melee', 'ranged'].includes(candidate.kind))
+    : [{ id: combat.kind, ...combat }]
+  const requestedMode = attackMode == null || attackMode === '' ? null : String(attackMode)
+  const mode = requestedMode ? modes.find((candidate) => String(candidate.id) === requestedMode) : modes[0]
+  if (!mode) return null
+  const abilities = (Array.isArray(mode.abilities) ? mode.abilities : Array.isArray(combat.abilities) ? combat.abilities : [mode.ability ?? combat.ability])
+    .map(String).filter((ability) => ability === 'str' || ability === 'dex')
+  const allowedAbilities = abilities.length ? abilities : [mode.kind === 'ranged' ? 'dex' : 'str']
+  const requestedAbility = attackAbility == null || attackAbility === '' ? null : String(attackAbility)
+  if (requestedAbility && !allowedAbilities.includes(requestedAbility)) return null
+  const ability = requestedAbility ?? (allowedAbilities.includes(mode.ability) ? mode.ability : allowedAbilities.at(-1))
   const abilityBonus = abilityModifier(actor?.abilities?.[ability])
-  const attackBonus = safeInteger(combat.attackBonus, 0)
-  const damageBonus = safeInteger(combat.damageBonus, 0)
+  const attackBonus = safeInteger(mode.attackBonus ?? combat.attackBonus, 0)
+  const damageBonus = safeInteger(mode.damageBonus ?? combat.damageBonus, 0)
   let damage
-  try { damage = diceExpression(combat.damage, abilityBonus + damageBonus, combat.kind === 'ranged' ? 8 : 8) } catch {
+  try { damage = diceExpression(mode.damage ?? combat.damage, abilityBonus + damageBonus, mode.kind === 'ranged' ? 8 : 8) } catch {
     const fallbackBonus = abilityBonus + damageBonus
     damage = `1d8${fallbackBonus >= 0 ? '+' : ''}${fallbackBonus}`
   }
@@ -2450,14 +2465,44 @@ function itemAttackProfile(state, actor, itemId) {
     item,
     modifier: abilityBonus + Math.max(0, safeInteger(actor?.proficiency, 0)) + attackBonus,
     damage_expression: damage,
-    damage_type: String(combat.damageType || 'piercing').slice(0, 40),
-    range_feet: Math.max(5, Math.min(600, safeInteger(combat.longRange ?? combat.normalRange, 5))),
-    normal_range_feet: Math.max(5, Math.min(600, safeInteger(combat.normalRange, 5))),
-    kind: combat.kind,
+    damage_type: String(mode.damageType ?? combat.damageType ?? 'piercing').slice(0, 40),
+    range_feet: Math.max(5, Math.min(600, safeInteger(mode.longRange ?? mode.normalRange ?? combat.longRange ?? combat.normalRange, 5))),
+    normal_range_feet: Math.max(5, Math.min(600, safeInteger(mode.normalRange ?? combat.normalRange, 5))),
+    kind: mode.kind,
     // Характеристика удара нужна не только для модификатора: «Луч ослабления»
     // режет вдвое именно силовые атаки, и без этого поля правило не выразить.
     ability,
+    mode: String(mode.id ?? mode.kind),
+    properties: uniqueStrings(mode.properties ?? combat.properties),
+    weapon_group: String(catalogEntry?.weapon?.group ?? combat.weaponGroup ?? combat.weapon_group ?? '').toLowerCase(),
+    two_handed: mode.twoHanded === true,
+    thrown: mode.thrown === true,
   }
+}
+
+function hasEquippedShield(actor) {
+  return (Array.isArray(actor?.inventory) ? actor.inventory : []).some((item) => {
+    if (!item?.equipped) return false
+    const entry = catalogItem(String(item.catalog_id ?? item.catalogId ?? ''))
+    return entry?.equip?.slot === 'off_hand' && entry?.equip?.armor?.kind === 'shield'
+  })
+}
+
+function armorRestrictions(actor) {
+  return (Array.isArray(actor?.inventory) ? actor.inventory : []).flatMap((item) => {
+    if (!item?.equipped) return []
+    const armor = catalogItem(String(item.catalog_id ?? item.catalogId ?? ''))?.equip?.armor
+    return armor?.kind === 'armor' ? [armor] : []
+  })
+}
+
+function armorStealthDisadvantage(actor) {
+  return armorRestrictions(actor).some((armor) => armor.stealthDisadvantage === true)
+}
+
+function armorStrengthSpeedPenalty(actor) {
+  const strength = safeInteger(actor?.abilities?.str, 10)
+  return armorRestrictions(actor).some((armor) => strength < safeInteger(armor.strengthRequirement, 0)) ? 10 : 0
 }
 
 function lineCells(from, to) {
@@ -2584,7 +2629,11 @@ function attackSwingShape(state, attackerIdValue, targetIdValue, profile, {
   actorAt = actorPosition(state, attackerIdValue),
   targetAt = actorPosition(state, targetIdValue),
   distanceFeet = null,
-  conditionModifiers = conditionAttackModifiers(state, attackerIdValue, targetIdValue, { distanceFeet, profileKind: profile?.kind ?? null }),
+  conditionModifiers = conditionAttackModifiers(state, attackerIdValue, targetIdValue, {
+    distanceFeet,
+    profileKind: profile?.kind ?? null,
+    meleeReachFeet: profile?.kind === 'melee' ? profile.normal_range_feet : 5,
+  }),
   commandAdvantage = false,
   commandDisadvantage = false,
   extraAdvantage = false,
@@ -2664,11 +2713,11 @@ function d20HitChance(target, { advantage = false, disadvantage = false } = {}) 
  * модификаторов. Ничего не решает и не расходует — читается проекцией, чтобы
  * игрок видел цену размена до клика, как за столом видит свой лист и СЛ.
  */
-export function attackForecast(state, attackerIdValue, targetIdValue, { actionId = null, itemId = null } = {}) {
+export function attackForecast(state, attackerIdValue, targetIdValue, { actionId = null, itemId = null, attackMode = null, attackAbility = null } = {}) {
   const attacker = findActor(state, attackerIdValue)
   const target = findActor(state, targetIdValue)
   if (!attacker || !target) return null
-  const profile = (itemId ? itemAttackProfile(state, attacker, itemId) : null) ?? trustedAttackProfile(state, attacker, actionId)
+  const profile = (itemId ? itemAttackProfile(state, attacker, itemId, { attackMode, attackAbility }) : null) ?? trustedAttackProfile(state, attacker, actionId)
   if (!profile) return null
   const actorAt = actorPosition(state, attackerIdValue)
   const targetAt = actorPosition(state, targetIdValue)
@@ -2686,12 +2735,14 @@ export function attackForecast(state, attackerIdValue, targetIdValue, { actionId
   const swing = attackSwingShape(state, attackerIdValue, targetIdValue, profile, { actorAt, targetAt, distanceFeet })
   const hitChance = d20HitChance(armorClass - modifier, swing)
   // Крит по обездвиженной цели в упор гарантирован правилами, а не костью.
-  const criticalChance = swing.automaticCritical && distanceFeet != null && distanceFeet <= 5
+  const criticalChance = swing.automaticCritical && distanceFeet != null && distanceFeet <= (profile.kind === 'melee' ? profile.normal_range_feet : 5)
     ? hitChance
     : d20HitChance(20, swing)
   const reachable = inRange && !blockedTrajectory
   return {
     action_id: String(profile.id ?? actionId ?? ''),
+    attack_mode: profile.mode ?? null,
+    attack_ability: profile.ability ?? null,
     attack_modifier: modifier,
     armor_class: armorClass,
     cover_bonus: cover.armorClassBonus,
@@ -2734,9 +2785,9 @@ export function attackProfileFor(state, actorIdValue, actionId = null) {
  * @param {string} actorIdValue
  * @param {string} itemId
  */
-export function weaponAttackProfileFor(state, actorIdValue, itemId) {
+export function weaponAttackProfileFor(state, actorIdValue, itemId, options = {}) {
   const actor = findActor(state, actorIdValue)
-  return actor ? itemAttackProfile(state, actor, itemId) : null
+  return actor ? itemAttackProfile(state, actor, itemId, options) : null
 }
 
 function distanceBetweenActors(state, firstActorId, secondActorId) {
@@ -2925,9 +2976,11 @@ function opportunityAttackers(state, moverId, from, path) {
       const conditions = conditionIdsFor(state, candidateId)
       if ([...OPPORTUNITY_BLOCKING_CONDITIONS].some((condition) => conditions.has(condition))) return false
       const position = actorPosition(state, candidateId)
-      if (!position || Math.max(Math.abs(position.x - from.x), Math.abs(position.y - from.y)) !== 1) return false
-      if (!path.some((step) => Math.max(Math.abs(position.x - step.x), Math.abs(position.y - step.y)) > 1)) return false
-      return Boolean(opportunityAttackProfile(state, candidate))
+      const opportunity = opportunityAttackProfile(state, candidate)
+      if (!opportunity || !position) return false
+      const reachCells = Math.max(1, Math.floor(safeInteger(opportunity.profile.range_feet, 5) / 5))
+      if (Math.max(Math.abs(position.x - from.x), Math.abs(position.y - from.y)) > reachCells) return false
+      return path.some((step) => Math.max(Math.abs(position.x - step.x), Math.abs(position.y - step.y)) > reachCells)
     })
     .sort((left, right) => (initiativeOrder.get(actorId(left)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right)) ?? Number.MAX_SAFE_INTEGER)
       || actorId(left).localeCompare(actorId(right)))
@@ -2951,6 +3004,11 @@ function normalizeCommand(input, state) {
   command.merchant_id = command.merchant_id == null && command.merchantId == null ? null : String(command.merchant_id ?? command.merchantId).slice(0, 120)
   command.stock_id = command.stock_id == null && command.stockId == null ? null : String(command.stock_id ?? command.stockId).slice(0, 120)
   command.item_id = command.item_id == null && command.itemId == null ? null : String(command.item_id ?? command.itemId).slice(0, 120)
+  if (command.command_type === 'MakeAttack') {
+    command.attack_mode = command.attack_mode == null && command.attackMode == null ? null : String(command.attack_mode ?? command.attackMode).slice(0, 40)
+    command.attack_ability = command.attack_ability == null && command.attackAbility == null ? null : String(command.attack_ability ?? command.attackAbility).slice(0, 8)
+    command.sneak_attack = command.sneak_attack === true || command.sneakAttack === true
+  }
   if (command.command_type === 'PurchaseMerchantService') {
     command.service_id = command.service_id == null && command.serviceId == null ? null : String(command.service_id ?? command.serviceId).slice(0, 120)
   }
@@ -3352,7 +3410,13 @@ function assertTurn(command, state, context = {}) {
     if (resource === 'action' && command.use_profile?.kind === 'cast_spell' && economy?.surged_action_only) {
       throw new RulesValidationError('Дополнительное действие от Всплеска действий нельзя потратить на магию', 'ACTION_SURGE_MAGIC_FORBIDDEN')
     }
-    if (resource && economy?.[resource] === false) {
+    const attacksUsed = Math.max(0, safeInteger(economy?.attacks_used, 0))
+    const attackReplacementContinuation = resource === 'action'
+      && command.use_profile?.attack_replacement === true
+      && command.use_mode !== 'spill'
+      && attacksUsed > 0
+      && attacksUsed < weaponAttacksPerActionFor(findActor(state, command.actor_id))
+    if (resource && economy?.[resource] === false && !attackReplacementContinuation) {
       throw new RulesValidationError(
         resource === 'bonus_action'
           ? 'Бонусное действие на этом ходу уже потрачено'
@@ -4035,8 +4099,22 @@ export function validateCommand(input, rawState, context = {}) {
     if (!target || targetFor(command) === command.actor_id) throw new RulesValidationError('Нужна другая живая цель атаки', 'INVALID_ATTACK_TARGET')
     if (!isLivingActor(actor)) throw new RulesValidationError('Побеждённый участник не может атаковать', 'ACTOR_DEFEATED')
     if (!isLivingActor(target) && !isDyingHero(state, targetFor(command))) throw new RulesValidationError('Цель уже побеждена', 'TARGET_DEFEATED')
-    if (command.item_id && !itemAttackProfile(state, actor, command.item_id)) throw new RulesValidationError('Выбранное оружие недоступно', 'INVALID_WEAPON')
-    const attackProfile = command.item_id ? itemAttackProfile(state, actor, command.item_id) : trustedAttackProfile(state, actor, command.action_id)
+    const selectedItemProfile = command.item_id
+      ? itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode, attackAbility: command.attack_ability })
+      : null
+    if (command.item_id && !selectedItemProfile) throw new RulesValidationError('Выбранный режим или характеристика оружия недоступны', 'INVALID_WEAPON_PROFILE')
+    const attackProfile = selectedItemProfile ?? trustedAttackProfile(state, actor, command.action_id)
+    if (command.sneak_attack) {
+      if (characterClassKey(actor) !== 'rogue') {
+        throw new RulesValidationError('Коварная атака доступна только плуту', 'SNEAK_ATTACK_CLASS_REQUIRED')
+      }
+      if (!selectedItemProfile) {
+        throw new RulesValidationError('Для Коварной атаки выберите оружие из инвентаря', 'SNEAK_ATTACK_WEAPON_REQUIRED')
+      }
+      if (!selectedItemProfile.weapon_group.endsWith('-ranged') && !selectedItemProfile.properties.includes('finesse')) {
+        throw new RulesValidationError('Коварная атака требует дальнобойного оружия или оружия со свойством finesse', 'SNEAK_ATTACK_WEAPON_INELIGIBLE')
+      }
+    }
     if (command.knock_out === true && attackProfile?.kind !== 'melee') {
       throw new RulesValidationError('Нокаутировать можно только ближней атакой', 'KNOCKOUT_REQUIRES_MELEE_ATTACK')
     }
@@ -4048,6 +4126,9 @@ export function validateCommand(input, rawState, context = {}) {
       }
     }
     const selected = command.item_id ? combatItem(actor, command.item_id) : null
+    if (selectedItemProfile?.two_handed && hasEquippedShield(actor)) {
+      throw new RulesValidationError('Двуручное оружие нельзя использовать вместе с надетым щитом', 'TWO_HANDED_WITH_SHIELD')
+    }
     const otherEquipped = (actor?.inventory ?? []).find((item) => item.type === 'weapon' && item.equipped && String(item.id) !== String(command.item_id))
     if (selected?.type === 'weapon' && !selected.equipped && otherEquipped) throw new RulesValidationError('Сначала уберите экипированное оружие; смена занимает действие', 'WEAPON_SWAP_REQUIRED')
   }
@@ -4626,16 +4707,10 @@ function monsterRechargeAtTurnStart(state, command, actorIdValue, diceService) {
 }
 
 /**
- * Метательная склянка: кислота, святая вода, алхимический огонь.
- *
- * Редакция описывает их одинаково — «бросок как импровизированным оружием», —
- * поэтому и здесь путь один, а различаются только данные профиля: чем бьёт,
- * кому вредит и что оставляет после попадания. Заводить каждой склянке свою
- * ветку значило бы развести три одинаковых правила.
- *
- * Владение импровизированным оружием движок не моделирует, поэтому к броску
- * идёт только модификатор Ловкости. Это названо в ограничении каталога: тихо
- * подставить бонус мастерства было бы выдумкой в пользу игрока.
+ * Метательная склянка редакции SRD 5.2.1: кислота, святая вода,
+ * алхимический огонь и масло заменяют одну атаку и требуют спасбросок
+ * Ловкости, а не бросок атаки. СЛ принадлежит метателю и вычисляется только
+ * из серверного листа: 8 + модификатор Ловкости + бонус мастерства.
  *
  * Святая вода вредит лишь нежити и исчадиям. Промолчать при попадании по
  * остальным нельзя — за столом склянка разбилась и все это видели, — поэтому
@@ -4646,29 +4721,39 @@ function thrownFlaskEvents(state, command, { actor, item, use, diceService, roll
   const target = findActor(state, targetId)
   if (!target) throw new RulesValidationError('Цель броска не найдена', 'TARGET_NOT_FOUND')
   const events = []
-  const armorClass = effectiveArmorClass(state, target, targetId)
-  const attack = diceService.rollD20({
-    modifier: abilityModifier(actor?.abilities?.dex),
-    purpose: `item_thrown:${String(item.catalog_id ?? item.id)}`,
-    actorId: command.actor_id,
+  const saveAbility = String(use.save?.ability ?? 'dex')
+  const saveDc = Math.max(1,
+    safeInteger(use.save?.dc?.base, 8)
+      + abilityModifier(actor?.abilities?.[String(use.save?.dc?.ability ?? 'dex')])
+      + (use.save?.dc?.proficiency === true ? Math.max(0, safeInteger(actor?.proficiency, 0)) : 0))
+  const targetProficient = isSavingThrowProficient(target, saveAbility)
+  const cover = saveAbility === 'dex'
+    ? coverBetween(state, command.actor_id, targetId, actorPosition(state, command.actor_id), actorPosition(state, targetId))
+    : { armorClassBonus: 0, level: 'none', blockers: [] }
+  const saveModifier = abilityModifier(target?.abilities?.[saveAbility])
+    + (targetProficient ? Math.max(0, safeInteger(target?.proficiency, 0)) : 0)
+    + cover.armorClassBonus
+  const save = rollSavingThrowD20(state, diceService, targetId, {
+    ability: saveAbility,
+    modifier: saveModifier,
+    purpose: `item_thrown_save:${String(item.catalog_id ?? item.id)}:${saveAbility}`,
     visibility: command.visibility,
   })
-  rolls.push(attack)
-  const natural = safeInteger(attack.kept, 0)
-  const critical = natural === 20
-  const hit = critical || (natural !== 1 && attack.total >= armorClass)
-  events.push(eventFrom(commandWithRules(command, RULE_IDS.attack, RULE_IDS.armorClass, critical ? RULE_IDS.criticalHit : null), 'AttackResolved', {
-    ...attack,
+  rolls.push(save)
+  const saved = savingThrowSucceeded(save, saveDc)
+  events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+    ...save,
+    ability: saveAbility,
+    difficulty: saveDc,
+    success: saved,
+    saved,
+    source: 'item-thrown',
     item_id: item.id,
     item_name: item.name,
-    improvised_thrown: true,
-    armor_class: armorClass,
-    hit,
-    critical,
-    damage_type: use.damage_type ?? null,
-    range_feet: safeInteger(use.range_feet, 20),
+    proficient: targetProficient,
+    cover: cover.level,
   }, [targetId]))
-  if (!hit) return events
+  if (saved) return events
 
   const allowedTypes = uniqueStrings(use.damage_creature_types).map((value) => value.toLowerCase())
   const creatureType = String(target?.creature_type ?? target?.creatureType ?? '').toLowerCase()
@@ -4684,31 +4769,30 @@ function thrownFlaskEvents(state, command, { actor, item, use, diceService, roll
   }
 
   if (use.damage) {
-    const expression = critical ? criticalDamageExpression(String(use.damage)) : String(use.damage)
-    const damageRoll = diceService.roll(expression, `item_thrown_damage:${String(item.catalog_id ?? item.id)}`, command.actor_id, command.visibility ?? 'public')
+    const damageRoll = diceService.roll(String(use.damage), `item_thrown_damage:${String(item.catalog_id ?? item.id)}`, command.actor_id, command.visibility ?? 'public')
     rolls.push(damageRoll)
     events.push(eventFrom(command, 'DieRolled', { ...damageRoll, item_id: item.id, damage_type: use.damage_type }, []))
     const payload = resolveDamage(state, targetId, damageRoll.total, String(use.damage_type ?? 'acid'))
     events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', {
-      ...payload, item_id: item.id, item_name: item.name, critical,
+      ...payload, item_id: item.id, item_name: item.name, saved: false, save_dc: saveDc, save_total: save.total,
     }, [targetId]))
-    events.push(...zeroHitPointDamageConsequences(state, command, targetId, payload, { critical }))
+    events.push(...zeroHitPointDamageConsequences(state, command, targetId, payload, { critical: false }))
   }
 
   // Горение — обычное условие с повторяющимся уроном: тик в начале хода цели
   // движок уже умеет, своей машинерии пламени не заводится.
-  if (use.on_hit_condition) {
+  if (use.on_failed_save_condition) {
     events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
-      condition: String(use.on_hit_condition.id),
-      duration: use.on_hit_condition.duration ?? null,
+      condition: String(use.on_failed_save_condition.id),
+      duration: use.on_failed_save_condition.duration ?? null,
       source_actor: command.actor_id,
       item_id: item.id,
       item_name: item.name,
-      ...(use.on_hit_condition.recurring_damage ? {
-        recurring_damage: String(use.on_hit_condition.recurring_damage),
-        recurring_damage_type: String(use.on_hit_condition.recurring_damage_type ?? 'fire'),
+      ...(use.on_failed_save_condition.recurring_damage ? {
+        recurring_damage: String(use.on_failed_save_condition.recurring_damage),
+        recurring_damage_type: String(use.on_failed_save_condition.recurring_damage_type ?? 'fire'),
       } : {}),
-      ...(use.on_hit_condition.fire_damage_bonus ? { fire_damage_bonus: safeInteger(use.on_hit_condition.fire_damage_bonus, 0) } : {}),
+      ...(use.on_failed_save_condition.fire_damage_bonus ? { fire_damage_bonus: safeInteger(use.on_failed_save_condition.fire_damage_bonus, 0) } : {}),
     }, [targetId]))
   }
   return events
@@ -4956,6 +5040,33 @@ function actionEconomy() {
   return { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0, movement_path: [], movement_bonus: 0, extra_actions: 0, surged_action_only: false, attacks_used: 0, attacks_allowed: 1 }
 }
 
+function combatTurnKey(state, fallbackActorId = '') {
+  const combat = state?.mechanics?.combat
+  if (!combat?.active) return null
+  const activeActor = combat.initiative?.[safeInteger(combat.active_index, -1)]?.actor_id ?? fallbackActorId
+  return `combat:${safeInteger(combat.round, 1)}:${String(activeActor ?? fallbackActorId)}`
+}
+
+function sneakAttackDiceCount(actor) {
+  return Math.ceil(Math.max(1, Math.min(12, safeInteger(actor?.level, 1))) / 2)
+}
+
+function sneakAttackSupportingAlly(state, attackerIdValue, targetIdValue) {
+  const attackerIsEnemy = isEnemyActor(state, attackerIdValue)
+  const targetIsEnemy = isEnemyActor(state, targetIdValue)
+  if (attackerIsEnemy === targetIsEnemy) return null
+  const targetAt = actorPosition(state, targetIdValue)
+  if (!targetAt) return null
+  return listActors(state).find((candidate) => {
+    const candidateId = actorId(candidate)
+    if (!candidateId || candidateId === attackerIdValue || candidateId === targetIdValue) return false
+    if (isEnemyActor(state, candidateId) !== attackerIsEnemy || isEnemyActor(state, candidateId) === targetIsEnemy) return false
+    if (!isLivingActor(candidate) || incapacitatingConditionFor(state, candidateId)) return false
+    const at = actorPosition(state, candidateId)
+    return Boolean(at) && Math.max(Math.abs(at.x - targetAt.x), Math.abs(at.y - targetAt.y)) <= 1
+  }) ?? null
+}
+
 function reactionOptionsAfterAttack(state, target, {
   hit = false,
   attackTotal = 0,
@@ -5152,10 +5263,17 @@ function activeAreaEffectsAt(state, position) {
  * `effect.cells.some`: индекс строится один раз на один расчёт маршрута.
  */
 function difficultTerrainLookupFor(state) {
-  const cells = new Set()
-  const areas = []
+  const webCells = new Set()
+  const otherCells = new Set()
+  const webAreas = []
+  const otherAreas = []
   for (const effect of state.mechanics.active_effects ?? []) {
     if (effect?.difficult_terrain !== true) continue
+    // `web-walker` относится только к паутине. Идентификатор заклинания —
+    // авторитетный признак причины местности; имя/id эффекта не угадываем.
+    const web = String(effect.spell_id ?? '').toLowerCase() === 'web'
+    const cells = web ? webCells : otherCells
+    const areas = web ? webAreas : otherAreas
     if (Array.isArray(effect.cells)) {
       for (const cell of effect.cells) {
         const x = Number(cell?.x)
@@ -5166,16 +5284,25 @@ function difficultTerrainLookupFor(state) {
       areas.push(effect)
     }
   }
-  return { cells, areas }
+  return { webCells, otherCells, webAreas, otherAreas }
 }
 
-/** Статическая и длящаяся труднопроходимость — одно правило и одна доплата. */
-function isDifficultTerrainAt(state, position, map, lookup = null) {
+/** Причины труднопроходимости клетки: паутина отдельно, всё остальное вместе. */
+function difficultTerrainKindsAt(state, position, map, lookup = null) {
   const mapCell = map ? cellAt(map, Number(position?.x), Number(position?.y)) : null
-  if (Number(mapCell?.moveCost ?? 1) > 1) return true
-  if (!lookup) return activeAreaEffectsAt(state, position).some((effect) => effect.difficult_terrain === true)
-  if (lookup.cells.has(positionKey(position))) return true
-  return lookup.areas.some((effect) => positionInEffect(state, position, effect))
+  const staticTerrain = Number(mapCell?.moveCost ?? 1) > 1
+  if (!lookup) {
+    const effects = activeAreaEffectsAt(state, position).filter((effect) => effect.difficult_terrain === true)
+    return {
+      web: effects.some((effect) => String(effect.spell_id ?? '').toLowerCase() === 'web'),
+      other: staticTerrain || effects.some((effect) => String(effect.spell_id ?? '').toLowerCase() !== 'web'),
+    }
+  }
+  const key = positionKey(position)
+  return {
+    web: lookup.webCells.has(key) || lookup.webAreas.some((effect) => positionInEffect(state, position, effect)),
+    other: staticTerrain || lookup.otherCells.has(key) || lookup.otherAreas.some((effect) => positionInEffect(state, position, effect)),
+  }
 }
 
 /**
@@ -5190,13 +5317,23 @@ function isDifficultTerrainAt(state, position, map, lookup = null) {
 export function movementStepCostFor(state, actorIdValue, { tacticalMap } = {}) {
   const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
   const ignoresTerrain = ignoresDifficultTerrain(state, actorIdValue)
+  const webWalker = Boolean(monsterTraitFor(findActor(state, actorIdValue), 'web-walker'))
   const crawling = conditionIdsFor(state, actorIdValue).has('prone')
   const difficultTerrain = difficultTerrainLookupFor(state)
-  const difficultAt = (step, pathMap = map) => isDifficultTerrainAt(state, step, pathMap, difficultTerrain)
+  const difficultKindsAt = (step, pathMap = map) => difficultTerrainKindsAt(state, step, pathMap, difficultTerrain)
+  const difficultAt = (step, pathMap = map) => {
+    const terrain = difficultKindsAt(step, pathMap)
+    return terrain.web || terrain.other
+  }
+  const chargesDifficultAt = (step, pathMap = map) => {
+    if (ignoresTerrain) return false
+    const terrain = difficultKindsAt(step, pathMap)
+    return terrain.other || (terrain.web && !webWalker)
+  }
   const stepCost = (step, pathMap = map) => 5
-    + (!ignoresTerrain && difficultAt(step, pathMap) ? 5 : 0)
+    + (chargesDifficultAt(step, pathMap) ? 5 : 0)
     + (crawling ? 5 : 0)
-  return { map, stepCost, difficultAt, ignoresTerrain, crawling }
+  return { map, stepCost, difficultAt, chargesDifficultAt, ignoresTerrain, webWalker, crawling }
 }
 
 /** Во что обойдётся уже выбранный маршрут: та же формула, применённая к списку. */
@@ -5509,7 +5646,7 @@ function effectiveSpeedFeet(state, actor, id) {
     flat += safeInteger(effect.speedBonusFeet, 0)
   }
   const base = Math.max(0, safeInteger(actor?.speed, 30))
-  return Math.max(0, Math.floor(base * multiplier) + flat)
+  return Math.max(0, Math.floor(base * multiplier) + flat - armorStrengthSpeedPenalty(actor))
 }
 
 /**
@@ -5635,11 +5772,12 @@ function surprisedParticipants(state, sides) {
   return uniqueStrings(surprised)
 }
 
-function conditionAttackModifiers(state, attackerId, targetId, { distanceFeet = null, profileKind = null } = {}) {
+function conditionAttackModifiers(state, attackerId, targetId, { distanceFeet = null, profileKind = null, meleeReachFeet = 5 } = {}) {
   const attackerConditions = conditionIdsFor(state, attackerId)
   const targetConditions = conditionIdsFor(state, targetId)
-  const withinReach = distanceFeet != null && distanceFeet <= 5
-  const beyondReach = distanceFeet != null && distanceFeet > 5
+  const reach = Math.max(5, safeInteger(meleeReachFeet, 5))
+  const withinReach = distanceFeet != null && distanceFeet <= reach
+  const beyondReach = distanceFeet != null && distanceFeet > reach
   const advantage = []
   const disadvantage = []
   for (const condition of attackerConditions) {
@@ -5750,6 +5888,21 @@ function bloodiedFrenzySaveAdvantage(state, targetId) {
 }
 
 /**
+ * Противоядие относится не ко всем спасброскам Телосложения и даже не ко
+ * всему урону ядом. Оно помогает только там, где серверный профиль источника
+ * явно сообщает: этот спасбросок избегает или завершает Poisoned.
+ */
+function activeAntitoxinSaveAdvantage(state, targetId, conditionContext) {
+  if (String(conditionContext ?? '').toLowerCase() !== 'poisoned') return null
+  const elapsedMinutes = Math.max(0, safeInteger(state.mechanics?.world_time?.elapsed_minutes, 0))
+  const effect = (state.mechanics?.conditions?.[String(targetId)] ?? []).find((condition) => (
+    String(condition?.id ?? condition) === 'antitoxin'
+      && safeInteger(condition?.expires_at_minutes, -1) > elapsedMinutes
+  ))
+  return effect ? { expires_at_minutes: safeInteger(effect.expires_at_minutes, elapsedMinutes) } : null
+}
+
+/**
  * Результат d20-проверки из броска, который игрок уже сделал через реестр
  * бросков (`/api/roll`). Движок берёт из реестра только выпавшие кости;
  * модификатор, режим преимущества и итог он пересчитывает сам — авторитет по
@@ -5832,6 +5985,7 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
       || conditionIdsFor(state, actorId).has('silvery-fortune')
       || weatherSwing?.swing === 'advantage',
     disadvantage: Boolean(checkDisadvantageConditionFor(state, actorId))
+      || (checkSkill === 'stealth' && armorStealthDisadvantage(actor))
       || weatherSwing?.swing === 'disadvantage',
     ...(weatherSwing ? { weather_reason: weatherSwing.reason } : {}),
   }
@@ -5843,6 +5997,7 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
  * transcript and replay stay identical, and only the outcome is forced.
  */
 function rollSavingThrowD20(state, diceService, targetId, options = {}) {
+  const { avoid_or_end_condition: conditionContext, ...diceOptions } = options
   const auraProtection = savingThrowModifierWithAura(state, targetId, options.modifier)
   const autoFailed = autoFailedSaveConditionFor(state, targetId, options.ability)
   // Преимущество от состояния приходит сюда же, где живёт автопровал: это
@@ -5851,10 +6006,11 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
   const advantageCondition = saveAdvantageConditionFor(state, targetId, options.ability)
   const disadvantageCondition = saveDisadvantageConditionFor(state, targetId, options.ability)
   const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, targetId)
+  const antitoxin = activeAntitoxinSaveAdvantage(state, targetId, conditionContext)
   return {
     ...diceService.rollD20({
-      ...options,
-      advantage: options.advantage === true || Boolean(advantageCondition) || bloodiedFrenzy,
+      ...diceOptions,
+      advantage: options.advantage === true || Boolean(advantageCondition) || bloodiedFrenzy || Boolean(antitoxin),
       disadvantage: options.disadvantage === true || Boolean(disadvantageCondition),
       modifier: auraProtection.modifier,
       actorId: targetId,
@@ -5863,20 +6019,24 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
     ...itemSavingThrowPayload(auraProtection.itemSavingThrowBonus),
     ...(advantageCondition ? { save_advantage_condition: advantageCondition } : {}),
     ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
+    ...(antitoxin ? { antitoxin_advantage: true, antitoxin_expires_at_minutes: antitoxin.expires_at_minutes } : {}),
     ...(disadvantageCondition ? { save_disadvantage_condition: disadvantageCondition } : {}),
     ...(autoFailed ? { auto_failed: true, auto_failed_condition: autoFailed } : {}),
   }
 }
 
 function rollSavingThrowCheck(state, diceService, targetId, options = {}) {
+  const { avoid_or_end_condition: conditionContext, ...diceOptions } = options
   const auraProtection = savingThrowModifierWithAura(state, targetId, options.modifier)
   const autoFailed = autoFailedSaveConditionFor(state, targetId, options.ability)
   const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, targetId)
+  const antitoxin = activeAntitoxinSaveAdvantage(state, targetId, conditionContext)
   return {
-    ...diceService.rollCheck({ ...options, advantage: options.advantage === true || bloodiedFrenzy, modifier: auraProtection.modifier, actorId: targetId }),
+    ...diceService.rollCheck({ ...diceOptions, advantage: options.advantage === true || bloodiedFrenzy || Boolean(antitoxin), modifier: auraProtection.modifier, actorId: targetId }),
     ...auraOfProtectionPayload(auraProtection.aura),
     ...itemSavingThrowPayload(auraProtection.itemSavingThrowBonus),
     ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
+    ...(antitoxin ? { antitoxin_advantage: true, antitoxin_expires_at_minutes: antitoxin.expires_at_minutes } : {}),
     ...(autoFailed ? { success: false, auto_failed: true, auto_failed_condition: autoFailed } : {}),
   }
 }
@@ -6301,13 +6461,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Истощение мешает любой проверке характеристики с первой же ступени.
       const checkPenalty = checkDisadvantageConditionFor(state, command.actor_id)
       const checkBoost = checkAdvantageConditionFor(state, command.actor_id, ability)
+      const armorStealthPenalty = skill === 'stealth' && armorStealthDisadvantage(actor)
       // Небо: дождь мешает Восприятию и Выживанию, ночь — Восприятию, гроза
       // помогает Скрытности. Всё это действует только под открытым небом и
       // считается той же функцией, что и предпросмотр ручного броска.
       const weatherSwing = weatherCheckSwing(state, skill)
       const weatherPenalty = weatherSwing?.swing === 'disadvantage' ? weatherSwing.reason : null
       const weatherBoost = weatherSwing?.swing === 'advantage' ? weatherSwing.reason : null
-      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || Boolean(weatherBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty) || Boolean(weatherPenalty), visibility: command.visibility }
+      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || Boolean(weatherBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty) || armorStealthPenalty || Boolean(weatherPenalty), visibility: command.visibility }
       const roll = checkRollFromVerified(command.verified_roll, checkRollOptions) ?? diceService.rollCheck(checkRollOptions)
       rolls.push(roll)
       events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost || weatherPenalty || weatherBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
@@ -6318,6 +6479,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           proficiency_bonus: skillProficiency.bonus,
         } : {}),
         ...(checkPenalty ? { check_disadvantage_condition: checkPenalty } : {}),
+        ...(armorStealthPenalty ? { armor_stealth_disadvantage: true } : {}),
         ...(checkBoost ? { check_advantage_condition: checkBoost } : {}),
         ...(weatherPenalty ? { weather_disadvantage: weatherPenalty } : {}),
         ...(weatherBoost ? { weather_advantage: weatherBoost } : {}),
@@ -6379,7 +6541,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const actor = findActor(state, command.actor_id)
       const target = findActor(state, targetId)
       const authoritative = Boolean(command.server_authoritative || context.serverAuthoritativeCombat || context.isNpcScheduler || isEnemyActor(state, command.actor_id) || isEnemyActor(state, targetId))
-      const selectedProfile = authoritative && command.item_id ? itemAttackProfile(state, actor, command.item_id) : null
+      const selectedProfile = authoritative && command.item_id
+        ? itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode, attackAbility: command.attack_ability })
+        : null
       const profile = selectedProfile ?? (authoritative ? trustedAttackProfile(state, actor, command.action_id) : null)
       if (profile) {
         command.attack_modifier = profile.modifier
@@ -6460,7 +6624,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const silveryFortune = actorConditions.has('silvery-fortune')
       const guidingBoltAdvantage = targetConditions.has('guiding-bolt-advantage')
       const faerieFireAdvantage = targetConditions.has('faerie-fire')
-      const conditionModifiers = conditionAttackModifiers(state, command.actor_id, targetId, { distanceFeet, profileKind: profile?.kind ?? null })
+      const conditionModifiers = conditionAttackModifiers(state, command.actor_id, targetId, {
+        distanceFeet,
+        profileKind: profile?.kind ?? null,
+        meleeReachFeet: profile?.kind === 'melee' ? profile.normal_range_feet : 5,
+      })
       const swing = attackSwingShape(state, command.actor_id, targetId, profile, {
         actorAt, targetAt, distanceFeet, conditionModifiers,
         commandAdvantage: command.advantage, commandDisadvantage: command.disadvantage,
@@ -6468,6 +6636,21 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       })
       const advantage = swing.advantage
       const disadvantage = swing.disadvantage
+      const sneakAttackRequested = command.sneak_attack === true
+      const sneakAttackTurnKey = sneakAttackRequested ? combatTurnKey(state, command.actor_id) : null
+      const sneakAttackSupporter = sneakAttackRequested ? sneakAttackSupportingAlly(state, command.actor_id, targetId) : null
+      if (sneakAttackRequested) {
+        if (disadvantage) {
+          throw new RulesValidationError('Коварная атака невозможна при помехе, даже если преимущество её отменяет', 'SNEAK_ATTACK_DISADVANTAGE')
+        }
+        if (!advantage && !sneakAttackSupporter) {
+          throw new RulesValidationError('Для Коварной атаки нужно преимущество или дееспособный союзник рядом с целью', 'SNEAK_ATTACK_POSITION_REQUIRED')
+        }
+        const economy = state.mechanics.combat.action_economy[command.actor_id] ?? actionEconomy()
+        if (sneakAttackTurnKey && String(economy.sneak_attack_turn_key ?? '') === sneakAttackTurnKey) {
+          throw new RulesValidationError('Коварная атака уже применена в этом ходу', 'SNEAK_ATTACK_SPENT')
+        }
+      }
       // Святилище проверяется **до** броска атаки: провалив спасбросок, атакующий
       // теряет действие целиком и не бросает кость вовсе. Поставить проверку
       // после броска было бы неверно — в протоколе осталась бы атака, которой
@@ -6489,6 +6672,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (warded) {
           events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
             action_id: 'sanctuary-blocked', name: 'Святилище', action_type: 'action', target_id: targetId, spell_id: 'sanctuary',
+            ...(command.request_fingerprint ? { request_fingerprint: command.request_fingerprint } : {}),
           }, [command.actor_id]))
           break
         }
@@ -6569,6 +6753,16 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         damage_type: damageType,
         item_id: selectedProfile?.item.id ?? null,
         item_name: selectedProfile?.item.name ?? null,
+        attack_mode: selectedProfile?.mode ?? null,
+        attack_ability: selectedProfile?.ability ?? null,
+        ...(selectedProfile?.two_handed ? { two_handed: true } : {}),
+        ...(selectedProfile?.thrown ? { thrown: true } : {}),
+        ...(sneakAttackRequested ? {
+          sneak_attack_requested: true,
+          sneak_attack_eligible_by: advantage ? 'advantage' : 'ally',
+          ...(sneakAttackSupporter ? { sneak_attack_supporter_id: actorId(sneakAttackSupporter) } : {}),
+        } : {}),
+        ...(command.request_fingerprint ? { request_fingerprint: command.request_fingerprint } : {}),
         action_id: profile?.id ?? null,
         action_name: profile?.name ?? null,
         // Признак качественный: за столом и так видно, что существо пустило в
@@ -6600,6 +6794,32 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           ? diceService.roll(damageExpression, 'damage', command.actor_id, command.visibility ?? 'public')
           : null
         if (damageRoll) { rolls.push(damageRoll); events.push(eventFrom(command, 'DieRolled', damageRoll, [])) }
+        const sneakAttackDice = sneakAttackRequested ? sneakAttackDiceCount(actor) : 0
+        const sneakAttackExpression = sneakAttackDice > 0
+          ? (critical ? `${sneakAttackDice * 2}d6` : `${sneakAttackDice}d6`)
+          : null
+        const sneakAttackRoll = sneakAttackExpression
+          ? diceService.roll(sneakAttackExpression, 'sneak_attack_damage', command.actor_id, command.visibility ?? 'public')
+          : null
+        if (sneakAttackRoll) {
+          rolls.push(sneakAttackRoll)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.damage, critical ? RULE_IDS.criticalHit : null), 'DieRolled', {
+            ...sneakAttackRoll,
+            sneak_attack: true,
+            damage_type: damageType,
+          }, []))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.damage, critical ? RULE_IDS.criticalHit : null), 'SneakAttackApplied', {
+            roll_id: sneakAttackRoll.roll_id,
+            expression: sneakAttackRoll.expression,
+            dice: sneakAttackRoll.dice,
+            damage: sneakAttackRoll.total,
+            damage_type: damageType,
+            critical,
+            turn_key: sneakAttackTurnKey,
+            eligible_by: advantage ? 'advantage' : 'ally',
+            ...(sneakAttackSupporter ? { supporter_id: actorId(sneakAttackSupporter) } : {}),
+          }, [targetId]))
+        }
         const marked = targetConditions.has(`hunters-mark:${command.actor_id}`) || targetConditions.has('hunters-mark') || targetConditions.has('favored-foe')
         const markSides = targetConditions.has('favored-foe') ? (safeInteger(actor?.level, 1) >= 10 ? 8 : safeInteger(actor?.level, 1) >= 6 ? 6 : 4) : 6
         const markRoll = marked ? diceService.roll(critical ? `2d${markSides}` : `1d${markSides}`, 'marked_target_damage', command.actor_id, command.visibility ?? 'public') : null
@@ -6635,7 +6855,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(eventFrom(command, 'DieRolled', { ...roll, condition: die.condition, sign: die.sign }, []))
           enchantmentDamage += roll.total * die.sign
         }
-        let raw = (damageRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))) + (markRoll?.total ?? 0) + (hexRoll?.total ?? 0) + (divineFavorRoll?.total ?? 0) + rageBonus + enchantmentDamage
+        let raw = (damageRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))) + (sneakAttackRoll?.total ?? 0) + (markRoll?.total ?? 0) + (hexRoll?.total ?? 0) + (divineFavorRoll?.total ?? 0) + rageBonus + enchantmentDamage
         // Ослабление режет удар вдвое — но только тот, что считается от нужной
         // характеристики. Делится весь сложенный урон, включая метки и порчу.
         const enfeeblingCondition = [...actorConditions].find((condition) => CONDITION_EFFECTS[condition]?.halvesWeaponDamageForAbility
@@ -6665,7 +6885,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           if (onHit.save_ability) {
             const saveAbility = String(onHit.save_ability)
             const saveDc = Math.max(1, safeInteger(onHit.save_dc, 10))
-            const save = rollSavingThrowCheck(state, diceService, targetId, { ability: saveAbility, modifier: abilityModifier(target?.abilities?.[saveAbility]), difficulty: saveDc, purpose: `monster_action_save:${profile.id}:${saveAbility}`, visibility: command.visibility })
+            const save = rollSavingThrowCheck(state, diceService, targetId, {
+              ability: saveAbility,
+              modifier: abilityModifier(target?.abilities?.[saveAbility]),
+              difficulty: saveDc,
+              purpose: `monster_action_save:${profile.id}:${saveAbility}`,
+              avoid_or_end_condition: onHit.condition === 'poisoned' ? 'poisoned' : null,
+              visibility: command.visibility,
+            })
             rolls.push(save)
             saved = save.success
             events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SavingThrowResolved', { ...save, ability: saveAbility, action_id: profile.id }, [targetId]))
@@ -6732,6 +6959,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           }
         }
         let payload = applyKnockoutChoice(resolveDamagePayload(state, targetId, raw, damageType))
+        if (sneakAttackRoll) payload = {
+          ...payload,
+          sneak_attack: true,
+          sneak_attack_damage: sneakAttackRoll.total,
+          sneak_attack_expression: sneakAttackRoll.expression,
+          sneak_attack_roll_id: sneakAttackRoll.roll_id,
+          sneak_attack_critical: critical,
+        }
         if (payload.hp_after === 0 && monsterTraitFor(target, 'undead-fortitude') && damageType !== 'radiant' && attack.kept !== 20) {
           const difficulty = 5 + payload.applied_amount
           const fortitude = rollSavingThrowCheck(state, diceService, targetId, { ability: 'con', modifier: abilityModifier(target?.abilities?.con), difficulty, purpose: 'undead_fortitude', visibility: command.visibility })
@@ -7542,12 +7777,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(...attackResult.events, actionEvent({ reaction_window_id: reactionWindow.id, economy_consumed_by_attack: false }))
         rolls.push(...attackResult.rolls)
       } else if (action.id === 'opportunity-attack' && reactionWindow) {
+        const opportunity = opportunityAttackProfile(state, actor)
+        if (!opportunity) throw new RulesValidationError('Для атаки по возможности нужно готовое ближнее оружие', 'OPPORTUNITY_WEAPON_UNAVAILABLE')
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: true, action_id: action.id }, [command.actor_id]))
         const attackResult = resolveCommand({
           ...command,
           command_type: 'MakeAttack',
           target_id: String(reactionWindow.source_actor_id),
           target_ids: [String(reactionWindow.source_actor_id)],
+          ...(opportunity.item_id ? { item_id: opportunity.item_id } : {}),
           reaction_attack: true,
           reaction_target_position: reactionWindow.source_previous_position,
           source_rule_ids: [...new Set([...command.source_rule_ids, RULE_IDS.attack, RULE_IDS.reaction])],
@@ -7697,7 +7935,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (flames.effect_id && String(sourceConcentration?.effect_id ?? '') === String(flames.effect_id)) {
           events.push(eventFrom(commandWithRules({ ...command, actor_id: sourceActorId }, RULE_IDS.concentration), 'ConcentrationEnded', { reason: 'extinguished', effect_id: flames.effect_id }, [sourceActorId]))
         } else events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: flames.id }, [extinguishTargetId]))
-        events.push(actionEvent({ extinguished: true, target_id: extinguishTargetId }))
+        if (action.id === 'extinguish-self') {
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: null, reason: 'extinguish-burning' }, [command.actor_id]))
+        }
+        events.push(actionEvent({ extinguished: true, target_id: extinguishTargetId, prone: action.id === 'extinguish-self' }))
       } else if (action.id === 'dash' || action.id === 'expeditious-retreat-dash') {
         if (action.id === 'expeditious-retreat-dash' && !conditionIdsFor(state, command.actor_id).has('expeditious-retreat')) {
           throw new RulesValidationError('«Стремительный рывок» доступен только пока активно «Поспешное отступление»', 'EXPEDITIOUS_RETREAT_NOT_ACTIVE')
@@ -7710,7 +7951,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       } else if (action.id === 'hide') {
         const modifier = abilityModifier(actor?.abilities?.dex) + skillProficiencyBonus(actor, 'stealth')
           + (conditionIdsFor(state, command.actor_id).has('pass-without-trace') ? 10 : 0)
-        const check = diceService.rollCheck({ modifier, difficulty: 12, purpose: 'combat_hide', actorId: command.actor_id, visibility: command.visibility })
+        const check = diceService.rollCheck({ modifier, difficulty: 12, purpose: 'combat_hide', actorId: command.actor_id, disadvantage: armorStealthDisadvantage(actor), visibility: command.visibility })
         rolls.push(check)
         events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', { ability: 'dex', skill: 'stealth', ...check }, [command.actor_id]))
         // The roll is kept on the condition: surprise compares it with each
@@ -7933,7 +8174,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               const target = findActor(workingState, actionTargetId)
               const saveAbility = action.effect.saveAbility
               const dc = 8 + Math.max(0, safeInteger(actor?.proficiency, 0)) + Math.max(abilityModifier(actor?.abilities?.str), abilityModifier(actor?.abilities?.dex))
-              const save = rollSavingThrowD20(workingState, diceService, actionTargetId, { ability: saveAbility, modifier: abilityModifier(target?.abilities?.[saveAbility]), purpose: `action_save:${action.id}`, visibility: command.visibility })
+              const save = rollSavingThrowD20(workingState, diceService, actionTargetId, { ability: saveAbility, modifier: abilityModifier(target?.abilities?.[saveAbility]), purpose: `action_save:${action.id}`, avoid_or_end_condition: action.effect.condition === 'poisoned' ? 'poisoned' : null, visibility: command.visibility })
               rolls.push(save)
               const saved = savingThrowSucceeded(save, dc)
               attackResult.events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', { ability: saveAbility, difficulty: dc, saved, ...save }, [actionTargetId]))
@@ -7952,7 +8193,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const target = findActor(state, actionTargetId)
         const saveAbility = String(action.effect.saveAbility ?? 'wis')
         const dc = 8 + Math.max(0, safeInteger(actor?.proficiency, 0)) + Math.max(abilityModifier(actor?.abilities?.wis), abilityModifier(actor?.abilities?.cha))
-        const save = rollSavingThrowD20(state, diceService, actionTargetId, { ability: saveAbility, modifier: abilityModifier(target?.abilities?.[saveAbility]), purpose: `action_save:${action.id}`, visibility: command.visibility })
+        const save = rollSavingThrowD20(state, diceService, actionTargetId, { ability: saveAbility, modifier: abilityModifier(target?.abilities?.[saveAbility]), purpose: `action_save:${action.id}`, avoid_or_end_condition: action.effect.condition === 'poisoned' ? 'poisoned' : null, visibility: command.visibility })
         rolls.push(save)
         const saved = savingThrowSucceeded(save, dc)
         spendActionResource()
@@ -8441,7 +8682,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               const savingTarget = findActor(events.reduce(applyGameEvent, state), resolvedTargetId)
               if (isLivingActor(savingTarget)) {
                 const savingState = events.reduce(applyGameEvent, state)
-                const save = rollSavingThrowD20(savingState, diceService, resolvedTargetId, { ability, modifier: abilityModifier(savingTarget?.abilities?.[ability]), purpose: `spell_on_hit_save:${spell.id}:${ability}`, visibility: command.visibility })
+                const save = rollSavingThrowD20(savingState, diceService, resolvedTargetId, { ability, modifier: abilityModifier(savingTarget?.abilities?.[ability]), purpose: `spell_on_hit_save:${spell.id}:${ability}`, avoid_or_end_condition: (spell.onHitConditions ?? []).includes('poisoned') ? 'poisoned' : null, visibility: command.visibility })
                 const saved = savingThrowSucceeded(save, spellSaveDc)
                 rolls.push(save)
                 events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: spell.id, ability, difficulty: spellSaveDc, saved, trigger: 'on-hit' }, [resolvedTargetId]))
@@ -8569,6 +8810,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           for (const target of affected) {
             const resolvedTargetId = actorId(target)
             const targetConditions = conditionIdsFor(state, resolvedTargetId)
+            const chosenConditions = spell.conditionsByOption?.[String(command.spell_option ?? '')] ?? spell.conditions ?? []
             const targetCreatureType = creatureTypeFor(target)
             const immuneByType = (spell.immuneCreatureTypes ?? []).includes(targetCreatureType)
               || ((spell.requiredCreatureTypes ?? []).length > 0 && !(spell.requiredCreatureTypes ?? []).includes(targetCreatureType))
@@ -8610,7 +8852,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               saveModifier -= penalty.total
             }
             const silveryFortune = targetConditions.has('silvery-fortune')
-            const save = rollSavingThrowD20(state, diceService, resolvedTargetId, { ability: saveAbility, modifier: saveModifier, purpose: `spell_save:${spell.id}:${saveAbility}`, advantage: silveryFortune || (spell.saveAdvantageIfHostile === true && state.mechanics.combat.active), disadvantage: metamagic.has('metamagic-heightened'), visibility: command.visibility })
+            const save = rollSavingThrowD20(state, diceService, resolvedTargetId, { ability: saveAbility, modifier: saveModifier, purpose: `spell_save:${spell.id}:${saveAbility}`, advantage: silveryFortune || (spell.saveAdvantageIfHostile === true && state.mechanics.combat.active), disadvantage: metamagic.has('metamagic-heightened'), avoid_or_end_condition: chosenConditions.includes('poisoned') ? 'poisoned' : null, visibility: command.visibility })
             if (silveryFortune) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'silvery-fortune' }, [resolvedTargetId]))
             const saved = automaticSave || carefulProtectedIds.has(resolvedTargetId) || savingThrowSucceeded(save, spellSaveDc)
             rolls.push(save)
@@ -8633,7 +8875,6 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             // in `conditionsByOption`; the option itself is already validated
             // against `spellOptions`, so an unknown key falls back to the
             // default list rather than silently applying nothing.
-            const chosenConditions = spell.conditionsByOption?.[String(command.spell_option ?? '')] ?? spell.conditions ?? []
             // Заклинание может не вешать состояние, а снимать: Успокоение
             // эмоций гасит очарование и испуг у провалившего спасбросок.
             if (!saved) for (const condition of spell.removesConditions ?? []) {
@@ -9075,7 +9316,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (!isWalkableCell(cells.get(positionKey(to))) || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
           throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
         }
-        const { map, stepCost, difficultAt, ignoresTerrain, crawling } = movementStepCostFor(state, command.actor_id)
+        const { map, stepCost } = movementStepCostFor(state, command.actor_id)
         path = shortestTacticalPath(state, command.actor_id, to, { tacticalMap: map, stepCost })
         if (!path?.length) throw new RulesValidationError('До клетки назначения нет свободного пути', 'PATH_BLOCKED')
         if (!reactionMovement) {
@@ -9103,11 +9344,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           }
         }
         distance = path.length * 5
-        const difficultSteps = ignoresTerrain
-          ? 0
-          : path.filter((step) => difficultAt(step, map)).length
-        const crawlingSteps = crawling ? path.length : 0
-        movementCost = distance + difficultSteps * 5 + crawlingSteps * 5
+        // Цена исполняемого пути считается тем же предикатом, который получил
+        // взвешенный поиск и который использует NPC-планировщик.
+        movementCost = path.reduce((total, step) => total + stepCost(step, map), 0)
         const speed = effectiveSpeedFeet(state, actor, command.actor_id)
         const movementBonus = Math.max(0, safeInteger(state.mechanics.combat.action_economy[command.actor_id]?.movement_bonus, 0))
         const aggressiveBonus = command.monster_ability === 'aggressive'
@@ -9221,9 +9460,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             if ([...OPPORTUNITY_BLOCKING_CONDITIONS].some((condition) => conditions.has(condition))) return false
             const at = actorPosition(state, actorId(candidate))
             if (!at) return false
+            const opportunity = opportunityAttackProfile(state, candidate)
+            if (!opportunity) return false
+            const reach = Math.max(5, safeInteger(opportunity.profile.range_feet, 5))
             const before = Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) * 5
-            const leavesReach = path?.some((step) => Math.max(Math.abs(at.x - step.x), Math.abs(at.y - step.y)) * 5 > 5)
-            return before === 5 && leavesReach && Boolean(opportunityAttackProfile(state, candidate))
+            const leavesReach = path?.some((step) => Math.max(Math.abs(at.x - step.x), Math.abs(at.y - step.y)) * 5 > reach)
+            return before <= reach && leavesReach
           })
           .sort((left, right) => (initiativeOrder.get(actorId(left)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right)) ?? Number.MAX_SAFE_INTEGER)
             || actorId(left).localeCompare(actorId(right)))[0]
@@ -9859,7 +10101,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const ability = effect.save_ability ? String(effect.save_ability) : null
         let saved = false
         if (ability) {
-          const save = rollSavingThrowD20(state, diceService, command.actor_id, { ability, modifier: abilityModifier(endingActor?.abilities?.[ability]), purpose: `spell_area_turn_end:${effect.spell_id}:${ability}`, visibility: command.visibility })
+          const save = rollSavingThrowD20(state, diceService, command.actor_id, { ability, modifier: abilityModifier(endingActor?.abilities?.[ability]), purpose: `spell_area_turn_end:${effect.spell_id}:${ability}`, avoid_or_end_condition: effect.condition === 'poisoned' ? 'poisoned' : null, visibility: command.visibility })
           saved = savingThrowSucceeded(save, Math.max(1, safeInteger(effect.save_dc, 10)))
           rolls.push(save)
           events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: effect.spell_id, ability, difficulty: effect.save_dc, saved, trigger: 'turn-end' }, [command.actor_id]))
@@ -9883,7 +10125,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(eventFrom(command, 'DieRolled', bane, []))
           modifier -= bane.total
         }
-        const save = rollSavingThrowD20(state, diceService, command.actor_id, { ability, modifier, purpose: `spell_repeat_save:${condition.spell_id}:${ability}`, visibility: command.visibility })
+        const save = rollSavingThrowD20(state, diceService, command.actor_id, { ability, modifier, purpose: `spell_repeat_save:${condition.spell_id}:${ability}`, avoid_or_end_condition: condition.id === 'poisoned' ? 'poisoned' : null, visibility: command.visibility })
         const difficulty = Math.max(1, safeInteger(condition.save_dc, 10))
         const saved = savingThrowSucceeded(save, difficulty)
         rolls.push(save)
@@ -9954,7 +10196,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (condition.start_turn_save) {
           const ability = String(condition.start_turn_save)
           const difficulty = Math.max(1, safeInteger(condition.save_dc, 10))
-          const save = rollSavingThrowD20(startTurnState, diceService, nextId, { ability, modifier: abilityModifier(startingActor?.abilities?.[ability]), purpose: `spell_start_turn_save:${condition.spell_id}:${ability}`, visibility: command.visibility })
+          const save = rollSavingThrowD20(startTurnState, diceService, nextId, { ability, modifier: abilityModifier(startingActor?.abilities?.[ability]), purpose: `spell_start_turn_save:${condition.spell_id}:${ability}`, avoid_or_end_condition: condition.id === 'poisoned' ? 'poisoned' : null, visibility: command.visibility })
           const saved = savingThrowSucceeded(save, difficulty)
           rolls.push(save)
           events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: condition.spell_id, ability, difficulty, saved, trigger: 'turn-start' }, [nextId]))
@@ -11232,6 +11474,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         kind: use.kind,
         target_id: command.target_id,
         combat_action: castsSpell ? null : use.combat_action,
+        attack_replacement: use.attack_replacement === true && command.use_mode !== 'spill',
         ...(castsSpell ? {
           declared_combat_action: use.combat_action,
           charges_to_spend: command.charges_to_spend,
@@ -11312,6 +11555,19 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           rider_damage: String(use.rider_damage),
           rider_damage_type: String(use.rider_damage_type ?? 'poison'),
           rider_source_name: String(item.name),
+        }, [command.actor_id]))
+      }
+      if (use.kind === 'antitoxin') {
+        const durationMinutes = Math.max(1, safeInteger(use.duration_minutes, 60))
+        const startedAtMinutes = Math.max(0, safeInteger(state.mechanics?.world_time?.elapsed_minutes, 0))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions, RULE_IDS.advantage), 'ConditionAdded', {
+          condition: 'antitoxin',
+          duration: `minutes:${durationMinutes}`,
+          source_actor: command.actor_id,
+          source_item_id: item.id,
+          save_condition: 'poisoned',
+          started_at_minutes: startedAtMinutes,
+          expires_at_minutes: startedAtMinutes + durationMinutes,
         }, [command.actor_id]))
       }
       if (safeInteger(use.consumes, 0) > 0) {
@@ -11486,7 +11742,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(eventFrom(command, 'DieRolled', bane, []))
         modifier -= bane.total
       }
-      const save = rollSavingThrowD20(triggeredState, diceService, damagedActorId, { ability, modifier, purpose: `spell_damage_repeat_save:${condition.spell_id}:${ability}`, advantage: condition.damage_save_advantage === true, visibility: command.visibility })
+      const save = rollSavingThrowD20(triggeredState, diceService, damagedActorId, { ability, modifier, purpose: `spell_damage_repeat_save:${condition.spell_id}:${ability}`, advantage: condition.damage_save_advantage === true, avoid_or_end_condition: condition.id === 'poisoned' ? 'poisoned' : null, visibility: command.visibility })
       const difficulty = Math.max(1, safeInteger(condition.save_dc, 10))
       const saved = savingThrowSucceeded(save, difficulty)
       rolls.push(save)
@@ -12418,12 +12674,16 @@ export function applyGameEvent(rawState, event) {
       const duration = payload.duration ?? null
       const sourceActor = payload.source_actor ?? event.actor_id ?? null
       const sourceScoped = duration === 'until-source-next-turn' || /^source-turns:\d+$/u.test(String(duration ?? ''))
-      const alreadyPresent = current.some((item) => item.id === condition
+      const existingIndex = current.findIndex((item) => item.id === condition
         && (!sourceScoped || String(item.source_actor ?? '') === String(sourceActor ?? '')))
-      if (!alreadyPresent) current.push({
+      const canonicalCondition = {
         id: condition,
         duration,
         source_actor: sourceActor,
+        ...(payload.source_item_id != null ? { source_item_id: String(payload.source_item_id) } : {}),
+        ...(payload.save_condition != null ? { save_condition: String(payload.save_condition) } : {}),
+        ...(payload.started_at_minutes != null ? { started_at_minutes: Math.max(0, safeInteger(payload.started_at_minutes, 0)) } : {}),
+        ...(payload.expires_at_minutes != null ? { expires_at_minutes: Math.max(0, safeInteger(payload.expires_at_minutes, 0)) } : {}),
         effect_id: payload.effect_id ?? null,
         repeat_save_timing: payload.repeat_save_timing ?? null,
         repeat_save_on_damage: payload.repeat_save_on_damage === true,
@@ -12448,7 +12708,9 @@ export function applyGameEvent(rawState, event) {
         check_total: payload.check_total ?? null,
         recurring_once: payload.recurring_once === true,
         source_rule_ids: event.source_rule_ids ?? [],
-      })
+      }
+      if (existingIndex < 0) current.push(canonicalCondition)
+      else if (condition === 'antitoxin') current[existingIndex] = canonicalCondition
       state.mechanics.conditions[target] = current
       const pendingFleeReaction = condition === 'fled'
         && state.mechanics.combat.reaction_window?.trigger === 'enemy-left-reach'
@@ -12527,6 +12789,30 @@ export function applyGameEvent(rawState, event) {
       appendBattleLog(state, event, { type: 'concentration-end', actorId: target, reason: String(payload.reason ?? 'ended'), spellId: effectId ? String(effectId) : undefined })
       break
     }
+    case 'SneakAttackApplied': {
+      if (state.mechanics.combat.active && event.actor_id) {
+        const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
+        state.mechanics.combat.action_economy[event.actor_id] = {
+          ...economy,
+          sneak_attack_turn_key: String(payload.turn_key ?? combatTurnKey(state, event.actor_id) ?? ''),
+        }
+      }
+      for (let index = state.battleLog.length - 1; index >= 0; index -= 1) {
+        const entry = state.battleLog[index]
+        if (entry?.type !== 'attack' || String(entry.actorId ?? '') !== String(event.actor_id ?? '') || String(entry.targetId ?? '') !== String(target ?? '')) continue
+        state.battleLog[index] = {
+          ...entry,
+          sneakAttack: true,
+          sneakAttackDamage: Math.max(0, safeInteger(payload.damage, 0)),
+          sneakAttackExpression: String(payload.expression ?? ''),
+          sneakAttackCritical: payload.critical === true,
+          sneakAttackEligibleBy: String(payload.eligible_by ?? ''),
+          ...(payload.supporter_id ? { sneakAttackSupporterId: String(payload.supporter_id) } : {}),
+        }
+        break
+      }
+      break
+    }
     case 'AttackResolved': {
       if (!payload.reaction_attack) {
         // Extra Attack is part of the Attack action, so the action is still
@@ -12568,6 +12854,10 @@ export function applyGameEvent(rawState, event) {
         spellName: payload.spell_name ? String(payload.spell_name) : undefined,
         itemId: payload.item_id ?? undefined,
         itemName: payload.item_name ?? undefined,
+        attackMode: payload.attack_mode ? String(payload.attack_mode) : undefined,
+        attackAbility: payload.attack_ability ? String(payload.attack_ability) : undefined,
+        twoHanded: payload.two_handed === true,
+        thrown: payload.thrown === true,
         // Почему удар случился именно так. Признаки уже посчитал сервер и уже
         // лежат в событии; журнал боя входит в проекцию, поэтому подпись хода
         // NPC видит **вся партия**, а не только тот, чей браузер отправил
@@ -12615,6 +12905,15 @@ export function applyGameEvent(rawState, event) {
       break
     case 'ItemUsed':
       if (payload.combat_action) spendCombatEconomy(state, event.actor_id, payload.combat_action)
+      if (payload.attack_replacement === true && state.mechanics.combat.active && event.actor_id) {
+        const attacker = findActor(state, event.actor_id)
+        const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
+        state.mechanics.combat.action_economy[event.actor_id] = {
+          ...economy,
+          attacks_used: Math.max(0, safeInteger(economy.attacks_used, 0)) + 1,
+          attacks_allowed: weaponAttacksPerActionFor(attacker),
+        }
+      }
       break
     case 'ItemConsumed':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: (actor.inventory ?? []).map((item) => String(item.id) === String(payload.item_id) ? { ...item, quantity: Math.max(0, safeInteger(item.quantity, 1) - safeInteger(payload.quantity, 1)) } : item).filter((item) => item.quantity > 0) }))
@@ -13364,6 +13663,11 @@ export function applyGameEvent(rawState, event) {
       const elapsed = Math.max(0, safeInteger(payload.elapsed_minutes, durationInMinutes(payload.amount, payload.unit)))
       const total = Math.max(0, safeInteger(state.mechanics.world_time?.elapsed_minutes, 0) + elapsed)
       state.mechanics.world_time = { amount: total, unit: 'minute', elapsed_minutes: total }
+      for (const [actorIdValue, conditions] of Object.entries(state.mechanics.conditions ?? {})) {
+        state.mechanics.conditions[actorIdValue] = (conditions ?? []).filter((condition) => (
+          condition?.expires_at_minutes == null || safeInteger(condition.expires_at_minutes, total) > total
+        ))
+      }
       break
     }
     case 'AreaRevealed':
@@ -13730,6 +14034,7 @@ export function eventSummary(event, resolveName = (id) => id) {
       : payload.resistance_cantrip_reduction
         ? `Урон снижен Resistance на ${payload.resistance_cantrip_reduction}; HP ${payload.hp_before} → ${payload.hp_after}`
         : `Урон: ${payload.applied_amount}; HP ${payload.hp_before} → ${payload.hp_after}`
+    case 'SneakAttackApplied': return `Коварная атака: дополнительно ${safeInteger(payload.damage, 0)} урона (${payload.expression})`
     case 'SpellImmunityResolved': return `${payload.item_immunity_sources?.[0]?.item_name || 'Магический предмет'} полностью защищает от заклинания ${payload.spell_id}`
     case 'ItemEffectIneffective': return `${payload.item_name || 'Предмет'} не действует на ${named((event.target_ids ?? [])[0]) || 'цель'}`
     case 'HealingApplied': return `Лечение: ${payload.applied_amount}; HP ${payload.hp_before} → ${payload.hp_after}`

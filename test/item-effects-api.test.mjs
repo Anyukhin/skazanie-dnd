@@ -183,6 +183,50 @@ function initialState() {
   }
 }
 
+function specializedItemState(sessionCode, catalogId, itemId) {
+  const weapon = {
+    id: 'sword', name: 'Длинный меч', type: 'weapon', quantity: 1, equipped: true,
+    combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 },
+  }
+  return {
+    state_version: 0,
+    sessionCode,
+    campaign_id: sessionCode,
+    campaign: 'Специализированные предметы',
+    activePlayerId: 'specialist',
+    partyMemberIds: ['specialist'],
+    players: [{
+      id: 'specialist', character: 'Испытатель', characterClass: 'fighter', level: 3,
+      hp: 30, maxHp: 30, armor: 15, speed: 30, proficiency: 2,
+      abilities: { str: 16, dex: 16, con: 14, int: 10, wis: 10, cha: 10 },
+      x: 0, y: 0,
+      inventory: [weapon, materializeCatalogItem(catalogId, { id: itemId, quantity: 1 })],
+    }],
+    enemies: [{
+      id: 'foe', name: 'Противник', hp: 20, maxHp: 20, armor: 12, speed: 30, alive: true,
+      creature_type: 'beast', abilities: { str: 12, dex: 10, con: 12, int: 6, wis: 10, cha: 6 },
+      x: 3, y: 0,
+    }],
+    scene: {
+      title: 'Полигон', location: 'Полигон', turn: 1,
+      cells: Array.from({ length: 12 }, (_, index) => ({ x: index % 6, y: Math.floor(index / 6), type: 'floor', revealed: true })),
+    },
+    mechanics: {
+      positions: { specialist: { x: 0, y: 0 }, foe: { x: 3, y: 0 } },
+      conditions: {},
+      death: { saving_throws: {}, heroes: {}, campaign_status: 'active' },
+      combat: {
+        active: true, round: 1, active_index: 0,
+        initiative: [{ actor_id: 'specialist', total: 20 }, { actor_id: 'foe', total: 5 }],
+        action_economy: {
+          specialist: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+          foe: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+        },
+      },
+    },
+  }
+}
+
 function itemCommand(key, itemId, targetId, expectedStateVersion) {
   const command = {
     command_type: 'UseItem',
@@ -507,4 +551,108 @@ test('HTTP item commands enforce ACL, semantic idempotency, stale writes and a s
       .find((item) => item.id === 'kit-idempotent').capabilities.charges,
     { current: 9, max: 10 },
   )
+})
+
+test('HTTP player item path carries point, mode and weapon inputs with semantic idempotency', { timeout: runnerTimeout(60_000) }, async (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-specialized-items-api-'))
+  let logs = ''
+  let child = null
+  t.after(async () => {
+    await stopServer(child)
+    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+  })
+
+  const port = await freePort()
+  const baseUrl = `http://127.0.0.1:${port}`
+  child = startServer(port, storage, (chunk) => { logs += chunk })
+  await waitForHealth(baseUrl, child, () => logs)
+
+  const admin = await request(baseUrl, '/api/auth/setup-admin', {
+    method: 'POST',
+    body: { name: 'GM', email: 'gm@specialized-items.test', password: 'secure-admin-password', setupToken: 'item-effects-api-setup' },
+  })
+  const owner = await request(baseUrl, '/api/auth/register', {
+    method: 'POST',
+    body: { name: 'Owner', email: 'owner@specialized-items.test', password: 'secure-owner-password' },
+  })
+  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
+  assert.equal(owner.status, 201, `${owner.text}\n${logs}`)
+  const adminCookie = sessionCookie(admin)
+  const ownerCookie = sessionCookie(owner)
+  const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
+  const ownerUser = users.body.users.find((candidate) => candidate.email === 'owner@specialized-items.test')
+  const ownership = await request(baseUrl, `/api/admin/users/${ownerUser.id}`, {
+    method: 'PATCH', cookie: adminCookie, body: { heroIds: ['specialist'] },
+  })
+  assert.equal(ownership.status, 200, `${ownership.text}\n${logs}`)
+
+  const cases = [
+    ['ITEM-POINT-API', 'srd_5_2_1:caltrops', 'caltrops'],
+    ['ITEM-OIL-API', 'srd_5_2_1:oil-flask', 'oil'],
+    ['ITEM-POISON-API', 'srd_5_2_1:poison-basic', 'poison'],
+  ]
+  for (const [code, catalogId, itemId] of cases) {
+    const created = await request(baseUrl, '/api/campaigns', {
+      method: 'POST', cookie: adminCookie,
+      body: { code, name: code, state: specializedItemState(code, catalogId, itemId) },
+    })
+    assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  }
+
+  const caltropsBody = {
+    idempotency_key: 'caltrops-point',
+    command: { command_type: 'UseItem', actor_id: 'specialist', item_id: 'caltrops', to: { x: 1, y: 0 } },
+  }
+  const caltrops = await request(baseUrl, '/api/campaigns/ITEM-POINT-API/commands', {
+    method: 'POST', cookie: ownerCookie, key: 'caltrops-point', body: caltropsBody,
+  })
+  assert.equal(caltrops.status, 200, `${caltrops.text}\n${logs}`)
+  assert.ok(caltrops.body.mechanics.some((event) => event.event_type === 'SpellAreaCreated'))
+  const caltropsReplay = await request(baseUrl, '/api/campaigns/ITEM-POINT-API/commands', {
+    method: 'POST', cookie: ownerCookie, key: 'caltrops-point', body: caltropsBody,
+  })
+  assert.equal(caltropsReplay.status, 200, `${caltropsReplay.text}\n${logs}`)
+  assert.equal(caltropsReplay.body.idempotent_replay, true)
+  const caltropsCollision = await request(baseUrl, '/api/campaigns/ITEM-POINT-API/commands', {
+    method: 'POST', cookie: ownerCookie, key: 'caltrops-point',
+    body: { ...caltropsBody, command: { ...caltropsBody.command, to: { x: 0, y: 1 } } },
+  })
+  assert.equal(caltropsCollision.status, 409, `${caltropsCollision.text}\n${logs}`)
+  assert.equal(caltropsCollision.body.code, 'IDEMPOTENCY_CONFLICT')
+
+  const malformedPoint = await request(baseUrl, '/api/campaigns/ITEM-POINT-API/commands', {
+    method: 'POST', cookie: ownerCookie, key: 'caltrops-forged-point',
+    body: {
+      idempotency_key: 'caltrops-forged-point',
+      command: { command_type: 'UseItem', actor_id: 'specialist', item_id: 'caltrops', to: { x: 1, y: 0, radius: 99 } },
+    },
+  })
+  assert.equal(malformedPoint.status, 400, `${malformedPoint.text}\n${logs}`)
+  assert.equal(malformedPoint.body.code, 'INVALID_ITEM_POINT')
+
+  const oilBody = {
+    idempotency_key: 'oil-spill',
+    command: { command_type: 'UseItem', actor_id: 'specialist', item_id: 'oil', use_mode: 'spill', to: { x: 1, y: 0 } },
+  }
+  const oil = await request(baseUrl, '/api/campaigns/ITEM-OIL-API/commands', {
+    method: 'POST', cookie: ownerCookie, key: 'oil-spill', body: oilBody,
+  })
+  assert.equal(oil.status, 200, `${oil.text}\n${logs}`)
+  assert.ok(oil.body.mechanics.some((event) => event.event_type === 'SpellAreaCreated'))
+
+  const poisonBody = {
+    idempotency_key: 'poison-weapon',
+    command: { command_type: 'UseItem', actor_id: 'specialist', item_id: 'poison', weapon_id: 'sword' },
+  }
+  const poison = await request(baseUrl, '/api/campaigns/ITEM-POISON-API/commands', {
+    method: 'POST', cookie: ownerCookie, key: 'poison-weapon', body: poisonBody,
+  })
+  assert.equal(poison.status, 200, `${poison.text}\n${logs}`)
+  assert.ok(poison.body.mechanics.some((event) => event.event_type === 'ConditionAdded'))
+  const poisonCollision = await request(baseUrl, '/api/campaigns/ITEM-POISON-API/commands', {
+    method: 'POST', cookie: ownerCookie, key: 'poison-weapon',
+    body: { ...poisonBody, command: { ...poisonBody.command, weapon_id: 'forged-weapon' } },
+  })
+  assert.equal(poisonCollision.status, 409, `${poisonCollision.text}\n${logs}`)
+  assert.equal(poisonCollision.body.code, 'IDEMPOTENCY_CONFLICT')
 })

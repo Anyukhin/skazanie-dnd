@@ -103,7 +103,13 @@ const CLASS_ACTIONS = Object.freeze({
     action('hide-in-plain-sight', 'Маскировка', { minimumLevel: 10, description: 'Замаскироваться в природном окружении и получить усиленную скрытность.', effect: { kind: 'condition', condition: 'camouflaged', duration: 'rounds:100' } }),
   ]),
   rogue: Object.freeze([
-    action('sneak-attack', 'Скрытая атака', { target: 'enemy', range: 600, requiresWeapon: true, description: 'Атака оружием с дополнительным уроном скрытой атаки.', effect: { kind: 'weapon_attack', attacks: 1, extraDamageByLevel: 'sneak' } }),
+    action('sneak-attack', 'Коварная атака', {
+      actionType: 'free',
+      mechanicsSupport: 'ruling-only',
+      supportNote: 'Это не отдельная атака. Включите «Коварную атаку» в параметрах обычной атаки подходящим оружием; сервер проверит преимущество или союзника рядом с целью.',
+      description: 'Памятка: один раз за ход добавить урон к уже попавшей атаке дальнобойным оружием или оружием со свойством finesse.',
+      effect: { kind: 'special', rider: 'sneak_attack', commandOption: 'sneak_attack' },
+    }),
     action('cunning-dash', 'Хитрое действие: Рывок', { actionType: 'bonus_action', minimumLevel: 2, description: 'Использовать Рывок бонусным действием.', effect: { kind: 'dash' } }),
     action('cunning-disengage', 'Хитрое действие: Отход', { actionType: 'bonus_action', minimumLevel: 2, description: 'Использовать Отход бонусным действием.', effect: { kind: 'condition', condition: 'disengaged', duration: 'until-next-turn' } }),
     action('cunning-hide', 'Хитрое действие: Засада', { actionType: 'bonus_action', minimumLevel: 2, description: 'Использовать Засаду бонусным действием.', effect: { kind: 'check', ability: 'dex', skill: 'stealth' } }),

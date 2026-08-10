@@ -15,7 +15,7 @@ import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -26,8 +26,7 @@ export type CaptiveAction = 'interrogate' | 'release' | 'hand-over' | 'feed' | '
 type TacticalCommand =
   | { command_type: 'StartCombat'; actor_id: string }
   | { command_type: 'MoveActor'; actor_id: string; to: { x: number; y: number } }
-  | { command_type: 'MakeAttack'; actor_id: string; target_id: string; knock_out?: boolean }
-  | { command_type: 'MakeAttack'; actor_id: string; target_id: string; item_id: string; knock_out?: boolean }
+  | { command_type: 'MakeAttack'; actor_id: string; target_id: string; item_id?: string; attack_mode?: 'melee' | 'ranged' | 'thrown' | 'two-handed'; attack_ability?: 'str' | 'dex'; sneak_attack?: boolean; knock_out?: boolean }
   | { command_type: 'MakeAreaAttack'; actor_id: string; item_id: string; to: { x: number; y: number } }
   | { command_type: 'CastSpell'; actor_id: string; spell_id: string; target_id: string; spell_option?: string; knock_out?: boolean }
   | { command_type: 'CastSpell'; actor_id: string; spell_id: string; to: { x: number; y: number }; spell_option?: string }
@@ -41,7 +40,7 @@ type TacticalCommand =
   | { command_type: 'SettleParley'; actor_id: string; outcome: ParleyOutcome }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
   | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
-  | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string; charges_to_spend?: number }
+  | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string; charges_to_spend?: number; to?: { x: number; y: number }; use_mode?: 'spill'; weapon_id?: string }
   | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
   | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
   | { command_type: 'ActivateItem'; actor_id: string; item_id: string; activated: boolean }
@@ -92,6 +91,14 @@ type TacticalCommandResult = {
 export type CommandOutcome =
   | { ok: true }
   | { ok: false; error: string; conflict?: boolean }
+
+export type WeaponAttackChoice = {
+  attackMode?: 'melee' | 'ranged' | 'thrown' | 'two-handed'
+  attackAbility?: 'str' | 'dex'
+  sneakAttack?: boolean
+  knockOut?: boolean
+  note?: string
+}
 
 type MerchantCommand =
   | { command_type: 'BargainWithMerchant'; actor_id: string }
@@ -1167,9 +1174,17 @@ export function useGameSession() {
   /* Слова игрока едут вместе с командой: подтверждение теперь одно на всё —
      кнопка «Отправить», и приписка к действию должна доходить до рассказчика
      тем же запросом, а не отдельной репликой после. */
-  const attackEnemy = useCallback((playerId: string, enemyId: string, itemId?: string, knockOut = false, note?: string) => {
+  const attackEnemy = useCallback((playerId: string, enemyId: string, itemId?: string, choice: WeaponAttackChoice = {}) => {
+    const { attackMode, attackAbility, sneakAttack = false, knockOut = false, note } = choice
     const base = knockOut ? 'Нокаутировать выбранную цель' : 'Атаковать выбранную цель'
-    return executeTacticalCommand({ command_type: 'MakeAttack', actor_id: playerId, target_id: enemyId, ...(itemId ? { item_id: itemId } : {}), ...(knockOut ? { knock_out: true } : {}) } as TacticalCommand, note ? `${base}. ${note}` : base)
+    return executeTacticalCommand({
+      command_type: 'MakeAttack', actor_id: playerId, target_id: enemyId,
+      ...(itemId ? { item_id: itemId } : {}),
+      ...(itemId && attackMode ? { attack_mode: attackMode } : {}),
+      ...(itemId && attackAbility ? { attack_ability: attackAbility } : {}),
+      ...(itemId && sneakAttack ? { sneak_attack: true } : {}),
+      ...(knockOut ? { knock_out: true } : {}),
+    } as TacticalCommand, note ? `${base}. ${note}` : base)
   }, [executeTacticalCommand])
 
   const throwAreaItem = useCallback((playerId: string, itemId: string, x: number, y: number, note?: string) => {
@@ -1314,13 +1329,16 @@ export function useGameSession() {
     return executeTacticalCommand({ command_type: 'EquipItem', actor_id: playerId, item_id: itemId, equipped }, equipped ? 'Экипировать предмет' : 'Снять предмет')
   }, [executeTacticalCommand])
 
-  const useItem = useCallback((playerId: string, itemId: string, targetId?: string, chargesToSpend?: number) => {
+  const useItem = useCallback((playerId: string, itemId: string, options: ItemUseOptions = {}) => {
     return executeTacticalCommand({
       command_type: 'UseItem',
       actor_id: playerId,
       item_id: itemId,
-      ...(targetId ? { target_id: targetId } : {}),
-      ...(chargesToSpend == null ? {} : { charges_to_spend: chargesToSpend }),
+      ...(options.targetId ? { target_id: options.targetId } : {}),
+      ...(options.chargesToSpend == null ? {} : { charges_to_spend: options.chargesToSpend }),
+      ...(options.to ? { to: options.to } : {}),
+      ...(options.useMode ? { use_mode: options.useMode } : {}),
+      ...(options.weaponId ? { weapon_id: options.weaponId } : {}),
     }, 'Использовать предмет')
   }, [executeTacticalCommand])
 

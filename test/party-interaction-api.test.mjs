@@ -1,21 +1,53 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import test from 'node:test'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
-async function waitForHealth(baseUrl, child) {
+async function freePort() {
+  const probe = createNetServer()
+  await new Promise((resolve, reject) => {
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', resolve)
+  })
+  const address = probe.address()
+  const port = typeof address === 'object' && address ? address.port : 0
+  await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()))
+  return port
+}
+
+function captureServerOutput(child) {
+  const limit = 64 * 1024
+  let output = ''
+  const append = (chunk) => {
+    output = (output + String(chunk)).slice(-limit)
+  }
+  child.stdout.on('data', append)
+  child.stderr.on('data', append)
+  return () => output
+}
+
+async function stopServer(child) {
+  if (!child || child.exitCode != null) return
+  await new Promise((resolve) => {
+    child.once('exit', resolve)
+    child.kill()
+  })
+}
+
+async function waitForHealth(baseUrl, child, serverOutput) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    if (child.exitCode != null) throw new Error('Тестовый сервер завершился')
+    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${serverOutput()}`)
     try {
       const response = await fetch(baseUrl + '/api/health')
       if (response.ok) return
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  throw new Error('Тестовый сервер не запустился')
+  throw new Error(`Тестовый сервер не запустился\n${serverOutput()}`)
 }
 
 function cookie(response) {
@@ -23,7 +55,7 @@ function cookie(response) {
 }
 
 test('агент открывает общее голосование, а неактивный игрок может проголосовать без расхода хода', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const port = 30_000 + Math.floor(Math.random() * 10_000)
+  const port = await freePort()
   const baseUrl = 'http://127.0.0.1:' + port
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-party-'))
   const child = spawn(process.execPath, ['server/index.mjs'], {
@@ -35,8 +67,12 @@ test('агент открывает общее голосование, а неа
     env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'party-setup-token', COOKIE_SECURE: 'false' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-  t.after(() => { if (child.exitCode == null) child.kill() })
-  await waitForHealth(baseUrl, child)
+  const serverOutput = captureServerOutput(child)
+  t.after(async () => {
+    await stopServer(child)
+    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+  })
+  await waitForHealth(baseUrl, child, serverOutput)
 
   const setup = await fetch(baseUrl + '/api/auth/setup-admin', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

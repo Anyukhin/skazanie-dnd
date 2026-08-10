@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { ITEM_CATALOG, materializeCatalogItem } from '../server/item-catalog.mjs'
+import { ITEM_CATALOG, itemViewerCapabilities, materializeCatalogItem } from '../server/item-catalog.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
@@ -96,27 +96,34 @@ function useItem(state, fields, rolls = [], commandId = `use-${fields.item_id}`)
   }, state, { diceService: dice(rolls), context: CONTEXT })
 }
 
-test('каталог объявляет три расходника исполняемыми и отделяет правило стола от SRD', () => {
+test('каталог объявляет три расходника исполняемыми по SRD 5.2.1', () => {
   for (const catalogId of [OIL, CALTROPS, POISON]) {
     assert.equal(ITEM_CATALOG[catalogId].mechanics_status, 'verified', catalogId)
     assert.doesNotMatch(ITEM_CATALOG[catalogId].limitation, /не реализован/iu, catalogId)
   }
-  // Режим лужи — правило стола, и карточка обязана это говорить вслух.
-  assert.match(ITEM_CATALOG[OIL].limitation, /ПРАВИЛО СТОЛА/u)
-  assert.match(ITEM_CATALOG[OIL].limitation, /в SRD 5\.2\.1 такой строки нет/u)
-  assert.equal(ITEM_CATALOG[OIL].use.spill_mode.house_rule, true)
-  assert.equal(ITEM_CATALOG[OIL].use.on_hit_condition.fire_damage_bonus, 5)
+  // Обливание клетки есть в актуальной редакции и не должно маскироваться
+  // правилом стола.
+  assert.equal(ITEM_CATALOG[OIL].use.spill_mode.house_rule, undefined)
+  assert.equal(ITEM_CATALOG[OIL].use.on_failed_save_condition.fire_damage_bonus, 5)
+  assert.equal(ITEM_CATALOG[OIL].dndsu_reference_url, 'https://next.dnd.su/equipment/249-oil')
   // Калтропы — прочтение 5.2.1, и оно тоже названо.
   assert.match(ITEM_CATALOG[CALTROPS].limitation, /прочтение SRD 5\.2\.1/u)
   assert.equal(ITEM_CATALOG[CALTROPS].use.zone.save_dc, 15)
   assert.equal(ITEM_CATALOG[POISON].use.rider_damage, '1d4')
   assert.equal(ITEM_CATALOG[POISON].use.rider_damage_type, 'poison')
+  assert.equal(ITEM_CATALOG[POISON].use.combat_action, 'bonus_action')
+  assert.equal(itemViewerCapabilities(item(CALTROPS)).use.point_target, true)
+  assert.deepEqual(itemViewerCapabilities(item(OIL)).use.use_modes, ['target', 'spill'])
+  assert.equal(itemViewerCapabilities(item(OIL)).use.point_target, true)
+  assert.equal(itemViewerCapabilities(item(POISON)).use.requires_weapon, true)
 })
 
 test('облитая маслом цель получает +5 к следующему огненному урону ровно один раз', () => {
   const state = campaignState({ inventory: [item(OIL)] })
-  const hit = useItem(state, { item_id: 'oil-flask', target_id: 'foe' }, [14], 'oil-hit')
-  assert.deepEqual(types(hit), ['ItemUsed', 'AttackResolved', 'ConditionAdded', 'ItemConsumed'])
+  const hit = useItem(state, { item_id: 'oil-flask', target_id: 'foe' }, [10], 'oil-hit')
+  assert.deepEqual(types(hit), ['ItemUsed', 'SavingThrowResolved', 'ConditionAdded', 'ItemConsumed'])
+  assert.equal(payload(hit, 'SavingThrowResolved').difficulty, 13)
+  assert.equal(payload(hit, 'SavingThrowResolved').saved, false)
   assert.equal(payload(hit, 'ConditionAdded').fire_damage_bonus, 5)
   const oiled = hit.events.reduce(applyGameEvent, state)
   assert.equal(oiled.enemies[0].hp, 40, 'само масло урона не наносит')

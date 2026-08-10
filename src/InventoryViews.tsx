@@ -9,7 +9,7 @@ import { fallbackCombatSpells, spellSelectionRules } from './combat-spells'
 import { classSkillRulesFor, featureChoiceGroupsFor, normalizedSelectedFeatures } from './character-progression'
 import { itemImageFor } from './item-images'
 import type { FeatureChoiceGroup } from './character-progression'
-import type { InventoryItem, Player } from './types'
+import type { InventoryItem, ItemUseOptions, Player } from './types'
 
 const abilityNames: Record<keyof Player['abilities'], string> = { str: 'СИЛ', dex: 'ЛОВ', con: 'ТЕЛ', int: 'ИНТ', wis: 'МДР', cha: 'ХАР' }
 const itemTypeNames: Record<InventoryItem['type'], string> = { weapon: 'Оружие', armor: 'Доспех', consumable: 'Расходник', tool: 'Инструмент', quest: 'Задание', treasure: 'Сокровище', document: 'Документ', other: 'Прочее' }
@@ -387,7 +387,7 @@ export function InventoryView({
   busy?: boolean
   error?: string | null
   onEquip: (itemId: string, equipped: boolean) => void
-  onUse: (itemId: string, targetId?: string, chargesToSpend?: number) => void
+  onUse: (itemId: string, options?: ItemUseOptions) => void
   onTransfer: (itemId: string, recipientId: string, quantity: number) => void
   onAttune: (itemId: string, attuned: boolean) => void
   onActivate: (itemId: string, activated: boolean) => void
@@ -397,7 +397,11 @@ export function InventoryView({
   const [recipientId, setRecipientId] = useState(recipients[0]?.id ?? '')
   const [useTargets, setUseTargets] = useState<Record<string, string>>({})
   const [chargeSpends, setChargeSpends] = useState<Record<string, number>>({})
+  const [useModes, setUseModes] = useState<Record<string, 'target' | 'spill'>>({})
+  const [pointTargets, setPointTargets] = useState<Record<string, { x: number; y: number }>>({})
+  const [weaponTargets, setWeaponTargets] = useState<Record<string, string>>({})
   const useTargetOptions = [player, ...party.filter((candidate) => candidate.id !== player.id)]
+  const usableWeapons = player.inventory.filter((item) => item.type === 'weapon' && item.quantity > 0)
   const totalWeight = useMemo(() => player.inventory.reduce((sum, item) => sum + item.weight * item.quantity, 0), [player.inventory])
   const items = player.inventory.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()))
   const enemyTargetFor = (itemId: string) => {
@@ -414,6 +418,31 @@ export function InventoryView({
     const preferred = chargeSpends[item.id] ?? use?.default_charges_to_spend ?? minimum
     return Math.max(minimum, Math.min(availableMaximum, preferred))
   }
+  const useModeFor = (item: InventoryItem) => useModes[item.id] ?? 'target'
+  const pointTargetFor = (item: InventoryItem) => pointTargets[item.id] ?? { x: player.x, y: player.y }
+  const weaponTargetFor = (item: InventoryItem) => {
+    const selected = weaponTargets[item.id]
+    return usableWeapons.some((weapon) => weapon.id === selected)
+      ? selected
+      : usableWeapons.find((weapon) => weapon.equipped)?.id ?? usableWeapons[0]?.id
+  }
+  const useOptionsFor = (item: InventoryItem): ItemUseOptions => {
+    const use = item.capabilities?.use
+    const mode = useModeFor(item)
+    const targetsCreature = ['enemy', 'creature'].includes(use?.target ?? '')
+    const usesPoint = use?.point_target === true && (use.kind === 'spill_zone' || mode === 'spill')
+    return {
+      targetId: targetsCreature && !usesPoint
+        ? enemyTargetFor(item.id)
+        : use?.target === 'party'
+          ? (useTargets[item.id] ?? player.id)
+          : player.id,
+      chargesToSpend: chargesToSpendFor(item),
+      ...(usesPoint ? { to: pointTargetFor(item) } : {}),
+      ...(mode === 'spill' ? { useMode: 'spill' } : {}),
+      ...(use?.requires_weapon ? { weaponId: weaponTargetFor(item) } : {}),
+    }
+  }
 
   return <section className="section-page inventory-page">
     <div className="inventory-head"><div><span>ЛИЧНЫЕ ВЕЩИ</span><h1>Инвентарь {player.character}</h1><p>Всё, что герой несёт с собой: снаряжение, находки и то, что пока не пригодилось.</p></div>
@@ -429,18 +458,43 @@ export function InventoryView({
       {item.capabilities?.charges && <div className="item-charge-state">Применения: <b>{item.capabilities.charges.current}/{item.capabilities.charges.max}</b></div>}
       <div className="item-actions">
         {item.capabilities?.equippable && <button disabled={busy} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Экипировать'}</button>}
-        {item.capabilities?.usable && ['party', 'enemy'].includes(item.capabilities.use?.target ?? '') && <label className="item-use-target">
+        {item.capabilities?.usable && item.capabilities.use?.use_modes && <label className="item-use-target">
+          <span>Режим</span>
+          <select
+            value={useModeFor(item)}
+            disabled={busy}
+            aria-label={`Режим использования: ${item.name}`}
+            onChange={(event) => setUseModes((current) => ({ ...current, [item.id]: event.target.value as 'target' | 'spill' }))}
+          >
+            <option value="target">Бросить в цель</option>
+            <option value="spill">Разлить на клетку</option>
+          </select>
+        </label>}
+        {item.capabilities?.usable && ['party', 'enemy', 'creature'].includes(item.capabilities.use?.target ?? '')
+          && !(item.capabilities.use?.point_target && useModeFor(item) === 'spill') && <label className="item-use-target">
           <span>Цель</span>
           <select
-            value={item.capabilities.use?.target === 'enemy' ? enemyTargetFor(item.id) ?? '' : useTargets[item.id] ?? player.id}
+            value={['enemy', 'creature'].includes(item.capabilities.use?.target ?? '') ? enemyTargetFor(item.id) ?? '' : useTargets[item.id] ?? player.id}
             disabled={busy}
             aria-label={`Цель использования: ${item.name}`}
             onChange={(event) => setUseTargets((current) => ({ ...current, [item.id]: event.target.value }))}
           >
-            {(item.capabilities.use?.target === 'enemy'
+            {(['enemy', 'creature'].includes(item.capabilities.use?.target ?? '')
               ? enemyTargets
               : useTargetOptions.map((candidate) => ({ id: candidate.id, label: candidate.character })))
               .map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
+          </select>
+        </label>}
+        {item.capabilities?.usable && item.capabilities.use?.point_target
+          && (item.capabilities.use.kind === 'spill_zone' || useModeFor(item) === 'spill') && <fieldset className="item-point-target">
+          <legend>Клетка</legend>
+          <label><span>X</span><input type="number" value={pointTargetFor(item).x} disabled={busy} aria-label={`Координата X: ${item.name}`} onChange={(event) => setPointTargets((current) => ({ ...current, [item.id]: { ...pointTargetFor(item), x: Number(event.target.value) } }))} /></label>
+          <label><span>Y</span><input type="number" value={pointTargetFor(item).y} disabled={busy} aria-label={`Координата Y: ${item.name}`} onChange={(event) => setPointTargets((current) => ({ ...current, [item.id]: { ...pointTargetFor(item), y: Number(event.target.value) } }))} /></label>
+        </fieldset>}
+        {item.capabilities?.usable && item.capabilities.use?.requires_weapon && <label className="item-use-target">
+          <span>Оружие</span>
+          <select value={weaponTargetFor(item) ?? ''} disabled={busy || usableWeapons.length === 0} aria-label={`Оружие для покрытия: ${item.name}`} onChange={(event) => setWeaponTargets((current) => ({ ...current, [item.id]: event.target.value }))}>
+            {usableWeapons.map((weapon) => <option key={weapon.id} value={weapon.id}>{weapon.name}{weapon.equipped ? ' · в руках' : ''}</option>)}
           </select>
         </label>}
         {item.capabilities?.usable && item.capabilities.use?.min_charges_to_spend != null && item.capabilities.use.max_charges_to_spend != null && <label className="item-charge-spend">
@@ -461,19 +515,12 @@ export function InventoryView({
           disabled={busy
             || Boolean(item.capabilities.use?.combat_only && (!combatActive || !combatItemTurnAvailable))
             || Boolean(item.capabilities.use?.requires_equipped && !item.equipped)
-            || Boolean(item.capabilities.use?.target === 'enemy' && enemyTargets.length === 0)
+            || Boolean(['enemy', 'creature'].includes(item.capabilities.use?.target ?? '') && useModeFor(item) !== 'spill' && enemyTargets.length === 0)
+            || Boolean(item.capabilities.use?.requires_weapon && !weaponTargetFor(item))
             || Boolean(item.capabilities.charges && item.capabilities.charges.current < (
               chargesToSpendFor(item) ?? item.capabilities.use?.charges_per_use ?? 0
             ))}
-          onClick={() => onUse(
-            item.id,
-            item.capabilities?.use?.target === 'enemy'
-              ? enemyTargetFor(item.id)
-              : item.capabilities?.use?.target === 'party'
-                ? (useTargets[item.id] ?? player.id)
-                : player.id,
-            chargesToSpendFor(item),
-          )}
+          onClick={() => onUse(item.id, useOptionsFor(item))}
         >
           Использовать · {item.capabilities.use?.action_type === 'bonus_action' ? 'бонус' : item.capabilities.use?.action_type === 'action' ? 'действие' : 'вне боя'}
         </button>}
