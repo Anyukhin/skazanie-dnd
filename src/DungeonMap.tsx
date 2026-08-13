@@ -630,7 +630,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onOrderTavernDrink, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -664,6 +664,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onSettleParley: (outcome: ParleyOutcome) => Promise<CommandOutcome>
   onOpenTavernDiceRound: (npcId: string, stakeCp: number) => Promise<CommandOutcome>
   onAnswerTavernDiceRound: (approach: TavernDiceApproach) => Promise<CommandOutcome>
+  onLeaveTavernDiceRound: () => Promise<CommandOutcome>
   onOrderTavernDrink: () => Promise<CommandOutcome>
   onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
   onStartRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
@@ -919,6 +920,24 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // закрыть. Кнопка обязана показать это до клика, а не после отказа.
   const tavernOpponentMaxStakeCp = Number(tavernOpponents.find((npc) => npc.id === chosenTavernOpponentId)?.max_stake_cp ?? 0)
   const tavernActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
+  // Почему открытый раунд может быть уже не доиграть. Оба повода приходят
+  // готовыми числами: доступная ставка соседа — из карточки, свой кошелёк —
+  // из героя. Пока герой думал над костью, соперника мог обыграть дочиста
+  // товарищ по отряду, а свои монеты — уйти на другую покупку. Кнопки ответа в
+  // обоих случаях гаснут до клика, а не отказом после него.
+  //
+  // «Соседа нет в списке» и «у соседа пусто» — разные вещи, и путать их нельзя:
+  // ход мира может увести NPC из зала, и тогда предела ставки в карточке просто
+  // нет. Мели это не значит, отвечать сервер не запретит, и гасить кнопки здесь
+  // было бы враньём.
+  const tavernRoundOpponent = tavernRound
+    ? tavernOpponents.find((npc) => npc.id === tavernRound.npc_id) ?? null
+    : null
+  const tavernOpponentCannotPay = Boolean(
+    tavernRound && tavernRoundOpponent && Number(tavernRoundOpponent.max_stake_cp ?? 0) < tavernRound.stake_cp,
+  )
+  const tavernHeroCannotPay = Boolean(tavernRound && activeHeroPurseCp < tavernRound.stake_cp)
+  const tavernRoundUnanswerable = tavernOpponentCannotPay || tavernHeroCannotPay
   const dossierSceneNpc = npcDossier ? sceneNpcs.find((npc) => npc.id === npcDossier.npcId) ?? null : null
   const dossierCaptive = dossierSceneNpc ? captiveByNpcId.get(dossierSceneNpc.id) ?? null : null
   const dossierSocialNpc = dossierSceneNpc
@@ -2334,14 +2353,37 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                     key={approach.id}
                     type="button"
                     className={`tavern-approach approach-${approach.id}`}
-                    disabled={tavernActionsBlocked}
-                    title={approach.summary}
+                    disabled={tavernActionsBlocked || tavernRoundUnanswerable}
+                    title={tavernOpponentCannotPay
+                      ? 'Соперник спустил всё: банк ему уже нечем закрыть'
+                      : tavernHeroCannotPay ? 'Ставку уже нечем закрыть' : approach.summary}
                     onClick={() => { void onAnswerTavernDiceRound(approach.id) }}
                   >
                     {approach.icon}
                     <b>{approach.label}</b>
                     <small>{approach.summary}</small>
                   </button>)}
+                </div>
+                {/* Встать из-за стола можно всегда, а иногда только это и
+                    остаётся: ответить на кость нечем, если соперника обыграл
+                    дочиста товарищ по отряду или свои монеты ушли другой
+                    командой. Ставка при этом не двигается — до расчёта её
+                    никто не трогал. */}
+                <div className="tavern-leave">
+                  <button
+                    type="button"
+                    className="tavern-action action-leave"
+                    disabled={tavernActionsBlocked}
+                    title="Раунд закроется без броска, ставка останется при вас"
+                    onClick={() => { void onLeaveTavernDiceRound() }}
+                  ><DoorOpen size={13} />Встать из-за стола</button>
+                  <small>
+                    {tavernOpponentCannotPay
+                      ? `${tavernRound.npc_name || 'Соперник'} спустил всё: банк в ${tavernRound.stake_cp * 2} мм ему уже нечем закрыть — раунд закрывается без броска.`
+                      : tavernHeroCannotPay
+                        ? `На ставку в ${tavernRound.stake_cp} мм у героя больше не хватает монет — раунд закрывается без броска.`
+                        : `Ставка в ${tavernRound.stake_cp} мм остаётся при вас: со стола её ещё не забрали.`}
+                  </small>
                 </div>
               </>
               : <>

@@ -15,7 +15,7 @@ import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -52,9 +52,31 @@ type TacticalCommand =
   | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
   | { command_type: 'OpenTavernDiceRound'; actor_id: string; npc_id: string; stake_cp: number }
   | { command_type: 'AnswerTavernDiceRound'; actor_id: string; approach: TavernDiceApproach }
+  | { command_type: 'LeaveTavernDiceRound'; actor_id: string }
   | { command_type: 'OrderTavernDrink'; actor_id: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
+
+/**
+ * Двухфазная ли это команда — та, у которой первая фаза возвращает карточку
+ * броска, а не результат.
+ *
+ * Список закрыт и обязан совпадать с серверным (`server/game-orchestrator.mjs`:
+ * `parleyCheckCard`, `guardEscapeCheckCard`, `tavernDiceCheckCard`). Отдельная
+ * функция здесь стоит вместо трёх сравнений по месту потому, что забыть одно из
+ * них уже удалось: карточка приходит с сервера, клиент её не показывает, и ход
+ * зависает без единой ошибки в консоли.
+ */
+function twoPhaseCheckCommandFor(command: TacticalCommand): TwoPhaseCheckCommand | null {
+  switch (command.command_type) {
+    case 'ProposeParley':
+    case 'ResolveGuardEncounter':
+    case 'AnswerTavernDiceRound':
+      return command
+    default:
+      return null
+  }
+}
 
 type CharacterBuildCommand =
   | {
@@ -833,9 +855,13 @@ export function useGameSession() {
     // Вторая фаза команды доски: та же команда с серверным `roll_id`, а не
     // пересборка свободного действия. Иначе парлей уходил бы в разбор текста и
     // терял уже объявленную СЛ.
+    //
+    // Команд здесь три (`twoPhaseCheckCommandFor`), и текст отказа общий: он
+    // достаётся не только парлею, но и побегу от стражи, и ответному броску за
+    // костями.
     if (check.command) {
       const outcome = await tacticalCommandRef.current?.(check.command, check.action, { roll: result })
-        ?? { ok: false as const, error: 'Команда переговоров недоступна' }
+        ?? { ok: false as const, error: 'Команда доски сейчас недоступна' }
       mutate((current) => ({
         ...current,
         isNarrating: false,
@@ -1043,16 +1069,24 @@ export function useGameSession() {
 
       // Карточка проверки вместо результата: сервер ничего не закоммитил и
       // ждёт второй фазы с собственным `roll_id`. Кубик остаётся за игроком.
-      if (result?.check && command.command_type === 'ProposeParley') {
-        const parleyCommand = command
+      //
+      // Развилка идёт по списку двухфазных команд, а не по одной из них. До
+      // ревью здесь стояло `command.command_type === 'ProposeParley'`, и обе
+      // остальные карточки — побег от стражи и ответный бросок за костями —
+      // приходили с сервера и молча пропадали: `result.check` отбрасывался,
+      // ниже начинался разбор `authoritative_state`, которого у неоткоммиченной
+      // первой фазы нет, и ход было нечем доиграть. С выключенным автобросом
+      // (значение по умолчанию) это ровно рабочий путь, а не редкий случай.
+      const twoPhase = twoPhaseCheckCommandFor(command)
+      if (result?.check && twoPhase) {
         mutate((state) => ({
           ...state,
           pendingCheck: {
             ...result.check!,
             action: message,
-            playerId: parleyCommand.actor_id,
+            playerId: twoPhase.actor_id,
             status: 'ready',
-            command: parleyCommand,
+            command: twoPhase,
           },
         }))
         return { ok: true }
@@ -1294,6 +1328,14 @@ export function useGameSession() {
       labels[approach],
       { manualRoll: !autoRollEnabled() },
     )
+  }, [executeTacticalCommand])
+
+  /* Встать из-за стола. Броска нет и ставка не двигается — её до расчёта никто
+     не трогал; команда существует потому, что ответить герой может не всегда:
+     соперника мог обыграть дочиста товарищ по отряду, а свои деньги — уйти
+     другой командой. */
+  const leaveTavernDiceRound = useCallback((actorId: string) => {
+    return executeTacticalCommand({ command_type: 'LeaveTavernDiceRound', actor_id: actorId }, 'Встать из-за стола')
   }, [executeTacticalCommand])
 
   const orderTavernDrink = useCallback((actorId: string) => {
@@ -1723,6 +1765,7 @@ export function useGameSession() {
     resolveGuardEncounter,
     openTavernDiceRound,
     answerTavernDiceRound,
+    leaveTavernDiceRound,
     orderTavernDrink,
     proposeParley,
     settleParley,

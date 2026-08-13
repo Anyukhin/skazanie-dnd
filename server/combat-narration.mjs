@@ -314,6 +314,13 @@ function tacticalNarrationLines(events, state) {
       else if (payload.outcome === 'caught') meaningful.push(`${actor} тянется к костям — и руку перехватывают. Ставка потеряна.`)
       else meaningful.push(`${actor} не сводит глаз с чужих рук и раунд не доигрывает.`)
       if (payload.watch_result === 'clean') meaningful.push('Ничего подозрительного: играют честно.')
+    } else if (event.event_type === 'TavernDiceRoundCancelled') {
+      // Раунд закрылся без броска: герой встал сам или соперника обыграли
+      // дочиста, пока он думал. Ставка при этом не двигалась — её до расчёта
+      // никто не трогал, и стол просто расходится.
+      meaningful.push(payload.reason === 'opponent-broke'
+        ? `${String(payload.npc_name || 'Сосед по столу')} выгреб карманы и разводит руками: банк ему нечем закрыть. Ставка в ${Math.max(0, Number(payload.returned_cp) || 0)} мм возвращается к ${actor}.`
+        : `${actor} собирает свои ${Math.max(0, Number(payload.returned_cp) || 0)} мм со стола и встаёт: раунд не доигран.`)
     } else if (event.event_type === 'TavernCheatCaught') {
       meaningful.push(`Скандал за столом: ${String(payload.npc_name || 'сосед')} во весь голос объявляет героя шулером. Это видели.`)
     } else if (event.event_type === 'TavernCheatExposed') {
@@ -387,7 +394,8 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',
   'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed',
-  'TavernCheatCaught', 'TavernCheatExposed', 'TavernDiceRoundOpened', 'TavernDiceRoundResolved',
+  'TavernCheatCaught', 'TavernCheatExposed',
+  'TavernDiceRoundCancelled', 'TavernDiceRoundOpened', 'TavernDiceRoundResolved',
   'TavernDrinkOrdered', 'TavernPatronEjected',
   'TimeOfDayChanged', 'TruceBroken', 'TruceEstablished', 'TurnEnded',
   'TurnStarted', 'WeatherChanged',

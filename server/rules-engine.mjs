@@ -155,6 +155,7 @@ import {
   tavernGamblerFor,
   tavernGamblerPurseFor,
   tavernNextDrinkDc,
+  tavernOpenRoundsAgainst,
   tavernOpponentDie,
   tavernRoundFor,
   tavernScandalsFor,
@@ -522,6 +523,9 @@ const COMMAND_RULES = Object.freeze({
   // ось экономики, что и покупки.
   OpenTavernDiceRound: [RULE_IDS.economyCoins],
   AnswerTavernDiceRound: [RULE_IDS.abilityCheck, RULE_IDS.economyCoins],
+  // Встать из-за стола — ни броска, ни монеты: ставку до расчёта никто не
+  // трогал, и обе оси ruleset здесь были бы декорацией.
+  LeaveTavernDiceRound: [],
   // Выпивка: монета из кошелька и спасбросок Телосложения за перебор.
   OrderTavernDrink: [RULE_IDS.savingThrow, RULE_IDS.economyCoins],
   SetCharacterChoices: [],
@@ -3182,7 +3186,7 @@ function needsActor(type) {
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter',
-    'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'OrderTavernDrink',
+    'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3790,7 +3794,11 @@ export function validateCommand(input, rawState, context = {}) {
     if (!isLivingActor(findActor(state, command.actor_id))) {
       throw new RulesValidationError('Герой без сознания за стол не садится', 'ACTOR_DEFEATED')
     }
-    if (tavernEjected(state, command.actor_id)) {
+    // Выставленному за дверь не наливают и с ним не садятся — но встать из-за
+    // стола ему никто помешать не может. Исключение здесь не теоретическое:
+    // запрет входа вешается скандалом, а скандал — это чужая команда, и между
+    // ней и ответом героя его собственный раунд остаётся открытым.
+    if (command.command_type !== 'LeaveTavernDiceRound' && tavernEjected(state, command.actor_id)) {
       throw new RulesValidationError('Героя уже выставили за дверь этого заведения', 'TAVERN_PATRON_EJECTED')
     }
     // Раунд у каждого героя свой: стол на пятерых, и общий слот запирал бы
@@ -3828,6 +3836,12 @@ export function validateCommand(input, rawState, context = {}) {
       if (tavernGamblerPurseFor(state, round.npc_id) < round.stake_cp) {
         throw new RulesValidationError('Соперник уже спустил всё: банк ему нечем закрыть', 'TAVERN_OPPONENT_BROKE')
       }
+    }
+    // Встать из-за стола можно всегда, пока за ним сидят. Ни своих денег, ни
+    // чужой кассы здесь не проверяется намеренно: это единственный выход
+    // ровно из тех положений, где обе проверки не проходят.
+    if (command.command_type === 'LeaveTavernDiceRound' && !round) {
+      throw new RulesValidationError('Из-за стола можно встать только с открытым раундом', 'TAVERN_ROUND_NOT_OPEN')
     }
     if (command.command_type === 'OrderTavernDrink') {
       if (currencyToCopper(playerActor(state, command.actor_id).currency) < TAVERN_DRINK_PRICE_CP) {
@@ -6178,6 +6192,10 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
  *
  * СЛ равна объявленному числу соперника плюс один: перебить — значит показать
  * больше.
+ *
+ * Подход сюда приходит из **реестра бросков**, а не из команды второй фазы
+ * (`server/game-orchestrator.mjs`): иначе решение подкрутить принималось бы уже
+ * после просмотра кубика.
  */
 export function previewTavernDiceRoll(state, actorId, approach = 'fair') {
   const round = tavernRoundFor(state, actorId)
@@ -6192,6 +6210,43 @@ export function previewTavernDiceRoll(state, actorId, approach = 'fair') {
     disadvantage: Boolean(penalty),
     ...(penalty ? { check_disadvantage_condition: penalty } : {}),
   }
+}
+
+/**
+ * Раунд закрыт без броска — одним событием на оба повода.
+ *
+ * Производителей у закрытия два и живут они в разных командах: герой встал
+ * из-за стола сам (`LeaveTavernDiceRound`) или соседа обыграл дочиста его
+ * товарищ по отряду (`AnswerTavernDiceRound` чужого героя). Событие обязано
+ * быть одним: у проекции, летописи и редьюсера второго ответа на «раунд
+ * закрылся» быть не должно.
+ *
+ * `actor_id` события — **владелец раунда**, а не тот, чья команда его закрыла:
+ * закрывается стол героя, и в летописи должен стоять он. Поэтому и `hero_id` в
+ * payload берётся из самого раунда.
+ *
+ * `reason` — закрытая пара `left-table` | `opponent-broke`, и называет её
+ * сервер: клиент причину не подсказывает, он только встаёт из-за стола.
+ *
+ * `returned_cp` равен ставке и всегда: ставку до расчёта никто не трогал —
+ * кошельки за этим столом худеют только на `TavernDiceRoundResolved`, а до него
+ * монеты лежат там, где лежали. Число здесь есть для того, чтобы летопись и
+ * карточка могли сказать игроку, сколько к нему вернулось со стола, не считая
+ * это второй раз.
+ */
+function tavernRoundCancelledEvent(command, round, reason, minutes) {
+  return eventFrom({ ...command, actor_id: round.hero_id, visibility: 'party' }, 'TavernDiceRoundCancelled', {
+    round_id: round.id,
+    hero_id: round.hero_id,
+    npc_id: round.npc_id,
+    npc_name: round.npc_name,
+    stake_cp: round.stake_cp,
+    npc_total: round.npc_total,
+    returned_cp: round.stake_cp,
+    reason,
+    at_minutes: minutes,
+    policy_id: TAVERN_POLICY_ID,
+  }, [round.hero_id, round.npc_id])
 }
 
 /**
@@ -11400,7 +11455,29 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           policy_id: NPC_WORLD_POLICY_ID,
         }, [round.npc_id]))
       }
+      // Соперник разорился — и это не только про него. Раунд у каждого героя
+      // свой, а касса у соседа общая: пока второй игрок думал над своей костью,
+      // первый мог обыграть того дочиста. Ответить второму после этого нечем —
+      // проверка ставки не пройдёт, — и без автозакрытия его раунд остался бы
+      // висеть до конца сцены.
+      //
+      // Считается по кассе **после** расчёта и по каждому чужому раунду
+      // отдельно: сосед на 60 мм закрывает медяки и не закрывает крупную игру.
+      for (const stranded of tavernOpenRoundsAgainst(state, round.npc_id)) {
+        if (stranded.hero_id === command.actor_id) continue
+        if (stranded.stake_cp <= npcPurseAfterCp) continue
+        events.push(tavernRoundCancelledEvent(command, stranded, 'opponent-broke', minutes))
+      }
       appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), TAVERN_DICE_ROUND_MINUTES, 'minute')
+      break
+    }
+    case 'LeaveTavernDiceRound': {
+      // Встать из-за стола — единственное, что герою остаётся, когда ответить
+      // он уже не может: свои деньги ушли другой командой или соседа обыграл
+      // товарищ по отряду. Броска здесь нет и монеты не двигаются — ставку до
+      // расчёта никто не трогал.
+      const round = tavernRoundFor(state, command.actor_id)
+      events.push(tavernRoundCancelledEvent(command, round, 'left-table', campaignElapsedMinutes(state)))
       break
     }
     case 'OrderTavernDrink': {
@@ -14650,6 +14727,9 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'WantedCleared': return `Розыск снят в крае «${payload.region_name || payload.region_id || ''}» (${payload.reason === 'fine' ? 'вира' : payload.reason === 'surrender' ? 'сдача' : 'амнистия'})`
     case 'TavernDiceRoundOpened': return `Кости на стол: ${payload.npc_name || 'соперник'} показывает ${safeInteger(payload.npc_total, 0)}, ставка ${safeInteger(payload.stake_cp, 0)} мм`
     case 'TavernDiceRoundResolved': return `Раунд костей: ${safeInteger(payload.hero_total, 0)} против ${safeInteger(payload.npc_total, 0)} — ${payload.outcome === 'win' ? 'банк уходит герою' : payload.outcome === 'loss' ? 'ставка потеряна' : payload.outcome === 'push' ? 'ничья' : payload.outcome === 'caught' ? 'героя поймали за руку' : 'соперник разоблачён'}`
+    case 'TavernDiceRoundCancelled': return payload.reason === 'opponent-broke'
+      ? `${payload.npc_name || 'Соперник'} спустил всё: раунд ${named(payload.hero_id) || 'героя'} закрыт, ставка ${safeInteger(payload.returned_cp, 0)} мм осталась при нём`
+      : `${named(payload.hero_id) || 'Герой'} встал из-за стола: ставка ${safeInteger(payload.returned_cp, 0)} мм осталась при нём`
     case 'TavernCheatCaught': return `Скандал за столом: ${named(payload.hero_id) || 'герой'} пойман на шулерстве (${safeInteger(payload.scandal_count, 1)}-й раз)`
     case 'TavernCheatExposed': return `${payload.npc_name || 'Соперник'} уличён в шулерстве`
     case 'TavernPatronEjected': return `${named(payload.hero_id) || 'Героя'} выставили из заведения`

@@ -154,12 +154,25 @@ function tavernHints(room) {
   const empty = { urgent: [], leisure: [] }
   if (!tavern || tavern.ejected === true) return empty
   if (tavern.round) {
+    // Отвечать бывает нечем: пока герой думал, соперника мог обыграть дочиста
+    // товарищ по отряду, и банк тот уже не закроет. Доступную ставку соседа
+    // карточка приносит готовым числом, поэтому подсказка зовёт не на бросок, а
+    // из-за стола — второй раз считать чужую кассу здесь нечем и незачем.
+    //
+    // «Соседа нет в списке» и «у соседа пусто» — не одно и то же: ход мира мог
+    // увести его из зала, и тогда предела ставки в карточке просто нет. Отвечать
+    // сервер при этом не запретит, и звать из-за стола не за что.
+    const opponent = (Array.isArray(tavern.opponents) ? tavern.opponents : [])
+      .find((npc) => String(npc?.id ?? '') === String(tavern.round.npc_id ?? '')) ?? null
+    const broke = Boolean(opponent) && Number(opponent.max_stake_cp ?? 0) < (Number(tavern.round.stake_cp) || 0)
     return {
       ...empty,
       urgent: [{
         id: 'tavern:answer',
         priority: HINT_PRIORITY.tavernRound,
-        text: `Можно ответить на бросок: ${text(tavern.round.npc_name, 60) || 'соперник'} выбросил ${Number(tavern.round.npc_total) || 0}`,
+        text: broke
+          ? `Можно встать из-за стола: ${text(tavern.round.npc_name, 60) || 'соперник'} спустил всё и банк уже не закроет`
+          : `Можно ответить на бросок: ${text(tavern.round.npc_name, 60) || 'соперник'} выбросил ${Number(tavern.round.npc_total) || 0}`,
       }],
     }
   }

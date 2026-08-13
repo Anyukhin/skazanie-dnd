@@ -313,3 +313,177 @@ test('во вторую фазу раунда принимается тольк�
   const after = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
   assert.ok(after.body.state.tavern.round, 'чужой бросок раунда не закрывает')
 })
+
+/**
+ * Зонд ревью: подход не был закреплён между фазами ручного броска.
+ *
+ * Первая фаза объявляла карточку по подходу из команды, а вторая читала подход
+ * из **новой** команды — то есть решение подкрутить кость принималось уже после
+ * того, как игрок увидел свой кубик. Честный бросок с `+0` доигрывался как
+ * `cheat` с `+5` ровно тогда, когда не хватило, а карточка при этом объявляла
+ * столу другое число.
+ *
+ * Проверяется на живом пути целиком, потому что дыра была именно в стыке двух
+ * запросов: тот же `roll_id`, другой `approach`.
+ */
+test('подход к броску закреплён первой фазой: тот же кубик с другим подходом не принимается', { timeout: runnerTimeout(40_000) }, async (t) => {
+  const { baseUrl, adminCookie, log } = await setUp(t)
+
+  const opened = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-open-approach',
+      command: { command_type: 'OpenTavernDiceRound', actor_id: 'hero', npc_id: 'barkeep', stake_cp: 10 },
+    },
+  })
+  assert.equal(opened.status, 200, `${opened.text}\n${log()}`)
+
+  // Первая фаза объявлена честной: карточка обещает столу «+0».
+  const announced = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-approach-1',
+      manual_roll: true,
+      command: { command_type: 'AnswerTavernDiceRound', actor_id: 'hero', approach: 'fair' },
+    },
+  })
+  assert.equal(announced.status, 200, `${announced.text}\n${log()}`)
+  assert.equal(announced.body.check.modifier, 0, 'честный бросок объявлен без надбавки')
+
+  const rolled = await request(baseUrl, '/api/roll', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { campaignId: SESSION, playerId: 'hero', checkId: announced.body.check.check_id },
+  })
+  assert.equal(rolled.status, 200, `${rolled.text}\n${log()}`)
+
+  // Кубик увиден — и вот теперь герой «решает» подкрутить. Отказ, а не +5.
+  const switched = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-approach-switch',
+      roll: { roll_id: rolled.body.roll_id },
+      command: { command_type: 'AnswerTavernDiceRound', actor_id: 'hero', approach: 'cheat' },
+    },
+  })
+  assert.equal(switched.status, 400, switched.text)
+  assert.equal(switched.body.code, 'ROLL_CONTEXT_MISMATCH')
+
+  const stillOpen = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
+  assert.ok(stillOpen.body.state.tavern.round, 'отказ ничего не закоммитил: раунд на месте')
+
+  // Кубик при этом сгорел: реестр помечает бросок использованным до разбора
+  // команды, и подставить его ещё раз — уже под объявленным подходом — нельзя.
+  // Так и надо: попытка переиграть решение стоит броска, а раунд остаётся
+  // открытым и доигрывается новой костью.
+  const reused = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-approach-reuse',
+      roll: { roll_id: rolled.body.roll_id },
+      command: { command_type: 'AnswerTavernDiceRound', actor_id: 'hero', approach: 'fair' },
+    },
+  })
+  assert.equal(reused.status, 400, reused.text)
+  assert.equal(reused.body.code, 'ROLL_ALREADY_USED')
+
+  // Новая честная пара фаз доигрывает раунд штатно, и никакой проверки Ловкости
+  // рук в журнале нет — подкрутки не было.
+  const reannounced = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-approach-3',
+      manual_roll: true,
+      command: { command_type: 'AnswerTavernDiceRound', actor_id: 'hero', approach: 'fair' },
+    },
+  })
+  assert.equal(reannounced.status, 200, `${reannounced.text}\n${log()}`)
+  assert.equal(reannounced.body.check.modifier, 0)
+  const rerolled = await request(baseUrl, '/api/roll', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { campaignId: SESSION, playerId: 'hero', checkId: reannounced.body.check.check_id },
+  })
+  assert.equal(rerolled.status, 200, `${rerolled.text}\n${log()}`)
+
+  const resolved = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-approach-4',
+      roll: { roll_id: rerolled.body.roll_id },
+      command: { command_type: 'AnswerTavernDiceRound', actor_id: 'hero', approach: 'fair' },
+    },
+  })
+  assert.equal(resolved.status, 200, `${resolved.text}\n${log()}`)
+  const settled = (resolved.body.mechanics ?? []).find((event) => event.event_type === 'TavernDiceRoundResolved')
+  assert.ok(settled, `раунд обязан закрыться событием\n${resolved.text}`)
+  assert.equal(settled.payload.approach, 'fair')
+  assert.equal(settled.payload.cheated, false)
+  assert.equal(settled.payload.hero_total, rerolled.body.total, 'считается ровно тот кубик, что объявляла карточка')
+  assert.equal(
+    (resolved.body.mechanics ?? []).some((event) => event.event_type === 'AbilityCheckResolved'),
+    false,
+    'честный ответ не заводит проверку Ловкости рук',
+  )
+  // Касса соперника здесь на месте намеренно: проба ходит под администратором,
+  // а ведущий проекцию не проходит вовсе (`mechanicsForViewer`). Что её не
+  // видит игрок — проверяется там, где есть роль игрока
+  // (`test/tavern-life.test.mjs`).
+  assert.ok(Number.isInteger(settled.payload.npc_purse_after_cp))
+})
+
+/**
+ * Тупик открытого раунда живым путём: команда «встать из-за стола» закрывает
+ * его без броска и без движения монет.
+ */
+test('из-за стола встают отдельной командой, и кошелёк при этом не двигается', { timeout: runnerTimeout(40_000) }, async (t) => {
+  const { baseUrl, adminCookie, log } = await setUp(t)
+
+  const opened = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-open-leave',
+      command: { command_type: 'OpenTavernDiceRound', actor_id: 'hero', npc_id: 'barkeep', stake_cp: 50 },
+    },
+  })
+  assert.equal(opened.status, 200, `${opened.text}\n${log()}`)
+  const before = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
+  assert.ok(before.body.state.tavern.round, 'кость соперника на столе')
+  const purseBefore = JSON.stringify(before.body.state.players[0].currency)
+
+  const left = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-leave',
+      command: { command_type: 'LeaveTavernDiceRound', actor_id: 'hero' },
+    },
+  })
+  assert.equal(left.status, 200, `${left.text}\n${log()}`)
+  const cancelled = (left.body.mechanics ?? []).find((event) => event.event_type === 'TavernDiceRoundCancelled')
+  assert.ok(cancelled, `закрытие раунда обязано доехать игроку событием\n${left.text}`)
+  assert.equal(cancelled.payload.reason, 'left-table')
+  assert.equal(cancelled.payload.returned_cp, 50)
+
+  const after = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
+  assert.equal(after.body.state.tavern.round, null, 'раунд снят')
+  assert.equal(JSON.stringify(after.body.state.players[0].currency), purseBefore, 'ставку до расчёта никто не трогал')
+
+  // И за стол можно сесть заново — команда не сжигает вечер.
+  const again = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'tavern-open-again',
+      command: { command_type: 'OpenTavernDiceRound', actor_id: 'hero', npc_id: 'barkeep', stake_cp: 10 },
+    },
+  })
+  assert.equal(again.status, 200, `${again.text}\n${log()}`)
+})

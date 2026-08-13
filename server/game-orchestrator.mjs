@@ -21,7 +21,7 @@ import {
   deterministicNarration,
   verifyNarratorCraft,
 } from './narrator.mjs'
-import { TAVERN_POLICY_ID, tavernRoundFor } from './tavern-life.mjs'
+import { TAVERN_DICE_APPROACHES, TAVERN_POLICY_ID, tavernRoundFor } from './tavern-life.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll } from './rules-engine.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
@@ -877,7 +877,8 @@ export class GameOrchestrator {
     const actorId = String(command.actor_id ?? playerId)
     const round = tavernRoundFor(state, actorId)
     if (!round) return null
-    const preview = previewTavernDiceRoll(state, actorId, String(command.approach ?? 'fair'))
+    const approach = String(command.approach ?? 'fair')
+    const preview = previewTavernDiceRoll(state, actorId, approach)
     const check = this.rollRegistry.registerCheck({
       campaignId,
       actorId,
@@ -887,7 +888,12 @@ export class GameOrchestrator {
       ability: null,
       advantage: preview.advantage,
       disadvantage: preview.disadvantage,
-      context: { kind: 'tavern-dice', policy: TAVERN_POLICY_ID, round_id: round.id },
+      // Подход закрепляется здесь и только здесь. Иначе решение подкрутить
+      // кость принималось бы **после** просмотра кубика: первая фаза объявляла
+      // бы честный бросок, игрок видел бы выпавшее число, а вторая приносила бы
+      // `cheat` новой командой — и +5 доставался бы ровно тем, кому его не
+      // хватило. Модификатор карточки при этом уже посчитан по этому подходу.
+      context: { kind: 'tavern-dice', policy: TAVERN_POLICY_ID, round_id: round.id, approach },
     })
     return check
   }
@@ -1260,6 +1266,37 @@ export class GameOrchestrator {
           error.code = 'ROLL_CONTEXT_MISMATCH'
           throw error
         }
+        // Подход берётся из реестра, а не из этой команды, и расхождение —
+        // отказ, а не тихое исправление.
+        //
+        // Соблазн здесь ровно один и он крупный: между фазами игрок видит свой
+        // кубик. Если бы вторая фаза читала `approach` из новой команды, решение
+        // «а подкручу-ка» принималось бы уже после просмотра числа — и +5
+        // доставался бы только тем броскам, которым не хватило. Карточка при
+        // этом объявила бы честный модификатор, то есть соврала бы столу.
+        //
+        // Раунд сверяется тем же движением: карточка объявила СЛ по кости,
+        // лежавшей на столе в первой фазе, а между фазами раунд мог закрыться
+        // (соперник разорился, герой встал из-за стола) и открыться заново уже
+        // против другого числа.
+        const registeredApproach = String(tavernCheckContext?.approach ?? '')
+        if (!TAVERN_DICE_APPROACHES.includes(registeredApproach)) {
+          const error = new Error('Этот бросок регистрировался без подхода к игре: бросьте кость заново')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        if (String(tavernAnswerCommand.approach ?? registeredApproach) !== registeredApproach) {
+          const error = new Error('Подход к броску выбирается до кости, а не после: этот бросок регистрировался иначе')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        const registeredRoundId = String(tavernCheckContext?.round_id ?? '')
+        if (registeredRoundId !== String(tavernRoundFor(authoritativeState, String(tavernAnswerCommand.actor_id ?? playerId))?.id ?? '')) {
+          const error = new Error('За столом уже другой раунд: этот бросок к нему не относится')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        tavernAnswerCommand.approach = registeredApproach
         tavernAnswerCommand.verified_roll = verifiedRollPayload
       }
     }

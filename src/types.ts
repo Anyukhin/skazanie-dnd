@@ -62,12 +62,25 @@ export type PendingCheck = {
   status: 'ready' | 'rolling' | 'resolving'
   result?: RollResult
   /**
-   * Команда доски, ждущая броска. Есть только у двухфазных команд парлея:
-   * вторая фаза повторяет ту же команду с серверным `roll_id`, а не
-   * пересобирает свободное действие. Пусто — обычная проверка свободной фразы.
+   * Команда доски, ждущая броска: вторая фаза повторяет **ту же** команду с
+   * серверным `roll_id`, а не пересобирает свободное действие. Пусто — обычная
+   * проверка свободной фразы.
    */
-  command?: { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
+  command?: TwoPhaseCheckCommand
 }
+
+/**
+ * Команды доски, у которых первая фаза возвращает карточку броска вместо
+ * результата. Список закрыт и обязан совпадать с серверным: карточку выдают
+ * `parleyCheckCard`, `guardEscapeCheckCard` и `tavernDiceCheckCard`
+ * (`server/game-orchestrator.mjs`), и команда, которой здесь нет, получает
+ * карточку от сервера и молча теряет её на клиенте — ход после этого не
+ * доиграть ничем, кроме перезагрузки.
+ */
+export type TwoPhaseCheckCommand =
+  | { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
+  | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
+  | { command_type: 'AnswerTavernDiceRound'; actor_id: string; approach: TavernDiceApproach }
 
 export type AgentInteractionOption = {
   id: string

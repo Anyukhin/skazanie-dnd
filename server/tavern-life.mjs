@@ -40,6 +40,12 @@ import { normalizeNpcWorldState, presentSceneNpcs, sceneLocationId } from './npc
  *    на всё заведение запирал бы кости для всех, пока один игрок не ответил
  *    (а если его уронили в 0 ОЗ — то и до конца сцены). Поэтому открытый
  *    раунд живёт в записи посетителя, а не в заведении.
+ * 6. **Из-за стола можно встать.** Раунд открывается броском соперника, а
+ *    закрывается не только ответом: обыграть соседа дочиста может товарищ по
+ *    отряду, и тогда банк соперник уже не потянет; деньги героя между фазами
+ *    тоже могли уйти другой командой. Оба случая упираются в проверки ответа,
+ *    поэтому у раунда есть и отмена по команде, и автозакрытие в тот момент,
+ *    когда чужая касса опустела.
  *
  * Осознанные границы (решено, а не забыто):
  * - **своего реестра бросков здесь нет**: ручной кубик героя идёт тем же
@@ -55,12 +61,31 @@ import { normalizeNpcWorldState, presentSceneNpcs, sceneLocationId } from './npc
  *   похмелье при этом остаётся, потому что оно состояние героя, а не заведения.
  */
 
-export const TAVERN_LIFE_SCHEMA_VERSION = 2
+/**
+ * Версия среза заведения. Тройка — за кассой соперника: у записи появилась
+ * минута последней игры, по которой лишние кассы вытесняются.
+ *
+ * Двигать её обязательно ровно из-за одной строки — быстрого пути в
+ * `applyTavernEvent`: срез со «своей» версией берётся как есть, без повторной
+ * нормализации. Оставь здесь двойку — и старый снимок прошёл бы этот путь
+ * насквозь с записями без минуты.
+ */
+export const TAVERN_LIFE_SCHEMA_VERSION = 3
 export const TAVERN_POLICY_ID = 'skazanie:tavern-life-v1'
 
-/** Команды жизни таверны. Все три доступны игроку и все три — вне боя. */
+/**
+ * Команды жизни таверны. Все четыре доступны игроку и все четыре — вне боя.
+ *
+ * `LeaveTavernDiceRound` — не украшение и не «отмена на всякий случай». Открытый
+ * раунд запирает герою кости до конца сцены, а закрыть его броском можно не
+ * всегда: пока герой думал, соперника мог обыграть его же товарищ по отряду
+ * (тогда банк соседу нечем закрыть) или сам герой мог расстаться с деньгами
+ * другой командой (тогда нечем закрыть ставку). Оба случая упираются в проверки
+ * `AnswerTavernDiceRound`, и без команды «встать из-за стола» из них не было
+ * выхода.
+ */
 export const TAVERN_COMMAND_TYPES = Object.freeze(new Set([
-  'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'OrderTavernDrink',
+  'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
 ]))
 
 /**
@@ -173,6 +198,22 @@ export const TAVERN_GAMBLER_PURSE_SPREAD = 5
 export const TAVERN_GAMBLER_PURSE_MAX_CP = 10_000
 
 const MAX_PATRONS = 12
+
+/**
+ * Сколько чужих касс помнит заведение.
+ *
+ * Предел здесь обязателен — это состояние кампании, и расти без края ему нельзя.
+ * Но **срез** на этом месте стоять не может, и это ровно тот случай, когда
+ * защита от роста была бы дырой пострашнее роста: касса соперника — единственное,
+ * что мешает столу быть печатным станком, и записи, которая в срез не попала,
+ * не существует — а значит, кошелёк соседа снова полон из сида
+ * (`tavernGamblerPurseFor`). Двадцать пятый посетитель молча возвращал бы всему
+ * залу вечерние деньги.
+ *
+ * Поэтому лишнее вытесняется, а не отбрасывается, и вытесняется самое старое по
+ * последней игре: касса, которую не трогали дольше всех, — единственная, чьё
+ * возрождение из сида ничего не ломает прямо сейчас.
+ */
 const MAX_GAMBLERS = 24
 
 const text = (value, maximum = 200) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -358,11 +399,34 @@ export function normalizeTavernState(input = {}) {
   if (legacy && !patrons[legacy.hero_id]?.round) {
     patrons[legacy.hero_id] = { ...safePatron(patrons[legacy.hero_id]), round: legacy }
   }
-  const gamblers = {}
-  for (const [npcId, gambler] of Object.entries(source.gamblers ?? {}).slice(0, MAX_GAMBLERS)) {
+  // Кассы соперников: сначала нормализуются все, и только потом лишние
+  // вытесняются — по последней игре, а не по порядку появления. Порядок
+  // появления здесь ничего не значит: первым в карту попадает тот, с кем сыграли
+  // первым, и он же может быть единственным, с кем играют весь вечер.
+  const kept = new Map()
+  for (const [npcId, gambler] of Object.entries(source.gamblers ?? {})) {
     const id = text(npcId, 120)
-    if (id) gamblers[id] = { purse_cp: clamp(gambler?.purse_cp, 0, TAVERN_GAMBLER_PURSE_MAX_CP) }
+    if (!id) continue
+    kept.set(id, {
+      purse_cp: clamp(gambler?.purse_cp, 0, TAVERN_GAMBLER_PURSE_MAX_CP),
+      // Когда с этим соседом играли в последний раз. Минуты кампании —
+      // величина детерминированная и приезжает событием, поэтому replay
+      // вытесняет ровно тех же.
+      last_played_at_minutes: Math.max(0, integer(gambler?.last_played_at_minutes, 0)),
+    })
   }
+  const evicted = new Set(
+    kept.size <= MAX_GAMBLERS ? [] : [...kept.entries()]
+      // Ключ сортировки двойной: время последней игры, а при совпадении —
+      // порядок в карте. Двух одинаковых ответов на «кого вытеснить» быть не
+      // должно, иначе replay разойдётся со снимком.
+      .map(([id, gambler], index) => ({ id, at: gambler.last_played_at_minutes, index }))
+      .sort((left, right) => left.at - right.at || left.index - right.index)
+      .slice(0, kept.size - MAX_GAMBLERS)
+      .map((entry) => entry.id),
+  )
+  const gamblers = {}
+  for (const [id, gambler] of kept) if (!evicted.has(id)) gamblers[id] = gambler
   return {
     schema_version: TAVERN_LIFE_SCHEMA_VERSION,
     patrons,
@@ -391,6 +455,26 @@ export function tavernGamblerPurseFor(state = {}, npcId = '') {
   const id = text(npcId, 120)
   const stored = normalizeTavernState(state?.tavern).gamblers[id]
   return stored ? stored.purse_cp : tavernGamblerFor(state, id).base_purse_cp
+}
+
+/**
+ * Все открытые раунды против этого соседа — по одному на героя.
+ *
+ * Нужен ровно для одного: касса соперника общая, а раунд у каждого героя свой,
+ * и обыграть соседа дочиста может один игрок, пока второй ещё думает над своей
+ * костью. Второму после этого закрыть раунд нечем — банк соперник не потянет, —
+ * и без этой выборки его раунд остался бы висеть до конца сцены.
+ *
+ * Порядок закреплён по идентификатору героя: события отмены пишутся из
+ * исполнения команды, и двух разных порядков в журнале быть не должно.
+ */
+export function tavernOpenRoundsAgainst(state = {}, npcId = '') {
+  const id = text(npcId, 120)
+  if (!id) return []
+  const patrons = normalizeTavernState(state?.tavern).patrons
+  return Object.keys(patrons).sort()
+    .map((heroId) => patrons[heroId].round)
+    .filter((round) => round && round.npc_id === id)
 }
 
 /**
@@ -576,7 +660,15 @@ export function applyTavernEvent(input, event, state = {}) {
     // движок уже решил, куда уехал банк, и второго ответа на этот вопрос быть
     // не должно.
     const gamblers = npcId && Object.hasOwn(payload, 'npc_purse_after_cp')
-      ? { ...normalized.gamblers, [npcId]: { purse_cp: clamp(payload.npc_purse_after_cp, 0, TAVERN_GAMBLER_PURSE_MAX_CP) } }
+      ? {
+        ...normalized.gamblers,
+        [npcId]: {
+          purse_cp: clamp(payload.npc_purse_after_cp, 0, TAVERN_GAMBLER_PURSE_MAX_CP),
+          // Минута последней игры: по ней вытесняются лишние кассы, когда зал
+          // за вечер перебрал больше соседей, чем заведение помнит.
+          last_played_at_minutes: Math.max(0, integer(payload.at_minutes, 0)),
+        },
+      }
       : normalized.gamblers
     if (!heroId) return normalizeTavernState({ ...normalized, gamblers })
     const patron = safePatron(normalized.patrons?.[heroId])
@@ -588,6 +680,16 @@ export function applyTavernEvent(input, event, state = {}) {
         [heroId]: { ...patron, round: null, scandals: patron.scandals + (caught ? 1 : 0) },
       },
     })
+  }
+  // Раунд закрыт без броска: герой встал из-за стола или соперник разорился,
+  // пока герой думал. Ставка при этом не двигается ни на медяк — её и не
+  // трогали: кошельки за этим столом худеют только на расчёте
+  // (`TavernDiceRoundResolved`), а до него монеты лежат там, где лежали.
+  if (type === 'TavernDiceRoundCancelled') {
+    const heroId = text(payload.hero_id, 120)
+    if (!heroId) return normalized
+    const patron = safePatron(normalized.patrons?.[heroId])
+    return normalizeTavernState({ ...normalized, patrons: { ...normalized.patrons, [heroId]: { ...patron, round: null } } })
   }
   if (type === 'TavernPatronEjected') {
     const heroId = text(payload.hero_id, 120)

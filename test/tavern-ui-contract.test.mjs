@@ -83,6 +83,56 @@ test('клиент называет только соперника, ставк�
   assert.match(app, /onOrderTavernDrink=\{/u)
 })
 
+/**
+ * Зонд ревью, и он с зубами: карточка ручного броска таверны не доходила до
+ * игрока вовсе.
+ *
+ * Ветка `result?.check` была закрыта условием `command_type === 'ProposeParley'`,
+ * а `answerTavernDiceRound` шлёт `manual_roll` — автобросок в проекте выключен
+ * по умолчанию. Сервер возвращал карточку, клиент её отбрасывал, ниже начинался
+ * разбор `authoritative_state`, которого у неоткоммиченной первой фазы нет, — и
+ * раунд было нечем доиграть из интерфейса. Тем же условием молча терялась
+ * карточка побега от стражи.
+ *
+ * Проверка идёт от причины, а не от списка: каждая команда, которую клиент
+ * отправляет с ручным кубиком, обязана быть в развилке двухфазных. Забыть
+ * четвёртую такую команду теперь нельзя — тест назовёт её сам.
+ */
+test('каждая команда с ручным кубиком доводит карточку броска до игрока', () => {
+  // Тело функции берётся до закрывающей скобки нулевого отступа: вложенный
+  // `switch` закрывается отступом, а сама функция — нет.
+  const twoPhase = /function twoPhaseCheckCommandFor[\s\S]*?\r?\n\}/u.exec(session)?.[0] ?? ''
+  const handled = new Set([...twoPhase.matchAll(/case '([A-Za-z]+)':/gu)].map((match) => match[1]))
+  assert.ok(handled.size >= 3, `развилка двухфазных команд подозрительно пуста: ${[...handled].join(', ')}`)
+
+  const chunks = session.split('manualRoll: !autoRollEnabled()')
+  assert.ok(chunks.length > 1, 'ручной кубик из клиента никуда не делся')
+  for (const chunk of chunks.slice(0, -1)) {
+    const declared = [...chunk.matchAll(/command_type: '([A-Za-z]+)'/gu)].at(-1)?.[1]
+    assert.ok(declared, 'команда с ручным кубиком обязана называть свой тип рядом с вызовом')
+    assert.ok(
+      handled.has(declared),
+      `${declared} просит у сервера карточку броска, но клиент её не показывает: добавьте команду в twoPhaseCheckCommandFor`,
+    )
+  }
+  // Три карточки на сервере — три ветки здесь: парлей, побег и кости.
+  assert.deepEqual([...handled].sort(), ['AnswerTavernDiceRound', 'ProposeParley', 'ResolveGuardEncounter'])
+})
+
+test('открытый раунд можно закрыть без броска, и кнопка для этого есть', () => {
+  assert.match(session, /command_type: 'LeaveTavernDiceRound'/u)
+  assert.match(session, /leaveTavernDiceRound,/u)
+  assert.match(app, /onLeaveTavernDiceRound=\{/u)
+  assert.match(board, /onLeaveTavernDiceRound\(\)/u)
+  assert.match(board, /Встать из-за стола/u)
+  // Отвечать на кость бывает нечем: соперника обыграл дочиста товарищ по
+  // отряду или свои монеты ушли другой командой. Кнопки ответа обязаны гаснуть
+  // до клика, а не приносить отказ после него.
+  assert.match(board, /tavernRoundUnanswerable/u)
+  assert.match(board, /Соперник спустил всё/u)
+  assert.match(styles, /\.tavern-leave \{/u)
+})
+
 test('панель таверны оформлена и не ломает узкий экран', () => {
   assert.match(styles, /\.tavern-panel \{/u)
   assert.match(styles, /\.tavern-approach \{/u)

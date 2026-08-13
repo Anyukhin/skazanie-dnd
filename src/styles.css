@@ -595,6 +595,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .tavern-action:disabled { opacity: .38; cursor: default; }
 .tavern-drink { display: grid; gap: 4px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(158,132,84,.2); }
 .tavern-drink small { color: #93866d; font-size: var(--fs-sm); }
+.tavern-leave { display: grid; gap: 4px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(158,132,84,.2); }
+.tavern-leave small { color: #93866d; font-size: var(--fs-sm); }
+.tavern-action.action-leave { border-style: dashed; background: transparent; color: #a6906b; }
 /* Приметы розыска в шапке сцены: одна строка мира вместо индикатора. */
 .scene-wanted { display: flex; align-items: center; gap: 6px; max-width: 260px; padding: 4px 9px; border: 1px solid rgba(178,64,52,.32); border-radius: 14px; background: rgba(34,18,16,.7); color: #c08a7c; font: 600 var(--fs-xs) Manrope, sans-serif; }
 .scene-wanted span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

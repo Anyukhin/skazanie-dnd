@@ -946,6 +946,16 @@ function eventForViewer(event, user, actorId, state = {}) {
     if (round) payload.round = round
     else delete payload.round
   }
+  // Та же дыра с другой стороны стола: карточка заведения кассу соседа прячет
+  // намеренно (`tavernForViewer` отдаёт только `max_stake_cp` — доступную
+  // ставку, а не сумму в кармане), а расчёт раунда уезжал игроку с
+  // `npc_purse_before_cp` и `npc_purse_after_cp` в party-канале. Точные суммы
+  // читаются как бухгалтерия соседа и решают за игрока то, что он должен
+  // решать сам: садиться ли с этим человеком за стол ещё раз. Доступная ставка
+  // после расчёта приезжает проекцией состояния тем же числом, что и до него.
+  if (visible.event_type === 'TavernDiceRoundResolved') {
+    for (const key of ['npc_purse_before_cp', 'npc_purse_after_cp']) delete payload[key]
+  }
   if (visible.event_type === 'EncounterOutcomeRecorded') {
     delete payload.plan
     delete payload.prepared_reward
