@@ -205,9 +205,13 @@ test('enemy output carries engine-compatible actions, traits, image and server p
   assert.deepEqual(Object.keys(enemy), [
     'id', 'name', 'hp', 'maxHp', 'armor', 'speed', 'initiativeBonus', 'attackBonus', 'damageDice',
     'damageBonus', 'abilities', 'creature_type', 'image', 'source_url', 'traits', 'action_profiles',
-    'attack_profile', 'x', 'y', 'alive', 'stat_block_id', 'provenance',
+    'attack_profile', 'x', 'y', 'alive', 'stat_block_id', 'loadout', 'provenance',
   ])
   assert.equal(enemy.stat_block_id, 'srd_5_2_1:wolf')
+  // Волк не носит кинжала: у зверя инвентарь пустой, а не отсутствующий.
+  assert.deepEqual(enemy.loadout.items, [])
+  assert.equal(enemy.loadout.template_id, null)
+  assert.equal(enemy.loadout.purse_cp, 0)
   assert.equal(enemy.hp, 11)
   assert.equal(enemy.maxHp, 11)
   assert.equal(enemy.initiativeBonus, 2)

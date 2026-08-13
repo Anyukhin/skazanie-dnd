@@ -165,6 +165,7 @@ import {
   validateNpcWorldCommand,
 } from './npc-positioning.mjs'
 import { assembleEncounter } from './encounter-assembler.mjs'
+import { normalizeEnemyLoadout } from './enemy-loadouts.mjs'
 import { applyEncounterRewardsDistribution } from './encounter-rewards.mjs'
 import {
   ECONOMY_CATALOG_VERSION,
@@ -1491,6 +1492,11 @@ export function normalizeCampaignState(input = {}) {
     hp: Math.max(0, safeInteger(enemy.hp, 0)),
     maxHp: Math.max(1, safeInteger(enemy.maxHp ?? enemy.max_hp, 1)),
     alive: enemy.alive !== false && safeInteger(enemy.hp, 0) > 0,
+    // Кампании, сыгранные до инвентарей противников, поля не знают: у их
+    // противников инвентарь пустой, а не отсутствующий. Форма одна и та же для
+    // старого снимка и нового боя, поэтому обходчику добычи не нужна ветка
+    // «а вдруг поля нет».
+    loadout: normalizeEnemyLoadout(enemy.loadout),
   })) : []
   state.merchants = normalizeMerchants(state.merchants)
   if (state.merchants.length && !state.enabled_house_rules.includes(ECONOMY_POLICY_ID)) {
@@ -13307,7 +13313,8 @@ export function applyGameEvent(rawState, event) {
       const encounter = payload.encounter && typeof payload.encounter === 'object' ? clone(payload.encounter) : {}
       const oldEnemyIds = new Set(state.enemies.map(actorId))
       state.mechanics.positions = Object.fromEntries(Object.entries(state.mechanics.positions ?? {}).filter(([id]) => !oldEnemyIds.has(String(id))))
-      state.enemies = (Array.isArray(encounter.enemies) ? encounter.enemies : []).map((enemy) => ({ ...clone(enemy), alive: true }))
+      state.enemies = (Array.isArray(encounter.enemies) ? encounter.enemies : [])
+        .map((enemy) => ({ ...clone(enemy), alive: true, loadout: normalizeEnemyLoadout(enemy?.loadout) }))
       for (const enemy of state.enemies) {
         state.mechanics.positions[actorId(enemy)] = { x: safeInteger(enemy.x, 0), y: safeInteger(enemy.y, 0) }
       }
