@@ -1122,86 +1122,22 @@ const MAGIC_ITEMS = [
 ]
 
 /**
- * Тематическая принадлежность предмета: в ростере какой темы встречи он
- * встречается по своему содержанию. Это **классификация вещи**, а не порядок
- * выдачи награды: очерёдность выбора живёт в `server/loot-tables.mjs`, где
- * массивы упорядочены осознанно и вращаются от идентификатора встречи.
- *
- * Две таблицы не расходятся молча: сторож `test/enemy-loadouts.test.mjs`
- * проверяет, что каждый предмет из `LOOT_BY_THEME[тема]` несёт эту тему здесь.
- * Направление проверки одностороннее — здесь список шире: сюда входит и то,
- * что противник носит на себе (скимитар, моргенштерн, двуручный меч), но в
- * посмертной таблице наград не участвует.
- *
- * Темы — те же двенадцать, что у сборщика встреч (`ENCOUNTER_THEMES`); тема
- * `law` в таблицах наград отсутствует и падает в `generic`, но классификация
- * вещей у стражи своя и честная.
- */
-const ITEM_THEME_MEMBERSHIP = Object.freeze({
-  goblinoids: Object.freeze([
-    'dagger', 'shortbow', 'arrows-20', 'javelin', 'shield', 'leather-armor', 'spear', 'torch',
-    'rations-one-day', 'chain-shirt', 'scimitar', 'longsword', 'longbow', 'sling', 'sling-bullets-20', 'morningstar',
-  ]),
-  undead: Object.freeze(['mace', 'ring-mail', 'dagger', 'shortbow', 'arrows-20', 'shield', 'shortsword', 'torch', 'rope-hempen-50-feet']),
-  beasts: Object.freeze(['spear', 'javelin', 'shortbow', 'arrows-20', 'hide-armor', 'rope-hempen-50-feet', 'rations-one-day', 'healers-kit', 'torch', 'quarterstaff']),
-  raiders: Object.freeze([
-    'dagger', 'handaxe', 'javelin', 'shortsword', 'light-crossbow', 'bolts-20', 'leather-armor', 'shield',
-    'rations-one-day', 'rope-hempen-50-feet', 'healers-kit', 'sickle', 'greataxe', 'chain-shirt',
-    'scimitar', 'greatsword', 'heavy-crossbow', 'warhammer', 'pistol', 'firearm-bullets-10',
-    'morningstar', 'longsword', 'longbow', 'spear', 'hand-crossbow', 'potion-of-healing', 'oil-flask',
-  ]),
-  warband: Object.freeze([
-    'battleaxe', 'chain-shirt', 'greataxe', 'shield', 'longsword', 'mace', 'ring-mail', 'spear',
-    'light-crossbow', 'bolts-20', 'healers-kit', 'greatsword', 'heavy-crossbow', 'warhammer',
-    'morningstar', 'scimitar', 'potion-of-healing', 'javelin', 'greatclub', 'oil-flask',
-  ]),
-  law: Object.freeze([
-    'longsword', 'javelin', 'greatsword', 'heavy-crossbow', 'bolts-20', 'shortsword', 'longbow',
-    'arrows-20', 'chain-shirt', 'shield', 'ring-mail', 'healers-kit', 'potion-of-healing', 'hand-crossbow',
-  ]),
-  vermin: Object.freeze(['club', 'dagger', 'sling', 'sling-bullets-20', 'torch', 'rations-one-day', 'rope-hempen-50-feet']),
-  ambush: Object.freeze([
-    'dagger', 'dart', 'shortbow', 'arrows-20', 'light-crossbow', 'bolts-20', 'shortsword', 'leather-armor',
-    'rope-hempen-50-feet', 'healers-kit', 'hand-crossbow', 'poison-basic', 'scimitar', 'longbow',
-    'pistol', 'firearm-bullets-10',
-  ]),
-  crypt: Object.freeze(['mace', 'ring-mail', 'dagger', 'rope-hempen-50-feet', 'torch', 'shortbow', 'arrows-20', 'shield', 'shortsword']),
-  cave: Object.freeze([
-    'club', 'greatclub', 'spear', 'javelin', 'war-pick', 'sling', 'sling-bullets-20', 'torch',
-    'rope-hempen-50-feet', 'rations-one-day', 'hide-armor', 'chain-shirt', 'dagger',
-  ]),
-  wilderness: Object.freeze([
-    'rations-one-day', 'rope-hempen-50-feet', 'torch', 'shortbow', 'arrows-20', 'spear', 'javelin',
-    'handaxe', 'dagger', 'healers-kit', 'hide-armor', 'quarterstaff', 'sickle', 'longbow',
-  ]),
-  generic: Object.freeze([
-    'rations-one-day', 'rope-hempen-50-feet', 'torch', 'dart', 'ring-mail', 'sling', 'dagger', 'arrows-20',
-    'club', 'chain-shirt', 'bolts-20', 'battleaxe', 'handaxe', 'healers-kit', 'hide-armor', 'javelin',
-    'leather-armor', 'light-crossbow', 'longsword', 'mace', 'quarterstaff', 'shield', 'shortbow',
-    'shortsword', 'sickle', 'sling-bullets-20', 'spear', 'war-pick', 'greataxe', 'greatclub',
-  ]),
-})
-
-export const ITEM_ENCOUNTER_THEMES = Object.freeze(Object.keys(ITEM_THEME_MEMBERSHIP))
-
-const THEMES_BY_CATALOG_ID = new Map()
-for (const [theme, slugs] of Object.entries(ITEM_THEME_MEMBERSHIP)) {
-  for (const slug of slugs) {
-    const catalogId = `srd_5_2_1:${slug}`
-    const themes = THEMES_BY_CATALOG_ID.get(catalogId) ?? []
-    if (!themes.includes(theme)) themes.push(theme)
-    THEMES_BY_CATALOG_ID.set(catalogId, themes)
-  }
-}
-
-/**
  * Что сервер вправе положить противнику в карман **сам**, без решения автора.
  *
- * Категории оружия, доспехов и боеприпасов входят целиком: это ровно то, чем
- * стат-блок и так бьёт, и то, чем стреляет. Прочее снаряжение открывается
- * поимённо — рюкзак или кандалы на теле гоблина не добыча, а мусор в списке.
+ * Категории оружия и боеприпасов входят целиком: это ровно то, чем стат-блок и
+ * так бьёт, и то, чем стреляет. Прочее снаряжение открывается поимённо —
+ * рюкзак или кандалы на теле гоблина не добыча, а мусор в списке.
+ *
+ * **Доспехов здесь нет, и это сторож, а не забывчивость.** В SRD 5.2.1
+ * стат-блок объявляет КД числом и доспех не называет, поэтому любая кольчуга в
+ * инвентаре противника была бы выдумкой — и вдобавок риском для расчёта КД,
+ * если вещь однажды переедет в `actor.inventory`. Пока категория закрыта
+ * здесь, `assertEnemyLoadoutItem` отклоняет доспех на входе в инвентарь, и
+ * «доспехов в инвентарях нет» держится проверкой, а не тем, что никто не
+ * написал строку. Снять доспех с тела это не запрещает: `corpse_loot_eligible`
+ * шире и категорию не смотрит.
  */
-const ENEMY_LOADOUT_CATEGORIES = new Set(['weapon', 'armor', 'ammunition'])
+const ENEMY_LOADOUT_CATEGORIES = new Set(['weapon', 'ammunition'])
 const ENEMY_LOADOUT_GEAR_IDS = new Set([
   'srd_5_2_1:acid',
   'srd_5_2_1:alchemists-fire',
@@ -1218,20 +1154,26 @@ const ENEMY_LOADOUT_GEAR_IDS = new Set([
 ])
 
 /**
- * Три поля отвечают на три разных вопроса, и ни одно не выводится из другого:
+ * Два поля отвечают на два разных вопроса, и ни одно не выводится из другого:
  *
  * - `enemy_loadout_eligible` — сервер вправе выдать вещь противнику при сборке
- *   встречи. Узкий список: обычное оружие, доспех, боеприпасы и поимённое
- *   полевое снаряжение. Магия сюда не входит намеренно — она выдаётся
- *   отдельным каналом `magic_loot` со своей политикой редкости, и «случайный
- *   бандит с кольцом защиты» обесценил бы находку.
+ *   встречи. Узкий список: обычное оружие, боеприпасы и поимённое полевое
+ *   снаряжение. Магия сюда не входит намеренно — она выдаётся отдельным
+ *   каналом `magic_loot` со своей политикой редкости, и «случайный бандит с
+ *   кольцом защиты» обесценил бы находку. Доспех не входит тоже: см. комментарий
+ *   к `ENEMY_LOADOUT_CATEGORIES`.
  * - `corpse_loot_eligible` — вещь можно снять с тела и она что-то значит в
- *   руках отряда. Шире: сюда попадает и магия, если противник её нёс.
- * - `themes` — в каких темах встреч вещь уместна по содержанию.
+ *   руках отряда. Шире: сюда попадает и магия, и доспех.
  *
- * Общая граница у первых двух одна: `ruling-only` не материализуется нигде.
- * Движок такую вещь всё равно блокирует до расхода ресурса (AGENTS.md, §6), и
- * выдать её как добычу значило бы подсунуть отряду неисполнимую механику.
+ * Общая граница одна: `ruling-only` не материализуется нигде. Движок такую вещь
+ * всё равно блокирует до расхода ресурса (AGENTS.md, §6), и выдать её как
+ * добычу значило бы подсунуть отряду неисполнимую механику.
+ *
+ * Тематической классификации вещи здесь нет намеренно. Второй, вручную
+ * поддерживаемый список тем рядом с `LOOT_BY_THEME` уже заводился и был снят
+ * при ревью: у него не было ни одного потребителя в рантайме, а сверялся он в
+ * одну сторону — то есть работал не источником истины, а её будущим
+ * расхождением. Тему выдачи по-прежнему целиком держит `server/loot-tables.mjs`.
  */
 function lootMetadata(entry) {
   const executable = entry.mechanics_status !== 'ruling-only'
@@ -1241,7 +1183,6 @@ function lootMetadata(entry) {
     enemy_loadout_eligible: executable && transferable && !magic
       && (ENEMY_LOADOUT_CATEGORIES.has(entry.category) || ENEMY_LOADOUT_GEAR_IDS.has(entry.catalog_id)),
     corpse_loot_eligible: executable && transferable,
-    themes: [...(THEMES_BY_CATALOG_ID.get(entry.catalog_id) ?? [])],
   }
 }
 
@@ -1260,10 +1201,11 @@ if (ENTRIES.length !== 107) {
 }
 
 {
-  const known = new Set(ENTRIES.map((entry) => entry.catalog_id))
-  const unknown = [...THEMES_BY_CATALOG_ID.keys()].filter((catalogId) => !known.has(catalogId))
+  const unknown = [...ENEMY_LOADOUT_GEAR_IDS].filter((catalogId) => (
+    !ENTRIES.some((entry) => entry.catalog_id === catalogId)
+  ))
   if (unknown.length) {
-    throw new Error(`Item theme membership references unknown catalog ids: ${unknown.join(', ')}`)
+    throw new Error(`Enemy loadout gear allowlist references unknown catalog ids: ${unknown.join(', ')}`)
   }
 }
 
@@ -1295,14 +1237,6 @@ export const ITEM_LOOT_CATALOG_IDS = deepFreeze(
   )),
 )
 
-export const ITEM_ENEMY_LOADOUT_CATALOG_IDS = deepFreeze(
-  Object.keys(ITEM_CATALOG).filter((catalogId) => ITEM_CATALOG[catalogId].enemy_loadout_eligible),
-)
-
-export const ITEM_CORPSE_LOOT_CATALOG_IDS = deepFreeze(
-  Object.keys(ITEM_CATALOG).filter((catalogId) => ITEM_CATALOG[catalogId].corpse_loot_eligible),
-)
-
 export const ITEM_CRAFTING_CATALOG_IDS = deepFreeze(
   Object.keys(ITEM_CATALOG).filter((catalogId) => (
     ITEM_CATALOG[catalogId].availability.crafting
@@ -1323,16 +1257,6 @@ export function catalogIdsFor(channel) {
   if (channel === 'loot') return [...ITEM_LOOT_CATALOG_IDS]
   if (channel === 'crafting') return [...ITEM_CRAFTING_CATALOG_IDS]
   return []
-}
-
-export function itemLootMetadata(catalogId) {
-  const entry = catalogItem(catalogId)
-  if (!entry) return null
-  return {
-    enemy_loadout_eligible: entry.enemy_loadout_eligible === true,
-    corpse_loot_eligible: entry.corpse_loot_eligible === true,
-    themes: [...(entry.themes ?? [])],
-  }
 }
 
 export function itemLifecycleProfile(catalogId) {

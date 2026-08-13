@@ -1320,6 +1320,31 @@ const READIED_TRIGGERS = Object.freeze({
   'enemy-casts-spell': 'враг начнёт творить заклинание',
 })
 
+/**
+ * Замороженный состав встречи без инвентарей.
+ *
+ * `state.mechanics.encounter.enemies` — не второй боевой список, а описание
+ * состава: `freezeEncounterOutcomePlan` читает оттуда только `id` и
+ * `stat_block_id`, чтобы награда считалась по тем существам, с которыми бой
+ * начинался. Инвентарь же живёт ровно в одном месте — `state.enemies[].loadout`,
+ * где его нормализует `normalizeEnemyLoadout`. Вторая копия тех же экземпляров
+ * нормализатор не проходила никогда: мусор из сохранения вычищался бы в одной
+ * копии и оставался в другой, а следующий шаг мог прочитать не ту. Заодно это
+ * снимает вес с проекции ведущего, которую стол опрашивает раз в полторы
+ * секунды и в которой инвентарь противника всё равно не показывается.
+ */
+function encounterWithoutLoadouts(encounter) {
+  const copy = clone(encounter)
+  if (Array.isArray(copy.enemies)) {
+    copy.enemies = copy.enemies.map((enemy) => {
+      if (!enemy || typeof enemy !== 'object' || Array.isArray(enemy)) return enemy
+      const { loadout, ...descriptor } = enemy
+      return descriptor
+    })
+  }
+  return copy
+}
+
 export function normalizeCampaignState(input = {}) {
   const state = clone(input && typeof input === 'object' ? input : {})
   const mechanics = { ...defaultMechanics(), ...(state.mechanics && typeof state.mechanics === 'object' ? state.mechanics : {}) }
@@ -1362,7 +1387,7 @@ export function normalizeCampaignState(input = {}) {
   mechanics.scene_interactions = normalizeSceneInteractions(state.mechanics?.scene_interactions)
   mechanics.enemy_knowledge = normalizeEnemyKnowledge(state.mechanics?.enemy_knowledge)
   mechanics.encounter = state.mechanics?.encounter && typeof state.mechanics.encounter === 'object'
-    ? clone(state.mechanics.encounter)
+    ? encounterWithoutLoadouts(state.mechanics.encounter)
     : null
   mechanics.active_effects = Array.isArray(state.mechanics?.active_effects) ? clone(state.mechanics.active_effects) : []
   mechanics.progression = normalizeProgression(state.mechanics?.progression)
@@ -13318,8 +13343,10 @@ export function applyGameEvent(rawState, event) {
       for (const enemy of state.enemies) {
         state.mechanics.positions[actorId(enemy)] = { x: safeInteger(enemy.x, 0), y: safeInteger(enemy.y, 0) }
       }
+      // Инвентарь остаётся в одной копии — `state.enemies[].loadout`;
+      // замороженный состав встречи несёт только описание существ.
       state.mechanics.encounter = {
-        ...encounter,
+        ...encounterWithoutLoadouts(encounter),
         id: String(encounter.id ?? encounter.encounter_id ?? payload.encounter_id ?? ''),
         encounter_id: String(encounter.encounter_id ?? encounter.id ?? payload.encounter_id ?? ''),
         status: 'staged',

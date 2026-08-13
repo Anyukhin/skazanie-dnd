@@ -12,12 +12,28 @@
  * вещь целиком, поэтому пересборка баланса каталога не переписывает прошлое:
  * бой, сыгранный до правки урона скимитара, при повторном проигрывании даёт
  * тот же скимитар с теми же числами. Поэтому `normalizeItemInstance` **никогда**
- * не заглядывает в каталог — он читает только то, что пришло в payload.
- * В каталог ходит один `createItemInstance`, и только в момент создания.
+ * не ищет запись каталога — он читает только то, что пришло в payload. За
+ * записью ходит один `createItemInstance`, и только в момент создания.
+ * (Общие константы вроде списка статусов механики — не запись предмета: они
+ * описывают словарь, а не числа конкретной вещи, и от баланса не зависят.)
+ *
+ * **Снимок недоверенный.** Он приезжает из сохранения и из payload события, то
+ * есть и из админского импорта состояния, поэтому приведение здесь — граница
+ * безопасности, а не косметика: см. `normalizeSnapshot`.
  */
 import { createHash } from 'node:crypto'
 
-import { catalogItem, materializeCatalogItem } from './item-catalog.mjs'
+import {
+  ITEM_MECHANICS_STATUSES,
+  catalogItem,
+  materializeCatalogItem,
+  normalizeItemRechargeProfile,
+} from './item-catalog.mjs'
+import {
+  normalizeInventoryItemRarity,
+  normalizeInventoryItemType,
+  normalizeInventoryPassiveEffects,
+} from './merchant-economy.mjs'
 
 export const ITEM_INSTANCE_SCHEMA_VERSION = 1
 
@@ -33,6 +49,15 @@ export const MAX_ITEM_INSTANCE_QUANTITY = 999
  * Поля снимка. Ровно то, что отдаёт `materializeCatalogItem`: второго
  * авторитетного материализатора у каталога быть не должно, поэтому список
  * описывает форму, а не собирает её заново.
+ *
+ * `properties` в список намеренно **не** входит, хотя материализатор его
+ * отдаёт: там лежит `entry.description`, то есть байт-в-байт то же, что в поле
+ * `description` рядом. Измерено на записях каталога: дубль занимал от 17 % веса
+ * снимка у скимитара до 30 % у стрел и набора лекаря. События неизменяемы,
+ * поэтому в журнале он остался бы навсегда и оплачивался бы на каждом replay.
+ * Чтение снимка от снятия не страдает: описание вещи по-прежнему одно и на
+ * своём месте, а `properties` записи инвентаря героя (`normalizeInventoryItem`)
+ * это поле не теряет — там своя форма и свой владелец.
  */
 const SNAPSHOT_FIELDS = Object.freeze([
   'catalog_id',
@@ -41,7 +66,6 @@ const SNAPSHOT_FIELDS = Object.freeze([
   'type',
   'weight',
   'description',
-  'properties',
   'base_price_cp',
   'mechanics_status',
   'rarity',
@@ -57,6 +81,31 @@ const SNAPSHOT_FIELDS = Object.freeze([
   'image',
 ])
 
+/**
+ * Границы снимка.
+ *
+ * Снимок приходит из сохранения или payload события и в каталог **не**
+ * сверяется — иначе пересобранный баланс переписал бы прошлый бой. Значит,
+ * границы обязаны стоять здесь и не зависеть от каталога. Числа выбраны с
+ * запасом к сегодняшнему SRD 5.2.1 (самая дорогая запись — 400 000 мм, самая
+ * тяжёлая — 65 фунтов), поэтому обычная вещь их не замечает, а `1e15` в цене
+ * или `-1e9` в весе не доживают до торговца и до расчёта переносимого груза.
+ */
+export const MAX_ITEM_SNAPSHOT_NUMBER = 10_000_000
+export const MAX_ITEM_SNAPSHOT_WEIGHT = 1_000
+export const MAX_ITEM_INSTANCE_CHARGES = 1_000
+const MAX_SNAPSHOT_DEPTH = 6
+const MAX_SNAPSHOT_KEYS = 64
+const MAX_SNAPSHOT_ENTRIES = 64
+
+/**
+ * Картинка вещи — локальный путь, который отдаёт сам сервер, и ничего больше.
+ * Граница та же по смыслу, что у портретов врагов (`publicEnemyImage` в
+ * `server/viewer-projection.mjs`): без неё снимок из чужого состояния увёл бы
+ * браузер игрока на произвольный внешний адрес прямо из карточки предмета.
+ */
+const LOCAL_ITEM_IMAGE = /^\/(?:assets|generated)\/items\/[a-z0-9][a-z0-9-]*\.(?:png|webp|jpe?g)$/u
+
 export class ItemInstanceError extends Error {
   constructor(message, code = 'ITEM_INSTANCE_INVALID') {
     super(message)
@@ -65,38 +114,110 @@ export class ItemInstanceError extends Error {
   }
 }
 
-const clone = (value) => structuredClone(value)
 const text = (value, maximum = 160) => String(value ?? '').normalize('NFKC').trim().slice(0, maximum)
 const integer = (value, fallback = 0) => Number.isSafeInteger(Number(value)) ? Number(value) : fallback
 
 /**
  * Замороженный снимок каталожной записи на момент создания экземпляра.
+ *
+ * Снимок собирается тем же нормализатором, что и чтение сохранённого: иначе
+ * `normalizeItemInstance(createItemInstance(x))` дал бы не `createItemInstance(x)`,
+ * и состояние после replay разошлось бы с состоянием в момент боя.
+ *
  * @param {string} catalogId
  * @returns {Record<string, unknown>}
  */
 export function itemInstanceSnapshot(catalogId) {
   const entry = catalogItem(catalogId)
   if (!entry) throw new ItemInstanceError(`Предмета ${catalogId} нет в каталоге`, 'ITEM_INSTANCE_CATALOG_UNKNOWN')
-  const materialized = materializeCatalogItem(entry.catalog_id, {})
-  return Object.fromEntries(SNAPSHOT_FIELDS
-    .filter((field) => materialized[field] !== undefined)
-    .map((field) => [field, clone(materialized[field])]))
+  return normalizeSnapshot(materializeCatalogItem(entry.catalog_id, {}))
 }
 
+function boundedNumber(value, minimum = -MAX_ITEM_SNAPSHOT_NUMBER, maximum = MAX_ITEM_SNAPSHOT_NUMBER) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return Math.min(maximum, Math.max(minimum, numeric))
+}
+
+/**
+ * Общая рамка снимка: он — данные, а не произвольный объект. Строки обрезаются,
+ * числа ограничиваются, `NaN`/`Infinity` и функции выбрасываются, глубина,
+ * длина массива и число ключей ограничены. Это не заменяет адресные правила
+ * ниже, а закрывает то, что в них не названо: снимок читается по имени поля,
+ * и незнакомая ветка не должна уметь принести в состояние бесконечность.
+ */
+function boundedValue(value, depth = 0) {
+  if (value === null) return null
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return boundedNumber(value)
+  if (typeof value === 'string') return text(value, 1_000)
+  if (depth >= MAX_SNAPSHOT_DEPTH || !value || typeof value !== 'object') return undefined
+  if (Array.isArray(value)) {
+    return value.slice(0, MAX_SNAPSHOT_ENTRIES)
+      .map((entry) => boundedValue(entry, depth + 1))
+      .filter((entry) => entry !== undefined)
+  }
+  return Object.fromEntries(Object.entries(value)
+    .slice(0, MAX_SNAPSHOT_KEYS)
+    .map(([key, nested]) => [text(key, 80), boundedValue(nested, depth + 1)])
+    .filter(([key, nested]) => key && nested !== undefined))
+}
+
+/**
+ * Приведение снимка — граница replay и загрузки сохранения, а значит граница
+ * недоверенных данных: сюда приезжает и админский импорт состояния. Каталог
+ * тут не спрашивают, поэтому «сверить с записью» нельзя — можно только
+ * ограничить форму. Ограничивается то, что оживает в момент, когда экземпляр
+ * переложат в инвентарь героя: `passive_effects` читает `activeItemEffectTotals`
+ * и превращает в КД и спасброски, `base_price_cp` — это то, что заплатит
+ * торговец, `image` попадает в разметку карточки.
+ */
 function normalizeSnapshot(input) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
-  const snapshot = Object.fromEntries(SNAPSHOT_FIELDS
-    .filter((field) => source[field] !== undefined)
-    .map((field) => [field, clone(source[field])]))
+  const snapshot = {}
+  for (const field of SNAPSHOT_FIELDS) {
+    if (source[field] === undefined) continue
+    const value = boundedValue(source[field])
+    if (value !== undefined) snapshot[field] = value
+  }
+  if (snapshot.catalog_id != null) snapshot.catalog_id = text(snapshot.catalog_id, 120)
+  if (snapshot.catalog_schema_version != null) snapshot.catalog_schema_version = text(snapshot.catalog_schema_version, 120)
   if (snapshot.name != null) snapshot.name = text(snapshot.name, 120)
   if (snapshot.description != null) snapshot.description = text(snapshot.description, 1_000)
-  if (snapshot.properties != null) snapshot.properties = text(snapshot.properties, 1_000)
+  if (snapshot.type != null) snapshot.type = normalizeInventoryItemType(snapshot.type)
+  if (snapshot.rarity != null) snapshot.rarity = normalizeInventoryItemRarity(snapshot.rarity)
+  if (snapshot.mechanics_status != null) {
+    const status = text(snapshot.mechanics_status, 40)
+    if (ITEM_MECHANICS_STATUSES.includes(status)) snapshot.mechanics_status = status
+    else delete snapshot.mechanics_status
+  }
+  if (snapshot.weight != null) snapshot.weight = boundedNumber(snapshot.weight, 0, MAX_ITEM_SNAPSHOT_WEIGHT) ?? 0
+  if (snapshot.base_price_cp != null) {
+    snapshot.base_price_cp = Math.max(0, Math.min(MAX_ITEM_SNAPSHOT_NUMBER, integer(snapshot.base_price_cp, 0)))
+  }
+  if (snapshot.passive_effects != null) {
+    const effects = normalizeInventoryPassiveEffects(snapshot.passive_effects)
+    if (effects.length) snapshot.passive_effects = effects
+    else delete snapshot.passive_effects
+  }
+  if (snapshot.charges != null) {
+    const charges = normalizeCharges(snapshot.charges)
+    if (charges) snapshot.charges = charges
+    else delete snapshot.charges
+  }
+  if (snapshot.recharge != null) {
+    const recharge = normalizeItemRechargeProfile(snapshot.recharge)
+    if (recharge) snapshot.recharge = recharge
+    else delete snapshot.recharge
+  }
+  if (snapshot.requires_attunement != null) snapshot.requires_attunement = snapshot.requires_attunement === true
+  if (snapshot.image != null && !LOCAL_ITEM_IMAGE.test(String(snapshot.image))) delete snapshot.image
   return snapshot
 }
 
 function normalizeCharges(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
-  const maximum = Math.max(0, integer(input.max, 0))
+  const maximum = Math.max(0, Math.min(MAX_ITEM_INSTANCE_CHARGES, integer(input.max, 0)))
   if (maximum <= 0) return null
   return { current: Math.max(0, Math.min(maximum, integer(input.current, maximum))), max: maximum }
 }

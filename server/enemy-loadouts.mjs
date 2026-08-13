@@ -14,7 +14,9 @@
  *    `derivedEquipmentArmorClass` и `activeItemEffectTotals`, и надетый доспех
  *    поднял бы КД противника молча. Оружие в инвентаре — это отражение
  *    `action_profiles`, а не их источник; атака по-прежнему считается по
- *    стат-блоку.
+ *    стат-блоку. Сторожа два: `assertEnemyLoadoutItem` не пропускает в
+ *    инвентарь ни одной записи категории `armor`, а тест сверяет КД противника
+ *    с полным инвентарём с числом стат-блока.
  * 2. **Гарантированная экипировка выводится из стат-блока, а не назначается.**
  *    Список оружия строится из `action_profiles` через явную таблицу
  *    `WEAPON_CATALOG_BY_ACTION`, поэтому «инвентарь совпал с тем, чем существо
@@ -165,6 +167,11 @@ const integer = (value, fallback = 0) => Number.isSafeInteger(Number(value)) ? N
  * Граница шаблона. Проверяется на каждом предмете при сборке, а не при
  * вычитке таблицы: тогда неисполнимая вещь не доедет до события, даже если
  * попадёт в шаблон правкой из другого файла.
+ *
+ * Доспех отклоняется здесь же и без отдельной ветки: `enemy_loadout_eligible`
+ * не выдаётся ни одной записи категории `armor` (см. `ENEMY_LOADOUT_CATEGORIES`
+ * в `server/item-catalog.mjs`). Это и есть сторож инварианта «доспехов в
+ * инвентарях нет» — проверяемый, а не декларативный.
  */
 export function assertEnemyLoadoutItem(catalogId, { verifiedOnly = false } = {}) {
   const entry = catalogItem(catalogId)
@@ -176,6 +183,28 @@ export function assertEnemyLoadoutItem(catalogId, { verifiedOnly = false } = {})
     throw new EnemyLoadoutError(`Расходник ${catalogId} не имеет статуса verified`, 'ENEMY_LOADOUT_CONSUMABLE_NOT_VERIFIED')
   }
   return entry
+}
+
+/**
+ * Необязательный расходник: запись каталога либо `null`, если сегодня выдать
+ * его нельзя.
+ *
+ * Разница с `assertEnemyLoadoutItem` не косметическая. `enemy_loadout_eligible`
+ * и `mechanics_status` выводятся из живого каталога, поэтому любая будущая
+ * перебалансировка — снятие eligibility, статус `ruling-only` у зелья — сегодня
+ * уронила бы сборку встречи, а её Директор дёргает сам через
+ * `/autonomy/advance`. Для вещи, которую сервер выбирает по шансу, пропуск
+ * честнее падения: отряд просто не найдёт зелье. Гарантированное снаряжение
+ * стат-блока так пропускать нельзя — там отсутствие вещи означает, что сборка
+ * неверна, и она обязана падать громко.
+ */
+export function optionalEnemyLoadoutItem(catalogId) {
+  try {
+    return assertEnemyLoadoutItem(catalogId, { verifiedOnly: true })
+  } catch (error) {
+    if (error instanceof EnemyLoadoutError) return null
+    throw error
+  }
 }
 
 function weaponCatalogIdsFor(block) {
@@ -215,8 +244,20 @@ export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = 
   const loadoutSeed = createHash('sha256').update(`${ENEMY_LOADOUT_POLICY_ID} ${seed ?? ''} ${owner}`).digest('hex')
   const { primary, ordered } = weaponCatalogIdsFor(block)
   const items = []
-  const push = (catalogId, { quantity = 1, equipped = false } = {}) => {
-    if (items.length >= MAX_ENEMY_LOADOUT_ITEMS) return
+  /**
+   * Единственная дверь в инвентарь: граница проверяется **внутри** `push`, а не
+   * рядом с каждым вызовом. Иначе будущая строка, добавленная в обход проверки,
+   * молча положила бы противнику доспех или неисполнимую вещь.
+   *
+   * `optional` разводит два разных отказа — см. `optionalEnemyLoadoutItem`.
+   */
+  const push = (catalogId, { quantity = 1, equipped = false, optional = false } = {}) => {
+    if (items.length >= MAX_ENEMY_LOADOUT_ITEMS) return false
+    if (optional) {
+      if (!optionalEnemyLoadoutItem(catalogId)) return false
+    } else {
+      assertEnemyLoadoutItem(catalogId)
+    }
     items.push(createItemInstance({
       catalogId,
       instanceId: `${owner}-item-${items.length + 1}`.slice(0, 160),
@@ -225,10 +266,10 @@ export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = 
       owner: { kind: 'enemy', actor_id: owner },
       origin: { kind: 'enemy_loadout', template_id: templateId, source_id: text(sourceId, 160) },
     }))
+    return true
   }
 
   for (const catalogId of ordered) {
-    assertEnemyLoadoutItem(catalogId)
     const bundle = thrownBundle(catalogId, primary)
     const quantity = bundle ? seededInteger(loadoutSeed, `thrown:${catalogId}`, bundle.minimum, bundle.maximum) : 1
     push(catalogId, { quantity, equipped: catalogId === primary })
@@ -240,16 +281,16 @@ export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = 
     const ammunitionId = AMMUNITION_BY_WEAPON[catalogId]
     if (!ammunitionId || ammunitionSeen.has(ammunitionId)) continue
     ammunitionSeen.add(ammunitionId)
-    assertEnemyLoadoutItem(ammunitionId)
     push(ammunitionId, {
       quantity: seededInteger(loadoutSeed, `ammunition:${ammunitionId}`, ammunitionMinimum, ammunitionMaximum),
     })
   }
 
+  // Бросок делается до проверки границы и не зависит от её исхода: снятая
+  // eligibility не должна сдвигать сид и переписывать чужие карманы.
   for (const candidate of template.consumables) {
-    assertEnemyLoadoutItem(candidate.catalog_id, { verifiedOnly: true })
     const roll = seededInteger(loadoutSeed, `consumable:${candidate.catalog_id}`, 0, 99)
-    if (roll < candidate.chance) push(candidate.catalog_id)
+    if (roll < candidate.chance) push(candidate.catalog_id, { optional: true })
   }
 
   const [purseMinimum, purseMaximum] = template.purse_cp

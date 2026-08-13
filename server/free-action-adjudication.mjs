@@ -367,6 +367,14 @@ const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*
 /**
  * Пока у тела нет явного server-owned контейнера, поиск не подменяется
  * проверкой Внимательности и не создаёт выдуманную добычу.
+ *
+ * Отказ обязан говорить правду о **конкретном** теле. С появлением инвентарей
+ * противников (`server/enemy-loadouts.mjs`) у трупа гуманоида есть авторитетное
+ * содержимое — оружие, боеприпасы, изредка расходник и карман медяков, — и
+ * ответ «у этого тела нет заданного сервером содержимого» стал бы ложью:
+ * состояние говорит одно, рассказчик другое. Поэтому источников содержимого
+ * здесь три, и все три учитываются: `loadout` существа, а также исторические
+ * `search_contents` / `corpse_contents` объектов сцены.
  */
 export function resolveCorpseSearch(state = {}, text = '', reading = {}) {
   if (!CORPSE_SEARCH.test(text)) return null
@@ -387,15 +395,22 @@ export function resolveCorpseSearch(state = {}, text = '', reading = {}) {
     }
   }
   const corpse = candidates[0]
+  const loadout = corpse?.loadout && typeof corpse.loadout === 'object' && !Array.isArray(corpse.loadout)
+    ? corpse.loadout
+    : null
+  const carried = (Array.isArray(loadout?.items) ? loadout.items.length : 0) > 0
+    || Number(loadout?.purse_cp) > 0
   const contents = Array.isArray(corpse?.search_contents) ? corpse.search_contents
     : Array.isArray(corpse?.corpse_contents) ? corpse.corpse_contents
       : null
   return {
     status: 'clarification',
-    narration: contents
-      ? 'У тела есть описанное содержимое, но оно ещё не оформлено как авторитетный контейнер. Нужна отдельная серверная команда извлечения.'
-      : 'У этого тела нет заданного сервером содержимого. Я не буду выдумывать находку или бросать проверку вместо неё.',
-    server_owned_contents: Array.isArray(contents),
+    narration: carried
+      ? 'На теле действительно есть снаряжение, но серверной команды извлечения пока нет: обыск ничего не выдаёт. Я не буду ни выдумывать находку, ни бросать проверку вместо неё.'
+      : contents
+        ? 'У тела есть описанное содержимое, но оно ещё не оформлено как авторитетный контейнер. Нужна отдельная серверная команда извлечения.'
+        : 'У этого тела нет заданного сервером содержимого. Я не буду выдумывать находку или бросать проверку вместо неё.',
+    server_owned_contents: carried || Array.isArray(contents),
     corpse_id: String(corpse.id ?? ''),
   }
 }

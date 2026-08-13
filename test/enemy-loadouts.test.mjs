@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ENCOUNTER_THEMES, assembleEncounter, SRD_5_2_1_MONSTER_ALLOWLIST } from '../server/encounter-assembler.mjs'
+import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { assembleEncounter, SRD_5_2_1_MONSTER_ALLOWLIST } from '../server/encounter-assembler.mjs'
 import {
   ENEMY_LOADOUT_POLICY_ID,
   ENEMY_LOADOUT_SCHEMA_VERSION,
@@ -10,25 +11,24 @@ import {
   assertEnemyLoadoutItem,
   enemyLoadoutFor,
   normalizeEnemyLoadout,
+  optionalEnemyLoadoutItem,
 } from '../server/enemy-loadouts.mjs'
 import {
   ITEM_CATALOG,
-  ITEM_CORPSE_LOOT_CATALOG_IDS,
-  ITEM_ENCOUNTER_THEMES,
-  ITEM_ENEMY_LOADOUT_CATALOG_IDS,
   catalogItem,
-  itemLootMetadata,
   materializeCatalogItem,
 } from '../server/item-catalog.mjs'
 import {
   ITEM_INSTANCE_SCHEMA_VERSION,
+  MAX_ITEM_INSTANCE_CHARGES,
+  MAX_ITEM_SNAPSHOT_NUMBER,
   ItemInstanceError,
   createItemInstance,
   normalizeItemInstance,
 } from '../server/item-instances.mjs'
-import { LOOT_BY_THEME } from '../server/loot-tables.mjs'
+import { activeItemEffectTotals, derivedEquipmentArmorClass } from '../server/item-lifecycle.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicEnemyFor } from '../server/viewer-projection.mjs'
-import { normalizeCampaignState } from '../server/rules-engine.mjs'
+import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 
 function cells(width = 12, height = 5) {
   return Array.from({ length: height }, (_, y) => (
@@ -59,12 +59,10 @@ function allEnemies(themes = ['goblinoids', 'raiders', 'warband', 'law', 'ambush
   ])
 }
 
-test('каталог честно объявляет три метаданных добычи, и ruling-only не проходит ни в один канал', () => {
+test('каталог честно объявляет два метаданных добычи, и ruling-only не проходит ни в один канал', () => {
   for (const entry of Object.values(ITEM_CATALOG)) {
     assert.equal(typeof entry.enemy_loadout_eligible, 'boolean', entry.catalog_id)
     assert.equal(typeof entry.corpse_loot_eligible, 'boolean', entry.catalog_id)
-    assert.ok(Array.isArray(entry.themes), entry.catalog_id)
-    for (const theme of entry.themes) assert.ok(ITEM_ENCOUNTER_THEMES.includes(theme), `${entry.catalog_id}: ${theme}`)
     if (entry.mechanics_status === 'ruling-only') {
       assert.equal(entry.enemy_loadout_eligible, false, entry.catalog_id)
       assert.equal(entry.corpse_loot_eligible, false, entry.catalog_id)
@@ -72,32 +70,22 @@ test('каталог честно объявляет три метаданных
     // Инвентарь противника — узкий канал: магия в него не входит и остаётся за
     // отдельной политикой редкости `magic_loot`. Снять её с тела можно.
     if (entry.magic_item) assert.equal(entry.enemy_loadout_eligible, false, entry.catalog_id)
-  }
-  assert.ok(ITEM_ENEMY_LOADOUT_CATALOG_IDS.length > 0)
-  assert.ok(ITEM_CORPSE_LOOT_CATALOG_IDS.length > ITEM_ENEMY_LOADOUT_CATALOG_IDS.length)
-  for (const catalogId of ITEM_ENEMY_LOADOUT_CATALOG_IDS) {
-    assert.ok(ITEM_CORPSE_LOOT_CATALOG_IDS.includes(catalogId), catalogId)
-  }
-  assert.deepEqual(itemLootMetadata('srd_5_2_1:carpenters-tools'), {
-    enemy_loadout_eligible: false, corpse_loot_eligible: false, themes: [],
-  })
-  assert.equal(itemLootMetadata('srd_5_2_1:not-a-thing'), null)
-})
-
-// Классификация вещи живёт в каталоге, очерёдность выдачи — в таблицах наград.
-// Сторож держит их вместе: предмет, который таблица выдаёт за тему, обязан эту
-// тему нести. Обратное не требуется — в каталоге список шире.
-test('таблицы наград не расходятся с тематической классификацией каталога', () => {
-  // Темы каталога — те же, что у сборщика встреч. Утверждение в комментарии
-  // модуля стоит ровно столько, сколько эта строка.
-  assert.deepEqual([...ITEM_ENCOUNTER_THEMES].sort(), [...ENCOUNTER_THEMES].sort())
-  for (const [theme, catalogIds] of Object.entries(LOOT_BY_THEME)) {
-    assert.ok(ITEM_ENCOUNTER_THEMES.includes(theme), theme)
-    for (const catalogId of catalogIds) {
-      const entry = catalogItem(catalogId)
-      assert.ok(entry, catalogId)
-      assert.ok(entry.themes.includes(theme), `${catalogId} не объявляет тему ${theme}`)
+    // То же и с доспехом, но по другой причине: КД стат-блока объявлено числом.
+    if (entry.category === 'armor') {
+      assert.equal(entry.enemy_loadout_eligible, false, entry.catalog_id)
+      assert.equal(entry.corpse_loot_eligible, true, entry.catalog_id)
     }
+    if (entry.enemy_loadout_eligible) assert.equal(entry.corpse_loot_eligible, true, entry.catalog_id)
+  }
+  // Доспех отклоняется границей, а не отсутствием строки в шаблоне: попытка
+  // положить его в инвентарь падает у самого входа.
+  for (const catalogId of ['srd_5_2_1:chain-mail', 'srd_5_2_1:ring-mail', 'srd_5_2_1:shield', 'srd_5_2_1:leather-armor']) {
+    assert.equal(catalogItem(catalogId).category, 'armor', catalogId)
+    assert.throws(
+      () => assertEnemyLoadoutItem(catalogId),
+      (error) => error instanceof EnemyLoadoutError && error.code === 'ENEMY_LOADOUT_ITEM_NOT_ELIGIBLE',
+      catalogId,
+    )
   }
 })
 
@@ -396,5 +384,260 @@ test('инвентарь живого противника не виден иг�
   assert.equal(serialized.includes('"loadout"'), false)
   for (const projectedEnemy of events[0].payload.encounter.enemies) {
     assert.equal(projectedEnemy.loadout, undefined)
+  }
+})
+
+// Главный инвариант шага, и до этой проверки он держался только на том, что
+// никто не написал строку: каталог отдавал `enemy_loadout_eligible` всей
+// категории `armor` целиком, поэтому кольчуга прошла бы в инвентарь молча.
+test('доспеха нет ни в одном собранном инвентаре, и граница отклоняет его на входе', () => {
+  const seen = new Set()
+  for (const enemy of allEnemies()) {
+    for (const item of enemy.loadout.items) {
+      const entry = catalogItem(item.catalog_id)
+      assert.ok(entry, item.catalog_id)
+      assert.notEqual(entry.category, 'armor', `${enemy.stat_block_id}: ${item.catalog_id}`)
+      assert.equal(item.snapshot.type === 'armor', false, `${enemy.stat_block_id}: ${item.catalog_id}`)
+      seen.add(item.catalog_id)
+    }
+  }
+  assert.ok(seen.size > 5, 'выборка обязана быть содержательной, иначе проверка ничего не значит')
+
+  // Тот же прогон по шаблонам напрямую: сборка встречи выбирает не всех.
+  for (const statBlockId of ENEMY_LOADOUT_TEMPLATE_IDS) {
+    const block = SRD_5_2_1_MONSTER_ALLOWLIST[statBlockId]
+    for (let index = 0; index < 20; index += 1) {
+      const loadout = enemyLoadoutFor({ statBlockId, block, ownerId: `${statBlockId}-${index}`, seed: 'armor-sweep' })
+      for (const item of loadout.items) {
+        assert.notEqual(catalogItem(item.catalog_id).category, 'armor', `${statBlockId}: ${item.catalog_id}`)
+      }
+    }
+  }
+})
+
+const DUEL_SWORD = {
+  id: 'sword', name: 'Длинный меч', type: 'weapon', quantity: 1, equipped: true,
+  combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 },
+}
+
+function duelState(enemy) {
+  return normalizeCampaignState({
+    sessionCode: 'LOOT-AC',
+    partyMemberIds: ['hero'],
+    players: [{
+      id: 'hero', character: 'Ада', characterClass: 'fighter', level: 5, hp: 40, maxHp: 40,
+      armor: 16, speed: 30, proficiency: 3,
+      abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 10 },
+      inventory: [DUEL_SWORD], x: 0, y: 0,
+    }],
+    enemies: [enemy],
+    scene: { turn: 1, cells: cells(6, 2) },
+    mechanics: {
+      combat: {
+        active: true, round: 1, active_index: 0,
+        initiative: [{ actor_id: 'hero', total: 20 }, { actor_id: enemy.id, total: 5 }],
+        action_economy: {
+          hero: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+          [enemy.id]: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+        },
+      },
+    },
+  })
+}
+
+// Вторая половина того же инварианта, и она про границу `enemy.loadout` против
+// `actor.inventory`: инвентарь противника обязан оставаться невидимым для
+// боевых формул. Проверка идёт настоящим ударом через Rules Engine, а не
+// сравнением полей, — в событии лежит то самое КД, по которому считается
+// попадание.
+test('КД противника с полным инвентарём равно числу стат-блока', () => {
+  let rollId = 0
+  for (const statBlockId of ENEMY_LOADOUT_TEMPLATE_IDS) {
+    const block = SRD_5_2_1_MONSTER_ALLOWLIST[statBlockId]
+    const enemy = {
+      id: 'foe', name: block.name, creature_type: block.creature_type,
+      hp: block.hp, maxHp: block.hp, armor: block.armor, speed: block.speed,
+      abilities: { ...block.abilities }, x: 1, y: 0, alive: true, stat_block_id: statBlockId,
+      loadout: enemyLoadoutFor({ statBlockId, block, ownerId: 'foe', seed: 'armor-class-check' }),
+    }
+    assert.ok(enemy.loadout.items.length > 0, statBlockId)
+    const state = duelState(enemy)
+    const stored = state.enemies[0]
+    // Инвентарь есть, но он лежит не в том поле, которое читают формулы.
+    assert.ok(stored.loadout.items.length > 0, statBlockId)
+    assert.equal(stored.inventory, undefined, statBlockId)
+    assert.equal(derivedEquipmentArmorClass(stored), null, statBlockId)
+    assert.equal(activeItemEffectTotals(stored).armor_class_bonus, 0, statBlockId)
+
+    const result = resolveCommand(
+      { command_type: 'MakeAttack', actor_id: 'hero', target_id: 'foe', item_id: 'sword', server_authoritative: true },
+      state,
+      {
+        diceService: new DiceService({
+          rng: new SequenceDiceRng([10, 4]),
+          idFactory: () => `armor-class-roll-${++rollId}`,
+          now: () => '2026-08-13T12:00:00.000Z',
+        }),
+        context: { serverAuthoritativeCombat: true, isAdmin: true },
+      },
+    )
+    const resolved = result.events.find((event) => event.event_type === 'AttackResolved')
+    assert.ok(resolved, statBlockId)
+    assert.equal(resolved.payload.armor_class, block.armor, `${statBlockId}: КД взято не из стат-блока`)
+  }
+})
+
+// Снимок приезжает из сохранения и из payload события, то есть и из админского
+// импорта состояния. Прежняя проверка ловила только выброс неизвестного ключа и
+// создавала ложное чувство закрытой границы.
+test('снимок экземпляра — недоверенные данные: числа, тип и картинка приводятся к границам', () => {
+  const instance = normalizeItemInstance({
+    schema_version: 1,
+    item_instance_id: 'hostile-1',
+    catalog_id: 'srd_5_2_1:dagger',
+    quantity: 1,
+    owner: { kind: 'enemy', actor_id: 'enemy-1' },
+    origin: { kind: 'enemy_loadout', template_id: 'srd_5_2_1:bandit' },
+    lootable: true,
+    snapshot: {
+      name: 'Кинжал',
+      type: 'armor-of-my-choosing',
+      weight: -1e9,
+      base_price_cp: 1e15,
+      image: 'https://evil.example/steal.png',
+      mechanics_status: 'totally-verified',
+      rarity: 'божественный',
+      catalog_schema_version: 999,
+      combat: { kind: 'melee', armor: { base: 1e15 } },
+      passive_effects: [
+        { armor_class_bonus: 50 },
+        { schema_version: 1, effect_id: 'forged', group: 'forged', armor_class_bonus: 5_000 },
+      ],
+      charges: { current: 1e9, max: 1e9 },
+      recharge: { schema_version: 1, trigger: 'always', formula: '99d99' },
+      secret: 'не должно проехать',
+    },
+  })
+  const snapshot = instance.snapshot
+  assert.equal(snapshot.secret, undefined)
+  assert.equal(snapshot.type, 'other', 'тип сводится к известному множеству инвентаря')
+  assert.equal(snapshot.weight, 0, 'отрицательный вес не уменьшает переносимый груз')
+  assert.equal(snapshot.base_price_cp, MAX_ITEM_SNAPSHOT_NUMBER, 'цена ограничена — её заплатит торговец')
+  assert.equal(snapshot.image, undefined, 'внешний адрес в разметку карточки не попадает')
+  assert.equal(snapshot.mechanics_status, undefined)
+  assert.equal(snapshot.rarity, 'обычный')
+  assert.equal(snapshot.catalog_schema_version, '999')
+  assert.equal(snapshot.recharge, undefined, 'выдуманный профиль перезарядки отбрасывается')
+  assert.equal(snapshot.charges.max, MAX_ITEM_INSTANCE_CHARGES)
+  assert.equal(snapshot.charges.current, MAX_ITEM_INSTANCE_CHARGES)
+  // Числа ограничены на любой глубине, а не только в названных полях.
+  assert.equal(snapshot.combat.armor.base, MAX_ITEM_SNAPSHOT_NUMBER)
+  // Запись без effect_id и group эффектом не является; у оформленной надбавка
+  // подрезана общим авторитетным контрактом пассивных эффектов.
+  assert.equal(snapshot.passive_effects.length, 1)
+  assert.equal(snapshot.passive_effects[0].armor_class_bonus, 100)
+
+  // Картинка, которую сервер отдаёт сам, границу проходит.
+  const local = normalizeItemInstance({
+    item_instance_id: 'local-1',
+    catalog_id: 'srd_5_2_1:dagger',
+    owner: { kind: 'enemy', actor_id: 'enemy-1' },
+    origin: { kind: 'enemy_loadout' },
+    snapshot: { image: '/assets/items/item-srd-5-2-1-dagger.png' },
+  })
+  assert.equal(local.snapshot.image, '/assets/items/item-srd-5-2-1-dagger.png')
+  for (const image of ['/assets/items/../../etc/passwd.png', '/generated/items/x.svg', 'javascript:alert(1)', '//evil.example/x.png']) {
+    const rejected = normalizeItemInstance({
+      item_instance_id: 'rejected-1',
+      catalog_id: 'srd_5_2_1:dagger',
+      owner: { kind: 'enemy', actor_id: 'enemy-1' },
+      origin: { kind: 'enemy_loadout' },
+      snapshot: { image },
+    })
+    assert.equal(rejected.snapshot.image, undefined, image)
+  }
+})
+
+// Снимок в момент создания и снимок после чтения сохранения обязаны совпадать:
+// иначе состояние после replay разошлось бы с состоянием в момент боя.
+test('приведение экземпляра — неподвижная точка: replay не меняет ни одного поля', () => {
+  for (const catalogId of ['srd_5_2_1:scimitar', 'srd_5_2_1:arrows-20', 'srd_5_2_1:healers-kit', 'srd_5_2_1:potion-of-healing', 'srd_5_2_1:ring-of-protection']) {
+    const created = createItemInstance({
+      catalogId,
+      instanceId: `fixed-point-${catalogId}`,
+      quantity: 2,
+      owner: { kind: 'enemy', actor_id: 'enemy-1' },
+      origin: { kind: 'enemy_loadout', template_id: 'srd_5_2_1:bandit', source_id: 'encounter-proposal-1' },
+    })
+    assert.deepEqual(normalizeItemInstance(created), created, catalogId)
+    assert.deepEqual(normalizeItemInstance(normalizeItemInstance(created)), created, catalogId)
+    assert.equal(created.snapshot.properties, undefined, 'дубль описания в снимке не хранится')
+    assert.ok(created.snapshot.description, catalogId)
+  }
+})
+
+// Инвентарь обязан лежать в состоянии ровно один раз. Вторая копия в
+// `mechanics.encounter` не проходила нормализатор никогда: мусор из сохранения
+// вычистился бы в одной копии и остался в другой.
+test('замороженный состав встречи не хранит второй копии инвентарей', () => {
+  const proposal = encounter({ theme: 'law', seed: 'single-copy' })
+  assert.ok(proposal.enemies.some((enemy) => enemy.loadout.items.length > 0))
+
+  const before = normalizeCampaignState({
+    sessionCode: 'LOOT-COPY',
+    partyMemberIds: ['hero-1'],
+    players: [{ id: 'hero-1', character: 'Лира', inventory: [] }],
+    scene: { title: 'Ворота', location: 'Ворота', cells: cells() },
+    enemies: [],
+  })
+  const state = applyGameEvent(before, {
+    event_id: 'e1',
+    event_type: 'EncounterCreated',
+    payload: { encounter: { ...proposal, id: 'encounter-1', encounter_id: 'encounter-1' } },
+  })
+
+  assert.ok(state.enemies.every((enemy) => enemy.loadout), 'боевая запись врага инвентарь несёт')
+  assert.ok(state.enemies.some((enemy) => enemy.loadout.items.length > 0))
+  for (const descriptor of state.mechanics.encounter.enemies) {
+    assert.equal(descriptor.loadout, undefined, descriptor.id)
+    // Состав встречи по-прежнему опознаётся: награду замораживают по этим полям.
+    assert.ok(descriptor.id && descriptor.stat_block_id, descriptor.id)
+  }
+  assert.deepEqual(state.mechanics.encounter.enemy_ids, state.enemies.map((enemy) => enemy.id))
+  assert.equal(JSON.stringify(state.mechanics.encounter).includes('item_instance_id'), false)
+
+  // Старое сохранение со второй копией чистится тем же правилом при загрузке.
+  const legacy = normalizeCampaignState({
+    ...before,
+    mechanics: { ...before.mechanics, encounter: { id: 'encounter-1', status: 'staged', enemies: proposal.enemies } },
+  })
+  for (const descriptor of legacy.mechanics.encounter.enemies) {
+    assert.equal(descriptor.loadout, undefined, descriptor.id)
+  }
+})
+
+// Необязательный расходник выбирает сервер сам, и его eligibility выводится из
+// живого каталога. Перебалансировка не должна превращать сборку встречи,
+// которую Директор дёргает через `/autonomy/advance`, в необработанную ошибку.
+test('неисполнимый расходник пропускается, а гарантированное снаряжение падает громко', () => {
+  assert.equal(catalogItem('srd_5_2_1:crowbar').mechanics_status, 'ruling-only')
+  assert.equal(optionalEnemyLoadoutItem('srd_5_2_1:crowbar'), null)
+  assert.equal(optionalEnemyLoadoutItem('srd_5_2_1:chain-mail'), null)
+  assert.equal(optionalEnemyLoadoutItem('srd_5_2_1:scimitar'), null, 'оружие со статусом partial расходником не выдаётся')
+  assert.equal(optionalEnemyLoadoutItem('srd_5_2_1:not-a-thing'), null)
+  assert.equal(optionalEnemyLoadoutItem('srd_5_2_1:potion-of-healing').catalog_id, 'srd_5_2_1:potion-of-healing')
+
+  // Гарантированное снаряжение так пропускать нельзя: отсутствие вещи означает
+  // неверную сборку, и она обязана падать.
+  assert.throws(
+    () => assertEnemyLoadoutItem('srd_5_2_1:chain-mail'),
+    (error) => error instanceof EnemyLoadoutError,
+  )
+
+  // И ни одна тема при этом не роняет сборку встречи целиком.
+  for (const theme of ['goblinoids', 'raiders', 'warband', 'law', 'ambush', 'undead', 'beasts', 'vermin', 'crypt', 'cave', 'wilderness', 'generic']) {
+    for (const difficulty of ['easy', 'medium', 'hard', 'deadly']) {
+      assert.doesNotThrow(() => encounter({ theme, difficulty, level: 5, seed: `no-throw:${theme}:${difficulty}` }))
+    }
   }
 })
