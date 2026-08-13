@@ -126,20 +126,41 @@ test('открытый раунд можно закрыть без броска,
   assert.match(board, /onLeaveTavernDiceRound\(\)/u)
   assert.match(board, /Встать из-за стола/u)
   // Отвечать на кость бывает нечем: соперника обыграл дочиста товарищ по
-  // отряду или свои монеты ушли другой командой. Кнопки ответа обязаны гаснуть
-  // до клика, а не приносить отказ после него.
+  // отряду или героя выставили за дверь. Кнопки ответа обязаны гаснуть до
+  // клика, а не приносить отказ после него.
   assert.match(board, /tavernRoundUnanswerable/u)
   assert.match(board, /Соперник спустил всё/u)
   assert.match(styles, /\.tavern-leave \{/u)
-  // И то же самое с другой стороны: пока раунд доигрывается, «встать» гаснет
-  // само. Кость соперника на столе — это уже сделанная ставка, и уход от неё
-  // после просмотра числа был бы бесплатным перебросом.
-  assert.match(board, /disabled=\{tavernActionsBlocked \|\| !tavernRoundUnanswerable\}/u)
+  // Сама кнопка «встать» при этом горит всегда: ставка уже на столе, и уход от
+  // живой кости — это сдача, а не запрещённый ход. Цену обязана называть
+  // подпись, а не отказ сервера.
+  assert.match(board, /className="tavern-action action-leave"[\s\S]{0,120}disabled=\{tavernActionsBlocked\}/u)
+  assert.match(board, /ставка вернётся в кошелёк/u)
+  assert.match(board, /ставку заберёт/u)
   // Повод считает сервер, а доска его только читает: своей арифметики чужой
-  // кассы и своего кошелька здесь быть не должно — иначе кнопка загорится там,
-  // где придёт отказ.
+  // кассы и своего кошелька здесь быть не должно — иначе панель обещала бы
+  // возврат там, где ставка останется сопернику.
   assert.match(board, /tavernRound\?\.unanswerable_reason \?\? null/u)
   assert.doesNotMatch(board, /activeHeroPurseCp < tavernRound/u)
+})
+
+/**
+ * Зонд повторного ревью: у тупика `patron-ejected` не было пути с экрана.
+ *
+ * Панель рисовала выставленному за дверь **только** заметку — блок раунда стоял
+ * в другой ветке того же тернарника и до него не доходил, — поэтому кнопки
+ * «Встать из-за стола» он не видел, хотя движок её ему разрешает и ставку
+ * возвращает. Подсказки молчали тем же условием (`server/action-hints.mjs`).
+ *
+ * Проверяется структура, а не текст: заметка о запрете входа и блок раунда
+ * обязаны стоять рядом, а не через «или».
+ */
+test('выставленному за дверь панель показывает его открытый раунд, а не одну заметку', () => {
+  assert.match(board, /\{tavern\.ejected && <p className="tavern-note">/u, 'заметка о запрете входа — отдельная строка панели')
+  assert.match(board, /\{tavernRound\s*\r?\n\s*\? </u, 'блок раунда решает сам за себя, а не после запрета входа')
+  // Стол для новой игры выставленному по-прежнему не накрывают: заказать
+  // выпивку и сесть за кости ему нельзя.
+  assert.match(board, /: tavern\.ejected\s*\r?\n\s*\? null/u)
 })
 
 /**
@@ -162,7 +183,7 @@ test('карточка называет, можно ли ещё доиграть
     },
   })
   const viewer = { id: 'user-1', role: 'player', heroIds: ['hero'] }
-  assert.equal(campaignStateForViewer(state, viewer, 'hero').tavern.round.unanswerable_reason, null, 'доиграть можно — вставать не с чего')
+  assert.equal(campaignStateForViewer(state, viewer, 'hero').tavern.round.unanswerable_reason, null, 'доиграть можно — уход будет сдачей')
 
   const broke = normalizeCampaignState({
     ...state,
@@ -170,11 +191,23 @@ test('карточка называет, можно ли ещё доиграть
   })
   assert.equal(campaignStateForViewer(broke, viewer, 'hero').tavern.round.unanswerable_reason, 'opponent-broke')
 
+  const barred = normalizeCampaignState({
+    ...state,
+    tavern: {
+      ...state.tavern,
+      patrons: { hero: { ...state.tavern.patrons.hero, ejected: true } },
+    },
+  })
+  assert.equal(campaignStateForViewer(barred, viewer, 'hero').tavern.round.unanswerable_reason, 'patron-ejected')
+
+  // Пустой кошелёк тупиком больше не считается: ставка ушла на стол при
+  // открытии раунда, и отвечать бедность не мешает. Пока считался — кружка эля
+  // за 4 мм выкупала бесплатный выход из проигрышного раунда.
   const poor = normalizeCampaignState({
     ...state,
     players: state.players.map((player) => ({ ...player, currency: { copper: 1, silver: 0, gold: 0, platinum: 0 } })),
   })
-  assert.equal(campaignStateForViewer(poor, viewer, 'hero').tavern.round.unanswerable_reason, 'hero-broke')
+  assert.equal(campaignStateForViewer(poor, viewer, 'hero').tavern.round.unanswerable_reason, null)
 })
 
 test('панель таверны оформлена и не ломает узкий экран', () => {

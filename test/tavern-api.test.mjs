@@ -444,17 +444,29 @@ test('подход к броску закреплён первой фазой: �
 })
 
 /**
- * Тупик открытого раунда живым путём: команда «встать из-за стола» закрывает
- * его без броска и без движения монет — но **только** из тупика.
+ * Цена ухода из-за стола живым путём — и это ровно тот сценарий, которым
+ * повторное ревью прошло сквозь прошлую заплату.
  *
- * Первая редакция этого теста закрепляла обратное («команда не сжигает вечер»),
- * и ревью показало цену такого требования: число соперника видно до решения, а
- * уход не стоит ничего — значит цикл «выпало много — встал, выпало мало —
- * ответил» приносит чистую прибыль при нулевом риске. Кость на столе — это уже
- * сделанная ставка, и живой путь обязан это подтверждать.
+ * У теста две прошлые редакции, и обе закрепляли дыру. Первая требовала, чтобы
+ * команда «не сжигала вечер» (уход был бесплатным перебросом чужой кости).
+ * Вторая заменила это запретом «встать можно только из тупика» — и сама же
+ * подсказывала обход: чтобы получить право уйти, тест **заказывал кружку эля**
+ * за 4 мм и ронял кошелёк ниже сделанной ставки. Отмена проигрышного раунда
+ * стоила 4 мм вместо 200.
+ *
+ * Здесь проверяется новый инвариант целиком: ставка уходит из кошелька вместе с
+ * костью на столе, кружка эля тупика больше не делает, а уход от живой кости —
+ * это сдача, и стоит она ровно ставки.
  */
-test('из-за стола встают только из тупика, и кошелёк при этом не двигается', { timeout: runnerTimeout(40_000) }, async (t) => {
+test('уход от живой кости стоит ставки, и кружка эля этого не отменяет', { timeout: runnerTimeout(40_000) }, async (t) => {
   const { baseUrl, adminCookie, log } = await setUp(t)
+
+  const idle = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
+  const purseCp = (body) => {
+    const purse = body.state.players[0].currency
+    return purse.copper + purse.silver * 10 + purse.gold * 100 + purse.platinum * 1_000
+  }
+  assert.equal(purseCp(idle.body), 200, 'кошелёк героя — ровно одна крупная ставка')
 
   const opened = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
     method: 'POST',
@@ -465,37 +477,29 @@ test('из-за стола встают только из тупика, и ко�
     },
   })
   assert.equal(opened.status, 200, `${opened.text}\n${log()}`)
+  const openedEvent = (opened.body.mechanics ?? []).find((event) => event.event_type === 'TavernDiceRoundOpened')
+  assert.ok(openedEvent, `открытие раунда обязано доехать игроку событием\n${opened.text}`)
+  assert.equal(openedEvent.payload.balance_before_cp - openedEvent.payload.balance_after_cp, 200,
+    'событие открытия само говорит, что ставка ушла из кошелька на стол')
+
   const before = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
   assert.ok(before.body.state.tavern.round, 'кость соперника на столе')
   assert.equal(before.body.state.tavern.round.unanswerable_reason, null, 'раунд доигрывается, и это видно карточкой')
+  assert.equal(purseCp(before.body), 0, 'ставка уплачена сразу: в кармане пусто')
 
-  // Пока раунд можно доиграть, выхода из него нет: иначе это был бы бесплатный
-  // переброс чужой кости, уже лежащей на столе.
-  const refused = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
-    method: 'POST',
-    cookie: adminCookie,
-    body: {
-      idempotency_key: 'tavern-leave-early',
-      command: { command_type: 'LeaveTavernDiceRound', actor_id: 'hero' },
-    },
-  })
-  assert.equal(refused.status, 400, refused.text)
-  assert.equal(refused.body.code, 'TAVERN_ROUND_MUST_BE_ANSWERED')
-  const stillOpen = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
-  assert.ok(stillOpen.body.state.tavern.round, 'отказ ничего не закрыл')
-
-  // А вот и тупик, до которого доводит обычная игра: кружка эля роняет кошелёк
-  // ниже сделанной ставки, и закрыть её больше нечем.
+  // Обход прошлой заплаты: кружку эля с пустым кошельком уже не купить, и даже
+  // купленная тупика бы не сделала — повод `hero-broke` из набора убран.
   const drank = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
     method: 'POST',
     cookie: adminCookie,
     body: { idempotency_key: 'tavern-leave-drink', command: { command_type: 'OrderTavernDrink', actor_id: 'hero' } },
   })
-  assert.equal(drank.status, 200, `${drank.text}\n${log()}`)
-  const stuck = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
-  assert.equal(stuck.body.state.tavern.round.unanswerable_reason, 'hero-broke', 'повод встать приезжает картой, а не догадкой доски')
-  const purseBefore = JSON.stringify(stuck.body.state.players[0].currency)
+  assert.equal(drank.status, 400, drank.text)
+  assert.equal(drank.body.code, 'INSUFFICIENT_FUNDS')
+  const stillOpen = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
+  assert.equal(stillOpen.body.state.tavern.round.unanswerable_reason, null, 'бедность тупиком не считается')
 
+  // Встать из-за стола можно — но это сдача, и ставка со стола не возвращается.
   const left = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
     method: 'POST',
     cookie: adminCookie,
@@ -507,15 +511,21 @@ test('из-за стола встают только из тупика, и ко�
   assert.equal(left.status, 200, `${left.text}\n${log()}`)
   const cancelled = (left.body.mechanics ?? []).find((event) => event.event_type === 'TavernDiceRoundCancelled')
   assert.ok(cancelled, `закрытие раунда обязано доехать игроку событием\n${left.text}`)
-  assert.equal(cancelled.payload.reason, 'left-table')
-  assert.equal(cancelled.payload.returned_cp, 200)
+  assert.equal(cancelled.payload.reason, 'surrendered')
+  assert.equal(cancelled.payload.returned_cp, 0)
+  assert.equal(cancelled.payload.forfeited_cp, 200)
+  // Ставка уехала в карман соседа: деньги за этим столом переезжают, а не
+  // исчезают. Здесь это видно, потому что запрос идёт от ведущего — игроку
+  // точные суммы чужой кассы режет проекция (`test/tavern-life.test.mjs`).
+  assert.equal(cancelled.payload.npc_purse_after_cp - cancelled.payload.npc_purse_before_cp, 200)
 
   const after = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
   assert.equal(after.body.state.tavern.round, null, 'раунд снят')
-  assert.equal(JSON.stringify(after.body.state.players[0].currency), purseBefore, 'ставку до расчёта никто не трогал')
+  assert.equal(purseCp(after.body), 0, 'ставка осталась на столе: цикл «увидел много — встал» стоит ставки')
 
-  // И за стол можно сесть заново — на ту ставку, которая герою ещё по карману.
-  const again = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+  // За стол сесть заново уже не на что, и это видно карточкой, а не отказом.
+  assert.equal(after.body.state.tavern.opponents.every((npc) => npc.max_stake_cp >= 10), true, 'у соседа деньги есть')
+  const broke = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
     method: 'POST',
     cookie: adminCookie,
     body: {
@@ -523,7 +533,8 @@ test('из-за стола встают только из тупика, и ко�
       command: { command_type: 'OpenTavernDiceRound', actor_id: 'hero', npc_id: 'barkeep', stake_cp: 10 },
     },
   })
-  assert.equal(again.status, 200, `${again.text}\n${log()}`)
+  assert.equal(broke.status, 400, broke.text)
+  assert.equal(broke.body.code, 'INSUFFICIENT_FUNDS')
 })
 
 /**

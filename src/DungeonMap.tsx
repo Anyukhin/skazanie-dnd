@@ -920,19 +920,18 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // закрыть. Кнопка обязана показать это до клика, а не после отказа.
   const tavernOpponentMaxStakeCp = Number(tavernOpponents.find((npc) => npc.id === chosenTavernOpponentId)?.max_stake_cp ?? 0)
   const tavernActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
-  // Почему открытый раунд может быть уже не доиграть — и почему кнопка «встать
-  // из-за стола» вообще горит. Повод приезжает карточкой готовым словом:
-  // соперника мог обыграть дочиста товарищ по отряду, а свои монеты — уйти на
-  // другую покупку, и ровно в этих положениях движок пускает из-за стола.
+  // Почему открытый раунд может быть уже не доиграть — и во что герою обойдётся
+  // уход из-за стола. Повод приезжает карточкой готовым словом: соперника мог
+  // обыграть дочиста товарищ по отряду, а самого героя — выставить за дверь.
   //
-  // Своей арифметики здесь нет намеренно. Кость соперника на столе — это уже
-  // сделанная ставка: уйти от неё, посмотрев на число, нельзя, иначе стол
-  // раздавал бы бесплатные перебросы. Кто именно об этом судит, решено на
-  // сервере (`tavernRoundUnanswerableReason`), и второго ответа быть не должно —
-  // иначе кнопка загоралась бы там, где придёт отказ.
+  // Своей арифметики здесь нет намеренно. Встать из-за стола можно всегда, но
+  // ставка уже лежит на столе (её сняли с кошелька, когда кость легла), и
+  // возвращается она только из этих двух тупиков — во всех прочих остаётся
+  // сопернику. Судит об этом сервер (`tavernRoundUnanswerableReason`), и второго
+  // ответа быть не должно: иначе панель обещала бы возврат там, где его не будет.
   const tavernUnanswerableReason = tavernRound?.unanswerable_reason ?? null
   const tavernOpponentCannotPay = tavernUnanswerableReason === 'opponent-broke'
-  const tavernHeroCannotPay = tavernUnanswerableReason === 'hero-broke'
+  const tavernPatronEjected = tavernUnanswerableReason === 'patron-ejected'
   const tavernRoundUnanswerable = Boolean(tavernRound && tavernUnanswerableReason)
   const dossierSceneNpc = npcDossier ? sceneNpcs.find((npc) => npc.id === npcDossier.npcId) ?? null : null
   const dossierCaptive = dossierSceneNpc ? captiveByNpcId.get(dossierSceneNpc.id) ?? null : null
@@ -2332,59 +2331,65 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         </section>}
         {tavern && <section className="tavern-panel" aria-label="Жизнь таверны" aria-live="polite">
           <header><Beer size={15} /><span><small>ЗАВЕДЕНИЕ · {tavern.place_name || 'таверна'}</small><strong>{tavernRound ? 'Кость на столе' : 'Кости и выпивка'}</strong></span></header>
-          {tavern.ejected
-            ? <p className="tavern-note">Отсюда героя выставили: за этим столом ему больше не наливают и в кости с ним не садятся.</p>
-            : tavernRound
-              ? <>
-                <p className="tavern-note">
-                  {tavernRound.npc_name || 'Соперник'} выбросил <b>{tavernRound.npc_total}</b>. Нужно <b>{tavernRound.target}</b> или больше,
-                  чтобы забрать банк в {tavernRound.stake_cp * 2} мм.
-                </p>
-                <div className="tavern-approaches">
-                  {([
-                    { id: 'fair' as const, label: 'Бросить честно', summary: 'Просто кость: чей бросок старше, тот и забрал банк.', icon: <Dices size={13} /> },
-                    { id: 'cheat' as const, label: 'Подкрутить кость', summary: 'Подменённая кость даёт +5 к вашему броску, но идёт Ловкость рук против чужой Проницательности: поймают — скандал и потерянная ставка.', icon: <Sparkles size={13} /> },
-                    { id: 'watch' as const, label: 'Следить за руками', summary: 'Проницательность: если сосед мечет краплёными, это можно разглядеть.', icon: <Eye size={13} /> },
-                  ]).map((approach) => <button
-                    key={approach.id}
-                    type="button"
-                    className={`tavern-approach approach-${approach.id}`}
-                    disabled={tavernActionsBlocked || tavernRoundUnanswerable}
-                    title={tavernOpponentCannotPay
-                      ? 'Соперник спустил всё: банк ему уже нечем закрыть'
-                      : tavernHeroCannotPay ? 'Ставку уже нечем закрыть' : approach.summary}
-                    onClick={() => { void onAnswerTavernDiceRound(approach.id) }}
-                  >
-                    {approach.icon}
-                    <b>{approach.label}</b>
-                    <small>{approach.summary}</small>
-                  </button>)}
-                </div>
-                {/* Встать из-за стола можно только тогда, когда ответить уже
-                    нечем: соперника обыграл дочиста товарищ по отряду или свои
-                    монеты ушли другой командой. Пока раунд доигрывается,
-                    кнопка гаснет — чужое число уже на столе, и уход от него
-                    после просмотра был бы бесплатным перебросом. Ставка при
-                    этом не двигается: до расчёта её никто не трогал. */}
-                <div className="tavern-leave">
-                  <button
-                    type="button"
-                    className="tavern-action action-leave"
-                    disabled={tavernActionsBlocked || !tavernRoundUnanswerable}
-                    title={tavernRoundUnanswerable
-                      ? 'Раунд закроется без броска, ставка останется при вас'
-                      : 'Кость соперника уже на столе: ставка сделана, и уйти от неё нельзя'}
-                    onClick={() => { void onLeaveTavernDiceRound() }}
-                  ><DoorOpen size={13} />Встать из-за стола</button>
-                  <small>
-                    {tavernOpponentCannotPay
-                      ? `${tavernRound.npc_name || 'Соперник'} спустил всё: банк в ${tavernRound.stake_cp * 2} мм ему уже нечем закрыть — раунд закрывается без броска.`
-                      : tavernHeroCannotPay
-                        ? `На ставку в ${tavernRound.stake_cp} мм у героя больше не хватает монет — раунд закрывается без броска.`
-                        : `Ставка в ${tavernRound.stake_cp} мм уже на столе: кость соперника брошена, и отвечать на неё придётся.`}
-                  </small>
-                </div>
-              </>
+          {/* Заметка о запрете входа и блок раунда идут **рядом**, а не через
+              «или»: выставленный за дверь остаётся с открытым раундом на руках,
+              и до ревью панель рисовала ему одну заметку — кнопки «встать из-за
+              стола» выставленный не видел вовсе, хотя движок её ему разрешает и
+              ставку возвращает (выставил себя не он сам). */}
+          {tavern.ejected && <p className="tavern-note">Отсюда героя выставили: за этим столом ему больше не наливают и в кости с ним не садятся.</p>}
+          {tavernRound
+            ? <>
+              <p className="tavern-note">
+                {tavernRound.npc_name || 'Соперник'} выбросил <b>{tavernRound.npc_total}</b>. Нужно <b>{tavernRound.target}</b> или больше,
+                чтобы забрать банк в {tavernRound.stake_cp * 2} мм. Ставка в {tavernRound.stake_cp} мм уже на столе.
+              </p>
+              <div className="tavern-approaches">
+                {([
+                  { id: 'fair' as const, label: 'Бросить честно', summary: 'Просто кость: чей бросок старше, тот и забрал банк.', icon: <Dices size={13} /> },
+                  { id: 'cheat' as const, label: 'Подкрутить кость', summary: 'Подменённая кость даёт +5 к вашему броску, но идёт Ловкость рук против чужой Проницательности: поймают — скандал и потерянная ставка.', icon: <Sparkles size={13} /> },
+                  { id: 'watch' as const, label: 'Следить за руками', summary: 'Проницательность: если сосед мечет краплёными, это можно разглядеть.', icon: <Eye size={13} /> },
+                ]).map((approach) => <button
+                  key={approach.id}
+                  type="button"
+                  className={`tavern-approach approach-${approach.id}`}
+                  disabled={tavernActionsBlocked || tavernRoundUnanswerable}
+                  title={tavernOpponentCannotPay
+                    ? 'Соперник спустил всё: банк ему уже нечем закрыть'
+                    : tavernPatronEjected ? 'Героя выставили за дверь: доигрывать не с кем' : approach.summary}
+                  onClick={() => { void onAnswerTavernDiceRound(approach.id) }}
+                >
+                  {approach.icon}
+                  <b>{approach.label}</b>
+                  <small>{approach.summary}</small>
+                </button>)}
+              </div>
+              {/* Встать из-за стола можно всегда — но не всегда даром, и кнопка
+                  обязана называть цену до клика. Ставка уже ушла из кошелька на
+                  стол, поэтому уход от живой кости — это сдача: она остаётся
+                  сопернику ровно как при проигрыше. Возвращается она только из
+                  тупика (соперник разорился, героя выставили за дверь), и судит
+                  об этом сервер, а не доска. */}
+              <div className="tavern-leave">
+                <button
+                  type="button"
+                  className="tavern-action action-leave"
+                  disabled={tavernActionsBlocked}
+                  title={tavernRoundUnanswerable
+                    ? 'Раунд закроется без броска, ставка вернётся в кошелёк'
+                    : 'Раунд закроется без броска, но ставка со стола останется сопернику'}
+                  onClick={() => { void onLeaveTavernDiceRound() }}
+                ><DoorOpen size={13} />Встать из-за стола</button>
+                <small>
+                  {tavernOpponentCannotPay
+                    ? `${tavernRound.npc_name || 'Соперник'} спустил всё: банк в ${tavernRound.stake_cp * 2} мм ему уже нечем закрыть — раунд закрывается, ставка в ${tavernRound.stake_cp} мм возвращается.`
+                    : tavernPatronEjected
+                      ? `Доигрывать выставленному нельзя, но и ставку за это не берут: раунд закрывается, ${tavernRound.stake_cp} мм возвращаются со стола.`
+                      : `Ставка в ${tavernRound.stake_cp} мм уже на столе: встать можно, но это сдача — ставку заберёт ${tavernRound.npc_name || 'соперник'}.`}
+                </small>
+              </div>
+            </>
+            : tavern.ejected
+              ? null
               : <>
                 <div className="tavern-dice-setup" role="group" aria-label="Игра в кости">
                   <label>
@@ -2417,7 +2422,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                     disabled={tavernActionsBlocked || !chosenTavernOpponentId || !chosenTavernStakeCp || activeHeroPurseCp < chosenTavernStakeCp || tavernOpponentMaxStakeCp < chosenTavernStakeCp}
                     title={activeHeroPurseCp < chosenTavernStakeCp
                       ? 'На ставку не хватает монет'
-                      : tavernOpponentMaxStakeCp < chosenTavernStakeCp ? 'У соперника столько не наберётся' : 'Соперник мечет первым, отвечать будете вы'}
+                      : tavernOpponentMaxStakeCp < chosenTavernStakeCp
+                        ? 'У соперника столько не наберётся'
+                        : `Соперник мечет первым, отвечать будете вы. Ставка в ${chosenTavernStakeCp} мм уходит из кошелька на стол сразу`}
                     onClick={() => { void onOpenTavernDiceRound(chosenTavernOpponentId, chosenTavernStakeCp) }}
                   ><Dices size={13} />Сыграть в кости</button>
                 </div>

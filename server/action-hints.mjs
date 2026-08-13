@@ -152,28 +152,35 @@ function npcHints(room) {
 function tavernHints(room) {
   const tavern = room?.tavern
   const empty = { urgent: [], leisure: [] }
-  if (!tavern || tavern.ejected === true) return empty
+  if (!tavern) return empty
+  // Открытый раунд разбирается **до** запрета входа, а не после, и это не
+  // порядок ради порядка: выставленный за дверь остаётся с открытым раундом на
+  // руках, отвечать ему запрещено, и единственный его ход — встать из-за стола.
+  // Пока запрет обрывал подсказки первой же строкой, этот ход не назывался
+  // нигде: панель заведения выставленному тоже рисовала одну заметку.
   if (tavern.round) {
     // Отвечать бывает нечем: пока герой думал, соперника мог обыграть дочиста
-    // товарищ по отряду, а свои монеты — уйти другой командой. Ровно в этих
-    // положениях (и только в них) движок и пускает из-за стола, поэтому повод
-    // приезжает карточкой готовым словом: считать его второй раз значило бы
-    // звать встать там, где сервер откажет.
+    // товарищ по отряду или хозяин заведения выставил героя за дверь. Ровно эти
+    // положения движок и считает тупиком — теми, где ставка вернётся, — поэтому
+    // повод приезжает карточкой готовым словом: считать его второй раз значило
+    // бы обещать возврат там, где ставку заберёт соперник.
     const unanswerable = text(tavern.round.unanswerable_reason, 40)
     const rival = text(tavern.round.npc_name, 60) || 'соперник'
+    const stake = Number(tavern.round.stake_cp) || 0
     return {
       ...empty,
       urgent: [{
         id: 'tavern:answer',
         priority: HINT_PRIORITY.tavernRound,
         text: unanswerable === 'opponent-broke'
-          ? `Можно встать из-за стола: ${rival} спустил всё и банк уже не закроет`
-          : unanswerable
-            ? `Можно встать из-за стола: ставку в ${Number(tavern.round.stake_cp) || 0} мм закрыть уже нечем`
+          ? `Можно встать из-за стола: ${rival} спустил всё и банк уже не закроет — ставка в ${stake} мм вернётся`
+          : unanswerable === 'patron-ejected'
+            ? `Отсюда героя выставили: раунд остаётся закрыть — ставка в ${stake} мм вернётся со стола`
             : `Можно ответить на бросок: ${rival} выбросил ${Number(tavern.round.npc_total) || 0}`,
       }],
     }
   }
+  if (tavern.ejected === true) return empty
   const price = Number(tavern.drink_price_cp) || 0
   const opponent = Array.isArray(tavern.opponents) ? text(tavern.opponents[0]?.name, 60) : ''
   return {

@@ -301,7 +301,9 @@ function tacticalNarrationLines(events, state) {
         ? 'Переговоры кончились ничем: стороны расходятся по местам, и бой продолжается.'
         : `Уговор заключён: ${String(payload.term_summary || payload.term_label || 'условия приняты')}${Number(payload.tribute_cp) > 0 ? ` Отряду остаётся ${Math.max(0, Number(payload.tribute_cp) || 0)} мм.` : ''}`)
     } else if (event.event_type === 'TavernDiceRoundOpened') {
-      meaningful.push(`${String(payload.npc_name || 'Сосед по столу')} мечет кости: выпало ${Number(payload.npc_total) || 0}. Ставка — ${Math.max(0, Number(payload.stake_cp) || 0)} мм.`)
+      // Про ставку сказано в прошедшем времени не для красоты: она уже ушла из
+      // кошелька на стол, и обратно её приносит только расчёт.
+      meaningful.push(`${String(payload.npc_name || 'Сосед по столу')} мечет кости: выпало ${Number(payload.npc_total) || 0}. ${Math.max(0, Number(payload.stake_cp) || 0)} мм легли на стол — ${actor} свою ставку сделал(а).`)
     } else if (event.event_type === 'TavernDiceRoundResolved') {
       const hero = Number(payload.hero_total) || 0
       const opponent = Number(payload.npc_total) || 0
@@ -315,12 +317,15 @@ function tacticalNarrationLines(events, state) {
       else meaningful.push(`${actor} не сводит глаз с чужих рук и раунд не доигрывает.`)
       if (payload.watch_result === 'clean') meaningful.push('Ничего подозрительного: играют честно.')
     } else if (event.event_type === 'TavernDiceRoundCancelled') {
-      // Раунд закрылся без броска: герой встал сам или соперника обыграли
-      // дочиста, пока он думал. Ставка при этом не двигалась — её до расчёта
-      // никто не трогал, и стол просто расходится.
+      // Раунд закрылся без броска, и цена у этого разная. Тупик устроил не
+      // герой (соседа обыграли дочиста, героя выставили за дверь) — ставка едет
+      // обратно. Ушёл сам от живой кости — это сдача, и лежащая на столе ставка
+      // остаётся сопернику.
       meaningful.push(payload.reason === 'opponent-broke'
         ? `${String(payload.npc_name || 'Сосед по столу')} выгреб карманы и разводит руками: банк ему нечем закрыть. Ставка в ${Math.max(0, Number(payload.returned_cp) || 0)} мм возвращается к ${actor}.`
-        : `${actor} собирает свои ${Math.max(0, Number(payload.returned_cp) || 0)} мм со стола и встаёт: раунд не доигран.`)
+        : payload.reason === 'patron-ejected'
+          ? `${actor} доигрывать не будет: из зала выставили. Ставка в ${Math.max(0, Number(payload.returned_cp) || 0)} мм возвращается со стола.`
+          : `${actor} отодвигает скамью и встаёт, не ответив на кость. ${Math.max(0, Number(payload.forfeited_cp) || 0)} мм со стола забирает ${String(payload.npc_name || 'сосед')}.`)
     } else if (event.event_type === 'TavernCheatCaught') {
       meaningful.push(`Скандал за столом: ${String(payload.npc_name || 'сосед')} во весь голос объявляет героя шулером. Это видели.`)
     } else if (event.event_type === 'TavernCheatExposed') {

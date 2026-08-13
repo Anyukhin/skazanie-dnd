@@ -953,7 +953,10 @@ function eventForViewer(event, user, actorId, state = {}) {
   // читаются как бухгалтерия соседа и решают за игрока то, что он должен
   // решать сам: садиться ли с этим человеком за стол ещё раз. Доступная ставка
   // после расчёта приезжает проекцией состояния тем же числом, что и до него.
-  if (visible.event_type === 'TavernDiceRoundResolved') {
+  //
+  // Отмена раунда режется тем же списком и по той же причине: ставка сдавшегося
+  // уезжает в кассу соседа, и событие несёт её обе суммы наравне с расчётом.
+  if (visible.event_type === 'TavernDiceRoundResolved' || visible.event_type === 'TavernDiceRoundCancelled') {
     for (const key of ['npc_purse_before_cp', 'npc_purse_after_cp']) delete payload[key]
   }
   if (visible.event_type === 'EncounterOutcomeRecorded') {
