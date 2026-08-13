@@ -131,6 +131,50 @@ test('открытый раунд можно закрыть без броска,
   assert.match(board, /tavernRoundUnanswerable/u)
   assert.match(board, /Соперник спустил всё/u)
   assert.match(styles, /\.tavern-leave \{/u)
+  // И то же самое с другой стороны: пока раунд доигрывается, «встать» гаснет
+  // само. Кость соперника на столе — это уже сделанная ставка, и уход от неё
+  // после просмотра числа был бы бесплатным перебросом.
+  assert.match(board, /disabled=\{tavernActionsBlocked \|\| !tavernRoundUnanswerable\}/u)
+  // Повод считает сервер, а доска его только читает: своей арифметики чужой
+  // кассы и своего кошелька здесь быть не должно — иначе кнопка загорится там,
+  // где придёт отказ.
+  assert.match(board, /tavernRound\?\.unanswerable_reason \?\? null/u)
+  assert.doesNotMatch(board, /activeHeroPurseCp < tavernRound/u)
+})
+
+/**
+ * Повод встать из-за стола приезжает карточкой готовым словом — тем же, по
+ * которому движок и решает, пускать ли героя. Второго ответа быть не должно.
+ */
+test('карточка называет, можно ли ещё доиграть раунд', () => {
+  const state = normalizeCampaignState({
+    ...campaign(),
+    tavern: {
+      patrons: {
+        hero: {
+          drinks: 0,
+          scandals: 0,
+          ejected: false,
+          round: { id: 'r-1', hero_id: 'hero', npc_id: 'barkeep', npc_name: 'Трактирщик Бажен', stake_cp: 200, npc_total: 17 },
+        },
+      },
+      gamblers: {},
+    },
+  })
+  const viewer = { id: 'user-1', role: 'player', heroIds: ['hero'] }
+  assert.equal(campaignStateForViewer(state, viewer, 'hero').tavern.round.unanswerable_reason, null, 'доиграть можно — вставать не с чего')
+
+  const broke = normalizeCampaignState({
+    ...state,
+    tavern: { ...state.tavern, gamblers: { barkeep: { purse_cp: 0, last_played_at_minutes: 1 } } },
+  })
+  assert.equal(campaignStateForViewer(broke, viewer, 'hero').tavern.round.unanswerable_reason, 'opponent-broke')
+
+  const poor = normalizeCampaignState({
+    ...state,
+    players: state.players.map((player) => ({ ...player, currency: { copper: 1, silver: 0, gold: 0, platinum: 0 } })),
+  })
+  assert.equal(campaignStateForViewer(poor, viewer, 'hero').tavern.round.unanswerable_reason, 'hero-broke')
 })
 
 test('панель таверны оформлена и не ломает узкий экран', () => {

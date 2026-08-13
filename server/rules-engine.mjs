@@ -158,6 +158,7 @@ import {
   tavernOpenRoundsAgainst,
   tavernOpponentDie,
   tavernRoundFor,
+  tavernRoundUnanswerableReason,
   tavernScandalsFor,
   tavernSocialBonus,
 } from './tavern-life.mjs'
@@ -3837,11 +3838,26 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('Соперник уже спустил всё: банк ему нечем закрыть', 'TAVERN_OPPONENT_BROKE')
       }
     }
-    // Встать из-за стола можно всегда, пока за ним сидят. Ни своих денег, ни
-    // чужой кассы здесь не проверяется намеренно: это единственный выход
-    // ровно из тех положений, где обе проверки не проходят.
-    if (command.command_type === 'LeaveTavernDiceRound' && !round) {
-      throw new RulesValidationError('Из-за стола можно встать только с открытым раундом', 'TAVERN_ROUND_NOT_OPEN')
+    // Из-за стола встают только те, кому отвечать нечем, и это не строгость
+    // ради строгости.
+    //
+    // Число соперника лежит на столе **до** решения: оно и в проекции
+    // (`round.npc_total`), и в событии `TavernDiceRoundOpened`, и на панели
+    // доски прямым текстом. Выход из раунда, доступный всегда, — это
+    // бесплатный переброс чужой кости: «выпало много — встал, выпало мало —
+    // ответил». Зонд ревью так и прошёл: двадцать открытий, три доигранных
+    // раунда, +600 мм и ни одного медяка потерь — кассу соседа при этом
+    // выгребли дочиста. Риска в игре не оставалось вовсе, только скорость.
+    //
+    // Поэтому кость, легшая на стол, — это уже сделанная ставка. Поводы уйти от
+    // неё считает `tavernRoundUnanswerableReason`, один на движок, проекцию и
+    // подсказки: соперник разорился, свои монеты ушли другой командой, героя
+    // выставили за дверь.
+    if (command.command_type === 'LeaveTavernDiceRound') {
+      if (!round) throw new RulesValidationError('Из-за стола можно встать только с открытым раундом', 'TAVERN_ROUND_NOT_OPEN')
+      if (!tavernRoundUnanswerableReason(state, round)) {
+        throw new RulesValidationError('Кость соперника уже на столе: ставка сделана, и уйти от неё нельзя', 'TAVERN_ROUND_MUST_BE_ANSWERED')
+      }
     }
     if (command.command_type === 'OrderTavernDrink') {
       if (currencyToCopper(playerActor(state, command.actor_id).currency) < TAVERN_DRINK_PRICE_CP) {
@@ -11473,9 +11489,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     }
     case 'LeaveTavernDiceRound': {
       // Встать из-за стола — единственное, что герою остаётся, когда ответить
-      // он уже не может: свои деньги ушли другой командой или соседа обыграл
-      // товарищ по отряду. Броска здесь нет и монеты не двигаются — ставку до
-      // расчёта никто не трогал.
+      // он уже не может: свои деньги ушли другой командой, соседа обыграл
+      // товарищ по отряду или самого героя выставили за дверь. Других поводов у
+      // команды нет — их отсекает валидация (`TAVERN_ROUND_MUST_BE_ANSWERED`),
+      // иначе стол раздавал бы бесплатные перебросы чужой кости.
+      //
+      // Броска здесь нет и монеты не двигаются — ставку до расчёта никто не
+      // трогал.
       const round = tavernRoundFor(state, command.actor_id)
       events.push(tavernRoundCancelledEvent(command, round, 'left-table', campaignElapsedMinutes(state)))
       break

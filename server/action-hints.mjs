@@ -155,24 +155,22 @@ function tavernHints(room) {
   if (!tavern || tavern.ejected === true) return empty
   if (tavern.round) {
     // Отвечать бывает нечем: пока герой думал, соперника мог обыграть дочиста
-    // товарищ по отряду, и банк тот уже не закроет. Доступную ставку соседа
-    // карточка приносит готовым числом, поэтому подсказка зовёт не на бросок, а
-    // из-за стола — второй раз считать чужую кассу здесь нечем и незачем.
-    //
-    // «Соседа нет в списке» и «у соседа пусто» — не одно и то же: ход мира мог
-    // увести его из зала, и тогда предела ставки в карточке просто нет. Отвечать
-    // сервер при этом не запретит, и звать из-за стола не за что.
-    const opponent = (Array.isArray(tavern.opponents) ? tavern.opponents : [])
-      .find((npc) => String(npc?.id ?? '') === String(tavern.round.npc_id ?? '')) ?? null
-    const broke = Boolean(opponent) && Number(opponent.max_stake_cp ?? 0) < (Number(tavern.round.stake_cp) || 0)
+    // товарищ по отряду, а свои монеты — уйти другой командой. Ровно в этих
+    // положениях (и только в них) движок и пускает из-за стола, поэтому повод
+    // приезжает карточкой готовым словом: считать его второй раз значило бы
+    // звать встать там, где сервер откажет.
+    const unanswerable = text(tavern.round.unanswerable_reason, 40)
+    const rival = text(tavern.round.npc_name, 60) || 'соперник'
     return {
       ...empty,
       urgent: [{
         id: 'tavern:answer',
         priority: HINT_PRIORITY.tavernRound,
-        text: broke
-          ? `Можно встать из-за стола: ${text(tavern.round.npc_name, 60) || 'соперник'} спустил всё и банк уже не закроет`
-          : `Можно ответить на бросок: ${text(tavern.round.npc_name, 60) || 'соперник'} выбросил ${Number(tavern.round.npc_total) || 0}`,
+        text: unanswerable === 'opponent-broke'
+          ? `Можно встать из-за стола: ${rival} спустил всё и банк уже не закроет`
+          : unanswerable
+            ? `Можно встать из-за стола: ставку в ${Number(tavern.round.stake_cp) || 0} мм закрыть уже нечем`
+            : `Можно ответить на бросок: ${rival} выбросил ${Number(tavern.round.npc_total) || 0}`,
       }],
     }
   }

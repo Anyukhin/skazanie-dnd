@@ -379,6 +379,16 @@ function rollForClient(roll) {
     modifier: Number(roll.modifier) || 0,
     total: Number(roll.total) || 0,
     label: rollPurposeLabel(roll.purpose),
+    // Видимость переезжает вместе с броском, и это не украшение ответа.
+    //
+    // Её читает санитайзер результата хода (`rollVisibleFor`,
+    // `server/viewer-projection.mjs`), и без этого поля фильтр видел
+    // `undefined`, подставлял `public` и пропускал в ответ игроку ровно то, что
+    // массив `rolls` того же ответа резал правильно. Защита стояла на одном
+    // канале из двух, и в дыру уезжала настоящая кость шулера: стол видел
+    // объявленные 12, а в `effects.roll` лежали выпавшие 7 — разница ровно в
+    // надбавке, которую игрок обязан искать Проницательностью, а не вычитанием.
+    visibility: String(roll.visibility ?? 'public'),
     success: typeof roll.success === 'boolean' ? roll.success : undefined,
   }
 }

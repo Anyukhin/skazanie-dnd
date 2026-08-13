@@ -21,6 +21,7 @@ import {
   tavernOpenRoundsAgainst,
   tavernOpponents,
   tavernRoundFor,
+  tavernRoundUnanswerableReason,
   tavernSocialBonus,
 } from '../server/tavern-life.mjs'
 import {
@@ -31,7 +32,8 @@ import {
   resolveCommands,
 } from '../server/rules-engine.mjs'
 import { suggestedActionsFor } from '../server/action-hints.mjs'
-import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
+import { eventsToClientEffects } from '../server/game-orchestrator.mjs'
+import { campaignStateForViewer, mechanicsForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
 import { combatNarration } from '../server/combat-narration.mjs'
 import { worldDeedsFeed } from '../server/world-deeds.mjs'
 import { wantedFeed } from '../server/law-and-order.mjs'
@@ -186,16 +188,32 @@ test('таверна опознаётся сценой, а поле и лес �
  * Зонды ревью дословно. Название сцены сочиняет модель, и голая основа ловила
  * в нём глагол и признак: «Отряд постоял у ворот» открывал заведение посреди
  * дороги, а «Пивная бочка в подвале» — в подвале.
+ *
+ * Второй заход ревью добрал то, что первый пропустил: `постоял[ыо]` отсекал
+ * мужской и женский род и **не** отсекал средний, а короткие основы сидели
+ * внутри чужих слов — `шинок` в «машинок», `inn` в «Finn». Оба следствия
+ * одинаковы: панель костей и выпивки открывается посреди дороги.
  */
 test('глагол в названии сцены таверной не делает', () => {
   const notTavern = [
     'Отряд постоял у ворот',
     'Стража постояла и разошлась',
+    'Войско постояло у брода',
+    'Солнце постояло в зените',
     'Пивная бочка в подвале',
     'Пивной погреб под лестницей',
+    'Полка со швейных машинок',
+    'Finn у костра',
+    'Republic Square',
   ]
   for (const title of notTavern) {
     assert.equal(isTavernScene(campaign({ scene: { title, location: title } })), false, `«${title}» опознано таверной`)
+  }
+  // И то же самое с другой стороны: заведения из списка опознаются во всех
+  // падежах, ради которых основы вообще закреплены окончаниями.
+  const tavern = ['Постоялый двор у брода', 'Ночь у постоялого двора', 'Шинок у дороги', 'The Broken Inn', 'Old Alehouse']
+  for (const title of tavern) {
+    assert.equal(isTavernScene(campaign({ scene: { title, location: title } })), true, `«${title}» таверной не опознано`)
   }
 })
 
@@ -411,6 +429,48 @@ test('касса вытесняется по последней игре, а н�
   rejects(drained, [open(HONEST, 10)], 'TAVERN_OPPONENT_BROKE')
 })
 
+/**
+ * Тот же класс дыры, что у касс, и с худшим следствием: посетители резались
+ * срезом (`Object.entries(...).slice(0, MAX_PATRONS)`), а выпавшая запись
+ * обнуляет герою кружки, скандалы и запрет входа — выставленный за дверь шулер
+ * снова становится желанным гостем и садится за стол.
+ *
+ * Практически недостижимо (записи заводятся только на героев отряда), но защита
+ * от роста дырой быть не должна и в недостижимой ветке.
+ */
+test('посетители вытесняются по весу записи, а не срезом: пустые уходят первыми', () => {
+  const empty = {}
+  for (let index = 0; index < 12; index += 1) empty[`walker-${index}`] = { drinks: 0, scandals: 0, ejected: false }
+  const crowded = normalizeTavernState({
+    patrons: { barred: { drinks: 0, scandals: 2, ejected: true }, ...empty },
+  })
+  assert.equal(Object.keys(crowded.patrons).length, 12, 'предел у карты посетителей остаётся')
+  assert.equal(crowded.patrons.barred?.ejected, true, 'выставленный за дверь не возвращается в зал вытеснением')
+  assert.equal(crowded.patrons['walker-0'], undefined, 'уходит запись, которой всё равно что нет')
+
+  // Порядок появления к вытеснению отношения не имеет, а вес — имеет: пустая
+  // запись уходит и тогда, когда попала в снимок первой.
+  const weighted = normalizeTavernState({
+    patrons: {
+      ...empty,
+      drinker: { drinks: 3, scandals: 0, ejected: false },
+      scandalous: { drinks: 0, scandals: 1, ejected: false },
+    },
+  })
+  assert.equal(weighted.patrons.drinker?.drinks, 3)
+  assert.equal(weighted.patrons.scandalous?.scandals, 1)
+  assert.equal(Object.keys(weighted.patrons).length, 12)
+
+  // Переезд легаси-раунда идёт до предела, а не после: тринадцатой записи
+  // сверх него не появляется.
+  const legacy = normalizeTavernState({
+    patrons: empty,
+    round: { id: 'r-1', hero_id: 'latecomer', npc_id: HONEST, stake_cp: 10, npc_total: 12 },
+  })
+  assert.equal(Object.keys(legacy.patrons).length, 12)
+  assert.equal(legacy.patrons.latecomer?.round?.id, 'r-1', 'легаси-раунд переезжает, а не теряется')
+})
+
 test('минута последней игры приезжает событием, а не часами машины', () => {
   const opened = run(campaign({ minutes: 40 }), [open(HONEST, 10)], { diceValues: [11] })
   const settled = run(opened.state, [answer()], { diceValues: [17] })
@@ -480,10 +540,55 @@ test('раунд закрывается только у тех, чью став�
   assert.equal(eventOf(answered, 'TavernDiceRoundResolved').payload.outcome, 'win')
 })
 
-test('из-за стола можно встать без броска, и ставка остаётся при герое', () => {
+/**
+ * Зонд ревью с зубами: «встать из-за стола» было бесплатным перебросом чужой
+ * кости, и стол становился ровно тем печатным станком, против которого заводили
+ * кассу соперника.
+ *
+ * Число соперника видно **до** решения — оно и в проекции, и в событии, и на
+ * панели доски прямым текстом, — а уход не стоил ни монеты, ни мировой минуты,
+ * ни счётчика. Зонд: шесть подряд «открыл — встал» отдали чужие кости 20, 17,
+ * 14, 11, 8, 5 при неподвижном кошельке; цикл «увидел много — встал, увидел
+ * мало — ответил» приносил чистую прибыль при нулевом риске.
+ *
+ * Здесь проверяется сам цикл, а не одна команда: пока раунд доигрывается, выхода
+ * из него нет.
+ */
+test('чужую кость нельзя перебросить, встав из-за стола: цикл упирается в отказ', () => {
+  const rich = { copper: 0, silver: 0, gold: 100, platinum: 0 }
+  let state = campaign({ currency: rich })
+  const purseBefore = purseCp(state)
+  // Соперник мечет высоко раз за разом — ровно тот случай, ради которого зонд
+  // и вставал из-за стола.
+  for (const die of [20, 17, 14, 11, 8, 5]) {
+    state = run(state, [open(HONEST, 10)], { diceValues: [die] }).state
+    rejects(state, [leave()], 'TAVERN_ROUND_MUST_BE_ANSWERED')
+    assert.ok(tavernRoundFor(state, 'hero'), 'отказ ничего не закрыл: раунд на месте')
+    assert.equal(tavernRoundUnanswerableReason(state, tavernRoundFor(state, 'hero')), null)
+    // Выход из раунда один — ответить. Он и стоит денег.
+    state = run(state, [answer()], { diceValues: [1] }).state
+  }
+  assert.equal(purseCp(state), purseBefore - 6 * 10, 'шесть проигранных раундов стоили шести ставок')
+
+  // Игроку это видно кнопкой, а не отказом после клика: пока раунд доигрывается,
+  // повода встать нет.
+  const opened = run(campaign(), [open(HONEST, 50)], { diceValues: [19] }).state
+  const card = campaignStateForViewer(opened, { id: 'user-1', role: 'player', heroIds: ['hero'] }, 'hero').tavern
+  assert.equal(card.round.npc_total, 19, 'число соперника игрок видит')
+  assert.equal(card.round.unanswerable_reason, null, 'и вставать ему не с чего')
+})
+
+test('из-за стола встают там, где отвечать уже нечем, и ставка остаётся при герое', () => {
   const opened = run(campaign(), [open(HONEST, 50)], { diceValues: [14] }).state
-  const purseBefore = purseCp(opened)
-  const left = run(opened, [leave()])
+  // Пока герой думал, соперника обыграл дочиста товарищ по отряду: банк ему уже
+  // не закрыть, и раунд стал тупиком — ровно тем, ради которого команда есть.
+  const stuck = normalizeCampaignState({
+    ...opened,
+    tavern: { ...opened.tavern, gamblers: { [HONEST]: { purse_cp: 0, last_played_at_minutes: 1 } } },
+  })
+  assert.equal(tavernRoundUnanswerableReason(stuck, tavernRoundFor(stuck, 'hero')), 'opponent-broke')
+  const purseBefore = purseCp(stuck)
+  const left = run(stuck, [leave()])
 
   const cancelled = eventOf(left, 'TavernDiceRoundCancelled')
   assert.ok(cancelled, 'встать из-за стола — это событие, а не молчаливая правка состояния')
@@ -510,9 +615,31 @@ test('встать из-за стола можно и тогда, когда с�
       : player)),
   })
   rejects(broke, [answer()], 'INSUFFICIENT_FUNDS')
+  assert.equal(tavernRoundUnanswerableReason(broke, tavernRoundFor(broke, 'hero')), 'hero-broke')
   const left = run(broke, [leave()])
   assert.equal(tavernRoundFor(left.state, 'hero'), null, 'выход есть и отсюда')
   assert.equal(purseCp(left.state), 5, 'и он ничего не стоит')
+})
+
+/**
+ * Третий тупик того же раунда, и единственный, до которого правило добирается не
+ * деньгами: героя выставили за дверь. Отвечать ему запрещено
+ * (`TAVERN_PATRON_EJECTED`), значит выход из-за стола обязан остаться открытым —
+ * иначе запрет входа запирал бы раунд до конца сцены.
+ */
+test('выставленный за дверь встаёт из-за стола, хотя отвечать ему уже нельзя', () => {
+  const opened = run(campaign(), [open(HONEST, 10)], { diceValues: [12] }).state
+  const barred = normalizeCampaignState({
+    ...opened,
+    tavern: {
+      ...opened.tavern,
+      patrons: { ...opened.tavern.patrons, hero: { ...opened.tavern.patrons.hero, ejected: true } },
+    },
+  })
+  rejects(barred, [answer()], 'TAVERN_PATRON_EJECTED')
+  assert.equal(tavernRoundUnanswerableReason(barred, tavernRoundFor(barred, 'hero')), 'patron-ejected')
+  const left = run(barred, [leave()])
+  assert.equal(tavernRoundFor(left.state, 'hero'), null)
 })
 
 // ---------------------------------------------------------------------------
@@ -679,6 +806,51 @@ test('шулера ловят Проницательностью, и разоб�
   assert.equal(eventOf(missed, 'TavernDiceRoundResolved').payload.outcome, 'loss')
 })
 
+/**
+ * Зонд ревью, и он с зубами: настоящая кость шулера уезжала игроку в ответе на
+ * его же команду.
+ *
+ * Каналов у ответа два — массив `rolls` и `effects.roll`, — и защита стояла
+ * ровно на одном. `rollForClient` (`server/game-orchestrator.mjs`) не переносил
+ * `visibility`, поэтому фильтр `rollVisibleFor` читал `undefined`, подставлял
+ * `public` и пропускал бросок насквозь: столу объявлено 12, а в `effects.roll`
+ * того же ответа лежали выпавшие 7 — разница ровно в надбавке шулера, которую
+ * игрок обязан искать Проницательностью, а не вычитанием.
+ *
+ * Сторожа молчали потому, что `mechanicsForViewer` смотрит только канал событий,
+ * а сквозные пробы шага ходят администратором — ему `turnResultForViewer`
+ * отдаёт результат сырым первой же строкой. Поэтому проба здесь идёт глазами
+ * игрока и через оба канала сразу.
+ */
+test('выпавшая кость соперника не уезжает игроку ни массивом бросков, ни effects.roll', () => {
+  const crooked = run(campaign(), [open(CROOK, 10)], { diceValues: [7] })
+  const shown = eventOf(crooked, 'TavernDiceRoundOpened').payload.round.npc_total
+  assert.equal(shown, 7 + TAVERN_CHEAT_BONUS, 'на стол легло подменённое число')
+
+  const result = {
+    narration: '',
+    effects: eventsToClientEffects(crooked.events, crooked.rolls),
+    mechanics: crooked.events,
+    rolls: crooked.rolls,
+    visible_state_changes: [],
+    authoritative_state: crooked.state,
+  }
+  // Ведущему правда остаётся: gm_only — это его канал, он и судит по числам.
+  const master = turnResultForViewer(result, { id: 'gm-1', role: 'admin' }, 'hero')
+  assert.equal(master.effects.roll.value, 7, 'ведущий видит выпавшее, а не показанное')
+
+  const player = turnResultForViewer(result, { id: 'user-1', role: 'player', heroIds: ['hero'] }, 'hero')
+  assert.equal(player.effects.roll, undefined, 'кубик соперника игроку не уезжает лотком')
+  assert.deepEqual(player.rolls, [], 'и массивом бросков — тоже')
+  const serialized = JSON.stringify(player)
+  assert.equal(serialized.includes('tavern-dice:opponent'), false, 'броска соперника в ответе игрока нет вовсе')
+  // Показанное число при этом на месте: скрывается разница, а не игра.
+  assert.equal(
+    player.mechanics.find((event) => event.event_type === 'PublicDieRolled').payload.roll.value,
+    shown,
+  )
+})
+
 test('честного соперника не разоблачить даже двадцаткой', () => {
   const opened = run(campaign(), [open(HONEST, 10)], { diceValues: [4] })
   const result = run(opened.state, [answer('watch')], { diceValues: [20, 18] })
@@ -769,19 +941,26 @@ test('счёт кружек и скандалов остаётся в сцене
 // ---------------------------------------------------------------------------
 
 test('replay журнала даёт тот же счёт заведения и тот же кошелёк', () => {
-  const opened = run(campaign(), [open(CROOK, 50)], { diceValues: [9] })
+  // Кошелёк подобран числом, а не на глаз: 63 мм закрывают ставку в 50, после
+  // проигрыша остаётся 13 — хватает на ставку в 10, — а первая же кружка
+  // роняет остаток до 9 и делает раунд неотвечаемым. Только там команда «встать
+  // из-за стола» и открыта, и попасть туда журналом, а не правкой снимка,
+  // важно: этот тест как раз про то, что счёт выводится из событий.
+  const start = campaign({ currency: { copper: 3, silver: 6, gold: 0, platinum: 0 } })
+  const opened = run(start, [open(CROOK, 50)], { diceValues: [9] })
   const answered = run(opened.state, [answer('cheat')], { diceValues: [1, 14] })
   // Раунд, закрытый без броска, в журнале живёт наравне с остальными: снятый
   // стол обязан воспроизводиться, а не оставаться открытым при реплее.
   const abandoned = run(answered.state, [open(HONEST, 10)], { diceValues: [13] })
-  const stoodUp = run(abandoned.state, [leave()])
+  const sober = run(abandoned.state, [drink()])
+  const stoodUp = run(sober.state, [leave()])
   const drunkRun = run(stoodUp.state, [drink()])
-  const events = [...opened.events, ...answered.events, ...abandoned.events, ...stoodUp.events, ...drunkRun.events].map((event, index) => ({
+  const events = [...opened.events, ...answered.events, ...abandoned.events, ...sober.events, ...stoodUp.events, ...drunkRun.events].map((event, index) => ({
     ...event,
     event_id: event.event_id ?? `evt-${index + 1}`,
     state_version_after: index + 2,
   }))
-  const replayed = replayEvents(campaign(), events)
+  const replayed = replayEvents(start, events)
 
   assert.deepEqual(replayed.tavern, drunkRun.state.tavern)
   assert.equal(purseCp(replayed), purseCp(drunkRun.state))
@@ -884,7 +1063,12 @@ test('летопись говорит о раунде живой строкой,
   assert.equal(/Tavern[A-Z]/u.test(winText), false, 'в летописи не должно быть латинских имён событий')
 
   // Снятый раунд тоже говорит по-русски: событие новое, а правило старое.
-  const stoodUp = run(run(win.state, [open(HONEST, 10)], { diceValues: [8] }).state, [leave()])
+  const abandoned = run(win.state, [open(HONEST, 10)], { diceValues: [8] }).state
+  const stuck = normalizeCampaignState({
+    ...abandoned,
+    tavern: { ...abandoned.tavern, gamblers: { [HONEST]: { purse_cp: 0, last_played_at_minutes: 1 } } },
+  })
+  const stoodUp = run(stuck, [leave()])
   const leaveText = combatNarration(stoodUp.events, stoodUp.state)
   assert.match(leaveText, /встаёт|со стола/iu)
   assert.equal(/Tavern[A-Z]/u.test(leaveText), false)
