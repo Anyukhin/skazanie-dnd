@@ -138,7 +138,6 @@ import {
   TAVERN_DRUNK_CONDITION,
   TAVERN_DRUNK_DURATION,
   TAVERN_EXPOSED_RELATIONSHIP_DELTA,
-  TAVERN_GAMBLER_PURSE_MAX_CP,
   TAVERN_POLICY_ID,
   TAVERN_SCANDALS_BEFORE_EJECTION,
   TAVERN_SOBER_DRINKS,
@@ -157,6 +156,8 @@ import {
   tavernNextDrinkDc,
   tavernOpenRoundsAgainst,
   tavernOpponentDie,
+  tavernPurseTransfer,
+  tavernPurseTransferPayload,
   tavernRoundFor,
   tavernRoundUnanswerableReason,
   tavernScandalsFor,
@@ -3797,9 +3798,20 @@ export function validateCommand(input, rawState, context = {}) {
       throw new RulesValidationError('Герой без сознания за стол не садится', 'ACTOR_DEFEATED')
     }
     // Выставленному за дверь не наливают и с ним не садятся — но встать из-за
-    // стола ему никто помешать не может. Исключение здесь не теоретическое:
-    // запрет входа вешается скандалом, а скандал — это чужая команда, и между
-    // ней и ответом героя его собственный раунд остаётся открытым.
+    // стола ему никто помешать не может.
+    //
+    // Исключение это сегодня **недостижимо**, и говорится об этом прямо: ревью
+    // проверило зондом, что состояния «выставлен, и раунд открыт» живыми
+    // командами не бывает. `TavernPatronEjected` пишется ровно в одном месте —
+    // внутри `AnswerTavernDiceRound` самого героя, — и в том же пакете событий
+    // раньше него идёт `TavernDiceRoundResolved`, который раунд уже снял. Прежний
+    // комментарий обещал здесь «чужую команду»: скандал считается по
+    // `patron.scandals` того же героя, чужая команда запрет входа не вешает.
+    //
+    // Исключение всё равно стоит, и стоит осознанно: у героя на столе лежат
+    // деньги, и запрет входа не должен запирать их вместе с раундом. Появится
+    // второй производитель запрета (драка в зале, хозяин выгнал отряд) — выход
+    // из-за стола будет открыт заранее, а не после жалобы игрока.
     if (command.command_type !== 'LeaveTavernDiceRound' && tavernEjected(state, command.actor_id)) {
       throw new RulesValidationError('Героя уже выставили за дверь этого заведения', 'TAVERN_PATRON_EJECTED')
     }
@@ -3853,9 +3865,9 @@ export function validateCommand(input, rawState, context = {}) {
     //
     // Цену берёт эскроу, а не запрет: ставка уже уплачена при открытии раунда,
     // поэтому уход от живой кости — это сдача, и стоит она ровно столько же,
-    // сколько проигрыш. Возврат остаётся только настоящему тупику, и считает
-    // его `tavernRoundUnanswerableReason` — один ответ на движок, проекцию и
-    // подсказки.
+    // сколько проигрыш. Возврат остаётся одному поводу — запрету входа: его
+    // вешает заведение, и это единственный тупик, которого отряд не устраивал
+    // сам (`tavernRoundCancelledEvent`).
     if (command.command_type === 'LeaveTavernDiceRound') {
       if (!round) throw new RulesValidationError('Из-за стола можно встать только с открытым раундом', 'TAVERN_ROUND_NOT_OPEN')
     }
@@ -6243,26 +6255,53 @@ export function previewTavernDiceRoll(state, actorId, approach = 'fair') {
  *
  * `reason` — закрытая тройка, и называет её сервер, а не клиент:
  * `opponent-broke` и `patron-ejected` — это тупики (`tavernRoundUnanswerableReason`),
- * `surrendered` — добровольный уход от живой кости. Повод и решает деньги, и это
- * не два правила, а одно: **тупик устроил не герой — эскроу возвращается; ушёл
- * сам — оставил ставку сопернику**. Поэтому причину закрытия здесь не выбирают
- * отдельно от денег, а выводят из одного и того же ответа.
+ * `surrendered` — добровольный уход от живой кости.
+ *
+ * Деньги решает **не факт тупика, а его виновник**, и это правка ревью. Раньше
+ * правило звучало «тупик устроил не герой — эскроу возвращается», и для стола на
+ * пятерых оно было неверно: устроить герою тупик мог второй герой того же
+ * отряда. Зонд ревью (300 прогонов живыми костями): герой ставит 200 мм, видит
+ * чужие 19, товарищ садится к тому же соседу и играет, пока касса соседа не
+ * упадёт ниже 200, — раунд героя закрывается сам, и заведомо проигранная ставка
+ * возвращается целиком в 62 попытках из ста. Открытие раунда получало
+ * положительное матожидание: «выпало хорошо — отвечаю, выпало плохо — грызём
+ * кассу соседа и забираю ставку назад».
+ *
+ * Поэтому возврат остался ровно одному поводу — `patron-ejected`: за дверь героя
+ * выставляет заведение, и это единственный тупик, которого отряд не устраивал
+ * сам. Разорение соперника ставку не возвращает, потому что разорить его может
+ * **только отряд**: касса соседа двигается единственным редьюсером
+ * (`gamblersAfterSettlement`, `server/tavern-life.mjs`), а кормят его события
+ * команд героев — других расходов у неё в мире нет.
+ *
+ * Половинчатый возврат тут не работает, и это считается, а не ощущается: ответ
+ * на чужие 19 стоит герою всей ставки (перебить нечем), поэтому любая доля,
+ * вернувшаяся со стола, оставляет цикл выгодным. Ставка возвращается целиком или
+ * не возвращается вовсе.
  *
  * `returned_cp` и `forfeited_cp` дополняют друг друга до ставки: до этого
  * события она лежала не в кошельке, а в банке стола, и «ничего не двигалось»
  * теперь неправда. Летопись и карточка берут число отсюда, а не считают его
  * второй раз.
+ *
+ * `npcPurseBeforeCp` приходит параметром, а не читается из состояния, ровно из-за
+ * автозакрытия: касса соседа к этому моменту уже сдвинута расчётом того же
+ * пакета событий, а `state` — снимок **до** команды. Прочитай её здесь — и
+ * ставка приехала бы в кассу, которой больше нет.
  */
-function tavernRoundCancelledEvent(command, state, round, reason, minutes) {
-  const refunded = reason !== 'surrendered'
+function tavernRoundCancelledEvent(command, state, round, reason, minutes, npcPurseBeforeCp = null) {
+  const refunded = reason === 'patron-ejected'
   const forfeitedCp = refunded ? 0 : round.stake_cp
   const hero = playerActor(state, round.hero_id)
   const balanceBeforeCp = currencyToCopper(hero?.currency)
   const balanceAfterCp = Math.max(0, Math.min(MAX_CURRENCY_CP, balanceBeforeCp + (refunded ? round.stake_cp : 0)))
-  // Ставка сдавшегося уезжает сопернику той же дорогой, что и проигранная: за
-  // этим столом деньги переезжают, а не исчезают.
-  const npcPurseBeforeCp = tavernGamblerPurseFor(state, round.npc_id)
-  const npcPurseAfterCp = Math.max(0, Math.min(TAVERN_GAMBLER_PURSE_MAX_CP, npcPurseBeforeCp + forfeitedCp))
+  // Ставка закрытого раунда уезжает сопернику той же дорогой, что и проигранная:
+  // за этим столом деньги переезжают, а не исчезают. На потолке чужой кассы
+  // остаток достаётся заведению и назван в payload — молча он исчезал до ревью.
+  const purse = tavernPurseTransfer(
+    npcPurseBeforeCp == null ? tavernGamblerPurseFor(state, round.npc_id) : npcPurseBeforeCp,
+    forfeitedCp,
+  )
   return eventFrom(commandWithRules({ ...command, actor_id: round.hero_id, visibility: 'party' }, RULE_IDS.economyCoins), 'TavernDiceRoundCancelled', {
     round_id: round.id,
     hero_id: round.hero_id,
@@ -6277,13 +6316,10 @@ function tavernRoundCancelledEvent(command, state, round, reason, minutes) {
     currency_after: copperToCurrency(balanceAfterCp),
     balance_before_cp: balanceBeforeCp,
     balance_after_cp: balanceAfterCp,
-    // Касса соседа едет журналом только тогда, когда она двинулась: возврат
-    // из тупика её не касается, и лишнее число в payload означало бы лишнюю
-    // запись в карте касс на каждый закрытый раунд.
-    ...(npcPurseAfterCp === npcPurseBeforeCp ? {} : {
-      npc_purse_before_cp: npcPurseBeforeCp,
-      npc_purse_after_cp: npcPurseAfterCp,
-    }),
+    // Касса соседа едет журналом только тогда, когда за столом двинулись
+    // деньги: возврат выставленному за дверь её не касается, и лишнее число в
+    // payload означало бы лишнюю запись в карте касс на каждый закрытый раунд.
+    ...tavernPurseTransferPayload(purse),
     at_minutes: minutes,
     policy_id: TAVERN_POLICY_ID,
   }, [round.hero_id, round.npc_id])
@@ -11427,7 +11463,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Именно это число и уезжает из кассы соперника — деньги за этим столом
       // не рождаются, а переезжают.
       const netCp = balanceAfterCp - balanceBeforeCp - round.stake_cp
-      const npcPurseAfterCp = Math.max(0, Math.min(TAVERN_GAMBLER_PURSE_MAX_CP, npcPurseBeforeCp - netCp))
+      // Переезд считает общий помощник стола, а не своя арифметика: на потолке
+      // чужой кассы проигранная ставка в неё уже не влезает, и до ревью этот
+      // остаток исчезал из мира молча. Теперь он назван долей заведения.
+      const purse = tavernPurseTransfer(npcPurseBeforeCp, -netCp)
+      const npcPurseAfterCp = purse.after_cp
       events.push({
         ...eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'TavernDiceRoundResolved', {
           round_id: round.id,
@@ -11455,6 +11495,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           balance_after_cp: balanceAfterCp,
           npc_purse_before_cp: npcPurseBeforeCp,
           npc_purse_after_cp: npcPurseAfterCp,
+          // Сколько от проигранной ставки съел потолок чужой кассы. Поле
+          // появляется только тогда, когда съел: на обычном раунде его нет, и
+          // числу «ноль» в payload взяться неоткуда.
+          ...(purse.house_cut_cp > 0 ? { house_cut_cp: purse.house_cut_cp } : {}),
           at_minutes: minutes,
           policy_id: TAVERN_POLICY_ID,
         }, [command.actor_id, round.npc_id]),
@@ -11529,24 +11573,33 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       //
       // Считается по кассе **после** расчёта и по каждому чужому раунду
       // отдельно: сосед на 60 мм закрывает медяки и не закрывает крупную игру.
+      //
+      // Касса при этом идёт бегущим числом, а не снимком: закрытый раунд
+      // оставляет соседу свою ставку (разорил его отряд, а не заведение), и
+      // после первого закрытия он может снова тянуть чью-то мелкую игру. Читать
+      // здесь состояние нельзя вовсе — оно снимок **до** команды.
+      let strandedPurseCp = npcPurseAfterCp
       for (const stranded of tavernOpenRoundsAgainst(state, round.npc_id)) {
         if (stranded.hero_id === command.actor_id) continue
-        if (stranded.stake_cp <= npcPurseAfterCp) continue
-        events.push(tavernRoundCancelledEvent(command, state, stranded, 'opponent-broke', minutes))
+        if (stranded.stake_cp <= strandedPurseCp) continue
+        const cancelled = tavernRoundCancelledEvent(command, state, stranded, 'opponent-broke', minutes, strandedPurseCp)
+        strandedPurseCp = safeInteger(cancelled.payload.npc_purse_after_cp, strandedPurseCp)
+        events.push(cancelled)
       }
       appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), TAVERN_DICE_ROUND_MINUTES, 'minute')
       break
     }
     case 'LeaveTavernDiceRound': {
       // Встать из-за стола можно всегда, а стоит это по-разному, и разницу
-      // считает не желание игрока, а тупик.
+      // считает не желание игрока, а виновник закрытия.
       //
-      // Настоящих тупиков два, и оба чужие: соседа обыграл дочиста товарищ по
-      // отряду (банк ему уже не закрыть) или самого героя выставили за дверь
-      // (отвечать ему запрещено). Из них ставка возвращается — герой этого не
-      // устраивал. Во всех остальных положениях кость соперника жива, и уход от
-      // неё — сдача: ставка, уплаченная при открытии раунда, остаётся сопернику
-      // ровно как при проигрыше.
+      // Тупиков два, но чужой из них ровно один: героя выставило за дверь
+      // заведение — тогда ставка возвращается. Разорение соседа тупик тоже, но
+      // устраивает его отряд (обыграть соседа больше некому), и ставка после
+      // него остаётся на столе ровно как при сдаче — иначе открытие раунда
+      // становилось бы игрой без риска. Во всех остальных положениях кость
+      // соперника жива, и уход от неё — сдача: ставка, уплаченная при открытии
+      // раунда, остаётся сопернику ровно как при проигрыше.
       //
       // Броска здесь нет ни в одном случае: раунд закрывается счётом, а не
       // кубиком.
@@ -14809,7 +14862,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'TavernDiceRoundOpened': return `Кости на стол: ${payload.npc_name || 'соперник'} показывает ${safeInteger(payload.npc_total, 0)}, ставка ${safeInteger(payload.stake_cp, 0)} мм ушла на стол`
     case 'TavernDiceRoundResolved': return `Раунд костей: ${safeInteger(payload.hero_total, 0)} против ${safeInteger(payload.npc_total, 0)} — ${payload.outcome === 'win' ? 'банк уходит герою' : payload.outcome === 'loss' ? 'ставка потеряна' : payload.outcome === 'push' ? 'ничья' : payload.outcome === 'caught' ? 'героя поймали за руку' : 'соперник разоблачён'}`
     case 'TavernDiceRoundCancelled': return payload.reason === 'opponent-broke'
-      ? `${payload.npc_name || 'Соперник'} спустил всё: раунд ${named(payload.hero_id) || 'героя'} закрыт, ставка ${safeInteger(payload.returned_cp, 0)} мм возвращена`
+      ? `${payload.npc_name || 'Соперник'} спустил всё: раунд ${named(payload.hero_id) || 'героя'} закрыт, ставка ${safeInteger(payload.forfeited_cp, 0)} мм осталась на столе`
       : payload.reason === 'patron-ejected'
         ? `${named(payload.hero_id) || 'Героя'} выставили за дверь: раунд закрыт, ставка ${safeInteger(payload.returned_cp, 0)} мм возвращена`
         : `${named(payload.hero_id) || 'Герой'} встал из-за стола, не ответив: ставка ${safeInteger(payload.forfeited_cp, 0)} мм осталась сопернику`

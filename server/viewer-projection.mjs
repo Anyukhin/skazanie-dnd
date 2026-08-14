@@ -956,8 +956,12 @@ function eventForViewer(event, user, actorId, state = {}) {
   //
   // Отмена раунда режется тем же списком и по той же причине: ставка сдавшегося
   // уезжает в кассу соседа, и событие несёт её обе суммы наравне с расчётом.
+  //
+  // Доля заведения (`house_cut_cp`) уходит с ними же: она появляется ровно на
+  // потолке чужой кассы, то есть её число — это дословно «у соседа уже сто
+  // золотых». Своя потеря игроку и так названа (`forfeited_cp`, `net_cp`).
   if (visible.event_type === 'TavernDiceRoundResolved' || visible.event_type === 'TavernDiceRoundCancelled') {
-    for (const key of ['npc_purse_before_cp', 'npc_purse_after_cp']) delete payload[key]
+    for (const key of ['npc_purse_before_cp', 'npc_purse_after_cp', 'house_cut_cp']) delete payload[key]
   }
   if (visible.event_type === 'EncounterOutcomeRecorded') {
     delete payload.plan

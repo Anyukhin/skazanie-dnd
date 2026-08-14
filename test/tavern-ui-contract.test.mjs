@@ -142,6 +142,38 @@ test('открытый раунд можно закрыть без броска,
   // возврат там, где ставка останется сопернику.
   assert.match(board, /tavernRound\?\.unanswerable_reason \?\? null/u)
   assert.doesNotMatch(board, /activeHeroPurseCp < tavernRound/u)
+  // Возврат обещает **один** тупик — запрет входа: разорить соседа может только
+  // сам отряд, и за это ставку со стола не отдают.
+  assert.match(board, /const tavernStakeReturned = tavernPatronEjected/u)
+})
+
+/**
+ * Находка ревью: «встать из-за стола» стала необратимой кнопкой в один клик.
+ *
+ * Раньше она была `disabled` вне тупика и стоила ноль; с эскроу один промах
+ * отдаёт сопернику до 200 мм навсегда, а цена была названа только в `title` и в
+ * подписи под кнопкой — то есть в тексте, который читают после клика, а не до.
+ * Рядом на этой же панели уже есть штатный порядок для необратимых команд
+ * (`combat-command-confirmation`): цель фиксируется, а команда ждёт
+ * подтверждения.
+ *
+ * Проверяется разница, а не текст: живая кость спрашивает второй раз, тупик
+ * закрывается сразу — там терять нечего, и лишний вопрос только мешает.
+ */
+test('сдача от живой кости уходит вторым щелчком, а тупик закрывается сразу', () => {
+  // Подтверждение ключуется раундом, а не флагом: пока игрок думает, раунд
+  // может закрыться и открыться заново уже против другого числа.
+  assert.match(board, /const \[tavernSurrenderRoundId, setTavernSurrenderRoundId\] = useState\(''\)/u)
+  assert.match(board, /tavernSurrenderPending = Boolean\(tavernRound && !tavernRoundUnanswerable && tavernSurrenderRoundId === tavernRound\.id\)/u)
+  // Тупик — сразу, живая кость — через подтверждение, и оба пути в одном
+  // обработчике: второго ответа на «что делает эта кнопка» быть не должно.
+  assert.match(board, /if \(tavernRoundUnanswerable\) \{ void onLeaveTavernDiceRound\(\); return \}/u)
+  assert.match(board, /if \(!tavernSurrenderPending\) \{ setTavernSurrenderRoundId\(tavernRound\.id\); return \}/u)
+  // Цена стоит на самой кнопке подтверждения, а не только в подписи под ней.
+  assert.match(board, /Подтвердить сдачу · −\$\{tavernRound\.stake_cp\} мм/u)
+  assert.match(board, /Остаться за столом/u)
+  assert.match(styles, /\.tavern-leave\.confirming \{/u)
+  assert.match(styles, /\.tavern-action\.action-leave-cancel \{/u)
 })
 
 /**
