@@ -64,7 +64,16 @@ export function battleEventText(state: GameState, event: NonNullable<GameState['
       : `${actorName(event.targetId)}: спасбросок ${event.ability?.toUpperCase() ?? ''} от «${event.spellName ?? event.spellId ?? 'заклинания'}» ${formula} против СЛ ${event.roll?.difficulty ?? '?'} — ${outcome}${automatic}${itemBonus}${damage}${hp}.`
   }
   if (event.type === 'spell-damage') return `${actorName(event.actorId)} применяет «${event.spellName ?? event.spellId ?? 'заклинание'}» к ${actorName(event.targetId)}: ${event.damage ?? 0} урона${hideTargetFacts ? '' : ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
-  if (event.type === 'healing') return `${actorName(event.actorId)} лечит ${actorName(event.targetId)}${event.spellId ? ` заклинанием «${event.spellName ?? event.spellId}»` : ''}: +${event.healing ?? 0} ОЗ${hideTargetFacts ? '' : ` · ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
+  if (event.type === 'healing') {
+    const source = event.spellId ? ` заклинанием «${event.spellName ?? event.spellId}»` : ''
+    const whom = event.targetId && event.targetId === event.actorId ? 'себя' : actorName(event.targetId)
+    // Числа у чужого лечения нет вовсе: сервер не присылает величину, пока
+    // здоровье цели не опознано точно, — ровная десятка выдала бы зелье на
+    // 2к4 + 2 не хуже его названия. За столом видно ровно то, что видно: враг
+    // приложился к склянке и раны затянулись.
+    if (event.healing == null) return `${actorName(event.actorId)} лечит ${whom}${source}: раны затягиваются.`
+    return `${actorName(event.actorId)} лечит ${whom}${source}: +${event.healing} ОЗ${hideTargetFacts ? '' : ` · ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
+  }
   if (event.type === 'area-attack') return `${actorName(event.actorId)} применяет «${event.itemName ?? 'областную атаку'}» в области радиусом ${event.area?.radiusFeet ?? '?'} фт.`
   if (event.type === 'equipment') return `${actorName(event.actorId)} экипирует «${event.itemName ?? 'оружие'}».`
   if (event.type === 'summon') return `${actorName(event.actorId)} призывает ${actorName(event.targetId)}.`

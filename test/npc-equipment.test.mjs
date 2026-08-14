@@ -18,13 +18,23 @@ import {
 } from '../server/npc-equipment.mjs'
 import { planNpcTurn } from '../server/npc-turn-scheduler.mjs'
 import { applyGameEvent, normalizeCampaignState, resolveCommand, validateCommand } from '../server/rules-engine.mjs'
-import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer } from '../server/viewer-projection.mjs'
 
 const NPC_CONTEXT = { isNpcScheduler: true, isAdmin: true, serverAuthoritativeCombat: true }
 
 /** Максимальный бросок: детерминированный и не требует счёта костей в каждом тесте. */
 class MaximumRng {
   randint(_minimum, maximum) { return maximum }
+}
+
+/**
+ * Минимальный бросок: атака промахивается. Нужен там, где проверяется расход
+ * снаряжения за несколько ходов подряд, — иначе максимальный урон добивает
+ * героя, кампания закрывается и следующая команда падает на `CAMPAIGN_READ_ONLY`
+ * вместо проверяемой ветки.
+ */
+class MinimumRng {
+  randint(minimum) { return minimum }
 }
 
 function dice(rng = new MaximumRng()) {
@@ -108,7 +118,29 @@ function commit(state, command, { rng = new MaximumRng(), context = NPC_CONTEXT 
     state,
     { diceService: dice(rng), context },
   )
-  return { events: result.events, state: result.events.reduce(applyGameEvent, state) }
+  return { events: result.events, rolls: result.rolls ?? [], state: result.events.reduce(applyGameEvent, state) }
+}
+
+/**
+ * Следующий ход того же существа: экономика хода обнуляется, всё остальное
+ * остаётся. Нужен там, где проверяется исчерпание запаса, — иначе отказ придёт
+ * от потраченного действия, а не от пустого кармана.
+ */
+function nextTurn(state) {
+  return {
+    ...state,
+    mechanics: {
+      ...state.mechanics,
+      combat: {
+        ...state.mechanics.combat,
+        turn_completed: [],
+        action_economy: {
+          ...state.mechanics.combat.action_economy,
+          foe: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+        },
+      },
+    },
+  }
 }
 
 function rejects(state, command, code, context = NPC_CONTEXT) {
@@ -299,11 +331,15 @@ test('расход снаряжения идемпотентен: повтор �
   assert.equal(ammunition.payload.shots_after, arrows.quantity * 20 - 1)
   const afterShot = shot.state.enemies[0].loadout.items.find((item) => item.item_instance_id === arrows.item_instance_id)
   assert.equal(afterShot.charges.current, arrows.quantity * 20 - 1)
+  // Оба числа редьюсер берёт из события, а не досчитывает по состоянию: пачек
+  // с одного выстрела не убыло, и пересчёт «сколько было минус один» тихо
+  // снимал бы колчан — при первом же применении, а на повторе уводил бы в
+  // минус. Для `charges` это уже проверено выше, для `quantity` — здесь.
+  assert.equal(afterShot.quantity, arrows.quantity, 'колчан пересчитали по состоянию вместо payload')
   const twice = applyGameEvent(shot.state, ammunition)
-  assert.equal(
-    twice.enemies[0].loadout.items.find((item) => item.item_instance_id === arrows.item_instance_id).charges.current,
-    arrows.quantity * 20 - 1,
-  )
+  const replayedArrows = twice.enemies[0].loadout.items.find((item) => item.item_instance_id === arrows.item_instance_id)
+  assert.equal(replayedArrows.charges.current, arrows.quantity * 20 - 1)
+  assert.equal(replayedArrows.quantity, arrows.quantity)
 })
 
 // ---------------------------------------------------------------------------
@@ -436,6 +472,70 @@ test('пустой колчан и выбитое оружие закрываю�
   assert.ok(validateCommand({ campaign_id: 'campaign-1', command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', server_authoritative: true }, wolf, NPC_CONTEXT))
 })
 
+test('единственное надетое метательное оружие ход не выбрасывает, а пучок дротиков расходуется до отказа', () => {
+  // Копьё гладиатора одно и надето: брошенное, оно остаётся в инвентаре —
+  // иначе планировщик разоружал бы существо его же ходом. Это объявленная
+  // граница `expenditureFor`, и держит её этот тест, а не докстринг.
+  const gladiator = foe('srd_5_2_1:gladiator', { x: 4 })
+  const spear = itemOf(gladiator, 'srd_5_2_1:spear')
+  assert.equal(spear.equipped, true)
+  assert.equal(spear.quantity, 1)
+  assert.equal(npcWeaponBindings(gladiator).find((binding) => binding.action_id === 'spear-ranged').expends, null)
+  const thrownSpear = commit(battleState(gladiator, { heroX: 0 }), {
+    command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'spear-ranged',
+  }, { rng: new MinimumRng() })
+  assert.equal(thrownSpear.events.some((event) => event.event_type === 'NpcEquipmentSpent'), false, 'надетое копьё улетело из инвентаря')
+  assert.equal(thrownSpear.state.enemies[0].loadout.items.find((item) => item.catalog_id === 'srd_5_2_1:spear').quantity, 1)
+
+  // Дротики капитана стражи лежат пучком и не надеты: каждый бросок уносит
+  // один, а опустевший пучок закрывает **оба** его действия — и метание, и
+  // удар тем же дротиком в ближнем бою.
+  const captain = foe('srd_5_2_1:guard-captain', { x: 1 })
+  const javelins = itemOf(captain, 'srd_5_2_1:javelin')
+  assert.equal(javelins.equipped, false)
+  assert.ok(javelins.quantity >= 2, 'пучок дротиков собран поштучно')
+  assert.equal(npcWeaponBindings(captain).find((binding) => binding.action_id === 'javelin-ranged').expends, 'thrown')
+  let state = battleState(captain, { heroX: 0 })
+  for (let left = javelins.quantity; left > 0; left -= 1) {
+    const shot = commit(state, {
+      command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'javelin-ranged',
+    }, { rng: new MinimumRng() })
+    const spent = shot.events.find((event) => event.event_type === 'NpcEquipmentSpent')
+    assert.ok(spent, `дротик ${left}: расхода нет`)
+    assert.equal(spent.payload.reason, 'thrown')
+    assert.equal(spent.payload.quantity_before, left)
+    assert.equal(spent.payload.quantity_after, left - 1)
+    state = nextTurn(shot.state)
+  }
+  assert.equal(state.enemies[0].loadout.items.some((item) => item.catalog_id === 'srd_5_2_1:javelin'), false)
+  rejects(state, { command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'javelin-ranged' }, 'NPC_WEAPON_UNAVAILABLE')
+  rejects(state, { command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'javelin-melee' }, 'NPC_WEAPON_UNAVAILABLE')
+  // Закрылось действие вещи, а не ход: длинный меч в той же руке остался.
+  assert.ok(validateCommand({
+    campaign_id: 'campaign-1', server_authoritative: true, command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'longsword',
+  }, state, NPC_CONTEXT))
+})
+
+test('яд наносят до первого удара: после удара тактика отказывается, а не молчит', () => {
+  const seed = seedWith('srd_5_2_1:spy', 'srd_5_2_1:poison-basic')
+  const spy = foe('srd_5_2_1:spy', { x: 1, seed })
+  const poisonId = itemOf(spy, 'srd_5_2_1:poison-basic').item_instance_id
+  const swordId = itemOf(spy, 'srd_5_2_1:shortsword').item_instance_id
+  const coat = { command_type: 'UseItem', actor_id: 'foe', item_id: poisonId, npc_tactic: 'coat', weapon_id: swordId }
+  const state = battleState(spy, { heroX: 0, heroArmor: 5 })
+  assert.ok(validateCommand({ campaign_id: 'campaign-1', server_authoritative: true, ...coat }, state, NPC_CONTEXT), 'до удара мазать можно')
+
+  const struck = commit(state, { command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'shortsword' })
+  assert.equal(struck.state.mechanics.combat.action_economy.foe.attacks_used, 1)
+  // Отказ обязан прийти именно от «поздно»: доза цела, маркер тактики не
+  // поставлен, бонусное действие не потрачено — все соседние ветки открыты.
+  assert.ok(struck.state.enemies[0].loadout.items.some((item) => item.item_instance_id === poisonId))
+  assert.equal((struck.state.mechanics.conditions.foe ?? []).some((condition) => condition.id === 'npc-tactic-used:coat'), false)
+  assert.equal(struck.state.mechanics.combat.action_economy.foe.bonus_action, true)
+  rejects(struck.state, coat, 'NPC_ITEM_TACTIC_NOT_APPLICABLE')
+  assert.equal(planNpcTurn(struck.state, 'foe').some((command) => command.npc_tactic === 'coat'), false)
+})
+
 // ---------------------------------------------------------------------------
 // Планировщик
 
@@ -506,6 +606,84 @@ test('карман противника не уезжает игроку ни с
   assert.equal(entry.label, 'прикладывается к склянке')
   assert.equal(JSON.stringify(room).includes(potion.item_instance_id), false)
   assert.equal(JSON.stringify(room.battleLog).includes('Зелье лечения'), false)
+})
+
+test('точная величина чужого лечения не уезжает игроку ни событием, ни броском, ни журналом', () => {
+  const seed = seedWith('srd_5_2_1:berserker', 'srd_5_2_1:potion-of-healing')
+  const enemy = foe('srd_5_2_1:berserker', { hp: 8, x: 1, seed })
+  const potion = itemOf(enemy, 'srd_5_2_1:potion-of-healing')
+  const { events, state: after } = commit(battleState(enemy), {
+    command_type: 'UseItem', actor_id: 'foe', item_id: potion.item_instance_id, npc_tactic: 'heal',
+  })
+  // Авторитетное событие числа несёт целиком: механика и ведущий их видят.
+  assert.equal(events.find((event) => event.event_type === 'HealingApplied').payload.applied_amount, 10)
+  assert.equal(events.find((event) => event.event_type === 'DieRolled').visibility, 'gm_only')
+
+  const viewer = { role: 'player', heroIds: ['hero'] }
+  const projected = mechanicsForViewer(events, viewer, 'hero', after)
+  // Бросок до стола не доезжает вовсе: у `DieRolled` остаётся `total`, и
+  // «выпало 10» на зелье 2к4 + 2 называет склянку не хуже её имени.
+  assert.equal(projected.some((event) => event.event_type === 'DieRolled'), false)
+  const shown = projected.find((event) => event.event_type === 'HealingApplied')
+  assert.ok(shown, 'сам факт лечения стол видит')
+  for (const key of ['applied_amount', 'requested_amount', 'hp_before', 'hp_after']) {
+    assert.equal(shown.payload[key], undefined, key)
+  }
+
+  const room = campaignStateForViewer(after, viewer, 'hero')
+  const entry = room.battleLog.find((record) => record.type === 'healing')
+  assert.ok(entry, 'запись о лечении в журнале остаётся')
+  assert.equal(entry.healing, undefined)
+  assert.equal(entry.hpAfter, undefined)
+
+  // Закрыт игрок, а не журнал: ведущий видит и число, и бросок.
+  const gm = campaignStateForViewer(after, { role: 'admin' }, 'gm')
+  assert.equal(gm.battleLog.find((record) => record.type === 'healing').healing, 10)
+  assert.equal(mechanicsForViewer(events, { role: 'admin' }, 'gm', after).length, events.length)
+
+  // И граница — именно «здоровье не опознано»: опознанному врагу число видно,
+  // потому что оно и так выводится из ОЗ до и после.
+  const identified = {
+    ...after,
+    mechanics: { ...after.mechanics, enemy_knowledge: { party: { foe: { health: 'exact' } } } },
+  }
+  const known = mechanicsForViewer(events, viewer, 'hero', identified).find((event) => event.event_type === 'HealingApplied')
+  assert.equal(known.payload.applied_amount, 10)
+  assert.equal(campaignStateForViewer(identified, viewer, 'hero').battleLog.find((record) => record.type === 'healing').healing, 10)
+})
+
+test('каталожный ключ склянки не уезжает игроку назначением броска', () => {
+  const seed = seedWith('srd_5_2_1:tough-boss', 'srd_5_2_1:alchemists-fire')
+  const boss = foe('srd_5_2_1:tough-boss', { x: 2, seed })
+  const flaskId = itemOf(boss, 'srd_5_2_1:alchemists-fire').item_instance_id
+  const state = battleState(boss, { heroX: 0 })
+  const { events, rolls, state: after } = commit(state, {
+    command_type: 'UseItem', actor_id: 'foe', target_id: 'hero', item_id: flaskId, npc_tactic: 'flask',
+  }, { rng: new SequenceDiceRng([1, 4]) })
+  // Оба броска подписаны тактикой, а не каталожной записью: `purpose` не
+  // чистит ни проекция событий, ни список бросков хода, поэтому подпись
+  // задаётся при выпуске события — тем же приёмом, что и у зелья.
+  assert.deepEqual(rolls.map((roll) => roll.purpose), [
+    'item_thrown_save:npc-item:flask:dex',
+    'item_thrown_damage:npc-item:flask',
+  ])
+
+  const viewer = { role: 'player', heroIds: ['hero'] }
+  const projected = mechanicsForViewer(events, viewer, 'hero', after)
+  // Закрывается каталожный ключ — тот, по которому потом опознаётся добыча с
+  // тела. То, что горит именно алхимический огонь, стол и так видит: об этом
+  // говорит и подпись поступка, и состояние `alchemists-fire-flames` на герое,
+  // которое ему полагается видеть, чтобы его тушить.
+  assert.equal(JSON.stringify(projected).includes('srd_5_2_1:alchemists-fire'), false)
+  assert.equal(JSON.stringify(projected).includes(flaskId), false)
+  const explanation = turnExplanationForViewer({ commands: [], rolls, events }, viewer, 'hero', after)
+  assert.equal(JSON.stringify(explanation).includes('srd_5_2_1:alchemists-fire'), false)
+  // Спасбросок принадлежит герою, поэтому урезание «бросок противника» на него
+  // не распространяется — и именно поэтому подпись обязана быть безопасной.
+  assert.equal(explanation.rolls.find((roll) => roll.actor_id === 'hero').purpose, 'item_thrown_save:npc-item:flask:dex')
+  // Поступок стол видит, и урон получен по-настоящему.
+  assert.equal(projected.find((event) => event.event_type === 'NpcItemUsed').payload.label, 'мечет склянку алхимического огня')
+  assert.ok(after.players[0].hp < 40)
 })
 
 test('детерминированные строки боя называют поступок, а не вещь', () => {

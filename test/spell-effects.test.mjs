@@ -244,6 +244,12 @@ test('projectile, цепной beam, aura, лечение и призыв ост
       expected: (ops) => ops.some((operation) => operation.op === 'fillText' && operation.text === '+6'),
     },
     {
+      // Лечение без величины: у неопознанного противника сервер число не
+      // присылает, и «+0» означало бы, что зелье не сработало.
+      cue: { id: 'h0', kind: 'channel', actorId: 'goblin', targetId: 'goblin', channelType: 'healing', amount: null, spellId: '', school: 'evocation', durationMs: 480 },
+      expected: (ops) => ops.some((operation) => operation.op === 'fillText' && operation.text === 'ЛЕЧЕНИЕ'),
+    },
+    {
       cue: { id: 's', kind: 'channel', actorId: 'cleric', targetId: 'beast', channelType: 'summon', spellId: 'summon-beast', school: 'conjuration', durationMs: 480 },
       expected: (ops) => ops.some((operation) => operation.op === 'fillText' && operation.text === 'ПРИЗЫВ'),
     },

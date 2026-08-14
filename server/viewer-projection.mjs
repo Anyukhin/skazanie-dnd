@@ -481,6 +481,12 @@ function publicBattleEventFor(entry, state, actorId = '') {
     delete result.hpAfter
     delete result.maximumHpBefore
     delete result.maximumHpAfter
+    // Точная величина чужого лечения закрывается по той же причине, что и ОЗ
+    // до и после: зелье лечения бьёт 2к4 + 2, поэтому «+10 ОЗ» опознаёт
+    // склянку в кармане не хуже её названия, а название журнальная запись
+    // `npc-item` не несёт намеренно. Интерфейс отсутствие числа знает и пишет
+    // «раны затягиваются» (`battleEventText`, `src/app-shared.tsx`).
+    if (text(entry.type, 40) === 'healing') delete result.healing
     if (result.roll && typeof result.roll === 'object') {
       result.roll = { ...result.roll }
       delete result.roll.difficulty
@@ -998,6 +1004,14 @@ function eventForViewer(event, user, actorId, state = {}) {
   const enemyActor = enemyIds.has(String(visible.actor_id ?? ''))
   if (enemyTargetId && !exactEnemyHealthKnown(state, enemyTargetId, actorId)) {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'armor_class']) delete payload[key]
+    // Величина лечения — то же знание, что и ОЗ до и после, только записанное
+    // разностью: у зелья противника (2к4 + 2) ровная десятка называет вещь
+    // точнее любого `catalog_id`, который здесь же снимает ветка «действует
+    // противник». Ветка только у `HealingApplied`: `applied_amount` у урона —
+    // это удар отряда по врагу, и его игрок обязан видеть.
+    if (String(visible.event_type) === 'HealingApplied') {
+      for (const key of ['requested_amount', 'applied_amount']) delete payload[key]
+    }
   }
   // Игрок видит сам исход (сопротивление, иммунитет или отменённый крит), но
   // закрытый инвентарь противника не становится каталогом предметов через

@@ -4932,11 +4932,20 @@ function monsterRechargeAtTurnStart(state, command, actorIdValue, diceService) {
  * остальным нельзя — за столом склянка разбилась и все это видели, — поэтому
  * уходит отдельное событие `ItemEffectIneffective` с причиной.
  */
-function thrownFlaskEvents(state, command, { actor, item, use, diceService, rolls, resolveDamage }) {
+function thrownFlaskEvents(state, command, { actor, item, use, diceService, rolls, resolveDamage, purposeSubject = null }) {
   const targetId = String(command.target_id ?? '')
   const target = findActor(state, targetId)
   if (!target) throw new RulesValidationError('Цель броска не найдена', 'TARGET_NOT_FOUND')
   const events = []
+  // Назначение броска — единственное поле, которое уезжает игроку **двумя**
+  // каналами сразу: событием (`SavingThrowResolved`, `DieRolled`) и списком
+  // бросков хода (`turnExplanationForViewer`), и ни там, ни там `purpose` не
+  // чистится. У вещи героя это его собственный предмет и скрывать нечего;
+  // склянка противника подписью броска обошла бы и `NpcItemUsed`, и ветку
+  // «действует противник» в проекции. Поэтому подпись приходит снаружи: путь
+  // противника называет тактику, а не запись каталога, — тем же приёмом,
+  // которым это уже сделано у зелья (`npc-item:heal:healing`).
+  const purposeOf = String(purposeSubject ?? item.catalog_id ?? item.id)
   const saveAbility = String(use.save?.ability ?? 'dex')
   const saveDc = Math.max(1,
     safeInteger(use.save?.dc?.base, 8)
@@ -4952,7 +4961,7 @@ function thrownFlaskEvents(state, command, { actor, item, use, diceService, roll
   const save = rollSavingThrowD20(state, diceService, targetId, {
     ability: saveAbility,
     modifier: saveModifier,
-    purpose: `item_thrown_save:${String(item.catalog_id ?? item.id)}:${saveAbility}`,
+    purpose: `item_thrown_save:${purposeOf}:${saveAbility}`,
     visibility: command.visibility,
   })
   rolls.push(save)
@@ -4985,7 +4994,7 @@ function thrownFlaskEvents(state, command, { actor, item, use, diceService, roll
   }
 
   if (use.damage) {
-    const damageRoll = diceService.roll(String(use.damage), `item_thrown_damage:${String(item.catalog_id ?? item.id)}`, command.actor_id, command.visibility ?? 'public')
+    const damageRoll = diceService.roll(String(use.damage), `item_thrown_damage:${purposeOf}`, command.actor_id, command.visibility ?? 'public')
     rolls.push(damageRoll)
     events.push(eventFrom(command, 'DieRolled', { ...damageRoll, item_id: item.id, damage_type: use.damage_type }, []))
     const payload = resolveDamage(state, targetId, damageRoll.total, String(use.damage_type ?? 'acid'))
@@ -5070,14 +5079,24 @@ function npcItemUseEvents(state, command, { diceService, rolls, resolveDamage })
   if (npcItem.tactic === 'heal') {
     // Назначение броска называет тактику, а не каталожную запись: событие
     // `DieRolled` едет столу, и `purpose` — единственное его поле, куда
-    // каталожный ключ мог бы просочиться мимо санитайзера. У склянки такой
-    // заботы нет по существу дела: что именно разбилось о героя, стол видит
-    // и без payload — об этом говорит и подпись поступка, и вид урона.
-    const roll = diceService.roll(String(use.expression), `npc-item:${npcItem.tactic}:healing`, ownerId, command.visibility ?? 'public')
+    // каталожный ключ мог бы просочиться мимо санитайзера.
+    //
+    // Сам бросок при этом `gm_only`, и это не перестраховка: «выпало 10» на
+    // зелье 2к4 + 2 опознаёт склянку не хуже её названия, а у `DieRolled`
+    // остаётся `total` — ветка `enemyActor` в проекции снимает `dice` и
+    // `expression`, но не итог. Закрыть число санитайзером нельзя, не сделав
+    // событие пустым, поэтому оно закрывается там же, где закрывается парный
+    // расход из кармана (`npcEquipmentSpentEvent`) — видимостью. Стол видит
+    // поступок и то, что раны затянулись; арифметика остаётся у ведущего.
+    const roll = diceService.roll(String(use.expression), `npc-item:${npcItem.tactic}:healing`, ownerId, 'gm_only')
     rolls.push(roll)
-    events.push(eventFrom(command, 'DieRolled', roll, []))
+    events.push(eventFrom({ ...command, visibility: 'gm_only' }, 'DieRolled', roll, []))
     const before = actorHp(enemy)
     const after = Math.min(actorMaxHp(enemy), before + Math.max(0, safeInteger(roll.total, 0)))
+    // Событие остаётся публичным: лечение противника случилось на глазах, и
+    // полоса здоровья без него разошлась бы с журналом. Игроку не уезжают
+    // только числа — их снимает `eventForViewer` там же, где снимает
+    // `hp_before`/`hp_after` неопознанного существа.
     events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', {
       requested_amount: Math.max(0, safeInteger(roll.total, 0)),
       applied_amount: after - before,
@@ -5095,6 +5114,7 @@ function npcItemUseEvents(state, command, { diceService, rolls, resolveDamage })
       diceService,
       rolls,
       resolveDamage,
+      purposeSubject: `npc-item:${npcItem.tactic}`,
     }))
   }
   if (npcItem.tactic === 'coat') {
