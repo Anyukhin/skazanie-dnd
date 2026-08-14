@@ -14,7 +14,9 @@ import {
   isTavernScene,
   normalizeTavernState,
   tavernDrinksFor,
+  tavernEarmarkedCpAgainst,
   tavernEjected,
+  tavernFreePurseFor,
   tavernGamblerFor,
   tavernGamblerPurseFor,
   tavernMaxStakeFor,
@@ -22,7 +24,6 @@ import {
   tavernOpenRoundsAgainst,
   tavernOpponents,
   tavernRoundFor,
-  tavernRoundUnanswerableReason,
   tavernSocialBonus,
 } from '../server/tavern-life.mjs'
 import {
@@ -493,118 +494,131 @@ test('минута последней игры приезжает событие
 })
 
 // ---------------------------------------------------------------------------
-// Раунд без броска: отмена и автозакрытие
+// Закреплённое покрытие: касса отвечает за каждый открытый раунд
 // ---------------------------------------------------------------------------
 
 /**
- * Зонд ревью: тупик открытого раунда. Раунд ключуется героем, а касса у соседа
- * общая — обыграть его дочиста может один игрок, пока второй ещё думает над
- * своей костью. Второму после этого ответить нечем (`TAVERN_OPPONENT_BROKE`),
- * а команды закрыть раунд не было: кости для него запирались до конца сцены.
+ * Зонд ревьюера, и это четвёртый заход одной и той же дыры — на стол **на
+ * пятерых**.
+ *
+ * Раунд ключуется героем, а касса у соседа одна на всех, и пока покрытия не
+ * было, отряд открывал против 500 мм пять раундов по 200: первые двое забирали
+ * банк, а третьему платить было уже нечем. Из этого тупика выхода не было ни
+ * одного хорошего — три захода политика возвратов качалась между двумя
+ * лазейками: вернуть ставку разорённому, и сговор отряда становился прибылен
+ * («выпало плохо — товарищ грызёт кассу соседа, ставка возвращается»; зонд ревью
+ * живыми костями: 62 возврата заведомо проигранной ставки на сотню попыток); не
+ * вернуть — и ставку терял невиновный, которому тупик устроили чужие руки.
+ *
+ * Лечится это не политикой возвратов, а тем, что тупика больше нет: касса
+ * **закрепляет** выплату за раундом с самого открытия, и открыть раунд можно
+ * только под свободную кассу. Здесь проверяется сам инвариант — арифметика
+ * закрепления, отказ на открытии и то, ради чего всё это: каждый, кого пустили
+ * за стол, получает свой банк целиком.
  */
-test('обыгранный дочиста соперник закрывает чужой раунд, а не запирает его', () => {
+test('касса закрепляет покрытие: пятеро не откроют против неё больше, чем она тянет', () => {
   const rich = { copper: 0, silver: 0, gold: 100, platinum: 0 }
-  // Касса ровно в одну крупную ставку: закрыть банк соперник может один раз.
+  const heroIds = ['hero', 'hero-2', 'hero-3', 'hero-4', 'hero-5']
+  // Касса подобрана числом: 500 мм — это ровно два крупных банка и два мелких,
+  // и пятому за этим столом места нет ни на медяки.
   const table = normalizeCampaignState({
-    ...campaign({ heroIds: ['hero', 'hero-2'], currency: rich }),
-    tavern: { patrons: {}, gamblers: { [HONEST]: { purse_cp: 200, last_played_at_minutes: 0 } } },
+    ...campaign({ heroIds, currency: rich }),
+    tavern: { patrons: {}, gamblers: { [HONEST]: { purse_cp: 500, last_played_at_minutes: 0 } } },
   })
-  const first = run(table, [open(HONEST, 200)], { diceValues: [7] }).state
-  const second = run(first, [{ ...open(HONEST, 200), actor_id: 'hero-2' }], { diceValues: [6] }).state
-  assert.equal(tavernOpenRoundsAgainst(second, HONEST).length, 2, 'за одним соседом сидят оба героя')
+  const worldCp = (state) => heroIds.reduce((total, id) => total + purseCp(state, id), 0) + tavernGamblerPurseFor(state, HONEST)
+  const worldBefore = worldCp(table)
 
-  const purseBefore = purseCp(second, 'hero')
-  const won = run(second, [{ ...answer(), actor_id: 'hero-2' }], { diceValues: [19] })
-  assert.equal(eventOf(won, 'TavernDiceRoundResolved').payload.outcome, 'win')
+  let state = run(table, [open(HONEST, 200)], { diceValues: [4] }).state
+  assert.equal(tavernEarmarkedCpAgainst(state, HONEST), 200, 'открытый раунд закрепляет за собой выплату')
+  assert.equal(tavernFreePurseFor(state, HONEST), 300, 'свободная касса — это касса минус обязательства')
 
-  const cancelled = eventOf(won, 'TavernDiceRoundCancelled')
-  assert.ok(cancelled, 'чужой раунд обязан закрыться событием, а не остаться висеть')
-  assert.equal(cancelled.payload.hero_id, 'hero', 'закрылся раунд того, кто ответить уже не может')
-  assert.equal(cancelled.actor_id, 'hero', 'в летописи стоит владелец раунда, а не тот, чья команда его закрыла')
-  assert.equal(cancelled.payload.reason, 'opponent-broke')
-  // Деньги решает виновник, а не факт тупика: соседа обыграл дочиста свой же
-  // отряд, поэтому ставка со стола к герою не возвращается (см. зонд ниже).
-  assert.equal(cancelled.payload.returned_cp, 0, 'тупик устроил отряд — эскроу не возвращается')
-  assert.equal(cancelled.payload.forfeited_cp, 200)
-  assert.equal(tavernRoundFor(won.state, 'hero'), null, 'раунд снят')
-  assert.equal(purseCp(won.state, 'hero'), purseBefore, 'кошелёк не двинулся: ставка ушла ещё при открытии раунда')
-  // Ставка при этом не растворилась: она уехала в кассу соседа той же дорогой,
-  // что и проигранная. Касса считается **бегущим** числом — сначала её выгреб
-  // выигрыш второго героя, потом в неё легла ставка закрытого раунда.
-  assert.equal(cancelled.payload.npc_purse_before_cp, 0, 'на момент закрытия сосед был на нуле')
-  assert.equal(cancelled.payload.npc_purse_after_cp, 200)
-  assert.equal(tavernGamblerPurseFor(won.state, HONEST), 200)
+  state = run(state, [{ ...open(HONEST, 200), actor_id: 'hero-2' }], { diceValues: [5] }).state
+  assert.equal(tavernFreePurseFor(state, HONEST), 100)
+  assert.equal(tavernMaxStakeFor(state, HONEST), 50, 'и кнопка обещает игроку ровно свободную кассу')
+  // Третий крупный раунд не открывается — отказ приходит **на открытии**, когда
+  // ещё ничего не поставлено, а не на ответе, когда деньги уже на столе.
+  rejects(state, [{ ...open(HONEST, 200), actor_id: 'hero-3' }], 'TAVERN_OPPONENT_BROKE')
 
-  // И за стол можно сесть заново — с тем, у кого есть деньги.
-  const again = run(won.state, [open(CROOK, 10)], { diceValues: [9] })
-  assert.equal(tavernRoundFor(again.state, 'hero').npc_id, CROOK)
+  state = run(state, [{ ...open(HONEST, 50), actor_id: 'hero-3' }], { diceValues: [6] }).state
+  state = run(state, [{ ...open(HONEST, 50), actor_id: 'hero-4' }], { diceValues: [7] }).state
+  assert.equal(tavernEarmarkedCpAgainst(state, HONEST), 500, 'касса расписана до медяка')
+  assert.equal(tavernFreePurseFor(state, HONEST), 0)
+  assert.equal(tavernMaxStakeFor(state, HONEST), 0, 'пятому за этот стол уже не сесть')
+  rejects(state, [{ ...open(HONEST, 10), actor_id: 'hero-5' }], 'TAVERN_OPPONENT_BROKE')
+
+  // И то, ради чего закрепление вообще заводилось: каждый, кого за стол пустили,
+  // получает свой банк целиком — даже если выигрывают все четверо подряд.
+  for (const [index, heroId] of ['hero', 'hero-2', 'hero-3', 'hero-4'].entries()) {
+    const won = run(state, [{ ...answer(), actor_id: heroId }], { diceValues: [20] })
+    const resolved = eventOf(won, 'TavernDiceRoundResolved')
+    assert.equal(resolved.payload.outcome, 'win', `${heroId} обязан доиграть свой раунд`)
+    assert.equal(resolved.payload.delta_cp, resolved.payload.stake_cp * 2, 'банк приходит целиком')
+    assert.equal(
+      resolved.payload.npc_purse_before_cp - resolved.payload.npc_purse_after_cp,
+      resolved.payload.stake_cp,
+      'и уходит он из кассы соседа, а не из воздуха',
+    )
+    assert.equal(Object.hasOwn(resolved.payload, 'house_cut_cp'), false, `выплата ${index + 1} не упёрлась в потолок`)
+    assert.equal(eventOf(won, 'TavernDiceRoundCancelled'), null, 'чужие раунды при этом никто не закрывает')
+    state = won.state
+  }
+  assert.equal(tavernGamblerPurseFor(state, HONEST), 0, 'касса выгребена дочиста — и ровно этим она и была расписана')
+  assert.equal(worldCp(state), worldBefore, 'деньги стола не рождаются: сумма кошельков и кассы прежняя')
 })
 
 /**
- * Находка ревью, и она с зубами: дыра «выпало много — встал даром» пережила
- * эскроу, потому что тупик герою мог устроить **второй герой того же отряда**.
- *
- * Зонд ревью (300 прогонов живыми костями): герой ставит 200 мм, видит чужие 19,
- * товарищ садится к тому же соседу и играет, пока касса соседа не упадёт ниже
- * 200 — раунд героя закрывается сам, и заведомо проигранная ставка возвращалась
- * целиком в 62 попытках из ста. Открытие раунда получало положительное
- * матожидание: «выпало хорошо — отвечаю, выпало плохо — грызём кассу соседа и
- * забираю ставку назад».
- *
- * Лечится тем же приёмом, что и остальное: возврат зависит не от факта тупика, а
- * от того, кто его устроил. Разорить соседа может только отряд — других расходов
- * у его кассы нет, — поэтому `opponent-broke` ставку не возвращает. Здесь
- * проверяется сам цикл: сдаться и «сломать кассу» должны стоить одного.
+ * Закреплённое неприкосновенно, и это вторая половина инварианта: выигрыш
+ * товарища по отряду платится из **свободной** кассы, а покрытие чужого раунда
+ * не трогает.
  */
-test('чужую кость нельзя перебросить, разорив соперника чужими руками', () => {
+test('выигрыш одного героя не трогает покрытие, закреплённое за чужим раундом', () => {
   const rich = { copper: 0, silver: 0, gold: 100, platinum: 0 }
-  // Касса подобрана под сам зонд: 300 мм закрывают крупную ставку один раз, и
-  // одного выигрыша товарища хватает, чтобы уронить её ниже ставки героя.
-  const table = normalizeCampaignState({
-    ...campaign({ heroIds: ['hero', 'hero-2'], currency: rich }),
-    tavern: { patrons: {}, gamblers: { [HONEST]: { purse_cp: 300, last_played_at_minutes: 0 } } },
-  })
-  const partyBefore = purseCp(table, 'hero') + purseCp(table, 'hero-2') + tavernGamblerPurseFor(table, HONEST)
-
-  // Герой ставит 200 и видит чужие 19: перебить их нечем, ответ стоит ставки.
-  const opened = run(table, [open(HONEST, 200)], { diceValues: [19] }).state
-  assert.equal(tavernRoundUnanswerableReason(opened, tavernRoundFor(opened, 'hero')), null, 'кость жива')
-
-  // Товарищ садится к тому же соседу и обыгрывает его дочиста.
-  const grind = run(opened, [{ ...open(HONEST, 200), actor_id: 'hero-2' }], { diceValues: [5] }).state
-  const broke = run(grind, [{ ...answer(), actor_id: 'hero-2' }], { diceValues: [20] })
-  const cancelled = eventOf(broke, 'TavernDiceRoundCancelled')
-  assert.equal(cancelled.payload.reason, 'opponent-broke', 'раунд героя закрылся сам')
-  assert.equal(cancelled.payload.returned_cp, 0, 'заведомо проигранная ставка со стола не возвращается')
-
-  // Итог отряда — ровно тот же, что и у честной сдачи: 200 мм ушли соседу.
-  const partyAfter = purseCp(broke.state, 'hero') + purseCp(broke.state, 'hero-2') + tavernGamblerPurseFor(broke.state, HONEST)
-  assert.equal(partyAfter, partyBefore, 'деньги стола не рождаются: сумма кошельков и кассы прежняя')
-  assert.equal(purseCp(broke.state, 'hero'), purseCp(table, 'hero') - 200, 'герой заплатил за брошенную игру полную ставку')
-
-  // Тот же цикл, доигранный честно, стоит герою ровно столько же: выбор между
-  // «сломать кассу» и «ответить и проиграть» деньгами больше не отличается.
-  const played = run(run(table, [open(HONEST, 200)], { diceValues: [19] }).state, [answer()], { diceValues: [3] })
-  assert.equal(eventOf(played, 'TavernDiceRoundResolved').payload.outcome, 'loss')
-  assert.equal(purseCp(played.state, 'hero'), purseCp(broke.state, 'hero'), 'сломанная касса и проигрыш стоят одного')
-})
-
-test('раунд закрывается только у тех, чью ставку соперник уже не тянет', () => {
-  const rich = { copper: 0, silver: 0, gold: 100, platinum: 0 }
+  // 250 мм: 200 уходят под крупный раунд первого героя, 50 остаются свободными.
   const table = normalizeCampaignState({
     ...campaign({ heroIds: ['hero', 'hero-2'], currency: rich }),
     tavern: { patrons: {}, gamblers: { [HONEST]: { purse_cp: 250, last_played_at_minutes: 0 } } },
   })
-  // Мелкая ставка первого героя соседу по карману и после проигрыша: у него
-  // остаётся 50 мм, а поставлено 10.
-  const first = run(table, [open(HONEST, 10)], { diceValues: [7] }).state
-  const second = run(first, [{ ...open(HONEST, 200), actor_id: 'hero-2' }], { diceValues: [6] }).state
-  const won = run(second, [{ ...answer(), actor_id: 'hero-2' }], { diceValues: [19] })
+  const first = run(table, [open(HONEST, 200)], { diceValues: [7] }).state
+  const second = run(first, [{ ...open(HONEST, 50), actor_id: 'hero-2' }], { diceValues: [6] }).state
+  assert.equal(tavernOpenRoundsAgainst(second, HONEST).length, 2, 'за одним соседом сидят оба героя')
+  assert.equal(tavernFreePurseFor(second, HONEST), 0)
 
-  assert.equal(eventOf(won, 'TavernDiceRoundCancelled'), null, 'чужой раунд по карману — и закрывать его нечего')
-  assert.ok(tavernRoundFor(won.state, 'hero'), 'мелкая игра продолжается')
+  const purseBefore = purseCp(second, 'hero')
+  const won = run(second, [{ ...answer(), actor_id: 'hero-2' }], { diceValues: [19] })
+  assert.equal(eventOf(won, 'TavernDiceRoundResolved').payload.outcome, 'win')
+  assert.equal(eventOf(won, 'TavernDiceRoundCancelled'), null, 'чужой раунд никто не закрывает: он покрыт')
+  assert.ok(tavernRoundFor(won.state, 'hero'), 'крупная игра продолжается')
+  assert.equal(purseCp(won.state, 'hero'), purseBefore, 'и кошелька владельца это не касается')
+  assert.equal(tavernGamblerPurseFor(won.state, HONEST), 200, 'у соседа осталось ровно закреплённое покрытие')
+
   const answered = run(won.state, [answer()], { diceValues: [20] })
   assert.equal(eventOf(answered, 'TavernDiceRoundResolved').payload.outcome, 'win')
+  assert.equal(purseCp(answered.state, 'hero'), purseBefore + 400, 'банк доехал целиком')
+  assert.equal(tavernGamblerPurseFor(answered.state, HONEST), 0)
+})
+
+/**
+ * Сторож на ответе: банк из воздуха не платят даже тогда, когда снимок пришёл
+ * мимо закрепления.
+ *
+ * Живыми командами до этой проверки не добраться — покрытие не даёт кассе упасть
+ * ниже обязательств, — но снимок можно принести и руками: старый журнал, правка
+ * состояния, чужой инструмент. Без сторожа выплата упёрлась бы в ноль кассы
+ * (`tavernPurseTransfer` не пускает её в минус), и разница между «ушло у соседа»
+ * и «пришло герою» родилась бы из ничего. Выход из такого снимка есть и он
+ * общий: встать из-за стола.
+ */
+test('банк не платится из пустой кассы, даже если снимок пришёл мимо закрепления', () => {
+  const opened = run(campaign(), [open(HONEST, 50)], { diceValues: [9] }).state
+  const corrupted = normalizeCampaignState({
+    ...opened,
+    tavern: { ...opened.tavern, gamblers: { [HONEST]: { purse_cp: 10, last_played_at_minutes: 1 } } },
+  })
+  rejects(corrupted, [answer()], 'TAVERN_OPPONENT_BROKE')
+  // И выход из такого снимка тот же, что у всех: сдача.
+  const left = run(corrupted, [leave()])
+  assert.equal(eventOf(left, 'TavernDiceRoundCancelled').payload.reason, 'surrendered')
+  assert.equal(tavernRoundFor(left.state, 'hero'), null)
 })
 
 /**
@@ -632,12 +646,11 @@ test('чужую кость нельзя перебросить, встав из
   // и вставал из-за стола. Теперь он встаёт, и каждый раз это стоит ставки.
   for (const die of [20, 17, 14, 11, 8, 5]) {
     state = run(state, [open(HONEST, 10)], { diceValues: [die] }).state
-    assert.equal(tavernRoundUnanswerableReason(state, tavernRoundFor(state, 'hero')), null, 'кость жива, тупика нет')
     const left = run(state, [leave()])
     const cancelled = eventOf(left, 'TavernDiceRoundCancelled')
-    assert.equal(cancelled.payload.reason, 'surrendered', 'уход от живой кости — это сдача')
-    assert.equal(cancelled.payload.returned_cp, 0, 'и возвращать за неё нечего')
-    assert.equal(cancelled.payload.forfeited_cp, 10)
+    assert.equal(cancelled.payload.reason, 'surrendered', 'уход от кости — это сдача')
+    assert.equal(cancelled.payload.forfeited_cp, 10, 'и возвращать за неё нечего')
+    assert.equal(Object.hasOwn(cancelled.payload, 'returned_cp'), false, 'возвратов у сдачи нет ни одного')
     state = left.state
   }
   assert.equal(purseCp(state), purseBefore - 6 * 10, 'шесть побегов от кости стоили шести ставок')
@@ -655,33 +668,22 @@ test('чужую кость нельзя перебросить, встав из
   assert.equal(purseCp(played), purseCp(state), 'сдача и проигрыш стоят одного')
 })
 
-test('из-за стола встают там, где отвечать уже нечем, и ставка остаётся на столе', () => {
+test('встать из-за стола — это событие со ставкой, а не молчаливая правка состояния', () => {
   const opened = run(campaign(), [open(HONEST, 50)], { diceValues: [14] })
   assert.equal(purseCp(opened.state), 50, 'ставка уже на столе')
-  // Пока герой думал, соперника обыграл дочиста товарищ по отряду: банк ему уже
-  // не закрыть, и раунд стал тупиком — ровно тем, ради которого команда есть.
-  // Состояние здесь ставится руками намеренно: живыми командами раунд закрылся
-  // бы тем же пакетом событий, которым опустела касса (см. зонд выше), а
-  // проверить надо саму команду.
-  const stuck = normalizeCampaignState({
-    ...opened.state,
-    tavern: { ...opened.state.tavern, gamblers: { [HONEST]: { purse_cp: 0, last_played_at_minutes: 1 } } },
-  })
-  assert.equal(tavernRoundUnanswerableReason(stuck, tavernRoundFor(stuck, 'hero')), 'opponent-broke')
-  const left = run(stuck, [leave()])
+  const npcPurseBefore = tavernGamblerPurseFor(opened.state, HONEST)
+  const left = run(opened.state, [leave()])
 
   const cancelled = eventOf(left, 'TavernDiceRoundCancelled')
-  assert.ok(cancelled, 'встать из-за стола — это событие, а не молчаливая правка состояния')
-  assert.equal(cancelled.payload.reason, 'opponent-broke', 'повод называет сервер, а не команда')
-  // Разорить соседа может только отряд, поэтому этот тупик ставку не
-  // возвращает: иначе открытие раунда было бы игрой без риска.
-  assert.equal(cancelled.payload.returned_cp, 0)
+  assert.ok(cancelled, 'закрытие раунда обязано быть событием, а не правкой снимка')
+  assert.equal(cancelled.actor_id, 'hero', 'в летописи стоит владелец раунда')
+  assert.equal(cancelled.payload.reason, 'surrendered', 'повод один, и называет его сервер')
   assert.equal(cancelled.payload.forfeited_cp, 50)
   assert.equal(cancelled.visibility, 'party')
   assert.equal(left.rolls.length, 0, 'броска здесь нет')
   assert.equal(tavernRoundFor(left.state, 'hero'), null)
   assert.equal(purseCp(left.state), 50, 'кошелёк не двинулся: ставка ушла ещё при открытии раунда')
-  assert.equal(tavernGamblerPurseFor(left.state, HONEST), 50, 'а ставка со стола уехала соседу')
+  assert.equal(tavernGamblerPurseFor(left.state, HONEST), npcPurseBefore + 50, 'а ставка со стола уехала соседу')
 
   rejects(left.state, [leave()], 'TAVERN_ROUND_NOT_OPEN')
   const again = run(left.state, [open(CROOK, 10)], { diceValues: [9] })
@@ -709,8 +711,6 @@ test('кружка эля больше не выкупает выход из п�
 
   const drunk = run(opened.state, [drink()])
   assert.equal(purseCp(drunk.state), 0, 'кружка выпита, кошелёк ниже ставки — та самая подстановка зонда')
-  // И это больше не тупик: ставка уплачена, а бедность отвечать не мешает.
-  assert.equal(tavernRoundUnanswerableReason(drunk.state, tavernRoundFor(drunk.state, 'hero')), null)
 
   // Отвечать пустой кошелёк не мешает — раньше здесь стоял INSUFFICIENT_FUNDS.
   const answered = run(drunk.state, [answer()], { diceValues: [20] })
@@ -726,10 +726,16 @@ test('кружка эля больше не выкупает выход из п�
 })
 
 /**
- * Второй тупик того же раунда, и **единственный**, который возвращает ставку:
- * героя выставило за дверь заведение, а не свой же отряд. Отвечать ему запрещено
- * (`TAVERN_PATRON_EJECTED`), значит выход из-за стола обязан остаться открытым —
- * иначе запрет входа запирал бы раунд до конца сцены, а вместе с ним и ставку.
+ * Единственное положение, из которого на кость не ответить: героя выставили за
+ * дверь. Отвечать ему запрещено (`TAVERN_PATRON_EJECTED`), значит выход из-за
+ * стола обязан остаться открытым — иначе запрет входа запирал бы раунд до конца
+ * сцены.
+ *
+ * Ставку этот выход не возвращает, и это разобрано, а не сурово: скандал
+ * выставленный устроил сам, его уход — такая же сдача, как любая другая. Возврат
+ * жил здесь три захода ровно потому, что рядом стоял второй «чужой» тупик
+ * (соперник разорился), и политику приходилось делить на «свой» и «чужой». С
+ * закреплённым покрытием второго тупика нет, а с ним ушло и деление.
  *
  * Состояние «выставлен, и раунд открыт» ставится здесь **руками**, и это сказано
  * прямо: живыми командами его сегодня не получить. Ревью проверило зондом —
@@ -739,7 +745,7 @@ test('кружка эля больше не выкупает выход из п�
  * достижимость, а правило: появится второй производитель запрета — деньги и
  * выход будут посчитаны заранее.
  */
-test('выставленный за дверь встаёт из-за стола, и ставка возвращается ему со стола', () => {
+test('выставленный за дверь закрывает свой раунд сдачей, а не молчанием', () => {
   const opened = run(campaign(), [open(HONEST, 10)], { diceValues: [12] }).state
   const barred = normalizeCampaignState({
     ...opened,
@@ -749,25 +755,21 @@ test('выставленный за дверь встаёт из-за стола
     },
   })
   rejects(barred, [answer()], 'TAVERN_PATRON_EJECTED')
-  assert.equal(tavernRoundUnanswerableReason(barred, tavernRoundFor(barred, 'hero')), 'patron-ejected')
   const purseBefore = purseCp(barred)
   const npcPurseBefore = tavernGamblerPurseFor(barred, HONEST)
   const left = run(barred, [leave()])
   const cancelled = eventOf(left, 'TavernDiceRoundCancelled')
-  assert.equal(cancelled.payload.reason, 'patron-ejected')
-  assert.equal(cancelled.payload.returned_cp, 10)
-  assert.equal(cancelled.payload.forfeited_cp, 0)
+  assert.equal(cancelled.payload.reason, 'surrendered', 'выставленный сдаётся, как и всякий вставший из-за стола')
+  assert.equal(cancelled.payload.forfeited_cp, 10)
   assert.equal(tavernRoundFor(left.state, 'hero'), null)
-  assert.equal(purseCp(left.state), purseBefore + 10, 'выставленному ставку возвращают')
-  // И возвращают со стола, а не из кармана соседа: возврат его кассы не
-  // касается, поэтому и полей о ней в событии нет.
-  assert.equal(tavernGamblerPurseFor(left.state, HONEST), npcPurseBefore)
-  assert.equal(Object.hasOwn(cancelled.payload, 'npc_purse_after_cp'), false, 'касса не двигалась — числа о ней в payload лишние')
+  assert.equal(purseCp(left.state), purseBefore, 'кошелёк не двигается: ставка ушла ещё при открытии раунда')
+  assert.equal(tavernGamblerPurseFor(left.state, HONEST), npcPurseBefore + 10, 'а ставка со стола уехала соседу')
 
   // И путь к этой кнопке у выставленного есть: подсказка зовёт закрыть раунд, а
   // не молчит. До ревью запрет входа обрывал подсказки первой же строкой.
   const hints = suggestedActionsFor(campaignStateForViewer(barred, { id: 'user-1', role: 'player', heroIds: ['hero'] }, 'hero'))
   assert.ok(hints.some((hint) => /встать из-за стола|раунд остаётся закрыть/iu.test(hint.text)), 'выставленному нужен выход из раунда')
+  assert.ok(hints.some((hint) => /достанется сопернику/iu.test(hint.text)), 'и цену подсказка называет честно')
 })
 
 /**
@@ -834,35 +836,92 @@ test('на потолке чужой кассы остаток достаётс�
 })
 
 /**
- * Осознанная граница модуля, и до ревью её не держал ни один тест: уход из сцены
- * с открытым раундом уничтожает эскроу. Дверь — тот же уход от живой кости, и
- * стоить он обязан того же, иначе выход за порог стал бы бесплатным перебросом
- * (`docs/known-limitations.md`).
+ * Дверь — тот же уход от кости, что и скамья, и стоит она того же.
  *
- * Отличие от всех прочих закрытий названо прямо: здесь ставка не достаётся
- * никому — ни соседу, ни заведению, — потому что события, которое бы её
- * передало, при смене сцены не пишется. Тест держит именно это: сумма стола
- * падает **ровно на ставку**, ни больше ни меньше. Следующая правка
- * `SceneAdvanced` разойдётся с документом громко, а не молча.
+ * До правки уход из сцены с открытым раундом **уничтожал** эскроу: раунд уходил
+ * вместе со счётом заведения, кошелёк героя похудел ещё на открытии, а соседу
+ * деньги так и не доезжали — сумма мира падала на ставку без единого события.
+ * Теперь `AdvanceScene` пишет на каждый открытый стол `TavernDiceRoundCancelled`
+ * со сдачей, и деньги переезжают, а не пропадают.
+ *
+ * Проверяется здесь **сумма мира**: кошельки отряда плюс кассы соседей до и
+ * после двери. Замолчи `AdvanceScene` про раунды снова — и тест покраснеет на
+ * самой сумме, а не на тексте события.
  */
-test('дверь закрывает раунд ценой ставки: сумма стола падает ровно на неё', () => {
+test('дверь закрывает раунд сдачей: деньги переезжают соседу, а не исчезают из мира', () => {
   const rich = { copper: 0, silver: 0, gold: 100, platinum: 0 }
-  const table = campaign({ currency: rich })
-  const tableBefore = purseCp(table) + tavernGamblerPurseFor(table, HONEST)
-  const opened = run(table, [open(HONEST, 200)], { diceValues: [19] }).state
+  const heroIds = ['hero', 'hero-2']
+  const table = campaign({ heroIds, currency: rich })
+  const worldCp = (state) => heroIds.reduce((total, id) => total + purseCp(state, id), 0)
+    + tavernGamblerPurseFor(state, HONEST) + tavernGamblerPurseFor(state, CROOK)
+  const worldBefore = worldCp(table)
+
+  // За столом сидят оба: один против честного соседа, второй против шулера — так
+  // проверяется и то, что закрываются **все** столы зала, а не первый попавшийся.
+  const first = run(table, [open(HONEST, 200)], { diceValues: [19] }).state
+  const opened = run(first, [{ ...open(CROOK, 50), actor_id: 'hero-2' }], { diceValues: [11] }).state
   assert.equal(tavernRoundFor(opened, 'hero').stake_cp, 200, 'ставка лежит на столе')
+  const honestPurseBefore = tavernGamblerPurseFor(opened, HONEST)
+  const crookPurseBefore = tavernGamblerPurseFor(opened, CROOK)
 
-  const moved = replayEvents(opened, [{
-    event_id: 'evt-scene', command_id: 'cmd-scene', event_type: 'SceneAdvanced', actor_id: null,
-    target_ids: [], visibility: 'party',
-    payload: { scene: { title: 'Тёмный лес', location: 'Тёмный лес', location_id: 'forest' } },
-    state_version_after: opened.state_version + 1,
-  }])
+  const moved = run(opened, [{
+    command_type: 'AdvanceScene',
+    actor_id: 'hero',
+    scene_args: { location: 'Тёмный лес', title: 'Тёмный лес', objective: 'Уйти по тракту' },
+  }], { context: { isAdmin: true } })
 
-  assert.equal(tavernRoundFor(moved, 'hero'), null, 'раунд уходит вместе со сценой')
-  assert.equal(purseCp(moved), purseCp(opened), 'кошелёк не двигается: ставка ушла ещё при открытии раунда')
-  assert.equal(tavernGamblerPurseFor(moved, HONEST), tavernGamblerPurseFor(opened, HONEST), 'соседу ставка не достаётся')
-  assert.equal(purseCp(moved) + tavernGamblerPurseFor(moved, HONEST), tableBefore - 200, 'сумма стола падает ровно на ставку')
+  const cancelled = moved.events.filter((event) => event.event_type === 'TavernDiceRoundCancelled')
+  assert.equal(cancelled.length, 2, 'дверь закрывает каждый открытый стол своим событием')
+  assert.deepEqual(cancelled.map((event) => event.payload.hero_id), ['hero', 'hero-2'], 'порядок закреплён героями')
+  for (const event of cancelled) {
+    assert.equal(event.payload.reason, 'surrendered', 'уход дверью — та же сдача')
+    assert.equal(event.actor_id, event.payload.hero_id, 'в летописи стоит владелец раунда, а не тот, кто увёл отряд')
+  }
+  // События отмены идут **до** смены сцены: после неё счёта заведения уже нет, и
+  // раунду, который надо закрыть, взяться было бы неоткуда.
+  assert.ok(
+    moved.events.findIndex((event) => event.event_type === 'TavernDiceRoundCancelled')
+      < moved.events.findIndex((event) => event.event_type === 'SceneAdvanced'),
+    'столы закрываются раньше, чем сцена сменилась',
+  )
+
+  assert.equal(tavernRoundFor(moved.state, 'hero'), null, 'раунд уходит вместе со сценой')
+  assert.equal(purseCp(moved.state), purseCp(opened), 'кошелёк не двигается: ставка ушла ещё при открытии раунда')
+  assert.equal(tavernGamblerPurseFor(moved.state, HONEST), honestPurseBefore + 200, 'ставка со стола уехала соседу')
+  assert.equal(tavernGamblerPurseFor(moved.state, CROOK), crookPurseBefore + 50)
+  assert.equal(worldCp(moved.state), worldBefore, 'сумма кошельков и касс через дверь не меняется')
+})
+
+/**
+ * Тот же переезд, когда за одним соседом сидит весь отряд: касса обязана идти
+ * бегущим числом, а не снимком «до команды», иначе вторая сдача затрёт первую и
+ * часть денег пропадёт молча.
+ */
+test('дверь складывает ставки в кассу соседа по очереди, а не поверх друг друга', () => {
+  const rich = { copper: 0, silver: 0, gold: 100, platinum: 0 }
+  const heroIds = ['hero', 'hero-2', 'hero-3']
+  const table = campaign({ heroIds, currency: rich })
+  const worldCp = (state) => heroIds.reduce((total, id) => total + purseCp(state, id), 0) + tavernGamblerPurseFor(state, HONEST)
+  const worldBefore = worldCp(table)
+
+  let opened = run(table, [open(HONEST, 50)], { diceValues: [12] }).state
+  opened = run(opened, [{ ...open(HONEST, 50), actor_id: 'hero-2' }], { diceValues: [13] }).state
+  opened = run(opened, [{ ...open(HONEST, 10), actor_id: 'hero-3' }], { diceValues: [14] }).state
+  const purseBefore = tavernGamblerPurseFor(opened, HONEST)
+
+  const moved = run(opened, [{
+    command_type: 'AdvanceScene',
+    actor_id: 'hero',
+    scene_args: { location: 'Дорога', title: 'Дорога', objective: 'Идти дальше' },
+  }], { context: { isAdmin: true } })
+  const cancelled = moved.events.filter((event) => event.event_type === 'TavernDiceRoundCancelled')
+  assert.deepEqual(
+    cancelled.map((event) => event.payload.npc_purse_before_cp),
+    [purseBefore, purseBefore + 50, purseBefore + 100],
+    'касса идёт бегущим числом: каждая следующая ставка ложится поверх предыдущей',
+  )
+  assert.equal(tavernGamblerPurseFor(moved.state, HONEST), purseBefore + 110, 'все три ставки легли в кассу')
+  assert.equal(worldCp(moved.state), worldBefore, 'сумма кошельков и кассы через дверь не меняется')
 })
 
 // ---------------------------------------------------------------------------
@@ -1276,13 +1335,24 @@ test('подсказки зовут за стол, а с открытой кос
   assert.ok(hints.some((hint) => /ответить на бросок/iu.test(hint.text)))
   assert.ok(hints.some((hint) => /16/u.test(hint.text)), 'подсказка называет число, которое надо перебить')
 
-  // А если отвечать уже нечем — зовёт из-за стола, а не на бросок, которого не
-  // будет. Доступная ставка соседа приезжает карточкой готовым числом.
+  // Пустая касса соседа подсказку не меняет: банк по этому раунду закреплён за
+  // ним с открытия, и ответить на кость можно всё равно.
   const broke = normalizeCampaignState({
     ...opened.state,
-    tavern: { ...opened.state.tavern, gamblers: { [HONEST]: { purse_cp: 0, last_played_at_minutes: 1 } } },
+    tavern: { ...opened.state.tavern, gamblers: { [HONEST]: { purse_cp: 10, last_played_at_minutes: 1 } } },
   })
-  const stuck = suggestedActionsFor(campaignStateForViewer(broke, viewer, 'hero'))
+  assert.ok(suggestedActionsFor(campaignStateForViewer(broke, viewer, 'hero')).some((hint) => /ответить на бросок/iu.test(hint.text)))
+
+  // А выставленному за дверь зовёт из-за стола: отвечать ему нельзя, и цена
+  // выхода названа числом.
+  const barred = normalizeCampaignState({
+    ...opened.state,
+    tavern: {
+      ...opened.state.tavern,
+      patrons: { ...opened.state.tavern.patrons, hero: { ...opened.state.tavern.patrons.hero, ejected: true } },
+    },
+  })
+  const stuck = suggestedActionsFor(campaignStateForViewer(barred, viewer, 'hero'))
   assert.ok(stuck.some((hint) => /встать из-за стола/iu.test(hint.text)))
   assert.equal(stuck.some((hint) => /ответить на бросок/iu.test(hint.text)), false)
 })
@@ -1303,33 +1373,21 @@ test('летопись говорит о раунде живой строкой,
   // что деньги ушли из кошелька.
   assert.match(openedText, /легли на стол|ставку сделал/iu)
 
-  // Снятый раунд тоже говорит по-русски, и говорит про деньги разное — по
-  // виновнику: разоренного отрядом соседа летопись возвратом не обещает, а
-  // выставленному за дверь обещает.
+  // Снятый раунд тоже говорит по-русски, и говорит одно: сдача, ставка соседу.
+  // Второй строки у него нет — тупиков, ради которых её заводили, не бывает.
   const abandoned = run(win.state, [open(HONEST, 10)], { diceValues: [8] }).state
-  const stuck = normalizeCampaignState({
-    ...abandoned,
-    tavern: { ...abandoned.tavern, gamblers: { [HONEST]: { purse_cp: 0, last_played_at_minutes: 1 } } },
-  })
-  const stoodUp = run(stuck, [leave()])
-  const leaveText = combatNarration(stoodUp.events, stoodUp.state)
-  assert.match(leaveText, /банк ему нечем закрыть/iu)
-  assert.equal(/возвращается/iu.test(leaveText), false, 'разорил соседа отряд — возврата нет и в летописи')
-  assert.equal(/Tavern[A-Z]/u.test(leaveText), false)
-
-  const barred = normalizeCampaignState({
-    ...abandoned,
-    tavern: {
-      ...abandoned.tavern,
-      patrons: { ...abandoned.tavern.patrons, hero: { ...abandoned.tavern.patrons.hero, ejected: true } },
-    },
-  })
-  const ejectedText = combatNarration(run(barred, [leave()]).events, barred)
-  assert.match(ejectedText, /возвращается/iu)
-
   const surrendered = run(abandoned, [leave()])
   const surrenderText = combatNarration(surrendered.events, surrendered.state)
   assert.match(surrenderText, /встаёт, не ответив/iu)
   assert.match(surrenderText, /10 мм со стола забирает/iu)
+  assert.equal(/возвращается/iu.test(surrenderText), false, 'возвратов у сдачи нет и в летописи')
   assert.equal(/Tavern[A-Z]/u.test(surrenderText), false)
+
+  // И то же самое, когда стол закрыла дверь: событие одно, значит и строка одна.
+  const moved = run(abandoned, [{
+    command_type: 'AdvanceScene',
+    actor_id: 'hero',
+    scene_args: { location: 'Дорога', title: 'Дорога', objective: 'Идти дальше' },
+  }], { context: { isAdmin: true } })
+  assert.match(combatNarration(moved.events, moved.state), /встаёт, не ответив/iu)
 })

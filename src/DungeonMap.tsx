@@ -925,28 +925,24 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // закрыть. Кнопка обязана показать это до клика, а не после отказа.
   const tavernOpponentMaxStakeCp = Number(tavernOpponents.find((npc) => npc.id === chosenTavernOpponentId)?.max_stake_cp ?? 0)
   const tavernActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
-  // Почему открытый раунд может быть уже не доиграть — и во что герою обойдётся
-  // уход из-за стола. Повод приезжает карточкой готовым словом: соперника мог
-  // обыграть дочиста товарищ по отряду, а самого героя — выставить за дверь.
+  // Ответить на кость нельзя ровно в одном положении: героя выставили за дверь,
+  // и с ним больше не садятся. Тупиком это не является — встать из-за стола он
+  // может, — но кнопки ответа обязаны гаснуть до клика, а не приносить отказ
+  // после него.
   //
-  // Своей арифметики здесь нет намеренно. Встать из-за стола можно всегда, но
-  // ставка уже лежит на столе (её сняли с кошелька, когда кость легла), и
-  // возвращается она только из этих двух тупиков — во всех прочих остаётся
-  // сопернику. Судит об этом сервер (`tavernRoundUnanswerableReason`), и второго
-  // ответа быть не должно: иначе панель обещала бы возврат там, где его не будет.
-  const tavernUnanswerableReason = tavernRound?.unanswerable_reason ?? null
-  const tavernOpponentCannotPay = tavernUnanswerableReason === 'opponent-broke'
-  const tavernPatronEjected = tavernUnanswerableReason === 'patron-ejected'
-  const tavernRoundUnanswerable = Boolean(tavernRound && tavernUnanswerableReason)
-  // Ставку возвращает **один** тупик, и это не тот же вопрос, что «можно ли ещё
-  // ответить»: разорить соседа может только сам отряд, поэтому за его пустую
-  // кассу ставку со стола не отдают. За дверь героя выставляет заведение — вот
-  // за это отдают. Судит об этом сервер, доска только называет цену до клика.
-  const tavernStakeReturned = tavernPatronEjected
-  // Сдача необратима и стоит всей ставки, поэтому идёт вторым щелчком — тем же
-  // порядком, каким на этой панели проходят команды с целью. Тупик вторым
-  // щелчком не закрывают: там терять нечего, а лишний вопрос только мешает.
-  const tavernSurrenderPending = Boolean(tavernRound && !tavernRoundUnanswerable && tavernSurrenderRoundId === tavernRound.id)
+  // Своей арифметики чужой кассы здесь нет и быть не должно: поводов «отвечать
+  // нечем» из-за денег соседа не существует по построению — касса закрепляет
+  // выплату за раундом с самого открытия (`tavernFreePurseFor`,
+  // `server/tavern-life.mjs`).
+  const tavernPatronEjected = tavern?.ejected === true
+  // Уход из-за стола стоит всей ставки всегда: она уже лежит на столе (её сняли
+  // с кошелька, когда кость легла), и назад её приносит только расчёт.
+  // Возвратов у сдачи нет ни одного, поэтому и вопрос «вернут ли» доска больше
+  // не задаёт — она называет цену.
+  //
+  // Раз цена одна и необратима, подтверждение спрашивается всегда — тем же
+  // порядком, каким на этой панели проходят команды с целью.
+  const tavernSurrenderPending = Boolean(tavernRound && tavernSurrenderRoundId === tavernRound.id)
   const dossierSceneNpc = npcDossier ? sceneNpcs.find((npc) => npc.id === npcDossier.npcId) ?? null : null
   const dossierCaptive = dossierSceneNpc ? captiveByNpcId.get(dossierSceneNpc.id) ?? null : null
   const dossierSocialNpc = dossierSceneNpc
@@ -2348,8 +2344,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {/* Заметка о запрете входа и блок раунда идут **рядом**, а не через
               «или»: выставленный за дверь остаётся с открытым раундом на руках,
               и до ревью панель рисовала ему одну заметку — кнопки «встать из-за
-              стола» выставленный не видел вовсе, хотя движок её ему разрешает и
-              ставку возвращает (выставил себя не он сам). */}
+              стола» выставленный не видел вовсе, хотя движок её ему разрешает.
+              Возврата за ней нет: скандал он устроил сам, и его уход — такая же
+              сдача, как любая другая. */}
           {tavern.ejected && <p className="tavern-note">Отсюда героя выставили: за этим столом ему больше не наливают и в кости с ним не садятся.</p>}
           {tavernRound
             ? <>
@@ -2366,10 +2363,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   key={approach.id}
                   type="button"
                   className={`tavern-approach approach-${approach.id}`}
-                  disabled={tavernActionsBlocked || tavernRoundUnanswerable}
-                  title={tavernOpponentCannotPay
-                    ? 'Соперник спустил всё: банк ему уже нечем закрыть'
-                    : tavernPatronEjected ? 'Героя выставили за дверь: доигрывать не с кем' : approach.summary}
+                  disabled={tavernActionsBlocked || tavernPatronEjected}
+                  title={tavernPatronEjected ? 'Героя выставили за дверь: доигрывать не с кем' : approach.summary}
                   onClick={() => { void onAnswerTavernDiceRound(approach.id) }}
                 >
                   {approach.icon}
@@ -2377,32 +2372,26 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   <small>{approach.summary}</small>
                 </button>)}
               </div>
-              {/* Встать из-за стола можно всегда — но не всегда даром, и цену
+              {/* Встать из-за стола можно всегда — но никогда даром, и цену
                   игрок обязан увидеть **до** клика, а не в подписи под ним.
-                  Ставка уже ушла из кошелька на стол, поэтому уход от живой
-                  кости — это сдача: она остаётся сопернику ровно как при
-                  проигрыше. Возвращается она из одного тупика (героя выставили
-                  за дверь), и судит об этом сервер, а не доска.
+                  Ставка уже ушла из кошелька на стол, поэтому уход от кости —
+                  это сдача: она остаётся сопернику ровно как при проигрыше.
+                  Возвратов у неё нет ни одного, и обещать их доска не может.
 
-                  Поэтому кнопка двухщелчковая ровно там, где щелчок необратим:
-                  живая кость сначала спрашивает, тупик закрывается сразу. Тем же
-                  порядком на этой панели идут команды с целью
+                  Поэтому кнопка двухщелчковая всегда: щелчок необратим и стоит
+                  до 200 мм. Тем же порядком на этой панели идут команды с целью
                   (`combat-command-confirmation`), и заводить сдаче свой обычай
-                  незачем. */}
+                  незачем. Выставленному за дверь она нужна тем более: ответить
+                  ему нельзя, а деньги у него на столе. */}
               <div className={`tavern-leave${tavernSurrenderPending ? ' confirming' : ''}`}>
                 <button
                   type="button"
                   className="tavern-action action-leave"
                   disabled={tavernActionsBlocked}
-                  title={tavernStakeReturned
-                    ? 'Раунд закроется без броска, ставка вернётся в кошелёк'
-                    : tavernRoundUnanswerable
-                      ? 'Раунд закроется без броска, ставка со стола останется соседу'
-                      : tavernSurrenderPending
-                        ? `Подтвердите: ${tavernRound.stake_cp} мм со стола останутся сопернику`
-                        : `Спросит подтверждения: ставка в ${tavernRound.stake_cp} мм со стола останется сопернику`}
+                  title={tavernSurrenderPending
+                    ? `Подтвердите: ${tavernRound.stake_cp} мм со стола останутся сопернику`
+                    : `Спросит подтверждения: ставка в ${tavernRound.stake_cp} мм со стола останется сопернику`}
                   onClick={() => {
-                    if (tavernRoundUnanswerable) { void onLeaveTavernDiceRound(); return }
                     if (!tavernSurrenderPending) { setTavernSurrenderRoundId(tavernRound.id); return }
                     setTavernSurrenderRoundId('')
                     void onLeaveTavernDiceRound()
@@ -2414,13 +2403,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   onClick={() => setTavernSurrenderRoundId('')}
                 ><X size={13} />Остаться за столом</button>}
                 <small>
-                  {tavernOpponentCannotPay
-                    ? `${tavernRound.npc_name || 'Соперник'} спустил всё: банк в ${tavernRound.stake_cp * 2} мм ему уже нечем закрыть — раунд закрывается, но ставка в ${tavernRound.stake_cp} мм со стола не возвращается: соседа обыграл ваш же отряд.`
-                    : tavernPatronEjected
-                      ? `Доигрывать выставленному нельзя, но и ставку за это не берут: раунд закрывается, ${tavernRound.stake_cp} мм возвращаются со стола.`
-                      : tavernSurrenderPending
-                        ? `Кость ${tavernRound.npc_name || 'соперника'} ещё жива: подтвердите — и ${tavernRound.stake_cp} мм со стола уйдут ему.`
-                        : `Ставка в ${tavernRound.stake_cp} мм уже на столе: встать можно, но это сдача — ставку заберёт ${tavernRound.npc_name || 'соперник'}.`}
+                  {tavernPatronEjected
+                    ? `Доигрывать выставленному нельзя, и остаётся только сдаться: раунд закроется, а ставку в ${tavernRound.stake_cp} мм со стола заберёт ${tavernRound.npc_name || 'соперник'}.`
+                    : tavernSurrenderPending
+                      ? `Кость ${tavernRound.npc_name || 'соперника'} ещё жива: подтвердите — и ${tavernRound.stake_cp} мм со стола уйдут ему.`
+                      : `Ставка в ${tavernRound.stake_cp} мм уже на столе: встать можно, но это сдача — ставку заберёт ${tavernRound.npc_name || 'соперник'}.`}
                 </small>
               </div>
             </>

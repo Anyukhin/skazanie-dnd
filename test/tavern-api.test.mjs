@@ -484,11 +484,10 @@ test('уход от живой кости стоит ставки, и кружк
 
   const before = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
   assert.ok(before.body.state.tavern.round, 'кость соперника на столе')
-  assert.equal(before.body.state.tavern.round.unanswerable_reason, null, 'раунд доигрывается, и это видно карточкой')
   assert.equal(purseCp(before.body), 0, 'ставка уплачена сразу: в кармане пусто')
 
   // Обход прошлой заплаты: кружку эля с пустым кошельком уже не купить, и даже
-  // купленная тупика бы не сделала — повод `hero-broke` из набора убран.
+  // купленная тупика бы не сделала — поводов «отвечать нечем» не осталось вовсе.
   const drank = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
     method: 'POST',
     cookie: adminCookie,
@@ -497,7 +496,7 @@ test('уход от живой кости стоит ставки, и кружк
   assert.equal(drank.status, 400, drank.text)
   assert.equal(drank.body.code, 'INSUFFICIENT_FUNDS')
   const stillOpen = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
-  assert.equal(stillOpen.body.state.tavern.round.unanswerable_reason, null, 'бедность тупиком не считается')
+  assert.ok(stillOpen.body.state.tavern.round, 'раунд по-прежнему открыт: бедность отвечать не мешает')
 
   // Встать из-за стола можно — но это сдача, и ставка со стола не возвращается.
   const left = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
@@ -512,8 +511,8 @@ test('уход от живой кости стоит ставки, и кружк
   const cancelled = (left.body.mechanics ?? []).find((event) => event.event_type === 'TavernDiceRoundCancelled')
   assert.ok(cancelled, `закрытие раунда обязано доехать игроку событием\n${left.text}`)
   assert.equal(cancelled.payload.reason, 'surrendered')
-  assert.equal(cancelled.payload.returned_cp, 0)
   assert.equal(cancelled.payload.forfeited_cp, 200)
+  assert.equal(Object.hasOwn(cancelled.payload, 'returned_cp'), false, 'возвратов у сдачи нет ни одного')
   // Ставка уехала в карман соседа: деньги за этим столом переезжают, а не
   // исчезают. Здесь это видно, потому что запрос идёт от ведущего — игроку
   // точные суммы чужой кассы режет проекция (`test/tavern-life.test.mjs`).

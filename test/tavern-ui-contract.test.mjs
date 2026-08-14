@@ -125,26 +125,21 @@ test('открытый раунд можно закрыть без броска,
   assert.match(app, /onLeaveTavernDiceRound=\{/u)
   assert.match(board, /onLeaveTavernDiceRound\(\)/u)
   assert.match(board, /Встать из-за стола/u)
-  // Отвечать на кость бывает нечем: соперника обыграл дочиста товарищ по
-  // отряду или героя выставили за дверь. Кнопки ответа обязаны гаснуть до
-  // клика, а не приносить отказ после него.
-  assert.match(board, /tavernRoundUnanswerable/u)
-  assert.match(board, /Соперник спустил всё/u)
+  // Ответ гасит ровно одно положение — запрет входа: с выставленным за дверь не
+  // садятся. Кнопки обязаны гаснуть до клика, а не приносить отказ после него.
+  assert.match(board, /const tavernPatronEjected = tavern\?\.ejected === true/u)
+  assert.match(board, /disabled=\{tavernActionsBlocked \|\| tavernPatronEjected\}/u)
   assert.match(styles, /\.tavern-leave \{/u)
   // Сама кнопка «встать» при этом горит всегда: ставка уже на столе, и уход от
-  // живой кости — это сдача, а не запрещённый ход. Цену обязана называть
-  // подпись, а не отказ сервера.
+  // кости — это сдача, а не запрещённый ход. Цену обязана называть подпись, а не
+  // отказ сервера.
   assert.match(board, /className="tavern-action action-leave"[\s\S]{0,120}disabled=\{tavernActionsBlocked\}/u)
-  assert.match(board, /ставка вернётся в кошелёк/u)
   assert.match(board, /ставку заберёт/u)
-  // Повод считает сервер, а доска его только читает: своей арифметики чужой
-  // кассы и своего кошелька здесь быть не должно — иначе панель обещала бы
-  // возврат там, где ставка останется сопернику.
-  assert.match(board, /tavernRound\?\.unanswerable_reason \?\? null/u)
+  // Ни своей арифметики чужой кассы, ни своего кошелька: возвратов у сдачи нет
+  // ни одного, и обещать их доска не имеет права ни при каком счёте.
   assert.doesNotMatch(board, /activeHeroPurseCp < tavernRound/u)
-  // Возврат обещает **один** тупик — запрет входа: разорить соседа может только
-  // сам отряд, и за это ставку со стола не отдают.
-  assert.match(board, /const tavernStakeReturned = tavernPatronEjected/u)
+  assert.doesNotMatch(board, /unanswerable/u, 'тупиков не бывает — читать доске нечего')
+  assert.doesNotMatch(board, /вернётся в кошелёк|возвращаются со стола/u, 'ставка со стола не возвращается ничем')
 })
 
 /**
@@ -157,17 +152,16 @@ test('открытый раунд можно закрыть без броска,
  * (`combat-command-confirmation`): цель фиксируется, а команда ждёт
  * подтверждения.
  *
- * Проверяется разница, а не текст: живая кость спрашивает второй раз, тупик
- * закрывается сразу — там терять нечего, и лишний вопрос только мешает.
+ * Спрашивается подтверждение **всегда**: цена у сдачи одна и возвратов нет, а
+ * значит нет и положения, из которого терять нечего.
  */
-test('сдача от живой кости уходит вторым щелчком, а тупик закрывается сразу', () => {
+test('сдача уходит вторым щелчком, и спрашивают об этом всегда', () => {
   // Подтверждение ключуется раундом, а не флагом: пока игрок думает, раунд
   // может закрыться и открыться заново уже против другого числа.
   assert.match(board, /const \[tavernSurrenderRoundId, setTavernSurrenderRoundId\] = useState\(''\)/u)
-  assert.match(board, /tavernSurrenderPending = Boolean\(tavernRound && !tavernRoundUnanswerable && tavernSurrenderRoundId === tavernRound\.id\)/u)
-  // Тупик — сразу, живая кость — через подтверждение, и оба пути в одном
-  // обработчике: второго ответа на «что делает эта кнопка» быть не должно.
-  assert.match(board, /if \(tavernRoundUnanswerable\) \{ void onLeaveTavernDiceRound\(\); return \}/u)
+  assert.match(board, /tavernSurrenderPending = Boolean\(tavernRound && tavernSurrenderRoundId === tavernRound\.id\)/u)
+  // Путь один, и он через подтверждение: второго ответа на «что делает эта
+  // кнопка» быть не должно.
   assert.match(board, /if \(!tavernSurrenderPending\) \{ setTavernSurrenderRoundId\(tavernRound\.id\); return \}/u)
   // Цена стоит на самой кнопке подтверждения, а не только в подписи под ней.
   assert.match(board, /Подтвердить сдачу · −\$\{tavernRound\.stake_cp\} мм/u)
@@ -177,12 +171,12 @@ test('сдача от живой кости уходит вторым щелчк
 })
 
 /**
- * Зонд повторного ревью: у тупика `patron-ejected` не было пути с экрана.
+ * Зонд повторного ревью: у выставленного за дверь не было пути с экрана.
  *
- * Панель рисовала выставленному за дверь **только** заметку — блок раунда стоял
- * в другой ветке того же тернарника и до него не доходил, — поэтому кнопки
- * «Встать из-за стола» он не видел, хотя движок её ему разрешает и ставку
- * возвращает. Подсказки молчали тем же условием (`server/action-hints.mjs`).
+ * Панель рисовала ему **только** заметку — блок раунда стоял в другой ветке того
+ * же тернарника и до него не доходил, — поэтому кнопки «Встать из-за стола» он
+ * не видел, хотя движок её ему разрешает и деньги у него на столе. Подсказки
+ * молчали тем же условием (`server/action-hints.mjs`).
  *
  * Проверяется структура, а не текст: заметка о запрете входа и блок раунда
  * обязаны стоять рядом, а не через «или».
@@ -196,50 +190,50 @@ test('выставленному за дверь панель показывае
 })
 
 /**
- * Повод встать из-за стола приезжает карточкой готовым словом — тем же, по
- * которому движок и решает, пускать ли героя. Второго ответа быть не должно.
+ * Карточка раунда рассказывает только про стол: чужая кость, ставка и число,
+ * которое надо перебить. Поля «почему раунд уже не доиграть» у неё нет, и это не
+ * пропуск — тупиков не бывает: касса соперника закрепляет выплату за раундом с
+ * самого открытия, а запрет входа приезжает своим полем карточки.
+ *
+ * Три положения проверяются разом, потому что все три когда-то давали доске
+ * повод погасить кнопку ответа или пообещать возврат ставки.
  */
-test('карточка называет, можно ли ещё доиграть раунд', () => {
+test('карточка раунда не обещает ни тупика, ни возврата ставки', () => {
+  const round = { id: 'r-1', hero_id: 'hero', npc_id: 'barkeep', npc_name: 'Трактирщик Бажен', stake_cp: 200, npc_total: 17 }
   const state = normalizeCampaignState({
     ...campaign(),
-    tavern: {
-      patrons: {
-        hero: {
-          drinks: 0,
-          scandals: 0,
-          ejected: false,
-          round: { id: 'r-1', hero_id: 'hero', npc_id: 'barkeep', npc_name: 'Трактирщик Бажен', stake_cp: 200, npc_total: 17 },
-        },
-      },
-      gamblers: {},
-    },
+    tavern: { patrons: { hero: { drinks: 0, scandals: 0, ejected: false, round } }, gamblers: {} },
   })
   const viewer = { id: 'user-1', role: 'player', heroIds: ['hero'] }
-  assert.equal(campaignStateForViewer(state, viewer, 'hero').tavern.round.unanswerable_reason, null, 'доиграть можно — уход будет сдачей')
+  const cardFor = (candidate) => campaignStateForViewer(candidate, viewer, 'hero').tavern
+  assert.equal(cardFor(state).round.target, 18, 'карточка называет число, которое надо перебить')
+  assert.equal(Object.hasOwn(cardFor(state).round, 'unanswerable_reason'), false, 'поводов у неё больше нет')
 
+  // Пустая касса соседа карточку не меняет: банк по этому раунду закреплён за
+  // ним с открытия, и доиграть его можно при любом счёте соседа.
   const broke = normalizeCampaignState({
     ...state,
     tavern: { ...state.tavern, gamblers: { barkeep: { purse_cp: 0, last_played_at_minutes: 1 } } },
   })
-  assert.equal(campaignStateForViewer(broke, viewer, 'hero').tavern.round.unanswerable_reason, 'opponent-broke')
+  assert.equal(cardFor(broke).round.id, 'r-1')
+  assert.equal(JSON.stringify(cardFor(broke)).includes('unanswerable'), false)
 
+  // Запрет входа приезжает своим полем — по нему доска и гасит кнопки ответа.
   const barred = normalizeCampaignState({
     ...state,
-    tavern: {
-      ...state.tavern,
-      patrons: { hero: { ...state.tavern.patrons.hero, ejected: true } },
-    },
+    tavern: { ...state.tavern, patrons: { hero: { ...state.tavern.patrons.hero, ejected: true } } },
   })
-  assert.equal(campaignStateForViewer(barred, viewer, 'hero').tavern.round.unanswerable_reason, 'patron-ejected')
+  assert.equal(cardFor(barred).ejected, true)
+  assert.ok(cardFor(barred).round, 'а раунд у выставленного остаётся: его ещё надо закрыть')
 
-  // Пустой кошелёк тупиком больше не считается: ставка ушла на стол при
-  // открытии раунда, и отвечать бедность не мешает. Пока считался — кружка эля
-  // за 4 мм выкупала бесплатный выход из проигрышного раунда.
+  // Пустой кошелёк тупиком не считается: ставка ушла на стол при открытии
+  // раунда, и отвечать бедность не мешает. Пока считался — кружка эля за 4 мм
+  // выкупала бесплатный выход из проигрышного раунда.
   const poor = normalizeCampaignState({
     ...state,
     players: state.players.map((player) => ({ ...player, currency: { copper: 1, silver: 0, gold: 0, platinum: 0 } })),
   })
-  assert.equal(campaignStateForViewer(poor, viewer, 'hero').tavern.round.unanswerable_reason, null)
+  assert.equal(cardFor(poor).round.id, 'r-1')
 })
 
 test('панель таверны оформлена и не ломает узкий экран', () => {

@@ -317,15 +317,10 @@ function tacticalNarrationLines(events, state) {
       else meaningful.push(`${actor} не сводит глаз с чужих рук и раунд не доигрывает.`)
       if (payload.watch_result === 'clean') meaningful.push('Ничего подозрительного: играют честно.')
     } else if (event.event_type === 'TavernDiceRoundCancelled') {
-      // Раунд закрылся без броска, и цена у этого разная — по виновнику, а не
-      // по факту тупика. Разорил соседа отряд (обыграть его больше некому), и
-      // ставка со стола к герою не возвращается. Возврат остаётся запрету
-      // входа: выставило героя заведение.
-      meaningful.push(payload.reason === 'opponent-broke'
-        ? `${String(payload.npc_name || 'Сосед по столу')} выгреб карманы и разводит руками: банк ему нечем закрыть. Игры не будет, а ${Math.max(0, Number(payload.forfeited_cp) || 0)} мм со стола ${actor} уже не забирает.`
-        : payload.reason === 'patron-ejected'
-          ? `${actor} доигрывать не будет: из зала выставили. Ставка в ${Math.max(0, Number(payload.returned_cp) || 0)} мм возвращается со стола.`
-          : `${actor} отодвигает скамью и встаёт, не ответив на кость. ${Math.max(0, Number(payload.forfeited_cp) || 0)} мм со стола забирает ${String(payload.npc_name || 'сосед')}.`)
+      // Раунд закрылся без броска, и повод у этого один — сдача. Встал ли герой
+      // из-за стола сам или вышел из зала дверью, цена одна: ставка со стола
+      // достаётся соседу ровно как при проигрыше.
+      meaningful.push(`${actor} отодвигает скамью и встаёт, не ответив на кость. ${Math.max(0, Number(payload.forfeited_cp) || 0)} мм со стола забирает ${String(payload.npc_name || 'сосед')}.`)
     } else if (event.event_type === 'TavernCheatCaught') {
       meaningful.push(`Скандал за столом: ${String(payload.npc_name || 'сосед')} во весь голос объявляет героя шулером. Это видели.`)
     } else if (event.event_type === 'TavernCheatExposed') {
