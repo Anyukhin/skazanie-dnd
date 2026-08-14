@@ -467,7 +467,7 @@ export function JournalView({ state }: { state: GameState }) {
             <header><Swords size={15} /><strong>Боевая хроника</strong><span>{battleLog.length}</span></header>
             {battleLog.map((event) => <article className="combat-journal-entry" key={event.id}>
               <i>{event.round ?? event.sceneTurn ?? '·'}</i>
-              <div><small>{event.type === 'attack' ? 'АТАКА' : event.type === 'move' ? 'ПЕРЕМЕЩЕНИЕ' : event.type === 'turn-end' ? 'ХОД' : event.type.startsWith('death-save') || event.type === 'hero-stabilized' ? 'СУДЬБА ГЕРОЯ' : event.type.startsWith('concentration-') ? 'КОНЦЕНТРАЦИЯ' : 'БОЙ'}</small><p>{battleEventText(state, event)}</p></div>
+              <div><small>{event.type === 'attack' ? 'АТАКА' : event.type === 'move' ? 'ПЕРЕМЕЩЕНИЕ' : event.type === 'turn-end' ? 'ХОД' : event.type === 'npc-item' ? 'СНАРЯЖЕНИЕ' : event.type.startsWith('death-save') || event.type === 'hero-stabilized' ? 'СУДЬБА ГЕРОЯ' : event.type.startsWith('concentration-') ? 'КОНЦЕНТРАЦИЯ' : 'БОЙ'}</small><p>{battleEventText(state, event)}</p></div>
             </article>)}
           </section>}
         </div>

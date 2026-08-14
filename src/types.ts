@@ -942,7 +942,7 @@ export type BattleEvent = {
   id: string
   sceneTurn?: number
   round?: number
-  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken'
+  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'npc-item' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken'
   actorId?: string
   actorKind?: 'player' | 'enemy' | 'summon' | 'system'
   targetId?: string
@@ -991,6 +991,13 @@ export type BattleEvent = {
   immunity?: string | null
   actionId?: string
   actionName?: string
+  /**
+   * Снаряжение противника: закрытая тактика сервера и её готовая подпись.
+   * Ни имени вещи, ни каталожного ключа здесь нет — карман живого противника
+   * закрыт до обыска тела, и журнал показывает поступок, а не инвентарь.
+   */
+  tactic?: string
+  label?: string
   area?: { x: number; y: number; radiusFeet: number }
 }
 

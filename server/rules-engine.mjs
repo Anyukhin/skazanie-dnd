@@ -166,6 +166,18 @@ import {
 } from './npc-positioning.mjs'
 import { assembleEncounter } from './encounter-assembler.mjs'
 import { normalizeEnemyLoadout } from './enemy-loadouts.mjs'
+import {
+  NPC_ACTION_UNAVAILABLE_MESSAGES,
+  NPC_EQUIPMENT_EVENT_SCHEMA_VERSION,
+  NPC_EQUIPMENT_POLICY_ID,
+  NPC_HEALING_POTION_HP_PERCENT,
+  npcActionUnavailableReason,
+  npcAttackExpenditureFor,
+  npcMeleeWeaponBindingForItem,
+  npcTacticCondition,
+  npcUsableItemFor,
+  npcWeaponBindingFor,
+} from './npc-equipment.mjs'
 import { applyEncounterRewardsDistribution } from './encounter-rewards.mjs'
 import {
   ECONOMY_CATALOG_VERSION,
@@ -3237,6 +3249,158 @@ function inventoryItem(actor, itemId) {
   return (Array.isArray(actor?.inventory) ? actor.inventory : []).find((item) => String(item?.id) === String(itemId ?? '')) ?? null
 }
 
+/**
+ * Поля, из которых состоит `UseItem` противника. Список закрыт по той же
+ * причине, что и у героя (`assertPlainCommand`, `server/item-lifecycle.mjs`):
+ * лишнее поле в команде — это чужой профиль использования, чужая клетка
+ * рассыпания или чужой режим фляги, приехавшие мимо проверки.
+ *
+ * Здесь он **уже** ключей команды героя: у противника нет ни зарядов, ни
+ * получателя передачи, ни выбора режима фляги — тактик всего три и все они
+ * закрыты. `merchant_id`, `stock_id`, `action_id` и `quantity` в списке не
+ * потому, что нужны, а потому что `normalizeCommand` проставляет их каждой
+ * команде: без них закрытый список падал бы на собственном нормализаторе.
+ */
+const NPC_ITEM_USE_COMMAND_FIELDS = new Set([
+  'command_type', 'command_id', 'campaign_id', 'actor_id', 'target_id', 'target_ids',
+  'item_id', 'npc_tactic', 'weapon_id',
+  'merchant_id', 'stock_id', 'action_id', 'quantity',
+  'expected_state_version', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility',
+  'request_fingerprint', 'server_authoritative',
+])
+
+/** Чем существо платит за тактику и что ответить, если это уже потрачено. */
+const NPC_TACTIC_ECONOMY_ERRORS = Object.freeze({
+  action: ['Действие на этом ходу уже потрачено', 'ACTION_SPENT'],
+  bonus_action: ['Бонусное действие на этом ходу уже потрачено', 'BONUS_ACTION_SPENT'],
+})
+
+/**
+ * Противник пользуется своими вещами — и только руками сервера.
+ *
+ * Дверь одна и она проверяется первой строкой: `context.isNpcScheduler`.
+ * Флага нет ни в одном теле запроса — его ставит только детерминированный
+ * планировщик ходов (`server/npc-turn-scheduler.mjs`) и автономный цикл боя,
+ * который берёт команды у того же планировщика. Ни игрок, ни администратор
+ * инвентарём противника не распоряжаются: у админского контура свой флаг
+ * `isAdmin`, и он здесь намеренно ничего не открывает — иначе «сыграть за
+ * врага» превратилось бы в «выпить его зелье чужими руками».
+ *
+ * Тактик ровно три, и каждая проверяется по своим условиям. Все они закрыты
+ * каталогом `NPC_ITEM_TACTICS`, а не описанием предмета: вещь со сколь угодно
+ * подходящим `use` не станет тактикой, пока её туда не внесли.
+ */
+function validateNpcItemUseCommand(command, state, context = {}) {
+  if (context?.isNpcScheduler !== true) {
+    throw new RulesValidationError('Инвентарём противника распоряжается только серверный планировщик ходов', 'NPC_ITEM_USE_FORBIDDEN')
+  }
+  const unexpected = Object.keys(command).filter((key) => !NPC_ITEM_USE_COMMAND_FIELDS.has(key))
+  if (unexpected.length) {
+    throw new RulesValidationError(`Команда предмета противника содержит запрещённые поля: ${unexpected.join(', ')}`, 'ITEM_COMMAND_UNKNOWN_FIELD')
+  }
+  const enemy = findActor(state, command.actor_id)
+  if (!enemy) throw new RulesValidationError('Существо не найдено', 'ACTOR_NOT_FOUND')
+  if (!isLivingActor(enemy)) throw new RulesValidationError('Побеждённое существо не пользуется вещами', 'ACTOR_DEFEATED')
+  if (!state.mechanics.combat.active) {
+    throw new RulesValidationError('Снаряжение противника расходуется только в бою', 'COMBAT_NOT_ACTIVE')
+  }
+  const item = npcUsableItemFor(enemy, command.item_id)
+  if (!item) throw new RulesValidationError('У существа нет такой вещи или сервер не умеет её применять', 'NPC_ITEM_NOT_USABLE')
+  if (String(command.npc_tactic ?? '') !== item.tactic) {
+    throw new RulesValidationError('Заявленная тактика не соответствует вещи', 'NPC_ITEM_TACTIC_MISMATCH')
+  }
+  const conditions = conditionIdsFor(state, command.actor_id)
+  if (item.once_per_combat && conditions.has(npcTacticCondition(item.tactic))) {
+    throw new RulesValidationError('Эту тактику существо в этом бою уже применяло', 'NPC_ITEM_TACTIC_SPENT')
+  }
+  // Экономика хода проверяется здесь, а не общей веткой `UseItem` выше:
+  // та читает `command.use_profile`, а он появляется только строкой ниже — до
+  // этого момента у команды противника цены хода нет, и общая проверка молча
+  // пропускала бы вторую склянку в тот же ход. Цену объявляет тактика, и её
+  // совпадение с каталогом сторожит `npcUsableItems`.
+  const tacticResource = String(item.use.combat_action ?? '')
+  const economyError = NPC_TACTIC_ECONOMY_ERRORS[tacticResource]
+  if (economyError && state.mechanics.combat.action_economy?.[String(command.actor_id)]?.[tacticResource] === false) {
+    throw new RulesValidationError(economyError[0], economyError[1])
+  }
+  const result = {
+    ...command,
+    target_id: String(command.target_id ?? command.actor_id),
+    npc_item: {
+      item_instance_id: item.item_instance_id,
+      catalog_id: item.catalog_id,
+      item_name: item.item_name,
+      quantity_before: item.quantity,
+      tactic: item.tactic,
+      label: item.label,
+      once_per_combat: item.once_per_combat,
+    },
+    // Склянка стоит существу целого действия, а не одной атаки из мультиатаки:
+    // разменивать отдельные удары планировщик не умеет, и объявлять замену
+    // атаки значило бы обещать экономику, которой нет. Профиль правится здесь
+    // же, чтобы общая проверка экономики хода прочитала настоящую цену.
+    use_profile: { ...item.use, attack_replacement: false },
+  }
+  if (item.tactic === 'heal') {
+    if (result.target_id !== String(command.actor_id)) {
+      throw new RulesValidationError('Зелье существо пьёт само', 'INVALID_ITEM_TARGET')
+    }
+    const hp = actorHp(enemy)
+    const maximum = Math.max(1, actorMaxHp(enemy))
+    if (hp <= 0 || hp * 100 > maximum * NPC_HEALING_POTION_HP_PERCENT) {
+      throw new RulesValidationError('Зелье идёт в ход только на последних хитах', 'NPC_ITEM_TACTIC_NOT_APPLICABLE')
+    }
+  }
+  if (item.tactic === 'flask') {
+    const target = playerActor(state, result.target_id)
+    if (!target || !isLivingActor(target) || !sameCampaignParty(state, result.target_id)) {
+      throw new RulesValidationError('Склянку мечут в живого героя отряда', 'INVALID_ITEM_TARGET')
+    }
+    const distance = distanceBetweenActors(state, command.actor_id, result.target_id)
+    const rangeFeet = Math.max(5, safeInteger(item.use.range_feet, 20))
+    if (distance == null || distance < 5 || distance > rangeFeet) {
+      throw new RulesValidationError('Цель находится вне дальности броска склянки', 'ITEM_TARGET_OUT_OF_RANGE')
+    }
+    if (item.use.requires_line_of_sight === true) {
+      assertClearTrajectory(state, actorPosition(state, command.actor_id), actorPosition(state, result.target_id))
+    }
+  }
+  if (item.tactic === 'coat') {
+    if (result.target_id !== String(command.actor_id)) {
+      throw new RulesValidationError('Яд наносят на своё оружие', 'INVALID_ITEM_TARGET')
+    }
+    // `weapon_id` здесь — экземпляр из инвентаря, ровно как у героя: яд кладут
+    // на клинок, а не на строку стат-блока. Оружие без привязки (укус, коготь)
+    // и потерянное оружие сюда не проходят по построению.
+    const binding = npcMeleeWeaponBindingForItem(enemy, command.weapon_id)
+    if (!binding) {
+      throw new RulesValidationError('Яд наносится на связанное ближнее оружие существа', 'INVALID_WEAPON')
+    }
+    if (conditions.has(`weapon-coated:${binding.item_instance_id}`)) {
+      throw new RulesValidationError('Это оружие уже смазано ядом', 'NPC_ITEM_TACTIC_SPENT')
+    }
+    if (safeInteger(state.mechanics.combat.action_economy?.[String(command.actor_id)]?.attacks_used, 0) > 0) {
+      throw new RulesValidationError('Яд наносят до первого удара', 'NPC_ITEM_TACTIC_NOT_APPLICABLE')
+    }
+    result.npc_weapon = {
+      action_id: binding.action_id,
+      item_instance_id: binding.item_instance_id,
+      item_name: binding.item_name,
+    }
+  }
+  result.target_ids = [result.target_id]
+  return result
+}
+
+/**
+ * Герой из отряда этой кампании. Отдельная функция, а не выражение по месту:
+ * «цель — герой» и «герой в отряде» — два разных условия, и путать их нельзя.
+ */
+function sameCampaignParty(state, id) {
+  const members = new Set((state.partyMemberIds?.length ? state.partyMemberIds : state.players.map(actorId)).map(String))
+  return members.has(String(id))
+}
+
 const APPRAISAL_RARITY = Object.freeze({
   'обычный': 'common',
   'необычный': 'uncommon',
@@ -3750,7 +3914,14 @@ export function validateCommand(input, rawState, context = {}) {
       throw error
     }
   }
-  if (ITEM_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
+  // Инвентарь противника и инвентарь героя — два разных владельца и два разных
+  // набора правил. Ветка стоит **до** общего жизненного цикла предметов: тот
+  // ищет героя по `state.players` и на существе отвечал бы «герой не найден»,
+  // пряча настоящую причину отказа.
+  const npcItemUse = command.command_type === 'UseItem' && isEnemyActor(state, command.actor_id)
+  if (npcItemUse) {
+    Object.assign(command, validateNpcItemUseCommand(command, state, context))
+  } else if (ITEM_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
     try {
       Object.assign(command, validateItemLifecycleCommand(command, state, context))
     } catch (error) {
@@ -4154,6 +4325,20 @@ export function validateCommand(input, rawState, context = {}) {
       if (!monsterAction) throw new RulesValidationError('Выбранное действие отсутствует в блоке статистики существа', 'MONSTER_ACTION_NOT_AVAILABLE')
       if (monsterActionIsLimited(monsterAction) && conditionIdsFor(state, command.actor_id).has(`monster-action-used:${monsterAction.id}`)) {
         throw new RulesValidationError('Ограниченное действие существа уже использовано', 'MONSTER_ACTION_SPENT')
+      }
+    }
+    // Действие, привязанное к вещи, живёт ровно столько, сколько живёт вещь:
+    // выбитый меч и пустой колчан закрывают его здесь, до броска и до расхода
+    // хода. Действия без привязки (укус, коготь, паутина) ветка не трогает —
+    // запрещать там нечего.
+    if (isEnemyActor(state, command.actor_id)) {
+      const boundActionId = String(command.action_id ?? '') || String(monsterActionFor(actor, null)?.id ?? '')
+      const unavailable = boundActionId ? npcActionUnavailableReason(actor, boundActionId) : null
+      if (unavailable) {
+        throw new RulesValidationError(
+          NPC_ACTION_UNAVAILABLE_MESSAGES[unavailable],
+          unavailable === 'weapon-lost' ? 'NPC_WEAPON_UNAVAILABLE' : 'NPC_AMMUNITION_SPENT',
+        )
       }
     }
     const selected = command.item_id ? combatItem(actor, command.item_id) : null
@@ -4826,6 +5011,124 @@ function thrownFlaskEvents(state, command, { actor, item, use, diceService, roll
       ...(use.on_failed_save_condition.fire_damage_bonus ? { fire_damage_bonus: safeInteger(use.on_failed_save_condition.fire_damage_bonus, 0) } : {}),
     }, [targetId]))
   }
+  return events
+}
+
+/**
+ * Списание из кармана противника. Всегда `gm_only`, и это не осторожность:
+ * остаток стрел, число дротиков в пучке и то, сколько склянок ещё лежит за
+ * пазухой, — закрытый инвентарь живого существа, который отряд узнаёт обыском
+ * тела, а не бухгалтерией боя. Механику событие несёт целиком (редьюсер берёт
+ * из payload готовые числа), а стол видит поступок — строкой рассказчика.
+ *
+ * Ветки в `eventForViewer` у события поэтому нет и быть не должно: до игрока
+ * оно не доезжает вовсе, а санитайзер, который никогда не срабатывает, — это
+ * ложное чувство границы. Сторож — `test/npc-equipment.test.mjs`.
+ */
+function npcEquipmentSpentEvent(command, payload) {
+  return eventFrom({ ...command, visibility: 'gm_only' }, 'NpcEquipmentSpent', {
+    schema_version: NPC_EQUIPMENT_EVENT_SCHEMA_VERSION,
+    policy_id: NPC_EQUIPMENT_POLICY_ID,
+    owner_id: String(command.actor_id),
+    ...payload,
+  }, [String(command.actor_id)])
+}
+
+/**
+ * Противник пускает в ход свою вещь.
+ *
+ * Своей механики здесь нет ни на грамм: зелье лечит тем же `HealingApplied`,
+ * склянка летит тем же `thrownFlaskEvents`, яд ложится тем же условием
+ * `weapon-coated:`, каким его наносит герой. Новое только одно — из какого
+ * кармана вещь взялась и куда списался расход, и это ровно два события:
+ * `NpcItemUsed` и `NpcEquipmentSpent`.
+ *
+ * СЛ спасброска от склянки складывается из 8 и Ловкости существа: бонуса
+ * мастерства стат-блоки в этом проекте не объявляют, и приписывать его здесь
+ * значило бы выдумать число за редакцию.
+ */
+function npcItemUseEvents(state, command, { diceService, rolls, resolveDamage }) {
+  const enemy = findActor(state, command.actor_id)
+  const npcItem = command.npc_item
+  const use = command.use_profile
+  const ownerId = String(command.actor_id)
+  const targetId = String(command.target_id)
+  const events = [eventFrom(command, 'NpcItemUsed', {
+    schema_version: NPC_EQUIPMENT_EVENT_SCHEMA_VERSION,
+    policy_id: NPC_EQUIPMENT_POLICY_ID,
+    owner_id: ownerId,
+    tactic: npcItem.tactic,
+    label: npcItem.label,
+    item_instance_id: npcItem.item_instance_id,
+    catalog_id: npcItem.catalog_id,
+    item_name: npcItem.item_name,
+    target_id: targetId,
+    combat_action: use.combat_action ?? null,
+    request_fingerprint: command.request_fingerprint ?? null,
+  }, [targetId])]
+
+  if (npcItem.tactic === 'heal') {
+    // Назначение броска называет тактику, а не каталожную запись: событие
+    // `DieRolled` едет столу, и `purpose` — единственное его поле, куда
+    // каталожный ключ мог бы просочиться мимо санитайзера. У склянки такой
+    // заботы нет по существу дела: что именно разбилось о героя, стол видит
+    // и без payload — об этом говорит и подпись поступка, и вид урона.
+    const roll = diceService.roll(String(use.expression), `npc-item:${npcItem.tactic}:healing`, ownerId, command.visibility ?? 'public')
+    rolls.push(roll)
+    events.push(eventFrom(command, 'DieRolled', roll, []))
+    const before = actorHp(enemy)
+    const after = Math.min(actorMaxHp(enemy), before + Math.max(0, safeInteger(roll.total, 0)))
+    events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', {
+      requested_amount: Math.max(0, safeInteger(roll.total, 0)),
+      applied_amount: after - before,
+      hp_before: before,
+      hp_after: after,
+      item_id: npcItem.item_instance_id,
+      item_name: npcItem.item_name,
+    }, [ownerId]))
+  }
+  if (npcItem.tactic === 'flask') {
+    events.push(...thrownFlaskEvents(state, command, {
+      actor: enemy,
+      item: { id: npcItem.item_instance_id, name: npcItem.item_name, catalog_id: npcItem.catalog_id },
+      use,
+      diceService,
+      rolls,
+      resolveDamage,
+    }))
+  }
+  if (npcItem.tactic === 'coat') {
+    events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: `weapon-coated:${command.npc_weapon.item_instance_id}`,
+      duration: String(use.duration ?? 'rounds:10'),
+      source_actor: ownerId,
+      rider_damage: String(use.rider_damage),
+      rider_damage_type: String(use.rider_damage_type ?? 'poison'),
+      rider_source_name: String(npcItem.item_name),
+    }, [ownerId]))
+  }
+  // Маркер «за бой один раз» — тот же приём, что и у ограниченных действий
+  // существа (`monster-action-used:`): состояние вместо отдельного поля, потому
+  // что снимается оно теми же общими правилами и переживает replay без ветки.
+  if (npcItem.once_per_combat) {
+    events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: npcTacticCondition(npcItem.tactic),
+      source_actor: ownerId,
+    }, [ownerId]))
+  }
+  const consumed = Math.max(1, safeInteger(use.consumes, 1))
+  const quantityAfter = Math.max(0, npcItem.quantity_before - consumed)
+  events.push(npcEquipmentSpentEvent(command, {
+    action_id: null,
+    item_instance_id: npcItem.item_instance_id,
+    catalog_id: npcItem.catalog_id,
+    item_name: npcItem.item_name,
+    reason: 'item-use',
+    quantity_before: npcItem.quantity_before,
+    quantity_after: quantityAfter,
+    shots_before: npcItem.quantity_before,
+    shots_after: quantityAfter,
+  }))
   return events
 }
 
@@ -6748,7 +7051,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const damageType = profile?.damage_type ?? String(command.damage_type || 'untyped')
       // Нанесённый яд — такая же добавка к попаданию, как зачарование предмета,
       // поэтому едет тем же списком: отдельного пути для него не нужно.
-      const weaponCoatingRider = selectedProfile ? weaponCoatingRiderFor(state, command.actor_id, selectedProfile.item.id) : null
+      // У существа оружие выбирается не полем `item_id`, а привязкой действия к
+      // экземпляру из инвентаря — иначе смазанный ядом клинок гоблина остался
+      // бы смазанным только на бумаге.
+      const npcBinding = !selectedProfile && isEnemyActor(state, command.actor_id)
+        ? npcWeaponBindingFor(actor, profile?.id)
+        : null
+      const weaponCoatingRider = selectedProfile
+        ? weaponCoatingRiderFor(state, command.actor_id, selectedProfile.item.id)
+        : npcBinding ? weaponCoatingRiderFor(state, command.actor_id, npcBinding.item_instance_id) : null
       const itemDamageRiders = [
         ...(selectedProfile ? weaponDamageRidersForItem(actor, selectedProfile.item.id, { selectedCountsAsEquipped: true }) : []),
         ...(weaponCoatingRider ? [weaponCoatingRider] : []),
@@ -6817,6 +7128,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Порог recharge в payload не кладётся: событие видно игроку, а порог —
       // строка стат-блока. Движок читает его из профиля существа, а не отсюда.
       if (monsterActionIsLimited(profile)) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `monster-action-used:${profile.id}`, source_actor: command.actor_id }, [command.actor_id]))
+      // Стрела уходит из колчана и на промахе тоже: тратит её выстрел, а не
+      // попадание. То же и с брошенным дротиком из пучка.
+      const npcExpenditure = npcBinding ? npcAttackExpenditureFor(actor, npcBinding.action_id) : null
+      if (npcExpenditure) {
+        events.push(npcEquipmentSpentEvent(command, { action_id: npcBinding.action_id, ...npcExpenditure }))
+      }
       if (helped) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'helped' }, [command.actor_id]))
       if (hidden) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'hidden' }, [command.actor_id]))
       if (landed && (configuredDamageExpression || command.damage_amount != null)) {
@@ -11495,6 +11812,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       break
     }
     case 'UseItem': {
+      if (command.npc_item) {
+        events.push(...npcItemUseEvents(state, command, { diceService, rolls, resolveDamage: resolveDamagePayload }))
+        break
+      }
       const actor = findActor(state, command.actor_id)
       const item = inventoryItem(actor, command.item_id)
       const use = command.use_profile
@@ -11886,6 +12207,40 @@ function withoutImmuneConditions(state, command, events) {
       ),
     ]
   })
+}
+
+/**
+ * Инвентарь противника после расхода.
+ *
+ * Остаток берётся из payload целиком, а не досчитывается по состоянию: то же
+ * событие, применённое второй раз, обязано давать тот же остаток. Поэтому
+ * выпитое зелье исчезает ровно один раз, сколько бы раз ни проигрывался поток.
+ *
+ * Кончившееся убирается из инвентаря, а не остаётся нулём: `normalizeItemInstance`
+ * поднимает количество до единицы, и запись «нуль стрел» вернулась бы как одна
+ * стрела при первой же загрузке сохранения.
+ */
+function npcLoadoutAfterSpend(loadout, payload) {
+  const normalized = normalizeEnemyLoadout(loadout)
+  const instanceId = String(payload?.item_instance_id ?? '')
+  if (!instanceId) return normalized
+  const quantityAfter = Math.max(0, safeInteger(payload?.quantity_after, 0))
+  const shotsAfter = Math.max(0, safeInteger(payload?.shots_after, quantityAfter))
+  const shotsBefore = Math.max(0, safeInteger(payload?.shots_before, shotsAfter))
+  return {
+    ...normalized,
+    items: normalized.items.flatMap((item) => {
+      if (String(item.item_instance_id) !== instanceId) return [item]
+      if (quantityAfter <= 0 || shotsAfter <= 0) return []
+      return [{
+        ...item,
+        quantity: quantityAfter,
+        ...(String(payload?.reason) === 'ammunition'
+          ? { charges: { current: shotsAfter, max: Math.max(safeInteger(item.charges?.max, 0), shotsBefore) } }
+          : {}),
+      }]
+    }),
+  }
 }
 
 function replaceActor(state, id, updater) {
@@ -12949,6 +13304,29 @@ export function applyGameEvent(rawState, event) {
     case 'ItemConsumed':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: (actor.inventory ?? []).map((item) => String(item.id) === String(payload.item_id) ? { ...item, quantity: Math.max(0, safeInteger(item.quantity, 1) - safeInteger(payload.quantity, 1)) } : item).filter((item) => item.quantity > 0) }))
       refreshPlayerDerivedState(state, [target])
+      break
+    case 'NpcItemUsed':
+      if (payload.combat_action) spendCombatEconomy(state, event.actor_id, payload.combat_action)
+      appendBattleLog(state, event, {
+        sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
+        round: state.mechanics.combat.round,
+        type: 'npc-item',
+        actorId: event.actor_id,
+        actorKind: combatActorKind(state, event.actor_id),
+        targetId: String(payload.target_id ?? event.actor_id),
+        // Ни `catalog_id`, ни экземпляра: `publicBattleEventFor` журнальную
+        // запись по именам полей не чистит, а инвентарь живого противника
+        // закрыт до обыска тела. В журнал едет ровно то, что видно за столом, —
+        // поступок и его готовая детерминированная подпись.
+        tactic: String(payload.tactic ?? ''),
+        label: String(payload.label ?? '').slice(0, 120),
+      })
+      break
+    case 'NpcEquipmentSpent':
+      replaceActor(state, String(payload.owner_id ?? event.actor_id ?? ''), (actor) => ({
+        ...actor,
+        loadout: npcLoadoutAfterSpend(actor.loadout, payload),
+      }))
       break
     case 'MerchantCreated': {
       const merchant = lifecycleMerchantFromCanonical(payload.merchant)
@@ -14072,6 +14450,10 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'SpellImmunityResolved': return `${payload.item_immunity_sources?.[0]?.item_name || 'Магический предмет'} полностью защищает от заклинания ${payload.spell_id}`
     case 'ItemEffectIneffective': return `${payload.item_name || 'Предмет'} не действует на ${named((event.target_ids ?? [])[0]) || 'цель'}`
     case 'HealingApplied': return `Лечение: ${payload.applied_amount}; HP ${payload.hp_before} → ${payload.hp_after}`
+    case 'NpcItemUsed': return `${named(event.actor_id) || 'Существо'} ${payload.label || 'пускает в ход своё снаряжение'}`
+    case 'NpcEquipmentSpent': return payload.reason === 'ammunition'
+      ? `Боеприпасы ${named(event.actor_id) || 'существа'}: осталось ${safeInteger(payload.shots_after, 0)}`
+      : `${named(event.actor_id) || 'Существо'} расстаётся с предметом «${payload.item_name ?? payload.catalog_id}»`
     case 'HitPointMaximumReduced': return `Максимум HP снижен: ${payload.maximum_hp_before} → ${payload.maximum_hp_after}`
     case 'HitPointMaximumReductionPrevented': return `Aura of Life предотвращает снижение максимума HP`
     case 'AttackResolved': return `Атака ${payload.hit ? 'попала' : 'не попала'}: ${payload.total} против КД ${payload.armor_class}${payload.critical_prevented ? '; критическое попадание стало обычным' : ''}`

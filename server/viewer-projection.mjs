@@ -928,6 +928,17 @@ function eventForViewer(event, user, actorId, state = {}) {
       amount_cp: integer(roll?.amount_cp, 0),
     }))
   }
+  // Снаряжение противника. Игрок видит поступок и его готовую подпись — то, что
+  // случилось за столом, — но не то, из какого кармана вещь взялась:
+  // `item_instance_id` это ключ закрытого инвентаря, по которому потом
+  // опознаётся добыча с тела. Имя вещи и каталожный ключ снимает общая ветка
+  // «действует противник» ниже; здесь закрывается то, чего в её списке нет.
+  //
+  // Парного `NpcEquipmentSpent` тут нет и не должно быть: он `gm_only` и до
+  // игрока не доезжает вовсе (см. `npcEquipmentSpentEvent`, `rules-engine.mjs`).
+  if (visible.event_type === 'NpcItemUsed') {
+    for (const key of ['item_instance_id', 'catalog_id', 'item_name']) delete payload[key]
+  }
   if (visible.event_type === 'NpcPlaced') delete payload.vitality
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]

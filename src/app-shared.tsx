@@ -45,6 +45,9 @@ export function battleEventText(state: GameState, event: NonNullable<GameState['
     }
     return `Переговоры завершены: ${outcomes[String(event.reason)] ?? 'условия приняты'}.`
   }
+  // Подпись приходит с сервера готовой и намеренно неточной: за столом видно,
+  // что противник приложился к склянке, а не то, что именно он выпил.
+  if (event.type === 'npc-item') return `${actorName(event.actorId)} ${event.label || 'пускает в ход своё снаряжение'}.`
   if (event.type === 'move') return `${actorName(event.actorId)} перемещается на ${event.distanceFeet ?? 0} фт.`
   if (event.type === 'turn-end') return `${actorName(event.actorId)} завершает ход.`
   if (event.type === 'spell') return `${actorName(event.actorId)} применяет «${event.spellName ?? event.spellId ?? 'заклинание'}»${event.targetId ? ` к ${actorName(event.targetId)}` : ''}.`

@@ -44,6 +44,11 @@
  * (базовая атака исполняется сервером, mastery — нет). Расходник же сервер
  * выбирает **сам**, поэтому планка выше: в автошаблон попадает только то, что
  * движок исполняет целиком.
+ *
+ * Часть этих расходников противник пускает в ход сам — зелье лечения, кислоту,
+ * алхимический огонь и простой яд. Тактики закрыты и живут в
+ * `server/npc-equipment.mjs`; здесь решается только то, у кого вещь окажется.
+ * Остальное (набор лекаря, фляга масла) остаётся добычей: см. там же, почему.
  */
 import { createHash } from 'node:crypto'
 
@@ -73,7 +78,7 @@ const id = (slug) => `srd_5_2_1:${slug}`
  * Действий, которых здесь нет, в инвентарь не попадает ничего — укус, коготь,
  * ложноножка и костяной лук гнолла оружием каталога не являются.
  */
-const WEAPON_CATALOG_BY_ACTION = Object.freeze({
+export const WEAPON_CATALOG_BY_ACTION = Object.freeze({
   dagger: id('dagger'),
   greataxe: id('greataxe'),
   greatsword: id('greatsword'),
@@ -97,7 +102,7 @@ const WEAPON_CATALOG_BY_ACTION = Object.freeze({
 })
 
 /** Чем стреляет оружие со свойством `ammunition`. */
-const AMMUNITION_BY_WEAPON = Object.freeze({
+export const AMMUNITION_BY_WEAPON = Object.freeze({
   [id('blowgun')]: id('needles-50'),
   [id('hand-crossbow')]: id('bolts-20'),
   [id('heavy-crossbow')]: id('bolts-20'),
@@ -131,9 +136,13 @@ const TEMPLATES = Object.freeze({
   [id('hobgoblin')]: { ammunition: [1, 2], purse_cp: [5, 30], consumables: [{ catalog_id: id('potion-of-healing'), chance: 15 }] },
   [id('bugbear')]: { ammunition: [1, 1], purse_cp: [5, 40], consumables: [{ catalog_id: id('oil-flask'), chance: 15 }] },
   [id('scout')]: { ammunition: [1, 2], purse_cp: [5, 30], consumables: [{ catalog_id: id('healers-kit'), chance: 25 }] },
-  [id('spy')]: { ammunition: [1, 2], purse_cp: [20, 80], consumables: [{ catalog_id: id('poison-basic'), chance: 35 }] },
+  [id('spy')]: { ammunition: [1, 2], purse_cp: [20, 80], consumables: [{ catalog_id: id('poison-basic'), chance: 35 }, { catalog_id: id('acid'), chance: 25 }] },
   [id('berserker')]: { ammunition: [1, 1], purse_cp: [5, 40], consumables: [{ catalog_id: id('potion-of-healing'), chance: 20 }] },
-  [id('bandit-captain')]: { ammunition: [1, 2], purse_cp: [50, 250], consumables: [{ catalog_id: id('potion-of-healing'), chance: 40 }] },
+  [id('bandit-captain')]: {
+    ammunition: [1, 2],
+    purse_cp: [50, 250],
+    consumables: [{ catalog_id: id('potion-of-healing'), chance: 40 }, { catalog_id: id('alchemists-fire'), chance: 25 }],
+  },
   [id('warrior-veteran')]: { ammunition: [1, 2], purse_cp: [30, 150], consumables: [{ catalog_id: id('potion-of-healing'), chance: 30 }] },
   [id('guard-captain')]: {
     ammunition: [1, 1],
@@ -145,7 +154,11 @@ const TEMPLATES = Object.freeze({
   [id('tough-boss')]: {
     ammunition: [1, 2],
     purse_cp: [40, 200],
-    consumables: [{ catalog_id: id('potion-of-healing'), chance: 30 }, { catalog_id: id('oil-flask'), chance: 25 }],
+    consumables: [
+      { catalog_id: id('potion-of-healing'), chance: 30 },
+      { catalog_id: id('oil-flask'), chance: 25 },
+      { catalog_id: id('alchemists-fire'), chance: 20 },
+    ],
   },
 })
 
