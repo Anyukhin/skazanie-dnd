@@ -642,6 +642,62 @@ export function publicEncounterFor(encounter = {}) {
 }
 
 /**
+ * Урон, вызвавший окно реакции, — те же величины, что и в `DamageApplied`, но
+ * приезжает он **целым payload-ом**, и потому был пятой поверхностью того же
+ * ключа кармана. Добавка яда кладётся в `damage_components` вместе с `item_id`
+ * и `effect_id` (`weapon-coated:<item_instance_id>`), метка магической вещи —
+ * прямо в корень (`source_item_id` у волшебных снарядов). Ветка `enemyActor`
+ * в `eventForViewer` чистит только верхний уровень payload-а события и во
+ * вложенный массив не заходит, а цель окна реакции — герой, поэтому прежняя
+ * защита «цель — противник» не срабатывала здесь вовсе.
+ *
+ * Поэтому урон проецируется белым списком — тем же приёмом, что `trigger_roll`
+ * и `action_options`: стол видит, сколько пришло, чем и что от этого осталось,
+ * а опись чужого кармана не проезжает ни корнем, ни слагаемым. Авторитетное
+ * состояние точную форму хранит: сокращение реакции считается по нему, а не по
+ * проекции.
+ */
+const REACTION_DAMAGE_PUBLIC_KEYS = Object.freeze([
+  'damage_type', 'raw_amount', 'applied_amount', 'immune', 'resistant', 'vulnerable',
+  'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed',
+  'hp_before', 'hp_after', 'death_ward_triggered',
+])
+
+/**
+ * Слагаемые составного урона: «сколько и чем» без «из чьего кармана».
+ * Качественный `source` («weapon», «magic-item», «secondary») остаётся — это то
+ * же различение, что и «клинок смазан чем-то тёмным»: стол видит, что второй
+ * укус пришёл не от самого удара, но не получает ключа вещи.
+ */
+const REACTION_DAMAGE_COMPONENT_PUBLIC_KEYS = Object.freeze([
+  'damage_type', 'raw_amount', 'applied_amount', 'temporary_hp_absorbed', 'source',
+])
+
+/**
+ * @param {Loose} damage
+ * @returns {Loose}
+ */
+function publicReactionDamageFor(damage) {
+  /** @type {Loose} */
+  const projected = {}
+  for (const key of REACTION_DAMAGE_PUBLIC_KEYS) {
+    if (damage[key] !== undefined) projected[key] = damage[key]
+  }
+  if (Array.isArray(damage.damage_components)) {
+    projected.damage_components = damage.damage_components.slice(0, 12).map((/** @type {Loose} */ component) => {
+      /** @type {Loose} */
+      const publicComponent = {}
+      if (!component || typeof component !== 'object' || Array.isArray(component)) return publicComponent
+      for (const key of REACTION_DAMAGE_COMPONENT_PUBLIC_KEYS) {
+        if (component[key] !== undefined) publicComponent[key] = component[key]
+      }
+      return publicComponent
+    })
+  }
+  return projected
+}
+
+/**
  * @param {Loose} window
  * @param {LooseState} [state]
  * @param {string} [actorId]
@@ -671,9 +727,14 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
     delete triggerRoll.kept
     delete triggerRoll.modifier
   }
-  const damage = window.damage && typeof window.damage === 'object' ? { ...window.damage } : null
+  const damage = window.damage && typeof window.damage === 'object' && !Array.isArray(window.damage)
+    ? publicReactionDamageFor(window.damage)
+    : null
+  // Цель окна реакции обычно герой, но не всегда: у «покинул досягаемость» и у
+  // контрзаклинания целью записан тот, на кого реагируют, и он может быть
+  // противником. ОЗ неопознанного противника закрыты и здесь.
   if (damage && enemyTarget && !exactEnemyHealthKnown(state, targetId, actorId)) {
-    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after']) delete damage[key]
+    for (const key of ['hp_before', 'hp_after', 'temporary_hp_before', 'temporary_hp_after']) delete damage[key]
   }
   return {
     id: text(window.id, 160),
@@ -1120,10 +1181,6 @@ function eventForViewer(event, user, actorId, state = {}) {
     for (const key of [
       'modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression',
       'item_id', 'item_name', 'catalog_id', 'effect_id',
-      // Добавка к следующему удару. `rider_source_name` называет дозу яда
-      // каталожным именем ровно так же, как это делает `item_name` строкой
-      // выше, поэтому и закрывается там же.
-      ...ENEMY_CONDITION_PRIVATE_KEYS,
     ]) delete payload[key]
   }
   // Состояние противника: тот же санитайзер, что и у проекции комнаты, — иначе
@@ -1131,6 +1188,17 @@ function eventForViewer(event, user, actorId, state = {}) {
   // покрывает обе стороны: яд противник кладёт **сам на себя**, поэтому здесь
   // он и действующее лицо, и цель, а условие от чужой руки приходит только
   // целью.
+  //
+  // Ключи добавки снимаются ровно здесь и больше нигде. Список стоял и в ветке
+  // `enemyActor` выше, но там был мёртв: единственный производитель
+  // `rider_damage`/`rider_damage_type`/`rider_source_name` — payload
+  // `ConditionAdded`, а `source_item_id` кладёт только антитоксин, и это тоже
+  // условие. Удаление той строки не роняло ни одного теста — защита без
+  // сторожа исчезла бы при первом же рефакторинге молча, поэтому она снята, а
+  // не удвоена. Расширять список **сюда** — там, где он под тестом, — и
+  // область у него условная, а не «любое событие противника»: у `DamageApplied`
+  // от волшебной палочки героя по врагу `source_item_id` — своя вещь игрока, и
+  // общий сторож молча съел бы её.
   if (['ConditionAdded', 'ConditionRemoved'].includes(String(visible.event_type))
     && (enemyActor || enemyTargetId)) {
     const condition = publicEnemyConditionId(payload.condition)

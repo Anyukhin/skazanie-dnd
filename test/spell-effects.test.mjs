@@ -183,6 +183,23 @@ test('лечение без величины доходит до клетки с
   )
 })
 
+test('смазанный клинок над клеткой подписан в обеих формах — и чужой, и свой', () => {
+  // Проекция обезличивает только карман противника (`publicConditionsFor`,
+  // `server/viewer-projection.mjs`): у врага в клиент приезжает
+  // `weapon-coated`, у героя — точная `weapon-coated:<item_instance_id>`.
+  // Качественная подпись стоит под первую форму, и без запасной ветки над
+  // клеткой героя общий гуманизатор рисовал «Weapon Coated:hero Blade» —
+  // ключ вещи прямо на доске.
+  const cues = animation.combatAnimationCuesFromEvents([
+    { event_id: 'coat-foe', command_id: 'coat-foe', event_type: 'ConditionAdded', actor_id: 'spy', target_ids: ['spy'], payload: { condition: 'weapon-coated' } },
+    { event_id: 'coat-hero', command_id: 'coat-hero', event_type: 'ConditionAdded', actor_id: 'hero', target_ids: ['hero'], payload: { condition: 'weapon-coated:hero-blade' } },
+  ])
+  assert.deepEqual(
+    cues.filter((cue) => cue.kind === 'condition').map((cue) => cue.label),
+    ['Клинок смазан', 'Клинок смазан ядом'],
+  )
+})
+
 test('SpellAreaCreated использует точные клетки и не дублирует приблизительный burst', () => {
   const cues = animation.combatAnimationCuesFromEvents([
     { event_id: 'cast-web', command_id: 'web', event_type: 'SpellCast', actor_id: 'mage', payload: { spell_id: 'web', kind: 'area-save' } },

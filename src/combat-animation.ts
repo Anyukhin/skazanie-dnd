@@ -275,6 +275,12 @@ function spellCueFromCast(event: GameEvent): SpellAnimationCue | null {
 }
 
 function conditionLabel(condition: string) {
+  // Свой смазанный клинок проекция не обезличивает — герой знает своё
+  // снаряжение, — поэтому в клиент приезжает точная форма
+  // `weapon-coated:<item_instance_id>`. Без этой ветки общий гуманизатор писал
+  // над клеткой героя «Weapon Coated:hero Item 3»: качественная подпись выше
+  // совпадает только с непрозрачной формой противника.
+  if (condition.startsWith('weapon-coated:')) return 'Клинок смазан ядом'
   return CONDITION_LABELS[condition]
     ?? condition.split('-').filter(Boolean).map((part) => part.charAt(0).toLocaleUpperCase('ru') + part.slice(1)).join(' ')
 }

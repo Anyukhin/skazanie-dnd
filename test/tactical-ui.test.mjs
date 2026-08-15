@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, renameSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -239,6 +239,26 @@ test('состояния честно помечаются как работаю
   assert.match(unknown.explanation, /пока не применяются/)
   assert.equal(unknown.duration, 'раундов: 3')
   assert.equal(tacticalUi.conditionPresentation('disengaged').label, 'Отход')
+})
+
+test('смазанный клинок читается в обеих формах: и чужой без ключа, и свой с ключом', () => {
+  // Проекция обезличивает только карман противника (`publicConditionsFor`,
+  // `server/viewer-projection.mjs`), поэтому в клиент приезжают две формы
+  // одного состояния. Подписи под непрозрачную форму подходят только
+  // противнику: без запасной ветки над своей фишкой вставало
+  // «Weapon Coated:hero Blade», собранное общим гуманизатором из ключа вещи.
+  const foe = tacticalUi.conditionPresentation({ id: 'weapon-coated' })
+  assert.equal(foe.label, 'Клинок смазан чем-то тёмным')
+  assert.equal(foe.status, 'implemented')
+  const own = tacticalUi.conditionPresentation({ id: 'weapon-coated:hero-blade' })
+  assert.equal(own.label, 'Оружие смазано ядом')
+  assert.equal(own.status, 'implemented')
+
+  // Знак под фишкой — та же развилка: точный ключ в словаре знаков не стоит и
+  // без сведения форм давал бы под своей фишкой первую букву подписи.
+  const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  assert.match(board, /if \(id\.startsWith\('weapon-coated:'\)\) return TOKEN_CONDITION_GLYPHS\['weapon-coated'\]/u)
+  assert.match(board, /\{tokenConditionGlyph\(condition\.id, condition\.label\)\}/u)
 })
 
 test('поддержка механики честно блокирует эвристику и ruling-only карточки', () => {

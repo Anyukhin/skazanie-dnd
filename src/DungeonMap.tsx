@@ -89,6 +89,18 @@ export const TOKEN_CONDITION_GLYPHS: Record<string, string> = {
 
 export const TOKEN_CONDITION_PRIORITY = ['paralyzed', 'restrained', 'prone', 'frightened']
 
+/**
+ * Знак состояния под фишкой. Смазанный клинок приезжает в двух формах: чужой —
+ * непрозрачной (`weapon-coated`), свой — точной (`weapon-coated:<item_id>`),
+ * потому что проекция обезличивает только карман противника
+ * (`publicConditionsFor`, `server/viewer-projection.mjs`). Знак у обеих форм
+ * один: иначе под своей фишкой вместо черепа стояла бы первая буква подписи.
+ */
+export function tokenConditionGlyph(id: string, label: string) {
+  if (id.startsWith('weapon-coated:')) return TOKEN_CONDITION_GLYPHS['weapon-coated']
+  return TOKEN_CONDITION_GLYPHS[id] ?? label.slice(0, 1)
+}
+
 export const MAP_FEEDBACK_TTL_MS = 4200
 export const BATTLE_ROLL_TTL_MS = 4600
 export const NPC_TACTIC_TTL_MS = 4800
@@ -403,7 +415,7 @@ export function TokenConditionIcons({ conditions }: { conditions: PresentedCondi
         aria-label={condition.label}
         title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}
       >
-        {TOKEN_CONDITION_GLYPHS[condition.id] ?? condition.label.slice(0, 1)}
+        {tokenConditionGlyph(condition.id, condition.label)}
       </i>
     ))}
   </span>

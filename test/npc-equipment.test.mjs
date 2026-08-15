@@ -81,12 +81,18 @@ function foe(statBlockId, { hp = null, x = 6, y = 0, seed = 'npc-equipment' } = 
   }
 }
 
-function battleState(enemy, { heroX = 0, heroArmor = 10 } = {}) {
+/**
+ * Класс героя вынесен параметром не для красоты: у воина после попадания нет ни
+ * одной доступной реакции, поэтому окно реакции не открывается вовсе, и всё,
+ * что через это окно уезжает столу, остаётся непроверенным. Плуту 5 уровня
+ * доступно «Невероятное уклонение» — обычная реакция ровно после попадания.
+ */
+function battleState(enemy, { heroX = 0, heroArmor = 10, heroClass = 'fighter' } = {}) {
   return normalizeCampaignState({
     sessionCode: 'A2EQ',
     partyMemberIds: ['hero'],
     players: [{
-      id: 'hero', character: 'Ада', characterClass: 'fighter', level: 5, hp: 40, maxHp: 40,
+      id: 'hero', character: 'Ада', characterClass: heroClass, level: 5, hp: 40, maxHp: 40,
       armor: heroArmor, speed: 30, proficiency: 3,
       abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 10 },
       inventory: [], x: heroX, y: 0,
@@ -761,6 +767,108 @@ test('нанесённый противником яд не называет н�
       .find((event) => event.event_type === 'ConditionAdded').payload.condition,
     `weapon-coated:${swordId}`,
   )
+})
+
+test('окно реакции не выносит наружу ни ключа вещи противника, ни слагаемого отравленного удара', () => {
+  // Пятая поверхность того же ключа, и открывалась она только у героя, которому
+  // есть чем ответить: добавка яда кладётся в `damage_components` вместе с
+  // `item_id` и `effect_id`, весь массив едет payload-ом `ReactionWindowOpened`
+  // и тем же значением стоит в `mechanics.combat.reaction_window`. Прежняя
+  // защита проверяла, что цель — противник; здесь цель герой, поэтому не
+  // срабатывало ничего. Воин в прочих тестах этого не ловит: реакции после
+  // попадания у него нет, и окно не открывается вовсе.
+  const seed = seedWith('srd_5_2_1:spy', 'srd_5_2_1:poison-basic')
+  const spy = foe('srd_5_2_1:spy', { x: 1, seed })
+  const poisonId = itemOf(spy, 'srd_5_2_1:poison-basic').item_instance_id
+  const swordId = itemOf(spy, 'srd_5_2_1:shortsword').item_instance_id
+  const viewer = { role: 'player', heroIds: ['hero'] }
+  const coated = commit(battleState(spy, { heroX: 0, heroArmor: 5, heroClass: 'rogue' }), {
+    command_type: 'UseItem', actor_id: 'foe', item_id: poisonId, npc_tactic: 'coat', weapon_id: swordId,
+  })
+  const hit = commit(coated.state, { command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'shortsword' })
+
+  // Сторож самой развилки: без открытого окна проверки ниже зелены впустую.
+  const authoritative = hit.state.mechanics.combat.reaction_window
+  assert.ok(authoritative, 'окно реакции обязано открыться — иначе тест ничего не проверяет')
+  assert.ok(authoritative.action_ids.includes('uncanny-dodge'))
+  assert.ok(
+    authoritative.damage.damage_components.some((component) => component.item_id === swordId),
+    'авторитетное состояние обязано хранить точную форму: по ней считается сокращение урона реакцией',
+  )
+
+  const room = campaignStateForViewer(hit.state, viewer, 'hero')
+  const projectedWindow = room.mechanics.combat.reaction_window
+  const openedEvent = mechanicsForViewer(hit.events, viewer, 'hero', hit.state)
+    .find((event) => event.event_type === 'ReactionWindowOpened')
+  const surfaces = {
+    'состояние комнаты': JSON.stringify(room),
+    'канал событий': JSON.stringify(openedEvent),
+  }
+  for (const [surface, serialized] of Object.entries(surfaces)) {
+    assert.equal(serialized.includes(swordId), false, `${surface}: ключ вещи из кармана`)
+    assert.equal(serialized.includes(poisonId), false, `${surface}: ключ дозы из кармана`)
+    assert.equal(serialized.includes(`weapon-coated:${swordId}`), false, `${surface}: точная форма условия`)
+    assert.equal(serialized.includes('Простой яд'), false, `${surface}: каталожное имя дозы`)
+    assert.equal(serialized.includes('srd_5_2_1:poison-basic'), false, `${surface}: каталожный ключ дозы`)
+  }
+  // Обе поверхности собирает одна функция — расходиться им теперь нечем.
+  assert.deepEqual(openedEvent.payload, projectedWindow)
+
+  // Закрыт источник, а не удар: стол видит и величину, и то, что укусов было
+  // два и второй — ядовитый. Иначе игроку нечем решать, тратить ли реакцию.
+  assert.ok(projectedWindow.damage.applied_amount > 0)
+  assert.deepEqual(
+    projectedWindow.damage.damage_components.map((component) => `${component.source}:${component.damage_type}`),
+    ['weapon:piercing', 'magic-item:poison', 'secondary:poison'],
+  )
+  // Белый список слагаемого закреплён поимённо: новое поле не проезжает молча.
+  for (const component of projectedWindow.damage.damage_components) {
+    assert.deepEqual(Object.keys(component).sort(), [
+      'applied_amount', 'damage_type', 'raw_amount', 'source', 'temporary_hp_absorbed',
+    ])
+  }
+
+  // У ведущего форма полная: закрыт игрок, а не журнал.
+  const gmWindow = campaignStateForViewer(hit.state, { role: 'admin' }, 'gm').mechanics.combat.reaction_window
+  assert.ok(gmWindow.damage.damage_components.some((component) => component.effect_id === `weapon-coated:${swordId}`))
+})
+
+test('ключи добавки снимаются у условия противника целиком — и только у условия', () => {
+  const seed = seedWith('srd_5_2_1:spy', 'srd_5_2_1:poison-basic')
+  const state = battleState(foe('srd_5_2_1:spy', { x: 1, seed }))
+  const viewer = { role: 'player', heroIds: ['hero'] }
+
+  // Список закрытых полей проверяется на форме события, а не на тактике:
+  // производителя `source_item_id` со стороны противника сегодня нет (его
+  // кладёт антитоксин героя), и четвёртый ключ списка иначе остаётся без
+  // единой проверки. Сторож нужен именно здесь: до этой правки тот же список
+  // стоял вторым экземпляром в ветке «действует противник», где был мёртв, —
+  // удаление той строки не роняло ничего.
+  const [added] = mechanicsForViewer([{
+    event_id: 'condition-added', command_id: 'cmd-1', event_type: 'ConditionAdded', actor_id: 'foe',
+    target_ids: ['foe'], visibility: 'public',
+    payload: {
+      condition: 'weapon-coated:foe-item-1',
+      rider_damage: '1d4',
+      rider_damage_type: 'poison',
+      rider_source_name: 'Простой яд',
+      source_item_id: 'foe-item-2',
+    },
+  }], viewer, 'hero', state)
+  assert.equal(added.payload.condition, 'weapon-coated')
+  for (const key of ['rider_damage', 'rider_damage_type', 'rider_source_name', 'source_item_id']) {
+    assert.equal(added.payload[key], undefined, `условие противника: ${key}`)
+  }
+
+  // И граница списка: область у него условная, а не «любое событие
+  // противника». У волшебной палочки героя, бьющей по врагу, `source_item_id`
+  // — своя вещь игрока, и общий сторож съел бы её молча.
+  const [damage] = mechanicsForViewer([{
+    event_id: 'damage', command_id: 'cmd-2', event_type: 'DamageApplied', actor_id: 'hero',
+    target_ids: ['foe'], visibility: 'public',
+    payload: { damage_type: 'force', applied_amount: 9, source_type: 'magic-item', source_item_id: 'hero-wand' },
+  }], viewer, 'hero', state)
+  assert.equal(damage.payload.source_item_id, 'hero-wand')
 })
 
 test('детерминированные строки боя называют поступок, а не вещь', () => {
