@@ -956,9 +956,11 @@ test('у неопознанного противника в окне реакц�
   //
   // `raw_amount` закрыт вместе с ним, потому что снятое поле возвращается
   // вычитанием: «брошено 9, прошло 6» при `immune`/`resistant`/`vulnerable` =
-  // false — это те же 3. Утверждается ровно это и не больше: свой бросок урона
-  // отряд видит в `rolls`, и полной тайны здесь нет и быть не может — проекция
-  // перестаёт называть чужой запас, а не отменяет арифметику за столом.
+  // false — это те же 3. Утверждается ровно это и не больше: закрыты **числа**
+  // чужого запаса, а не сам факт. Свой бросок урона отряд видит в `rolls`, и
+  // остаток остаётся названным — при подтверждённом попадании `applied_amount:
+  // 0` с тремя ложными признаками получается только поглощением. Полной тайны
+  // здесь нет, и тест её не обещает.
   const viewer = { role: 'player', heroIds: ['hero'] }
   const state = windowState(stuffedWindow({ targetId: 'foe' }))
   const damage = campaignStateForViewer(state, viewer, 'hero').mechanics.combat.reaction_window.damage
@@ -993,19 +995,24 @@ test('у неопознанного противника в окне реакц�
   assert.deepEqual(opened.payload.damage, damage)
 })
 
-test('поглощённое временными ОЗ снимается у неопознанного противника всеми тремя записями', () => {
+test('поглощённое временными ОЗ снимается у неопознанного противника и величиной, и парой, и маркером', () => {
   // Второй канал того же знания. Окно реакции `temporary_hp_absorbed` у
   // неопознанного врага снимало, а `DamageApplied` по нему же вёз ключ игроку:
   // два места одного файла разошлись на одном поле. Величина называет и то,
   // что временные ОЗ у противника были, и сколько их было, — то же самое, что
   // рядом закрывают `temporary_hp_before/after`.
   //
-  // Записей у одного факта три, и закрывать их приходится вместе: сама
-  // величина, пара `raw_amount`/`applied_amount`, из которой она получается
-  // вычитанием, и маркер правила в `source_rule_ids` — движок вешает его ровно
-  // при ненулевом поглощении, поэтому одно его присутствие уже говорит «у этого
-  // противника были временные ОЗ». Дальше арифметики за столом проекция не
-  // достаёт и не обещает: свой бросок урона отряд видит в `rolls`.
+  // Записей у одного факта в этом событии три, и закрывать их приходится
+  // вместе: сама величина, пара `raw_amount`/`applied_amount`, из которой она
+  // получается вычитанием, и маркер правила в `source_rule_ids` — движок вешает
+  // его ровно при ненулевом поглощении, поэтому одно его присутствие уже
+  // говорит «у этого противника были временные ОЗ».
+  //
+  // Дальше события — карта `mechanics.temporary_hp` в состоянии комнаты (свой
+  // тест ниже) и величина в момент выдачи (`offered` у
+  // `TemporaryHitPointsGranted`, тоже свой тест). Сам факт при `applied_amount:
+  // 0` остаётся выводимым, и тест этого не отрицает: закрыты числа чужого
+  // запаса, а не арифметика за столом.
   const viewer = { role: 'player', heroIds: ['hero'] }
   const state = battleState(foe('srd_5_2_1:spy', { x: 1 }))
   const strike = () => ({
@@ -1046,6 +1053,97 @@ test('поглощённое временными ОЗ снимается у н�
   assert.equal(own.payload.temporary_hp_absorbed, 3)
   assert.equal(own.payload.raw_amount, 9)
   assert.deepEqual(own.source_rule_ids, [RULE_IDS.damage, RULE_IDS.temporaryHp])
+})
+
+test('карты временных ОЗ и защит противника не уезжают в комнату целиком', () => {
+  // Третий канал того же знания и самый широкий: `mechanics` уезжает игроку
+  // спредом, а не белым списком, поэтому `temporary_hp` шла столу картой
+  // целиком. Два опроса комнаты вокруг удара давали `{"foe":7}` и `{"foe":3}` —
+  // и сам факт запаса у неопознанного врага, и его величину, и поглощённое
+  // разностью, то есть ровно то, ради чего событие урона и окно реакции снимают
+  // `temporary_hp_absorbed`, `raw_amount` и маркер правила.
+  //
+  // `defenses` — та же природа при меньшем объёме: карта хранит наложенное по
+  // ходу игры, и до правки сопротивления с иммунитетами уезжали столу списком
+  // ещё до первого удара.
+  const viewer = { role: 'player', heroIds: ['hero'] }
+  const base = battleState(foe('srd_5_2_1:spy', { x: 1 }))
+  const withPools = (mechanics) => ({ ...base, mechanics: { ...base.mechanics, ...mechanics } })
+  const pools = {
+    temporary_hp: { hero: 5, foe: 7 },
+    defenses: {
+      hero: { resistances: ['cold'], immunities: [], vulnerabilities: [] },
+      foe: { resistances: ['fire'], immunities: ['poison'], vulnerabilities: [] },
+    },
+  }
+  const room = campaignStateForViewer(withPools(pools), viewer, 'hero').mechanics
+  assert.deepEqual(room.temporary_hp, { hero: 5 })
+  assert.deepEqual(Object.keys(room.defenses), ['hero'])
+
+  // Ведущему обе карты приезжают целиком: закрыт игрок, а не состояние.
+  const gm = campaignStateForViewer(withPools(pools), { role: 'admin' }, 'gm').mechanics
+  assert.equal(gm.temporary_hp.foe, 7)
+  assert.deepEqual(gm.defenses.foe.immunities, ['poison'])
+
+  // Граница — опознание, а не сама принадлежность к противникам: иначе проверки
+  // выше были бы зелены и от безусловного удаления. Гейты разные, потому что
+  // разный и раскрытый факт: у запаса — точное здоровье, у защит — стат-блок
+  // (вместе с ним `publicEnemyFor` отдаёт отряду `stat_block_id`, по которому
+  // строки SRD и так на руках).
+  const scoutedHealth = campaignStateForViewer(
+    withPools({ ...pools, enemy_knowledge: { party: { foe: { health: 'exact' } } } }), viewer, 'hero',
+  ).mechanics
+  assert.equal(scoutedHealth.temporary_hp.foe, 7)
+  assert.deepEqual(Object.keys(scoutedHealth.defenses), ['hero'])
+
+  const scoutedBlock = campaignStateForViewer(
+    withPools({ ...pools, enemy_knowledge: { party: { foe: { stat_block: 'exact' } } } }), viewer, 'hero',
+  ).mechanics
+  assert.deepEqual(scoutedBlock.temporary_hp, { hero: 5 })
+  assert.deepEqual(scoutedBlock.defenses.foe.resistances, ['fire'])
+})
+
+test('величина временных ОЗ не уезжает игроку и событием их выдачи', () => {
+  // Ветка «цель — неопознанный противник» условна не по типу события, поэтому
+  // фильтр маркера бил и по `TemporaryHitPointsGranted`, где `temporaryHp` —
+  // единственный id: провенанс обнулялся начисто, а `offered` при этом
+  // оставался в payload рядом с говорящим `event_type`. Тайны это не создавало
+  // (тип называет факт сам), зато величина запаса ехала столу в обход всех
+  // остальных записей — стандарт у одного ключа расходился по событиям.
+  //
+  // Производителей у события три: команда ведущего `GrantTemporaryHitPoints`,
+  // `CastSpell` и героизм на старте хода — последний и взят фикстурой.
+  const viewer = { role: 'player', heroIds: ['hero'] }
+  const state = battleState(foe('srd_5_2_1:spy', { x: 1 }))
+  const granted = (target) => ({
+    event_id: `temp-${target}`, command_id: 'cmd-1', event_type: 'TemporaryHitPointsGranted', actor_id: 'hero',
+    target_ids: [target], visibility: 'public', source_rule_ids: [RULE_IDS.temporaryHp],
+    payload: {
+      target_id: target, spell_id: 'heroism', offered: 12,
+      temporary_hp_before: 0, temporary_hp_after: 12, trigger: 'turn-start',
+    },
+  })
+  const [hidden] = mechanicsForViewer([granted('foe')], viewer, 'hero', state)
+  assert.deepEqual(Object.keys(hidden.payload).sort(), ['spell_id', 'target_id', 'trigger'])
+  assert.deepEqual(hidden.source_rule_ids, [])
+
+  // Своё событие приезжает целиком: героизм на своём герое обязан объяснять,
+  // откуда взялись двенадцать очков.
+  const [own] = mechanicsForViewer([granted('hero')], viewer, 'hero', state)
+  assert.equal(own.payload.offered, 12)
+  assert.equal(own.payload.temporary_hp_after, 12)
+
+  // И та же величина у условия героизма: `ConditionAdded` везёт её полем
+  // `temporary_hp_amount`, из которого движок потом и считает выдачу.
+  const condition = (target) => ({
+    event_id: `heroism-${target}`, command_id: 'cmd-2', event_type: 'ConditionAdded', actor_id: 'hero',
+    target_ids: [target], visibility: 'public',
+    payload: { target_id: target, condition: 'heroism', source_actor: 'hero', temporary_hp_amount: 4 },
+  })
+  const [onFoe] = mechanicsForViewer([condition('foe')], viewer, 'hero', state)
+  assert.equal('temporary_hp_amount' in onFoe.payload, false)
+  assert.equal(onFoe.payload.condition, 'heroism')
+  assert.equal(mechanicsForViewer([condition('hero')], viewer, 'hero', state)[0].payload.temporary_hp_amount, 4)
 })
 
 test('ключи добавки снимаются у условия противника целиком — и только у условия', () => {

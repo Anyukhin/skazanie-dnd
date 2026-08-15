@@ -600,6 +600,31 @@ function publicConditionsFor(value, enemyIds) {
 }
 
 /**
+ * Карты механики, где ключ — идентификатор существа.
+ *
+ * `mechanics` уезжает игроку **спредом** `...publicMechanics`, а не белым
+ * списком: что лежит в состоянии, то и оказывается в комнате, пока ключ не
+ * закрыт здесь поимённо. Поэтому закрытие идёт по одному ключу, и этот помощник
+ * — общая форма такого закрытия, а не свидетельство чистоты всей карты:
+ * соседние карты с тем же видом ключа (`resources`, `concentration`, `shapes`,
+ * `combat.action_economy`) им не тронуты и белым списком не прикрыты.
+ *
+ * Записи не-противников остаются как есть: своё игрок знает и без проекции.
+ * Что из чужого отряд уже разведал, решает `known` — гейт у каждой карты свой,
+ * потому что и факт раскрытия у них разный.
+ *
+ * @param {unknown} value
+ * @param {Set<string>} enemyIds
+ * @param {(enemyId: string) => boolean} known
+ * @returns {Record<string, any>}
+ */
+function publicActorKeyedMapFor(value, enemyIds, known) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value)
+    .filter(([ownerId]) => !enemyIds.has(String(ownerId)) || known(String(ownerId))))
+}
+
+/**
  * @param {Loose} message
  * @returns {any}
  */
@@ -751,12 +776,14 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
   //
   // `raw_amount` уходит следом, иначе снятое поле возвращается вычитанием:
   // «брошено 9, прошло 6» при `immune`/`resistant`/`vulnerable` = false — это те
-  // же 3 поглощённых, только записанные парой. Граница у правки честная и
-  // узкая: она закрывает то, что **утверждает сервер**, а не само знание. Свой
-  // бросок урона отряд видит в `rolls` (он публичный, его сделал игрок), так
-  // что счетовод разницу выведет и без подсказки; проекция просто перестаёт её
-  // называть — ни величиной, ни парой. Что удар сделал, стол видит целиком:
-  // `applied_amount` остаётся и в корне, и в каждом слагаемом.
+  // же 3 поглощённых, только записанные парой. Граница у правки узкая и не
+  // больше: закрываются **числа чужого запаса**, а не сам факт. Свой бросок
+  // урона отряд видит в `rolls` (он публичный, его сделал игрок), так что
+  // счетовод разницу выведет и без подсказки; и остаток остаётся названным —
+  // при подтверждённом попадании `applied_amount: 0` с тремя ложными
+  // `immune`/`resistant`/`vulnerable` получается только поглощением. Что удар
+  // сделал, стол видит целиком: `applied_amount` остаётся и в корне, и в каждом
+  // слагаемом, и это выбор, а не недосмотр — удар отряда игрок обязан видеть.
   //
   // Объекты здесь уже собственные (`publicReactionDamageFor` строит и корень, и
   // каждое слагаемое заново), поэтому правка не задевает авторитетное
@@ -1016,6 +1043,38 @@ export function campaignStateForViewer(state, user, actorId = '') {
       return {
       ...publicMechanics,
       ...(visible.mechanics.conditions ? { conditions: publicConditionsFor(visible.mechanics.conditions, enemyIds) } : {}),
+      // Временные ОЗ противника. Событие урона и окно реакции у неопознанного
+      // врага закрывают и `temporary_hp_before/after`, и записанное разностью
+      // `temporary_hp_absorbed`, — а состояние комнаты везло ту же карту
+      // целиком, и два опроса подряд (до удара `{"foe":7}`, после `{"foe":3}`)
+      // возвращали столу и сам факт запаса, и его величину, и поглощённое
+      // разностью. Гейт тот же, что у всех прочих чисел здоровья врага, —
+      // опознание.
+      ...(visible.mechanics.temporary_hp
+        ? {
+          temporary_hp: publicActorKeyedMapFor(
+            visible.mechanics.temporary_hp,
+            enemyIds,
+            (/** @type {string} */ id) => exactEnemyHealthKnown(state, id, actorId),
+          ),
+        }
+        : {}),
+      // Защиты противника. Карта хранит только наложенное по ходу игры (списки
+      // самого стат-блока движок подмешивает отдельно, `defenseFor` в
+      // `rules-engine.mjs`), поэтому течёт она уже, чем временные ОЗ, но так же:
+      // сопротивления, иммунитеты и уязвимости уезжали столу списком до первого
+      // удара. Гейт — знание стат-блока: ровно на этом факте `publicEnemyFor`
+      // отдаёт отряду `stat_block_id`, после чего строки SRD у него и так на
+      // руках.
+      ...(visible.mechanics.defenses
+        ? {
+          defenses: publicActorKeyedMapFor(
+            visible.mechanics.defenses,
+            enemyIds,
+            (/** @type {string} */ id) => exactEnemyFact(enemyKnowledgeFor(state, id, actorId), 'stat_block'),
+          ),
+        }
+        : {}),
       ...(actorId ? { hit_point_dice: { [actorId]: hitPointDicePoolForActor(state, actorId) } } : { hit_point_dice: {} }),
       encounter: publicEncounterFor(visible.mechanics.encounter),
       ...(visible.mechanics.combat && typeof visible.mechanics.combat === 'object' ? {
@@ -1209,14 +1268,26 @@ function eventForViewer(event, user, actorId, state = {}) {
     // ключе расходились: окно молчало, а `DamageApplied` по тому же врагу вёз
     // его игроку.
     //
-    // `raw_amount` — третья запись того же: пара «брошено 9, прошло 6» при
-    // `immune`/`resistant`/`vulnerable` = false называет поглощённое вычитанием.
-    // Ровно так же он снимается у `NpcHarmed` веткой выше. `applied_amount` у
-    // урона остаётся: это удар отряда, и его игрок обязан видеть — свой бросок
-    // он к тому же видит в `rolls`, поэтому граница здесь проходит по тому, что
-    // называет сервер, а не по тому, что игрок способен сосчитать сам.
-    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed', 'raw_amount', 'armor_class']) delete payload[key]
-    // И четвёртая запись — provenance самого события. Движок вешает
+    // `raw_amount` — та же величина, записанная вычитанием: пара «брошено 9,
+    // прошло 6» при `immune`/`resistant`/`vulnerable` = false называет
+    // поглощённое. Ровно так же он снимается у `NpcHarmed` веткой выше.
+    //
+    // `offered` и `temporary_hp_amount` — величина запаса в момент выдачи:
+    // первое у `TemporaryHitPointsGranted`, второе у `ConditionAdded` с
+    // героизмом. Сам факт эти события называют собственным типом, и проекция
+    // этого не отменяет (см. ниже про маркер), но число закрывается наравне со
+    // всеми прочими записями — стандарт у ключа один.
+    //
+    // `applied_amount` у урона остаётся: это удар отряда, и его игрок обязан
+    // видеть — свой бросок он к тому же видит в `rolls`. Полной тайны из этого
+    // не выходит, и обещать её было бы неправдой: подтверждённое попадание
+    // (`AttackResolved` с публичными `hit` и `critical`) при `applied_amount: 0`
+    // и всех трёх ложных `immune`/`resistant`/`vulnerable` возможно только
+    // поглощением, то есть сервер и после правки называет факт — не вычитанием,
+    // а комбинацией оставленных полей. Граница здесь проходит по числам чужого
+    // запаса, а не по самому факту.
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed', 'temporary_hp_amount', 'offered', 'raw_amount', 'armor_class']) delete payload[key]
+    // И ещё одна запись — provenance самого события. Движок вешает
     // `RULE_IDS.temporaryHp` на урон ровно при ненулевом поглощении (четыре
     // места в `rules-engine.mjs`: основной удар, добавка вещи, вторичный урон и
     // прямой `ApplyDamage`), поэтому одно наличие маркера в `source_rule_ids`
@@ -1227,13 +1298,19 @@ function eventForViewer(event, user, actorId, state = {}) {
     // трогает.
     //
     // Ветка условная не по типу события, а по «цель — неопознанный противник»,
-    // поэтому маркер снимается заодно и с `TemporaryHitPointsGranted`. Тайны это
-    // там не делает: то событие называет временные ОЗ и собственным типом, и
-    // величиной `offered`, которой в списке выше нет (сегодня его кладёт только
-    // команда ведущего `GrantTemporaryHitPoints` и `CastSpell`; вражеских
-    // заклинателей с такими заклинаниями в каталоге пока нет). Это отдельная
-    // дыра того же класса, и закрывать её надо решением о самом событии, а не
-    // тихим расширением списка урона.
+    // поэтому маркер снимается заодно и с `TemporaryHitPointsGranted`, где он
+    // обычно единственный, — провенанс там обнуляется целиком. Тайны это не
+    // создаёт: событие называет временные ОЗ собственным типом. Но величина
+    // оттуда больше не уезжает: `offered` стоит в списке выше, и стандарт у
+    // ключа один в обоих каналах.
+    //
+    // Производителей у события три, и живут они не в двух командах: команда
+    // ведущего `GrantTemporaryHitPoints`, `CastSpell` и героизм на старте хода
+    // (`trigger: 'turn-start'`) — последний приходит из обработки хода, а не из
+    // команды, и по списку «только две команды» будущий читатель прошёл бы мимо
+    // него. Точный список на сегодня — `grep -rn "TemporaryHitPointsGranted"
+    // server/`. Закрыть сам факт можно только решением о самом событии; тихим
+    // расширением списка урона это не делается.
     if (Array.isArray(visible.source_rule_ids)) {
       visible.source_rule_ids = visible.source_rule_ids.filter((/** @type {unknown} */ id) => String(id) !== RULE_IDS.temporaryHp)
     }
