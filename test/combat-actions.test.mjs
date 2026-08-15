@@ -326,7 +326,6 @@ test('игрок видит у Искусной остроты выбор пол
   assert.deepEqual(projectedOptions.map((option) => option.id), ['cast:shield', 'cast:silvery-barbs'])
   const plain = projectedOptions.find((option) => option.id === 'cast:shield')
   assert.ok(plain, 'в окне обязана быть и вторая, обычная реакция — иначе проверка ниже пуста')
-  assert.equal('requires_beneficiary' in plain, false)
   assert.deepEqual(Object.keys(plain).sort(), ['cost', 'description', 'id', 'name', 'resource', 'slot_level'])
 })
 

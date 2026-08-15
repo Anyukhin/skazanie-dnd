@@ -281,7 +281,6 @@ test('у постоянных состояний свои знаки, а не п
   assert.deepEqual(tacticalUi.TOKEN_CONDITION_PRIORITY, ['paralyzed', 'restrained', 'prone', 'frightened'])
   const glyphs = tacticalUi.TOKEN_CONDITION_PRIORITY.map((id) => tacticalUi.tokenConditionGlyph(id, tacticalUi.conditionPresentation(id).label))
   assert.deepEqual(glyphs, ['✦', '⌁', '▰', '!'])
-  assert.equal(new Set(glyphs).size, glyphs.length, `знаки повторяются: ${glyphs.join(' ')}`)
 
   // Незнакомому состоянию остаётся первая буква подписи — знак не выдумывается.
   const homebrew = tacticalUi.conditionPresentation('homebrew-omen')

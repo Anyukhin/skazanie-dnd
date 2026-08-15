@@ -7,7 +7,7 @@ import { suggestedActionsFor } from './action-hints.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
-import { hitPointDicePoolForActor } from './rules-engine.mjs'
+import { RULE_IDS, hitPointDicePoolForActor } from './rules-engine.mjs'
 import {
   MATERIALS,
   SIZE_CLASSES,
@@ -657,15 +657,16 @@ export function publicEncounterFor(encounter = {}) {
  * состояние точную форму хранит: сокращение реакции считается по нему, а не по
  * проекции.
  *
- * Оба списка закреплены поимённо в `test/npc-equipment.test.mjs`: окно,
- * набитое ключами кармана, проецируется целиком, и набор оставшихся полей
- * сверяется дословно. Сторож ловит ровно те ключи, которые несёт фикстура
- * `stuffedWindow` — то есть `POCKET_KEYS` и перечисленные величины; ключа,
- * которого в ней нет, он не увидит. Поэтому строка, дописанная сюда, должна
- * тем же коммитом появиться и в фикстуре: иначе проверка останется зелёной, а
- * опись чужого кармана уедет столу целым payload-ом окна.
+ * Оба списка закреплены в `test/npc-equipment.test.mjs` дословным `deepEqual`
+ * самого списка — не через фикстуру. Разница существенная: проверка на фикстуре
+ * видит только те ключи, которые фикстура несёт, поэтому строка, дописанная
+ * сюда, оставалась бы зелёной до тех пор, пока её не добавят и в `stuffedWindow`.
+ * Пин по списку падает сразу, и решение «этот ключ столу можно» принимается
+ * явно. Фикстура при этом остаётся — она проверяет другое: что проекция списки
+ * действительно применяет и опись чужого кармана не проезжает ни корнем, ни
+ * слагаемым.
  */
-const REACTION_DAMAGE_PUBLIC_KEYS = Object.freeze([
+export const REACTION_DAMAGE_PUBLIC_KEYS = Object.freeze([
   'damage_type', 'raw_amount', 'applied_amount', 'immune', 'resistant', 'vulnerable',
   'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed',
   'hp_before', 'hp_after', 'death_ward_triggered',
@@ -677,7 +678,7 @@ const REACTION_DAMAGE_PUBLIC_KEYS = Object.freeze([
  * же различение, что и «клинок смазан чем-то тёмным»: стол видит, что второй
  * укус пришёл не от самого удара, но не получает ключа вещи.
  */
-const REACTION_DAMAGE_COMPONENT_PUBLIC_KEYS = Object.freeze([
+export const REACTION_DAMAGE_COMPONENT_PUBLIC_KEYS = Object.freeze([
   'damage_type', 'raw_amount', 'applied_amount', 'temporary_hp_absorbed', 'source',
 ])
 
@@ -746,13 +747,25 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
   // величина называет и наличие временных ОЗ у неопознанного противника, и
   // сколько их было, ровно как `temporary_hp_before/after` рядом. Поэтому она
   // снимается вместе с ними — и в корне, и в слагаемых составного урона, где
-  // стоит тем же полем. Объекты здесь уже собственные (`publicReactionDamageFor`
-  // строит и корень, и каждое слагаемое заново), поэтому правка не задевает
-  // авторитетное состояние: сокращение реакции считается по нему.
+  // стоит тем же полем.
+  //
+  // `raw_amount` уходит следом, иначе снятое поле возвращается вычитанием:
+  // «брошено 9, прошло 6» при `immune`/`resistant`/`vulnerable` = false — это те
+  // же 3 поглощённых, только записанные парой. Граница у правки честная и
+  // узкая: она закрывает то, что **утверждает сервер**, а не само знание. Свой
+  // бросок урона отряд видит в `rolls` (он публичный, его сделал игрок), так
+  // что счетовод разницу выведет и без подсказки; проекция просто перестаёт её
+  // называть — ни величиной, ни парой. Что удар сделал, стол видит целиком:
+  // `applied_amount` остаётся и в корне, и в каждом слагаемом.
+  //
+  // Объекты здесь уже собственные (`publicReactionDamageFor` строит и корень, и
+  // каждое слагаемое заново), поэтому правка не задевает авторитетное
+  // состояние: сокращение реакции считается по нему.
   if (damage && enemyTarget && !exactEnemyHealthKnown(state, targetId, actorId)) {
-    for (const key of ['hp_before', 'hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed']) delete damage[key]
+    for (const key of ['hp_before', 'hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed', 'raw_amount']) delete damage[key]
     for (const component of Array.isArray(damage.damage_components) ? damage.damage_components : []) {
-      if (component && typeof component === 'object') delete component.temporary_hp_absorbed
+      if (!component || typeof component !== 'object') continue
+      for (const key of ['temporary_hp_absorbed', 'raw_amount']) delete component[key]
     }
   }
   return {
@@ -1194,9 +1207,36 @@ function eventForViewer(event, user, actorId, state = {}) {
     // противника они были, и сколько их было, — то есть ровно то, что рядом
     // закрывают `temporary_hp_before/after`. Два канала одного файла на этом
     // ключе расходились: окно молчало, а `DamageApplied` по тому же врагу вёз
-    // его игроку. `applied_amount` у урона остаётся: это удар отряда, и его
-    // игрок обязан видеть.
-    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed', 'armor_class']) delete payload[key]
+    // его игроку.
+    //
+    // `raw_amount` — третья запись того же: пара «брошено 9, прошло 6» при
+    // `immune`/`resistant`/`vulnerable` = false называет поглощённое вычитанием.
+    // Ровно так же он снимается у `NpcHarmed` веткой выше. `applied_amount` у
+    // урона остаётся: это удар отряда, и его игрок обязан видеть — свой бросок
+    // он к тому же видит в `rolls`, поэтому граница здесь проходит по тому, что
+    // называет сервер, а не по тому, что игрок способен сосчитать сам.
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed', 'raw_amount', 'armor_class']) delete payload[key]
+    // И четвёртая запись — provenance самого события. Движок вешает
+    // `RULE_IDS.temporaryHp` на урон ровно при ненулевом поглощении (четыре
+    // места в `rules-engine.mjs`: основной удар, добавка вещи, вторичный урон и
+    // прямой `ApplyDamage`), поэтому одно наличие маркера в `source_rule_ids`
+    // говорит «у этого противника были временные ОЗ» — то самое, что payload
+    // выше уже перестал называть. Список фильтруется, а не обнуляется:
+    // `srd_5_2_1:combat:damage` и признак сопротивления игроку принадлежат.
+    // Массив собран `projectVisibleState` заново, авторитетное событие правка не
+    // трогает.
+    //
+    // Ветка условная не по типу события, а по «цель — неопознанный противник»,
+    // поэтому маркер снимается заодно и с `TemporaryHitPointsGranted`. Тайны это
+    // там не делает: то событие называет временные ОЗ и собственным типом, и
+    // величиной `offered`, которой в списке выше нет (сегодня его кладёт только
+    // команда ведущего `GrantTemporaryHitPoints` и `CastSpell`; вражеских
+    // заклинателей с такими заклинаниями в каталоге пока нет). Это отдельная
+    // дыра того же класса, и закрывать её надо решением о самом событии, а не
+    // тихим расширением списка урона.
+    if (Array.isArray(visible.source_rule_ids)) {
+      visible.source_rule_ids = visible.source_rule_ids.filter((/** @type {unknown} */ id) => String(id) !== RULE_IDS.temporaryHp)
+    }
     // Величина лечения — то же знание, что и ОЗ до и после, только записанное
     // разностью: у зелья противника (2к4 + 2) ровная десятка называет вещь
     // точнее любого `catalog_id`, который здесь же снимает ветка «действует

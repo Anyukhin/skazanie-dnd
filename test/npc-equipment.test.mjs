@@ -17,8 +17,14 @@ import {
   npcWeaponBindings,
 } from '../server/npc-equipment.mjs'
 import { planNpcTurn } from '../server/npc-turn-scheduler.mjs'
-import { applyGameEvent, normalizeCampaignState, resolveCommand, validateCommand } from '../server/rules-engine.mjs'
-import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer } from '../server/viewer-projection.mjs'
+import { RULE_IDS, applyGameEvent, normalizeCampaignState, resolveCommand, validateCommand } from '../server/rules-engine.mjs'
+import {
+  REACTION_DAMAGE_COMPONENT_PUBLIC_KEYS,
+  REACTION_DAMAGE_PUBLIC_KEYS,
+  campaignStateForViewer,
+  mechanicsForViewer,
+  turnExplanationForViewer,
+} from '../server/viewer-projection.mjs'
 
 const NPC_CONTEXT = { isNpcScheduler: true, isAdmin: true, serverAuthoritativeCombat: true }
 
@@ -892,12 +898,28 @@ function windowState(window, { exactHealth = false } = {}) {
 }
 
 test('белый список урона окна реакции закреплён поимённо и в корне, а не только в слагаемых', () => {
-  // Сторож самого списка, а не одного сценария. У корня до этой проверки не
+  // Сторож самих списков, а не одного сценария. У корня до этой проверки не
   // было ни одной: сценарий шпиона кладёт ключ вещи только в слагаемое, поэтому
   // дописанные в корневой список `source_item_id`, `source_item_name`,
   // `item_id` или `effect_id` оставляли корпус зелёным — опись чужого кармана
-  // уезжала бы столу целым payload-ом окна. Здесь окно набито всеми ключами
-  // разом, и набор оставшихся полей сверяется дословно.
+  // уезжала бы столу целым payload-ом окна.
+  //
+  // Списки сверяются дословно, а не через фикстуру: проверка на `stuffedWindow`
+  // видит только те ключи, которые фикстура несёт, поэтому строка, дописанная в
+  // проекцию без правки фикстуры, оставалась бы зелёной. Пин падает сразу —
+  // «этот ключ столу можно» приходится решать явно.
+  assert.deepEqual(REACTION_DAMAGE_PUBLIC_KEYS, [
+    'damage_type', 'raw_amount', 'applied_amount', 'immune', 'resistant', 'vulnerable',
+    'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed',
+    'hp_before', 'hp_after', 'death_ward_triggered',
+  ])
+  assert.deepEqual(REACTION_DAMAGE_COMPONENT_PUBLIC_KEYS, [
+    'damage_type', 'raw_amount', 'applied_amount', 'temporary_hp_absorbed', 'source',
+  ])
+
+  // А фикстура проверяет другое: что проекция эти списки действительно
+  // применяет — окно набито всеми ключами кармана разом, и набор оставшихся
+  // полей сверяется дословно.
   const viewer = { role: 'player', heroIds: ['hero'] }
   const state = windowState(stuffedWindow())
   const damage = campaignStateForViewer(state, viewer, 'hero').mechanics.combat.reaction_window.damage
@@ -925,23 +947,32 @@ test('белый список урона окна реакции закрепл�
   assert.equal(gmDamage.damage_components[0].effect_id, POCKET_KEYS.effect_id)
 })
 
-test('у неопознанного противника в окне реакции закрыты и временные ОЗ, и поглощённое ими', () => {
+test('у неопознанного противника в окне реакции закрыты и временные ОЗ, и пара, из которой они считаются', () => {
   // Цель окна реакции не всегда герой: у «покинул досягаемость» и у
   // контрзаклинания там записан тот, на кого реагируют. `temporary_hp_absorbed`
   // — те же временные ОЗ, только записанные разностью: «поглощено 3» называет и
   // то, что у неопознанного противника они были, и сколько их было. Стояло оно
   // рядом с закрытыми `hp_before/after` и уезжало столу и корнем, и слагаемым.
+  //
+  // `raw_amount` закрыт вместе с ним, потому что снятое поле возвращается
+  // вычитанием: «брошено 9, прошло 6» при `immune`/`resistant`/`vulnerable` =
+  // false — это те же 3. Утверждается ровно это и не больше: свой бросок урона
+  // отряд видит в `rolls`, и полной тайны здесь нет и быть не может — проекция
+  // перестаёт называть чужой запас, а не отменяет арифметику за столом.
   const viewer = { role: 'player', heroIds: ['hero'] }
   const state = windowState(stuffedWindow({ targetId: 'foe' }))
   const damage = campaignStateForViewer(state, viewer, 'hero').mechanics.combat.reaction_window.damage
 
   assert.deepEqual(Object.keys(damage).sort(), [
-    'applied_amount', 'damage_components', 'damage_type', 'death_ward_triggered', 'immune', 'raw_amount',
+    'applied_amount', 'damage_components', 'damage_type', 'death_ward_triggered', 'immune',
     'resistant', 'vulnerable',
   ])
   assert.deepEqual(Object.keys(damage.damage_components[0]).sort(), [
-    'applied_amount', 'damage_type', 'raw_amount', 'source',
+    'applied_amount', 'damage_type', 'source',
   ])
+  // Что удар сделал, стол видит целиком: закрыт чужой запас, а не своя работа.
+  assert.equal(damage.applied_amount, 6)
+  assert.equal(damage.damage_components[0].applied_amount, 4)
 
   // Граница закрытия — опознание, а не сама цель-противник: разведанному врагу
   // те же поля приезжают полностью, иначе проверка выше была бы зелена и от
@@ -950,7 +981,9 @@ test('у неопознанного противника в окне реакц�
     .mechanics.combat.reaction_window.damage
   assert.equal(known.hp_before, 40)
   assert.equal(known.temporary_hp_absorbed, 3)
+  assert.equal(known.raw_amount, 9)
   assert.equal(known.damage_components[0].temporary_hp_absorbed, 2)
+  assert.equal(known.damage_components[0].raw_amount, 4)
 
   // Событие и состояние собирает одна функция — расходиться им нечем.
   const opened = mechanicsForViewer([{
@@ -960,41 +993,59 @@ test('у неопознанного противника в окне реакц�
   assert.deepEqual(opened.payload.damage, damage)
 })
 
-test('поглощённое временными ОЗ снимается у неопознанного противника и в самом событии урона', () => {
+test('поглощённое временными ОЗ снимается у неопознанного противника всеми тремя записями', () => {
   // Второй канал того же знания. Окно реакции `temporary_hp_absorbed` у
   // неопознанного врага снимало, а `DamageApplied` по нему же вёз ключ игроку:
   // два места одного файла разошлись на одном поле. Величина называет и то,
   // что временные ОЗ у противника были, и сколько их было, — то же самое, что
   // рядом закрывают `temporary_hp_before/after`.
+  //
+  // Записей у одного факта три, и закрывать их приходится вместе: сама
+  // величина, пара `raw_amount`/`applied_amount`, из которой она получается
+  // вычитанием, и маркер правила в `source_rule_ids` — движок вешает его ровно
+  // при ненулевом поглощении, поэтому одно его присутствие уже говорит «у этого
+  // противника были временные ОЗ». Дальше арифметики за столом проекция не
+  // достаёт и не обещает: свой бросок урона отряд видит в `rolls`.
   const viewer = { role: 'player', heroIds: ['hero'] }
   const state = battleState(foe('srd_5_2_1:spy', { x: 1 }))
   const strike = () => ({
     event_id: 'damage-foe', command_id: 'cmd-1', event_type: 'DamageApplied', actor_id: 'hero',
     target_ids: ['foe'], visibility: 'public',
+    source_rule_ids: [RULE_IDS.damage, RULE_IDS.temporaryHp],
     payload: {
       target_id: 'foe', damage_type: 'slashing', raw_amount: 9, applied_amount: 6,
       temporary_hp_before: 3, temporary_hp_after: 0, temporary_hp_absorbed: 3, hp_before: 40, hp_after: 34,
     },
   })
   const [hidden] = mechanicsForViewer([strike()], viewer, 'hero', state)
-  assert.deepEqual(Object.keys(hidden.payload).sort(), ['applied_amount', 'damage_type', 'raw_amount', 'target_id'])
+  assert.deepEqual(Object.keys(hidden.payload).sort(), ['applied_amount', 'damage_type', 'target_id'])
+  // Провенанс режется по одному правилу, а не обнуляется: за что урон, стол
+  // видит, а вот маркер временных ОЗ — уже чужой запас.
+  assert.deepEqual(hidden.source_rule_ids, [RULE_IDS.damage])
+  assert.equal(RULE_IDS.temporaryHp, 'srd_5_2_1:combat:temporary-hit-points')
 
   // Граница та же, что и у окна: опознание, а не сама цель-противник. Иначе
-  // проверка выше была бы зелена и от безусловного удаления.
+  // проверки выше были бы зелены и от безусловного удаления.
   const scouted = {
     ...state,
     mechanics: { ...state.mechanics, enemy_knowledge: { party: { foe: { health: 'exact' } } } },
   }
-  assert.equal(mechanicsForViewer([strike()], viewer, 'hero', scouted)[0].payload.temporary_hp_absorbed, 3)
+  const [known] = mechanicsForViewer([strike()], viewer, 'hero', scouted)
+  assert.equal(known.payload.temporary_hp_absorbed, 3)
+  assert.equal(known.payload.raw_amount, 9)
+  assert.deepEqual(known.source_rule_ids, [RULE_IDS.damage, RULE_IDS.temporaryHp])
 
   // И вторая граница: свои временные ОЗ игрок обязан видеть — «поглощено 3»
   // объясняет, почему удар на 9 снял с него шесть.
   const [own] = mechanicsForViewer([{
     event_id: 'damage-hero', command_id: 'cmd-2', event_type: 'DamageApplied', actor_id: 'foe',
     target_ids: ['hero'], visibility: 'public',
+    source_rule_ids: [RULE_IDS.damage, RULE_IDS.temporaryHp],
     payload: { target_id: 'hero', damage_type: 'piercing', raw_amount: 9, applied_amount: 6, temporary_hp_absorbed: 3 },
   }], viewer, 'hero', state)
   assert.equal(own.payload.temporary_hp_absorbed, 3)
+  assert.equal(own.payload.raw_amount, 9)
+  assert.deepEqual(own.source_rule_ids, [RULE_IDS.damage, RULE_IDS.temporaryHp])
 })
 
 test('ключи добавки снимаются у условия противника целиком — и только у условия', () => {
