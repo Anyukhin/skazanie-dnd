@@ -334,25 +334,41 @@ export function beastDistanceFeet(state = {}, heroId = '', enemyId = '') {
   return from && to ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 : null
 }
 
+/**
+ * Досягаемость одной меркой для всех, кто её спрашивает: и для движка, который
+ * принимает команду от **действующего** героя, и для карточки панели.
+ *
+ * Мерок было две. Движок мерил от того, кто жмёт кнопку, а панель — от
+ * ближайшего героя отряда, и на расставленном отряде они расходились в обе
+ * стороны сразу: кнопка горела, потому что рядом со зверем стоял сосед, и
+ * команда падала `BEAST_OUT_OF_REACH`; или гасла, хотя действующий герой стоял
+ * вплотную. Партийной мерки в проекте больше нет.
+ */
+export function beastReachFor(state = {}, heroId = '', enemyId = '') {
+  const distance = beastDistanceFeet(state, heroId, enemyId)
+  return { distance_feet: distance, out_of_reach: distance != null && distance > BEAST_APPROACH_REACH_FEET }
+}
+
 /** Герой стоит слишком далеко, чтобы протянуть руку. Без клеток — не стоит. */
 export function beastOutOfReach(state = {}, heroId = '', enemyId = '') {
-  const distance = beastDistanceFeet(state, heroId, enemyId)
-  return distance != null && distance > BEAST_APPROACH_REACH_FEET
+  return beastReachFor(state, heroId, enemyId).out_of_reach
 }
 
 /**
- * Досягаемость глазами панели: она общая на отряд, поэтому меряется по
- * ближайшему герою. Карточка от этого не исчезает — она гаснет и подписывает,
- * сколько футов осталось пройти.
+ * Досягаемость по каждому герою отряда. Панель общая, а рука — конкретная:
+ * зверя уговаривает тот герой, которым игрок сейчас играет, и отвечать ему
+ * «сосед дотянулся» карточка права не имеет. Строки собирает та же
+ * `beastReachFor`, которой проверяется команда, поэтому подпись карточки и
+ * ответ движка расходиться не могут.
  */
-export function beastPartyReach(state = {}, enemyId = '') {
-  let nearest = null
+export function beastReachByHero(state = {}, enemyId = '') {
+  const rows = {}
   for (const hero of Array.isArray(state?.players) ? state.players : []) {
-    const distance = beastDistanceFeet(state, hero?.id, enemyId)
-    if (distance == null) continue
-    if (nearest == null || distance < nearest) nearest = distance
+    const heroId = String(hero?.id ?? '')
+    if (!heroId || Object.hasOwn(rows, heroId)) continue
+    rows[heroId] = beastReachFor(state, heroId, enemyId)
   }
-  return { distance_feet: nearest, out_of_reach: nearest != null && nearest > BEAST_APPROACH_REACH_FEET }
+  return rows
 }
 
 /** Герой отряда, а не любой актор с этим идентификатором. */
@@ -371,8 +387,9 @@ function isPartyHero(state = {}, heroId = '') {
  * было.
  *
  * Досягаемости здесь нет намеренно: она зависит от того, **кто** подходит, а у
- * этой функции героя нет. Её считают отдельно — `beastOutOfReach` для команды
- * конкретного героя и `beastPartyReach` для общей панели.
+ * этой функции героя нет. Её считают отдельно и одной меркой — `beastOutOfReach`
+ * для команды конкретного героя и `beastReachByHero` для панели, где строка
+ * заведена на каждого героя отряда.
  */
 export function beastApproachBlockedReason(state = {}, enemy = {}) {
   if (actorHitPoints(enemy) <= 0 || enemy?.alive === false) return 'beast_down'
@@ -688,7 +705,11 @@ export function beastsForViewer(state = {}, viewer = {}) {
     // Досягаемость едет отдельным полем, а не `blocked_reason`: карточка с
     // причиной из панели исчезает, а «до зверя ещё идти» — это приглашение
     // подойти, а не отказ. Кнопки гаснут, подпись называет расстояние.
-    const reach = beastPartyReach(state, enemy.id)
+    //
+    // Строка заведена на каждого героя отряда, а не одна общая: команду
+    // принимает движок от действующего героя, и панель обязана мерить тем же
+    // — иначе кнопка горит потому, что рядом со зверем стоит сосед.
+    const reach = beastReachByHero(state, enemy.id)
     return {
       id: beast?.id ?? beastIdFor(state, enemy.id),
       actor_id: String(enemy.id),
@@ -705,17 +726,28 @@ export function beastsForViewer(state = {}, viewer = {}) {
       attempts: policy.attempts,
       bites_on_failure: policy.bites_on_failure,
       parts: policy.parts.map((part) => ({ id: part.id, label: part.label, shift: part.shift })),
-      out_of_reach: reach.out_of_reach,
-      ...(reach.distance_feet == null ? {} : { distance_feet: reach.distance_feet }),
+      reach_by_hero: reach,
       reach_feet: BEAST_APPROACH_REACH_FEET,
       ...(blockedReason ? { blocked_reason: blockedReason } : {}),
     }
   })
-  const companions = beastCompanions(state).map((beast) => ({
-    id: beast.id,
-    name: beast.name,
-    scare_cooldown_minutes: beastScareCooldownLeft(beast, minutes),
-  }))
+  // Повод отказа спутнику считает сервер и присылает готовым — по той же
+  // причине, что и у кандидата: доска не имеет права выдумывать свои запреты, а
+  // молчащая карточка с погашенной кнопкой не объясняет игроку ничего. Оба
+  // повода настоящие: отгонять зверь отказывается в бою (`BEAST_DURING_COMBAT`)
+  // и пока не вышел откат (`BEAST_SCARE_COOLDOWN`).
+  const companions = beastCompanions(state).map((beast) => {
+    const cooldown = beastScareCooldownLeft(beast, minutes)
+    const blockedReason = state?.mechanics?.combat?.active === true
+      ? 'combat_active'
+      : cooldown > 0 ? 'scare_cooldown' : null
+    return {
+      id: beast.id,
+      name: beast.name,
+      scare_cooldown_minutes: cooldown,
+      ...(blockedReason ? { blocked_reason: blockedReason } : {}),
+    }
+  })
   // Флаг панели спрашивает про лагерь, а не про конкретный бросок, поэтому
   // читает спутника напрямую: у `beastWatchSwing` теперь есть актор, и
   // подставлять сюда произвольного героя значило бы отвечать не на тот вопрос.

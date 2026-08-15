@@ -11450,6 +11450,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         item_name: String(food.name ?? '').slice(0, 120),
         quantity: 1,
       }, [command.actor_id]))
+      // И та же цена вне боя, что у уговора: подойти с открытой ладонью, сесть
+      // и дождаться, пока зверь возьмёт еду, — это не мгновение. Без этой
+      // строки средняя ступень лестницы была единственной бесплатной: в бою
+      // кормление платило действием, а вне боя не стоило ни минуты, и цена
+      // подхода обходилась ровно через неё.
+      if (!state.mechanics.combat.active) {
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), BEAST_APPROACH_MINUTES, 'minute')
+      }
       break
     }
     case 'ScareWithBeast': {

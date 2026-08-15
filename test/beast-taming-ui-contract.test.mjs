@@ -27,9 +27,19 @@ test('спутник помечен отдельно и честно объяв�
   assert.match(board, /className="beast-tag companion">СПУТНИК</u)
   assert.match(board, /идёт с отрядом · в бой не вводится/u)
   assert.match(board, /Восприятие лагеря идёт с преимуществом/u)
-  // Откат отпугивания приходит с сервера числом, а не считается на клиенте.
-  assert.match(board, /companion\.scare_cooldown_minutes > 0/u)
+  // Повод отказа приходит с сервера полем, а откат — числом: доска не решает
+  // за него ни «в бою нельзя», ни «ещё не остыл».
+  assert.match(board, /disabled=\{beastActionsBlocked \|\| Boolean\(companion\.blocked_reason\)\}/u)
+  assert.match(board, /companion\.scare_cooldown_minutes\} мин/u)
   assert.doesNotMatch(board, /BEAST_SCARE_COOLDOWN/u)
+})
+
+test('доска не гасит зверя своим «идёт бой»: доступность объявляет сервер', () => {
+  // Сервер принимает уговор к сломленному моралью зверю прямо посреди боя, а
+  // слепой гейт по бою гасил кнопки там, где команда проходит. Поводы доски —
+  // только её собственные: рассказ, летящая команда, недееспособный герой.
+  assert.match(board, /const beastActionsBlocked = Boolean\(narrating \|\| tacticalBusy \|\| !canAct\)/u)
+  assert.doesNotMatch(board, /const beastActionsBlocked = Boolean\(combatActive/u)
 })
 
 test('клиент называет только зверя: СЛ, навык и паёк остаются серверными', () => {
@@ -82,11 +92,13 @@ test('панель и карточка зверя оформлены', () => {
 test('далёкий зверь остаётся на панели, но с погашенными кнопками', () => {
   // Досягаемость приезжает отдельным полем, а не `blocked_reason`: карточка с
   // причиной из панели исчезает, а «до зверя ещё идти» — приглашение подойти.
-  assert.match(board, /candidate\.out_of_reach \? ' out-of-reach' : ''/u)
+  assert.match(board, /outOfReach \? ' out-of-reach' : ''/u)
   assert.match(board, /До зверя ещё идти/u)
-  assert.match(board, /candidate\.out_of_reach === true \|\| candidate\.stage === 'calmed'/u)
-  assert.match(board, /candidate\.out_of_reach === true \|\| candidate\.stage !== 'calmed'/u)
-  // Расстояние приходит с сервера числом: своей формулы досягаемости у клиента нет.
-  assert.match(board, /candidate\.distance_feet/u)
+  assert.match(board, /outOfReach \|\| candidate\.stage === 'calmed'/u)
+  assert.match(board, /outOfReach \|\| candidate\.stage !== 'calmed'/u)
+  // Мерка одна и она серверная, а герой — тот, которым жмут кнопку: строка
+  // берётся по действующему герою, а не по ближайшему в отряде.
+  assert.match(board, /const reach = candidate\.reach_by_hero\?\.\[typingActorId\]/u)
+  assert.match(board, /reach\?\.distance_feet/u)
   assert.doesNotMatch(board, /BEAST_APPROACH_REACH_FEET/u)
 })

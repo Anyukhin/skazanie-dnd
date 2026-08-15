@@ -1602,17 +1602,27 @@ export type BeastCandidate = {
   attempts?: number
   bites_on_failure?: boolean
   parts?: BeastDifficultyPart[]
-  /** До зверя ещё идти: ближайший герой отряда стоит дальше вытянутой руки. */
-  out_of_reach?: boolean
-  /** Сколько футов до зверя от ближайшего героя. Нет — сцена без клеток. */
-  distance_feet?: number
+  /**
+   * Досягаемость по каждому герою отряда: ключ — идентификатор героя. Общей
+   * строки «до зверя далеко» здесь нет намеренно: команду движок принимает от
+   * действующего героя, и панель обязана читать строку того, кто жмёт кнопку,
+   * а не того, кто просто стоит ближе. `distance_feet: null` — сцена без
+   * клеток: расстояния в ней не существует.
+   */
+  reach_by_hero?: Record<string, { distance_feet: number | null; out_of_reach: boolean }>
   /** С какого расстояния зверю протягивают руку. Считает сервер. */
   reach_feet?: number
   /** `combat_active` или `beast_down`: почему подойти нельзя. */
   blocked_reason?: string
 }
 
-export type BeastCompanionCard = { id: string; name: string; scare_cooldown_minutes: number }
+export type BeastCompanionCard = {
+  id: string
+  name: string
+  scare_cooldown_minutes: number
+  /** `combat_active` или `scare_cooldown`: почему спутник сейчас не отгоняет. */
+  blocked_reason?: string
+}
 
 export type BeastsProjection = {
   schema_version?: number

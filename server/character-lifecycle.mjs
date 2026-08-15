@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 
 import {
+  catalogSkillId,
   classBuildCatalogInfo,
   classSkillRuleFor,
   characterClassKey,
@@ -516,9 +517,14 @@ export function deriveCharacterSheet(actor, options = {}) {
   const canonical = canonicalCharacterChoices({ ...actor, characterClass, level, abilities })
   const itemEffects = activeItemEffectTotals(canonical)
   const savingThrowProficiencies = new Set(savingThrowProficienciesFor(canonical))
+  // Владения считаются один раз на весь лист, а не восемнадцать. Сравнение при
+  // этом буквальное и таким и остаётся: написание приводит к канону каталога
+  // сам нормализатор (`catalogSkillId`, `server/character-progression.mjs`), и
+  // второй нормализации здесь быть не должно — именно она и разъехалась бы.
+  const classSkillProficiencies = new Set(normalizedClassSkillProficiencies(canonical))
   const skills = Object.fromEntries(SKILL_IDS.map((id) => {
     const ability = skillAbility(id)
-    const proficient = normalizedClassSkillProficiencies(canonical).includes(id)
+    const proficient = classSkillProficiencies.has(id)
     const modifier = abilityModifier(abilities[ability])
     return [id, {
       ability,
@@ -963,7 +969,11 @@ export function parseCharacterImport(raw, options = {}) {
     ...(abilityGeneration ? { abilityGeneration } : {}),
     baseSpeed,
     ...(source.subclass == null ? {} : { subclass: optionalText(source.subclass, 'character.subclass', 160) }),
-    classSkillProficiencies: uniqueIdentifiers(source.classSkillProficiencies ?? [], 'character.classSkillProficiencies'),
+    // Написание приводится к канону каталога сразу на входе — по той же
+    // причине, что и в подготовке героя: сверка с канонической формой идёт
+    // буквальной, и дефисный лист чужого экспорта читался бы как недоступный
+    // выбор, хотя это те же самые навыки.
+    classSkillProficiencies: [...new Set(uniqueIdentifiers(source.classSkillProficiencies ?? [], 'character.classSkillProficiencies').map(catalogSkillId))],
     selectedFeatureIds: uniqueIdentifiers(source.selectedFeatureIds ?? [], 'character.selectedFeatureIds'),
     knownSpellIds: uniqueIdentifiers(source.knownSpellIds ?? [], 'character.knownSpellIds'),
     preparedSpellIds: uniqueIdentifiers(source.preparedSpellIds ?? [], 'character.preparedSpellIds'),

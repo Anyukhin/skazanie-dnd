@@ -908,10 +908,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     [state.beasts],
   )
   const beastCompanions = useMemo(() => state.beasts?.companions ?? [], [state.beasts])
-  // В бою зверя не уговаривают — сервер уже вычеркнул таких из кандидатов, — а
-  // спутник в бой не вводится вовсе, поэтому его кнопка блокируется тем же
-  // условием, что и действия с пленным.
-  const beastActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
+  // Своих запретов доска здесь не выдумывает: кого нельзя трогать, сервер уже
+  // назвал полем `blocked_reason` — и у кандидата, и у спутника. «Идёт бой» сам
+  // по себе запретом не является: к зверю со сломленной моралью подходят прямо
+  // посреди схватки, платя действием, и слепой гейт по бою гасил кнопки там,
+  // где команда проходит. Остаются поводы самой доски: идёт рассказ, команда в
+  // полёте, герой не может действовать.
+  const beastActionsBlocked = Boolean(narrating || tacticalBusy || !canAct)
   // Встреча со стражей приезжает готовой карточкой: подписи исходов, размер
   // виры и СЛ побега считает сервер (`server/law-and-order.mjs`). Своей таблицы
   // ступеней здесь нет и быть не может — точной ступени игрок не видит вовсе.
@@ -2636,15 +2639,24 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             <div className="beast-actions">
               <button
                 type="button"
-                disabled={beastActionsBlocked || companion.scare_cooldown_minutes > 0}
-                title={companion.scare_cooldown_minutes > 0
-                  ? `Зверь только что отогнал одну тварь: ждать ещё ${companion.scare_cooldown_minutes} мин игрового времени`
-                  : 'Отогнать мелкую угрозу. Механики за этим нет — только строка в летописи'}
+                disabled={beastActionsBlocked || Boolean(companion.blocked_reason)}
+                title={companion.blocked_reason === 'combat_active'
+                  ? 'В бою зверь не отгоняет: это не боевой спутник'
+                  : companion.blocked_reason === 'scare_cooldown'
+                    ? `Зверь только что отогнал одну тварь: ждать ещё ${companion.scare_cooldown_minutes} мин игрового времени`
+                    : 'Отогнать мелкую угрозу. Механики за этим нет — только строка в летописи'}
                 onClick={() => onBeastAction(companion.id, 'scare')}
               ><Ear size={13} />Отогнать</button>
             </div>
           </article>)}
-          {beastCandidates.map((candidate) => <article key={candidate.id} className={`beast-card${candidate.diet === 'predator' ? ' predator' : ''}${candidate.out_of_reach ? ' out-of-reach' : ''}`}>
+          {beastCandidates.map((candidate) => {
+            // Досягаемость меряется по тому герою, которым игрок сейчас жмёт
+            // кнопку: сервер прислал строку на каждого героя отряда той же
+            // меркой, которой проверит команду. Своей геометрии у доски нет, и
+            // «сосед стоит ближе» ответом на этот вопрос не является.
+            const reach = candidate.reach_by_hero?.[typingActorId]
+            const outOfReach = reach?.out_of_reach === true
+            return <article key={candidate.id} className={`beast-card${candidate.diet === 'predator' ? ' predator' : ''}${outOfReach ? ' out-of-reach' : ''}`}>
             <header>
               <i className={`beast-tag${candidate.diet === 'predator' ? ' predator' : ''}`}>{(candidate.diet_label || 'зверь').toLocaleUpperCase('ru')}</i>
               <b>{candidate.name}</b>
@@ -2657,14 +2669,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             </p>
             {/* Досягаемость: приручение — это ладонь и еда, а не окрик через
                 поляну. Карточка не исчезает, а гаснет и зовёт подойти. */}
-            {candidate.out_of_reach && <p className="beast-reach">
-              До зверя ещё идти{typeof candidate.distance_feet === 'number' ? `: ${candidate.distance_feet} фт` : ''}. Подойдите вплотную.
+            {outOfReach && <p className="beast-reach">
+              До зверя ещё идти{typeof reach?.distance_feet === 'number' ? `: ${reach.distance_feet} фт` : ''}. Подойдите вплотную.
             </p>}
             <div className="beast-actions">
               <button
                 type="button"
-                disabled={beastActionsBlocked || candidate.out_of_reach === true || candidate.stage === 'calmed'}
-                title={candidate.out_of_reach
+                disabled={beastActionsBlocked || outOfReach || candidate.stage === 'calmed'}
+                title={outOfReach
                   ? 'Сначала подойдите к зверю вплотную'
                   : candidate.stage === 'calmed'
                     ? 'Зверь успокоен и ждёт еды с руки'
@@ -2673,14 +2685,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               ><PawPrint size={13} />{candidate.stage === 'fed' ? 'Приручить' : 'Успокоить'}</button>
               <button
                 type="button"
-                disabled={beastActionsBlocked || candidate.out_of_reach === true || candidate.stage !== 'calmed'}
-                title={candidate.out_of_reach
+                disabled={beastActionsBlocked || outOfReach || candidate.stage !== 'calmed'}
+                title={outOfReach
                   ? 'Еду с руки дают вплотную: сначала подойдите'
                   : candidate.stage === 'calmed' ? 'Дать еду с руки: паёк спишется из рюкзака' : 'С руки едят только успокоенные'}
                 onClick={() => onBeastAction(candidate.id, 'feed')}
               ><Soup size={13} />Покормить</button>
             </div>
-          </article>)}
+          </article>
+          })}
         </section>}
         {!combatActive && <section className="rest-controls" aria-label="Отдых">
           <header><Flame size={15} /><span><small>ПЕРЕДЫШКА</small><strong>Отдых героя</strong></span></header>

@@ -245,7 +245,15 @@ function letterHints(room) {
 function beastHints(room) {
   const candidates = Array.isArray(room?.beasts?.candidates) ? room.beasts.candidates : []
   const available = candidates.filter((entry) => entry && !entry.blocked_reason)
-  const reachable = available.find((entry) => entry.out_of_reach !== true)
+  // Досягаемость приезжает строкой на каждого героя отряда, и подсказка задаёт
+  // ей партийный вопрос: дотянется ли **кто-нибудь** прямо сейчас. Своей мерки
+  // расстояния здесь нет — берутся те же строки, которыми гаснут кнопки панели
+  // и которыми проверяется команда (`beastReachFor`, `server/beast-taming.mjs`).
+  const reachableByParty = (entry) => {
+    const rows = Object.values(entry.reach_by_hero ?? {})
+    return rows.length === 0 || rows.some((row) => row?.out_of_reach !== true)
+  }
+  const reachable = available.find(reachableByParty)
   if (!reachable) {
     const distant = available[0]
     if (!distant) return []
