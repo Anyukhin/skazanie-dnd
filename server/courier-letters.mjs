@@ -14,10 +14,12 @@ import { worldLocationById } from './world-map.mjs'
  * Письма и курьеры: слово отряда доходит туда, где отряда нет.
  *
  * Каталог ситуаций стола (`docs/dnd-table-situations.md`, D7) держал строку в
- * «частично», и половинчатость была буквальной: у стартового торговца заведена
+ * «частично», и половинчатость была буквальной: у стартового торговца стояла
  * услуга `starter-courier` — «Доставка письма», 50 медяков
- * (`server/merchant-economy.mjs`), покупка списывает деньги, но письмо никуда не
- * приходит. Ни адресата, ни срока, ни ответа: игрок платит за строку в чеке.
+ * (`server/merchant-economy.mjs`), покупка списывала деньги, но письмо никуда не
+ * приходило. Ни адресата, ни срока, ни ответа: игрок платил за строку в чеке.
+ * Услуги этой больше нет — иначе за столом осталось бы два способа отправить
+ * письмо, и один из них молча ел бы деньги.
  *
  * Модуль закрывает всю дугу — написать, заплатить, дождаться, получить ответ — и
  * устроен так:
@@ -49,6 +51,13 @@ import { worldLocationById } from './world-map.mjs'
  *    тон — черновик выбрасывается и звучит основа: модель писала ответ друга, а
  *    письмо застало врага, и подсовывать столу тёплые слова от того, кто их уже
  *    не сказал бы, — враньё.
+ *
+ *    Тем же правилом закрыт и второй способ соврать: адресат может не сменить
+ *    ступень тона, а умереть. Между доставкой и ответом лежат сутки с лишним,
+ *    и отряд успевает за них зарубить мельника сам — поэтому перед выпуском
+ *    ответа заново спрашивается, есть ли ещё кому отвечать. Нет — приходит
+ *    `CourierLetterUnanswered`, «ответа не будет», а не приглашение в гости от
+ *    покойника.
  * 4. **Письмо — социальное действие, а не почтовая квитанция.** Дошедшее письмо
  *    двигает отношение NPC (или славу фракции) и ложится в память мира. Обещание,
  *    данное в письме, — обещание: оно заводится штатной записью
@@ -95,12 +104,20 @@ export const COURIER_LETTERS_POLICY_ID = 'skazanie:courier-letters-v1'
 /** Команда одна, и она игрока: письмо пишет герой, а не сервер. */
 export const COURIER_LETTER_COMMAND_TYPES = Object.freeze(new Set(['SendLetter']))
 
-/** События почты. Список закрытый: проекция и летопись сверяются с ним. */
+/**
+ * События почты. Список закрытый: проекция и летопись сверяются с ним.
+ *
+ * `unanswered` — про адресата, который письмо прочёл, а ответить уже не может:
+ * между доставкой и ответом отряд успевает прожить неделю, и за неё мельника
+ * можно убить. Возврат тут не годится — письмо-то дошло; поэтому у молчания
+ * после доставки своё событие и свой конец дуги.
+ */
 export const COURIER_LETTER_EVENT_TYPES = Object.freeze({
   sent: 'CourierLetterSent',
   delivered: 'CourierLetterDelivered',
   returned: 'CourierLetterReturned',
   answered: 'CourierLetterAnswered',
+  unanswered: 'CourierLetterUnanswered',
 })
 
 /** Кому пишут: известному NPC или фракции из памяти мира. Третьего адреса нет. */
@@ -113,9 +130,10 @@ export const COURIER_LETTER_BODY_LIMIT = 1_200
 export const COURIER_LETTER_OPEN_LIMIT = 3
 
 /**
- * Цена курьера. База — та же полтина, что стоит услуга `starter-courier` у
- * стартового торговца (`server/merchant-economy.mjs`): двух цен на одну работу
- * в мире быть не должно. Дальше — по десять медяков за переход.
+ * Цена курьера. База — та полтина, что стоила услуга `starter-courier` у
+ * стартового торговца (`server/merchant-economy.mjs`): работа та же, и менять
+ * её цену вместе с переносом было бы двумя правками под видом одной. Дальше —
+ * по десять медяков за переход.
  */
 export const COURIER_LETTER_BASE_FEE_CP = 50
 export const COURIER_LETTER_FEE_PER_LEAGUE_CP = 10
@@ -172,16 +190,31 @@ export const COURIER_LETTER_STATUS_LABELS = Object.freeze({
   delivered: 'Доставлено',
   answered: 'Получен ответ',
   returned: 'Не доставлено',
+  unanswered: 'Ответа не будет',
 })
 
-/** Заголовок карточки летописи. Один на письмо, ответ и возврат. */
+/** Заголовок карточки летописи. Один на письмо, ответ, возврат и молчание. */
 export const COURIER_LETTER_CARD_TITLE = 'Почта отряда'
 
 const MAX_LETTERS = 40
 const VISIBLE_TO_PARTY = new Set(['party', 'public'])
 
 const text = (value, maximum = 200) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
-const integer = (value, fallback = 0) => (Number.isSafeInteger(Number(value)) ? Number(value) : fallback)
+/**
+ * Целое или запасное значение.
+ *
+ * Пустое место проверяется **до** `Number`, и это не педантизм: `Number(null)`
+ * и `Number('')` дают ноль, `Number.isSafeInteger(0)` — истину, поэтому без
+ * этой строки запасное значение не срабатывало никогда. Роль «ответа нет»
+ * приходилось играть `||` у места вызова, а тот заодно съедал законный ноль —
+ * и адресат, живущий там же, где стоит отряд, тарифицировался как «адрес
+ * неизвестен»: шесть переходов вместо нуля.
+ */
+const integer = (value, fallback = 0) => {
+  if (value == null || value === '' || typeof value === 'boolean') return fallback
+  const number = Number(value)
+  return Number.isSafeInteger(number) ? number : fallback
+}
 const key = (value) => text(value, 180).toLocaleLowerCase('ru')
 
 function digest(...parts) {
@@ -194,7 +227,7 @@ const visibleToParty = (value) => VISIBLE_TO_PARTY.has(text(value, 30) || 'gm_on
 // Состояние
 // ---------------------------------------------------------------------------
 
-const STATUSES = new Set(['in_transit', 'delivered', 'answered', 'returned'])
+const STATUSES = new Set(['in_transit', 'delivered', 'answered', 'returned', 'unanswered'])
 const RETURN_REASONS = new Set(['dead', 'gone'])
 /**
  * Тон ответа. Пороги те же, что у отношения NPC (`relationshipTier`,
@@ -220,7 +253,10 @@ function safeLetter(value = {}) {
     addressee_id: addresseeId,
     addressee_name: text(value.addressee_name, 180),
     place_name: text(value.place_name, 180),
-    leagues: Math.max(1, Math.min(COURIER_LETTER_MAX_LEAGUES, integer(value.leagues, 1))),
+    // Ноль переходов — законное число: адресат живёт там же, где стоит отряд,
+    // и курьер несёт письмо через город, а не через тракт. Подрезать его до
+    // единицы значило бы объявить дорогу там, где её нет.
+    leagues: Math.max(0, Math.min(COURIER_LETTER_MAX_LEAGUES, integer(value.leagues, 1))),
     fee_cp: Math.max(0, integer(value.fee_cp, 0)),
     body: text(value.body, COURIER_LETTER_BODY_LIMIT),
     promise_text: text(value.promise_text, 500),
@@ -283,14 +319,18 @@ export function applyCourierLetterEvent(input, event) {
     ? { status: 'delivered', delivered_at_minutes: integer(payload.at_minutes, 0), tone: payload.tone }
     : type === COURIER_LETTER_EVENT_TYPES.returned
       ? { status: 'returned', returned_at_minutes: integer(payload.at_minutes, 0), return_reason: payload.reason }
-      : type === COURIER_LETTER_EVENT_TYPES.answered
-        ? {
-            status: 'answered',
-            answered_at_minutes: integer(payload.at_minutes, 0),
-            reply_text: payload.reply,
-            reply_provider: payload.provider,
-          }
-        : null
+      : type === COURIER_LETTER_EVENT_TYPES.unanswered
+        // Минута молчания ложится в `answered_at_minutes`: это конец дуги
+        // ожидания, и второго поля «когда всё стало ясно» письму не нужно.
+        ? { status: 'unanswered', answered_at_minutes: integer(payload.at_minutes, 0), return_reason: payload.reason }
+        : type === COURIER_LETTER_EVENT_TYPES.answered
+          ? {
+              status: 'answered',
+              answered_at_minutes: integer(payload.at_minutes, 0),
+              reply_text: payload.reply,
+              reply_provider: payload.provider,
+            }
+          : null
   if (!patch) return normalized
   return normalizeCourierLetterState({
     ...normalized,
@@ -303,21 +343,23 @@ export function applyCourierLetterEvent(input, event) {
 // ---------------------------------------------------------------------------
 
 /**
- * Кратчайший путь по дорогам карты мира в переходах.
+ * Стоимость дороги от одного узла **до всех остальных**, в переходах.
  *
  * Дейкстра по `routes` с их собственной `distance`, и только по разведанным:
- * маршрут, о котором отряд ещё не знает, курьеру он назвать не может. Дороги
- * нет вовсе — считается прямая по тому же делителю, что и у генератора карты
- * (`server/world-map.mjs`), иначе письмо через кряж стоило бы как письмо вдоль
- * тракта.
+ * маршрут, о котором отряд ещё не знает, курьеру он назвать не может.
+ *
+ * Считается сразу до всех узлов, а не до одного: у отряда одно место, а
+ * адресатов десятки, и поиск на каждого из них означал бы полсотни одинаковых
+ * обходов одной и той же карты за один кадр проекции. Ранний выход «нашли
+ * цель» стоил бы ровно этих повторов.
+ *
+ * @returns {Map<string, number>} пустая, если узла отправления на карте нет
  */
-export function worldLeaguesBetween(map, fromId, toId) {
+function worldLeagueTable(map, fromId) {
   const from = text(fromId, 120)
-  const to = text(toId, 120)
-  if (!from || !to) return null
-  if (from === to) return 0
   const locations = Array.isArray(map?.locations) ? map.locations : []
-  if (!locations.some((location) => location.id === from) || !locations.some((location) => location.id === to)) return null
+  const table = new Map()
+  if (!from || !locations.some((location) => location.id === from)) return table
   const neighbours = new Map()
   for (const route of Array.isArray(map?.routes) ? map.routes : []) {
     if (route?.discovered === false) continue
@@ -330,15 +372,18 @@ export function worldLeaguesBetween(map, fromId, toId) {
       neighbours.get(start).push({ id: end, distance })
     }
   }
-  const best = new Map([[from, 0]])
+  table.set(from, 0)
   const visited = new Set()
   // Узлов на карте не больше пятидесяти, поэтому очередь берётся перебором:
   // куча здесь была бы сложнее самого поиска, а порядок обхода обязан быть
   // детерминированным — при равной стоимости выигрывает меньший идентификатор.
-  for (let step = 0; step < locations.length; step += 1) {
+  // Потолок шагов считает и узлы, названные только маршрутом: карта пришла из
+  // журнала, и ссылку на снесённый узел она пережить может.
+  const steps = locations.length + neighbours.size + 1
+  for (let step = 0; step < steps; step += 1) {
     let current = ''
     let currentCost = Infinity
-    for (const [id, cost] of best) {
+    for (const [id, cost] of table) {
       if (visited.has(id)) continue
       if (cost < currentCost || (cost === currentCost && id.localeCompare(current) < 0)) {
         current = id
@@ -346,23 +391,85 @@ export function worldLeaguesBetween(map, fromId, toId) {
       }
     }
     if (!current) break
-    if (current === to) return currentCost
     visited.add(current)
     for (const edge of neighbours.get(current) ?? []) {
       const candidate = currentCost + edge.distance
-      if (candidate < (best.has(edge.id) ? best.get(edge.id) : Infinity)) best.set(edge.id, candidate)
+      if (candidate < (table.has(edge.id) ? table.get(edge.id) : Infinity)) table.set(edge.id, candidate)
     }
   }
-  if (best.has(to)) return best.get(to)
+  return table
+}
+
+/**
+ * Кратчайший путь между двумя узлами по уже посчитанной таблице. Дороги нет
+ * вовсе — считается прямая по тому же делителю, что и у генератора карты
+ * (`server/world-map.mjs`), иначе письмо через кряж стоило бы как письмо вдоль
+ * тракта.
+ */
+function leaguesFromTable(map, table, fromId, toId) {
+  const from = text(fromId, 120)
+  const to = text(toId, 120)
+  if (!from || !to) return null
+  if (from === to) return 0
+  const locations = Array.isArray(map?.locations) ? map.locations : []
   const start = locations.find((location) => location.id === from)
   const end = locations.find((location) => location.id === to)
   if (!start || !end) return null
+  if (table.has(to)) return table.get(to)
   return Math.max(1, Math.round(Math.hypot(start.x - end.x, start.y - end.y) / 48))
+}
+
+/**
+ * Кратчайший путь по дорогам карты мира в переходах. Одиночный вопрос: у
+ * списка адресатов таблица считается один раз на весь проход.
+ */
+export function worldLeaguesBetween(map, fromId, toId) {
+  return leaguesFromTable(map, worldLeagueTable(map, fromId), fromId, toId)
 }
 
 /** Где стоит отряд: узел карты мира, от которого курьер начинает дорогу. */
 function partyLocationId(state) {
   return text(state?.scene?.location_id ?? state?.scene?.locationId ?? state?.worldMap?.currentLocationId, 120)
+}
+
+/**
+ * Общий счёт на один проход по почте.
+ *
+ * Всё, что здесь лежит, зависит **от отряда, а не от адресата**: где стоит
+ * отряд, кто из NPC жив, кто из них стоит перед столом, и во сколько переходов
+ * обходится каждый узел карты. Раньше каждый из этих вопросов задавался заново
+ * на каждого адресата — `ensureNpcSocialState`, `normalizeNpcWorldState`,
+ * `presentSceneNpcs` и свой обход карты внутри `courierAddresseeFor`, — и
+ * проекция состояния при полусотне знакомых съедала десятки миллисекунд на
+ * каждое соединение в broadcast-цикле (`server/index.mjs`). Считается это всё
+ * ровно один раз и лениво: тик почты, например, о сцене не спрашивает вовсе.
+ *
+ * Счёт живёт **внутри одного вызова** и наружу не отдаётся: кэш, переживающий
+ * команду, разошёлся бы с состоянием на первом же событии.
+ */
+function courierLetterContext(state = {}) {
+  let social = null
+  let vitals = null
+  let present = null
+  let origin = null
+  let table = null
+  const leagues = new Map()
+  const originOnce = () => (origin ??= partyLocationId(state))
+  return {
+    social: () => (social ??= ensureNpcSocialState(state?.social, state)),
+    vitals: () => (vitals ??= normalizeNpcWorldState(state?.npc_world).vitals),
+    present: () => (present ??= new Set(presentSceneNpcs(state).map((npc) => String(npc.id)))),
+    leaguesTo: (targetId) => {
+      const target = text(targetId, 120)
+      if (leagues.has(target)) return leagues.get(target)
+      const from = originOnce()
+      const value = !target || !from
+        ? null
+        : leaguesFromTable(state?.worldMap, table ??= worldLeagueTable(state?.worldMap, from), from, target)
+      leagues.set(target, value)
+      return value
+    },
+  }
 }
 
 /** Узел карты по названию места из профиля NPC. */
@@ -399,15 +506,14 @@ export function courierToneFor(score) {
 }
 
 /** Отношение адресата к герою: у NPC — своё, у фракции — слава отряда. */
-function addresseeScore(state, { kind, id }, heroId) {
+function addresseeScore(state, { kind, id }, heroId, context = courierLetterContext(state)) {
   if (kind === 'faction') {
     const reputations = state?.autonomy?.reputations && typeof state.autonomy.reputations === 'object'
       ? state.autonomy.reputations
       : {}
     return integer(reputations[text(id, 120)], 0)
   }
-  const social = ensureNpcSocialState(state?.social, state)
-  return integer(social.relationships[text(id, 120)]?.[text(heroId, 120)], 0)
+  return integer(context.social().relationships[text(id, 120)]?.[text(heroId, 120)], 0)
 }
 
 /**
@@ -416,17 +522,20 @@ function addresseeScore(state, { kind, id }, heroId) {
  * и правило движка спрашивают её же — вторая форма ответа на вопрос «сколько
  * стоит письмо» разошлась бы с первой при первой же правке цены.
  *
+ * `context` — общий счёт прохода (`courierLetterContext`). Одиночный вопрос
+ * заводит его себе сам; список адресатов передаёт один на всех, иначе соц.
+ * состояние, живые NPC, сцена и карта пересчитывались бы на каждого.
+ *
  * @returns {{
  *   kind: string, id: string, name: string, role: string, place_name: string,
  *   leagues: number, fee_cp: number, travel_minutes: number, unreachable: boolean,
  * } | null}
  */
-export function courierAddresseeFor(state = {}, kind, id) {
+export function courierAddresseeFor(state = {}, kind, id, context = courierLetterContext(state)) {
   const wantedKind = COURIER_LETTER_ADDRESSEE_KINDS.includes(text(kind, 20)) ? text(kind, 20) : ''
   const wantedId = text(id, 120)
   if (!wantedKind || !wantedId) return null
   const map = state?.worldMap
-  const originId = partyLocationId(state)
   if (wantedKind === 'faction') {
     const faction = (Array.isArray(state?.worldMemory?.entities) ? state.worldMemory.entities : [])
       .find((entity) => entity?.id === wantedId && entity.kind === 'faction' && visibleToParty(entity.visibility))
@@ -444,18 +553,18 @@ export function courierAddresseeFor(state = {}, kind, id) {
       unreachable: false,
     }
   }
-  const social = ensureNpcSocialState(state?.social, state)
-  const persisted = social.npcs.find((npc) => npc.id === wantedId)
+  const persisted = context.social().npcs.find((npc) => npc.id === wantedId)
   if (!persisted || !visibleToParty(persisted.visibility)) return null
   const profile = npcProfileAtWorldTime(persisted, state)
-  const vitals = normalizeNpcWorldState(state?.npc_world).vitals
-  if (vitals[wantedId]?.alive === false) return null
-  const present = presentSceneNpcs(state).some((npc) => String(npc.id) === wantedId)
+  if (context.vitals()[wantedId]?.alive === false) return null
   const targetId = locationIdByName(map, profile.location)
-  const leagues = Math.max(1, Math.min(
+  // Место известно — считается дорога, и ноль переходов означает ровно ноль:
+  // адресат живёт там же, где стоит отряд. Место неизвестно — берётся ступень.
+  // Разбирать эти два случая одним `||` нельзя: он съедает законный ноль и
+  // делает письмо через комнату дороже письма через тракт.
+  const leagues = Math.max(0, Math.min(
     COURIER_LETTER_MAX_LEAGUES,
-    integer(targetId && originId ? worldLeaguesBetween(map, originId, targetId) : null, COURIER_LETTER_UNKNOWN_LEAGUES)
-      || COURIER_LETTER_UNKNOWN_LEAGUES,
+    integer(targetId ? context.leaguesTo(targetId) : null, COURIER_LETTER_UNKNOWN_LEAGUES),
   ))
   return {
     kind: 'npc',
@@ -469,7 +578,7 @@ export function courierAddresseeFor(state = {}, kind, id) {
     // Тот, кто стоит перед отрядом, письма не получает: это разговор, а не
     // почта. Признак считается здесь, чтобы панель гасила строку заранее, а не
     // ловила отказ движка после клика.
-    unreachable: present,
+    unreachable: context.present().has(wantedId),
   }
 }
 
@@ -478,15 +587,17 @@ export function courierAddresseeFor(state = {}, kind, id) {
  * Порядок детерминирован — ближние вперёд, дальше по имени и идентификатору.
  */
 export function courierLetterAddressees(state = {}) {
-  const social = ensureNpcSocialState(state?.social, state)
+  // Один счёт на весь список. Раньше его не было вовсе, и каждая строка панели
+  // заново поднимала соц. состояние, живых NPC, сцену и обход карты мира.
+  const context = courierLetterContext(state)
   const rows = []
-  for (const npc of social.npcs) {
-    const addressee = courierAddresseeFor(state, 'npc', npc.id)
+  for (const npc of context.social().npcs) {
+    const addressee = courierAddresseeFor(state, 'npc', npc.id, context)
     if (addressee) rows.push(addressee)
   }
   for (const entity of Array.isArray(state?.worldMemory?.entities) ? state.worldMemory.entities : []) {
     if (entity?.kind !== 'faction') continue
-    const addressee = courierAddresseeFor(state, 'faction', entity.id)
+    const addressee = courierAddresseeFor(state, 'faction', entity.id, context)
     if (addressee) rows.push(addressee)
   }
   return rows.sort((left, right) => left.leagues - right.leagues
@@ -668,12 +779,10 @@ export function planCourierLetter(state = {}, {
  * недоступный (уведён ходом мира, ушёл из мира отряда) — `gone`. Фракцию не
  * убивают и не уводят: у неё нет ни ОЗ, ни доступности.
  */
-function deliveryFailureFor(state, letter) {
+function deliveryFailureFor(state, letter, context = courierLetterContext(state)) {
   if (letter.addressee_kind === 'faction') return ''
-  const vitals = normalizeNpcWorldState(state?.npc_world).vitals
-  if (vitals[letter.addressee_id]?.alive === false) return 'dead'
-  const social = ensureNpcSocialState(state?.social, state)
-  const profile = social.npcs.find((npc) => npc.id === letter.addressee_id)
+  if (context.vitals()[letter.addressee_id]?.alive === false) return 'dead'
+  const profile = context.social().npcs.find((npc) => npc.id === letter.addressee_id)
   if (!profile) return 'gone'
   return npcProfileAtWorldTime(profile, state).available === false ? 'gone' : ''
 }
@@ -681,6 +790,16 @@ function deliveryFailureFor(state, letter) {
 const RETURN_SUMMARY = Object.freeze({
   dead: (letter) => `Курьер вернул письмо к ${letter.addressee_name}: адресата больше нет в живых.`,
   gone: (letter) => `Курьер вернул письмо к ${letter.addressee_name}: адресата не нашли — к людям он больше не выходит.`,
+})
+
+/**
+ * Молчание после доставки. Письмо дошло и было прочитано — а отвечать уже
+ * некому: между доставкой и ответом лежат полсуток дороги плюс полсуток
+ * раздумья, и отряд успевает за это время убить адресата сам.
+ */
+const SILENCE_SUMMARY = Object.freeze({
+  dead: (letter) => `Ответа от ${letter.addressee_name} не будет: письмо дошло, а адресата больше нет в живых.`,
+  gone: (letter) => `Ответа от ${letter.addressee_name} не будет: письмо дошло, а самого адресата больше не найти.`,
 })
 
 /**
@@ -742,11 +861,16 @@ function letterFactDraft({ id, subjectId, predicate, object, summary, atMinutes 
  * кого в памяти мира ещё нет. Иначе почта затирала бы сводку, написанную автором
  * кампании.
  */
-function addresseeEntityDraft(state, letter) {
+function addresseeEntityDraft(state, letter, written = new Set()) {
   if (letter.addressee_kind !== 'npc') return []
   const known = (Array.isArray(state?.worldMemory?.entities) ? state.worldMemory.entities : [])
     .some((entity) => text(entity?.id, 120) === letter.addressee_id)
-  if (known) return []
+  // Доставка и ответ умещаются в один скачок, и оба нуждаются в сущности под
+  // свой факт. Апсерт идемпотентен, но два дословно одинаковых
+  // `WorldEntityUpserted` в журнале — это лишняя запись, которую потом читают и
+  // реплеят. Один скачок пишет её один раз на адресата.
+  if (known || written.has(letter.addressee_id)) return []
+  written.add(letter.addressee_id)
   return [{
     event_type: 'WorldEntityUpserted',
     visibility: 'party',
@@ -784,14 +908,18 @@ export function planCourierLetterTicks(state = {}, { elapsedMinutes = 0 } = {}) 
   const end = start + jump
   const drafts = []
   const goodwill = new Map()
+  // Один счёт на весь скачок: сорок писем не должны сорок раз поднимать соц.
+  // состояние и живых NPC — состояние-то у них одно, дособытийное.
+  const context = courierLetterContext(state)
+  const upserted = new Set()
   for (const letter of normalizeCourierLetterState(state?.courier_letters).letters) {
-    if (letter.status === 'returned' || letter.status === 'answered') continue
+    if (letter.status === 'returned' || letter.status === 'answered' || letter.status === 'unanswered') continue
     let deliveredAt = letter.delivered_at_minutes == null ? start : letter.delivered_at_minutes
     let tone = letter.tone
     if (letter.status === 'in_transit') {
       if (letter.delivery_due_minutes > end) continue
       deliveredAt = Math.max(start, letter.delivery_due_minutes)
-      const failure = deliveryFailureFor(state, letter)
+      const failure = deliveryFailureFor(state, letter, context)
       if (failure) {
         drafts.push({
           event_type: COURIER_LETTER_EVENT_TYPES.returned,
@@ -816,7 +944,7 @@ export function planCourierLetterTicks(state = {}, { elapsedMinutes = 0 } = {}) 
         })
         continue
       }
-      tone = courierToneFor(addresseeScore(state, { kind: letter.addressee_kind, id: letter.addressee_id }, letter.hero_id))
+      tone = courierToneFor(addresseeScore(state, { kind: letter.addressee_kind, id: letter.addressee_id }, letter.hero_id, context))
       const summary = `Письмо ${letter.hero_name || 'отряда'} дошло: ${letter.addressee_name} держит его в руках.`
       drafts.push({
         event_type: COURIER_LETTER_EVENT_TYPES.delivered,
@@ -892,7 +1020,7 @@ export function planCourierLetterTicks(state = {}, { elapsedMinutes = 0 } = {}) 
           target_ids: [letter.hero_id],
         })
       }
-      drafts.push(...addresseeEntityDraft(state, letter))
+      drafts.push(...addresseeEntityDraft(state, letter, upserted))
       drafts.push(letterFactDraft({
         id: `fact:courier-letter-delivered:${digest(letter.id, String(deliveredAt)).slice(0, 20)}`,
         subjectId: letter.addressee_id,
@@ -905,9 +1033,45 @@ export function planCourierLetterTicks(state = {}, { elapsedMinutes = 0 } = {}) 
     // Ответ приходит и через несколько скачков после доставки — ради этого
     // письмо и лежит в состоянии `delivered`, а не закрывается ею.
     if (letter.reply_due_minutes > end) continue
+    const answeredAt = Math.max(deliveredAt, letter.reply_due_minutes)
+    // Отвечает живой. Между доставкой и ответом лежат сутки с лишним, и отряд
+    // успевает за них убить адресата сам: тёплое приглашение в гости от того,
+    // кого зарубили утром, — то же враньё, что и черновик друга в письме врагу,
+    // только тон здесь ни при чём. Поэтому перед выпуском ответа вопрос «а есть
+    // ли ещё кому отвечать» задаётся заново.
+    const silence = deliveryFailureFor(state, letter, context)
+    if (silence) {
+      const summary = SILENCE_SUMMARY[silence](letter)
+      drafts.push({
+        event_type: COURIER_LETTER_EVENT_TYPES.unanswered,
+        visibility: 'party',
+        payload: {
+          letter_id: letter.id,
+          hero_id: letter.hero_id,
+          hero_name: letter.hero_name,
+          addressee_kind: letter.addressee_kind,
+          addressee_id: letter.addressee_id,
+          addressee_name: letter.addressee_name,
+          reason: silence,
+          summary,
+          at_minutes: answeredAt,
+          policy_id: COURIER_LETTERS_POLICY_ID,
+        },
+        target_ids: [letter.hero_id],
+      })
+      drafts.push(...addresseeEntityDraft(state, letter, upserted))
+      drafts.push(letterFactDraft({
+        id: `fact:courier-letter-unanswered:${digest(letter.id, String(answeredAt)).slice(0, 20)}`,
+        subjectId: letter.addressee_id,
+        predicate: 'courier_letter_unanswered',
+        object: { letter_id: letter.id, hero_id: letter.hero_id, reason: silence, at_minutes: answeredAt },
+        summary,
+        atMinutes: answeredAt,
+      }))
+      continue
+    }
     const reply = courierLetterReplyFor(letter, tone)
     if (!reply) continue
-    const answeredAt = Math.max(deliveredAt, letter.reply_due_minutes)
     drafts.push({
       event_type: COURIER_LETTER_EVENT_TYPES.answered,
       visibility: 'party',
@@ -926,7 +1090,7 @@ export function planCourierLetterTicks(state = {}, { elapsedMinutes = 0 } = {}) 
       },
       target_ids: [letter.hero_id],
     })
-    drafts.push(...addresseeEntityDraft(state, letter))
+    drafts.push(...addresseeEntityDraft(state, letter, upserted))
     drafts.push(letterFactDraft({
       id: `fact:courier-letter-answered:${digest(letter.id, String(answeredAt)).slice(0, 20)}`,
       subjectId: letter.addressee_id,
@@ -1030,9 +1194,11 @@ export function courierLetterChronicleEntry(event = {}) {
       ? { kind: 'delivered', title: 'Письмо доставлено', text: text(payload.summary, 400) }
       : type === COURIER_LETTER_EVENT_TYPES.returned
         ? { kind: 'returned', title: 'Письмо вернулось', text: text(payload.summary, 400) }
-        : type === COURIER_LETTER_EVENT_TYPES.answered
-          ? { kind: 'answered', title: 'Пришёл ответ', text: text(payload.reply, 800) }
-          : null
+        : type === COURIER_LETTER_EVENT_TYPES.unanswered
+          ? { kind: 'unanswered', title: 'Ответа не будет', text: text(payload.summary, 400) }
+          : type === COURIER_LETTER_EVENT_TYPES.answered
+            ? { kind: 'answered', title: 'Пришёл ответ', text: text(payload.reply, 800) }
+            : null
   if (!card || !card.text) return null
   return {
     id: `chronicle:${letterId}:${card.kind}`,

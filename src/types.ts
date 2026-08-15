@@ -34,7 +34,7 @@ export type OffscreenChronicleCard = {
 }
 
 /** Что именно случилось с письмом. Список закрыт сервером. */
-export type LetterChronicleKind = 'sent' | 'delivered' | 'returned' | 'answered'
+export type LetterChronicleKind = 'sent' | 'delivered' | 'returned' | 'answered' | 'unanswered'
 
 /** Карточка-конверт в летописи. */
 export type LetterChronicleCard = {
@@ -1649,8 +1649,14 @@ export type TavernProjection = {
 /** Куда едет письмо: к известному NPC или к фракции. Список закрыт сервером. */
 export type LetterAddresseeKind = 'npc' | 'faction'
 
-/** Состояние письма. Подпись к нему приходит с сервера готовой. */
-export type LetterStatus = 'in_transit' | 'delivered' | 'answered' | 'returned'
+/**
+ * Состояние письма. Подпись к нему приходит с сервера готовой.
+ *
+ * `unanswered` — письмо дошло, а отвечать уже некому: адресата убили или увели
+ * между доставкой и ответом. Это не `returned`: возврат означает, что письмо не
+ * прочитал никто.
+ */
+export type LetterStatus = 'in_transit' | 'delivered' | 'answered' | 'returned' | 'unanswered'
 
 /**
  * Один известный адресат с уже посчитанной дорогой. Цену и срок считает сервер

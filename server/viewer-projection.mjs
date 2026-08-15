@@ -1001,8 +1001,14 @@ function eventForViewer(event, user, actorId, state = {}) {
   // Доставка объявляет тон, по которому соберётся ответ. Тон — это дословно
   // «как к вам относится адресат», а отношение игроку числом не показывают
   // нигде: он читает его по ответу, когда тот придёт.
-  if (visible.event_type === 'CourierLetterDelivered') delete payload.tone
-  if (visible.event_type === 'CourierLetterAnswered') delete payload.tone
+  //
+  // Порог тот же, что у публичной формы письма (`courierLetterForViewer`): у
+  // ведущего тон есть всегда, у игрока — только вместе с ответом, потому что
+  // скрывать после ответа уже нечего. До ревью здесь стояло безусловное
+  // `delete`, и лента событий ведущего была беднее его же карточки состояния, а
+  // у игрока пришедший ответ приезжал с тоном в проекции и без тона в событии:
+  // один вопрос — два разных ответа.
+  if (visible.event_type === 'CourierLetterDelivered' && user?.role !== 'admin') delete payload.tone
   if (visible.event_type === 'EncounterOutcomeRecorded') {
     delete payload.plan
     delete payload.prepared_reward

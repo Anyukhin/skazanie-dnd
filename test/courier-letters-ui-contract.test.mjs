@@ -143,6 +143,23 @@ test('канал событий режет письмо той же функци
   assert.equal(delivered.payload.answer_expected, true, 'а вот «ответ будет» столу знать можно')
 })
 
+test('лента событий отвечает про тон то же, что и карточка состояния', () => {
+  // Регресс ревью: `delete payload.tone` стояло без ветки на админа, и лента
+  // событий ведущего была беднее его же проекции состояния, где тон есть
+  // всегда. У игрока была та же асимметрия с другой стороны: пришедший ответ
+  // приезжал с тоном в состоянии и без тона в событии.
+  const { arrivalEvents, answered } = post()
+  const eventTone = (user, actorId, type) => mechanicsForViewer(arrivalEvents, user, actorId, answered)
+    .find((event) => event.event_type === type)?.payload.tone
+  const cardTone = (user, actorId) => campaignStateForViewer(answered, user, actorId).courier_letters.letters[0].tone
+
+  assert.equal(cardTone(GM, ''), 'warm')
+  assert.equal(eventTone(GM, '', COURIER_LETTER_EVENT_TYPES.delivered), 'warm', 'у ведущего тон есть в обоих каналах')
+  assert.equal(cardTone(PLAYER, 'hero'), 'warm', 'вместе с ответом тон принадлежит и столу')
+  assert.equal(eventTone(PLAYER, 'hero', COURIER_LETTER_EVENT_TYPES.answered), 'warm', 'и в событии ответа тоже')
+  assert.equal(eventTone(PLAYER, 'hero', COURIER_LETTER_EVENT_TYPES.delivered), undefined, 'а до ответа — ни в одном')
+})
+
 // ---------------------------------------------------------------------------
 // Карточка панели
 // ---------------------------------------------------------------------------
@@ -185,6 +202,28 @@ test('карточка летописи собирается на сервере
   assert.equal(courierLetterChronicleEntry({ event_type: 'TimeAdvanced', payload: {} }), null)
 })
 
+test('молчание после доставки — тоже конверт, а не пропавшая строка', () => {
+  // Письмо дошло, а отвечать уже некому. Стол обязан узнать об этом карточкой:
+  // без неё письмо просто застыло бы в «Доставлено» навсегда.
+  const silence = {
+    event_type: COURIER_LETTER_EVENT_TYPES.unanswered,
+    payload: {
+      letter_id: 'letter:abc',
+      hero_name: 'Ада',
+      addressee_name: 'Мельник Гость',
+      reason: 'dead',
+      summary: 'Ответа от Мельник Гость не будет: письмо дошло, а адресата больше нет в живых.',
+    },
+  }
+  const card = courierLetterChronicleEntry(silence)
+  assert.equal(card.letter.kind, 'unanswered')
+  assert.equal(card.letter.title, 'Ответа не будет')
+  assert.equal(card.letter.from, 'Ада', 'конверт остаётся письмом отряда: ответа-то не было')
+  assert.equal(card.letter.to, 'Мельник Гость')
+  assert.match(eventSummary(silence), /[А-Яа-яЁё]/u)
+  assert.notEqual(eventSummary(silence), silence.event_type)
+})
+
 test('у каждого события почты есть русская строка в сводке журнала', () => {
   const { sentEvents, arrivalEvents } = post()
   for (const event of [...sentEvents, ...arrivalEvents].filter((entry) => Object.values(COURIER_LETTER_EVENT_TYPES).includes(entry.event_type))) {
@@ -215,6 +254,24 @@ test('черновик ответа из браузера в команду не
   assert.match(server, /!npcSocialController\.llmClient\) return command/u)
 })
 
+test('модель зовут после отказов движка и не зовут на повторе', () => {
+  // Регресс ревью: `withCourierReplyDraft` ходила в модель **до** любой
+  // проверки. Бой, пустой кошелёк, четвёртое письмо, адресат в сцене — всё это
+  // отлавливалось уже после completion, и каждый такой клик списывал деньги
+  // впустую. Порядок здесь и есть исправление, поэтому он и проверяется
+  // порядком: сторож обязан стоять в исходнике выше вызова модели.
+  const guard = server.indexOf('assertSendLetterAllowed(authoritativeBefore, commands[0])')
+  const model = server.indexOf('await withCourierReplyDraft(authoritativeBefore, commands[0])')
+  assert.ok(guard > 0, 'дешёвые отказы движка обязаны спрашиваться в HTTP-слое')
+  assert.ok(model > 0)
+  assert.ok(guard < model, 'проверка движка обязана стоять до обращения к модели')
+  // Повтор того же `idempotency_key` возвращает уже подтверждённый коммит —
+  // писать под него новый черновик незачем. Тот же сторож стоит у соседнего
+  // соц.пути (`server/game-orchestrator.mjs`).
+  assert.match(server, /const duplicateLetter = await eventStore\.getByIdempotencyKey\(commandMatch\[1\], idempotencyKey\)/u)
+  assert.match(server, /if \(!duplicateLetter\) commands = \[await withCourierReplyDraft/u)
+})
+
 // ---------------------------------------------------------------------------
 // Разметка
 // ---------------------------------------------------------------------------
@@ -235,7 +292,13 @@ test('написать письмо можно кнопкой на доске, �
   assert.match(board, /className="letters-panel"/u)
   assert.match(board, /aria-label="Почта отряда"/u)
   assert.match(board, /state\.courier_letters\?\.addressees \?\? \[\]/u)
-  assert.match(board, /onSendLetter\(chosenLetterAddressee\.kind, chosenLetterAddressee\.id, body\)/u)
+  assert.match(board, /onSendLetter\(chosenLetterAddressee\.kind, chosenLetterAddressee\.id, letterBody\)/u)
+  // Текст письма живёт до ответа сервера: чистится поле только по `ok`, тем же
+  // порядком, что и реплика в разговоре с NPC. Раньше `setLetterBody('')`
+  // стояло до вызова, и любой отказ движка или обрыв сети уничтожал до 1200
+  // знаков, которые игрок только что написал.
+  assert.match(board, /const outcome = await onSendLetter\([^\n]*\)\s*\n\s*if \(outcome\.ok\) setLetterBody\(''\)/u)
+  assert.doesNotMatch(board, /setLetterBody\(''\)\s*\n\s*void onSendLetter/u)
   assert.match(app, /onSendLetter=\{\(kind, addresseeId, body\) => sendLetter\(activePlayer\.id, kind, addresseeId, body\)\}/u)
   assert.match(session, /command_type: 'SendLetter'/u)
   assert.match(styles, /\.letters-panel \{/u)

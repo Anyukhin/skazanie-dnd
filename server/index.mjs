@@ -68,7 +68,7 @@ import {
   PUBLIC_DICE_CAPABILITY,
   WORLD_RUMOR_CAPABILITY,
 } from './authoritative-executor.mjs'
-import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
+import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
@@ -1546,7 +1546,7 @@ function journalOffscreen(offscreen) {
  */
 function journalLetter(letter) {
   if (!letter || typeof letter !== 'object') return null
-  const kinds = new Set(['sent', 'delivered', 'returned', 'answered'])
+  const kinds = new Set(['sent', 'delivered', 'returned', 'answered', 'unanswered'])
   const kind = String(letter.kind ?? '')
   const body = String(letter.text ?? '').slice(0, 800)
   if (!kinds.has(kind) || !body.trim()) return null
@@ -4120,12 +4120,24 @@ const server = createServer((req, res) => {
       // ответ страже: у него своя цена в монете и свои минуты кампании.
       // Полировка ответа моделью ставится **после** санитайзера и только
       // сервером: черновик из браузера был бы ответом NPC, написанным игроком.
+      //
+      // Перед моделью стоят два сторожа, и оба про деньги. Первый — отказы
+      // движка (`assertSendLetterAllowed`, `server/rules-engine.mjs`): бой,
+      // пустой кошелёк, четвёртое письмо, адресат в сцене, герой без сознания.
+      // UI гасит кнопку по всем этим условиям, но по состоянию из последнего
+      // опроса — бой уже начался, монеты потратил сосед, адресат вошёл в зал, —
+      // и без этой строки каждый такой клик оплачивал completion, которое потом
+      // выбрасывалось. Второй — повтор: тот же `idempotency_key` возвращает уже
+      // подтверждённый коммит, и писать под него новый черновик незачем. Ровно
+      // так же устроен соседний соц.путь (`server/game-orchestrator.mjs`).
       const letterCommands = commands.filter((command) => PLAYER_LETTER_COMMANDS.has(commandType(command)))
       if (letterCommands.length) {
         if (commands.length !== 1) {
           throw commandPolicyError('Письмо идёт отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
         }
-        commands = [await withCourierReplyDraft(authoritativeBefore, commands[0])]
+        assertSendLetterAllowed(authoritativeBefore, commands[0])
+        const duplicateLetter = await eventStore.getByIdempotencyKey(commandMatch[1], idempotencyKey)
+        if (!duplicateLetter) commands = [await withCourierReplyDraft(authoritativeBefore, commands[0])]
       }
       // Драка со стражей — тот же двухшаговый план, что и у сборки столкновения
       // администратором: `ResolveGuardEncounter` ставит стражу на доску событием

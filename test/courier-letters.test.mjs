@@ -10,7 +10,10 @@
 //   7. недоставка честная — мёртвый и уведённый адресат возвращают письмо;
 //   8. ответ детерминирован по отношению, врагу сказать нечего;
 //   9. полировка модели звучит только под тем тоном, для которого её писали;
-//  10. всё это переживает replay журнала и повторяется дважды одинаково.
+//  10. отвечает живой: убитый после доставки шлёт весть, а не приглашение в гости;
+//  11. дальность честна на обоих концах — сосед по карте стоит нуля переходов;
+//  12. проход по адресатам считает мир один раз, а не на каждого из них;
+//  13. всё это переживает replay журнала и повторяется дважды одинаково.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
@@ -40,7 +43,7 @@ import {
   planCourierLetterTicks,
   worldLeaguesBetween,
 } from '../server/courier-letters.mjs'
-import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
+import { applyGameEvent, assertSendLetterAllowed, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 
 const INN = 'Трактир «У моста»'
 const MILL = 'Мельница'
@@ -98,6 +101,30 @@ function campaign({ relationship = 60, purse = { copper: 0, silver: 0, gold: 5, 
       ],
     },
     mechanics: { world_time: { elapsed_minutes: 0 } },
+  })
+}
+
+/**
+ * Тот же отряд, но карта мира у него есть.
+ *
+ * Отряд стоит в погребе трактира: узел карты — тот же `inn`, а название сцены
+ * другое, поэтому трактирщик наверху отряду **не сосед по столу** и письмо ему
+ * писать можно. Это и есть случай «адресат живёт там же, где стоит отряд»:
+ * дорога — ноль переходов, и никакой «адрес неизвестен» тут не при чём.
+ */
+function mappedCampaign() {
+  return normalizeCampaignState({
+    ...campaign(),
+    scene: { title: 'Погреб трактира', location: 'Погреб трактира', location_id: 'inn', cells: [] },
+    worldMap: {
+      seed: 'courier-letters-map',
+      locations: [
+        { id: 'inn', name: INN, x: 120, y: 120, known: true, visited: true },
+        { id: 'mill', name: MILL, x: 420, y: 120, known: true, visited: true },
+      ],
+      routes: [{ id: 'route-inn-mill', from: 'inn', to: 'mill', kind: 'road', distance: 1, discovered: true }],
+      currentLocationId: 'inn',
+    },
   })
 }
 
@@ -186,6 +213,89 @@ test('писать можно знакомым и открытым фракци�
   assert.equal(courierAddresseeFor(state, 'letter', 'ally'), null)
 })
 
+test('адресат в том же узле карты стоит нуля переходов, а не «адрес неизвестен»', () => {
+  // Регресс ревью: `worldLeaguesBetween` честно отдавала 0 для одного и того же
+  // узла, но у места вызова стояло `integer(...) || СТУПЕНЬ`, и ноль подменялся
+  // шестью переходами. Трактирщик наверху получался дороже мельника за дорогой:
+  // письмо через комнату — 110 мм и сутки, письмо через тракт — 60 мм и восемь
+  // часов. Ноль обязан доезжать до цены целым.
+  const state = mappedCampaign()
+  const near = courierAddresseeFor(state, 'npc', 'barkeep')
+  const far = courierAddresseeFor(state, 'npc', 'ally')
+
+  assert.equal(near.leagues, 0, 'один узел — ноль переходов')
+  assert.notEqual(near.leagues, COURIER_LETTER_UNKNOWN_LEAGUES, 'ступень «адрес неизвестен» тут ни при чём')
+  assert.equal(near.fee_cp, COURIER_LETTER_BASE_FEE_CP, 'ближняя дорога стоит одной базы')
+  assert.equal(near.travel_minutes, COURIER_LETTER_MINIMUM_MINUTES, 'но занимает всё равно не меньше ночи')
+  assert.equal(far.leagues, 1)
+  assert.equal(far.fee_cp, COURIER_LETTER_BASE_FEE_CP + COURIER_LETTER_FEE_PER_LEAGUE_CP)
+  assert.ok(near.fee_cp < far.fee_cp, 'письмо через комнату не может стоить дороже письма через тракт')
+  // Отряд стоит в погребе, трактирщик — наверху: узел карты один, а сцена
+  // разная, поэтому это всё ещё почта, а не разговор.
+  assert.equal(near.unreachable, false)
+
+  // Ноль доезжает и до самой записи письма: цену и дорогу читают из неё.
+  const { state: after } = afterSend(state, { addresseeId: 'barkeep', body: 'Бажен, придержи комнату.' })
+  const [letter] = lettersOf(after)
+  assert.equal(letter.leagues, 0)
+  assert.equal(letter.fee_cp, COURIER_LETTER_BASE_FEE_CP)
+})
+
+test('соц.состояние, живые NPC и карта считаются раз на проход, а не на каждого адресата', () => {
+  // Регресс ревью: `courierLetterAddressees` звала `courierAddresseeFor` в
+  // цикле, а та внутри каждого вызова заново поднимала `ensureNpcSocialState`,
+  // `normalizeNpcWorldState`, `presentSceneNpcs` и свою Дейкстру. Проекция
+  // строится в broadcast-цикле на каждое соединение, поэтому при полусотне
+  // знакомых это десятки миллисекунд чистого CPU на кадр.
+  //
+  // Проба детерминированная, а не по часам: считаются **обращения к состоянию**.
+  // Работа, зависящая от отряда, а не от адресата, обязана стоить одинаково при
+  // четырёх знакомых и при сорока.
+  const counted = (state) => {
+    const counts = { social: 0, npc_world: 0, routes: 0 }
+    const social = state.social
+    const npcWorld = state.npc_world
+    const routes = state.worldMap.routes
+    const worldMap = { ...state.worldMap }
+    Object.defineProperty(worldMap, 'routes', { get() { counts.routes += 1; return routes }, enumerable: true })
+    const probe = { ...state, worldMap }
+    Object.defineProperty(probe, 'social', { get() { counts.social += 1; return social }, enumerable: true })
+    Object.defineProperty(probe, 'npc_world', { get() { counts.npc_world += 1; return npcWorld }, enumerable: true })
+    return { probe, counts }
+  }
+  const crowd = (size) => normalizeCampaignState({
+    ...mappedCampaign(),
+    // Фракции здесь лишние: считается рост от числа **знакомых**, а у фракции
+    // ни места на карте, ни строки в соц.состоянии нет.
+    worldMemory: { entities: [] },
+    social: {
+      npcs: Array.from({ length: size }, (unused, index) => ({
+        id: `npc-${index}`,
+        name: `Знакомый ${index}`,
+        role: 'знакомый',
+        location: index % 2 === 0 ? MILL : INN,
+        visibility: 'party',
+        public_summary: 'Знакомый отряда.',
+      })),
+      relationships: {},
+    },
+  })
+
+  const few = counted(crowd(4))
+  const many = counted(crowd(40))
+  assert.equal(courierLetterAddressees(few.probe).length, 4)
+  assert.equal(courierLetterAddressees(many.probe).length, 40)
+  assert.deepEqual(many.counts, few.counts, 'десятикратный список знакомых не должен стоить десятикратной работы')
+  // И это именно «раз на проход», а не «раз на пару»: числа маленькие и точные.
+  // Тройка у соц.состояния — не три обхода, а два чтения одного поля внутри
+  // `presentSceneNpcs` (`Array.isArray(state.social?.npcs) ? state.social.npcs`).
+  assert.ok(few.counts.social <= 3, `соц.состояние поднимается ${few.counts.social} раз(а)`)
+  assert.ok(few.counts.npc_world <= 2, `живые NPC поднимаются ${few.counts.npc_world} раз(а)`)
+  // Дейкстра на проход одна: два чтения — это `Array.isArray(map?.routes) ?
+  // map.routes` внутри неё, а не второй обход карты.
+  assert.ok(few.counts.routes <= 2, `дороги карты читаются ${few.counts.routes} раз(а)`)
+})
+
 // ---------------------------------------------------------------------------
 // Отправка
 // ---------------------------------------------------------------------------
@@ -266,6 +376,42 @@ test('движок отказывает честно: бой, пустое пи�
 
   const broke = campaign({ purse: { copper: 3, silver: 0, gold: 0, platinum: 0 } })
   refuses('INSUFFICIENT_FUNDS', () => send({}, broke))
+})
+
+test('те же отказы движок отдаёт отдельным сторожем — до всякой модели', () => {
+  // Регресс ревью: HTTP-слой звал модель за полировкой ответа **до** любой
+  // проверки движка, и каждый отказ был оплачен одним completion. Сторож
+  // вынесен отдельной функцией и обязан отвечать теми же кодами, что и
+  // `resolveCommand`: второй копии правил в проекте быть не должно.
+  const base = campaign()
+  const letter = (patch = {}) => ({
+    command_type: 'SendLetter',
+    actor_id: 'hero',
+    addressee_kind: 'npc',
+    addressee_id: 'ally',
+    body: 'Здравствуй.',
+    ...patch,
+  })
+  const guarded = (state, patch) => () => assertSendLetterAllowed(state, letter(patch))
+
+  assert.ok(assertSendLetterAllowed(base, letter()), 'разрешённое письмо возвращает посчитанного адресата')
+  refuses('COURIER_LETTER_EMPTY', guarded(base, { body: '   ' }))
+  refuses('COURIER_ADDRESSEE_NOT_FOUND', guarded(base, { addressee_id: 'нет-такого' }))
+  refuses('COURIER_ADDRESSEE_PRESENT', guarded(base, { addressee_id: 'barkeep' }))
+  refuses('ACTOR_FORBIDDEN', guarded(base, { actor_id: 'ally' }))
+  refuses('INSUFFICIENT_FUNDS', guarded(campaign({ purse: { copper: 3, silver: 0, gold: 0, platinum: 0 } }), {}))
+
+  const fighting = normalizeCampaignState({ ...campaign(), mechanics: { ...base.mechanics, combat: { active: true, round: 1, order: [], turnIndex: 0 } } })
+  refuses('COURIER_DURING_COMBAT', guarded(fighting, {}))
+
+  const unconscious = normalizeCampaignState({ ...campaign(), players: [{ ...base.players[0], hp: 0 }] })
+  refuses('ACTOR_DEFEATED', guarded(unconscious, {}))
+
+  let queued = campaign()
+  for (const addressee of ['ally', 'stranger', 'foe']) {
+    queued = afterSend(queued, { addresseeId: addressee, body: `Здравствуй, ${addressee}.` }).state
+  }
+  refuses('COURIER_TOO_MANY_LETTERS', guarded(queued, { addressee_id: 'faction-wolves', addressee_kind: 'faction' }))
 })
 
 test('очередь курьера ограничена: четвёртое письмо героя он не берёт', () => {
@@ -387,6 +533,72 @@ test('ответ приходит игровыми часами позже и л
   assert.equal(answered.answered_at_minutes, letter.reply_due_minutes)
   // Ответ ложится в память мира: переписку отряд потом вспомнит.
   assert.ok(after.worldMemory.facts.some((fact) => fact.predicate === 'courier_letter_answered'))
+})
+
+test('убитый после доставки не отвечает: приходит весть, а не приглашение в гости', () => {
+  // Регресс ревью: `deliveryFailureFor` спрашивалась только в ветке доставки, а
+  // ветка ответа сверяла один тон. Отряд убивал мельника утром и вечером
+  // получал от него «зови, приду» — да ещё и фактом в память мира, откуда это
+  // прочёл бы Рассказчик.
+  const sent = afterSend(campaign()).state
+  const [letter] = lettersOf(sent)
+
+  const arrival = advance(sent, letter.delivery_due_minutes)
+  const delivered = applyAll(sent, arrival.events)
+  assert.equal(lettersOf(delivered)[0].status, 'delivered')
+  assert.equal(lettersOf(delivered)[0].tone, 'warm', 'на минуту доставки адресат ещё друг')
+
+  // Мельника убивают уже после того, как он прочёл письмо.
+  const dead = {
+    ...delivered,
+    npc_world: { ...delivered.npc_world, vitals: { ...delivered.npc_world.vitals, ally: { ...(delivered.npc_world.vitals.ally ?? {}), alive: false } } },
+  }
+  const reply = advance(dead, letter.reply_due_minutes - letter.delivery_due_minutes)
+  const types = typesOf(reply.events)
+  assert.ok(!types.includes(COURIER_LETTER_EVENT_TYPES.answered), 'мёртвый не отвечает')
+  const silence = reply.events.find((event) => event.event_type === COURIER_LETTER_EVENT_TYPES.unanswered)
+  assert.ok(silence, 'стол узнаёт об этом вестью, а не молчанием движка')
+  assert.equal(silence.payload.reason, 'dead')
+  assert.match(silence.payload.summary, /Ответа от Мельник Гость не будет/u)
+
+  const after = applyAll(dead, reply.events)
+  const closed = lettersOf(after)[0]
+  assert.equal(closed.status, 'unanswered')
+  assert.equal(COURIER_LETTER_STATUS_LABELS[closed.status], 'Ответа не будет')
+  assert.equal(closed.reply_text, '', 'текста ответа у письма не появилось')
+  // В память мира ложится молчание, а не переписка: Рассказчик прочтёт именно
+  // то, что случилось.
+  assert.ok(!after.worldMemory.facts.some((fact) => fact.predicate === 'courier_letter_answered'))
+  assert.ok(after.worldMemory.facts.some((fact) => fact.predicate === 'courier_letter_unanswered'))
+  // Дуга кончилась: месяц под замком ответа уже не принесёт.
+  assert.deepEqual(planCourierLetterTicks(after, { elapsedMinutes: 43_200 }), [])
+})
+
+test('уведённый после доставки молчит по той же причине, что и убитый', () => {
+  const sent = afterSend(campaign()).state
+  const [letter] = lettersOf(sent)
+  const delivered = applyAll(sent, advance(sent, letter.delivery_due_minutes).events)
+  const gone = {
+    ...delivered,
+    social: { ...delivered.social, npcs: delivered.social.npcs.map((npc) => (npc.id === 'ally' ? { ...npc, available: false } : npc)) },
+  }
+  const reply = advance(gone, letter.reply_due_minutes - letter.delivery_due_minutes)
+  const silence = reply.events.find((event) => event.event_type === COURIER_LETTER_EVENT_TYPES.unanswered)
+  assert.ok(silence)
+  assert.equal(silence.payload.reason, 'gone')
+  assert.equal(lettersOf(applyAll(gone, reply.events))[0].status, 'unanswered')
+})
+
+test('доставка и ответ в одном скачке заводят сущность адресата один раз', () => {
+  // Регресс ревью: `addresseeEntityDraft` вызывалась и на доставке, и на
+  // ответе, и в журнал уходили два дословно одинаковых `WorldEntityUpserted`.
+  // Апсерт идемпотентен, но журнал потом читают и реплеят.
+  const sent = afterSend(campaign()).state
+  const run = advance(sent, lettersOf(sent)[0].reply_due_minutes)
+  const upserts = run.events.filter((event) => event.event_type === 'WorldEntityUpserted')
+  assert.equal(upserts.length, 1, 'один адресат — одна запись сущности на скачок')
+  // Факты при этом разные, и их два: доставка и ответ — разные события мира.
+  assert.equal(run.events.filter((event) => event.event_type === 'WorldFactRecorded').length, 2)
 })
 
 test('врагу сказать нечего: доставка объявляет молчание, и ответа не будет никогда', () => {

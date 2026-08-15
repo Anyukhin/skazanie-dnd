@@ -275,7 +275,9 @@ export function OffscreenChronicleEntry({ card, timestamp }: { card: OffscreenCh
  * клиента нет намеренно — две копии разошлись бы молча.
  */
 export function LetterChronicleEntry({ card, timestamp }: { card: LetterChronicleCard; timestamp: string }) {
-  const icon = card.kind === 'answered' ? <MailOpen size={16} /> : card.kind === 'returned' ? <MailX size={16} /> : <Mail size={16} />
+  const icon = card.kind === 'answered'
+    ? <MailOpen size={16} />
+    : card.kind === 'returned' || card.kind === 'unanswered' ? <MailX size={16} /> : <Mail size={16} />
   return <article className={`message system letter-entry letter-${card.kind}`}>
     <div className="letter-card">
       <header>

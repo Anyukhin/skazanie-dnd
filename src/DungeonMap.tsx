@@ -2517,7 +2517,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </header>
           {heroLetters.length > 0 && <ul className="letters-list">
             {heroLetters.slice(0, 4).map((letter) => <li key={letter.id} className={`letter-row letter-${letter.status}`}>
-              {letter.status === 'answered' ? <MailOpen size={13} /> : letter.status === 'returned' ? <MailX size={13} /> : <Mail size={13} />}
+              {letter.status === 'answered'
+                ? <MailOpen size={13} />
+                : letter.status === 'returned' || letter.status === 'unanswered' ? <MailX size={13} /> : <Mail size={13} />}
               <b>{letter.addressee_name}</b>
               <i>{letter.status_label}</i>
               {letter.reply ? <span className="letter-reply">{letter.reply}</span> : null}
@@ -2553,9 +2555,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 title={letterBlockReason || `Курьер возьмёт ${letterFeeCp} мм и повезёт письмо ${chosenLetterAddressee?.leagues ?? 0} перех.`}
                 onClick={() => {
                   if (!chosenLetterAddressee) return
-                  const body = letterBody
-                  setLetterBody('')
-                  void onSendLetter(chosenLetterAddressee.kind, chosenLetterAddressee.id, body)
+                  // Поле чистится **только по ok** — тем же порядком, что и
+                  // реплика в разговоре с NPC выше по файлу. Отказ движка (бой
+                  // начался, кошелёк потратил сосед, адресат вошёл в зал) или
+                  // обрыв сети иначе уничтожали бы до 1200 знаков, которые
+                  // игрок только что написал, без возможности их вернуть.
+                  void (async () => {
+                    const outcome = await onSendLetter(chosenLetterAddressee.kind, chosenLetterAddressee.id, letterBody)
+                    if (outcome.ok) setLetterBody('')
+                  })()
                 }}
               ><Send size={13} />Отправить с курьером · {letterFeeCp} мм</button>
               <small>

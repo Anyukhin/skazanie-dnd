@@ -3640,6 +3640,55 @@ function assembleEncounterFromState(state, command) {
   })
 }
 
+/**
+ * Отказы почты — все, что стоят движку дешевле одного обращения к сети.
+ *
+ * Вынесены из `validateCommand` отдельной экспортируемой функцией потому, что
+ * их обязан задать **и** HTTP-слой, до полировки ответа моделью
+ * (`withCourierReplyDraft`, `server/index.mjs`). Раньше он этого не делал:
+ * бой, пустой кошелёк, четвёртое письмо, адресат в сцене и неизвестный
+ * адресат отлавливались уже после completion, и каждый отказ был оплачен
+ * впустую — при объявленном бюджете вечера это заметная доля. Второй копии
+ * правил при этом заводить нельзя: расписание, цена и порог очереди обязаны
+ * отвечать одинаково у движка и у сервера.
+ *
+ * Состояние ждётся нормализованным (`normalizeCampaignState`).
+ *
+ * @throws {RulesValidationError}
+ */
+export function assertSendLetterAllowed(state, command) {
+  if (state.mechanics.combat.active) {
+    throw new RulesValidationError('Посреди боя писем не пишут', 'COURIER_DURING_COMBAT')
+  }
+  if (!playerActor(state, command.actor_id)) {
+    throw new RulesValidationError('Письмо пишет герой отряда', 'ACTOR_FORBIDDEN')
+  }
+  if (!isLivingActor(findActor(state, command.actor_id))) {
+    throw new RulesValidationError('Герой без сознания писем не пишет', 'ACTOR_DEFEATED')
+  }
+  if (!String(command.body ?? '').trim()) {
+    throw new RulesValidationError('Пустое письмо курьер не повезёт', 'COURIER_LETTER_EMPTY')
+  }
+  // Адресат берётся той же функцией, что собирает список для панели и считает
+  // цену: второй ответ на вопрос «кому можно писать» разошёлся бы с первым.
+  const addressee = courierAddresseeFor(state, command.addressee_kind, command.addressee_id)
+  if (!addressee) {
+    throw new RulesValidationError('Такого адресата отряд не знает', 'COURIER_ADDRESSEE_NOT_FOUND')
+  }
+  if (addressee.unreachable) {
+    throw new RulesValidationError('Адресат стоит перед отрядом: это разговор, а не письмо', 'COURIER_ADDRESSEE_PRESENT')
+  }
+  if (openCourierLettersFor(state, command.actor_id).length >= COURIER_LETTER_OPEN_LIMIT) {
+    throw new RulesValidationError('У героя и так слишком много писем в дороге', 'COURIER_TOO_MANY_LETTERS')
+  }
+  // Плата проверяется **до** первого события: кошелёк не уходит в минус
+  // потому, что в него не лезут, а не потому, что итог потом подрежут.
+  if (currencyToCopper(playerActor(state, command.actor_id).currency) < addressee.fee_cp) {
+    throw new RulesValidationError('На курьера не хватает монет', 'INSUFFICIENT_FUNDS')
+  }
+  return addressee
+}
+
 export function validateCommand(input, rawState, context = {}) {
   const state = normalizeCampaignState(rawState)
   const command = normalizeCommand(input, state)
@@ -3927,37 +3976,10 @@ export function validateCommand(input, rawState, context = {}) {
       }
     }
   }
-  if (COURIER_LETTER_COMMAND_TYPES.has(command.command_type)) {
-    if (state.mechanics.combat.active) {
-      throw new RulesValidationError('Посреди боя писем не пишут', 'COURIER_DURING_COMBAT')
-    }
-    if (!playerActor(state, command.actor_id)) {
-      throw new RulesValidationError('Письмо пишет герой отряда', 'ACTOR_FORBIDDEN')
-    }
-    if (!isLivingActor(findActor(state, command.actor_id))) {
-      throw new RulesValidationError('Герой без сознания писем не пишет', 'ACTOR_DEFEATED')
-    }
-    if (!command.body) {
-      throw new RulesValidationError('Пустое письмо курьер не повезёт', 'COURIER_LETTER_EMPTY')
-    }
-    // Адресат берётся той же функцией, что собирает список для панели и считает
-    // цену: второй ответ на вопрос «кому можно писать» разошёлся бы с первым.
-    const addressee = courierAddresseeFor(state, command.addressee_kind, command.addressee_id)
-    if (!addressee) {
-      throw new RulesValidationError('Такого адресата отряд не знает', 'COURIER_ADDRESSEE_NOT_FOUND')
-    }
-    if (addressee.unreachable) {
-      throw new RulesValidationError('Адресат стоит перед отрядом: это разговор, а не письмо', 'COURIER_ADDRESSEE_PRESENT')
-    }
-    if (openCourierLettersFor(state, command.actor_id).length >= COURIER_LETTER_OPEN_LIMIT) {
-      throw new RulesValidationError('У героя и так слишком много писем в дороге', 'COURIER_TOO_MANY_LETTERS')
-    }
-    // Плата проверяется **до** первого события: кошелёк не уходит в минус
-    // потому, что в него не лезут, а не потому, что итог потом подрежут.
-    if (currencyToCopper(playerActor(state, command.actor_id).currency) < addressee.fee_cp) {
-      throw new RulesValidationError('На курьера не хватает монет', 'INSUFFICIENT_FUNDS')
-    }
-  }
+  // Отказы почты вынесены целиком: их же, до обращения к модели, спрашивает
+  // HTTP-слой (`server/index.mjs`). Второй копии этих правил быть не должно —
+  // разошлась бы на первой правке цены или порога очереди.
+  if (COURIER_LETTER_COMMAND_TYPES.has(command.command_type)) assertSendLetterAllowed(state, command)
   if (CHARACTER_BUILD_COMMAND_TYPES.has(command.command_type)) {
     try {
       Object.assign(command, validateCharacterBuildCommand(command, state, context))
@@ -15009,6 +15031,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'CourierLetterSent': return `Письмо к ${payload.addressee_name || payload.addressee_id || 'адресату'} отдано курьеру за ${safeInteger(payload.fee_cp, 0)} мм (${safeInteger(payload.leagues, 1)} перех.)`
     case 'CourierLetterDelivered': return `Письмо доставлено: ${payload.addressee_name || payload.addressee_id || 'адресат'} прочитал(а)${payload.answer_expected === false ? ', ответа не будет' : ''}`
     case 'CourierLetterReturned': return `Письмо вернулось: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата не нашли'}`
+    case 'CourierLetterUnanswered': return `Ответа от ${payload.addressee_name || payload.addressee_id || 'адресата'} не будет: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата больше не найти'}`
     case 'CourierLetterAnswered': return `Пришёл ответ от ${payload.addressee_name || payload.addressee_id || 'адресата'}`
     default: return event.event_type
   }
