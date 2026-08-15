@@ -23,8 +23,8 @@ import {
   verifyNarratorCraft,
 } from './narrator.mjs'
 import { TAVERN_DICE_APPROACHES, TAVERN_POLICY_ID, tavernRoundFor } from './tavern-life.mjs'
-import { BLESSINGS_POLICY_ID, PRAYER_ABILITY, PRAYER_DC, PRAYER_SKILL, blessingAvailabilityFor } from './blessings.mjs'
-import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll } from './rules-engine.mjs'
+import { BLESSINGS_POLICY_ID, PRAYER_ABILITY, PRAYER_DC, PRAYER_SKILL } from './blessings.mjs'
+import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
@@ -916,13 +916,19 @@ export class GameOrchestrator {
    * сделать сложнее, и объявленное число совпадает с тем, против которого
    * бросит движок, по построению.
    *
-   * `null` — молиться нельзя (сутки не прошли), и отказ должен случиться до
-   * кубика, а не после: бросать кость ради заведомого отказа — обман стола.
+   * `null` — молиться нельзя, и отказ должен случиться до кубика, а не после:
+   * бросать кость ради заведомого отказа — обман стола, а запись в реестре
+   * бросков после такого хода остаётся висеть.
+   *
+   * Отказы спрашиваются у движка целиком (`shrinePrayerRefusalFor`), а не
+   * пересчитываются здесь. Пока карточка знала только суточный откат, она
+   * выдавалась и посреди боя, и у несуществующего пропса, и через полкарты от
+   * алтаря: кнопка на доске эти случаи закрывала, а гонка (бой начался между
+   * фазами) и не-браузерный клиент — нет.
    */
   shrinePrayerCheckCard({ campaignId, playerId, state, command }) {
     const actorId = String(command.actor_id ?? playerId)
-    const elapsed = Math.max(0, Number(state?.mechanics?.world_time?.elapsed_minutes) || 0)
-    if (!blessingAvailabilityFor(state, actorId, elapsed).available) return null
+    if (shrinePrayerRefusalFor(state, { actorId, propId: String(command.prop_id ?? '') })) return null
     const preview = previewD20Check(state, {
       actorId,
       kind: 'check',
@@ -945,6 +951,26 @@ export class GameOrchestrator {
       context: { kind: 'shrine-prayer', policy: BLESSINGS_POLICY_ID, prop_id: String(command.prop_id ?? '') },
     })
     return { ...check, skill: preview.skill }
+  }
+
+  /**
+   * Сторож второй фазы молитвы. Реестр бросков сверяет только кампанию и актора
+   * (`server/roll-registry.mjs`), поэтому всё остальное проверяется здесь:
+   * бросок обязан быть зарегистрирован **молитвой** и **у этой святыни**.
+   *
+   * Пропс важен ровно настолько, насколько в сцене бывает второй алтарь: кость,
+   * брошенная у одного, не должна исполняться у другого, а между фазами герой
+   * мог отойти. Без этой сверки во вторую фазу годился бы любой кубик того же
+   * героя против той же СЛ — в том числе от совсем другой проверки.
+   */
+  assertShrinePrayerRollContext(command, context) {
+    const reject = (message) => {
+      const error = new Error(message)
+      error.code = 'ROLL_CONTEXT_MISMATCH'
+      throw error
+    }
+    if (String(context?.kind ?? '') !== 'shrine-prayer') reject('Этот бросок регистрировался не для молитвы')
+    if (String(context?.prop_id ?? '') !== String(command?.prop_id ?? '')) reject('Этот бросок регистрировался у другой святыни')
   }
 
   /**
@@ -1457,22 +1483,8 @@ export class GameOrchestrator {
         }
       }
       if (verifiedRoll) {
-        // Бросок обязан быть зарегистрирован **как молитва** и **у этой
-        // святыни**: реестр сверяет только кампанию и актора, поэтому без этих
-        // двух проверок во вторую фазу можно было бы подать кубик от любой
-        // другой проверки того же героя — в том числе брошенный у соседнего
-        // алтаря против той же СЛ.
         const { context: prayerCheckContext, ...verifiedRollPayload } = verifiedRoll
-        if (String(prayerCheckContext?.kind ?? '') !== 'shrine-prayer') {
-          const error = new Error('Этот бросок регистрировался не для молитвы')
-          error.code = 'ROLL_CONTEXT_MISMATCH'
-          throw error
-        }
-        if (String(prayerCheckContext?.prop_id ?? '') !== String(prayerCommand.prop_id ?? '')) {
-          const error = new Error('Этот бросок регистрировался у другой святыни')
-          error.code = 'ROLL_CONTEXT_MISMATCH'
-          throw error
-        }
+        this.assertShrinePrayerRollContext(prayerCommand, prayerCheckContext)
         prayerCommand.verified_roll = verifiedRollPayload
       }
     }

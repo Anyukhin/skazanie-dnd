@@ -34,6 +34,7 @@ import {
 import { addProp, createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { combatNarration } from '../server/combat-narration.mjs'
+import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 
 const CAMPAIGN = 'SHRINE-1'
 const CHAPEL = 'Придорожная часовня'
@@ -127,6 +128,50 @@ function chapel({
 const pray = (propId = 'prop-altar') => ({ command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: propId, intent: 'pray' })
 const ask = (npcId = PRIEST) => ({ command_type: 'ReceiveNpcBlessing', actor_id: 'hero', npc_id: npcId })
 
+/** Та же часовня, но идёт бой: оба пути к благословению обязаны закрыться. */
+const inCombat = (state) => normalizeCampaignState({
+  ...state,
+  mechanics: {
+    ...state.mechanics,
+    combat: { active: true, round: 1, active_index: 0, initiative: [{ actor_id: 'hero', total: 12 }] },
+  },
+})
+
+/** Та же часовня, но герой в другом конце зала. */
+const stepAway = (state) => normalizeCampaignState({
+  ...state,
+  mechanics: { ...state.mechanics, positions: { hero: { x: 4, y: 2 } } },
+  players: state.players.map((player) => ({ ...player, x: 4, y: 2 })),
+})
+
+/** Та же часовня, но герой без сознания. */
+const knockedOut = (state) => normalizeCampaignState({
+  ...state,
+  players: state.players.map((player) => ({ ...player, hp: 0 })),
+})
+
+/**
+ * Часовня, в которой герой сегодня уже обращался к богам и остался ни с чем:
+ * суточный слот закрыт, состояния на герое нет.
+ */
+const dayClosed = (minutes = 10) => chapel({
+  minutes,
+  blessings: { heroes: { hero: { at_minutes: 0, source: 'shrine', granted: false, place_name: CHAPEL } } },
+})
+
+/**
+ * Часовня, в которой сутки уже прошли, а благословение всё ещё висит на герое.
+ *
+ * Это не искусственный угол: слот и срок — два разных числа. Слот открывается
+ * через `BLESSING_COOLDOWN_MINUTES`, а состояние снимает продолжительный отдых
+ * или первый удар. Сутки мировых минут без ночёвки и без боя — обычная дорога.
+ */
+const stillBlessed = () => chapel({
+  minutes: BLESSING_COOLDOWN_MINUTES + 1,
+  conditions: { hero: [{ id: BLESSING_CONDITION, duration: 'until-long-rest' }] },
+  blessings: { heroes: { hero: { at_minutes: 0, source: 'shrine', granted: true, place_name: CHAPEL } } },
+})
+
 function run(state, commands, { diceValues = [], context = {} } = {}) {
   return resolveCommands(
     commands.map((command, index) => ({ campaign_id: CAMPAIGN, command_id: `cmd-${index + 1}`, ...command })),
@@ -208,7 +253,38 @@ test('служителя опознаёт роль профиля, а не те�
   assert.equal(isPriestProfile({ role: 'кузнец' }), false)
   // Основы закреплены слева: «монах» внутри чужого слова служителем не делает.
   assert.equal(isPriestProfile({ role: 'мономах' }), false)
+  // Тег принадлежности служителем не делает: `faction:` называет приход, а не
+  // занятие. Пока теги склеивались с ролью в одну проверяемую строку, кузнец с
+  // тегом храма благословлял наравне со жрецом, а нищий — по слову внутри тега.
+  assert.equal(isPriestProfile({ role: 'кузнец', tags: ['faction:priesthood-of-dawn'] }), false)
+  assert.equal(isPriestProfile({ role: 'нищий', tags: ['свяще'] }), false)
+  // Настоящего служителя при этом читают и без единого тега.
+  assert.equal(isPriestProfile({ role: 'жрица', tags: [] }), true)
   assert.deepEqual(blessingPriestsFor(chapel()).map((npc) => npc.id), [PRIEST])
+})
+
+/**
+ * Кто в этом мире служитель, решает закрытый список основ, а роль NPC сочиняет
+ * модель. Список поэтому обязан ошибаться как можно реже в обе стороны: лишний
+ * служитель раздаёт благословения от имени храма, потерянный — оставляет отряд
+ * без единственного бесплатного пути к нему.
+ */
+test('список служителей не мажет по соседним словам и не теряет настоящих', () => {
+  for (const role of [
+    'иеромонах', 'монашка', 'монахиня', 'священник', 'священница', 'священнослужитель',
+    'хранитель святилища', 'хранительница святилища', 'служитель храма', 'служительница богов',
+    'послушник', 'клирик', 'проповедник', 'priest', 'acolyte', 'monk',
+  ]) {
+    assert.equal(isPriestProfile({ role }), true, `${role}: служитель обязан опознаваться`)
+  }
+  // Голая основа «свяще» звала служителем всякого, в чьей роли она попадалась:
+  // благословлять мог посвящённый культист и освящённый страж.
+  for (const role of [
+    'освященный страж', 'посвященный', 'священный воин',
+    'служитель закона', 'кузнец', 'мономах', 'поединок', 'монтажник',
+  ]) {
+    assert.equal(isPriestProfile({ role }), false, `${role}: служителем быть не должен`)
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -309,12 +385,9 @@ test('молитва идёт двухфазным ручным кубиком: 
 test('молиться можно только святыне и только дотянувшись', () => {
   // Сундук глагола молитвы не объявляет — движок отвергает её до броска.
   rejects(chapel({ assetId: 'chest' }), [{ ...pray('prop-chest') }], 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
-  const far = normalizeCampaignState({
-    ...chapel(),
-    mechanics: { ...chapel().mechanics, positions: { hero: { x: 4, y: 2 } } },
-    players: chapel().players.map((player) => ({ ...player, x: 4, y: 2 })),
-  })
-  rejects(far, [pray()], 'SCENE_OBJECT_OUT_OF_REACH')
+  rejects(chapel(), [pray('prop-does-not-exist')], 'SCENE_OBJECT_NOT_FOUND')
+  rejects(stepAway(chapel()), [pray()], 'SCENE_OBJECT_OUT_OF_REACH')
+  rejects(knockedOut(chapel()), [pray()], 'ACTOR_DEFEATED')
 })
 
 /**
@@ -325,13 +398,7 @@ test('молиться можно только святыне и только д
  * запрета бой обходили бы через алтарь, оставив требе её собственный.
  */
 test('в бою не молятся у алтаря — так же, как не просят требу', () => {
-  const battle = normalizeCampaignState({
-    ...chapel(),
-    mechanics: {
-      ...chapel().mechanics,
-      combat: { active: true, round: 1, active_index: 0, initiative: [{ actor_id: 'hero', total: 12 }] },
-    },
-  })
+  const battle = inCombat(chapel())
   rejects(battle, [pray()], 'BLESSING_DURING_COMBAT', { diceValues: [20] })
   // Боевые глаголы обстановки при этом остаются боевыми: они не стоят ни минуты
   // кампании, и общего запрета на пропсы в бою нет.
@@ -380,14 +447,101 @@ test('жрец без фракции благословляет, но благо
 test('требу отвергают кузнецу, нищему и посреди боя', () => {
   rejects(chapel(), [ask(SMITH)], 'BLESSING_PRIEST_NOT_FOUND')
   rejects(chapel({ currency: { copper: 5, silver: 0, gold: 0, platinum: 0 } }), [ask()], 'INSUFFICIENT_FUNDS')
-  const battle = normalizeCampaignState({
-    ...chapel(),
-    mechanics: {
-      ...chapel().mechanics,
-      combat: { active: true, round: 1, active_index: 0, initiative: [{ actor_id: 'hero', total: 12 }] },
-    },
+  rejects(inCombat(chapel()), [ask()], 'BLESSING_DURING_COMBAT')
+})
+
+/**
+ * Зонд ревью: треба брала золотой и не давала ничего.
+ *
+ * Суточный слот и срок благословения — два разных числа, и это не совпадение, а
+ * устройство: слот открывается через `BLESSING_COOLDOWN_MINUTES`, а состояние
+ * снимает продолжительный отдых или первый удар. Сутки мировых минут без
+ * ночёвки и без единого удара — обычная дорога, и в это окно треба проходила
+ * целиком: сто медяков уходило, репутация храма росла, летопись говорила
+ * «благословение дано», а состояния не появлялось — вешать второе поверх
+ * первого движок и так не умел, но молча.
+ *
+ * У алтаря та же дыра стоила не денег, а правды: молитва объявляла исход
+ * `blessed`, писала факт мира «принял(а) малое благословение» и жгла суточный
+ * слот. Факт мира читают рассказчик и NPC, и replay повторил бы ту же неправду.
+ */
+test('пока благословение не израсходовано, второго не даёт ни жрец, ни алтарь', () => {
+  const held = stillBlessed()
+  // Проверяется именно эта дыра, а не суточный откат: слот открыт.
+  assert.equal(blessingAvailabilityFor(held, 'hero', BLESSING_COOLDOWN_MINUTES + 1).available, true)
+  assert.equal(heroIsBlessed(held, 'hero'), true)
+
+  rejects(held, [ask()], 'BLESSING_ALREADY_ACTIVE')
+  rejects(held, [pray()], 'BLESSING_ALREADY_ACTIVE', { diceValues: [18] })
+  // Отказ стоит до первого события: кошелёк цел, репутация не тронута, суточный
+  // слот не сгорел, ложного факта мира в летописи нет.
+  assert.equal(purseCp(held), 200)
+  assert.equal(blessingRecordFor(held, 'hero').at_minutes, 0)
+
+  // Та же сцена, но благословение уже израсходовано: оба обращения проходят.
+  // Значит, отказ — про висящее состояние, а не про сутки.
+  const spent = chapel({
+    minutes: BLESSING_COOLDOWN_MINUTES + 1,
+    blessings: { heroes: { hero: { at_minutes: 0, source: 'shrine', granted: true, place_name: CHAPEL } } },
   })
-  rejects(battle, [ask()], 'BLESSING_DURING_COMBAT')
+  const asked = run(spent, [ask()])
+  assert.ok(eventOf(asked, 'NpcBlessingGranted'))
+  // Объявленное благословение обязано приходить состоянием — тем же пакетом.
+  assert.equal(eventOf(asked, 'ConditionAdded').payload.condition, BLESSING_CONDITION)
+  const prayed = run(spent, [pray()], { diceValues: [18] })
+  assert.equal(eventOf(prayed, 'ShrinePrayerResolved').payload.outcome, 'blessed')
+  assert.equal(eventOf(prayed, 'ConditionAdded').payload.condition, BLESSING_CONDITION)
+  assert.ok(eventOf(prayed, 'WorldFactRecorded'), 'факт мира пишется только там, где благословение действительно дано')
+})
+
+/**
+ * Первая фаза ручного кубика обязана молчать везде, где откажет вторая. Кость,
+ * брошенная ради заведомого отказа, — обман стола: ход вернётся ошибкой уже
+ * после броска, а запись в реестре бросков останется висеть. Карточка знала
+ * ровно один отказ из шести, и кнопка на доске закрывала не все остальные:
+ * бой мог начаться между фазами, а не-браузерный клиент кнопки не спрашивает.
+ */
+test('карточка первой фазы молчит везде, где движок откажет', () => {
+  const guard = Object.create(GameOrchestrator.prototype)
+  guard.rollRegistry = {
+    registerCheck: ({ label, modifier, difficulty }) => ({ check_id: 'check-1', label, modifier, difficulty }),
+  }
+  const card = (state, propId = 'prop-altar') => guard.shrinePrayerCheckCard({
+    campaignId: CAMPAIGN, playerId: 'hero', state, command: pray(propId),
+  })
+
+  assert.equal(card(chapel())?.difficulty, PRAYER_DC, 'у своего алтаря карточка обязана быть')
+  // Шесть отказов движка — шесть немых карточек. Каждый ответ сверяется с самим
+  // движком на той же сцене: молчание карточки обязано означать отказ хода.
+  for (const [reason, state, propId, code] of [
+    ['бой', inCombat(chapel()), 'prop-altar', 'BLESSING_DURING_COMBAT'],
+    ['несуществующий пропс', chapel(), 'prop-does-not-exist', 'SCENE_OBJECT_NOT_FOUND'],
+    ['не святыня', chapel({ assetId: 'chest' }), 'prop-chest', 'SCENE_OBJECT_INTENT_NOT_ALLOWED'],
+    ['недосягаемость', stepAway(chapel()), 'prop-altar', 'SCENE_OBJECT_OUT_OF_REACH'],
+    ['герой без сознания', knockedOut(chapel()), 'prop-altar', 'ACTOR_DEFEATED'],
+    ['благословение ещё висит', stillBlessed(), 'prop-altar', 'BLESSING_ALREADY_ACTIVE'],
+    ['сутки', dayClosed(), 'prop-altar', 'BLESSING_ALREADY_TODAY'],
+  ]) {
+    assert.equal(card(state, propId), null, `${reason}: карточка обязана молчать`)
+    rejects(state, [pray(propId)], code, { diceValues: [18] })
+  }
+})
+
+/**
+ * Сторож второй фазы. Реестр бросков сверяет только кампанию и актора, поэтому
+ * без этих двух проверок во вторую фазу годился бы любой кубик того же героя
+ * против той же СЛ — в том числе брошенный у соседнего алтаря.
+ */
+test('во вторую фазу принимается только кубик, зарегистрированный молитвой у этой святыни', () => {
+  const guard = Object.create(GameOrchestrator.prototype)
+  const mismatch = (error) => error.code === 'ROLL_CONTEXT_MISMATCH'
+  const context = { kind: 'shrine-prayer', prop_id: 'prop-altar' }
+  assert.doesNotThrow(() => guard.assertShrinePrayerRollContext({ prop_id: 'prop-altar' }, context))
+  // Чужая проверка того же героя молитвой не становится.
+  assert.throws(() => guard.assertShrinePrayerRollContext({ prop_id: 'prop-altar' }, { ...context, kind: 'beast-taming' }), mismatch)
+  assert.throws(() => guard.assertShrinePrayerRollContext({ prop_id: 'prop-altar' }, null), mismatch)
+  // Кость, брошенная у одного алтаря, не исполняется у другого.
+  assert.throws(() => guard.assertShrinePrayerRollContext({ prop_id: 'prop-other-altar' }, context), mismatch)
 })
 
 // ---------------------------------------------------------------------------

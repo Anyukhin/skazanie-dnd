@@ -65,7 +65,7 @@ test('карточка благословений уезжает игроку и
   assert.deepEqual(room.blessings.priests.map((npc) => npc.id), ['father'])
 })
 
-test('панель подсказок зовёт к святыне, но только пока сутки не закрыты', () => {
+test('панель подсказок зовёт к святыне, но только пока обращение доступно', () => {
   const room = campaignStateForViewer(chapel(), PLAYER, 'hero')
   const hints = suggestedActionsFor(room, 'hero')
   assert.ok(hints.some((hint) => hint.id === 'blessing:offer' && /помолиться/iu.test(hint.text)))
@@ -73,19 +73,26 @@ test('панель подсказок зовёт к святыне, но тол�
   // панель звала.
   const spent = suggestedActionsFor({ ...room, blessings: { ...room.blessings, available: false } }, 'hero')
   assert.equal(spent.some((hint) => hint.id === 'blessing:offer'), false)
+  // Благословлённому герою второго не дадут ни у алтаря, ни у жреца
+  // (`BLESSING_ALREADY_ACTIVE`): панель, зовущая его молиться, ведёт в отказ.
+  const held = suggestedActionsFor({ ...room, blessings: { ...room.blessings, blessed: true } }, 'hero')
+  assert.equal(held.some((hint) => hint.id === 'blessing:offer'), false)
 })
 
 test('доска рисует кнопку молитвы у святыни и кнопку требы в меню служителя', () => {
   assert.match(board, /pray: 'Помолиться'/u)
-  // Кнопка молитвы гаснет по обеим причинам, по которым откажет движок: сутки
-  // уже закрыты или идёт бой.
-  assert.match(board, /intent === 'pray' && \(!blessingAvailable \|\| combatActive\)/u)
+  // Кнопка молитвы гаснет по всем трём причинам, по которым откажет движок: бой,
+  // закрытые сутки и уже висящее благословение.
+  assert.match(board, /intent === 'pray' && \(blessingHeld \|\| !blessingAvailable \|\| combatActive\)/u)
   assert.match(board, /combatActive \? 'Посреди боя благословений не раздают'/u)
   assert.match(board, /blessingPriests\.some\(\(priest\) => priest\.id === sceneNpc\.id\)/u)
   assert.match(board, /onReceiveNpcBlessing\(sceneNpc\.id\)/u)
   // Кнопка не должна обещать того, чего движок не примет: ни в бою, ни с пустым
-  // кошельком, ни второй раз за сутки.
+  // кошельком, ни второй раз за сутки, ни поверх неизрасходованного
+  // благословения — иначе треба списывала бы золотой в отказ.
   assert.match(board, /activeHeroPurseCp < blessingDonationCp/u)
+  assert.match(board, /const blessingHeld = blessings\?\.blessed === true/u)
+  assert.match(board, /\|\| blessingHeld \|\| !blessingAvailable \|\| activeHeroPurseCp < blessingDonationCp/u)
   assert.match(board, /onReceiveNpcBlessing: \(npcId: string\) => Promise<CommandOutcome>/u)
   assert.match(app, /onReceiveNpcBlessing=\{\(npcId\) => receiveNpcBlessing\(activePlayer\.id, npcId\)\}/u)
 })
@@ -94,9 +101,11 @@ test('молитва объявлена двухфазной и на клиен�
   assert.match(session, /case 'OperateSceneObject':\s*\n\s*return command\.intent === 'pray' \? command : null/u)
   assert.match(session, /intent === 'pray' \? \{ manualRoll: !autoRollEnabled\(\) \} : undefined/u)
   assert.match(orchestrator, /shrinePrayerCheckCard\(\{ campaignId, playerId, state, command \}\)/u)
-  // Сторож второй фазы: чужой кубик и кубик от соседней святыни не принимаются.
-  assert.match(orchestrator, /Этот бросок регистрировался не для молитвы/u)
-  assert.match(orchestrator, /Этот бросок регистрировался у другой святыни/u)
+  // Сторож второй фазы проверяется поведением (`test/blessings.test.mjs`,
+  // «во вторую фазу принимается только кубик…»): грепом по исходнику его снятие
+  // не ловится. Здесь остаётся только стык двух фаз — что сторож вообще
+  // позван из разбора хода, а не объявлен и забыт.
+  assert.match(orchestrator, /this\.assertShrinePrayerRollContext\(prayerCommand, prayerCheckContext\)/u)
 })
 
 test('санитайзер сервера принимает молитву кнопкой и не принимает поджог', () => {

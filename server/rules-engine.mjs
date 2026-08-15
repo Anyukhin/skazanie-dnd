@@ -361,6 +361,7 @@ import {
   blessingAvailabilityFor,
   blessingFactionIdsFor,
   blessingOmenFor,
+  heroIsBlessed,
   isBlessingPriest,
   normalizeBlessingState,
 } from './blessings.mjs'
@@ -4171,6 +4172,19 @@ export function validateCommand(input, rawState, context = {}) {
     if (!blessingAvailabilityFor(state, command.actor_id, campaignElapsedMinutes(state)).available) {
       throw new RulesValidationError('Этот герой уже обращался к богам сегодня', 'BLESSING_ALREADY_TODAY')
     }
+    // Второго благословения поверх первого не бывает, и одних суток для этого
+    // мало. Слот и срок — два разных числа: слот открывается через
+    // `BLESSING_COOLDOWN_MINUTES`, а состояние снимает продолжительный отдых
+    // или первый удар. Сутки мировых минут без ночёвки и без боя (переход,
+    // дорога, разговоры) открывали окно, в котором треба списывала золотой,
+    // двигала репутацию и писала в летопись «благословение дано» — а состояния
+    // не появлялось: вешать второе поверх первого движок и так не умеет, но
+    // делал это молча. Отказ стоит **до** первого события, чтобы платы за ничто
+    // не было; стоит он последним, потому что «сегодня уже обращались» — ответ
+    // точнее там, где верны оба.
+    if (heroIsBlessed(state, command.actor_id)) {
+      throw new RulesValidationError('Благословение этого героя ещё не израсходовано', 'BLESSING_ALREADY_ACTIVE')
+    }
   }
   // Отказы почты вынесены целиком: их же, до обращения к модели, спрашивает
   // HTTP-слой (`server/index.mjs`). Второй копии этих правил быть не должно —
@@ -6650,6 +6664,59 @@ function tavernRoundsClosedByDeparture(command, state, minutes) {
 }
 
 /**
+ * Почему молиться у этой святыни нельзя прямо сейчас — либо `null`, если можно.
+ *
+ * Функция одна на две стороны хода, и это её единственный смысл. Движок
+ * спрашивает её перед первым событием, а оркестратор — **перед карточкой первой
+ * фазы** (`shrinePrayerCheckCard`, `server/game-orchestrator.mjs`), потому что
+ * бросать кость ради заведомого отказа — обман стола: ход вернётся ошибкой уже
+ * после кубика, а запись в реестре бросков останется висеть.
+ *
+ * Пока отказов было два ответа, карточка знала ровно один из шести — суточный
+ * откат, — и выдавалась посреди боя, у несуществующего пропса и через полкарты
+ * от алтаря. Порядок проверок здесь тот же, каким их задаёт разбор
+ * `OperateSceneObject`, и помощники те же самые: расходиться этим двум ответам
+ * нечем.
+ */
+export function shrinePrayerRefusalFor(state, { actorId = '', propId = '' } = {}) {
+  const refuse = (code, message) => ({ code, message })
+  // Бой закрывает молитву не из-за уместности, а из-за минут: обращение стоит
+  // четверти часа кампании, а четверть часа посреди раунда в шесть секунд
+  // двигает всё, что висит на мировых минутах.
+  if (state?.mechanics?.combat?.active) return refuse('BLESSING_DURING_COMBAT', 'Посреди боя благословений не раздают')
+  const map = ensureSceneTacticalMap(state)
+  if (!map) return refuse('TACTICAL_MAP_REQUIRED', 'Для объекта нужна тактическая карта')
+  const prop = map.props.find((candidate) => String(candidate.id) === String(propId))
+  if (!prop) return refuse('SCENE_OBJECT_NOT_FOUND', 'Такого объекта нет на карте')
+  if (prop.interactive !== true) return refuse('SCENE_OBJECT_NOT_INTERACTIVE', 'Этот объект не отмечен как интерактивный')
+  const definition = sceneInteractionDefinition({ mapSeed: map.seed, props: map.props, propId: prop.id })
+  if (!definition) return refuse('SCENE_OBJECT_UNSUPPORTED', 'Для этого объекта нет серверного правила взаимодействия')
+  // Глагол и ассет спрашиваются оба: `pray` объявляет каталог, но состояние
+  // пропса можно принести и руками, а молиться сундуку нельзя и тогда.
+  if (!definition.verbs.includes('pray') || !isSceneShrineAsset(prop.assetId)) {
+    return refuse('SCENE_OBJECT_INTENT_NOT_ALLOWED', 'Молиться можно только у святыни')
+  }
+  const at = actorPosition(state, actorId)
+  if (!at) return refuse('MAP_POSITION_REQUIRED', 'Участник должен находиться на карте')
+  if (sceneObjectDistance(prop, at) > 1) return refuse('SCENE_OBJECT_OUT_OF_REACH', 'До объекта нужно дотянуться: встаньте вплотную')
+  if (!isLivingActor(findActor(state, actorId))) return refuse('ACTOR_DEFEATED', 'Взаимодействовать может только дееспособный участник')
+  // Сутки закрывает любое обращение — и молитва, и жрец. Считается по попытке,
+  // а не по успеху: иначе неудачную молитву повторяли бы до двадцатки, у алтаря
+  // ведь никто никуда не спешит.
+  if (!blessingAvailabilityFor(state, actorId, campaignElapsedMinutes(state)).available) {
+    return refuse('BLESSING_ALREADY_TODAY', 'Этот герой уже обращался к богам сегодня')
+  }
+  // Благословение поверх благословения — та же дыра, что у требы, только вместо
+  // золотого она стоила правды: молитва проходила целиком, объявляла исход
+  // `blessed`, писала факт мира и жгла суточный слот, а состояния не добавляла.
+  // Факт мира читают рассказчик и NPC, и replay повторил бы ту же неправду.
+  // Порядок с суточным слотом тот же, что у требы: там, где верны оба, ответ
+  // точнее — «сегодня уже обращались».
+  if (heroIsBlessed(state, actorId)) return refuse('BLESSING_ALREADY_ACTIVE', 'Благословение этого героя ещё не израсходовано')
+  return null
+}
+
+/**
  * Что оставляет за собой полученное благословение. Функция одна на оба
  * источника — алтарь и жреца — намеренно: состояние, срок и факт мира у них те
  * же, и второй набор событий разошёлся бы с первым на первой правке.
@@ -6664,9 +6731,14 @@ function blessingGrantedEvents(command, state, {
   const events = []
   const hero = playerActor(state, heroId)
   const heroName = String(hero?.character ?? hero?.name ?? heroId).slice(0, 120)
-  // Второго благословения поверх первого не вешаем. Живыми командами сюда не
-  // добраться — сутки закрывает любое обращение, — но состояние, которое на
-  // герое уже есть, повторно в движке не добавляется нигде.
+  // Второго благословения поверх первого не вешаем — но молчаливым пропуском
+  // эта ветка больше не распоряжается. Раньше она была единственной защитой, и
+  // защищала неправильно: обращение доходило сюда целиком, платило золотой или
+  // жгло суточный слот, объявляло исход «благословлён» и записывало факт мира —
+  // а состояния не появлялось. Отказ теперь стоит до первого события
+  // (`BLESSING_ALREADY_ACTIVE`), и живыми командами сюда с висящим
+  // благословением не добраться; проверка остаётся страховкой на случай нового
+  // источника благословений, а не заменой отказа.
   if (!conditionIdsFor(state, heroId).has(BLESSING_CONDITION)) {
     events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.conditions), 'ConditionAdded', {
       condition: BLESSING_CONDITION,
@@ -10401,19 +10473,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
        * доходит только он.
        */
       if (command.intent === 'pray') {
-        // Сторож, а не правило: глагол до сюда доезжает только со святыни.
-        // Но состояние пропса можно принести и руками, а молиться сундуку нельзя
-        // и тогда.
-        if (!isSceneShrineAsset(prop.assetId)) {
-          throw new RulesValidationError('Молиться можно только у святыни', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
-        }
+        // Все отказы молитвы спрашиваются одной функцией — той же, которой их
+        // спрашивает карточка первой фазы. Второго ответа на «можно ли
+        // молиться» в проекте нет: разойдясь, эти двое дали бы игроку кость,
+        // брошенную ради заведомого отказа.
+        const refusal = shrinePrayerRefusalFor(state, { actorId: command.actor_id, propId: prop.id })
+        if (refusal) throw new RulesValidationError(refusal.message, refusal.code)
         const prayerMinutes = campaignElapsedMinutes(state)
-        // Сутки закрывает любое обращение — и молитва, и жрец. Считается по
-        // попытке, а не по успеху: иначе неудачную молитву повторяли бы до
-        // двадцатки, у алтаря ведь никто никуда не спешит.
-        if (!blessingAvailabilityFor(state, command.actor_id, prayerMinutes).available) {
-          throw new RulesValidationError('Этот герой уже обращался к богам сегодня', 'BLESSING_ALREADY_TODAY')
-        }
         operated()
         const preview = previewD20Check(state, {
           actorId: command.actor_id,

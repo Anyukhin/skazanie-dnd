@@ -1221,10 +1221,20 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
      другое. */
   const blessings = state.blessings ?? null
   const blessingAvailable = blessings?.available !== false
+  /* Благословение, которое ещё не израсходовано, закрывает оба обращения:
+     второго поверх первого движок не даёт (`BLESSING_ALREADY_ACTIVE`). Одного
+     суточного слота здесь мало — сутки открывают его через 1440 минут, а
+     состояние снимает продолжительный отдых или первый удар, и сутки дороги без
+     ночёвки оставляли кнопку требы горящей над отказом. */
+  const blessingHeld = blessings?.blessed === true
   const blessingWaitHours = Math.ceil(Math.max(0, Number(blessings?.waits_minutes) || 0) / 60)
-  const blessingPrayerHint = blessingAvailable
-    ? `Молитва: проверка Религии, СЛ ${Number(blessings?.prayer_dc) || 12}. Успех — малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) до продолжительного отдыха. Раз в сутки на героя`
-    : `Этот герой уже обращался к богам сегодня. Снова можно примерно через ${blessingWaitHours} ч`
+  const blessingHeldHint = 'Благословение этого героя ещё не израсходовано: оно уйдёт первым ударом или продолжительным отдыхом'
+  const blessingSpentHint = `Этот герой уже обращался к богам сегодня. Снова можно примерно через ${blessingWaitHours} ч`
+  const blessingPrayerHint = !blessingAvailable
+    ? blessingSpentHint
+    : blessingHeld
+      ? blessingHeldHint
+      : `Молитва: проверка Религии, СЛ ${Number(blessings?.prayer_dc) || 12}. Успех — малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) до продолжительного отдыха. Раз в сутки на героя`
   const blessingPriests = blessings?.priests ?? []
   const blessingDonationCp = Math.max(0, Number(blessings?.donation_cp) || 0)
   /* Этажи локации (`docs/multilevel-map-plan.md`, раздел 6). Номер активного
@@ -1881,16 +1891,18 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {blessingPriests.some((priest) => priest.id === sceneNpc.id)
               ? <button
                   type="button"
-                  disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct || !blessingAvailable || activeHeroPurseCp < blessingDonationCp}
+                  disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct || blessingHeld || !blessingAvailable || activeHeroPurseCp < blessingDonationCp}
                   title={combatActive
                     ? 'Посреди боя благословений не раздают'
                     : !sceneNpc.alive
                       ? 'Служитель сейчас недоступен'
                       : !blessingAvailable
-                        ? `Этот герой уже обращался к богам сегодня. Снова можно примерно через ${blessingWaitHours} ч`
-                        : activeHeroPurseCp < blessingDonationCp
-                          ? `На пожертвование нужно ${blessingDonationCp} мм`
-                          : `Пожертвовать ${blessingDonationCp} мм и получить малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) без броска`}
+                        ? blessingSpentHint
+                        : blessingHeld
+                          ? blessingHeldHint
+                          : activeHeroPurseCp < blessingDonationCp
+                            ? `На пожертвование нужно ${blessingDonationCp} мм`
+                            : `Пожертвовать ${blessingDonationCp} мм и получить малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) без броска`}
                   onClick={() => { void onReceiveNpcBlessing(sceneNpc.id) }}
                 ><HandHeart size={13} />Благословение ({blessingDonationCp} мм)</button>
               : null}
@@ -2925,7 +2937,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 type="button"
                 key={`${selectedSceneObject.id}:${intent}`}
                 className={`scene-object-control intent-${intent}`}
-                disabled={!canAct || tacticalBusy || unavailable || (intent === 'pray' && (!blessingAvailable || combatActive))}
+                disabled={!canAct || tacticalBusy || unavailable || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive))}
                 onClick={() => selected && onOperateSceneObject(selected, selectedSceneObject.id, intent)}
                 title={unavailable
                   ? 'Подойдите к объекту на соседнюю клетку'

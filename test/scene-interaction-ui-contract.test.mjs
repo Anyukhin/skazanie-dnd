@@ -51,9 +51,10 @@ test('клик выбирает интерактивный prop, а его кн�
   assert.match(appSource, /const sceneObject = sceneObjectByCell\.get\(cellKey\)/u)
   assert.match(appSource, /setSelectedSceneObjectId\(\(current\) => current === sceneObject\.id \? null : sceneObject\.id\)/u)
   // Молитва добавляет к общим условиям свои: суточный слот героя уже мог быть
-  // закрыт, а в бою обращение к богам движок не принимает вовсе. Кнопка обязана
-  // погаснуть до клика, а не после отказа.
-  assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| unavailable \|\| \(intent === 'pray' && \(!blessingAvailable \|\| combatActive\)\)\}/u)
+  // закрыт, полученное благословение — ещё не израсходовано, а в бою обращение
+  // к богам движок не принимает вовсе. Кнопка обязана погаснуть до клика, а не
+  // после отказа.
+  assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| unavailable \|\| \(intent === 'pray' && \(blessingHeld \|\| !blessingAvailable \|\| combatActive\)\)\}/u)
   assert.match(appSource, /sceneObjectsAtHand\.find/u)
   assert.match(appSource, /boardOverlay\.push\(\{ \.\.\.cell, kind: 'command-range' \}\)/u)
   assert.match(boardSource, /hotspot\?: React\.ReactNode/u)
