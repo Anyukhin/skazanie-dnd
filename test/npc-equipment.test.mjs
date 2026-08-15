@@ -960,6 +960,43 @@ test('у неопознанного противника в окне реакц�
   assert.deepEqual(opened.payload.damage, damage)
 })
 
+test('поглощённое временными ОЗ снимается у неопознанного противника и в самом событии урона', () => {
+  // Второй канал того же знания. Окно реакции `temporary_hp_absorbed` у
+  // неопознанного врага снимало, а `DamageApplied` по нему же вёз ключ игроку:
+  // два места одного файла разошлись на одном поле. Величина называет и то,
+  // что временные ОЗ у противника были, и сколько их было, — то же самое, что
+  // рядом закрывают `temporary_hp_before/after`.
+  const viewer = { role: 'player', heroIds: ['hero'] }
+  const state = battleState(foe('srd_5_2_1:spy', { x: 1 }))
+  const strike = () => ({
+    event_id: 'damage-foe', command_id: 'cmd-1', event_type: 'DamageApplied', actor_id: 'hero',
+    target_ids: ['foe'], visibility: 'public',
+    payload: {
+      target_id: 'foe', damage_type: 'slashing', raw_amount: 9, applied_amount: 6,
+      temporary_hp_before: 3, temporary_hp_after: 0, temporary_hp_absorbed: 3, hp_before: 40, hp_after: 34,
+    },
+  })
+  const [hidden] = mechanicsForViewer([strike()], viewer, 'hero', state)
+  assert.deepEqual(Object.keys(hidden.payload).sort(), ['applied_amount', 'damage_type', 'raw_amount', 'target_id'])
+
+  // Граница та же, что и у окна: опознание, а не сама цель-противник. Иначе
+  // проверка выше была бы зелена и от безусловного удаления.
+  const scouted = {
+    ...state,
+    mechanics: { ...state.mechanics, enemy_knowledge: { party: { foe: { health: 'exact' } } } },
+  }
+  assert.equal(mechanicsForViewer([strike()], viewer, 'hero', scouted)[0].payload.temporary_hp_absorbed, 3)
+
+  // И вторая граница: свои временные ОЗ игрок обязан видеть — «поглощено 3»
+  // объясняет, почему удар на 9 снял с него шесть.
+  const [own] = mechanicsForViewer([{
+    event_id: 'damage-hero', command_id: 'cmd-2', event_type: 'DamageApplied', actor_id: 'foe',
+    target_ids: ['hero'], visibility: 'public',
+    payload: { target_id: 'hero', damage_type: 'piercing', raw_amount: 9, applied_amount: 6, temporary_hp_absorbed: 3 },
+  }], viewer, 'hero', state)
+  assert.equal(own.payload.temporary_hp_absorbed, 3)
+})
+
 test('ключи добавки снимаются у условия противника целиком — и только у условия', () => {
   const seed = seedWith('srd_5_2_1:spy', 'srd_5_2_1:poison-basic')
   const state = battleState(foe('srd_5_2_1:spy', { x: 1, seed }))

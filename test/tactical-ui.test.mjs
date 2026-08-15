@@ -268,13 +268,20 @@ test('смазанный клинок читается в обеих форма�
   assert.match(board, /\{tokenConditionGlyph\(condition\.id, condition\.label\)\}/u)
 })
 
-test('знаки постоянных состояний различимы между собой и подчиняются приоритету', () => {
-  // Знак нужен именно различимый: четыре состояния стоят под фишкой рядом, и
-  // одинаковые значки не сказали бы о ней ничего.
-  const glyphs = tacticalUi.TOKEN_CONDITION_PRIORITY.map((id) => tacticalUi.tokenConditionGlyph(id, tacticalUi.conditionPresentation(id).label))
+test('у постоянных состояний свои знаки, а не первые буквы подписей', () => {
+  // Значения закреплены поимённо — так же, как череп смазанного клинка выше, и
+  // ровно так же, как их держала прежняя регулярка по DungeonMap.tsx.
+  // Различимости и длины в один символ здесь мало: запасная ветка
+  // `label.slice(0, 1)` даёт для этих подписей «П», «О», «С» и «И»
+  // («Парализован», «Опутан», «Сбит с ног», «Испуган») — они тоже различимы и
+  // тоже односимвольны, поэтому удаление всех четырёх записей из
+  // TOKEN_CONDITION_GLYPHS такую проверку не роняло. Первая буква под фишкой
+  // ничего не говорит: «О» одинаково читается и как «Опутан», и как
+  // «Отравлен», и как «Ослеплён».
   assert.deepEqual(tacticalUi.TOKEN_CONDITION_PRIORITY, ['paralyzed', 'restrained', 'prone', 'frightened'])
+  const glyphs = tacticalUi.TOKEN_CONDITION_PRIORITY.map((id) => tacticalUi.tokenConditionGlyph(id, tacticalUi.conditionPresentation(id).label))
+  assert.deepEqual(glyphs, ['✦', '⌁', '▰', '!'])
   assert.equal(new Set(glyphs).size, glyphs.length, `знаки повторяются: ${glyphs.join(' ')}`)
-  assert.equal(glyphs.every((glyph) => glyph.length === 1), true, `знак должен быть одним символом: ${glyphs.join(' ')}`)
 
   // Незнакомому состоянию остаётся первая буква подписи — знак не выдумывается.
   const homebrew = tacticalUi.conditionPresentation('homebrew-omen')

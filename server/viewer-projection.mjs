@@ -657,10 +657,13 @@ export function publicEncounterFor(encounter = {}) {
  * состояние точную форму хранит: сокращение реакции считается по нему, а не по
  * проекции.
  *
- * Оба списка закреплены поимённо в `test/npc-equipment.test.mjs`: окно с
- * набитыми ключами кармана проецируется целиком, и набор оставшихся полей
- * сверяется дословно. Дописанная сюда строка красит корпус — молча пройти
- * новому ключу нечем.
+ * Оба списка закреплены поимённо в `test/npc-equipment.test.mjs`: окно,
+ * набитое ключами кармана, проецируется целиком, и набор оставшихся полей
+ * сверяется дословно. Сторож ловит ровно те ключи, которые несёт фикстура
+ * `stuffedWindow` — то есть `POCKET_KEYS` и перечисленные величины; ключа,
+ * которого в ней нет, он не увидит. Поэтому строка, дописанная сюда, должна
+ * тем же коммитом появиться и в фикстуре: иначе проверка останется зелёной, а
+ * опись чужого кармана уедет столу целым payload-ом окна.
  */
 const REACTION_DAMAGE_PUBLIC_KEYS = Object.freeze([
   'damage_type', 'raw_amount', 'applied_amount', 'immune', 'resistant', 'vulnerable',
@@ -1185,7 +1188,15 @@ function eventForViewer(event, user, actorId, state = {}) {
   const enemyTargetId = targetIds.find((/** @type {string} */ id) => enemyIds.has(id)) ?? (enemyIds.has(String(payload.target_id ?? '')) ? String(payload.target_id) : '')
   const enemyActor = enemyIds.has(String(visible.actor_id ?? ''))
   if (enemyTargetId && !exactEnemyHealthKnown(state, enemyTargetId, actorId)) {
-    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'armor_class']) delete payload[key]
+    // `temporary_hp_absorbed` стоит здесь по той же причине, что и в окне
+    // реакции (`publicReactionWindowFor` выше): это те же временные ОЗ, только
+    // записанные разностью. «Поглощено 3» называет и то, что у неопознанного
+    // противника они были, и сколько их было, — то есть ровно то, что рядом
+    // закрывают `temporary_hp_before/after`. Два канала одного файла на этом
+    // ключе расходились: окно молчало, а `DamageApplied` по тому же врагу вёз
+    // его игроку. `applied_amount` у урона остаётся: это удар отряда, и его
+    // игрок обязан видеть.
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed', 'armor_class']) delete payload[key]
     // Величина лечения — то же знание, что и ОЗ до и после, только записанное
     // разностью: у зелья противника (2к4 + 2) ровная десятка называет вещь
     // точнее любого `catalog_id`, который здесь же снимает ветка «действует

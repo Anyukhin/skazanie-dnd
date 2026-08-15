@@ -290,7 +290,12 @@ test('игрок видит у Искусной остроты выбор пол
   // было, кнопка уходила без `beneficiary_id`. Ведущий, чья проекция сквозная,
   // поле видел — две стороны стола расходились молча.
   const initial = combatState()
-  initial.players[0] = { ...initial.players[0], characterClass: 'wizard', role: 'Волшебник · ур. 3', subclass: undefined, level: 3, abilities: { ...initial.players[0].abilities, int: 16 }, knownSpellIds: ['silvery-barbs'], preparedSpellIds: ['silvery-barbs'] }
+  // «Щит» подготовлен не для красоты: без второй реакции в окне отрицательный
+  // сторож в конце теста не выполнялся ни разу. Движок дописывает «Искусную
+  // остроту» либо когда своих реакций нет вовсе, либо когда заклинатель сам и
+  // есть цель (сборка `ReactionWindowOpened`, `server/rules-engine.mjs`), — и в
+  // первом случае опция в окне остаётся единственной.
+  initial.players[0] = { ...initial.players[0], characterClass: 'wizard', role: 'Волшебник · ур. 3', subclass: undefined, level: 3, abilities: { ...initial.players[0].abilities, int: 16 }, knownSpellIds: ['silvery-barbs', 'shield'], preparedSpellIds: ['silvery-barbs', 'shield'] }
   const normalized = normalizeCampaignState(initial)
   normalized.mechanics.combat.active_index = 1
   normalized.mechanics.combat.action_economy.goblin = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
@@ -314,12 +319,15 @@ test('игрок видит у Искусной остроты выбор пол
   assert.equal(projected.name, authoritative.name)
   assert.equal(projected.cost, 1)
 
-  // Обычной реакции признак не выдумывается: список получателей над окном
-  // «Невероятного уклонения» был бы ложным выбором.
-  const plain = campaignStateForViewer(afterAttack, { role: 'player', heroIds: ['fighter'] }, 'fighter')
+  // Обычной реакции признак не выдумывается: список получателей над «Щитом»
+  // был бы ложным выбором — цель у него одна и это сам игрок.
+  const projectedOptions = campaignStateForViewer(afterAttack, { role: 'player', heroIds: ['fighter'] }, 'fighter')
     .mechanics.combat.reaction_window.action_options
-    .find((option) => option.id !== 'cast:silvery-barbs')
-  if (plain) assert.equal(plain.requires_beneficiary, undefined)
+  assert.deepEqual(projectedOptions.map((option) => option.id), ['cast:shield', 'cast:silvery-barbs'])
+  const plain = projectedOptions.find((option) => option.id === 'cast:shield')
+  assert.ok(plain, 'в окне обязана быть и вторая, обычная реакция — иначе проверка ниже пуста')
+  assert.equal('requires_beneficiary' in plain, false)
+  assert.deepEqual(Object.keys(plain).sort(), ['cost', 'description', 'id', 'name', 'resource', 'slot_level'])
 })
 
 test('Поглощение стихий даёт сопротивление подходящему урону и сохраняет его до следующего хода', () => {
