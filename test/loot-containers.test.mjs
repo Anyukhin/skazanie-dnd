@@ -618,6 +618,33 @@ test('игрок видит контейнер сцены, а содержимо
   assert.equal(farCard.item_count, card.item_count, 'сам факт добычи виден со всей сцены')
 })
 
+test('состояния кнопки обыска решает сервер: цена хода, футы и портрет павшего', () => {
+  // Вне боя обыск не стоит ничего, и цену называет проекция, а не браузер.
+  const peace = kill(campaign({ combat: false }), 'foe-1')
+  const peaceRoom = campaignStateForViewer(peace.state, { role: 'player', id: 'u1' }, 'hero')
+  assert.equal(peaceRoom.loot_containers.action_cost, null)
+  assert.equal(peaceRoom.loot_containers.reach_feet, LOOT_CONTAINER_REACH_FEET)
+
+  // В бою тот же контейнер стоит действия — тем же признаком, которым это
+  // решает правило (`validateLootContainerCommand`).
+  const fight = kill(campaign({ combat: true }), 'foe-1')
+  assert.equal(campaignStateForViewer(fight.state, { role: 'player', id: 'u1' }, 'hero').loot_containers.action_cost, 'action')
+
+  // Расстояние приезжает готовым числом: браузеру незачем заводить вторую
+  // геометрию доски, чтобы объяснить «подойдите ближе».
+  const [near] = peaceRoom.loot_containers.containers
+  assert.equal(near.distance_feet, 5, 'герой стоит в клетке по диагонали от тела')
+  assert.equal(near.can_inspect, true)
+  assert.equal(near.source_enemy_id, 'foe-1', 'по этому ключу карточка находит портрет павшего')
+
+  const [far] = campaignStateForViewer(peace.state, { role: 'player', id: 'u2' }, 'mate').loot_containers.containers
+  assert.ok(far.distance_feet > LOOT_CONTAINER_REACH_FEET, 'далёкий герой обязан видеть, насколько он далёк')
+  assert.equal(far.can_inspect, false)
+
+  // Стат-блок павшего ключом контейнера не открывается.
+  assert.equal(JSON.stringify(peaceRoom.loot_containers).includes('srd_5_2_1:bandit'), false)
+})
+
 test('свободное действие «обыскиваю тело» ведёт к контейнеру, а не к прежнему отказу', () => {
   const killed = kill(campaign({ combat: false }), 'foe-1')
   const container = containerOf(killed.state)
@@ -643,7 +670,10 @@ test('свободное действие «обыскиваю тело» вед
 test('подсказка зовёт обыскать тело и честна про досягаемость', () => {
   const killed = kill(campaign({ combat: false }), 'foe-1')
   const near = campaignStateForViewer(killed.state, { role: 'player', id: 'u1' }, 'hero').suggested_actions ?? []
-  assert.ok(near.some((hint) => /Можно обыскать: Тело/u.test(hint.text)), JSON.stringify(near))
+  // Вид контейнера уже стоит в его имени, поэтому подсказка склеивает не
+  // «Можно обыскать: Тело: Разбойник», а глагол вида с именем павшего.
+  assert.ok(near.some((hint) => /Можно обыскать тело: /u.test(hint.text)), JSON.stringify(near))
+  assert.equal(near.some((hint) => /обыскать: Тело/u.test(hint.text)), false, 'вид не должен повторяться дважды')
   const far = campaignStateForViewer(killed.state, { role: 'player', id: 'u2' }, 'mate').suggested_actions ?? []
   assert.ok(far.some((hint) => /надо подойти вплотную/u.test(hint.text)), JSON.stringify(far))
 })

@@ -1534,17 +1534,34 @@ export type LootContainerCard = {
   kind: 'corpse' | 'captive' | 'abandoned' | 'cache'
   name: string
   status: 'available' | 'emptied'
+  /**
+   * Кем контейнер был. Ключ нужен интерфейсу ровно для портрета павшего: имя
+   * противника и так стоит в `name`, а стат-блок сюда не уезжает вовсе.
+   */
+  source_enemy_id?: string
   x: number | null
   y: number | null
   item_count: number
   total_weight: number
   can_inspect: boolean
+  /**
+   * Сколько футов до контейнера. Считает сервер — второй геометрии доски в
+   * браузере не заводится. `undefined` значит «померить нечем»: у контейнера
+   * нет клетки или герой ещё не встал на карту.
+   */
+  distance_feet?: number
   items?: LootItemCard[]
 }
 
 export type LootContainersProjection = {
   schema_version?: number
   reach_feet?: number
+  /**
+   * Цена обыска в экономике хода. Решает сервер тем же признаком, что и правило
+   * (`validateLootContainerCommand`): идёт бой — обыск стоит действия. Кнопка
+   * называет цену до нажатия и своей таблицы правил не держит.
+   */
+  action_cost?: 'action' | null
   containers?: LootContainerCard[]
 }
 

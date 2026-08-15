@@ -853,20 +853,45 @@ export function lootItemForViewer(item = {}) {
 }
 
 /**
+ * Сколько футов от героя до контейнера. `null` — «померить нечем»: у контейнера
+ * нет клетки (противника не было на доске) или герой сам ещё не встал на карту.
+ * Ровно этот случай `reachable` считает досягаемым, и подпись обязана совпадать
+ * с решением, а не спорить с ним.
+ */
+function distanceFeetTo(state, actor, container) {
+  if (!actor || container?.x == null || container?.y == null) return null
+  const position = positionOf(state, actorIdOf(actor))
+  if (position.x == null || position.y == null) return null
+  return Math.max(Math.abs(position.x - container.x), Math.abs(position.y - container.y)) * 5
+}
+
+/**
  * Публичная форма контейнера. Содержимое отдаётся **только** по защищённому
  * чтению: `withContents` ставит вызывающая сторона, доказав, что герой игрока
  * стоит рядом. Без этого карточка называет вид, место и число предметов — то,
  * что видно с другого конца зала, — и ничего больше.
+ *
+ * `distance_feet` приезжает готовым числом не ради красоты: браузер не должен
+ * заводить вторую геометрию доски. Досягаемость решает сервер (`can_inspect`),
+ * а расстояние объясняет игроку, почему решение именно такое.
  */
-export function lootContainerForViewer(container = {}, { withContents = false } = {}) {
+export function lootContainerForViewer(container = {}, { withContents = false, distanceFeet = null } = {}) {
   const normalized = normalizeLootContainer(container)
   if (!normalized) return null
+  const distance = Number.isFinite(Number(distanceFeet)) && Number(distanceFeet) >= 0
+    ? Math.round(Number(distanceFeet))
+    : null
   return {
     schema_version: LOOT_CONTAINERS_SCHEMA_VERSION,
     id: normalized.id,
     kind: normalized.kind,
     name: normalized.name,
     status: normalized.status,
+    // Кем был контейнер: по этому ключу интерфейс находит портрет павшего в уже
+    // известном ему списке противников. Имя врага и так стоит в `name`, поэтому
+    // ключ ничего нового не открывает — в отличие от `origin.template_id`,
+    // который снимается вместе с остальным закрытым учётом.
+    source_enemy_id: normalized.source_enemy_id,
     x: normalized.x,
     y: normalized.y,
     item_count: normalized.items.length,
@@ -875,6 +900,7 @@ export function lootContainerForViewer(container = {}, { withContents = false } 
       total + Math.max(0, Number(item.snapshot?.weight) || 0) * Math.max(1, integer(item.quantity, 1))
     ), 0) * 100) / 100,
     can_inspect: withContents === true,
+    ...(distance == null ? {} : { distance_feet: distance }),
     ...(withContents ? { items: normalized.items.map((item) => lootItemForViewer(item)) } : {}),
   }
 }
@@ -882,15 +908,22 @@ export function lootContainerForViewer(container = {}, { withContents = false } 
 /**
  * Контейнеры для стола. Ведущий видит содержимое всегда; игрок — того
  * контейнера, до которого дотягивается его герой.
+ *
+ * `action_cost` — цена обыска в экономике хода, и решает её тот же признак, что
+ * и `validateLootContainerCommand`: идёт бой — обыск стоит действия. Кнопка
+ * обязана называть цену **до** нажатия, и вычислять её второй раз в браузере
+ * означало бы две таблицы правил, которые однажды разойдутся.
  */
 export function lootContainersForViewer(state = {}, { actorId = '', isAdmin = false } = {}) {
   const actor = playerActor(state, actorId)
   return {
     schema_version: LOOT_CONTAINERS_SCHEMA_VERSION,
     reach_feet: LOOT_CONTAINER_REACH_FEET,
+    action_cost: state?.mechanics?.combat?.active === true ? 'action' : null,
     containers: lootContainersInScene(state)
       .map((container) => lootContainerForViewer(container, {
         withContents: isAdmin === true || Boolean(actor) && reachable(state, actor, container),
+        distanceFeet: distanceFeetTo(state, actor, container),
       }))
       .filter(Boolean),
   }
