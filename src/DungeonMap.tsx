@@ -17,9 +17,9 @@ import {
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
-  Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert,
+  Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Package,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LootContainerCard, LootItemCard, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -156,6 +156,17 @@ export const PARLEY_TERM_LABELS: Record<ParleyOutcome, { label: string; summary:
   tribute: { label: 'Уйти, оставив добычу', summary: 'Противник уходит и оставляет отряду всё взятое.' },
   surrender: { label: 'Сложить оружие', summary: 'Противник сдаётся и переходит в плен, когда бой будет закрыт.' },
   resume: { label: 'Продолжить бой', summary: 'Уговора нет: перемирие снимается, очередь оживает.' },
+}
+/**
+ * Подписи видов контейнеров. Вид приходит с сервера
+ * (`server/loot-containers.mjs`), а слова к нему — здесь: русский текст живёт в
+ * интерфейсе, а не в payload события.
+ */
+export const LOOT_KIND_LABELS: Record<string, string> = {
+  corpse: 'ТЕЛО',
+  captive: 'ОРУЖИЕ ПЛЕННОГО',
+  abandoned: 'БРОШЕНО',
+  cache: 'СХРОН',
 }
 export const SPELL_OPTION_LABELS: Record<string, string> = {
   approach: 'Подойди',
@@ -621,7 +632,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onResolveGuardEncounter, onProposeParley, onSettleParley, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -650,6 +661,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onFreeAction: (text: string) => Promise<CommandOutcome>
   onNpcAction: (text: string, npcId: string) => Promise<CommandOutcome>
   onCaptiveAction: (captiveId: string, action: CaptiveAction, skill?: CaptiveInterrogationSkill) => Promise<CommandOutcome>
+  onLootContainer: (containerId: string, lines: Array<{ item_instance_id: string; quantity: number }>, recipientId?: string) => Promise<CommandOutcome>
   onResolveGuardEncounter: (resolution: GuardResolution, skill?: 'stealth' | 'athletics') => Promise<CommandOutcome>
   onProposeParley: (skill: 'persuasion' | 'intimidation') => Promise<CommandOutcome>
   onSettleParley: (outcome: ParleyOutcome) => Promise<CommandOutcome>
@@ -672,6 +684,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // Как отряд собирается уходить от стражи. Выбор влияет только на навык
   // проверки: СЛ и состав проверяющих остаются серверными.
   const [guardEscapeSkill, setGuardEscapeSkill] = useState<'stealth' | 'athletics'>('stealth')
+  // Что отряд собирается вынести и кому. Обе величины живут только в браузере:
+  // авторитетно решает сервер, здесь они лишь собирают набор до отправки.
+  const [lootPicks, setLootPicks] = useState<Record<string, number>>({})
+  const [lootRecipientId, setLootRecipientId] = useState('')
   const [npcDialogueText, setNpcDialogueText] = useState('')
   const [selectedGiftItemId, setSelectedGiftItemId] = useState('')
   const [giftQuantity, setGiftQuantity] = useState(1)
@@ -870,6 +886,43 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     [heldCaptives],
   )
   const captiveActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
+  // Добыча в сцене. Список приходит серверной веткой проекции: содержимое лежит
+  // только у того контейнера, до которого дотягивается герой игрока
+  // (`can_inspect`), и расстояние здесь не пересчитывается — сервер уже решил.
+  const sceneLoot = state.loot_containers?.containers ?? []
+  const lootReachFeet = state.loot_containers?.reach_feet ?? 5
+  const lootActionsBlocked = Boolean(narrating || tacticalBusy || !canAct)
+  const lootPickKey = (containerId: string, itemInstanceId: string) => `${containerId}::${itemInstanceId}`
+  const setLootPick = (containerId: string, item: LootItemCard, quantity: number) => {
+    const bounded = Math.max(0, Math.min(item.quantity, Math.floor(Number(quantity) || 0)))
+    setLootPicks((current) => ({ ...current, [lootPickKey(containerId, item.item_instance_id)]: bounded }))
+  }
+  const toggleLootPick = (containerId: string, item: LootItemCard) => {
+    const key = lootPickKey(containerId, item.item_instance_id)
+    setLootPicks((current) => ({ ...current, [key]: current[key] > 0 ? 0 : item.quantity }))
+  }
+  const selectWholeContainer = (container: LootContainerCard) => {
+    setLootPicks((current) => ({
+      ...current,
+      ...Object.fromEntries((container.items ?? []).map((item) => [lootPickKey(container.id, item.item_instance_id), item.quantity])),
+    }))
+  }
+  const takeLoot = async (container: LootContainerCard) => {
+    const lines = (container.items ?? [])
+      .map((item) => ({ item_instance_id: item.item_instance_id, quantity: lootPicks[lootPickKey(container.id, item.item_instance_id)] ?? 0 }))
+      .filter((line) => line.quantity > 0)
+    if (!lines.length) return
+    // Набор уезжает одной командой: сервер возьмёт его целиком или откажет
+    // целиком, и частично взятого набора не существует.
+    const outcome = await onLootContainer(container.id, lines, combatActive ? undefined : lootRecipientId || undefined)
+    if (outcome?.ok !== false) {
+      setLootPicks((current) => {
+        const next = { ...current }
+        for (const line of lines) delete next[lootPickKey(container.id, line.item_instance_id)]
+        return next
+      })
+    }
+  }
   // Встреча со стражей приезжает готовой карточкой: подписи исходов, размер
   // виры и СЛ побега считает сервер (`server/law-and-order.mjs`). Своей таблицы
   // ступеней здесь нет и быть не может — точной ступени игрок не видит вовсе.
@@ -2276,6 +2329,83 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               onClick={() => setGuardEscapeSkill(skill)}
             >{skill === 'stealth' ? 'тихо (Скрытность)' : 'напролом (Атлетика)'}</button>)}
           </div>
+        </section>}
+        {sceneLoot.length > 0 && <section className="loot-panel" aria-label="Добыча в сцене">
+          <header>
+            <Package size={15} />
+            <span>
+              <small>ДОБЫЧА · {sceneLoot.length}</small>
+              <strong>{combatActive ? 'В бою обыск стоит действия' : 'Смотреть и брать — свободно'}</strong>
+            </span>
+          </header>
+          {sceneLoot.map((container) => {
+            const picks = (container.items ?? []).map((item) => ({
+              item,
+              quantity: lootPicks[lootPickKey(container.id, item.item_instance_id)] ?? 0,
+            }))
+            const chosen = picks.filter((pick) => pick.quantity > 0)
+            const chosenWeight = Math.round(chosen.reduce((total, pick) => total + pick.item.weight * pick.quantity, 0) * 100) / 100
+            return <article key={container.id} className={`loot-card kind-${container.kind}`}>
+              <header>
+                <i className="loot-tag">{LOOT_KIND_LABELS[container.kind] ?? 'ДОБЫЧА'}</i>
+                <b>{container.name}</b>
+                <small>
+                  {container.item_count} предм. · {container.total_weight} фнт
+                  {container.x != null && container.y != null ? ` · клетка ${container.x + 1}:${container.y + 1}` : ''}
+                </small>
+              </header>
+              {!container.can_inspect
+                ? <p className="loot-far">Отсюда не дотянуться: обыскивают в пределах {lootReachFeet} футов. Подойдите — и станет видно, что внутри.</p>
+                : <>
+                    <ul className="loot-items">
+                      {picks.map(({ item, quantity }) => <li key={item.item_instance_id} className={quantity > 0 ? 'picked' : ''}>
+                        <button
+                          type="button"
+                          disabled={lootActionsBlocked}
+                          title={item.description || item.name}
+                          onClick={() => toggleLootPick(container.id, item)}
+                        >
+                          <b>{item.name}</b>
+                          <small>{item.quantity > 1 ? `×${item.quantity} · ` : ''}{item.weight} фнт</small>
+                        </button>
+                        {item.quantity > 1 && <input
+                          type="number"
+                          min={0}
+                          max={item.quantity}
+                          value={quantity}
+                          disabled={lootActionsBlocked}
+                          aria-label={`Сколько взять: ${item.name}`}
+                          onChange={(event) => setLootPick(container.id, item, Number(event.target.value))}
+                        />}
+                      </li>)}
+                    </ul>
+                    <div className="loot-actions">
+                      {!combatActive && players.length > 1 && <label className="loot-recipient">
+                        Кому:
+                        <select
+                          value={lootRecipientId || typingActorId}
+                          disabled={lootActionsBlocked}
+                          onChange={(event) => setLootRecipientId(event.target.value)}
+                        >
+                          {players.map((player) => <option key={player.id} value={player.id}>{player.character}</option>)}
+                        </select>
+                      </label>}
+                      <button
+                        type="button"
+                        disabled={lootActionsBlocked || !(container.items ?? []).length}
+                        onClick={() => selectWholeContainer(container)}
+                      >Выбрать всё</button>
+                      <button
+                        className="loot-take"
+                        type="button"
+                        disabled={lootActionsBlocked || !chosen.length}
+                        title={combatActive ? 'В бою обыск одного контейнера стоит действия' : 'Взять выбранное целиком'}
+                        onClick={() => { void takeLoot(container) }}
+                      >Взять{chosen.length ? ` · ${chosenWeight} фнт` : ''}</button>
+                    </div>
+                  </>}
+            </article>
+          })}
         </section>}
         {heldCaptives.length > 0 && <section className="captive-panel" aria-label="Пленники отряда">
           <header><UserLock size={15} /><span><small>ПЛЕННИКИ · {heldCaptives.length}</small><strong>Судьба решается вами</strong></span></header>

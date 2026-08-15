@@ -85,6 +85,19 @@ import {
   planCaptureDrafts,
 } from './captives.mjs'
 import {
+  LOOT_CONTAINERS_POLICY_ID,
+  LOOT_CONTAINER_COMMAND_TYPES,
+  LootContainerError,
+  applyLootContainerEvent,
+  lootCommitTouchesContainers,
+  lootContainerCommandEvents,
+  lootContainerFor,
+  normalizeLootContainersState,
+  normalizeLootLines,
+  planLootContainerDrafts,
+  validateLootContainerCommand,
+} from './loot-containers.mjs'
+import {
   PARLEY_ABILITY,
   PARLEY_COMMAND_TYPES,
   PARLEY_POLICY_ID,
@@ -495,6 +508,9 @@ const COMMAND_RULES = Object.freeze({
   // требуют, а деньги на них считает та же ось экономики, что и покупки.
   ResolveGuardEncounter: [RULE_IDS.abilityCheck, RULE_IDS.economyCoins],
   ClearWantedLevel: [],
+  // Обыск в бою стоит действия — это ось очерёдности ruleset; сама добыча
+  // считается серверной политикой и провенанс держит в `house_rule_id`.
+  LootContainer: [RULE_IDS.turns],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -524,6 +540,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...CAPTIVE_COMMAND_TYPES,
   ...PARLEY_COMMAND_TYPES,
   ...LAW_COMMAND_TYPES,
+  ...LOOT_CONTAINER_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1576,6 +1593,9 @@ export function normalizeCampaignState(input = {}) {
   state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
   state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
   state.captives = normalizeCaptivesState(state.captives)
+  // Контейнеры добычи живут в состоянии кампании, а не в сцене: невзятое
+  // обязано пережить и уход со сцены, и подъём на другой этаж.
+  state.loot_containers = normalizeLootContainersState(state.loot_containers)
   state.law = normalizeLawState(state.law)
   state.autonomy = normalizeAutonomyState(state.autonomy)
   state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
@@ -3102,6 +3122,21 @@ function normalizeCommand(input, state) {
       command.target_ids = []
     }
   }
+  if (LOOT_CONTAINER_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только ключи: контейнер, экземпляры и количества.
+    // Название, вес, цена и механика вещи приезжают из контейнера, а не из
+    // тела запроса — см. шапку `server/loot-containers.mjs`.
+    command.container_id = String(command.container_id ?? command.containerId ?? '').slice(0, 120)
+    delete command.containerId
+    command.recipient_id = String(command.recipient_id ?? command.recipientId ?? '').slice(0, 120)
+    delete command.recipientId
+    command.lines = normalizeLootLines(command.lines)
+    command.target_id = null
+    command.target_ids = []
+    // Обыск — серверная политика, а не ось ruleset: у «взял с тела» нет
+    // правила редакции, но провенанс у механического решения обязан быть.
+    if (!command.house_rule_id) command.house_rule_id = LOOT_CONTAINERS_POLICY_ID
+  }
   if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
     // Из запроса берутся только герой, подход и выбранный исход. Ни СЛ, ни
     // список доступных исходов, ни сумма откупа клиент подсказать не может:
@@ -3159,7 +3194,7 @@ function needsActor(type) {
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
-    'ProposeParley', 'SettleParley', 'ResolveGuardEncounter',
+    'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3491,7 +3526,7 @@ function assertTurn(command, state, context = {}) {
   // `SettleParley` в списке нет намеренно: перемирие уже заморозило очередь, и
   // уговор заключает отряд, а не тот, на ком стоит указатель инициативы.
   // Дееспособность и сторона проверяются в собственной ветке команды.
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'MoveActor', 'OperateSceneObject', 'LootContainer', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   // Дополнительные лучи одного заклинания — часть уже совершённого действия,
   // а не новое применение: экономика хода за них не платит второй раз.
@@ -3565,6 +3600,13 @@ function assertTurn(command, state, context = {}) {
   } else if (command.command_type === 'IdentifyEnemy') {
     // Опознание стоит действия так же, как импровизация: разглядывать врага
     // бесплатно означало бы лишний ход каждому герою каждый раунд.
+    const economy = combat.action_economy[command.actor_id]
+    if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+  } else if (command.command_type === 'LootContainer') {
+    // Правило стола: обыск одного контейнера в бою стоит действия
+    // (`docs/rules-coverage.md`, раздел «Контейнеры добычи и обыск»). Смотреть
+    // в контейнер при этом бесплатно — содержимое приезжает проекцией, а не
+    // командой, и хода не стоит.
     const economy = combat.action_economy[command.actor_id]
     if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'ProposeParley') {
@@ -3810,6 +3852,14 @@ export function validateCommand(input, rawState, context = {}) {
     }
     if (command.command_type === 'HandCaptiveToGuards' && !captiveSettlementFor(state)) {
       throw new RulesValidationError('Сдать пленного можно только в поселении, где есть стража', 'CAPTIVE_NO_SETTLEMENT')
+    }
+  }
+  if (LOOT_CONTAINER_COMMAND_TYPES.has(command.command_type)) {
+    try {
+      Object.assign(command, validateLootContainerCommand(command, state, context))
+    } catch (error) {
+      if (error instanceof LootContainerError) throw new RulesValidationError(error.message, error.code)
+      throw error
     }
   }
   if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
@@ -11330,6 +11380,18 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       break
     }
+    case 'LootContainer': {
+      // Вся физика уже проверена в `validateLootContainerCommand`, и её итог
+      // лежит в самой команде. Здесь остаётся только облечь его в событие:
+      // второго места, где решается «взял или нет», быть не должно.
+      for (const draft of lootContainerCommandEvents(command)) {
+        events.push({
+          ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
+          event_schema_version: draft.event_schema_version,
+        })
+      }
+      break
+    }
     case 'ClearWantedLevel': {
       const regionId = String(command.region_id)
       const wanted = wantedFor(state, regionId)
@@ -12205,7 +12267,26 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     }
   }
 
-  return { command, events: withoutImmuneConditions(state, command, events), rolls }
+  const resolvedEvents = withoutImmuneConditions(state, command, events)
+  // Контейнеры добычи — последний шаг фиксации и часть **той же** записи.
+  //
+  // Место выбрано не для удобства: выбытие противника фиксируют полтора десятка
+  // мест (`DamageApplied` из атаки, добавки вещи, зоны заклинания, прямого
+  // урона; `ConditionAdded` со сдачей и бегством; `CaptiveTaken` на конце боя),
+  // и правка «по месту» разошлась бы уже на третьем. Здесь же поток событий уже
+  // окончателен, и «кто выбыл» читается сравнением состояний, а не перебором
+  // причин. Глубина ноль обязательна: вложенный resolve вклеивает свои события
+  // в этот же поток, и контейнер, созданный внутри него, посчитался бы дважды.
+  if (resolveDepth === 0 && lootCommitTouchesContainers(state, resolvedEvents)) {
+    const lootDrafts = planLootContainerDrafts(state, replayEvents(state, resolvedEvents), resolvedEvents)
+    for (const draft of lootDrafts) {
+      resolvedEvents.push({
+        ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
+        event_schema_version: draft.event_schema_version,
+      })
+    }
+  }
+  return { command, events: resolvedEvents, rolls }
 }
 
 /**
@@ -14289,6 +14370,32 @@ export function applyGameEvent(rawState, event) {
       if (recipientIds.length) refreshPlayerDerivedState(state, recipientIds)
       break
     }
+    case 'LootContainerCreated':
+    case 'LootContainerTaken': {
+      const recipientIds = applyLootContainerEvent(state, event)
+      if (event.event_type === 'LootContainerTaken' && payload.combat_action) {
+        spendCombatEconomy(state, event.actor_id, String(payload.combat_action))
+      }
+      if (recipientIds.length) refreshPlayerDerivedState(state, recipientIds)
+      appendBattleLog(state, event, event.event_type === 'LootContainerCreated'
+        ? {
+            type: 'loot-container',
+            containerId: String(payload.container?.id ?? ''),
+            containerKind: String(payload.container?.kind ?? ''),
+            containerName: String(payload.container?.name ?? ''),
+            itemCount: (payload.container?.items ?? []).length,
+          }
+        : {
+            type: 'loot-taken',
+            actorId: event.actor_id,
+            actorKind: combatActorKind(state, event.actor_id),
+            containerId: String(payload.container_id ?? ''),
+            containerName: String(payload.container_name ?? ''),
+            recipientId: String(payload.recipient_id ?? ''),
+            itemCount: (payload.items ?? []).length,
+          })
+      break
+    }
     case 'ExperienceAwarded': {
       const recipientIds = uniqueStrings(Array.isArray(payload.recipients) ? payload.recipients : targets)
       const playerIds = new Set(state.players.map(actorId))
@@ -14560,6 +14667,8 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'TruceEstablished': return `Объявлено перемирие: говорит ${payload.truce?.leader_name || 'предводитель'}`
     case 'TruceBroken': return `Перемирие нарушено (${payload.broken_by === 'enemies' ? 'противником' : 'отрядом'})`
     case 'ParleySettled': return `Уговор на переговорах: ${payload.term_label || payload.outcome || 'без условий'}`
+    case 'LootContainerCreated': return `После схватки остаётся то, что можно обыскать: ${payload.container?.name || 'добыча'}`
+    case 'LootContainerTaken': return `${named(payload.recipient_id) || 'Отряд'} забирает добычу из «${payload.container_name || 'найденного'}»`
     case 'GuardEncounterStarted': return `Стража останавливает отряд в «${payload.encounter?.place_name || 'поселении'}»: говорит ${payload.encounter?.officer_rank || 'стражник'} ${payload.encounter?.officer_name || ''}`.trim()
     case 'GuardEncounterResolved': return payload.resolution === 'fine'
       ? `Вира страже уплачена: ${safeInteger(payload.paid_cp, 0)} мм`

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { DIFFICULTY_CLASSES } from './adjudicator.mjs'
 import { findActor, skillProficiencyForActor } from './rules-engine.mjs'
+import { lootContainerList } from './loot-containers.mjs'
 
 /**
  * Серверное судейство свободного действия — то, что живой ведущий решает в уме.
@@ -403,10 +404,35 @@ export function resolveCorpseSearch(state = {}, text = '', reading = {}) {
   const contents = Array.isArray(corpse?.search_contents) ? corpse.search_contents
     : Array.isArray(corpse?.corpse_contents) ? corpse.corpse_contents
       : null
+  // Контейнер добычи, заведённый той же фиксацией, что и смерть
+  // (`server/loot-containers.mjs`). С его появлением у обыска наконец есть
+  // авторитетный путь, и свободное действие обязано на него указывать, а не
+  // повторять прежнее «команды извлечения нет».
+  const container = lootContainerList(state)
+    .find((entry) => entry.source_enemy_id === String(corpse.id ?? '')
+      || entry.source_enemy_ids.includes(String(corpse.id ?? '')))
+  if (container?.status === 'available') {
+    return {
+      status: 'clarification',
+      narration: 'Тело обыскивается через панель добычи: подойдите к нему вплотную и заберите нужное. Набор выдаёт сервер — выдумывать находку я не стану.',
+      server_owned_contents: true,
+      corpse_id: String(corpse.id ?? ''),
+      loot_container_id: container.id,
+    }
+  }
+  if (container) {
+    return {
+      status: 'clarification',
+      narration: 'С этого тела уже всё сняли: контейнер добычи пуст.',
+      server_owned_contents: false,
+      corpse_id: String(corpse.id ?? ''),
+      loot_container_id: container.id,
+    }
+  }
   return {
     status: 'clarification',
     narration: carried
-      ? 'На теле действительно есть снаряжение, но серверной команды извлечения пока нет: обыск ничего не выдаёт. Я не буду ни выдумывать находку, ни бросать проверку вместо неё.'
+      ? 'На теле действительно есть снаряжение, но контейнера добычи у него не заведено: взять его сейчас нельзя. Я не буду ни выдумывать находку, ни бросать проверку вместо неё.'
       : contents
         ? 'У тела есть описанное содержимое, но оно ещё не оформлено как авторитетный контейнер. Нужна отдельная серверная команда извлечения.'
         : 'У этого тела нет заданного сервером содержимого. Я не буду выдумывать находку или бросать проверку вместо неё.',

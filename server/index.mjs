@@ -90,6 +90,7 @@ import {
   planMerchantEconomyClock,
 } from './merchant-economy.mjs'
 import { CAPTIVE_PLAYER_COMMAND_TYPES, planCaptiveNeglectCommands } from './captives.mjs'
+import { MAX_LOOT_LINES, lootContainersForViewer } from './loot-containers.mjs'
 import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
 import { offscreenChronicleEntry } from './offscreen-world.mjs'
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
@@ -399,6 +400,9 @@ const PLAYER_CAPTIVE_COMMANDS = CAPTIVE_PLAYER_COMMAND_TYPES
 // законом идёт вне боя и не трогает экономику хода. `ClearWantedLevel` сюда не
 // входит намеренно — амнистия владельческая, и её проверяет Rules Engine.
 const PLAYER_LAW_COMMANDS = new Set(['ResolveGuardEncounter'])
+// Обыск контейнера. Отдельный набор, а не часть боевого: он доступен и в бою,
+// и вне его, а цену в экономике хода назначает Rules Engine, а не маршрут.
+const PLAYER_LOOT_COMMANDS = new Set(['LootContainer'])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -616,6 +620,54 @@ function assertItemResultFingerprint(result, command) {
   const event = (result?.mechanics ?? []).find((candidate) => ITEM_PRIMARY_EVENT_TYPES.has(candidate?.event_type))
   if (!event || String(event.payload?.request_fingerprint ?? '') !== itemCommandFingerprint(command)) {
     throw commandPolicyError('Результат действия с предметом не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+const LOOT_PRIMARY_EVENT_TYPES = new Set(['LootContainerTaken'])
+
+/**
+ * Отпечаток запроса на обыск. Строки сортируются: «взять кинжал и стрелы» и
+ * «взять стрелы и кинжал» — это один и тот же запрос, и повтор с тем же ключом
+ * обязан вернуть прежний результат, а не жалобу на конфликт.
+ */
+function lootCommandFingerprint(command) {
+  const semantic = {
+    type: 'LootContainer',
+    actor_id: String(command?.actor_id ?? ''),
+    container_id: String(command?.container_id ?? ''),
+    recipient_id: String(command?.recipient_id ?? command?.actor_id ?? ''),
+    lines: [...(Array.isArray(command?.lines) ? command.lines : [])]
+      .map((line) => ({
+        item_instance_id: String(line?.item_instance_id ?? ''),
+        quantity: Number(line?.quantity ?? 1),
+      }))
+      .sort((left, right) => left.item_instance_id.localeCompare(right.item_instance_id)),
+  }
+  return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+/**
+ * Чужой ключ не раскрывает чужой результат: повтор с тем же ключом проходит
+ * только если это буквально тот же запрос. Иначе — 409 и ни строчки о том, что
+ * под этим ключом уже лежит.
+ */
+async function assertLootIdempotency(campaignId, idempotencyKey, command) {
+  const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+  if (!duplicate) return
+  const fingerprints = new Set((duplicate.events ?? [])
+    .filter((event) => LOOT_PRIMARY_EVENT_TYPES.has(event.event_type))
+    .map((event) => event.payload?.request_fingerprint)
+    .filter(Boolean)
+    .map(String))
+  if (fingerprints.size !== 1 || !fingerprints.has(lootCommandFingerprint(command))) {
+    throw commandPolicyError('Этот ключ идемпотентности уже использован для другого обыска', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+function assertLootResultFingerprint(result, command) {
+  const event = (result?.mechanics ?? []).find((candidate) => LOOT_PRIMARY_EVENT_TYPES.has(candidate?.event_type))
+  if (!event || String(event.payload?.request_fingerprint ?? '') !== lootCommandFingerprint(command)) {
+    throw commandPolicyError('Результат обыска не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
   }
 }
 
@@ -1155,6 +1207,68 @@ function sanitizePlayerCaptiveCommand(user, state, input) {
     ...(type === 'InterrogateCaptive' ? { skill: String(input?.skill ?? 'intimidation') } : {}),
     ...(expected == null ? {} : { expected_state_version: expected }),
   }
+}
+
+/**
+ * Обыск контейнера. Из запроса берутся только ключи: контейнер, экземпляры и
+ * количества. Ни названия, ни веса, ни цены, ни механики предмета клиент не
+ * подсказывает — всё это лежит в самом контейнере, и читает его Rules Engine.
+ *
+ * Получатель может отличаться от обыскивающего: вне боя добычу сразу кладут
+ * тому, кто её понесёт. Ограничение «в бою только себе» — правило движка, а не
+ * маршрута: маршрут не знает, идёт ли сейчас бой.
+ */
+function sanitizePlayerLootCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_LOOT_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к обыску добычи', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'container_id', 'containerId',
+    'recipient_id', 'recipientId',
+    'lines',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда обыска содержит запрещённые поля: ${unexpected.join(', ')}`, 'LOOT_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Обыскивать можно только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const containerId = String(input?.container_id ?? input?.containerId ?? '').trim().slice(0, 120)
+  if (!containerId) throw commandPolicyError('Не выбран контейнер добычи', 'LOOT_CONTAINER_NOT_FOUND')
+  if (!Array.isArray(input?.lines) || !input.lines.length) {
+    throw commandPolicyError('Не выбрано ни одного предмета', 'LOOT_LINES_REQUIRED')
+  }
+  const lines = input.lines.slice(0, MAX_LOOT_LINES).map((line) => {
+    if (!line || typeof line !== 'object' || Array.isArray(line)
+      || Object.keys(line).some((key) => !['item_instance_id', 'itemInstanceId', 'quantity'].includes(key))) {
+      throw commandPolicyError('Строка обыска содержит запрещённые поля', 'LOOT_COMMAND_UNKNOWN_FIELD')
+    }
+    const itemInstanceId = String(line.item_instance_id ?? line.itemInstanceId ?? '').trim().slice(0, 160)
+    if (!itemInstanceId) throw commandPolicyError('В строке обыска нет предмета', 'LOOT_LINES_REQUIRED')
+    const quantity = Number(line.quantity ?? 1)
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
+      throw commandPolicyError('Недопустимое количество предметов', 'LOOT_QUANTITY_INVALID')
+    }
+    return { item_instance_id: itemInstanceId, quantity }
+  })
+  const recipientId = String(input?.recipient_id ?? input?.recipientId ?? '').trim().slice(0, 120)
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const command = {
+    command_type: type,
+    actor_id: actor,
+    container_id: containerId,
+    recipient_id: recipientId || actor,
+    lines,
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+  return { ...command, request_fingerprint: lootCommandFingerprint(command) }
 }
 
 /**
@@ -3850,6 +3964,11 @@ const server = createServer((req, res) => {
   const commandMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/commands$/)
   if (commandMatch && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
+    // Кто именно просил обыскать — нужно уже в обработчике отказа: на гонке за
+    // один предмет проигравший обязан получить не только 409, но и свежий
+    // список содержимого. Флаг снимается с исходного тела запроса, потому что
+    // до санитайзера дело могло и не дойти.
+    let lootRequestActorId = ''
     try {
       const room = getRoom(commandMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
@@ -3857,6 +3976,8 @@ const server = createServer((req, res) => {
       const body = await readBody(req)
       let commands = Array.isArray(body.commands) ? body.commands : body.command ? [body.command] : []
       if (!commands.length) return json(res, 400, { error: 'Нужна command или commands' })
+      const lootRequest = commands.find((command) => PLAYER_LOOT_COMMANDS.has(commandType(command)))
+      if (lootRequest) lootRequestActorId = String(lootRequest.actor_id ?? lootRequest.actorId ?? '')
       const authoritativeBefore = await latestCampaignState(commandMatch[1], room.state)
       const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
       const requestedMakeAttacks = commands.filter((command) => commandType(command) === 'MakeAttack')
@@ -3902,6 +4023,7 @@ const server = createServer((req, res) => {
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
         if (PLAYER_CAPTIVE_COMMANDS.has(type)) return sanitizePlayerCaptiveCommand(user, authoritativeBefore, command)
+        if (PLAYER_LOOT_COMMANDS.has(type)) return sanitizePlayerLootCommand(user, authoritativeBefore, command)
         if (PLAYER_LAW_COMMANDS.has(type)) return sanitizePlayerLawCommand(user, authoritativeBefore, command)
         // Права администратора меняют авторизацию MakeAttack, но не делают
         // клиентские поля или request_fingerprint авторитетными. Ограничение
@@ -3974,6 +4096,13 @@ const server = createServer((req, res) => {
       if (captiveCommands.length && commands.length !== 1) {
         throw commandPolicyError('Действие с пленным должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
+      // Обыск атомарен целиком: весь набор или ничего. Смешать его с другой
+      // командой значило бы разрешить «половину набора и ещё шаг».
+      const lootCommands = commands.filter((command) => PLAYER_LOOT_COMMANDS.has(commandType(command)))
+      if (lootCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Обыск должен быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      if (lootCommands.length) await assertLootIdempotency(commandMatch[1], idempotencyKey, lootCommands[0])
       if (itemCommands.length) {
         await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])
       }
@@ -3997,12 +4126,13 @@ const server = createServer((req, res) => {
       if (merchantCommands.length) assertMerchantResultFingerprint(result, merchantCommands[0])
       if (characterCommands.length) assertCharacterBuildResultFingerprint(result, characterCommands)
       if (itemCommands.length) assertItemResultFingerprint(result, itemCommands[0])
+      if (lootCommands.length) assertLootResultFingerprint(result, lootCommands[0])
       if (restCommands.length) assertRestResultFingerprint(result, restCommands[0])
       if (makeAttackCommands.length) assertMakeAttackResultFingerprint(result, makeAttackCommands)
       if (result.authoritative_state) {
         const originalVersion = Number(result.state_version ?? result.authoritative_state.state_version ?? 0)
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))
-          || (types.has('UseItem') && Boolean(result.authoritative_state.mechanics?.combat?.active))
+          || ((types.has('UseItem') || types.has('LootContainer')) && Boolean(result.authoritative_state.mechanics?.combat?.active))
         const scheduler = shouldSettleCombat
           ? await settleCombatContinuation(commandMatch[1], {
             advanceNpc: types.has('StartCombat') || types.has('EndTurn') || resolvesReaction,
@@ -4067,7 +4197,22 @@ const server = createServer((req, res) => {
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code) ? 409 : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
-      return json(res, status, { error: error instanceof Error ? error.message : 'Команда отклонена', code: error?.code })
+      // Двое потянулись за одним кинжалом: первый его забрал, второй пришёл со
+      // старой версией и получил 409. Отказа мало — без свежего списка его
+      // карточка так и осталась бы с уже взятой вещью, и он бил бы в ту же
+      // стену. Список собирает та же функция, что и проекция комнаты, поэтому
+      // видно ровно то, что игроку и так позволено видеть.
+      const freshLoot = status === 409 && lootRequestActorId && getRoom(commandMatch[1]).state
+        ? lootContainersForViewer(getRoom(commandMatch[1]).state, { actorId: lootRequestActorId, isAdmin: user.role === 'admin' })
+        : null
+      return json(res, status, {
+        error: error instanceof Error ? error.message : 'Команда отклонена',
+        code: error?.code,
+        ...(freshLoot ? {
+          loot_containers: freshLoot,
+          state_version: Number(getRoom(commandMatch[1]).state?.state_version ?? 0),
+        } : {}),
+      })
     }
   }
 

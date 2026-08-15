@@ -143,7 +143,7 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 `adjudicator.mjs`, `intent-parser.mjs`, `world-memory.mjs`,
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`,
 `world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`,
-`weather.mjs`, `offscreen-world.mjs`.
+`weather.mjs`, `offscreen-world.mjs`, `loot-containers.mjs`.
 Не описывать их как «агентов».
 
 `server/player-request-router.mjs` объявляет роли маршрутизации ввода игрока (`PLAYER_REQUEST_ROLES`). `prompt_id` там стоит
@@ -173,6 +173,15 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 импорт отсюда замкнул бы её в кольцо; `creative-director.mjs`
 (`CriticalNarrationCoordinator`) — только текст критического момента после
 commit, механики он не касается.
+
+**Жизнь вещи (три модуля, три разных вопроса):** `item-catalog.mjs` — общий тип
+(«что такое скимитар»); `item-instances.mjs` — конкретная вещь с историей и
+замороженным снимком каталога («чей это скимитар и откуда»);
+`loot-containers.mjs` — куда вещь девается, когда её хозяин выбыл: контейнер
+рождается в том же коммите, что и фиксация выбытия, инвентарь **переезжает** в
+него, и команда `LootContainer` переносит выбранный набор герою целиком или не
+переносит вовсе. Не путать с `loot-tables.mjs` и `encounter-rewards.mjs` — там
+награда за встречу, она считается своей политикой и с телами не связана.
 
 ### Незакрытый долг — не расширять, пока не разобрано
 

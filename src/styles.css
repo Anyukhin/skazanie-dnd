@@ -303,6 +303,37 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .captive-actions button:disabled { opacity: .38; cursor: default; }
 .captive-actions button.captive-execute { grid-column: 1 / -1; border-color: rgba(164,68,47,.4); background: rgba(120,42,28,.16); color: #c07a63; }
 .captive-actions button.captive-execute:hover:not(:disabled) { border-color: rgba(196,84,58,.65); background: rgba(120,42,28,.28); }
+/* Добыча в сцене. Панель повторяет пленников по конструкции: сервер решает, что
+   показывать, интерфейс только собирает набор и отправляет его одной командой. */
+.loot-panel { padding: 11px; border: 1px solid rgba(126,140,104,.3); border-radius: 7px; background: rgba(20,22,16,.9); }
+.loot-panel > header { display: flex; align-items: center; gap: 8px; color: #94a578; }
+.loot-panel > header span { display: grid; }
+.loot-panel > header small { color: #6b7554; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.loot-panel > header strong { color: #c6cdb2; font: 600 var(--fs-lg) Spectral, serif; }
+.loot-card { margin-top: 9px; padding: 8px 9px; border: 1px solid rgba(126,140,104,.22); border-left: 3px solid #6f7f52; border-radius: 6px; background: rgba(28,31,22,.7); }
+.loot-card.kind-captive { border-left-color: #8a6a45; }
+.loot-card.kind-abandoned { border-left-color: #6c7f8a; }
+.loot-card > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.loot-card > header b { color: #d3d6c2; font: 600 var(--fs-md) Spectral, serif; }
+.loot-card > header small { color: #737a63; font-size: var(--fs-xxs); }
+.loot-tag { padding: 1px 6px; border: 1px solid rgba(150,176,110,.4); border-radius: 3px; background: rgba(105,127,74,.2); color: #a7bd80; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .1em; }
+.loot-far { margin: 6px 0 0; color: #7b8168; font-size: var(--fs-sm); font-style: italic; }
+.loot-items { display: grid; gap: 4px; margin: 7px 0 8px; padding: 0; list-style: none; }
+.loot-items li { display: flex; align-items: stretch; gap: 5px; }
+.loot-items li > button { flex: 1; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 30px; padding: 0 8px; border: 1px solid rgba(150,176,110,.24); border-radius: 5px; background: rgba(88,105,62,.1); color: #b6c197; text-align: left; cursor: pointer; }
+.loot-items li > button:hover:not(:disabled) { border-color: rgba(180,206,138,.5); background: rgba(88,105,62,.2); }
+.loot-items li > button:disabled { opacity: .38; cursor: default; }
+.loot-items li > button b { font: 600 var(--fs-sm) Spectral, serif; }
+.loot-items li > button small { color: #7f8768; font-size: var(--fs-xxs); white-space: nowrap; }
+.loot-items li.picked > button { border-color: rgba(196,222,150,.7); background: rgba(112,136,78,.32); color: #e0e8c8; }
+.loot-items li > input { width: 52px; padding: 0 6px; border: 1px solid rgba(150,176,110,.24); border-radius: 5px; background: rgba(16,18,13,.8); color: #cdd4b6; font-size: var(--fs-sm); }
+.loot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.loot-actions button { min-height: 30px; padding: 0 10px; border: 1px solid rgba(150,176,110,.26); border-radius: 5px; background: rgba(88,105,62,.12); color: #aebb8c; font-size: var(--fs-sm); cursor: pointer; }
+.loot-actions button:hover:not(:disabled) { border-color: rgba(186,214,142,.55); background: rgba(88,105,62,.22); }
+.loot-actions button:disabled { opacity: .38; cursor: default; }
+.loot-actions button.loot-take { margin-left: auto; border-color: rgba(196,222,150,.45); background: rgba(112,136,78,.24); color: #dfe7c4; font-weight: 600; }
+.loot-recipient { display: flex; align-items: center; gap: 5px; color: #7f8768; font-size: var(--fs-xs); }
+.loot-recipient select { min-height: 28px; padding: 0 6px; border: 1px solid rgba(150,176,110,.24); border-radius: 5px; background: rgba(16,18,13,.8); color: #cdd4b6; font-size: var(--fs-sm); }
 .npc-dialog-captive b { color: #d2a06a; }
 .npc-dialog-captive-actions { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
 .npc-dialog-captive-actions button { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid rgba(204,151,86,.28); border-radius: 5px; background: rgba(163,101,43,.12); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }

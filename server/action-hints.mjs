@@ -32,6 +32,13 @@ export const MAX_ACTION_HINTS = 4
  */
 export const MAX_PROP_HINTS = 2
 
+/**
+ * Сколько строк достаётся добыче. Две — потому что после боя на полу лежит
+ * столько же тел, сколько было противников, и опись трупов вытеснила бы всё
+ * остальное ровно так же, как когда-то опись мебели.
+ */
+export const MAX_LOOT_HINTS = 2
+
 /** Виды реквизита, за которыми сервер держит находку, тайник или знание. */
 const REWARD_BEARING_KINDS = new Set(sceneInteractionRewardKinds())
 
@@ -94,6 +101,34 @@ function propHints(room) {
   return hints
 }
 
+/**
+ * Добыча в сцене. Идёт первой строкой не по вкусу: свежее тело — то, из-за чего
+ * новичок чаще всего уходит со сцены ни с чем, потому что не догадался, что
+ * снять с него что-то вообще можно.
+ *
+ * Подсказка честна про досягаемость: пока герой не дотянулся, сервер не отдал
+ * содержимое, и обещать «можно обыскать» было бы неправдой — строка зовёт
+ * подойти. Числа при этом не выдумываются: `item_count` уже в проекции, и
+ * закрытым он не является.
+ */
+function lootHints(room) {
+  const containers = Array.isArray(room?.loot_containers?.containers) ? room.loot_containers.containers : []
+  return containers
+    .filter((container) => container?.status !== 'emptied' && Number(container?.item_count) > 0)
+    .slice(0, MAX_LOOT_HINTS)
+    .flatMap((container) => {
+      const name = text(container?.name, 60)
+      if (!name) return []
+      return [{
+        id: `loot:${text(container?.id, 80)}`,
+        priority: 0,
+        text: container?.can_inspect === true
+          ? `Можно обыскать: ${name}`
+          : `Есть что обыскать: ${name} — надо подойти вплотную`,
+      }]
+    })
+}
+
 function npcHints(room) {
   const npcs = Array.isArray(room?.scene_npcs) ? room.scene_npcs : []
   return npcs
@@ -151,8 +186,9 @@ export function suggestedActionsFor(room) {
       seen.add(hint.text)
       return true
     })
-  // Сначала занимают места те, кого вытеснять нельзя: собеседники, цель, выход.
-  const reserved = ordered([...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
+  // Сначала занимают места те, кого вытеснять нельзя: добыча, собеседники,
+  // цель, выход. Добыча стоит первой строкой — см. `lootHints`.
+  const reserved = ordered([...lootHints(room), ...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
   const props = ordered(propHints(room)).slice(0, budget)
   return [...props, ...reserved]

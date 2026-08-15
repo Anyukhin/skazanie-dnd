@@ -1,0 +1,688 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { SRD_5_2_1_MONSTER_ALLOWLIST } from '../server/encounter-assembler.mjs'
+import { enemyLoadoutFor } from '../server/enemy-loadouts.mjs'
+import { bindFreeActionReadingToState, interpretFreeAction, resolveCorpseSearch } from '../server/free-action-adjudication.mjs'
+import {
+  LOOT_CONTAINER_REACH_FEET,
+  lootContainerList,
+  lootContainersForViewer,
+  lootContainersInScene,
+} from '../server/loot-containers.mjs'
+import {
+  applyGameEvent,
+  normalizeCampaignState,
+  replayEvents,
+  resolveCommand,
+  resolveCommands,
+  validateCommand,
+} from '../server/rules-engine.mjs'
+import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
+
+const CONTEXT = { allowedActorIds: ['hero', 'mate'] }
+
+function dice(values = []) {
+  return new DiceService({ rng: new SequenceDiceRng(values) })
+}
+
+function cells(width = 10, height = 6) {
+  const grid = []
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) grid.push({ x, y, type: 'floor', revealed: true })
+  }
+  return grid
+}
+
+/** Разбойник с настоящим инвентарём: скимитар, арбалет и болты. */
+function bandit(id, { x = 2, y = 1, hp = 11, seed = 'loot-seed' } = {}) {
+  const statBlockId = 'srd_5_2_1:bandit'
+  const block = SRD_5_2_1_MONSTER_ALLOWLIST[statBlockId]
+  return {
+    id,
+    name: `Разбойник ${id.slice(-1)}`,
+    creature_type: block.creature_type,
+    hp,
+    maxHp: block.hp,
+    armor: block.armor,
+    speed: block.speed,
+    abilities: { ...block.abilities },
+    x,
+    y,
+    alive: hp > 0,
+    stat_block_id: statBlockId,
+    provenance: { xp: block.xp },
+    action_profiles: block.action_profiles,
+    loadout: enemyLoadoutFor({ statBlockId, block, ownerId: id, seed }),
+  }
+}
+
+function campaign({ combat = true, enemies = [bandit('foe-1')], heroX = 2, heroStr = 16, mateStr = 16, heroInventory = [] } = {}) {
+  return normalizeCampaignState({
+    sessionCode: 'LOOT',
+    campaign: 'Контейнеры добычи',
+    activePlayerId: 'hero',
+    partyMemberIds: ['hero', 'mate'],
+    partyName: 'Отряд героев',
+    scene: {
+      title: 'Разграбленный склад',
+      location: 'Склад',
+      location_id: 'warehouse',
+      turn: 1,
+      grid: { width: 10, height: 6 },
+      cells: cells(),
+    },
+    players: [
+      {
+        id: 'hero',
+        character: 'Ада',
+        characterClass: 'fighter',
+        level: 3,
+        hp: 24,
+        maxHp: 24,
+        armor: 16,
+        speed: 30,
+        proficiency: 2,
+        abilities: { str: heroStr, dex: 12, con: 14, int: 10, wis: 10, cha: 10 },
+        inventory: heroInventory,
+        x: heroX,
+        y: 2,
+      },
+      {
+        id: 'mate',
+        character: 'Борх',
+        characterClass: 'fighter',
+        level: 3,
+        hp: 24,
+        maxHp: 24,
+        armor: 16,
+        speed: 30,
+        proficiency: 2,
+        abilities: { str: mateStr, dex: 12, con: 14, int: 10, wis: 10, cha: 10 },
+        inventory: [],
+        x: 6,
+        y: 4,
+      },
+    ],
+    enemies,
+    worldMap: {
+      seed: 'loot-world',
+      locations: [{ id: 'warehouse', name: 'Склад', kind: 'ruin', x: 10, y: 10 }],
+      routes: [],
+    },
+    mechanics: {
+      world_time: { elapsed_minutes: 120 },
+      encounter: { id: 'enc-1', encounter_id: 'enc-1', status: 'active', enemy_ids: enemies.map((enemy) => enemy.id) },
+      combat: combat
+        ? {
+            active: true,
+            round: 2,
+            active_index: 0,
+            initiative: [{ actor_id: 'hero', total: 18 }, { actor_id: 'foe-1', total: 6 }],
+            action_economy: {
+              hero: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+              mate: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+            },
+          }
+        : { active: false, round: 0, initiative: [], active_index: -1, action_economy: {} },
+    },
+  })
+}
+
+function commit(state, command, { rng = [], context = CONTEXT } = {}) {
+  const result = resolveCommand(
+    { campaign_id: 'LOOT', command_id: `${command.command_type}-${state.state_version}-${Math.random().toString(36).slice(2, 8)}`, ...command },
+    state,
+    { diceService: dice(rng), context },
+  )
+  return { ...result, state: result.events.reduce(applyGameEvent, state) }
+}
+
+function kill(state, enemyId, { actorId = 'hero' } = {}) {
+  const enemy = state.enemies.find((candidate) => candidate.id === enemyId)
+  return commit(state, {
+    command_type: 'ApplyDamage',
+    actor_id: actorId,
+    target_id: enemyId,
+    amount: Math.max(1, enemy.hp),
+    damage_type: 'slashing',
+  })
+}
+
+function containerOf(state, kind = 'corpse') {
+  return lootContainerList(state).find((container) => container.kind === kind) ?? null
+}
+
+// ---------------------------------------------------------------------------
+// 1. Контейнер рождается в том же коммите, что и выбытие
+
+test('смерть врага в той же фиксации создаёт контейнер и переносит в него остаток', () => {
+  const before = campaign()
+  const source = before.enemies[0]
+  assert.ok(source.loadout.items.length >= 2, 'разбойник обязан прийти в бой с инвентарём')
+
+  const killed = kill(before, 'foe-1')
+  const created = killed.events.filter((event) => event.event_type === 'LootContainerCreated')
+  assert.equal(created.length, 1, 'контейнер обязан появиться той же фиксацией, что и смерть')
+  assert.equal(created[0].visibility, 'party')
+  assert.ok(killed.events.findIndex((event) => event.event_type === 'DamageApplied')
+    < killed.events.findIndex((event) => event.event_type === 'LootContainerCreated'))
+
+  const container = containerOf(killed.state)
+  assert.ok(container, 'контейнер обязан лежать в состоянии кампании')
+  assert.equal(container.kind, 'corpse')
+  assert.equal(container.source_enemy_id, 'foe-1')
+  assert.equal(container.encounter_id, 'enc-1')
+  assert.equal(container.status, 'available')
+  assert.deepEqual({ x: container.x, y: container.y }, { x: source.x, y: source.y })
+
+  // Вещь переехала, а не скопировалась: у противника её больше нет.
+  const lootable = source.loadout.items.filter((item) => item.lootable === true)
+  assert.deepEqual(
+    container.items.map((item) => item.item_instance_id).sort(),
+    lootable.map((item) => item.item_instance_id).sort(),
+  )
+  const enemyAfter = killed.state.enemies.find((enemy) => enemy.id === 'foe-1')
+  assert.equal(
+    enemyAfter.loadout.items.some((item) => lootable.some((moved) => moved.item_instance_id === item.item_instance_id)),
+    false,
+    'lootable-остаток обязан покинуть инвентарь противника',
+  )
+  assert.equal(container.items.every((item) => item.owner.kind === 'container'), true)
+  assert.equal(container.items.every((item) => item.owner.actor_id === container.id), true)
+})
+
+test('израсходованное не воскресает: потраченный болт не появляется в контейнере', () => {
+  const before = campaign()
+  const bolts = before.enemies[0].loadout.items.find((item) => item.catalog_id === 'srd_5_2_1:bolts-20')
+  assert.ok(bolts, 'арбалетчик обязан прийти с болтами')
+
+  // Тот же инвентарь, но половина болтов уже улетела в отряд.
+  const spent = normalizeCampaignState({
+    ...before,
+    enemies: [{
+      ...before.enemies[0],
+      loadout: {
+        ...before.enemies[0].loadout,
+        items: before.enemies[0].loadout.items
+          .map((item) => item.item_instance_id === bolts.item_instance_id
+            ? { ...item, quantity: Math.max(1, bolts.quantity - 1) }
+            : item)
+          // Скимитар выбит из рук и потерян вовсе.
+          .filter((item) => item.catalog_id !== 'srd_5_2_1:scimitar'),
+      },
+    }],
+  })
+  const container = containerOf(kill(spent, 'foe-1').state)
+  assert.equal(container.items.some((item) => item.catalog_id === 'srd_5_2_1:scimitar'), false)
+  assert.equal(
+    container.items.find((item) => item.catalog_id === 'srd_5_2_1:bolts-20').quantity,
+    Math.max(1, bolts.quantity - 1),
+    'в контейнер переезжает остаток, а не запись шаблона',
+  )
+})
+
+test('пустой инвентарь контейнера не создаёт', () => {
+  const wolf = {
+    id: 'foe-wolf',
+    name: 'Волк',
+    creature_type: 'beast',
+    hp: 11,
+    maxHp: 11,
+    armor: 13,
+    x: 2,
+    y: 1,
+    alive: true,
+    stat_block_id: 'srd_5_2_1:wolf',
+  }
+  const killed = kill(campaign({ enemies: [wolf] }), 'foe-wolf')
+  assert.equal(killed.events.some((event) => event.event_type === 'LootContainerCreated'), false)
+  assert.equal(lootContainerList(killed.state).length, 0)
+})
+
+// ---------------------------------------------------------------------------
+// 2. Обыск: набор переезжает целиком
+
+test('обыск переносит выбранный набор получателю и опустошает контейнер', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const lines = container.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity }))
+
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    recipient_id: 'mate',
+    lines,
+  })
+  const taken = looted.events.find((event) => event.event_type === 'LootContainerTaken')
+  assert.ok(taken, 'обыск обязан выпустить событие')
+  assert.equal(taken.payload.status_after, 'emptied')
+  assert.equal(taken.payload.combat_action, null, 'вне боя обыск действия не стоит')
+
+  const mate = looted.state.players.find((player) => player.id === 'mate')
+  assert.equal(mate.inventory.length, lines.length)
+  assert.deepEqual(
+    mate.inventory.map((item) => item.catalog_id).sort(),
+    container.items.map((item) => item.catalog_id).sort(),
+  )
+  assert.equal(looted.state.players.find((player) => player.id === 'hero').inventory.length, 0)
+
+  // Опустошённый контейнер остаётся в состоянии, но со сцены исчезает.
+  const after = containerOf(looted.state)
+  assert.equal(after.status, 'emptied')
+  assert.deepEqual(lootContainersInScene(looted.state), [])
+})
+
+test('часть стопки переезжает, остальное остаётся в контейнере', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const bolts = container.items.find((item) => item.catalog_id === 'srd_5_2_1:bolts-20')
+  assert.ok(bolts.quantity >= 1)
+
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: [{ item_instance_id: bolts.item_instance_id, quantity: 1 }],
+  })
+  const after = containerOf(looted.state)
+  assert.equal(after.status, bolts.quantity > 1 || container.items.length > 1 ? 'available' : 'emptied')
+  const remainingBolts = after.items.find((item) => item.item_instance_id === bolts.item_instance_id)
+  if (bolts.quantity > 1) assert.equal(remainingBolts.quantity, bolts.quantity - 1)
+  else assert.equal(remainingBolts, undefined)
+  assert.equal(looted.state.players.find((player) => player.id === 'hero').inventory[0].quantity, 1)
+})
+
+test('клиент не называет вещь: лишнее поле команды отклоняется', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  assert.throws(
+    () => validateCommand({
+      campaign_id: 'LOOT',
+      command_type: 'LootContainer',
+      actor_id: 'hero',
+      container_id: container.id,
+      lines: [{ item_instance_id: container.items[0].item_instance_id, quantity: 1 }],
+      name: 'Меч +3',
+    }, killed.state, CONTEXT),
+    (error) => error.code === 'LOOT_COMMAND_UNKNOWN_FIELD',
+  )
+})
+
+// ---------------------------------------------------------------------------
+// 3. Отказы: всё или ничего, и действие не тратится
+
+test('перегруз отменяет весь набор и не тратит действия', () => {
+  // Сила 1 — грузоподъёмность 15 фунтов, и почти всё уже занято наковальней.
+  const killed = kill(campaign({
+    heroStr: 1,
+    heroInventory: [{ id: 'anvil', name: 'Наковальня', type: 'gear', quantity: 1, weight: 12 }],
+  }), 'foe-1')
+  const container = containerOf(killed.state)
+  const lines = container.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity }))
+  assert.throws(
+    () => validateCommand({
+      campaign_id: 'LOOT', command_type: 'LootContainer', actor_id: 'hero', container_id: container.id, lines,
+    }, killed.state, CONTEXT),
+    (error) => error.code === 'CARRYING_CAPACITY_EXCEEDED',
+  )
+  // Ни одной вещи не взято, действие цело.
+  assert.equal(killed.state.players.find((player) => player.id === 'hero').inventory.length, 1)
+  assert.equal(killed.state.mechanics.combat.action_economy.hero.action, true)
+  assert.equal(containerOf(killed.state).items.length, container.items.length)
+
+  // Одна вещь полегче проходит — отменялся именно набор, а не сам обыск.
+  const lightest = [...container.items].sort((left, right) => (left.snapshot.weight ?? 0) - (right.snapshot.weight ?? 0))[0]
+  assert.doesNotThrow(() => validateCommand({
+    campaign_id: 'LOOT',
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: [{ item_instance_id: lightest.item_instance_id, quantity: 1 }],
+  }, killed.state, CONTEXT))
+})
+
+test('обыск проверяет досягаемость, состав контейнера и получателя', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const line = { item_instance_id: container.items[0].item_instance_id, quantity: 1 }
+  const reject = (command, code, state = killed.state) => assert.throws(
+    () => validateCommand({ campaign_id: 'LOOT', command_type: 'LootContainer', ...command }, state, CONTEXT),
+    (error) => error.code === code,
+    `ожидался ${code}`,
+  )
+
+  // Соратник стоит в другом конце склада.
+  reject({ actor_id: 'mate', container_id: container.id, lines: [line] }, 'LOOT_CONTAINER_OUT_OF_REACH')
+  reject({ actor_id: 'hero', container_id: 'loot:corpse:нет-такого', lines: [line] }, 'LOOT_CONTAINER_NOT_FOUND')
+  reject({ actor_id: 'hero', container_id: container.id, lines: [] }, 'LOOT_LINES_REQUIRED')
+  reject({ actor_id: 'hero', container_id: container.id, lines: [{ item_instance_id: 'нет-такого', quantity: 1 }] }, 'LOOT_ITEM_GONE')
+  reject({ actor_id: 'hero', container_id: container.id, lines: [{ ...line, quantity: 99 }] }, 'LOOT_QUANTITY_INVALID')
+  reject({ actor_id: 'hero', container_id: container.id, lines: [line, line] }, 'LOOT_LINE_DUPLICATE')
+  reject({ actor_id: 'hero', container_id: container.id, recipient_id: 'foe-1', lines: [line] }, 'LOOT_RECIPIENT_INVALID')
+  reject({ actor_id: 'foe-1', container_id: container.id, lines: [line] }, 'ACTOR_FORBIDDEN')
+
+  // Пять футов — это своя клетка или соседняя, и ни футом больше.
+  assert.equal(LOOT_CONTAINER_REACH_FEET, 5)
+  const adjacent = normalizeCampaignState({
+    ...killed.state,
+    mechanics: { ...killed.state.mechanics, positions: { ...killed.state.mechanics.positions, mate: { x: container.x + 1, y: container.y } } },
+  })
+  assert.doesNotThrow(() => validateCommand({
+    campaign_id: 'LOOT', command_type: 'LootContainer', actor_id: 'mate', container_id: container.id, lines: [line],
+  }, adjacent, CONTEXT))
+})
+
+test('опустошённый контейнер второй раз не обыскивается', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const lines = container.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity }))
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer', actor_id: 'hero', container_id: container.id, lines,
+  })
+  assert.throws(
+    () => validateCommand({
+      campaign_id: 'LOOT', command_type: 'LootContainer', actor_id: 'hero', container_id: container.id, lines,
+    }, looted.state, CONTEXT),
+    (error) => error.code === 'LOOT_CONTAINER_EMPTY',
+  )
+})
+
+// ---------------------------------------------------------------------------
+// 4. Экономика хода
+
+test('в бою обыск одного контейнера стоит действия, вне боя — нет', () => {
+  const killed = kill(campaign(), 'foe-1')
+  const container = containerOf(killed.state)
+  const line = { item_instance_id: container.items[0].item_instance_id, quantity: 1 }
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer', actor_id: 'hero', container_id: container.id, lines: [line],
+  })
+  assert.equal(looted.events.find((event) => event.event_type === 'LootContainerTaken').payload.combat_action, 'action')
+  assert.equal(looted.state.mechanics.combat.action_economy.hero.action, false)
+
+  // Второй обыск в тот же ход упирается в потраченное действие.
+  assert.throws(
+    () => validateCommand({
+      campaign_id: 'LOOT',
+      command_type: 'LootContainer',
+      actor_id: 'hero',
+      container_id: container.id,
+      lines: [{ item_instance_id: container.items[1].item_instance_id, quantity: 1 }],
+    }, looted.state, CONTEXT),
+    (error) => error.code === 'ACTION_SPENT',
+  )
+})
+
+test('в бою добыча достаётся тому, кто обыскивает', () => {
+  const killed = kill(campaign(), 'foe-1')
+  const container = containerOf(killed.state)
+  assert.throws(
+    () => validateCommand({
+      campaign_id: 'LOOT',
+      command_type: 'LootContainer',
+      actor_id: 'hero',
+      container_id: container.id,
+      recipient_id: 'mate',
+      lines: [{ item_instance_id: container.items[0].item_instance_id, quantity: 1 }],
+    }, killed.state, CONTEXT),
+    (error) => error.code === 'LOOT_RECIPIENT_DURING_COMBAT',
+  )
+})
+
+// ---------------------------------------------------------------------------
+// 5. Replay и идемпотентность потока
+
+test('повторное проигрывание потока даёт то же состояние', () => {
+  const before = campaign({ combat: false })
+  const killed = kill(before, 'foe-1')
+  const container = containerOf(killed.state)
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: container.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity })),
+  })
+  const events = [...killed.events, ...looted.events]
+  const replayed = replayEvents(before, events)
+  assert.deepEqual(replayed.loot_containers, looted.state.loot_containers)
+  assert.deepEqual(
+    replayed.players.find((player) => player.id === 'hero').inventory,
+    looted.state.players.find((player) => player.id === 'hero').inventory,
+  )
+  // Второй прогон того же потока ничего не удваивает.
+  assert.deepEqual(replayEvents(before, events).loot_containers, replayed.loot_containers)
+})
+
+test('гонка за один предмет: устаревшая версия получает конфликт', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const line = { item_instance_id: container.items[0].item_instance_id, quantity: 1 }
+  const staleVersion = killed.state.state_version
+  const first = commit(killed.state, {
+    command_type: 'LootContainer', actor_id: 'hero', container_id: container.id, lines: [line],
+  })
+  assert.throws(
+    () => validateCommand({
+      campaign_id: 'LOOT',
+      command_type: 'LootContainer',
+      actor_id: 'hero',
+      container_id: container.id,
+      lines: [line],
+      expected_state_version: staleVersion,
+    }, first.state, CONTEXT),
+    (error) => error.code === 'STATE_VERSION_CONFLICT',
+  )
+  // Свежая версия честно сообщает, что вещи уже нет.
+  assert.throws(
+    () => validateCommand({
+      campaign_id: 'LOOT', command_type: 'LootContainer', actor_id: 'hero', container_id: container.id, lines: [line],
+    }, first.state, CONTEXT),
+    (error) => error.code === 'LOOT_ITEM_GONE',
+  )
+})
+
+// ---------------------------------------------------------------------------
+// 6. Проекция и санитайзер событий
+
+test('игрок видит контейнер сцены, а содержимое — только вблизи', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const room = campaignStateForViewer(killed.state, { role: 'player', id: 'u1' }, 'hero')
+  assert.equal(room.loot_containers.containers.length, 1)
+  const [card] = room.loot_containers.containers
+  assert.equal(card.can_inspect, true)
+  assert.ok(Array.isArray(card.items) && card.items.length)
+  assert.ok(card.item_count > 0)
+
+  const far = campaignStateForViewer(killed.state, { role: 'player', id: 'u2' }, 'mate')
+  const [farCard] = far.loot_containers.containers
+  assert.equal(farCard.can_inspect, false)
+  assert.equal(farCard.items, undefined, 'содержимое отдаётся только по защищённому чтению')
+  assert.equal(farCard.item_count, card.item_count, 'сам факт добычи виден со всей сцены')
+})
+
+test('свободное действие «обыскиваю тело» ведёт к контейнеру, а не к прежнему отказу', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const text = 'Обыскиваю тело разбойника'
+  const reading = bindFreeActionReadingToState(killed.state, 'hero', text, interpretFreeAction(text))
+  const answer = resolveCorpseSearch(killed.state, text, reading)
+  assert.equal(answer.server_owned_contents, true)
+  assert.equal(answer.loot_container_id, container.id)
+  assert.match(answer.narration, /панель добычи/u)
+  assert.doesNotMatch(answer.narration, /команды извлечения/u)
+
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: container.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity })),
+  })
+  const afterAnswer = resolveCorpseSearch(looted.state, text, bindFreeActionReadingToState(looted.state, 'hero', text, interpretFreeAction(text)))
+  assert.equal(afterAnswer.server_owned_contents, false)
+  assert.match(afterAnswer.narration, /уже всё сняли/u)
+})
+
+test('подсказка зовёт обыскать тело и честна про досягаемость', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const near = campaignStateForViewer(killed.state, { role: 'player', id: 'u1' }, 'hero').suggested_actions ?? []
+  assert.ok(near.some((hint) => /Можно обыскать: Тело/u.test(hint.text)), JSON.stringify(near))
+  const far = campaignStateForViewer(killed.state, { role: 'player', id: 'u2' }, 'mate').suggested_actions ?? []
+  assert.ok(far.some((hint) => /надо подойти вплотную/u.test(hint.text)), JSON.stringify(far))
+})
+
+test('сырой реестр контейнеров игроку не уезжает и не несёт стат-блок', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const room = campaignStateForViewer(killed.state, { role: 'player', id: 'u1' }, 'hero')
+  const serialized = JSON.stringify(room.loot_containers)
+  assert.equal(serialized.includes('srd_5_2_1:bandit'), false, 'template_id стат-блока в проекции недопустим')
+  assert.equal(serialized.includes('"origin"'), false)
+  assert.equal(serialized.includes('"owner"'), false)
+  // Реестр целиком принадлежит ведущему.
+  assert.equal(campaignStateForViewer(killed.state, { role: 'admin', id: 'gm' }, '').loot_containers.containers.length, 1)
+})
+
+test('санитайзер событий не отдаёт ни содержимое рождения, ни остаток тела', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const created = mechanicsForViewer(killed.events, { role: 'player', id: 'u1' }, 'hero', killed.state)
+    .find((event) => event.event_type === 'LootContainerCreated')
+  assert.ok(created)
+  assert.equal(created.payload.container.items, undefined, 'что внутри — узнают, подойдя')
+  assert.equal(JSON.stringify(created.payload).includes('srd_5_2_1:bandit'), false)
+
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: [{ item_instance_id: container.items[0].item_instance_id, quantity: 1 }],
+  })
+  const taken = mechanicsForViewer(looted.events, { role: 'player', id: 'u1' }, 'hero', looted.state)
+    .find((event) => event.event_type === 'LootContainerTaken')
+  assert.ok(taken)
+  assert.equal(taken.payload.remaining_items, undefined, 'остаток тела читается только обыском')
+  assert.equal(taken.payload.items.length, 1, 'взятое отряд видит: оно уже у него в сумке')
+  assert.equal(JSON.stringify(taken.payload).includes('srd_5_2_1:bandit'), false)
+})
+
+// ---------------------------------------------------------------------------
+// 7. Контейнер переживает уход со сцены
+
+test('невзятое переживает смену сцены и находится по возвращении', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const elsewhere = normalizeCampaignState({
+    ...killed.state,
+    enemies: [],
+    scene: { ...killed.state.scene, title: 'Дорога', location: 'Дорога', location_id: 'road' },
+  })
+  assert.equal(lootContainerList(elsewhere).length, 1, 'контейнер живёт в состоянии кампании, а не в сцене')
+  assert.deepEqual(lootContainersInScene(elsewhere), [], 'на другой сцене его не видно')
+  assert.equal(
+    lootContainersForViewer(elsewhere, { actorId: 'hero' }).containers.length,
+    0,
+  )
+
+  const back = normalizeCampaignState({ ...elsewhere, scene: killed.state.scene })
+  assert.equal(lootContainersInScene(back).length, 1)
+  assert.equal(lootContainersInScene(back)[0].id, container.id)
+})
+
+// ---------------------------------------------------------------------------
+// 8. Плен и парлей
+
+test('пленный приходит на допрос обезоруженным, а карман остаётся при нём', () => {
+  const surrendered = bandit('foe-1', { x: 2, y: 1, hp: 6 })
+  const state = normalizeCampaignState({
+    ...campaign({ enemies: [surrendered] }),
+    mechanics: {
+      ...campaign({ enemies: [surrendered] }).mechanics,
+      conditions: { 'foe-1': [{ id: 'surrendered' }] },
+    },
+  })
+  const ended = resolveCommands([{
+    command_type: 'EndCombat', actor_id: 'hero', reason: 'enemies_defeated', command_id: 'cmd-end', campaign_id: 'LOOT',
+  }], state, { diceService: dice(), context: CONTEXT })
+
+  const container = containerOf(ended.state, 'captive')
+  assert.ok(container, 'разоружение обязано случиться в той же фиксации, что и плен')
+  assert.equal(container.source_enemy_id, 'foe-1')
+  assert.equal(container.items.every((item) => item.snapshot.type === 'weapon'), true, 'в контейнер уходит только оружие')
+  assert.ok(container.items.some((item) => item.catalog_id === 'srd_5_2_1:scimitar'))
+  const enemyAfter = ended.state.enemies.find((enemy) => enemy.id === 'foe-1')
+  assert.equal(enemyAfter.loadout.items.some((item) => item.catalog_id === 'srd_5_2_1:scimitar'), false)
+  assert.equal(
+    enemyAfter.loadout.items.some((item) => item.catalog_id === 'srd_5_2_1:bolts-20'),
+    true,
+    'не-оружие остаётся у пленного: разоружают, а не обшаривают',
+  )
+})
+
+test('уговор «уходят, оставив добычу» оставляет отряду брошенный тюк', () => {
+  const foes = [bandit('foe-1', { x: 4, y: 1, hp: 4 }), bandit('foe-2', { x: 5, y: 1, hp: 4, seed: 'loot-seed-2' })]
+  const base = campaign({ enemies: foes })
+  const state = normalizeCampaignState({
+    ...base,
+    social: {
+      npcs: [{
+        id: 'foe-1',
+        name: 'Атаман',
+        role: 'предводитель',
+        location: 'Склад',
+        visibility: 'party',
+        available: false,
+        tags: ['parley-leader'],
+      }],
+    },
+    mechanics: {
+      ...base.mechanics,
+      combat: {
+        ...base.mechanics.combat,
+        truce: {
+          schema_version: 1,
+          leader_id: 'foe-1',
+          leader_name: 'Атаман',
+          round: 2,
+          outcomes: ['resume', 'withdraw', 'tribute'],
+          tribute_cp: 40,
+          policy_id: 'skazanie:parley-v1',
+        },
+      },
+    },
+  })
+  const settled = commit(state, {
+    command_type: 'SettleParley', actor_id: 'hero', outcome: 'tribute',
+  })
+  const container = containerOf(settled.state, 'abandoned')
+  assert.ok(container, 'уговор «оставив добычу» обязан оставить контейнер')
+  assert.deepEqual(container.source_enemy_ids.sort(), ['foe-1', 'foe-2'])
+  assert.ok(container.items.length >= 2)
+  assert.equal(settled.state.enemies.every((enemy) => enemy.loadout.items.every((item) => item.lootable !== true)), true)
+})
+
+test('уговор «разойтись миром» добычи не оставляет', () => {
+  const foes = [bandit('foe-1', { x: 4, y: 1, hp: 4 })]
+  const base = campaign({ enemies: foes })
+  const state = normalizeCampaignState({
+    ...base,
+    mechanics: {
+      ...base.mechanics,
+      combat: {
+        ...base.mechanics.combat,
+        truce: {
+          schema_version: 1,
+          leader_id: 'foe-1',
+          leader_name: 'Атаман',
+          round: 2,
+          outcomes: ['resume', 'withdraw'],
+          tribute_cp: 0,
+          policy_id: 'skazanie:parley-v1',
+        },
+      },
+    },
+  })
+  const settled = commit(state, { command_type: 'SettleParley', actor_id: 'hero', outcome: 'withdraw' })
+  assert.equal(lootContainerList(settled.state).length, 0, 'ушедшие с миром уносят своё')
+})

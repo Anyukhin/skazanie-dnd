@@ -40,8 +40,13 @@ export const ITEM_INSTANCE_SCHEMA_VERSION = 1
 /** Откуда вещь взялась. Список открыт по мере появления новых источников. */
 export const ITEM_INSTANCE_ORIGIN_KINDS = Object.freeze(['enemy_loadout'])
 
-/** Кому вещь принадлежит. Тела и контейнеры появятся отдельным шагом. */
-export const ITEM_INSTANCE_OWNER_KINDS = Object.freeze(['enemy'])
+/**
+ * Кому вещь принадлежит. `container` — тело, разоружённый пленный, брошенная
+ * добыча или схрон: всё, что описывает `server/loot-containers.mjs`. Владелец
+ * меняется переездом экземпляра, а не пересозданием: у вещи одна история, и
+ * `origin` при смене владельца не переписывается.
+ */
+export const ITEM_INSTANCE_OWNER_KINDS = Object.freeze(['enemy', 'container'])
 
 export const MAX_ITEM_INSTANCE_QUANTITY = 999
 

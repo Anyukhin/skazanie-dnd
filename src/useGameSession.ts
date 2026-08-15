@@ -50,6 +50,9 @@ type TacticalCommand =
   | { command_type: 'FeedCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ExecuteCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
+  // Обыск: только ключи. Название, вес, цена и механика вещи лежат в самом
+  // контейнере — клиент их не называет и назвать не может.
+  | { command_type: 'LootContainer'; actor_id: string; container_id: string; lines: Array<{ item_instance_id: string; quantity: number }>; recipient_id?: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -1294,6 +1297,25 @@ export function useGameSession() {
     return executeTacticalCommand({ command_type: 'ExecuteCaptive', actor_id: actorId, captive_id: captiveId }, 'Убить пленного')
   }, [executeTacticalCommand])
 
+  /* Обыск контейнера. Клиент называет только контейнер, ключи экземпляров и
+     количества: имя, вес, цена и механика вещи лежат в самом контейнере, и
+     читает их сервер. Набор уезжает одной командой — «всё или ничего» это не
+     про интерфейс, а про правило: частично взятого набора не бывает. */
+  const lootContainer = useCallback((
+    actorId: string,
+    containerId: string,
+    lines: Array<{ item_instance_id: string; quantity: number }>,
+    recipientId?: string,
+  ) => {
+    return executeTacticalCommand({
+      command_type: 'LootContainer',
+      actor_id: actorId,
+      container_id: containerId,
+      lines,
+      ...(recipientId && recipientId !== actorId ? { recipient_id: recipientId } : {}),
+    }, 'Обыскать добычу')
+  }, [executeTacticalCommand])
+
   /* Переход между этажами — та же лёгкая команда, что и остальные действия у
      карты: сервер решает, дошёл ли герой до лестницы и не идёт ли бой, и
      отказывает кодами `TRANSITION_*` / `LEVEL_*`. Клиент только называет
@@ -1689,6 +1711,7 @@ export function useGameSession() {
     operateDoor,
     operateSceneObject,
     captiveAction,
+    lootContainer,
     resolveGuardEncounter,
     proposeParley,
     settleParley,

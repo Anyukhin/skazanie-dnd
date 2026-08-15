@@ -17,6 +17,7 @@ import {
   serializedTacticalMapHash,
 } from './tactical-map.mjs'
 import { captiveForViewer, captivesForViewer } from './captives.mjs'
+import { lootContainerForViewer, lootContainersForViewer } from './loot-containers.mjs'
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -910,6 +911,14 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // в публичной форме нет и быть не должно: она превратила бы поиск выхода в
   // арифметику.
   'law',
+  // Контейнеры добычи. Реестр держит все ярусы кампании, полное содержимое
+  // каждого тела и `origin.template_id` — идентификатор стат-блока противника,
+  // то есть знание, которое отряд добывает опознанием врага. Наружу уезжает
+  // только публичная форма (`lootContainersForViewer`): ярус отряда, без
+  // опустошённых, а содержимое — лишь того контейнера, до которого герой
+  // игрока дотягивается. Иначе «обыскать» стало бы формальностью поверх уже
+  // прочитанного списка.
+  'loot_containers',
   // Время суток и погода. Собственного ключа в состоянии нет: обе величины
   // выводятся из мировых минут и сида кампании (`server/weather.mjs`) и
   // существуют только в проекции. Решение осознанное и в обе стороны одинаковое:
@@ -989,6 +998,9 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // срок затухания считаются на сервере рядом с политикой. Карточка админки
     // своей таблицы порогов не держит — две копии расходились бы молча.
     law: lawForViewer(state, { isAdmin: true }),
+    // Контейнеры добычи ведущий видит целиком: у него нет героя, которым можно
+    // подойти, а знать, что осталось лежать на полу, он обязан.
+    loot_containers: lootContainersForViewer(state, { isAdmin: true }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
     weather: weatherForViewer(state),
@@ -1021,12 +1033,19 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // Наружу он идёт только своей публичной формой (`lawForViewer` ниже), потому
   // что цифра ступени игроку не принадлежит: розыск он узнаёт по офицеру перед
   // собой и по тому, как на него смотрит улица.
+  // `loot_containers` — реестр контейнеров всей кампании: чужие ярусы, ещё не
+  // найденные схроны и полное содержимое каждого тела. Наружу он идёт только
+  // публичной формой (`lootContainersForViewer` ниже): она оставляет ярус
+  // отряда, скрывает опустошённое и отдаёт содержимое лишь тому, чей герой до
+  // контейнера дотягивается. Сырой ветке здесь делать нечего — иначе «обыскать»
+  // превратилось бы в формальность поверх уже прочитанного списка.
   const {
     locationMaps: _locationMaps,
     npc_world: _npcWorld,
     levelEntities: _levelEntities,
     world_deeds: _worldDeeds,
     law: _law,
+    loot_containers: _lootContainers,
     ...publicState
   } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
@@ -1105,6 +1124,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     }),
     scene_npcs: sceneNpcsForViewer(state),
     captives: captivesForViewer(state, { isAdmin: false }),
+    // Контейнер виден в доступной сцене; содержимое — только тому, чей герой
+    // стоит рядом. Просмотр при этом бесплатен: он приходит проекцией, а не
+    // командой, и хода не стоит.
+    loot_containers: lootContainersForViewer(state, { actorId: String(actorId ?? ''), isAdmin: false }),
     law: lawForViewer(state, { isAdmin: false }),
     // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
@@ -1249,6 +1272,33 @@ function eventForViewer(event, user, actorId, state = {}) {
     const forViewer = captiveForViewer(payload.captive)
     if (forViewer) payload.captive = forViewer
     else delete payload.captive
+  }
+  // Контейнеры добычи. Та же граница, что и у проекции состояния, и по той же
+  // причине: сырой payload несёт полный экземпляр предмета вместе с `owner` и
+  // `origin`, а в `origin.template_id` лежит **идентификатор стат-блока**
+  // противника — то самое, что отряд получает только опознанием врага
+  // (`publicEnemyFor` ниже). Событие рождения контейнера вдобавок несёт весь
+  // список содержимого, то есть ответ на «что внутри» до того, как кто-нибудь
+  // подошёл. Обе ветки режет та же функция, что стоит под проекцией состояния.
+  if (visible.event_type === 'LootContainerCreated' && payload.container) {
+    const forViewer = lootContainerForViewer(payload.container, { withContents: false })
+    if (forViewer) payload.container = forViewer
+    else delete payload.container
+  }
+  if (visible.event_type === 'LootContainerTaken') {
+    // Взятое отряд видит целиком — это его собственная добыча, и она уже лежит
+    // у него в инвентаре. Уезжает готовая запись инвентаря, а не экземпляр
+    // контейнера: `remaining_items` при этом снимается совсем, иначе остаток
+    // тела читался бы событием мимо проверки досягаемости.
+    delete payload.remaining_items
+    payload.items = (Array.isArray(payload.items) ? payload.items : []).map((/** @type {Loose} */ item) => ({
+      id: text(item?.id, 160),
+      catalog_id: text(item?.catalog_id, 120),
+      name: text(item?.name, 120),
+      type: text(item?.type, 40),
+      quantity: integer(item?.quantity, 1),
+      weight: Math.max(0, Number(item?.weight) || 0),
+    }))
   }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
   if (['HitPointDieSpent', 'HitPointDiceRestored'].includes(String(visible.event_type))
