@@ -18,6 +18,10 @@ import { sceneLocationId } from './npc-positioning.mjs'
  *    `fed` → `tamed`. Первая и третья ступени — проверка Ухода за животными
  *    (двухфазный ручной d20), между ними стоит кормление, и оно списывает
  *    настоящий паёк из инвентаря героя. Одним удачным броском зверя не уводят.
+ *    Каждая ступень требует встать вплотную (`BEAST_APPROACH_REACH_FEET`) и
+ *    что-то стоит: в бою — действия, вне боя — игровых минут
+ *    (`BEAST_APPROACH_MINUTES`). Уговор через полкарты и бесплатное нажатие
+ *    кнопки, пока не выпадет, — это не приручение.
  * 2. **СЛ выводится из зверя, а не из таблицы «сложность приручения».** Её
  *    составляют CR стат-блока, повадка (хищник или травоядный), рана и то,
  *    сломлена ли уже мораль. Все слагаемые объявлены на карточке броска: игрок
@@ -103,6 +107,23 @@ export const BEAST_ATTEMPT_DC_CAP = 3
 
 /** Реже раза в игровой час зверь не отпугивает: иначе это кнопка, а не сцена. */
 export const BEAST_SCARE_COOLDOWN_MINUTES = 60
+
+/**
+ * Досягаемость подхода. Уговор и кормление — это протянутая ладонь, а не окрик
+ * через поляну, поэтому цена та же, что у двери, объекта сцены и лестницы
+ * (`DOOR_OUT_OF_REACH`, `SCENE_OBJECT_OUT_OF_REACH`, `TRANSITION_TOO_FAR`):
+ * встать вплотную. Без этого зверя уводили с собой, ни разу к нему не подойдя,
+ * а укус при провале прилетал герою через полкарты.
+ */
+export const BEAST_APPROACH_REACH_FEET = 5
+
+/**
+ * Сколько игрового времени уходит на одну попытку уговора вне боя. Без этой
+ * цены приручение было формальностью: жать кнопку, пока не выпадет, — и
+ * анкилозавр CR 3 уводился так же, как крыса, просто дольше. В бою минут не
+ * тратят: там попытка платит действием.
+ */
+export const BEAST_APPROACH_MINUTES = 10
 
 const MAX_BEASTS = 40
 
@@ -233,6 +254,25 @@ function safeBeast(value = {}) {
   }
 }
 
+/**
+ * Вытеснение старых записей. Спутники из него исключены, и это не оптимизация:
+ * реестр вытесняет самую старую запись, а первый прирученный зверь — как раз
+ * она. Отряд, встретивший за кампанию сорок волков, терял бы питомца молча:
+ * панель отряда пустела, `beastWatchSwing` переставал давать преимущество,
+ * события об уходе зверя не было. Ровно тот отказ, ради которого реестр вообще
+ * попал в проектор состояния.
+ */
+function evictedBeasts(beasts) {
+  if (beasts.length <= MAX_BEASTS) return beasts
+  const companions = beasts.filter((beast) => beast.status === 'companion')
+  // Спутников больше потолка — случай теоретический, но и он обязан быть
+  // ограниченным: реестр не имеет права расти без предела.
+  if (companions.length >= MAX_BEASTS) return companions.slice(-MAX_BEASTS)
+  const wild = beasts.filter((beast) => beast.status !== 'companion')
+  const kept = new Set(wild.slice(companions.length + wild.length - MAX_BEASTS).map((beast) => beast.id))
+  return beasts.filter((beast) => beast.status === 'companion' || kept.has(beast.id))
+}
+
 export function normalizeBeastState(input = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const beasts = []
@@ -243,7 +283,7 @@ export function normalizeBeastState(input = {}) {
     seen.add(beast.id)
     beasts.push(beast)
   }
-  return { schema_version: BEAST_TAMING_SCHEMA_VERSION, beasts: beasts.slice(-MAX_BEASTS) }
+  return { schema_version: BEAST_TAMING_SCHEMA_VERSION, beasts: evictedBeasts(beasts) }
 }
 
 export function beastList(state = {}) {
@@ -269,12 +309,70 @@ export function beastIdFor(state = {}, actorId) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Клетка участника. Источник тот же и в том же порядке, что у всех остальных
+ * читателей позиций (`mechanics.positions` первична, лист — фолбэк для сцен без
+ * карты): второй ответ на вопрос «где стоит волк» разошёлся бы с первым.
+ */
+function actorCell(state = {}, id = '') {
+  const expected = String(id ?? '')
+  if (!expected) return null
+  const actor = [...(Array.isArray(state?.players) ? state.players : []), ...(Array.isArray(state?.enemies) ? state.enemies : [])]
+    .find((candidate) => String(candidate?.id ?? '') === expected)
+  const stored = state?.mechanics?.positions?.[expected] ?? actor
+  const x = Number(stored?.x)
+  const y = Number(stored?.y)
+  return Number.isSafeInteger(x) && Number.isSafeInteger(y) ? { x, y } : null
+}
+
+/**
+ * Расстояние между героем и зверем в футах по клеткам. `null` — у кого-то из
+ * двоих клетки нет: сцена без карты, и досягаемости в ней не существует.
+ */
+export function beastDistanceFeet(state = {}, heroId = '', enemyId = '') {
+  const from = actorCell(state, heroId)
+  const to = actorCell(state, enemyId)
+  return from && to ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 : null
+}
+
+/** Герой стоит слишком далеко, чтобы протянуть руку. Без клеток — не стоит. */
+export function beastOutOfReach(state = {}, heroId = '', enemyId = '') {
+  const distance = beastDistanceFeet(state, heroId, enemyId)
+  return distance != null && distance > BEAST_APPROACH_REACH_FEET
+}
+
+/**
+ * Досягаемость глазами панели: она общая на отряд, поэтому меряется по
+ * ближайшему герою. Карточка от этого не исчезает — она гаснет и подписывает,
+ * сколько футов осталось пройти.
+ */
+export function beastPartyReach(state = {}, enemyId = '') {
+  let nearest = null
+  for (const hero of Array.isArray(state?.players) ? state.players : []) {
+    const distance = beastDistanceFeet(state, hero?.id, enemyId)
+    if (distance == null) continue
+    if (nearest == null || distance < nearest) nearest = distance
+  }
+  return { distance_feet: nearest, out_of_reach: nearest != null && nearest > BEAST_APPROACH_REACH_FEET }
+}
+
+/** Герой отряда, а не любой актор с этим идентификатором. */
+function isPartyHero(state = {}, heroId = '') {
+  const expected = String(heroId ?? '')
+  if (!expected) return false
+  return (Array.isArray(state?.players) ? state.players : []).some((hero) => String(hero?.id ?? '') === expected)
+}
+
+/**
  * Почему зверя нельзя трогать прямо сейчас. `null` — можно.
  *
  * Правило одно и оно из брифа: вне боя — любого живого зверя, в бою — только
  * того, у кого уже сломлена мораль. Успокаивать волка в прыжке нельзя; волка,
  * который развернулся и побежал, — можно, и это ровно та середина, которой не
  * было.
+ *
+ * Досягаемости здесь нет намеренно: она зависит от того, **кто** подходит, а у
+ * этой функции героя нет. Её считают отдельно — `beastOutOfReach` для команды
+ * конкретного героя и `beastPartyReach` для общей панели.
  */
 export function beastApproachBlockedReason(state = {}, enemy = {}) {
   if (actorHitPoints(enemy) <= 0 || enemy?.alive === false) return 'beast_down'
@@ -339,7 +437,13 @@ export function beastTamingPolicy(state = {}, enemy = {}, beast = null) {
   const attempts = Math.max(0, integer(beast?.attempts, 0))
   const parts = [
     { id: 'base', label: 'основа', shift: BEAST_BASE_DC },
-    { id: 'challenge', label: `сила зверя (CR ${text(enemy?.provenance?.challenge_rating, 12) || '—'})`, shift: beastChallengeDcShift(challengeRating) },
+    // Метка бесчисловая намеренно. CR — значение стат-блока, и раскрывает его в
+    // проекте ровно одно: запись в `enemy_knowledge` (`publicEnemyFor`,
+    // `server/viewer-projection.mjs`). Слагаемые СЛ уезжают игроку двумя
+    // каналами сразу — карточкой кандидата и `BeastSoothingResolved`, — и
+    // «сила зверя (CR 1/4)» пробивала опознание врага обоими. Сама поправка при
+    // этом видна числом: игрок обязан знать, из чего сложилась объявленная СЛ.
+    { id: 'challenge', label: 'сила зверя', shift: beastChallengeDcShift(challengeRating) },
   ]
   if (diet === 'predator') parts.push({ id: 'predator', label: 'хищник', shift: BEAST_PREDATOR_DC_SHIFT })
   if (wounded) parts.push({ id: 'wounded', label: 'ранен и загнан', shift: BEAST_WOUNDED_DC_SHIFT })
@@ -381,10 +485,32 @@ export function beastBiteDamage(challengeRating) {
 // ---------------------------------------------------------------------------
 
 const FOOD_NAME_PATTERN = /(па[её]к|провиз|снедь|сухар|вялен|мяс)/iu
+const ORDINARY_RARITIES = Object.freeze(new Set(['', 'обычный', 'common']))
+
+/**
+ * Что зверю не отдают, даже если оно называется мясом. Режиссёр заводит
+ * предметы свободными именами (`GrantItem`), и «Вяленое сердце вепря» в нулевом
+ * слоте уходило бы волку раньше настоящих пайков, лежащих ниже в рюкзаке.
+ * Редкость, настройка и сюжетность — те же три признака, по которым закрыта
+ * продажа находки (`appraisalBlocked`, `server/rules-engine.mjs`).
+ */
+function foodDisqualified(item = {}, entry = null) {
+  if (item?.equipped === true) return true
+  if (item?.quest_item === true || item?.sellable === false) return true
+  if (String(item?.type ?? '').toLocaleLowerCase('ru') === 'quest') return true
+  if (!ORDINARY_RARITIES.has(comparable(item?.rarity ?? entry?.rarity))) return true
+  return item?.requires_attunement === true || entry?.requires_attunement === true || entry?.attunement?.required === true
+}
 
 /**
  * Чем кормить. Ищется в инвентаре героя и **только** там: зверь ест настоящий
  * предмет, который спишется, а не абстрактную «еду».
+ *
+ * Порядок предпочтения — не украшение, а само правило: сначала каталожный паёк,
+ * потом каталожный идентификатор, и лишь в последнюю очередь свободное имя.
+ * Свободный regex по имени берёт первый подходящий слот, а слоты рюкзака ничем
+ * не отсортированы: без предпочтения обычный паёк проигрывал бы любой находке с
+ * «мясом» в названии просто потому, что она лежит выше.
  *
  * Каталог сюда не импортируется — он принадлежит другому потоку работ, и
  * тянуть его в лист было бы связью ради одного поля. Вместо этого разрешение
@@ -396,15 +522,18 @@ const FOOD_NAME_PATTERN = /(па[её]к|провиз|снедь|сухар|вя
  * @returns {Record<string, any> | null}
  */
 export function beastFoodItemFor(actor = {}, resolveCatalogItem = null) {
-  const inventory = Array.isArray(actor?.inventory) ? actor.inventory : []
-  return inventory.find((item) => {
-    if (!item || Math.max(0, integer(item.quantity, 1)) <= 0) return false
-    const catalogId = text(item.catalog_id ?? item.catalogId, 120)
-    const entry = typeof resolveCatalogItem === 'function' && catalogId ? resolveCatalogItem(catalogId) : null
-    if (entry?.use?.kind === 'ration') return true
-    if (/rations?-one-day$/u.test(catalogId)) return true
-    return FOOD_NAME_PATTERN.test(text(item.name, 120))
-  }) ?? null
+  const edible = (Array.isArray(actor?.inventory) ? actor.inventory : [])
+    .filter((item) => item && Math.max(0, integer(item.quantity, 1)) > 0)
+    .map((item) => {
+      const catalogId = text(item.catalog_id ?? item.catalogId, 120)
+      const entry = typeof resolveCatalogItem === 'function' && catalogId ? resolveCatalogItem(catalogId) : null
+      return { item, catalogId, entry }
+    })
+    .filter(({ item, entry }) => !foodDisqualified(item, entry))
+  return edible.find(({ entry }) => entry?.use?.kind === 'ration')?.item
+    ?? edible.find(({ catalogId }) => /rations?-one-day$/u.test(catalogId))?.item
+    ?? edible.find(({ item }) => FOOD_NAME_PATTERN.test(text(item.name, 120)))?.item
+    ?? null
 }
 
 // ---------------------------------------------------------------------------
@@ -417,6 +546,12 @@ export function partyIsResting(state = {}) {
   return Object.values(resting).some((entry) => entry && entry.reason !== 'knockout')
 }
 
+/** Спутник, который прямо сейчас держит стражу лагеря. `null` — никто. */
+export function beastWatchCompanion(state = {}) {
+  if (!partyIsResting(state)) return null
+  return beastCompanions(state)[0] ?? null
+}
+
 /**
  * Что зверь даёт отряду механически — ровно одно и честное: пока отряд стоит
  * лагерем, зверь слышит то, чего не слышит уставший часовой.
@@ -426,12 +561,23 @@ export function partyIsResting(state = {}) {
  * исполнении `MakeAbilityCheck`, — и одинаковая форма означает, что карточка
  * ручного броска и движок читают их одним движением.
  *
+ * Но актор здесь обязателен, и это единственная разница с погодой: небо мировое
+ * и правомерно общее, а стража спутника партийная. Без этой проверки
+ * преимущество получал **любой**, кто бросает Восприятие, пока отдыхает хоть
+ * один герой, — в том числе вражеский разведчик, ищущий отряд, которому этот
+ * самый волк и принадлежит.
+ *
+ * Лагерь при этом один на отряд: преимущество достаётся любому герою, пока
+ * идёт чей-то привал, а не только тому, кто отдыхает. Зверь сторожит стоянку
+ * целиком, и делить её на «этот отдыхает, а тот обыскивает» было бы ложной
+ * точностью.
+ *
  * @returns {{ swing: 'advantage', reason: string } | null}
  */
-export function beastWatchSwing(state = {}, skill = '') {
+export function beastWatchSwing(state = {}, skill = '', heroId = '') {
   if (String(skill ?? '').trim().toLocaleLowerCase('en').replace(/_/gu, '-') !== 'perception') return null
-  if (!partyIsResting(state)) return null
-  const companion = beastCompanions(state)[0]
+  if (!isPartyHero(state, heroId)) return null
+  const companion = beastWatchCompanion(state)
   if (!companion) return null
   return { swing: 'advantage', reason: `${companion.name || 'Зверь'} на страже лагеря` }
 }
@@ -539,6 +685,10 @@ export function beastsForViewer(state = {}, viewer = {}) {
   const minutes = campaignElapsedMinutes(state)
   const candidates = tameableBeasts(state).map(({ enemy, beast, blocked_reason: blockedReason }) => {
     const policy = beastTamingPolicy(state, enemy, beast)
+    // Досягаемость едет отдельным полем, а не `blocked_reason`: карточка с
+    // причиной из панели исчезает, а «до зверя ещё идти» — это приглашение
+    // подойти, а не отказ. Кнопки гаснут, подпись называет расстояние.
+    const reach = beastPartyReach(state, enemy.id)
     return {
       id: beast?.id ?? beastIdFor(state, enemy.id),
       actor_id: String(enemy.id),
@@ -555,6 +705,9 @@ export function beastsForViewer(state = {}, viewer = {}) {
       attempts: policy.attempts,
       bites_on_failure: policy.bites_on_failure,
       parts: policy.parts.map((part) => ({ id: part.id, label: part.label, shift: part.shift })),
+      out_of_reach: reach.out_of_reach,
+      ...(reach.distance_feet == null ? {} : { distance_feet: reach.distance_feet }),
+      reach_feet: BEAST_APPROACH_REACH_FEET,
       ...(blockedReason ? { blocked_reason: blockedReason } : {}),
     }
   })
@@ -563,15 +716,19 @@ export function beastsForViewer(state = {}, viewer = {}) {
     name: beast.name,
     scare_cooldown_minutes: beastScareCooldownLeft(beast, minutes),
   }))
+  // Флаг панели спрашивает про лагерь, а не про конкретный бросок, поэтому
+  // читает спутника напрямую: у `beastWatchSwing` теперь есть актор, и
+  // подставлять сюда произвольного героя значило бы отвечать не на тот вопрос.
+  const watchAdvantage = beastWatchCompanion(state) != null
   if (viewer?.isAdmin === true) {
-    return { schema_version: BEAST_TAMING_SCHEMA_VERSION, beasts: clone(beasts), candidates, companions, watch_advantage: beastWatchSwing(state, 'perception') != null }
+    return { schema_version: BEAST_TAMING_SCHEMA_VERSION, beasts: clone(beasts), candidates, companions, watch_advantage: watchAdvantage }
   }
   return {
     schema_version: BEAST_TAMING_SCHEMA_VERSION,
     beasts: beasts.map((beast) => beastForViewer(beast)).filter(Boolean),
     candidates,
     companions,
-    watch_advantage: beastWatchSwing(state, 'perception') != null,
+    watch_advantage: watchAdvantage,
   }
 }
 

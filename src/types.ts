@@ -1602,6 +1602,12 @@ export type BeastCandidate = {
   attempts?: number
   bites_on_failure?: boolean
   parts?: BeastDifficultyPart[]
+  /** До зверя ещё идти: ближайший герой отряда стоит дальше вытянутой руки. */
+  out_of_reach?: boolean
+  /** Сколько футов до зверя от ближайшего героя. Нет — сцена без клеток. */
+  distance_feet?: number
+  /** С какого расстояния зверю протягивают руку. Считает сервер. */
+  reach_feet?: number
   /** `combat_active` или `beast_down`: почему подойти нельзя. */
   blocked_reason?: string
 }

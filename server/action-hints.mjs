@@ -238,12 +238,23 @@ function letterHints(room) {
  *
  * Строка одна и появляется только у того, к кому **можно** подойти прямо
  * сейчас: пока волк дерётся, звать к нему с открытой ладонью нельзя, и
- * `blocked_reason` это уже посчитал.
+ * `blocked_reason` это уже посчитал. Стоящий далеко зверь тоже отсекается, но
+ * иначе — своей строкой «сначала подойти»: подсказка обязана называть
+ * следующий шаг, а не молчать о звере, до которого просто надо дойти.
  */
 function beastHints(room) {
   const candidates = Array.isArray(room?.beasts?.candidates) ? room.beasts.candidates : []
-  const reachable = candidates.find((entry) => entry && !entry.blocked_reason)
-  if (!reachable) return []
+  const available = candidates.filter((entry) => entry && !entry.blocked_reason)
+  const reachable = available.find((entry) => entry.out_of_reach !== true)
+  if (!reachable) {
+    const distant = available[0]
+    if (!distant) return []
+    return [{
+      id: `beast:${text(distant.id, 80)}`,
+      priority: HINT_PRIORITY.leisure,
+      text: `Можно подойти вплотную к зверю: ${text(distant.name, 60) || 'зверь'} — с расстояния руку не протянуть`,
+    }]
+  }
   const name = text(reachable.name, 60) || 'зверь'
   return [{
     id: `beast:${text(reachable.id, 80)}`,

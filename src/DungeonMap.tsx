@@ -2644,7 +2644,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               ><Ear size={13} />Отогнать</button>
             </div>
           </article>)}
-          {beastCandidates.map((candidate) => <article key={candidate.id} className={`beast-card${candidate.diet === 'predator' ? ' predator' : ''}`}>
+          {beastCandidates.map((candidate) => <article key={candidate.id} className={`beast-card${candidate.diet === 'predator' ? ' predator' : ''}${candidate.out_of_reach ? ' out-of-reach' : ''}`}>
             <header>
               <i className={`beast-tag${candidate.diet === 'predator' ? ' predator' : ''}`}>{(candidate.diet_label || 'зверь').toLocaleUpperCase('ru')}</i>
               <b>{candidate.name}</b>
@@ -2655,19 +2655,28 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               {candidate.parts?.length ? ` (${candidate.parts.filter((part) => part.id !== 'base').map((part) => `${part.label} ${part.shift > 0 ? `+${part.shift}` : part.shift}`).join(', ')})` : ''}.
               {candidate.bites_on_failure ? ' При провале укусит.' : ''}
             </p>
+            {/* Досягаемость: приручение — это ладонь и еда, а не окрик через
+                поляну. Карточка не исчезает, а гаснет и зовёт подойти. */}
+            {candidate.out_of_reach && <p className="beast-reach">
+              До зверя ещё идти{typeof candidate.distance_feet === 'number' ? `: ${candidate.distance_feet} фт` : ''}. Подойдите вплотную.
+            </p>}
             <div className="beast-actions">
               <button
                 type="button"
-                disabled={beastActionsBlocked || candidate.stage === 'calmed'}
-                title={candidate.stage === 'calmed'
-                  ? 'Зверь успокоен и ждёт еды с руки'
-                  : candidate.stage === 'fed' ? 'Позвать за собой: проверка против объявленной СЛ' : 'Проверка Ухода за животными против серверной СЛ'}
+                disabled={beastActionsBlocked || candidate.out_of_reach === true || candidate.stage === 'calmed'}
+                title={candidate.out_of_reach
+                  ? 'Сначала подойдите к зверю вплотную'
+                  : candidate.stage === 'calmed'
+                    ? 'Зверь успокоен и ждёт еды с руки'
+                    : candidate.stage === 'fed' ? 'Позвать за собой: проверка против объявленной СЛ' : 'Проверка Ухода за животными против серверной СЛ'}
                 onClick={() => onBeastAction(candidate.id, 'calm')}
               ><PawPrint size={13} />{candidate.stage === 'fed' ? 'Приручить' : 'Успокоить'}</button>
               <button
                 type="button"
-                disabled={beastActionsBlocked || candidate.stage !== 'calmed'}
-                title={candidate.stage === 'calmed' ? 'Дать еду с руки: паёк спишется из рюкзака' : 'С руки едят только успокоенные'}
+                disabled={beastActionsBlocked || candidate.out_of_reach === true || candidate.stage !== 'calmed'}
+                title={candidate.out_of_reach
+                  ? 'Еду с руки дают вплотную: сначала подойдите'
+                  : candidate.stage === 'calmed' ? 'Дать еду с руки: паёк спишется из рюкзака' : 'С руки едят только успокоенные'}
                 onClick={() => onBeastAction(candidate.id, 'feed')}
               ><Soup size={13} />Покормить</button>
             </div>

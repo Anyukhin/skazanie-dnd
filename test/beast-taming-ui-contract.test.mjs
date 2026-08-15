@@ -76,4 +76,17 @@ test('панель и карточка зверя оформлены', () => {
   assert.match(styles, /\.beast-card\.companion \{/u)
   assert.match(styles, /\.beast-tag\.predator \{/u)
   assert.match(styles, /\.beast-chronicle-card \{/u)
+  assert.match(styles, /\.beast-card\.out-of-reach \{/u)
+})
+
+test('далёкий зверь остаётся на панели, но с погашенными кнопками', () => {
+  // Досягаемость приезжает отдельным полем, а не `blocked_reason`: карточка с
+  // причиной из панели исчезает, а «до зверя ещё идти» — приглашение подойти.
+  assert.match(board, /candidate\.out_of_reach \? ' out-of-reach' : ''/u)
+  assert.match(board, /До зверя ещё идти/u)
+  assert.match(board, /candidate\.out_of_reach === true \|\| candidate\.stage === 'calmed'/u)
+  assert.match(board, /candidate\.out_of_reach === true \|\| candidate\.stage !== 'calmed'/u)
+  // Расстояние приходит с сервера числом: своей формулы досягаемости у клиента нет.
+  assert.match(board, /candidate\.distance_feet/u)
+  assert.doesNotMatch(board, /BEAST_APPROACH_REACH_FEET/u)
 })

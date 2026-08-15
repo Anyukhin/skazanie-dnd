@@ -3,6 +3,8 @@ import test from 'node:test'
 
 import { suggestedActionsFor } from '../server/action-hints.mjs'
 import {
+  BEAST_APPROACH_MINUTES,
+  BEAST_APPROACH_REACH_FEET,
   BEAST_SCARE_COOLDOWN_MINUTES,
   beastChallengeRating,
   beastDietFor,
@@ -14,10 +16,12 @@ import {
   beastWatchSwing,
   beastsForViewer,
   isTameableBeast,
+  normalizeBeastState,
   tameableBeasts,
 } from '../server/beast-taming.mjs'
-import { isSkillProficient, skillAbility } from '../server/character-progression.mjs'
+import { isSkillProficient, normalizedClassSkillProficiencies, skillAbility } from '../server/character-progression.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import {
   normalizeCampaignState,
   previewD20Check,
@@ -51,6 +55,11 @@ function ration(quantity = 2) {
   }
 }
 
+/**
+ * Волк стоит вплотную к герою (1,1) намеренно: уговор и кормление требуют
+ * протянутой руки, и сцена по умолчанию — та, в которой к зверю уже подошли.
+ * Дальний волк заводится точечно, в тесте про досягаемость.
+ */
 function wolf(id = 'enemy-wolf', overrides = {}) {
   return {
     id,
@@ -61,7 +70,7 @@ function wolf(id = 'enemy-wolf', overrides = {}) {
     creature_type: 'beast',
     stat_block_id: 'srd_5_2_1:wolf',
     provenance: { challenge_rating: '1/4', xp: 50 },
-    x: 4,
+    x: 2,
     y: 1,
     alive: true,
     ...overrides,
@@ -79,7 +88,7 @@ function boar(id = 'enemy-boar', overrides = {}) {
     stat_block_id: 'srd_5_2_1:giant-boar',
     provenance: { challenge_rating: '2', xp: 450 },
     x: 2,
-    y: 3,
+    y: 2,
     alive: true,
     ...overrides,
   }
@@ -238,6 +247,127 @@ test('команда отказывается, пока зверь дерётс�
   )
 })
 
+test('в бою уговор и кормление стоят действия: лестница в один ход не укладывается', () => {
+  // Обещанное правило было реализовано наполовину: резолв помечал действие
+  // потраченным (`CombatActionUsed`), но экономику никто не проверял — и весь
+  // подход (уговор → корм → уговор) проходил одним ходом бесплатно.
+  const broken = campaign({ combatActive: true, conditions: { 'enemy-wolf': [{ id: 'fled' }] } })
+  const missed = run(broken, { command_type: 'CalmBeast', beast_id: beastId(broken) }, { rng: [1, 3] })
+  assert.equal(missed.state.mechanics.combat.action_economy.hero.action, false, 'уговор обязан потратить действие')
+  assert.throws(
+    () => run(missed.state, { command_type: 'CalmBeast', beast_id: beastId(missed.state), command_id: 'cmd-again' }, { rng: [18] }),
+    (error) => error.code === 'ACTION_SPENT',
+  )
+  // Кормление платит тем же слотом: протянуть зверю паёк посреди боя — это ход.
+  const calmed = run(broken, { command_type: 'CalmBeast', beast_id: beastId(broken), command_id: 'cmd-calm' }, { rng: [18] })
+  assert.equal(calmed.state.mechanics.combat.action_economy.hero.action, false)
+  assert.throws(
+    () => run(calmed.state, { command_type: 'FeedBeast', beast_id: beastId(calmed.state), command_id: 'cmd-feed' }),
+    (error) => error.code === 'ACTION_SPENT',
+  )
+})
+
+test('вне боя попытка уговора стоит игрового времени, а не действия', () => {
+  // Провал у травоядного не стоит ничего, а прибавка за неудачи упирается в
+  // потолок: без цены приручение было формальностью — жать кнопку, пока не
+  // выпадет. Платит мир, тем же путём, что круг за костями и письмо.
+  const state = campaign()
+  const attempt = run(state, { command_type: 'CalmBeast', beast_id: beastId(state) }, { rng: [1, 2] })
+  const advanced = attempt.events.find((event) => event.event_type === 'TimeAdvanced')
+  assert.ok(advanced, 'попытка вне боя обязана сдвинуть часы мира')
+  assert.equal(advanced.payload.elapsed_minutes, BEAST_APPROACH_MINUTES)
+  assert.equal(attempt.state.mechanics.world_time.elapsed_minutes, BEAST_APPROACH_MINUTES)
+  // В бою минут не тратят: раунд длится шесть секунд, и там цена — действие.
+  const broken = campaign({ combatActive: true, conditions: { 'enemy-wolf': [{ id: 'fled' }] } })
+  const fighting = run(broken, { command_type: 'CalmBeast', beast_id: beastId(broken) }, { rng: [18] })
+  assert.equal(fighting.events.some((event) => event.event_type === 'TimeAdvanced'), false)
+})
+
+test('до зверя нужно дойти: уговор и корм требуют вытянутой руки', () => {
+  // Прецедент в проекте один и тот же у двери, объекта сцены и лестницы:
+  // встать вплотную. Без него зверя уводили с собой через полкарты, ни разу к
+  // нему не подойдя, а укус при провале летел герою на четыре клетки.
+  const far = campaign({ enemies: [wolf('enemy-wolf', { x: 5, y: 5 })] })
+  assert.throws(
+    () => run(far, { command_type: 'CalmBeast', beast_id: beastId(far) }, { rng: [18] }),
+    (error) => error.code === 'BEAST_OUT_OF_REACH',
+  )
+  const farId = beastId(far)
+  const calmedFar = campaign({
+    enemies: [wolf('enemy-wolf', { x: 5, y: 5 })],
+    beasts: {
+      beasts: [{
+        id: farId, actor_id: 'enemy-wolf', name: 'Волк 1', diet: 'predator', stage: 'calmed', status: 'wild',
+      }],
+    },
+  })
+  assert.throws(
+    () => run(calmedFar, { command_type: 'FeedBeast', beast_id: farId, command_id: 'cmd-feed-far' }),
+    (error) => error.code === 'BEAST_OUT_OF_REACH',
+  )
+  // Панель не прячет такого зверя, а гасит его и называет расстояние.
+  const distant = beastsForViewer(far, {}).candidates[0]
+  assert.equal(distant.out_of_reach, true)
+  assert.equal(distant.distance_feet, 20)
+  assert.equal(distant.reach_feet, BEAST_APPROACH_REACH_FEET)
+  assert.equal(distant.blocked_reason, undefined, 'карточка обязана остаться на панели')
+  // Подсказка зовёт подойти, а не молчит о звере.
+  const hints = suggestedActionsFor(campaignStateForViewer(far, { role: 'player' }, 'hero'))
+  assert.ok(hints.some((hint) => hint.text.includes('подойти вплотную')), JSON.stringify(hints))
+  // Вплотную — можно, и это тот же зверь.
+  const near = beastsForViewer(campaign(), {}).candidates[0]
+  assert.equal(near.out_of_reach, false)
+  assert.equal(near.distance_feet, 5)
+})
+
+test('CR стат-блока не уезжает игроку слагаемым СЛ ни одним из двух каналов', () => {
+  // Опознание врага закрыто знанием отряда (`publicEnemyFor`), и приручение не
+  // имеет права быть дверью в обход него. Метка «сила зверя (CR 1/4)» была
+  // сырой строкой провенанса и пробивала контракт сразу двумя путями.
+  const state = campaign()
+  const challenge = beastTamingPolicy(state, wolf()).parts.find((part) => part.id === 'challenge')
+  assert.equal(challenge.label, 'сила зверя')
+  const result = run(state, { command_type: 'CalmBeast', beast_id: beastId(state) }, { rng: [1, 2] })
+  const leaks = (parts) => parts.filter((part) => /CR/u.test(part.label) || part.label.includes('1/4'))
+  // Канал первый: проекция состояния.
+  const room = campaignStateForViewer(result.state, { role: 'player' }, 'hero')
+  assert.deepEqual(leaks(room.beasts.candidates[0].parts), [])
+  // Канал второй: событие уговора — его санитайзер не трогал вовсе.
+  const resolved = result.events.find((event) => event.event_type === 'BeastSoothingResolved')
+  const projected = mechanicsForViewer([resolved], { role: 'player', heroIds: ['hero'] }, 'hero', result.state)[0]
+  assert.deepEqual(leaks(projected.payload.difficulty_parts), [])
+  assert.equal(projected.payload.challenge_rating, undefined)
+  // Слагаемое при этом остаётся числом: игрок обязан видеть, из чего СЛ.
+  assert.equal(room.beasts.candidates[0].parts.find((part) => part.id === 'challenge').shift, 0)
+})
+
+test('карточка уговора исполняется только против объявленной СЛ', () => {
+  // Сторож двух фаз сверял ступень, но СЛ едет ещё от раны, морали и числа
+  // неудач: карточка, объявившая 13, исполнялась против 14 на той же ступени.
+  const guard = Object.create(GameOrchestrator.prototype)
+  const state = campaign()
+  const id = beastId(state)
+  const declared = beastTamingPolicy(state, wolf()).difficulty
+  const card = { kind: 'beast-taming', beast_id: id, stage: 'wary', difficulty: declared }
+  assert.doesNotThrow(() => guard.assertBeastRollContext(state, { beast_id: id }, card))
+  const missed = run(state, { command_type: 'CalmBeast', beast_id: id }, { rng: [1, 2] }).state
+  assert.equal(beastList(missed)[0].stage, 'wary', 'ступень обязана остаться прежней')
+  assert.equal(beastTamingPolicy(missed, missed.enemies[0], beastList(missed)[0]).difficulty, declared + 1)
+  assert.throws(
+    () => guard.assertBeastRollContext(missed, { beast_id: id }, card),
+    (error) => error.code === 'ROLL_CONTEXT_MISMATCH',
+  )
+  // Чужой бросок и чужой зверь отказываются тем же кодом.
+  assert.throws(
+    () => guard.assertBeastRollContext(state, { beast_id: id }, { ...card, kind: 'parley' }),
+    (error) => error.code === 'ROLL_CONTEXT_MISMATCH',
+  )
+  assert.throws(
+    () => guard.assertBeastRollContext(state, { beast_id: id }, { ...card, beast_id: 'beast:other' }),
+    (error) => error.code === 'ROLL_CONTEXT_MISMATCH',
+  )
+})
+
 // ---------------------------------------------------------------------------
 // Лестница: успокоен → накормлен → приручён
 // ---------------------------------------------------------------------------
@@ -343,12 +473,12 @@ test('спутник даёт преимущество на Восприятие
   // дают помеху, `weatherCheckSwing`), и под открытым небом тест мерил бы не
   // зверя, а погоду этого сида.
   const camped = tamedCampaign({ scene: { scene_kind: 'dungeon' }, resting: { hero: { kind: 'long', started_at_minutes: 0 } } })
-  assert.ok(beastWatchSwing(camped, 'perception'))
+  assert.ok(beastWatchSwing(camped, 'perception', 'hero'))
   // На ходу зверь ничего не даёт: он сторож лагеря, а не постоянный бонус.
   const marching = tamedCampaign({ scene: { scene_kind: 'dungeon' } })
-  assert.equal(beastWatchSwing(marching, 'perception'), null)
+  assert.equal(beastWatchSwing(marching, 'perception', 'hero'), null)
   // И только Восприятию — не любому навыку.
-  assert.equal(beastWatchSwing(camped, 'stealth'), null)
+  assert.equal(beastWatchSwing(camped, 'stealth', 'hero'), null)
 
   // Карточка ручного броска и исполнение обязаны сойтись.
   assert.equal(previewD20Check(camped, { actorId: 'hero', kind: 'check', skill: 'perception', difficulty: 12 }).advantage, true)
@@ -358,6 +488,47 @@ test('спутник даёт преимущество на Восприятие
   const resolved = check.events.find((event) => event.event_type === 'AbilityCheckResolved')
   assert.equal(resolved.payload.mode, 'advantage')
   assert.ok(resolved.payload.beast_watch_advantage)
+})
+
+test('стража спутника партийная: чужому Восприятию волк отряда не помогает', () => {
+  // Форма поправки скопирована с погоды, но погода мировая и правомерно общая,
+  // а страж лагеря принадлежит отряду. Без проверки актора преимущество
+  // получал бы любой, кто бросает Восприятие, пока отдыхает хоть один герой, —
+  // включая вражеского разведчика, который ищет этот самый отряд.
+  const camped = tamedCampaign({
+    scene: { scene_kind: 'dungeon' },
+    resting: { hero: { kind: 'long', started_at_minutes: 0 } },
+    enemies: [wolf(), { id: 'enemy-scout', name: 'Разведчик', hp: 9, maxHp: 9, armor: 12, x: 5, y: 5, alive: true }],
+  })
+  assert.ok(beastWatchSwing(camped, 'perception', 'hero'), 'герой отряда стражу зверя получает')
+  assert.equal(beastWatchSwing(camped, 'perception', 'enemy-scout'), null)
+  // Без актора поправки нет вовсе: «чьё Восприятие» — обязательный вопрос.
+  assert.equal(beastWatchSwing(camped, 'perception'), null)
+  const preview = previewD20Check(camped, { actorId: 'enemy-scout', kind: 'check', skill: 'perception', difficulty: 12 })
+  assert.equal(preview.advantage, false)
+  assert.equal(preview.beast_watch_reason, undefined)
+  // Панель при этом честно говорит, что страж стоит: вопрос лагеря, а не броска.
+  assert.equal(beastsForViewer(camped, {}).watch_advantage, true)
+})
+
+test('спутник не вытесняется из реестра сорок первой записью', () => {
+  // Реестр вытесняет самую старую запись, а первый прирученный зверь — как раз
+  // она. Без исключения спутников отряд, встретивший за кампанию четыре
+  // десятка волков, терял бы питомца молча: панель пустеет, страж перестаёт
+  // давать преимущество, события об уходе зверя нет.
+  const companion = {
+    id: 'beast:companion', actor_id: 'enemy-wolf', name: 'Волк 1', diet: 'predator',
+    stage: 'tamed', status: 'companion',
+  }
+  const crowd = Array.from({ length: 44 }, (unused, index) => ({
+    id: `beast:wild-${index}`, actor_id: `enemy-wild-${index}`, name: `Волк ${index}`, diet: 'predator', stage: 'wary',
+  }))
+  const normalized = normalizeBeastState({ beasts: [companion, ...crowd] })
+  assert.equal(normalized.beasts.length, 40)
+  assert.ok(normalized.beasts.some((beast) => beast.id === 'beast:companion'), 'спутник обязан пережить вытеснение')
+  // Вытесняются именно старые дикие записи, а свежие остаются.
+  assert.equal(normalized.beasts.some((beast) => beast.id === 'beast:wild-0'), false)
+  assert.ok(normalized.beasts.some((beast) => beast.id === 'beast:wild-43'))
 })
 
 test('спутник идёт за отрядом при смене сцены', () => {
@@ -460,6 +631,13 @@ test('владение Уходом за животными доходит до 
   const ranger = { classSkillProficiencies: ['animal_handling'], role: 'следопыт', class: 'ranger', level: 3 }
   assert.equal(isSkillProficient(ranger, 'animal-handling'), true)
   assert.equal(isSkillProficient(ranger, 'stealth'), false)
+  // И в обратную сторону: лист героя может хранить дефисы. Пока нормализация
+  // стояла только в сравнении, фильтр разрешённых навыков класса отбрасывал
+  // значение раньше — и владение терялось в обоих написаниях сразу.
+  const dashed = { classSkillProficiencies: ['animal-handling'], role: 'следопыт', class: 'ranger', level: 3 }
+  assert.deepEqual(normalizedClassSkillProficiencies(dashed), ['animal-handling'])
+  assert.equal(isSkillProficient(dashed, 'animal-handling'), true)
+  assert.equal(isSkillProficient(dashed, 'animal_handling'), true)
   // И то же самое доезжает до карточки ручного броска: +3 Мудрость и +2 владение.
   const state = campaign()
   assert.equal(previewD20Check(state, { actorId: 'hero', kind: 'check', ability: 'wis', skill: 'animal-handling', difficulty: 13 }).modifier, 5)
@@ -473,4 +651,21 @@ test('еда ищется по каталогу, идентификатору и
   // Кончившийся паёк едой не считается.
   assert.equal(beastFoodItemFor({ inventory: [ration(0)] }), null)
   assert.equal(beastFoodItemFor({ inventory: [{ id: 'i3', name: 'Верёвка пеньковая', quantity: 1 }] }), null)
+})
+
+test('волку достаётся паёк, а не находка режиссёра с тем же словом в названии', () => {
+  // `GrantItem` заводит предметы свободными именами, а свободный regex берёт
+  // первый подходящий слот: «Вяленое сердце вепря» в нулевом слоте уходило
+  // зверю раньше настоящих пайков, лежащих ниже в рюкзаке.
+  const trophy = { id: 'i-trophy', name: 'Вяленое сердце вепря', quantity: 1, rarity: 'редкий' }
+  assert.equal(beastFoodItemFor({ inventory: [trophy, ration()] })?.id, 'item-rations')
+  // Обычный паёк предпочитается свободному имени просто потому, что он паёк.
+  const jerky = { id: 'i-jerky', name: 'Копчёное мясо', quantity: 1 }
+  assert.equal(beastFoodItemFor({ inventory: [jerky, ration()] })?.id, 'item-rations')
+  // Настроечное и сюжетное не еда вовсе, даже если больше нечего дать.
+  assert.equal(beastFoodItemFor({ inventory: [trophy] }), null)
+  assert.equal(beastFoodItemFor({ inventory: [{ id: 'i-quest', name: 'Вяленое мясо', quantity: 1, quest_item: true }] }), null)
+  assert.equal(beastFoodItemFor({ inventory: [{ id: 'i-att', name: 'Вяленое мясо', quantity: 1, requires_attunement: true }] }), null)
+  // Но обычное мясо без метки — по-прежнему еда: правило режет находки, а не снедь.
+  assert.equal(beastFoodItemFor({ inventory: [jerky] })?.id, 'i-jerky')
 })

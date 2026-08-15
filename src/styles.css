@@ -327,6 +327,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .beast-tag.predator { border-color: rgba(196,147,92,.45); background: rgba(138,106,69,.2); color: #d2a06a; }
 .beast-tag.companion { border-color: rgba(125,176,122,.5); background: rgba(96,142,92,.2); color: #a6cf9f; }
 .beast-card > p { margin: 5px 0 8px; color: #78826d; font-size: var(--fs-sm); }
+.beast-card.out-of-reach { border-left-color: #6a6f60; }
+.beast-card > p.beast-reach { margin: -3px 0 8px; color: #a08f63; font-size: var(--fs-xs); }
 .beast-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .beast-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 0 6px; border: 1px solid rgba(140,176,124,.26); border-radius: 5px; background: rgba(90,130,78,.1); color: #9dbd86; font-size: var(--fs-sm); cursor: pointer; }
 .beast-actions button:hover:not(:disabled) { border-color: rgba(168,206,150,.5); background: rgba(90,130,78,.18); }

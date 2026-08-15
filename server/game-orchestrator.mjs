@@ -910,22 +910,36 @@ export class GameOrchestrator {
   }
 
   /**
+   * Политика уговора конкретного зверя прямо сейчас. Одна функция на обе фазы
+   * ручного броска: карточка объявляет СЛ отсюда, и сторож второй фазы сверяет
+   * объявленное с текущим тоже отсюда. Две копии этого вычисления разошлись бы
+   * молча — ровно так, как разошлись бы две формулы сложности.
+   */
+  beastTamingPolicyFor(state, beastId) {
+    const candidate = tameableBeasts(state)
+      .find((entry) => (entry.beast?.id ?? beastIdFor(state, entry.enemy.id)) === String(beastId ?? ''))
+    if (!candidate || candidate.blocked_reason) return null
+    return beastTamingPolicy(state, candidate.enemy, candidate.beast)
+  }
+
+  /**
    * Карточка проверки для первой фазы уговора зверя. СЛ — та же, которую
    * применит движок во второй фазе: её считает одна серверная политика
    * (`beastTamingPolicy`), и второго ответа на вопрос «насколько трудно» в
    * проекте нет.
    *
-   * Ступень уезжает в контекст вместе со зверем, и это не украшение: между
-   * фазами зверя могли накормить, а `fed` снимает четыре пункта СЛ. Карточка,
-   * объявившая 15, не имеет права исполниться против 11.
+   * В контекст уезжает и ступень, и **сама объявленная СЛ**, и это не
+   * дублирование: ступень не единственное её слагаемое. Между фазами зверя
+   * могли накормить (`fed` снимает четыре пункта), но могли и промахнуться
+   * вторым героем, ранить его или сломать ему мораль — ступень при этом не
+   * меняется, а число меняется. Карточка, объявившая 15, не имеет права
+   * исполниться ни против 11, ни против 16.
    */
   beastTamingCheckCard({ campaignId, playerId, state, command }) {
     const actorId = String(command.actor_id ?? playerId)
     const beastId = String(command.beast_id ?? '')
-    const candidate = tameableBeasts(state)
-      .find((entry) => (entry.beast?.id ?? beastIdFor(state, entry.enemy.id)) === beastId)
-    if (!candidate || candidate.blocked_reason) return null
-    const policy = beastTamingPolicy(state, candidate.enemy, candidate.beast)
+    const policy = this.beastTamingPolicyFor(state, beastId)
+    if (!policy) return null
     const preview = previewD20Check(state, {
       actorId,
       kind: 'check',
@@ -942,9 +956,37 @@ export class GameOrchestrator {
       ability: preview.ability,
       advantage: preview.advantage,
       disadvantage: preview.disadvantage,
-      context: { kind: 'beast-taming', policy: BEAST_TAMING_POLICY_ID, beast_id: beastId, stage: policy.stage },
+      context: { kind: 'beast-taming', policy: BEAST_TAMING_POLICY_ID, beast_id: beastId, stage: policy.stage, difficulty: policy.difficulty },
     })
     return { ...check, skill: preview.skill, stage: policy.stage, difficulty_parts: policy.parts }
+  }
+
+  /**
+   * Сторож второй фазы уговора. Реестр бросков сверяет только кампанию и актора
+   * (`server/roll-registry.mjs`), поэтому всё остальное проверяется здесь:
+   * бросок обязан быть зарегистрирован уговором **этого** зверя, на той же
+   * ступени и против той же СЛ.
+   *
+   * Ступени мало, и это не перестраховка. СЛ складывается ещё из раны, из
+   * сломленной морали и из числа неудач: второй герой промахнулся между фазами
+   * — ступень осталась `wary`, а число выросло на пункт, и карточка,
+   * объявившая 13, исполнилась бы против 14. Расхождение — отказ и повторный
+   * бросок, а не тихое исправление: игрок бросает против того, что видел.
+   */
+  assertBeastRollContext(state, command, context) {
+    const reject = (message) => {
+      const error = new Error(message)
+      error.code = 'ROLL_CONTEXT_MISMATCH'
+      throw error
+    }
+    if (String(context?.kind ?? '') !== 'beast-taming') reject('Этот бросок регистрировался не для уговора зверя')
+    if (String(context?.beast_id ?? '') !== String(command?.beast_id ?? '')) reject('Этот бросок регистрировался для другого зверя')
+    const policy = this.beastTamingPolicyFor(state, String(command?.beast_id ?? ''))
+    const stage = policy?.stage ?? beastFor(state, String(command?.beast_id ?? ''))?.stage ?? 'wary'
+    if (String(context?.stage ?? '') !== stage) reject('Между броском и ходом зверь переменился: бросьте кость заново')
+    if (policy && Number(context?.difficulty) !== policy.difficulty) {
+      reject('Между броском и ходом СЛ уговора переменилась: бросьте кость заново')
+    }
   }
 
   freeActionResponse({
@@ -1375,27 +1417,8 @@ export class GameOrchestrator {
         }
       }
       if (verifiedRoll) {
-        // Бросок обязан быть зарегистрирован **как уговор зверя и на той же
-        // ступени**: реестр сверяет только кампанию и актора, поэтому без этой
-        // проверки во вторую фазу можно было бы подать кубик, брошенный против
-        // «сторожится» (СЛ выше), и разменять его на ступень «поел с руки».
         const { context: beastCheckContext, ...verifiedRollPayload } = verifiedRoll
-        if (String(beastCheckContext?.kind ?? '') !== 'beast-taming') {
-          const error = new Error('Этот бросок регистрировался не для уговора зверя')
-          error.code = 'ROLL_CONTEXT_MISMATCH'
-          throw error
-        }
-        if (String(beastCheckContext?.beast_id ?? '') !== String(beastCommand.beast_id ?? '')) {
-          const error = new Error('Этот бросок регистрировался для другого зверя')
-          error.code = 'ROLL_CONTEXT_MISMATCH'
-          throw error
-        }
-        const currentStage = beastFor(authoritativeState, String(beastCommand.beast_id ?? ''))?.stage ?? 'wary'
-        if (String(beastCheckContext?.stage ?? '') !== currentStage) {
-          const error = new Error('Между броском и ходом зверь переменился: бросьте кость заново')
-          error.code = 'ROLL_CONTEXT_MISMATCH'
-          throw error
-        }
+        this.assertBeastRollContext(authoritativeState, beastCommand, beastCheckContext)
         beastCommand.verified_roll = verifiedRollPayload
       }
     }

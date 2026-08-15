@@ -67,6 +67,7 @@ import {
   normalizeWorldDeedsState,
 } from './world-deeds.mjs'
 import {
+  BEAST_APPROACH_MINUTES,
   BEAST_COMMAND_TYPES,
   BEAST_TAMING_ABILITY,
   BEAST_TAMING_POLICY_ID,
@@ -76,6 +77,7 @@ import {
   beastFoodItemFor,
   beastFor,
   beastIdFor,
+  beastOutOfReach,
   beastScareCooldownLeft,
   beastScareLine,
   beastTamingPolicy,
@@ -3539,6 +3541,14 @@ function assertTurn(command, state, context = {}) {
     // ежераундовую лотерею без цены.
     const economy = combat.action_economy[command.actor_id]
     if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+  } else if (['CalmBeast', 'FeedBeast'].includes(command.command_type)) {
+    // Та же цена и по той же причине, что у окрика: подойти к сломленному
+    // зверю посреди боя — это потраченный ход. Резолв обоих команд помечает
+    // действие потраченным (`CombatActionUsed`), и без этой ветки отметка
+    // ставилась бы, но никогда не читалась: вся лестница (уговор → корм →
+    // уговор) укладывалась в один ход бесплатно.
+    const economy = combat.action_economy[command.actor_id]
+    if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'ResolveImprovisedAction') {
     // Импровизация в бою платит тем же слотом, что и обычное действие: иначе
     // «интересная идея» становится бесплатным дополнительным ходом.
@@ -3781,6 +3791,14 @@ function validatedBeastTarget(state, command) {
   }
   if (command.command_type === 'FeedBeast' && !beastFoodItemFor(playerActor(state, command.actor_id), catalogItem)) {
     throw new RulesValidationError('Кормить нечем: в рюкзаке нет ни пайка, ни другой снеди', 'BEAST_NO_FOOD')
+  }
+  // Досягаемость. Приручение — это ладонь, еда и доверие, поэтому цена та же,
+  // что у двери и объекта сцены: встать вплотную. Без неё зверя уводили с
+  // собой через полкарты, ни разу к нему не подойдя, а укус при провале летел
+  // герою на пятьдесят пять футов. Сцена без клеток проверке не подлежит:
+  // расстояния в ней не существует, и отказывать там нечему.
+  if (beastOutOfReach(state, command.actor_id, candidate.enemy.id)) {
+    throw new RulesValidationError('До зверя нужно дойти: протянуть руку можно только вплотную', 'BEAST_OUT_OF_REACH')
   }
   return { beast_actor_id: String(candidate.enemy.id) }
 }
@@ -6397,8 +6415,9 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
   const weatherSwing = weatherCheckSwing(state, checkSkill)
   // Зверь на страже лагеря — такая же поправка к Восприятию, как небо, и
   // считается той же функцией, что применит движок: карточка ручного броска
-  // обязана показать тот самый режим кубиков.
-  const watchSwing = beastWatchSwing(state, checkSkill)
+  // обязана показать тот самый режим кубиков. Актор обязателен: стража спутника
+  // партийная, и врагу, который ищет отряд, волк отряда не помогает.
+  const watchSwing = beastWatchSwing(state, checkSkill, actorId)
   return {
     kind: 'check',
     ability: checkAbility,
@@ -7033,7 +7052,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Прирученный зверь держит стражу на привале: Восприятие лагеря идёт с
       // преимуществом, пока отряд отдыхает. Единственный механический эффект
       // спутника, и он считается здесь же — рядом с небом, а не отдельной веткой.
-      const beastWatchBoost = beastWatchSwing(state, skill)?.reason ?? null
+      const beastWatchBoost = beastWatchSwing(state, skill, command.actor_id)?.reason ?? null
       const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || Boolean(weatherBoost) || Boolean(beastWatchBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty) || armorStealthPenalty || Boolean(weatherPenalty), visibility: command.visibility }
       const roll = checkRollFromVerified(command.verified_roll, checkRollOptions) ?? diceService.rollCheck(checkRollOptions)
       rolls.push(roll)
@@ -11292,7 +11311,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const minutes = campaignElapsedMinutes(state)
       // Посреди боя уговор стоит действия при любом исходе — тем же правилом,
       // что и окрик о переговорах: попытка договориться, пока рядом дерутся,
-      // это потраченный ход, а не бесплатная проверка. Вне боя цены нет.
+      // это потраченный ход, а не бесплатная проверка.
+      //
+      // Вне боя действия нет, но и бесплатным уговор быть не может: провал у
+      // травоядного не стоит ничего, прибавка за неудачи упирается в потолок, и
+      // без цены приручение было формальностью — жать кнопку, пока не выпадет.
+      // Платит мир: каждая попытка сдвигает часы кампании со всеми следствиями
+      // (небо, сроки обещаний, привалы), тем же путём, что круг за костями и
+      // написанное письмо.
       if (state.mechanics.combat.active) {
         events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
           action_id: 'calm-beast',
@@ -11385,6 +11411,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }, [command.actor_id]))
         events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', bitePayload, [command.actor_id]))
         events.push(...zeroHitPointDamageConsequences(state, command, command.actor_id, bitePayload))
+      }
+      // Цена попытки вне боя — игровое время, и списывается оно последним, как
+      // у круга за костями: сперва случилось то, что случилось, потом сдвинулись
+      // часы мира со всеми следствиями (небо, сроки обещаний, привалы).
+      if (!state.mechanics.combat.active) {
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), BEAST_APPROACH_MINUTES, 'minute')
       }
       break
     }

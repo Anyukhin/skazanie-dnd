@@ -37,13 +37,6 @@ export function classSkillRuleFor(actor) {
   return rule ? structuredClone(rule) : null
 }
 
-export function normalizedClassSkillProficiencies(actor) {
-  const rule = classSkillRuleFor(actor)
-  if (!rule || !Array.isArray(actor?.classSkillProficiencies)) return []
-  const allowed = new Set(rule.skills)
-  return [...new Set(actor.classSkillProficiencies.map(String))].filter((id) => allowed.has(id)).slice(0, rule.choiceCount)
-}
-
 /**
  * Один и тот же навык приходит сюда в двух написаниях: каталог правил хранит
  * `animal_handling` и `sleight_of_hand`, а движок и свободные действия говорят
@@ -51,10 +44,24 @@ export function normalizedClassSkillProficiencies(actor) {
  * буквальным, эти два навыка — и только они — молча теряли и владение, и
  * характеристику: `skillAbility('animal-handling')` возвращал `null`, а ловчий
  * с классовым владением Уходом за животными бросал его без бонуса владения.
+ *
+ * Ключ стоит выше всех своих читателей намеренно: нормализовать обязаны **оба**
+ * шага — и отбор разрешённых навыков класса, и сравнение с запрошенным. Пока
+ * нормализация была только во втором, первый отбрасывал значение раньше, и дыра
+ * оставалась открытой в одну сторону.
  */
 const canonicalSkillKey = (value) => String(value ?? '').trim().toLocaleLowerCase('en').replace(/_/gu, '-')
 
 const SKILL_ABILITY_BY_KEY = new Map([...SKILLS].map(([id, entry]) => [canonicalSkillKey(id), entry.ability]))
+
+export function normalizedClassSkillProficiencies(actor) {
+  const rule = classSkillRuleFor(actor)
+  if (!rule || !Array.isArray(actor?.classSkillProficiencies)) return []
+  const allowed = new Set(rule.skills.map(canonicalSkillKey))
+  return [...new Set(actor.classSkillProficiencies.map(String))]
+    .filter((id) => allowed.has(canonicalSkillKey(id)))
+    .slice(0, rule.choiceCount)
+}
 
 export function isSkillProficient(actor, skillId) {
   const selected = actor?.classSkillProficiencies
