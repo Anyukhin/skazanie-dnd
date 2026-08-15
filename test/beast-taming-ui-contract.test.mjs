@@ -38,8 +38,25 @@ test('доска не гасит зверя своим «идёт бой»: до
   // Сервер принимает уговор к сломленному моралью зверю прямо посреди боя, а
   // слепой гейт по бою гасил кнопки там, где команда проходит. Поводы доски —
   // только её собственные: рассказ, летящая команда, недееспособный герой.
-  assert.match(board, /const beastActionsBlocked = Boolean\(narrating \|\| tacticalBusy \|\| !canAct\)/u)
+  assert.match(board, /const beastActionsBlocked = Boolean\(narrating \|\| tacticalBusy \|\| !canAct \|\| beastOffTurn\)/u)
   assert.doesNotMatch(board, /const beastActionsBlocked = Boolean\(combatActive/u)
+})
+
+test('в бою кнопки зверя гаснут на чужом ходу, и доска говорит почему', () => {
+  // Доступность считается по действующему герою (`turnActorId`), а команда
+  // уходит от выбранного в сайдбаре (`typingActorId`, см. `onBeastAction` в
+  // App.tsx). У аккаунта с двумя героями и у ведущего это разные герои: на ходу
+  // героя Б при выбранном герое А кнопки горели, а сервер отбивал команду
+  // `OUT_OF_TURN`. Пока весь класс был скрыт боевым гейтом, тупика не было
+  // видно; сняв гейт, надо назвать настоящую причину.
+  assert.match(board, /const beastOffTurn = Boolean\(combatActive && turnActorId !== typingActorId\)/u)
+  // Молчаливо неактивной кнопки в проекте нет: причина едет подписью, и она
+  // одна на обе кнопки лестницы.
+  assert.match(board, /const beastOffTurnTitle = 'Сейчас ход другого героя/u)
+  assert.equal((board.match(/\? beastOffTurnTitle/gu) ?? []).length, 2, 'причина обязана стоять на обеих кнопках лестницы')
+  // И команда действительно уходит от выбранного героя, а не от действующего:
+  // если это когда-нибудь сойдётся, гейт можно будет снять — но не раньше.
+  assert.match(app, /onBeastAction=\{\(beastId, action\) => beastAction\(activePlayer\.id, beastId, action\)\}/u)
 })
 
 test('клиент называет только зверя: СЛ, навык и паёк остаются серверными', () => {
@@ -101,4 +118,9 @@ test('далёкий зверь остаётся на панели, но с по
   assert.match(board, /const reach = candidate\.reach_by_hero\?\.\[typingActorId\]/u)
   assert.match(board, /reach\?\.distance_feet/u)
   assert.doesNotMatch(board, /BEAST_APPROACH_REACH_FEET/u)
+  // Умолчание развёрнуто в безопасную сторону: нет строки — считаем «далеко».
+  // Старая вкладка после выкладки не знает про `reach_by_hero`, и фейл-опен
+  // здесь означал горящую кнопку под серверную отбивку `BEAST_OUT_OF_REACH`.
+  assert.match(board, /const outOfReach = reach\?\.out_of_reach !== false/u)
+  assert.doesNotMatch(board, /reach\?\.out_of_reach === true/u)
 })

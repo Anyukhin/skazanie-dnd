@@ -24,6 +24,7 @@ import { isSkillProficient, normalizedClassSkillProficiencies, skillAbility } fr
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import {
+  RULE_IDS,
   normalizeCampaignState,
   previewD20Check,
   replayEvents,
@@ -125,6 +126,7 @@ function campaign({
   resting = {},
   scene = {},
   heroes = [],
+  initiative = [{ actor_id: 'hero', total: 15 }],
 } = {}) {
   return normalizeCampaignState({
     sessionCode: 'BEAST',
@@ -154,7 +156,7 @@ function campaign({
     mechanics: {
       world_time: { elapsed_minutes: minutes },
       combat: combatActive
-        ? { active: true, round: 2, initiative: [{ actor_id: 'hero', total: 15 }], active_index: 0, action_economy: {} }
+        ? { active: true, round: 2, initiative, active_index: 0, action_economy: {} }
         : { active: false },
       conditions,
       resting,
@@ -369,7 +371,7 @@ test('до зверя нужно дойти: уговор и корм требу
   assert.equal(distant.reach_feet, BEAST_APPROACH_REACH_FEET)
   assert.equal(distant.blocked_reason, undefined, 'карточка обязана остаться на панели')
   // Подсказка зовёт подойти, а не молчит о звере.
-  const hints = suggestedActionsFor(campaignStateForViewer(far, { role: 'player' }, 'hero'))
+  const hints = suggestedActionsFor(campaignStateForViewer(far, { role: 'player' }, 'hero'), 'hero')
   assert.ok(hints.some((hint) => hint.text.includes('подойти вплотную')), JSON.stringify(hints))
   // Вплотную — можно, и это тот же зверь.
   const near = beastsForViewer(campaign(), {}).candidates[0]
@@ -406,6 +408,67 @@ test('досягаемость меряется тем героем, котор�
     { rng: [18], ...scoutContext },
   )
   assert.equal(scouted.events.some((event) => event.event_type === 'BeastSoothingResolved'), true)
+})
+
+test('подсказка меряет зверя тем героем, кому её показывают, а не отрядом', () => {
+  // Партийной мерки не стало в карточке, но она переехала в подсказки: панель
+  // мерила по герою читателя, а строка внизу спрашивала «дотянется ли
+  // кто-нибудь». На той же расставленной группе игрок читал разом «До зверя
+  // ещё идти: 20 фт» и «Можно попробовать успокоить» — ровно то расхождение,
+  // которое считалось закрытым.
+  const state = campaign({
+    enemies: [wolf('enemy-wolf', { x: 5, y: 5 })],
+    heroes: [hero('scout', { character: 'Разведчица Ния', x: 5, y: 4 })],
+  })
+  const forHero = campaignStateForViewer(state, { role: 'player' }, 'hero')
+  assert.deepEqual(forHero.beasts.candidates[0].reach_by_hero.hero, { distance_feet: 20, out_of_reach: true })
+  const heroHints = forHero.suggested_actions.map((hint) => hint.text)
+  assert.ok(heroHints.some((line) => line.includes('подойти вплотную')), JSON.stringify(heroHints))
+  assert.ok(!heroHints.some((line) => /успокоить/iu.test(line)), JSON.stringify(heroHints))
+  // Разведчице, стоящей вплотную, тот же зверь отвечает обратным: одна карточка,
+  // два героя, два честных ответа.
+  const forScout = campaignStateForViewer(state, { role: 'player' }, 'scout')
+  const scoutHints = forScout.suggested_actions.map((hint) => hint.text)
+  assert.ok(scoutHints.some((line) => /успокоить/iu.test(line)), JSON.stringify(scoutHints))
+  // Проекция обязана передавать героя дальше сама: панель и подсказка на одном
+  // экране спорить не могут.
+  assert.deepEqual(forHero.suggested_actions, suggestedActionsFor(forHero, 'hero'))
+  assert.notDeepEqual(forHero.suggested_actions, suggestedActionsFor(forHero, 'scout'))
+})
+
+test('без строки досягаемости подсказка зовёт подойти, а не обещает уговор', () => {
+  // Умолчание развёрнуто в безопасную сторону на обеих сторонах: строка есть на
+  // каждого героя отряда всегда (в сцене без карты — `out_of_reach: false`),
+  // поэтому её отсутствие означает «спрашивают не за героя отряда». Обещать
+  // такому читателю уговор незачем: команду от него сервер не примет.
+  const room = campaignStateForViewer(campaign(), { role: 'player' }, 'hero')
+  assert.ok(suggestedActionsFor(room, 'hero').some((hint) => /успокоить/iu.test(hint.text)))
+  const guessed = suggestedActionsFor(room, 'stranger').map((hint) => hint.text)
+  assert.ok(guessed.some((line) => line.includes('подойти вплотную')), JSON.stringify(guessed))
+})
+
+test('в бою зверя уговаривает тот, чей ход: команда от другого героя отбивается', () => {
+  // Доска считает доступность по действующему герою, а команду шлёт от
+  // выбранного в сайдбаре. Пока кнопки гасил слепой боевой гейт, разница не
+  // была видна; после его снятия у аккаунта с двумя героями и у ведущего
+  // кнопки горели, а движок отвечал `OUT_OF_TURN`.
+  const state = campaign({
+    combatActive: true,
+    conditions: { 'enemy-wolf': [{ id: 'fled' }] },
+    heroes: [hero('scout', { character: 'Разведчица Ния', x: 2, y: 2 })],
+    initiative: [{ actor_id: 'hero', total: 15 }, { actor_id: 'scout', total: 10 }],
+  })
+  // Своего запрета у зверя здесь нет: мораль сломлена, сервер такой подход берёт.
+  assert.equal(tameableBeasts(state)[0].blocked_reason, null)
+  assert.equal(beastsForViewer(state, {}).candidates[0].reach_by_hero.scout.out_of_reach, false)
+  const both = { context: { allowedActorIds: ['hero', 'scout'] } }
+  assert.throws(
+    () => run(state, { command_type: 'CalmBeast', actor_id: 'scout', beast_id: beastId(state) }, { rng: [18], ...both }),
+    (error) => error.code === 'OUT_OF_TURN',
+  )
+  // Указатель инициативы стоит на ловчем — от него та же команда проходит.
+  const owned = run(state, { command_type: 'CalmBeast', beast_id: beastId(state) }, { rng: [18], ...both })
+  assert.equal(owned.events.some((event) => event.event_type === 'BeastSoothingResolved'), true)
 })
 
 test('CR стат-блока не уезжает игроку слагаемым СЛ ни одним из двух каналов', () => {
@@ -702,11 +765,11 @@ test('реестр зверей восстанавливается replay-ем �
 test('подсказка зовёт к зверю только тогда, когда к нему можно подойти', () => {
   const state = campaign()
   const room = campaignStateForViewer(state, { role: 'player' }, 'hero')
-  const hints = suggestedActionsFor(room)
+  const hints = suggestedActionsFor(room, 'hero')
   assert.ok(hints.some((hint) => hint.text.includes('успокоить')), JSON.stringify(hints))
   // В бою подсказок нет вовсе — это общий закон панели.
   const fighting = campaignStateForViewer(campaign({ combatActive: true }), { role: 'player' }, 'hero')
-  assert.deepEqual(suggestedActionsFor(fighting), [])
+  assert.deepEqual(suggestedActionsFor(fighting, 'hero'), [])
 })
 
 test('владение Уходом за животными доходит до броска в обоих написаниях', () => {
@@ -756,6 +819,57 @@ test('дефисное владение доезжает и до кости, и 
   assert.equal(previewD20Check(state, { actorId: 'ranger', kind: 'check', ability: 'wis', skill: 'animal-handling', difficulty: 13 }).modifier, 5)
   // И лист нормализованного состояния хранит канон, а не написание входа.
   assert.deepEqual(state.players.find((player) => player.id === 'ranger').classSkillProficiencies, ['animal_handling'])
+})
+
+test('владение предыстории доезжает до листа так же, как до кости', () => {
+  // Вторая ось того же расхождения. `skillProficiencyForActor` ИЛИ-ит
+  // `backgroundSkillProficiencies` отдельной строкой, а лист считал владение
+  // только классовым выбором — и герой предыстории получал в карточке броска
+  // +5, а в собственном листе тот же навык с `proficient: false`. Именно так
+  // владение Уходом за животными и получает эталонный герой этих тестов.
+  const keeper = hero('keeper', {
+    character: 'Ловчая Мира',
+    characterClass: 'ranger',
+    level: 3,
+    // Классовый выбор пуст намеренно: иначе дыру закрыл бы он и расхождение
+    // осталось бы невидимым.
+    classSkillProficiencies: [],
+    backgroundSkillProficiencies: ['animal_handling'],
+  })
+  const sheet = deriveCharacterSheet(keeper)
+  assert.equal(sheet.skills.animal_handling.proficient, true)
+  assert.equal(sheet.skills.animal_handling.proficiencyBonus, 2)
+  assert.equal(sheet.skills.animal_handling.total, 5)
+  assert.equal(sheet.skills.stealth.proficient, false)
+  // Та же величина в карточке ручного броска — теперь по обеим осям сразу.
+  const state = campaign({ heroes: [keeper] })
+  assert.equal(previewD20Check(state, { actorId: 'keeper', kind: 'check', ability: 'wis', skill: 'animal-handling', difficulty: 13 }).modifier, 5)
+  // И написание предыстории приводится к канону тем же нормализатором, что и
+  // классовый выбор: дефисный лист чужого экспорта читается одинаково всюду.
+  const dashed = deriveCharacterSheet({ ...keeper, backgroundSkillProficiencies: ['animal-handling'] })
+  assert.equal(dashed.skills.animal_handling.proficient, true)
+})
+
+test('кормление объявляет те оси, которыми платит, а не едет по белому списку', () => {
+  // `FeedBeast: []` плюс место в белом списке `PROVENANCE_REQUIRED` с подписью
+  // «протянуть паёк редакция не описывает» перестали быть правдой в тот день,
+  // когда кормление начало стоить действия в бою и десяти игровых минут вне
+  // боя. Объявление обязано называть то, что команда действительно трогает.
+  const calmed = run(campaign(), { command_type: 'CalmBeast', beast_id: beastId(campaign()) }, { rng: [18] }).state
+  const fed = run(calmed, { command_type: 'FeedBeast', beast_id: beastId(calmed), command_id: 'cmd-feed' })
+  const declared = [RULE_IDS.turns, RULE_IDS.resource]
+  const used = new Set(fed.events.flatMap((event) => event.source_rule_ids ?? []))
+  assert.deepEqual([...used].sort(), [...new Set(declared)].sort(), 'событие обязано ехать под объявленными осями')
+  assert.ok(fed.events.some((event) => event.event_type === 'TimeAdvanced'), 'цена подхода обязана остаться')
+  // Отпугивание остаётся пустым честно: ни урона, ни проверки, ни расхода — и
+  // это подписано в самом событии, а не только в белом списке.
+  const companion = campaign({
+    beasts: { beasts: [{ id: 'beast-wolf', actor_id: 'enemy-wolf', name: 'Волк 1', diet: 'predator', stage: 'tamed', status: 'companion' }] },
+  })
+  const scared = run(companion, { command_type: 'ScareWithBeast', beast_id: 'beast-wolf', command_id: 'cmd-scare' })
+  const line = scared.events.find((event) => event.event_type === 'BeastScaredThreat')
+  assert.deepEqual(line.source_rule_ids, [])
+  assert.equal(line.payload.mechanical_effect, false)
 })
 
 test('еда ищется по каталогу, идентификатору и по имени', () => {

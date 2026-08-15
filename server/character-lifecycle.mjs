@@ -521,10 +521,22 @@ export function deriveCharacterSheet(actor, options = {}) {
   // этом буквальное и таким и остаётся: написание приводит к канону каталога
   // сам нормализатор (`catalogSkillId`, `server/character-progression.mjs`), и
   // второй нормализации здесь быть не должно — именно она и разъехалась бы.
+  //
+  // Источников владения два, и лист обязан читать оба. Предыстория идёт мимо
+  // классового выбора намеренно (`normalizedClassSkillProficiencies` фильтрует
+  // по списку класса и режет по его квоте), и кость это уже учитывала:
+  // `skillProficiencyForActor` (`server/rules-engine.mjs`) ИЛИ-ит
+  // `backgroundSkillProficiencies` отдельной строкой. Лист же считал владение
+  // только классовым — и герой предыстории получал в карточке броска +5, а в
+  // собственном листе тот же навык без владения. Та же «лист против кости», что
+  // и на написании навыка, только по второй оси.
   const classSkillProficiencies = new Set(normalizedClassSkillProficiencies(canonical))
+  const backgroundSkillProficiencies = new Set(
+    (Array.isArray(canonical.backgroundSkillProficiencies) ? canonical.backgroundSkillProficiencies : []).map(catalogSkillId),
+  )
   const skills = Object.fromEntries(SKILL_IDS.map((id) => {
     const ability = skillAbility(id)
-    const proficient = classSkillProficiencies.has(id)
+    const proficient = classSkillProficiencies.has(id) || backgroundSkillProficiencies.has(id)
     const modifier = abilityModifier(abilities[ability])
     return [id, {
       ability,

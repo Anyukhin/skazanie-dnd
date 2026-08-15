@@ -241,19 +241,19 @@ function letterHints(room) {
  * `blocked_reason` это уже посчитал. Стоящий далеко зверь тоже отсекается, но
  * иначе — своей строкой «сначала подойти»: подсказка обязана называть
  * следующий шаг, а не молчать о звере, до которого просто надо дойти.
+ *
+ * Досягаемость меряется по герою-читателю, а не по отряду. Партийный вопрос
+ * «дотянется ли кто-нибудь» и был второй меркой: панель гасит кнопку по строке
+ * своего героя, а подсказка тем же строкам отвечала «сосед стоит вплотную», и
+ * на расставленной группе игрок читал разом «до зверя ещё идти: 20 фт» и
+ * «можно попробовать успокоить». Комната здесь **персональная** — её собрала
+ * `campaignStateForViewer` под конкретного героя, — поэтому спрашивать у неё
+ * что-то партийное подсказка права не имеет.
  */
-function beastHints(room) {
+function beastHints(room, actorId) {
   const candidates = Array.isArray(room?.beasts?.candidates) ? room.beasts.candidates : []
   const available = candidates.filter((entry) => entry && !entry.blocked_reason)
-  // Досягаемость приезжает строкой на каждого героя отряда, и подсказка задаёт
-  // ей партийный вопрос: дотянется ли **кто-нибудь** прямо сейчас. Своей мерки
-  // расстояния здесь нет — берутся те же строки, которыми гаснут кнопки панели
-  // и которыми проверяется команда (`beastReachFor`, `server/beast-taming.mjs`).
-  const reachableByParty = (entry) => {
-    const rows = Object.values(entry.reach_by_hero ?? {})
-    return rows.length === 0 || rows.some((row) => row?.out_of_reach !== true)
-  }
-  const reachable = available.find(reachableByParty)
+  const reachable = available.find((entry) => beastReachRow(entry, actorId).out_of_reach !== true)
   if (!reachable) {
     const distant = available[0]
     if (!distant) return []
@@ -271,6 +271,22 @@ function beastHints(room) {
       ? `Можно покормить: ${name} успокоен и ждёт еды с руки`
       : `Можно попробовать успокоить: ${name} (Уход за животными, СЛ ${Number(reachable.difficulty) || 0})`,
   }]
+}
+
+/**
+ * Строка досягаемости героя-читателя. Своей геометрии здесь нет: строки собрала
+ * та же `beastReachFor`, которой движок проверяет команду.
+ *
+ * Отсутствующей строке подсказка не верит и умолчание держит в безопасную
+ * сторону — «далеко». Строка есть на каждого героя отряда всегда, даже в сцене
+ * без карты (`distance_feet: null`, `out_of_reach: false`), поэтому её отсутствие
+ * означает ровно одно: спрашивают не за героя отряда. Обещать такому читателю
+ * уговор незачем — команду от него сервер всё равно не примет.
+ */
+function beastReachRow(entry, actorId) {
+  const rows = entry?.reach_by_hero
+  const row = rows && typeof rows === 'object' ? rows[String(actorId ?? '')] : null
+  return row && typeof row === 'object' ? row : { out_of_reach: true }
 }
 
 function objectiveHint(room) {
@@ -305,10 +321,16 @@ function exitHints(room) {
  * выход занимали остальные три строки. Теперь приметная находка досуг
  * вытесняет, рядовая обстановка — нет (`HINT_PRIORITY`).
  *
+ * Герой-читатель приезжает вторым доводом и нужен там, где строка панели
+ * заведена на каждого героя отряда по отдельности: досягаемость зверя. Комната
+ * уже персональная, viewer в ней известен, и партийный вопрос вместо личного
+ * был бы второй меркой на тот же вопрос кнопки.
+ *
  * @param {Record<string, any> | null | undefined} room
+ * @param {string} [actorId] герой, которому показывается панель
  * @returns {Array<{ id: string, text: string }>}
  */
-export function suggestedActionsFor(room) {
+export function suggestedActionsFor(room, actorId = '') {
   if (!room || typeof room !== 'object') return []
   if (room?.mechanics?.combat?.active === true) return []
   const seen = new Set()
@@ -324,7 +346,7 @@ export function suggestedActionsFor(room) {
   // собеседники, цель, выход.
   const reserved = ordered([...tavern.urgent, ...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
-  const props = ordered([...propHints(room), ...tavern.leisure, ...beastHints(room), ...letterHints(room)]).slice(0, budget)
+  const props = ordered([...propHints(room), ...tavern.leisure, ...beastHints(room, actorId), ...letterHints(room)]).slice(0, budget)
   return [...props, ...reserved]
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
     .slice(0, MAX_ACTION_HINTS)

@@ -552,11 +552,20 @@ const COMMAND_RULES = Object.freeze({
   ExecuteCaptive: [RULE_IDS.damage],
   NeglectCaptive: [],
   // Уговор зверя — проверка характеристики против серверной СЛ; провал хищнику
-  // стоит укуса, поэтому урон объявлен здесь же. Кормление и отпугивание броска
-  // не требуют: первое списывает паёк, второе не делает вообще ничего, кроме
-  // строки в летописи.
-  CalmBeast: [RULE_IDS.abilityCheck, RULE_IDS.damage],
-  FeedBeast: [],
+  // стоит укуса, поэтому урон объявлен здесь же. Обе ступени лестницы платят
+  // ещё и ценой подхода: в бою — действием (`combat:turn-economy`), вне боя —
+  // игровыми минутами, которые движок списывает той же осью, что и любой
+  // расход (`resources:spending`). Объявление обязано называть то, что команда
+  // действительно трогает: пока кормление стояло пустым списком, оно ехало в
+  // белый список `PROVENANCE_REQUIRED` с подписью «редакция этого не
+  // описывает» — и подпись перестала быть правдой в тот день, когда кормление
+  // начало двигать часы мира.
+  //
+  // Отпугивание пустым списком остаётся честно: ни урона, ни проверки, ни
+  // расхода — только строка в летописи, и это подписано в самом событии
+  // (`mechanical_effect: false`).
+  CalmBeast: [RULE_IDS.abilityCheck, RULE_IDS.damage, RULE_IDS.turns, RULE_IDS.resource],
+  FeedBeast: [RULE_IDS.turns, RULE_IDS.resource],
   ScareWithBeast: [],
   // Парлей стоит действия и решается проверкой Харизмы против серверной СЛ:
   // обе оси ruleset здесь настоящие, а не декоративные.
@@ -4745,10 +4754,13 @@ export function validateCommand(input, rawState, context = {}) {
   // этого списка исключены — у них своя проверка и свой урон, и правило у них
   // есть (`COMMAND_RULES`).
   //
-  // Кормление зверя и отпугивание — из того же теста: протянуть паёк и рыкнуть
-  // в темноту редакция не описывает. `CalmBeast` сюда не входит намеренно —
-  // это проверка характеристики с укусом на провале, и правила у неё свои.
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', 'FeedBeast', 'ScareWithBeast', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CAPTIVE_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  // Отпугивание — из того же теста: рыкнуть в темноту редакция не описывает, и
+  // это подписано в самом событии (`mechanical_effect: false`). Кормление
+  // отсюда ушло: оно платит действием в бою и десятью игровыми минутами вне
+  // боя, то есть редакция его как раз описывает, и оси у него теперь объявлены
+  // (`COMMAND_RULES`). `CalmBeast` сюда не входил и не входит — это проверка
+  // характеристики с укусом на провале, и правила у неё свои.
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', 'ScareWithBeast', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CAPTIVE_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {

@@ -914,7 +914,19 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // посреди схватки, платя действием, и слепой гейт по бою гасил кнопки там,
   // где команда проходит. Остаются поводы самой доски: идёт рассказ, команда в
   // полёте, герой не может действовать.
-  const beastActionsBlocked = Boolean(narrating || tacticalBusy || !canAct)
+  //
+  // И один повод — про чужой ход. Доступность считается по действующему герою
+  // (`turnActorId`, в бою это герой инициативы), а команда зверя уходит от того,
+  // которым игрок сейчас играет (`typingActorId`). У аккаунта с двумя героями и
+  // у ведущего это разные герои: на ходу героя Б при выбранном в сайдбаре
+  // герое А кнопки горели, а сервер отбивал команду `OUT_OF_TURN`. Раньше весь
+  // класс был скрыт боевым гейтом; сняв гейт, надо назвать настоящую причину.
+  const beastOffTurn = Boolean(combatActive && turnActorId !== typingActorId)
+  const beastActionsBlocked = Boolean(narrating || tacticalBusy || !canAct || beastOffTurn)
+  // Молчаливо неактивных кнопок в проекте нет (принцип 3): раз погасили — надо
+  // сказать, почему. Своей формулировки о запретах сервера здесь по-прежнему
+  // нет — эта строка только про чужой ход, который доска знает сама.
+  const beastOffTurnTitle = 'Сейчас ход другого героя: зверя уговаривает тот, чей ход'
   // Встреча со стражей приезжает готовой карточкой: подписи исходов, размер
   // виры и СЛ побега считает сервер (`server/law-and-order.mjs`). Своей таблицы
   // ступеней здесь нет и быть не может — точной ступени игрок не видит вовсе.
@@ -2654,8 +2666,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             // кнопку: сервер прислал строку на каждого героя отряда той же
             // меркой, которой проверит команду. Своей геометрии у доски нет, и
             // «сосед стоит ближе» ответом на этот вопрос не является.
+            //
+            // Умолчание при отсутствующей строке — «далеко». Строка есть на
+            // каждого героя отряда всегда, даже в сцене без карты
+            // (`distance_feet: null`, `out_of_reach: false`), поэтому её
+            // отсутствие означает одно из двух: вкладка со старым клиентом
+            // после выкладки или герой не из отряда. В обоих случаях горящая
+            // кнопка — обещание, которое сервер отобьёт `BEAST_OUT_OF_REACH`.
             const reach = candidate.reach_by_hero?.[typingActorId]
-            const outOfReach = reach?.out_of_reach === true
+            const outOfReach = reach?.out_of_reach !== false
             return <article key={candidate.id} className={`beast-card${candidate.diet === 'predator' ? ' predator' : ''}${outOfReach ? ' out-of-reach' : ''}`}>
             <header>
               <i className={`beast-tag${candidate.diet === 'predator' ? ' predator' : ''}`}>{(candidate.diet_label || 'зверь').toLocaleUpperCase('ru')}</i>
@@ -2676,7 +2695,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <button
                 type="button"
                 disabled={beastActionsBlocked || outOfReach || candidate.stage === 'calmed'}
-                title={outOfReach
+                title={beastOffTurn
+                  ? beastOffTurnTitle
+                  : outOfReach
                   ? 'Сначала подойдите к зверю вплотную'
                   : candidate.stage === 'calmed'
                     ? 'Зверь успокоен и ждёт еды с руки'
@@ -2686,7 +2707,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <button
                 type="button"
                 disabled={beastActionsBlocked || outOfReach || candidate.stage !== 'calmed'}
-                title={outOfReach
+                title={beastOffTurn
+                  ? beastOffTurnTitle
+                  : outOfReach
                   ? 'Еду с руки дают вплотную: сначала подойдите'
                   : candidate.stage === 'calmed' ? 'Дать еду с руки: паёк спишется из рюкзака' : 'С руки едят только успокоенные'}
                 onClick={() => onBeastAction(candidate.id, 'feed')}
