@@ -67,6 +67,24 @@ import {
   normalizeWorldDeedsState,
 } from './world-deeds.mjs'
 import {
+  BEAST_COMMAND_TYPES,
+  BEAST_TAMING_ABILITY,
+  BEAST_TAMING_POLICY_ID,
+  BEAST_TAMING_SKILL,
+  applyBeastEvent,
+  beastDraftFor,
+  beastFoodItemFor,
+  beastFor,
+  beastIdFor,
+  beastScareCooldownLeft,
+  beastScareLine,
+  beastTamingPolicy,
+  beastWatchSwing,
+  normalizeBeastState,
+  planBeastFollowDrafts,
+  tameableBeasts,
+} from './beast-taming.mjs'
+import {
   CAPTIVES_POLICY_ID,
   CAPTIVE_COMMAND_TYPES,
   CAPTIVE_INTERROGATION_SKILLS,
@@ -366,7 +384,12 @@ const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // преступлений не содержит, а хвост журнала после снимка восстановил бы розыск
 // только за те преступления, что случились после его границы, — то есть отряд
 // въезжал бы в город чистым просто потому, что сервер перезапустили.
-export const GAME_STATE_PROJECTOR_VERSION = 12
+// 13: реестр зверей `beasts` выводится редьюсером из `BeastEncountered` и
+// последующих событий. Причина бампа четвёртый раз та же: снимок двенадцатой
+// версии реестра не содержит, а доигранный хвост журнала вернул бы отряду
+// только тех зверей, к кому подошли после границы снимка, — то есть приручённый
+// спутник исчезал бы из панели просто потому, что сервер перезапустили.
+export const GAME_STATE_PROJECTOR_VERSION = 13
 
 /**
  * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
@@ -526,6 +549,13 @@ const COMMAND_RULES = Object.freeze({
   FeedCaptive: [],
   ExecuteCaptive: [RULE_IDS.damage],
   NeglectCaptive: [],
+  // Уговор зверя — проверка характеристики против серверной СЛ; провал хищнику
+  // стоит укуса, поэтому урон объявлен здесь же. Кормление и отпугивание броска
+  // не требуют: первое списывает паёк, второе не делает вообще ничего, кроме
+  // строки в летописи.
+  CalmBeast: [RULE_IDS.abilityCheck, RULE_IDS.damage],
+  FeedBeast: [],
+  ScareWithBeast: [],
   // Парлей стоит действия и решается проверкой Харизмы против серверной СЛ:
   // обе оси ruleset здесь настоящие, а не декоративные.
   ProposeParley: [RULE_IDS.abilityCheck, RULE_IDS.turns],
@@ -575,6 +605,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
   ...NPC_WORLD_COMMAND_TYPES,
   ...CAPTIVE_COMMAND_TYPES,
+  ...BEAST_COMMAND_TYPES,
   ...PARLEY_COMMAND_TYPES,
   ...LAW_COMMAND_TYPES,
   ...TAVERN_COMMAND_TYPES,
@@ -1602,6 +1633,7 @@ export function normalizeCampaignState(input = {}) {
   state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
   state.courier_letters = normalizeCourierLetterState(state.courier_letters)
   state.captives = normalizeCaptivesState(state.captives)
+  state.beasts = normalizeBeastState(state.beasts)
   state.law = normalizeLawState(state.law)
   state.tavern = normalizeTavernState(state.tavern)
   state.autonomy = normalizeAutonomyState(state.autonomy)
@@ -3129,6 +3161,16 @@ function normalizeCommand(input, state) {
       command.target_ids = []
     }
   }
+  if (BEAST_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берётся только зверь и герой. Ни СЛ, ни повадка, ни выбранный
+    // паёк клиентом не называются: первые две считает серверная политика, а
+    // еду сервер находит в инвентаре сам — иначе «накормить» стало бы способом
+    // списать любой предмет из рюкзака.
+    command.beast_id = String(command.beast_id ?? command.beastId ?? '').slice(0, 120)
+    delete command.beastId
+    command.target_id = null
+    command.target_ids = []
+  }
   if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
     // Из запроса берутся только герой, подход и выбранный исход. Ни СЛ, ни
     // список доступных исходов, ни сумма откупа клиент подсказать не может:
@@ -3229,6 +3271,7 @@ function needsActor(type) {
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter',
+    'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
     'SendLetter',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
@@ -3410,7 +3453,11 @@ function assertTurn(command, state, context = {}) {
   // `SettleParley` в списке нет намеренно: перемирие уже заморозило очередь, и
   // уговор заключает отряд, а не тот, на ком стоит указатель инициативы.
   // Дееспособность и сторона проверяются в собственной ветке команды.
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  // `CalmBeast` и `FeedBeast` стоят в списке по той же причине, что и парлей:
+  // посреди боя они доступны только к сломленному моралью зверю, но доступны —
+  // и подойти к нему с открытой ладонью посреди чужого хода нельзя. Вне боя
+  // функция выходит первой же проверкой, и там уговор ничего не стоит.
+  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   // Дополнительные лучи одного заклинания — часть уже совершённого действия,
   // а не новое применение: экономика хода за них не платит второй раз.
@@ -3689,6 +3736,55 @@ export function assertSendLetterAllowed(state, command) {
   return addressee
 }
 
+/**
+ * Зверь, к которому относится команда, и всё, что должно быть верно раньше
+ * первого события. Возвращает поля, которые дописываются в команду: дальше и
+ * исполнение, и карточка ручного броска читают одного и того же зверя, а не
+ * ищут его заново по идентификатору.
+ *
+ * Спутник разбирается **до** остальных проверок: он уже не боевой актор, его
+ * нет в `tameableBeasts`, и без отдельной ветки «отогнать зверем» упиралось бы
+ * в «такого зверя рядом нет».
+ *
+ * @returns {{ beast_actor_id: string }}
+ */
+function validatedBeastTarget(state, command) {
+  const registered = beastFor(state, command.beast_id)
+  if (command.command_type === 'ScareWithBeast') {
+    if (!registered || registered.status !== 'companion') {
+      throw new RulesValidationError('Отогнать угрозу может только прирученный спутник', 'BEAST_NOT_COMPANION')
+    }
+    if (state.mechanics.combat.active) {
+      throw new RulesValidationError('В бою зверь не отгоняет: это не боевой спутник', 'BEAST_DURING_COMBAT')
+    }
+    if (beastScareCooldownLeft(registered, campaignElapsedMinutes(state)) > 0) {
+      throw new RulesValidationError('Зверь только что отогнал одну тварь и на вторую пока не встанет', 'BEAST_SCARE_COOLDOWN')
+    }
+    return { beast_actor_id: registered.actor_id }
+  }
+  const candidate = tameableBeasts(state).find((entry) => (entry.beast?.id ?? beastIdFor(state, entry.enemy.id)) === command.beast_id)
+  if (!candidate) throw new RulesValidationError('Такого зверя рядом нет', 'BEAST_NOT_FOUND')
+  if (candidate.blocked_reason === 'beast_down') {
+    throw new RulesValidationError('Зверь уже не на ногах', 'BEAST_DOWN')
+  }
+  if (candidate.blocked_reason === 'combat_active') {
+    throw new RulesValidationError('Посреди боя зверя не уговаривают: сначала он должен сломаться', 'BEAST_DURING_COMBAT')
+  }
+  const stage = candidate.beast?.stage ?? 'wary'
+  if (command.command_type === 'FeedBeast' && stage !== 'calmed') {
+    throw new RulesValidationError(stage === 'wary'
+      ? 'С руки едят только успокоенные: сначала уговор'
+      : 'Этот зверь уже поел с руки', 'BEAST_STAGE_MISMATCH')
+  }
+  if (command.command_type === 'CalmBeast' && stage === 'calmed') {
+    throw new RulesValidationError('Зверь успокоен и ждёт еды, а не второго уговора', 'BEAST_STAGE_MISMATCH')
+  }
+  if (command.command_type === 'FeedBeast' && !beastFoodItemFor(playerActor(state, command.actor_id), catalogItem)) {
+    throw new RulesValidationError('Кормить нечем: в рюкзаке нет ни пайка, ни другой снеди', 'BEAST_NO_FOOD')
+  }
+  return { beast_actor_id: String(candidate.enemy.id) }
+}
+
 export function validateCommand(input, rawState, context = {}) {
   const state = normalizeCampaignState(rawState)
   const command = normalizeCommand(input, state)
@@ -3779,6 +3875,15 @@ export function validateCommand(input, rawState, context = {}) {
     if (command.command_type === 'HandCaptiveToGuards' && !captiveSettlementFor(state)) {
       throw new RulesValidationError('Сдать пленного можно только в поселении, где есть стража', 'CAPTIVE_NO_SETTLEMENT')
     }
+  }
+  if (BEAST_COMMAND_TYPES.has(command.command_type)) {
+    if (!playerActor(state, command.actor_id)) {
+      throw new RulesValidationError('Подойти к зверю может только герой отряда', 'ACTOR_FORBIDDEN')
+    }
+    if (!isLivingActor(findActor(state, command.actor_id))) {
+      throw new RulesValidationError('Герой без сознания к зверю не подойдёт', 'ACTOR_DEFEATED')
+    }
+    Object.assign(command, validatedBeastTarget(state, command))
   }
   if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
     if (!state.mechanics.combat.active) {
@@ -4621,7 +4726,11 @@ export function validateCommand(input, rawState, context = {}) {
   // страже — решения о судьбе NPC, а не механика редакции. Допрос и казнь из
   // этого списка исключены — у них своя проверка и свой урон, и правило у них
   // есть (`COMMAND_RULES`).
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CAPTIVE_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  //
+  // Кормление зверя и отпугивание — из того же теста: протянуть паёк и рыкнуть
+  // в темноту редакция не описывает. `CalmBeast` сюда не входит намеренно —
+  // это проверка характеристики с укусом на провале, и правила у неё свои.
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', 'FeedBeast', 'ScareWithBeast', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CAPTIVE_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -6286,6 +6395,10 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
   // и в предпросмотре: карточка ручного броска показывает игроку тот же режим,
   // с которым сервер потом сложит две кости.
   const weatherSwing = weatherCheckSwing(state, checkSkill)
+  // Зверь на страже лагеря — такая же поправка к Восприятию, как небо, и
+  // считается той же функцией, что применит движок: карточка ручного броска
+  // обязана показать тот самый режим кубиков.
+  const watchSwing = beastWatchSwing(state, checkSkill)
   return {
     kind: 'check',
     ability: checkAbility,
@@ -6294,11 +6407,13 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
     difficulty: safeInteger(difficulty, 10),
     advantage: Boolean(checkAdvantageConditionFor(state, actorId, checkAbility))
       || conditionIdsFor(state, actorId).has('silvery-fortune')
-      || weatherSwing?.swing === 'advantage',
+      || weatherSwing?.swing === 'advantage'
+      || watchSwing != null,
     disadvantage: Boolean(checkDisadvantageConditionFor(state, actorId))
       || (checkSkill === 'stealth' && armorStealthDisadvantage(actor))
       || weatherSwing?.swing === 'disadvantage',
     ...(weatherSwing ? { weather_reason: weatherSwing.reason } : {}),
+    ...(watchSwing ? { beast_watch_reason: watchSwing.reason } : {}),
   }
 }
 
@@ -6915,10 +7030,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const weatherSwing = weatherCheckSwing(state, skill)
       const weatherPenalty = weatherSwing?.swing === 'disadvantage' ? weatherSwing.reason : null
       const weatherBoost = weatherSwing?.swing === 'advantage' ? weatherSwing.reason : null
-      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || Boolean(weatherBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty) || armorStealthPenalty || Boolean(weatherPenalty), visibility: command.visibility }
+      // Прирученный зверь держит стражу на привале: Восприятие лагеря идёт с
+      // преимуществом, пока отряд отдыхает. Единственный механический эффект
+      // спутника, и он считается здесь же — рядом с небом, а не отдельной веткой.
+      const beastWatchBoost = beastWatchSwing(state, skill)?.reason ?? null
+      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || Boolean(weatherBoost) || Boolean(beastWatchBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty) || armorStealthPenalty || Boolean(weatherPenalty), visibility: command.visibility }
       const roll = checkRollFromVerified(command.verified_roll, checkRollOptions) ?? diceService.rollCheck(checkRollOptions)
       rolls.push(roll)
-      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost || weatherPenalty || weatherBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
+      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost || weatherPenalty || weatherBoost || beastWatchBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
         ability, ...(skill ? { skill } : {}), ...roll,
         ...(skillProficiency ? {
           proficient: skillProficiency.proficient,
@@ -6930,6 +7049,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         ...(checkBoost ? { check_advantage_condition: checkBoost } : {}),
         ...(weatherPenalty ? { weather_disadvantage: weatherPenalty } : {}),
         ...(weatherBoost ? { weather_advantage: weatherBoost } : {}),
+        ...(beastWatchBoost ? { beast_watch_advantage: beastWatchBoost } : {}),
         ...(command.social_check ? { social_check: {
           check_id: command.social_check.check_id, npc_id: command.social_check.npc_id,
           skill: command.social_check.skill, request_fingerprint: command.social_check.request_fingerprint,
@@ -11165,6 +11285,159 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, [captive.npc_id, command.actor_id]))
       break
     }
+    case 'CalmBeast': {
+      const enemy = (state.enemies ?? []).find((candidate) => actorId(candidate) === command.beast_actor_id)
+      const registered = beastFor(state, command.beast_id)
+      const policy = beastTamingPolicy(state, enemy, registered)
+      const minutes = campaignElapsedMinutes(state)
+      // Посреди боя уговор стоит действия при любом исходе — тем же правилом,
+      // что и окрик о переговорах: попытка договориться, пока рядом дерутся,
+      // это потраченный ход, а не бесплатная проверка. Вне боя цены нет.
+      if (state.mechanics.combat.active) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+          action_id: 'calm-beast',
+          name: 'Успокоить зверя',
+          action_type: 'action',
+        }, [command.actor_id]))
+      }
+      // Запись реестра заводится первым же подходом. До него зверь — обычный
+      // враг на доске, и заводить на каждого встреченного волка строчку в
+      // состоянии незачем.
+      if (!registered) {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastEncountered', {
+          beast: beastDraftFor(state, enemy),
+        }, [command.beast_actor_id]))
+      }
+      // Модификатор и режим берутся у того же `previewD20Check`, который собирал
+      // игроку карточку броска: объявленное число и посчитанное обязаны совпасть.
+      const preview = previewD20Check(state, {
+        actorId: command.actor_id,
+        kind: 'check',
+        ability: BEAST_TAMING_ABILITY,
+        skill: BEAST_TAMING_SKILL,
+        difficulty: policy.difficulty,
+      })
+      const checkOptions = {
+        modifier: preview.modifier,
+        difficulty: policy.difficulty,
+        purpose: `beast_taming:${policy.stage}`,
+        actorId: command.actor_id,
+        advantage: preview.advantage,
+        disadvantage: preview.disadvantage,
+        visibility: command.visibility,
+      }
+      const roll = checkRollFromVerified(command.verified_roll, checkOptions) ?? diceService.rollCheck(checkOptions)
+      rolls.push(roll)
+      const soothingEventId = `beast-soothed:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'BeastSoothingResolved', {
+          beast_id: command.beast_id,
+          actor_id: command.beast_actor_id,
+          beast_name: String(enemy?.name ?? '').slice(0, 160),
+          hero_id: command.actor_id,
+          skill: policy.skill,
+          ability: policy.ability,
+          diet: policy.diet,
+          wounded: policy.wounded,
+          broken_morale: policy.broken_morale,
+          stage_before: policy.stage,
+          stage_after: policy.stage_after,
+          difficulty_parts: policy.parts,
+          ...roll,
+          success: roll.success,
+          at_minutes: minutes,
+          policy_id: BEAST_TAMING_POLICY_ID,
+        }, [command.beast_actor_id, command.actor_id]),
+        event_id: soothingEventId,
+      })
+      if (roll.success && policy.stage_after === 'tamed') {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastTamed', {
+          beast_id: command.beast_id,
+          actor_id: command.beast_actor_id,
+          beast_name: String(enemy?.name ?? '').slice(0, 160),
+          hero_id: command.actor_id,
+          diet: policy.diet,
+          source_event_id: soothingEventId,
+          at_minutes: minutes,
+          // Подписано в самом событии, чтобы не спорить об этом за столом:
+          // спутник в бой не вводится. Боевой питомец — отдельное решение
+          // владельца (`server/beast-taming.mjs`).
+          combat_companion: false,
+          policy_id: BEAST_TAMING_POLICY_ID,
+        }, [command.beast_actor_id, command.actor_id]))
+      }
+      // Укус: не «попробуйте ещё раз», а цена ошибки, и платят её только рядом с
+      // хищником, которого ещё не подпустили.
+      if (!roll.success && policy.bites_on_failure) {
+        const bite = diceService.roll(policy.bite_damage, 'beast_taming:bite', command.beast_actor_id, command.visibility ?? 'public')
+        rolls.push(bite)
+        const bitePayload = resolveDamagePayload(state, command.actor_id, bite.total, 'piercing')
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastBit', {
+          beast_id: command.beast_id,
+          actor_id: command.beast_actor_id,
+          beast_name: String(enemy?.name ?? '').slice(0, 160),
+          hero_id: command.actor_id,
+          expression: policy.bite_damage,
+          amount: bite.total,
+          source_event_id: soothingEventId,
+          at_minutes: minutes,
+          policy_id: BEAST_TAMING_POLICY_ID,
+        }, [command.actor_id]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', bitePayload, [command.actor_id]))
+        events.push(...zeroHitPointDamageConsequences(state, command, command.actor_id, bitePayload))
+      }
+      break
+    }
+    case 'FeedBeast': {
+      const actor = playerActor(state, command.actor_id)
+      const food = beastFoodItemFor(actor, catalogItem)
+      const registered = beastFor(state, command.beast_id)
+      // Та же цена, что у уговора: посреди боя протянуть зверю паёк — это ход.
+      if (state.mechanics.combat.active) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+          action_id: 'feed-beast',
+          name: 'Накормить зверя',
+          action_type: 'action',
+        }, [command.actor_id]))
+      }
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastFed', {
+        beast_id: command.beast_id,
+        actor_id: command.beast_actor_id,
+        beast_name: registered?.name ?? '',
+        diet: registered?.diet ?? '',
+        hero_id: command.actor_id,
+        item_id: String(food.id),
+        item_name: String(food.name ?? '').slice(0, 120),
+        at_minutes: campaignElapsedMinutes(state),
+        policy_id: BEAST_TAMING_POLICY_ID,
+      }, [command.beast_actor_id, command.actor_id]))
+      // Паёк списывается тем же событием, что и любой расходник: своей ветки
+      // инвентаря у кормления нет и быть не должно.
+      events.push(eventFrom(command, 'ItemConsumed', {
+        item_id: String(food.id),
+        item_name: String(food.name ?? '').slice(0, 120),
+        quantity: 1,
+      }, [command.actor_id]))
+      break
+    }
+    case 'ScareWithBeast': {
+      const registered = beastFor(state, command.beast_id)
+      const minutes = campaignElapsedMinutes(state)
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastScaredThreat', {
+        beast_id: registered.id,
+        actor_id: registered.actor_id,
+        beast_name: registered.name,
+        hero_id: command.actor_id,
+        line: beastScareLine(registered, minutes),
+        // Механики за этой строкой нет и не заявлено: ни урона, ни проверки, ни
+        // изменения сцены. Поле стоит в самом событии, чтобы летопись не
+        // притворялась правилом.
+        mechanical_effect: false,
+        at_minutes: minutes,
+        policy_id: BEAST_TAMING_POLICY_ID,
+      }, [registered.actor_id, command.actor_id]))
+      break
+    }
     case 'ProposeParley': {
       const combat = state.mechanics.combat
       const morale = parleyMoraleFor(state)
@@ -12048,6 +12321,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       for (const relocation of npcWorldEventsFrom(command, planCaptiveRelocationDrafts(transitionedState))) {
         events.push(relocation)
         transitionedState = applyGameEvent(transitionedState, relocation)
+      }
+      // Спутник идёт следом тем же движением, что и пленный. Разница одна: у
+      // зверя нет ни поста в сцене, ни социального профиля — он не боевой актор
+      // и не житель локации, поэтому переезжает только запись реестра.
+      for (const follow of npcWorldEventsFrom(command, planBeastFollowDrafts(transitionedState))) {
+        events.push(follow)
+        transitionedState = applyGameEvent(transitionedState, follow)
       }
       events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(transitionedState)))
       // Закон встречает отряд на входе. Триггер детерминированный и считается по
@@ -14220,6 +14500,22 @@ export function applyGameEvent(rawState, event) {
       }
       break
     }
+    case 'BeastTamed': {
+      // Приручённый перестаёт быть боевым актором — тем же движением, что и
+      // пленный (`CaptiveTaken` выше). Заодно снимается сломанная мораль: `fled`
+      // и `surrendered` описывали врага, а врага больше нет. Если этого не
+      // сделать, следующий `StartCombat` поставил бы спутника в инициативу
+      // против отряда, который его накормил.
+      const beastActorId = String(payload.actor_id ?? '')
+      if (beastActorId) {
+        replaceActor(state, beastActorId, (actor) => ({ ...actor, alive: false, tamed: true }))
+        delete state.mechanics.resting[beastActorId]
+        state.mechanics.conditions[beastActorId] = (state.mechanics.conditions[beastActorId] ?? [])
+          .filter((condition) => !['fled', 'surrendered', 'morale-tested'].includes(String(condition?.id ?? condition)))
+        appendBattleLog(state, event, { type: 'beast-tamed', actorId: beastActorId, reason: String(payload.diet ?? 'predator') })
+      }
+      break
+    }
     case 'CaptiveHandedOver': {
       const recipient = String(payload.hero_id ?? event.actor_id ?? '')
       if (recipient && payload.currency_after) {
@@ -14825,6 +15121,10 @@ export function applyGameEvent(rawState, event) {
   // всю дугу без отдельного снимка.
   state.courier_letters = applyCourierLetterEvent(state.courier_letters, event)
   state.captives = applyCaptiveEvent(state.captives, event, state)
+  // Реестр зверей — такой же вывод из журнала: подход заводит запись, а ступени,
+  // укусы и переезды спутника только меняют её, поэтому replay восстанавливает
+  // всю лестницу без отдельного снимка.
+  state.beasts = applyBeastEvent(state.beasts, event, state)
   state.autonomy = applyAutonomyEvent(state.autonomy, event)
   state.state_version = Number.isSafeInteger(event.state_version_after)
     ? event.state_version_after
@@ -15004,6 +15304,13 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'CaptiveHandedOver': return `Пленный передан страже «${payload.settlement_name || ''}»`
     case 'CaptiveExecuted': return `${payload.captive_name || 'Пленный'} убит связанным`
     case 'CaptiveMoved': return 'Пленного увели с отрядом'
+    case 'BeastEncountered': return `${payload.beast?.name || 'Зверь'}: к нему подошли без оружия`
+    case 'BeastSoothingResolved': return `Уход за животными: ${payload.success === true ? 'успех' : 'провал'} (СЛ ${payload.difficulty})`
+    case 'BeastBit': return `${payload.beast_name || 'Зверь'} кусает: ${payload.amount} урона`
+    case 'BeastFed': return `${payload.beast_name || 'Зверя'} накормили с руки (${payload.item_name || 'паёк'})`
+    case 'BeastTamed': return `${payload.beast_name || 'Зверь'} идёт с отрядом`
+    case 'BeastMoved': return `${payload.beast_name || 'Спутник'} следует за отрядом`
+    case 'BeastScaredThreat': return `${payload.beast_name || 'Спутник'} отогнал мелкую тварь`
     case 'ParleyProposed': return payload.refused === true
       ? 'Окрик о переговорах остался без ответа'
       : `Попытка переговоров: ${payload.success === true ? 'услышан' : 'не услышан'} (СЛ ${payload.difficulty})`

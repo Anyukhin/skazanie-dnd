@@ -22,6 +22,8 @@ const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignI
 
 export type CaptiveInterrogationSkill = 'persuasion' | 'intimidation'
 export type CaptiveAction = 'interrogate' | 'release' | 'hand-over' | 'feed' | 'execute'
+/** Что герой делает со зверем. Список закрыт сервером (`server/beast-taming.mjs`). */
+export type BeastAction = 'calm' | 'feed' | 'scare'
 
 type TacticalCommand =
   | { command_type: 'StartCombat'; actor_id: string }
@@ -49,6 +51,9 @@ type TacticalCommand =
   | { command_type: 'HandCaptiveToGuards'; actor_id: string; captive_id: string }
   | { command_type: 'FeedCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ExecuteCaptive'; actor_id: string; captive_id: string }
+  | { command_type: 'CalmBeast'; actor_id: string; beast_id: string }
+  | { command_type: 'FeedBeast'; actor_id: string; beast_id: string }
+  | { command_type: 'ScareWithBeast'; actor_id: string; beast_id: string }
   | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
   | { command_type: 'OpenTavernDiceRound'; actor_id: string; npc_id: string; stake_cp: number }
   | { command_type: 'AnswerTavernDiceRound'; actor_id: string; approach: TavernDiceApproach }
@@ -63,7 +68,8 @@ type TacticalCommand =
  * броска, а не результат.
  *
  * Список закрыт и обязан совпадать с серверным (`server/game-orchestrator.mjs`:
- * `parleyCheckCard`, `guardEscapeCheckCard`, `tavernDiceCheckCard`). Отдельная
+ * `parleyCheckCard`, `guardEscapeCheckCard`, `tavernDiceCheckCard`,
+ * `beastTamingCheckCard`). Отдельная
  * функция здесь стоит вместо трёх сравнений по месту потому, что забыть одно из
  * них уже удалось: карточка приходит с сервера, клиент её не показывает, и ход
  * зависает без единой ошибки в консоли.
@@ -73,6 +79,7 @@ function twoPhaseCheckCommandFor(command: TacticalCommand): TwoPhaseCheckCommand
     case 'ProposeParley':
     case 'ResolveGuardEncounter':
     case 'AnswerTavernDiceRound':
+    case 'CalmBeast':
       return command
     default:
       return null
@@ -857,9 +864,9 @@ export function useGameSession() {
     // пересборка свободного действия. Иначе парлей уходил бы в разбор текста и
     // терял уже объявленную СЛ.
     //
-    // Команд здесь три (`twoPhaseCheckCommandFor`), и текст отказа общий: он
-    // достаётся не только парлею, но и побегу от стражи, и ответному броску за
-    // костями.
+    // Команд здесь четыре (`twoPhaseCheckCommandFor`), и текст отказа общий: он
+    // достаётся не только парлею, но и побегу от стражи, ответному броску за
+    // костями и уговору зверя.
     if (check.command) {
       const outcome = await tacticalCommandRef.current?.(check.command, check.action, { roll: result })
         ?? { ok: false as const, error: 'Команда доски сейчас недоступна' }
@@ -1379,6 +1386,27 @@ export function useGameSession() {
     return executeTacticalCommand({ command_type: 'ExecuteCaptive', actor_id: actorId, captive_id: captiveId }, 'Убить пленного')
   }, [executeTacticalCommand])
 
+  /* Зверь. Клиент называет только зверя: навык проверки один и объявлен
+     сервером, СЛ считает политика приручения, а паёк для кормления сервер
+     находит в рюкзаке сам. Уговор идёт двухфазным ручным броском — тем же
+     путём, что парлей и побег от стражи. */
+  const beastAction = useCallback((actorId: string, beastId: string, action: BeastAction) => {
+    if (action === 'feed') {
+      return executeTacticalCommand({ command_type: 'FeedBeast', actor_id: actorId, beast_id: beastId }, 'Накормить зверя с руки')
+    }
+    if (action === 'scare') {
+      return executeTacticalCommand({ command_type: 'ScareWithBeast', actor_id: actorId, beast_id: beastId }, 'Отогнать угрозу зверем')
+    }
+    // Уговор двухфазный, если игрок не включил автобросок: первая фаза
+    // возвращает карточку с объявленной СЛ, вторая приходит из
+    // `rollPendingCheck` — тем же путём, что парлей и побег от стражи.
+    return executeTacticalCommand(
+      { command_type: 'CalmBeast', actor_id: actorId, beast_id: beastId },
+      'Успокоить зверя',
+      { manualRoll: !autoRollEnabled() },
+    )
+  }, [executeTacticalCommand])
+
   /* Переход между этажами — та же лёгкая команда, что и остальные действия у
      карты: сервер решает, дошёл ли герой до лестницы и не идёт ли бой, и
      отказывает кодами `TRANSITION_*` / `LEVEL_*`. Клиент только называет
@@ -1774,6 +1802,7 @@ export function useGameSession() {
     operateDoor,
     operateSceneObject,
     captiveAction,
+    beastAction,
     resolveGuardEncounter,
     openTavernDiceRound,
     answerTavernDiceRound,

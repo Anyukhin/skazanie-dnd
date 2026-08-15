@@ -12,6 +12,7 @@ import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
+import { BEAST_TAMING_ABILITY, BEAST_TAMING_POLICY_ID, BEAST_TAMING_SKILL, beastFor, beastIdFor, beastTamingPolicy, tameableBeasts } from './beast-taming.mjs'
 import { LAW_POLICY_ID, guardEncounterFor } from './law-and-order.mjs'
 import { PARLEY_ABILITY, PARLEY_POLICY_ID, mentionsParley, parleyMoraleFor, parleySkillFor, truceFor } from './parley.mjs'
 import {
@@ -908,6 +909,44 @@ export class GameOrchestrator {
     return check
   }
 
+  /**
+   * Карточка проверки для первой фазы уговора зверя. СЛ — та же, которую
+   * применит движок во второй фазе: её считает одна серверная политика
+   * (`beastTamingPolicy`), и второго ответа на вопрос «насколько трудно» в
+   * проекте нет.
+   *
+   * Ступень уезжает в контекст вместе со зверем, и это не украшение: между
+   * фазами зверя могли накормить, а `fed` снимает четыре пункта СЛ. Карточка,
+   * объявившая 15, не имеет права исполниться против 11.
+   */
+  beastTamingCheckCard({ campaignId, playerId, state, command }) {
+    const actorId = String(command.actor_id ?? playerId)
+    const beastId = String(command.beast_id ?? '')
+    const candidate = tameableBeasts(state)
+      .find((entry) => (entry.beast?.id ?? beastIdFor(state, entry.enemy.id)) === beastId)
+    if (!candidate || candidate.blocked_reason) return null
+    const policy = beastTamingPolicy(state, candidate.enemy, candidate.beast)
+    const preview = previewD20Check(state, {
+      actorId,
+      kind: 'check',
+      ability: BEAST_TAMING_ABILITY,
+      skill: BEAST_TAMING_SKILL,
+      difficulty: policy.difficulty,
+    })
+    const check = this.rollRegistry.registerCheck({
+      campaignId,
+      actorId,
+      label: d20CheckLabel({ kind: 'check', ability: preview.ability, skill: preview.skill }),
+      modifier: preview.modifier,
+      difficulty: policy.difficulty,
+      ability: preview.ability,
+      advantage: preview.advantage,
+      disadvantage: preview.disadvantage,
+      context: { kind: 'beast-taming', policy: BEAST_TAMING_POLICY_ID, beast_id: beastId, stage: policy.stage },
+    })
+    return { ...check, skill: preview.skill, stage: policy.stage, difficulty_parts: policy.parts }
+  }
+
   freeActionResponse({
     freeAction,
     campaignId,
@@ -1308,6 +1347,56 @@ export class GameOrchestrator {
         }
         tavernAnswerCommand.approach = registeredApproach
         tavernAnswerCommand.verified_roll = verifiedRollPayload
+      }
+    }
+    // Уговор зверя — тот же двухфазный ручной кубик, что у парлея, побега и
+    // костей. Разница одна: карточка везёт с собой ещё и слагаемые СЛ, потому
+    // что «СЛ 18» без разбора читается за столом как произвол ведущего.
+    const beastCommand = (input.commands ?? [])
+      .find((candidate) => String(candidate?.command_type ?? '') === 'CalmBeast') ?? null
+    if (beastCommand) {
+      if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
+        const card = this.beastTamingCheckCard({ campaignId, playerId, state: authoritativeState, command: beastCommand })
+        if (card) {
+          return {
+            narration: `Требуется проверка: ${card.label}, СЛ ${card.difficulty}. Бросьте d20 — зверь смотрит и решает.`,
+            effects: emptyEffects(),
+            provider: 'RulesEngine',
+            model: 'deterministic',
+            turn_id: turnId,
+            engine_mode: mode,
+            state_version: authoritativeState.state_version,
+            mechanics: [],
+            visible_state_changes: [],
+            authoritative_state: authoritativeState,
+            check: { ...card, sides: 20 },
+            turn_consumed: false,
+          }
+        }
+      }
+      if (verifiedRoll) {
+        // Бросок обязан быть зарегистрирован **как уговор зверя и на той же
+        // ступени**: реестр сверяет только кампанию и актора, поэтому без этой
+        // проверки во вторую фазу можно было бы подать кубик, брошенный против
+        // «сторожится» (СЛ выше), и разменять его на ступень «поел с руки».
+        const { context: beastCheckContext, ...verifiedRollPayload } = verifiedRoll
+        if (String(beastCheckContext?.kind ?? '') !== 'beast-taming') {
+          const error = new Error('Этот бросок регистрировался не для уговора зверя')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        if (String(beastCheckContext?.beast_id ?? '') !== String(beastCommand.beast_id ?? '')) {
+          const error = new Error('Этот бросок регистрировался для другого зверя')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        const currentStage = beastFor(authoritativeState, String(beastCommand.beast_id ?? ''))?.stage ?? 'wary'
+        if (String(beastCheckContext?.stage ?? '') !== currentStage) {
+          const error = new Error('Между броском и ходом зверь переменился: бросьте кость заново')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        beastCommand.verified_roll = verifiedRollPayload
       }
     }
     let intent = input.commands

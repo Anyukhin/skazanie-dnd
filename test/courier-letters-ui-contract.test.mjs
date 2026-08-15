@@ -281,8 +281,11 @@ test('письмо в летописи — конверт, а не приглу�
   assert.match(views, /<LetterChronicleEntry key=\{message\.id\}/u)
   assert.match(views, /ПОЧТА ОТРЯДА/u)
   assert.match(views, /letter-route/u)
-  // Фильтр «Рассказ» конверт показывает, «Бой» — нет.
-  assert.match(views, /chronicleMatchesFilter\(message\.speaker, filter, Boolean\(message\.offscreen \|\| message\.letter\)\)/u)
+  // Фильтр «Рассказ» конверт показывает, «Бой» — нет. Условие общее для всех
+  // системных карточек летописи (врезка хода мира, конверт, ступень
+  // приручения), поэтому проверяется вхождение письма в него, а не дословный
+  // список: новая карточка не обязана ронять контракт почты.
+  assert.match(views, /chronicleMatchesFilter\(message\.speaker, filter, Boolean\(message\.offscreen \|\|[^)]*message\.letter/u)
   assert.match(styles, /\.message\.system\.letter-entry \{ margin-bottom: 14px; opacity: 1; \}/u)
   assert.match(styles, /\.letter-card \{/u)
   assert.match(styles, /\.letter-text \{/u)

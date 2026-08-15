@@ -17,7 +17,7 @@ import {
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
-  Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Beer, Eye,
+  Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Beer, Ear, Eye,
   Mail, MailOpen, MailX,
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
@@ -31,7 +31,7 @@ import type { BoardCombatant } from './app-shared'
 import { CharacterEditor, InventoryView } from './InventoryViews'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
-import { useGameSession, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
+import { useGameSession, type BeastAction, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
 import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
@@ -631,7 +631,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -660,6 +660,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onFreeAction: (text: string) => Promise<CommandOutcome>
   onNpcAction: (text: string, npcId: string) => Promise<CommandOutcome>
   onCaptiveAction: (captiveId: string, action: CaptiveAction, skill?: CaptiveInterrogationSkill) => Promise<CommandOutcome>
+  onBeastAction: (beastId: string, action: BeastAction) => Promise<CommandOutcome>
   onResolveGuardEncounter: (resolution: GuardResolution, skill?: 'stealth' | 'athletics') => Promise<CommandOutcome>
   onProposeParley: (skill: 'persuasion' | 'intimidation') => Promise<CommandOutcome>
   onSettleParley: (outcome: ParleyOutcome) => Promise<CommandOutcome>
@@ -899,6 +900,18 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     [heldCaptives],
   )
   const captiveActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
+  // Звери приезжают отдельной серверной веткой проекции: и кандидаты с
+  // объявленной СЛ, и уже прирученные спутники. Своей формулы сложности здесь
+  // нет и быть не должно — карточку собрал сервер (`server/beast-taming.mjs`).
+  const beastCandidates = useMemo(
+    () => (state.beasts?.candidates ?? []).filter((candidate) => !candidate.blocked_reason),
+    [state.beasts],
+  )
+  const beastCompanions = useMemo(() => state.beasts?.companions ?? [], [state.beasts])
+  // В бою зверя не уговаривают — сервер уже вычеркнул таких из кандидатов, — а
+  // спутник в бой не вводится вовсе, поэтому его кнопка блокируется тем же
+  // условием, что и действия с пленным.
+  const beastActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
   // Встреча со стражей приезжает готовой карточкой: подписи исходов, размер
   // виры и СЛ побега считает сервер (`server/law-and-order.mjs`). Своей таблицы
   // ступеней здесь нет и быть не может — точной ступени игрок не видит вовсе.
@@ -2610,6 +2623,55 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               </div>
             </article>
           })}
+        </section>}
+        {(beastCandidates.length > 0 || beastCompanions.length > 0) && <section className="beast-panel" aria-label="Звери отряда">
+          <header><PawPrint size={15} /><span><small>ЗВЕРИ · {beastCandidates.length + beastCompanions.length}</small><strong>Кого можно увести с собой</strong></span></header>
+          {beastCompanions.map((companion) => <article key={companion.id} className="beast-card companion">
+            <header>
+              <i className="beast-tag companion">СПУТНИК</i>
+              <b>{companion.name}</b>
+              <small>идёт с отрядом · в бой не вводится</small>
+            </header>
+            <p>На привале держит стражу: Восприятие лагеря идёт с преимуществом.</p>
+            <div className="beast-actions">
+              <button
+                type="button"
+                disabled={beastActionsBlocked || companion.scare_cooldown_minutes > 0}
+                title={companion.scare_cooldown_minutes > 0
+                  ? `Зверь только что отогнал одну тварь: ждать ещё ${companion.scare_cooldown_minutes} мин игрового времени`
+                  : 'Отогнать мелкую угрозу. Механики за этим нет — только строка в летописи'}
+                onClick={() => onBeastAction(companion.id, 'scare')}
+              ><Ear size={13} />Отогнать</button>
+            </div>
+          </article>)}
+          {beastCandidates.map((candidate) => <article key={candidate.id} className={`beast-card${candidate.diet === 'predator' ? ' predator' : ''}`}>
+            <header>
+              <i className={`beast-tag${candidate.diet === 'predator' ? ' predator' : ''}`}>{(candidate.diet_label || 'зверь').toLocaleUpperCase('ru')}</i>
+              <b>{candidate.name}</b>
+              <small>{candidate.stage_label || 'сторожится'}{candidate.wounded ? ' · ранен' : ''}{candidate.broken_morale ? ' · сломлен' : ''}</small>
+            </header>
+            <p>
+              Уход за животными, СЛ {candidate.difficulty}
+              {candidate.parts?.length ? ` (${candidate.parts.filter((part) => part.id !== 'base').map((part) => `${part.label} ${part.shift > 0 ? `+${part.shift}` : part.shift}`).join(', ')})` : ''}.
+              {candidate.bites_on_failure ? ' При провале укусит.' : ''}
+            </p>
+            <div className="beast-actions">
+              <button
+                type="button"
+                disabled={beastActionsBlocked || candidate.stage === 'calmed'}
+                title={candidate.stage === 'calmed'
+                  ? 'Зверь успокоен и ждёт еды с руки'
+                  : candidate.stage === 'fed' ? 'Позвать за собой: проверка против объявленной СЛ' : 'Проверка Ухода за животными против серверной СЛ'}
+                onClick={() => onBeastAction(candidate.id, 'calm')}
+              ><PawPrint size={13} />{candidate.stage === 'fed' ? 'Приручить' : 'Успокоить'}</button>
+              <button
+                type="button"
+                disabled={beastActionsBlocked || candidate.stage !== 'calmed'}
+                title={candidate.stage === 'calmed' ? 'Дать еду с руки: паёк спишется из рюкзака' : 'С руки едят только успокоенные'}
+                onClick={() => onBeastAction(candidate.id, 'feed')}
+              ><Soup size={13} />Покормить</button>
+            </div>
+          </article>)}
         </section>}
         {!combatActive && <section className="rest-controls" aria-label="Отдых">
           <header><Flame size={15} /><span><small>ПЕРЕДЫШКА</small><strong>Отдых героя</strong></span></header>

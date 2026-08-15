@@ -115,8 +115,9 @@ test('каждая команда с ручным кубиком доводит 
       `${declared} просит у сервера карточку броска, но клиент её не показывает: добавьте команду в twoPhaseCheckCommandFor`,
     )
   }
-  // Три карточки на сервере — три ветки здесь: парлей, побег и кости.
-  assert.deepEqual([...handled].sort(), ['AnswerTavernDiceRound', 'ProposeParley', 'ResolveGuardEncounter'])
+  // Четыре карточки на сервере — четыре ветки здесь: парлей, побег, кости и
+  // уговор зверя.
+  assert.deepEqual([...handled].sort(), ['AnswerTavernDiceRound', 'CalmBeast', 'ProposeParley', 'ResolveGuardEncounter'])
 })
 
 test('открытый раунд можно закрыть без броска, и кнопка для этого есть', () => {

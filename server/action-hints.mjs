@@ -232,6 +232,28 @@ function letterHints(room) {
   }]
 }
 
+/**
+ * Зверь рядом. Карточку собрал сервер (`server/beast-taming.mjs`), и подсказка
+ * только пересказывает её: своей проверки «а зверь ли это» здесь нет.
+ *
+ * Строка одна и появляется только у того, к кому **можно** подойти прямо
+ * сейчас: пока волк дерётся, звать к нему с открытой ладонью нельзя, и
+ * `blocked_reason` это уже посчитал.
+ */
+function beastHints(room) {
+  const candidates = Array.isArray(room?.beasts?.candidates) ? room.beasts.candidates : []
+  const reachable = candidates.find((entry) => entry && !entry.blocked_reason)
+  if (!reachable) return []
+  const name = text(reachable.name, 60) || 'зверь'
+  return [{
+    id: `beast:${text(reachable.id, 80)}`,
+    priority: HINT_PRIORITY.leisure,
+    text: reachable.stage === 'calmed'
+      ? `Можно покормить: ${name} успокоен и ждёт еды с руки`
+      : `Можно попробовать успокоить: ${name} (Уход за животными, СЛ ${Number(reachable.difficulty) || 0})`,
+  }]
+}
+
 function objectiveHint(room) {
   const objective = text(room?.scene?.objective, 90)
   return objective ? [{ id: 'objective', priority: HINT_PRIORITY.objective, text: `Цель отряда: ${objective}` }] : []
@@ -283,7 +305,7 @@ export function suggestedActionsFor(room) {
   // собеседники, цель, выход.
   const reserved = ordered([...tavern.urgent, ...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
-  const props = ordered([...propHints(room), ...tavern.leisure, ...letterHints(room)]).slice(0, budget)
+  const props = ordered([...propHints(room), ...tavern.leisure, ...beastHints(room), ...letterHints(room)]).slice(0, budget)
   return [...props, ...reserved]
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
     .slice(0, MAX_ACTION_HINTS)

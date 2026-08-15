@@ -44,14 +44,27 @@ export function normalizedClassSkillProficiencies(actor) {
   return [...new Set(actor.classSkillProficiencies.map(String))].filter((id) => allowed.has(id)).slice(0, rule.choiceCount)
 }
 
+/**
+ * Один и тот же навык приходит сюда в двух написаниях: каталог правил хранит
+ * `animal_handling` и `sleight_of_hand`, а движок и свободные действия говорят
+ * дефисами (`canonicalSkillId`, `server/rules-engine.mjs`). Пока сравнение шло
+ * буквальным, эти два навыка — и только они — молча теряли и владение, и
+ * характеристику: `skillAbility('animal-handling')` возвращал `null`, а ловчий
+ * с классовым владением Уходом за животными бросал его без бонуса владения.
+ */
+const canonicalSkillKey = (value) => String(value ?? '').trim().toLocaleLowerCase('en').replace(/_/gu, '-')
+
+const SKILL_ABILITY_BY_KEY = new Map([...SKILLS].map(([id, entry]) => [canonicalSkillKey(id), entry.ability]))
+
 export function isSkillProficient(actor, skillId) {
   const selected = actor?.classSkillProficiencies
   if (!Array.isArray(selected)) return true
-  return normalizedClassSkillProficiencies(actor).includes(String(skillId ?? ''))
+  const wanted = canonicalSkillKey(skillId)
+  return normalizedClassSkillProficiencies(actor).some((id) => canonicalSkillKey(id) === wanted)
 }
 
 export function skillAbility(skillId) {
-  return SKILLS.get(String(skillId ?? ''))?.ability ?? null
+  return SKILL_ABILITY_BY_KEY.get(canonicalSkillKey(skillId)) ?? null
 }
 
 function choiceCountAtLevel(group, level) {

@@ -89,6 +89,7 @@ import {
   merchantViewFor,
   planMerchantEconomyClock,
 } from './merchant-economy.mjs'
+import { BEAST_PLAYER_COMMAND_TYPES, beastChronicleEntry } from './beast-taming.mjs'
 import { CAPTIVE_PLAYER_COMMAND_TYPES, planCaptiveNeglectCommands } from './captives.mjs'
 import { TAVERN_COMMAND_TYPES, TAVERN_DICE_APPROACHES, TAVERN_STAKES_CP } from './tavern-life.mjs'
 import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
@@ -405,6 +406,11 @@ const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem',
 // Действия с пленным. Отдельный набор, а не часть боевого: они доступны только
 // вне боя и не трогают экономику хода.
 const PLAYER_CAPTIVE_COMMANDS = CAPTIVE_PLAYER_COMMAND_TYPES
+// Приручение зверя. Отдельный набор по той же причине, что у пленных: подход к
+// зверю идёт либо вне боя, либо к уже сломленному моралью, и экономику хода не
+// трогает. Список берётся у модуля приручения — второго перечисления команд
+// зверя в проекте быть не должно.
+const PLAYER_BEAST_COMMANDS = BEAST_PLAYER_COMMAND_TYPES
 // Ответ страже. Отдельный набор по той же причине, что у пленных: встреча с
 // законом идёт вне боя и не трогает экономику хода. `ClearWantedLevel` сюда не
 // входит намеренно — амнистия владельческая, и её проверяет Rules Engine.
@@ -1177,6 +1183,43 @@ function sanitizePlayerCaptiveCommand(user, state, input) {
 }
 
 /**
+ * Действия со зверем. Из запроса берутся только зверь и герой — больше нечего:
+ * навык проверки один и объявлен сервером, СЛ считает политика приручения, а
+ * паёк для кормления сервер находит в рюкзаке сам. Если бы предмет называл
+ * клиент, «накормить зверя» стало бы способом списать из инвентаря что угодно.
+ */
+function sanitizePlayerBeastCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_BEAST_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к действиям со зверем', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'beast_id', 'beastId',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда зверя содержит запрещённые поля: ${unexpected.join(', ')}`, 'BEAST_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Подойти к зверю можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  }
+  const beastId = String(input?.beast_id ?? input?.beastId ?? '').trim().slice(0, 120)
+  if (!beastId) throw commandPolicyError('Не выбран зверь', 'BEAST_NOT_FOUND')
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    beast_id: beastId,
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
  * Ответ страже. Из запроса берутся только герой, исход и подход к побегу:
  * ступень розыска, размер виры и СЛ побега объявил сервер, и подсказать их
  * клиент не может — их пересчитает Rules Engine по своей же карточке встречи.
@@ -1559,11 +1602,32 @@ function journalLetter(letter) {
   }
 }
 
-function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null, letter = null }) {
+/**
+ * Карточка ступени приручения в летописи. Поля собрал сервер
+ * (`server/beast-taming.mjs`): своей сборки у клиента нет намеренно — подписи
+ * ступеней обязаны читаться одинаково у стола и у ведущего.
+ */
+function journalBeast(beast) {
+  if (!beast || typeof beast !== 'object') return null
+  const kinds = new Set(['calmed', 'fed', 'tamed'])
+  const kind = String(beast.kind ?? '')
+  const body = String(beast.text ?? '').slice(0, 600)
+  if (!kinds.has(kind) || !body.trim()) return null
+  return {
+    kind,
+    title: String(beast.title || 'Зверь и отряд').slice(0, 80),
+    name: String(beast.name || '').slice(0, 120),
+    diet_label: String(beast.diet_label || '').slice(0, 40),
+    text: body,
+  }
+}
+
+function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null, letter = null, beast = null }) {
   const storedRoll = journalRoll(roll)
   const storedStakes = journalStakes(stakes)
   const storedOffscreen = journalOffscreen(offscreen)
   const storedLetter = journalLetter(letter)
+  const storedBeast = journalBeast(beast)
   return {
     id: String(id),
     speaker: speaker === 'system' ? 'system' : speaker === 'player' ? 'player' : 'narrator',
@@ -1575,6 +1639,7 @@ function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = 
     ...(storedStakes ? { stakes: storedStakes } : {}),
     ...(storedOffscreen ? { offscreen: storedOffscreen } : {}),
     ...(storedLetter ? { letter: storedLetter } : {}),
+    ...(storedBeast ? { beast: storedBeast } : {}),
   }
 }
 
@@ -2483,7 +2548,11 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // детерминирован (`chronicle:<письмо>:<вид>`), поэтому повторная проекция
     // того же события её не удваивает.
     const eventsForChronicle = Array.isArray(events) ? events : []
-    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), journalMessage].flat()) {
+    // Ступени приручения попадают в летопись тем же путём и по той же причине:
+    // подход к зверю приходит и с доски, и второй фазой ручного броска, а
+    // идентификатор карточки детерминирован (`chronicle:<зверь>:<ступень>`),
+    // поэтому повторная проекция того же события её не удваивает.
+    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
@@ -4092,6 +4161,7 @@ const server = createServer((req, res) => {
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
         if (PLAYER_CAPTIVE_COMMANDS.has(type)) return sanitizePlayerCaptiveCommand(user, authoritativeBefore, command)
+        if (PLAYER_BEAST_COMMANDS.has(type)) return sanitizePlayerBeastCommand(user, authoritativeBefore, command)
         if (PLAYER_LAW_COMMANDS.has(type)) return sanitizePlayerLawCommand(user, authoritativeBefore, command)
         if (PLAYER_TAVERN_COMMANDS.has(type)) return sanitizePlayerTavernCommand(user, authoritativeBefore, command)
         if (PLAYER_LETTER_COMMANDS.has(type)) return sanitizePlayerLetterCommand(user, authoritativeBefore, command)
@@ -4193,13 +4263,17 @@ const server = createServer((req, res) => {
       if (captiveCommands.length && commands.length !== 1) {
         throw commandPolicyError('Действие с пленным должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
+      const beastCommands = commands.filter((command) => PLAYER_BEAST_COMMANDS.has(commandType(command)))
+      if (beastCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Действие со зверем должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
       if (itemCommands.length) {
         await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])
       }
       if (restCommands.length) await assertRestIdempotency(commandMatch[1], idempotencyKey, restCommands[0])
       if (makeAttackCommands.length) await assertMakeAttackIdempotency(commandMatch[1], idempotencyKey, makeAttackCommands)
       // Двухфазный ручной бросок для команд доски, которые его поддерживают
-      // (сейчас — парлей). Первая фаза приходит без `roll` и получает карточку
+      // (парлей, побег от стражи, кости и уговор зверя). Первая фаза приходит без `roll` и получает карточку
       // проверки, вторая приносит серверный `roll_id`; выдуманный клиентом
       // результат сюда не проходит по построению — реестр знает только свои.
       const manualRoll = body.manual_roll === true || body.manualRoll === true

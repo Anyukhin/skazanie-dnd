@@ -357,6 +357,26 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${actor} добивает связанного. Этого уже не отменить.`)
     } else if (event.event_type === 'CaptiveMoved') {
       meaningful.push('Пленного уводят с собой.')
+    } else if (event.event_type === 'BeastEncountered') {
+      meaningful.push(`${String(payload.beast?.name || 'Зверь')} не бросается: ${actor} опускает оружие и делает шаг навстречу.`)
+    } else if (event.event_type === 'BeastSoothingResolved') {
+      meaningful.push(payload.success === true
+        ? (payload.stage_after === 'tamed'
+          ? `${String(payload.beast_name || 'Зверь')} подходит сам и больше не смотрит на отряд как на добычу.`
+          : `${String(payload.beast_name || 'Зверь')} перестаёт скалиться: ${actor} говорит с ним, и это работает.`)
+        : `${String(payload.beast_name || 'Зверь')} пятится и не подпускает: уговор не вышел.`)
+    } else if (event.event_type === 'BeastBit') {
+      meaningful.push(`${String(payload.beast_name || 'Зверь')} бросается и кусает: ${Math.max(0, Number(payload.amount) || 0)} урона.`)
+    } else if (event.event_type === 'BeastFed') {
+      meaningful.push(`${actor} протягивает ${String(payload.item_name || 'паёк')} — и ${String(payload.beast_name || 'зверь')} берёт еду с руки.`)
+    } else if (event.event_type === 'BeastTamed') {
+      // Прямо в строке сказано, чего спутник не делает: за столом это снимает
+      // единственный вопрос, который иначе задают в первом же бою.
+      meaningful.push(`${String(payload.beast_name || 'Зверь')} идёт с отрядом. В строй он не встанет, но и один больше не останется.`)
+    } else if (event.event_type === 'BeastMoved') {
+      meaningful.push(`${String(payload.beast_name || 'Зверь')} трусит следом за отрядом.`)
+    } else if (event.event_type === 'BeastScaredThreat') {
+      meaningful.push(String(payload.line || `${String(payload.beast_name || 'Зверь')} отгоняет мелкую тварь.`))
     } else if (event.event_type === 'CombatEnded') {
       meaningful.push(`Бой завершён в раунде ${Number(payload.round) || 1}.`)
     } else if (event.event_type === 'TurnEnded') {
@@ -380,6 +400,8 @@ function tacticalNarration(events, state) {
 /** Типы событий, про которые этот рассказчик умеет говорить. */
 export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'ActionReadied', 'ActorMoved', 'AreaAttackResolved', 'AttackResolved',
+  'BeastBit', 'BeastEncountered', 'BeastFed', 'BeastMoved',
+  'BeastScaredThreat', 'BeastSoothingResolved', 'BeastTamed',
   'CaptiveExecuted', 'CaptiveFed', 'CaptiveHandedOver', 'CaptiveInterrogated',
   'CaptiveMoved', 'CaptiveNeglected', 'CaptiveReleased', 'CaptiveTaken',
   'CombatEnded', 'CombatStarted', 'ConcentrationEnded', 'ConcentrationSavingThrowResolved',

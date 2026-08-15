@@ -16,6 +16,7 @@ import {
   serializeTacticalMap,
   serializedTacticalMapHash,
 } from './tactical-map.mjs'
+import { beastForViewer, beastsForViewer } from './beast-taming.mjs'
 import { captiveForViewer, captivesForViewer } from './captives.mjs'
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
@@ -683,6 +684,11 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // пленный ещё не сказал. `known_fact_ids` остаётся у ведущего, иначе допрос
   // перестал бы быть проверкой: игрок читал бы ответ прямо из состояния.
   'captives',
+  // Реестр зверей: отряду он принадлежит целиком, кроме стат-блока и CR. Их
+  // вырезает публичная форма (`beastsForViewer`, `server/beast-taming.mjs`) по
+  // той же причине, по которой их вырезает запись пленного: подойти к волку —
+  // не то же самое, что опознать его как строку бестиария.
+  'beasts',
   // Реестр закона: ступень розыска, очки и список преступлений принадлежат
   // ведущему целиком. Игроку уезжает только то, что он и так видит в игре, —
   // стража, которая уже стоит перед ним, и приметы мира вокруг. Цифры розыска
@@ -780,6 +786,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // срок затухания считаются на сервере рядом с политикой. Карточка админки
     // своей таблицы порогов не держит — две копии расходились бы молча.
     law: lawForViewer(state, { isAdmin: true }),
+    // Звери ведущему приезжают той же карточкой, что и столу, плюс стат-блок и
+    // CR: за столом он видит зверя глазами игрока, а в записи реестра — то, из
+    // чего сложилась объявленная СЛ.
+    beasts: beastsForViewer(state, { isAdmin: true }),
     // Заведение ведущий видит той же карточкой, что и игрок: за столом он сидит
     // своим героем, и вторая форма панели для него была бы вторым ответом на
     // один вопрос. Характер соперника не приезжает и сюда — его нет в состоянии
@@ -876,6 +886,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     }),
     scene_npcs: sceneNpcsForViewer(state),
     captives: captivesForViewer(state, { isAdmin: false }),
+    // Звери сцены и спутники отряда: кого можно уговорить, против какой СЛ и из
+    // чего она сложилась. Карточку собирает сервер целиком — второй формулы
+    // сложности у клиента не появляется.
+    beasts: beastsForViewer(state, { isAdmin: false }),
     law: lawForViewer(state, { isAdmin: false }),
     // Жизнь таверны: с кем можно сыграть, какие ставки открыты, сколько стоит
     // кружка и чем грозит следующая. Карточку собирает сервер целиком —
@@ -1069,6 +1083,17 @@ function eventForViewer(event, user, actorId, state = {}) {
     const forViewer = captiveForViewer(payload.captive)
     if (forViewer) payload.captive = forViewer
     else delete payload.captive
+  }
+  // Зверь. Та же дыра и то же лечение третий раз: `BeastEncountered` несёт
+  // целиком запись реестра, а `beastForViewer` (`server/beast-taming.mjs` — та
+  // же функция, что стоит под проекцией состояния) вырезает `stat_block_id` и
+  // `challenge_rating`. Причина ровно та же, что у пленного: опознание врага
+  // закрыто знанием отряда, и подойти к волку — не то же самое, что узнать в
+  // нём волка из бестиария с CR 1/4.
+  if (visible.event_type === 'BeastEncountered' && payload.beast) {
+    const forViewer = beastForViewer(payload.beast)
+    if (forViewer) payload.beast = forViewer
+    else delete payload.beast
   }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
   if (['HitPointDieSpent', 'HitPointDiceRestored'].includes(String(visible.event_type))

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import {
   BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Globe2, HelpCircle, History, Hourglass,
-  Mail, MailOpen, MailX, MessageSquare, Moon, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Sparkles,
+  Mail, MailOpen, MailX, MessageSquare, Moon, PawPrint, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Soup, Sparkles,
   Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
 
@@ -16,7 +16,8 @@ import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
-  Account, AgentInteraction, AiHealth, AssetPreparationReport, CampaignAiSettings, CampaignAiSettingsResponse,
+  Account, AgentInteraction, AiHealth, AssetPreparationReport, BeastChronicleCard,
+  CampaignAiSettings, CampaignAiSettingsResponse,
   CampaignSummary, EncounterProposal, GameState, LetterChronicleCard, Merchant, Message,
   OffscreenChronicleCard, Player,
 } from './types'
@@ -293,6 +294,32 @@ export function LetterChronicleEntry({ card, timestamp }: { card: LetterChronicl
   </article>
 }
 
+/**
+ * Ступень приручения в летописи: зверь подпустил, поел с руки или пошёл с
+ * отрядом. Системная карточка, как конверт почты: у неё нет автора, которому
+ * можно ответить, — только зверь и то, что с ним стало.
+ *
+ * Подписи приходят готовыми с сервера (`server/beast-taming.mjs`). Своей сборки
+ * у клиента нет намеренно: лестница обязана читаться одинаково у стола и у
+ * ведущего.
+ */
+export function BeastChronicleEntry({ card, timestamp }: { card: BeastChronicleCard; timestamp: string }) {
+  const icon = card.kind === 'tamed' ? <PawPrint size={16} /> : card.kind === 'fed' ? <Soup size={16} /> : <Ear size={16} />
+  return <article className={`message system beast-entry beast-${card.kind}`}>
+    <div className="beast-chronicle-card">
+      <header>
+        {icon}
+        <span><small>ЗВЕРЬ И ОТРЯД</small><strong>{card.title}</strong></span>
+        <time>{timestamp}</time>
+      </header>
+      <p className="beast-chronicle-who">
+        <b>{card.name}</b>{card.diet_label ? ` · ${card.diet_label}` : ''}
+      </p>
+      <p className="beast-chronicle-text">{card.text}</p>
+    </div>
+  </article>
+}
+
 export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak, open, onToggle }: {
   messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null; open: boolean; onToggle: () => void
 }) {
@@ -310,7 +337,7 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
   const visibleMessages = useMemo(
     // Врезка «Пока вас не было…» и конверт почты приходят системной записью, но
     // читаются как рассказ: под фильтром «Бой» им не место.
-    () => messages.filter((message) => chronicleMatchesFilter(message.speaker, filter, Boolean(message.offscreen || message.letter))),
+    () => messages.filter((message) => chronicleMatchesFilter(message.speaker, filter, Boolean(message.offscreen || message.letter || message.beast))),
     [filter, messages],
   )
   const visibleCountRef = useRef(visibleMessages.length)
@@ -387,6 +414,8 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
           <OffscreenChronicleEntry key={message.id} card={message.offscreen} timestamp={message.timestamp} />
         ) : message.letter ? (
           <LetterChronicleEntry key={message.id} card={message.letter} timestamp={message.timestamp} />
+        ) : message.beast ? (
+          <BeastChronicleEntry key={message.id} card={message.beast} timestamp={message.timestamp} />
         ) : (
           <article key={message.id} className={`message ${message.speaker}`}>
             <div className="message-body">

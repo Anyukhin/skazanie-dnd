@@ -22,6 +22,12 @@ export type Message = {
    * ведущего.
    */
   letter?: LetterChronicleCard
+  /**
+   * Ступень приручения зверя: подпустил, поел с руки, пошёл с отрядом. Подписи
+   * собраны на сервере (`server/beast-taming.mjs`); своей сборки у клиента нет,
+   * иначе лестница читалась бы по-разному у стола и у ведущего.
+   */
+  beast?: BeastChronicleCard
   turnConsumed?: boolean
 }
 
@@ -42,6 +48,18 @@ export type LetterChronicleCard = {
   title: string
   from: string
   to: string
+  text: string
+}
+
+/** Ступень лестницы приручения. Список закрыт сервером. */
+export type BeastChronicleKind = 'calmed' | 'fed' | 'tamed'
+
+/** Карточка ступени приручения в летописи. */
+export type BeastChronicleCard = {
+  kind: BeastChronicleKind
+  title: string
+  name: string
+  diet_label?: string
   text: string
 }
 
@@ -91,7 +109,7 @@ export type PendingCheck = {
 /**
  * Команды доски, у которых первая фаза возвращает карточку броска вместо
  * результата. Список закрыт и обязан совпадать с серверным: карточку выдают
- * `parleyCheckCard`, `guardEscapeCheckCard` и `tavernDiceCheckCard`
+ * `parleyCheckCard`, `guardEscapeCheckCard`, `tavernDiceCheckCard` и `beastTamingCheckCard`
  * (`server/game-orchestrator.mjs`), и команда, которой здесь нет, получает
  * карточку от сервера и молча теряет её на клиенте — ход после этого не
  * доиграть ничем, кроме перезагрузки.
@@ -100,6 +118,7 @@ export type TwoPhaseCheckCommand =
   | { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
   | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
   | { command_type: 'AnswerTavernDiceRound'; actor_id: string; approach: TavernDiceApproach }
+  | { command_type: 'CalmBeast'; actor_id: string; beast_id: string }
 
 export type AgentInteractionOption = {
   id: string
@@ -1255,6 +1274,11 @@ export type GameState = {
    */
   captives?: CaptivesProjection
   /**
+   * Звери сцены и спутники отряда: кого можно уговорить, против какой СЛ и кто
+   * уже идёт следом. Ветка принадлежит игроку целиком, кроме стат-блока и CR.
+   */
+  beasts?: BeastsProjection
+  /**
    * Закон и розыск. Форма зависит от зрителя: игроку приезжают приметы мира и
    * встреча со стражей, ведущему — лента по краям. Общий тип держит обе ветки
    * необязательными, потому что второй проекции у клиента нет и быть не должно.
@@ -1523,6 +1547,75 @@ export type CaptiveEntry = {
 }
 
 export type CaptivesProjection = { schema_version?: number; captives?: CaptiveEntry[] }
+
+/** Ступень приручения и повадка зверя. Оба списка закрыты сервером. */
+export type BeastStage = 'wary' | 'calmed' | 'fed' | 'tamed'
+export type BeastDiet = 'predator' | 'herbivore'
+
+/**
+ * Зверь в реестре отряда. Стат-блока и CR здесь нет намеренно: серверная
+ * проекция их вырезает — подойти к волку не то же самое, что опознать его как
+ * строку бестиария (`beastForViewer`, `server/beast-taming.mjs`).
+ */
+export type BeastEntry = {
+  id: string
+  actor_id: string
+  name: string
+  diet: BeastDiet
+  diet_label?: string
+  stage: BeastStage
+  stage_label?: string
+  status: 'wild' | 'companion'
+  attempts?: number
+  bites?: number
+  location_name?: string
+  met_at_minutes?: number
+  calmed_at_minutes?: number | null
+  fed_at_minutes?: number | null
+  tamed_at_minutes?: number | null
+  scared_at_minutes?: number | null
+  /** Только у ведущего: из чего сложилась объявленная СЛ. */
+  stat_block_id?: string
+  challenge_rating?: string
+}
+
+/** Одно слагаемое объявленной СЛ: почему с этим зверем именно так трудно. */
+export type BeastDifficultyPart = { id: string; label: string; shift: number }
+
+/**
+ * Зверь, к которому отряд может подойти прямо сейчас. Всё посчитано сервером:
+ * СЛ, её слагаемые и повод отказа. Своей формулы сложности у клиента нет.
+ */
+export type BeastCandidate = {
+  id: string
+  actor_id: string
+  name: string
+  diet: BeastDiet
+  diet_label?: string
+  stage: BeastStage
+  stage_label?: string
+  wounded?: boolean
+  broken_morale?: boolean
+  difficulty: number
+  skill?: string
+  ability?: string
+  attempts?: number
+  bites_on_failure?: boolean
+  parts?: BeastDifficultyPart[]
+  /** `combat_active` или `beast_down`: почему подойти нельзя. */
+  blocked_reason?: string
+}
+
+export type BeastCompanionCard = { id: string; name: string; scare_cooldown_minutes: number }
+
+export type BeastsProjection = {
+  schema_version?: number
+  beasts?: BeastEntry[]
+  candidates?: BeastCandidate[]
+  companions?: BeastCompanionCard[]
+  /** Идёт ли прямо сейчас страж лагеря: преимущество на Восприятие на привале. */
+  watch_advantage?: boolean
+}
 
 /** Чем можно ответить страже. Список закрыт сервером (`server/law-and-order.mjs`). */
 export type GuardResolution = 'fine' | 'surrender' | 'fight' | 'flee'

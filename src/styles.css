@@ -308,6 +308,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .npc-dialog-captive-actions button { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid rgba(204,151,86,.28); border-radius: 5px; background: rgba(163,101,43,.12); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
 .npc-dialog-captive-actions button:hover:not(:disabled) { border-color: rgba(224,174,111,.5); background: rgba(163,101,43,.2); }
 .npc-dialog-captive-actions button:disabled { opacity: .38; cursor: default; }
+/* Звери отряда: кандидаты на приручение и уже приручённые спутники. Метка
+   слева — как у пленных, и это осознанно: обе панели отвечают на один вопрос
+   «кто идёт с нами и что с ним делать». Зелёная рамка спутника отличает его от
+   зверя, который ещё сторожится. */
+.beast-panel { padding: 11px; border: 1px solid rgba(116,142,104,.28); border-radius: 7px; background: rgba(19,24,17,.9); }
+.beast-panel > header { display: flex; align-items: center; gap: 8px; color: #8fae7c; }
+.beast-panel > header span { display: grid; }
+.beast-panel > header small { color: #6b7f5c; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.beast-panel > header strong { color: #c4d0b4; font: 600 var(--fs-lg) Spectral, serif; }
+.beast-card { margin-top: 9px; padding: 8px 9px; border: 1px solid rgba(116,142,104,.2); border-left: 3px solid #6d8a5e; border-radius: 6px; background: rgba(26,32,22,.7); }
+.beast-card.predator { border-left-color: #a4784a; }
+.beast-card.companion { border-left-color: #7db07a; background: rgba(28,38,26,.76); }
+.beast-card > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.beast-card > header b { color: #cfd6c1; font: 600 var(--fs-md) Spectral, serif; }
+.beast-card > header small { color: #74806a; font-size: var(--fs-xxs); }
+.beast-tag { padding: 1px 6px; border: 1px solid rgba(140,176,124,.42); border-radius: 3px; background: rgba(101,134,88,.18); color: #9dbd86; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .1em; }
+.beast-tag.predator { border-color: rgba(196,147,92,.45); background: rgba(138,106,69,.2); color: #d2a06a; }
+.beast-tag.companion { border-color: rgba(125,176,122,.5); background: rgba(96,142,92,.2); color: #a6cf9f; }
+.beast-card > p { margin: 5px 0 8px; color: #78826d; font-size: var(--fs-sm); }
+.beast-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.beast-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 0 6px; border: 1px solid rgba(140,176,124,.26); border-radius: 5px; background: rgba(90,130,78,.1); color: #9dbd86; font-size: var(--fs-sm); cursor: pointer; }
+.beast-actions button:hover:not(:disabled) { border-color: rgba(168,206,150,.5); background: rgba(90,130,78,.18); }
+.beast-actions button:disabled { opacity: .38; cursor: default; }
+.beast-card.companion .beast-actions { grid-template-columns: 1fr; }
 /* --map-light-* — запечённый свет доски (`src/board-lighting.ts`): цвет тьмы и цвет огня. Значения по умолчанию продублированы в DEFAULT_BOARD_PALETTE, доска обязана рисоваться и без темы. */
 .map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); --map-light-shadow: #0d1016; --map-light-warm: #ffb257; position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
 .map-stage::before { content: ''; position: absolute; inset: 0; opacity: .12; background-image: repeating-linear-gradient(35deg, transparent 0 15px, rgba(255,255,255,.025) 16px 17px), repeating-linear-gradient(125deg, transparent 0 22px, rgba(0,0,0,.3) 23px 24px); }
@@ -856,6 +880,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .letter-entry.letter-answered .letter-card { border-color: rgba(125,154,114,.3); }
 .letter-entry.letter-returned .letter-card,
 .letter-entry.letter-unanswered .letter-card { border-color: rgba(164,68,47,.32); }
+/* Ступень приручения в летописи. Форма та же, что у конверта почты: это
+   системная карточка о том, что случилось между отрядом и зверем, а не реплика
+   рассказчика. Зелёная рамка последней ступени отмечает единственное, что
+   меняет игру, — зверь пошёл с отрядом. */
+.message.system.beast-entry { margin-bottom: 14px; opacity: 1; }
+.beast-chronicle-card { padding: 12px 13px; border: 1px solid rgba(124,150,112,.28); border-radius: 8px; background: linear-gradient(160deg, rgba(40,50,36,.5), rgba(17,20,16,.72)); }
+.beast-chronicle-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; color: #9cb489; }
+.beast-chronicle-card header > span { min-width: 0; display: grid; }
+.beast-chronicle-card header small { color: #7c8d6d; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.beast-chronicle-card header strong { color: #d9e0cc; font: 600 var(--fs-lg) Spectral, serif; }
+.beast-chronicle-card header time { color: #66705c; font-size: var(--fs-xs); }
+.beast-chronicle-who { margin: 9px 0 0; color: #93a084; font: var(--fs-sm)/1.5 Manrope, sans-serif; }
+.beast-chronicle-who b { color: #c3cdb4; font-weight: 700; }
+.beast-chronicle-text { margin: 7px 0 0; padding: 8px 10px; border-left: 2px solid rgba(124,150,112,.34); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #c0c7b2; font: var(--fs-md)/1.6 Spectral, serif; }
+.beast-entry.beast-tamed .beast-chronicle-card { border-color: rgba(125,176,122,.42); }
 /* Кнопка «Почему так?» не имела своего стиля и рендерилась системной серой
    кнопкой: светлый текст на светлом фоне. Теперь это тихая ссылка-подсказка. */
 .why-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 3px 9px; border: 1px solid rgba(201,149,85,.3); border-radius: 11px; background: rgba(34,28,22,.72); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }
