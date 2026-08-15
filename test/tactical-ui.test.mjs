@@ -256,9 +256,29 @@ test('смазанный клинок читается в обеих форма�
 
   // Знак под фишкой — та же развилка: точный ключ в словаре знаков не стоит и
   // без сведения форм давал бы под своей фишкой первую букву подписи.
+  assert.equal(tacticalUi.tokenConditionGlyph(foe.id, foe.label), '☠')
+  assert.equal(tacticalUi.tokenConditionGlyph('weapon-coated:hero-blade', own.label), '☠')
+
+  // Проверяется настоящая функция, а не текст исходника: до переезда знаки жили
+  // внутри `DungeonMap.tsx` вместе с react и двумя десятками соседей, вызвать их
+  // из теста было нечем, и сторожем стояла регулярка по коду — она держала форму
+  // записи и молчала бы о любой правке поведения. Осталась ровно одна строка
+  // исходником — проводка: доска обязана звать функцию, а не собирать знак сама.
   const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
-  assert.match(board, /if \(id\.startsWith\('weapon-coated:'\)\) return TOKEN_CONDITION_GLYPHS\['weapon-coated'\]/u)
   assert.match(board, /\{tokenConditionGlyph\(condition\.id, condition\.label\)\}/u)
+})
+
+test('знаки постоянных состояний различимы между собой и подчиняются приоритету', () => {
+  // Знак нужен именно различимый: четыре состояния стоят под фишкой рядом, и
+  // одинаковые значки не сказали бы о ней ничего.
+  const glyphs = tacticalUi.TOKEN_CONDITION_PRIORITY.map((id) => tacticalUi.tokenConditionGlyph(id, tacticalUi.conditionPresentation(id).label))
+  assert.deepEqual(tacticalUi.TOKEN_CONDITION_PRIORITY, ['paralyzed', 'restrained', 'prone', 'frightened'])
+  assert.equal(new Set(glyphs).size, glyphs.length, `знаки повторяются: ${glyphs.join(' ')}`)
+  assert.equal(glyphs.every((glyph) => glyph.length === 1), true, `знак должен быть одним символом: ${glyphs.join(' ')}`)
+
+  // Незнакомому состоянию остаётся первая буква подписи — знак не выдумывается.
+  const homebrew = tacticalUi.conditionPresentation('homebrew-omen')
+  assert.equal(tacticalUi.tokenConditionGlyph(homebrew.id, homebrew.label), 'H')
 })
 
 test('поддержка механики честно блокирует эвристику и ruling-only карточки', () => {

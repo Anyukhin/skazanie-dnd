@@ -33,7 +33,7 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
+import { TOKEN_CONDITION_PRIORITY, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
@@ -76,30 +76,6 @@ import {
 export type EnemyVisualKind = 'construct' | 'undead' | 'beast' | 'mystic' | 'raider'
 
 export type PresentedCondition = ReturnType<typeof conditionPresentation>
-
-export const TOKEN_CONDITION_GLYPHS: Record<string, string> = {
-  paralyzed: '✦',
-  restrained: '⌁',
-  prone: '▰',
-  frightened: '!',
-  // Смазанный ядом клинок противника. Без своего знака под фишку уезжала
-  // первая буква подписи, а «К» о яде не говорит ничего.
-  'weapon-coated': '☠',
-}
-
-export const TOKEN_CONDITION_PRIORITY = ['paralyzed', 'restrained', 'prone', 'frightened']
-
-/**
- * Знак состояния под фишкой. Смазанный клинок приезжает в двух формах: чужой —
- * непрозрачной (`weapon-coated`), свой — точной (`weapon-coated:<item_id>`),
- * потому что проекция обезличивает только карман противника
- * (`publicConditionsFor`, `server/viewer-projection.mjs`). Знак у обеих форм
- * один: иначе под своей фишкой вместо черепа стояла бы первая буква подписи.
- */
-export function tokenConditionGlyph(id: string, label: string) {
-  if (id.startsWith('weapon-coated:')) return TOKEN_CONDITION_GLYPHS['weapon-coated']
-  return TOKEN_CONDITION_GLYPHS[id] ?? label.slice(0, 1)
-}
 
 export const MAP_FEEDBACK_TTL_MS = 4200
 export const BATTLE_ROLL_TTL_MS = 4600

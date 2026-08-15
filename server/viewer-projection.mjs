@@ -656,6 +656,11 @@ export function publicEncounterFor(encounter = {}) {
  * а опись чужого кармана не проезжает ни корнем, ни слагаемым. Авторитетное
  * состояние точную форму хранит: сокращение реакции считается по нему, а не по
  * проекции.
+ *
+ * Оба списка закреплены поимённо в `test/npc-equipment.test.mjs`: окно с
+ * набитыми ключами кармана проецируется целиком, и набор оставшихся полей
+ * сверяется дословно. Дописанная сюда строка красит корпус — молча пройти
+ * новому ключу нечем.
  */
 const REACTION_DAMAGE_PUBLIC_KEYS = Object.freeze([
   'damage_type', 'raw_amount', 'applied_amount', 'immune', 'resistant', 'vulnerable',
@@ -733,8 +738,19 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
   // Цель окна реакции обычно герой, но не всегда: у «покинул досягаемость» и у
   // контрзаклинания целью записан тот, на кого реагируют, и он может быть
   // противником. ОЗ неопознанного противника закрыты и здесь.
+  //
+  // `temporary_hp_absorbed` — то же знание, записанное разностью: ненулевая
+  // величина называет и наличие временных ОЗ у неопознанного противника, и
+  // сколько их было, ровно как `temporary_hp_before/after` рядом. Поэтому она
+  // снимается вместе с ними — и в корне, и в слагаемых составного урона, где
+  // стоит тем же полем. Объекты здесь уже собственные (`publicReactionDamageFor`
+  // строит и корень, и каждое слагаемое заново), поэтому правка не задевает
+  // авторитетное состояние: сокращение реакции считается по нему.
   if (damage && enemyTarget && !exactEnemyHealthKnown(state, targetId, actorId)) {
-    for (const key of ['hp_before', 'hp_after', 'temporary_hp_before', 'temporary_hp_after']) delete damage[key]
+    for (const key of ['hp_before', 'hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed']) delete damage[key]
+    for (const component of Array.isArray(damage.damage_components) ? damage.damage_components : []) {
+      if (component && typeof component === 'object') delete component.temporary_hp_absorbed
+    }
   }
   return {
     id: text(window.id, 160),
@@ -743,12 +759,23 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
     source_actor_id: text(window.source_actor_id, 120),
     target_id: text(window.target_id, 120),
     action_ids: (Array.isArray(window.action_ids) ? window.action_ids : []).map((id) => text(id, 120)).filter(Boolean).slice(0, 20),
+    // Белый список опции описывает **свою** реакцию игрока, а не чужой карман:
+    // закрывать здесь нечего, ронять — есть что. `requires_beneficiary` стоит у
+    // «Серебристых терний», и по нему интерфейс показывает выбор получателя
+    // преимущества (`ReactionPrompt`, `src/App.tsx`). Пока поля не было, окно
+    // приезжало игроку без него: список получателей не появлялся, кнопка
+    // отправляла реакцию без `beneficiary_id`, — а ведущий, чья проекция
+    // сквозная, видел выбор и не понимал, о чём речь. `slot_level` — уровень
+    // потраченной ячейки самого игрока, его же ресурс; клиентский тип
+    // (`CombatReactionWindow`, `src/types.ts`) объявляет оба поля.
     action_options: (Array.isArray(window.action_options) ? window.action_options : []).slice(0, 20).map((option) => ({
       id: text(option?.id, 120),
       name: text(option?.name, 160),
       description: text(option?.description, 500),
       ...(option?.resource == null ? {} : { resource: text(option.resource, 120) }),
       ...(option?.cost == null ? {} : { cost: Math.max(0, integer(option.cost, 0)) }),
+      ...(option?.slot_level == null ? {} : { slot_level: Math.max(0, integer(option.slot_level, 0)) }),
+      ...(option?.requires_beneficiary ? { requires_beneficiary: true } : {}),
     })),
     ...(triggerRoll ? { trigger_roll: triggerRoll } : {}),
     ...(window.fighter_level == null ? {} : { fighter_level: Math.max(1, integer(window.fighter_level, 1)) }),

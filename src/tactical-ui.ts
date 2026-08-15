@@ -425,6 +425,38 @@ export function conditionPresentation(condition: { id: string; duration?: string
 }
 
 /**
+ * Знаки под фишкой. Живут рядом с `conditionPresentation`, а не в доске: подпись
+ * состояния собирается здесь же, и знак — вторая половина одного решения. Пока
+ * они стояли внутри `DungeonMap.tsx`, вызвать их из теста было нечем — модуль
+ * тянет react, lucide-react и два десятка соседей, — и единственным сторожем
+ * оставалась регулярка по тексту исходника: она держала форму записи, а не
+ * поведение.
+ */
+export const TOKEN_CONDITION_GLYPHS: Record<string, string> = {
+  paralyzed: '✦',
+  restrained: '⌁',
+  prone: '▰',
+  frightened: '!',
+  // Смазанный ядом клинок противника. Без своего знака под фишку уезжала
+  // первая буква подписи, а «К» о яде не говорит ничего.
+  'weapon-coated': '☠',
+}
+
+export const TOKEN_CONDITION_PRIORITY = ['paralyzed', 'restrained', 'prone', 'frightened']
+
+/**
+ * Знак состояния под фишкой. Смазанный клинок приезжает в двух формах: чужой —
+ * непрозрачной (`weapon-coated`), свой — точной (`weapon-coated:<item_id>`),
+ * потому что проекция обезличивает только карман противника
+ * (`publicConditionsFor`, `server/viewer-projection.mjs`). Знак у обеих форм
+ * один: иначе под своей фишкой вместо черепа стояла бы первая буква подписи.
+ */
+export function tokenConditionGlyph(id: string, label: string) {
+  if (id.startsWith('weapon-coated:')) return TOKEN_CONDITION_GLYPHS['weapon-coated']
+  return TOKEN_CONDITION_GLYPHS[id] ?? label.slice(0, 1)
+}
+
+/**
  * Этажи локации (`docs/multilevel-map-plan.md`, раздел 6). Всё, что клиент
  * считает о переходе между этажами, живёт здесь чистыми функциями: доска и
  * экран только показывают результат, а тесты `test/tactical-ui.test.mjs`

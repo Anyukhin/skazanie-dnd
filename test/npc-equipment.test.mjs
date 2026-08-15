@@ -833,6 +833,133 @@ test('окно реакции не выносит наружу ни ключа �
   assert.ok(gmWindow.damage.damage_components.some((component) => component.effect_id === `weapon-coated:${swordId}`))
 })
 
+/** Ключи чужого кармана, которые движок кладёт в урон окна реакции. */
+const POCKET_KEYS = {
+  source_item_id: 'foe-item-1',
+  source_item_name: 'Кинжал ядовитого укуса',
+  item_id: 'foe-item-2',
+  effect_id: 'weapon-coated:foe-item-2',
+  catalog_id: 'srd_5_2_1:poison-basic',
+}
+
+/** Окно реакции, набитое всем, что вообще способно приехать в его урон. */
+function stuffedWindow({ targetId = 'hero' } = {}) {
+  return {
+    id: 'reaction-window-1',
+    trigger: 'attack-hit',
+    actor_id: 'hero',
+    source_actor_id: 'foe',
+    target_id: targetId,
+    action_ids: ['uncanny-dodge'],
+    action_options: [{ id: 'uncanny-dodge', name: 'Невероятное уклонение', description: 'Уменьшить урон вдвое.', resource: null, cost: 1 }],
+    damage: {
+      damage_type: 'piercing',
+      raw_amount: 9,
+      applied_amount: 6,
+      immune: false,
+      resistant: true,
+      vulnerable: false,
+      temporary_hp_before: 3,
+      temporary_hp_after: 0,
+      temporary_hp_absorbed: 3,
+      hp_before: 40,
+      hp_after: 34,
+      death_ward_triggered: false,
+      ...POCKET_KEYS,
+      damage_components: [{
+        damage_type: 'poison',
+        raw_amount: 4,
+        applied_amount: 4,
+        temporary_hp_absorbed: 2,
+        source: 'magic-item',
+        ...POCKET_KEYS,
+      }],
+    },
+  }
+}
+
+/** Состояние боя с подставленным окном реакции и, по желанию, опознанным врагом. */
+function windowState(window, { exactHealth = false } = {}) {
+  const base = battleState(foe('srd_5_2_1:spy', { x: 1 }), { heroClass: 'rogue' })
+  return {
+    ...base,
+    mechanics: {
+      ...base.mechanics,
+      ...(exactHealth ? { enemy_knowledge: { party: { foe: { health: 'exact' } } } } : {}),
+      combat: { ...base.mechanics.combat, reaction_window: window },
+    },
+  }
+}
+
+test('белый список урона окна реакции закреплён поимённо и в корне, а не только в слагаемых', () => {
+  // Сторож самого списка, а не одного сценария. У корня до этой проверки не
+  // было ни одной: сценарий шпиона кладёт ключ вещи только в слагаемое, поэтому
+  // дописанные в корневой список `source_item_id`, `source_item_name`,
+  // `item_id` или `effect_id` оставляли корпус зелёным — опись чужого кармана
+  // уезжала бы столу целым payload-ом окна. Здесь окно набито всеми ключами
+  // разом, и набор оставшихся полей сверяется дословно.
+  const viewer = { role: 'player', heroIds: ['hero'] }
+  const state = windowState(stuffedWindow())
+  const damage = campaignStateForViewer(state, viewer, 'hero').mechanics.combat.reaction_window.damage
+
+  assert.deepEqual(Object.keys(damage).sort(), [
+    'applied_amount', 'damage_components', 'damage_type', 'death_ward_triggered', 'hp_after', 'hp_before',
+    'immune', 'raw_amount', 'resistant', 'temporary_hp_absorbed', 'temporary_hp_after', 'temporary_hp_before',
+    'vulnerable',
+  ])
+  assert.deepEqual(Object.keys(damage.damage_components[0]).sort(), [
+    'applied_amount', 'damage_type', 'raw_amount', 'source', 'temporary_hp_absorbed',
+  ])
+  // Величины закрытыми не становятся: закрыт источник, а не удар.
+  assert.equal(damage.applied_amount, 6)
+  assert.equal(damage.damage_components[0].source, 'magic-item')
+
+  const serialized = JSON.stringify(campaignStateForViewer(state, viewer, 'hero'))
+  for (const [key, value] of Object.entries(POCKET_KEYS)) {
+    assert.equal(serialized.includes(value), false, `окно реакции: ${key}`)
+  }
+
+  // У ведущего форма полная: закрыт игрок, а не журнал.
+  const gmDamage = campaignStateForViewer(state, { role: 'admin' }, 'gm').mechanics.combat.reaction_window.damage
+  assert.equal(gmDamage.source_item_id, POCKET_KEYS.source_item_id)
+  assert.equal(gmDamage.damage_components[0].effect_id, POCKET_KEYS.effect_id)
+})
+
+test('у неопознанного противника в окне реакции закрыты и временные ОЗ, и поглощённое ими', () => {
+  // Цель окна реакции не всегда герой: у «покинул досягаемость» и у
+  // контрзаклинания там записан тот, на кого реагируют. `temporary_hp_absorbed`
+  // — те же временные ОЗ, только записанные разностью: «поглощено 3» называет и
+  // то, что у неопознанного противника они были, и сколько их было. Стояло оно
+  // рядом с закрытыми `hp_before/after` и уезжало столу и корнем, и слагаемым.
+  const viewer = { role: 'player', heroIds: ['hero'] }
+  const state = windowState(stuffedWindow({ targetId: 'foe' }))
+  const damage = campaignStateForViewer(state, viewer, 'hero').mechanics.combat.reaction_window.damage
+
+  assert.deepEqual(Object.keys(damage).sort(), [
+    'applied_amount', 'damage_components', 'damage_type', 'death_ward_triggered', 'immune', 'raw_amount',
+    'resistant', 'vulnerable',
+  ])
+  assert.deepEqual(Object.keys(damage.damage_components[0]).sort(), [
+    'applied_amount', 'damage_type', 'raw_amount', 'source',
+  ])
+
+  // Граница закрытия — опознание, а не сама цель-противник: разведанному врагу
+  // те же поля приезжают полностью, иначе проверка выше была бы зелена и от
+  // безусловного удаления.
+  const known = campaignStateForViewer(windowState(stuffedWindow({ targetId: 'foe' }), { exactHealth: true }), viewer, 'hero')
+    .mechanics.combat.reaction_window.damage
+  assert.equal(known.hp_before, 40)
+  assert.equal(known.temporary_hp_absorbed, 3)
+  assert.equal(known.damage_components[0].temporary_hp_absorbed, 2)
+
+  // Событие и состояние собирает одна функция — расходиться им нечем.
+  const opened = mechanicsForViewer([{
+    event_id: 'reaction-window', command_id: 'cmd-1', event_type: 'ReactionWindowOpened', actor_id: 'hero',
+    target_ids: ['foe'], visibility: 'public', payload: stuffedWindow({ targetId: 'foe' }),
+  }], viewer, 'hero', state)[0]
+  assert.deepEqual(opened.payload.damage, damage)
+})
+
 test('ключи добавки снимаются у условия противника целиком — и только у условия', () => {
   const seed = seedWith('srd_5_2_1:spy', 'srd_5_2_1:poison-basic')
   const state = battleState(foe('srd_5_2_1:spy', { x: 1, seed }))
