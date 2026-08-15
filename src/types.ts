@@ -119,6 +119,7 @@ export type TwoPhaseCheckCommand =
   | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
   | { command_type: 'AnswerTavernDiceRound'; actor_id: string; approach: TavernDiceApproach }
   | { command_type: 'CalmBeast'; actor_id: string; beast_id: string }
+  | { command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent }
 
 export type AgentInteractionOption = {
   id: string
@@ -772,7 +773,12 @@ export type TacticalDoor = {
   keyItemId: string | null
 }
 
-export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use' | 'topple' | 'ignite'
+/**
+ * `pray` объявляется сервером только у святыни (`sceneShrineVerbsFor`,
+ * `server/scene-interactions.mjs`) и в отличие от остальных глаголов бросает
+ * кость: молитва идёт двухфазной проверкой Религии.
+ */
+export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use' | 'topple' | 'ignite' | 'pray'
 
 export type TacticalProp = {
   id: string
@@ -1291,6 +1297,12 @@ export type GameState = {
    */
   tavern?: TavernProjection | null
   /**
+   * Благословения: несёт ли герой малое благословение, прошли ли сутки с
+   * прошлого обращения и у кого в этой сцене можно попросить. Приезжает всегда
+   * — в отличие от таверны, святыня и жрец встречаются где угодно.
+   */
+  blessings?: BlessingProjection | null
+  /**
    * Ходы мира за спиной отряда. Ветка одинакова у игрока и у ведущего: «Пока
    * вас не было…» — монтаж для всего стола.
    */
@@ -1753,6 +1765,36 @@ export type TavernProjection = {
   next_drink_dc?: number | null
   social_bonus?: number
   ejected?: boolean
+}
+
+/**
+ * Карточка благословений. Всё уже посчитано сервером: цена требы, СЛ молитвы,
+ * срок и то, прошли ли сутки. Своей арифметики суток у клиента нет.
+ */
+export type BlessingProjection = {
+  schema_version?: number
+  /** Идентификатор состояния — тот же, что придёт в `mechanics.conditions`. */
+  condition?: string
+  attack_bonus?: number
+  donation_cp?: number
+  prayer_dc?: number
+  prayer_skill?: string
+  location_id?: string
+  /** Несёт ли герой благословение прямо сейчас. */
+  blessed?: boolean
+  /** Прошли ли сутки с прошлого обращения — молитвы или требы. */
+  available?: boolean
+  /** Сколько минут кампании ждать, если ещё не прошли. */
+  waits_minutes?: number
+  priests?: Array<{ id: string; name: string; role?: string }>
+  /** Чем кончилось прошлое обращение. `null` — герой ещё не обращался. */
+  last?: {
+    source?: 'shrine' | 'priest'
+    granted?: boolean
+    place_name?: string
+    npc_name?: string
+    at_minutes?: number
+  } | null
 }
 
 /** Куда едет письмо: к известному NPC или к фракции. Список закрыт сервером. */

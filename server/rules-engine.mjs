@@ -339,10 +339,31 @@ import {
 } from './character-lifecycle.mjs'
 import {
   SCENE_INTERACTION_POLICY_ID,
+  isSceneShrineAsset,
   sceneInteractionDefinition,
   sceneObjectDistance,
   sceneObjectLoot,
 } from './scene-interactions.mjs'
+import {
+  BLESSINGS_POLICY_ID,
+  BLESSING_ATTACK_BONUS,
+  BLESSING_COMMAND_TYPES,
+  BLESSING_CONDITION,
+  BLESSING_DONATION_CP,
+  BLESSING_DURATION,
+  BLESSING_REPUTATION_DELTA,
+  NPC_BLESSING_MINUTES,
+  PRAYER_ABILITY,
+  PRAYER_DC,
+  PRAYER_MINUTES,
+  PRAYER_SKILL,
+  applyBlessingEvent,
+  blessingAvailabilityFor,
+  blessingFactionIdsFor,
+  blessingOmenFor,
+  isBlessingPriest,
+  normalizeBlessingState,
+} from './blessings.mjs'
 import {
   burningPropEffect,
   fireSourceNear,
@@ -589,6 +610,9 @@ const COMMAND_RULES = Object.freeze({
   // Письмо: броска нет, а монета есть — курьеру платят по дальности той же осью
   // экономики, что и торговцу.
   SendLetter: [RULE_IDS.economyCoins],
+  // Благословение жреца: броска нет (за него платят), монета есть, и состояние
+  // на герое — тоже. Три оси, и все три настоящие.
+  ReceiveNpcBlessing: [RULE_IDS.economyCoins, RULE_IDS.conditions],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -621,6 +645,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...LAW_COMMAND_TYPES,
   ...TAVERN_COMMAND_TYPES,
   ...COURIER_LETTER_COMMAND_TYPES,
+  ...BLESSING_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1647,6 +1672,7 @@ export function normalizeCampaignState(input = {}) {
   state.beasts = normalizeBeastState(state.beasts)
   state.law = normalizeLawState(state.law)
   state.tavern = normalizeTavernState(state.tavern)
+  state.blessings = normalizeBlessingState(state.blessings)
   state.autonomy = normalizeAutonomyState(state.autonomy)
   state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
   if (state.agentInteraction && typeof state.agentInteraction === 'object' && !Array.isArray(state.agentInteraction)) {
@@ -2983,6 +3009,12 @@ const CONDITION_EFFECTS = Object.freeze({
   // же, как давно устроено Божественное благоволение.
   'magic-weapon': { attackBonus: 1, weaponDamageBonus: 1 },
   'elemental-weapon': { attackBonus: 1, weaponDamageDice: '1d4' },
+  // Малое благословение алтаря или жреца (`server/blessings.mjs`). Своей
+  // арифметики у него нет ни строки: оно двигает то же число, что и зачарование
+  // оружия, — плоскую единицу к броску атаки. Отличие одно и оно в расходе:
+  // благословение снимается первой же атакой, где применилось, а до неё держится
+  // до продолжительного отдыха.
+  [BLESSING_CONDITION]: { attackBonus: BLESSING_ATTACK_BONUS },
   'crusader-s-mantle': { weaponDamageDice: '1d4' },
   'holy-weapon': { weaponDamageDice: '2d8' },
   // Обратная сторона зачарования: ослабленный бьёт вполсилы — но только теми
@@ -3272,6 +3304,12 @@ function normalizeCommand(input, state) {
   if (command.command_type === 'UseLevelTransition') {
     command.prop_id = String(command.prop_id ?? command.propId ?? '').slice(0, 120)
   }
+  if (command.command_type === 'ReceiveNpcBlessing') {
+    command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
+    // Благословение — серверная политика, а не ось ruleset: у храма нет правила
+    // редакции, но провенанс у механического решения обязан быть.
+    if (!command.house_rule_id) command.house_rule_id = BLESSINGS_POLICY_ID
+  }
   command.expected_state_version = safeInteger(command.expected_state_version ?? command.expectedStateVersion, state.state_version)
   return command
 }
@@ -3284,7 +3322,7 @@ function needsActor(type) {
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter',
     'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
-    'SendLetter',
+    'SendLetter', 'ReceiveNpcBlessing',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -4108,6 +4146,32 @@ export function validateCommand(input, rawState, context = {}) {
       }
     }
   }
+  if (BLESSING_COMMAND_TYPES.has(command.command_type)) {
+    // Благословение просят у живого человека в мирной сцене: посреди боя жрецу
+    // не до треб, а бессознательному герою — не до молитвы.
+    if (state.mechanics.combat.active) {
+      throw new RulesValidationError('Посреди боя благословений не раздают', 'BLESSING_DURING_COMBAT')
+    }
+    if (!playerActor(state, command.actor_id)) {
+      throw new RulesValidationError('Благословение принимает только герой отряда', 'ACTOR_FORBIDDEN')
+    }
+    if (!isLivingActor(findActor(state, command.actor_id))) {
+      throw new RulesValidationError('Герой без сознания благословения не принимает', 'ACTOR_DEFEATED')
+    }
+    if (!isBlessingPriest(state, command.npc_id)) {
+      throw new RulesValidationError('Этот человек благословений не даёт', 'BLESSING_PRIEST_NOT_FOUND')
+    }
+    // Пожертвование проверяется **до** первого события: кошелёк не уходит в
+    // минус потому, что в него не лезут, а не потому, что итог потом подрежут.
+    if (currencyToCopper(playerActor(state, command.actor_id).currency) < BLESSING_DONATION_CP) {
+      throw new RulesValidationError('На пожертвование не хватает монет', 'INSUFFICIENT_FUNDS')
+    }
+    // Сутки закрывает любое обращение — и молитва у алтаря, и приём у жреца.
+    // Иначе отряд обходил бы храм по кругу: помолился, не вышло — пошёл платить.
+    if (!blessingAvailabilityFor(state, command.actor_id, campaignElapsedMinutes(state)).available) {
+      throw new RulesValidationError('Этот герой уже обращался к богам сегодня', 'BLESSING_ALREADY_TODAY')
+    }
+  }
   // Отказы почты вынесены целиком: их же, до обращения к модели, спрашивает
   // HTTP-слой (`server/index.mjs`). Второй копии этих правил быть не должно —
   // разошлась бы на первой правке цены или порога очереди.
@@ -4776,8 +4840,21 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'OperateSceneObject') {
     if (!command.prop_id) throw new RulesValidationError('Не выбран объект сцены', 'SCENE_OBJECT_REQUIRED')
-    if (!['inspect', 'open', 'take', 'use', 'topple', 'ignite'].includes(command.intent)) {
+    if (!['inspect', 'open', 'take', 'use', 'topple', 'ignite', 'pray'].includes(command.intent)) {
       throw new RulesValidationError('Неизвестный способ взаимодействия с объектом сцены', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+    }
+    // Молитва — единственный глагол пропса, которому в бою не место, и запрет
+    // здесь не про уместность, а про минуты: обращение к богам стоит четверти
+    // часа кампании (`PRAYER_MINUTES`), а четверть часа посреди раунда в шесть
+    // секунд двигает всё, что на мировых минутах и висит, — сроки обещаний NPC и
+    // подъём стабилизированного героя. Опрокинуть и поджечь при этом остаются
+    // боевыми приёмами: они не стоят ни минуты.
+    //
+    // Тот же запрет и той же причины стоит у требы (`BLESSING_DURING_COMBAT`
+    // выше): два пути к одному благословению обязаны закрываться одинаково,
+    // иначе бой обходили бы через алтарь.
+    if (command.intent === 'pray' && state.mechanics.combat.active) {
+      throw new RulesValidationError('Посреди боя благословений не раздают', 'BLESSING_DURING_COMBAT')
     }
     if (command.approach === 'force' && command.server_authoritative !== true && context.serverAuthoritativeCombat !== true) {
       throw new RulesValidationError('Силовой подход выбирает только серверный разбор свободного действия', 'SCENE_OBJECT_FORCE_FORBIDDEN')
@@ -6573,6 +6650,64 @@ function tavernRoundsClosedByDeparture(command, state, minutes) {
 }
 
 /**
+ * Что оставляет за собой полученное благословение. Функция одна на оба
+ * источника — алтарь и жреца — намеренно: состояние, срок и факт мира у них те
+ * же, и второй набор событий разошёлся бы с первым на первой правке.
+ *
+ * Факт мира здесь не украшение, а вся «тематическая стыковка»: рассказчик и NPC
+ * читают память мира, и благословение обязано в ней быть — иначе оно живёт
+ * только иконкой на панели и для мира не случается вовсе.
+ */
+function blessingGrantedEvents(command, state, {
+  heroId, source, placeName = '', npcId = '', npcName = '', minutes = 0, sourceEventId = '',
+} = {}) {
+  const events = []
+  const hero = playerActor(state, heroId)
+  const heroName = String(hero?.character ?? hero?.name ?? heroId).slice(0, 120)
+  // Второго благословения поверх первого не вешаем. Живыми командами сюда не
+  // добраться — сутки закрывает любое обращение, — но состояние, которое на
+  // герое уже есть, повторно в движке не добавляется нигде.
+  if (!conditionIdsFor(state, heroId).has(BLESSING_CONDITION)) {
+    events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: BLESSING_CONDITION,
+      duration: BLESSING_DURATION,
+      source: `blessing:${source}`,
+      attack_bonus: BLESSING_ATTACK_BONUS,
+    }, [heroId]))
+  }
+  // Подлежащее факта — **локация**, а не герой, и это не стилистика: память
+  // мира хранит факты только о своих сущностях (`normalizeWorldMemory`,
+  // `server/world-memory.mjs`), а героя отряда среди них нет — запись с
+  // `subject_id: heroId` молча отбрасывалась бы нормализатором, и «благословение
+  // живёт в памяти мира» осталось бы обещанием в комментарии. Локация сущностью
+  // является всегда: её заводит `ensureSceneWorldMemory` по названию сцены.
+  const placeKey = String(state.scene?.location ?? state.scene?.title ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('ru')
+  const placeEntity = (state.worldMemory?.entities ?? []).find((entity) => String(entity?.kind ?? '') === 'location'
+    && String(entity?.name ?? '').toLocaleLowerCase('ru') === placeKey)
+  const where = source === 'priest'
+    ? (npcName ? `от кого: ${npcName}` : 'у служителя храма')
+    : (placeName ? `место: ${placeName}` : 'у придорожной святыни')
+  // Локации нет — факта тоже нет. Молчание здесь честнее выдумки: подвесить
+  // запись к несуществующей сущности значит записать её в никуда.
+  if (placeEntity) {
+    events.push(eventFrom({ ...command, visibility: 'party' }, 'WorldFactRecorded', {
+      fact: {
+        id: `fact:blessing:${String(heroId).slice(0, 60)}:${Math.max(0, safeInteger(minutes, 0))}`,
+        subject_id: String(placeEntity.id),
+        predicate: source === 'priest' ? 'blessed_by_priest' : 'blessed_at_shrine',
+        object: String(heroId).slice(0, 180),
+        summary: `${heroName} принял(а) малое благословение (${where}).`,
+        visibility: 'party',
+        ...(sourceEventId ? { source_event_ids: [sourceEventId] } : {}),
+        status: 'active',
+        recorded_at_minutes: Math.max(0, safeInteger(minutes, 0)),
+      },
+    }, []))
+  }
+  return events
+}
+
+/**
  * Rolls a saving throw.  Pass `ability` to let the conditions that make a save
  * fail without a roll apply: the die is still rolled and recorded so the
  * transcript and replay stay identical, and only the outcome is forced.
@@ -7380,6 +7515,20 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (actorConditions.has('disadvantage-next-weapon-attack')) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'disadvantage-next-weapon-attack' }, [command.actor_id]))
       if (trueStrike) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'true-strike' }, [command.actor_id]))
       if (silveryFortune) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'silvery-fortune' }, [command.actor_id]))
+      // Благословение расходуется здесь и только здесь. Прибавку к броску оно
+      // отдало выше — общей таблицей состояний (`conditionNumericBonus`), — и
+      // снимается ровно там, где применилось: без расхода малое благословение
+      // было бы постоянным `+1` до самого отдыха, то есть уже не малым.
+      //
+      // Заклинательская атака в этой ветке не участвует, и это не упущение, а
+      // та же граница, что у «Зачарования оружия» и «Стихийного оружия»:
+      // `attackBonus` читает только удар оружием. Благословение поэтому и не
+      // тратится на луч — оно его и не усилило.
+      if (actorConditions.has(BLESSING_CONDITION)) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', {
+          condition: BLESSING_CONDITION, trigger: 'attack',
+        }, [command.actor_id]))
+      }
       if (guidingBoltAdvantage) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'guiding-bolt-advantage' }, [targetId]))
       // Порог recharge в payload не кладётся: событие видно игроку, а порог —
       // строка стат-блока. Движок читает его из профиля существа, а не отсюда.
@@ -10241,6 +10390,94 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         policy_id: SCENE_INTERACTION_POLICY_ID,
       }, []))
 
+      /**
+       * Молитва у святыни. Единственная ветка `OperateSceneObject`, где кость
+       * бывает **ручной**: карточку первой фазы собирает оркестратор
+       * (`shrinePrayerCheckCard`, `server/game-orchestrator.mjs`) тем же
+       * предпросмотром, которым считается модификатор здесь.
+       *
+       * Ветка стоит до обычных операций и ничего у них не отнимает: глагол
+       * `pray` есть только у святыни (`sceneShrineVerbsFor`), и до этой строки
+       * доходит только он.
+       */
+      if (command.intent === 'pray') {
+        // Сторож, а не правило: глагол до сюда доезжает только со святыни.
+        // Но состояние пропса можно принести и руками, а молиться сундуку нельзя
+        // и тогда.
+        if (!isSceneShrineAsset(prop.assetId)) {
+          throw new RulesValidationError('Молиться можно только у святыни', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+        }
+        const prayerMinutes = campaignElapsedMinutes(state)
+        // Сутки закрывает любое обращение — и молитва, и жрец. Считается по
+        // попытке, а не по успеху: иначе неудачную молитву повторяли бы до
+        // двадцатки, у алтаря ведь никто никуда не спешит.
+        if (!blessingAvailabilityFor(state, command.actor_id, prayerMinutes).available) {
+          throw new RulesValidationError('Этот герой уже обращался к богам сегодня', 'BLESSING_ALREADY_TODAY')
+        }
+        operated()
+        const preview = previewD20Check(state, {
+          actorId: command.actor_id,
+          kind: 'check',
+          ability: PRAYER_ABILITY,
+          skill: PRAYER_SKILL,
+          difficulty: PRAYER_DC,
+        })
+        const prayerRollOptions = {
+          modifier: preview.modifier,
+          difficulty: PRAYER_DC,
+          purpose: `shrine-prayer:${PRAYER_SKILL}`,
+          actorId: command.actor_id,
+          advantage: preview.advantage,
+          disadvantage: preview.disadvantage,
+          visibility: 'party',
+        }
+        const prayerCheck = checkRollFromVerified(command.verified_roll, prayerRollOptions) ?? diceService.rollCheck(prayerRollOptions)
+        rolls.push(prayerCheck)
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+          ability: preview.ability, skill: preview.skill, ...prayerCheck,
+        }, [command.actor_id]))
+        // Натуральная единица отвечает знамением. Механики за ним нет ни на
+        // грош, и это осознанно: карать за обращение к богам значит отучить от
+        // него стол, а тревогу стол додумает сам.
+        const omen = !prayerCheck.success && safeInteger(prayerCheck.kept, 0) === 1
+          ? blessingOmenFor(`${state.sessionCode ?? ''}:${prop.id}:${prayerMinutes}`)
+          : ''
+        const prayerOutcome = prayerCheck.success ? 'blessed' : omen ? 'omen' : 'silence'
+        const shrineName = String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180)
+        const prayerEventId = `shrine-prayer:${String(command.command_id).slice(0, 100)}`
+        events.push({
+          ...eventFrom({ ...command, visibility: 'party' }, 'ShrinePrayerResolved', {
+            hero_id: command.actor_id,
+            prop_id: prop.id,
+            place_name: shrineName,
+            outcome: prayerOutcome,
+            skill: PRAYER_SKILL,
+            difficulty: PRAYER_DC,
+            total: safeInteger(prayerCheck.total, 0),
+            ...(omen ? { omen } : {}),
+            ...(prayerOutcome === 'blessed' ? {
+              condition: BLESSING_CONDITION,
+              attack_bonus: BLESSING_ATTACK_BONUS,
+              duration: BLESSING_DURATION,
+            } : {}),
+            at_minutes: prayerMinutes,
+            policy_id: BLESSINGS_POLICY_ID,
+          }, [command.actor_id]),
+          event_id: prayerEventId,
+        })
+        if (prayerOutcome === 'blessed') {
+          events.push(...blessingGrantedEvents(command, state, {
+            heroId: command.actor_id,
+            source: 'shrine',
+            placeName: shrineName,
+            minutes: prayerMinutes,
+            sourceEventId: prayerEventId,
+          }))
+        }
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), PRAYER_MINUTES, 'minute')
+        break
+      }
+
       // Обстановка как оружие: опрокинуть тяжёлое и поджечь горючее. Обе ветки
       // стоят до обычных операций, потому что меняют состояние пропса
       // необратимо — с поваленным стеллажом больше ничего не сделать.
@@ -12075,6 +12312,63 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }, [command.actor_id]))
       }
       appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), TAVERN_DRINK_MINUTES, 'minute')
+      break
+    }
+    /**
+     * Благословение жреца за пожертвование. Броска здесь нет ни одного, и это
+     * не поблажка, а цена: молитва бесплатна и может не сбыться, храм берёт
+     * деньги и отвечает наверняка. Сутки при этом закрываются те же — выбор
+     * между алтарём и жрецом герой делает один раз.
+     */
+    case 'ReceiveNpcBlessing': {
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      const priest = (state.social?.npcs ?? []).find((npc) => String(npc?.id ?? '') === String(command.npc_id)) ?? null
+      const priestName = String(priest?.name ?? command.npc_id).slice(0, 160)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const balanceAfterCp = Math.max(0, balanceBeforeCp - BLESSING_DONATION_CP)
+      const blessingEventId = `npc-blessing:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'NpcBlessingGranted', {
+          hero_id: command.actor_id,
+          npc_id: String(command.npc_id),
+          npc_name: priestName,
+          place_name: String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180),
+          donation_cp: BLESSING_DONATION_CP,
+          condition: BLESSING_CONDITION,
+          duration: BLESSING_DURATION,
+          attack_bonus: BLESSING_ATTACK_BONUS,
+          currency_before: normalizeCurrency(actor.currency),
+          currency_after: copperToCurrency(balanceAfterCp),
+          balance_before_cp: balanceBeforeCp,
+          balance_after_cp: balanceAfterCp,
+          at_minutes: minutes,
+          policy_id: BLESSINGS_POLICY_ID,
+        }, [command.actor_id, String(command.npc_id)]),
+        event_id: blessingEventId,
+      })
+      // Пожертвование не пропадает в никуда: фракции самого жреца замечают, что
+      // отряд оставил в храме золотой. Своей «репутации храма» модуль не
+      // заводит — это та же репутация, которую двигают слухи и поступки, и у
+      // жреца без тега `faction:` благодарить попросту некого.
+      for (const factionId of blessingFactionIdsFor(state, command.npc_id)) {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'FactionReputationAdjusted', {
+          faction_id: factionId,
+          delta: BLESSING_REPUTATION_DELTA,
+          source_event_id: blessingEventId,
+          provenance: { source: 'server-blessing-policy', policy: BLESSINGS_POLICY_ID },
+        }, []))
+      }
+      events.push(...blessingGrantedEvents(command, state, {
+        heroId: command.actor_id,
+        source: 'priest',
+        placeName: String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180),
+        npcId: String(command.npc_id),
+        npcName: priestName,
+        minutes,
+        sourceEventId: blessingEventId,
+      }))
+      appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), NPC_BLESSING_MINUTES, 'minute')
       break
     }
     case 'SendLetter': {
@@ -14646,6 +14940,19 @@ export function applyGameEvent(rawState, event) {
       }
       break
     }
+    case 'NpcBlessingGranted': {
+      // Реестр благословений обновляет `applyBlessingEvent` в конце редьюсера —
+      // здесь остаётся только кошелёк: размер пожертвования объявил движок,
+      // редьюсер переносит уже подтверждённый баланс. Само состояние приходит
+      // отдельным `ConditionAdded`, как и у любого другого эффекта.
+      const donor = String(payload.hero_id ?? event.actor_id ?? '')
+      if (donor && payload.currency_after) {
+        state.players = state.players.map((player) => (actorId(player) === donor
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player))
+      }
+      break
+    }
     case 'CourierLetterSent': {
       // Почту обновляет `applyCourierLetterEvent` в конце редьюсера — здесь
       // остаётся только кошелёк: плату курьеру посчитал движок по дальности,
@@ -15164,6 +15471,9 @@ export function applyGameEvent(rawState, event) {
   // Счёт таверны — такой же вывод из журнала: открытый раунд, кружки и
   // скандалы восстанавливаются replay-ем без отдельного снимка.
   state.tavern = applyTavernEvent(state.tavern, event, state)
+  // Реестр благословений — такой же вывод из журнала: суточный слот и то, чем
+  // кончилось обращение, восстанавливаются replay-ем без отдельного снимка.
+  state.blessings = applyBlessingEvent(state.blessings, event, state)
   // Лента ходов мира — такой же вывод из журнала, как летопись поступков: сам
   // ход посчитан до коммита, здесь остаётся только запомнить его и список
   // заданий под наблюдением.
@@ -15387,6 +15697,8 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'TavernCheatExposed': return `${payload.npc_name || 'Соперник'} уличён в шулерстве`
     case 'TavernPatronEjected': return `${named(payload.hero_id) || 'Героя'} выставили из заведения`
     case 'TavernDrinkOrdered': return `Заказана выпивка: кружка №${safeInteger(payload.drinks, 1)} за ${safeInteger(payload.price_cp, 0)} мм`
+    case 'ShrinePrayerResolved': return `Молитва у святыни «${payload.place_name || 'без названия'}»: ${payload.outcome === 'blessed' ? 'малое благословение получено' : payload.outcome === 'omen' ? 'ответа нет, но было знамение' : 'ответа нет'}`
+    case 'NpcBlessingGranted': return `${payload.npc_name || 'Служитель'} благословляет ${named(payload.hero_id) || 'героя'} за пожертвование ${safeInteger(payload.donation_cp, 0)} мм`
     case 'CourierLetterSent': return `Письмо к ${payload.addressee_name || payload.addressee_id || 'адресату'} отдано курьеру за ${safeInteger(payload.fee_cp, 0)} мм (${safeInteger(payload.leagues, 1)} перех.)`
     case 'CourierLetterDelivered': return `Письмо доставлено: ${payload.addressee_name || payload.addressee_id || 'адресат'} прочитал(а)${payload.answer_expected === false ? ', ответа не будет' : ''}`
     case 'CourierLetterReturned': return `Письмо вернулось: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата не нашли'}`

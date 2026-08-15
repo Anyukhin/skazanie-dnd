@@ -20,6 +20,7 @@ import { beastForViewer, beastsForViewer } from './beast-taming.mjs'
 import { captiveForViewer, captivesForViewer } from './captives.mjs'
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
+import { blessingsForViewer } from './blessings.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { courierLetterForViewer, courierLettersForViewer } from './courier-letters.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -702,6 +703,12 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // столу или шулер, выводится из сида кампании в момент вопроса, поэтому
   // утечь ему неоткуда даже при ошибке в проекции.
   'tavern',
+  // Реестр благословений: суточный слот каждого героя отряда. Сырым он наружу
+  // не идёт — вместо него собирается карточка под конкретного зрителя
+  // (`blessingsForViewer`, `server/blessings.mjs`), где нет чужих слотов.
+  // Тайны в самом реестре нет ни одной, и ключ стоит здесь только затем, чтобы
+  // строгий whitelist не выбросил его до подмены.
+  'blessings',
   // Время суток и погода. Собственного ключа в состоянии нет: обе величины
   // выводятся из мировых минут и сида кампании (`server/weather.mjs`) и
   // существуют только в проекции. Решение осознанное и в обе стороны одинаковое:
@@ -795,6 +802,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // один вопрос. Характер соперника не приезжает и сюда — его нет в состоянии
     // вовсе, он выводится из сида в момент вопроса.
     tavern: tavernForViewer(state, { playerId: String(actorId ?? '') }),
+    // Благословения ведущий видит той же карточкой, что и игрок: за столом он
+    // сидит своим героем, и вторая форма панели была бы вторым ответом на один
+    // вопрос.
+    blessings: blessingsForViewer(state, { playerId: String(actorId ?? '') }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
     weather: weatherForViewer(state),
@@ -834,6 +845,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // только своей публичной формой (`courierLettersForViewer` ниже): черновик
   // ответа и тон адресата лежат в записи письма с минуты отправки, и сырой
   // ключ показал бы игроку ответ раньше, чем письмо доехало.
+  // `blessings` — реестр суточных слотов всего отряда. Наружу он идёт только
+  // своей публичной формой (`blessingsForViewer` ниже), собранной под
+  // конкретного героя: чужой слот игроку не нужен, а карточка обязана отвечать
+  // про его собственный.
   const {
     locationMaps: _locationMaps,
     npc_world: _npcWorld,
@@ -841,6 +856,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     world_deeds: _worldDeeds,
     law: _law,
     tavern: _tavern,
+    blessings: _blessings,
     courier_letters: _courierLetters,
     ...publicState
   } = visible
@@ -895,6 +911,11 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // кружка и чем грозит следующая. Карточку собирает сервер целиком —
     // клиенту нечего досчитывать, и характера соперника в ней нет.
     tavern: tavernForViewer(state, { playerId: String(actorId ?? '') }),
+    // Благословения: несёт ли герой благословение, прошли ли сутки с прошлого
+    // обращения, у кого в этой сцене можно попросить и сколько стоит
+    // пожертвование. Карточку собирает сервер целиком — клиенту нечего
+    // досчитывать.
+    blessings: blessingsForViewer(state, { playerId: String(actorId ?? '') }),
     // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
     // на один вопрос.
@@ -1003,6 +1024,14 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (visible.event_type === 'TavernDiceRoundResolved' || visible.event_type === 'TavernDiceRoundCancelled') {
     for (const key of ['npc_purse_before_cp', 'npc_purse_after_cp', 'house_cut_cp']) delete payload[key]
   }
+  // Благословения. Своей ветки здесь нет, и это разобрано, а не забыто:
+  // `ShrinePrayerResolved` и `NpcBlessingGranted` несут только то, что герой и
+  // так видел своими глазами, — исход молитвы, СЛ, знамение, размер
+  // пожертвования и свой же кошелёк. Прятать в них нечего: суточный слот чужого
+  // героя в событие не попадает вовсе (оно про одного), а характера у святыни,
+  // в отличие от соседа по столу, не бывает. Видимость `party` эти события
+  // получают в движке и проходят общий проектор выше.
+  //
   // Почта. Отправленное письмо несёт запись целиком, а в записи с первой минуты
   // лежит запечатанный ответ: черновик модели, тон адресата и провайдер. Игроку
   // всё это принадлежать не может — иначе он прочёл бы ответ в тот же миг, когда

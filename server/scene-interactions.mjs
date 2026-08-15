@@ -121,6 +121,33 @@ const ASSET_ALIASES_RU = Object.freeze({
   prayer_bench: Object.freeze(['молитвенная скамья']),
 })
 
+/**
+ * У чего молятся. Подмножество `relic`, а не весь вид, и это осознанно: руна и
+ * жаровня — тоже реликвии каталога, но обращаться к ним как к святыне значило
+ * бы обещать столу алтарь там, где стоит светильник. Статуя в списке есть:
+ * изваяние в храме или у дороги — обычное место молитвы, и святыней его делает
+ * не материал, а то, зачем к нему подходят.
+ *
+ * Список закрытый и серверный: глагол `pray` открывает пропсу доступ к молитве
+ * (`server/blessings.mjs`), и подмешать в него ковчег или скамью клиент не может.
+ */
+const SHRINE_ALIASES = Object.freeze(['altar', 'roadside_shrine', 'statue'])
+
+/** Святыня ли это. Единственный ответ на вопрос «можно ли здесь помолиться». */
+export function isSceneShrineAsset(assetId) {
+  const alias = assetAlias(assetId)
+  return Boolean(alias && SHRINE_ALIASES.includes(alias))
+}
+
+/**
+ * Глаголы святыни. Устроены как глаголы обстановки (`sceneHazardVerbsFor`):
+ * справочник добавляет их к обычным операциям вида по тому же `assetId`, а не
+ * заводит второй каталог. Пустой список — обычный пропс.
+ */
+export function sceneShrineVerbsFor(assetId) {
+  return isSceneShrineAsset(assetId) ? ['pray'] : []
+}
+
 const FALLBACK_ASSETS = Object.freeze(['chest', 'altar', 'campfire', 'bookshelf', 'bone_pile'])
 const ASSET_ALIAS_MATCHERS = Object.freeze(
   CATALOG.flatMap((entry) => entry.aliases)
@@ -214,9 +241,13 @@ export function interactionMetadataForProp({ mapSeed = '', prop, pointOfInterest
   // affordance пропса едет игроку картой, и кнопка «Опрокинуть» появляется
   // ровно потому, что сервер её назвал. Клиент рисует то, что ему прислали.
   const hazardVerbs = sceneHazardVerbsFor(prop?.assetId).filter((verb) => !catalog.verbs.includes(verb))
+  // Молитва объявляется здесь же и по той же причине: affordance пропса едет
+  // игроку картой, и кнопка «Помолиться» появляется ровно потому, что сервер её
+  // назвал.
+  const shrineVerbs = sceneShrineVerbsFor(prop?.assetId).filter((verb) => !catalog.verbs.includes(verb))
   return {
     kind: catalog.kind,
-    verbs: [...catalog.verbs, ...hazardVerbs],
+    verbs: [...catalog.verbs, ...hazardVerbs, ...shrineVerbs],
     pointOfInterest: pointOfInterest === true,
     detailKey,
     rewardKey,
@@ -284,9 +315,15 @@ export function sceneInteractionDefinition({ mapSeed = '', props = [], propId = 
   // стеллаж по-прежнему осматривают, но теперь его ещё можно опрокинуть.
   // Список объявляет сервер — клиент рисует кнопки по нему как и раньше.
   const hazardVerbs = sceneHazardVerbsFor(prop.assetId)
+  const shrineVerbs = sceneShrineVerbsFor(prop.assetId)
   return {
     ...metadata,
-    verbs: [...metadata.verbs, ...hazardVerbs.filter((verb) => !metadata.verbs.includes(verb))],
+    verbs: [
+      ...metadata.verbs,
+      ...hazardVerbs.filter((verb) => !metadata.verbs.includes(verb)),
+      ...shrineVerbs.filter((verb) => !metadata.verbs.includes(verb) && !hazardVerbs.includes(verb)),
+    ],
+    shrine: isSceneShrineAsset(prop.assetId),
     topple: toppleDefinitionFor(prop.assetId),
     ignite: igniteDefinitionFor(prop.assetId),
     alias,
@@ -325,15 +362,21 @@ export function sceneObjectOperationFromText(text) {
   const normalized = clean(text, 1_000).toLowerCase()
   if (!normalized) return null
   const approach = /(?:разбить|сломать|взломать|выломать|ударить|топор)/u.test(normalized) ? 'force' : 'hand'
-  const intent = /(?:взять|забрать|поднять|обыскать)/u.test(normalized)
-    ? 'take'
-    : /(?:использовать|активировать|отдохнуть|привал)/u.test(normalized)
-      ? 'use'
-      : /(?:открыть|разбить|сломать|взломать|выломать)/u.test(normalized)
-        ? 'open'
-        : /(?:осмотреть|изучить|прочитать|проверить|обыскать)/u.test(normalized)
-          ? 'inspect'
-          : null
+  // Молитва стоит первой ветвью: «помолиться у алтаря» содержит «алтарь», но не
+  // содержит ни одного глагола обычных операций, а «вознести молитву и осмотреть
+  // изваяние» — это всё-таки молитва. Своего слова у неё нет ни у одной другой
+  // ветки, поэтому первенство не отнимает у них ничего.
+  const intent = /(?:помолит|помолюсь|молит[ьв]|молюсь|вознес.{0,3} молитв|преклонить колен)/u.test(normalized)
+    ? 'pray'
+    : /(?:взять|забрать|поднять|обыскать)/u.test(normalized)
+      ? 'take'
+      : /(?:использовать|активировать|отдохнуть|привал)/u.test(normalized)
+        ? 'use'
+        : /(?:открыть|разбить|сломать|взломать|выломать)/u.test(normalized)
+          ? 'open'
+          : /(?:осмотреть|изучить|прочитать|проверить|обыскать)/u.test(normalized)
+            ? 'inspect'
+            : null
   if (!intent) return null
   const aliases = Object.entries(ASSET_ALIASES_RU)
     .filter(([, words]) => words.some((word) => normalized.includes(word)))
@@ -363,6 +406,10 @@ export function nearestSceneObjectCommand({ props = [], actorPosition, text } = 
   if (!operation) return null
   const candidates = (Array.isArray(props) ? props : [])
     .filter((prop) => sceneInteractionCatalogEntry(prop?.assetId))
+    // Молиться можно только святыне. Без этого фильтра «помолюсь» у ближайшего
+    // сундука уезжало бы движку командой, которую он же и отвергнет: слово
+    // молитвы своё, а ближайший поддержанный пропс — какой угодно.
+    .filter((prop) => operation.intent !== 'pray' || isSceneShrineAsset(prop?.assetId))
     .filter((prop) => {
       if (!operation.aliases.length) return true
       const alias = assetAlias(prop.assetId)

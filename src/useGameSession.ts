@@ -60,6 +60,7 @@ type TacticalCommand =
   | { command_type: 'LeaveTavernDiceRound'; actor_id: string }
   | { command_type: 'OrderTavernDrink'; actor_id: string }
   | { command_type: 'SendLetter'; actor_id: string; addressee_kind: LetterAddresseeKind; addressee_id: string; body: string }
+  | { command_type: 'ReceiveNpcBlessing'; actor_id: string; npc_id: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -69,10 +70,15 @@ type TacticalCommand =
  *
  * Список закрыт и обязан совпадать с серверным (`server/game-orchestrator.mjs`:
  * `parleyCheckCard`, `guardEscapeCheckCard`, `tavernDiceCheckCard`,
- * `beastTamingCheckCard`). Отдельная
+ * `beastTamingCheckCard`, `shrinePrayerCheckCard`). Отдельная
  * функция здесь стоит вместо трёх сравнений по месту потому, что забыть одно из
  * них уже удалось: карточка приходит с сервера, клиент её не показывает, и ход
  * зависает без единой ошибки в консоли.
+ *
+ * `OperateSceneObject` двухфазна **не целиком**, а ровно одним глаголом: кость
+ * бросает только молитва. Осмотр, взлом и поджог решаются серверным броском в
+ * тот же запрос, и просить у них карточку значило бы вешать ход на кубик,
+ * которого сервер не объявит.
  */
 function twoPhaseCheckCommandFor(command: TacticalCommand): TwoPhaseCheckCommand | null {
   switch (command.command_type) {
@@ -81,6 +87,8 @@ function twoPhaseCheckCommandFor(command: TacticalCommand): TwoPhaseCheckCommand
     case 'AnswerTavernDiceRound':
     case 'CalmBeast':
       return command
+    case 'OperateSceneObject':
+      return command.intent === 'pray' ? command : null
     default:
       return null
   }
@@ -1261,13 +1269,17 @@ export function useGameSession() {
       use: 'Использовать объект сцены',
       topple: 'Опрокинуть объект сцены',
       ignite: 'Поджечь объект сцены',
+      pray: 'Помолиться у святыни',
     }
     return executeTacticalCommand({
       command_type: 'OperateSceneObject',
       actor_id: actorId,
       prop_id: propId,
       intent,
-    }, label[intent])
+    }, label[intent],
+    // Двухфазный ручной кубик просит только молитва: остальные глаголы пропса
+    // сервер решает своим броском в тот же запрос, и карточки для них нет.
+    intent === 'pray' ? { manualRoll: !autoRollEnabled() } : undefined)
   }, [executeTacticalCommand])
 
   /* Переговоры посреди боя. Клиент называет только подход: кто отвечает за
@@ -1358,6 +1370,16 @@ export function useGameSession() {
     return executeTacticalCommand(
       { command_type: 'SendLetter', actor_id: actorId, addressee_kind: addresseeKind, addressee_id: addresseeId, body },
       'Написать письмо',
+    )
+  }, [executeTacticalCommand])
+
+  /* Треба у служителя. Клиент называет только жреца: размер пожертвования, срок
+     благословения и суточный предел объявляет сервер. Броска здесь нет — за него
+     и платят. */
+  const receiveNpcBlessing = useCallback((actorId: string, npcId: string) => {
+    return executeTacticalCommand(
+      { command_type: 'ReceiveNpcBlessing', actor_id: actorId, npc_id: npcId },
+      'Попросить благословение',
     )
   }, [executeTacticalCommand])
 
@@ -1809,6 +1831,7 @@ export function useGameSession() {
     leaveTavernDiceRound,
     orderTavernDrink,
     sendLetter,
+    receiveNpcBlessing,
     proposeParley,
     settleParley,
     useLevelTransition,

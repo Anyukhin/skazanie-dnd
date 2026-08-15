@@ -1,4 +1,5 @@
 import { NARRATOR_PRIORITY, assertNarratorContract } from './deterministic-narration.mjs'
+import { BLESSING_CONDITION } from './blessings.mjs'
 import { sceneInteractionNarration } from './scene-interactions.mjs'
 import { WORLD_CLOCK_EVENT_TYPES, worldClockNarration } from './weather.mjs'
 
@@ -332,6 +333,19 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(Number(payload.social_bonus) > 0
         ? `${actor} берёт кружку (${drinks}-я за вечер) — язык развязывается, разговор идёт легче.`
         : `${actor} берёт ещё одну кружку. Это уже ${drinks}-я.`)
+    } else if (event.event_type === 'ShrinePrayerResolved') {
+      // Три исхода, и ни один из них ничего не отнимает. Знамение говорит само
+      // за себя строкой из закрытой серверной таблицы: додумывать его на ходу
+      // нельзя — при replay та же неудача рассказалась бы иначе.
+      if (payload.outcome === 'blessed') meaningful.push(`${actor} склоняет голову у святыни, и слова находят ответ: благословение принято.`)
+      else if (payload.outcome === 'omen') meaningful.push(`${actor} молится, но ответа нет. ${String(payload.omen || 'Что-то в этом месте отзывается неправильно.')}`)
+      else meaningful.push(`${actor} молится у святыни. Ответа нет — только тишина и камень.`)
+    } else if (event.event_type === 'NpcBlessingGranted') {
+      meaningful.push(`${String(payload.npc_name || 'Служитель')} принимает пожертвование в ${Math.max(0, Number(payload.donation_cp) || 0)} мм и кладёт ладонь на голову героя: благословение дано.`)
+    } else if (event.event_type === 'ConditionAdded' && String(payload.source ?? '').startsWith('blessing:')) {
+      meaningful.push(`${target} несёт малое благословение: первый же удар пойдёт вернее (+${Math.max(0, Number(payload.attack_bonus) || 0)}), и держится оно до продолжительного отдыха.`)
+    } else if (event.event_type === 'ConditionRemoved' && payload.condition === BLESSING_CONDITION && payload.trigger === 'attack') {
+      meaningful.push(`Благословение израсходовано этим ударом.`)
     } else if (event.event_type === 'ConditionAdded' && payload.source === 'tavern-drink') {
       meaningful.push(`${target} перебрал(а): всё плывёт, и до отдыха любая проверка идёт с помехой.`)
     } else if (event.event_type === 'CaptiveTaken') {
@@ -409,9 +423,9 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
-  'ItemEffectIneffective', 'MonsterAbilityRecharged',
+  'ItemEffectIneffective', 'MonsterAbilityRecharged', 'NpcBlessingGranted',
   'KnockoutEnded', 'MapLevelChanged', 'ParleyProposed', 'ParleyRejected', 'ParleySettled',
-  'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
+  'ReadiedActionExpired', 'RestCompleted', 'ShrinePrayerResolved', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',

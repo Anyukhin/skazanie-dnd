@@ -92,6 +92,7 @@ import {
 import { BEAST_PLAYER_COMMAND_TYPES, beastChronicleEntry } from './beast-taming.mjs'
 import { CAPTIVE_PLAYER_COMMAND_TYPES, planCaptiveNeglectCommands } from './captives.mjs'
 import { TAVERN_COMMAND_TYPES, TAVERN_DICE_APPROACHES, TAVERN_STAKES_CP } from './tavern-life.mjs'
+import { BLESSING_COMMAND_TYPES } from './blessings.mjs'
 import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
 import { offscreenChronicleEntry } from './offscreen-world.mjs'
 import {
@@ -427,6 +428,10 @@ const PLAYER_TAVERN_COMMANDS = TAVERN_COMMAND_TYPES
 // пишут вне боя, и экономику хода оно не трогает. Список берётся у модуля почты
 // — второго перечисления команд писем в проекте быть не должно.
 const PLAYER_LETTER_COMMANDS = COURIER_LETTER_COMMAND_TYPES
+// Благословения. Отдельный набор по той же причине, что у таверны и у почты:
+// требу принимают вне боя, и экономику хода она не трогает. Список берётся у
+// модуля благословений — второго перечисления в проекте быть не должно.
+const PLAYER_BLESSING_COMMANDS = BLESSING_COMMAND_TYPES
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -988,7 +993,11 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
     return {
       ...base,
       prop_id: String(input?.prop_id ?? input?.propId ?? '').slice(0, 120),
-      intent: ['inspect', 'open', 'take', 'use'].includes(intent) ? intent : 'inspect',
+      // `pray` в списке есть, а `topple`/`ignite` нет, и это не забывчивость:
+      // опрокинуть и поджечь разрешает только серверный разбор свободного текста
+      // (там за это отвечает `approach`), а молитва — обычная кнопка пропса,
+      // которую сервер сам и объявил в его глаголах (`sceneShrineVerbsFor`).
+      intent: ['inspect', 'open', 'take', 'use', 'pray'].includes(intent) ? intent : 'inspect',
       // Силовой подход приходит только от серверного разбора свободного текста.
       // Кнопка не может подменить обычное взаимодействие готовым исходом взлома.
       approach: 'hand',
@@ -1296,6 +1305,40 @@ function sanitizePlayerTavernCommand(user, state, input) {
     ...(type === 'AnswerTavernDiceRound' ? {
       approach: TAVERN_DICE_APPROACHES.includes(String(input?.approach)) ? String(input.approach) : 'fair',
     } : {}),
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
+ * Благословение жреца. Из запроса берутся только герой и служитель: размер
+ * пожертвования, срок благословения и суточный предел объявляет сервер
+ * (`server/blessings.mjs`), и подсказать их клиент не может.
+ */
+function sanitizePlayerBlessingCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_BLESSING_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к благословениям', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'npc_id', 'npcId',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Просьба о благословении содержит запрещённые поля: ${unexpected.join(', ')}`, 'BLESSING_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Благословение принимают только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    npc_id: String(input?.npc_id ?? input?.npcId ?? '').trim().slice(0, 120),
     server_authoritative: true,
     ...(expected == null ? {} : { expected_state_version: expected }),
   }
@@ -4168,6 +4211,7 @@ const server = createServer((req, res) => {
         if (PLAYER_LAW_COMMANDS.has(type)) return sanitizePlayerLawCommand(user, authoritativeBefore, command)
         if (PLAYER_TAVERN_COMMANDS.has(type)) return sanitizePlayerTavernCommand(user, authoritativeBefore, command)
         if (PLAYER_LETTER_COMMANDS.has(type)) return sanitizePlayerLetterCommand(user, authoritativeBefore, command)
+        if (PLAYER_BLESSING_COMMANDS.has(type)) return sanitizePlayerBlessingCommand(user, authoritativeBefore, command)
         // Права администратора меняют авторизацию MakeAttack, но не делают
         // клиентские поля или request_fingerprint авторитетными. Ограничение
         // player→enemy остаётся только в player sanitizer.
@@ -4188,6 +4232,12 @@ const server = createServer((req, res) => {
       const tavernCommands = commands.filter((command) => PLAYER_TAVERN_COMMANDS.has(commandType(command)))
       if (tavernCommands.length && commands.length !== 1) {
         throw commandPolicyError('Кости и выпивка идут отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      // Треба — отдельная атомарная команда по той же причине: у неё своя цена в
+      // монете, свои минуты кампании и суточный предел на героя.
+      const blessingCommands = commands.filter((command) => PLAYER_BLESSING_COMMANDS.has(commandType(command)))
+      if (blessingCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Благословение идёт отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
       // Письмо — отдельная атомарная команда по той же причине, что кости и
       // ответ страже: у него своя цена в монете и свои минуты кампании.

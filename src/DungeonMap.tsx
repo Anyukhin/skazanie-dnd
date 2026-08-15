@@ -18,7 +18,7 @@ import {
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
   Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Beer, Ear, Eye,
-  Mail, MailOpen, MailX,
+  Mail, MailOpen, MailX, HandHeart,
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
@@ -155,6 +155,7 @@ export const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
   use: 'Использовать',
   topple: 'Опрокинуть',
   ignite: 'Поджечь',
+  pray: 'Помолиться',
 }
 /**
  * Подписи условий перемирия. Какие из них доступны, решает сервер: здесь
@@ -239,7 +240,7 @@ export function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
   const projected = prop.interaction?.verbs ?? prop.interactionVerbs ?? []
   return [...new Set(projected.filter((verb): verb is SceneObjectIntent => (
     verb === 'inspect' || verb === 'open' || verb === 'take' || verb === 'use'
-    || verb === 'topple' || verb === 'ignite'
+    || verb === 'topple' || verb === 'ignite' || verb === 'pray'
   )))]
 }
 
@@ -631,7 +632,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -669,6 +670,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onLeaveTavernDiceRound: () => Promise<CommandOutcome>
   onOrderTavernDrink: () => Promise<CommandOutcome>
   onSendLetter: (addresseeKind: LetterAddresseeKind, addresseeId: string, body: string) => Promise<CommandOutcome>
+  onReceiveNpcBlessing: (npcId: string) => Promise<CommandOutcome>
   onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
   onStartRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
   onSpendHitPointDie: () => Promise<CommandOutcome>
@@ -1213,6 +1215,18 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const selectedSceneObject = interactiveSceneObjects.find((prop) => prop.id === selectedSceneObjectId) ?? null
   const selectedSceneObjectAtHand = Boolean(selectedSceneObject && sceneObjectsAtHand.some((prop) => prop.id === selectedSceneObject.id))
   const selectedSceneObjectVerbs = selectedSceneObject ? sceneObjectVerbs(selectedSceneObject) : []
+  /* Благословения приезжают готовой карточкой: цена требы, СЛ молитвы и то,
+     прошли ли сутки, посчитаны сервером (`server/blessings.mjs`). Своей
+     арифметики суток здесь нет — иначе кнопка обещала бы одно, а движок делал
+     другое. */
+  const blessings = state.blessings ?? null
+  const blessingAvailable = blessings?.available !== false
+  const blessingWaitHours = Math.ceil(Math.max(0, Number(blessings?.waits_minutes) || 0) / 60)
+  const blessingPrayerHint = blessingAvailable
+    ? `Молитва: проверка Религии, СЛ ${Number(blessings?.prayer_dc) || 12}. Успех — малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) до продолжительного отдыха. Раз в сутки на героя`
+    : `Этот герой уже обращался к богам сегодня. Снова можно примерно через ${blessingWaitHours} ч`
+  const blessingPriests = blessings?.priests ?? []
+  const blessingDonationCp = Math.max(0, Number(blessings?.donation_cp) || 0)
   /* Этажи локации (`docs/multilevel-map-plan.md`, раздел 6). Номер активного
      этажа приходит проекцией; у старой кампании его нет, и это этаж входа. */
   const sceneLevelIndex = Number(state.scene.level?.index ?? boardMap?.levelIndex ?? 0) || 0
@@ -1859,6 +1873,26 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   title={combatActive ? 'Торговля недоступна во время боя' : !sceneNpc.alive || !sceneNpcMerchant.available ? 'Торговец сейчас недоступен' : 'Открыть существующее серверное окно торговли'}
                   onClick={() => onOpenMerchant(sceneNpc.id)}
                 ><Store size={13} />Торговать</button>
+              : null}
+            {/* Треба у служителя. Кто служитель, решает сервер по роли профиля
+                (`blessingPriestsFor`, `server/blessings.mjs`): своего списка
+                ролей у доски нет, иначе кнопка появлялась бы там, где движок её
+                не принимает. */}
+            {blessingPriests.some((priest) => priest.id === sceneNpc.id)
+              ? <button
+                  type="button"
+                  disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct || !blessingAvailable || activeHeroPurseCp < blessingDonationCp}
+                  title={combatActive
+                    ? 'Посреди боя благословений не раздают'
+                    : !sceneNpc.alive
+                      ? 'Служитель сейчас недоступен'
+                      : !blessingAvailable
+                        ? `Этот герой уже обращался к богам сегодня. Снова можно примерно через ${blessingWaitHours} ч`
+                        : activeHeroPurseCp < blessingDonationCp
+                          ? `На пожертвование нужно ${blessingDonationCp} мм`
+                          : `Пожертвовать ${blessingDonationCp} мм и получить малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) без броска`}
+                  onClick={() => { void onReceiveNpcBlessing(sceneNpc.id) }}
+                ><HandHeart size={13} />Благословение ({blessingDonationCp} мм)</button>
               : null}
           </div>}
         </>}
@@ -2891,11 +2925,19 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 type="button"
                 key={`${selectedSceneObject.id}:${intent}`}
                 className={`scene-object-control intent-${intent}`}
-                disabled={!canAct || tacticalBusy || unavailable}
+                disabled={!canAct || tacticalBusy || unavailable || (intent === 'pray' && (!blessingAvailable || combatActive))}
                 onClick={() => selected && onOperateSceneObject(selected, selectedSceneObject.id, intent)}
-                title={unavailable ? 'Подойдите к объекту на соседнюю клетку' : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
+                title={unavailable
+                  ? 'Подойдите к объекту на соседнюю клетку'
+                  : intent === 'pray'
+                    ? (combatActive ? 'Посреди боя благословений не раздают' : blessingPrayerHint)
+                    : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
               >
-                <CombatIcon id={`scene-object-${intent}`} kind={intent === 'take' ? 'item' : intent === 'inspect' ? 'spellbook' : 'action'} hint={`${label} объект сцены`} size={27} compact />
+                {/* `prayer` в подсказке — не мусор: тема иконки выводится из
+                    латинской сигнатуры (`abilityIconTheme`, `CombatIcon.tsx`), и
+                    без этого слова молитва получила бы утилитарную тему вместо
+                    божественной. */}
+                <CombatIcon id={`scene-object-${intent}`} kind={intent === 'take' ? 'item' : intent === 'inspect' ? 'spellbook' : 'action'} hint={intent === 'pray' ? `${label} святыня prayer divine` : `${label} объект сцены`} size={27} compact />
                 <span>{label}</span>
               </button>
             })}

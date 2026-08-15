@@ -241,6 +241,22 @@ test('состояния честно помечаются как работаю
   assert.equal(tacticalUi.conditionPresentation('disengaged').label, 'Отход')
 })
 
+test('срок состояния подписан по-русски, а незнакомый отдаётся как есть', () => {
+  // Малое благословение и хмель таверны живут «до продолжительного отдыха», и
+  // панель обязана сказать это словами: сырое `until-long-rest` игрок читает
+  // как сбой, а не как срок.
+  const blessed = tacticalUi.conditionPresentation({ id: 'minor-blessing', duration: 'until-long-rest' })
+  assert.equal(blessed.label, 'Малое благословение')
+  assert.equal(blessed.status, 'implemented', 'движок действительно двигает бросок атаки')
+  assert.equal(blessed.duration, 'до продолжительного отдыха')
+  assert.equal(
+    tacticalUi.conditionPresentation({ id: 'disengaged', duration: 'until-next-turn' }).duration,
+    'до начала следующего хода',
+  )
+  // Незнакомый срок теряться не должен: показать сырым честнее, чем скрыть.
+  assert.equal(tacticalUi.conditionPresentation({ id: 'bless', duration: 'until-dawn' }).duration, 'until-dawn')
+})
+
 test('поддержка механики честно блокирует эвристику и ruling-only карточки', () => {
   assert.deepEqual(tacticalUi.mechanicsSupportPresentation('verified'), {
     status: 'verified',

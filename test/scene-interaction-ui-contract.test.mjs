@@ -28,10 +28,13 @@ test('доска предлагает только спроецированны�
     // горючего реквизита, и доска обязана нарисовать их той же кнопкой.
     ['topple', 'Опрокинуть'],
     ['ignite', 'Поджечь'],
+    // Молитва: сервер объявляет этот глагол только у святыни, и доска обязана
+    // нарисовать его той же кнопкой, что и остальные операции пропса.
+    ['pray', 'Помолиться'],
   ]) {
     assert.match(appSource, new RegExp(`${intent}: '${label}'`, 'u'))
   }
-  assert.match(appSource, /verb === 'topple' \|\| verb === 'ignite'/u)
+  assert.match(appSource, /verb === 'topple' \|\| verb === 'ignite' \|\| verb === 'pray'/u)
 })
 
 test('декодер карты сохраняет только публичный контракт взаимодействия', () => {
@@ -39,7 +42,7 @@ test('декодер карты сохраняет только публичны
     mapClientSource.indexOf('function decodeProp'),
     mapClientSource.indexOf('function decodeZone'),
   )
-  assert.match(mapClientSource, /SCENE_OBJECT_INTENTS: readonly SceneObjectIntent\[\] = \['inspect', 'open', 'take', 'use', 'topple', 'ignite'\]/u)
+  assert.match(mapClientSource, /SCENE_OBJECT_INTENTS: readonly SceneObjectIntent\[\] = \['inspect', 'open', 'take', 'use', 'topple', 'ignite', 'pray'\]/u)
   assert.match(decodePropSource, /pointOfInterest: rawInteraction\.pointOfInterest === true/u)
   assert.doesNotMatch(decodePropSource, /detailKey|rewardKey/u)
 })
@@ -47,7 +50,10 @@ test('декодер карты сохраняет только публичны
 test('клик выбирает интерактивный prop, а его кнопки блокируются вдали, не в свой ход и во время команды', () => {
   assert.match(appSource, /const sceneObject = sceneObjectByCell\.get\(cellKey\)/u)
   assert.match(appSource, /setSelectedSceneObjectId\(\(current\) => current === sceneObject\.id \? null : sceneObject\.id\)/u)
-  assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| unavailable\}/u)
+  // Молитва добавляет к общим условиям свои: суточный слот героя уже мог быть
+  // закрыт, а в бою обращение к богам движок не принимает вовсе. Кнопка обязана
+  // погаснуть до клика, а не после отказа.
+  assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| unavailable \|\| \(intent === 'pray' && \(!blessingAvailable \|\| combatActive\)\)\}/u)
   assert.match(appSource, /sceneObjectsAtHand\.find/u)
   assert.match(appSource, /boardOverlay\.push\(\{ \.\.\.cell, kind: 'command-range' \}\)/u)
   assert.match(boardSource, /hotspot\?: React\.ReactNode/u)

@@ -50,6 +50,10 @@ const VERB_PHRASES = Object.freeze({
   use: 'использовать',
   topple: 'опрокинуть',
   ignite: 'поджечь',
+  // `pray` в таблице нет намеренно: у молитвы своя строка (`blessingHints`), и
+  // она называет то, чего шаблон «Можно <глагол>: <предмет>» назвать не умеет, —
+  // СЛ проверки и суточный предел. Незнакомый глагол здесь молча пропускается,
+  // поэтому алтарь по-прежнему предлагают осмотреть, а не «помолиться: Алтарь».
 })
 
 /** Порядок предпочтения глаголов: осмотр безопаснее поджога. */
@@ -196,6 +200,36 @@ function tavernHints(room) {
         : `Можно заказать выпивку: ${price} мм за кружку`,
     }],
   }
+}
+
+/**
+ * Молитвы и благословения. Карточку собрал сервер (`server/blessings.mjs`), и
+ * подсказка только пересказывает её: своей арифметики суток здесь нет и быть не
+ * должно — чего нет в проекции, того нет и на входе.
+ *
+ * Строка **одна** и появляется только тогда, когда обращение действительно
+ * доступно: сутки не закрыты и в сцене есть либо служитель, либо святыня. Иначе
+ * панель звала бы молиться там, где движок откажет, — а подсказка, обещающая
+ * недоступное, хуже отсутствующей.
+ *
+ * Святыня перевешивает служителя: молитва бесплатна, и предлагать сперва
+ * платное было бы советом в пользу храма, а не игрока.
+ */
+function blessingHints(room) {
+  const blessings = room?.blessings
+  if (!blessings || blessings.available === false) return []
+  const priest = Array.isArray(blessings.priests) ? text(blessings.priests[0]?.name, 60) : ''
+  const shrine = (Array.isArray(room?.scene?.map?.props) ? room.scene.map.props : [])
+    .some((prop) => prop?.interactive === true
+      && (Array.isArray(prop?.interaction?.verbs) ? prop.interaction.verbs : []).map(String).includes('pray'))
+  if (!shrine && !priest) return []
+  return [{
+    id: 'blessing:offer',
+    priority: HINT_PRIORITY.leisure,
+    text: shrine
+      ? `Можно помолиться у святыни: проверка Религии, СЛ ${Number(blessings.prayer_dc) || 12}, раз в сутки`
+      : `Можно попросить благословение: ${priest} (пожертвование ${Number(blessings.donation_cp) || 0} мм)`,
+  }]
 }
 
 /**
@@ -346,7 +380,7 @@ export function suggestedActionsFor(room, actorId = '') {
   // собеседники, цель, выход.
   const reserved = ordered([...tavern.urgent, ...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
-  const props = ordered([...propHints(room), ...tavern.leisure, ...beastHints(room, actorId), ...letterHints(room)]).slice(0, budget)
+  const props = ordered([...propHints(room), ...tavern.leisure, ...blessingHints(room), ...beastHints(room, actorId), ...letterHints(room)]).slice(0, budget)
   return [...props, ...reserved]
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
     .slice(0, MAX_ACTION_HINTS)

@@ -23,6 +23,7 @@ import {
   verifyNarratorCraft,
 } from './narrator.mjs'
 import { TAVERN_DICE_APPROACHES, TAVERN_POLICY_ID, tavernRoundFor } from './tavern-life.mjs'
+import { BLESSINGS_POLICY_ID, PRAYER_ABILITY, PRAYER_DC, PRAYER_SKILL, blessingAvailabilityFor } from './blessings.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll } from './rules-engine.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
@@ -910,6 +911,43 @@ export class GameOrchestrator {
   }
 
   /**
+   * Карточка проверки для первой фазы молитвы у святыни. СЛ здесь серверная и
+   * постоянная (`PRAYER_DC`): у святыни нет замка, который можно было бы
+   * сделать сложнее, и объявленное число совпадает с тем, против которого
+   * бросит движок, по построению.
+   *
+   * `null` — молиться нельзя (сутки не прошли), и отказ должен случиться до
+   * кубика, а не после: бросать кость ради заведомого отказа — обман стола.
+   */
+  shrinePrayerCheckCard({ campaignId, playerId, state, command }) {
+    const actorId = String(command.actor_id ?? playerId)
+    const elapsed = Math.max(0, Number(state?.mechanics?.world_time?.elapsed_minutes) || 0)
+    if (!blessingAvailabilityFor(state, actorId, elapsed).available) return null
+    const preview = previewD20Check(state, {
+      actorId,
+      kind: 'check',
+      ability: PRAYER_ABILITY,
+      skill: PRAYER_SKILL,
+      difficulty: PRAYER_DC,
+    })
+    const check = this.rollRegistry.registerCheck({
+      campaignId,
+      actorId,
+      label: d20CheckLabel({ kind: 'check', ability: preview.ability, skill: preview.skill }),
+      modifier: preview.modifier,
+      difficulty: PRAYER_DC,
+      ability: preview.ability,
+      advantage: preview.advantage,
+      disadvantage: preview.disadvantage,
+      // Пропс уезжает в контекст, потому что молитва привязана к святыне: между
+      // фазами герой мог отойти к другому алтарю, и кость, брошенная у одного,
+      // не должна исполняться у другого.
+      context: { kind: 'shrine-prayer', policy: BLESSINGS_POLICY_ID, prop_id: String(command.prop_id ?? '') },
+    })
+    return { ...check, skill: preview.skill }
+  }
+
+  /**
    * Политика уговора конкретного зверя прямо сейчас. Одна функция на обе фазы
    * ручного броска: карточка объявляет СЛ отсюда, и сторож второй фазы сверяет
    * объявленное с текущим тоже отсюда. Две копии этого вычисления разошлись бы
@@ -1389,6 +1427,53 @@ export class GameOrchestrator {
         }
         tavernAnswerCommand.approach = registeredApproach
         tavernAnswerCommand.verified_roll = verifiedRollPayload
+      }
+    }
+    // Молитва у святыни — тот же двухфазный ручной кубик, что у парлея, побега
+    // и костей. Отличие одно: карточки может не быть вовсе — если герой уже
+    // обращался к богам сегодня, отказ обязан прийти до кубика, а не после.
+    const prayerCommand = (input.commands ?? []).find((candidate) => (
+      String(candidate?.command_type ?? '') === 'OperateSceneObject'
+      && String(candidate?.intent ?? '') === 'pray'
+    )) ?? null
+    if (prayerCommand) {
+      if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
+        const card = this.shrinePrayerCheckCard({ campaignId, playerId, state: authoritativeState, command: prayerCommand })
+        if (card) {
+          return {
+            narration: `Требуется проверка: ${card.label}, СЛ ${card.difficulty}. Бросьте d20 — услышат ли молитву.`,
+            effects: emptyEffects(),
+            provider: 'RulesEngine',
+            model: 'deterministic',
+            turn_id: turnId,
+            engine_mode: mode,
+            state_version: authoritativeState.state_version,
+            mechanics: [],
+            visible_state_changes: [],
+            authoritative_state: authoritativeState,
+            check: { ...card, sides: 20 },
+            turn_consumed: false,
+          }
+        }
+      }
+      if (verifiedRoll) {
+        // Бросок обязан быть зарегистрирован **как молитва** и **у этой
+        // святыни**: реестр сверяет только кампанию и актора, поэтому без этих
+        // двух проверок во вторую фазу можно было бы подать кубик от любой
+        // другой проверки того же героя — в том числе брошенный у соседнего
+        // алтаря против той же СЛ.
+        const { context: prayerCheckContext, ...verifiedRollPayload } = verifiedRoll
+        if (String(prayerCheckContext?.kind ?? '') !== 'shrine-prayer') {
+          const error = new Error('Этот бросок регистрировался не для молитвы')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        if (String(prayerCheckContext?.prop_id ?? '') !== String(prayerCommand.prop_id ?? '')) {
+          const error = new Error('Этот бросок регистрировался у другой святыни')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        prayerCommand.verified_roll = verifiedRollPayload
       }
     }
     // Уговор зверя — тот же двухфазный ручной кубик, что у парлея, побега и
