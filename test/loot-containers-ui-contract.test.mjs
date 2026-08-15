@@ -50,6 +50,16 @@ test('клиент называет только ключи: контейнер,
   }
 })
 
+test('отказ на гонке перерисовывает карточку, а не оставляет взятую вещь', () => {
+  // Сервер прикладывает свежий список к отказу (`server/index.mjs`), и клиент
+  // обязан его применить: без этой ветки проигравший гонку видел бы уже взятый
+  // кинжал до следующего опроса комнаты и бил бы в ту же стену.
+  const refusal = session.slice(session.indexOf('const result = await response.json().catch(() => null) as TacticalCommandResult'))
+    .slice(0, 900)
+  assert.match(refusal, /result\?\.loot_containers/u)
+  assert.match(refusal, /loot_containers: staleLoot/u)
+})
+
 test('журнал называет добычу и обыск, но не содержимое', () => {
   assert.match(shared, /event\.type === 'loot-container'/u)
   assert.match(shared, /event\.type === 'loot-taken'/u)

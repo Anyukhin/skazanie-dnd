@@ -55,13 +55,26 @@
  * - **`cache` объявлен, но никем не создаётся.** Схрон — это находка, которую
  *   кладёт архитектор области, а не следствие чьего-то выбытия; вид назван
  *   здесь, чтобы у будущего производителя не появилось второго словаря.
+ * - **Вне боя получатель не обязан стоять у тела.** Пять футов меряются
+ *   обыскивающему, а не тому, кому вещь достаётся: `TransferItem`
+ *   (`server/item-lifecycle.mjs`) вне боя тоже не меряет расстояние между
+ *   героями, и своё правило досягаемости здесь означало бы, что отдать вещь
+ *   соратнику нельзя обыском, но можно следующей же командой передачи. В бою
+ *   этот путь закрыт целиком (`LOOT_RECIPIENT_DURING_COMBAT`) — ровно там, где
+ *   закрыт и сам `TransferItem`.
+ * - **Цена в карточке — только каталожная.** `lootItemForViewer` показывает ту
+ *   же цену, какую вещь получит в сумке героя, и молчит, когда её нет: снимок
+ *   экземпляра несёт цену любой записи каталога, а инвентарь героя признаёт
+ *   только торговый каталог (`resolveCatalogBasePriceCp`). Обещать за скимитар
+ *   25 зм, которых движок потом не выдаст, хуже, чем не обещать ничего;
+ *   оценка снятого с тела — отдельный шаг, и он ещё не сделан.
  */
 import { createHash } from 'node:crypto'
 
 import { levelKey, sceneLevelIndex, sceneLocationId } from './adventure-director.mjs'
 import { normalizeItemInstance } from './item-instances.mjs'
 import { carryingCapacity, inventoryWeight } from './item-lifecycle.mjs'
-import { MAX_STOCK_QUANTITY, inventoryStackKey, normalizeInventoryItem } from './merchant-economy.mjs'
+import { MAX_STOCK_QUANTITY, inventoryStackKey, normalizeInventoryItem, resolveCatalogBasePriceCp } from './merchant-economy.mjs'
 import { campaignElapsedMinutes } from './npc-social.mjs'
 
 export const LOOT_CONTAINERS_SCHEMA_VERSION = 1
@@ -168,6 +181,29 @@ export function normalizeLootContainer(value = {}) {
   }
 }
 
+/**
+ * Кого вытеснить, когда реестр перерос бюджет.
+ *
+ * Порядок здесь — это правило, а не оптимизация. Обычный `slice(-N)` режет по
+ * возрасту, и невзятое тело разбойника исчезало бы молча, освобождая место
+ * шестидесяти уже обобранным. Опустошённый контейнер — часть пейзажа: он не
+ * виден на доске, не обыскивается и ничего не хранит, поэтому уходит первым.
+ * Невзятое уступает место последним и только друг другу — по возрасту.
+ */
+function evictLootOverflow(containers) {
+  if (containers.length <= MAX_LOOT_CONTAINERS) return containers
+  const doomed = new Set()
+  let excess = containers.length - MAX_LOOT_CONTAINERS
+  for (const status of ['emptied', 'available']) {
+    for (let index = 0; index < containers.length && excess > 0; index += 1) {
+      if (doomed.has(index) || containers[index].status !== status) continue
+      doomed.add(index)
+      excess -= 1
+    }
+  }
+  return containers.filter((_, index) => !doomed.has(index))
+}
+
 export function normalizeLootContainersState(input = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const containers = []
@@ -180,7 +216,7 @@ export function normalizeLootContainersState(input = {}) {
   }
   return {
     schema_version: LOOT_CONTAINERS_SCHEMA_VERSION,
-    containers: containers.slice(-MAX_LOOT_CONTAINERS),
+    containers: evictLootOverflow(containers),
   }
 }
 
@@ -209,9 +245,27 @@ export function lootContainersInScene(state = {}, { includeEmptied = false } = {
     .filter((container) => includeEmptied || container.status === 'available')
 }
 
-export function lootContainerIdFor(kind, sourceIds = []) {
+/**
+ * Идентификатор контейнера.
+ *
+ * В свёртку идёт не только «кто выбыл», но и **где, в какой встрече и на какой
+ * минуте**. Причина конкретна: id противника — чистая функция сида встречи
+ * (`enemyFrom`, `server/encounter-assembler.mjs` строит его из `proposalHash`),
+ * а сид ведущий вправе прислать в `/encounters/assemble` явно. Тот же сид, тот
+ * же зал, тот же отряд — те же id противников; без места и времени в свёртке
+ * второе тело получило бы идентификатор первого и село бы поверх него.
+ *
+ * Воспроизводимость от этого не страдает: id уезжает в payload события целиком,
+ * и реплей читает его оттуда, а не пересчитывает.
+ */
+export function lootContainerIdFor(kind, sourceIds = [], scope = {}) {
   const parts = [...sourceIds].map((value) => text(value, 160)).sort()
-  return `loot:${text(kind, 20)}:${digest(kind, ...parts).slice(0, 24)}`
+  const place = [
+    text(scope.encounterId, 160),
+    text(scope.locationKey, 180),
+    String(Math.max(0, integer(scope.minutes, 0))),
+  ]
+  return `loot:${text(kind, 20)}:${digest(kind, ...place, ...parts).slice(0, 24)}`
 }
 
 // ---------------------------------------------------------------------------
@@ -258,7 +312,7 @@ function positionOf(state, actorId) {
 }
 
 function containerDraft({ kind, enemies, sourceIds, state, minutes, locationKey, locationName, encounterId, weaponsOnly = false, anchorId }) {
-  const containerId = lootContainerIdFor(kind, sourceIds)
+  const containerId = lootContainerIdFor(kind, sourceIds, { encounterId, locationKey, minutes })
   const items = enemies
     .flatMap((enemy) => lootableItemsOf(enemy, { weaponsOnly }))
     .slice(0, MAX_LOOT_CONTAINER_ITEMS)
@@ -305,15 +359,24 @@ function containerDraft({ kind, enemies, sourceIds, state, minutes, locationKey,
  * отбирать и случилось ли в потоке событие, способное вывести противника из
  * боя. Обнуление ОЗ ловится по самому payload (`hp_after: 0`), а не по списку
  * типов событий: писать ОЗ умеют несколько разных событий, а поле у них одно.
+ *
+ * Обнулиться при этом может кто угодно, и герой падает в бою куда чаще, чем
+ * гибнет вооружённый противник. Поэтому мало найти `hp_after: 0` — нужно, чтобы
+ * ноль принадлежал тому, у кого есть что отбирать: имя пострадавшего лежит в
+ * `target_ids` события, и сверка с ним стоит один проход по короткому списку
+ * вместо полного `replayEvents` на каждом падении героя.
  */
 export function lootCommitTouchesContainers(before = {}, events = []) {
-  const hasLoot = (Array.isArray(before?.enemies) ? before.enemies : [])
-    .some((enemy) => (Array.isArray(enemy?.loadout?.items) ? enemy.loadout.items : [])
+  const lootable = new Set((Array.isArray(before?.enemies) ? before.enemies : [])
+    .filter((enemy) => (Array.isArray(enemy?.loadout?.items) ? enemy.loadout.items : [])
       .some((item) => item?.lootable === true))
-  if (!hasLoot) return false
+    .map((enemy) => actorIdOf(enemy))
+    .filter(Boolean))
+  if (!lootable.size) return false
   return (Array.isArray(events) ? events : []).some((event) => event?.event_type === 'CaptiveTaken'
     || (event?.event_type === 'ParleySettled' && String(event?.payload?.outcome ?? '') === 'tribute')
-    || event?.payload?.hp_after === 0)
+    || (event?.payload?.hp_after === 0
+      && (Array.isArray(event?.target_ids) ? event.target_ids : []).some((id) => lootable.has(String(id)))))
 }
 
 /**
@@ -326,9 +389,17 @@ export function lootCommitTouchesContainers(before = {}, events = []) {
  */
 export function planLootContainerDrafts(before = {}, after = {}, events = []) {
   const eventList = Array.isArray(events) ? events : []
-  const existing = new Set(lootContainerList(after).map((container) => container.id))
   const minutes = campaignElapsedMinutes(after)
   const locationKey = sceneLootLocationKey(after)
+  // Сторожем дублей служит не весь реестр кампании, а только то, что новый
+  // контейнер способен собой стереть: `withContainer` заменяет запись по id, и
+  // потерять можно ровно невзятое на этом же ярусе. Опустошённые и чужие ярусы
+  // из списка убраны намеренно — иначе однажды обобранное тело навсегда
+  // запрещало бы контейнер с тем же идентификатором, а идентификатор
+  // повторяется: id противника — функция сида встречи (см. `lootContainerIdFor`).
+  const existing = new Set(lootContainerList(after)
+    .filter((container) => container.location_id === locationKey && container.status === 'available')
+    .map((container) => container.id))
   const locationName = text(after?.scene?.location ?? after?.scene?.title, 180)
   const encounterId = text(after?.mechanics?.encounter?.id ?? after?.mechanics?.encounter?.encounter_id, 160)
   const enemiesBefore = new Map((Array.isArray(before?.enemies) ? before.enemies : []).map((enemy) => [actorIdOf(enemy), enemy]))
@@ -475,6 +546,13 @@ function reachable(state, actor, container) {
  * работает общий нормализатор инвентаря, и цену он по-прежнему разрешает своей
  * политикой — как у любой другой вещи героя; заводить второй порядок цен ради
  * добычи было бы расхождением, а не строгостью.
+ *
+ * Практическое следствие названо честно: торговый каталог
+ * (`SRD_EQUIPMENT_CATALOG`) — это двенадцать записей, и большая часть снятого с
+ * тел оружия приходит в сумку без `base_price_cp` и с пустым
+ * `price_provenance`. Карточка контейнера показывает ровно ту же цену, поэтому
+ * расхождения «обещали — не выдали» здесь нет; появится оценка добычи —
+ * появится и цена, одним шагом в обоих местах.
  */
 export function inventoryItemFromInstance(instance, { id, quantity }) {
   const snapshot = instance?.snapshot && typeof instance.snapshot === 'object' ? instance.snapshot : {}
@@ -554,6 +632,12 @@ export function validateLootContainerCommand(command, state, context = {}) {
   }
   // В бою добыча уходит только тому, кто нагнулся: передавать её через полполя
   // посреди боя — это уже `TransferItem`, и он в бою запрещён.
+  //
+  // Вне боя расстояние до получателя не меряется, и это решение, а не пропуск:
+  // `TransferItem` вне боя тоже не меряет его между героями, поэтому своё
+  // правило досягаемости здесь означало бы только лишний шаг — отказ обыском и
+  // немедленное разрешение следующей же командой передачи. Граница названа в
+  // шапке модуля рядом с «пятью футами» обыскивающего.
   if (state?.mechanics?.combat?.active === true && recipientId !== ownerId) {
     reject('В бою добыча достаётся тому, кто обыскивает', 'LOOT_RECIPIENT_DURING_COMBAT')
   }
@@ -737,14 +821,23 @@ export function applyLootContainerEvent(state, event) {
  * Снимается всё, что принадлежит закрытому учёту: `owner` и `origin` — это
  * ключи инвентаря противника и **`template_id` его стат-блока**, то есть ровно
  * то, что отряд получает только опознанием врага (`publicEnemyFor`,
- * `server/viewer-projection.mjs`). `base_price_cp` остаётся: цену вещи герой
- * читает по её виду, и оценка у него уже есть в инвентаре.
+ * `server/viewer-projection.mjs`).
+ *
+ * Цена считается **той же политикой, что и у вещи в сумке**, а не берётся из
+ * снимка. Снимок несёт каталожную цену любой записи, а `normalizeInventoryItem`
+ * признаёт только торговый каталог (`resolveCatalogBasePriceCp`), и снятый с
+ * тела скимитар приходит в инвентарь без цены вовсе. Карточка, обещавшая за
+ * него 25 зм, обещала бы то, чего движок не выдаст; поэтому цены здесь ровно
+ * столько же, сколько её будет после обыска, — а чаще её нет совсем. Оценка
+ * добычи — отдельный шаг (`server/item-appraisal.mjs`), и он ещё не сделан.
  */
 export function lootItemForViewer(item = {}) {
   const snapshot = item?.snapshot && typeof item.snapshot === 'object' ? item.snapshot : {}
+  const catalogId = text(item.catalog_id, 120)
+  const basePriceCp = Math.max(0, integer(resolveCatalogBasePriceCp({ catalog_id: catalogId }), 0))
   return {
     item_instance_id: text(item.item_instance_id, 160),
-    catalog_id: text(item.catalog_id, 120),
+    catalog_id: catalogId,
     name: text(snapshot.name, 120) || 'Предмет',
     type: text(snapshot.type, 40),
     rarity: text(snapshot.rarity, 40),
@@ -752,7 +845,7 @@ export function lootItemForViewer(item = {}) {
     quantity: Math.max(1, integer(item.quantity, 1)),
     description: text(snapshot.description, 1_000),
     mechanics_status: text(snapshot.mechanics_status, 40),
-    base_price_cp: Math.max(0, integer(snapshot.base_price_cp, 0)),
+    ...(basePriceCp > 0 ? { base_price_cp: basePriceCp } : {}),
     ...(snapshot.image ? { image: text(snapshot.image, 500) } : {}),
     ...(item.charges ? { charges: { current: Math.max(0, integer(item.charges.current, 0)), max: Math.max(0, integer(item.charges.max, 0)) } } : {}),
     ...(snapshot.requires_attunement === true ? { requires_attunement: true } : {}),

@@ -403,6 +403,23 @@ const PLAYER_LAW_COMMANDS = new Set(['ResolveGuardEncounter'])
 // Обыск контейнера. Отдельный набор, а не часть боевого: он доступен и в бою,
 // и вне его, а цену в экономике хода назначает Rules Engine, а не маршрут.
 const PLAYER_LOOT_COMMANDS = new Set(['LootContainer'])
+/**
+ * Отказы, после которых карточка обыска обязана перерисоваться: содержимое под
+ * игроком изменилось, и повтор той же команды разобьётся о ту же стену.
+ *
+ * Список нужен потому, что живой клиент 409 на обыске не получает вовсе:
+ * `STATE_VERSION_CONFLICT` требует присланного `expected_state_version`, а
+ * `normalizeCommand` (`server/rules-engine.mjs`) подставляет туда текущую
+ * версию сам. Настоящий исход гонки двух игроков за один кинжал — 400 с
+ * `LOOT_ITEM_GONE`, и свежий список нужен именно ему.
+ */
+const LOOT_STALE_ERROR_CODES = new Set([
+  'LOOT_ITEM_GONE',
+  'LOOT_QUANTITY_INVALID',
+  'LOOT_CONTAINER_EMPTY',
+  'LOOT_CONTAINER_NOT_FOUND',
+  'LOOT_CONTAINER_NOT_IN_SCENE',
+])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -4197,12 +4214,15 @@ const server = createServer((req, res) => {
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code) ? 409 : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
-      // Двое потянулись за одним кинжалом: первый его забрал, второй пришёл со
-      // старой версией и получил 409. Отказа мало — без свежего списка его
-      // карточка так и осталась бы с уже взятой вещью, и он бил бы в ту же
-      // стену. Список собирает та же функция, что и проекция комнаты, поэтому
-      // видно ровно то, что игроку и так позволено видеть.
-      const freshLoot = status === 409 && lootRequestActorId && getRoom(commandMatch[1]).state
+      // Двое потянулись за одним кинжалом: первый его забрал, второй пришёл к
+      // уже пустому месту. Отказа мало — без свежего списка его карточка так и
+      // осталась бы с уже взятой вещью, и он бил бы в ту же стену. Список идёт
+      // и к 409 (конфликт версии), и к 400 с кодами `LOOT_*`: браузер приходит
+      // именно вторым путём, потому что версию в команде он не присылает.
+      // Список собирает та же функция, что и проекция комнаты, поэтому видно
+      // ровно то, что игроку и так позволено видеть.
+      const staleLoot = status === 409 || LOOT_STALE_ERROR_CODES.has(String(error?.code ?? ''))
+      const freshLoot = staleLoot && lootRequestActorId && getRoom(commandMatch[1]).state
         ? lootContainersForViewer(getRoom(commandMatch[1]).state, { actorId: lootRequestActorId, isAdmin: user.role === 'admin' })
         : null
       return json(res, status, {

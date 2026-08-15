@@ -7,9 +7,14 @@ import { enemyLoadoutFor } from '../server/enemy-loadouts.mjs'
 import { bindFreeActionReadingToState, interpretFreeAction, resolveCorpseSearch } from '../server/free-action-adjudication.mjs'
 import {
   LOOT_CONTAINER_REACH_FEET,
+  MAX_LOOT_CONTAINERS,
+  lootCommitTouchesContainers,
   lootContainerList,
   lootContainersForViewer,
   lootContainersInScene,
+  lootItemForViewer,
+  normalizeLootContainersState,
+  sceneLootLocationKey,
 } from '../server/loot-containers.mjs'
 import {
   applyGameEvent,
@@ -223,6 +228,75 @@ test('израсходованное не воскресает: потрачен
   )
 })
 
+test('обобранное тело не запрещает новое с тем же идентификатором', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const first = containerOf(killed.state)
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: first.id,
+    lines: first.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity })),
+  })
+  assert.equal(containerOf(looted.state).status, 'emptied')
+
+  // Идентификатор противника — чистая функция сида встречи (`enemyFrom`,
+  // `server/encounter-assembler.mjs`), а сид ведущий вправе прислать в
+  // `/encounters/assemble` явно. Тот же сид, тот же зал, тот же отряд — тот же
+  // `foe-1` и тот же id контейнера. Пока сторожем дублей был весь реестр
+  // кампании, второе тело не появлялось вовсе: остаток так и оставался внутри
+  // `enemy.loadout` и не доставался ни одной командой.
+  const again = normalizeCampaignState({ ...looted.state, enemies: [bandit('foe-1')] })
+  const repeated = kill(again, 'foe-1')
+  assert.equal(
+    repeated.events.filter((event) => event.event_type === 'LootContainerCreated').length,
+    1,
+    'опустошённое тело не должно запрещать новое',
+  )
+  const second = lootContainerList(repeated.state).find((container) => container.status === 'available')
+  assert.ok(second, 'новое тело обязано лежать в реестре доступным')
+  assert.equal(second.id, first.id, 'проба имеет смысл только на совпавшем идентификаторе')
+  assert.ok(second.items.length >= 2)
+  assert.equal(
+    repeated.state.enemies.find((enemy) => enemy.id === 'foe-1').loadout.items.some((item) => item.lootable === true),
+    false,
+    'lootable-остаток обязан покинуть инвентарь противника и во второй раз',
+  )
+})
+
+test('переполнение реестра вытесняет обобранное, а невзятое остаётся', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const untouched = containerOf(killed.state)
+  // Невзятое тело — самая старая запись, и обычный `slice(-N)` срезал бы
+  // именно его: без события, без следа и без единого красного теста.
+  const emptied = Array.from({ length: MAX_LOOT_CONTAINERS + 2 }, (_, index) => ({
+    schema_version: 1,
+    id: `loot:corpse:filler-${index}`,
+    kind: 'corpse',
+    name: `Тело ${index}`,
+    location_id: 'warehouse',
+    status: 'emptied',
+    items: [],
+  }))
+  const crowded = normalizeLootContainersState({ containers: [untouched, ...emptied] })
+  assert.equal(crowded.containers.length, MAX_LOOT_CONTAINERS)
+  assert.ok(
+    crowded.containers.some((container) => container.id === untouched.id),
+    'невзятое тело обязано пережить переполнение',
+  )
+  assert.equal(crowded.containers.filter((container) => container.status === 'available').length, 1)
+
+  // Когда невзятого больше бюджета, уступает самое старое из него — но только
+  // после того, как ушли все опустошённые.
+  const many = Array.from({ length: MAX_LOOT_CONTAINERS + 1 }, (_, index) => ({
+    ...untouched,
+    id: `loot:corpse:full-${String(index).padStart(3, '0')}`,
+  }))
+  const overfull = normalizeLootContainersState({ containers: [...many, ...emptied] })
+  assert.equal(overfull.containers.length, MAX_LOOT_CONTAINERS)
+  assert.equal(overfull.containers.every((container) => container.status === 'available'), true)
+  assert.equal(overfull.containers.some((container) => container.id === 'loot:corpse:full-000'), false)
+})
+
 test('пустой инвентарь контейнера не создаёт', () => {
   const wolf = {
     id: 'foe-wolf',
@@ -432,6 +506,47 @@ test('в бою добыча достаётся тому, кто обыскив�
   )
 })
 
+test('вне боя добыча достаётся любому герою отряда — как и при передаче предмета', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const line = { item_instance_id: container.items[0].item_instance_id, quantity: 1 }
+  const command = (extra) => ({
+    campaign_id: 'LOOT', command_type: 'LootContainer', container_id: container.id, lines: [line], ...extra,
+  })
+
+  // Соратник стоит в другом конце склада: сам он до тела не дотянется.
+  assert.throws(
+    () => validateCommand(command({ actor_id: 'mate' }), killed.state, CONTEXT),
+    (error) => error.code === 'LOOT_CONTAINER_OUT_OF_REACH',
+  )
+  // Но получить добычу из рук того, кто нагнулся, он вправе, и это решение, а
+  // не пропуск: `TransferItem` вне боя тоже не меряет расстояние между героями
+  // (`server/item-lifecycle.mjs`), и своё правило досягаемости означало бы
+  // отказ обыском и немедленное разрешение следующей же командой передачи.
+  assert.doesNotThrow(() => validateCommand(command({ actor_id: 'hero', recipient_id: 'mate' }), killed.state, CONTEXT))
+})
+
+test('падение героя не оплачивает пересборку состояния добычи', () => {
+  const before = campaign()
+  const zeroed = (actorId) => [{ event_type: 'DamageApplied', target_ids: [actorId], payload: { hp_after: 0 } }]
+  // Самый частый ноль в бою — это ноль у героя, и он не рождает ни одного
+  // контейнера. Дешёвый гейт обязан отсеять его до дорогого `replayEvents`.
+  assert.equal(lootCommitTouchesContainers(before, zeroed('hero')), false)
+  assert.equal(lootCommitTouchesContainers(before, zeroed('mate')), false)
+  // Ноль у вооружённого противника гейт по-прежнему пропускает.
+  assert.equal(lootCommitTouchesContainers(before, zeroed('foe-1')), true)
+  assert.equal(lootCommitTouchesContainers(before, [{ event_type: 'CaptiveTaken', payload: {} }]), true)
+
+  // Настоящая фиксация это подтверждает: герой упал — тела нет, противник
+  // упал — тело есть.
+  const heroDown = commit(before, {
+    command_type: 'ApplyDamage', actor_id: 'hero', target_id: 'hero', amount: 99, damage_type: 'slashing',
+  })
+  assert.equal(heroDown.events.some((event) => event.event_type === 'LootContainerCreated'), false)
+  assert.equal(lootContainerList(heroDown.state).length, 0)
+  assert.equal(kill(before, 'foe-1').events.some((event) => event.event_type === 'LootContainerCreated'), true)
+})
+
 // ---------------------------------------------------------------------------
 // 5. Replay и идемпотентность потока
 
@@ -567,8 +682,78 @@ test('санитайзер событий не отдаёт ни содержи�
   assert.equal(JSON.stringify(taken.payload).includes('srd_5_2_1:bandit'), false)
 })
 
+test('карточка обещает ровно ту цену, что придёт в сумку героя', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const scimitar = container.items.find((item) => item.catalog_id === 'srd_5_2_1:scimitar')
+  assert.ok(scimitar, 'разбойник обязан прийти со скимитаром')
+  assert.ok(scimitar.snapshot.base_price_cp > 0, 'в снимке экземпляра каталожная цена есть')
+
+  // Торгового каталога скимитар не знает, и `normalizeInventoryItem` выдаст
+  // вещь без цены. Карточка обязана молчать ровно там же, где молчит сумка.
+  assert.equal(lootItemForViewer(scimitar).base_price_cp, undefined)
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: [{ item_instance_id: scimitar.item_instance_id, quantity: 1 }],
+  })
+  const inBag = looted.state.players.find((player) => player.id === 'hero').inventory
+    .find((item) => item.catalog_id === 'srd_5_2_1:scimitar')
+  assert.ok(inBag)
+  assert.equal(inBag.base_price_cp, undefined, 'иначе карточка обещала бы то, чего движок не выдаёт')
+
+  // Вещь, которую торговый каталог знает, цену сохраняет в обоих местах.
+  const dagger = lootItemForViewer({
+    item_instance_id: 'probe-dagger',
+    catalog_id: 'srd_5_2_1:dagger',
+    quantity: 1,
+    snapshot: { name: 'Кинжал', type: 'weapon', weight: 1, base_price_cp: 999_999 },
+  })
+  assert.ok(dagger.base_price_cp > 0)
+  assert.notEqual(dagger.base_price_cp, 999_999, 'цену решает политика каталога, а не снимок')
+})
+
 // ---------------------------------------------------------------------------
 // 7. Контейнер переживает уход со сцены
+
+test('контейнер помнит ярус: этажом выше его не видно и не обыскать', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  assert.equal(container.location_id, 'warehouse', 'на нулевом ярусе ключ — сам идентификатор локации')
+
+  // Ключ строится из `scene.level.index` — тем же `levelKey`, которым подписана
+  // карта яруса. Потеря или переименование поля роняла бы многоэтажную добычу
+  // молча, поэтому его читает тест, а не только человек.
+  const upstairs = normalizeCampaignState({
+    ...killed.state,
+    scene: { ...killed.state.scene, level: { index: 2, label: 'Второй ярус' } },
+  })
+  assert.equal(sceneLootLocationKey(upstairs), 'warehouse@L2')
+  assert.deepEqual(lootContainersInScene(upstairs), [], 'тело осталось этажом ниже')
+  assert.equal(lootContainersForViewer(upstairs, { actorId: 'hero' }).containers.length, 0)
+  assert.throws(
+    () => validateCommand({
+      campaign_id: 'LOOT',
+      command_type: 'LootContainer',
+      actor_id: 'hero',
+      container_id: container.id,
+      lines: [{ item_instance_id: container.items[0].item_instance_id, quantity: 1 }],
+    }, upstairs, CONTEXT),
+    (error) => error.code === 'LOOT_CONTAINER_NOT_IN_SCENE',
+  )
+
+  const back = normalizeCampaignState({ ...upstairs, scene: killed.state.scene })
+  assert.equal(lootContainersInScene(back).length, 1)
+  assert.equal(lootContainersInScene(back)[0].id, container.id)
+
+  // И наоборот: тело, оставленное на втором ярусе, подписано этим ярусом.
+  const fought = kill(normalizeCampaignState({
+    ...campaign({ combat: false }),
+    scene: { ...campaign({ combat: false }).scene, level: { index: 2, label: 'Второй ярус' } },
+  }), 'foe-1')
+  assert.equal(containerOf(fought.state).location_id, 'warehouse@L2')
+})
 
 test('невзятое переживает смену сцены и находится по возвращении', () => {
   const killed = kill(campaign({ combat: false }), 'foe-1')

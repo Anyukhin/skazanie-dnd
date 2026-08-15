@@ -15,7 +15,7 @@ import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -89,6 +89,12 @@ type TacticalCommandResult = {
   check?: { check_id?: string; label: string; modifier: number; difficulty: number; sides: 20; ability?: string | null; skill?: string | null; advantage?: boolean; disadvantage?: boolean } | null
   error?: string
   code?: string
+  /**
+   * Свежий список добычи в **отказе**: сервер прикладывает его к конфликту
+   * версии и к кодам `LOOT_*`, означающим «содержимое под тобой изменилось»
+   * (`server/index.mjs`). Приходит только вместе с `error`.
+   */
+  loot_containers?: LootContainersProjection
 }
 
 export type CommandOutcome =
@@ -1039,7 +1045,16 @@ export function useGameSession() {
         }),
       }, 25_000, 'Сервер слишком долго обрабатывает действие. Не повторяйте его сразу: результат мог сохраниться и появиться после синхронизации.')
       const result = await response.json().catch(() => null) as TacticalCommandResult | null
-      if (!response.ok) throw await responseCommandError(response, result, `Сервер отклонил команду (${response.status})`)
+      if (!response.ok) {
+        // Гонка за один кинжал: первый его забрал, второму сервер отказал и
+        // приложил к отказу свежий список добычи. Без этой ветки карточка
+        // проигравшего показывала бы уже взятую вещь до следующего опроса
+        // комнаты — и он бил бы в ту же стену. Проекция серверная, браузер её
+        // не пересобирает: подставляется ровно то, что пришло.
+        const staleLoot = result?.loot_containers
+        if (staleLoot) mutate((state) => ({ ...state, loot_containers: staleLoot }))
+        throw await responseCommandError(response, result, `Сервер отклонил команду (${response.status})`)
+      }
 
       // Карточка проверки вместо результата: сервер ничего не закоммитил и
       // ждёт второй фазы с собственным `roll_id`. Кубик остаётся за игроком.

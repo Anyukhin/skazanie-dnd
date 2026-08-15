@@ -251,6 +251,31 @@ test('чужой ключ не раскрывает чужой результа�
   assert.equal(room.body.state.loot_containers.containers[0].item_count, 1)
 })
 
+test('гонка за один предмет так, как ходит браузер: 400 и свежий список', { timeout: runnerTimeout(40_000) }, async (t) => {
+  const { baseUrl, adminCookie, log } = await setUp(t)
+
+  // Живой клиент версию не присылает вовсе: `normalizeCommand` подставляет туда
+  // текущую, поэтому `STATE_VERSION_CONFLICT` браузеру не достаётся никогда.
+  // Настоящий исход гонки — 400 с `LOOT_ITEM_GONE`, и свежий список нужен
+  // именно ему: иначе карточка проигравшего показывала бы уже взятый кинжал до
+  // следующего опроса комнаты.
+  const first = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST', cookie: adminCookie, body: { idempotency_key: 'plain-1', command: loot() },
+  })
+  assert.equal(first.status, 200, `${first.text}\n${log()}`)
+
+  const second = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST', cookie: adminCookie, body: { idempotency_key: 'plain-2', command: loot() },
+  })
+  assert.equal(second.status, 400, second.text)
+  assert.equal(second.body.code, 'LOOT_ITEM_GONE')
+  assert.ok(second.body.loot_containers, 'отказ обязан принести свежий список и без конфликта версии')
+  const fresh = second.body.loot_containers.containers.find((entry) => entry.id === CONTAINER_ID)
+  assert.equal(fresh.item_count, 1, 'свежий список показывает, что кинжала уже нет')
+  assert.equal(fresh.items.some((item) => item.item_instance_id === DAGGER.item_instance_id), false)
+  assert.ok(second.body.state_version > 0)
+})
+
 test('гонка за один предмет: второй получает конфликт версии и свежий список', { timeout: runnerTimeout(40_000) }, async (t) => {
   const { baseUrl, adminCookie, log } = await setUp(t)
 
