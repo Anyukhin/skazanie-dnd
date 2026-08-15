@@ -157,6 +157,32 @@ test('живой пакет создаёт projectile, burst, beam, aura, channe
   assert.ok(cues.some((cue) => cue.kind === 'channel' && cue.channelType === 'summon' && cue.position.x === 4))
 })
 
+test('лечение без величины доходит до клетки словом: пакет отдаёт отсутствие, а не ноль', () => {
+  // У чужого лечения санитайзер снимает `applied_amount` целиком
+  // (`eventForViewer`, `server/viewer-projection.mjs`), и «ноль вместо
+  // отсутствия» — единственная развилка, которая отличает «зелье не
+  // сработало» от «сработало, но числа не видно». Живёт она в `safeAmount`, и
+  // без этой проверки подмена `null` на `0` оставляла корпус зелёным:
+  // рисующий сторож ниже подаёт `amount: null` уже готовой репликой и до
+  // разбора события не доходит вовсе.
+  const [cue] = animation.combatAnimationCuesFromEvents([
+    { event_id: 'heal-hidden', command_id: 'sip', event_type: 'HealingApplied', actor_id: 'goblin', target_ids: ['goblin'], payload: {} },
+  ])
+  assert.equal(cue.channelType, 'healing')
+  assert.equal(cue.amount, null, 'снятая сервером величина обязана остаться отсутствующей, а не стать нулём')
+
+  const context = recordingContext()
+  render.drawBoardEffects(context, scene(), [
+    effects.createSpellEffectRenderer({ cue, progress: .65, actors: [actor('goblin', 3, 3)], reducedMotion: false }),
+  ])
+  assert.ok(context.ops.some((operation) => operation.op === 'fillText' && operation.text === 'ЛЕЧЕНИЕ'))
+  assert.equal(
+    context.ops.some((operation) => operation.op === 'fillText' && String(operation.text).startsWith('+')),
+    false,
+    'над клеткой не должно быть «+0»',
+  )
+})
+
 test('SpellAreaCreated использует точные клетки и не дублирует приблизительный burst', () => {
   const cues = animation.combatAnimationCuesFromEvents([
     { event_id: 'cast-web', command_id: 'web', event_type: 'SpellCast', actor_id: 'mage', payload: { spell_id: 'web', kind: 'area-save' } },

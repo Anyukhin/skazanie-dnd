@@ -508,6 +508,98 @@ function publicBattleEventFor(entry, state, actorId = '') {
 }
 
 /**
+ * Условия противника, чей идентификатор несёт закрытый ключ.
+ *
+ * Ключ таблицы — префикс вместе с двоеточием, значение — качественная форма,
+ * которая от него остаётся. Приём тот же, что и у полос здоровья: отряд видит
+ * **что** с существом происходит, но не служебное имя, по которому это можно
+ * опознать в чужом кармане или в чужом стат-блоке.
+ *
+ * - `weapon-coated:<item_instance_id>` — ключ вещи из инвентаря противника, тот
+ *   самый, по которому потом опознаётся добыча с тела.
+ * - `monster-action-used:<action_id>` — идентификатор действия стат-блока,
+ *   который `eventForViewer` ниже удаляет из события той же способности
+ *   (`action_id`). Оставлять его в состоянии значило бы отдать игроку тем же
+ *   кадром то, что снято санитайзером событий.
+ * - `npc-tactic-used:<тактика>` — маркер «за бой один раз» из закрытого списка
+ *   тактик снаряжения.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+const OPAQUE_ENEMY_CONDITION_IDS = Object.freeze({
+  'weapon-coated:': 'weapon-coated',
+  'monster-action-used:': 'monster-action-used',
+  'npc-tactic-used:': 'npc-tactic-used',
+})
+
+/**
+ * Служебная бухгалтерия хода: состоянием существа эти маркеры не являются
+ * вовсе. Движок хранит ими потраченный ресурс — «зелье уже выпито», «паутина
+ * уже брошена», — и столу они не уезжают ни состоянием, ни событием: за столом
+ * это не состояние, которое видно на существе, а учётная запись движка. Сам
+ * поступок игрок при этом видит — своей строкой и своим событием.
+ */
+const ENEMY_BOOKKEEPING_CONDITIONS = Object.freeze(['monster-action-used', 'npc-tactic-used'])
+
+/**
+ * Поля условия, которые принадлежат ведущему: добавка к следующему удару и
+ * ключ вещи-источника. `rider_source_name` — каталожное имя дозы («Простой
+ * яд»), `rider_damage` — её формула. Урон отряд увидит, когда он ляжет; до
+ * того это опись чужого кармана.
+ */
+const ENEMY_CONDITION_PRIVATE_KEYS = Object.freeze(['rider_damage', 'rider_damage_type', 'rider_source_name', 'source_item_id'])
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function publicEnemyConditionId(value) {
+  const id = text(value, 160)
+  const prefix = Object.keys(OPAQUE_ENEMY_CONDITION_IDS).find((candidate) => id.startsWith(candidate))
+  return prefix ? OPAQUE_ENEMY_CONDITION_IDS[prefix] : id
+}
+
+/**
+ * Состояния противников, суженные до того, что видно за столом.
+ *
+ * Санитайзера здесь не было вовсе: `mechanics.conditions` уезжали игроку
+ * сырыми, и нанесённый противником яд стоял в комнате весь срок действия
+ * условием `weapon-coated:<item_instance_id>` — ключом закрытого инвентаря — с
+ * каталожным именем дозы в `rider_source_name` рядом. Санитайзер событий при
+ * этом те же поля резал, так что состояние и канал событий расходились молча.
+ *
+ * Сервер продолжает хранить точную форму: режет **проекция**, а не движок.
+ * Иначе дозу на конкретном клинке было бы не найти — `weaponCoatingRiderFor`
+ * ищет условие ровно по идентификатору оружия.
+ *
+ * Условия героев не трогаются: своё снаряжение игрок знает и без проекции.
+ *
+ * @param {unknown} value
+ * @param {Set<string>} enemyIds
+ * @returns {Record<string, any>}
+ */
+function publicConditionsFor(value, enemyIds) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  /** @type {Record<string, any>} */
+  const projected = {}
+  for (const [ownerId, conditions] of Object.entries(value)) {
+    if (!enemyIds.has(String(ownerId)) || !Array.isArray(conditions)) {
+      projected[ownerId] = conditions
+      continue
+    }
+    projected[ownerId] = conditions.flatMap((condition) => {
+      const publicId = publicEnemyConditionId(/** @type {Loose} */ (condition)?.id ?? condition)
+      if (!publicId || ENEMY_BOOKKEEPING_CONDITIONS.includes(publicId)) return []
+      if (!condition || typeof condition !== 'object' || Array.isArray(condition)) return [publicId]
+      const publicCondition = { ...condition, id: publicId }
+      for (const key of ENEMY_CONDITION_PRIVATE_KEYS) delete publicCondition[key]
+      return [publicCondition]
+    })
+  }
+  return projected
+}
+
+/**
  * @param {Loose} message
  * @returns {any}
  */
@@ -813,11 +905,13 @@ export function campaignStateForViewer(state, user, actorId = '') {
     .filter((/** @type {Loose} */ merchant) => merchant.available !== false && merchantIsAtLocation(merchant, state?.scene ?? location))
     .map(publicMerchantFor)
   const enemies = (Array.isArray(visible.enemies) ? visible.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId))
+  const enemyIds = new Set((state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   const mechanics = visible.mechanics && typeof visible.mechanics === 'object'
     ? (() => {
       const { enemy_knowledge: _enemyKnowledge, ...publicMechanics } = visible.mechanics
       return {
       ...publicMechanics,
+      ...(visible.mechanics.conditions ? { conditions: publicConditionsFor(visible.mechanics.conditions, enemyIds) } : {}),
       ...(actorId ? { hit_point_dice: { [actorId]: hitPointDicePoolForActor(state, actorId) } } : { hit_point_dice: {} }),
       encounter: publicEncounterFor(visible.mechanics.encounter),
       ...(visible.mechanics.combat && typeof visible.mechanics.combat === 'object' ? {
@@ -1026,7 +1120,28 @@ function eventForViewer(event, user, actorId, state = {}) {
     for (const key of [
       'modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression',
       'item_id', 'item_name', 'catalog_id', 'effect_id',
+      // Добавка к следующему удару. `rider_source_name` называет дозу яда
+      // каталожным именем ровно так же, как это делает `item_name` строкой
+      // выше, поэтому и закрывается там же.
+      ...ENEMY_CONDITION_PRIVATE_KEYS,
     ]) delete payload[key]
+  }
+  // Состояние противника: тот же санитайзер, что и у проекции комнаты, — иначе
+  // закрытое в состоянии уезжало бы игроку событием той же команды. Ветка
+  // покрывает обе стороны: яд противник кладёт **сам на себя**, поэтому здесь
+  // он и действующее лицо, и цель, а условие от чужой руки приходит только
+  // целью.
+  if (['ConditionAdded', 'ConditionRemoved'].includes(String(visible.event_type))
+    && (enemyActor || enemyTargetId)) {
+    const condition = publicEnemyConditionId(payload.condition)
+    // Служебная бухгалтерия не уезжает столу ни состоянием, ни событием: иначе
+    // над клеткой всплывало бы «Маркер тактики потрачен» вместо поступка,
+    // который стол и так увидел собственной строкой.
+    if (ENEMY_BOOKKEEPING_CONDITIONS.includes(condition)) return null
+    // Поле не выдумывается там, где его не было: пустая строка в `condition`
+    // читалась бы клиентом как настоящее безымянное состояние.
+    if (payload.condition != null) payload.condition = condition
+    for (const key of ENEMY_CONDITION_PRIVATE_KEYS) delete payload[key]
   }
   // Спасбросок и проверку бросает цель, а не тот, кто записан действующим лицом:
   // у SpellSavingThrowResolved actor_id — это заклинатель-герой. Формула

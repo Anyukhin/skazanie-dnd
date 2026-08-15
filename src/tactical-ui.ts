@@ -378,6 +378,11 @@ const CONDITION_LABELS: Record<string, string> = {
   'hunters-mark': 'Метка охотника',
   fled: 'Бежал',
   surrendered: 'Сдался',
+  // Качественная форма нанесённого яда. Ровно её сервер отдаёт про клинок
+  // противника: ключ вещи из чужого кармана проекция срезает
+  // (`publicConditionsFor`, `server/viewer-projection.mjs`), поэтому подписи
+  // тоже две — своё оружие герой знает по имени, чужое видно только на глаз.
+  'weapon-coated': 'Клинок смазан чем-то тёмным',
 }
 
 const IMPLEMENTED_CONDITIONS = new Set([
@@ -397,7 +402,7 @@ function humanizeConditionId(id: string) {
 export function conditionPresentation(condition: { id: string; duration?: string | null } | string) {
   const id = String(typeof condition === 'string' ? condition : condition.id)
   const duration = typeof condition === 'string' ? null : condition.duration
-  const status: ConditionRuleStatus = id.startsWith('resistance-') || IMPLEMENTED_CONDITIONS.has(id)
+  const status: ConditionRuleStatus = id.startsWith('resistance-') || id.startsWith('weapon-coated') || IMPLEMENTED_CONDITIONS.has(id)
     ? 'implemented'
     : PARTIAL_CONDITIONS.has(id) ? 'partial' : 'marker'
   const statusLabel = status === 'implemented' ? 'эффект работает' : status === 'partial' ? 'эффект частичный' : 'только маркер'
@@ -408,7 +413,10 @@ export function conditionPresentation(condition: { id: string; duration?: string
       : 'Состояние хранится и отображается, но его отдельные правила пока не применяются.'
   return {
     id,
-    label: CONDITION_LABELS[id] ?? (id.startsWith('resistance-') ? `Сопротивление: ${humanizeConditionId(id.slice('resistance-'.length))}` : humanizeConditionId(id)),
+    label: CONDITION_LABELS[id]
+      ?? (id.startsWith('weapon-coated:') ? 'Оружие смазано ядом'
+        : id.startsWith('resistance-') ? `Сопротивление: ${humanizeConditionId(id.slice('resistance-'.length))}`
+          : humanizeConditionId(id)),
     status,
     statusLabel,
     explanation,

@@ -66,6 +66,8 @@ export function battleEventText(state: GameState, event: NonNullable<GameState['
   if (event.type === 'spell-damage') return `${actorName(event.actorId)} применяет «${event.spellName ?? event.spellId ?? 'заклинание'}» к ${actorName(event.targetId)}: ${event.damage ?? 0} урона${hideTargetFacts ? '' : ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
   if (event.type === 'healing') {
     const source = event.spellId ? ` заклинанием «${event.spellName ?? event.spellId}»` : ''
+    // «Лечит себя» — для любого участника, а не только для противника: зелье
+    // пьют сами, и «Берсерк лечит Берсерка» читалось как две фигуры на доске.
     const whom = event.targetId && event.targetId === event.actorId ? 'себя' : actorName(event.targetId)
     // Числа у чужого лечения нет вовсе: сервер не присылает величину, пока
     // здоровье цели не опознано точно, — ровная десятка выдала бы зелье на

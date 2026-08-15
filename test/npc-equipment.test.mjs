@@ -686,6 +686,83 @@ test('каталожный ключ склянки не уезжает игро�
   assert.ok(after.players[0].hp < 40)
 })
 
+test('нанесённый противником яд не называет ни вещь, ни карман — ни в событии, ни в комнате, ни в трассе хода', () => {
+  const seed = seedWith('srd_5_2_1:spy', 'srd_5_2_1:poison-basic')
+  const spy = foe('srd_5_2_1:spy', { x: 1, seed })
+  const poisonId = itemOf(spy, 'srd_5_2_1:poison-basic').item_instance_id
+  const swordId = itemOf(spy, 'srd_5_2_1:shortsword').item_instance_id
+  const viewer = { role: 'player', heroIds: ['hero'] }
+  const coated = commit(battleState(spy, { heroX: 0, heroArmor: 5 }), {
+    command_type: 'UseItem', actor_id: 'foe', item_id: poisonId, npc_tactic: 'coat', weapon_id: swordId,
+  })
+  const hit = commit(coated.state, { command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'shortsword' })
+
+  // Авторитетное состояние точную форму хранит: без неё дозу не найти на
+  // конкретном клинке, и добавка к попаданию перестала бы работать.
+  assert.ok((coated.state.mechanics.conditions.foe ?? []).some((condition) => condition.id === `weapon-coated:${swordId}`))
+  assert.ok(hit.events.some((event) => event.event_type === 'ConditionRemoved' && event.payload.condition === `weapon-coated:${swordId}`))
+
+  // Назначение броска добавки — четвёртый носитель того же ключа: `purpose` не
+  // чистит ни проекция событий, ни список бросков хода, поэтому подпись
+  // задаётся при выпуске броска и называет вид добавки, а не экземпляр.
+  assert.equal(hit.rolls.find((roll) => String(roll.purpose).startsWith('item_damage:')).purpose, 'item_damage:weapon-coated')
+
+  // Три поверхности, на которых закрытый инвентарь выходил наружу: событие
+  // наложения, состояние комнаты на весь срок действия и трасса хода вместе
+  // со снятием дозы.
+  const surfaces = {
+    'событие наложения': JSON.stringify(mechanicsForViewer(coated.events, viewer, 'hero', coated.state)),
+    'состояние комнаты': JSON.stringify(campaignStateForViewer(coated.state, viewer, 'hero')),
+    'трасса хода': JSON.stringify(turnExplanationForViewer(
+      { commands: [], rolls: [...coated.rolls, ...hit.rolls], events: [...coated.events, ...hit.events] },
+      viewer, 'hero', hit.state,
+    )),
+  }
+  for (const [surface, serialized] of Object.entries(surfaces)) {
+    assert.equal(serialized.includes(swordId), false, `${surface}: ключ вещи из кармана`)
+    assert.equal(serialized.includes(poisonId), false, `${surface}: ключ дозы из кармана`)
+    assert.equal(serialized.includes('Простой яд'), false, `${surface}: каталожное имя дозы`)
+    assert.equal(serialized.includes('srd_5_2_1:poison-basic'), false, `${surface}: каталожный ключ дозы`)
+    assert.equal(serialized.includes('npc-tactic-used'), false, `${surface}: служебный маркер тактики`)
+  }
+
+  // Что игрок всё-таки видит: смазанный клинок качественной формой, без ключа.
+  const added = mechanicsForViewer(coated.events, viewer, 'hero', coated.state)
+    .find((event) => event.event_type === 'ConditionAdded')
+  assert.equal(added.payload.condition, 'weapon-coated')
+  assert.equal(added.payload.rider_damage, undefined)
+  const room = campaignStateForViewer(coated.state, viewer, 'hero')
+  assert.deepEqual((room.mechanics.conditions.foe ?? []).map((condition) => condition.id), ['weapon-coated'])
+  assert.equal((room.mechanics.conditions.foe ?? [])[0].rider_source_name, undefined)
+  const removed = mechanicsForViewer(hit.events, viewer, 'hero', hit.state)
+    .find((event) => event.event_type === 'ConditionRemoved')
+  assert.equal(removed.payload.condition, 'weapon-coated')
+  // Отравленное попадание игрок видит по-настоящему: закрыт источник, а не урон.
+  assert.ok(hit.events.some((event) => event.event_type === 'DamageApplied' && event.payload.damage_type === 'poison'))
+  assert.ok(hit.state.players[0].hp < 40)
+
+  // Условия героя проекция не трогает: своё снаряжение игрок знает.
+  const heroCoated = {
+    ...coated.state,
+    mechanics: {
+      ...coated.state.mechanics,
+      conditions: { ...coated.state.mechanics.conditions, hero: [{ id: 'weapon-coated:hero-blade', rider_source_name: 'Простой яд' }] },
+    },
+  }
+  assert.equal(campaignStateForViewer(heroCoated, viewer, 'hero').mechanics.conditions.hero[0].id, 'weapon-coated:hero-blade')
+
+  // У ведущего форма полная — закрыт игрок, а не журнал.
+  const gm = campaignStateForViewer(coated.state, { role: 'admin' }, 'gm')
+  const gmCondition = gm.mechanics.conditions.foe.find((condition) => condition.id === `weapon-coated:${swordId}`)
+  assert.equal(gmCondition.rider_source_name, 'Простой яд')
+  assert.ok(gm.mechanics.conditions.foe.some((condition) => condition.id === 'npc-tactic-used:coat'))
+  assert.equal(
+    mechanicsForViewer(coated.events, { role: 'admin' }, 'gm', coated.state)
+      .find((event) => event.event_type === 'ConditionAdded').payload.condition,
+    `weapon-coated:${swordId}`,
+  )
+})
+
 test('детерминированные строки боя называют поступок, а не вещь', () => {
   const seed = seedWith('srd_5_2_1:berserker', 'srd_5_2_1:potion-of-healing')
   const enemy = foe('srd_5_2_1:berserker', { hp: 8, x: 1, seed })

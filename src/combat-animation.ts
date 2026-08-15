@@ -138,6 +138,10 @@ const CONDITION_LABELS: Record<string, string> = {
   raging: 'Ярость',
   surrendered: 'Сдаётся',
   fled: 'Бежит',
+  // Качественная форма нанесённого яда: ключ вещи из чужого кармана проекция
+  // срезает (`publicConditionsFor`, `server/viewer-projection.mjs`), и над
+  // клеткой всплывает то, что видно за столом, а не опись инвентаря.
+  'weapon-coated': 'Клинок смазан',
 }
 
 const point = (value: unknown): BoardPoint | null => {

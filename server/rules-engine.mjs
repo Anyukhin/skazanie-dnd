@@ -5233,6 +5233,13 @@ function weaponCoatingRiderFor(state, actorIdValue, itemId) {
     item_name: String(condition.rider_source_name ?? 'Яд'),
     catalog_id: null,
     effect_id: conditionId,
+    // Назначение броска — ещё один канал, по которому ключ вещи уезжал столу:
+    // `purpose` не чистит ни проекция событий, ни список бросков хода, а
+    // `effect_id` смазанного клинка несёт `item_instance_id` из кармана. Тот же
+    // приём, что и у склянки противника (`npc-item:flask`): подпись задаётся
+    // при выпуске броска и называет вид добавки, а не экземпляр. Ведущему
+    // экземпляр по-прежнему виден — он лежит в `effect_id` самого события.
+    purpose_subject: 'weapon-coated',
     critical_doubles: false,
     condition_id: conditionId,
   }
@@ -7200,7 +7207,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (divineFavorRoll) { rolls.push(divineFavorRoll); events.push(eventFrom(command, 'DieRolled', { ...divineFavorRoll, damage_type: 'radiant' }, [])) }
         const itemRiderRolls = itemDamageRiders.map((rider) => {
           const expression = critical && rider.critical_doubles ? criticalDamageExpression(rider.expression) : rider.expression
-          const roll = diceService.roll(expression, `item_damage:${rider.effect_id}`, command.actor_id, command.visibility ?? 'public')
+          const roll = diceService.roll(expression, `item_damage:${rider.purpose_subject ?? rider.effect_id}`, command.actor_id, command.visibility ?? 'public')
           rolls.push(roll)
           events.push(eventFrom(command, 'DieRolled', {
             ...roll,

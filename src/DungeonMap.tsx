@@ -82,6 +82,9 @@ export const TOKEN_CONDITION_GLYPHS: Record<string, string> = {
   restrained: '⌁',
   prone: '▰',
   frightened: '!',
+  // Смазанный ядом клинок противника. Без своего знака под фишку уезжала
+  // первая буква подписи, а «К» о яде не говорит ничего.
+  'weapon-coated': '☠',
 }
 
 export const TOKEN_CONDITION_PRIORITY = ['paralyzed', 'restrained', 'prone', 'frightened']
