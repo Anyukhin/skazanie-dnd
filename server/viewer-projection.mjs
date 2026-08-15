@@ -20,6 +20,7 @@ import { captiveForViewer, captivesForViewer } from './captives.mjs'
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
+import { courierLetterForViewer, courierLettersForViewer } from './courier-letters.mjs'
 import { weatherForViewer } from './weather.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
@@ -672,6 +673,12 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // `test/offscreen-world.test.mjs` («тайные нити ведущего в ход мира не
   // попадают»); эта строка держится на том тесте.
   'offscreen_world',
+  // Почта отряда. Сырой она наружу не идёт: в записи письма лежит запечатанный
+  // ответ — черновик модели и тон адресата, — и отдавать его до прихода письма
+  // значило бы показать игроку ответ раньше, чем его написали. Наружу уезжает
+  // публичная форма (`courierLettersForViewer`, `server/courier-letters.mjs`),
+  // где ответ появляется только вместе со статусом «получен ответ».
+  'courier_letters',
   // Реестр пленных: отряду он принадлежит целиком, кроме одного — того, чего
   // пленный ещё не сказал. `known_fact_ids` остаётся у ведущего, иначе допрос
   // перестал бы быть проверкой: игрок читал бы ответ прямо из состояния.
@@ -764,6 +771,11 @@ export function campaignStateForViewer(state, user, actorId = '') {
     ...(state.offscreen_world
       ? { offscreen_world: { schema_version: OFFSCREEN_WORLD_SCHEMA_VERSION, steps: offscreenWorldFeed(state, { limit: 20 }) } }
       : {}),
+    // Почта ведущему приезжает той же карточкой, что и столу, плюс тон, по
+    // которому соберётся ответ: за столом ведущий видит письма своих игроков,
+    // и вторая форма панели была бы вторым ответом на один вопрос. Сам текст
+    // ответа не приезжает и ему — до прихода письма его нет ни у кого.
+    courier_letters: courierLettersForViewer(state, { isAdmin: true }),
     // Розыск уезжает ведущему уже лентой по краям: ступень, подпись, очки и
     // срок затухания считаются на сервере рядом с политикой. Карточка админки
     // своей таблицы порогов не держит — две копии расходились бы молча.
@@ -808,6 +820,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // `tavern` — счёт заведения: чужие кружки, чужие скандалы и открытый раунд
   // соседа по столу. Наружу он идёт только своей публичной формой
   // (`tavernForViewer` ниже), собранной под конкретного героя.
+  // `courier_letters` — почта отряда с запечатанными ответами. Наружу она идёт
+  // только своей публичной формой (`courierLettersForViewer` ниже): черновик
+  // ответа и тон адресата лежат в записи письма с минуты отправки, и сырой
+  // ключ показал бы игроку ответ раньше, чем письмо доехало.
   const {
     locationMaps: _locationMaps,
     npc_world: _npcWorld,
@@ -815,6 +831,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     world_deeds: _worldDeeds,
     law: _law,
     tavern: _tavern,
+    courier_letters: _courierLetters,
     ...publicState
   } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
@@ -868,6 +885,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
     // на один вопрос.
     offscreen_world: { schema_version: OFFSCREEN_WORLD_SCHEMA_VERSION, steps: offscreenWorldFeed(state, { limit: 20 }) },
+    // Почта отряда: кому уже написали, где сейчас курьер, сколько стоит письмо
+    // каждому известному адресату. Карточку собирает сервер целиком — клиенту
+    // нечего досчитывать, а запечатанного ответа в ней нет.
+    courier_letters: courierLettersForViewer(state, { isAdmin: false }),
     // Время суток и погода — то, что герой видит, подняв голову. Строка
     // индикатора и подписи действующих помех приходят готовыми: своей таблицы
     // ни у клиента, ни у проекции нет.
@@ -963,6 +984,25 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (visible.event_type === 'TavernDiceRoundResolved' || visible.event_type === 'TavernDiceRoundCancelled') {
     for (const key of ['npc_purse_before_cp', 'npc_purse_after_cp', 'house_cut_cp']) delete payload[key]
   }
+  // Почта. Отправленное письмо несёт запись целиком, а в записи с первой минуты
+  // лежит запечатанный ответ: черновик модели, тон адресата и провайдер. Игроку
+  // всё это принадлежать не может — иначе он прочёл бы ответ в тот же миг, когда
+  // отдал письмо курьеру, и вся дуга ожидания исчезла бы вместе с ним.
+  //
+  // Режет та же функция, что и проекция состояния (`courierLetterForViewer`,
+  // `server/courier-letters.mjs`): производитель события один, но два ответа на
+  // один вопрос разошлись бы при первой же правке — так уже было у стражи и у
+  // стола с костями.
+  if (visible.event_type === 'CourierLetterSent' && payload.letter) {
+    const letter = courierLetterForViewer(payload.letter)
+    if (letter) payload.letter = letter
+    else delete payload.letter
+  }
+  // Доставка объявляет тон, по которому соберётся ответ. Тон — это дословно
+  // «как к вам относится адресат», а отношение игроку числом не показывают
+  // нигде: он читает его по ответу, когда тот придёт.
+  if (visible.event_type === 'CourierLetterDelivered') delete payload.tone
+  if (visible.event_type === 'CourierLetterAnswered') delete payload.tone
   if (visible.event_type === 'EncounterOutcomeRecorded') {
     delete payload.plan
     delete payload.prepared_reward

@@ -67,6 +67,10 @@ const HINT_PRIORITY = Object.freeze({
   tavernRound: 0,
   poiProp: 1,
   leisure: 2,
+  // Пришедший ответ на письмо стоит рядом с досугом, а не в брони: это не
+  // начатое действие с деньгами на столе, а новость, которую и так видно
+  // карточкой в летописи.
+  letter: 2,
   prop: 3,
   npc: 4,
   objective: 5,
@@ -194,6 +198,40 @@ function tavernHints(room) {
   }
 }
 
+/**
+ * Почта отряда. Карточку собрал сервер (`server/courier-letters.mjs`), и
+ * подсказка только пересказывает её: своей арифметики дальности здесь нет и
+ * быть не должно — чего нет в проекции, того нет и на входе.
+ *
+ * Строка **одна**, и выбор между двумя её видами жёсткий: пока курьер в пути,
+ * предлагать написать ещё одно письмо незачем, а вот назвать, кому и куда уже
+ * поехало, стоит. Приглашение написать появляется только тогда, когда почта
+ * пуста и адресаты известны, — иначе панель уговаривала бы отряд писать письма
+ * каждую сцену.
+ */
+function letterHints(room) {
+  const post = room?.courier_letters
+  if (!post) return []
+  const letters = Array.isArray(post.letters) ? post.letters : []
+  const travelling = letters.find((letter) => letter?.status === 'in_transit')
+  if (travelling) {
+    const addressee = text(travelling.addressee_name, 60) || 'адресат'
+    return [{
+      id: 'letter:in-transit',
+      priority: HINT_PRIORITY.letter,
+      text: `Курьер везёт письмо: ${addressee}${travelling.place_name ? `, ${text(travelling.place_name, 40)}` : ''} — ответа ждать не раньше, чем пройдёт ночь`,
+    }]
+  }
+  const addressees = Array.isArray(post.addressees) ? post.addressees.filter((entry) => entry?.unreachable !== true) : []
+  if (!addressees.length) return []
+  const nearest = addressees[0]
+  return [{
+    id: 'letter:write',
+    priority: HINT_PRIORITY.letter,
+    text: `Можно написать письмо: ${text(nearest.name, 60)} — курьер возьмёт ${Number(nearest.fee_cp) || 0} мм`,
+  }]
+}
+
 function objectiveHint(room) {
   const objective = text(room?.scene?.objective, 90)
   return objective ? [{ id: 'objective', priority: HINT_PRIORITY.objective, text: `Цель отряда: ${objective}` }] : []
@@ -245,7 +283,7 @@ export function suggestedActionsFor(room) {
   // собеседники, цель, выход.
   const reserved = ordered([...tavern.urgent, ...npcHints(room), ...objectiveHint(room), ...exitHints(room)])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
-  const props = ordered([...propHints(room), ...tavern.leisure]).slice(0, budget)
+  const props = ordered([...propHints(room), ...tavern.leisure, ...letterHints(room)]).slice(0, budget)
   return [...props, ...reserved]
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
     .slice(0, MAX_ACTION_HINTS)

@@ -604,6 +604,34 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .tavern-leave.confirming small { color: #c08a7c; }
 .tavern-leave.confirming .tavern-action.action-leave { border-style: solid; border-color: rgba(178,64,52,.5); background: rgba(46,22,20,.7); color: #dba192; }
 .tavern-action.action-leave-cancel { border-style: dashed; background: transparent; color: #93866d; font-size: var(--fs-sm); }
+/* Почта отряда: письма и курьеры. Панель бумажная и холоднее таверны — это не
+   досуг за столом, а слово, отправленное туда, где отряда нет. Бланк по
+   умолчанию свёрнут: письмо не срочное действие, и держать его раскрытым рядом
+   с боем незачем. */
+.letters-panel { padding: 11px; border: 1px solid rgba(146,140,118,.3); border-radius: 7px; background: rgba(24,23,20,.9); }
+.letters-panel > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; color: #9d9781; }
+.letters-panel > header span { min-width: 0; display: grid; }
+.letters-panel > header small { color: #7d7866; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.letters-panel > header strong { color: #d3cfc0; font: 600 var(--fs-lg) Spectral, serif; }
+.letters-toggle { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid rgba(146,140,118,.28); border-radius: 4px; background: transparent; color: #9d9781; font-size: var(--fs-xs); cursor: pointer; }
+.letters-toggle:hover { border-color: rgba(190,183,158,.55); color: #d3cfc0; }
+.letters-list { display: grid; gap: 5px; margin: 9px 0 0; padding: 0; list-style: none; }
+.letter-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 4px 7px; padding: 6px 8px; border-left: 2px solid rgba(146,140,118,.4); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.022); color: #aca797; font-size: var(--fs-sm); }
+.letter-row b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d3cfc0; font: 600 var(--fs-md) Spectral, serif; }
+.letter-row i { color: #7d7866; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .08em; }
+.letter-row .letter-reply { grid-column: 2 / -1; color: #b6b1a0; font: var(--fs-sm)/1.5 Spectral, serif; }
+.letter-row.letter-answered { border-left-color: #7d9a72; }
+.letter-row.letter-returned { border-left-color: #a4442f; }
+.letters-compose { display: grid; gap: 7px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(146,140,118,.2); }
+.letters-compose label { display: grid; gap: 3px; }
+.letters-compose label span { color: #7d7866; font-size: var(--fs-xxs); letter-spacing: .1em; }
+.letters-compose select { padding: 4px 7px; border: 1px solid rgba(146,140,118,.26); border-radius: 5px; background: rgba(18,17,15,.8); color: #d3cfc0; font-size: var(--fs-sm); }
+.letters-compose textarea { padding: 7px 9px; border: 1px solid rgba(146,140,118,.26); border-radius: 5px; background: rgba(18,17,15,.8); color: #d3cfc0; font: var(--fs-md)/1.55 Spectral, serif; resize: vertical; }
+.letters-send { display: grid; gap: 4px; }
+.letters-send small { color: #8b8676; font-size: var(--fs-sm); }
+.letter-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(146,140,118,.34); border-radius: 6px; background: rgba(36,34,29,.75); color: #ddd8c7; font: 600 var(--fs-md) Spectral, serif; cursor: pointer; }
+.letter-action:hover:not(:disabled) { border-color: rgba(190,183,158,.6); background: rgba(48,45,38,.85); }
+.letter-action:disabled { opacity: .38; cursor: default; }
 /* Приметы розыска в шапке сцены: одна строка мира вместо индикатора. */
 .scene-wanted { display: flex; align-items: center; gap: 6px; max-width: 260px; padding: 4px 9px; border: 1px solid rgba(178,64,52,.32); border-radius: 14px; background: rgba(34,18,16,.7); color: #c08a7c; font: 600 var(--fs-xs) Manrope, sans-serif; }
 .scene-wanted span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -810,6 +838,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .offscreen-card ul { display: grid; gap: 5px; margin: 10px 0 0; padding: 0; list-style: none; }
 .offscreen-card li { padding: 7px 9px; border-left: 2px solid rgba(126,148,184,.3); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #b3b8c2; font: var(--fs-sm)/1.55 Spectral, serif; }
 .offscreen-elapsed { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; color: #6a7180; font-size: var(--fs-xs); }
+/* Конверт в летописи. Как и врезка хода мира, эта системная запись не гасится:
+   письмо ушло, дошло или вернулось — это событие мира, а не служебная строка.
+   Бумажный цвет отделяет её и от синевы «пока вас не было», и от золота
+   рассказчика: письмо принесли на бумаге, и читается оно как бумага. */
+.message.system.letter-entry { margin-bottom: 14px; opacity: 1; }
+.letter-card { padding: 12px 13px; border: 1px solid rgba(158,150,124,.28); border-radius: 8px; background: linear-gradient(160deg, rgba(52,48,38,.5), rgba(20,19,16,.72)); }
+.letter-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; color: #b0a888; }
+.letter-card header > span { min-width: 0; display: grid; }
+.letter-card header small { color: #8d866e; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.letter-card header strong { color: #e2ddca; font: 600 var(--fs-lg) Spectral, serif; }
+.letter-card header time { color: #6f6a59; font-size: var(--fs-xs); }
+.letter-route { margin: 9px 0 0; color: #9a9480; font: var(--fs-sm)/1.5 Manrope, sans-serif; }
+.letter-route b { color: #7d7866; font-weight: 700; letter-spacing: .06em; }
+.letter-text { margin: 7px 0 0; padding: 8px 10px; border-left: 2px solid rgba(158,150,124,.34); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #c7c2b0; font: var(--fs-md)/1.6 Spectral, serif; }
+.letter-entry.letter-answered .letter-card { border-color: rgba(125,154,114,.3); }
+.letter-entry.letter-returned .letter-card { border-color: rgba(164,68,47,.32); }
 /* Кнопка «Почему так?» не имела своего стиля и рендерилась системной серой
    кнопкой: светлый текст на светлом фоне. Теперь это тихая ссылка-подсказка. */
 .why-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 3px 9px; border: 1px solid rgba(201,149,85,.3); border-radius: 11px; background: rgba(34,28,22,.72); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }

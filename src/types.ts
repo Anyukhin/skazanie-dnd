@@ -15,6 +15,13 @@ export type Message = {
    * своей сборки у клиента нет, иначе стол и ведущий читали бы разный монтаж.
    */
   offscreen?: OffscreenChronicleCard
+  /**
+   * Конверт в летописи: отправленное письмо, доставка, возврат или пришедший
+   * ответ. Поля собраны на сервере (`server/courier-letters.mjs`); своей сборки
+   * у клиента нет, иначе «от кого» и «кому» читались бы по-разному у стола и у
+   * ведущего.
+   */
+  letter?: LetterChronicleCard
   turnConsumed?: boolean
 }
 
@@ -24,6 +31,18 @@ export type OffscreenChronicleCard = {
   day: number
   elapsed_minutes: number
   lines: string[]
+}
+
+/** Что именно случилось с письмом. Список закрыт сервером. */
+export type LetterChronicleKind = 'sent' | 'delivered' | 'returned' | 'answered'
+
+/** Карточка-конверт в летописи. */
+export type LetterChronicleCard = {
+  kind: LetterChronicleKind
+  title: string
+  from: string
+  to: string
+  text: string
 }
 
 export type RollResult = NonNullable<Message['roll']>
@@ -1253,6 +1272,12 @@ export type GameState = {
    */
   offscreen_world?: OffscreenWorldProjection
   /**
+   * Почта отряда: кому уже написали, где сейчас курьер и сколько стоит письмо
+   * каждому известному адресату. Запечатанного ответа здесь нет — он приходит
+   * вместе со статусом «получен ответ».
+   */
+  courier_letters?: CourierLettersProjection
+  /**
    * Время суток и погода. Ветка одинакова у игрока и у ведущего: небо над
    * отрядом тайной не является.
    */
@@ -1619,6 +1644,69 @@ export type TavernProjection = {
   next_drink_dc?: number | null
   social_bonus?: number
   ejected?: boolean
+}
+
+/** Куда едет письмо: к известному NPC или к фракции. Список закрыт сервером. */
+export type LetterAddresseeKind = 'npc' | 'faction'
+
+/** Состояние письма. Подпись к нему приходит с сервера готовой. */
+export type LetterStatus = 'in_transit' | 'delivered' | 'answered' | 'returned'
+
+/**
+ * Один известный адресат с уже посчитанной дорогой. Цену и срок считает сервер
+ * по дорогам карты мира — своей арифметики дальности у клиента нет.
+ */
+export type LetterAddressee = {
+  kind: LetterAddresseeKind
+  id: string
+  name: string
+  role?: string
+  place_name?: string
+  leagues: number
+  fee_cp: number
+  travel_minutes: number
+  /** `true` — адресат стоит перед отрядом: это разговор, а не письмо. */
+  unreachable?: boolean
+}
+
+/**
+ * Письмо в публичной форме. Текста ответа здесь нет, пока он не пришёл: до
+ * этого он запечатан и не принадлежит ни игроку, ни ведущему.
+ */
+export type LetterCard = {
+  id: string
+  hero_id: string
+  hero_name?: string
+  addressee_kind: LetterAddresseeKind
+  addressee_id: string
+  addressee_name: string
+  place_name?: string
+  leagues: number
+  fee_cp: number
+  body: string
+  promise_text?: string
+  status: LetterStatus
+  status_label: string
+  sent_at_minutes: number
+  delivery_due_minutes: number
+  reply_due_minutes: number
+  delivered_at_minutes?: number | null
+  answered_at_minutes?: number | null
+  returned_at_minutes?: number | null
+  return_reason?: string
+  /** Появляется только вместе со статусом «получен ответ». */
+  reply?: string
+}
+
+/** Почта отряда: письма в дороге, доставленные и уже отвеченные. */
+export type CourierLettersProjection = {
+  schema_version?: number
+  letters?: LetterCard[]
+  addressees?: LetterAddressee[]
+  base_fee_cp?: number
+  fee_per_league_cp?: number
+  body_limit?: number
+  open_limit?: number
 }
 
 /** Время суток по серверным часам кампании (`server/weather.mjs`). */

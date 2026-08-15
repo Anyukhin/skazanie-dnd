@@ -93,6 +93,15 @@ import { CAPTIVE_PLAYER_COMMAND_TYPES, planCaptiveNeglectCommands } from './capt
 import { TAVERN_COMMAND_TYPES, TAVERN_DICE_APPROACHES, TAVERN_STAKES_CP } from './tavern-life.mjs'
 import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
 import { offscreenChronicleEntry } from './offscreen-world.mjs'
+import {
+  COURIER_LETTER_ADDRESSEE_KINDS,
+  COURIER_LETTER_BODY_LIMIT,
+  COURIER_LETTER_COMMAND_TYPES,
+  courierAddresseeFor,
+  courierLetterChronicleEntry,
+  courierLetterPromiseFrom,
+  courierToneFor,
+} from './courier-letters.mjs'
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
@@ -405,6 +414,10 @@ const PLAYER_LAW_COMMANDS = new Set(['ResolveGuardEncounter'])
 // модуля заведения — второго перечисления команд таверны в проекте быть не
 // должно.
 const PLAYER_TAVERN_COMMANDS = TAVERN_COMMAND_TYPES
+// Письма. Отдельный набор по той же причине, что у таверны и у закона: письмо
+// пишут вне боя, и экономику хода оно не трогает. Список берётся у модуля почты
+// — второго перечисления команд писем в проекте быть не должно.
+const PLAYER_LETTER_COMMANDS = COURIER_LETTER_COMMAND_TYPES
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -1242,6 +1255,105 @@ function sanitizePlayerTavernCommand(user, state, input) {
   }
 }
 
+/**
+ * Письмо. Из запроса берутся только герой, адрес и текст: дальность, цену,
+ * срок доставки и тон ответа объявляет сервер, а полировка ответа приезжает
+ * отдельным серверным полем и клиентом не подсказывается.
+ *
+ * `reply_draft` в белый список полей намеренно **не входит**: пришедший из
+ * браузера черновик стал бы ответом NPC дословно — то есть игрок писал бы за
+ * своего адресата. Ставит его сервер ниже, после санитайзера.
+ */
+function sanitizePlayerLetterCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_LETTER_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к почте отряда', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'addressee_kind', 'addresseeKind',
+    'addressee_id', 'addresseeId',
+    'body',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда письма содержит запрещённые поля: ${unexpected.join(', ')}`, 'COURIER_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Письмо можно написать только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const kind = String(input?.addressee_kind ?? input?.addresseeKind ?? 'npc')
+  return {
+    command_type: type,
+    actor_id: actor,
+    addressee_kind: COURIER_LETTER_ADDRESSEE_KINDS.includes(kind) ? kind : 'npc',
+    addressee_id: String(input?.addressee_id ?? input?.addresseeId ?? '').trim().slice(0, 120),
+    // Текст игрока — творческий ввод и недоверенное поле наравне с репликой в
+    // разговоре. Здесь он только режется по длине; смысла в нём сервер не ищет.
+    body: String(input?.body ?? '').slice(0, COURIER_LETTER_BODY_LIMIT),
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
+ * Полировка ответа на письмо — единственное место, где модель вообще касается
+ * почты, и касается она только слов.
+ *
+ * Вызов стоит **при отправке**, а не при доставке, и это следствие устройства
+ * мировых минут: доставка считается внутри Rules Engine, синхронно и
+ * детерминированно, и звать оттуда сеть нельзя — replay обязан воспроизвести
+ * тот же текст без провайдера. Поэтому ответ пишется, пока запрос игрока ещё
+ * живой, и запечатывается в письмо вместе с тоном, для которого его писали:
+ * если к моменту доставки отношение сменит ступень, черновик выбрасывается и
+ * звучит детерминированная основа (`courierLetterReplyFor`,
+ * `server/courier-letters.mjs`).
+ *
+ * Модели нет или она ответила ошибкой — в письмо ничего не кладётся, и стол
+ * получит ту же основу. Разницы в механике между двумя путями нет ни одной:
+ * тон, отношение, обещание и сроки считаются одинаково.
+ */
+async function withCourierReplyDraft(state, command) {
+  const addressee = courierAddresseeFor(state, command.addressee_kind, command.addressee_id)
+  // Фракции социальный движок не отыгрывает: у неё нет ни профиля, ни голоса,
+  // ни отношения к конкретному герою — ответ канцелярии остаётся
+  // детерминированным по построению.
+  if (!addressee || addressee.kind !== 'npc' || !npcSocialController.llmClient) return command
+  const score = (state.social?.relationships?.[addressee.id]?.[command.actor_id]) ?? 0
+  const tone = courierToneFor(score)
+  if (tone === 'silent') return command
+  const promise = courierLetterPromiseFrom(command.body)
+  try {
+    const result = await npcSocialController.respond({
+      state,
+      playerId: command.actor_id,
+      npcId: addressee.id,
+      // Письмо приходит в социальный движок как реплика — тем же недоверенным
+      // полем, через тот же `buildDataOnlyContext`. Приписка о том, что это
+      // письмо, а не разговор, нужна модели: ответ обязан читаться как письмо.
+      message: `[письмо, доставлено курьером] ${command.body}${promise ? ` [в письме дано слово: ${promise.text}]` : ''}`,
+      turnId: `letter:${command.command_id ?? ''}`,
+    })
+    const provider = String(result?.provider ?? '').slice(0, 80)
+    const reply = String(result?.reply ?? '').replace(/\s+/gu, ' ').trim().slice(0, 1_000)
+    // Свой фолбэк социального движка в письмо не кладётся. Он честно
+    // детерминирован, но написан для **разговора**: это реплика в лицо, а не
+    // ответное письмо, и звучала бы она в конверте чужой строкой. Раз модель
+    // промолчала, пусть звучит основа почты — она и писалась как письмо.
+    if (!reply || provider === 'deterministic-social-fallback') return command
+    return { ...command, reply_draft: reply, reply_draft_tone: tone, reply_provider: provider || 'llm' }
+  } catch {
+    // Провайдер молчит — письмо уедет с детерминированной основой. Отказывать
+    // игроку в отправке из-за недоступной модели нельзя: механика письма от
+    // неё не зависит.
+    return command
+  }
+}
+
 function sanitizePlayerItemCommand(user, state, input) {
   const type = commandType(input)
   if (!PLAYER_ITEM_COMMANDS.has(type)) {
@@ -1427,10 +1539,31 @@ function journalOffscreen(offscreen) {
   }
 }
 
-function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null }) {
+/**
+ * Карточка-конверт в летописи. Поля собрал сервер (`server/courier-letters.mjs`):
+ * своей сборки у клиента нет намеренно — «от кого» и «кому» обязаны читаться
+ * одинаково у стола и у ведущего.
+ */
+function journalLetter(letter) {
+  if (!letter || typeof letter !== 'object') return null
+  const kinds = new Set(['sent', 'delivered', 'returned', 'answered'])
+  const kind = String(letter.kind ?? '')
+  const body = String(letter.text ?? '').slice(0, 800)
+  if (!kinds.has(kind) || !body.trim()) return null
+  return {
+    kind,
+    title: String(letter.title || 'Почта отряда').slice(0, 80),
+    from: String(letter.from || '').slice(0, 120),
+    to: String(letter.to || '').slice(0, 120),
+    text: body,
+  }
+}
+
+function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null, letter = null }) {
   const storedRoll = journalRoll(roll)
   const storedStakes = journalStakes(stakes)
   const storedOffscreen = journalOffscreen(offscreen)
+  const storedLetter = journalLetter(letter)
   return {
     id: String(id),
     speaker: speaker === 'system' ? 'system' : speaker === 'player' ? 'player' : 'narrator',
@@ -1441,6 +1574,7 @@ function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = 
     ...(storedRoll ? { roll: storedRoll } : {}),
     ...(storedStakes ? { stakes: storedStakes } : {}),
     ...(storedOffscreen ? { offscreen: storedOffscreen } : {}),
+    ...(storedLetter ? { letter: storedLetter } : {}),
   }
 }
 
@@ -2343,7 +2477,13 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // замком, и Режиссёр — трижды повторённый вызов разошёлся бы на первом же
     // новом маршруте. Идентификатор записи детерминирован (`chronicle:<шаг>`),
     // поэтому повторная проекция того же события её не удваивает.
-    for (const candidate of [...(Array.isArray(events) ? events : []).map(offscreenChronicleEntry), journalMessage].flat()) {
+    // Почта попадает в летопись тем же путём и по той же причине: письмо,
+    // доставка, возврат и ответ рождаются из мировых минут, а минуты двигают и
+    // привал, и сутки под замком, и Режиссёр. Идентификатор записи
+    // детерминирован (`chronicle:<письмо>:<вид>`), поэтому повторная проекция
+    // того же события её не удваивает.
+    const eventsForChronicle = Array.isArray(events) ? events : []
+    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
@@ -3954,6 +4094,7 @@ const server = createServer((req, res) => {
         if (PLAYER_CAPTIVE_COMMANDS.has(type)) return sanitizePlayerCaptiveCommand(user, authoritativeBefore, command)
         if (PLAYER_LAW_COMMANDS.has(type)) return sanitizePlayerLawCommand(user, authoritativeBefore, command)
         if (PLAYER_TAVERN_COMMANDS.has(type)) return sanitizePlayerTavernCommand(user, authoritativeBefore, command)
+        if (PLAYER_LETTER_COMMANDS.has(type)) return sanitizePlayerLetterCommand(user, authoritativeBefore, command)
         // Права администратора меняют авторизацию MakeAttack, но не делают
         // клиентские поля или request_fingerprint авторитетными. Ограничение
         // player→enemy остаётся только в player sanitizer.
@@ -3974,6 +4115,17 @@ const server = createServer((req, res) => {
       const tavernCommands = commands.filter((command) => PLAYER_TAVERN_COMMANDS.has(commandType(command)))
       if (tavernCommands.length && commands.length !== 1) {
         throw commandPolicyError('Кости и выпивка идут отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      // Письмо — отдельная атомарная команда по той же причине, что кости и
+      // ответ страже: у него своя цена в монете и свои минуты кампании.
+      // Полировка ответа моделью ставится **после** санитайзера и только
+      // сервером: черновик из браузера был бы ответом NPC, написанным игроком.
+      const letterCommands = commands.filter((command) => PLAYER_LETTER_COMMANDS.has(commandType(command)))
+      if (letterCommands.length) {
+        if (commands.length !== 1) {
+          throw commandPolicyError('Письмо идёт отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+        }
+        commands = [await withCourierReplyDraft(authoritativeBefore, commands[0])]
       }
       // Драка со стражей — тот же двухшаговый план, что и у сборки столкновения
       // администратором: `ResolveGuardEncounter` ставит стражу на доску событием

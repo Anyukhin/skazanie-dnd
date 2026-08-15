@@ -170,6 +170,20 @@ import {
   planOffscreenWorldStep,
 } from './offscreen-world.mjs'
 import {
+  COURIER_LETTERS_POLICY_ID,
+  COURIER_LETTER_BODY_LIMIT,
+  COURIER_LETTER_COMMAND_TYPES,
+  COURIER_LETTER_EVENT_TYPES,
+  COURIER_LETTER_OPEN_LIMIT,
+  COURIER_LETTER_WRITING_MINUTES,
+  applyCourierLetterEvent,
+  courierAddresseeFor,
+  normalizeCourierLetterState,
+  openCourierLettersFor,
+  planCourierLetter,
+  planCourierLetterTicks,
+} from './courier-letters.mjs'
+import {
   ensureSceneWorldMemory,
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
@@ -531,6 +545,9 @@ const COMMAND_RULES = Object.freeze({
   LeaveTavernDiceRound: [RULE_IDS.economyCoins],
   // Выпивка: монета из кошелька и спасбросок Телосложения за перебор.
   OrderTavernDrink: [RULE_IDS.savingThrow, RULE_IDS.economyCoins],
+  // Письмо: броска нет, а монета есть — курьеру платят по дальности той же осью
+  // экономики, что и торговцу.
+  SendLetter: [RULE_IDS.economyCoins],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -561,6 +578,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...PARLEY_COMMAND_TYPES,
   ...LAW_COMMAND_TYPES,
   ...TAVERN_COMMAND_TYPES,
+  ...COURIER_LETTER_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1582,6 +1600,7 @@ export function normalizeCampaignState(input = {}) {
   state.npc_world = normalizeNpcWorldState(state.npc_world)
   state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
   state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
+  state.courier_letters = normalizeCourierLetterState(state.courier_letters)
   state.captives = normalizeCaptivesState(state.captives)
   state.law = normalizeLawState(state.law)
   state.tavern = normalizeTavernState(state.tavern)
@@ -3167,6 +3186,27 @@ function normalizeCommand(input, state) {
     // экономики торговца и у закона.
     if (!command.house_rule_id) command.house_rule_id = TAVERN_POLICY_ID
   }
+  if (COURIER_LETTER_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только герой, адрес и текст письма. Цену, дальность,
+    // срок доставки и тон ответа объявляет сервер: подсказать их клиент не
+    // может, а полировка ответа моделью приезжает отдельным серверным полем
+    // (`reply_draft`, `server/index.mjs`) и в игрока не упирается.
+    command.target_id = null
+    command.target_ids = []
+    command.addressee_kind = String(command.addressee_kind ?? command.addresseeKind ?? 'npc').slice(0, 20)
+    command.addressee_id = String(command.addressee_id ?? command.addresseeId ?? '').slice(0, 120)
+    delete command.addresseeKind
+    delete command.addresseeId
+    // Текст игрока — недоверенное поле наравне с репликой в разговоре: он
+    // схлопывается по пробелам и режется по длине здесь, до любой проверки.
+    command.body = String(command.body ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, COURIER_LETTER_BODY_LIMIT)
+    command.reply_draft = String(command.reply_draft ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 1_000)
+    command.reply_draft_tone = String(command.reply_draft_tone ?? '').slice(0, 20)
+    command.reply_provider = String(command.reply_provider ?? '').slice(0, 80)
+    // Почта — серверная политика, а не ось ruleset: у курьера нет правила
+    // редакции, но провенанс у механического решения обязан быть.
+    if (!command.house_rule_id) command.house_rule_id = COURIER_LETTERS_POLICY_ID
+  }
   if (command.command_type === 'ResolveHeroDeath') {
     command.resolution = String(command.resolution ?? '')
     command.replacement_name = command.replacement_name == null ? '' : String(command.replacement_name).trim().slice(0, 120)
@@ -3190,6 +3230,7 @@ function needsActor(type) {
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
+    'SendLetter',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3884,6 +3925,37 @@ export function validateCommand(input, rawState, context = {}) {
       if (currencyToCopper(playerActor(state, command.actor_id).currency) < TAVERN_DRINK_PRICE_CP) {
         throw new RulesValidationError('На выпивку не хватает монет', 'INSUFFICIENT_FUNDS')
       }
+    }
+  }
+  if (COURIER_LETTER_COMMAND_TYPES.has(command.command_type)) {
+    if (state.mechanics.combat.active) {
+      throw new RulesValidationError('Посреди боя писем не пишут', 'COURIER_DURING_COMBAT')
+    }
+    if (!playerActor(state, command.actor_id)) {
+      throw new RulesValidationError('Письмо пишет герой отряда', 'ACTOR_FORBIDDEN')
+    }
+    if (!isLivingActor(findActor(state, command.actor_id))) {
+      throw new RulesValidationError('Герой без сознания писем не пишет', 'ACTOR_DEFEATED')
+    }
+    if (!command.body) {
+      throw new RulesValidationError('Пустое письмо курьер не повезёт', 'COURIER_LETTER_EMPTY')
+    }
+    // Адресат берётся той же функцией, что собирает список для панели и считает
+    // цену: второй ответ на вопрос «кому можно писать» разошёлся бы с первым.
+    const addressee = courierAddresseeFor(state, command.addressee_kind, command.addressee_id)
+    if (!addressee) {
+      throw new RulesValidationError('Такого адресата отряд не знает', 'COURIER_ADDRESSEE_NOT_FOUND')
+    }
+    if (addressee.unreachable) {
+      throw new RulesValidationError('Адресат стоит перед отрядом: это разговор, а не письмо', 'COURIER_ADDRESSEE_PRESENT')
+    }
+    if (openCourierLettersFor(state, command.actor_id).length >= COURIER_LETTER_OPEN_LIMIT) {
+      throw new RulesValidationError('У героя и так слишком много писем в дороге', 'COURIER_TOO_MANY_LETTERS')
+    }
+    // Плата проверяется **до** первого события: кошелёк не уходит в минус
+    // потому, что в него не лезут, а не потому, что итог потом подрежут.
+    if (currencyToCopper(playerActor(state, command.actor_id).currency) < addressee.fee_cp) {
+      throw new RulesValidationError('На курьера не хватает монет', 'INSUFFICIENT_FUNDS')
     }
   }
   if (CHARACTER_BUILD_COMMAND_TYPES.has(command.command_type)) {
@@ -6631,6 +6703,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     // привале модуль молчит по построению.
     const offscreen = planOffscreenWorldStep(state, { elapsedMinutes })
     for (const draft of offscreen?.drafts ?? []) {
+      events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids ?? []))
+    }
+    // Почта. Курьер едет теми же минутами и никакого своего счётчика не
+    // заводит: доставка, возврат и ответ считаются от **дособытийного**
+    // состояния, поэтому длинный отдых доводит письмо до ответа целиком, а
+    // короткий привал не двигает его вовсе (`planCourierLetterTicks`,
+    // `server/courier-letters.mjs`).
+    for (const draft of planCourierLetterTicks(state, { elapsedMinutes })) {
       events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids ?? []))
     }
   }
@@ -11650,6 +11730,48 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), TAVERN_DRINK_MINUTES, 'minute')
       break
     }
+    case 'SendLetter': {
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      const addressee = courierAddresseeFor(state, command.addressee_kind, command.addressee_id)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const balanceAfterCp = Math.max(0, balanceBeforeCp - addressee.fee_cp)
+      // Письмо целиком собирает модуль почты: срок ответа выводится из срока
+      // доставки, обещание — из самого текста, тон — из отношения на минуту
+      // отправки. Считать это здесь значило бы завести вторую дату для одной
+      // дороги.
+      const letter = planCourierLetter(state, {
+        heroId: command.actor_id,
+        heroName: String(actor?.character ?? actor?.name ?? '').slice(0, 120),
+        addressee,
+        body: command.body,
+        commandId: command.command_id,
+        atMinutes: minutes,
+        replyDraft: command.reply_draft,
+        replyDraftTone: command.reply_draft_tone,
+        replyProvider: command.reply_provider,
+      })
+      events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), COURIER_LETTER_EVENT_TYPES.sent, {
+        letter,
+        hero_id: command.actor_id,
+        addressee_kind: letter.addressee_kind,
+        addressee_id: letter.addressee_id,
+        addressee_name: letter.addressee_name,
+        fee_cp: letter.fee_cp,
+        leagues: letter.leagues,
+        currency_before: normalizeCurrency(actor.currency),
+        currency_after: copperToCurrency(balanceAfterCp),
+        balance_before_cp: balanceBeforeCp,
+        balance_after_cp: balanceAfterCp,
+        at_minutes: minutes,
+        policy_id: COURIER_LETTERS_POLICY_ID,
+      }, [command.actor_id, letter.addressee_id]))
+      // Полчаса за столом — столько же, сколько уходит на кружку и раунд
+      // костей. Ход мира на этих минутах письма не двигает: они считаются от
+      // состояния **до** команды, где нового письма ещё нет.
+      appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), COURIER_LETTER_WRITING_MINUTES, 'minute')
+      break
+    }
     case 'ClearWantedLevel': {
       const regionId = String(command.region_id)
       const wanted = wantedFor(state, regionId)
@@ -14154,6 +14276,19 @@ export function applyGameEvent(rawState, event) {
       }
       break
     }
+    case 'CourierLetterSent': {
+      // Почту обновляет `applyCourierLetterEvent` в конце редьюсера — здесь
+      // остаётся только кошелёк: плату курьеру посчитал движок по дальности,
+      // редьюсер переносит уже подтверждённый баланс. Доставка, возврат и ответ
+      // денег не касаются вовсе: дорога оплачена вперёд.
+      const sender = String(payload.hero_id ?? event.actor_id ?? '')
+      if (sender && payload.currency_after) {
+        state.players = state.players.map((player) => (actorId(player) === sender
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player))
+      }
+      break
+    }
     case 'TavernDiceRoundOpened':
     case 'TavernDiceRoundCancelled':
     case 'TavernDiceRoundResolved':
@@ -14663,6 +14798,10 @@ export function applyGameEvent(rawState, event) {
   // ход посчитан до коммита, здесь остаётся только запомнить его и список
   // заданий под наблюдением.
   state.offscreen_world = applyOffscreenWorldEvent(state.offscreen_world, event)
+  // Почта — такой же вывод из журнала: письмо заводится отправкой, а доставка,
+  // возврат и ответ только меняют его состояние, поэтому replay восстанавливает
+  // всю дугу без отдельного снимка.
+  state.courier_letters = applyCourierLetterEvent(state.courier_letters, event)
   state.captives = applyCaptiveEvent(state.captives, event, state)
   state.autonomy = applyAutonomyEvent(state.autonomy, event)
   state.state_version = Number.isSafeInteger(event.state_version_after)
@@ -14867,6 +15006,10 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'TavernCheatExposed': return `${payload.npc_name || 'Соперник'} уличён в шулерстве`
     case 'TavernPatronEjected': return `${named(payload.hero_id) || 'Героя'} выставили из заведения`
     case 'TavernDrinkOrdered': return `Заказана выпивка: кружка №${safeInteger(payload.drinks, 1)} за ${safeInteger(payload.price_cp, 0)} мм`
+    case 'CourierLetterSent': return `Письмо к ${payload.addressee_name || payload.addressee_id || 'адресату'} отдано курьеру за ${safeInteger(payload.fee_cp, 0)} мм (${safeInteger(payload.leagues, 1)} перех.)`
+    case 'CourierLetterDelivered': return `Письмо доставлено: ${payload.addressee_name || payload.addressee_id || 'адресат'} прочитал(а)${payload.answer_expected === false ? ', ответа не будет' : ''}`
+    case 'CourierLetterReturned': return `Письмо вернулось: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата не нашли'}`
+    case 'CourierLetterAnswered': return `Пришёл ответ от ${payload.addressee_name || payload.addressee_id || 'адресата'}`
     default: return event.event_type
   }
 }

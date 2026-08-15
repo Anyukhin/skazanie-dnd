@@ -15,7 +15,7 @@ import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -54,6 +54,7 @@ type TacticalCommand =
   | { command_type: 'AnswerTavernDiceRound'; actor_id: string; approach: TavernDiceApproach }
   | { command_type: 'LeaveTavernDiceRound'; actor_id: string }
   | { command_type: 'OrderTavernDrink'; actor_id: string }
+  | { command_type: 'SendLetter'; actor_id: string; addressee_kind: LetterAddresseeKind; addressee_id: string; body: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -1342,6 +1343,17 @@ export function useGameSession() {
     return executeTacticalCommand({ command_type: 'OrderTavernDrink', actor_id: actorId }, 'Заказать выпивку')
   }, [executeTacticalCommand])
 
+  /* Письмо. Клиент называет только адресата и текст: дальность, плату курьеру,
+     срок доставки и тон ответа считает сервер, а полировку ответа моделью он
+     же и запечатывает — черновик из браузера был бы ответом NPC, написанным
+     игроком, поэтому такого поля в команде нет. */
+  const sendLetter = useCallback((actorId: string, addresseeKind: LetterAddresseeKind, addresseeId: string, body: string) => {
+    return executeTacticalCommand(
+      { command_type: 'SendLetter', actor_id: actorId, addressee_kind: addresseeKind, addressee_id: addresseeId, body },
+      'Написать письмо',
+    )
+  }, [executeTacticalCommand])
+
   /* Судьба пленного. Клиент называет только пленного и, для допроса, подход;
      СЛ, исход броска, награду и последствия считает сервер. */
   const captiveAction = useCallback((
@@ -1767,6 +1779,7 @@ export function useGameSession() {
     answerTavernDiceRound,
     leaveTavernDiceRound,
     orderTavernDrink,
+    sendLetter,
     proposeParley,
     settleParley,
     useLevelTransition,

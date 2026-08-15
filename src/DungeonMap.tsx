@@ -18,8 +18,9 @@ import {
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
   Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Beer, Eye,
+  Mail, MailOpen, MailX,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -630,7 +631,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -666,6 +667,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onAnswerTavernDiceRound: (approach: TavernDiceApproach) => Promise<CommandOutcome>
   onLeaveTavernDiceRound: () => Promise<CommandOutcome>
   onOrderTavernDrink: () => Promise<CommandOutcome>
+  onSendLetter: (addresseeKind: LetterAddresseeKind, addresseeId: string, body: string) => Promise<CommandOutcome>
   onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
   onStartRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
   onSpendHitPointDie: () => Promise<CommandOutcome>
@@ -694,6 +696,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // заново, пока игрок держит палец над кнопкой, и подтверждение от прошлой
   // кости не должно достаться следующей.
   const [tavernSurrenderRoundId, setTavernSurrenderRoundId] = useState('')
+  // Кому и что пишем. Оба поля — черновик в браузере и ничего больше: адресата
+  // сервер всё равно сверит со своим списком, а текст письма он режет сам.
+  const [letterAddresseeId, setLetterAddresseeId] = useState('')
+  const [letterBody, setLetterBody] = useState('')
+  const [lettersOpen, setLettersOpen] = useState(false)
   const [npcDialogueText, setNpcDialogueText] = useState('')
   const [selectedGiftItemId, setSelectedGiftItemId] = useState('')
   const [giftQuantity, setGiftQuantity] = useState(1)
@@ -943,6 +950,32 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // Раз цена одна и необратима, подтверждение спрашивается всегда — тем же
   // порядком, каким на этой панели проходят команды с целью.
   const tavernSurrenderPending = Boolean(tavernRound && tavernSurrenderRoundId === tavernRound.id)
+  // Почта отряда. Карточка приезжает готовой (`server/courier-letters.mjs`):
+  // список адресатов уже посчитан по дорогам карты мира, у каждого стоит своя
+  // цена курьера и свой срок. Досчитывать здесь нечего и нечем — второй
+  // арифметики дальности в проекте нет.
+  const letterAddressees = (state.courier_letters?.addressees ?? []).filter((entry) => entry.unreachable !== true)
+  const heroLetters = (state.courier_letters?.letters ?? []).filter((letter) => letter.hero_id === typingActorId)
+  const heroLettersInTransit = heroLetters.filter((letter) => letter.status === 'in_transit')
+  const letterOpenLimit = Number(state.courier_letters?.open_limit ?? 3)
+  const letterBodyLimit = Number(state.courier_letters?.body_limit ?? 1_200)
+  const chosenLetterAddressee = letterAddressees.find((entry) => entry.id === letterAddresseeId) ?? letterAddressees[0] ?? null
+  const letterFeeCp = Number(chosenLetterAddressee?.fee_cp ?? 0)
+  // Отказы движка названы до клика, а не после него: посреди боя писем не
+  // пишут, кошелёк не уходит в минус, и четвёртое письмо героя курьер не берёт.
+  const letterBlockReason = combatActive
+    ? 'Посреди боя писем не пишут'
+    : !canAct || narrating || tacticalBusy
+      ? 'Сейчас ход не ваш'
+      : !chosenLetterAddressee
+        ? 'Отряд пока не знает никого, кому можно написать'
+        : heroLettersInTransit.length >= letterOpenLimit
+          ? `У героя и так ${heroLettersInTransit.length} писем в дороге`
+          : activeHeroPurseCp < letterFeeCp
+            ? 'На курьера не хватает монет'
+            : !letterBody.trim()
+              ? 'Пустое письмо курьер не повезёт'
+              : ''
   const dossierSceneNpc = npcDossier ? sceneNpcs.find((npc) => npc.id === npcDossier.npcId) ?? null : null
   const dossierCaptive = dossierSceneNpc ? captiveByNpcId.get(dossierSceneNpc.id) ?? null : null
   const dossierSocialNpc = dossierSceneNpc
@@ -2466,6 +2499,72 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   </small>
                 </div>
               </>}
+        </section>}
+        {/* Почта отряда. Панель складная и по умолчанию закрыта: письмо — не
+            срочное действие, и держать открытым бланк рядом с боем незачем.
+            Показывается она только там, где почте есть смысл, — когда отряд
+            знает хоть одного адресата или уже отправил хоть одно письмо. */}
+        {(letterAddressees.length > 0 || heroLetters.length > 0) && <section className="letters-panel" aria-label="Почта отряда" aria-live="polite">
+          <header>
+            <Mail size={15} />
+            <span><small>ПОЧТА ОТРЯДА{heroLettersInTransit.length ? ` · В ПУТИ: ${heroLettersInTransit.length}` : ''}</small><strong>Письма и курьеры</strong></span>
+            <button
+              type="button"
+              className="letters-toggle"
+              aria-expanded={lettersOpen}
+              onClick={() => setLettersOpen((value) => !value)}
+            >{lettersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{lettersOpen ? 'Свернуть' : 'Написать письмо'}</button>
+          </header>
+          {heroLetters.length > 0 && <ul className="letters-list">
+            {heroLetters.slice(0, 4).map((letter) => <li key={letter.id} className={`letter-row letter-${letter.status}`}>
+              {letter.status === 'answered' ? <MailOpen size={13} /> : letter.status === 'returned' ? <MailX size={13} /> : <Mail size={13} />}
+              <b>{letter.addressee_name}</b>
+              <i>{letter.status_label}</i>
+              {letter.reply ? <span className="letter-reply">{letter.reply}</span> : null}
+            </li>)}
+          </ul>}
+          {lettersOpen && <div className="letters-compose">
+            <label>
+              <span>Кому</span>
+              <select
+                value={chosenLetterAddressee?.id ?? ''}
+                disabled={!letterAddressees.length}
+                onChange={(event) => setLetterAddresseeId(event.target.value)}
+              >
+                {letterAddressees.length
+                  ? letterAddressees.map((entry) => <option key={`${entry.kind}:${entry.id}`} value={entry.id}>
+                    {entry.name}{entry.role ? ` (${entry.role})` : ''} · {entry.leagues} перех. · {entry.fee_cp} мм
+                  </option>)
+                  : <option value="">писать пока некому</option>}
+              </select>
+            </label>
+            <textarea
+              value={letterBody}
+              maxLength={letterBodyLimit}
+              rows={4}
+              placeholder="Что написать? Обещание в письме — обещание."
+              onChange={(event) => setLetterBody(event.target.value)}
+            />
+            <div className="letters-send">
+              <button
+                type="button"
+                className="letter-action action-send"
+                disabled={Boolean(letterBlockReason)}
+                title={letterBlockReason || `Курьер возьмёт ${letterFeeCp} мм и повезёт письмо ${chosenLetterAddressee?.leagues ?? 0} перех.`}
+                onClick={() => {
+                  if (!chosenLetterAddressee) return
+                  const body = letterBody
+                  setLetterBody('')
+                  void onSendLetter(chosenLetterAddressee.kind, chosenLetterAddressee.id, body)
+                }}
+              ><Send size={13} />Отправить с курьером · {letterFeeCp} мм</button>
+              <small>
+                {letterBlockReason
+                  ? letterBlockReason
+                  : `Ответа ждать не раньше, чем отряд переночует: курьеру ехать ${chosenLetterAddressee?.leagues ?? 0} перех.${chosenLetterAddressee?.place_name ? ` до «${chosenLetterAddressee.place_name}»` : ''}.`}
+              </small>
+            </div>
+          </div>}
         </section>}
         {heldCaptives.length > 0 && <section className="captive-panel" aria-label="Пленники отряда">
           <header><UserLock size={15} /><span><small>ПЛЕННИКИ · {heldCaptives.length}</small><strong>Судьба решается вами</strong></span></header>
