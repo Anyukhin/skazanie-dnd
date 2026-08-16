@@ -942,7 +942,7 @@ export type BattleEvent = {
   id: string
   sceneTurn?: number
   round?: number
-  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken'
+  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'npc-item' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken' | 'captive-taken' | 'loot-container' | 'loot-taken'
   actorId?: string
   actorKind?: 'player' | 'enemy' | 'summon' | 'system'
   targetId?: string
@@ -991,6 +991,29 @@ export type BattleEvent = {
   immunity?: string | null
   actionId?: string
   actionName?: string
+  /**
+   * Снаряжение противника: закрытая тактика сервера и её готовая подпись.
+   * Ни имени вещи, ни каталожного ключа здесь нет — карман живого противника
+   * закрыт до обыска тела, и журнал показывает поступок, а не инвентарь.
+   */
+  tactic?: string
+  label?: string
+  /**
+   * Контейнер добычи: журнал называет вид, имя и число предметов, но не то,
+   * что именно внутри. Содержимое отряд узнаёт, подойдя (`loot_containers`).
+   */
+  containerId?: string
+  containerKind?: string
+  containerName?: string
+  recipientId?: string
+  itemCount?: number
+  /**
+   * Что осталось в контейнере после обыска. Признак нужен интерфейсу, чтобы не
+   * принять неполный обыск за опустошённое тело: `loot-taken` пишется в обоих
+   * случаях, а метка «уже забрал такой-то» честна только при нулевом остатке.
+   */
+  remainingCount?: number
+  statusAfter?: string
   area?: { x: number; y: number; radiusFeet: number }
 }
 
@@ -1220,6 +1243,13 @@ export type GameState = {
    * принадлежит: он видит, кого держит, — но не то, чего пленный ещё не сказал.
    */
   captives?: CaptivesProjection
+  /**
+   * Контейнеры добычи текущего яруса. Опустошённые сюда не приезжают вовсе, а
+   * содержимое — только у того контейнера, до которого дотягивается герой
+   * игрока: «обыскать» обязано оставаться поступком, а не формальностью поверх
+   * уже прочитанного списка.
+   */
+  loot_containers?: LootContainersProjection
   /**
    * Закон и розыск. Форма зависит от зрителя: игроку приезжают приметы мира и
    * встреча со стражей, ведущему — лента по краям. Общий тип держит обе ветки
@@ -1477,6 +1507,70 @@ export type CaptiveEntry = {
 }
 
 export type CaptivesProjection = { schema_version?: number; captives?: CaptiveEntry[] }
+
+/**
+ * Предмет в контейнере добычи. Форму задаёт сервер (`lootItemForViewer`,
+ * `server/loot-containers.mjs`): ни владельца, ни происхождения здесь нет — в
+ * происхождении лежит идентификатор стат-блока противника, а его отряд узнаёт
+ * только опознанием врага.
+ */
+export type LootItemCard = {
+  item_instance_id: string
+  catalog_id?: string
+  name: string
+  type?: string
+  rarity?: string
+  weight: number
+  quantity: number
+  description?: string
+  mechanics_status?: string
+  base_price_cp?: number
+  image?: string
+  charges?: { current: number; max: number }
+  requires_attunement?: boolean
+}
+
+/**
+ * Контейнер добычи в текущей сцене. `items` приходит только тогда, когда герой
+ * игрока до контейнера дотягивается: `can_inspect` — тот же признак, и он
+ * решается сервером, а не расстоянием, посчитанным в браузере.
+ */
+export type LootContainerCard = {
+  schema_version?: number
+  id: string
+  kind: 'corpse' | 'captive' | 'abandoned' | 'cache'
+  name: string
+  status: 'available' | 'emptied'
+  /**
+   * Кем контейнер был. Ключ нужен интерфейсу ровно для портрета павшего: имя
+   * противника и так стоит в `name`, а стат-блок сюда не уезжает вовсе.
+   */
+  source_enemy_id?: string
+  x: number | null
+  y: number | null
+  item_count: number
+  total_weight: number
+  can_inspect: boolean
+  /**
+   * Сколько футов до контейнера. Считает сервер — второй геометрии доски в
+   * браузере не заводится. `undefined` значит «померить нечем»: у контейнера
+   * нет клетки или герой ещё не встал на карту.
+   */
+  distance_feet?: number
+  items?: LootItemCard[]
+}
+
+export type LootContainersProjection = {
+  schema_version?: number
+  reach_feet?: number
+  /**
+   * Цена обыска в экономике хода. Решает сервер тем же признаком, что и правило
+   * (`validateLootContainerCommand`): идёт бой — обыск стоит действия. Кнопка
+   * называет цену до нажатия и своей таблицы правил не держит.
+   */
+  action_cost?: 'action' | null
+  containers?: LootContainerCard[]
+}
 
 /** Чем можно ответить страже. Список закрыт сервером (`server/law-and-order.mjs`). */
 export type GuardResolution = 'fine' | 'surrender' | 'fight' | 'flee'

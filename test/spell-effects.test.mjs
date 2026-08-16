@@ -157,6 +157,49 @@ test('живой пакет создаёт projectile, burst, beam, aura, channe
   assert.ok(cues.some((cue) => cue.kind === 'channel' && cue.channelType === 'summon' && cue.position.x === 4))
 })
 
+test('лечение без величины доходит до клетки словом: пакет отдаёт отсутствие, а не ноль', () => {
+  // У чужого лечения санитайзер снимает `applied_amount` целиком
+  // (`eventForViewer`, `server/viewer-projection.mjs`), и «ноль вместо
+  // отсутствия» — единственная развилка, которая отличает «зелье не
+  // сработало» от «сработало, но числа не видно». Живёт она в `safeAmount`, и
+  // без этой проверки подмена `null` на `0` оставляла корпус зелёным:
+  // рисующий сторож ниже подаёт `amount: null` уже готовой репликой и до
+  // разбора события не доходит вовсе.
+  const [cue] = animation.combatAnimationCuesFromEvents([
+    { event_id: 'heal-hidden', command_id: 'sip', event_type: 'HealingApplied', actor_id: 'goblin', target_ids: ['goblin'], payload: {} },
+  ])
+  assert.equal(cue.channelType, 'healing')
+  assert.equal(cue.amount, null, 'снятая сервером величина обязана остаться отсутствующей, а не стать нулём')
+
+  const context = recordingContext()
+  render.drawBoardEffects(context, scene(), [
+    effects.createSpellEffectRenderer({ cue, progress: .65, actors: [actor('goblin', 3, 3)], reducedMotion: false }),
+  ])
+  assert.ok(context.ops.some((operation) => operation.op === 'fillText' && operation.text === 'ЛЕЧЕНИЕ'))
+  assert.equal(
+    context.ops.some((operation) => operation.op === 'fillText' && String(operation.text).startsWith('+')),
+    false,
+    'над клеткой не должно быть «+0»',
+  )
+})
+
+test('смазанный клинок над клеткой подписан в обеих формах — и чужой, и свой', () => {
+  // Проекция обезличивает только карман противника (`publicConditionsFor`,
+  // `server/viewer-projection.mjs`): у врага в клиент приезжает
+  // `weapon-coated`, у героя — точная `weapon-coated:<item_instance_id>`.
+  // Качественная подпись стоит под первую форму, и без запасной ветки над
+  // клеткой героя общий гуманизатор рисовал «Weapon Coated:hero Blade» —
+  // ключ вещи прямо на доске.
+  const cues = animation.combatAnimationCuesFromEvents([
+    { event_id: 'coat-foe', command_id: 'coat-foe', event_type: 'ConditionAdded', actor_id: 'spy', target_ids: ['spy'], payload: { condition: 'weapon-coated' } },
+    { event_id: 'coat-hero', command_id: 'coat-hero', event_type: 'ConditionAdded', actor_id: 'hero', target_ids: ['hero'], payload: { condition: 'weapon-coated:hero-blade' } },
+  ])
+  assert.deepEqual(
+    cues.filter((cue) => cue.kind === 'condition').map((cue) => cue.label),
+    ['Клинок смазан', 'Клинок смазан ядом'],
+  )
+})
+
 test('SpellAreaCreated использует точные клетки и не дублирует приблизительный burst', () => {
   const cues = animation.combatAnimationCuesFromEvents([
     { event_id: 'cast-web', command_id: 'web', event_type: 'SpellCast', actor_id: 'mage', payload: { spell_id: 'web', kind: 'area-save' } },
@@ -242,6 +285,12 @@ test('projectile, цепной beam, aura, лечение и призыв ост
     {
       cue: { id: 'h', kind: 'channel', actorId: 'cleric', targetId: 'cleric', channelType: 'healing', amount: 6, spellId: 'healing-word', school: 'evocation', durationMs: 480 },
       expected: (ops) => ops.some((operation) => operation.op === 'fillText' && operation.text === '+6'),
+    },
+    {
+      // Лечение без величины: у неопознанного противника сервер число не
+      // присылает, и «+0» означало бы, что зелье не сработало.
+      cue: { id: 'h0', kind: 'channel', actorId: 'goblin', targetId: 'goblin', channelType: 'healing', amount: null, spellId: '', school: 'evocation', durationMs: 480 },
+      expected: (ops) => ops.some((operation) => operation.op === 'fillText' && operation.text === 'ЛЕЧЕНИЕ'),
     },
     {
       cue: { id: 's', kind: 'channel', actorId: 'cleric', targetId: 'beast', channelType: 'summon', spellId: 'summon-beast', school: 'conjuration', durationMs: 480 },

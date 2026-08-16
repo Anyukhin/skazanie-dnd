@@ -85,6 +85,19 @@ import {
   planCaptureDrafts,
 } from './captives.mjs'
 import {
+  LOOT_CONTAINERS_POLICY_ID,
+  LOOT_CONTAINER_COMMAND_TYPES,
+  LootContainerError,
+  applyLootContainerEvent,
+  lootCommitTouchesContainers,
+  lootContainerCommandEvents,
+  lootContainerFor,
+  normalizeLootContainersState,
+  normalizeLootLines,
+  planLootContainerDrafts,
+  validateLootContainerCommand,
+} from './loot-containers.mjs'
+import {
   PARLEY_ABILITY,
   PARLEY_COMMAND_TYPES,
   PARLEY_POLICY_ID,
@@ -165,6 +178,19 @@ import {
   validateNpcWorldCommand,
 } from './npc-positioning.mjs'
 import { assembleEncounter } from './encounter-assembler.mjs'
+import { normalizeEnemyLoadout } from './enemy-loadouts.mjs'
+import {
+  NPC_ACTION_UNAVAILABLE_MESSAGES,
+  NPC_EQUIPMENT_EVENT_SCHEMA_VERSION,
+  NPC_EQUIPMENT_POLICY_ID,
+  NPC_HEALING_POTION_HP_PERCENT,
+  npcActionUnavailableReason,
+  npcAttackExpenditureFor,
+  npcMeleeWeaponBindingForItem,
+  npcTacticCondition,
+  npcUsableItemFor,
+  npcWeaponBindingFor,
+} from './npc-equipment.mjs'
 import { applyEncounterRewardsDistribution } from './encounter-rewards.mjs'
 import {
   ECONOMY_CATALOG_VERSION,
@@ -482,6 +508,9 @@ const COMMAND_RULES = Object.freeze({
   // требуют, а деньги на них считает та же ось экономики, что и покупки.
   ResolveGuardEncounter: [RULE_IDS.abilityCheck, RULE_IDS.economyCoins],
   ClearWantedLevel: [],
+  // Обыск в бою стоит действия — это ось очерёдности ruleset; сама добыча
+  // считается серверной политикой и провенанс держит в `house_rule_id`.
+  LootContainer: [RULE_IDS.turns],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -511,6 +540,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...CAPTIVE_COMMAND_TYPES,
   ...PARLEY_COMMAND_TYPES,
   ...LAW_COMMAND_TYPES,
+  ...LOOT_CONTAINER_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1319,6 +1349,31 @@ const READIED_TRIGGERS = Object.freeze({
   'enemy-casts-spell': 'враг начнёт творить заклинание',
 })
 
+/**
+ * Замороженный состав встречи без инвентарей.
+ *
+ * `state.mechanics.encounter.enemies` — не второй боевой список, а описание
+ * состава: `freezeEncounterOutcomePlan` читает оттуда только `id` и
+ * `stat_block_id`, чтобы награда считалась по тем существам, с которыми бой
+ * начинался. Инвентарь же живёт ровно в одном месте — `state.enemies[].loadout`,
+ * где его нормализует `normalizeEnemyLoadout`. Вторая копия тех же экземпляров
+ * нормализатор не проходила никогда: мусор из сохранения вычищался бы в одной
+ * копии и оставался в другой, а следующий шаг мог прочитать не ту. Заодно это
+ * снимает вес с проекции ведущего, которую стол опрашивает раз в полторы
+ * секунды и в которой инвентарь противника всё равно не показывается.
+ */
+function encounterWithoutLoadouts(encounter) {
+  const copy = clone(encounter)
+  if (Array.isArray(copy.enemies)) {
+    copy.enemies = copy.enemies.map((enemy) => {
+      if (!enemy || typeof enemy !== 'object' || Array.isArray(enemy)) return enemy
+      const { loadout, ...descriptor } = enemy
+      return descriptor
+    })
+  }
+  return copy
+}
+
 export function normalizeCampaignState(input = {}) {
   const state = clone(input && typeof input === 'object' ? input : {})
   const mechanics = { ...defaultMechanics(), ...(state.mechanics && typeof state.mechanics === 'object' ? state.mechanics : {}) }
@@ -1361,7 +1416,7 @@ export function normalizeCampaignState(input = {}) {
   mechanics.scene_interactions = normalizeSceneInteractions(state.mechanics?.scene_interactions)
   mechanics.enemy_knowledge = normalizeEnemyKnowledge(state.mechanics?.enemy_knowledge)
   mechanics.encounter = state.mechanics?.encounter && typeof state.mechanics.encounter === 'object'
-    ? clone(state.mechanics.encounter)
+    ? encounterWithoutLoadouts(state.mechanics.encounter)
     : null
   mechanics.active_effects = Array.isArray(state.mechanics?.active_effects) ? clone(state.mechanics.active_effects) : []
   mechanics.progression = normalizeProgression(state.mechanics?.progression)
@@ -1491,6 +1546,11 @@ export function normalizeCampaignState(input = {}) {
     hp: Math.max(0, safeInteger(enemy.hp, 0)),
     maxHp: Math.max(1, safeInteger(enemy.maxHp ?? enemy.max_hp, 1)),
     alive: enemy.alive !== false && safeInteger(enemy.hp, 0) > 0,
+    // Кампании, сыгранные до инвентарей противников, поля не знают: у их
+    // противников инвентарь пустой, а не отсутствующий. Форма одна и та же для
+    // старого снимка и нового боя, поэтому обходчику добычи не нужна ветка
+    // «а вдруг поля нет».
+    loadout: normalizeEnemyLoadout(enemy.loadout),
   })) : []
   state.merchants = normalizeMerchants(state.merchants)
   if (state.merchants.length && !state.enabled_house_rules.includes(ECONOMY_POLICY_ID)) {
@@ -1533,6 +1593,9 @@ export function normalizeCampaignState(input = {}) {
   state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
   state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
   state.captives = normalizeCaptivesState(state.captives)
+  // Контейнеры добычи живут в состоянии кампании, а не в сцене: невзятое
+  // обязано пережить и уход со сцены, и подъём на другой этаж.
+  state.loot_containers = normalizeLootContainersState(state.loot_containers)
   state.law = normalizeLawState(state.law)
   state.autonomy = normalizeAutonomyState(state.autonomy)
   state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
@@ -3059,6 +3122,21 @@ function normalizeCommand(input, state) {
       command.target_ids = []
     }
   }
+  if (LOOT_CONTAINER_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только ключи: контейнер, экземпляры и количества.
+    // Название, вес, цена и механика вещи приезжают из контейнера, а не из
+    // тела запроса — см. шапку `server/loot-containers.mjs`.
+    command.container_id = String(command.container_id ?? command.containerId ?? '').slice(0, 120)
+    delete command.containerId
+    command.recipient_id = String(command.recipient_id ?? command.recipientId ?? '').slice(0, 120)
+    delete command.recipientId
+    command.lines = normalizeLootLines(command.lines)
+    command.target_id = null
+    command.target_ids = []
+    // Обыск — серверная политика, а не ось ruleset: у «взял с тела» нет
+    // правила редакции, но провенанс у механического решения обязан быть.
+    if (!command.house_rule_id) command.house_rule_id = LOOT_CONTAINERS_POLICY_ID
+  }
   if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
     // Из запроса берутся только герой, подход и выбранный исход. Ни СЛ, ни
     // список доступных исходов, ни сумма откупа клиент подсказать не может:
@@ -3116,7 +3194,7 @@ function needsActor(type) {
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
-    'ProposeParley', 'SettleParley', 'ResolveGuardEncounter',
+    'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3204,6 +3282,158 @@ function isUnstableDyingHero(state, id) {
 
 function inventoryItem(actor, itemId) {
   return (Array.isArray(actor?.inventory) ? actor.inventory : []).find((item) => String(item?.id) === String(itemId ?? '')) ?? null
+}
+
+/**
+ * Поля, из которых состоит `UseItem` противника. Список закрыт по той же
+ * причине, что и у героя (`assertPlainCommand`, `server/item-lifecycle.mjs`):
+ * лишнее поле в команде — это чужой профиль использования, чужая клетка
+ * рассыпания или чужой режим фляги, приехавшие мимо проверки.
+ *
+ * Здесь он **уже** ключей команды героя: у противника нет ни зарядов, ни
+ * получателя передачи, ни выбора режима фляги — тактик всего три и все они
+ * закрыты. `merchant_id`, `stock_id`, `action_id` и `quantity` в списке не
+ * потому, что нужны, а потому что `normalizeCommand` проставляет их каждой
+ * команде: без них закрытый список падал бы на собственном нормализаторе.
+ */
+const NPC_ITEM_USE_COMMAND_FIELDS = new Set([
+  'command_type', 'command_id', 'campaign_id', 'actor_id', 'target_id', 'target_ids',
+  'item_id', 'npc_tactic', 'weapon_id',
+  'merchant_id', 'stock_id', 'action_id', 'quantity',
+  'expected_state_version', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility',
+  'request_fingerprint', 'server_authoritative',
+])
+
+/** Чем существо платит за тактику и что ответить, если это уже потрачено. */
+const NPC_TACTIC_ECONOMY_ERRORS = Object.freeze({
+  action: ['Действие на этом ходу уже потрачено', 'ACTION_SPENT'],
+  bonus_action: ['Бонусное действие на этом ходу уже потрачено', 'BONUS_ACTION_SPENT'],
+})
+
+/**
+ * Противник пользуется своими вещами — и только руками сервера.
+ *
+ * Дверь одна и она проверяется первой строкой: `context.isNpcScheduler`.
+ * Флага нет ни в одном теле запроса — его ставит только детерминированный
+ * планировщик ходов (`server/npc-turn-scheduler.mjs`) и автономный цикл боя,
+ * который берёт команды у того же планировщика. Ни игрок, ни администратор
+ * инвентарём противника не распоряжаются: у админского контура свой флаг
+ * `isAdmin`, и он здесь намеренно ничего не открывает — иначе «сыграть за
+ * врага» превратилось бы в «выпить его зелье чужими руками».
+ *
+ * Тактик ровно три, и каждая проверяется по своим условиям. Все они закрыты
+ * каталогом `NPC_ITEM_TACTICS`, а не описанием предмета: вещь со сколь угодно
+ * подходящим `use` не станет тактикой, пока её туда не внесли.
+ */
+function validateNpcItemUseCommand(command, state, context = {}) {
+  if (context?.isNpcScheduler !== true) {
+    throw new RulesValidationError('Инвентарём противника распоряжается только серверный планировщик ходов', 'NPC_ITEM_USE_FORBIDDEN')
+  }
+  const unexpected = Object.keys(command).filter((key) => !NPC_ITEM_USE_COMMAND_FIELDS.has(key))
+  if (unexpected.length) {
+    throw new RulesValidationError(`Команда предмета противника содержит запрещённые поля: ${unexpected.join(', ')}`, 'ITEM_COMMAND_UNKNOWN_FIELD')
+  }
+  const enemy = findActor(state, command.actor_id)
+  if (!enemy) throw new RulesValidationError('Существо не найдено', 'ACTOR_NOT_FOUND')
+  if (!isLivingActor(enemy)) throw new RulesValidationError('Побеждённое существо не пользуется вещами', 'ACTOR_DEFEATED')
+  if (!state.mechanics.combat.active) {
+    throw new RulesValidationError('Снаряжение противника расходуется только в бою', 'COMBAT_NOT_ACTIVE')
+  }
+  const item = npcUsableItemFor(enemy, command.item_id)
+  if (!item) throw new RulesValidationError('У существа нет такой вещи или сервер не умеет её применять', 'NPC_ITEM_NOT_USABLE')
+  if (String(command.npc_tactic ?? '') !== item.tactic) {
+    throw new RulesValidationError('Заявленная тактика не соответствует вещи', 'NPC_ITEM_TACTIC_MISMATCH')
+  }
+  const conditions = conditionIdsFor(state, command.actor_id)
+  if (item.once_per_combat && conditions.has(npcTacticCondition(item.tactic))) {
+    throw new RulesValidationError('Эту тактику существо в этом бою уже применяло', 'NPC_ITEM_TACTIC_SPENT')
+  }
+  // Экономика хода проверяется здесь, а не общей веткой `UseItem` выше:
+  // та читает `command.use_profile`, а он появляется только строкой ниже — до
+  // этого момента у команды противника цены хода нет, и общая проверка молча
+  // пропускала бы вторую склянку в тот же ход. Цену объявляет тактика, и её
+  // совпадение с каталогом сторожит `npcUsableItems`.
+  const tacticResource = String(item.use.combat_action ?? '')
+  const economyError = NPC_TACTIC_ECONOMY_ERRORS[tacticResource]
+  if (economyError && state.mechanics.combat.action_economy?.[String(command.actor_id)]?.[tacticResource] === false) {
+    throw new RulesValidationError(economyError[0], economyError[1])
+  }
+  const result = {
+    ...command,
+    target_id: String(command.target_id ?? command.actor_id),
+    npc_item: {
+      item_instance_id: item.item_instance_id,
+      catalog_id: item.catalog_id,
+      item_name: item.item_name,
+      quantity_before: item.quantity,
+      tactic: item.tactic,
+      label: item.label,
+      once_per_combat: item.once_per_combat,
+    },
+    // Склянка стоит существу целого действия, а не одной атаки из мультиатаки:
+    // разменивать отдельные удары планировщик не умеет, и объявлять замену
+    // атаки значило бы обещать экономику, которой нет. Профиль правится здесь
+    // же, чтобы общая проверка экономики хода прочитала настоящую цену.
+    use_profile: { ...item.use, attack_replacement: false },
+  }
+  if (item.tactic === 'heal') {
+    if (result.target_id !== String(command.actor_id)) {
+      throw new RulesValidationError('Зелье существо пьёт само', 'INVALID_ITEM_TARGET')
+    }
+    const hp = actorHp(enemy)
+    const maximum = Math.max(1, actorMaxHp(enemy))
+    if (hp <= 0 || hp * 100 > maximum * NPC_HEALING_POTION_HP_PERCENT) {
+      throw new RulesValidationError('Зелье идёт в ход только на последних хитах', 'NPC_ITEM_TACTIC_NOT_APPLICABLE')
+    }
+  }
+  if (item.tactic === 'flask') {
+    const target = playerActor(state, result.target_id)
+    if (!target || !isLivingActor(target) || !sameCampaignParty(state, result.target_id)) {
+      throw new RulesValidationError('Склянку мечут в живого героя отряда', 'INVALID_ITEM_TARGET')
+    }
+    const distance = distanceBetweenActors(state, command.actor_id, result.target_id)
+    const rangeFeet = Math.max(5, safeInteger(item.use.range_feet, 20))
+    if (distance == null || distance < 5 || distance > rangeFeet) {
+      throw new RulesValidationError('Цель находится вне дальности броска склянки', 'ITEM_TARGET_OUT_OF_RANGE')
+    }
+    if (item.use.requires_line_of_sight === true) {
+      assertClearTrajectory(state, actorPosition(state, command.actor_id), actorPosition(state, result.target_id))
+    }
+  }
+  if (item.tactic === 'coat') {
+    if (result.target_id !== String(command.actor_id)) {
+      throw new RulesValidationError('Яд наносят на своё оружие', 'INVALID_ITEM_TARGET')
+    }
+    // `weapon_id` здесь — экземпляр из инвентаря, ровно как у героя: яд кладут
+    // на клинок, а не на строку стат-блока. Оружие без привязки (укус, коготь)
+    // и потерянное оружие сюда не проходят по построению.
+    const binding = npcMeleeWeaponBindingForItem(enemy, command.weapon_id)
+    if (!binding) {
+      throw new RulesValidationError('Яд наносится на связанное ближнее оружие существа', 'INVALID_WEAPON')
+    }
+    if (conditions.has(`weapon-coated:${binding.item_instance_id}`)) {
+      throw new RulesValidationError('Это оружие уже смазано ядом', 'NPC_ITEM_TACTIC_SPENT')
+    }
+    if (safeInteger(state.mechanics.combat.action_economy?.[String(command.actor_id)]?.attacks_used, 0) > 0) {
+      throw new RulesValidationError('Яд наносят до первого удара', 'NPC_ITEM_TACTIC_NOT_APPLICABLE')
+    }
+    result.npc_weapon = {
+      action_id: binding.action_id,
+      item_instance_id: binding.item_instance_id,
+      item_name: binding.item_name,
+    }
+  }
+  result.target_ids = [result.target_id]
+  return result
+}
+
+/**
+ * Герой из отряда этой кампании. Отдельная функция, а не выражение по месту:
+ * «цель — герой» и «герой в отряде» — два разных условия, и путать их нельзя.
+ */
+function sameCampaignParty(state, id) {
+  const members = new Set((state.partyMemberIds?.length ? state.partyMemberIds : state.players.map(actorId)).map(String))
+  return members.has(String(id))
 }
 
 const APPRAISAL_RARITY = Object.freeze({
@@ -3296,7 +3526,7 @@ function assertTurn(command, state, context = {}) {
   // `SettleParley` в списке нет намеренно: перемирие уже заморозило очередь, и
   // уговор заключает отряд, а не тот, на ком стоит указатель инициативы.
   // Дееспособность и сторона проверяются в собственной ветке команды.
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'MoveActor', 'OperateSceneObject', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'MoveActor', 'OperateSceneObject', 'LootContainer', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   // Дополнительные лучи одного заклинания — часть уже совершённого действия,
   // а не новое применение: экономика хода за них не платит второй раз.
@@ -3370,6 +3600,13 @@ function assertTurn(command, state, context = {}) {
   } else if (command.command_type === 'IdentifyEnemy') {
     // Опознание стоит действия так же, как импровизация: разглядывать врага
     // бесплатно означало бы лишний ход каждому герою каждый раунд.
+    const economy = combat.action_economy[command.actor_id]
+    if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+  } else if (command.command_type === 'LootContainer') {
+    // Правило стола: обыск одного контейнера в бою стоит действия
+    // (`docs/rules-coverage.md`, раздел «Контейнеры добычи и обыск»). Смотреть
+    // в контейнер при этом бесплатно — содержимое приезжает проекцией, а не
+    // командой, и хода не стоит.
     const economy = combat.action_economy[command.actor_id]
     if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'ProposeParley') {
@@ -3617,6 +3854,14 @@ export function validateCommand(input, rawState, context = {}) {
       throw new RulesValidationError('Сдать пленного можно только в поселении, где есть стража', 'CAPTIVE_NO_SETTLEMENT')
     }
   }
+  if (LOOT_CONTAINER_COMMAND_TYPES.has(command.command_type)) {
+    try {
+      Object.assign(command, validateLootContainerCommand(command, state, context))
+    } catch (error) {
+      if (error instanceof LootContainerError) throw new RulesValidationError(error.message, error.code)
+      throw error
+    }
+  }
   if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
     if (!state.mechanics.combat.active) {
       throw new RulesValidationError('Переговоры посреди боя возможны только в бою', 'COMBAT_NOT_ACTIVE')
@@ -3719,7 +3964,14 @@ export function validateCommand(input, rawState, context = {}) {
       throw error
     }
   }
-  if (ITEM_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
+  // Инвентарь противника и инвентарь героя — два разных владельца и два разных
+  // набора правил. Ветка стоит **до** общего жизненного цикла предметов: тот
+  // ищет героя по `state.players` и на существе отвечал бы «герой не найден»,
+  // пряча настоящую причину отказа.
+  const npcItemUse = command.command_type === 'UseItem' && isEnemyActor(state, command.actor_id)
+  if (npcItemUse) {
+    Object.assign(command, validateNpcItemUseCommand(command, state, context))
+  } else if (ITEM_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
     try {
       Object.assign(command, validateItemLifecycleCommand(command, state, context))
     } catch (error) {
@@ -4123,6 +4375,20 @@ export function validateCommand(input, rawState, context = {}) {
       if (!monsterAction) throw new RulesValidationError('Выбранное действие отсутствует в блоке статистики существа', 'MONSTER_ACTION_NOT_AVAILABLE')
       if (monsterActionIsLimited(monsterAction) && conditionIdsFor(state, command.actor_id).has(`monster-action-used:${monsterAction.id}`)) {
         throw new RulesValidationError('Ограниченное действие существа уже использовано', 'MONSTER_ACTION_SPENT')
+      }
+    }
+    // Действие, привязанное к вещи, живёт ровно столько, сколько живёт вещь:
+    // выбитый меч и пустой колчан закрывают его здесь, до броска и до расхода
+    // хода. Действия без привязки (укус, коготь, паутина) ветка не трогает —
+    // запрещать там нечего.
+    if (isEnemyActor(state, command.actor_id)) {
+      const boundActionId = String(command.action_id ?? '') || String(monsterActionFor(actor, null)?.id ?? '')
+      const unavailable = boundActionId ? npcActionUnavailableReason(actor, boundActionId) : null
+      if (unavailable) {
+        throw new RulesValidationError(
+          NPC_ACTION_UNAVAILABLE_MESSAGES[unavailable],
+          unavailable === 'weapon-lost' ? 'NPC_WEAPON_UNAVAILABLE' : 'NPC_AMMUNITION_SPENT',
+        )
       }
     }
     const selected = command.item_id ? combatItem(actor, command.item_id) : null
@@ -4716,11 +4982,20 @@ function monsterRechargeAtTurnStart(state, command, actorIdValue, diceService) {
  * остальным нельзя — за столом склянка разбилась и все это видели, — поэтому
  * уходит отдельное событие `ItemEffectIneffective` с причиной.
  */
-function thrownFlaskEvents(state, command, { actor, item, use, diceService, rolls, resolveDamage }) {
+function thrownFlaskEvents(state, command, { actor, item, use, diceService, rolls, resolveDamage, purposeSubject = null }) {
   const targetId = String(command.target_id ?? '')
   const target = findActor(state, targetId)
   if (!target) throw new RulesValidationError('Цель броска не найдена', 'TARGET_NOT_FOUND')
   const events = []
+  // Назначение броска — единственное поле, которое уезжает игроку **двумя**
+  // каналами сразу: событием (`SavingThrowResolved`, `DieRolled`) и списком
+  // бросков хода (`turnExplanationForViewer`), и ни там, ни там `purpose` не
+  // чистится. У вещи героя это его собственный предмет и скрывать нечего;
+  // склянка противника подписью броска обошла бы и `NpcItemUsed`, и ветку
+  // «действует противник» в проекции. Поэтому подпись приходит снаружи: путь
+  // противника называет тактику, а не запись каталога, — тем же приёмом,
+  // которым это уже сделано у зелья (`npc-item:heal:healing`).
+  const purposeOf = String(purposeSubject ?? item.catalog_id ?? item.id)
   const saveAbility = String(use.save?.ability ?? 'dex')
   const saveDc = Math.max(1,
     safeInteger(use.save?.dc?.base, 8)
@@ -4736,7 +5011,7 @@ function thrownFlaskEvents(state, command, { actor, item, use, diceService, roll
   const save = rollSavingThrowD20(state, diceService, targetId, {
     ability: saveAbility,
     modifier: saveModifier,
-    purpose: `item_thrown_save:${String(item.catalog_id ?? item.id)}:${saveAbility}`,
+    purpose: `item_thrown_save:${purposeOf}:${saveAbility}`,
     visibility: command.visibility,
   })
   rolls.push(save)
@@ -4769,7 +5044,7 @@ function thrownFlaskEvents(state, command, { actor, item, use, diceService, roll
   }
 
   if (use.damage) {
-    const damageRoll = diceService.roll(String(use.damage), `item_thrown_damage:${String(item.catalog_id ?? item.id)}`, command.actor_id, command.visibility ?? 'public')
+    const damageRoll = diceService.roll(String(use.damage), `item_thrown_damage:${purposeOf}`, command.actor_id, command.visibility ?? 'public')
     rolls.push(damageRoll)
     events.push(eventFrom(command, 'DieRolled', { ...damageRoll, item_id: item.id, damage_type: use.damage_type }, []))
     const payload = resolveDamage(state, targetId, damageRoll.total, String(use.damage_type ?? 'acid'))
@@ -4795,6 +5070,135 @@ function thrownFlaskEvents(state, command, { actor, item, use, diceService, roll
       ...(use.on_failed_save_condition.fire_damage_bonus ? { fire_damage_bonus: safeInteger(use.on_failed_save_condition.fire_damage_bonus, 0) } : {}),
     }, [targetId]))
   }
+  return events
+}
+
+/**
+ * Списание из кармана противника. Всегда `gm_only`, и это не осторожность:
+ * остаток стрел, число дротиков в пучке и то, сколько склянок ещё лежит за
+ * пазухой, — закрытый инвентарь живого существа, который отряд узнаёт обыском
+ * тела, а не бухгалтерией боя. Механику событие несёт целиком (редьюсер берёт
+ * из payload готовые числа), а стол видит поступок — строкой рассказчика.
+ *
+ * Ветки в `eventForViewer` у события поэтому нет и быть не должно: до игрока
+ * оно не доезжает вовсе, а санитайзер, который никогда не срабатывает, — это
+ * ложное чувство границы. Сторож — `test/npc-equipment.test.mjs`.
+ */
+function npcEquipmentSpentEvent(command, payload) {
+  return eventFrom({ ...command, visibility: 'gm_only' }, 'NpcEquipmentSpent', {
+    schema_version: NPC_EQUIPMENT_EVENT_SCHEMA_VERSION,
+    policy_id: NPC_EQUIPMENT_POLICY_ID,
+    owner_id: String(command.actor_id),
+    ...payload,
+  }, [String(command.actor_id)])
+}
+
+/**
+ * Противник пускает в ход свою вещь.
+ *
+ * Своей механики здесь нет ни на грамм: зелье лечит тем же `HealingApplied`,
+ * склянка летит тем же `thrownFlaskEvents`, яд ложится тем же условием
+ * `weapon-coated:`, каким его наносит герой. Новое только одно — из какого
+ * кармана вещь взялась и куда списался расход, и это ровно два события:
+ * `NpcItemUsed` и `NpcEquipmentSpent`.
+ *
+ * СЛ спасброска от склянки складывается из 8 и Ловкости существа: бонуса
+ * мастерства стат-блоки в этом проекте не объявляют, и приписывать его здесь
+ * значило бы выдумать число за редакцию.
+ */
+function npcItemUseEvents(state, command, { diceService, rolls, resolveDamage }) {
+  const enemy = findActor(state, command.actor_id)
+  const npcItem = command.npc_item
+  const use = command.use_profile
+  const ownerId = String(command.actor_id)
+  const targetId = String(command.target_id)
+  const events = [eventFrom(command, 'NpcItemUsed', {
+    schema_version: NPC_EQUIPMENT_EVENT_SCHEMA_VERSION,
+    policy_id: NPC_EQUIPMENT_POLICY_ID,
+    owner_id: ownerId,
+    tactic: npcItem.tactic,
+    label: npcItem.label,
+    item_instance_id: npcItem.item_instance_id,
+    catalog_id: npcItem.catalog_id,
+    item_name: npcItem.item_name,
+    target_id: targetId,
+    combat_action: use.combat_action ?? null,
+    request_fingerprint: command.request_fingerprint ?? null,
+  }, [targetId])]
+
+  if (npcItem.tactic === 'heal') {
+    // Назначение броска называет тактику, а не каталожную запись: событие
+    // `DieRolled` едет столу, и `purpose` — единственное его поле, куда
+    // каталожный ключ мог бы просочиться мимо санитайзера.
+    //
+    // Сам бросок при этом `gm_only`, и это не перестраховка: «выпало 10» на
+    // зелье 2к4 + 2 опознаёт склянку не хуже её названия, а у `DieRolled`
+    // остаётся `total` — ветка `enemyActor` в проекции снимает `dice` и
+    // `expression`, но не итог. Закрыть число санитайзером нельзя, не сделав
+    // событие пустым, поэтому оно закрывается там же, где закрывается парный
+    // расход из кармана (`npcEquipmentSpentEvent`) — видимостью. Стол видит
+    // поступок и то, что раны затянулись; арифметика остаётся у ведущего.
+    const roll = diceService.roll(String(use.expression), `npc-item:${npcItem.tactic}:healing`, ownerId, 'gm_only')
+    rolls.push(roll)
+    events.push(eventFrom({ ...command, visibility: 'gm_only' }, 'DieRolled', roll, []))
+    const before = actorHp(enemy)
+    const after = Math.min(actorMaxHp(enemy), before + Math.max(0, safeInteger(roll.total, 0)))
+    // Событие остаётся публичным: лечение противника случилось на глазах, и
+    // полоса здоровья без него разошлась бы с журналом. Игроку не уезжают
+    // только числа — их снимает `eventForViewer` там же, где снимает
+    // `hp_before`/`hp_after` неопознанного существа.
+    events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', {
+      requested_amount: Math.max(0, safeInteger(roll.total, 0)),
+      applied_amount: after - before,
+      hp_before: before,
+      hp_after: after,
+      item_id: npcItem.item_instance_id,
+      item_name: npcItem.item_name,
+    }, [ownerId]))
+  }
+  if (npcItem.tactic === 'flask') {
+    events.push(...thrownFlaskEvents(state, command, {
+      actor: enemy,
+      item: { id: npcItem.item_instance_id, name: npcItem.item_name, catalog_id: npcItem.catalog_id },
+      use,
+      diceService,
+      rolls,
+      resolveDamage,
+      purposeSubject: `npc-item:${npcItem.tactic}`,
+    }))
+  }
+  if (npcItem.tactic === 'coat') {
+    events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: `weapon-coated:${command.npc_weapon.item_instance_id}`,
+      duration: String(use.duration ?? 'rounds:10'),
+      source_actor: ownerId,
+      rider_damage: String(use.rider_damage),
+      rider_damage_type: String(use.rider_damage_type ?? 'poison'),
+      rider_source_name: String(npcItem.item_name),
+    }, [ownerId]))
+  }
+  // Маркер «за бой один раз» — тот же приём, что и у ограниченных действий
+  // существа (`monster-action-used:`): состояние вместо отдельного поля, потому
+  // что снимается оно теми же общими правилами и переживает replay без ветки.
+  if (npcItem.once_per_combat) {
+    events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: npcTacticCondition(npcItem.tactic),
+      source_actor: ownerId,
+    }, [ownerId]))
+  }
+  const consumed = Math.max(1, safeInteger(use.consumes, 1))
+  const quantityAfter = Math.max(0, npcItem.quantity_before - consumed)
+  events.push(npcEquipmentSpentEvent(command, {
+    action_id: null,
+    item_instance_id: npcItem.item_instance_id,
+    catalog_id: npcItem.catalog_id,
+    item_name: npcItem.item_name,
+    reason: 'item-use',
+    quantity_before: npcItem.quantity_before,
+    quantity_after: quantityAfter,
+    shots_before: npcItem.quantity_before,
+    shots_after: quantityAfter,
+  }))
   return events
 }
 
@@ -4866,6 +5270,9 @@ function spilledZoneEvents(state, command, { item, use }) {
  * Яд на оружии: рифма к попаданию, а не отдельный урон. Возвращается в том же
  * виде, что и добавки магических предметов, поэтому дальше считается общим
  * путём — и иммунитет цели к яду обнуляет её сам, без единой особой строки.
+ *
+ * Функция обслуживает **обе стороны**: и выбранный профиль героя, и привязку
+ * действия NPC к экземпляру из его инвентаря.
  */
 function weaponCoatingRiderFor(state, actorIdValue, itemId) {
   const conditionId = `weapon-coated:${String(itemId ?? '')}`
@@ -4879,6 +5286,19 @@ function weaponCoatingRiderFor(state, actorIdValue, itemId) {
     item_name: String(condition.rider_source_name ?? 'Яд'),
     catalog_id: null,
     effect_id: conditionId,
+    // Назначение броска — ещё один канал, по которому ключ вещи уезжал столу:
+    // `purpose` не чистит ни проекция событий, ни список бросков хода, а
+    // `effect_id` смазанного клинка несёт `item_instance_id` из кармана. Тот же
+    // приём, что и у склянки противника (`npc-item:flask`): подпись задаётся
+    // при выпуске броска и называет вид добавки, а не экземпляр. Ведущему
+    // экземпляр по-прежнему виден — он лежит в `effect_id` самого события.
+    //
+    // Своего клинка это не касается. Закрывать нечего: инвентарь героя игрок и
+    // так читает, а в списке бросков хода ему нужно ровно обратное — знать,
+    // какой именно клинок сработал, когда смазаны два. Подпись поэтому зависит
+    // от стороны, а не от механики: одна функция на обе стороны — не повод
+    // обезличивать бросок там, где скрывать нечего.
+    purpose_subject: isEnemyActor(state, actorIdValue) ? 'weapon-coated' : conditionId,
     critical_doubles: false,
     condition_id: conditionId,
   }
@@ -6717,7 +7137,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const damageType = profile?.damage_type ?? String(command.damage_type || 'untyped')
       // Нанесённый яд — такая же добавка к попаданию, как зачарование предмета,
       // поэтому едет тем же списком: отдельного пути для него не нужно.
-      const weaponCoatingRider = selectedProfile ? weaponCoatingRiderFor(state, command.actor_id, selectedProfile.item.id) : null
+      // У существа оружие выбирается не полем `item_id`, а привязкой действия к
+      // экземпляру из инвентаря — иначе смазанный ядом клинок гоблина остался
+      // бы смазанным только на бумаге.
+      const npcBinding = !selectedProfile && isEnemyActor(state, command.actor_id)
+        ? npcWeaponBindingFor(actor, profile?.id)
+        : null
+      const weaponCoatingRider = selectedProfile
+        ? weaponCoatingRiderFor(state, command.actor_id, selectedProfile.item.id)
+        : npcBinding ? weaponCoatingRiderFor(state, command.actor_id, npcBinding.item_instance_id) : null
       const itemDamageRiders = [
         ...(selectedProfile ? weaponDamageRidersForItem(actor, selectedProfile.item.id, { selectedCountsAsEquipped: true }) : []),
         ...(weaponCoatingRider ? [weaponCoatingRider] : []),
@@ -6786,6 +7214,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // Порог recharge в payload не кладётся: событие видно игроку, а порог —
       // строка стат-блока. Движок читает его из профиля существа, а не отсюда.
       if (monsterActionIsLimited(profile)) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `monster-action-used:${profile.id}`, source_actor: command.actor_id }, [command.actor_id]))
+      // Стрела уходит из колчана и на промахе тоже: тратит её выстрел, а не
+      // попадание. То же и с брошенным дротиком из пучка.
+      const npcExpenditure = npcBinding ? npcAttackExpenditureFor(actor, npcBinding.action_id) : null
+      if (npcExpenditure) {
+        events.push(npcEquipmentSpentEvent(command, { action_id: npcBinding.action_id, ...npcExpenditure }))
+      }
       if (helped) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'helped' }, [command.actor_id]))
       if (hidden) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'hidden' }, [command.actor_id]))
       if (landed && (configuredDamageExpression || command.damage_amount != null)) {
@@ -6832,7 +7266,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (divineFavorRoll) { rolls.push(divineFavorRoll); events.push(eventFrom(command, 'DieRolled', { ...divineFavorRoll, damage_type: 'radiant' }, [])) }
         const itemRiderRolls = itemDamageRiders.map((rider) => {
           const expression = critical && rider.critical_doubles ? criticalDamageExpression(rider.expression) : rider.expression
-          const roll = diceService.roll(expression, `item_damage:${rider.effect_id}`, command.actor_id, command.visibility ?? 'public')
+          const roll = diceService.roll(expression, `item_damage:${rider.purpose_subject ?? rider.effect_id}`, command.actor_id, command.visibility ?? 'public')
           rolls.push(roll)
           events.push(eventFrom(command, 'DieRolled', {
             ...roll,
@@ -10946,6 +11380,18 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       break
     }
+    case 'LootContainer': {
+      // Вся физика уже проверена в `validateLootContainerCommand`, и её итог
+      // лежит в самой команде. Здесь остаётся только облечь его в событие:
+      // второго места, где решается «взял или нет», быть не должно.
+      for (const draft of lootContainerCommandEvents(command)) {
+        events.push({
+          ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
+          event_schema_version: draft.event_schema_version,
+        })
+      }
+      break
+    }
     case 'ClearWantedLevel': {
       const regionId = String(command.region_id)
       const wanted = wantedFor(state, regionId)
@@ -11464,6 +11910,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       break
     }
     case 'UseItem': {
+      if (command.npc_item) {
+        events.push(...npcItemUseEvents(state, command, { diceService, rolls, resolveDamage: resolveDamagePayload }))
+        break
+      }
       const actor = findActor(state, command.actor_id)
       const item = inventoryItem(actor, command.item_id)
       const use = command.use_profile
@@ -11817,7 +12267,26 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     }
   }
 
-  return { command, events: withoutImmuneConditions(state, command, events), rolls }
+  const resolvedEvents = withoutImmuneConditions(state, command, events)
+  // Контейнеры добычи — последний шаг фиксации и часть **той же** записи.
+  //
+  // Место выбрано не для удобства: выбытие противника фиксируют полтора десятка
+  // мест (`DamageApplied` из атаки, добавки вещи, зоны заклинания, прямого
+  // урона; `ConditionAdded` со сдачей и бегством; `CaptiveTaken` на конце боя),
+  // и правка «по месту» разошлась бы уже на третьем. Здесь же поток событий уже
+  // окончателен, и «кто выбыл» читается сравнением состояний, а не перебором
+  // причин. Глубина ноль обязательна: вложенный resolve вклеивает свои события
+  // в этот же поток, и контейнер, созданный внутри него, посчитался бы дважды.
+  if (resolveDepth === 0 && lootCommitTouchesContainers(state, resolvedEvents)) {
+    const lootDrafts = planLootContainerDrafts(state, replayEvents(state, resolvedEvents), resolvedEvents)
+    for (const draft of lootDrafts) {
+      resolvedEvents.push({
+        ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
+        event_schema_version: draft.event_schema_version,
+      })
+    }
+  }
+  return { command, events: resolvedEvents, rolls }
 }
 
 /**
@@ -11855,6 +12324,40 @@ function withoutImmuneConditions(state, command, events) {
       ),
     ]
   })
+}
+
+/**
+ * Инвентарь противника после расхода.
+ *
+ * Остаток берётся из payload целиком, а не досчитывается по состоянию: то же
+ * событие, применённое второй раз, обязано давать тот же остаток. Поэтому
+ * выпитое зелье исчезает ровно один раз, сколько бы раз ни проигрывался поток.
+ *
+ * Кончившееся убирается из инвентаря, а не остаётся нулём: `normalizeItemInstance`
+ * поднимает количество до единицы, и запись «нуль стрел» вернулась бы как одна
+ * стрела при первой же загрузке сохранения.
+ */
+function npcLoadoutAfterSpend(loadout, payload) {
+  const normalized = normalizeEnemyLoadout(loadout)
+  const instanceId = String(payload?.item_instance_id ?? '')
+  if (!instanceId) return normalized
+  const quantityAfter = Math.max(0, safeInteger(payload?.quantity_after, 0))
+  const shotsAfter = Math.max(0, safeInteger(payload?.shots_after, quantityAfter))
+  const shotsBefore = Math.max(0, safeInteger(payload?.shots_before, shotsAfter))
+  return {
+    ...normalized,
+    items: normalized.items.flatMap((item) => {
+      if (String(item.item_instance_id) !== instanceId) return [item]
+      if (quantityAfter <= 0 || shotsAfter <= 0) return []
+      return [{
+        ...item,
+        quantity: quantityAfter,
+        ...(String(payload?.reason) === 'ammunition'
+          ? { charges: { current: shotsAfter, max: Math.max(safeInteger(item.charges?.max, 0), shotsBefore) } }
+          : {}),
+      }]
+    }),
+  }
 }
 
 function replaceActor(state, id, updater) {
@@ -12919,6 +13422,29 @@ export function applyGameEvent(rawState, event) {
       replaceActor(state, target, (actor) => ({ ...actor, inventory: (actor.inventory ?? []).map((item) => String(item.id) === String(payload.item_id) ? { ...item, quantity: Math.max(0, safeInteger(item.quantity, 1) - safeInteger(payload.quantity, 1)) } : item).filter((item) => item.quantity > 0) }))
       refreshPlayerDerivedState(state, [target])
       break
+    case 'NpcItemUsed':
+      if (payload.combat_action) spendCombatEconomy(state, event.actor_id, payload.combat_action)
+      appendBattleLog(state, event, {
+        sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
+        round: state.mechanics.combat.round,
+        type: 'npc-item',
+        actorId: event.actor_id,
+        actorKind: combatActorKind(state, event.actor_id),
+        targetId: String(payload.target_id ?? event.actor_id),
+        // Ни `catalog_id`, ни экземпляра: `publicBattleEventFor` журнальную
+        // запись по именам полей не чистит, а инвентарь живого противника
+        // закрыт до обыска тела. В журнал едет ровно то, что видно за столом, —
+        // поступок и его готовая детерминированная подпись.
+        tactic: String(payload.tactic ?? ''),
+        label: String(payload.label ?? '').slice(0, 120),
+      })
+      break
+    case 'NpcEquipmentSpent':
+      replaceActor(state, String(payload.owner_id ?? event.actor_id ?? ''), (actor) => ({
+        ...actor,
+        loadout: npcLoadoutAfterSpend(actor.loadout, payload),
+      }))
+      break
     case 'MerchantCreated': {
       const merchant = lifecycleMerchantFromCanonical(payload.merchant)
       const existingIndex = state.merchants.findIndex((candidate) => String(candidate.id) === merchant.id)
@@ -13307,12 +13833,15 @@ export function applyGameEvent(rawState, event) {
       const encounter = payload.encounter && typeof payload.encounter === 'object' ? clone(payload.encounter) : {}
       const oldEnemyIds = new Set(state.enemies.map(actorId))
       state.mechanics.positions = Object.fromEntries(Object.entries(state.mechanics.positions ?? {}).filter(([id]) => !oldEnemyIds.has(String(id))))
-      state.enemies = (Array.isArray(encounter.enemies) ? encounter.enemies : []).map((enemy) => ({ ...clone(enemy), alive: true }))
+      state.enemies = (Array.isArray(encounter.enemies) ? encounter.enemies : [])
+        .map((enemy) => ({ ...clone(enemy), alive: true, loadout: normalizeEnemyLoadout(enemy?.loadout) }))
       for (const enemy of state.enemies) {
         state.mechanics.positions[actorId(enemy)] = { x: safeInteger(enemy.x, 0), y: safeInteger(enemy.y, 0) }
       }
+      // Инвентарь остаётся в одной копии — `state.enemies[].loadout`;
+      // замороженный состав встречи несёт только описание существ.
       state.mechanics.encounter = {
-        ...encounter,
+        ...encounterWithoutLoadouts(encounter),
         id: String(encounter.id ?? encounter.encounter_id ?? payload.encounter_id ?? ''),
         encounter_id: String(encounter.encounter_id ?? encounter.id ?? payload.encounter_id ?? ''),
         status: 'staged',
@@ -13841,6 +14370,41 @@ export function applyGameEvent(rawState, event) {
       if (recipientIds.length) refreshPlayerDerivedState(state, recipientIds)
       break
     }
+    case 'LootContainerCreated':
+    case 'LootContainerTaken': {
+      const recipientIds = applyLootContainerEvent(state, event)
+      if (event.event_type === 'LootContainerTaken' && payload.combat_action) {
+        spendCombatEconomy(state, event.actor_id, String(payload.combat_action))
+      }
+      if (recipientIds.length) refreshPlayerDerivedState(state, recipientIds)
+      appendBattleLog(state, event, event.event_type === 'LootContainerCreated'
+        ? {
+            type: 'loot-container',
+            containerId: String(payload.container?.id ?? ''),
+            containerKind: String(payload.container?.kind ?? ''),
+            containerName: String(payload.container?.name ?? ''),
+            itemCount: (payload.container?.items ?? []).length,
+          }
+        : {
+            type: 'loot-taken',
+            actorId: event.actor_id,
+            actorKind: combatActorKind(state, event.actor_id),
+            containerId: String(payload.container_id ?? ''),
+            containerName: String(payload.container_name ?? ''),
+            recipientId: String(payload.recipient_id ?? ''),
+            itemCount: (payload.items ?? []).length,
+            // Обыск бывает неполным, и запись о нём выглядит точно так же, как
+            // запись о том, что тело обобрали дочиста. Без признака «что
+            // осталось» интерфейс не может отличить одно от другого и рисует
+            // «уже забрал такой-то» над контейнером, в котором ещё две вещи
+            // (`vanishedLootFrom`, `src/loot-panel-rules.mjs`). Остаток и статус
+            // уже посчитаны правилом и лежат в payload — сюда они только
+            // переезжают числом, не открывая содержимого.
+            remainingCount: Math.max(0, safeInteger(payload.remaining_count, 0)),
+            statusAfter: String(payload.status_after ?? ''),
+          })
+      break
+    }
     case 'ExperienceAwarded': {
       const recipientIds = uniqueStrings(Array.isArray(payload.recipients) ? payload.recipients : targets)
       const playerIds = new Set(state.players.map(actorId))
@@ -14038,6 +14602,10 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'SpellImmunityResolved': return `${payload.item_immunity_sources?.[0]?.item_name || 'Магический предмет'} полностью защищает от заклинания ${payload.spell_id}`
     case 'ItemEffectIneffective': return `${payload.item_name || 'Предмет'} не действует на ${named((event.target_ids ?? [])[0]) || 'цель'}`
     case 'HealingApplied': return `Лечение: ${payload.applied_amount}; HP ${payload.hp_before} → ${payload.hp_after}`
+    case 'NpcItemUsed': return `${named(event.actor_id) || 'Существо'} ${payload.label || 'пускает в ход своё снаряжение'}`
+    case 'NpcEquipmentSpent': return payload.reason === 'ammunition'
+      ? `Боеприпасы ${named(event.actor_id) || 'существа'}: осталось ${safeInteger(payload.shots_after, 0)}`
+      : `${named(event.actor_id) || 'Существо'} расстаётся с предметом «${payload.item_name ?? payload.catalog_id}»`
     case 'HitPointMaximumReduced': return `Максимум HP снижен: ${payload.maximum_hp_before} → ${payload.maximum_hp_after}`
     case 'HitPointMaximumReductionPrevented': return `Aura of Life предотвращает снижение максимума HP`
     case 'AttackResolved': return `Атака ${payload.hit ? 'попала' : 'не попала'}: ${payload.total} против КД ${payload.armor_class}${payload.critical_prevented ? '; критическое попадание стало обычным' : ''}`
@@ -14108,6 +14676,8 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'TruceEstablished': return `Объявлено перемирие: говорит ${payload.truce?.leader_name || 'предводитель'}`
     case 'TruceBroken': return `Перемирие нарушено (${payload.broken_by === 'enemies' ? 'противником' : 'отрядом'})`
     case 'ParleySettled': return `Уговор на переговорах: ${payload.term_label || payload.outcome || 'без условий'}`
+    case 'LootContainerCreated': return `После схватки остаётся то, что можно обыскать: ${payload.container?.name || 'добыча'}`
+    case 'LootContainerTaken': return `${named(payload.recipient_id) || 'Отряд'} забирает добычу из «${payload.container_name || 'найденного'}»`
     case 'GuardEncounterStarted': return `Стража останавливает отряд в «${payload.encounter?.place_name || 'поселении'}»: говорит ${payload.encounter?.officer_rank || 'стражник'} ${payload.encounter?.officer_name || ''}`.trim()
     case 'GuardEncounterResolved': return payload.resolution === 'fine'
       ? `Вира страже уплачена: ${safeInteger(payload.paid_cp, 0)} мм`

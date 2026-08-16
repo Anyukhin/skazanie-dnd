@@ -7,7 +7,7 @@ import { suggestedActionsFor } from './action-hints.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
-import { hitPointDicePoolForActor } from './rules-engine.mjs'
+import { RULE_IDS, hitPointDicePoolForActor } from './rules-engine.mjs'
 import {
   MATERIALS,
   SIZE_CLASSES,
@@ -17,6 +17,7 @@ import {
   serializedTacticalMapHash,
 } from './tactical-map.mjs'
 import { captiveForViewer, captivesForViewer } from './captives.mjs'
+import { lootContainerForViewer, lootContainersForViewer } from './loot-containers.mjs'
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -481,6 +482,12 @@ function publicBattleEventFor(entry, state, actorId = '') {
     delete result.hpAfter
     delete result.maximumHpBefore
     delete result.maximumHpAfter
+    // Точная величина чужого лечения закрывается по той же причине, что и ОЗ
+    // до и после: зелье лечения бьёт 2к4 + 2, поэтому «+10 ОЗ» опознаёт
+    // склянку в кармане не хуже её названия, а название журнальная запись
+    // `npc-item` не несёт намеренно. Интерфейс отсутствие числа знает и пишет
+    // «раны затягиваются» (`battleEventText`, `src/app-shared.tsx`).
+    if (text(entry.type, 40) === 'healing') delete result.healing
     if (result.roll && typeof result.roll === 'object') {
       result.roll = { ...result.roll }
       delete result.roll.difficulty
@@ -499,6 +506,123 @@ function publicBattleEventFor(entry, state, actorId = '') {
     delete result.rollDice
   }
   return result
+}
+
+/**
+ * Условия противника, чей идентификатор несёт закрытый ключ.
+ *
+ * Ключ таблицы — префикс вместе с двоеточием, значение — качественная форма,
+ * которая от него остаётся. Приём тот же, что и у полос здоровья: отряд видит
+ * **что** с существом происходит, но не служебное имя, по которому это можно
+ * опознать в чужом кармане или в чужом стат-блоке.
+ *
+ * - `weapon-coated:<item_instance_id>` — ключ вещи из инвентаря противника, тот
+ *   самый, по которому потом опознаётся добыча с тела.
+ * - `monster-action-used:<action_id>` — идентификатор действия стат-блока,
+ *   который `eventForViewer` ниже удаляет из события той же способности
+ *   (`action_id`). Оставлять его в состоянии значило бы отдать игроку тем же
+ *   кадром то, что снято санитайзером событий.
+ * - `npc-tactic-used:<тактика>` — маркер «за бой один раз» из закрытого списка
+ *   тактик снаряжения.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+const OPAQUE_ENEMY_CONDITION_IDS = Object.freeze({
+  'weapon-coated:': 'weapon-coated',
+  'monster-action-used:': 'monster-action-used',
+  'npc-tactic-used:': 'npc-tactic-used',
+})
+
+/**
+ * Служебная бухгалтерия хода: состоянием существа эти маркеры не являются
+ * вовсе. Движок хранит ими потраченный ресурс — «зелье уже выпито», «паутина
+ * уже брошена», — и столу они не уезжают ни состоянием, ни событием: за столом
+ * это не состояние, которое видно на существе, а учётная запись движка. Сам
+ * поступок игрок при этом видит — своей строкой и своим событием.
+ */
+const ENEMY_BOOKKEEPING_CONDITIONS = Object.freeze(['monster-action-used', 'npc-tactic-used'])
+
+/**
+ * Поля условия, которые принадлежат ведущему: добавка к следующему удару и
+ * ключ вещи-источника. `rider_source_name` — каталожное имя дозы («Простой
+ * яд»), `rider_damage` — её формула. Урон отряд увидит, когда он ляжет; до
+ * того это опись чужого кармана.
+ */
+const ENEMY_CONDITION_PRIVATE_KEYS = Object.freeze(['rider_damage', 'rider_damage_type', 'rider_source_name', 'source_item_id'])
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function publicEnemyConditionId(value) {
+  const id = text(value, 160)
+  const prefix = Object.keys(OPAQUE_ENEMY_CONDITION_IDS).find((candidate) => id.startsWith(candidate))
+  return prefix ? OPAQUE_ENEMY_CONDITION_IDS[prefix] : id
+}
+
+/**
+ * Состояния противников, суженные до того, что видно за столом.
+ *
+ * Санитайзера здесь не было вовсе: `mechanics.conditions` уезжали игроку
+ * сырыми, и нанесённый противником яд стоял в комнате весь срок действия
+ * условием `weapon-coated:<item_instance_id>` — ключом закрытого инвентаря — с
+ * каталожным именем дозы в `rider_source_name` рядом. Санитайзер событий при
+ * этом те же поля резал, так что состояние и канал событий расходились молча.
+ *
+ * Сервер продолжает хранить точную форму: режет **проекция**, а не движок.
+ * Иначе дозу на конкретном клинке было бы не найти — `weaponCoatingRiderFor`
+ * ищет условие ровно по идентификатору оружия.
+ *
+ * Условия героев не трогаются: своё снаряжение игрок знает и без проекции.
+ *
+ * @param {unknown} value
+ * @param {Set<string>} enemyIds
+ * @returns {Record<string, any>}
+ */
+function publicConditionsFor(value, enemyIds) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  /** @type {Record<string, any>} */
+  const projected = {}
+  for (const [ownerId, conditions] of Object.entries(value)) {
+    if (!enemyIds.has(String(ownerId)) || !Array.isArray(conditions)) {
+      projected[ownerId] = conditions
+      continue
+    }
+    projected[ownerId] = conditions.flatMap((condition) => {
+      const publicId = publicEnemyConditionId(/** @type {Loose} */ (condition)?.id ?? condition)
+      if (!publicId || ENEMY_BOOKKEEPING_CONDITIONS.includes(publicId)) return []
+      if (!condition || typeof condition !== 'object' || Array.isArray(condition)) return [publicId]
+      const publicCondition = { ...condition, id: publicId }
+      for (const key of ENEMY_CONDITION_PRIVATE_KEYS) delete publicCondition[key]
+      return [publicCondition]
+    })
+  }
+  return projected
+}
+
+/**
+ * Карты механики, где ключ — идентификатор существа.
+ *
+ * `mechanics` уезжает игроку **спредом** `...publicMechanics`, а не белым
+ * списком: что лежит в состоянии, то и оказывается в комнате, пока ключ не
+ * закрыт здесь поимённо. Поэтому закрытие идёт по одному ключу, и этот помощник
+ * — общая форма такого закрытия, а не свидетельство чистоты всей карты:
+ * соседние карты с тем же видом ключа (`resources`, `concentration`, `shapes`,
+ * `combat.action_economy`) им не тронуты и белым списком не прикрыты.
+ *
+ * Записи не-противников остаются как есть: своё игрок знает и без проекции.
+ * Что из чужого отряд уже разведал, решает `known` — гейт у каждой карты свой,
+ * потому что и факт раскрытия у них разный.
+ *
+ * @param {unknown} value
+ * @param {Set<string>} enemyIds
+ * @param {(enemyId: string) => boolean} known
+ * @returns {Record<string, any>}
+ */
+function publicActorKeyedMapFor(value, enemyIds, known) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value)
+    .filter(([ownerId]) => !enemyIds.has(String(ownerId)) || known(String(ownerId))))
 }
 
 /**
@@ -544,6 +668,71 @@ export function publicEncounterFor(encounter = {}) {
 }
 
 /**
+ * Урон, вызвавший окно реакции, — те же величины, что и в `DamageApplied`, но
+ * приезжает он **целым payload-ом**, и потому был пятой поверхностью того же
+ * ключа кармана. Добавка яда кладётся в `damage_components` вместе с `item_id`
+ * и `effect_id` (`weapon-coated:<item_instance_id>`), метка магической вещи —
+ * прямо в корень (`source_item_id` у волшебных снарядов). Ветка `enemyActor`
+ * в `eventForViewer` чистит только верхний уровень payload-а события и во
+ * вложенный массив не заходит, а цель окна реакции — герой, поэтому прежняя
+ * защита «цель — противник» не срабатывала здесь вовсе.
+ *
+ * Поэтому урон проецируется белым списком — тем же приёмом, что `trigger_roll`
+ * и `action_options`: стол видит, сколько пришло, чем и что от этого осталось,
+ * а опись чужого кармана не проезжает ни корнем, ни слагаемым. Авторитетное
+ * состояние точную форму хранит: сокращение реакции считается по нему, а не по
+ * проекции.
+ *
+ * Оба списка закреплены в `test/npc-equipment.test.mjs` дословным `deepEqual`
+ * самого списка — не через фикстуру. Разница существенная: проверка на фикстуре
+ * видит только те ключи, которые фикстура несёт, поэтому строка, дописанная
+ * сюда, оставалась бы зелёной до тех пор, пока её не добавят и в `stuffedWindow`.
+ * Пин по списку падает сразу, и решение «этот ключ столу можно» принимается
+ * явно. Фикстура при этом остаётся — она проверяет другое: что проекция списки
+ * действительно применяет и опись чужого кармана не проезжает ни корнем, ни
+ * слагаемым.
+ */
+export const REACTION_DAMAGE_PUBLIC_KEYS = Object.freeze([
+  'damage_type', 'raw_amount', 'applied_amount', 'immune', 'resistant', 'vulnerable',
+  'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed',
+  'hp_before', 'hp_after', 'death_ward_triggered',
+])
+
+/**
+ * Слагаемые составного урона: «сколько и чем» без «из чьего кармана».
+ * Качественный `source` («weapon», «magic-item», «secondary») остаётся — это то
+ * же различение, что и «клинок смазан чем-то тёмным»: стол видит, что второй
+ * укус пришёл не от самого удара, но не получает ключа вещи.
+ */
+export const REACTION_DAMAGE_COMPONENT_PUBLIC_KEYS = Object.freeze([
+  'damage_type', 'raw_amount', 'applied_amount', 'temporary_hp_absorbed', 'source',
+])
+
+/**
+ * @param {Loose} damage
+ * @returns {Loose}
+ */
+function publicReactionDamageFor(damage) {
+  /** @type {Loose} */
+  const projected = {}
+  for (const key of REACTION_DAMAGE_PUBLIC_KEYS) {
+    if (damage[key] !== undefined) projected[key] = damage[key]
+  }
+  if (Array.isArray(damage.damage_components)) {
+    projected.damage_components = damage.damage_components.slice(0, 12).map((/** @type {Loose} */ component) => {
+      /** @type {Loose} */
+      const publicComponent = {}
+      if (!component || typeof component !== 'object' || Array.isArray(component)) return publicComponent
+      for (const key of REACTION_DAMAGE_COMPONENT_PUBLIC_KEYS) {
+        if (component[key] !== undefined) publicComponent[key] = component[key]
+      }
+      return publicComponent
+    })
+  }
+  return projected
+}
+
+/**
  * @param {Loose} window
  * @param {LooseState} [state]
  * @param {string} [actorId]
@@ -573,9 +762,39 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
     delete triggerRoll.kept
     delete triggerRoll.modifier
   }
-  const damage = window.damage && typeof window.damage === 'object' ? { ...window.damage } : null
+  const damage = window.damage && typeof window.damage === 'object' && !Array.isArray(window.damage)
+    ? publicReactionDamageFor(window.damage)
+    : null
+  // Цель окна реакции обычно герой, но не всегда: у «покинул досягаемость» и у
+  // контрзаклинания целью записан тот, на кого реагируют, и он может быть
+  // противником. ОЗ неопознанного противника закрыты и здесь.
+  //
+  // `temporary_hp_absorbed` — то же знание, записанное разностью: ненулевая
+  // величина называет и наличие временных ОЗ у неопознанного противника, и
+  // сколько их было, ровно как `temporary_hp_before/after` рядом. Поэтому она
+  // снимается вместе с ними — и в корне, и в слагаемых составного урона, где
+  // стоит тем же полем.
+  //
+  // `raw_amount` уходит следом, иначе снятое поле возвращается вычитанием:
+  // «брошено 9, прошло 6» при `immune`/`resistant`/`vulnerable` = false — это те
+  // же 3 поглощённых, только записанные парой. Граница у правки узкая и не
+  // больше: закрываются **числа чужого запаса**, а не сам факт. Свой бросок
+  // урона отряд видит в `rolls` (он публичный, его сделал игрок), так что
+  // счетовод разницу выведет и без подсказки; и остаток остаётся названным —
+  // при подтверждённом попадании `applied_amount: 0` с тремя ложными
+  // `immune`/`resistant`/`vulnerable` получается только поглощением. Что удар
+  // сделал, стол видит целиком: `applied_amount` остаётся и в корне, и в каждом
+  // слагаемом, и это выбор, а не недосмотр — удар отряда игрок обязан видеть.
+  //
+  // Объекты здесь уже собственные (`publicReactionDamageFor` строит и корень, и
+  // каждое слагаемое заново), поэтому правка не задевает авторитетное
+  // состояние: сокращение реакции считается по нему.
   if (damage && enemyTarget && !exactEnemyHealthKnown(state, targetId, actorId)) {
-    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after']) delete damage[key]
+    for (const key of ['hp_before', 'hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed', 'raw_amount']) delete damage[key]
+    for (const component of Array.isArray(damage.damage_components) ? damage.damage_components : []) {
+      if (!component || typeof component !== 'object') continue
+      for (const key of ['temporary_hp_absorbed', 'raw_amount']) delete component[key]
+    }
   }
   return {
     id: text(window.id, 160),
@@ -584,12 +803,23 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
     source_actor_id: text(window.source_actor_id, 120),
     target_id: text(window.target_id, 120),
     action_ids: (Array.isArray(window.action_ids) ? window.action_ids : []).map((id) => text(id, 120)).filter(Boolean).slice(0, 20),
+    // Белый список опции описывает **свою** реакцию игрока, а не чужой карман:
+    // закрывать здесь нечего, ронять — есть что. `requires_beneficiary` стоит у
+    // «Серебристых терний», и по нему интерфейс показывает выбор получателя
+    // преимущества (`ReactionPrompt`, `src/App.tsx`). Пока поля не было, окно
+    // приезжало игроку без него: список получателей не появлялся, кнопка
+    // отправляла реакцию без `beneficiary_id`, — а ведущий, чья проекция
+    // сквозная, видел выбор и не понимал, о чём речь. `slot_level` — уровень
+    // потраченной ячейки самого игрока, его же ресурс; клиентский тип
+    // (`CombatReactionWindow`, `src/types.ts`) объявляет оба поля.
     action_options: (Array.isArray(window.action_options) ? window.action_options : []).slice(0, 20).map((option) => ({
       id: text(option?.id, 120),
       name: text(option?.name, 160),
       description: text(option?.description, 500),
       ...(option?.resource == null ? {} : { resource: text(option.resource, 120) }),
       ...(option?.cost == null ? {} : { cost: Math.max(0, integer(option.cost, 0)) }),
+      ...(option?.slot_level == null ? {} : { slot_level: Math.max(0, integer(option.slot_level, 0)) }),
+      ...(option?.requires_beneficiary ? { requires_beneficiary: true } : {}),
     })),
     ...(triggerRoll ? { trigger_roll: triggerRoll } : {}),
     ...(window.fighter_level == null ? {} : { fighter_level: Math.max(1, integer(window.fighter_level, 1)) }),
@@ -681,6 +911,14 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // в публичной форме нет и быть не должно: она превратила бы поиск выхода в
   // арифметику.
   'law',
+  // Контейнеры добычи. Реестр держит все ярусы кампании, полное содержимое
+  // каждого тела и `origin.template_id` — идентификатор стат-блока противника,
+  // то есть знание, которое отряд добывает опознанием врага. Наружу уезжает
+  // только публичная форма (`lootContainersForViewer`): ярус отряда, без
+  // опустошённых, а содержимое — лишь того контейнера, до которого герой
+  // игрока дотягивается. Иначе «обыскать» стало бы формальностью поверх уже
+  // прочитанного списка.
+  'loot_containers',
   // Время суток и погода. Собственного ключа в состоянии нет: обе величины
   // выводятся из мировых минут и сида кампании (`server/weather.mjs`) и
   // существуют только в проекции. Решение осознанное и в обе стороны одинаковое:
@@ -760,6 +998,9 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // срок затухания считаются на сервере рядом с политикой. Карточка админки
     // своей таблицы порогов не держит — две копии расходились бы молча.
     law: lawForViewer(state, { isAdmin: true }),
+    // Контейнеры добычи ведущий видит целиком: у него нет героя, которым можно
+    // подойти, а знать, что осталось лежать на полу, он обязан.
+    loot_containers: lootContainersForViewer(state, { isAdmin: true }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
     weather: weatherForViewer(state),
@@ -792,12 +1033,19 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // Наружу он идёт только своей публичной формой (`lawForViewer` ниже), потому
   // что цифра ступени игроку не принадлежит: розыск он узнаёт по офицеру перед
   // собой и по тому, как на него смотрит улица.
+  // `loot_containers` — реестр контейнеров всей кампании: чужие ярусы, ещё не
+  // найденные схроны и полное содержимое каждого тела. Наружу он идёт только
+  // публичной формой (`lootContainersForViewer` ниже): она оставляет ярус
+  // отряда, скрывает опустошённое и отдаёт содержимое лишь тому, чей герой до
+  // контейнера дотягивается. Сырой ветке здесь делать нечего — иначе «обыскать»
+  // превратилось бы в формальность поверх уже прочитанного списка.
   const {
     locationMaps: _locationMaps,
     npc_world: _npcWorld,
     levelEntities: _levelEntities,
     world_deeds: _worldDeeds,
     law: _law,
+    loot_containers: _lootContainers,
     ...publicState
   } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
@@ -807,11 +1055,45 @@ export function campaignStateForViewer(state, user, actorId = '') {
     .filter((/** @type {Loose} */ merchant) => merchant.available !== false && merchantIsAtLocation(merchant, state?.scene ?? location))
     .map(publicMerchantFor)
   const enemies = (Array.isArray(visible.enemies) ? visible.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId))
+  const enemyIds = new Set((state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   const mechanics = visible.mechanics && typeof visible.mechanics === 'object'
     ? (() => {
       const { enemy_knowledge: _enemyKnowledge, ...publicMechanics } = visible.mechanics
       return {
       ...publicMechanics,
+      ...(visible.mechanics.conditions ? { conditions: publicConditionsFor(visible.mechanics.conditions, enemyIds) } : {}),
+      // Временные ОЗ противника. Событие урона и окно реакции у неопознанного
+      // врага закрывают и `temporary_hp_before/after`, и записанное разностью
+      // `temporary_hp_absorbed`, — а состояние комнаты везло ту же карту
+      // целиком, и два опроса подряд (до удара `{"foe":7}`, после `{"foe":3}`)
+      // возвращали столу и сам факт запаса, и его величину, и поглощённое
+      // разностью. Гейт тот же, что у всех прочих чисел здоровья врага, —
+      // опознание.
+      ...(visible.mechanics.temporary_hp
+        ? {
+          temporary_hp: publicActorKeyedMapFor(
+            visible.mechanics.temporary_hp,
+            enemyIds,
+            (/** @type {string} */ id) => exactEnemyHealthKnown(state, id, actorId),
+          ),
+        }
+        : {}),
+      // Защиты противника. Карта хранит только наложенное по ходу игры (списки
+      // самого стат-блока движок подмешивает отдельно, `defenseFor` в
+      // `rules-engine.mjs`), поэтому течёт она уже, чем временные ОЗ, но так же:
+      // сопротивления, иммунитеты и уязвимости уезжали столу списком до первого
+      // удара. Гейт — знание стат-блока: ровно на этом факте `publicEnemyFor`
+      // отдаёт отряду `stat_block_id`, после чего строки SRD у него и так на
+      // руках.
+      ...(visible.mechanics.defenses
+        ? {
+          defenses: publicActorKeyedMapFor(
+            visible.mechanics.defenses,
+            enemyIds,
+            (/** @type {string} */ id) => exactEnemyFact(enemyKnowledgeFor(state, id, actorId), 'stat_block'),
+          ),
+        }
+        : {}),
       ...(actorId ? { hit_point_dice: { [actorId]: hitPointDicePoolForActor(state, actorId) } } : { hit_point_dice: {} }),
       encounter: publicEncounterFor(visible.mechanics.encounter),
       ...(visible.mechanics.combat && typeof visible.mechanics.combat === 'object' ? {
@@ -842,6 +1124,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     }),
     scene_npcs: sceneNpcsForViewer(state),
     captives: captivesForViewer(state, { isAdmin: false }),
+    // Контейнер виден в доступной сцене; содержимое — только тому, чей герой
+    // стоит рядом. Просмотр при этом бесплатен: он приходит проекцией, а не
+    // командой, и хода не стоит.
+    loot_containers: lootContainersForViewer(state, { actorId: String(actorId ?? ''), isAdmin: false }),
     law: lawForViewer(state, { isAdmin: false }),
     // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
@@ -928,6 +1214,17 @@ function eventForViewer(event, user, actorId, state = {}) {
       amount_cp: integer(roll?.amount_cp, 0),
     }))
   }
+  // Снаряжение противника. Игрок видит поступок и его готовую подпись — то, что
+  // случилось за столом, — но не то, из какого кармана вещь взялась:
+  // `item_instance_id` это ключ закрытого инвентаря, по которому потом
+  // опознаётся добыча с тела. Имя вещи и каталожный ключ снимает общая ветка
+  // «действует противник» ниже; здесь закрывается то, чего в её списке нет.
+  //
+  // Парного `NpcEquipmentSpent` тут нет и не должно быть: он `gm_only` и до
+  // игрока не доезжает вовсе (см. `npcEquipmentSpentEvent`, `rules-engine.mjs`).
+  if (visible.event_type === 'NpcItemUsed') {
+    for (const key of ['item_instance_id', 'catalog_id', 'item_name']) delete payload[key]
+  }
   if (visible.event_type === 'NpcPlaced') delete payload.vitality
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
@@ -976,6 +1273,33 @@ function eventForViewer(event, user, actorId, state = {}) {
     if (forViewer) payload.captive = forViewer
     else delete payload.captive
   }
+  // Контейнеры добычи. Та же граница, что и у проекции состояния, и по той же
+  // причине: сырой payload несёт полный экземпляр предмета вместе с `owner` и
+  // `origin`, а в `origin.template_id` лежит **идентификатор стат-блока**
+  // противника — то самое, что отряд получает только опознанием врага
+  // (`publicEnemyFor` ниже). Событие рождения контейнера вдобавок несёт весь
+  // список содержимого, то есть ответ на «что внутри» до того, как кто-нибудь
+  // подошёл. Обе ветки режет та же функция, что стоит под проекцией состояния.
+  if (visible.event_type === 'LootContainerCreated' && payload.container) {
+    const forViewer = lootContainerForViewer(payload.container, { withContents: false })
+    if (forViewer) payload.container = forViewer
+    else delete payload.container
+  }
+  if (visible.event_type === 'LootContainerTaken') {
+    // Взятое отряд видит целиком — это его собственная добыча, и она уже лежит
+    // у него в инвентаре. Уезжает готовая запись инвентаря, а не экземпляр
+    // контейнера: `remaining_items` при этом снимается совсем, иначе остаток
+    // тела читался бы событием мимо проверки досягаемости.
+    delete payload.remaining_items
+    payload.items = (Array.isArray(payload.items) ? payload.items : []).map((/** @type {Loose} */ item) => ({
+      id: text(item?.id, 160),
+      catalog_id: text(item?.catalog_id, 120),
+      name: text(item?.name, 120),
+      type: text(item?.type, 40),
+      quantity: integer(item?.quantity, 1),
+      weight: Math.max(0, Number(item?.weight) || 0),
+    }))
+  }
   const targetIds = (Array.isArray(visible.target_ids) ? visible.target_ids : []).map(String)
   if (['HitPointDieSpent', 'HitPointDiceRestored'].includes(String(visible.event_type))
     && String(visible.actor_id ?? '') !== String(actorId)
@@ -986,7 +1310,68 @@ function eventForViewer(event, user, actorId, state = {}) {
   const enemyTargetId = targetIds.find((/** @type {string} */ id) => enemyIds.has(id)) ?? (enemyIds.has(String(payload.target_id ?? '')) ? String(payload.target_id) : '')
   const enemyActor = enemyIds.has(String(visible.actor_id ?? ''))
   if (enemyTargetId && !exactEnemyHealthKnown(state, enemyTargetId, actorId)) {
-    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'armor_class']) delete payload[key]
+    // `temporary_hp_absorbed` стоит здесь по той же причине, что и в окне
+    // реакции (`publicReactionWindowFor` выше): это те же временные ОЗ, только
+    // записанные разностью. «Поглощено 3» называет и то, что у неопознанного
+    // противника они были, и сколько их было, — то есть ровно то, что рядом
+    // закрывают `temporary_hp_before/after`. Два канала одного файла на этом
+    // ключе расходились: окно молчало, а `DamageApplied` по тому же врагу вёз
+    // его игроку.
+    //
+    // `raw_amount` — та же величина, записанная вычитанием: пара «брошено 9,
+    // прошло 6» при `immune`/`resistant`/`vulnerable` = false называет
+    // поглощённое. Ровно так же он снимается у `NpcHarmed` веткой выше.
+    //
+    // `offered` и `temporary_hp_amount` — величина запаса в момент выдачи:
+    // первое у `TemporaryHitPointsGranted`, второе у `ConditionAdded` с
+    // героизмом. Сам факт эти события называют собственным типом, и проекция
+    // этого не отменяет (см. ниже про маркер), но число закрывается наравне со
+    // всеми прочими записями — стандарт у ключа один.
+    //
+    // `applied_amount` у урона остаётся: это удар отряда, и его игрок обязан
+    // видеть — свой бросок он к тому же видит в `rolls`. Полной тайны из этого
+    // не выходит, и обещать её было бы неправдой: подтверждённое попадание
+    // (`AttackResolved` с публичными `hit` и `critical`) при `applied_amount: 0`
+    // и всех трёх ложных `immune`/`resistant`/`vulnerable` возможно только
+    // поглощением, то есть сервер и после правки называет факт — не вычитанием,
+    // а комбинацией оставленных полей. Граница здесь проходит по числам чужого
+    // запаса, а не по самому факту.
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed', 'temporary_hp_amount', 'offered', 'raw_amount', 'armor_class']) delete payload[key]
+    // И ещё одна запись — provenance самого события. Движок вешает
+    // `RULE_IDS.temporaryHp` на урон ровно при ненулевом поглощении (четыре
+    // места в `rules-engine.mjs`: основной удар, добавка вещи, вторичный урон и
+    // прямой `ApplyDamage`), поэтому одно наличие маркера в `source_rule_ids`
+    // говорит «у этого противника были временные ОЗ» — то самое, что payload
+    // выше уже перестал называть. Список фильтруется, а не обнуляется:
+    // `srd_5_2_1:combat:damage` и признак сопротивления игроку принадлежат.
+    // Массив собран `projectVisibleState` заново, авторитетное событие правка не
+    // трогает.
+    //
+    // Ветка условная не по типу события, а по «цель — неопознанный противник»,
+    // поэтому маркер снимается заодно и с `TemporaryHitPointsGranted`, где он
+    // обычно единственный, — провенанс там обнуляется целиком. Тайны это не
+    // создаёт: событие называет временные ОЗ собственным типом. Но величина
+    // оттуда больше не уезжает: `offered` стоит в списке выше, и стандарт у
+    // ключа один в обоих каналах.
+    //
+    // Производителей у события три, и живут они не в двух командах: команда
+    // ведущего `GrantTemporaryHitPoints`, `CastSpell` и героизм на старте хода
+    // (`trigger: 'turn-start'`) — последний приходит из обработки хода, а не из
+    // команды, и по списку «только две команды» будущий читатель прошёл бы мимо
+    // него. Точный список на сегодня — `grep -rn "TemporaryHitPointsGranted"
+    // server/`. Закрыть сам факт можно только решением о самом событии; тихим
+    // расширением списка урона это не делается.
+    if (Array.isArray(visible.source_rule_ids)) {
+      visible.source_rule_ids = visible.source_rule_ids.filter((/** @type {unknown} */ id) => String(id) !== RULE_IDS.temporaryHp)
+    }
+    // Величина лечения — то же знание, что и ОЗ до и после, только записанное
+    // разностью: у зелья противника (2к4 + 2) ровная десятка называет вещь
+    // точнее любого `catalog_id`, который здесь же снимает ветка «действует
+    // противник». Ветка только у `HealingApplied`: `applied_amount` у урона —
+    // это удар отряда по врагу, и его игрок обязан видеть.
+    if (String(visible.event_type) === 'HealingApplied') {
+      for (const key of ['requested_amount', 'applied_amount']) delete payload[key]
+    }
   }
   // Игрок видит сам исход (сопротивление, иммунитет или отменённый крит), но
   // закрытый инвентарь противника не становится каталогом предметов через
@@ -1002,6 +1387,34 @@ function eventForViewer(event, user, actorId, state = {}) {
       'modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression',
       'item_id', 'item_name', 'catalog_id', 'effect_id',
     ]) delete payload[key]
+  }
+  // Состояние противника: тот же санитайзер, что и у проекции комнаты, — иначе
+  // закрытое в состоянии уезжало бы игроку событием той же команды. Ветка
+  // покрывает обе стороны: яд противник кладёт **сам на себя**, поэтому здесь
+  // он и действующее лицо, и цель, а условие от чужой руки приходит только
+  // целью.
+  //
+  // Ключи добавки снимаются ровно здесь и больше нигде. Список стоял и в ветке
+  // `enemyActor` выше, но там был мёртв: единственный производитель
+  // `rider_damage`/`rider_damage_type`/`rider_source_name` — payload
+  // `ConditionAdded`, а `source_item_id` кладёт только антитоксин, и это тоже
+  // условие. Удаление той строки не роняло ни одного теста — защита без
+  // сторожа исчезла бы при первом же рефакторинге молча, поэтому она снята, а
+  // не удвоена. Расширять список **сюда** — там, где он под тестом, — и
+  // область у него условная, а не «любое событие противника»: у `DamageApplied`
+  // от волшебной палочки героя по врагу `source_item_id` — своя вещь игрока, и
+  // общий сторож молча съел бы её.
+  if (['ConditionAdded', 'ConditionRemoved'].includes(String(visible.event_type))
+    && (enemyActor || enemyTargetId)) {
+    const condition = publicEnemyConditionId(payload.condition)
+    // Служебная бухгалтерия не уезжает столу ни состоянием, ни событием: иначе
+    // над клеткой всплывало бы «Маркер тактики потрачен» вместо поступка,
+    // который стол и так увидел собственной строкой.
+    if (ENEMY_BOOKKEEPING_CONDITIONS.includes(condition)) return null
+    // Поле не выдумывается там, где его не было: пустая строка в `condition`
+    // читалась бы клиентом как настоящее безымянное состояние.
+    if (payload.condition != null) payload.condition = condition
+    for (const key of ENEMY_CONDITION_PRIVATE_KEYS) delete payload[key]
   }
   // Спасбросок и проверку бросает цель, а не тот, кто записан действующим лицом:
   // у SpellSavingThrowResolved actor_id — это заклинатель-герой. Формула

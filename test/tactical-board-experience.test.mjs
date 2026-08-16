@@ -21,8 +21,11 @@ test('тактические модификаторы видны на самой
 })
 
 test('постоянные состояния фишки имеют различимые знаки с приоритетом', () => {
+  // Сами знаки и их приоритет переехали к подписям состояний
+  // (`tokenConditionGlyph`, `src/tactical-ui.ts`) и проверяются вызовом
+  // настоящей функции в `test/tactical-ui.test.mjs`. Здесь остаётся то, что
+  // вызовом не проверить: оформление знака в стилях и его место на доске.
   for (const condition of ['paralyzed', 'restrained', 'prone', 'frightened']) {
-    assert.match(app, new RegExp(`${condition}:`))
     assert.match(styles, new RegExp(`data-condition="${condition}"`))
   }
   assert.match(app, /TOKEN_CONDITION_PRIORITY/u)

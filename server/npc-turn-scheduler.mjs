@@ -17,6 +17,13 @@ import {
 } from './rules-engine.mjs'
 import { isPartySummon } from './combat-spells.mjs'
 import { commandsForMoraleDecision, isMoraleMoment } from './npc-controller.mjs'
+import {
+  npcActionUnavailableReason,
+  npcNeedsHealingPotion,
+  npcTacticCondition,
+  npcUsableItems,
+  npcWeaponBindingFor,
+} from './npc-equipment.mjs'
 import { truceHolds } from './parley.mjs'
 
 const CELL_FEET = 5
@@ -128,12 +135,18 @@ function actionProfiles(state, enemy) {
   // `uses` и `recharge` тратятся одним маркером, поэтому и отсеиваются одинаково:
   // разряженное дыхание не должно попадать в кандидаты — движок всё равно
   // ответит `MONSTER_ACTION_SPENT`, и ход существа пропал бы впустую.
+  //
+  // По той же причине отсеивается действие, за которым стоит потерянное оружие
+  // или пустой колчан: `npcActionUnavailableReason` — тот же ответ, каким его
+  // закроет Rules Engine, поэтому стрелок без стрел не выбирает лук и не теряет
+  // ход, а переходит в ближний бой.
   const available = explicit.filter((action) => !((Number(action?.uses) > 0 || Number(action?.recharge) > 0) && spent.has(`monster-action-used:${action.id}`))
     && (!requiredActionId || String(action?.id ?? '') === requiredActionId)
+    && !npcActionUnavailableReason(enemy, String(action?.id ?? ''))
     && (!actionCounts.size || usedActionIds.filter((id) => id === String(action?.id ?? '')).length < (actionCounts.get(String(action?.id ?? '')) ?? 0)))
   if (available.length) return available.map((action) => attackProfileFor(state, actorId(enemy), action.id)).filter(Boolean)
   const fallback = attackProfileFor(state, actorId(enemy))
-  return fallback ? [fallback] : []
+  return fallback && !npcActionUnavailableReason(enemy, String(fallback.id ?? '')) ? [fallback] : []
 }
 
 function inAttackRange(state, attackerId, targetId, profile = attackProfileFor(state, attackerId), from = actorPosition(state, attackerId)) {
@@ -619,6 +632,81 @@ function attackCommands(state, enemy, targetId, selectedProfile) {
 }
 
 /**
+ * Снаряжение в ход существа: три закрытые тактики шага A2.
+ *
+ * Выбирает их не модель и не оценка «на глазок»: у каждой своё условие, и
+ * условие проверяется теми же данными, которыми его проверит Rules Engine
+ * (`validateNpcItemUseCommand`). План, который движок отвергнет, — это
+ * потерянный ход существа и пятисотка на ровном месте, поэтому планировщик
+ * обязан предлагать только исполнимое.
+ *
+ * Бонусное действие одно, и претендентов на него двое: зелье и яд. Зелье
+ * побеждает всегда — выжить важнее, чем ударить больнее. Третий претендент,
+ * «хитрый отход» гоблина, уступает обоим: это осознанная очередь, а не
+ * недосмотр, и она же держит план исполнимым (движок ответил бы
+ * `BONUS_ACTION_SPENT` на втором бонусном действии подряд).
+ */
+function equipmentItemCommand(enemy, item, extra = {}) {
+  return {
+    command_type: 'UseItem',
+    actor_id: actorId(enemy),
+    target_id: actorId(enemy),
+    item_id: item.item_instance_id,
+    npc_tactic: item.tactic,
+    ...extra,
+  }
+}
+
+/** Зелье — на последних хитах и один раз за бой. */
+function healingPotionCommandFor(state, enemy, usable, economy) {
+  if (economy.bonus_action === false || !npcNeedsHealingPotion(enemy)) return null
+  if (conditionIds(state, actorId(enemy)).has(npcTacticCondition('heal'))) return null
+  const potion = usable.find((item) => item.tactic === 'heal')
+  return potion ? equipmentItemCommand(enemy, potion) : null
+}
+
+/**
+ * Яд — до первого удара и на то самое оружие, которым существо собралось бить.
+ * Мажут связанный экземпляр из инвентаря: у укуса и когтя вещи нет, и мазать
+ * там нечего.
+ */
+function weaponPoisonCommandFor(state, enemy, usable, economy, profile) {
+  if (economy.bonus_action === false || Math.max(0, Number(economy.attacks_used) || 0) > 0) return null
+  const conditions = conditionIds(state, actorId(enemy))
+  if (conditions.has(npcTacticCondition('coat'))) return null
+  const poison = usable.find((item) => item.tactic === 'coat')
+  if (!poison) return null
+  const binding = npcWeaponBindingFor(enemy, profile?.id)
+  if (!binding || binding.kind !== 'melee' || binding.item_quantity <= 0) return null
+  if (conditions.has(`weapon-coated:${binding.item_instance_id}`)) return null
+  return equipmentItemCommand(enemy, poison, { weapon_id: binding.item_instance_id })
+}
+
+/**
+ * Склянка стоит целого действия, поэтому идёт в ход **только** там, где
+ * действие всё равно пропадает: удар в этом ходу не выходит ни с места, ни
+ * после подхода — далеко, закрыто или кончились стрелы, — а двадцать футов до
+ * героя есть и линия чистая. Иначе метать её значило бы менять два удара
+ * секирой на 1к4 огнём: тактика, которая выглядит бойко и проигрывает по числам.
+ *
+ * Цель — ближайший герой, при равенстве побеждает меньший идентификатор:
+ * порядок обязан быть одинаковым при повторе плана.
+ */
+function thrownFlaskCommandFor(state, enemy, usable, economy, from) {
+  if (economy.action === false || Math.max(0, Number(economy.attacks_used) || 0) > 0) return null
+  const flask = usable.find((item) => item.tactic === 'flask')
+  if (!flask || !from) return null
+  const rangeFeet = Math.max(CELL_FEET, Number(flask.use?.range_feet) || 20)
+  const target = livingParty(state)
+    .map((hero) => ({ id: actorId(hero), at: actorPosition(state, actorId(hero)) }))
+    .filter((hero) => hero.at)
+    .map((hero) => ({ ...hero, feet: Math.max(Math.abs(hero.at.x - from.x), Math.abs(hero.at.y - from.y)) * CELL_FEET }))
+    .filter((hero) => hero.feet >= CELL_FEET && hero.feet <= rangeFeet && hasClearTrajectory(state, from, hero.at))
+    .sort((left, right) => left.feet - right.feet || left.id.localeCompare(right.id))[0]
+  return target ? { ...equipmentItemCommand(enemy, flask), target_id: target.id } : null
+}
+
+/**
  * Публичная причина детерминированного выбора называет только видимые на поле
  * факты: перемещение, раненую цель, контроль от действия или поддержку союзника.
  * Числовая оценка, скрытая КД и внутренние параметры существа наружу не выходят.
@@ -636,7 +724,11 @@ function publicTacticFor(state, enemy, candidate, commands = []) {
   const alreadyControlled = condition && conditionIds(state, targetId).has(condition)
   const retreat = commands.some((command) => command.command_type === 'MoveActor')
     && commands.some((command) => ['keep-distance', 'nimble-escape'].includes(String(command.monster_ability ?? '')))
-  const tactic = retreat
+  // Что именно за вещь, здесь не называется: причину видит вся партия, а
+  // карман живого противника закрыт до обыска тела.
+  const tactic = commands.some((command) => command.command_type === 'UseItem')
+    ? 'пускает в ход снаряжение'
+    : retreat
     ? 'держит дистанцию'
     : packTactics
       ? 'тактика стаи'
@@ -670,7 +762,23 @@ export function planNpcTurn(rawState, enemyId) {
     return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
   }
   const candidate = targetCandidates(state, enemy)[0]
-  if (!candidate) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
+  // Снаряжение читается один раз на план: у зверя, слизня и всякого, кому
+  // инвентарь не положен, список пуст, и три ветки ниже выключаются сами.
+  const usableEquipment = npcUsableItems(enemy)
+  // Отход раненого идёт раньше любой атакующей ветки: существо на последних
+  // ОЗ не разменивается насмерть, если не одержимо чертой ярости.
+  const bloodiedRetreat = shouldRetreatBloodied(state, enemy) ? bloodiedRetreatFor(state, enemy) : null
+  const healingSip = healingPotionCommandFor(state, enemy, usableEquipment, currentEconomy)
+  if (!candidate) {
+    // Бить некого или нечем: тогда склянка — единственное, чем существо ещё
+    // может дотянуться.
+    const flask = bloodiedRetreat ? null : thrownFlaskCommandFor(state, enemy, usableEquipment, currentEconomy, actorPosition(state, enemyId))
+    return [
+      ...(healingSip ? [healingSip] : []),
+      ...(flask ? [flask] : []),
+      { command_type: 'EndTurn', actor_id: String(enemyId) },
+    ]
+  }
   const targetId = actorId(candidate.actor)
   const commands = []
   const profile = candidate.profile
@@ -680,9 +788,6 @@ export function planNpcTurn(rawState, enemyId) {
   let movementOnlyPhase = false
   let plannedMovementFeet = 0
   let plannedPosition = null
-  // Отход раненого идёт раньше любой атакующей ветки: существо на последних
-  // ОЗ не разменивается насмерть, если не одержимо чертой ярости.
-  const bloodiedRetreat = shouldRetreatBloodied(state, enemy) ? bloodiedRetreatFor(state, enemy) : null
   if (bloodiedRetreat) {
     // Выход из соприкосновения оплачивается Отходом: это общее действие, оно
     // доступно и NPC, и снимает атаки по возможности.
@@ -778,8 +883,31 @@ export function planNpcTurn(rawState, enemyId) {
     commands.push(...attackCommands(state, enemy, targetId, profile))
   }
   const attackPlanned = commands.some((command) => command.command_type === 'MakeAttack')
+  // Ход, в котором удара так и не вышло, — единственное место склянки.
+  //
+  // И только с места: если существо в этом же ходу куда-то идёт, дальность и
+  // линию пришлось бы проверять по предсказанной клетке, а движок проверит их
+  // по настоящей. Разойдись предсказание с действительностью хоть раз — и
+  // отказ уронил бы весь ход существа, а не одну команду. Подошло — метнёт
+  // следующим ходом.
+  if (!attackPlanned && !movementOnlyPhase && !plannedPosition) {
+    const flask = thrownFlaskCommandFor(state, enemy, usableEquipment, currentEconomy, enemyAt)
+    if (flask) commands.push(flask)
+  }
+  // Бонусное действие одно. Если ветка выше уже заняла его хитрым отходом или
+  // рывком, снаряжение ждёт следующего хода: движок ответил бы
+  // `BONUS_ACTION_SPENT` и уронил бы весь ход существа.
+  const bonusActionPlanned = commands.some((command) => ['nimble-escape', 'aggressive'].includes(String(command.monster_ability ?? '')))
+  const weaponPoison = !bonusActionPlanned && !healingSip && attackPlanned
+    ? weaponPoisonCommandFor(state, enemy, usableEquipment, currentEconomy, profile)
+    : null
+  // Снаряжение встаёт в начало плана: зелье пьют до удара, яд наносят до
+  // первого удара — второе движок проверяет отдельно и отказом.
+  const bonusEquipment = bonusActionPlanned ? null : healingSip ?? weaponPoison
+  if (bonusEquipment) commands.unshift(bonusEquipment)
   const attacksAllowed = multiattackCount(enemy)
   if (attackPlanned
+    && !bonusEquipment
     && profile.kind === 'melee'
     && attacksAllowed <= 1
     && hasTrait(enemy, 'nimble-escape')

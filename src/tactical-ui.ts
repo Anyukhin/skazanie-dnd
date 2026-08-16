@@ -378,6 +378,11 @@ const CONDITION_LABELS: Record<string, string> = {
   'hunters-mark': 'Метка охотника',
   fled: 'Бежал',
   surrendered: 'Сдался',
+  // Качественная форма нанесённого яда. Ровно её сервер отдаёт про клинок
+  // противника: ключ вещи из чужого кармана проекция срезает
+  // (`publicConditionsFor`, `server/viewer-projection.mjs`), поэтому подписи
+  // тоже две — своё оружие герой знает по имени, чужое видно только на глаз.
+  'weapon-coated': 'Клинок смазан чем-то тёмным',
 }
 
 const IMPLEMENTED_CONDITIONS = new Set([
@@ -397,7 +402,7 @@ function humanizeConditionId(id: string) {
 export function conditionPresentation(condition: { id: string; duration?: string | null } | string) {
   const id = String(typeof condition === 'string' ? condition : condition.id)
   const duration = typeof condition === 'string' ? null : condition.duration
-  const status: ConditionRuleStatus = id.startsWith('resistance-') || IMPLEMENTED_CONDITIONS.has(id)
+  const status: ConditionRuleStatus = id.startsWith('resistance-') || id.startsWith('weapon-coated') || IMPLEMENTED_CONDITIONS.has(id)
     ? 'implemented'
     : PARTIAL_CONDITIONS.has(id) ? 'partial' : 'marker'
   const statusLabel = status === 'implemented' ? 'эффект работает' : status === 'partial' ? 'эффект частичный' : 'только маркер'
@@ -408,12 +413,47 @@ export function conditionPresentation(condition: { id: string; duration?: string
       : 'Состояние хранится и отображается, но его отдельные правила пока не применяются.'
   return {
     id,
-    label: CONDITION_LABELS[id] ?? (id.startsWith('resistance-') ? `Сопротивление: ${humanizeConditionId(id.slice('resistance-'.length))}` : humanizeConditionId(id)),
+    label: CONDITION_LABELS[id]
+      ?? (id.startsWith('weapon-coated:') ? 'Оружие смазано ядом'
+        : id.startsWith('resistance-') ? `Сопротивление: ${humanizeConditionId(id.slice('resistance-'.length))}`
+          : humanizeConditionId(id)),
     status,
     statusLabel,
     explanation,
     duration: duration ? String(duration).replace(/^rounds:/, 'раундов: ') : null,
   }
+}
+
+/**
+ * Знаки под фишкой. Живут рядом с `conditionPresentation`, а не в доске: подпись
+ * состояния собирается здесь же, и знак — вторая половина одного решения. Пока
+ * они стояли внутри `DungeonMap.tsx`, вызвать их из теста было нечем — модуль
+ * тянет react, lucide-react и два десятка соседей, — и единственным сторожем
+ * оставалась регулярка по тексту исходника: она держала форму записи, а не
+ * поведение.
+ */
+export const TOKEN_CONDITION_GLYPHS: Record<string, string> = {
+  paralyzed: '✦',
+  restrained: '⌁',
+  prone: '▰',
+  frightened: '!',
+  // Смазанный ядом клинок противника. Без своего знака под фишку уезжала
+  // первая буква подписи, а «К» о яде не говорит ничего.
+  'weapon-coated': '☠',
+}
+
+export const TOKEN_CONDITION_PRIORITY = ['paralyzed', 'restrained', 'prone', 'frightened']
+
+/**
+ * Знак состояния под фишкой. Смазанный клинок приезжает в двух формах: чужой —
+ * непрозрачной (`weapon-coated`), свой — точной (`weapon-coated:<item_id>`),
+ * потому что проекция обезличивает только карман противника
+ * (`publicConditionsFor`, `server/viewer-projection.mjs`). Знак у обеих форм
+ * один: иначе под своей фишкой вместо черепа стояла бы первая буква подписи.
+ */
+export function tokenConditionGlyph(id: string, label: string) {
+  if (id.startsWith('weapon-coated:')) return TOKEN_CONDITION_GLYPHS['weapon-coated']
+  return TOKEN_CONDITION_GLYPHS[id] ?? label.slice(0, 1)
 }
 
 /**

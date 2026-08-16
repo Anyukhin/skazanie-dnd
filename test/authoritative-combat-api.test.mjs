@@ -492,7 +492,14 @@ test('player combat API is server-authoritative, bounded, and durable across res
     assert.equal(damageRoll.expression, attackResolved.payload.critical ? '2d6+2' : '1d6+2')
     assert.equal(damageRoll.total, damageRoll.dice.reduce((sum, die) => sum + die, 2))
     assert.ok(damageRoll.dice.every((die) => Number.isInteger(die) && die >= 1 && die <= 6))
-    assert.equal(attackDamage.payload.raw_amount, damageRoll.total)
+    // `raw_amount` по неопознанному противнику закрыт вместе с ОЗ и временными
+    // ОЗ: пара «брошено 9, прошло 6» при ложных `immune`/`resistant`/
+    // `vulnerable` возвращает вычитанием поглощённое временными ОЗ. Свой бросок
+    // отряд видит в `rolls` — он проверен строкой выше, — а удар отряда виден
+    // целиком: у сентинела нет ни защит, ни временного запаса, поэтому
+    // `applied_amount` совпадает с броском.
+    assert.equal(attackDamage.payload.raw_amount, undefined)
+    assert.equal(attackDamage.payload.applied_amount, damageRoll.total)
     assert.equal(attackDamage.payload.hp_before, undefined)
     assert.equal(attackDamage.payload.hp_after, undefined)
     assert.equal(actor(attackState, 'sentinel').hp, undefined)

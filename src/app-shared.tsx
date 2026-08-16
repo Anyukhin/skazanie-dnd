@@ -13,6 +13,20 @@ export function PageHeader({ eyebrow, title, description }: { eyebrow: string; t
   return <div className="page-header"><span>{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>
 }
 
+/**
+ * «1 предмет», «2 предмета», «11 предметов». Правило русского счёта, а не
+ * `count < 5`: одиннадцать по короткому правилу превращалось в «11 предмета».
+ */
+export function itemCountLabel(count: number) {
+  const value = Math.max(0, Math.trunc(Number(count) || 0))
+  const hundreds = value % 100
+  const tens = value % 10
+  if (hundreds >= 11 && hundreds <= 14) return `${value} предметов`
+  if (tens === 1) return `${value} предмет`
+  if (tens >= 2 && tens <= 4) return `${value} предмета`
+  return `${value} предметов`
+}
+
 export function battleEventText(state: GameState, event: NonNullable<GameState['battleLog']>[number]) {
   const actorName = (id?: string) => state.players.find((player) => player.id === id)?.character
     ?? state.actors?.find((actor) => actor.id === id)?.name
@@ -45,6 +59,19 @@ export function battleEventText(state: GameState, event: NonNullable<GameState['
     }
     return `Переговоры завершены: ${outcomes[String(event.reason)] ?? 'условия приняты'}.`
   }
+  if (event.type === 'captive-taken') return `${actorName(event.actorId)} взят в плен${event.reason === 'knocked_out' ? ' без сознания' : ''}.`
+  // Журнал называет, что добыча появилась и сколько её, но не что внутри:
+  // содержимое отряд узнаёт, подойдя к телу.
+  if (event.type === 'loot-container') {
+    return `${event.containerName || 'Добыча'} — можно обыскать (${itemCountLabel(event.itemCount ?? 0)}).`
+  }
+  if (event.type === 'loot-taken') {
+    const to = event.recipientId && event.recipientId !== event.actorId ? ` и передаёт ${actorName(event.recipientId)}` : ''
+    return `${actorName(event.actorId)} обыскивает «${event.containerName || 'добычу'}»${to}: ${itemCountLabel(event.itemCount ?? 0)}.`
+  }
+  // Подпись приходит с сервера готовой и намеренно неточной: за столом видно,
+  // что противник приложился к склянке, а не то, что именно он выпил.
+  if (event.type === 'npc-item') return `${actorName(event.actorId)} ${event.label || 'пускает в ход своё снаряжение'}.`
   if (event.type === 'move') return `${actorName(event.actorId)} перемещается на ${event.distanceFeet ?? 0} фт.`
   if (event.type === 'turn-end') return `${actorName(event.actorId)} завершает ход.`
   if (event.type === 'spell') return `${actorName(event.actorId)} применяет «${event.spellName ?? event.spellId ?? 'заклинание'}»${event.targetId ? ` к ${actorName(event.targetId)}` : ''}.`
@@ -61,7 +88,18 @@ export function battleEventText(state: GameState, event: NonNullable<GameState['
       : `${actorName(event.targetId)}: спасбросок ${event.ability?.toUpperCase() ?? ''} от «${event.spellName ?? event.spellId ?? 'заклинания'}» ${formula} против СЛ ${event.roll?.difficulty ?? '?'} — ${outcome}${automatic}${itemBonus}${damage}${hp}.`
   }
   if (event.type === 'spell-damage') return `${actorName(event.actorId)} применяет «${event.spellName ?? event.spellId ?? 'заклинание'}» к ${actorName(event.targetId)}: ${event.damage ?? 0} урона${hideTargetFacts ? '' : ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
-  if (event.type === 'healing') return `${actorName(event.actorId)} лечит ${actorName(event.targetId)}${event.spellId ? ` заклинанием «${event.spellName ?? event.spellId}»` : ''}: +${event.healing ?? 0} ОЗ${hideTargetFacts ? '' : ` · ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
+  if (event.type === 'healing') {
+    const source = event.spellId ? ` заклинанием «${event.spellName ?? event.spellId}»` : ''
+    // «Лечит себя» — для любого участника, а не только для противника: зелье
+    // пьют сами, и «Берсерк лечит Берсерка» читалось как две фигуры на доске.
+    const whom = event.targetId && event.targetId === event.actorId ? 'себя' : actorName(event.targetId)
+    // Числа у чужого лечения нет вовсе: сервер не присылает величину, пока
+    // здоровье цели не опознано точно, — ровная десятка выдала бы зелье на
+    // 2к4 + 2 не хуже его названия. За столом видно ровно то, что видно: враг
+    // приложился к склянке и раны затянулись.
+    if (event.healing == null) return `${actorName(event.actorId)} лечит ${whom}${source}: раны затягиваются.`
+    return `${actorName(event.actorId)} лечит ${whom}${source}: +${event.healing} ОЗ${hideTargetFacts ? '' : ` · ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
+  }
   if (event.type === 'area-attack') return `${actorName(event.actorId)} применяет «${event.itemName ?? 'областную атаку'}» в области радиусом ${event.area?.radiusFeet ?? '?'} фт.`
   if (event.type === 'equipment') return `${actorName(event.actorId)} экипирует «${event.itemName ?? 'оружие'}».`
   if (event.type === 'summon') return `${actorName(event.actorId)} призывает ${actorName(event.targetId)}.`

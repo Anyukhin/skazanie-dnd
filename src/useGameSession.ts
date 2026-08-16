@@ -15,7 +15,7 @@ import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -50,6 +50,9 @@ type TacticalCommand =
   | { command_type: 'FeedCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ExecuteCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
+  // Обыск: только ключи. Название, вес, цена и механика вещи лежат в самом
+  // контейнере — клиент их не называет и назвать не может.
+  | { command_type: 'LootContainer'; actor_id: string; container_id: string; lines: Array<{ item_instance_id: string; quantity: number }>; recipient_id?: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -86,6 +89,12 @@ type TacticalCommandResult = {
   check?: { check_id?: string; label: string; modifier: number; difficulty: number; sides: 20; ability?: string | null; skill?: string | null; advantage?: boolean; disadvantage?: boolean } | null
   error?: string
   code?: string
+  /**
+   * Свежий список добычи в **отказе**: сервер прикладывает его к конфликту
+   * версии и к кодам `LOOT_*`, означающим «содержимое под тобой изменилось»
+   * (`server/index.mjs`). Приходит только вместе с `error`.
+   */
+  loot_containers?: LootContainersProjection
 }
 
 export type CommandOutcome =
@@ -1036,7 +1045,16 @@ export function useGameSession() {
         }),
       }, 25_000, 'Сервер слишком долго обрабатывает действие. Не повторяйте его сразу: результат мог сохраниться и появиться после синхронизации.')
       const result = await response.json().catch(() => null) as TacticalCommandResult | null
-      if (!response.ok) throw await responseCommandError(response, result, `Сервер отклонил команду (${response.status})`)
+      if (!response.ok) {
+        // Гонка за один кинжал: первый его забрал, второму сервер отказал и
+        // приложил к отказу свежий список добычи. Без этой ветки карточка
+        // проигравшего показывала бы уже взятую вещь до следующего опроса
+        // комнаты — и он бил бы в ту же стену. Проекция серверная, браузер её
+        // не пересобирает: подставляется ровно то, что пришло.
+        const staleLoot = result?.loot_containers
+        if (staleLoot) mutate((state) => ({ ...state, loot_containers: staleLoot }))
+        throw await responseCommandError(response, result, `Сервер отклонил команду (${response.status})`)
+      }
 
       // Карточка проверки вместо результата: сервер ничего не закоммитил и
       // ждёт второй фазы с собственным `roll_id`. Кубик остаётся за игроком.
@@ -1292,6 +1310,25 @@ export function useGameSession() {
       return executeTacticalCommand({ command_type: 'FeedCaptive', actor_id: actorId, captive_id: captiveId }, 'Накормить пленного')
     }
     return executeTacticalCommand({ command_type: 'ExecuteCaptive', actor_id: actorId, captive_id: captiveId }, 'Убить пленного')
+  }, [executeTacticalCommand])
+
+  /* Обыск контейнера. Клиент называет только контейнер, ключи экземпляров и
+     количества: имя, вес, цена и механика вещи лежат в самом контейнере, и
+     читает их сервер. Набор уезжает одной командой — «всё или ничего» это не
+     про интерфейс, а про правило: частично взятого набора не бывает. */
+  const lootContainer = useCallback((
+    actorId: string,
+    containerId: string,
+    lines: Array<{ item_instance_id: string; quantity: number }>,
+    recipientId?: string,
+  ) => {
+    return executeTacticalCommand({
+      command_type: 'LootContainer',
+      actor_id: actorId,
+      container_id: containerId,
+      lines,
+      ...(recipientId && recipientId !== actorId ? { recipient_id: recipientId } : {}),
+    }, 'Обыскать добычу')
   }, [executeTacticalCommand])
 
   /* Переход между этажами — та же лёгкая команда, что и остальные действия у
@@ -1689,6 +1726,7 @@ export function useGameSession() {
     operateDoor,
     operateSceneObject,
     captiveAction,
+    lootContainer,
     resolveGuardEncounter,
     proposeParley,
     settleParley,

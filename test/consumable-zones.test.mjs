@@ -242,6 +242,14 @@ test('яд добавляет 1к4 к первому попаданию, тра�
   const poisonHit = strike.events.filter((event) => event.event_type === 'DamageApplied').find((event) => event.payload.damage_type === 'poison')
   assert.ok(poisonHit, 'яд обязан прийти отдельным уроном своего типа')
   assert.equal(poisonHit.payload.applied_amount, 3)
+  // Своя доза называет свой клинок. Подпись броска у противника обезличена
+  // (`item_damage:weapon-coated`, `test/npc-equipment.test.mjs`), потому что
+  // ключ вещи там — опись чужого кармана; функция добавки одна на обе стороны,
+  // и герою она обязана оставить указание, какой именно клинок сработал.
+  assert.equal(
+    strike.rolls.find((roll) => String(roll.purpose).startsWith('item_damage:')).purpose,
+    'item_damage:weapon-coated:sword',
+  )
   assert.ok(strike.events.some((event) => event.event_type === 'ConditionRemoved' && event.payload.condition === 'weapon-coated:sword'))
 
   // Доза израсходована: второй удар идёт без яда.

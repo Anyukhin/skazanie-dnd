@@ -28,12 +28,13 @@ import {
 } from './app-shared'
 import type { BoardCombatant } from './app-shared'
 import { CharacterEditor, InventoryView } from './InventoryViews'
+import { LootCellMarker, LootPanel, PostCombatLootSummary, useVanishedLoot } from './LootPanel'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { useGameSession, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
+import { TOKEN_CONDITION_PRIORITY, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
@@ -76,15 +77,6 @@ import {
 export type EnemyVisualKind = 'construct' | 'undead' | 'beast' | 'mystic' | 'raider'
 
 export type PresentedCondition = ReturnType<typeof conditionPresentation>
-
-export const TOKEN_CONDITION_GLYPHS: Record<string, string> = {
-  paralyzed: '✦',
-  restrained: '⌁',
-  prone: '▰',
-  frightened: '!',
-}
-
-export const TOKEN_CONDITION_PRIORITY = ['paralyzed', 'restrained', 'prone', 'frightened']
 
 export const MAP_FEEDBACK_TTL_MS = 4200
 export const BATTLE_ROLL_TTL_MS = 4600
@@ -400,7 +392,7 @@ export function TokenConditionIcons({ conditions }: { conditions: PresentedCondi
         aria-label={condition.label}
         title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}
       >
-        {TOKEN_CONDITION_GLYPHS[condition.id] ?? condition.label.slice(0, 1)}
+        {tokenConditionGlyph(condition.id, condition.label)}
       </i>
     ))}
   </span>
@@ -630,7 +622,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onResolveGuardEncounter, onProposeParley, onSettleParley, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -659,6 +651,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onFreeAction: (text: string) => Promise<CommandOutcome>
   onNpcAction: (text: string, npcId: string) => Promise<CommandOutcome>
   onCaptiveAction: (captiveId: string, action: CaptiveAction, skill?: CaptiveInterrogationSkill) => Promise<CommandOutcome>
+  onLootContainer: (containerId: string, lines: Array<{ item_instance_id: string; quantity: number }>, recipientId?: string) => Promise<CommandOutcome>
   onResolveGuardEncounter: (resolution: GuardResolution, skill?: 'stealth' | 'athletics') => Promise<CommandOutcome>
   onProposeParley: (skill: 'persuasion' | 'intimidation') => Promise<CommandOutcome>
   onSettleParley: (outcome: ParleyOutcome) => Promise<CommandOutcome>
@@ -681,6 +674,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // Как отряд собирается уходить от стражи. Выбор влияет только на навык
   // проверки: СЛ и состав проверяющих остаются серверными.
   const [guardEscapeSkill, setGuardEscapeSkill] = useState<'stealth' | 'athletics'>('stealth')
+  // Какая добыча сейчас в фокусе. Связывает метку на доске, карточку панели и
+  // строку послебоевой сводки: они показывают один и тот же контейнер, и
+  // наведение на любую из трёх подсвечивает остальные.
+  const [focusedLootId, setFocusedLootId] = useState<string | null>(null)
+  // Какая победа уже отсмотрена. Ключ — идентификатор записи «бой завершён»,
+  // поэтому следующая победа откроет сводку снова, а перерисовка — нет.
+  const [dismissedVictoryId, setDismissedVictoryId] = useState<string | null>(null)
   const [npcDialogueText, setNpcDialogueText] = useState('')
   const [selectedGiftItemId, setSelectedGiftItemId] = useState('')
   const [giftQuantity, setGiftQuantity] = useState(1)
@@ -879,6 +879,35 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     [heldCaptives],
   )
   const captiveActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
+  // Добыча в сцене. Список приходит серверной веткой проекции: содержимое лежит
+  // только у того контейнера, до которого дотягивается герой игрока
+  // (`can_inspect`), расстояние и цена обыска в экономике хода тоже решены
+  // сервером — здесь они не пересчитываются.
+  const sceneLoot = useMemo(() => state.loot_containers?.containers ?? [], [state.loot_containers])
+  const lootReachFeet = state.loot_containers?.reach_feet ?? 5
+  const lootActionCost = state.loot_containers?.action_cost ?? null
+  const lootByCell = useMemo(
+    () => new Map(sceneLoot.filter((container) => container.x != null && container.y != null)
+      .map((container) => [`${container.x},${container.y}`, container])),
+    [sceneLoot],
+  )
+  // Опустевшие контейнеры в проекцию не приезжают вовсе, поэтому «пропал из
+  // списка» — это ответ авторитета. Призрак живёт несколько секунд, чтобы метка
+  // на доске погасла, а проигравший гонку прочитал, кто успел раньше.
+  const vanishedLoot = useVanishedLoot(sceneLoot, state.battleLog, actorNameById)
+  const vanishedLootByCell = useMemo(
+    () => new Map(vanishedLoot.filter((ghost) => ghost.x != null && ghost.y != null)
+      .map((ghost) => [`${ghost.x},${ghost.y}`, ghost])),
+    [vanishedLoot],
+  )
+  /* Победа закрывает бой записью летописи, и именно она открывает сводку: пока
+     последняя запись «бой завершён» не сменилась, повторных окон не будет. */
+  const victoryEntry = useMemo(() => {
+    if (combatActive) return null
+    const closing = [...(state.battleLog ?? [])].reverse().find((event) => event.type === 'combat-end')
+    return closing?.reason === 'enemies_defeated' ? closing : null
+  }, [combatActive, state.battleLog])
+  const showLootAftermath = Boolean(victoryEntry && victoryEntry.id !== dismissedVictoryId && sceneLoot.length > 0)
   // Встреча со стражей приезжает готовой карточкой: подписи исходов, размер
   // виры и СЛ побега считает сервер (`server/law-and-order.mjs`). Своей таблицы
   // ступеней здесь нет и быть не может — точной ступени игрок не видит вовсе.
@@ -1516,6 +1545,19 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       specialBlockReason: targetSpecialBlock,
     }) : null
     const cellKey = cell.x + ',' + cell.y
+    /* Добыча в этой клетке. Метка живёт обычным узлом клетки — там же, где
+       фишки и след, — а не в холсте `board-render.ts`: у неё кнопка, подсказка
+       и фокус клавиатуры, и всё это на холсте пришлось бы заводить заново. */
+    const lootHere = lootByCell.get(cellKey)
+    const lootGhostHere = vanishedLootByCell.get(cellKey)
+    /* Павший рисуется затемнённой фишкой ровно столько, сколько с него есть что
+       снять: пока цел контейнер и ещё несколько секунд, пока метка гаснет.
+       Дальше тело уходит вместе с меткой — иначе поле боя навсегда зарастало бы
+       фишками, по которым уже нечего делать. Живой в клетке отменяет фишку
+       вовсе: два токена на одной клетке читались бы как двое. */
+    const fallenEnemy = (lootHere || lootGhostHere) && !player && !enemy && !summon && !sceneNpc
+      ? state.enemies?.find((item) => item.x === cell.x && item.y === cell.y && !item.alive)
+      : undefined
     const sceneObject = sceneObjectByCell.get(cellKey)
     /* Тултип лестницы (`docs/multilevel-map-plan.md`, 7.4). Кнопка перехода
        появляется только у подошедшего вплотную персонажа, а «куда ведёт эта
@@ -1581,12 +1623,21 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '',
       sceneObject ? 'scene-object-target' : '',
       sceneObject?.id === selectedSceneObjectId ? 'scene-object-selected' : '',
+      // Подсветка добычи закрыта туманом наравне с самой меткой (`hasLootLayer`)
+      // и остальными украшениями клетки: `.board-cell.loot-here` рисуется поверх
+      // тумана, и без этой проверки нераскрытый угол зала светился бы рамкой
+      // ровно там, где лежит невзятое тело.
+      cell.revealed && lootHere ? 'loot-here' : '',
+      cell.revealed && lootHere && focusedLootId === lootHere.id ? 'loot-focused' : '',
       occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : sceneNpc ? 'occupied-by-neutral' : 'occupied-by-enemy' : '',
     ].filter(Boolean)
     const cellTitle = opportunityRisk && !canAimHere
       ? 'Опасная клетка: выход из ближнего боя вызовет атаку по возможности'
       : moveUnavailable ? moveReason ?? undefined : undefined
-    if (!stateClasses.length && !cellFeedback.length && !cellIsInteractive) {
+    // Метка добычи и павший — такой же повод завести узел клетки, как фишка:
+    // без этой ветки тело в пустом углу зала не рисовалось бы вовсе.
+    const hasLootLayer = Boolean(cell.revealed && (lootHere || lootGhostHere))
+    if (!stateClasses.length && !cellFeedback.length && !cellIsInteractive && !hasLootLayer) {
       if (cellTitle || cellLabel) boardHints.set(cellKey, { title: cellTitle, ariaLabel: cellLabel })
       continue
     }
@@ -1649,6 +1700,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             наклоне точно совпадает с сеткой. Фигурка стоит стоймя и из-за этого
             перспективно смещается — позиционную правду несёт именно этот след. */}
         {occupied && cell.revealed && <span className="cell-footprint" aria-hidden="true" />}
+        {hasLootLayer && <LootCellMarker
+          container={lootHere}
+          ghost={lootGhostHere}
+          fallen={fallenEnemy ? { name: fallenEnemy.name, image: fallenEnemy.image } : undefined}
+          selected={Boolean(lootHere && focusedLootId === lootHere.id)}
+          onSelect={(containerId) => setFocusedLootId((current) => current === containerId ? null : containerId)}
+        />}
         {/* Точное здоровье остаётся полоской с числами только после раскрытия.
             До раскрытия используется предельно скупое кольцо качественной
             ступени: без цифр и текста, чтобы не вернуть перегрузку фишек,
@@ -2286,6 +2344,27 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             >{skill === 'stealth' ? 'тихо (Скрытность)' : 'напролом (Атлетика)'}</button>)}
           </div>
         </section>}
+        {showLootAftermath && victoryEntry && <PostCombatLootSummary
+          containers={sceneLoot}
+          onClose={() => setDismissedVictoryId(victoryEntry.id)}
+          onFocus={setFocusedLootId}
+        />}
+        <LootPanel
+          containers={sceneLoot}
+          ghosts={vanishedLoot}
+          reachFeet={lootReachFeet}
+          actionCost={lootActionCost}
+          players={players}
+          actorId={typingActorId}
+          enemies={state.enemies ?? []}
+          canAct={canAct}
+          busy={tacticalBusy}
+          narrating={narrating}
+          combatActive={combatActive}
+          focusedId={focusedLootId}
+          onFocus={setFocusedLootId}
+          onLoot={onLootContainer}
+        />
         {heldCaptives.length > 0 && <section className="captive-panel" aria-label="Пленники отряда">
           <header><UserLock size={15} /><span><small>ПЛЕННИКИ · {heldCaptives.length}</small><strong>Судьба решается вами</strong></span></header>
           {heldCaptives.map((captive) => {

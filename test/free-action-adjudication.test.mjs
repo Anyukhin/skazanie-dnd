@@ -15,6 +15,7 @@ import {
   stakesFor,
   verifyMeans,
 } from '../server/free-action-adjudication.mjs'
+import { assembleEncounter } from '../server/encounter-assembler.mjs'
 import { normalizeCampaignState } from '../server/rules-engine.mjs'
 
 test('ведущий не требует броска, когда на кону ничего нет', () => {
@@ -127,6 +128,58 @@ test('обыск тела без server-owned contents блокируется д
   assert.equal(result.status, 'clarification')
   assert.equal(result.server_owned_contents, false)
   assert.match(result.narration, /не буду выдумывать/u)
+})
+
+// Отказ обязан говорить правду о конкретном теле. С появлением инвентарей
+// гуманоидов у трупа есть авторитетное содержимое, и ответ «содержимого нет»
+// стал бы единственным местом, где состояние и текст ведущего расходятся.
+test('обыск тела с инвентарём не отрицает содержимого, но и не выдаёт его', () => {
+  const proposal = assembleEncounter({
+    scene: { cells: Array.from({ length: 20 }, (_, index) => ({ x: index % 10, y: Math.floor(index / 10), type: 'floor', revealed: true })) },
+    party: [
+      { id: 'hero', level: 3, x: 0, y: 0 },
+      { id: 'ally', level: 3, x: 1, y: 0 },
+    ],
+    difficulty: 'hard',
+    theme: 'law',
+    seed: 'corpse-search:law',
+  })
+  const armed = proposal.enemies.find((enemy) => enemy.loadout.items.length > 0)
+  assert.ok(armed, 'в теме закона обязан быть вооружённый противник')
+
+  const state = normalizeCampaignState({
+    players: [{ id: 'hero', character: 'Ада', inventory: [] }],
+    enemies: [{ ...armed, id: 'captain', name: 'Капитан стражи', hp: 0, maxHp: 30, alive: false }],
+  })
+  assert.ok(state.enemies[0].loadout.items.length > 0, 'инвентарь обязан пережить нормализацию')
+
+  const text = 'Обыскиваю тело капитана стражи'
+  const reading = bindFreeActionReadingToState(state, 'hero', text, interpretFreeAction(text))
+  const result = resolveCorpseSearch(state, text, reading)
+  assert.equal(result.status, 'clarification')
+  assert.equal(result.server_owned_contents, true, 'содержимое у тела есть, и отрицать его нельзя')
+  assert.equal(result.corpse_id, 'captain')
+  assert.doesNotMatch(result.narration, /нет заданного сервером содержимого/u)
+  assert.match(result.narration, /есть снаряжение/u)
+  // Находки при этом не появляется: команды извлечения ещё нет.
+  assert.equal(result.command, undefined)
+  assert.doesNotMatch(result.narration, /получа|находит|снимает/u)
+})
+
+// Пустой карман тоже считается содержимым: медяки на теле — это добыча.
+test('пустой инвентарь с монетами всё равно считается содержимым тела', () => {
+  const state = normalizeCampaignState({
+    players: [{ id: 'hero', character: 'Ада', inventory: [] }],
+    enemies: [{
+      id: 'thug', name: 'Головорез', hp: 0, maxHp: 11, alive: false,
+      loadout: { template_id: 'srd_5_2_1:bandit', items: [], purse_cp: 54 },
+    }],
+  })
+  const text = 'Проверяю карманы тела головореза'
+  const reading = bindFreeActionReadingToState(state, 'hero', text, interpretFreeAction(text))
+  const result = resolveCorpseSearch(state, text, reading)
+  assert.equal(result.server_owned_contents, true)
+  assert.equal(result.corpse_id, 'thug')
 })
 
 test('невозможное без средства ведёт к встречному предложению, а не к броску', () => {

@@ -147,6 +147,16 @@ test('кислота использует серверную СЛ 8 + Ловко
   assert.equal(after.mechanics.combat.action_economy.hero.attacks_used, 1)
 })
 
+test('назначение броска у склянки героя называет каталожную запись', () => {
+  // Подпись броска стала параметром ради противника: его склянка называет
+  // тактику, чтобы каталожный ключ не уехал столу через `purpose`
+  // (`test/npc-equipment.test.mjs`). У героя закрывать нечего — это его
+  // собственная вещь, — и умолчание обязано остаться прежним.
+  const failed = throwFlask(campaignState({ inventory: [item(ACID)] }), 'acid', [10, 4, 5])
+  assert.equal(payloadOf(failed, 'SavingThrowResolved').purpose, `item_thrown_save:${ACID}:dex`)
+  assert.equal(payloadOf(failed, 'DieRolled').purpose, `item_thrown_damage:${ACID}`)
+})
+
 test('успешный спасбросок отменяет урон, но расходует склянку и атаку', () => {
   const state = campaignState({ inventory: [item(ACID)] })
   const saved = throwFlask(state, 'acid', [15], 'acid-saved')

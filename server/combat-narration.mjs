@@ -187,6 +187,17 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(targetIsEnemy
         ? `${actor} атакует ${target}${reason}: ${outcome}.`
         : `${actor} атакует ${target}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
+    } else if (event.event_type === 'NpcItemUsed') {
+      // Подпись приходит готовой из закрытой таблицы тактик
+      // (`NPC_ITEM_TACTICS`, `server/npc-equipment.mjs`) и намеренно
+      // неточная: за столом видно, что гоблин приложился к склянке, а не то,
+      // что это было зелье лечения на 2к4 + 2.
+      meaningful.push(`${actor} ${String(payload.label || 'пускает в ход своё снаряжение')}.`)
+    } else if (event.event_type === 'NpcEquipmentSpent' && payload.reason === 'ammunition' && Number(payload.shots_after) === 0) {
+      // Единственное, что стол узнаёт о чужом колчане, — что он опустел, и
+      // узнаёт по той же причине, по которой видит промах: это случилось на
+      // глазах. Остаток выстрелов не называется никогда.
+      meaningful.push(`${actor} тянется за следующим снарядом и находит колчан пустым.`)
     } else if (event.event_type === 'ItemEffectIneffective') {
       meaningful.push(`${payload.item_name || 'Склянка'} разбивается о ${target}, но вреда не причиняет.`)
     } else if (event.event_type === 'MonsterAbilityRecharged') {
@@ -354,6 +365,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
   'ItemEffectIneffective', 'MonsterAbilityRecharged',
+  'NpcEquipmentSpent', 'NpcItemUsed',
   'KnockoutEnded', 'MapLevelChanged', 'ParleyProposed', 'ParleyRejected', 'ParleySettled',
   'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',

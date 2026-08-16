@@ -13,6 +13,15 @@ export const ENCOUNTER_MAGIC_LOOT_POLICY_ID = 'encounter-magic-loot-v1'
 const PREFIX = 'srd_5_2_1:'
 const id = (slug) => `${PREFIX}${slug}`
 
+/**
+ * **Порядок выдачи**, а не классификация вещи. Массивы упорядочены осознанно:
+ * `chooseForTier` берёт первый подходящий по цене, а `rotated` вращает список
+ * от идентификатора встречи, поэтому перестановка элементов меняет награду.
+ *
+ * Чем предмет является — записано в каталоге (`themes` в `item-catalog.mjs`).
+ * Две таблицы держит вместе сторож в `test/enemy-loadouts.test.mjs`: каждый
+ * предмет отсюда обязан нести соответствующую тему там.
+ */
 export const LOOT_BY_THEME = Object.freeze({
   goblinoids: Object.freeze(['dagger', 'shortbow', 'arrows-20', 'javelin', 'shield', 'leather-armor', 'spear', 'torch', 'rations-one-day', 'chain-shirt'].map(id)),
   undead: Object.freeze(['mace', 'ring-mail', 'dagger', 'shortbow', 'arrows-20', 'shield', 'shortsword', 'torch', 'rope-hempen-50-feet'].map(id)),
