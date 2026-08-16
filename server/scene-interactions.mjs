@@ -18,7 +18,13 @@ export const SCENE_INTERACTION_POLICY_ID = 'skazanie:scene-interactions-v1'
  * или под ковром была бы выдумкой сервера.
  */
 const CATALOG = Object.freeze([
-  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'crate', 'sarcophagus', 'urn', 'crypt_niche', 'reliquary', 'cupboard', 'wardrobe', 'basket', 'keg']), verbs: Object.freeze(['inspect', 'open', 'take']) }),
+  // `lockpick` объявлен у контейнера безусловно, а не только у запертого, и это
+  // осознанно: запертость выводится из сида (`sceneInteractionDefinition`), и
+  // объяви её кнопка — игрок читал бы наличие замка с панели, не притронувшись
+  // к сундуку. СЛ замка не объявляется тем более. Поэтому «Взломать» стоит у
+  // всякого сундука, а ответ «замка на нём нет» приходит серверным отказом и
+  // хода не стоит.
+  Object.freeze({ kind: 'container', aliases: Object.freeze(['chest', 'barrel', 'crate', 'sarcophagus', 'urn', 'crypt_niche', 'reliquary', 'cupboard', 'wardrobe', 'basket', 'keg']), verbs: Object.freeze(['inspect', 'open', 'lockpick', 'take']) }),
   Object.freeze({ kind: 'relic', aliases: Object.freeze(['altar', 'rune', 'statue', 'roadside_shrine', 'brazier']), verbs: Object.freeze(['inspect', 'use']) }),
   Object.freeze({ kind: 'campfire', aliases: Object.freeze(['campfire']), verbs: Object.freeze(['inspect', 'use']) }),
   Object.freeze({ kind: 'lore', aliases: Object.freeze(['bookshelf', 'table', 'fallen_log', 'tree_stump', 'boulder', 'rubble_heap', 'stalagmite', 'milestone']), verbs: Object.freeze(['inspect']) }),
@@ -365,23 +371,38 @@ export function sceneObjectLoot({ mapSeed = '', prop } = {}) {
 export function sceneObjectOperationFromText(text) {
   const normalized = clean(text, 1_000).toLowerCase()
   if (!normalized) return null
-  const approach = /(?:разбить|сломать|взломать|выломать|ударить|топор)/u.test(normalized) ? 'force' : 'hand'
   // Молитва стоит первой ветвью: «помолиться у алтаря» содержит «алтарь», но не
   // содержит ни одного глагола обычных операций, а «вознести молитву и осмотреть
   // изваяние» — это всё-таки молитва. Своего слова у неё нет ни у одной другой
   // ветки, поэтому первенство не отнимает у них ничего.
+  //
+  // Отмычка стоит сразу за молитвой и обязана стоять **до** силового
+  // «взломать»: слово в русском одно на два разных действия, и без этого
+  // порядка «вскрыть замок отмычкой» уезжало бы движку как «разбить сундук
+  // плечом». Своих слов у отмычки достаточно — инструмент, замок или
+  // ковыряние, — и ни одно из них другим веткам не принадлежит.
+  // Классы букв заданы явно кириллицей: `\w` в JavaScript — это латиница,
+  // цифры и подчёркивание, поэтому «ковыр\w*» не покрывает ни одного русского
+  // окончания и молча не срабатывает.
+  const lockpick = /(?:отмычк|(?:вскры|взлома|слома)[а-яё]*\s+замок|ковыр[а-яё]*\s+(?:в\s+)?замк|подобра[а-яё]*\s+ключ)/u.test(normalized)
   const intent = /(?:помолит|помолюсь|молит[ьв]|молюсь|вознес.{0,3} молитв|преклонить колен)/u.test(normalized)
     ? 'pray'
-    : /(?:взять|забрать|поднять|обыскать)/u.test(normalized)
-      ? 'take'
-      : /(?:использовать|активировать|отдохнуть|привал)/u.test(normalized)
-        ? 'use'
-        : /(?:открыть|разбить|сломать|взломать|выломать)/u.test(normalized)
-          ? 'open'
-          : /(?:осмотреть|изучить|прочитать|проверить|обыскать)/u.test(normalized)
-            ? 'inspect'
-            : null
+    : lockpick
+      ? 'lockpick'
+      : /(?:взять|забрать|поднять|обыскать)/u.test(normalized)
+        ? 'take'
+        : /(?:использовать|активировать|отдохнуть|привал)/u.test(normalized)
+          ? 'use'
+          : /(?:открыть|разбить|сломать|взломать|выломать)/u.test(normalized)
+            ? 'open'
+            : /(?:осмотреть|изучить|прочитать|проверить|обыскать)/u.test(normalized)
+              ? 'inspect'
+              : null
   if (!intent) return null
+  // Подход силовой ровно там, где ломают. У отмычки он «рукой» независимо от
+  // слова «взломать» в реплике: инструмент и плечо — разные способы, и
+  // серверная ветка у них тоже разная.
+  const approach = !lockpick && /(?:разбить|сломать|взломать|выломать|ударить|топор)/u.test(normalized) ? 'force' : 'hand'
   const aliases = Object.entries(ASSET_ALIASES_RU)
     .filter(([, words]) => words.some((word) => normalized.includes(word)))
     .map(([alias]) => alias)
@@ -414,6 +435,10 @@ export function nearestSceneObjectCommand({ props = [], actorPosition, text } = 
     // сундука уезжало бы движку командой, которую он же и отвергнет: слово
     // молитвы своё, а ближайший поддержанный пропс — какой угодно.
     .filter((prop) => operation.intent !== 'pray' || isSceneShrineAsset(prop?.assetId))
+    // Замок бывает только у контейнера. Без этого фильтра «вскрыть замок»
+    // уезжало бы движку с ближайшей скамьёй в поле `prop_id`: слово отмычки
+    // своё, а ближайший поддержанный пропс — какой угодно.
+    .filter((prop) => operation.intent !== 'lockpick' || sceneInteractionCatalogEntry(prop?.assetId)?.kind === 'container')
     .filter((prop) => {
       if (!operation.aliases.length) return true
       const alias = assetAlias(prop.assetId)
@@ -434,8 +459,20 @@ export function sceneInteractionNarration(events = []) {
   const batch = Array.isArray(events) ? events : []
   const relevant = batch.filter((event) => String(event?.event_type ?? '').startsWith('SceneObject')
     || event?.event_type === 'RestCompleted'
+    || event?.event_type === 'LockpickNoticed'
     || (event?.event_type === 'DamageApplied' && event?.payload?.reason === 'scene-object-trap'))
   if (!relevant.length) return ''
+  // Шум у замка называется первым: это единственное последствие взлома, о
+  // котором игрок обязан узнать сразу, — на возню обернулись, и дальше сцена
+  // пойдёт иначе. СЛ замка строка не выдаёт ни в одном исходе.
+  const noticed = relevant.find((event) => event.event_type === 'LockpickNoticed')
+  if (noticed) {
+    return noticed.payload?.reason === 'trace'
+      ? 'Замок вскрыт тихо, но сорванная дужка бросается в глаза: на неё уже смотрят.'
+      : noticed.payload?.severity === 'major'
+        ? 'Отмычка срывается с громким лязгом — в сцене оборачиваются на звук.'
+        : 'Замок не поддаётся и предательски звякает: возню у него слышали.'
+  }
   const knowledge = relevant.find((event) => event.event_type === 'SceneObjectKnowledgeRevealed')
   if (knowledge?.payload?.text) return clean(knowledge.payload.text, 500)
   const loot = relevant.find((event) => event.event_type === 'SceneObjectLootGranted')
@@ -457,8 +494,14 @@ export function sceneInteractionNarration(events = []) {
   const rest = relevant.find((event) => event.event_type === 'RestCompleted' && event.payload?.source_prop_id)
   if (rest) return 'У костра завершён короткий привал.'
   const state = [...relevant].reverse().find((event) => event.event_type === 'SceneObjectStateChanged')
-  if (state?.payload?.success === false) return 'Попытка не удалась; состояние объекта не изменилось.'
-  if (state?.payload?.state === 'open') return 'Объект открыт.'
+  if (state?.payload?.success === false) {
+    return state.payload.intent === 'lockpick'
+      ? 'Замок не поддался отмычке.'
+      : 'Попытка не удалась; состояние объекта не изменилось.'
+  }
+  if (state?.payload?.state === 'open') {
+    return state.payload.intent === 'lockpick' ? 'Замок поддался отмычке, крышка откинута.' : 'Объект открыт.'
+  }
   if (state?.payload?.state === 'taken') return 'Содержимое объекта забрано.'
   if (state?.payload?.state === 'used') return 'Эффект объекта использован.'
   const inspected = relevant.find((event) => event.event_type === 'SceneObjectInspected')

@@ -169,6 +169,14 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(Number(payload.to_level) > Number(payload.from_level)
         ? `Партия поднимается по лестнице — ${label}.`
         : `Партия спускается по лестнице — ${label}.`)
+    } else if (event.event_type === 'DoorLockpicked') {
+      // Взломанная дверь называется взломанной, а не выломанной: полотно цело,
+      // сорван замок. Летопись стола обязана различать эти два исхода — за
+      // ними по-разному судит мир (`break_in` против `destruction`,
+      // `server/world-deeds.mjs`).
+      meaningful.push(payload.success === true
+        ? `${actor} вскрывает замок отмычкой: дверь взломана и открыта.`
+        : `${actor} возится с замком двери, но тот не поддаётся.`)
     } else if (event.event_type === 'AttackResolved') {
       // Особый приём объявляется отдельной строкой: иначе он тонет в обычном
       // «атакует — попадание», и стол не замечает, что существо потратило то,
@@ -467,6 +475,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'ItemEffectIneffective', 'LegendaryActionUsed', 'LegendaryActionsReset', 'LegendaryResistanceUsed',
   'MonsterAbilityRecharged', 'NpcBlessingGranted',
   'NpcEquipmentSpent', 'NpcItemUsed',
+  'DoorLockpicked', 'LockpickNoticed',
   'KnockoutEnded', 'MapLevelChanged', 'ParleyProposed', 'ParleyRejected', 'ParleySettled',
   'ReadiedActionExpired', 'RestCompleted', 'ShrinePrayerResolved', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',

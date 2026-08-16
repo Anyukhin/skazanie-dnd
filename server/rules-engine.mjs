@@ -402,8 +402,17 @@ import {
   isSceneShrineAsset,
   sceneInteractionDefinition,
   sceneObjectDistance,
+  sceneObjectLabelFor,
   sceneObjectLoot,
 } from './scene-interactions.mjs'
+import {
+  LOCKPICKING_POLICY_ID,
+  THIEVES_TOOLS_REQUIRED_CODE,
+  THIEVES_TOOLS_REQUIRED_MESSAGE,
+  hasThievesTools,
+  lockpickNoiseFor,
+  lockpickTraceNoticedFor,
+} from './lockpicking.mjs'
 import {
   BLESSINGS_POLICY_ID,
   BLESSING_ATTACK_BONUS,
@@ -1418,6 +1427,11 @@ function normalizeSceneInteractions(input) {
       loot_claimed: value.loot_claimed === true,
       loot_revealed: value.loot_revealed === true,
       trap_detected: value.trap_detected === true,
+      // След взлома. Живёт в памяти сцены рядом с остальными следами
+      // вмешательства и уезжает вместе с ней в стэш этажа: сорванный замок —
+      // свойство места, а не мира, и при возврате на этаж он на месте.
+      lockpicked: value.lockpicked === true,
+      lockpicked_by: value.lockpicked_by == null ? null : String(value.lockpicked_by).slice(0, 120),
       knowledge_ids: uniqueStrings(value.knowledge_ids).slice(0, 24),
       last_actor_id: value.last_actor_id == null ? null : String(value.last_actor_id).slice(0, 120),
     }]]
@@ -2255,6 +2269,8 @@ function sceneObjectState(state, prop, definition) {
     loot_claimed: projectedState === 'taken',
     loot_revealed: projectedState === 'open' || projectedState === 'taken',
     trap_detected: false,
+    lockpicked: false,
+    lockpicked_by: null,
     knowledge_ids: [],
     last_actor_id: null,
   }
@@ -2275,6 +2291,63 @@ function sceneObjectState(state, prop, definition) {
   }
 }
 
+/**
+ * Ключ следа взлома у двери. Двери — не пропсы, своего реестра у них нет, и
+ * заводить второй ради одного флага значило бы держать две памяти сцены вместо
+ * одной: `mechanics.scene_interactions` уже помнит, что в этой сцене трогали, и
+ * уже уезжает в стэш этажа целиком.
+ */
+function doorTraceKey(doorId) {
+  return `door:${String(doorId ?? '').slice(0, 110)}`
+}
+
+/**
+ * Модификатор проверки замка. Владение инструментом даёт бонус мастерства —
+ * ровно один раз: у вора он часто есть и от «Ловкости рук», а два бонуса
+ * мастерства в одной проверке редакция не складывает. Берётся больший, поэтому
+ * компетентность (двойной бонус за навык) не пропадает.
+ *
+ * Проверять само владение здесь нечем и незачем: до этой функции доходит
+ * только тот, кого пустил гейт вызывающей ветки.
+ */
+function lockpickCheckModifier(actor) {
+  const proficiency = Math.max(0, safeInteger(actor?.proficiency, 0))
+  return abilityModifier(actor?.abilities?.dex)
+    + Math.max(skillProficiencyBonus(actor, 'sleight_of_hand'), proficiency)
+}
+
+/**
+ * Последствие взлома для мира: услышали возню или увидели сорванный замок.
+ *
+ * Одна функция на дверь и на контейнер — расходиться этим двум ответам нельзя:
+ * шум у замка не зависит от того, что за этим замком. Свидетели считаются
+ * **здесь**, в момент команды, и уезжают в payload: к моменту редьюсера сцена
+ * уже может разойтись, а слышали замок те, кто стоял рядом тогда.
+ *
+ * Пустая сцена молчит: сорванный замок в безлюдном подземелье никого не обидел
+ * — тот же порог, что у выломанной двери и у взятого на людях добра
+ * (`recognizeDeed`, `server/world-deeds.mjs`).
+ */
+function lockpickNoticeEvents(state, command, { targetKind, targetId, targetLabel, check }) {
+  const witnessIds = presentSceneNpcs(state).map((npc) => String(npc.id)).sort()
+  if (!witnessIds.length) return []
+  const notice = check?.success === true
+    ? lockpickTraceNoticedFor(state, { targetId, witnessIds })
+    : lockpickNoiseFor({ success: false, natural: safeInteger(check?.kept ?? check?.die, 0) })
+  if (!notice) return []
+  return [eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'LockpickNoticed', {
+    hero_id: command.actor_id,
+    target_kind: targetKind,
+    target_id: String(targetId ?? '').slice(0, 160),
+    target_label: String(targetLabel ?? '').slice(0, 160),
+    reason: notice.reason,
+    severity: notice.severity,
+    loud: notice.loud === true,
+    witness_ids: witnessIds,
+    policy_id: LOCKPICKING_POLICY_ID,
+  }, [])]
+}
+
 function updateSceneObjectInteraction(state, propId, updater) {
   const id = String(propId ?? '').slice(0, 120)
   if (!id) return null
@@ -2290,6 +2363,8 @@ function updateSceneObjectInteraction(state, propId, updater) {
     loot_claimed: false,
     loot_revealed: false,
     trap_detected: false,
+    lockpicked: false,
+    lockpicked_by: null,
     knowledge_ids: [],
     last_actor_id: null,
   }
@@ -3422,6 +3497,11 @@ function normalizeCommand(input, state) {
     command.prop_id = String(command.prop_id ?? command.propId ?? '').slice(0, 120)
     command.intent = String(command.intent ?? 'inspect')
     command.approach = command.approach === 'force' ? 'force' : 'hand'
+    // Взлом объявляется глаголом, а не подходом: панель рисует кнопки по
+    // списку глаголов пропса, и второе имя для одного действия развело бы
+    // affordance карты с разбором команды. Подход при отмычке всегда «рукой» —
+    // силовая ветка у контейнера своя и осталась прежней.
+    if (command.intent === 'lockpick') command.approach = 'hand'
   }
   if (command.command_type === 'UseLevelTransition') {
     command.prop_id = String(command.prop_id ?? command.propId ?? '').slice(0, 120)
@@ -5355,7 +5435,7 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'OperateSceneObject') {
     if (!command.prop_id) throw new RulesValidationError('Не выбран объект сцены', 'SCENE_OBJECT_REQUIRED')
-    if (!['inspect', 'open', 'take', 'use', 'topple', 'ignite', 'pray'].includes(command.intent)) {
+    if (!['inspect', 'open', 'lockpick', 'take', 'use', 'topple', 'ignite', 'pray'].includes(command.intent)) {
       throw new RulesValidationError('Неизвестный способ взаимодействия с объектом сцены', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
     }
     // Молитва — единственный глагол пропса, которому в бою не место, и запрет
@@ -11301,7 +11381,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (!doorsReachableFrom(map, at.x, at.y).some((entry) => entry.id === door.id)) {
         throw new RulesValidationError('До двери нужно дотянуться: встаньте вплотную', 'DOOR_OUT_OF_REACH')
       }
-      const intent = ['open', 'close', 'force'].includes(String(command.intent)) ? String(command.intent) : 'open'
+      const intent = ['open', 'close', 'force', 'lockpick'].includes(String(command.intent)) ? String(command.intent) : 'open'
       const before = String(door.state)
       // Распахнутый проём обязан открыть то, что за ним: пока раскрытия не
       // было, соседнее помещение оставалось чёрным пятном, в которое вдобавок
@@ -11310,6 +11390,45 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const cells = cellsVisibleFrom(map, at, { openedDoorId: door.id })
           .filter((cell) => cellAt(map, cell.x, cell.y)?.revealed !== true)
         if (cells.length) events.push(eventFrom(command, 'AreaRevealed', { cells }, []))
+      }
+      /**
+       * Замок двери под отмычкой. Ветка своя, а не подвид выламывания, и
+       * различие не косметическое: сила оставляет от полотна щепки
+       * (`broken`), отмычка — целую дверь с сорванным замком (`open`), и в
+       * летописи мира это два разных поступка. Закрыть взломанную дверь
+       * обратно можно, выломанную — нет.
+       *
+       * Гейт, СЛ и шум те же, что у сундука: владение проверяется до броска,
+       * сложность игроку не объявляется, бросок серверный. Ход тратится и на
+       * неудачу — время ушло одинаково.
+       */
+      if (intent === 'lockpick') {
+        if (before !== 'locked') throw new RulesValidationError('Взламывать нечего: замок не заперт', 'DOOR_NOT_LOCKED')
+        const picker = findActor(state, command.actor_id)
+        if (!hasThievesTools(picker)) throw new RulesValidationError(THIEVES_TOOLS_REQUIRED_MESSAGE, THIEVES_TOOLS_REQUIRED_CODE)
+        const pickEconomy = state.mechanics.combat.action_economy[command.actor_id]
+        if (state.mechanics.combat.active && pickEconomy && pickEconomy.action === false) {
+          throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+        }
+        const pickDifficulty = Math.max(10, safeInteger(door.lockDc, 0))
+        const pickCheck = diceService.rollCheck({
+          modifier: lockpickCheckModifier(picker),
+          difficulty: pickDifficulty,
+          purpose: 'door:lockpick',
+          actorId: command.actor_id,
+          visibility: command.visibility,
+        })
+        rolls.push(pickCheck)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', { ability: 'dex', skill: 'sleight_of_hand', ...pickCheck }, []))
+        events.push(eventFrom(command, 'DoorLockpicked', {
+          door_id: door.id, success: pickCheck.success, previous_state: before, difficulty: pickDifficulty, check_total: pickCheck.total,
+          policy_id: LOCKPICKING_POLICY_ID,
+        }, []))
+        events.push(...lockpickNoticeEvents(state, command, {
+          targetKind: 'door', targetId: door.id, targetLabel: 'дверь', check: pickCheck,
+        }))
+        if (pickCheck.success) revealBeyondDoor()
+        break
       }
       if (intent === 'open') {
         if (before === 'locked') throw new RulesValidationError('Дверь заперта: её придётся выломать', 'DOOR_LOCKED')
@@ -11371,9 +11490,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (definition.kind === 'campfire' && command.intent === 'use' && inCombat) {
         throw new RulesValidationError('Нельзя устраивать привал во время активного боя', 'REST_DURING_COMBAT')
       }
-      const resolveSceneCheck = (checkDefinition) => {
-        const modifier = abilityModifier(actor?.abilities?.[checkDefinition.ability])
-          + skillProficiencyBonus(actor, checkDefinition.skill)
+      // Модификатор считается по способности и навыку, если вызывающий не
+      // назвал свой. Своё называет ровно один случай — замок под отмычкой: там
+      // бонус даёт владение инструментом, а не навык (`lockpickCheckModifier`).
+      const resolveSceneCheck = (checkDefinition, modifierOverride = null) => {
+        const modifier = modifierOverride == null
+          ? abilityModifier(actor?.abilities?.[checkDefinition.ability]) + skillProficiencyBonus(actor, checkDefinition.skill)
+          : modifierOverride
         const check = diceService.rollCheck({
           modifier,
           difficulty: checkDefinition.dc,
@@ -11596,29 +11719,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         break
       }
 
-      if (command.intent === 'open') {
-        if (definition.kind !== 'container') throw new RulesValidationError('Открывать можно только контейнер', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
-        if (interaction.opened || interaction.state === 'open' || interaction.state === 'taken') {
-          throw new RulesValidationError('Этот контейнер уже открыт', 'SCENE_OBJECT_ALREADY_OPEN')
-        }
-        operated()
-        let success = true
-        if (interaction.state === 'locked') {
-          const lockCheck = command.approach === 'force'
-            ? { ability: 'str', skill: 'athletics', dc: definition.lock?.dc ?? 12, purpose: 'scene-object:container:force' }
-            : definition.lock
-          success = resolveSceneCheck(lockCheck).success
-        } else if (command.approach === 'force') {
-          success = resolveSceneCheck({ ability: 'str', skill: 'athletics', dc: 10, purpose: 'scene-object:container:force' }).success
-        }
-        if (!success) {
-          events.push(eventFrom(command, 'SceneObjectStateChanged', {
-            prop_id: prop.id, state: interaction.state, previous_state: interaction.state, success: false,
-          }, []))
-          break
-        }
+      /**
+       * Крышка откинута: находка на виду, ловушка сработала. Хвост общий у
+       * силового открытия и у отмычки — что за замком, от способа не зависит,
+       * и второй такой лестницы событий в проекте быть не должно.
+       */
+      const containerOpened = (previousState, openedIntent) => {
         events.push(eventFrom(command, 'SceneObjectStateChanged', {
-          prop_id: prop.id, state: 'open', previous_state: interaction.state, success: true,
+          prop_id: prop.id, state: 'open', previous_state: previousState, success: true, intent: openedIntent,
+          ...(openedIntent === 'lockpick' ? { lockpicked: true } : {}),
         }, []))
         events.push(eventFrom(command, 'SceneObjectLootRevealed', {
           prop_id: prop.id,
@@ -11643,6 +11752,75 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', damagePayload, [command.actor_id]))
           events.push(...zeroHitPointDamageConsequences(state, command, command.actor_id, damagePayload))
         }
+      }
+
+      /**
+       * Замок под отмычкой. Ветка стоит до обычного открытия и ничего у него не
+       * отнимает: глагол `lockpick` есть только у контейнера, и до этой строки
+       * доходит только он.
+       *
+       * Гейт — **владение воровскими инструментами**, и он стоит до броска:
+       * бросать кость ради заведомого отказа нельзя, а ход у отказа не
+       * списывается вовсе. Без владения у отряда остаётся сила — ровно как
+       * было до этой волны.
+       *
+       * СЛ замка не объявляется ни здесь, ни в отказе, ни карточкой: у взлома
+       * нет двухфазного броска, и запертость сундука игрок узнаёт, только
+       * взявшись за него.
+       */
+      if (command.intent === 'lockpick') {
+        if (definition.kind !== 'container') throw new RulesValidationError('Замок бывает только у контейнера', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+        if (interaction.opened || interaction.state === 'open' || interaction.state === 'taken') {
+          throw new RulesValidationError('Этот контейнер уже открыт', 'SCENE_OBJECT_ALREADY_OPEN')
+        }
+        if (!hasThievesTools(actor)) throw new RulesValidationError(THIEVES_TOOLS_REQUIRED_MESSAGE, THIEVES_TOOLS_REQUIRED_CODE)
+        if (interaction.state !== 'locked' || !definition.lock) {
+          throw new RulesValidationError('Замка на этом объекте нет — крышка просто откидывается', 'SCENE_OBJECT_NOT_LOCKED')
+        }
+        operated()
+        const check = resolveSceneCheck({ ...definition.lock, purpose: 'scene-object:container:lockpick' }, lockpickCheckModifier(actor))
+        events.push(...lockpickNoticeEvents(state, command, {
+          targetKind: 'prop',
+          targetId: prop.id,
+          targetLabel: sceneObjectLabelFor(prop.assetId) || 'чужой замок',
+          check,
+        }))
+        if (!check.success) {
+          events.push(eventFrom(command, 'SceneObjectStateChanged', {
+            prop_id: prop.id, state: interaction.state, previous_state: interaction.state, success: false, intent: command.intent,
+          }, []))
+          break
+        }
+        containerOpened(interaction.state, command.intent)
+        break
+      }
+
+      if (command.intent === 'open') {
+        if (definition.kind !== 'container') throw new RulesValidationError('Открывать можно только контейнер', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+        if (interaction.opened || interaction.state === 'open' || interaction.state === 'taken') {
+          throw new RulesValidationError('Этот контейнер уже открыт', 'SCENE_OBJECT_ALREADY_OPEN')
+        }
+        // Запертое рукой не открывают. Прежде эта ветка тихо катала «Ловкость
+        // рук» за любого героя — то есть вскрывала замок отмычками, которых у
+        // него нет и владения которыми тоже. Теперь путей ровно два и оба
+        // названы: отмычка у владеющего и сила у всех.
+        if (interaction.state === 'locked' && command.approach !== 'force') {
+          throw new RulesValidationError('Здесь замок: его вскрывают отмычками или ломают силой', 'SCENE_OBJECT_LOCKED')
+        }
+        operated()
+        let success = true
+        if (interaction.state === 'locked') {
+          success = resolveSceneCheck({ ability: 'str', skill: 'athletics', dc: definition.lock?.dc ?? 12, purpose: 'scene-object:container:force' }).success
+        } else if (command.approach === 'force') {
+          success = resolveSceneCheck({ ability: 'str', skill: 'athletics', dc: 10, purpose: 'scene-object:container:force' }).success
+        }
+        if (!success) {
+          events.push(eventFrom(command, 'SceneObjectStateChanged', {
+            prop_id: prop.id, state: interaction.state, previous_state: interaction.state, success: false,
+          }, []))
+          break
+        }
+        containerOpened(interaction.state, command.intent)
         break
       }
 
@@ -16455,6 +16633,29 @@ export function applyGameEvent(rawState, event) {
       spendCombatEconomy(state, event.actor_id, 'action')
       if (payload.success === true) setSceneDoorState(state, payload.door_id, 'broken')
       break
+    case 'DoorLockpicked':
+      spendCombatEconomy(state, event.actor_id, 'action')
+      if (payload.success === true) {
+        // Дверь остаётся целой и просто открывается: сорван замок, а не
+        // полотно. Именно этим взлом и отличается от выламывания — и в
+        // проходимости, и в летописи.
+        setSceneDoorState(state, payload.door_id, 'open')
+        // След в памяти сцены. Он переживает закрытие двери обратно: замка на
+        // ней больше нет, и вернуть его некому.
+        updateSceneObjectInteraction(state, doorTraceKey(payload.door_id), (current) => ({
+          ...current,
+          state: 'lockpicked',
+          lockpicked: true,
+          lockpicked_by: event.actor_id == null ? current.lockpicked_by : String(event.actor_id).slice(0, 120),
+          last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+        }))
+      }
+      break
+    // Замеченный взлом состояния не меняет: он существует ради летописи
+    // поступков и молвы, а те выводятся из журнала событий редьюсером
+    // `applyWorldDeedEvent`. Своего следа в механике у него нет.
+    case 'LockpickNoticed':
+      break
     case 'SceneObjectOperated':
       updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
         ...current,
@@ -16505,6 +16706,13 @@ export function applyGameEvent(rawState, event) {
         opened: current.opened || payload.state === 'open',
         taken: current.taken || payload.state === 'taken',
         used: current.used || payload.state === 'used',
+        // След взлома. Отдельным полем, а не состоянием: состояние у вскрытого
+        // сундука обычное — «открыт», — и потерять его значило бы забыть, что
+        // содержимое уже на виду.
+        lockpicked: current.lockpicked || payload.lockpicked === true,
+        lockpicked_by: payload.lockpicked === true && event.actor_id != null
+          ? String(event.actor_id).slice(0, 120)
+          : current.lockpicked_by,
         last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
       }))
       if (next && payload.success !== false) setSceneObjectPropState(state, payload.prop_id, next.state)
@@ -16926,6 +17134,15 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'NpcBribeRefused': return `${named((event.target_ids ?? [])[0]) || 'Собеседник'} не берёт денег`
     case 'MerchantRefusedStolenGoods': return `${payload.merchant_name || 'Торговец'} отказывается брать вещь: «${payload.item_name || 'предмет'}»`
     case 'MerchantDenouncedThief': return `${payload.merchant_name || 'Торговец'} отправляет весточку страже`
+    // «Взломана» и «выломана» — разные строки, и разница не в слове: после
+    // отмычки дверь цела и её можно закрыть обратно, после плеча от неё
+    // остаются щепки.
+    case 'DoorLockpicked': return payload.success === true
+      ? `${named(event.actor_id) || 'Герой'} вскрывает замок отмычкой: дверь взломана`
+      : `${named(event.actor_id) || 'Герой'} не справляется с замком двери`
+    case 'LockpickNoticed': return payload.reason === 'trace'
+      ? `Сорванный замок замечен: ${payload.target_label || 'чужой замок'}`
+      : `Возню у замка услышали: ${payload.target_label || 'чужой замок'}`
     case 'NpcPocketPicked': return `${named(event.actor_id) || 'Герой'} незаметно обчищает карман: ${payload.npc_name || 'прохожий'}`
     case 'NpcPickpocketNoticed': return `${payload.npc_name || 'Прохожий'} перехватывает чужую руку у своего кармана`
     case 'LegendaryActionUsed': return `${named(event.actor_id) || 'Существо'} вне очереди: «${payload.name || payload.action_id}»`
