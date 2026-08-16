@@ -608,6 +608,26 @@ export function CombatTurnClock({ clock, actorName }: { clock: GameState['turn_c
   </div>
 }
 
+/**
+ * Полоса легендарных действий: пипс на каждое, потраченные погашены.
+ *
+ * Форма повторяет часы квеста (`quest-clock`, `AppViews.tsx`) — `<i>` строка,
+ * `<u>` пипс, `.spent` вместо `.filled`, — потому что это тот же вид знания:
+ * server-owned счётчик, который стол читает взглядом, а не считает в уме.
+ * Числа стат-блока сюда не приходят: сервер отдаёт только сколько всего и
+ * сколько израсходовано.
+ */
+export function LegendaryPips({ legendary, compact = false }: { legendary: { uses: number; used: number }; compact?: boolean }) {
+  const total = Math.max(0, Math.min(5, legendary.uses))
+  if (total <= 0) return null
+  const used = Math.max(0, Math.min(total, legendary.used))
+  const label = `Легендарные действия: осталось ${total - used} из ${total}`
+  return <span className={`legendary-pips ${compact ? 'compact' : ''}`} title={label} aria-label={label}>
+    <i aria-hidden="true">{Array.from({ length: total }, (_, index) => <u key={index} className={index < used ? 'spent' : ''} />)}</i>
+    {!compact && <b>{total - used}/{total}</b>}
+  </span>
+}
+
 export function EnemyGlyph({ kind }: { kind: EnemyVisualKind }) {
   if (kind === 'construct') return <Bot size={17} />
   if (kind === 'undead') return <Skull size={17} />
@@ -1393,6 +1413,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const inspectedDamageHistory = inspectedTarget
     ? recentDamageForTarget(state.battleLog ?? [], inspectedTarget.id)
     : []
+  // Босс берётся из состояния по идентификатору, а не из снимка наведения:
+  // снимок делается один раз при наведении, а запас легендарных действий
+  // тратится и восстанавливается прямо под курсором. Признак — серверный:
+  // клиент его не выводит и рамку сам себе не рисует.
+  const inspectedBoss = inspectedTarget?.team === 'enemy'
+    ? state.enemies?.find((enemy) => enemy.id === inspectedTarget.id && enemy.boss === true) ?? null
+    : null
   const sceneTheme = resolveSceneTheme(state)
   const visualTheme = boardVisualTheme(sceneTheme)
   const mapArt = boardMapArtForTheme(sceneTheme)
@@ -2111,13 +2138,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {statusContent}
         <section className={`initiative-ribbon ${combatActive ? 'combat' : 'exploration'}`} aria-label={combatActive ? `Раунд ${combat.round ?? 1}, порядок инициативы` : 'Кто ведёт отряд'} aria-live="polite">
           {combatActive ? <>
-            <div className={`initiative-active-chip ${activeEnemy ? 'enemy' : activeSummon ? 'summon' : 'hero'}`}>
+            <div className={`initiative-active-chip ${activeEnemy ? 'enemy' : activeSummon ? 'summon' : 'hero'}${activeEnemy?.boss ? ' boss' : ''}`}>
               {activeHero
                 ? <span className="initiative-active-avatar portrait" style={{ backgroundImage: `url(${activeHero.portrait})`, backgroundPosition: activeHero.portraitPosition }} />
                 : activeEnemy
                   ? <span className="initiative-active-avatar enemy">{activeEnemy.image ? <img src={activeEnemy.image} alt="" /> : <EnemyGlyph kind={enemyVisualKind(activeEnemy)} />}</span>
                   : <span className="initiative-active-avatar summon"><Sparkles size={18} /></span>}
               <span><strong>{activeName}</strong><small>{activeTurnLabel}</small></span>
+              {activeEnemy?.legendary && <LegendaryPips legendary={activeEnemy.legendary} />}
             </div>
             <header>РАУНД <b>{combat.round ?? 1}</b></header>
             <ol>{combat.initiative?.map((entry, index) => {
@@ -2131,12 +2159,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               const nextUp = index === nextInitiativeIndex
               const statusLabel = defeated ? 'выбыл' : activeNow ? 'сейчас' : nextUp ? 'следующий' : ''
               const enemyKind = enemy ? enemyVisualKind(enemy) : null
-              return <li key={entry.actor_id} className={`${kind} ${activeNow ? 'active' : ''} ${nextUp ? 'next' : ''} ${defeated ? 'defeated' : ''}`} aria-current={activeNow ? 'step' : undefined}>
+              // Босса стол узнаёт в ленте с первого взгляда: он действует между
+              // чужими ходами, и очередь без этого читалась бы неправдой.
+              const boss = enemy?.boss === true
+              return <li key={entry.actor_id} className={`${kind} ${activeNow ? 'active' : ''} ${nextUp ? 'next' : ''} ${defeated ? 'defeated' : ''}${boss ? ' boss' : ''}`} aria-current={activeNow ? 'step' : undefined}>
                 <button
                   className={`initiative-avatar-button ${focusedParticipantId === entry.actor_id ? 'focused' : ''}`}
-                  aria-label={`Выделить на карте: ${name}${statusLabel ? `, ${statusLabel}` : ''}`}
+                  aria-label={`Выделить на карте: ${name}${boss ? ', босс' : ''}${statusLabel ? `, ${statusLabel}` : ''}`}
                   aria-pressed={focusedParticipantId === entry.actor_id}
-                  title={`${name}${statusLabel ? ` · ${statusLabel}` : ''}`}
+                  title={`${name}${boss ? ' · босс' : ''}${statusLabel ? ` · ${statusLabel}` : ''}`}
                   onClick={() => setFocusedParticipantId((current) => current === entry.actor_id ? null : entry.actor_id)}
                 >
                   <span className="initiative-order" aria-hidden="true">{index + 1}</span>
@@ -2145,6 +2176,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                     : enemy
                       ? <span className="initiative-avatar enemy">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
                       : <span className="initiative-avatar summon"><Sparkles size={18} /></span>}
+                  {boss && <span className="initiative-boss-badge" aria-hidden="true"><Crown size={11} /></span>}
+                  {boss && enemy?.legendary && !defeated && <LegendaryPips legendary={enemy.legendary} compact />}
                   {activeNow && <span className="initiative-turn-dot" aria-hidden="true" />}
                   {statusLabel && <span className={`initiative-status-label ${defeated ? 'defeated' : activeNow ? 'active' : 'next'}`}>{statusLabel}</span>}
                 </button>
@@ -2391,11 +2424,22 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {visibleBattleRoll && <BattleRollCard event={visibleBattleRoll} context={visibleBattleRollContext} />}
           <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
           <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>
-          {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}`}>
+          {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}${inspectedBoss ? ' boss' : ''}`}>
             {/* Дистанция и причина берутся из серверного прогноза, когда он
                 есть: снимок `inspectedTarget` делается в момент наведения и
                 после перемещения показывал прежние футы. */}
-            <span><small>{inspectedTarget.team === 'enemy' ? 'ПРОТИВНИК' : 'СОЮЗНИК'} · {inspectedForecast?.distance_feet ?? inspectedTarget.distanceFeet} ФТ</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ? `${inspectedTarget.healthLabel} · параметры скрыты` : `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em></span>
+            {/* Крупный портрет — только у босса, и он читается с доски: это
+                тот же снимок, что и в ленте, только в размер карточки. Признак
+                берётся из состояния по идентификатору, а не из снимка
+                наведения: снимок делается один раз, а запас тратится и
+                восстанавливается прямо во время боя. */}
+            {inspectedBoss && <span className="combat-target-portrait">
+              {inspectedBoss.image ? <img src={inspectedBoss.image} alt="" /> : <EnemyGlyph kind={enemyVisualKind(inspectedBoss)} />}
+              {/* Подпись не прячется от чтения с экрана: «босс» — это факт о
+                  порядке боя, а не украшение рамки. */}
+              <b><Crown size={11} aria-hidden="true" />БОСС</b>
+            </span>}
+            <span><small>{inspectedTarget.team === 'enemy' ? 'ПРОТИВНИК' : 'СОЮЗНИК'} · {inspectedForecast?.distance_feet ?? inspectedTarget.distanceFeet} ФТ</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ? `${inspectedTarget.healthLabel} · параметры скрыты` : `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em>{inspectedBoss?.legendary && <LegendaryPips legendary={inspectedBoss.legendary} />}</span>
             {(!inspectedForecast || !inspectedForecast.in_range) && <p>{inspectedTarget.reason}</p>}
             {inspectedForecast && <div className={`attack-forecast ${inspectedForecast.advantage && !inspectedForecast.disadvantage ? 'advantage' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? 'disadvantage' : ''}`}>
               <header>

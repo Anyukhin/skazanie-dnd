@@ -410,6 +410,32 @@ function exactEnemyHealthKnown(state, enemyId, actorId = '') {
 }
 
 /**
+ * Полоса легендарных действий: сколько их всего и сколько уже потрачено.
+ *
+ * Это качественная величина, а не число стат-блока: за столом видно, что босс
+ * бьёт между ходами, и видно, что запас кончается. Точный остаток на карточке
+ * — то же самое знание, только записанное честно, поэтому пипсы отряду
+ * принадлежат, а закрытая бухгалтерия (`legendary-action-used:<n>` в
+ * состояниях) — нет: маркеры несут ещё и суточный запас сопротивления.
+ *
+ * @param {Loose} enemy
+ * @param {LooseState} state
+ * @param {string} id
+ * @returns {{ uses: number, used: number } | null}
+ */
+function publicLegendaryFor(enemy, state, id) {
+  const declared = enemy?.legendary
+  if (!declared || typeof declared !== 'object' || Array.isArray(declared)) return null
+  if (!Array.isArray(declared.actions) || !declared.actions.length) return null
+  const uses = Math.max(1, Math.min(5, integer(declared.uses, 3)))
+  const spent = (state?.mechanics?.conditions?.[id] ?? [])
+    .map((/** @type {Loose} */ condition) => text(condition?.id ?? condition, 160))
+    .filter((/** @type {string} */ condition) => condition.startsWith('legendary-action-used:'))
+    .length
+  return { uses, used: Math.max(0, Math.min(uses, spent)) }
+}
+
+/**
  * @param {Loose} [enemy]
  * @param {LooseState} [state]
  * @param {string} [actorId]
@@ -421,9 +447,15 @@ export function publicEnemyFor(enemy = {}, state = {}, actorId = '') {
   const exactHealth = exactEnemyHealthKnown(state, id, actorId)
   const image = publicEnemyImage(enemy.image)
   const creatureType = text(enemy.creature_type, 80)
+  const legendary = publicLegendaryFor(enemy, state, id)
   return {
     id,
     name: text(enemy.name, 120),
+    // Босс объявляется отрядом с первого взгляда — это не тайна стат-блока, а
+    // то, что за столом видно: существо действует между чужими ходами. Ни СЛ,
+    // ни список заклинаний, ни сам блок `spellcasting` сюда не попадают по
+    // построению: карточка — белый список, и в нём их просто нет.
+    ...(legendary ? { boss: true, legendary } : {}),
     x: integer(enemy.x, 0),
     y: integer(enemy.y, 0),
     ...(image ? { image } : {}),
@@ -535,6 +567,14 @@ const OPAQUE_ENEMY_CONDITION_IDS = Object.freeze({
   'weapon-coated:': 'weapon-coated',
   'monster-action-used:': 'monster-action-used',
   'npc-tactic-used:': 'npc-tactic-used',
+  // Магия и легендарный запас существа считаются теми же маркерами, что и
+  // потраченный приём стат-блока, и закрываются так же. `monster-spell-used:`
+  // несёт в себе идентификатор заклинания, то есть весь список магии босса;
+  // легендарные маркеры — точный остаток запаса. Качественную его форму
+  // (пипсы) отряд получает отдельным полем карточки, а не чтением бухгалтерии.
+  'monster-spell-used:': 'monster-spell-used',
+  'legendary-action-used:': 'legendary-action-used',
+  'legendary-resistance-used:': 'legendary-resistance-used',
 })
 
 /**
@@ -544,7 +584,10 @@ const OPAQUE_ENEMY_CONDITION_IDS = Object.freeze({
  * это не состояние, которое видно на существе, а учётная запись движка. Сам
  * поступок игрок при этом видит — своей строкой и своим событием.
  */
-const ENEMY_BOOKKEEPING_CONDITIONS = Object.freeze(['monster-action-used', 'npc-tactic-used'])
+const ENEMY_BOOKKEEPING_CONDITIONS = Object.freeze([
+  'monster-action-used', 'npc-tactic-used',
+  'monster-spell-used', 'legendary-action-used', 'legendary-resistance-used',
+])
 
 /**
  * Поля условия, которые принадлежат ведущему: добавка к следующему удару и
@@ -1542,7 +1585,21 @@ function eventForViewer(event, user, actorId, state = {}) {
     for (const key of [
       'modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression',
       'item_id', 'item_name', 'catalog_id', 'effect_id',
+      // Идентификатор легендарного действия — ключ стат-блока ровно того же
+      // рода, что и `action_id` строкой выше. Поступок отряд видит по `name`.
+      'legendary_action_id',
     ]) delete payload[key]
+  }
+  // СЛ заклинания существа — число стат-блока, и закрыто оно наравне с КД и
+  // точными ОЗ. Ветка условная по **заклинателю**, а не по цели: когда чарами
+  // бьёт враг, спасбросок катит герой, и `enemyTargetId` ниже пуст, а
+  // `difficulty` в событии — это дословно «СЛ заклинаний босса».
+  //
+  // Исход при этом остаётся целиком: устоял герой или нет, сколько выбросил и
+  // что за заклинание прилетело — всё это за столом видно своими глазами.
+  // Своей магии героя ветка не касается: у неё `actor_id` — сам герой.
+  if (enemyActor && ['SpellSavingThrowResolved', 'SavingThrowResolved', 'NpcSavingThrowResolved', 'DamageApplied', 'ConditionAdded'].includes(String(visible.event_type))) {
+    for (const key of ['difficulty', 'save_dc']) delete payload[key]
   }
   // Состояние противника: тот же санитайзер, что и у проекции комнаты, — иначе
   // закрытое в состоянии уезжало бы игроку событием той же команды. Ветка

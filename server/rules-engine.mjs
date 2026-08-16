@@ -315,13 +315,30 @@ import {
   appraiseItem,
 } from './item-appraisal.mjs'
 import {
+  MONSTER_SPELL_USE_CONDITION_PREFIX,
   canonicalCombatSpellFor,
   combatSpellFor,
   combatSpellsFor,
   isPartySummon,
+  monsterCombatSpellFor,
+  monsterSpellRefusalFor,
+  monsterSpellUsesSpentIn,
+  monsterSpellcastingFor,
   normalizedSpellSelectionsFor,
   spellSlotMaximumsFor,
 } from './combat-spells.mjs'
+import {
+  LEGENDARY_ACTION_CONDITION_PREFIX,
+  legendaryActionFor,
+  legendaryActionMarker,
+  legendaryProfileFor,
+  legendaryResistanceDecision,
+  legendaryResistanceMarker,
+  legendaryResistanceSpent,
+  legendaryUsesSpent,
+  legendaryWindowKey,
+  legendaryWindowSpent,
+} from './legendary-actions.mjs'
 import {
   combatActionFor,
   combatActionsFor,
@@ -543,6 +560,9 @@ const COMMAND_RULES = Object.freeze({
   AddCondition: [RULE_IDS.conditions],
   RemoveCondition: [RULE_IDS.conditions],
   CastSpell: [RULE_IDS.turns],
+  // Легендарное действие живёт вне экономики хода — оно её и не тратит, —
+  // но принадлежит очереди боя, поэтому провенанс у него тот же `turns`.
+  UseLegendaryAction: [RULE_IDS.turns],
   UseCombatAction: [RULE_IDS.actions],
   MoveActor: [RULE_IDS.turns],
   // Открыть дверь — свободное взаимодействие с предметом, выломать — действие:
@@ -659,7 +679,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
+  'CastSpell', 'UseLegendaryAction', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -3635,6 +3655,111 @@ function validateNpcItemUseCommand(command, state, context = {}) {
   return result
 }
 
+/** Сколько раз существо уже произносило это заклинание за день. */
+function monsterSpellUsesSpent(state, actorIdValue, spellId) {
+  return monsterSpellUsesSpentIn(conditionIdsFor(state, actorIdValue), spellId)
+}
+
+/**
+ * Магия стат-блока — и только руками сервера.
+ *
+ * Дверь та же, что у инвентаря противника (`validateNpcItemUseCommand` выше):
+ * `context.isNpcScheduler`. Флага нет ни в одном теле запроса, и `isAdmin` его
+ * не заменяет намеренно — иначе «сыграть за врага» означало бы «бросить его
+ * Огненный шар в свой же отряд». Прежняя ветка «враг-волшебник по роли»
+ * остаётся как была: у неё нет блока `spellcasting`, и сюда она не заходит.
+ */
+function validateMonsterSpellCommand(command, state, context = {}) {
+  if (context?.isNpcScheduler !== true) {
+    throw new RulesValidationError('Заклинаниями существа распоряжается только серверный планировщик ходов', 'NPC_SPELL_CAST_FORBIDDEN')
+  }
+  const actor = findActor(state, command.actor_id)
+  // «Нет в блоке» и «блок называет заклинание, которого нет в каталоге» — два
+  // разных ответа: первое правило, второе дефект записи бестиария. Молчать о
+  // втором нельзя, иначе опечатка читалась бы за столом как решение автора.
+  const refusal = monsterSpellRefusalFor(actor, command.spell_id)
+  if (refusal) throw new RulesValidationError(refusal[0], refusal[1])
+  const spell = monsterCombatSpellFor(actor, command.spell_id)
+  const perDay = spell?.monsterSpell?.perDay ?? null
+  if (perDay != null) {
+    const spent = monsterSpellUsesSpent(state, command.actor_id, spell.id)
+    if (spent >= perDay) {
+      throw new RulesValidationError('Это заклинание существо на сегодня исчерпало', 'MONSTER_SPELL_USES_SPENT')
+    }
+    return { monster_spell_use: { spell_id: spell.id, ordinal: spent + 1, per_day: perDay, remaining_after: perDay - spent - 1 } }
+  }
+  return { monster_spell_use: null }
+}
+
+/**
+ * Легендарное действие: вне своего хода и только руками сервера.
+ *
+ * Здесь три отдельные проверки, и все три — правила, а не осторожность:
+ *
+ * 1. дверь планировщика, та же, что у инвентаря и магии существа;
+ * 2. **не свой ход** — легендарное действие тем и легендарно, что тратится
+ *    между своими ходами; в собственный ход существо действует обычной
+ *    экономикой, и разрешить здесь оба означало бы выдать ему лишний ход;
+ * 3. запас: маркеры `legendary-action-used:<n>` считают потраченное, а
+ *    стоимость действия вычитается из остатка целиком.
+ */
+function validateLegendaryActionCommand(command, state, context = {}) {
+  if (context?.isNpcScheduler !== true) {
+    throw new RulesValidationError('Легендарными действиями распоряжается только серверный планировщик ходов', 'LEGENDARY_ACTION_FORBIDDEN')
+  }
+  const actor = findActor(state, command.actor_id)
+  if (!actor) throw new RulesValidationError('Существо не найдено', 'ACTOR_NOT_FOUND')
+  if (!isLivingActor(actor)) throw new RulesValidationError('Побеждённое существо не совершает легендарных действий', 'ACTOR_DEFEATED')
+  const profile = legendaryProfileFor(actor)
+  if (!profile) throw new RulesValidationError('У существа нет легендарных действий', 'LEGENDARY_ACTIONS_ABSENT')
+  const combat = state.mechanics.combat
+  if (!combat.active) throw new RulesValidationError('Легендарные действия совершаются только в бою', 'COMBAT_NOT_ACTIVE')
+  if (incapacitatingConditionFor(state, command.actor_id)) {
+    throw new RulesValidationError('Существо не в состоянии совершить легендарное действие', 'ACTOR_INCAPACITATED')
+  }
+  if (String(combat.initiative?.[safeInteger(combat.active_index, -1)]?.actor_id ?? '') === String(command.actor_id)) {
+    throw new RulesValidationError('Легендарное действие совершается вне своего хода', 'LEGENDARY_ACTION_OWN_TURN')
+  }
+  const action = legendaryActionFor(actor, command.legendary_action_id)
+  if (!action) throw new RulesValidationError('Такого легендарного действия нет в стат-блоке', 'LEGENDARY_ACTION_UNKNOWN')
+  const conditions = conditionIdsFor(state, command.actor_id)
+  const windowKey = legendaryWindowKey(combat)
+  // Одно действие на чужой ход. Без этой проверки весь запас сгорал бы после
+  // первого же хода героя, и «до трёх между своими ходами» превратилось бы в
+  // «три подряд по одному поводу».
+  if (legendaryWindowSpent(conditions, windowKey)) {
+    throw new RulesValidationError('Легендарное действие в этом ходу уже совершено', 'LEGENDARY_ACTION_WINDOW_SPENT')
+  }
+  const spent = legendaryUsesSpent(conditions)
+  if (spent + action.cost > profile.uses) {
+    throw new RulesValidationError('Запас легендарных действий исчерпан до начала следующего хода существа', 'LEGENDARY_ACTIONS_SPENT')
+  }
+  const targetId = String(command.target_id ?? '')
+  const target = findActor(state, targetId)
+  if (!target || !isLivingActor(target)) throw new RulesValidationError('Нужна живая цель легендарного действия', 'INVALID_TARGET')
+  if (isEnemyActor(state, targetId) === isEnemyActor(state, command.actor_id)) {
+    throw new RulesValidationError('Легендарное действие направлено против противника', 'INVALID_TARGET')
+  }
+  const distance = distanceBetweenActors(state, command.actor_id, targetId)
+  const reach = action.radiusFeet > 0 ? action.radiusFeet : action.rangeFeet
+  if (distance == null || distance > reach) {
+    throw new RulesValidationError('Цель находится вне досягаемости легендарного действия', 'TARGET_OUT_OF_RANGE')
+  }
+  return {
+    target_ids: [targetId],
+    legendary_action: {
+      id: action.id,
+      name: action.name,
+      cost: action.cost,
+      kind: action.kind,
+      uses_before: spent,
+      uses_after: spent + action.cost,
+      uses_max: profile.uses,
+      window_key: windowKey,
+    },
+  }
+}
+
 /**
  * Герой из отряда этой кампании. Отдельная функция, а не выражение по месту:
  * «цель — герой» и «герой в отряде» — два разных условия, и путать их нельзя.
@@ -4459,6 +4584,17 @@ export function validateCommand(input, rawState, context = {}) {
   // набора правил. Ветка стоит **до** общего жизненного цикла предметов: тот
   // ищет героя по `state.players` и на существе отвечал бы «герой не найден»,
   // пряча настоящую причину отказа.
+  // Легендарное действие и магия стат-блока проверяются здесь же и по той же
+  // причине, по которой здесь стоит инвентарь противника: порядок нагружен.
+  // Ниже по тексту идёт `assertActorPermission`, и он ответил бы игроку общим
+  // `ACTOR_FORBIDDEN`, спрятав настоящую причину, а администратору — вообще
+  // ничем: у админского контура своя дверь, и здесь она намеренно закрыта.
+  if (command.command_type === 'UseLegendaryAction') {
+    Object.assign(command, validateLegendaryActionCommand(command, state, context))
+  }
+  if (command.command_type === 'CastSpell' && monsterSpellcastingFor(findActor(state, command.actor_id))) {
+    Object.assign(command, validateMonsterSpellCommand(command, state, context))
+  }
   const npcItemUse = command.command_type === 'UseItem' && isEnemyActor(state, command.actor_id)
   if (npcItemUse) {
     Object.assign(command, validateNpcItemUseCommand(command, state, context))
@@ -4903,7 +5039,12 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'CastSpell' && (command.server_authoritative || context.serverAuthoritativeCombat)) {
     const actor = findActor(state, command.actor_id)
-    const spell = combatSpellFor(actor, command.spell_id)
+    // Стат-блок объявляет магию сам — и тогда решает он, а не таблицы классов.
+    // `monsterSpellcastingFor` отвечает `null` всем, у кого блока нет, поэтому
+    // герои и прежние враги-«волшебники» по роли идут прежней веткой без
+    // единого изменения.
+    const monsterCasting = monsterSpellcastingFor(actor)
+    const spell = monsterCasting ? monsterCombatSpellFor(actor, command.spell_id) : combatSpellFor(actor, command.spell_id)
     if (!isLivingActor(actor)) throw new RulesValidationError('Побеждённый участник не может творить заклинания', 'ACTOR_DEFEATED')
     if (!spell) throw new RulesValidationError('Заклинание не найдено среди доступных герою', 'SPELL_NOT_AVAILABLE')
     /* Вне боя творится только то, что не бьёт: лечение, усиление, утилита,
@@ -5517,6 +5658,35 @@ function monsterRechargeAtTurnStart(state, command, actorIdValue, diceService) {
     }, [id]))
   }
   return { events, rolls }
+}
+
+/**
+ * Запас легендарных действий возвращается в начале хода существа.
+ *
+ * Момент выбран по редакции и совпадает с recharge выше: запас привязан к
+ * началу собственного хода босса, а не к кругу боя, поэтому сброс живёт в
+ * обработке `TurnStarted`, а не отдельной командой. Маркеры снимаются теми же
+ * `ConditionRemoved`, что и потраченный приём стат-блока, поэтому replay
+ * складывает то же число пипсов из тех же событий.
+ *
+ * Легендарного сопротивления это не касается: его запас суточный, и круг боя
+ * его не возвращает.
+ */
+function legendaryActionsResetAtTurnStart(state, command, actorIdValue) {
+  const id = String(actorIdValue ?? '')
+  const actor = findActor(state, id)
+  const profile = legendaryProfileFor(actor)
+  if (!profile || !isEnemyActor(state, id)) return []
+  const spent = [...conditionIdsFor(state, id)].filter((condition) => String(condition).startsWith(LEGENDARY_ACTION_CONDITION_PREFIX))
+  if (!spent.length) return []
+  const resetCommand = { ...command, actor_id: id, visibility: 'gm_only' }
+  return [
+    ...spent.map((condition) => eventFrom(commandWithRules(resetCommand, RULE_IDS.conditions), 'ConditionRemoved', { condition, trigger: 'legendary-reset' }, [id])),
+    eventFrom(commandWithRules({ ...command, actor_id: id }, RULE_IDS.turns), 'LegendaryActionsReset', {
+      uses: profile.uses,
+      restored: spent.length,
+    }, [id]),
+  ]
 }
 
 /**
@@ -7527,6 +7697,42 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     return `combat:${safeInteger(combat.round, 1)}:${String(activeActor)}`
   }
 
+  /**
+   * Легендарное сопротивление: провалившийся спасбросок объявляется успешным.
+   *
+   * Счётчик потраченного живёт в маркерах состояния, но одна команда может
+   * потребовать двух трат подряд (площадное заклинание по двум боссам), а
+   * маркеры первой ещё не отражены в `state` — поэтому потраченное в этой же
+   * команде складывается здесь, в локальной карте. Решение о самой трате
+   * принимает закрытое правило `legendaryResistanceDecision`
+   * (`server/legendary-actions.mjs`); движок его только исполняет.
+   */
+  const legendarySpendsInCommand = new Map()
+  const legendaryResistanceFor = (sourceState, targetIdValue, { conditions = [], damage = 0 } = {}) => {
+    const id = String(targetIdValue ?? '')
+    const target = findActor(sourceState, id)
+    if (!target || !isEnemyActor(sourceState, id)) return null
+    const spent = legendaryResistanceSpent(conditionIdsFor(sourceState, id)) + (legendarySpendsInCommand.get(id) ?? 0)
+    const decision = legendaryResistanceDecision({
+      actor: target, spentUses: spent, conditions, damage, hpBefore: actorHp(target),
+    })
+    if (!decision) return null
+    legendarySpendsInCommand.set(id, (legendarySpendsInCommand.get(id) ?? 0) + 1)
+    // Маркер `gm_only`: суточный запас босса — та же закрытая бухгалтерия, что
+    // и потраченный приём стат-блока. Сам факт «босс устоял» стол увидит
+    // отдельным событием, у которого числа запаса не спрятаны, а просто нет.
+    const marker = eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: legendaryResistanceMarker(decision.ordinal),
+      duration: 'until-long-rest',
+      source_actor: id,
+    }, [id])
+    const announced = eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'LegendaryResistanceUsed', {
+      reason: decision.reason,
+      ...(decision.condition ? { condition: decision.condition } : {}),
+    }, [id])
+    return { events: [marker, announced], decision }
+  }
+
   const oiledTargets = new Set()
   const resolveDamagePayload = (sourceState, resolvedTargetId, rawAmount, damageType, existingResistance = null) => {
     // Облитая маслом цель: следующий огненный урон в течение минуты сильнее на
@@ -9486,6 +9692,120 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       break
     }
+    /**
+     * Легендарное действие.
+     *
+     * Экономику хода оно не трогает вовсе — ни своего, ни чужого: в этом и
+     * состоит правило. Поэтому действие разрешается здесь целиком, а не
+     * переводится в `MakeAttack`: та команда списала бы боссу атаку из его
+     * собственного хода, и существо ушло бы в свой ход без действия.
+     *
+     * Запас тратится маркерами по одному на единицу стоимости — так «взмах
+     * крыльев за 2» и два удара хвостом по одному дают одинаковый счёт пипсов,
+     * и replay складывает то же число из тех же событий.
+     */
+    case 'UseLegendaryAction': {
+      const declared = command.legendary_action
+      const actor = findActor(state, command.actor_id)
+      const action = legendaryActionFor(actor, command.legendary_action_id)
+      const targetId = String(command.target_id ?? '')
+      const target = findActor(state, targetId)
+      for (let ordinal = declared.uses_before + 1; ordinal <= declared.uses_after; ordinal += 1) {
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+          condition: legendaryActionMarker(ordinal, declared.window_key),
+          duration: 'until-own-turn-start',
+          source_actor: command.actor_id,
+        }, [command.actor_id]))
+      }
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'LegendaryActionUsed', {
+        action_id: action.id,
+        name: action.name,
+        cost: action.cost,
+        uses_before: declared.uses_before,
+        uses_after: declared.uses_after,
+        uses_max: declared.uses_max,
+      }, [command.actor_id]))
+      if (action.kind === 'attack') {
+        const roll = diceService.rollD20({
+          modifier: action.attackModifier,
+          purpose: `legendary_attack:${action.id}`,
+          actorId: command.actor_id,
+          visibility: command.visibility ?? 'public',
+        })
+        rolls.push(roll)
+        const armorClass = effectiveArmorClass(state, target, targetId)
+        const critical = roll.kept === 20
+        const hit = critical || (roll.kept !== 1 && roll.total >= armorClass)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.attack), 'AttackResolved', {
+          ...roll, target_id: targetId, armor_class: armorClass, hit, critical, legendary_action_id: action.id,
+        }, [targetId]))
+        if (hit && action.damageExpression) {
+          const damageRoll = diceService.roll(action.damageExpression, `legendary_damage:${action.id}`, command.actor_id, command.visibility ?? 'public')
+          rolls.push(damageRoll)
+          events.push(eventFrom(command, 'DieRolled', damageRoll, []))
+          // Крит удваивает кости, а не итог: постоянная прибавка стат-блока
+          // остаётся одна. Второй бросок — настоящий, а не удвоение первого.
+          const criticalRoll = critical ? diceService.roll(action.damageExpression.replace(/[+-]\s*\d+$/u, ''), `legendary_damage_critical:${action.id}`, command.actor_id, command.visibility ?? 'public') : null
+          if (criticalRoll) {
+            rolls.push(criticalRoll)
+            events.push(eventFrom(command, 'DieRolled', criticalRoll, []))
+          }
+          const payload = resolveDamagePayload(state, targetId, damageRoll.total + (criticalRoll?.total ?? 0), action.damageType)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, legendary_action_id: action.id, critical }, [targetId]))
+          if (payload.hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [targetId]))
+        }
+      } else {
+        // Действие со спасброском бьёт по всем в радиусе, а не только по
+        // объявленной цели: цель у команды одна, потому что по ней проверялась
+        // досягаемость, но взмах крыльев не выбирает, кого задеть.
+        const centre = actorPosition(state, command.actor_id)
+        const difficulty = action.saveDc ?? monsterSpellcastingFor(actor)?.saveDc ?? 10
+        const caught = action.radiusFeet > 0
+          ? listActors(state).filter((candidate) => {
+            const at = actorPosition(state, actorId(candidate))
+            return isLivingActor(candidate)
+              && isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, command.actor_id)
+              && at && centre && Math.max(Math.abs(at.x - centre.x), Math.abs(at.y - centre.y)) * 5 <= action.radiusFeet
+          })
+          : [target].filter(Boolean)
+        const damageRoll = action.damageExpression
+          ? diceService.roll(action.damageExpression, `legendary_damage:${action.id}`, command.actor_id, command.visibility ?? 'public')
+          : null
+        if (damageRoll) {
+          rolls.push(damageRoll)
+          events.push(eventFrom(command, 'DieRolled', damageRoll, []))
+        }
+        let sweepState = state
+        for (const caughtActor of caught) {
+          const caughtId = actorId(caughtActor)
+          const save = rollSavingThrowD20(sweepState, diceService, caughtId, {
+            ability: action.saveAbility,
+            modifier: abilityModifier(caughtActor?.abilities?.[action.saveAbility]),
+            purpose: `legendary_save:${action.id}:${action.saveAbility}`,
+            visibility: command.visibility,
+          })
+          rolls.push(save)
+          const saved = savingThrowSucceeded(save, difficulty)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+            ...save, ability: action.saveAbility, difficulty, saved, legendary_action_id: action.id,
+          }, [caughtId]))
+          const amount = damageRoll ? (saved ? (action.halfOnSave ? Math.floor(damageRoll.total / 2) : 0) : damageRoll.total) : 0
+          if (amount > 0) {
+            const payload = resolveDamagePayload(sweepState, caughtId, amount, action.damageType)
+            const applied = eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, legendary_action_id: action.id, saved }, [caughtId])
+            events.push(applied)
+            sweepState = applyGameEvent(sweepState, applied)
+            if (payload.hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [caughtId]))
+          }
+          if (!saved && action.condition) {
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+              condition: action.condition, duration: 'until-next-turn', source_actor: command.actor_id, legendary_action_id: action.id,
+            }, [caughtId]))
+          }
+        }
+      }
+      break
+    }
     case 'StartConcentration':
       events.push(eventFrom(command, 'ConcentrationStarted', { effect_id: String(command.effect_id || command.effectId || randomUUID()) }, [command.actor_id]))
       break
@@ -9496,7 +9816,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const authoritative = Boolean(command.server_authoritative || context.serverAuthoritativeCombat)
       if (authoritative) {
         const actor = findActor(state, command.actor_id)
-        const spell = combatSpellFor(actor, command.spell_id)
+        // Та же развилка, что и в валидации, и по той же причине: блок
+        // `spellcasting` объявляет магию существа сам, и таблицы классов к ней
+        // отношения не имеют. Читать её здесь вторым способом значило бы, что
+        // движок исполняет не то, что проверил.
+        const spell = monsterSpellcastingFor(actor)
+          ? monsterCombatSpellFor(actor, command.spell_id)
+          : combatSpellFor(actor, command.spell_id)
         assertMechanicsSupported(spell, 'заклинания')
         /* Ритуал вне боя занимает своё время. Мир двигается до того, как ляжет
            эффект: десять минут накладывания — это десять минут, в которые отряд
@@ -9563,8 +9889,25 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }
         const spellAbility = String(spell.spellcastingAbility || 'int')
         const spellModifier = abilityModifier(actor?.abilities?.[spellAbility])
-        const spellAttackModifier = spellModifier + Math.max(0, safeInteger(actor?.proficiency, 0))
-        const spellSaveDc = 8 + spellAttackModifier
+        // Стат-блок объявляет СЛ и бонус атаки числом, и вывести их по формуле
+        // героя нельзя: у существа нет ни уровня класса, ни бонуса мастерства в
+        // том же смысле, и расчёт разошёлся бы с напечатанной карточкой.
+        const monsterSpell = spell.monsterSpell ?? null
+        const spellAttackModifier = monsterSpell
+          ? monsterSpell.attackBonus
+          : spellModifier + Math.max(0, safeInteger(actor?.proficiency, 0))
+        const spellSaveDc = monsterSpell ? monsterSpell.saveDc : 8 + spellAttackModifier
+        // «X в день» тратится маркером состояния — тем же способом, что и
+        // потраченный приём стат-блока (`monster-action-used`). Порядковый
+        // номер приходит из валидации, поэтому повтор той же команды кладёт тот
+        // же маркер и второго применения не съедает.
+        if (command.monster_spell_use) {
+          events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: `${MONSTER_SPELL_USE_CONDITION_PREFIX}${command.monster_spell_use.spell_id}#${command.monster_spell_use.ordinal}`,
+            duration: 'until-long-rest',
+            source_actor: command.actor_id,
+          }, [command.actor_id]))
+        }
         const effectId = `${spell.id}:${command.command_id}`
         const spentSlotResource = context.additionalBeam || context.readiedRelease ? null : command.spell_slot_resource ?? spell.slotResource
         if (spentSlotResource) {
@@ -10117,9 +10460,19 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             const silveryFortune = targetConditions.has('silvery-fortune')
             const save = rollSavingThrowD20(state, diceService, resolvedTargetId, { ability: saveAbility, modifier: saveModifier, purpose: `spell_save:${spell.id}:${saveAbility}`, advantage: silveryFortune || (spell.saveAdvantageIfHostile === true && state.mechanics.combat.active), disadvantage: metamagic.has('metamagic-heightened'), avoid_or_end_condition: chosenConditions.includes('poisoned') ? 'poisoned' : null, visibility: command.visibility })
             if (silveryFortune) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'silvery-fortune' }, [resolvedTargetId]))
-            const saved = automaticSave || carefulProtectedIds.has(resolvedTargetId) || savingThrowSucceeded(save, spellSaveDc)
+            const naturalSave = automaticSave || carefulProtectedIds.has(resolvedTargetId) || savingThrowSucceeded(save, spellSaveDc)
+            // Провал босса — ещё не провал: сперва закрытое правило решает,
+            // стоит ли жечь суточный запас. Решение принимается **до** события
+            // спасброска, чтобы стол не увидел сперва «не устоял», а потом
+            // «всё-таки устоял»: за столом это один результат, а не два.
+            const legendaryResistance = naturalSave ? null : legendaryResistanceFor(state, resolvedTargetId, {
+              conditions: chosenConditions,
+              damage: sharedDamageRoll ? sharedDamageRoll.total + (bonusDamageRoll?.total ?? 0) : 0,
+            })
+            const saved = naturalSave || Boolean(legendaryResistance)
             rolls.push(save)
-            events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: spell.id, ability: saveAbility, difficulty: spellSaveDc, saved, automatic_success: automaticSave, immunity: immuneByType ? creatureTypeFor(target) : immuneByLanguage ? 'language' : spell.deafenedAutoSave === true && targetConditions.has('deafened') ? 'deafened' : null }, [resolvedTargetId]))
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: spell.id, ability: saveAbility, difficulty: spellSaveDc, saved, automatic_success: automaticSave, ...(legendaryResistance ? { legendary_resistance: true } : {}), immunity: immuneByType ? creatureTypeFor(target) : immuneByLanguage ? 'language' : spell.deafenedAutoSave === true && targetConditions.has('deafened') ? 'deafened' : null }, [resolvedTargetId]))
+            if (legendaryResistance) events.push(...legendaryResistance.events)
             const damage = sharedDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(sharedDamageRoll.total / 2) : 0) : sharedDamageRoll.total) : 0
             const bonusDamage = bonusDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(bonusDamageRoll.total / 2) : 0) : bonusDamageRoll.total) : 0
             if (damage > 0) {
@@ -11583,6 +11936,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const recharge = monsterRechargeAtTurnStart(startTurnState, command, nextId, diceService)
       events.push(...recharge.events)
       rolls.push(...recharge.rolls)
+      events.push(...legendaryActionsResetAtTurnStart(startTurnState, command, nextId))
       break
     }
     case 'BargainWithMerchant': {
@@ -14878,7 +15232,10 @@ export function applyGameEvent(rawState, event) {
       break
     }
     case 'AttackResolved': {
-      if (!payload.reaction_attack) {
+      // Легендарное действие экономику хода не тратит — в этом и состоит
+      // правило: иначе босс, ударивший хвостом после хода героя, приходил бы в
+      // свой ход без действия, то есть платил бы за подарок редакции.
+      if (!payload.reaction_attack && !payload.legendary_action_id) {
         // Extra Attack is part of the Attack action, so the action is still
         // spent here; what changes is that the economy remembers how many of
         // the granted weapon attacks have been made.
@@ -16275,6 +16632,9 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'ConditionAdded': return `Добавлено состояние: ${payload.condition}`
     case 'ConditionImmunityResolved': return `${named((event.target_ids ?? [])[0]) || 'Существо'} невосприимчиво: состояние ${payload.condition} не наложено`
     case 'MonsterAbilityRecharged': return `${named((event.target_ids ?? [])[0]) || 'Существо'}: «${payload.name || payload.action_id}» снова наготове`
+    case 'LegendaryActionUsed': return `${named(event.actor_id) || 'Существо'} вне очереди: «${payload.name || payload.action_id}»`
+    case 'LegendaryActionsReset': return `${named((event.target_ids ?? [])[0]) || 'Существо'} снова полно сил: легендарные действия восстановлены`
+    case 'LegendaryResistanceUsed': return `${named((event.target_ids ?? [])[0]) || 'Существо'} стряхивает с себя чары — легендарная стойкость`
     case 'ConditionRemoved': return `Снято состояние: ${payload.condition}`
     // Семейство «падение и смерть» печатало сырой `target_ids[0]`: игрок
     // видел «hero выбывает из боя» вместо имени героя. Это самые заметные

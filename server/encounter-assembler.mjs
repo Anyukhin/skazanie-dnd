@@ -1063,6 +1063,15 @@ function enemyFrom(statBlockId, position, proposalHash, index, ordinal, proposal
     image: block.image,
     source_url: block.source_url,
     traits: cloneCatalogValue(block.traits ?? []),
+    // Магия и легендарные действия переносятся тем же условным спредом, что и
+    // строки защит: движок их исполняет (`server/legendary-actions.mjs`,
+    // `monsterSpellcastingFor`), а объявляет — стат-блок. Сейчас ни одна запись
+    // allowlist их не несёт (сторож портретов не пускает новых существ, пока
+    // недоступен провайдер изображений), но дверь открыта здесь, а не
+    // «когда-нибудь»: без этих двух строк первая же запись с боссом собралась бы
+    // молча обычным существом, и искать причину пришлось бы в бою.
+    ...(block.spellcasting ? { spellcasting: cloneCatalogValue(block.spellcasting) } : {}),
+    ...(block.legendary ? { legendary: cloneCatalogValue(block.legendary) } : {}),
     action_profiles: cloneCatalogValue(block.action_profiles ?? []),
     attack_profile: cloneCatalogValue(block.action_profiles?.[0] ?? {}),
     x: position.x,

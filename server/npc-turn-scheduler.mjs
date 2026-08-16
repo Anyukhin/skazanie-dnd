@@ -15,7 +15,20 @@ import {
   normalizeCampaignState,
   shortestTacticalPath,
 } from './rules-engine.mjs'
-import { isPartySummon } from './combat-spells.mjs'
+import {
+  isPartySummon,
+  monsterCombatSpellFor,
+  monsterSpellUsesSpentIn,
+  monsterSpellcastingFor,
+} from './combat-spells.mjs'
+import {
+  chooseLegendaryAction,
+  isBossActor,
+  legendaryProfileFor,
+  legendaryUsesSpent,
+  legendaryWindowKey,
+  legendaryWindowSpent,
+} from './legendary-actions.mjs'
 import { commandsForMoraleDecision, isMoraleMoment } from './npc-controller.mjs'
 import {
   npcActionUnavailableReason,
@@ -706,6 +719,157 @@ function thrownFlaskCommandFor(state, enemy, usable, economy, from) {
   return target ? { ...equipmentItemCommand(enemy, flask), target_id: target.id } : null
 }
 
+/** Союзник-NPC зовёт на помощь, когда потерял половину и больше. */
+const NPC_SPELL_HEAL_HP_PERCENT = 50
+
+/** Виды заклинаний, которые движок действительно исполняет по стат-блоку. */
+const EXECUTABLE_SPELL_SUPPORT = new Set(['verified', 'partial'])
+
+const spellDistanceFeet = (from, to) => from && to
+  ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * CELL_FEET
+  : Number.MAX_SAFE_INTEGER
+
+/**
+ * Заклинания стат-блока, которые существо может произнести прямо сейчас.
+ *
+ * Фильтр здесь строже, чем «есть в блоке», и это не перестраховка: движок
+ * отвечает отказом на неисполнимую карточку, на потраченное «X в день» и на
+ * заклинание длиннее одного хода, а любой отказ роняет **весь** ход существа —
+ * ровно то же правило, по которому планировщик сам проверяет боеприпасы.
+ */
+function availableMonsterSpells(state, enemy) {
+  const block = monsterSpellcastingFor(enemy)
+  if (!block) return []
+  const conditions = conditionIds(state, actorId(enemy))
+  return block.spells
+    .map((entry) => monsterCombatSpellFor(enemy, entry.id))
+    .filter((spell) => spell
+      && EXECUTABLE_SPELL_SUPPORT.has(String(spell.mechanicsSupport))
+      && spell.actionType === 'action'
+      && (spell.monsterSpell.perDay == null
+        || monsterSpellUsesSpentIn(conditions, spell.id) < spell.monsterSpell.perDay))
+}
+
+const spellCastCommand = (enemy, spell, extra) => ({
+  command_type: 'CastSpell',
+  actor_id: actorId(enemy),
+  spell_id: spell.id,
+  ...extra,
+})
+
+/**
+ * Что произнести. Правила закрытые и читаются сверху вниз:
+ *
+ * 1. **лечение союзника** — раненый до половины сосед важнее любого удара:
+ *    поднять своего дешевле, чем добить чужого;
+ * 2. **контроль** — состояние, которого на цели ещё нет; уже парализованного
+ *    парализовать второй раз значило бы выбросить применение;
+ * 3. **область** — только если накрывает двоих героев и ни одного своего:
+ *    Огненный шар по собственному отряду — не тактика, а ошибка;
+ * 4. **урон по лучшей цели** — той самой, которую уже выбрал общий подсчёт
+ *    целей, чтобы заклинание и удар не спорили о том, кто опаснее.
+ *
+ * Модель к выбору не допускается ни на одной ступени.
+ */
+function monsterSpellPlanFor(state, enemy, candidate, economy) {
+  if (economy.action === false) return null
+  const spells = availableMonsterSpells(state, enemy)
+  if (!spells.length) return null
+  const id = actorId(enemy)
+  const from = actorPosition(state, id)
+  if (!from) return null
+  const inRange = (spell, at) => spellDistanceFeet(from, at) <= Math.max(CELL_FEET, spell.range)
+    && (spellDistanceFeet(from, at) <= CELL_FEET || hasClearTrajectory(state, from, at))
+
+  const wounded = livingEnemies(state)
+    .filter((ally) => actorId(ally) !== id)
+    .map((ally) => ({ id: actorId(ally), at: actorPosition(state, actorId(ally)), hp: Math.max(0, Number(ally.hp) || 0), maximum: Math.max(1, Number(ally.maxHp) || 1) }))
+    .filter((ally) => ally.at && ally.hp > 0 && ally.hp * 100 <= ally.maximum * NPC_SPELL_HEAL_HP_PERCENT)
+    .sort((left, right) => left.hp / left.maximum - right.hp / right.maximum || left.id.localeCompare(right.id))[0]
+  const healing = wounded
+    ? spells.find((spell) => spell.kind === 'healing' && spell.target === 'ally' && inRange(spell, wounded.at))
+    : null
+  if (healing && wounded) return spellCastCommand(enemy, healing, { target_id: wounded.id })
+
+  const targetId = candidate ? actorId(candidate.actor) : ''
+  const targetAt = targetId ? actorPosition(state, targetId) : null
+  if (!targetId || !targetAt) return null
+  const targetConditions = conditionIds(state, targetId)
+  const control = spells.find((spell) => spell.target === 'enemy'
+    && Array.isArray(spell.conditions) && spell.conditions.length
+    && spell.conditions.every((condition) => !targetConditions.has(String(condition)))
+    && inRange(spell, targetAt))
+  if (control) return spellCastCommand(enemy, control, { target_id: targetId })
+
+  const party = livingParty(state)
+    .map((hero) => ({ id: actorId(hero), at: actorPosition(state, actorId(hero)) }))
+    .filter((hero) => hero.at)
+  const allies = livingEnemies(state)
+    .filter((ally) => actorId(ally) !== id)
+    .map((ally) => actorPosition(state, actorId(ally)))
+    .filter(Boolean)
+  const area = spells
+    .filter((spell) => spell.target === 'point' && Math.max(0, Number(spell.radius) || 0) > 0 && spell.damage)
+    .map((spell) => {
+      const radius = Math.max(CELL_FEET, Number(spell.radius) || CELL_FEET)
+      // Центр выбирается по клетке героя, а не «где-то между»: клетка заведомо
+      // проходима и заведомо видна, и повтор плана даёт ту же клетку.
+      const centre = party
+        .filter((hero) => inRange(spell, hero.at))
+        .map((hero) => ({
+          hero,
+          caught: party.filter((other) => spellDistanceFeet(hero.at, other.at) <= radius).length,
+          friendlyFire: allies.some((ally) => spellDistanceFeet(hero.at, ally) <= radius),
+        }))
+        .filter((option) => option.caught >= 2 && !option.friendlyFire)
+        .sort((left, right) => right.caught - left.caught || left.hero.id.localeCompare(right.hero.id))[0]
+      return centre ? { spell, to: { x: centre.hero.at.x, y: centre.hero.at.y } } : null
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id))[0]
+  if (area) return spellCastCommand(enemy, area.spell, { to: area.to })
+
+  const damaging = spells
+    .filter((spell) => spell.target === 'enemy' && spell.damage && inRange(spell, targetAt))
+    .sort((left, right) => averageDamage(right.damage) - averageDamage(left.damage) || left.id.localeCompare(right.id))[0]
+  return damaging ? spellCastCommand(enemy, damaging, { target_id: targetId }) : null
+}
+
+/**
+ * Легендарное действие после чужого хода.
+ *
+ * Планировщик отвечает `null` всем, у кого нет запаса, кто уже действовал в
+ * этом окне или до кого некому дотянуться, — движок повторит те же три
+ * проверки, но отказ здесь дешевле: он не роняет ход, которого ещё нет.
+ */
+export function planLegendaryAction(rawState, bossId) {
+  const state = normalizeCampaignState(rawState)
+  const boss = findActor(state, bossId)
+  const profile = legendaryProfileFor(boss)
+  const combat = state.mechanics.combat
+  if (!profile || !combat.active || !isEnemyActor(state, bossId) || !isCombatCapable(state, boss)) return null
+  if (incapacitatingConditionFor(state, bossId)) return null
+  if (String(combat.initiative?.[Number(combat.active_index)]?.actor_id ?? '') === String(bossId)) return null
+  const conditions = conditionIds(state, bossId)
+  const windowKey = legendaryWindowKey(combat)
+  if (legendaryWindowSpent(conditions, windowKey)) return null
+  const remaining = profile.uses - legendaryUsesSpent(conditions)
+  const from = actorPosition(state, bossId)
+  if (remaining <= 0 || !from) return null
+  const targets = livingParty(state)
+    .map((hero) => ({ id: actorId(hero), at: actorPosition(state, actorId(hero)) }))
+    .filter((hero) => hero.at)
+    .map((hero) => ({ id: hero.id, distanceFeet: spellDistanceFeet(from, hero.at) }))
+  const chosen = chooseLegendaryAction({ actor: boss, remainingUses: remaining, targets })
+  if (!chosen) return null
+  return {
+    command_type: 'UseLegendaryAction',
+    actor_id: String(bossId),
+    legendary_action_id: chosen.action.id,
+    target_id: chosen.target_id,
+  }
+}
+
 /**
  * Публичная причина детерминированного выбора называет только видимые на поле
  * факты: перемещение, раненую цель, контроль от действия или поддержку союзника.
@@ -726,7 +890,14 @@ function publicTacticFor(state, enemy, candidate, commands = []) {
     && commands.some((command) => ['keep-distance', 'nimble-escape'].includes(String(command.monster_ability ?? '')))
   // Что именно за вещь, здесь не называется: причину видит вся партия, а
   // карман живого противника закрыт до обыска тела.
-  const tactic = commands.some((command) => command.command_type === 'UseItem')
+  // Какое именно заклинание, планировщик не называет: имя карточки приедет со
+  // своим событием, когда оно ляжет, а причина выбора — это то, что видно за
+  // столом. Лечение отделено от нападения намеренно: «поднимает своего» и
+  // «бьёт чарами» за столом читаются как разные поступки.
+  const spellCast = commands.find((command) => command.command_type === 'CastSpell')
+  const tactic = spellCast
+    ? spellCast.target_id && isEnemyActor(state, spellCast.target_id) ? 'выхаживает союзника' : 'бьёт заклинанием'
+    : commands.some((command) => command.command_type === 'UseItem')
     ? 'пускает в ход снаряжение'
     : retreat
     ? 'держит дистанцию'
@@ -769,6 +940,18 @@ export function planNpcTurn(rawState, enemyId) {
   // ОЗ не разменивается насмерть, если не одержимо чертой ярости.
   const bloodiedRetreat = shouldRetreatBloodied(state, enemy) ? bloodiedRetreatFor(state, enemy) : null
   const healingSip = healingPotionCommandFor(state, enemy, usableEquipment, currentEconomy)
+  // Магия стат-блока идёт раньше оружия и раньше подхода: заклинатель на то и
+  // заклинатель, что достаёт оттуда, откуда не дотянется клинком. Ветка стоит
+  // после отхода раненого — своя шкура важнее лишнего Огненного шара — и
+  // выключается сама у всех, у кого блока `spellcasting` нет.
+  const spellPlan = bloodiedRetreat ? null : monsterSpellPlanFor(state, enemy, candidate, currentEconomy)
+  if (spellPlan) {
+    return [
+      ...(healingSip ? [healingSip] : []),
+      spellPlan,
+      { command_type: 'EndTurn', actor_id: String(enemyId) },
+    ]
+  }
   if (!candidate) {
     // Бить некого или нечем: тогда склянка — единственное, чем существо ещё
     // может дотянуться.
@@ -1063,6 +1246,43 @@ export async function runNpcTurnScheduler({
       continue
     }
     const current = findActor(state, currentId)
+    // Легендарные действия — единственное, что сервер делает **до** возврата
+    // хода игроку: они и совершаются между чужими ходами, а очередь на этот
+    // момент уже стоит на герое. Одно окно — одно действие; предел стережёт
+    // маркер с ключом окна, поэтому повторный проход планировщика по тому же
+    // состоянию второго действия не выдаёт и цикл не наматывается.
+    //
+    // `advanceNpc` здесь обязателен, и это правило, а не осторожность: флаг
+    // поднимается только там, где ход действительно кончился (`EndTurn`,
+    // начало боя, разрешённая реакция — см. `server/index.mjs`). Без него босс
+    // бил бы хвостом между шагом героя и его же ударом, то есть посреди чужого
+    // хода, а не после него.
+    const legendaryBoss = advanceNpc ? livingEnemies(state)
+      .filter((enemy) => isBossActor(enemy))
+      .map((enemy) => ({ id: actorId(enemy), command: planLegendaryAction(state, actorId(enemy)) }))
+      .filter((entry) => entry.command)
+      .sort((left, right) => left.id.localeCompare(right.id))[0]
+      : null
+    if (legendaryBoss) {
+      const key = schedulerKey(campaignId, combat, legendaryBoss.id, `legendary-${keyPart(legendaryBoss.command.legendary_action_id)}`)
+      const { committed } = await commitPlan({
+        campaignId, eventStore, rulesEngine, loaded, key, commands: [legendaryBoss.command],
+      })
+      events.push(...committed.events)
+      turns.push({
+        actor_id: legendaryBoss.id,
+        round: combat.round,
+        active_index: combat.active_index,
+        kind: 'legendary-action',
+        commands: ['UseLegendaryAction'],
+        tactic: 'действует вне очереди',
+        target_id: legendaryBoss.command.target_id,
+        idempotency_key: key,
+        state_version: committed.state_version,
+      })
+      loaded = await eventStore.load(campaignId)
+      continue
+    }
     if (current && isCombatCapable(state, current) && !isEnemyActor(state, currentId)) {
       return { state: loaded.state, state_version: loaded.state_version, turns, events }
     }

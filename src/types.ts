@@ -942,6 +942,14 @@ export type Enemy = {
   healthStatus?: 'unharmed' | 'wounded' | 'bloodied' | 'critical' | 'defeated'
   healthKnown?: 'banded' | 'exact'
   initiativeBonus?: number
+  /**
+   * Босс: существо с легендарными действиями. Признак и полосу запаса
+   * выставляет сервер (`publicEnemyFor`), клиент их не выводит — иначе рамка
+   * появлялась бы там, где действий вне хода нет. Пипсы — качественная
+   * величина; ни СЛ заклинаний, ни список магии сюда не приходят вовсе.
+   */
+  boss?: boolean
+  legendary?: { uses: number; used: number }
   stat_block_id?: string
   creature_type?: string
   image?: string

@@ -201,6 +201,21 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${actor} тянется за следующим снарядом и находит колчан пустым.`)
     } else if (event.event_type === 'ItemEffectIneffective') {
       meaningful.push(`${payload.item_name || 'Склянка'} разбивается о ${target}, но вреда не причиняет.`)
+    } else if (event.event_type === 'LegendaryActionUsed') {
+      // Имя действия приходит из стат-блока и называет поступок, а не цену:
+      // «Удар хвостом» стол видит своими глазами, а сколько единиц запаса он
+      // стоил — это бухгалтерия, и она уезжает пипсами на карточке, где её
+      // читают взглядом, а не считают в уме по тексту.
+      meaningful.push(`Вне очереди: ${actor} — «${String(payload.name || 'легендарное действие')}».`)
+    } else if (event.event_type === 'LegendaryResistanceUsed') {
+      // Самый заметный момент боя с боссом: удавшееся заклинание вдруг не
+      // сработало. Промолчать здесь значило бы оставить стол в недоумении —
+      // бросок прошёл, а эффекта нет. Причина называется качественно.
+      meaningful.push(payload.reason === 'lethal'
+        ? `${target} должен был пасть — и устоял: сила, что держит его на ногах, тратится, но не иссякла.`
+        : `${target} стряхивает с себя чары, даже не дрогнув.`)
+    } else if (event.event_type === 'LegendaryActionsReset') {
+      meaningful.push(`${target} собирается с силами: удары вне очереди снова в запасе.`)
     } else if (event.event_type === 'MonsterAbilityRecharged') {
       // Качественно и без чисел: порог recharge — часть стат-блока, и за столом
       // его не объявляют. Игрок узнаёт ровно то, что видит: приём снова готов.
@@ -449,7 +464,8 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
-  'ItemEffectIneffective', 'MonsterAbilityRecharged', 'NpcBlessingGranted',
+  'ItemEffectIneffective', 'LegendaryActionUsed', 'LegendaryActionsReset', 'LegendaryResistanceUsed',
+  'MonsterAbilityRecharged', 'NpcBlessingGranted',
   'NpcEquipmentSpent', 'NpcItemUsed',
   'KnockoutEnded', 'MapLevelChanged', 'ParleyProposed', 'ParleyRejected', 'ParleySettled',
   'ReadiedActionExpired', 'RestCompleted', 'ShrinePrayerResolved', 'SpellCast',

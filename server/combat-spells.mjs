@@ -200,6 +200,131 @@ export function canonicalCombatSpellFor(spellId) {
   return spell ? clone(spell) : null
 }
 
+/**
+ * Заклинатель из стат-блока — не класс и не ячейки.
+ *
+ * Редакция 2024 записывает магию существа двумя строками: «неограниченно» и
+ * «X в день». Ячеек у стат-блока нет вовсе, поэтому ни `casterProfile`, ни
+ * таблицы прогрессии выше сюда не годятся: они вывели бы существу класс по
+ * имени роли («жрец культа» → полный жрец со всеми ячейками своего уровня) и
+ * подарили бы ему чужую магию. Блок объявляется явно и целиком:
+ *
+ * ```js
+ * spellcasting: {
+ *   ability: 'cha', save_dc: 15, attack_bonus: 7,
+ *   spells: [{ id: 'fire-bolt', uses: 'at-will' }, { id: 'fireball', uses: 2 }],
+ * }
+ * ```
+ *
+ * СЛ и бонус атаки берутся **из блока**, а не считаются из характеристик:
+ * стат-блок объявляет их числом, и вывод по формуле героя разошёлся бы с
+ * карточкой существа.
+ */
+export const MONSTER_SPELL_AT_WILL = 'at-will'
+
+/** Маркер потраченного применения: `monster-spell-used:<spell>#<n>`. */
+export const MONSTER_SPELL_USE_CONDITION_PREFIX = 'monster-spell-used:'
+
+const SPELL_ABILITIES = Object.freeze(['str', 'dex', 'con', 'int', 'wis', 'cha'])
+
+/** Нормализованный блок стат-блока либо `null`, если существо не заклинатель. */
+export function monsterSpellcastingFor(actor) {
+  const raw = actor?.spellcasting
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const spells = (Array.isArray(raw.spells) ? raw.spells : [])
+    .map((entry) => {
+      const id = String(entry?.id ?? '')
+      if (!id) return null
+      const declared = entry?.uses
+      // «неограниченно» — это отсутствие предела, а не ноль применений:
+      // `null` ниже читается всеми потребителями как «лимита нет».
+      const perDay = declared == null || declared === MONSTER_SPELL_AT_WILL
+        ? null
+        : Math.max(0, Math.trunc(Number(declared) || 0))
+      return { id, perDay }
+    })
+    .filter(Boolean)
+  if (!spells.length) return null
+  return {
+    ability: SPELL_ABILITIES.includes(String(raw.ability)) ? String(raw.ability) : 'int',
+    saveDc: Math.max(1, Math.trunc(Number(raw.save_dc ?? raw.saveDc) || 10)),
+    attackBonus: Math.trunc(Number(raw.attack_bonus ?? raw.attackBonus) || 0),
+    spells,
+  }
+}
+
+/** Запись блока по идентификатору заклинания либо `null`. */
+export function monsterSpellEntryFor(actor, spellId) {
+  const block = monsterSpellcastingFor(actor)
+  if (!block) return null
+  const id = String(spellId ?? '')
+  return block.spells.find((entry) => entry.id === id) ?? null
+}
+
+/**
+ * Карточка заклинания существа: механика — каталожная, числа — из блока.
+ *
+ * Возвращает `null` и на «существо не заклинатель», и на «этого заклинания в
+ * блоке нет», и на «блок называет заклинание, которого нет в каталоге». Три
+ * разных отказа разводит `monsterSpellRefusalFor` ниже — движку нужен честный
+ * код, а не общее «нельзя».
+ */
+export function monsterCombatSpellFor(actor, spellId) {
+  const block = monsterSpellcastingFor(actor)
+  if (!block) return null
+  const entry = block.spells.find((candidate) => candidate.id === String(spellId ?? ''))
+  const spell = entry ? SPELLS_BY_ID.get(entry.id) : null
+  if (!entry || !spell) return null
+  return {
+    ...clone(spell),
+    // Ячеек у стат-блока нет: предел записан «X в день» и считается маркерами.
+    slotResource: null,
+    spellcastingAbility: block.ability,
+    prepared: true,
+    monsterSpell: { id: entry.id, perDay: entry.perDay, saveDc: block.saveDc, attackBonus: block.attackBonus },
+  }
+}
+
+/**
+ * Почему существо не может произнести это заклинание. `null` — может.
+ *
+ * Разделение отказов принципиально: «нет в блоке» — правило («это существо так
+ * не умеет»), а «нет в каталоге» — дефект самого стат-блока, и молчать о нём
+ * нельзя: иначе опечатка в записи бестиария читалась бы за столом как решение
+ * автора не давать существу это заклинание.
+ */
+export function monsterSpellRefusalFor(actor, spellId) {
+  const block = monsterSpellcastingFor(actor)
+  if (!block) return ['Существо не владеет магией', 'MONSTER_SPELLCASTING_ABSENT']
+  const id = String(spellId ?? '')
+  const entry = block.spells.find((candidate) => candidate.id === id)
+  if (!entry) return ['Этого заклинания нет в стат-блоке существа', 'MONSTER_SPELL_NOT_IN_STAT_BLOCK']
+  if (!SPELLS_BY_ID.has(entry.id)) {
+    return [`Стат-блок называет заклинание «${entry.id}», которого нет в каталоге`, 'MONSTER_SPELL_UNKNOWN']
+  }
+  return null
+}
+
+/**
+ * Сколько применений «X в день» уже потрачено, по маркерам состояний.
+ *
+ * Считают одинаково и движок (проверка предела), и планировщик (не предлагать
+ * исчерпанное). Второй копии счёта быть не должно: разойдись они — планировщик
+ * предлагал бы заклинание, на которое движок отвечает отказом, и весь ход
+ * существа падал бы на собственном плане.
+ */
+export function monsterSpellUsesSpentIn(conditionIds, spellId) {
+  const prefix = `${MONSTER_SPELL_USE_CONDITION_PREFIX}${String(spellId ?? '')}#`
+  return [...(conditionIds ?? [])].filter((condition) => String(condition).startsWith(prefix)).length
+}
+
+/** Заклинания блока, которых каталог не знает. Пусто — блок исполним. */
+export function monsterSpellcastingIssues(actor) {
+  const block = monsterSpellcastingFor(actor)
+  if (!block) return []
+  return block.spells.filter((entry) => !SPELLS_BY_ID.has(entry.id)).map((entry) => entry.id)
+}
+
 export function spellSlotMaximumsFor(actor) {
   const profile = casterProfile(actor)
   if (!profile) return {}
