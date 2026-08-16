@@ -26,9 +26,32 @@ const featureChoiceGroups = buildRules.featureChoiceGroups as Array<{ classKey: 
 
 export const DND_CLASS_OPTIONS = (catalogPayload.classes as unknown as CatalogClass[]).map((entry) => ({ key: entry.classKey as NonNullable<Player['characterClass']>, label: entry.label, subclassLevel: entry.subclassLevel, sourceUrl: entry.sourceUrl }))
 
+/**
+ * Роль героя строкой — **единственное** чтение этого поля в модуле.
+ *
+ * Тип объявляет `role` обязательным, и это правда для героя, собранного
+ * мастером персонажей. Но состояние кампании приезжает не только оттуда:
+ * админский импорт, команда Режиссёра и сохранённые кампании отдают лист
+ * такой формы, какая в них лежит, — и поля может не быть. Прямое
+ * `player.role.toLocaleLowerCase(...)` в таком листе роняет `<DungeonMap>`
+ * целиком, то есть стол видит пустой экран вместо доски: одно необязательное
+ * поле обрывает весь рендер.
+ *
+ * Безопасное чтение было здесь с самого начала, но только здесь — два соседних
+ * читателя завели свою копию выражения без защиты. Поэтому копия теперь одна:
+ * четвёртому читателю неоткуда взять незащищённую форму.
+ *
+ * Пустая строка — честный ответ: класс неизвестен, и герой получает только
+ * общие действия. Подставлять сюда имя персонажа нельзя — «Волшебница» стала
+ * бы волшебницей по классу.
+ */
+function roleSignature(player?: Player): string {
+  return String(player?.role ?? '').toLocaleLowerCase('ru')
+}
+
 export function playerClassKey(player?: Player): NonNullable<Player['characterClass']> | null {
   if (player?.characterClass && generatedClasses.has(player.characterClass)) return player.characterClass
-  const role = String(player?.role ?? '').toLocaleLowerCase('ru')
+  const role = roleSignature(player)
   for (const [key, pattern] of [
     ['barbarian', /варвар|barbarian/u], ['bard', /бард|bard/u], ['cleric', /жрец|cleric/u], ['druid', /друид|druid/u],
     ['fighter', /воин|fighter/u], ['monk', /монах|monk/u], ['paladin', /паладин|paladin/u], ['ranger', /следопыт|ranger/u],
@@ -89,7 +112,7 @@ const fighter: CombatAction[] = [
 ]
 
 export function fallbackCombatActions(player: Player): CombatAction[] {
-  const role = player.role.toLocaleLowerCase('ru')
+  const role = roleSignature(player)
   const level = Math.max(1, player.level || 1)
   const result = [...common]
   if (/варвар|barbarian/u.test(role)) result.push({ id: 'rage', name: 'Ярость', category: 'class', target: 'self', actionType: 'bonus_action', range: 0, resource: 'rage', cost: 1, description: 'Сопротивление физическому урону и бонус к урону атак Силой.' })
@@ -163,7 +186,7 @@ export function fallbackCombatActions(player: Player): CombatAction[] {
 
 export function fallbackCombatResources(player?: Player): Record<string, { current: number; max: number }> {
   if (!player) return {}
-  const role = player.role.toLocaleLowerCase('ru')
+  const role = roleSignature(player)
   const level = Math.max(1, player.level || 1)
   const resources: Record<string, { current: number; max: number }> = {}
   const add = (id: string, maximum: number) => { resources[id] = { current: maximum, max: maximum } }
