@@ -157,6 +157,7 @@ import {
   normalizeLawState,
   pendingCrimeIdsFor,
   wantedFor,
+  wantedLevelHere,
 } from './law-and-order.mjs'
 import {
   TAVERN_CHEAT_ABILITY,
@@ -310,6 +311,12 @@ import {
   npcPocketFor,
   pickpocketDifficultyFor,
 } from './pickpocket.mjs'
+import {
+  STOLEN_DISCOUNT_BPS,
+  UNDERWORLD_POLICY_ID,
+  fenceDenunciationFor,
+  npcIsFence,
+} from './underworld.mjs'
 import {
   ITEM_DAWN_RECHARGE_EVENT_SCHEMA_VERSION,
   applyItemDawnRechargeToPlayers,
@@ -4250,11 +4257,21 @@ export function validateCommand(input, rawState, context = {}) {
     command.ability = String(expected.ability)
     command.difficulty = safeInteger(expected.difficulty, 10)
     command.visibility = expected.visibility === 'specific_player' ? 'specific_player' : 'party'
+    // Подкуп приезжает из политики проверки, а не из тела запроса: сумму,
+    // ступень и знак сдвига считает сервер, и клиент их подсказать не может.
+    // Кошелёк проверяется здесь же — обещать монету, которой нет, нельзя.
+    if (expected.bribe) {
+      const purseCp = currencyToCopper(playerActor(state, expected.hero_id)?.currency)
+      if (purseCp < Math.max(0, safeInteger(expected.bribe.amount_cp, 0))) {
+        throw new RulesValidationError('На такую щедрость у героя не хватает монет', 'INSUFFICIENT_FUNDS')
+      }
+    }
     command.social_check = {
       check_id: String(expected.check_id),
       npc_id: String(expected.npc_id),
       skill: String(expected.skill),
       request_fingerprint: String(expected.request_fingerprint),
+      ...(expected.bribe ? { bribe: clone(expected.bribe) } : {}),
     }
     delete command.modifier
     command.advantage = Boolean(expected.advantage)
@@ -4951,7 +4968,15 @@ export function validateCommand(input, rawState, context = {}) {
         const code = item.equipped ? 'ITEM_EQUIPPED' : item.attuned_to ? 'ITEM_ATTUNED' : 'ITEM_NOT_SELLABLE'
         throw new RulesValidationError(allowed.reason, code)
       }
-      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id))
+      // Честный торговец краденое не берёт. Отказ здесь **не** исключение, и это
+      // разобрано, а не упущено: исключение откатывает коммит целиком, а у
+      // показанной честному лавочнику краденой вещи есть последствие — он мог
+      // и донести. Отказ поэтому становится исходом со своим событием: монеты
+      // не переходят, вещь остаётся в сумке, а мир узнаёт то, что увидел.
+      const fenceStance = fenceStanceFor(state, merchant.id, item)
+      command.merchant_refuses_stolen = fenceStance.refuses
+      if (fenceStance.refuses) return command
+      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id), fenceStance.discountBps)
       if (!quote) throw new RulesValidationError('Для предмета не задана серверная цена', 'PRICE_UNAVAILABLE')
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       if (normalizeMerchantPurseCp(merchant.purse_cp) < total) {
@@ -6684,6 +6709,28 @@ function npcSpellTargetsAt(state, command, spell) {
   return candidates.filter(({ placement }) => Math.max(Math.abs(placement.x - to.x), Math.abs(placement.y - to.y)) * 5 <= radius)
 }
 
+/**
+ * Скупщик ли этот торговец и почём он берёт краденое.
+ *
+ * Одна функция на обе фазы — валидацию и исполнение, — чтобы отказ и цена
+ * читали одно и то же: разойдись они, сделка проходила бы проверку и падала на
+ * расчёте либо наоборот. Социальный профиль торговца ищется по его же
+ * идентификатору: скупщик — это человек, а не прилавок.
+ */
+function fenceStanceFor(state, merchantId, item) {
+  const stolen = String(item?.origin ?? '') === 'stolen'
+  const npc = (state?.social?.npcs ?? []).find((candidate) => String(candidate?.id ?? '') === String(merchantId ?? ''))
+    ?? { id: String(merchantId ?? '') }
+  const fence = npcIsFence(state, npc)
+  return {
+    stolen,
+    fence,
+    npc,
+    discountBps: stolen && fence ? STOLEN_DISCOUNT_BPS : 0,
+    refuses: stolen && !fence,
+  }
+}
+
 /** Маркер «карман этого человека уже обчищен». Пул выведен из сида и один. */
 function pickpocketSpentCondition(npcId) {
   return `pocket-picked:${String(npcId ?? '')}`
@@ -8000,6 +8047,32 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         } } : {}),
       }, [command.actor_id]))
       if (silveryFortune) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'silvery-fortune' }, [command.actor_id]))
+      // Монета уходит в любом случае — и когда помогла, и когда оскорбила.
+      // Забрать протянутую руку назад нельзя: за столом деньги уже показаны.
+      if (command.social_check?.bribe) {
+        const bribe = command.social_check.bribe
+        const amountCp = Math.max(0, safeInteger(bribe.amount_cp, 0))
+        const purseBeforeCp = currencyToCopper(playerActor(state, command.actor_id)?.currency)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), 'NpcBribeOffered', {
+          npc_id: String(command.social_check.npc_id),
+          tier_id: String(bribe.tier_id),
+          amount_cp: amountCp,
+          insulted: bribe.insulted === true,
+          balance_before_cp: purseBeforeCp,
+          balance_after_cp: Math.max(0, purseBeforeCp - amountCp),
+          currency_after: copperToCurrency(Math.max(0, purseBeforeCp - amountCp)),
+          policy_id: UNDERWORLD_POLICY_ID,
+        }, [command.actor_id]))
+        // Оскорблённый неподкупный — поступок на глазах у сцены: деньги
+        // показали при людях, и мир это запомнит наравне с прочим.
+        if (bribe.insulted === true) {
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), 'NpcBribeRefused', {
+            npc_id: String(command.social_check.npc_id),
+            hero_id: String(command.actor_id),
+            amount_cp: amountCp,
+          }, [String(command.social_check.npc_id)]))
+        }
+      }
       break
     }
     case 'MakeSavingThrow': {
@@ -12141,8 +12214,34 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const actor = playerActor(state, command.actor_id)
       const merchant = findMerchant(state, command.merchant_id)
       const item = inventoryItem(actor, command.item_id)
+      if (command.merchant_refuses_stolen === true) {
+        const stance = fenceStanceFor(state, command.merchant_id, item)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.sellingEquipment), 'MerchantRefusedStolenGoods', {
+          merchant_id: String(command.merchant_id),
+          merchant_name: String(merchant?.name ?? command.merchant_id).slice(0, 160),
+          item_id: String(command.item_id),
+          item_name: String(item?.name ?? '').slice(0, 120),
+        }, [command.actor_id]))
+        // Донос — не бросок: один и тот же отказ на одном и том же состоянии
+        // обязан кончаться одинаково и после replay. Ниже второй ступени
+        // розыска никто не побежит за стражей из-за чужого ножа.
+        const denunciation = fenceDenunciationFor(state, stance.npc, {
+          wantedLevel: wantedLevelHere(state),
+          itemId: String(command.item_id),
+        })
+        if (denunciation) {
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.sellingEquipment), 'MerchantDenouncedThief', {
+            merchant_id: String(command.merchant_id),
+            merchant_name: String(merchant?.name ?? command.merchant_id).slice(0, 160),
+            hero_id: String(command.actor_id),
+            item_name: String(item?.name ?? '').slice(0, 120),
+          }, [String(command.merchant_id)]))
+        }
+        break
+      }
       const appraisal = trustedItemAppraisalFor(state, actor.id, item)
-      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id))
+      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id),
+        fenceStanceFor(state, merchant.id, item).discountBps)
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       const balanceBeforeCp = currencyToCopper(actor.currency)
       const merchantPurseBeforeCp = normalizeMerchantPurseCp(merchant.purse_cp)
@@ -16460,6 +16559,15 @@ export function applyGameEvent(rawState, event) {
      * редьюсер обязан быть чистым, и после replay кошелёк должен сойтись
      * копейка в копейку.
      */
+    case 'NpcBribeOffered':
+      replaceActor(state, target, (actor) => ({ ...actor, currency: normalizeCurrency(payload.currency_after) }))
+      refreshPlayerDerivedState(state, [target])
+      appendEconomyLog(state, event, {
+        type: 'bribe', actorId: target, npcId: payload.npc_id,
+        amountCp: safeInteger(payload.amount_cp, 0), insulted: payload.insulted === true,
+        policyId: payload.policy_id ?? null,
+      })
+      break
     case 'NpcPocketPicked':
       replaceActor(state, target, (actor) => ({
         ...actor,
@@ -16812,6 +16920,12 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'ConditionAdded': return `Добавлено состояние: ${payload.condition}`
     case 'ConditionImmunityResolved': return `${named((event.target_ids ?? [])[0]) || 'Существо'} невосприимчиво: состояние ${payload.condition} не наложено`
     case 'MonsterAbilityRecharged': return `${named((event.target_ids ?? [])[0]) || 'Существо'}: «${payload.name || payload.action_id}» снова наготове`
+    case 'NpcBribeOffered': return payload.insulted === true
+      ? `${named(event.actor_id) || 'Герой'} протягивает монету — и её отталкивают`
+      : `${named(event.actor_id) || 'Герой'} подкрепляет слова монетой`
+    case 'NpcBribeRefused': return `${named((event.target_ids ?? [])[0]) || 'Собеседник'} не берёт денег`
+    case 'MerchantRefusedStolenGoods': return `${payload.merchant_name || 'Торговец'} отказывается брать вещь: «${payload.item_name || 'предмет'}»`
+    case 'MerchantDenouncedThief': return `${payload.merchant_name || 'Торговец'} отправляет весточку страже`
     case 'NpcPocketPicked': return `${named(event.actor_id) || 'Герой'} незаметно обчищает карман: ${payload.npc_name || 'прохожий'}`
     case 'NpcPickpocketNoticed': return `${payload.npc_name || 'Прохожий'} перехватывает чужую руку у своего кармана`
     case 'LegendaryActionUsed': return `${named(event.actor_id) || 'Существо'} вне очереди: «${payload.name || payload.action_id}»`

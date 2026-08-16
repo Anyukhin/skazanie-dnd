@@ -84,6 +84,11 @@ export const DEED_KINDS = Object.freeze({
   // розыска не двигает. За руку здесь ловит хозяин заведения, а не стража.
   cheating: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Шулерство' }),
   vandalism: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Погром' }),
+  // Попытка подкупа. Тяжесть мелкая и это осознанно: протянуть монету — не
+  // преступление, поэтому в таблицу закона (`WANTED_CRIME_POINTS`,
+  // `law-and-order.mjs`) этот вид не входит и ступень розыска не двигает. Мир
+  // просто запоминает, что за человек к нему приходил.
+  bribery_attempt: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Попытка подкупа' }),
   promise_broken: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Нарушенное слово' }),
   rescue: Object.freeze({ alignment: 'bright', severity: 'major', label: 'Спасение' }),
   generosity: Object.freeze({ alignment: 'bright', severity: 'major', label: 'Щедрость' }),
@@ -301,6 +306,13 @@ const DEED_EVENT_TYPES = new Set([
   // тем и удачна, что её никто не видел, — а поступок без свидетелей летопись
   // и так пишет тайной ведущего.
   'NpcPickpocketNoticed',
+  // Донос честного торговца. Поступок пишется не на торговца, а на героя: в
+  // летописи мира это по-прежнему кража, просто узнали о ней с прилавка.
+  'MerchantDenouncedThief',
+  // Отвергнутая монета. Поступок мелкий и в таблицу закона не входит
+  // (`WANTED_CRIME_POINTS`): попытка подкупа — не преступление, а то, что о
+  // человеке запомнят. Ступень розыска она не двигает, репутацию — да.
+  'NpcBribeRefused',
 ])
 
 /**
@@ -347,6 +359,28 @@ function recognizeDeed(state, event) {
       subject: text(payload.npc_name, 160) || npcNameFor(state, npcId) || 'соперник за костями',
       actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
       witnessIds: [...new Set([npcId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
+    }
+  }
+  if (type === 'NpcBribeRefused') {
+    const npcId = text(payload.npc_id, 120)
+    return {
+      kind: 'bribery_attempt',
+      key: npcId || text(payload.hero_id, 120),
+      subject: npcNameFor(state, npcId) || 'собеседник',
+      actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
+      witnessIds: [...new Set([npcId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
+    }
+  }
+  if (type === 'MerchantDenouncedThief') {
+    // Торговец — свидетель сам по себе: краденую вещь ему принесли в руки и
+    // показали. Тот же приём, что у жертвы карманной кражи.
+    const merchantId = text(payload.merchant_id, 120)
+    return {
+      kind: 'theft',
+      key: merchantId || text(payload.hero_id, 120),
+      subject: text(payload.item_name, 160) || 'чужая вещь',
+      actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
+      witnessIds: [...new Set([merchantId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
     }
   }
   if (type === 'NpcPickpocketNoticed') {
@@ -500,6 +534,7 @@ function summaryFor(state, deed) {
     cheating: `${who}: шулерство за костями — ${what} (${place})`,
     arson: `${who}: поджог — ${what} (${place})`,
     vandalism: `${who}: погром — ${what} (${place})`,
+    bribery_attempt: `${who}: попытка подкупа — ${what} (${place})`,
     theft: `${who}: кража — ${what} (${place})`,
     destruction: `${who}: разрушение — ${what} (${place})`,
     promise_broken: `${who}: нарушенное слово — ${what} (${place})`,

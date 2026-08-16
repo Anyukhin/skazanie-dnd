@@ -24,6 +24,7 @@ import {
 } from './narrator.mjs'
 import { TAVERN_DICE_APPROACHES, TAVERN_POLICY_ID, tavernRoundFor } from './tavern-life.mjs'
 import { BLESSINGS_POLICY_ID, PRAYER_ABILITY, PRAYER_DC, PRAYER_SKILL } from './blessings.mjs'
+import { currencyToCopper } from './merchant-economy.mjs'
 import { presentSceneNpcs } from './npc-positioning.mjs'
 import {
   PICKPOCKET_ABILITY,
@@ -1791,7 +1792,11 @@ export class GameOrchestrator {
     let precedingCommands = []
     let socialTurn = null
     if (socialRequest) {
-      const policy = buildNpcSocialCheckPolicy({ state: authoritativeState, npcId: socialRequest.npcId, heroId: playerId, message, turnId })
+      // Опорная сумма подкупа — кошелёк самого героя: «хорошо дать» в бедной
+      // деревне и в столице разные деньги, а ступеней должно остаться три.
+      const bribeReferenceCp = currencyToCopper((authoritativeState?.players ?? [])
+        .find((hero) => String(hero?.id ?? '') === String(playerId))?.currency)
+      const policy = buildNpcSocialCheckPolicy({ state: authoritativeState, npcId: socialRequest.npcId, heroId: playerId, message, turnId, bribeReferenceCp })
       const checkKey = `${idempotencyKey}:social-check`
       let checkCommit = policy && typeof this.eventStore.getByIdempotencyKey === 'function'
         ? await this.eventStore.getByIdempotencyKey(campaignId, checkKey)

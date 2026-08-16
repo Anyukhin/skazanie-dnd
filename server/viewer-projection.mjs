@@ -1457,6 +1457,11 @@ function eventForViewer(event, user, actorId, state = {}) {
   // и `npc_purse_before_cp` за костями. Свою прибыль вор видит собственным
   // балансом, который остаётся целиком.
   if (visible.event_type === 'NpcPocketPicked') delete payload.purse_cp
+  // Донос. Кому именно торговец отправил весточку и на какой ступени розыска
+  // он это сделал — знание закона, а не прилавка: игрок видит поступок и его
+  // последствия, а `wanted_level` в игре не показывается вовсе (см.
+  // `WANTED_LEVEL_LABELS`, `server/law-and-order.mjs`).
+  if (visible.event_type === 'MerchantDenouncedThief') delete payload.wanted_level
   if (visible.event_type === 'NpcPlaced') delete payload.vitality
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]

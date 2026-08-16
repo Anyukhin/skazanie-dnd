@@ -1988,6 +1988,27 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                         : 'Ловкость рук против чужого внимания. Заметят — будет скандал, и его запомнят'}
               onClick={() => { void onNpcAction(`Незаметно обчищаю карманы: ${sceneNpc.name}`, sceneNpc.id) }}
             ><Coins size={13} />Обчистить карманы</button>
+            {/* Подкрепить слова монетой. Три ступени щедрости шлют ту же
+                свободную фразу, что игрок мог бы сказать сам, — сервер читает
+                ступень из неё и сам же считает сумму от кошелька героя
+                (`classifyBribeTier`, `server/npc-social-check.mjs`). Своих
+                чисел доска не держит намеренно: две копии правила разошлись бы
+                при первой правке долей, и подпись обещала бы не ту цену. */}
+            {(['монету', 'кошель', 'щедро'] as const).map((tier) => <button
+              key={tier}
+              type="button"
+              disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct}
+              title={combatActive
+                ? 'Посреди боя не торгуются'
+                : narrating
+                  ? 'Дождитесь ответа Рассказчика'
+                  : tacticalBusy
+                    ? 'Дождитесь завершения текущего действия'
+                    : !canAct
+                      ? 'Сейчас этот герой не может действовать'
+                      : `Убеждение станет легче. Сумму отсчитает сервер от вашего кошелька; если этот человек не берёт денег — станет только хуже, и это запомнят`}
+              onClick={() => { void onNpcAction(`Убеждаю и подкрепляю слова: ${tier}`, sceneNpc.id) }}
+            ><Coins size={13} />Подкрепить: {tier}</button>)}
             {sceneNpcMerchant
               ? <button
                   type="button"

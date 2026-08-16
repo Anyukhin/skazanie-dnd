@@ -600,6 +600,8 @@ export type MerchantQuoteBreakdown = {
   bargain_adjustment_cp?: number
   /** Поправка за славу отряда у фракций торговца; 0 — фракций нет или отряд им безразличен. */
   reputation_adjustment_percent?: number
+  /** Скидка скупщика. Приходит только у краденого и только от скупщика. */
+  stolen_adjustment_percent?: number
   final_unit_price_cp: number
 }
 

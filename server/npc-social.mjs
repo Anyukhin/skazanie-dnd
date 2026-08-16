@@ -1,3 +1,5 @@
+import { UNDERWORLD_PRIVATE_TAGS } from './underworld.mjs'
+
 const PROFILE_VISIBILITIES = new Set(['public', 'party', 'gm_only'])
 const DOSSIER_VISIBILITIES = new Set(['public', 'party', 'specific_player', 'gm_only'])
 const PROMISE_DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
@@ -484,7 +486,14 @@ export function npcProfileForViewerAt(profile, viewer = {}) {
     public_summary: current.public_summary,
     voice: current.voice,
     available: current.available,
-    tags: clone(current.tags),
+    // Теги изнанки столу не принадлежат. «Скупщик» — это готовый ответ на
+    // вопрос, ради которого краденое вообще стоит нести на рынок, а
+    // «неподкупный» — прямая подсказка не тратить монету и тем снимающая риск,
+    // на котором подкуп и держится. Игрок узнаёт и то и другое **следствием**:
+    // ценой в разборе и отвергнутой рукой. Прочие теги — обычная разметка роли
+    // и уезжают как раньше; у ведущего закрытого нет.
+    tags: (Array.isArray(current.tags) ? current.tags : [])
+      .filter((tag) => viewer.isAdmin === true || !UNDERWORLD_PRIVATE_TAGS.includes(String(tag))),
     inventory: current.inventory
       .filter((item) => item.quantity > 0 && viewerMaySee(item.visibility, viewer))
       .map((item) => ({ id: item.id, name: item.name, quantity: item.quantity, description: item.description })),
