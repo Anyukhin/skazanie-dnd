@@ -552,6 +552,73 @@ test('в бою обыск одного контейнера стоит дейс
   )
 })
 
+test('потраченное действие приезжает в проекцию, и его ступень стоит там же, где отказ движка', () => {
+  // Объявленная цена без ответа на «есть ли чем платить» — половина правды:
+  // кнопка звала «Взять — действие» в ходу, где действие уже потрачено, и
+  // отказ `ACTION_SPENT` прилетал уже после нажатия.
+  const killed = kill(campaign(), 'foe-1')
+  const container = containerOf(killed.state)
+  const before = campaignStateForViewer(killed.state, { role: 'player', id: 'u1' }, 'hero').loot_containers
+  assert.equal(before.action_cost, 'action')
+  assert.equal(before.action_spent, false, 'действие ещё не тратили')
+
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: [{ item_instance_id: container.items[0].item_instance_id, quantity: 1 }],
+  })
+  const after = campaignStateForViewer(looted.state, { role: 'player', id: 'u1' }, 'hero').loot_containers
+  assert.equal(after.action_cost, 'action')
+  assert.equal(after.action_spent, true, 'признак читается из той же action_economy, по которой отказывает движок')
+  // Признак — про своего героя, а не про бой вообще: у соратника действие цело.
+  assert.equal(campaignStateForViewer(looted.state, { role: 'player', id: 'u2' }, 'mate').loot_containers.action_spent, false)
+  // Вне боя платить нечем и незачем.
+  assert.equal(campaignStateForViewer(kill(campaign({ combat: false }), 'foe-1').state, { role: 'player', id: 'u1' }, 'hero').loot_containers.action_spent, false)
+
+  // Место ступени в лестнице кнопки — не вкус: `ACTION_SPENT` движок бросает в
+  // `assertTurn`, а туда команда доезжает **после** всего, что проверил
+  // `validateLootContainerCommand`. Герой без действия, стоящий далеко, обязан
+  // прочитать «подойдите ближе» — ровно то, чем ему ответит сервер.
+  assert.throws(
+    () => validateCommand({
+      campaign_id: 'LOOT',
+      command_type: 'LootContainer',
+      actor_id: 'hero',
+      container_id: container.id,
+      lines: [],
+    }, looted.state, CONTEXT),
+    (error) => error.code === 'LOOT_LINES_REQUIRED',
+    'пустой выбор отвергается раньше потраченного действия',
+  )
+})
+
+test('клетка контейнера закрыта туманом наравне с меткой на доске', () => {
+  // Метка добычи на карте гаснет вместе с нераскрытой клеткой
+  // (`cell.revealed && lootHere`, `src/DungeonMap.tsx`), а карточка панели
+  // печатала «клетка 3:2 · 30 фт до героя» и для тела в неразведанном углу —
+  // то есть проговаривала словами разведку, которой отряд не делал.
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const open = campaignStateForViewer(killed.state, { role: 'player', id: 'u1' }, 'hero').loot_containers.containers[0]
+  assert.equal(open.cell_revealed, true)
+
+  const fogged = structuredClone(killed.state)
+  for (const cell of fogged.scene.cells) {
+    if (cell.x === container.x && cell.y === container.y) cell.revealed = false
+  }
+  const [hidden] = campaignStateForViewer(fogged, { role: 'player', id: 'u1' }, 'hero').loot_containers.containers
+  assert.equal(hidden.cell_revealed, false)
+  // Координаты остаются: они нужны доске, чтобы знать, где метку **не** рисовать.
+  assert.equal(hidden.x, container.x)
+  assert.equal(hidden.y, container.y)
+
+  // Ведущему туман не мешает: он и так видит содержимое каждого контейнера, и
+  // прятать от него клетку значило бы отнять единственный способ сказать столу,
+  // где лежит невзятое.
+  assert.equal(campaignStateForViewer(fogged, { role: 'admin', id: 'gm' }, '').loot_containers.containers[0].cell_revealed, true)
+})
+
 test('в бою добыча достаётся тому, кто обыскивает', () => {
   const killed = kill(campaign(), 'foe-1')
   const container = containerOf(killed.state)

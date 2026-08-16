@@ -94,9 +94,16 @@ test('досягаемость, цена хода и перегруз прихо
   assert.match(panel, /В бою обыск стоит действия/u)
   // Признак «можно ли смотреть», футы и цена хода — серверные поля проекции.
   assert.match(panel, /container\.can_inspect/u)
-  assert.match(panel, /container\.distance_feet/u)
+  assert.match(panel, /lootDistanceFeet\(container\)/u)
   assert.match(panel, /actionCost === 'action'/u)
   assert.doesNotMatch(panel, /can_inspect\s*=\s*/u)
+  // «Есть ли чем платить» — тоже серверный признак: доска берёт его из
+  // проекции и не выводит из боевой экономики сама.
+  assert.match(board, /state\.loot_containers\?\.action_spent === true/u)
+  assert.match(board, /actionSpent=\{lootActionSpent\}/u)
+  assert.match(panel, /actionCost, actionSpent,/u)
+  assert.match(panel, /actionSpent,\r?\n\s+overloaded: forecast\.overloaded,/u)
+  assert.match(styles, /\.loot-actions button\.loot-take\.tone-spent \{/u)
   // Предел переноски героя считает сервер (`inventoryLoad`), правила только
   // складывают выбранное — иначе обещание разошлось бы с отказом движка.
   assert.match(rules, /recipient\?\.inventoryLoad\?\.capacity/u)
@@ -142,6 +149,13 @@ test('метка добычи на доске закрыта туманом на
   assert.match(board, /cell\.revealed && lootHere \? 'loot-here' : ''/u)
   assert.match(board, /cell\.revealed && lootHere && focusedLootId === lootHere\.id \? 'loot-focused' : ''/u)
   assert.match(board, /const hasLootLayer = Boolean\(cell\.revealed && \(lootHere \|\| lootGhostHere\)\)/u)
+  // Панель обязана молчать о том же: карточка печатала «клетка 3:2 · 30 фт до
+  // героя» и для тела в неразведанном углу зала — то есть проговаривала
+  // словами разведку, которую доска честно прячет. Обе подписи считает общий
+  // модуль правил по серверному признаку, и поведение проверено прогоном.
+  assert.ok(rules.includes("container?.cell_revealed === false"), 'подписи места обязаны спрашивать серверный признак')
+  assert.equal(panel.includes('container.distance_feet'), false, 'футы печатаются только через правило тумана')
+  assert.equal(panel.includes('{container.x'), false, 'клетка печатается только через правило тумана')
 })
 
 test('послебоевая сводка называет тела, тайники и невзятое', () => {
@@ -171,9 +185,14 @@ test('отказ на гонке перерисовывает карточку, 
   // обязан его применить: без этой ветки проигравший гонку видел бы уже взятый
   // кинжал до следующего опроса комнаты и бил бы в ту же стену.
   const refusal = session.slice(session.indexOf('const result = await response.json().catch(() => null) as TacticalCommandResult'))
-    .slice(0, 900)
+    .slice(0, 1_400)
   assert.match(refusal, /result\?\.loot_containers/u)
   assert.match(refusal, /loot_containers: staleLoot/u)
+  // Тем же кадром встаёт и запись летописи: свежий список говорит «тела больше
+  // нет», а **кто** успел — знает только она, и приезжает она на опрос позже.
+  // Разбор «кто успел раньше» проверен прогоном (`loot-panel-rules.test.mjs`).
+  assert.match(refusal, /battleLog: withLootTakenRecord\(state\.battleLog, result\?\.loot_taken\)/u)
+  assert.ok(rules.includes('export function withLootTakenRecord'))
 })
 
 test('журнал называет добычу и обыск, но не содержимое', () => {

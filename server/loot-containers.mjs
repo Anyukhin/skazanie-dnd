@@ -909,8 +909,16 @@ function distanceFeetTo(state, actor, container) {
  * `distance_feet` приезжает готовым числом не ради красоты: браузер не должен
  * заводить вторую геометрию доски. Досягаемость решает сервер (`can_inspect`),
  * а расстояние объясняет игроку, почему решение именно такое.
+ *
+ * `cell_revealed` — тот же туман, которым закрыта клетка доски. Метка добычи на
+ * карте уже гаснет вместе с клеткой (`cell.revealed && lootHere`,
+ * `src/DungeonMap.tsx`), а карточка панели печатала «клетка 3:2 · 30 фт до
+ * героя» и для тела в неразведанном углу зала — то есть проговаривала словами
+ * ровно то, что доска честно прячет. Признак решает сервер по той же сетке,
+ * которая уезжает игроку (`publicCellsFor`, `server/viewer-projection.mjs`):
+ * второй таблицы видимости в браузере не заводится.
  */
-export function lootContainerForViewer(container = {}, { withContents = false, distanceFeet = null } = {}) {
+export function lootContainerForViewer(container = {}, { withContents = false, distanceFeet = null, cellRevealed = true } = {}) {
   const normalized = normalizeLootContainer(container)
   if (!normalized) return null
   const distance = Number.isFinite(Number(distanceFeet)) && Number(distanceFeet) >= 0
@@ -929,6 +937,7 @@ export function lootContainerForViewer(container = {}, { withContents = false, d
     source_enemy_id: normalized.source_enemy_id,
     x: normalized.x,
     y: normalized.y,
+    cell_revealed: cellRevealed !== false,
     item_count: normalized.items.length,
     // Вес нужен, чтобы «унесу ли я это» решалось до броска, а не после отказа.
     total_weight: Math.round(normalized.items.reduce((total, item) => (
@@ -941,6 +950,25 @@ export function lootContainerForViewer(container = {}, { withContents = false, d
 }
 
 /**
+ * Раскрытые клетки сцены. Набор строится один раз на проекцию: карта области —
+ * это до десяти тысяч клеток, и линейный поиск на каждый из шестидесяти
+ * контейнеров превратил бы подпись карточки в обход сетки.
+ *
+ * Сцена без клеток тумана не имеет вовсе (лагерь, разговор в трактире), и
+ * прятать в ней нечего: пустой набор означал бы «всё под туманом» и молча съел
+ * бы клетку у контейнера, который игрок и так видит.
+ */
+function revealedCellKeys(state) {
+  const cells = Array.isArray(state?.scene?.cells) ? state.scene.cells : []
+  if (!cells.length) return null
+  const keys = new Set()
+  for (const cell of cells) {
+    if (cell?.revealed === true) keys.add(`${integer(cell.x, -1)},${integer(cell.y, -1)}`)
+  }
+  return keys
+}
+
+/**
  * Контейнеры для стола. Ведущий видит содержимое всегда; игрок — того
  * контейнера, до которого дотягивается его герой.
  *
@@ -948,17 +976,41 @@ export function lootContainerForViewer(container = {}, { withContents = false, d
  * и `validateLootContainerCommand`: идёт бой — обыск стоит действия. Кнопка
  * обязана называть цену **до** нажатия, и вычислять её второй раз в браузере
  * означало бы две таблицы правил, которые однажды разойдутся.
+ *
+ * `action_spent` — вторая половина той же цены, и без неё первая была неполной.
+ * Объявленная цена ничего не говорит о том, есть ли чем платить: герой, уже
+ * потративший действие в этом ходу, читал бодрое «Взять — действие», нажимал и
+ * получал отказ `ACTION_SPENT` (`assertTurn`, `server/rules-engine.mjs`).
+ * Признак читается из той же `action_economy`, по которой движок и отказывает,
+ * поэтому кнопка не может обещать одно, а получить другое.
  */
 export function lootContainersForViewer(state = {}, { actorId = '', isAdmin = false } = {}) {
   const actor = playerActor(state, actorId)
+  const combatActive = state?.mechanics?.combat?.active === true
+  const containers = lootContainersInScene(state)
+  // Сетку видимости обходить незачем, пока прятать нечего: у ведущего туман не
+  // спрашивают вовсе, а сцена без единого контейнера с клеткой — обычный случай
+  // (проекция комнаты собирается на каждый опрос, а карта области — это десять
+  // тысяч клеток).
+  const revealed = isAdmin !== true && containers.some((container) => container.x != null && container.y != null)
+    ? revealedCellKeys(state)
+    : null
   return {
     schema_version: LOOT_CONTAINERS_SCHEMA_VERSION,
     reach_feet: LOOT_CONTAINER_REACH_FEET,
-    action_cost: state?.mechanics?.combat?.active === true ? 'action' : null,
-    containers: lootContainersInScene(state)
+    action_cost: combatActive ? 'action' : null,
+    action_spent: combatActive
+      && Boolean(actor)
+      && state?.mechanics?.combat?.action_economy?.[String(actorId)]?.action === false,
+    containers: containers
       .map((container) => lootContainerForViewer(container, {
         withContents: isAdmin === true || Boolean(actor) && reachable(state, actor, container),
         distanceFeet: distanceFeetTo(state, actor, container),
+        // Ведущему туман не мешает по построению: он и так видит содержимое
+        // каждого контейнера сцены, и прятать от него клетку означало бы отнять
+        // единственный способ сказать столу, где именно лежит невзятое.
+        cellRevealed: revealed == null || container.x == null || container.y == null
+          || revealed.has(`${container.x},${container.y}`),
       }))
       .filter(Boolean),
   }

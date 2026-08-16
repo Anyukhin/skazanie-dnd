@@ -274,6 +274,43 @@ test('гонка за один предмет так, как ходит брау
   assert.equal(fresh.item_count, 1, 'свежий список показывает, что кинжала уже нет')
   assert.equal(fresh.items.some((item) => item.item_instance_id === DAGGER.item_instance_id), false)
   assert.ok(second.body.state_version > 0)
+
+  // Список объясняет «чего уже нет», но не «кто успел»: имя лежит в летописи, и
+  // она доезжает до браузера следующим опросом комнаты — то есть после того,
+  // как свежий список уже убрал карточку с экрана. Поэтому сервер кладёт запись
+  // в тот же отказ (`vanishedLootFrom`, `src/loot-panel-rules.mjs`).
+  assert.ok(second.body.loot_taken, 'отказ обязан назвать и того, кто забрал')
+  assert.equal(second.body.loot_taken.type, 'loot-taken')
+  assert.equal(second.body.loot_taken.containerId, CONTAINER_ID)
+  assert.equal(second.body.loot_taken.recipientId, 'hero')
+  assert.equal(second.body.loot_taken.statusAfter, 'available', 'болты ещё лежат — тело не опустело')
+  assert.equal(second.text.includes(DAGGER.item_instance_id), false, 'запись летописи содержимого не открывает')
+
+  // А теперь тело обирают дочиста: проигравший гонку обязан прочитать «уже
+  // забрал такой-то» вместо молча пропавшей карточки, и признак опустошения
+  // приезжает тем же отказом.
+  const rest = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      idempotency_key: 'plain-3',
+      command: loot({ lines: [{ item_instance_id: BOLTS.item_instance_id, quantity: BOLTS.quantity }] }),
+    },
+  })
+  assert.equal(rest.status, 200, `${rest.text}\n${log()}`)
+
+  const late = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
+    method: 'POST', cookie: adminCookie, body: { idempotency_key: 'plain-4', command: loot() },
+  })
+  assert.equal(late.status, 400, late.text)
+  assert.equal(late.body.code, 'LOOT_CONTAINER_EMPTY')
+  assert.equal(
+    late.body.loot_containers.containers.some((entry) => entry.id === CONTAINER_ID), false,
+    'опустошённое тело уходит из проекции — именно это и заводит призрака',
+  )
+  assert.equal(late.body.loot_taken.statusAfter, 'emptied')
+  assert.equal(late.body.loot_taken.remainingCount, 0)
+  assert.equal(late.body.loot_taken.recipientId, 'hero')
 })
 
 test('гонка за один предмет: второй получает конфликт версии и свежий список', { timeout: runnerTimeout(40_000) }, async (t) => {

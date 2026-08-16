@@ -365,6 +365,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .loot-actions button.loot-take.tone-far { border-color: rgba(136,176,193,.4); background: rgba(44,72,86,.22); color: #a9cedb; opacity: .85; }
 .loot-actions button.loot-take.tone-heavy { border-color: rgba(190,104,74,.45); background: rgba(96,42,30,.2); color: #cd8f76; opacity: .9; }
 .loot-actions button.loot-take.tone-gone { border-color: rgba(120,120,110,.35); background: rgba(40,40,36,.4); color: #8d8f83; opacity: .9; }
+/* «Действие уже потрачено» — тот же янтарь, что и у объявленной цены: цена
+   названа, платить нечем, и цвет обязан связывать одно с другим. */
+.loot-actions button.loot-take.tone-spent { border-color: rgba(224,174,111,.32); background: rgba(163,101,43,.12); color: #b78e63; opacity: .9; }
 .loot-recipient { display: flex; align-items: center; gap: 5px; color: #7f8768; font-size: var(--fs-xs); }
 .loot-recipient select { min-height: 28px; padding: 0 6px; border: 1px solid rgba(150,176,110,.24); border-radius: 5px; background: rgba(16,18,13,.8); color: #cdd4b6; font-size: var(--fs-sm); }
 /* Послебоевая сводка: что осталось на полу. Карточка золотая, а не зелёная, —

@@ -111,9 +111,17 @@ export function lootWeightForecast(recipient, addedWeight) {
  * дойти, а уже перегруженный герой с пустым выбором читал бы «снимите часть
  * выбора» — при том, что снимать нечего.
  *
+ * Последняя ступень — потраченное действие, и стоит она последней не по вкусу:
+ * `ACTION_SPENT` движок бросает в `assertTurn` (`server/rules-engine.mjs`), а
+ * туда команда доезжает **после** всего, что проверил `validateLootContainerCommand`.
+ * Герой без действия, стоящий в другом конце зала, получит с сервера
+ * `LOOT_CONTAINER_OUT_OF_REACH` — и кнопка обязана сказать ему то же самое.
+ *
  * Ни одна ступень не выдумана в браузере: `takenBy` приходит из летописи,
- * `canInspect` и `distanceFeet` — из проекции, `actionCost` — оттуда же, а
- * `canAct` уже посчитан сервером как право хода.
+ * `canInspect` и `distanceFeet` — из проекции, `actionCost` и `actionSpent` —
+ * оттуда же (`lootContainersForViewer` читает ту самую `action_economy`, по
+ * которой движок и отказывает), а `canAct` уже посчитан сервером как право
+ * хода.
  */
 export function lootTakeButtonState(input) {
   if (input.takenBy) {
@@ -155,6 +163,14 @@ export function lootTakeButtonState(input) {
     return { label: 'Не унести — перегруз', title: 'Получатель не унесёт столько: снимите часть выбора или выберите другого героя', disabled: true, tone: 'heavy' }
   }
   if (input.actionCost === 'action') {
+    if (input.actionSpent) {
+      return {
+        label: 'Действие уже потрачено',
+        title: 'Обыск в бою стоит действия, а его этот герой уже потратил в этом ходу — тело дождётся следующего',
+        disabled: true,
+        tone: 'spent',
+      }
+    }
     return { label: 'Взять — действие', title: 'В бою обыск одного контейнера стоит действия (правило стола)', disabled: false, tone: 'action' }
   }
   return { label: 'Взять', title: 'Вне боя обыск не стоит ни действия, ни хода', disabled: false, tone: 'ready' }
@@ -188,10 +204,37 @@ export function vanishedLootFrom(previous, current, battleLog, actorName, now = 
       kind: container.kind,
       x: container.x,
       y: container.y,
+      // Туман переезжает вместе с клеткой: призрак печатается той же подписью,
+      // что и живая карточка, и без признака он проговорил бы место тела,
+      // которое обобрал соратник в неразведанной части зала.
+      cell_revealed: container.cell_revealed !== false,
       takenBy: actorName(record.recipientId ?? record.actorId) || 'кто-то из отряда',
       at: now,
     }]
   })
+}
+
+/**
+ * Летопись плюс запись, приложенная к отказу.
+ *
+ * Гонку за один кинжал проигравший узнаёт из двух источников сразу: свежий
+ * список контейнеров говорит «этого тела больше нет», а имя успевшего лежит
+ * только в летописи — и она доезжает до браузера **следующим** опросом комнаты.
+ * До этой функции кадр отказа переписывал список первым, `vanishedLootFrom`
+ * искал запись, не находил её и призрака не заводил; карточка просто молча
+ * пропадала, а пришедшая через секунду запись объясняла уже исчезнувшее.
+ *
+ * Поэтому сервер прикладывает запись к самому отказу (`server/index.mjs`) — он
+ * и так знает, кто забрал, — а здесь она встаёт в летопись на своё место. Ключ
+ * записи детерминирован (`eventJournalId`), поэтому та же запись из следующего
+ * опроса комнаты не задваивается. Предел в полсотни записей — тот же, которым
+ * летопись подрезана на сервере.
+ */
+export function withLootTakenRecord(battleLog, record) {
+  const log = Array.isArray(battleLog) ? battleLog : []
+  if (!record || record.type !== 'loot-taken' || !record.containerId) return log
+  if (log.some((entry) => String(entry?.id ?? '') === String(record.id ?? ''))) return log
+  return [...log, record].slice(-50)
 }
 
 /** Что осталось на полу после боя. Считает только по проекции сцены. */
@@ -210,7 +253,29 @@ export function lootAftermath(containers) {
   }
 }
 
-/** Клетка контейнера человеческими числами: доска нумеруется с единицы. */
+/**
+ * Клетка контейнера человеческими числами: доска нумеруется с единицы.
+ *
+ * Под туманом клетки нет — не потому, что её нет в проекции (координаты там
+ * есть и нужны доске), а потому, что печатать её нельзя: метка добычи на карте
+ * гаснет вместе с нераскрытой клеткой (`cell.revealed && lootHere`,
+ * `src/DungeonMap.tsx`), и карточка, называющая «клетка 3:2», выдавала бы
+ * словами разведку, которой отряд не делал. Признак решает сервер
+ * (`cell_revealed`, `server/loot-containers.mjs`) — своей карты видимости у
+ * панели нет.
+ */
 export function lootCellLabel(container) {
+  if (container?.cell_revealed === false) return ''
   return container?.x == null || container?.y == null ? '' : `клетка ${container.x + 1}:${container.y + 1}`
+}
+
+/**
+ * Сколько футов до контейнера — по той же границе, что и клетка. Расстояние до
+ * нераскрытой клетки читается как та же разведка: «30 фт до героя» вместе с
+ * направлением взгляда сужает угол зала не хуже координаты.
+ */
+export function lootDistanceFeet(container) {
+  if (container?.cell_revealed === false) return null
+  const distance = container?.distance_feet
+  return distance != null && Number.isFinite(Number(distance)) ? Number(distance) : null
 }

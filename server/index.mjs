@@ -440,6 +440,43 @@ const LOOT_STALE_ERROR_CODES = new Set([
   'LOOT_CONTAINER_NOT_FOUND',
   'LOOT_CONTAINER_NOT_IN_SCENE',
 ])
+
+/**
+ * Последняя запись летописи об обыске этого контейнера.
+ *
+ * Свежего списка проигравшему гонку мало: список говорит «тела больше нет», но
+ * не говорит, **кто** успел, — а имя лежит только в летописи, и до браузера она
+ * доезжает следующим опросом комнаты. К тому моменту карточка уже пропала
+ * молча, и объяснять стало нечего (`vanishedLootFrom`,
+ * `src/loot-panel-rules.mjs`). Сервер имя знает прямо сейчас, поэтому кладёт
+ * запись в тот же отказ.
+ *
+ * Наружу уходят только названные поля: летопись — внутреннее состояние, и
+ * пересылать её запись целиком означало бы отдавать игроку всё, что туда
+ * когда-нибудь допишут. Ключ `id` детерминирован (`eventJournalId`), поэтому
+ * та же запись из следующего опроса комнаты не задваивается.
+ */
+function lootTakenRecordFor(state, containerId) {
+  const expected = String(containerId ?? '')
+  if (!expected) return null
+  const log = Array.isArray(state?.battleLog) ? state.battleLog : []
+  for (let index = log.length - 1; index >= 0; index -= 1) {
+    const entry = log[index]
+    if (entry?.type !== 'loot-taken' || String(entry.containerId ?? '') !== expected) continue
+    return {
+      id: String(entry.id ?? ''),
+      type: 'loot-taken',
+      actorId: String(entry.actorId ?? ''),
+      recipientId: String(entry.recipientId ?? ''),
+      containerId: expected,
+      containerName: String(entry.containerName ?? ''),
+      itemCount: Math.max(0, Number(entry.itemCount) || 0),
+      remainingCount: Math.max(0, Number(entry.remainingCount) || 0),
+      statusAfter: String(entry.statusAfter ?? ''),
+    }
+  }
+  return null
+}
 // Досуг таверны. Отдельный набор по той же причине, что у пленных и у закона:
 // кости и кружка идут вне боя и экономику хода не трогают. Список берётся у
 // модуля заведения — второго перечисления команд таверны в проекте быть не
@@ -4286,11 +4323,13 @@ const server = createServer((req, res) => {
   const commandMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/commands$/)
   if (commandMatch && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
-    // Кто именно просил обыскать — нужно уже в обработчике отказа: на гонке за
-    // один предмет проигравший обязан получить не только 409, но и свежий
-    // список содержимого. Флаг снимается с исходного тела запроса, потому что
-    // до санитайзера дело могло и не дойти.
+    // Кто именно просил обыскать и какой контейнер — нужно уже в обработчике
+    // отказа: на гонке за один предмет проигравший обязан получить не только
+    // 409, но и свежий список содержимого вместе с записью о том, кто успел.
+    // Оба ключа снимаются с исходного тела запроса, потому что до санитайзера
+    // дело могло и не дойти.
     let lootRequestActorId = ''
+    let lootRequestContainerId = ''
     try {
       const room = getRoom(commandMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
@@ -4299,7 +4338,10 @@ const server = createServer((req, res) => {
       let commands = Array.isArray(body.commands) ? body.commands : body.command ? [body.command] : []
       if (!commands.length) return json(res, 400, { error: 'Нужна command или commands' })
       const lootRequest = commands.find((command) => PLAYER_LOOT_COMMANDS.has(commandType(command)))
-      if (lootRequest) lootRequestActorId = String(lootRequest.actor_id ?? lootRequest.actorId ?? '')
+      if (lootRequest) {
+        lootRequestActorId = String(lootRequest.actor_id ?? lootRequest.actorId ?? '')
+        lootRequestContainerId = String(lootRequest.container_id ?? lootRequest.containerId ?? '').slice(0, 120)
+      }
       const authoritativeBefore = await latestCampaignState(commandMatch[1], room.state)
       const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
       const requestedMakeAttacks = commands.filter((command) => commandType(command) === 'MakeAttack')
@@ -4568,15 +4610,22 @@ const server = createServer((req, res) => {
       // Список собирает та же функция, что и проекция комнаты, поэтому видно
       // ровно то, что игроку и так позволено видеть.
       const staleLoot = status === 409 || LOOT_STALE_ERROR_CODES.has(String(error?.code ?? ''))
-      const freshLoot = staleLoot && lootRequestActorId && getRoom(commandMatch[1]).state
-        ? lootContainersForViewer(getRoom(commandMatch[1]).state, { actorId: lootRequestActorId, isAdmin: user.role === 'admin' })
+      const staleRoomState = staleLoot && lootRequestActorId ? getRoom(commandMatch[1]).state : null
+      const freshLoot = staleRoomState
+        ? lootContainersForViewer(staleRoomState, { actorId: lootRequestActorId, isAdmin: user.role === 'admin' })
         : null
+      // Вместе со списком уезжает и запись летописи об этом контейнере: список
+      // говорит «тела больше нет», а имя успевшего знает только она. Без неё
+      // карточка проигравшего пропадала молча — свежий список переписывал
+      // «то, что было», и объяснять становилось уже нечего.
+      const lootRecord = freshLoot ? lootTakenRecordFor(staleRoomState, lootRequestContainerId) : null
       return json(res, status, {
         error: error instanceof Error ? error.message : 'Команда отклонена',
         code: error?.code,
         ...(freshLoot ? {
           loot_containers: freshLoot,
-          state_version: Number(getRoom(commandMatch[1]).state?.state_version ?? 0),
+          ...(lootRecord ? { loot_taken: lootRecord } : {}),
+          state_version: Number(staleRoomState?.state_version ?? 0),
         } : {}),
       })
     }

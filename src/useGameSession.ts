@@ -13,9 +13,10 @@ import {
 } from './ai-client'
 import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
+import { withLootTakenRecord } from './loot-panel-rules.mjs'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
+import type { AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -136,6 +137,13 @@ type TacticalCommandResult = {
    * (`server/index.mjs`). Приходит только вместе с `error`.
    */
   loot_containers?: LootContainersProjection
+  /**
+   * Запись летописи об этом же контейнере, приложенная к тому же отказу. Имя
+   * успевшего живёт только в летописи, а она доезжает следующим опросом
+   * комнаты — то есть уже после того, как свежий список убрал карточку с
+   * экрана. Приходит только вместе с `loot_containers`.
+   */
+  loot_taken?: BattleEvent
 }
 
 export type CommandOutcome =
@@ -1096,8 +1104,18 @@ export function useGameSession() {
         // проигравшего показывала бы уже взятую вещь до следующего опроса
         // комнаты — и он бил бы в ту же стену. Проекция серверная, браузер её
         // не пересобирает: подставляется ровно то, что пришло.
+        //
+        // Тем же кадром встаёт и запись летописи: список объясняет, что тела
+        // больше нет, а **кто** успел — только она. Летопись сама доедет
+        // следующим опросом, но к тому времени свежий список уже перепишет
+        // «то, что было», и подпись «уже забрал такой-то» заводить будет не по
+        // чему (`vanishedLootFrom`, `src/loot-panel-rules.mjs`).
         const staleLoot = result?.loot_containers
-        if (staleLoot) mutate((state) => ({ ...state, loot_containers: staleLoot }))
+        if (staleLoot) mutate((state) => ({
+          ...state,
+          loot_containers: staleLoot,
+          battleLog: withLootTakenRecord(state.battleLog, result?.loot_taken),
+        }))
         throw await responseCommandError(response, result, `Сервер отклонил команду (${response.status})`)
       }
 

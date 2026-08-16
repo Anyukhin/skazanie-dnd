@@ -6,6 +6,7 @@ import {
   LOOT_KIND_NOUNS,
   lootAftermath,
   lootCellLabel,
+  lootDistanceFeet,
   lootPickKey,
   lootPickedWeight,
   lootPicksOf,
@@ -13,6 +14,7 @@ import {
   lootTakeButtonState,
   lootWeightForecast,
   vanishedLootFrom,
+  withLootTakenRecord,
 } from '../src/loot-panel-rules.mjs'
 import { LOOT_CONTAINER_KINDS } from '../server/loot-containers.mjs'
 
@@ -58,6 +60,7 @@ test('каждая ступень лестницы достижима и зап�
     [{ canInspect: false }, 'Подойдите ближе', 'far'],
     [{ chosenCount: 0 }, 'Выберите, что взять', 'empty'],
     [{ overloaded: true }, 'Не унести — перегруз', 'heavy'],
+    [{ actionCost: 'action', actionSpent: true }, 'Действие уже потрачено', 'spent'],
   ]
   for (const [patch, label, tone] of locked) {
     const state = button(patch)
@@ -77,6 +80,30 @@ test('каждая ступень лестницы достижима и зап�
   assert.equal(outOfCombat.label, 'Взять')
   assert.equal(outOfCombat.disabled, false)
   assert.equal(outOfCombat.tone, 'ready')
+  // Вне боя обыск не стоит действия вовсе, и потраченное действие ему не
+  // помеха: `action_cost` там `null`, а запирать кнопку ценой, которой нет, —
+  // это выдуманное правило, которого сервер не знает.
+  assert.equal(button({ actionSpent: true }).label, 'Взять')
+})
+
+test('объявленная цена хода приходит вместе с ответом «есть ли чем платить»', () => {
+  // До этой ступени кнопка называла цену и молчала о том, что платить нечем:
+  // герой, уже потративший действие, читал бодрое «Взять — действие», нажимал
+  // и получал `ACTION_SPENT` (`assertTurn`, `server/rules-engine.mjs`).
+  const spent = button({ actionCost: 'action', actionSpent: true })
+  assert.equal(spent.disabled, true, 'кнопка обязана быть заперта: команда всё равно будет отвергнута')
+  assert.match(spent.title, /уже потратил/u)
+
+  // Место ступени — последнее, и это не вкус: `ACTION_SPENT` движок бросает
+  // после всего, что проверил `validateLootContainerCommand`. Далёкий герой без
+  // действия обязан прочитать «подойдите ближе» — ровно то, чем ему ответит
+  // сервер (`LOOT_CONTAINER_OUT_OF_REACH`), а не второй запрет вместо первого.
+  const far = { actionCost: 'action', actionSpent: true }
+  assert.equal(button({ ...far, canInspect: false }).label, 'Подойдите ближе')
+  assert.equal(button({ ...far, chosenCount: 0 }).label, 'Выберите, что взять')
+  assert.equal(button({ ...far, overloaded: true }).label, 'Не унести — перегруз')
+  // А «не ваш ход» стоит выше по той же причине, по какой стоял и раньше.
+  assert.equal(button({ ...far, canAct: false }).label, 'Не ваш ход')
 })
 
 test('порядок ступеней повторяет порядок отказов правила', () => {
@@ -219,8 +246,40 @@ test('призрак заводится только по опустошённо
 
   const ghosts = vanishedLootFrom([CONTAINER], [], [takenRecord({ remainingCount: 0, statusAfter: 'emptied' })], naming, 1_000)
   assert.deepEqual(ghosts, [{
-    id: CONTAINER.id, name: CONTAINER.name, kind: 'corpse', x: 2, y: 1, takenBy: 'Ада', at: 1_000,
+    id: CONTAINER.id, name: CONTAINER.name, kind: 'corpse', x: 2, y: 1, cell_revealed: true, takenBy: 'Ада', at: 1_000,
   }])
+  // Туман переезжает вместе с клеткой: тело, которое соратник обобрал в
+  // неразведанной части зала, места своего не называет и призраком.
+  const [dark] = vanishedLootFrom(
+    [{ ...CONTAINER, cell_revealed: false }], [],
+    [takenRecord({ remainingCount: 0, statusAfter: 'emptied' })], naming,
+  )
+  assert.equal(dark.cell_revealed, false)
+  assert.equal(lootCellLabel(dark), '')
+})
+
+test('проигравший гонку узнаёт, кто забрал, тем же кадром отказа', () => {
+  // Кадр отказа приносит свежий список — контейнера в нём уже нет. Летопись при
+  // этом отстаёт на один опрос комнаты, и до починки призрака заводить было не
+  // по чему: свежий список переписывал «то, что было», а пришедшая через
+  // секунду запись объясняла уже исчезнувшее.
+  const record = takenRecord({ id: 'log-9', recipientId: 'mate', remainingCount: 0, statusAfter: 'emptied' })
+  const before = []
+  assert.deepEqual(vanishedLootFrom([CONTAINER], [], before, naming), [], 'без записи призрака нет — это и есть починенная дыра')
+
+  // Сервер знает, кто забрал, и кладёт запись в тот же отказ.
+  const afterRefusal = withLootTakenRecord(before, record)
+  const [ghost] = vanishedLootFrom([CONTAINER], [], afterRefusal, naming, 1_000)
+  assert.equal(ghost.takenBy, 'Борх')
+
+  // Та же запись из следующего опроса комнаты не задваивается: ключ летописи
+  // детерминирован.
+  assert.deepEqual(withLootTakenRecord(afterRefusal, record), afterRefusal)
+  assert.equal(withLootTakenRecord(afterRefusal, { ...record, id: 'log-10' }).length, 2)
+  // Мусор в летопись не попадает: ни пустой отказ, ни запись другого вида.
+  assert.deepEqual(withLootTakenRecord(before, null), before)
+  assert.deepEqual(withLootTakenRecord(before, { id: 'x', type: 'attack', containerId: CONTAINER.id }), before)
+  assert.deepEqual(withLootTakenRecord(before, { id: 'x', type: 'loot-taken' }), before)
 })
 
 test('уход со сцены не выдаётся за обыск', () => {
@@ -265,4 +324,26 @@ test('мелочь панели: цена монетами и клетка с е
   assert.equal(lootPriceLabel(156), '1 зм 5 см 6 мм')
   assert.equal(lootCellLabel({ x: 0, y: 0 }), 'клетка 1:1')
   assert.equal(lootCellLabel({ x: null, y: 3 }), '')
+})
+
+test('под туманом карточка не называет ни клетку, ни футы', () => {
+  // Метка добычи на доске гаснет вместе с нераскрытой клеткой, а карточка
+  // печатала «клетка 3:2 · 30 фт до героя» и для тела в неразведанном углу —
+  // то есть проговаривала словами разведку, которой отряд не делал. Признак
+  // приходит с сервера (`cell_revealed`), своей карты видимости у панели нет.
+  const open = { x: 2, y: 1, distance_feet: 30, cell_revealed: true }
+  assert.equal(lootCellLabel(open), 'клетка 3:2')
+  assert.equal(lootDistanceFeet(open), 30)
+
+  const fogged = { ...open, cell_revealed: false }
+  assert.equal(lootCellLabel(fogged), '')
+  assert.equal(lootDistanceFeet(fogged), null)
+
+  // Старая проекция признака не несёт — и молчать вместо неё нельзя: карточка
+  // потеряла бы клетку у тела, которое отряд видит своими глазами.
+  assert.equal(lootCellLabel({ x: 2, y: 1 }), 'клетка 3:2')
+  assert.equal(lootDistanceFeet({ distance_feet: 5 }), 5)
+  // «Померить нечем» — по-прежнему `null`, а не ноль.
+  assert.equal(lootDistanceFeet({ cell_revealed: true }), null)
+  assert.equal(lootDistanceFeet({ distance_feet: 0, cell_revealed: true }), 0)
 })

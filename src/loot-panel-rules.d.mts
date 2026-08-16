@@ -28,7 +28,7 @@ export interface LootWeightForecast {
 
 export function lootWeightForecast(recipient: Player | null | undefined, addedWeight: number): LootWeightForecast
 
-export type LootTakeTone = 'ready' | 'action' | 'far' | 'blocked' | 'gone' | 'heavy' | 'empty'
+export type LootTakeTone = 'ready' | 'action' | 'far' | 'blocked' | 'gone' | 'heavy' | 'empty' | 'spent'
 
 export interface LootTakeState {
   label: string
@@ -46,6 +46,8 @@ export function lootTakeButtonState(input: {
   distanceFeet?: number | null
   reachFeet: number
   actionCost?: 'action' | null
+  /** Действие этого героя в этом ходу уже потрачено (`action_spent` проекции). */
+  actionSpent?: boolean
   overloaded: boolean
   chosenCount: number
 }): LootTakeState
@@ -56,6 +58,8 @@ export interface LootGhost {
   kind: string
   x: number | null
   y: number | null
+  /** Раскрыта ли клетка: под туманом призрак места не называет. */
+  cell_revealed?: boolean
   takenBy: string
   at: number
 }
@@ -79,4 +83,11 @@ export interface LootAftermath {
 
 export function lootAftermath(containers: readonly LootContainerCard[]): LootAftermath
 
-export function lootCellLabel(container: { x: number | null; y: number | null }): string
+export function withLootTakenRecord(
+  battleLog: readonly BattleEvent[] | undefined,
+  record: BattleEvent | null | undefined,
+): BattleEvent[]
+
+export function lootCellLabel(container: { x: number | null; y: number | null; cell_revealed?: boolean }): string
+
+export function lootDistanceFeet(container: { distance_feet?: number; cell_revealed?: boolean }): number | null

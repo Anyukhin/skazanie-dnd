@@ -909,6 +909,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const sceneLoot = useMemo(() => state.loot_containers?.containers ?? [], [state.loot_containers])
   const lootReachFeet = state.loot_containers?.reach_feet ?? 5
   const lootActionCost = state.loot_containers?.action_cost ?? null
+  // «Есть чем платить» решает сервер той же `action_economy`, по которой движок
+  // отказывает `ACTION_SPENT`: без этого признака кнопка звала обыскивать в
+  // ходу, где действие уже потрачено.
+  const lootActionSpent = state.loot_containers?.action_spent === true
   const lootByCell = useMemo(
     () => new Map(sceneLoot.filter((container) => container.x != null && container.y != null)
       .map((container) => [`${container.x},${container.y}`, container])),
@@ -2514,6 +2518,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           ghosts={vanishedLoot}
           reachFeet={lootReachFeet}
           actionCost={lootActionCost}
+          actionSpent={lootActionSpent}
           players={players}
           actorId={typingActorId}
           enemies={state.enemies ?? []}

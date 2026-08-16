@@ -17,7 +17,10 @@
  *
  * **Второй геометрии доски.** Досягаемость решает сервер (`can_inspect`), футы
  * до контейнера тоже приезжают готовыми (`distance_feet`), цена обыска в
- * экономике хода — `action_cost`. Браузер их не пересчитывает: две таблицы одних
+ * экономике хода — `action_cost`, а «есть ли чем платить» — `action_spent`.
+ * Туман тоже серверный: клетку и футы карточка печатает только у раскрытой
+ * клетки (`cell_revealed`), потому что метка на доске там уже погашена.
+ * Браузер их не пересчитывает: две таблицы одних
  * и тех же правил однажды разойдутся, и разойдутся молча.
  *
  * **Своей цены и своего веса вещи.** Всё, что показывает карточка, лежит в
@@ -42,6 +45,7 @@ import {
   LOOT_KIND_NOUNS,
   lootAftermath,
   lootCellLabel,
+  lootDistanceFeet,
   lootPickKey,
   lootPickedWeight,
   lootPicksOf,
@@ -184,13 +188,15 @@ function LootSourcePortrait({ container, enemy }: { container: LootContainerCard
 }
 
 export function LootPanel({
-  containers, ghosts, reachFeet, actionCost, players, actorId, enemies,
+  containers, ghosts, reachFeet, actionCost, actionSpent, players, actorId, enemies,
   canAct, busy, narrating, combatActive, focusedId, onFocus, onLoot,
 }: {
   containers: readonly LootContainerCard[]
   ghosts: readonly LootGhost[]
   reachFeet: number
   actionCost: 'action' | null
+  /** Действие героя в этом ходу уже потрачено — решил сервер, не браузер. */
+  actionSpent: boolean
   players: readonly Player[]
   /** Герой этого браузера: он обыскивает и он же получатель по умолчанию. */
   actorId: string
@@ -280,14 +286,21 @@ export function LootPanel({
       const chosen = picked.filter((pick) => pick.quantity > 0)
       const chosenWeight = lootPickedWeight(chosen)
       const forecast = lootWeightForecast(recipient, chosenWeight)
+      // Клетка и футы — только по раскрытой клетке: под туманом контейнер
+      // остаётся в списке (отряд слышал, как упало тело), но места своего не
+      // называет. Обе подписи считает общий модуль правил — второй карты
+      // видимости у панели нет.
+      const cell = lootCellLabel(container)
+      const distanceFeet = lootDistanceFeet(container)
       const button = lootTakeButtonState({
         canAct,
         busy,
         narrating,
         canInspect: container.can_inspect,
-        distanceFeet: container.distance_feet ?? null,
+        distanceFeet,
         reachFeet,
         actionCost,
+        actionSpent,
         overloaded: forecast.overloaded,
         chosenCount: chosen.length,
       })
@@ -298,7 +311,6 @@ export function LootPanel({
       const everythingChosen = (container.items ?? []).length > 0 && chosen.length === (container.items ?? []).length
       const refusal = refusals[container.id]
       const sourceEnemy = container.source_enemy_id ? enemyById.get(container.source_enemy_id) : undefined
-      const cell = lootCellLabel(container)
       return <article
         key={container.id}
         ref={(node) => { cards.current.set(container.id, node) }}
@@ -314,7 +326,7 @@ export function LootPanel({
             <small>
               {itemCountLabel(container.item_count)} · {container.total_weight} фнт
               {cell ? ` · ${cell}` : ''}
-              {container.distance_feet == null ? '' : ` · ${container.distance_feet} фт до героя`}
+              {distanceFeet == null ? '' : ` · ${distanceFeet} фт до героя`}
             </small>
           </span>
         </header>
@@ -414,6 +426,7 @@ export function LootPanel({
           canInspect: false,
           reachFeet,
           actionCost,
+          actionSpent,
           overloaded: false,
           chosenCount: 0,
         })} />
