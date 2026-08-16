@@ -893,6 +893,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     const controller = new AbortController()
     setCampaignAi(null)
     setCampaignAiError('')
+    // До выбора кампании кода сессии ещё нет, и запрос уходил на
+    // `/api/campaigns//settings` — 404 в консоли на каждой загрузке страницы.
+    // Пустой код — это не «кампания без настроек», а «кампании ещё нет»:
+    // спрашивать сервер не о чем, и карточка настроек в этот момент не
+    // показывается вовсе. Возврат стоит **после** сброса состояния: иначе на
+    // выходе из кампании в интерфейсе осталась бы карточка прежней.
+    if (!state.sessionCode) return () => controller.abort()
     void fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/settings`, { signal: controller.signal })
       .then(async (response) => {
         const body = await response.json().catch(() => null) as CampaignAiSettingsResponse | null
