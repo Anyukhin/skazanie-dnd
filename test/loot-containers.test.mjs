@@ -135,6 +135,57 @@ function campaign({ combat = true, enemies = [bandit('foe-1')], heroX = 2, heroS
   })
 }
 
+/** Тот же склад, но отряд — один волшебник: нужен настоящий площадной урон. */
+function arcane(enemies) {
+  return normalizeCampaignState({
+    sessionCode: 'LOOT',
+    campaign: 'Контейнеры добычи',
+    activePlayerId: 'mage',
+    partyMemberIds: ['mage'],
+    partyName: 'Отряд героев',
+    scene: {
+      title: 'Разграбленный склад',
+      location: 'Склад',
+      location_id: 'warehouse',
+      turn: 1,
+      grid: { width: 10, height: 6 },
+      cells: cells(),
+    },
+    players: [{
+      id: 'mage',
+      character: 'Мира',
+      role: 'Волшебник',
+      level: 5,
+      hp: 20,
+      maxHp: 20,
+      armor: 12,
+      speed: 30,
+      proficiency: 3,
+      abilities: { str: 8, dex: 12, con: 12, int: 18, wis: 10, cha: 10 },
+      inventory: [],
+      x: 0,
+      y: 5,
+    }],
+    enemies,
+    worldMap: {
+      seed: 'loot-world',
+      locations: [{ id: 'warehouse', name: 'Склад', kind: 'ruin', x: 10, y: 10 }],
+      routes: [],
+    },
+    mechanics: {
+      world_time: { elapsed_minutes: 120 },
+      encounter: { id: 'enc-1', encounter_id: 'enc-1', status: 'active', enemy_ids: enemies.map((enemy) => enemy.id) },
+      combat: {
+        active: true,
+        round: 1,
+        active_index: 0,
+        initiative: [{ actor_id: 'mage', total: 20 }],
+        action_economy: { mage: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 } },
+      },
+    },
+  })
+}
+
 function commit(state, command, { rng = [], context = CONTEXT } = {}) {
   const result = resolveCommand(
     { campaign_id: 'LOOT', command_id: `${command.command_type}-${state.state_version}-${Math.random().toString(36).slice(2, 8)}`, ...command },
@@ -157,6 +208,17 @@ function kill(state, enemyId, { actorId = 'hero' } = {}) {
 
 function containerOf(state, kind = 'corpse') {
   return lootContainerList(state).find((container) => container.kind === kind) ?? null
+}
+
+/** Обыскать тело дочиста одной командой. */
+function commitAllOf(killed) {
+  const container = containerOf(killed.state)
+  return commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: container.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity })),
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -547,6 +609,60 @@ test('падение героя не оплачивает пересборку �
   assert.equal(kill(before, 'foe-1').events.some((event) => event.event_type === 'LootContainerCreated'), true)
 })
 
+test('площадное заклинание кладёт двоих — и оба оставляют тела', () => {
+  // Гейт верит инварианту «обнулённый актор лежит в `target_ids` своего
+  // события», а держат этот инвариант десятки мест выпуска `DamageApplied`.
+  // Режим отказа у него тихий: событие с пустым `target_ids` или с атакующим
+  // вместо жертвы означает, что тел не будет вовсе, и ни одна проверка
+  // синтетических событий этого не заметит. Поэтому здесь настоящий путь.
+  const before = arcane([bandit('foe-1', { x: 6, y: 1, hp: 1 }), bandit('foe-2', { x: 5, y: 1, hp: 1 })])
+  const blast = commit(
+    before,
+    { command_type: 'CastSpell', actor_id: 'mage', spell_id: 'fireball', to: { x: 6, y: 1 }, server_authoritative: true },
+    { rng: [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2], context: { allowedActorIds: ['mage'], serverAuthoritativeCombat: true } },
+  )
+  const zeroed = blast.events.filter((event) => event.payload?.hp_after === 0 && event.event_type === 'DamageApplied')
+  assert.equal(zeroed.length, 2, 'оба разбойника обязаны обнулиться одним заклинанием')
+  // Ровно один — и именно павший, а не заклинатель: на этом стоит весь гейт.
+  assert.deepEqual(zeroed.map((event) => event.target_ids).sort(), [['foe-1'], ['foe-2']])
+  assert.equal(lootCommitTouchesContainers(before, blast.events), true, 'дешёвый гейт обязан пропустить площадную смерть')
+  assert.equal(blast.events.filter((event) => event.event_type === 'LootContainerCreated').length, 2)
+  assert.deepEqual(
+    lootContainerList(blast.state).map((container) => container.source_enemy_id).sort(),
+    ['foe-1', 'foe-2'],
+  )
+})
+
+test('повторяющийся урон зоны в конце хода тоже оставляет тело', () => {
+  // Вторая настоящая ветка: `DamageApplied` выпускает не команда атаки, а тик
+  // длящейся области (`lingeringAreaDamage`) на закрытии хода противника.
+  const base = campaign({ enemies: [bandit('foe-1', { hp: 4 })] })
+  const before = {
+    ...base,
+    mechanics: {
+      ...base.mechanics,
+      // Указатель инициативы стоит на разбойнике: закрывает ход он.
+      combat: { ...base.mechanics.combat, active_index: 1 },
+      active_effects: [{
+        id: 'burning-oil', effect_id: 'burning-oil', spell_id: 'item:oil-flask',
+        source_actor: 'hero', center: { x: 2, y: 1 }, cells: [{ x: 2, y: 1 }],
+        area_shape: 'line', radius_feet: 5, trigger_on_enter: true, trigger_on_turn_end: true,
+        save_ability: null, save_dc: 10, damage: null, damage_amount: 5, damage_type: 'fire',
+        half_on_save: false, follows_source: false, concentration: false, open_flame: true,
+        expires_round: 99,
+      }],
+    },
+  }
+  const burned = commit(before, { command_type: 'EndTurn', actor_id: 'foe-1', server_authoritative: true }, {
+    context: { isAdmin: true, serverAuthoritativeCombat: true },
+  })
+  const zeroed = burned.events.find((event) => event.event_type === 'DamageApplied' && event.payload?.hp_after === 0)
+  assert.ok(zeroed, 'горящее масло обязано добить разбойника на закрытии его хода')
+  assert.deepEqual(zeroed.target_ids, ['foe-1'], 'жертва тика обязана лежать в target_ids')
+  assert.equal(lootCommitTouchesContainers(before, burned.events), true)
+  assert.equal(containerOf(burned.state)?.source_enemy_id, 'foe-1')
+})
+
 // ---------------------------------------------------------------------------
 // 5. Replay и идемпотентность потока
 
@@ -569,6 +685,100 @@ test('повторное проигрывание потока даёт то ж�
   )
   // Второй прогон того же потока ничего не удваивает.
   assert.deepEqual(replayEvents(before, events).loot_containers, replayed.loot_containers)
+})
+
+test('то же событие, применённое второй раз, не выдаёт добычу дважды', () => {
+  // Обещание шапки редьюсера. Живой путь закрыт транспортом
+  // (`assertLootIdempotency`), но обещание обязано держаться и без него: остаток
+  // контейнера приезжает списком, а поднятая вещь узнаётся по детерминированному
+  // `id`. Без этого повтор складывал количества и давал скимитар ×2.
+  const before = campaign({ combat: false })
+  const killed = kill(before, 'foe-1')
+  const container = containerOf(killed.state)
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: container.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity })),
+  })
+  // Сравнивается счёт, а не запись целиком: `normalizeCampaignState` дообогащает
+  // вещи каталогом на первом же повторном проходе, и это к идемпотентности
+  // добычи отношения не имеет.
+  const bag = (state) => state.players.find((player) => player.id === 'hero').inventory
+    .map((item) => `${item.id}·${item.catalog_id}·${item.quantity}`).sort()
+  const first = bag(looted.state)
+  assert.ok(first.length > 0, 'первое применение обязано выдать добычу')
+
+  // Ровно то же событие поверх уже применённого состояния.
+  assert.deepEqual(bag(looted.events.reduce(applyGameEvent, looted.state)), first)
+
+  // И весь поток целиком: `LootContainerCreated` возвращает контейнер к полному
+  // содержимому, поэтому сторож остатка здесь не срабатывает — вещь узнаётся по
+  // своему `id` в сумке.
+  const twice = [...killed.events, ...looted.events].reduce(applyGameEvent, looted.state)
+  assert.deepEqual(bag(twice), first)
+  assert.deepEqual(twice.loot_containers, looted.state.loot_containers)
+})
+
+test('повтор поверх уже слитой стопки тоже не удваивает добычу', () => {
+  // Дыра, которую одним `id` не закрыть: если у героя уже лежала такая же вещь,
+  // поднятая сливается с ней в стопку и **теряет** свой идентификатор — узнавать
+  // повтор становится нечем. Поэтому второй сторож смотрит не в сумку, а в
+  // контейнер: он уже стоит на остатке этого события, значит обыск состоялся.
+  const sample = (() => {
+    const first = commitAllOf(kill(campaign({ combat: false }), 'foe-1'))
+    return first.state.players.find((player) => player.id === 'hero').inventory
+      .find((item) => item.catalog_id === 'srd_5_2_1:scimitar')
+  })()
+  assert.ok(sample, 'скимитар обязан доехать до сумки героя')
+
+  const withStack = campaign({ combat: false, heroInventory: [{ ...sample, id: 'own-scimitar', quantity: 1 }] })
+  const killed = kill(withStack, 'foe-1')
+  const container = containerOf(killed.state)
+  const scimitar = container.items.find((item) => item.catalog_id === 'srd_5_2_1:scimitar')
+  const looted = commit(killed.state, {
+    command_type: 'LootContainer',
+    actor_id: 'hero',
+    container_id: container.id,
+    lines: [{ item_instance_id: scimitar.item_instance_id, quantity: 1 }],
+  })
+  const stack = (state) => state.players.find((player) => player.id === 'hero').inventory
+    .find((item) => item.id === 'own-scimitar')
+  assert.equal(stack(looted.state)?.quantity, 2, 'поднятый скимитар обязан слиться со своим же в сумке')
+  // Идентификатор поднятого в сумке не остался — узнать повтор можно только по
+  // контейнеру.
+  assert.equal(looted.state.players.find((player) => player.id === 'hero').inventory.length, 1)
+  assert.equal(stack(looted.events.reduce(applyGameEvent, looted.state)).quantity, 2)
+})
+
+test('летопись обыска отличает неполный обыск от опустошённого тела', () => {
+  // Признак нужен интерфейсу: `loot-taken` пишется и при неполном обыске, и без
+  // остатка панель рисовала бы «уже забрал такой-то» над телом, на котором
+  // осталось ещё две вещи (`vanishedLootFrom`, `src/loot-panel-rules.mjs`).
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  assert.ok(container.items.length >= 2, 'разбойник обязан прийти с несколькими вещами')
+
+  const taken = (state, lines) => commit(state, {
+    command_type: 'LootContainer', actor_id: 'hero', container_id: container.id, lines,
+  })
+  const record = (state) => state.battleLog.filter((entry) => entry.type === 'loot-taken').at(-1)
+
+  const partial = taken(killed.state, [{ item_instance_id: container.items[0].item_instance_id, quantity: 1 }])
+  const first = record(partial.state)
+  assert.equal(first.containerId, container.id)
+  assert.equal(first.statusAfter, 'available')
+  assert.ok(first.remainingCount > 0, 'остаток обязан приехать числом')
+  // Содержимого в летописи по-прежнему нет — только счёт.
+  assert.equal(JSON.stringify(first).includes('scimitar'), false)
+  assert.ok(lootContainersInScene(partial.state).some((entry) => entry.id === container.id))
+
+  const rest = containerOf(partial.state)
+  const emptied = taken(partial.state, rest.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity })))
+  const last = record(emptied.state)
+  assert.equal(last.statusAfter, 'emptied')
+  assert.equal(last.remainingCount, 0)
+  assert.equal(lootContainersInScene(emptied.state).length, 0, 'опустошённое тело уходит из сцены')
 })
 
 test('гонка за один предмет: устаревшая версия получает конфликт', () => {

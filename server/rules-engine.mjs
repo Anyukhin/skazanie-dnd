@@ -14393,6 +14393,15 @@ export function applyGameEvent(rawState, event) {
             containerName: String(payload.container_name ?? ''),
             recipientId: String(payload.recipient_id ?? ''),
             itemCount: (payload.items ?? []).length,
+            // Обыск бывает неполным, и запись о нём выглядит точно так же, как
+            // запись о том, что тело обобрали дочиста. Без признака «что
+            // осталось» интерфейс не может отличить одно от другого и рисует
+            // «уже забрал такой-то» над контейнером, в котором ещё две вещи
+            // (`vanishedLootFrom`, `src/loot-panel-rules.mjs`). Остаток и статус
+            // уже посчитаны правилом и лежат в payload — сюда они только
+            // переезжают числом, не открывая содержимого.
+            remainingCount: Math.max(0, safeInteger(payload.remaining_count, 0)),
+            statusAfter: String(payload.status_after ?? ''),
           })
       break
     }

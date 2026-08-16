@@ -1623,8 +1623,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '',
       sceneObject ? 'scene-object-target' : '',
       sceneObject?.id === selectedSceneObjectId ? 'scene-object-selected' : '',
-      lootHere ? 'loot-here' : '',
-      lootHere && focusedLootId === lootHere.id ? 'loot-focused' : '',
+      // Подсветка добычи закрыта туманом наравне с самой меткой (`hasLootLayer`)
+      // и остальными украшениями клетки: `.board-cell.loot-here` рисуется поверх
+      // тумана, и без этой проверки нераскрытый угол зала светился бы рамкой
+      // ровно там, где лежит невзятое тело.
+      cell.revealed && lootHere ? 'loot-here' : '',
+      cell.revealed && lootHere && focusedLootId === lootHere.id ? 'loot-focused' : '',
       occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : sceneNpc ? 'occupied-by-neutral' : 'occupied-by-enemy' : '',
     ].filter(Boolean)
     const cellTitle = opportunityRisk && !canAimHere

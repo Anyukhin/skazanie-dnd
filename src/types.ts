@@ -1007,6 +1007,13 @@ export type BattleEvent = {
   containerName?: string
   recipientId?: string
   itemCount?: number
+  /**
+   * Что осталось в контейнере после обыска. Признак нужен интерфейсу, чтобы не
+   * принять неполный обыск за опустошённое тело: `loot-taken` пишется в обоих
+   * случаях, а метка «уже забрал такой-то» честна только при нулевом остатке.
+   */
+  remainingCount?: number
+  statusAfter?: string
   area?: { x: number; y: number; radiusFeet: number }
 }
 

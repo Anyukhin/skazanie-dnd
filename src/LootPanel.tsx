@@ -22,6 +22,12 @@
  *
  * **Своей цены и своего веса вещи.** Всё, что показывает карточка, лежит в
  * проекции ровно в том виде, в каком попадёт в сумку героя.
+ *
+ * **Чистых правил в компоненте.** Лестница состояний кнопки, прогноз перегруза
+ * и разбор «кто успел раньше» живут в `src/loot-panel-rules.mjs` и покрыты
+ * исполняемыми тестами (`test/loot-panel-rules.test.mjs`): внутри `.tsx` их
+ * сторожем был бы только обход исходника регулярками, а он не отличает
+ * работающую кнопку от заблокированной.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -30,209 +36,30 @@ import {
 
 import { itemCountLabel } from './app-shared'
 import { itemImageFor } from './item-images'
+import {
+  LOOT_ITEM_TYPE_LABELS,
+  LOOT_KIND_LABELS,
+  LOOT_KIND_NOUNS,
+  lootAftermath,
+  lootCellLabel,
+  lootPickKey,
+  lootPickedWeight,
+  lootPicksOf,
+  lootPriceLabel,
+  lootTakeButtonState,
+  lootWeightForecast,
+  vanishedLootFrom,
+} from './loot-panel-rules.mjs'
+import type { LootGhost, LootPick, LootTakeState } from './loot-panel-rules.mjs'
 import type { BattleEvent, Enemy, LootContainerCard, LootItemCard, Player } from './types'
 import type { CommandOutcome } from './useGameSession'
 
-/**
- * Подписи видов контейнеров. Вид приходит с сервера
- * (`server/loot-containers.mjs`), а слова к нему — здесь: русский текст живёт в
- * интерфейсе, а не в payload события.
- */
-export const LOOT_KIND_LABELS: Record<string, string> = {
-  corpse: 'ТЕЛО',
-  captive: 'ОРУЖИЕ ПЛЕННОГО',
-  abandoned: 'БРОШЕНО',
-  cache: 'СХРОН',
-}
-
-/** Чем подписан контейнер в сводке: «тело», «схрон» — счётным словом. */
-export const LOOT_KIND_NOUNS: Record<string, string> = {
-  corpse: 'тело',
-  captive: 'оружие пленного',
-  abandoned: 'брошенный тюк',
-  cache: 'схрон',
-}
-
-const LOOT_ITEM_TYPE_LABELS: Record<string, string> = {
-  weapon: 'оружие',
-  armor: 'доспех',
-  consumable: 'расходник',
-  tool: 'инструмент',
-  quest: 'сюжетная вещь',
-  treasure: 'ценность',
-  document: 'бумаги',
-  other: 'разное',
-}
-
-const round2 = (value: number) => Math.round(value * 100) / 100
-
-/** Цена монетами, а не дробью: «1 зм 5 см» вместо «1,5 зм». */
-export function lootPriceLabel(copper?: number) {
-  const cp = Math.max(0, Math.round(Number(copper) || 0))
-  if (!cp) return ''
-  const parts: string[] = []
-  const gold = Math.floor(cp / 100)
-  const silver = Math.floor((cp % 100) / 10)
-  const rest = cp % 10
-  if (gold) parts.push(`${gold} зм`)
-  if (silver) parts.push(`${silver} см`)
-  if (rest) parts.push(`${rest} мм`)
-  return parts.join(' ')
-}
-
-// ---------------------------------------------------------------------------
-// Чистые правила интерфейса
-// ---------------------------------------------------------------------------
+// Типы правил — часть входа компонентов (`ghosts`, состояние кнопки), поэтому
+// они переезжают наружу вместе с ними. Сами функции наружу не пробрасываются:
+// у них теперь есть свой модуль, и второй адрес к тому же коду только запутает.
+export type { LootGhost, LootPick, LootTakeState }
 
 export type LootPickMap = Record<string, number>
-
-/** Ключ выбора. Экземпляр уникален глобально, но контейнер в ключе оставлен
- *  намеренно: очистка после удачного обыска обязана касаться одной карточки. */
-export const lootPickKey = (containerId: string, itemInstanceId: string) => `${containerId}::${itemInstanceId}`
-
-export type LootPick = { item: LootItemCard; quantity: number }
-
-export function lootPicksOf(container: LootContainerCard, picks: LootPickMap): LootPick[] {
-  return (container.items ?? []).map((item) => ({
-    item,
-    quantity: Math.max(0, Math.min(item.quantity, Math.trunc(picks[lootPickKey(container.id, item.item_instance_id)] ?? 0))),
-  }))
-}
-
-export function lootPickedWeight(picks: readonly LootPick[]) {
-  return round2(picks.reduce((total, pick) => total + Math.max(0, pick.item.weight) * pick.quantity, 0))
-}
-
-/**
- * Прогноз «унесу ли». Нагрузка и предел героя считаются сервером
- * (`inventoryLoadFor`, `server/item-lifecycle.mjs`) и приезжают в `Player`;
- * здесь к ним только прибавляется выбранное. Отказ движка
- * (`CARRYING_CAPACITY_EXCEEDED`) наступает по тому же неравенству, поэтому
- * предупреждение не может обещать одно, а получить другое.
- */
-export function lootWeightForecast(recipient: Player | null | undefined, addedWeight: number) {
-  const capacity = Math.max(0, Number(recipient?.inventoryLoad?.capacity ?? 0))
-  const carried = Math.max(0, Number(recipient?.inventoryLoad?.weight ?? 0))
-  const after = round2(carried + Math.max(0, addedWeight))
-  return {
-    capacity: round2(capacity),
-    carried: round2(carried),
-    after,
-    known: capacity > 0,
-    overloaded: capacity > 0 && after > capacity,
-    remaining: capacity > 0 ? round2(Math.max(0, capacity - after)) : 0,
-  }
-}
-
-export type LootTakeTone = 'ready' | 'action' | 'far' | 'blocked' | 'gone' | 'heavy' | 'empty'
-
-export type LootTakeState = { label: string; title: string; disabled: boolean; tone: LootTakeTone }
-
-/**
- * Состояние кнопки «Взять».
- *
- * Порядок ступеней повторяет порядок проверок правила
- * (`validateLootContainerCommand`): сначала «есть ли ещё что брать», потом
- * права и очередь, потом досягаемость, и лишь затем вес и выбор. Совпадение не
- * косметическое: если бы кнопка объясняла отказ в другом порядке, игрок узнавал
- * бы про перегруз раньше, чем про то, что до тела вообще не дойти.
- *
- * Ни одна ступень не выдумана в браузере: `takenBy` приходит из летописи,
- * `canInspect` и `distanceFeet` — из проекции, `actionCost` — оттуда же, а
- * `canAct` уже посчитан сервером как право хода.
- */
-export function lootTakeButtonState(input: {
-  takenBy?: string | null
-  canAct: boolean
-  busy: boolean
-  narrating: boolean
-  canInspect: boolean
-  distanceFeet?: number | null
-  reachFeet: number
-  actionCost?: 'action' | null
-  overloaded: boolean
-  chosenCount: number
-}): LootTakeState {
-  if (input.takenBy) {
-    return {
-      label: `Уже забрал ${input.takenBy}`,
-      title: 'Контейнер опустошён другим героем — сервер прислал свежий список',
-      disabled: true,
-      tone: 'gone',
-    }
-  }
-  if (!input.canAct) {
-    return { label: 'Не ваш ход', title: 'Сейчас этот герой не может действовать', disabled: true, tone: 'blocked' }
-  }
-  if (input.narrating || input.busy) {
-    return {
-      label: 'Подождите',
-      title: input.narrating ? 'Дождитесь ответа Рассказчика' : 'Дождитесь завершения текущего действия',
-      disabled: true,
-      tone: 'blocked',
-    }
-  }
-  if (!input.canInspect) {
-    const distance = Number.isFinite(Number(input.distanceFeet)) ? ` Сейчас до неё ${input.distanceFeet} фт.` : ''
-    return {
-      label: 'Подойдите ближе',
-      title: `Обыскивают в пределах ${input.reachFeet} футов.${distance}`,
-      disabled: true,
-      tone: 'far',
-    }
-  }
-  if (input.overloaded) {
-    return { label: 'Не унести — перегруз', title: 'Получатель не унесёт столько: снимите часть выбора или выберите другого героя', disabled: true, tone: 'heavy' }
-  }
-  if (input.chosenCount <= 0) {
-    return { label: 'Выберите, что взять', title: 'Отметьте предметы в списке — набор уезжает одной командой', disabled: true, tone: 'empty' }
-  }
-  if (input.actionCost === 'action') {
-    return { label: 'Взять — действие', title: 'В бою обыск одного контейнера стоит действия (правило стола)', disabled: false, tone: 'action' }
-  }
-  return { label: 'Взять', title: 'Вне боя обыск не стоит ни действия, ни хода', disabled: false, tone: 'ready' }
-}
-
-/**
- * Опустевший контейнер. В проекцию опустошённые не приезжают вовсе, поэтому
- * «его больше нет в списке» — это и есть ответ авторитета. Чтобы не выдать за
- * обыск уход со сцены (там список пустеет целиком), призрак заводится только
- * тогда, когда в летописи есть подтверждающая запись `loot-taken`.
- */
-export type LootGhost = {
-  id: string
-  name: string
-  kind: string
-  x: number | null
-  y: number | null
-  takenBy: string
-  at: number
-}
-
-export function vanishedLootFrom(
-  previous: readonly LootContainerCard[],
-  current: readonly LootContainerCard[],
-  battleLog: readonly BattleEvent[],
-  actorName: (id?: string) => string,
-  now = Date.now(),
-): LootGhost[] {
-  if (!previous.length) return []
-  const alive = new Set(current.map((container) => container.id))
-  return previous.flatMap((container) => {
-    if (alive.has(container.id)) return []
-    const record = [...battleLog].reverse().find((event) => event.type === 'loot-taken' && event.containerId === container.id)
-    if (!record) return []
-    return [{
-      id: container.id,
-      name: container.name,
-      kind: container.kind,
-      x: container.x,
-      y: container.y,
-      takenBy: actorName(record.recipientId ?? record.actorId) || 'кто-то из отряда',
-      at: now,
-    }]
-  })
-}
 
 /**
  * Призраки опустевших контейнеров на несколько секунд. Нужны ровно для двух
@@ -266,26 +93,6 @@ export function useVanishedLoot(
     return () => window.clearTimeout(timer)
   }, [ghosts, ttlMs])
   return ghosts
-}
-
-/** Что осталось на полу после боя. Считает только по проекции сцены. */
-export function lootAftermath(containers: readonly LootContainerCard[]) {
-  const bodies = containers.filter((container) => container.kind === 'corpse')
-  const caches = containers.filter((container) => container.kind === 'cache' || container.kind === 'abandoned')
-  const captiveGear = containers.filter((container) => container.kind === 'captive')
-  return {
-    bodies,
-    caches,
-    captiveGear,
-    itemCount: containers.reduce((total, container) => total + Math.max(0, container.item_count), 0),
-    weight: round2(containers.reduce((total, container) => total + Math.max(0, container.total_weight), 0)),
-    empty: containers.length === 0,
-  }
-}
-
-/** Клетка контейнера человеческими числами: доска нумеруется с единицы. */
-export function lootCellLabel(container: { x: number | null; y: number | null }) {
-  return container.x == null || container.y == null ? '' : `клетка ${container.x + 1}:${container.y + 1}`
 }
 
 // ---------------------------------------------------------------------------

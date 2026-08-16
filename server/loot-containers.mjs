@@ -738,8 +738,16 @@ function withContainer(state, container) {
   return normalizeLootContainersState({ containers: next })
 }
 
+/**
+ * Вещь ложится в сумку. Идентификатор поднятого детерминирован
+ * (`lootedItemId(command_id, container_id, instance_id)`), поэтому «эта вещь уже
+ * лежит» — проверяемый факт, а не догадка: повторное применение того же события
+ * его не создаёт заново, а узнаёт и пропускает.
+ */
 function addLootedItem(inventory, incoming) {
   const current = Array.isArray(inventory) ? inventory : []
+  const incomingId = String(incoming?.id ?? '')
+  if (incomingId && current.some((item) => String(item?.id ?? '') === incomingId)) return current
   const index = current.findIndex((item) => !item?.equipped && !item?.attuned_to
     && inventoryStackKey(item) === inventoryStackKey(incoming))
   if (index < 0) return [...current, clone(incoming)]
@@ -748,12 +756,34 @@ function addLootedItem(inventory, incoming) {
     : item)
 }
 
+/** Остаток контейнера числами: экземпляр → количество. */
+function instanceQuantities(items) {
+  return new Map((Array.isArray(items) ? items : [])
+    .map((item) => [String(item?.item_instance_id ?? ''), Math.max(0, integer(item?.quantity, 1))]))
+}
+
+function sameInstanceQuantities(left, right) {
+  const first = instanceQuantities(left)
+  const second = instanceQuantities(right)
+  if (first.size !== second.size) return false
+  for (const [id, quantity] of first) if (second.get(id) !== quantity) return false
+  return true
+}
+
 /**
  * Применение событий контейнеров.
  *
  * Числа берутся **только** из payload: то же событие, применённое второй раз,
  * обязано давать тот же остаток и тот же инвентарь. Поэтому остаток контейнера
  * приезжает списком, а не досчитывается вычитанием по состоянию.
+ *
+ * Инвентарь получателя держит то же обещание двумя сторожами. Первый — сам
+ * контейнер: если он уже стоит ровно на `remaining_items`, обыск состоялся, и
+ * второе применение обязано пройти мимо сумки. Второй — детерминированный `id`
+ * поднятой вещи: он один и тот же у любого повтора события, поэтому уже
+ * лежащую в сумке вещь `addLootedItem` узнаёт и не складывает в стопку второй
+ * раз. Живой путь всё равно закрыт транспортом (`assertLootIdempotency`,
+ * `server/index.mjs`), но обещание шапки держится и без него.
  *
  * @returns {string[]} ID героев, чьи производные поля инвентаря надо обновить
  */
@@ -788,11 +818,16 @@ export function applyLootContainerEvent(state, event) {
     const remaining = (Array.isArray(payload.remaining_items) ? payload.remaining_items : [])
       .map((item) => normalizeItemInstance(item))
       .filter(Boolean)
+    // Контейнер уже стоит на остатке этого события — значит, обыск состоялся, и
+    // вещи давно в сумке. Проверка идёт до `withContainer`: тот приведёт
+    // состояние к тому же самому, а вот выдавать добычу второй раз нельзя.
+    const alreadyApplied = sameInstanceQuantities(current.items, remaining)
     state.loot_containers = withContainer(state, normalizeLootContainer({
       ...current,
       items: remaining,
       status: remaining.length ? 'available' : 'emptied',
     }))
+    if (alreadyApplied) return []
     const recipientId = text(payload.recipient_id, 120)
     const items = (Array.isArray(payload.items) ? payload.items : [])
       .map((item) => normalizeInventoryItem(item, { preserveUnknown: true }))

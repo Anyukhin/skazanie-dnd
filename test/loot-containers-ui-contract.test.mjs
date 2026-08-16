@@ -2,8 +2,6 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { LOOT_CONTAINER_KINDS } from '../server/loot-containers.mjs'
-
 /**
  * Сторож обещания «действие доступно живому игроку через основной сайт».
  *
@@ -12,9 +10,17 @@ import { LOOT_CONTAINER_KINDS } from '../server/loot-containers.mjs'
  * падает, если панель добычи, метка тела на доске, послебоевая сводка или
  * проводка команды исчезли. Браузерной автоматизации в проекте нет — поэтому
  * контракт держится по исходникам, как и у остальных панелей.
+ *
+ * **Границу этого сторожа стоит назвать вслух.** Текст файла не отличает
+ * заблокированную кнопку от работающей: `disabled: true → false` исходник не
+ * меняет. Поэтому поведение чистой половины панели проверяется прогоном —
+ * `test/loot-panel-rules.test.mjs` над `src/loot-panel-rules.mjs`, — а здесь
+ * остаётся только то, что прогоном не выражается: разметка, размещение и то,
+ * что каждая ступень лестницы вообще доезжает до экрана.
  */
 
 const panel = readFileSync(new URL('../src/LootPanel.tsx', import.meta.url), 'utf8')
+const rules = readFileSync(new URL('../src/loot-panel-rules.mjs', import.meta.url), 'utf8')
 const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
@@ -31,12 +37,26 @@ test('добыча живёт своим компонентом, а не оче�
   assert.doesNotMatch(board, /className="loot-panel"/u, 'разметка панели обязана остаться в своём модуле')
 })
 
+test('чистые правила панели лежат в исполняемом модуле, а не внутри компонента', () => {
+  // Пока лестница состояний и прогноз перегруза сидели в `.tsx`, их сторожем
+  // был только этот файл — и ни одна поведенческая правка им не ловилась.
+  for (const symbol of ['lootTakeButtonState', 'lootWeightForecast', 'lootPickedWeight', 'vanishedLootFrom', 'lootAftermath']) {
+    assert.ok(rules.includes(`export function ${symbol}`), `в src/loot-panel-rules.mjs нет ${symbol}`)
+    assert.equal(panel.includes(`function ${symbol}`), false, `${symbol} вернулся в компонент и снова остался без прогона`)
+  }
+  assert.match(panel, /from '\.\/loot-panel-rules\.mjs'/u)
+  // Правила не имеют права утащить в себя JSX: модуль обязан оставаться
+  // загружаемым обычным `node --test`.
+  assert.equal(/<[A-Za-z]/u.test(rules.replace(/=>/gu, '')), false, 'в модуле правил появилась разметка')
+})
+
 test('панель добычи есть в сцене и называет каждый вид контейнера', () => {
   assert.match(panel, /className="loot-panel"/u)
   assert.match(panel, /ДОБЫЧА · \{containers\.length\}/u)
-  for (const kind of LOOT_CONTAINER_KINDS) {
-    assert.ok(new RegExp(`\\b${kind}:`, 'u').test(panel), `у вида ${kind} нет подписи в LOOT_KIND_LABELS`)
-  }
+  // Сами подписи проверены прогоном (`loot-panel-rules.test.mjs`) — здесь
+  // важно, что карточка их действительно печатает.
+  assert.match(panel, /LOOT_KIND_LABELS\[container\.kind\]/u)
+  assert.match(panel, /LOOT_KIND_NOUNS\[container\.kind\]/u)
   for (const label of ['Выбрать всё', 'Снять выбор']) {
     assert.ok(panel.includes(`'${label}'`), `в панели добычи нет кнопки «${label}»`)
   }
@@ -52,23 +72,20 @@ test('карточка вещи показывает картинку, вес, �
   assert.match(panel, /container\.source_enemy_id/u)
 })
 
-test('кнопка обыска называет все четыре честных состояния', () => {
-  for (const label of ['Взять — действие', 'Подойдите ближе', 'Не ваш ход', 'Уже забрал ']) {
-    assert.ok(panel.includes(label), `у кнопки нет состояния «${label}»`)
-  }
-  // Порядок ступеней повторяет порядок проверок правила: сначала «уже забрали»
-  // и очередь, затем досягаемость, и только потом вес и выбор.
-  const order = ['Уже забрал ', 'Не ваш ход', 'Подойдите ближе', 'Не унести — перегруз', 'Выберите, что взять', 'Взять — действие']
-  const positions = order.map((label) => panel.indexOf(label))
-  assert.deepEqual(positions, [...positions].sort((left, right) => left - right), 'лестница состояний перепутана')
-  assert.ok(positions.every((position) => position > 0))
-  // Каждое состояние обязано быть достижимым: строка действий стоит и у
-  // далёкого контейнера, и у опустевшего, иначе половина подписей — мёртвый код.
+test('каждая ступень лестницы доезжает до экрана', () => {
+  // Сами подписи, их порядок и `disabled` проверены прогоном
+  // (`loot-panel-rules.test.mjs`). Здесь — только достижимость: строка действий
+  // стоит и у далёкого контейнера, и у опустевшего, иначе половина состояний
+  // остаётся мёртвым кодом, который ни один игрок не увидит.
   const card = panel.slice(panel.indexOf('{containers.map((container) =>'), panel.indexOf('{shownGhosts.map('))
   assert.equal(card.split('className="loot-actions"').length - 1, 1, 'строка действий обязана быть одна на карточку')
   assert.match(card, /\{!container\.can_inspect && <p className="loot-far">/u, 'далёкая карточка обязана оставаться со строкой действий')
+  assert.match(card, /lootTakeButtonState\(\{/u, 'кнопка карточки обязана брать состояние из общих правил')
+  assert.match(card, /disabled=\{picksLocked\}/u, 'выбор запирается тем же, чем и кнопка')
   const ghost = panel.slice(panel.indexOf('{shownGhosts.map('))
   assert.match(ghost, /takenBy: ghost\.takenBy/u, 'опустевшая карточка обязана проходить ту же лестницу')
+  // Кнопка одна на оба случая: две формы разошлись бы состояниями.
+  assert.match(panel, /disabled=\{state\.disabled\}/u)
 })
 
 test('досягаемость, цена хода и перегруз приходят с сервера, а не считаются в браузере', () => {
@@ -80,10 +97,10 @@ test('досягаемость, цена хода и перегруз прихо
   assert.match(panel, /container\.distance_feet/u)
   assert.match(panel, /actionCost === 'action'/u)
   assert.doesNotMatch(panel, /can_inspect\s*=\s*/u)
-  // Предел переноски героя считает сервер (`inventoryLoad`), панель только
-  // складывает выбранное — иначе обещание разошлось бы с отказом движка.
-  assert.match(panel, /recipient\?\.inventoryLoad\?\.capacity/u)
-  assert.match(panel, /overloaded/u)
+  // Предел переноски героя считает сервер (`inventoryLoad`), правила только
+  // складывают выбранное — иначе обещание разошлось бы с отказом движка.
+  assert.match(rules, /recipient\?\.inventoryLoad\?\.capacity/u)
+  assert.match(panel, /forecast\.overloaded/u)
 })
 
 test('после ответа сервера состояние берётся из авторитета, без локального оптимизма', () => {
@@ -109,12 +126,22 @@ test('метка тела рисуется слоем клетки, а не в �
 })
 
 test('опустевший контейнер гаснет и объясняет, кто успел раньше', () => {
-  // Признак «его больше нет» приходит из проекции, подтверждение — из летописи.
-  assert.ok(panel.includes('export function vanishedLootFrom'))
-  assert.ok(panel.includes("event.type === 'loot-taken' && event.containerId === container.id"))
-  assert.ok(panel.includes('takenBy: actorName(record.recipientId ?? record.actorId)'), 'имя успевшего берётся из летописи')
-  assert.ok(panel.includes('Уже забрал ${input.takenBy}'), 'подпись «уже забрал» обязана называть героя')
+  // Признак «его больше нет» приходит из проекции, подтверждение — из летописи,
+  // и подтверждает оно именно опустошение: неполный обыск пишет ту же запись.
+  assert.ok(rules.includes('export function vanishedLootFrom'))
+  assert.ok(rules.includes("event.type === 'loot-taken'"))
+  assert.ok(rules.includes("event.statusAfter === 'emptied' || event.remainingCount === 0"), 'призрак обязан требовать нулевой остаток')
+  assert.ok(rules.includes('takenBy: actorName(record.recipientId ?? record.actorId)'), 'имя успевшего берётся из летописи')
+  assert.ok(rules.includes('Уже забрал ${input.takenBy}'), 'подпись «уже забрал» обязана называть героя')
   assert.ok(board.includes('useVanishedLoot(sceneLoot, state.battleLog, actorNameById)'))
+})
+
+test('метка добычи на доске закрыта туманом наравне с остальными украшениями клетки', () => {
+  // `.board-cell.loot-here` рисуется поверх тумана, поэтому без `cell.revealed`
+  // нераскрытый угол зала светился бы рамкой ровно там, где лежит тело.
+  assert.match(board, /cell\.revealed && lootHere \? 'loot-here' : ''/u)
+  assert.match(board, /cell\.revealed && lootHere && focusedLootId === lootHere\.id \? 'loot-focused' : ''/u)
+  assert.match(board, /const hasLootLayer = Boolean\(cell\.revealed && \(lootHere \|\| lootGhostHere\)\)/u)
 })
 
 test('послебоевая сводка называет тела, тайники и невзятое', () => {
