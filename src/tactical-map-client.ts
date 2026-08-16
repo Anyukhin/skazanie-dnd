@@ -25,8 +25,11 @@ export const SPAWN_ROLES: readonly TacticalSpawnRole[] = ['party', 'enemy', 'neu
 /* Зеркало серверного контракта глаголов. `topple` и `ignite` приезжают только
    у тяжёлого и горючего реквизита — их объявляет `server/scene-hazards.mjs`
    вместе с обычными операциями, а `pray` — только у святыни
-   (`server/scene-interactions.mjs`). Клиент их не выводит, а перечисляет. */
-const SCENE_OBJECT_INTENTS: readonly SceneObjectIntent[] = ['inspect', 'open', 'take', 'use', 'topple', 'ignite', 'pray']
+   (`server/scene-interactions.mjs`). `lockpick` приезжает у всякого контейнера,
+   а не только у запертого: запертость выводится из сида, и объяви её кнопка —
+   игрок читал бы наличие замка, не притронувшись к сундуку. Клиент глаголы не
+   выводит, а перечисляет. */
+const SCENE_OBJECT_INTENTS: readonly SceneObjectIntent[] = ['inspect', 'open', 'lockpick', 'take', 'use', 'topple', 'ignite', 'pray']
 
 const MAX_WIDTH = 100
 const MAX_HEIGHT = 100

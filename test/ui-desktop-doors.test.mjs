@@ -29,3 +29,20 @@ test('door controls connect hover and focus to the board overlay and expose lock
   assert.match(appSource, /doorOverlayCells\(highlightedDoor\)/)
   assert.match(appSource, /СЛ \$\{lockDc\}/)
 })
+
+test('у запертой двери два пути кнопками: отмычка гаснет без владения, сила остаётся', async () => {
+  const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+    .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
+  // Оба глагола объявлены на одной и той же запертой двери.
+  assert.match(appSource, /onOperateDoor\(selected, door\.id, 'lockpick'\)/u)
+  assert.match(appSource, /onOperateDoor\(selected, door\.id, 'force'\)/u)
+  assert.match(appSource, /<span>Взломать дверь \(\{direction\}\)<\/span>/u)
+  // Кнопка отмычки гаснет по серверному признаку владения и объясняет причину
+  // серверной же строкой: сочинённый браузером отказ разошёлся бы с движком.
+  assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| !lockpickAllowed\}/u)
+  assert.match(appSource, /const lockpickAllowed = lockpicking\?\.proficient === true/u)
+  assert.match(appSource, /const lockpickBlockedHint = lockpicking\?\.blocked_reason \|\| 'Нужно владение воровскими инструментами'/u)
+  // Сложности замка у кнопки взлома нет: СЛ игроку не объявляется, а число в
+  // подписи рядом — это СЛ выламывания, и оно было там до этой задачи.
+  assert.doesNotMatch(appSource, /Вскрыть замок отмычкой[^`]*СЛ /u)
+})

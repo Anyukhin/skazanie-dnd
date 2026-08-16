@@ -22,6 +22,7 @@ import { lootContainerForViewer, lootContainersForViewer } from './loot-containe
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
 import { blessingsForViewer } from './blessings.mjs'
+import { lockpickingForViewer } from './lockpicking.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { courierLetterForViewer, courierLettersForViewer } from './courier-letters.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -1005,6 +1006,13 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // Тайны в самом реестре нет ни одной, и ключ стоит здесь только затем, чтобы
   // строгий whitelist не выбросил его до подмены.
   'blessings',
+  // Взлом отмычками. Собственного ключа в состоянии нет: карточка выводится из
+  // листа героя-зрителя (`lockpickingForViewer`, `server/lockpicking.mjs`) и
+  // существует только в проекции. Скрытого в ней нет ни грамма — владение
+  // инструментом игрок и так читает в своей предыстории, — а того, что скрыто
+  // по-настоящему, там нет по построению: ни СЛ замка, ни запертости сундуков
+  // карточка не несёт и нести не должна.
+  'lockpicking',
   // Время суток и погода. Собственного ключа в состоянии нет: обе величины
   // выводятся из мировых минут и сида кампании (`server/weather.mjs`) и
   // существуют только в проекции. Решение осознанное и в обе стороны одинаковое:
@@ -1128,6 +1136,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // сидит своим героем, и вторая форма панели была бы вторым ответом на один
     // вопрос.
     blessings: blessingsForViewer(state, { playerId: String(actorId ?? '') }),
+    // Взлом: умеет ли этот герой вскрывать замки и что ответить, если нет.
+    // Карточку собирает сервер целиком — второй формулы владения у клиента не
+    // появляется, а ни СЛ, ни запертости в ней нет.
+    lockpicking: lockpickingForViewer(state, { playerId: String(actorId ?? '') }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
     weather: weatherForViewer(state),
@@ -1283,6 +1295,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // пожертвование. Карточку собирает сервер целиком — клиенту нечего
     // досчитывать.
     blessings: blessingsForViewer(state, { playerId: String(actorId ?? '') }),
+    // Взлом: умеет ли этот герой вскрывать замки и что ответить, если нет.
+    // Карточку собирает сервер целиком — второй формулы владения у клиента не
+    // появляется, а ни СЛ, ни запертости в ней нет.
+    lockpicking: lockpickingForViewer(state, { playerId: String(actorId ?? '') }),
     // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
     // на один вопрос.

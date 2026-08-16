@@ -386,6 +386,31 @@ function objectiveHint(room) {
 }
 
 /**
+ * Запертая дверь под рукой у того, кто умеет с ней справиться.
+ *
+ * Строка появляется **только при владении инструментом**: звать к замку того,
+ * кому движок ответит отказом, — это подсказка наоборот. Признак приезжает
+ * готовым (`room.lockpicking.proficient`, `server/lockpicking.mjs`), и своей
+ * проверки владения здесь нет: комната собрана, и второй мерки у панели быть
+ * не должно.
+ *
+ * Про сундуки строки нет и быть не может: запертость контейнера выводится из
+ * сида и в проекцию не едет — назови её подсказка, и игрок читал бы наличие
+ * замка, не притронувшись к крышке. Дверь другое дело: её `locked` игрок и так
+ * видит на доске.
+ */
+function lockpickHints(room) {
+  if (room?.lockpicking?.proficient !== true) return []
+  const doors = Array.isArray(room?.scene?.map?.doors) ? room.scene.map.doors : []
+  if (!doors.some((door) => String(door?.state) === 'locked')) return []
+  return [{
+    id: 'lockpick:door',
+    priority: HINT_PRIORITY.prop,
+    text: 'Можно вскрыть замок отмычкой: запертая дверь',
+  }]
+}
+
+/**
  * Выход из сцены. Дверь на публичной карте уже отфильтрована по раскрытым
  * клеткам, поэтому подсказка не выдаёт проход, которого игрок ещё не видел.
  */
@@ -405,6 +430,8 @@ function exitHints(room) {
  * Реквизит забирает только тот остаток строк, который не нужен собеседникам,
  * цели и выходу, и не больше `MAX_PROP_HINTS`. Место в списке предметы всё ещё
  * получают первое — приметное вперёд, — но получают его не за чужой счёт.
+ * Запертая дверь стоит в этой же очереди наравне с рядовым реквизитом: замок —
+ * возможность, а не срочность.
  *
  * Приглашение за стол в таверне стоит **в этой же очереди**, а не в брони.
  * Безусловный слот у него был, и следствие оказалось хуже причины: в трактире
@@ -446,7 +473,7 @@ export function suggestedActionsFor(room, actorId = '') {
     ...exitHints(room),
   ])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
-  const props = ordered([...propHints(room), ...tavern.leisure, ...blessingHints(room), ...beastHints(room, actorId), ...letterHints(room)]).slice(0, budget)
+  const props = ordered([...propHints(room), ...lockpickHints(room), ...tavern.leisure, ...blessingHints(room), ...beastHints(room, actorId), ...letterHints(room)]).slice(0, budget)
   return [...props, ...reserved]
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
     .slice(0, MAX_ACTION_HINTS)

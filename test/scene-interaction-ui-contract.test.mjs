@@ -22,6 +22,9 @@ test('доска предлагает только спроецированны�
   for (const [intent, label] of [
     ['inspect', 'Осмотреть'],
     ['open', 'Открыть'],
+    // Взлом: сервер объявляет этот глагол у всякого контейнера — запертость он
+    // не выдаёт, — и доска обязана нарисовать его той же кнопкой.
+    ['lockpick', 'Взломать'],
     ['take', 'Взять'],
     ['use', 'Использовать'],
     // Обстановка как оружие: сервер объявляет эти два глагола у тяжёлого и
@@ -42,7 +45,7 @@ test('декодер карты сохраняет только публичны
     mapClientSource.indexOf('function decodeProp'),
     mapClientSource.indexOf('function decodeZone'),
   )
-  assert.match(mapClientSource, /SCENE_OBJECT_INTENTS: readonly SceneObjectIntent\[\] = \['inspect', 'open', 'take', 'use', 'topple', 'ignite', 'pray'\]/u)
+  assert.match(mapClientSource, /SCENE_OBJECT_INTENTS: readonly SceneObjectIntent\[\] = \['inspect', 'open', 'lockpick', 'take', 'use', 'topple', 'ignite', 'pray'\]/u)
   assert.match(decodePropSource, /pointOfInterest: rawInteraction\.pointOfInterest === true/u)
   assert.doesNotMatch(decodePropSource, /detailKey|rewardKey/u)
 })
@@ -54,7 +57,9 @@ test('клик выбирает интерактивный prop, а его кн�
   // закрыт, полученное благословение — ещё не израсходовано, а в бою обращение
   // к богам движок не принимает вовсе. Кнопка обязана погаснуть до клика, а не
   // после отказа.
-  assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| unavailable \|\| \(intent === 'pray' && \(blessingHeld \|\| !blessingAvailable \|\| combatActive\)\)\}/u)
+  // Взлом добавляет к общим условиям своё: без владения воровскими
+  // инструментами движок откажет, и кнопка обязана погаснуть до клика.
+  assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| unavailable \|\| \(intent === 'pray' && \(blessingHeld \|\| !blessingAvailable \|\| combatActive\)\) \|\| \(intent === 'lockpick' && !lockpickAllowed\)\}/u)
   assert.match(appSource, /sceneObjectsAtHand\.find/u)
   assert.match(appSource, /boardOverlay\.push\(\{ \.\.\.cell, kind: 'command-range' \}\)/u)
   assert.match(boardSource, /hotspot\?: React\.ReactNode/u)

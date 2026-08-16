@@ -6,10 +6,12 @@ import { WANTED_CRIME_POINTS } from '../server/law-and-order.mjs'
 import {
   LOCKPICK_NOISE_SEVERITY,
   THIEVES_TOOLS_ID,
+  THIEVES_TOOLS_REQUIRED_MESSAGE,
   hasThievesTools,
   lockpickNoiseFor,
   lockpickTraceNoticedFor,
 } from '../server/lockpicking.mjs'
+import { suggestedActionsFor } from '../server/action-hints.mjs'
 import { RulesValidationError, applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionDefinition, sceneObjectOperationFromText } from '../server/scene-interactions.mjs'
 import { addProp, createTacticalMap, deserializeTacticalMap, serializeTacticalMap, setCell, setDoor } from '../server/tactical-map.mjs'
@@ -341,6 +343,48 @@ test('свободная фраза различает отмычку и пле�
   })
   assert.equal(sceneInteractionCatalogEntry('chest').verbs.includes('lockpick'), true)
   assert.equal(sceneInteractionCatalogEntry('bookshelf').verbs.includes('lockpick'), false)
+})
+
+test('карточка взлома отвечает готовой строкой отказа — той же, которой откажет движок', () => {
+  const able = campaignStateForViewer(fixture(), PLAYER, 'hero').lockpicking
+  assert.equal(able.proficient, true)
+  assert.equal(able.blocked_reason, '')
+  assert.equal(able.tool_id, THIEVES_TOOLS_ID)
+
+  const unable = campaignStateForViewer(fixture({ thief: false }), PLAYER, 'hero').lockpicking
+  assert.equal(unable.proficient, false)
+  assert.equal(unable.blocked_reason, THIEVES_TOOLS_REQUIRED_MESSAGE)
+  // Кнопка и движок обязаны объяснять отказ одинаково.
+  assert.throws(
+    () => resolveCommand(
+      { campaign_id: 'campaign-1', command_id: 'cmd-1', server_authoritative: true, command_type: 'OperateDoor', actor_id: 'hero', door_id: 'door-vault', intent: 'lockpick' },
+      fixture({ thief: false }),
+      { diceService: dice(20), context: { isAdmin: true } },
+    ),
+    (error) => error.message === unable.blocked_reason,
+  )
+  // Ни СЛ, ни запертости сундуков карточка не несёт.
+  assert.equal(JSON.stringify(able).includes('dc'), false)
+})
+
+test('подсказка зовёт к запертой двери только владеющего', () => {
+  const able = campaignStateForViewer(fixture(), PLAYER, 'hero')
+  assert.ok(able.suggested_actions.some((hint) => /вскрыть замок/iu.test(hint.text)), 'владеющему подсказка обязана назвать замок')
+  const unable = campaignStateForViewer(fixture({ thief: false }), PLAYER, 'hero')
+  assert.equal(unable.suggested_actions.some((hint) => /вскрыть замок/iu.test(hint.text)), false)
+  // Панель читает **уже собранную** комнату: своей проверки владения у неё нет.
+  const locked = { scene: { map: { doors: [{ id: 'd', state: 'locked' }] } } }
+  assert.deepEqual(suggestedActionsFor({ ...locked, lockpicking: { proficient: true } }), [
+    { id: 'lockpick:door', text: 'Можно вскрыть замок отмычкой: запертая дверь' },
+    { id: 'exit', text: 'Можно уйти из этого места через дверь' },
+  ])
+  assert.deepEqual(suggestedActionsFor({ ...locked, lockpicking: { proficient: false } }), [
+    { id: 'exit', text: 'Можно уйти из этого места через дверь' },
+  ])
+  // Незапертой двери взлом не предлагают даже вору.
+  assert.deepEqual(suggestedActionsFor({ scene: { map: { doors: [{ id: 'd', state: 'closed' }] } }, lockpicking: { proficient: true } }), [
+    { id: 'exit', text: 'Можно уйти из этого места через дверь' },
+  ])
 })
 
 test('игроку не уезжает ни СЛ замка, ни летопись поступков', () => {

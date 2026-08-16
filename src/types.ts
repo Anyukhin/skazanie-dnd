@@ -787,7 +787,7 @@ export type TacticalDoor = {
  * `server/scene-interactions.mjs`) и в отличие от остальных глаголов бросает
  * кость: молитва идёт двухфазной проверкой Религии.
  */
-export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use' | 'topple' | 'ignite' | 'pray'
+export type SceneObjectIntent = 'inspect' | 'open' | 'lockpick' | 'take' | 'use' | 'topple' | 'ignite' | 'pray'
 
 export type TacticalProp = {
   id: string
@@ -1349,6 +1349,12 @@ export type GameState = {
    * — в отличие от таверны, святыня и жрец встречаются где угодно.
    */
   blessings?: BlessingProjection | null
+  /**
+   * Взлом отмычками: умеет ли **этот** герой вскрывать замки и что показать,
+   * если не умеет. Карточку собирает сервер целиком; ни СЛ замка, ни
+   * запертости сундуков в ней нет и не будет.
+   */
+  lockpicking?: LockpickingProjection | null
   /**
    * Ходы мира за спиной отряда. Ветка одинакова у игрока и у ведущего: «Пока
    * вас не было…» — монтаж для всего стола.
@@ -1921,6 +1927,25 @@ export type BlessingProjection = {
     npc_name?: string
     at_minutes?: number
   } | null
+}
+
+/**
+ * Взлом отмычками. Карточка отвечает на один вопрос — умеет ли этот герой, —
+ * и приносит **готовую строку отказа**: она обязана совпасть с той, которой
+ * движок отвергнет команду, иначе кнопка и сервер разойдутся в объяснении.
+ *
+ * СЛ замка и запертости здесь нет намеренно: сложность игроку не объявляется, а
+ * запертость сундука выводится из сида и в проекцию не едет.
+ */
+export type LockpickingProjection = {
+  schema_version?: number
+  policy_id?: string
+  tool_id?: string
+  tool_name?: string
+  /** Владеет ли герой воровскими инструментами. */
+  proficient?: boolean
+  /** Почему нельзя. Пустая строка — можно. */
+  blocked_reason?: string
 }
 
 /** Куда едет письмо: к известному NPC или к фракции. Список закрыт сервером. */

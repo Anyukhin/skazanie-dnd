@@ -7,7 +7,7 @@
  * доска: любая работа по интерфейсу конфликтовала с любой другой.
  */
 
-import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen, ChevronDown, ChevronRight, Coins, Copy, Crown, DoorOpen,
   Dices, Flame, Footprints, Gem, History, Menu, MessageSquare,
@@ -143,6 +143,7 @@ export const BASE_ATTACK_ID = '__base-attack__'
 export const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
   inspect: 'Осмотреть',
   open: 'Открыть',
+  lockpick: 'Взломать',
   take: 'Взять',
   use: 'Использовать',
   topple: 'Опрокинуть',
@@ -231,7 +232,7 @@ export function sceneObjectCells(prop: TacticalProp) {
 export function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
   const projected = prop.interaction?.verbs ?? prop.interactionVerbs ?? []
   return [...new Set(projected.filter((verb): verb is SceneObjectIntent => (
-    verb === 'inspect' || verb === 'open' || verb === 'take' || verb === 'use'
+    verb === 'inspect' || verb === 'open' || verb === 'lockpick' || verb === 'take' || verb === 'use'
     || verb === 'topple' || verb === 'ignite' || verb === 'pray'
   )))]
 }
@@ -664,7 +665,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => Promise<CommandOutcome>
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
-  onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => Promise<CommandOutcome>
+  onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force' | 'lockpick') => Promise<CommandOutcome>
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => Promise<CommandOutcome>
   onUseLevelTransition: (actorId: string, propId: string) => Promise<CommandOutcome>
   onLeaveLocation: () => void
@@ -1290,6 +1291,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       : `Молитва: проверка Религии, СЛ ${Number(blessings?.prayer_dc) || 12}. Успех — малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) до продолжительного отдыха. Раз в сутки на героя`
   const blessingPriests = blessings?.priests ?? []
   const blessingDonationCp = Math.max(0, Number(blessings?.donation_cp) || 0)
+  /* Взлом приезжает такой же готовой карточкой (`server/lockpicking.mjs`):
+     владеет ли герой инструментом и какой строкой сервер откажет, если нет.
+     Своей проверки владения у клиента нет намеренно — лист героя её не везёт, а
+     сочинённый браузером отказ разошёлся бы с ответом движка. Сложности замка в
+     карточке нет и не будет: СЛ игроку не объявляется. */
+  const lockpicking = state.lockpicking ?? null
+  const lockpickAllowed = lockpicking?.proficient === true
+  const lockpickBlockedHint = lockpicking?.blocked_reason || 'Нужно владение воровскими инструментами'
   /* Этажи локации (`docs/multilevel-map-plan.md`, раздел 6). Номер активного
      этажа приходит проекцией; у старой кампании его нет, и это этаж входа. */
   const sceneLevelIndex = Number(state.scene.level?.index ?? boardMap?.levelIndex ?? 0) || 0
@@ -3100,8 +3109,17 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 onFocus: () => setHoveredDoorId(door.id),
                 onBlur: () => setHoveredDoorId((current) => current === door.id ? null : current),
               }
+              /* У запертой двери путей два, и оба стоят кнопками рядом:
+                 отмычка у владеющего и плечо у всех. СЛ в подписи — это СЛ
+                 **выламывания**, она была здесь и раньше; у взлома своей
+                 подписи с числом нет, потому что сложность замка сервер не
+                 объявляет. Кнопка отмычки не прячется без владения, а гаснет с
+                 честной причиной: спрятанная кнопка ничему не учит. */
               return door.state === 'locked'
-                ? <button {...hoverProps} key={door.id} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Запертая дверь на ${direction}. Проверка Силы (Атлетика), СЛ ${lockDc}. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь ({direction}, СЛ {lockDc})</span></button>
+                ? <Fragment key={door.id}>
+                    <button {...hoverProps} className="door-control locked" disabled={!canAct || tacticalBusy || !lockpickAllowed} onClick={() => selected && onOperateDoor(selected, door.id, 'lockpick')} title={lockpickAllowed ? `Запертая дверь на ${direction}. Вскрыть замок отмычкой: Ловкость и владение воровскими инструментами. Дверь останется целой. Тратит действие` : lockpickBlockedHint}><CombatIcon id={`door-lockpick-${door.id}`} kind="action" hint="взломать замок отмычкой воровские инструменты" size={27} compact /><span>Взломать дверь ({direction})</span></button>
+                    <button {...hoverProps} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Запертая дверь на ${direction}. Проверка Силы (Атлетика), СЛ ${lockDc}. Дверь будет сломана. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь ({direction}, СЛ {lockDc})</span></button>
+                  </Fragment>
                 : <button {...hoverProps} key={door.id} className="door-control" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')} title={`${door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь на ${direction}: свободное взаимодействие`}><CombatIcon id={`door-${door.id}`} kind="swap" hint="открыть закрыть дверь проём" size={27} compact /><span>{door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь ({direction})</span></button>
             })}
             {selectedSceneObject && selectedSceneObjectVerbs.map((intent) => {
@@ -3118,13 +3136,21 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 type="button"
                 key={`${selectedSceneObject.id}:${intent}`}
                 className={`scene-object-control intent-${intent}`}
-                disabled={!canAct || tacticalBusy || unavailable || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive))}
+                disabled={!canAct || tacticalBusy || unavailable || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive)) || (intent === 'lockpick' && !lockpickAllowed)}
                 onClick={() => selected && onOperateSceneObject(selected, selectedSceneObject.id, intent)}
                 title={unavailable
                   ? 'Подойдите к объекту на соседнюю клетку'
                   : intent === 'pray'
                     ? (combatActive ? 'Посреди боя благословений не раздают' : blessingPrayerHint)
-                    : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
+                    /* Кнопка «Взломать» стоит у всякого сундука, потому что
+                       запертость сервер не объявляет: назови он её, игрок читал
+                       бы наличие замка, не притронувшись к крышке. Поэтому
+                       подсказка честна и про это тоже — замка может не быть. */
+                    : intent === 'lockpick'
+                      ? (lockpickAllowed
+                          ? 'Вскрыть замок отмычкой: Ловкость и владение воровскими инструментами. Тратит действие в бою. Замка может и не быть — тогда сервер откажет, и ход не пропадёт'
+                          : lockpickBlockedHint)
+                      : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
               >
                 {/* `prayer` в подсказке — не мусор: тема иконки выводится из
                     латинской сигнатуры (`abilityIconTheme`, `CombatIcon.tsx`), и

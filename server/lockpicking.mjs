@@ -29,6 +29,7 @@ import { backgroundBenefits } from './backgrounds.mjs'
  */
 
 export const LOCKPICKING_POLICY_ID = 'skazanie:lockpicking-v1'
+export const LOCKPICKING_SCHEMA_VERSION = 1
 
 /** Идентификатор владения из каталога предысторий. Второго написания нет. */
 export const THIEVES_TOOLS_ID = 'thieves_tools'
@@ -102,6 +103,32 @@ export function hasThievesTools(actor) {
   const backgroundId = text(actor.backgroundId, 120)
   if (!backgroundId) return false
   return text(backgroundBenefits(backgroundId)?.tool_proficiency, 120) === THIEVES_TOOLS_ID
+}
+
+/**
+ * Карточка взлома для стола. Отвечает ровно на один вопрос — «этот герой умеет
+ * вскрывать замки?», — и отвечает **готовой строкой отказа**, а не признаком, из
+ * которого клиенту пришлось бы её сочинять: текст отказа обязан совпасть с тем,
+ * которым движок отвергнет команду, иначе кнопка и сервер разойдутся в
+ * объяснении.
+ *
+ * Ни СЛ, ни запертости в карточке нет и быть не может: запертость сундука
+ * выводится из сида, и объяви её проекция — игрок читал бы наличие замка, не
+ * притронувшись к крышке.
+ */
+export function lockpickingForViewer(state = {}, { playerId = '' } = {}) {
+  const heroId = text(playerId, 120)
+  const hero = (Array.isArray(state?.players) ? state.players : [])
+    .find((player) => text(player?.id, 120) === heroId) ?? null
+  const proficient = hasThievesTools(hero)
+  return {
+    schema_version: LOCKPICKING_SCHEMA_VERSION,
+    policy_id: LOCKPICKING_POLICY_ID,
+    tool_id: THIEVES_TOOLS_ID,
+    tool_name: THIEVES_TOOLS_NAME,
+    proficient,
+    blocked_reason: proficient ? '' : THIEVES_TOOLS_REQUIRED_MESSAGE,
+  }
 }
 
 /**
