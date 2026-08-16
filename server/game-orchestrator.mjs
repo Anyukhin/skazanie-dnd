@@ -24,6 +24,13 @@ import {
 } from './narrator.mjs'
 import { TAVERN_DICE_APPROACHES, TAVERN_POLICY_ID, tavernRoundFor } from './tavern-life.mjs'
 import { BLESSINGS_POLICY_ID, PRAYER_ABILITY, PRAYER_DC, PRAYER_SKILL } from './blessings.mjs'
+import { presentSceneNpcs } from './npc-positioning.mjs'
+import {
+  PICKPOCKET_ABILITY,
+  PICKPOCKET_POLICY_ID,
+  PICKPOCKET_SKILL,
+  pickpocketDifficultyFor,
+} from './pickpocket.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
@@ -954,6 +961,58 @@ export class GameOrchestrator {
   }
 
   /**
+   * Карточка проверки карманной кражи.
+   *
+   * СЛ здесь **объявляется**, в отличие от социальной проверки, где она
+   * спрятана намеренно (`docs/rules-coverage.md`, раздел про ручной бросок).
+   * Разница не в осторожности, а в природе: разговор судит отношение
+   * собеседника, и назвать его числом до реплики значило бы выдать
+   * характер человека; кража судит чужое внимание, а «он выглядит
+   * настороженным» и «вокруг толчея» — это то, что вор видит своими глазами
+   * прежде, чем протянуть руку. Прятать от него собственную оценку риска не за
+   * чем: он и решает, стоит ли пробовать.
+   */
+  pickpocketCheckCard({ campaignId, playerId, state, command }) {
+    const actorId = String(command.actor_id ?? playerId)
+    const npcId = String(command.npc_id ?? '')
+    const npc = presentSceneNpcs(state).find((candidate) => String(candidate.id) === npcId)
+    if (!npc) return null
+    const present = presentSceneNpcs(state).length
+      + (Array.isArray(state?.players) ? state.players : []).filter((player) => Number(player?.hp ?? 1) > 0).length
+    const { difficulty, crowd_label: crowdLabel } = pickpocketDifficultyFor(state, npc, present)
+    const preview = previewD20Check(state, {
+      actorId, kind: 'check', ability: PICKPOCKET_ABILITY, skill: PICKPOCKET_SKILL, difficulty,
+    })
+    const check = this.rollRegistry.registerCheck({
+      campaignId,
+      actorId,
+      label: d20CheckLabel({ kind: 'check', ability: preview.ability, skill: preview.skill }),
+      modifier: preview.modifier,
+      difficulty,
+      ability: preview.ability,
+      advantage: preview.advantage,
+      disadvantage: preview.disadvantage,
+      // Жертва уезжает в контекст по той же причине, что святыня у молитвы:
+      // между фазами герой мог передумать и повернуться к другому человеку, а
+      // кость, брошенная против внимательного купца, не должна исполняться
+      // против зазевавшегося нищего.
+      context: { kind: 'pickpocket', policy: PICKPOCKET_POLICY_ID, npc_id: npcId, crowd_label: crowdLabel },
+    })
+    return { ...check, skill: preview.skill, crowd_label: crowdLabel }
+  }
+
+  /** Сторож второй фазы кражи: та же проверка и тот же карман. */
+  assertPickpocketRollContext(command, context) {
+    const reject = (message) => {
+      const error = new Error(message)
+      error.code = 'ROLL_CONTEXT_MISMATCH'
+      throw error
+    }
+    if (String(context?.kind ?? '') !== 'pickpocket') reject('Этот бросок регистрировался не для карманной кражи')
+    if (String(context?.npc_id ?? '') !== String(command?.npc_id ?? '')) reject('Этот бросок регистрировался против другого человека')
+  }
+
+  /**
    * Сторож второй фазы молитвы. Реестр бросков сверяет только кампанию и актора
    * (`server/roll-registry.mjs`), поэтому всё остальное проверяется здесь:
    * бросок обязан быть зарегистрирован **молитвой** и **у этой святыни**.
@@ -1486,6 +1545,37 @@ export class GameOrchestrator {
         const { context: prayerCheckContext, ...verifiedRollPayload } = verifiedRoll
         this.assertShrinePrayerRollContext(prayerCommand, prayerCheckContext)
         prayerCommand.verified_roll = verifiedRollPayload
+      }
+    }
+    // Карманная кража — тот же двухфазный ручной кубик. Вход у неё один
+    // (команда из меню NPC либо свободная фраза, разобранная арбитром в ту же
+    // команду), поэтому и развилка одна.
+    const pickpocketCommand = (input.commands ?? [])
+      .find((candidate) => String(candidate?.command_type ?? '') === 'PickpocketNpc') ?? null
+    if (pickpocketCommand) {
+      if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
+        const card = this.pickpocketCheckCard({ campaignId, playerId, state: authoritativeState, command: pickpocketCommand })
+        if (card) {
+          return {
+            narration: `Требуется проверка: ${card.label}, СЛ ${card.difficulty} (${card.crowd_label}). Бросьте d20 — заметят ли руку.`,
+            effects: emptyEffects(),
+            provider: 'RulesEngine',
+            model: 'deterministic',
+            turn_id: turnId,
+            engine_mode: mode,
+            state_version: authoritativeState.state_version,
+            mechanics: [],
+            visible_state_changes: [],
+            authoritative_state: authoritativeState,
+            check: { ...card, sides: 20 },
+            turn_consumed: false,
+          }
+        }
+      }
+      if (verifiedRoll) {
+        const { context: pickpocketCheckContext, ...verifiedRollPayload } = verifiedRoll
+        this.assertPickpocketRollContext(pickpocketCommand, pickpocketCheckContext)
+        pickpocketCommand.verified_roll = verifiedRollPayload
       }
     }
     // Уговор зверя — тот же двухфазный ручной кубик, что у парлея, побега и

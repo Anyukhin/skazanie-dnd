@@ -9,7 +9,7 @@
 
 import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BookOpen, ChevronDown, ChevronRight, Copy, Crown, DoorOpen,
+  BookOpen, ChevronDown, ChevronRight, Coins, Copy, Crown, DoorOpen,
   Dices, Flame, Footprints, Gem, History, Menu, MessageSquare,
   MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RotateCcw,
   ScrollText, Send, Settings, Shield, Sparkles, Swords, Target, Users, X,
@@ -1965,6 +1965,29 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                             : 'Выбрать предмет и количество'}
               onClick={() => openNpcDossier(sceneNpc.id, 'transfer')}
             ><Send size={13} />Передать предмет</button>
+            {/* Обчистить карманы. Кнопка идёт тем же каналом свободной фразы,
+                что и «Заговорить»: сервер разбирает её в команду `PickpocketNpc`
+                (`resolvePickpocket`, `server/free-action-adjudication.mjs`), и у
+                кнопки с фразой получается один путь, а не два расходящихся.
+                Своих условий доска не выдумывает — все отказы у движка, — но
+                молчать о заведомо невозможном тоже нельзя: подсказка называет
+                причину до нажатия. */}
+            <button
+              type="button"
+              disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct}
+              title={combatActive
+                ? 'Посреди боя карманов не чистят'
+                : !sceneNpc.alive
+                  ? 'Карманы живых'
+                  : narrating
+                    ? 'Дождитесь ответа Рассказчика'
+                    : tacticalBusy
+                      ? 'Дождитесь завершения текущего действия'
+                      : !canAct
+                        ? 'Сейчас этот герой не может действовать'
+                        : 'Ловкость рук против чужого внимания. Заметят — будет скандал, и его запомнят'}
+              onClick={() => { void onNpcAction(`Незаметно обчищаю карманы: ${sceneNpc.name}`, sceneNpc.id) }}
+            ><Coins size={13} />Обчистить карманы</button>
             {sceneNpcMerchant
               ? <button
                   type="button"

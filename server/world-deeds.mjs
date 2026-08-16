@@ -296,6 +296,11 @@ const DEED_EVENT_TYPES = new Set([
   'NpcDied', 'NpcHarmed', 'SceneObjectOperated', 'DoorForced',
   'NpcPromiseResolved', 'ItemTransferred', 'WitnessConsequencePropagated',
   'CaptiveNeglected', 'TruceBroken', 'TavernCheatCaught',
+  // Пойманная за руку карманная кража. Удачной здесь нет и быть не может:
+  // событие `NpcPocketPicked` в список не входит, потому что удачная кража
+  // тем и удачна, что её никто не видел, — а поступок без свидетелей летопись
+  // и так пишет тайной ведущего.
+  'NpcPickpocketNoticed',
 ])
 
 /**
@@ -340,6 +345,20 @@ function recognizeDeed(state, event) {
       kind: 'cheating',
       key: npcId || text(payload.hero_id, 120),
       subject: text(payload.npc_name, 160) || npcNameFor(state, npcId) || 'соперник за костями',
+      actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
+      witnessIds: [...new Set([npcId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
+    }
+  }
+  if (type === 'NpcPickpocketNoticed') {
+    // Жертва — свидетель сама по себе, даже в пустом переулке: это её карман и
+    // её рука перехватила чужую. Тот же приём, что у шулерства за костями и у
+    // сломанного перемирия, и по той же причине — «никто не видел» здесь было
+    // бы неправдой о том, что случилось.
+    const npcId = text(payload.npc_id, 120)
+    return {
+      kind: 'theft',
+      key: npcId || text(payload.hero_id, 120),
+      subject: text(payload.npc_name, 160) || npcNameFor(state, npcId) || 'прохожий',
       actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
       witnessIds: [...new Set([npcId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
     }

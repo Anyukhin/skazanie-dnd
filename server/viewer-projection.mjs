@@ -573,6 +573,10 @@ const OPAQUE_ENEMY_CONDITION_IDS = Object.freeze({
   // легендарные маркеры — точный остаток запаса. Качественную его форму
   // (пипсы) отряд получает отдельным полем карточки, а не чтением бухгалтерии.
   'monster-spell-used:': 'monster-spell-used',
+  // «Карман этого человека уже обчищен» — служебная запись движка, а не
+  // состояние, которое видно на человеке. Столу она сказала бы и о самой краже,
+  // и о том, у кого именно уже побывала чужая рука.
+  'pocket-picked:': 'pocket-picked',
   'legendary-action-used:': 'legendary-action-used',
   'legendary-resistance-used:': 'legendary-resistance-used',
 })
@@ -587,6 +591,7 @@ const OPAQUE_ENEMY_CONDITION_IDS = Object.freeze({
 const ENEMY_BOOKKEEPING_CONDITIONS = Object.freeze([
   'monster-action-used', 'npc-tactic-used',
   'monster-spell-used', 'legendary-action-used', 'legendary-resistance-used',
+  'pocket-picked',
 ])
 
 /**
@@ -631,8 +636,18 @@ function publicConditionsFor(value, enemyIds) {
   /** @type {Record<string, any>} */
   const projected = {}
   for (const [ownerId, conditions] of Object.entries(value)) {
-    if (!enemyIds.has(String(ownerId)) || !Array.isArray(conditions)) {
+    if (!Array.isArray(conditions)) {
       projected[ownerId] = conditions
+      continue
+    }
+    // Служебная бухгалтерия движка снимается у **любого** владельца, а не
+    // только у противника. До карманной кражи все такие маркеры висели на
+    // существах, и ветка ниже закрывала их заодно с прочим; «карман обчищен»
+    // висит на мирном NPC, и прежний порядок отдал бы его столу целиком —
+    // вместе с ответом, у кого именно уже побывала чужая рука.
+    if (!enemyIds.has(String(ownerId))) {
+      projected[ownerId] = conditions.filter((condition) => !ENEMY_BOOKKEEPING_CONDITIONS
+        .includes(publicEnemyConditionId(/** @type {Loose} */ (condition)?.id ?? condition)))
       continue
     }
     projected[ownerId] = conditions.flatMap((condition) => {
@@ -1433,6 +1448,15 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (visible.event_type === 'NpcItemUsed') {
     for (const key of ['item_instance_id', 'catalog_id', 'item_name']) delete payload[key]
   }
+  // Карманная кража. Успех знает только вор: это его рука и его тайна, и
+  // событие уходит ему адресно. А вот пойманная за руку попытка — публичный
+  // скандал: её видели, и от стола её прятать нечем.
+  //
+  // Закрывается здесь другое — кошелёк **жертвы**. `purse_cp` называет, сколько
+  // у человека было денег, и это опись чужого кармана ровно того же рода, что
+  // и `npc_purse_before_cp` за костями. Свою прибыль вор видит собственным
+  // балансом, который остаётся целиком.
+  if (visible.event_type === 'NpcPocketPicked') delete payload.purse_cp
   if (visible.event_type === 'NpcPlaced') delete payload.vitality
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]

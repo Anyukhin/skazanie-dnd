@@ -56,6 +56,7 @@ import {
   previousFailedAttempt,
   resolveCorpseSearch,
   resolveInventoryTransfer,
+  resolvePickpocket,
   situationFingerprint,
   stakesFor,
   verifyMeans,
@@ -946,6 +947,39 @@ export class AutonomousCampaignOrchestrator {
           rolls: [],
           duplicate: false,
         }
+      }
+    }
+    // Карманная кража разбирается **до** обыска тела: у того в шаблоне уже есть
+    // слово «карман», и без этого порядка живой купец попадал бы в ветку трупа.
+    const pickpocket = resolvePickpocket(loaded.state, actorId, text, reading)
+    if (pickpocket?.status === 'clarification') {
+      return {
+        kind: 'clarification',
+        narration: pickpocket.narration,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
+    if (pickpocket?.status === 'command') {
+      const commit = await run([declaration, pickpocket.command])
+      verifyDuplicate(commit)
+      return {
+        kind: 'pickpocket',
+        narration: pickpocket.narration,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [],
+        commands: commit.commands ?? [],
+        rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
       }
     }
     const corpseSearch = resolveCorpseSearch(loaded.state, text, reading)

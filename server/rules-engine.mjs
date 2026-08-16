@@ -229,6 +229,7 @@ import {
   campaignElapsedMinutes,
   ensureNpcSocialState,
   npcPromiseDeadlineEvents,
+  npcRelationshipEventDrafts,
   npcSocialEvents,
   relationshipTier,
   validateNpcSocialCommand,
@@ -246,6 +247,7 @@ import {
   npcTargetsWithinArea,
   npcVitalFor,
   placedSceneNpcTargets,
+  presentSceneNpcs,
   normalizeNpcWorldState,
   planSceneNpcPlacementEvents,
   validateNpcWorldCommand,
@@ -301,6 +303,13 @@ import {
   trustedStockAppraisalFor,
 } from './merchant-economy.mjs'
 import { catalogItem, materializeCatalogItem, normalizeItemOriginKind } from './item-catalog.mjs'
+import {
+  PICKPOCKET_ABILITY,
+  PICKPOCKET_POLICY_ID,
+  PICKPOCKET_SKILL,
+  npcPocketFor,
+  pickpocketDifficultyFor,
+} from './pickpocket.mjs'
 import {
   ITEM_DAWN_RECHARGE_EVENT_SCHEMA_VERSION,
   applyItemDawnRechargeToPlayers,
@@ -466,6 +475,9 @@ export const GAME_STATE_PROJECTOR_VERSION = 13
  */
 export const TURN_REACTION_EXTENSION_LIMIT = 2
 
+/** На сколько падает отношение у того, кого поймали за руку в своём кармане. */
+const PICKPOCKET_CAUGHT_RELATIONSHIP_DELTA = -12
+
 export const RULE_IDS = Object.freeze({
   abilityCheck: `${DEFAULT_RULESET_ID}:checks:ability-check`,
   savingThrow: `${DEFAULT_RULESET_ID}:checks:saving-throw`,
@@ -563,6 +575,9 @@ const COMMAND_RULES = Object.freeze({
   // Легендарное действие живёт вне экономики хода — оно её и не тратит, —
   // но принадлежит очереди боя, поэтому провенанс у него тот же `turns`.
   UseLegendaryAction: [RULE_IDS.turns],
+  // Карманная кража — проверка навыка, и её провенанс тот же, что у любой
+  // другой: чем судили, а не что унесли.
+  PickpocketNpc: [RULE_IDS.abilityCheck],
   UseCombatAction: [RULE_IDS.actions],
   MoveActor: [RULE_IDS.turns],
   // Открыть дверь — свободное взаимодействие с предметом, выломать — действие:
@@ -679,7 +694,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseLegendaryAction', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
+  'CastSpell', 'UseLegendaryAction', 'PickpocketNpc', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -4949,6 +4964,42 @@ export function validateCommand(input, rawState, context = {}) {
       if (!matchingStock && merchant.stock.length >= 500) throw new RulesValidationError('Склад торговца заполнен', 'MERCHANT_STOCK_FULL')
     }
   }
+  /**
+   * Карманная кража у NPC.
+   *
+   * Три отказа здесь — правила, а не осторожность.
+   *
+   * 1. **Красть у героев нельзя.** Отряд играют живые люди за одним столом, и
+   *    «Ловкость рук против кармана Тарна» — это не приключение, а ссора между
+   *    игроками, которую движок обязан не начинать. Отказ приходит первым и
+   *    называет причину прямо, а не общим «нет такой цели».
+   * 2. **В бою карманов не чистят.** Кража живёт в социальной сцене; посреди
+   *    инициативы у неё нет ни цены хода, ни момента.
+   * 3. **Карман один.** Пул выведен из сида и не пополняется: без маркера
+   *    «уже обчищен» один и тот же человек отдавал бы свой кошелёк бесконечно.
+   */
+  if (command.command_type === 'PickpocketNpc') {
+    const actor = playerActor(state, command.actor_id)
+    const npcId = String(command.npc_id ?? '')
+    if (!actor || !isLivingActor(actor)) throw new RulesValidationError('Обчистить карман может только живой герой', 'ACTOR_DEFEATED')
+    if (!sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Карманы чистит герой отряда', 'ACTOR_FORBIDDEN')
+    if (playerActor(state, npcId) || findActor(state, npcId)) {
+      throw new RulesValidationError('У своих не крадут: обчистить можно только чужой карман', 'PICKPOCKET_PARTY_TARGET_FORBIDDEN')
+    }
+    if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя карманов не чистят', 'COMBAT_ACTIVE')
+    const npc = presentSceneNpcs(state).find((candidate) => String(candidate.id) === npcId)
+    if (!npc) throw new RulesValidationError('Этого человека нет рядом', 'NPC_NOT_PRESENT')
+    if (conditionIdsFor(state, npcId).has(pickpocketSpentCondition(npcId))) {
+      throw new RulesValidationError('У этого человека карман уже пуст', 'PICKPOCKET_POCKET_EMPTY')
+    }
+    const present = presentSceneNpcs(state).length + livingPartySize(state)
+    command.pickpocket = {
+      npc_id: npcId,
+      npc_name: String(npc.name ?? npcId).slice(0, 160),
+      ...pickpocketDifficultyFor(state, npc, present),
+      present_count: present,
+    }
+  }
   if (command.command_type === 'GrantItem') {
     const actor = findActor(state, command.actor_id)
     const source = command.item ?? {}
@@ -6631,6 +6682,17 @@ function npcSpellTargetsAt(state, command, spell) {
     return candidates.filter(({ placement }) => wall.has(positionKey(placement)))
   }
   return candidates.filter(({ placement }) => Math.max(Math.abs(placement.x - to.x), Math.abs(placement.y - to.y)) * 5 <= radius)
+}
+
+/** Маркер «карман этого человека уже обчищен». Пул выведен из сида и один. */
+function pickpocketSpentCondition(npcId) {
+  return `pocket-picked:${String(npcId ?? '')}`
+}
+
+/** Сколько живых героев отряда стоит рядом. Часть счёта людности сцены. */
+function livingPartySize(state) {
+  return (Array.isArray(state?.players) ? state.players : [])
+    .filter((player) => isLivingActor(player) && sameCampaignParty(state, actorId(player))).length
 }
 
 function conditionIdsFor(state, id) {
@@ -12166,6 +12228,93 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, []))
       break
     }
+    /**
+     * Карманная кража. Один бросок Ловкости рук против внимания жертвы —
+     * и два очень разных исхода.
+     *
+     * Успех отдаёт вору содержимое кармана и **не** зовёт свидетелей: удачная
+     * кража тем и удачна, что её не заметили. Провал зовёт всех: событие
+     * `NpcPickpocketNoticed` попадает в летопись поступков как `theft`, а
+     * дальше работает машинерия волны 2 — свидетели, слух, ступень розыска и,
+     * если она поднялась достаточно, встреча со стражей. Своей эскалации этот
+     * код не пишет ни строчки: второй путь к розыску означал бы, что кража
+     * судится не по тем же правилам, что поджог и погром.
+     *
+     * Маркер «карман обчищен» кладётся в обоих исходах: пойманная за руку
+     * попытка настораживает человека не меньше удачной, и повторять её до
+     * бесконечности он не даст.
+     */
+    case 'PickpocketNpc': {
+      const declared = command.pickpocket
+      const actor = playerActor(state, command.actor_id)
+      const npcId = declared.npc_id
+      const modifier = abilityModifier(actor?.abilities?.[PICKPOCKET_ABILITY]) + skillProficiencyBonus(actor, PICKPOCKET_SKILL)
+      const rollOptions = {
+        modifier,
+        difficulty: declared.difficulty,
+        purpose: `pickpocket:${npcId}`,
+        actorId: command.actor_id,
+        visibility: command.visibility ?? 'party',
+      }
+      const roll = checkRollFromVerified(command.verified_roll, rollOptions) ?? diceService.rollCheck(rollOptions)
+      rolls.push(roll)
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+        ...roll, ability: PICKPOCKET_ABILITY, skill: PICKPOCKET_SKILL, pickpocket: { npc_id: npcId },
+      }, [command.actor_id]))
+      // Маркер вешается на жертву: карман принадлежит ей, а не вору, и после
+      // replay счёт обчищенных карманов обязан сойтись по людям, а не по рукам.
+      events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+        condition: pickpocketSpentCondition(npcId),
+        duration: 'until-long-rest',
+        source_actor: command.actor_id,
+      }, [npcId]))
+      if (roll.success) {
+        const pocket = npcPocketFor(state, { id: npcId, name: declared.npc_name, role: declared.npc_role ?? '' })
+        const balanceBefore = currencyToCopper(actor?.currency)
+        const purseCp = Math.max(0, safeInteger(pocket?.purse_cp, 0))
+        const stolenItem = pocket?.catalog_id
+          ? normalizeInventoryItem(materializeCatalogItem(pocket.catalog_id, {
+            id: `stolen:${String(command.command_id).slice(0, 90)}`,
+            quantity: 1,
+            equipped: false,
+            origin: 'stolen',
+          }), { idFallback: `stolen:${command.command_id}`, preserveUnknown: true })
+          : null
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), 'NpcPocketPicked', {
+          npc_id: npcId,
+          npc_name: declared.npc_name,
+          purse_cp: purseCp,
+          balance_before_cp: balanceBefore,
+          balance_after_cp: balanceBefore + purseCp,
+          currency_after: copperToCurrency(balanceBefore + purseCp),
+          ...(stolenItem ? { item: stolenItem } : {}),
+          policy_id: PICKPOCKET_POLICY_ID,
+        }, [command.actor_id]))
+        break
+      }
+      // Провал — это скандал, а не молчаливый промах: рука была в чужом
+      // кармане, и её увидели. Имя жертвы и вора приходят в payload, потому
+      // что летопись поступков строится из события, а не из состояния.
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'NpcPickpocketNoticed', {
+        npc_id: npcId,
+        npc_name: declared.npc_name,
+        hero_id: command.actor_id,
+        crowd_label: declared.crowd_label,
+        policy_id: PICKPOCKET_POLICY_ID,
+      }, [npcId]))
+      // Отношение падает тем же черновиком, каким его двигают письма и
+      // обещания: второго счёта симпатии в игре нет, и пойманный за руку вор
+      // обязан считаться той же меркой, что и нарушенное слово.
+      for (const draft of npcRelationshipEventDrafts(state, {
+        npcId,
+        heroId: command.actor_id,
+        delta: PICKPOCKET_CAUGHT_RELATIONSHIP_DELTA,
+        reason: 'pickpocket-caught',
+      })) {
+        events.push(eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids))
+      }
+      break
+    }
     case 'PlaceNpc': {
       const npc = state.social.npcs.find((candidate) => String(candidate.id) === command.npc_id)
       events.push(eventFrom(command, 'NpcPlaced', {
@@ -16305,6 +16454,25 @@ export function applyGameEvent(rawState, event) {
       state.entities = [...(Array.isArray(state.entities) ? state.entities : []), clone(entity)]
       break
     }
+    /**
+     * Содержимое чужого кармана переезжает вору: монеты в кошелёк, мелочь — в
+     * сумку. Оба числа приходят готовыми из события, а не считаются здесь:
+     * редьюсер обязан быть чистым, и после replay кошелёк должен сойтись
+     * копейка в копейку.
+     */
+    case 'NpcPocketPicked':
+      replaceActor(state, target, (actor) => ({
+        ...actor,
+        currency: normalizeCurrency(payload.currency_after),
+        ...(payload.item ? { inventory: addInventoryItem(actor.inventory, payload.item) } : {}),
+      }))
+      refreshPlayerDerivedState(state, [target])
+      appendEconomyLog(state, event, {
+        type: 'pickpocket', actorId: target, npcId: payload.npc_id,
+        amountCp: safeInteger(payload.purse_cp, 0), itemName: payload.item?.name ?? null,
+        policyId: payload.policy_id ?? null,
+      })
+      break
     case 'ItemGranted':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: [...(Array.isArray(actor.inventory) ? actor.inventory : []), clone(payload.item)] }))
       if (Number(event.event_schema_version) >= 2) refreshPlayerDerivedState(state, [target])
@@ -16644,6 +16812,8 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'ConditionAdded': return `Добавлено состояние: ${payload.condition}`
     case 'ConditionImmunityResolved': return `${named((event.target_ids ?? [])[0]) || 'Существо'} невосприимчиво: состояние ${payload.condition} не наложено`
     case 'MonsterAbilityRecharged': return `${named((event.target_ids ?? [])[0]) || 'Существо'}: «${payload.name || payload.action_id}» снова наготове`
+    case 'NpcPocketPicked': return `${named(event.actor_id) || 'Герой'} незаметно обчищает карман: ${payload.npc_name || 'прохожий'}`
+    case 'NpcPickpocketNoticed': return `${payload.npc_name || 'Прохожий'} перехватывает чужую руку у своего кармана`
     case 'LegendaryActionUsed': return `${named(event.actor_id) || 'Существо'} вне очереди: «${payload.name || payload.action_id}»`
     case 'LegendaryActionsReset': return `${named((event.target_ids ?? [])[0]) || 'Существо'} снова полно сил: легендарные действия восстановлены`
     case 'LegendaryResistanceUsed': return `${named((event.target_ids ?? [])[0]) || 'Существо'} стряхивает с себя чары — легендарная стойкость`
