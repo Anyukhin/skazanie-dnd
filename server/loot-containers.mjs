@@ -554,13 +554,34 @@ function reachable(state, actor, container) {
  * расхождения «обещали — не выдали» здесь нет; появится оценка добычи —
  * появится и цена, одним шагом в обоих местах.
  */
-export function inventoryItemFromInstance(instance, { id, quantity }) {
+/**
+ * Чем становится происхождение вещи на границе кармана.
+ *
+ * У экземпляра оно записано источником (`enemy_loadout` — «носил при себе
+ * противник»), а героя интересует поступок: снял с тела, подобрал брошенное,
+ * нашёл в схроне. Таблица закрыта и переводит одно в другое; всё, что уже
+ * названо своим видом (краденое, подарок, награда), переезжает как есть — вещь
+ * не меняет истории оттого, что полежала в мешке.
+ */
+const CONTAINER_ORIGIN_KINDS = Object.freeze({
+  corpse: 'looted',
+  captive: 'looted',
+  abandoned: 'found',
+  cache: 'found',
+})
+
+export function inventoryItemFromInstance(instance, { id, quantity, containerKind = '' }) {
   const snapshot = instance?.snapshot && typeof instance.snapshot === 'object' ? instance.snapshot : {}
+  const declared = String(instance?.origin?.kind ?? '')
+  const origin = declared && declared !== 'enemy_loadout' && declared !== 'unknown'
+    ? declared
+    : CONTAINER_ORIGIN_KINDS[String(containerKind)] ?? 'found'
   return normalizeInventoryItem({
     ...clone(snapshot),
     id,
     quantity,
     equipped: false,
+    origin,
     // `properties` в снимке нет намеренно (см. `SNAPSHOT_FIELDS`,
     // `server/item-instances.mjs`): там лежал байт-в-байт дубль описания, и
     // события несли его вечно. Карточке инвентаря поле нужно, и она получает
@@ -645,6 +666,7 @@ export function validateLootContainerCommand(command, state, context = {}) {
   const items = taken.map(({ instance, quantity }) => inventoryItemFromInstance(instance, {
     id: lootedItemId(command.command_id, container.id, instance.item_instance_id),
     quantity,
+    containerKind: container.kind,
   }))
   const inventory = Array.isArray(recipient.inventory) ? recipient.inventory : []
   const existingIds = new Set((state?.players ?? []).flatMap((player) => (

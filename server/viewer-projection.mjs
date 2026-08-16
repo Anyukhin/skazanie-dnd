@@ -1,7 +1,7 @@
 // @ts-check
 import { encounterDifficultyLabel } from './encounter-assembler.mjs'
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
-import { itemViewerCapabilities } from './item-catalog.mjs'
+import { PRIVATE_ITEM_ORIGIN_KINDS, itemViewerCapabilities } from './item-catalog.mjs'
 import { npcProfileForViewerAt, npcSocialForViewer } from './npc-social.mjs'
 import { suggestedActionsFor } from './action-hints.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
@@ -1025,17 +1025,37 @@ function viewerFor(state, user, actorId) {
 }
 
 /**
+ * Инвентарь героев для стола.
+ *
+ * Происхождение вещи столу принадлежит — кроме краденого. «У Ильмы в сумке
+ * краденое» решает за её игрока то, что должен решать он сам: рассказывать ли
+ * об этом отряду и доносить ли, — и обесценивает саму кражу, которая тем и
+ * интересна, что о ней знает один человек. Поэтому закрытые виды снимаются с
+ * **чужих** вещей поимённо, а не заменяются вежливым «неизвестно»: подменный
+ * вид был бы прямой ложью в карточке, а отсутствие поля — честным молчанием.
+ *
+ * Своё видно целиком: в собственном кармане герой знает, что где взял. У
+ * ведущего `viewerId` пуст — он видит всё.
+ *
  * @param {Loose[]} players
+ * @param {string} [viewerId]
  * @returns {Loose[]}
  */
-function playerItemsWithCapabilities(players) {
-  return (Array.isArray(players) ? players : []).map((player) => ({
-    ...player,
-    inventory: (Array.isArray(player?.inventory) ? player.inventory : []).map((item) => {
-      const capabilities = itemViewerCapabilities(item)
-      return capabilities ? { ...item, capabilities } : item
-    }),
-  }))
+function playerItemsWithCapabilities(players, viewerId = '') {
+  const viewer = String(viewerId ?? '')
+  return (Array.isArray(players) ? players : []).map((player) => {
+    const own = !viewer || String(player?.id ?? '') === viewer
+    return {
+      ...player,
+      inventory: (Array.isArray(player?.inventory) ? player.inventory : []).map((item) => {
+        const capabilities = itemViewerCapabilities(item)
+        const withCapabilities = capabilities ? { ...item, capabilities } : item
+        if (own || !PRIVATE_ITEM_ORIGIN_KINDS.includes(String(item?.origin ?? ''))) return withCapabilities
+        const { origin, ...rest } = withCapabilities
+        return rest
+      }),
+    }
+  })
 }
 
 /**
@@ -1213,7 +1233,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     : visible.mechanics
   const room = {
     ...publicState,
-    players: playerItemsWithCapabilities(publicState.players),
+    players: playerItemsWithCapabilities(publicState.players, actorId),
     scene,
     adventure: publicAdventureFor(visible.adventure),
     worldMap: publicWorldMapFor(visible.worldMap ?? state.worldMap),

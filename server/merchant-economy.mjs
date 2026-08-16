@@ -7,6 +7,7 @@ import {
   catalogItem,
   hydrateCatalogItem as hydrateCatalogRecord,
   materializeCatalogItem,
+  normalizeItemOriginKind,
   normalizeItemRechargeProfile,
 } from './item-catalog.mjs'
 import { reputationStandingFor } from './reputation-policy.mjs'
@@ -210,6 +211,15 @@ export function inventoryStackKey(input = {}) {
     quest_item: source.quest_item === true ? true : null,
     price_provenance: source.price_provenance == null ? null : cleanText(source.price_provenance, 60),
     appraisal_policy_id: source.appraisal_policy_id == null ? null : cleanText(source.appraisal_policy_id, 120),
+    // Происхождение входит в ключ стопки, и это правило, а не осторожность:
+    // без него краденый кинжал слипался бы с купленным в одну строку, а у
+    // выжившей стопки оставалась бы история той вещи, что легла первой. Так
+    // стопка молча отмывала бы краденое — ровно то, ради чего заводится скупщик.
+    //
+    // Ключи существующих стопок это меняет, и это осознанно: `stack_key`
+    // пересчитывается нормализатором на каждой загрузке состояния, в событиях
+    // не хранится и миграции не требует.
+    origin: normalizeItemOriginKind(source.origin),
   })
   const digest = createHash('sha256').update(JSON.stringify(descriptor)).digest('hex').slice(0, 32)
   return `${(catalogId || 'custom').slice(0, 80)}:${digest}`
@@ -266,6 +276,10 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     ...(source.price_provenance == null ? {} : { price_provenance: cleanText(source.price_provenance, 60) }),
     ...(source.appraisal_policy_id == null ? {} : { appraisal_policy_id: cleanText(source.appraisal_policy_id, 120) }),
     ...(resolvedPrice > 0 ? { base_price_cp: resolvedPrice } : {}),
+    // Происхождение есть у каждой вещи в кармане, и «неизвестно» — такой же
+    // честный ответ, как «куплено»: до этой волны его не писал никто, и вещи из
+    // старых сохранений обязаны называть это прямо, а не притворяться купленными.
+    origin: normalizeItemOriginKind(source.origin),
   }
   if (!passiveEffects.length) delete item.passive_effects
   if (!recharge) delete item.recharge

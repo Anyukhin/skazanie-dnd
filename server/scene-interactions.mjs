@@ -355,6 +355,10 @@ export function sceneObjectLoot({ mapSeed = '', prop } = {}) {
     id: `scene-loot-${clean(prop?.id, 80)}-1`,
     quantity: Math.max(1, Number(item.quantity) || 1),
     equipped: false,
+    // Вещь из сундука, бочки или тайника — найденное. Ни купленным, ни снятым
+    // с тела оно не является, и «неизвестно» здесь было бы отпиской: сервер
+    // знает источник точно.
+    origin: 'found',
   }]
 }
 

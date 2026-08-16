@@ -387,6 +387,10 @@ test('legacy normalization не меняет replay-поля без явной h
     quest_item: null,
     price_provenance: null,
     appraisal_policy_id: null,
+    // Происхождение входит в ключ стопки: краденый кинжал не имеет права
+    // слипаться с купленным, иначе стопка молча отмывала бы краденое. У вещи
+    // из старого сохранения оно честно 'unknown'.
+    origin: 'unknown',
   }
   const legacyDescriptor = Object.fromEntries(
     Object.keys(legacyDescriptorInput).sort().map((key) => [key, legacyDescriptorInput[key]]),

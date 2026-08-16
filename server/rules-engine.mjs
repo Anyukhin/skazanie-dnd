@@ -300,7 +300,7 @@ import {
   trustedItemAppraisalFor,
   trustedStockAppraisalFor,
 } from './merchant-economy.mjs'
-import { catalogItem, materializeCatalogItem } from './item-catalog.mjs'
+import { catalogItem, materializeCatalogItem, normalizeItemOriginKind } from './item-catalog.mjs'
 import {
   ITEM_DAWN_RECHARGE_EVENT_SCHEMA_VERSION,
   applyItemDawnRechargeToPlayers,
@@ -4953,10 +4953,18 @@ export function validateCommand(input, rawState, context = {}) {
     const actor = findActor(state, command.actor_id)
     const source = command.item ?? {}
     const catalogId = String(source.catalog_id ?? source.catalogId ?? '').trim()
+    // Происхождение выдачи объявляет тот, кто выдаёт, но словарём, а не
+    // свободной строкой: `GrantItem` — рука ведущего и Режиссёра, и через неё
+    // приходит и награда за задание, и подарок NPC, и найденное по сюжету.
+    // Умолчание — «подарено»: вещь появилась у героя чужой волей, и это ближе
+    // к правде, чем «неизвестно». Краденое так выдать нельзя: кража —
+    // поступок, у неё своя команда и свои свидетели.
+    const declaredOrigin = normalizeItemOriginKind(source.origin, 'gifted')
     const item = normalizeInventoryItem(
       catalogId ? materializeCatalogItem(catalogId, source) : source,
       { idFallback: `grant:${command.command_id}`, preserveUnknown: true },
     )
+    item.origin = declaredOrigin === 'stolen' ? 'gifted' : declaredOrigin
     if (inventoryWeight(actor) + Math.max(0, Number(item.weight) || 0) * Math.max(1, safeInteger(item.quantity, 1)) > carryingCapacity(actor)) {
       throw new RulesValidationError('Награда превысит грузоподъёмность героя', 'CARRYING_CAPACITY_EXCEEDED')
     }
@@ -11995,7 +12003,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       const balanceBeforeCp = currencyToCopper(actor.currency)
       const merchantPurseBeforeCp = normalizeMerchantPurseCp(merchant.purse_cp)
-      const item = inventoryItemFromStock(stock)
+      // Купленное называет себя купленным. Штамп стоит здесь, а не в
+      // `inventoryItemFromStock`: та же функция собирает и запись склада
+      // торговца при перепродаже, а у товара на прилавке своего происхождения
+      // нет — он им становится ровно в тот миг, когда переходит в карман.
+      const item = { ...inventoryItemFromStock(stock), origin: 'purchased' }
       item.quantity = command.quantity
       const existingIndex = inventoryStackIndex(actor.inventory, item)
       if (existingIndex >= 0) item.id = actor.inventory[existingIndex].id

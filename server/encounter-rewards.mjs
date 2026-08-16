@@ -307,6 +307,11 @@ function materializedLootInstances(encounterId, loot) {
         id: `loot-${encounterDigest}-${stackIndex + 1}-${unitIndex + 1}`,
         quantity: 1,
         equipped: false,
+        // Награда за встречу — своё происхождение, а не «найдено»: это доля
+        // отряда за выигранный бой, и в летописи вещи она читается именно так.
+        // Снятое с тела приходит другим путём (`server/loot-containers.mjs`) и
+        // называется своим именем.
+        origin: 'reward',
       })
     ))
   ))

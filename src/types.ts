@@ -414,6 +414,13 @@ export type InventoryItem = {
   requires_attunement?: boolean
   attuned_to?: string | null
   rarity: 'обычный' | 'необычный' | 'редкий' | 'очень редкий' | 'легендарный' | 'сюжетный'
+  /**
+   * Откуда вещь взялась. Ключи серверные (`ITEM_ORIGIN_KINDS`,
+   * `server/item-catalog.mjs`), подпись для стола сервер отдаёт отдельно.
+   * У чужой вещи поле может отсутствовать вовсе: краденое соседа по столу
+   * проекция снимает поимённо, а не подменяет вежливым «неизвестно».
+   */
+  origin?: 'enemy_loadout' | 'purchased' | 'found' | 'looted' | 'stolen' | 'gifted' | 'reward' | 'unknown'
   description: string
   properties: string
   image: string

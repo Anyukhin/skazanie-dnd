@@ -25,6 +25,7 @@ import { createHash } from 'node:crypto'
 
 import {
   ITEM_MECHANICS_STATUSES,
+  ITEM_ORIGIN_KINDS,
   catalogItem,
   materializeCatalogItem,
   normalizeItemRechargeProfile,
@@ -37,8 +38,15 @@ import {
 
 export const ITEM_INSTANCE_SCHEMA_VERSION = 1
 
-/** Откуда вещь взялась. Список открыт по мере появления новых источников. */
-export const ITEM_INSTANCE_ORIGIN_KINDS = Object.freeze(['enemy_loadout'])
+/**
+ * Откуда вещь взялась. Словарь один на оба мира и живёт в каталоге предметов
+ * (`ITEM_ORIGIN_KINDS`, `item-catalog.mjs`), потому что читают его и экземпляры
+ * противника здесь, и инвентарь героя в `merchant-economy.mjs`, а этот модуль
+ * импортирует тот: объявить список здесь значило бы завести либо цикл, либо
+ * второй словарь. Прежнее имя оставлено псевдонимом — по нему ходят тесты и
+ * сторожа.
+ */
+export const ITEM_INSTANCE_ORIGIN_KINDS = ITEM_ORIGIN_KINDS
 
 /**
  * Кому вещь принадлежит. `container` — тело, разоружённый пленный, брошенная
