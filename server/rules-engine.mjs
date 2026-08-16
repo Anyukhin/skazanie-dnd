@@ -183,6 +183,7 @@ import {
   isTavernScene,
   normalizeTavernState,
   tavernDrinksFor,
+  tavernEarmarkedCpAgainst,
   tavernEjected,
   tavernFreePurseFor,
   tavernGamblerFor,
@@ -4349,8 +4350,17 @@ export function validateCommand(input, rawState, context = {}) {
       // открывали бы против 500 мм пять раундов по 200: первые двое забирали
       // банк, а третьему платить было уже нечем. Отказ поэтому стоит здесь, на
       // открытии, — это единственное место, где ещё ничего не поставлено.
+      // Повод у отказа два, и они разные. «Проигрался за вечер» и «касса уже
+      // расписана по открытым раундам» приводят к одному коду, но объяснять их
+      // одной фразой нечестно: во втором случае деньги у соседа есть, они
+      // просто обещаны другому столу, и через раунд-другой он снова сядет.
       if (tavernFreePurseFor(state, command.npc_id) < command.stake_cp) {
-        throw new RulesValidationError('Соперник такую ставку не закроет: у него столько нет', 'TAVERN_OPPONENT_BROKE')
+        throw new RulesValidationError(
+          tavernEarmarkedCpAgainst(state, command.npc_id) > 0
+            ? 'Соперник такую ставку не закроет: его кассу уже держат другие раунды'
+            : 'Соперник такую ставку не закроет: у него столько нет',
+          'TAVERN_OPPONENT_BROKE',
+        )
       }
     }
     if (command.command_type === 'AnswerTavernDiceRound') {
@@ -16328,7 +16338,23 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'WantedCleared': return `Розыск снят в крае «${payload.region_name || payload.region_id || ''}» (${payload.reason === 'fine' ? 'вира' : payload.reason === 'surrender' ? 'сдача' : 'амнистия'})`
     case 'TavernDiceRoundOpened': return `Кости на стол: ${payload.npc_name || 'соперник'} показывает ${safeInteger(payload.npc_total, 0)}, ставка ${safeInteger(payload.stake_cp, 0)} мм ушла на стол`
     case 'TavernDiceRoundResolved': return `Раунд костей: ${safeInteger(payload.hero_total, 0)} против ${safeInteger(payload.npc_total, 0)} — ${payload.outcome === 'win' ? 'банк уходит герою' : payload.outcome === 'loss' ? 'ставка потеряна' : payload.outcome === 'push' ? 'ничья' : payload.outcome === 'caught' ? 'героя поймали за руку' : 'соперник разоблачён'}`
-    case 'TavernDiceRoundCancelled': return `${named(payload.hero_id) || 'Герой'} встал из-за стола, не ответив: ставка ${safeInteger(payload.forfeited_cp, 0)} мм осталась сопернику`
+    // Возврата у сдачи нет ни одного, и живой движок его не пишет. Но журналы,
+    // написанные до закрепления покрытия, несли два тупика (`opponent-broke`,
+    // `patron-ejected`) и возвращали выставленному за дверь ставку целиком.
+    // Редьюсер такие записи повторяет как есть, и летопись обязана идти следом:
+    // «ставка осталась сопернику» поверх возврата — это рассказ не о той партии,
+    // которая была. Развилку ведёт число записи, а не список поводов.
+    case 'TavernDiceRoundCancelled': {
+      const returnedCp = safeInteger(payload.returned_cp, 0)
+      if (returnedCp > 0) {
+        return payload.reason === 'patron-ejected'
+          ? `${named(payload.hero_id) || 'Героя'} выставили за дверь: раунд закрыт, ставка ${returnedCp} мм возвращена`
+          : `Раунд ${named(payload.hero_id) || 'героя'} закрыт до ответа: ставка ${returnedCp} мм возвращена`
+      }
+      return payload.reason === 'opponent-broke'
+        ? `${payload.npc_name || 'Соперник'} спустил всё: раунд ${named(payload.hero_id) || 'героя'} закрыт, ставка ${safeInteger(payload.forfeited_cp, 0)} мм осталась на столе`
+        : `${named(payload.hero_id) || 'Герой'} встал из-за стола, не ответив: ставка ${safeInteger(payload.forfeited_cp, 0)} мм осталась сопернику`
+    }
     case 'TavernCheatCaught': return `Скандал за столом: ${named(payload.hero_id) || 'герой'} пойман на шулерстве (${safeInteger(payload.scandal_count, 1)}-й раз)`
     case 'TavernCheatExposed': return `${payload.npc_name || 'Соперник'} уличён в шулерстве`
     case 'TavernPatronEjected': return `${named(payload.hero_id) || 'Героя'} выставили из заведения`

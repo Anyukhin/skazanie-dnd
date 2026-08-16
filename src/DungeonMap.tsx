@@ -2603,13 +2603,22 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 <div className="tavern-dice-setup" role="group" aria-label="Игра в кости">
                   <label>
                     <span>Соперник</span>
+                    {/* «На мели» здесь было неправдой чаще, чем правдой: нулевой
+                        `max_stake_cp` — это пустая **свободная** касса, а она пустеет и у
+                        того, у кого деньги есть, но уже расписаны по открытым раундам с
+                        другими героями (`tavernFreePurseFor`, `server/tavern-life.mjs`).
+                        Отличить одно от другого доска не может и не должна: точной суммы
+                        в кармане соседа в проекции нет намеренно. Поэтому и подпись, и
+                        подсказки кнопок ниже говорят ровно то, что доске известно, —
+                        свободных денег у соседа сейчас нет. Настоящую причину называет
+                        отказ движка, который её знает (`TAVERN_OPPONENT_BROKE`). */}
                     <select
                       value={chosenTavernOpponentId}
                       disabled={tavernActionsBlocked || !tavernOpponents.length}
                       onChange={(event) => setTavernOpponentId(event.target.value)}
                     >
                       {tavernOpponents.length
-                        ? tavernOpponents.map((npc) => <option key={npc.id} value={npc.id}>{npc.name}{npc.role ? ` (${npc.role})` : ''}{Number(npc.max_stake_cp ?? 0) > 0 ? '' : ' · на мели'}</option>)
+                        ? tavernOpponents.map((npc) => <option key={npc.id} value={npc.id}>{npc.name}{npc.role ? ` (${npc.role})` : ''}{Number(npc.max_stake_cp ?? 0) > 0 ? '' : ' · свободных денег нет'}</option>)
                         : <option value="">за столом никого нет</option>}
                     </select>
                   </label>
@@ -2621,7 +2630,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                       disabled={tavernActionsBlocked || activeHeroPurseCp < stake.stake_cp || tavernOpponentMaxStakeCp < stake.stake_cp}
                       title={activeHeroPurseCp < stake.stake_cp
                         ? 'На такую ставку не хватает монет'
-                        : tavernOpponentMaxStakeCp < stake.stake_cp ? 'Соперник такую ставку не закроет' : `${stake.stake_cp} мм`}
+                        : tavernOpponentMaxStakeCp < stake.stake_cp ? 'Столько соперник сейчас не закроет: свободных денег у него меньше' : `${stake.stake_cp} мм`}
                       onClick={() => setTavernStakeCp(stake.stake_cp)}
                     >{stake.label} · {stake.stake_cp} мм</button>)}
                   </div>
@@ -2632,7 +2641,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                     title={activeHeroPurseCp < chosenTavernStakeCp
                       ? 'На ставку не хватает монет'
                       : tavernOpponentMaxStakeCp < chosenTavernStakeCp
-                        ? 'У соперника столько не наберётся'
+                        ? 'Столько соперник сейчас не закроет: свободных денег у него меньше'
                         : `Соперник мечет первым, отвечать будете вы. Ставка в ${chosenTavernStakeCp} мм уходит из кошелька на стол сразу`}
                     onClick={() => { void onOpenTavernDiceRound(chosenTavernOpponentId, chosenTavernStakeCp) }}
                   ><Dices size={13} />Сыграть в кости</button>

@@ -67,7 +67,14 @@ test('таверна живёт на доске отдельной панель�
   // кнопка обязана погаснуть до клика, а не после отказа.
   assert.match(board, /max_stake_cp/u)
   assert.match(board, /tavernOpponentMaxStakeCp < stake\.stake_cp/u)
-  assert.match(board, /Соперник такую ставку не закроет/u)
+  // Подсказка называет ровно то, что доске известно: нулевой `max_stake_cp` —
+  // это пустая **свободная** касса, и она пустеет как у проигравшегося соседа,
+  // так и у того, чьи деньги расписаны по чужим открытым раундам. «На мели» и
+  // «столько не наберётся» были догадкой о причине, а причину знает только
+  // движок.
+  assert.match(board, /Столько соперник сейчас не закроет: свободных денег у него меньше/u)
+  assert.doesNotMatch(board, /на мели/u)
+  assert.doesNotMatch(board, /не наберётся/u)
   // Своей таблицы цен, ставок и СЛ у доски быть не должно.
   assert.doesNotMatch(board, /TAVERN_STAKES/u)
   assert.doesNotMatch(board, /DRINK_PRICE/u)

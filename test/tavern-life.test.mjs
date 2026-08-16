@@ -27,6 +27,7 @@ import {
   tavernSocialBonus,
 } from '../server/tavern-life.mjs'
 import {
+  eventSummary,
   normalizeCampaignState,
   previewD20Check,
   previewTavernDiceRoll,
@@ -1390,4 +1391,87 @@ test('летопись говорит о раунде живой строкой,
     scene_args: { location: 'Дорога', title: 'Дорога', objective: 'Идти дальше' },
   }], { context: { isAdmin: true } })
   assert.match(combatNarration(moved.events, moved.state), /встаёт, не ответив/iu)
+})
+
+/**
+ * Старая запись раунда рассказывается тем, что в ней написано, а не тем, что
+ * правильно сегодня.
+ *
+ * До закрепления покрытия у отмены было два тупика — `opponent-broke` и
+ * `patron-ejected`, — и выставленному за дверь ставка возвращалась целиком
+ * (`returned_cp` вместе с `currency_after`). Редьюсер такие журналы повторяет
+ * как есть и сегодня: ветка `TavernDiceRoundCancelled` в нём стоит именно ради
+ * них. А текстовые ветки — летопись и рассказ боя — свернулись в одну «сдачу», и
+ * старая партия перечитывалась неправдой: кошелёк при replay рос, а строка над
+ * ним говорила, что ставку забрал сосед.
+ *
+ * Событие здесь собирается руками, и это не подстановка ради удобства: живой
+ * движок такого payload больше не пишет ни при каких командах, а сохранённые
+ * кампании с ним существуют.
+ */
+test('легаси-отмена с возвратом рассказывается возвратом, а не сдачей', () => {
+  const opened = run(campaign(), [open(HONEST, 50)], { diceValues: [12] })
+  const round = tavernRoundFor(opened.state, 'hero')
+  assert.equal(purseCp(opened.state), 50, 'ставка ушла на стол ещё при открытии')
+
+  /** Запись из журнала, написанного до закрепления покрытия. */
+  const legacy = (reason, { returnedCp = 0, forfeitedCp = 0 }) => ({
+    event_id: `evt-legacy-${reason}`,
+    command_id: 'cmd-legacy',
+    event_type: 'TavernDiceRoundCancelled',
+    actor_id: 'hero',
+    target_ids: ['hero'],
+    visibility: 'party',
+    payload: {
+      round_id: round.id,
+      hero_id: 'hero',
+      npc_id: HONEST,
+      npc_name: 'Трактирщик Бажен',
+      stake_cp: 50,
+      npc_total: 12,
+      returned_cp: returnedCp,
+      forfeited_cp: forfeitedCp,
+      reason,
+      // Кошелёк в записи — тот, что был у героя после ухода ставки на стол
+      // (50 мм), и тот, что старый движок вернул бы ему возвратом.
+      currency_before: { copper: 0, silver: 5, gold: 0, platinum: 0 },
+      currency_after: returnedCp > 0
+        ? { copper: 0, silver: 0, gold: 1, platinum: 0 }
+        : { copper: 0, silver: 5, gold: 0, platinum: 0 },
+      balance_before_cp: 50,
+      balance_after_cp: 50 + returnedCp,
+    },
+    state_version_after: opened.state.state_version + 1,
+  })
+
+  const ejected = legacy('patron-ejected', { returnedCp: 50 })
+  // Деньги старого журнала редьюсер и правда возвращает — текст обязан идти
+  // следом, иначе строка спорит с кошельком под ней.
+  const replayed = replayEvents(opened.state, [ejected])
+  assert.equal(purseCp(replayed), 100, 'старая запись возвращает ставку, и replay это повторяет')
+  assert.equal(tavernRoundFor(replayed, 'hero'), null)
+
+  const summary = eventSummary(ejected, (id) => (id === 'hero' ? 'Ада' : id))
+  assert.match(summary, /возвращена/iu, 'летопись обязана назвать возврат возвратом')
+  assert.match(summary, /50 мм/u)
+  assert.equal(/осталась сопернику|остал[аи]сь на столе/iu.test(summary), false)
+
+  const narration = combatNarration([ejected], replayed)
+  assert.match(narration, /возвращаются в кошелёк/iu)
+  assert.equal(/со стола забирает/iu.test(narration), false, 'сосед старой ставки не забирал')
+
+  // Второй старый тупик возврата не нёс, но и «встал из-за стола» про него
+  // неправда: раунд закрылся сам, потому что соперник спустил кассу.
+  const broke = legacy('opponent-broke', { forfeitedCp: 50 })
+  const brokeSummary = eventSummary(broke, (id) => (id === 'hero' ? 'Ада' : id))
+  assert.match(brokeSummary, /спустил всё/iu)
+  assert.equal(/встал из-за стола/iu.test(brokeSummary), false)
+
+  // А сегодняшняя сдача читается по-прежнему: развилку ведёт запись, и живой
+  // движок в неё не попадает.
+  const surrendered = run(opened.state, [leave()])
+  const today = eventOf(surrendered, 'TavernDiceRoundCancelled')
+  assert.equal(Object.hasOwn(today.payload, 'returned_cp'), false)
+  assert.match(eventSummary(today, (id) => (id === 'hero' ? 'Ада' : id)), /осталась сопернику/iu)
+  assert.match(combatNarration(surrendered.events, surrendered.state), /со стола забирает/iu)
 })
