@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { ensureNpcSocialState, npcProfileAtWorldTime } from './npc-social.mjs'
 import { reputationStandingFor } from './reputation-policy.mjs'
+import { bribeOutcomeFor, bribeTierById, npcIsIncorruptible } from './underworld.mjs'
 
 export const NPC_SOCIAL_CHECK_SKILLS = new Set(['persuasion', 'deception', 'intimidation', 'insight'])
 
@@ -57,7 +58,40 @@ function difficultyFor(profile, skill, attitude, reputationShift = 0) {
   return clamp(base + relationshipAdjustment + skillAdjustment + clamp(reputationShift, -3, 3), 5, 25)
 }
 
-export function buildNpcSocialCheckPolicy({ state = {}, npcId = '', heroId = '', message = '', turnId = '' } = {}) {
+/**
+ * Подкуп в разговоре.
+ *
+ * Монета кладётся только под Убеждение и это правило, а не упущение: обман и
+ * запугивание деньгами не подкрепляют — первое ими выдаёт себя, второе ими
+ * себе противоречит. Проницательность вообще не разговор, а взгляд.
+ *
+ * У неподкупного монета бьёт **в обратную сторону** и сильнее, чем помогала бы:
+ * попытка купить того, кто не продаётся, портит разговор больше, чем деньги
+ * могли его облегчить. Кто неподкупен, решает сид (`server/underworld.mjs`), и
+ * узнать это заранее нельзя — в этом и риск.
+ */
+export const BRIBEABLE_SOCIAL_SKILLS = new Set(['persuasion'])
+
+/**
+ * Ступень щедрости читается из самой фразы — тем же способом, каким читается и
+ * сам вид проверки (`classifyNpcSocialCheck` выше). Второго канала для монеты
+ * заводить не за чем: подкуп и есть часть реплики, а не отдельная кнопка
+ * поверх неё, и кнопка меню шлёт ровно такую же фразу.
+ */
+const BRIBE_PHRASES = Object.freeze([
+  { id: 'generous', test: /щедро|не\s*скупясь|горст\p{L}*\s+золот|золот\p{L}*\s+сверху/iu },
+  { id: 'purse', test: /кошел\p{L}*|мошн\p{L}*|увесист\p{L}*/iu },
+  { id: 'coin', test: /монет\p{L}*|мед\p{L}*|серебр\p{L}*|звон\p{L}*|подкрепл\p{L}*|сую|суну\p{L}*|плач\p{L}*|отсчит\p{L}*/iu },
+])
+
+/** Есть ли в реплике протянутая монета и какой она щедрости. */
+export function classifyBribeTier(message = '') {
+  const text = String(message ?? '')
+  if (!/подкуп\p{L}*|взятк\p{L}*|подмаз\p{L}*|подкрепл\p{L}*|сую|суну\p{L}*|монет\p{L}*|кошел\p{L}*|мошн\p{L}*|золот\p{L}*|серебр\p{L}*|плач\p{L}*/iu.test(text)) return ''
+  return BRIBE_PHRASES.find((tier) => tier.test.test(text))?.id ?? 'coin'
+}
+
+export function buildNpcSocialCheckPolicy({ state = {}, npcId = '', heroId = '', message = '', turnId = '', bribeTierId = '', bribeReferenceCp = 0 } = {}) {
   const skill = classifyNpcSocialCheck(message)
   if (!skill) return null
   const social = ensureNpcSocialState(state.social, state)
@@ -69,6 +103,17 @@ export function buildNpcSocialCheckPolicy({ state = {}, npcId = '', heroId = '',
   const attitude = attitudeFor(social, normalizedNpcId, normalizedHeroId)
   const standing = reputationStandingFor(state, normalizedNpcId)
   const fingerprint = stableHash(normalizedNpcId, normalizedHeroId, skill, message)
+  const tier = BRIBEABLE_SOCIAL_SKILLS.has(skill)
+    ? bribeTierById(bribeTierId || classifyBribeTier(message), bribeReferenceCp)
+    : null
+  const bribe = tier
+    ? {
+      tier_id: tier.id,
+      label: tier.label,
+      amount_cp: tier.amount_cp,
+      ...bribeOutcomeFor({ incorruptible: npcIsIncorruptible(state, profile), tier }),
+    }
+    : null
   return Object.freeze({
     check_id: `social-check:${stableHash(turnId, fingerprint).slice(0, 24)}`,
     request_fingerprint: fingerprint,
@@ -76,7 +121,8 @@ export function buildNpcSocialCheckPolicy({ state = {}, npcId = '', heroId = '',
     hero_id: normalizedHeroId,
     skill,
     ability: SKILL_ABILITIES[skill],
-    difficulty: difficultyFor(profile, skill, attitude, standing.social_dc_shift),
+    difficulty: Math.max(1, difficultyFor(profile, skill, attitude, standing.social_dc_shift) + (bribe?.dc_shift ?? 0)),
+    ...(bribe ? { bribe } : {}),
     reputation_tier: standing.tier,
     visibility: 'specific_player',
   })

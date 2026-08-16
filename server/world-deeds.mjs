@@ -83,7 +83,19 @@ export const DEED_KINDS = Object.freeze({
   // (`WANTED_CRIME_POINTS`, `law-and-order.mjs`) этот вид не входит и ступень
   // розыска не двигает. За руку здесь ловит хозяин заведения, а не стража.
   cheating: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Шулерство' }),
+  // Взлом отмычками. Тяжесть **подвижная**: возня у замка при людях — мелочь,
+  // а сорвавшаяся отмычка гремит на всю улицу, и вид поднимается до средней
+  // ступени (`recognizeDeed`, ветка `LockpickNoticed`). В таблицу закона
+  // (`WANTED_CRIME_POINTS`, `law-and-order.mjs`) вид намеренно не входит:
+  // страже нужен пропавший предмет, а не звук, — и ступень розыска взлом не
+  // двигает. Украденное из вскрытого сундука судится своим поступком.
+  break_in: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Взлом' }),
   vandalism: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Погром' }),
+  // Попытка подкупа. Тяжесть мелкая и это осознанно: протянуть монету — не
+  // преступление, поэтому в таблицу закона (`WANTED_CRIME_POINTS`,
+  // `law-and-order.mjs`) этот вид не входит и ступень розыска не двигает. Мир
+  // просто запоминает, что за человек к нему приходил.
+  bribery_attempt: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Попытка подкупа' }),
   promise_broken: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Нарушенное слово' }),
   rescue: Object.freeze({ alignment: 'bright', severity: 'major', label: 'Спасение' }),
   generosity: Object.freeze({ alignment: 'bright', severity: 'major', label: 'Щедрость' }),
@@ -139,6 +151,11 @@ const RUMOR_PHRASES = Object.freeze({
     'В «{place}» переломали хозяйское добро. Сломано вот что: {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» чужаки переломали хозяйское добро.',
     'Слыхал, будто в «{place}» проезжие разгромили целый дом.',
+  ]),
+  break_in: Object.freeze([
+    'В «{place}» ковырялись в чужом замке. Взломано вот что: {what}. Свидетели указывают: {who}.',
+    'Говорят, в «{place}» чужаки лезут в запертое отмычкой.',
+    'Слыхал, будто тем пришлым ни один замок не помеха.',
   ]),
   theft: Object.freeze([
     'В «{place}» взяли чужое. Пропало вот что: {what}. Свидетели указывают: {who}.',
@@ -296,6 +313,23 @@ const DEED_EVENT_TYPES = new Set([
   'NpcDied', 'NpcHarmed', 'SceneObjectOperated', 'DoorForced',
   'NpcPromiseResolved', 'ItemTransferred', 'WitnessConsequencePropagated',
   'CaptiveNeglected', 'TruceBroken', 'TavernCheatCaught',
+  // Пойманная за руку карманная кража. Удачной здесь нет и быть не может:
+  // событие `NpcPocketPicked` в список не входит, потому что удачная кража
+  // тем и удачна, что её никто не видел, — а поступок без свидетелей летопись
+  // и так пишет тайной ведущего.
+  'NpcPickpocketNoticed',
+  // Донос честного торговца. Поступок пишется не на торговца, а на героя: в
+  // летописи мира это по-прежнему кража, просто узнали о ней с прилавка.
+  'MerchantDenouncedThief',
+  // Отвергнутая монета. Поступок мелкий и в таблицу закона не входит
+  // (`WANTED_CRIME_POINTS`): попытка подкупа — не преступление, а то, что о
+  // человеке запомнят. Ступень розыска она не двигает, репутацию — да.
+  'NpcBribeRefused',
+  // Замеченный взлом. Само вскрытие поступком не становится: тихо снятый замок
+  // в пустом коридоре никого не обидел, ровно как выломанная там же дверь.
+  // Событие приходит только тогда, когда возню у замка **услышали** или
+  // сорванный замок **увидели**, и список свидетелей уже посчитан движком.
+  'LockpickNoticed',
 ])
 
 /**
@@ -311,7 +345,12 @@ const DEED_EVENT_TYPES = new Set([
  * отряд», отличить оборону от расправы нечем; заводить его — работа боевого
  * контура, а не летописи (`docs/dnd-table-situations.md`).
  *
- * @returns {{ kind: string, key: string, subject?: string, actorIds?: string[], witnessIds?: string[] } | null}
+ * Ступень (`severity`) распознаватель называет только там, где она не выводится
+ * из вида: у взлома одна и та же возня у замка стоит по-разному, смотря
+ * насколько громко она кончилась. Молчание распознавателя означает «по виду»,
+ * а не «мелочь».
+ *
+ * @returns {{ kind: string, key: string, severity?: string, subject?: string, actorIds?: string[], witnessIds?: string[] } | null}
  */
 function recognizeDeed(state, event) {
   const type = String(event?.event_type ?? '')
@@ -340,6 +379,59 @@ function recognizeDeed(state, event) {
       kind: 'cheating',
       key: npcId || text(payload.hero_id, 120),
       subject: text(payload.npc_name, 160) || npcNameFor(state, npcId) || 'соперник за костями',
+      actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
+      witnessIds: [...new Set([npcId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
+    }
+  }
+  if (type === 'NpcBribeRefused') {
+    const npcId = text(payload.npc_id, 120)
+    return {
+      kind: 'bribery_attempt',
+      key: npcId || text(payload.hero_id, 120),
+      subject: npcNameFor(state, npcId) || 'собеседник',
+      actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
+      witnessIds: [...new Set([npcId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
+    }
+  }
+  if (type === 'MerchantDenouncedThief') {
+    // Торговец — свидетель сам по себе: краденую вещь ему принесли в руки и
+    // показали. Тот же приём, что у жертвы карманной кражи.
+    const merchantId = text(payload.merchant_id, 120)
+    return {
+      kind: 'theft',
+      key: merchantId || text(payload.hero_id, 120),
+      subject: text(payload.item_name, 160) || 'чужая вещь',
+      actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
+      witnessIds: [...new Set([merchantId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
+    }
+  }
+  if (type === 'LockpickNoticed') {
+    // Свидетелей движок посчитал в момент команды и привёз списком: ко времени
+    // редьюсера сцена уже могла разойтись, а услышали замок те, кто стоял
+    // рядом тогда. Тяжесть тоже приезжает готовой — сорвавшаяся отмычка гремит
+    // громче обычной возни, и это разница ступени, а не формулировки.
+    const witnessIds = [...new Set((Array.isArray(payload.witness_ids) ? payload.witness_ids : [])
+      .map((entry) => text(entry, 120)).filter(Boolean))].sort()
+    if (!witnessIds.length) return null
+    return {
+      kind: 'break_in',
+      key: text(payload.target_id, 120),
+      severity: text(payload.severity, 20) === 'major' ? 'major' : 'minor',
+      subject: text(payload.target_label, 160) || 'чужой замок',
+      actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
+      witnessIds,
+    }
+  }
+  if (type === 'NpcPickpocketNoticed') {
+    // Жертва — свидетель сама по себе, даже в пустом переулке: это её карман и
+    // её рука перехватила чужую. Тот же приём, что у шулерства за костями и у
+    // сломанного перемирия, и по той же причине — «никто не видел» здесь было
+    // бы неправдой о том, что случилось.
+    const npcId = text(payload.npc_id, 120)
+    return {
+      kind: 'theft',
+      key: npcId || text(payload.hero_id, 120),
+      subject: text(payload.npc_name, 160) || npcNameFor(state, npcId) || 'прохожий',
       actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
       witnessIds: [...new Set([npcId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
     }
@@ -481,7 +573,11 @@ function summaryFor(state, deed) {
     cheating: `${who}: шулерство за костями — ${what} (${place})`,
     arson: `${who}: поджог — ${what} (${place})`,
     vandalism: `${who}: погром — ${what} (${place})`,
+    bribery_attempt: `${who}: попытка подкупа — ${what} (${place})`,
     theft: `${who}: кража — ${what} (${place})`,
+    // «Взломано» и «выломано» — разные строки летописи, и это не игра слов:
+    // отмычка оставляет целую дверь с сорванным замком, а плечо — щепки.
+    break_in: `${who}: взлом отмычками — ${what} (${place})`,
     destruction: `${who}: разрушение — ${what} (${place})`,
     promise_broken: `${who}: нарушенное слово — ${what} (${place})`,
     promise_kept: `${who}: сдержанное слово — ${what} (${place})`,
@@ -502,7 +598,9 @@ export function deedFromEvent(state = {}, event = {}) {
   const witnessIds = (recognized.witnessIds ?? sceneWitnessIds(state))
     .map((entry) => text(entry, 120)).filter(Boolean)
   const actorIds = (recognized.actorIds ?? []).map((entry) => text(entry, 120)).filter(Boolean)
-  const severity = severityOf(recognized.kind)
+  const severity = ['grave', 'major', 'minor'].includes(String(recognized.severity))
+    ? String(recognized.severity)
+    : severityOf(recognized.kind)
   const deed = safeDeed({
     id: deedIdFor(event, recognized, atMinutes),
     kind: recognized.kind,

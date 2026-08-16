@@ -106,6 +106,7 @@ const EVENT_EFFECTS: Readonly<Record<string, AtmosphereEffect>> = Object.freeze(
   CurrencyChanged: 'coins',
   DoorStateChanged: 'door',
   DoorForced: 'door',
+  DoorLockpicked: 'door',
   CharacterLeveledUp: 'level',
   LevelUpCompleted: 'level',
   EncounterWon: 'victory',

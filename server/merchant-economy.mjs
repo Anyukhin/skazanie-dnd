@@ -7,9 +7,11 @@ import {
   catalogItem,
   hydrateCatalogItem as hydrateCatalogRecord,
   materializeCatalogItem,
+  normalizeItemOriginKind,
   normalizeItemRechargeProfile,
 } from './item-catalog.mjs'
 import { reputationStandingFor } from './reputation-policy.mjs'
+import { STOLEN_DISCOUNT_BPS, npcIsFence } from './underworld.mjs'
 
 export const ECONOMY_POLICY_ID = 'skazanie:economy:merchant-policy-v1'
 export const ECONOMY_CATALOG_VERSION = 'srd_5_2_1'
@@ -210,6 +212,15 @@ export function inventoryStackKey(input = {}) {
     quest_item: source.quest_item === true ? true : null,
     price_provenance: source.price_provenance == null ? null : cleanText(source.price_provenance, 60),
     appraisal_policy_id: source.appraisal_policy_id == null ? null : cleanText(source.appraisal_policy_id, 120),
+    // Происхождение входит в ключ стопки, и это правило, а не осторожность:
+    // без него краденый кинжал слипался бы с купленным в одну строку, а у
+    // выжившей стопки оставалась бы история той вещи, что легла первой. Так
+    // стопка молча отмывала бы краденое — ровно то, ради чего заводится скупщик.
+    //
+    // Ключи существующих стопок это меняет, и это осознанно: `stack_key`
+    // пересчитывается нормализатором на каждой загрузке состояния, в событиях
+    // не хранится и миграции не требует.
+    origin: normalizeItemOriginKind(source.origin),
   })
   const digest = createHash('sha256').update(JSON.stringify(descriptor)).digest('hex').slice(0, 32)
   return `${(catalogId || 'custom').slice(0, 80)}:${digest}`
@@ -266,6 +277,10 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     ...(source.price_provenance == null ? {} : { price_provenance: cleanText(source.price_provenance, 60) }),
     ...(source.appraisal_policy_id == null ? {} : { appraisal_policy_id: cleanText(source.appraisal_policy_id, 120) }),
     ...(resolvedPrice > 0 ? { base_price_cp: resolvedPrice } : {}),
+    // Происхождение есть у каждой вещи в кармане, и «неизвестно» — такой же
+    // честный ответ, как «куплено»: до этой волны его не писал никто, и вещи из
+    // старых сохранений обязаны называть это прямо, а не притворяться купленными.
+    origin: normalizeItemOriginKind(source.origin),
   }
   if (!passiveEffects.length) delete item.passive_effects
   if (!recharge) delete item.recharge
@@ -846,15 +861,20 @@ export function quoteMerchantBuyUnit(merchant, actorId, stockEntry, reputationBp
   }
 }
 
-export function quoteMerchantSellUnit(merchant, actorId, item, appraisal = null, reputationBps = 0) {
+export function quoteMerchantSellUnit(merchant, actorId, item, appraisal = null, reputationBps = 0, stolenDiscountBps = 0) {
   const base = trustedBasePriceCp(item, appraisal)
   if (!base) return null
   const multipliers = pricingMultipliers(merchant, actorId, reputationBps)
+  // Скидка скупщика — **отдельное** слагаемое, а не добавка к репутации: тот
+  // зажат ±1000 и уже занят славой отряда и ступенью розыска. Сложи их — и
+  // скидка за краденое то исчезала бы у героя с доброй славой, то удваивалась
+  // под розыском, а разбор цены в торговом окне перестал бы сходиться.
+  const stolenDiscount = Math.max(0, Math.min(9_000, clampInteger(stolenDiscountBps, 0, 9_000, 0)))
   const valuable = ['treasure', 'trade_good', 'trade-good', 'valuable'].includes(String(item?.type || '').toLowerCase())
   // Ценности выкупают по каталогу, но репутация действует и здесь: она
   // описывает отношение, а не сорт товара.
   const sellBeforeBargain = (valuable ? 10_000 : multipliers.pricing.sell_rate_bps)
-    - multipliers.pricing.agent_adjustment_bps - multipliers.reputationBps
+    - multipliers.pricing.agent_adjustment_bps - multipliers.reputationBps - stolenDiscount
   const sellMultiplier = Math.max(multipliers.pricing.min_multiplier_bps, Math.min(
     multipliers.pricing.max_multiplier_bps,
     sellBeforeBargain - multipliers.bargainAdjustment,
@@ -865,6 +885,7 @@ export function quoteMerchantSellUnit(merchant, actorId, item, appraisal = null,
     merchant_adjustment_bps: sellBeforeBargain - 10_000,
     bargain_adjustment_bps: -multipliers.bargainAdjustment,
     reputation_adjustment_bps: multipliers.reputationBps,
+    ...(stolenDiscount > 0 ? { stolen_adjustment_bps: -stolenDiscount } : {}),
     multiplier_bps: sellMultiplier,
     value_class: valuable ? 'valuable' : 'equipment',
   }
@@ -1004,10 +1025,20 @@ export function merchantViewFor(state, merchantId, actorId) {
       },
     }]
   })
+  // Скупщик и его скидка считаются один раз на витрину: он свойство человека,
+  // а не отдельной вещи. Отказ честного при этом — свойство пары «человек и
+  // вещь»: краденое он не берёт, остальное берёт как раньше.
+  const merchantIsFence = npcIsFence(state, (state?.social?.npcs ?? [])
+    .find((candidate) => String(candidate?.id ?? '') === String(merchant.id)) ?? { id: String(merchant.id) })
   const sellQuotes = (Array.isArray(actor.inventory) ? actor.inventory : []).flatMap((item) => {
     const appraisal = trustedItemAppraisalFor(state, actor.id, item)
-    const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationBps)
-    const allowed = sellability(item, appraisal)
+    const stolen = String(item?.origin ?? '') === 'stolen'
+    const refusesStolen = stolen && !merchantIsFence
+    const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationBps,
+      stolen && merchantIsFence ? STOLEN_DISCOUNT_BPS : 0)
+    const allowed = refusesStolen
+      ? { can_sell: false, reason: 'Этот торговец не берёт чужие вещи' }
+      : sellability(item, appraisal)
     const catalogPrice = resolveCatalogPrice(item)
     const appraisalBlocked = item?.quest_item === true || item?.sellable === false || String(item?.type || '').toLowerCase() === 'quest' || String(item?.rarity || '').toLocaleLowerCase('ru') === 'сюжетный'
     const appraisalRequired = !catalogPrice && !appraisal && !appraisalBlocked
@@ -1042,6 +1073,7 @@ export function merchantViewFor(state, merchantId, actorId) {
         merchant_adjustment_percent: quote.merchant_adjustment_bps / 100,
         bargain_adjustment_percent: quote.bargain_adjustment_bps / 100,
         reputation_adjustment_percent: quote.reputation_adjustment_bps / 100,
+        ...(quote.stolen_adjustment_bps ? { stolen_adjustment_percent: quote.stolen_adjustment_bps / 100 } : {}),
         final_unit_price_cp: quote.unit_price_cp,
       } : undefined,
     }]

@@ -414,6 +414,13 @@ export type InventoryItem = {
   requires_attunement?: boolean
   attuned_to?: string | null
   rarity: 'обычный' | 'необычный' | 'редкий' | 'очень редкий' | 'легендарный' | 'сюжетный'
+  /**
+   * Откуда вещь взялась. Ключи серверные (`ITEM_ORIGIN_KINDS`,
+   * `server/item-catalog.mjs`), подпись для стола сервер отдаёт отдельно.
+   * У чужой вещи поле может отсутствовать вовсе: краденое соседа по столу
+   * проекция снимает поимённо, а не подменяет вежливым «неизвестно».
+   */
+  origin?: 'enemy_loadout' | 'purchased' | 'found' | 'looted' | 'stolen' | 'gifted' | 'reward' | 'unknown'
   description: string
   properties: string
   image: string
@@ -593,6 +600,8 @@ export type MerchantQuoteBreakdown = {
   bargain_adjustment_cp?: number
   /** Поправка за славу отряда у фракций торговца; 0 — фракций нет или отряд им безразличен. */
   reputation_adjustment_percent?: number
+  /** Скидка скупщика. Приходит только у краденого и только от скупщика. */
+  stolen_adjustment_percent?: number
   final_unit_price_cp: number
 }
 
@@ -778,7 +787,7 @@ export type TacticalDoor = {
  * `server/scene-interactions.mjs`) и в отличие от остальных глаголов бросает
  * кость: молитва идёт двухфазной проверкой Религии.
  */
-export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use' | 'topple' | 'ignite' | 'pray'
+export type SceneObjectIntent = 'inspect' | 'open' | 'lockpick' | 'take' | 'use' | 'topple' | 'ignite' | 'pray'
 
 export type TacticalProp = {
   id: string
@@ -942,6 +951,14 @@ export type Enemy = {
   healthStatus?: 'unharmed' | 'wounded' | 'bloodied' | 'critical' | 'defeated'
   healthKnown?: 'banded' | 'exact'
   initiativeBonus?: number
+  /**
+   * Босс: существо с легендарными действиями. Признак и полосу запаса
+   * выставляет сервер (`publicEnemyFor`), клиент их не выводит — иначе рамка
+   * появлялась бы там, где действий вне хода нет. Пипсы — качественная
+   * величина; ни СЛ заклинаний, ни список магии сюда не приходят вовсе.
+   */
+  boss?: boolean
+  legendary?: { uses: number; used: number }
   stat_block_id?: string
   creature_type?: string
   image?: string
@@ -1332,6 +1349,12 @@ export type GameState = {
    * — в отличие от таверны, святыня и жрец встречаются где угодно.
    */
   blessings?: BlessingProjection | null
+  /**
+   * Взлом отмычками: умеет ли **этот** герой вскрывать замки и что показать,
+   * если не умеет. Карточку собирает сервер целиком; ни СЛ замка, ни
+   * запертости сундуков в ней нет и не будет.
+   */
+  lockpicking?: LockpickingProjection | null
   /**
    * Ходы мира за спиной отряда. Ветка одинакова у игрока и у ведущего: «Пока
    * вас не было…» — монтаж для всего стола.
@@ -1904,6 +1927,25 @@ export type BlessingProjection = {
     npc_name?: string
     at_minutes?: number
   } | null
+}
+
+/**
+ * Взлом отмычками. Карточка отвечает на один вопрос — умеет ли этот герой, —
+ * и приносит **готовую строку отказа**: она обязана совпасть с той, которой
+ * движок отвергнет команду, иначе кнопка и сервер разойдутся в объяснении.
+ *
+ * СЛ замка и запертости здесь нет намеренно: сложность игроку не объявляется, а
+ * запертость сундука выводится из сида и в проекцию не едет.
+ */
+export type LockpickingProjection = {
+  schema_version?: number
+  policy_id?: string
+  tool_id?: string
+  tool_name?: string
+  /** Владеет ли герой воровскими инструментами. */
+  proficient?: boolean
+  /** Почему нельзя. Пустая строка — можно. */
+  blocked_reason?: string
 }
 
 /** Куда едет письмо: к известному NPC или к фракции. Список закрыт сервером. */

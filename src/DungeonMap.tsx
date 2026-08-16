@@ -7,9 +7,9 @@
  * доска: любая работа по интерфейсу конфликтовала с любой другой.
  */
 
-import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BookOpen, ChevronDown, ChevronRight, Copy, Crown, DoorOpen,
+  BookOpen, ChevronDown, ChevronRight, Coins, Copy, Crown, DoorOpen,
   Dices, Flame, Footprints, Gem, History, Menu, MessageSquare,
   MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RotateCcw,
   ScrollText, Send, Settings, Shield, Sparkles, Swords, Target, Users, X,
@@ -143,6 +143,7 @@ export const BASE_ATTACK_ID = '__base-attack__'
 export const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
   inspect: 'Осмотреть',
   open: 'Открыть',
+  lockpick: 'Взломать',
   take: 'Взять',
   use: 'Использовать',
   topple: 'Опрокинуть',
@@ -231,7 +232,7 @@ export function sceneObjectCells(prop: TacticalProp) {
 export function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
   const projected = prop.interaction?.verbs ?? prop.interactionVerbs ?? []
   return [...new Set(projected.filter((verb): verb is SceneObjectIntent => (
-    verb === 'inspect' || verb === 'open' || verb === 'take' || verb === 'use'
+    verb === 'inspect' || verb === 'open' || verb === 'lockpick' || verb === 'take' || verb === 'use'
     || verb === 'topple' || verb === 'ignite' || verb === 'pray'
   )))]
 }
@@ -608,6 +609,26 @@ export function CombatTurnClock({ clock, actorName }: { clock: GameState['turn_c
   </div>
 }
 
+/**
+ * Полоса легендарных действий: пипс на каждое, потраченные погашены.
+ *
+ * Форма повторяет часы квеста (`quest-clock`, `AppViews.tsx`) — `<i>` строка,
+ * `<u>` пипс, `.spent` вместо `.filled`, — потому что это тот же вид знания:
+ * server-owned счётчик, который стол читает взглядом, а не считает в уме.
+ * Числа стат-блока сюда не приходят: сервер отдаёт только сколько всего и
+ * сколько израсходовано.
+ */
+export function LegendaryPips({ legendary, compact = false }: { legendary: { uses: number; used: number }; compact?: boolean }) {
+  const total = Math.max(0, Math.min(5, legendary.uses))
+  if (total <= 0) return null
+  const used = Math.max(0, Math.min(total, legendary.used))
+  const label = `Легендарные действия: осталось ${total - used} из ${total}`
+  return <span className={`legendary-pips ${compact ? 'compact' : ''}`} title={label} aria-label={label}>
+    <i aria-hidden="true">{Array.from({ length: total }, (_, index) => <u key={index} className={index < used ? 'spent' : ''} />)}</i>
+    {!compact && <b>{total - used}/{total}</b>}
+  </span>
+}
+
 export function EnemyGlyph({ kind }: { kind: EnemyVisualKind }) {
   if (kind === 'construct') return <Bot size={17} />
   if (kind === 'undead') return <Skull size={17} />
@@ -644,7 +665,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { x: number; y: number }) & { spellOption?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => Promise<CommandOutcome>
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
-  onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force') => Promise<CommandOutcome>
+  onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force' | 'lockpick') => Promise<CommandOutcome>
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => Promise<CommandOutcome>
   onUseLevelTransition: (actorId: string, propId: string) => Promise<CommandOutcome>
   onLeaveLocation: () => void
@@ -1270,6 +1291,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       : `Молитва: проверка Религии, СЛ ${Number(blessings?.prayer_dc) || 12}. Успех — малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) до продолжительного отдыха. Раз в сутки на героя`
   const blessingPriests = blessings?.priests ?? []
   const blessingDonationCp = Math.max(0, Number(blessings?.donation_cp) || 0)
+  /* Взлом приезжает такой же готовой карточкой (`server/lockpicking.mjs`):
+     владеет ли герой инструментом и какой строкой сервер откажет, если нет.
+     Своей проверки владения у клиента нет намеренно — лист героя её не везёт, а
+     сочинённый браузером отказ разошёлся бы с ответом движка. Сложности замка в
+     карточке нет и не будет: СЛ игроку не объявляется. */
+  const lockpicking = state.lockpicking ?? null
+  const lockpickAllowed = lockpicking?.proficient === true
+  const lockpickBlockedHint = lockpicking?.blocked_reason || 'Нужно владение воровскими инструментами'
   /* Этажи локации (`docs/multilevel-map-plan.md`, раздел 6). Номер активного
      этажа приходит проекцией; у старой кампании его нет, и это этаж входа. */
   const sceneLevelIndex = Number(state.scene.level?.index ?? boardMap?.levelIndex ?? 0) || 0
@@ -1393,6 +1422,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const inspectedDamageHistory = inspectedTarget
     ? recentDamageForTarget(state.battleLog ?? [], inspectedTarget.id)
     : []
+  // Босс берётся из состояния по идентификатору, а не из снимка наведения:
+  // снимок делается один раз при наведении, а запас легендарных действий
+  // тратится и восстанавливается прямо под курсором. Признак — серверный:
+  // клиент его не выводит и рамку сам себе не рисует.
+  const inspectedBoss = inspectedTarget?.team === 'enemy'
+    ? state.enemies?.find((enemy) => enemy.id === inspectedTarget.id && enemy.boss === true) ?? null
+    : null
   const sceneTheme = resolveSceneTheme(state)
   const visualTheme = boardVisualTheme(sceneTheme)
   const mapArt = boardMapArtForTheme(sceneTheme)
@@ -1938,6 +1974,50 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                             : 'Выбрать предмет и количество'}
               onClick={() => openNpcDossier(sceneNpc.id, 'transfer')}
             ><Send size={13} />Передать предмет</button>
+            {/* Обчистить карманы. Кнопка идёт тем же каналом свободной фразы,
+                что и «Заговорить»: сервер разбирает её в команду `PickpocketNpc`
+                (`resolvePickpocket`, `server/free-action-adjudication.mjs`), и у
+                кнопки с фразой получается один путь, а не два расходящихся.
+                Своих условий доска не выдумывает — все отказы у движка, — но
+                молчать о заведомо невозможном тоже нельзя: подсказка называет
+                причину до нажатия. */}
+            <button
+              type="button"
+              disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct}
+              title={combatActive
+                ? 'Посреди боя карманов не чистят'
+                : !sceneNpc.alive
+                  ? 'Карманы живых'
+                  : narrating
+                    ? 'Дождитесь ответа Рассказчика'
+                    : tacticalBusy
+                      ? 'Дождитесь завершения текущего действия'
+                      : !canAct
+                        ? 'Сейчас этот герой не может действовать'
+                        : 'Ловкость рук против чужого внимания. Заметят — будет скандал, и его запомнят'}
+              onClick={() => { void onNpcAction(`Незаметно обчищаю карманы: ${sceneNpc.name}`, sceneNpc.id) }}
+            ><Coins size={13} />Обчистить карманы</button>
+            {/* Подкрепить слова монетой. Три ступени щедрости шлют ту же
+                свободную фразу, что игрок мог бы сказать сам, — сервер читает
+                ступень из неё и сам же считает сумму от кошелька героя
+                (`classifyBribeTier`, `server/npc-social-check.mjs`). Своих
+                чисел доска не держит намеренно: две копии правила разошлись бы
+                при первой правке долей, и подпись обещала бы не ту цену. */}
+            {(['монету', 'кошель', 'щедро'] as const).map((tier) => <button
+              key={tier}
+              type="button"
+              disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct}
+              title={combatActive
+                ? 'Посреди боя не торгуются'
+                : narrating
+                  ? 'Дождитесь ответа Рассказчика'
+                  : tacticalBusy
+                    ? 'Дождитесь завершения текущего действия'
+                    : !canAct
+                      ? 'Сейчас этот герой не может действовать'
+                      : `Убеждение станет легче. Сумму отсчитает сервер от вашего кошелька; если этот человек не берёт денег — станет только хуже, и это запомнят`}
+              onClick={() => { void onNpcAction(`Убеждаю и подкрепляю слова: ${tier}`, sceneNpc.id) }}
+            ><Coins size={13} />Подкрепить: {tier}</button>)}
             {sceneNpcMerchant
               ? <button
                   type="button"
@@ -2111,13 +2191,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {statusContent}
         <section className={`initiative-ribbon ${combatActive ? 'combat' : 'exploration'}`} aria-label={combatActive ? `Раунд ${combat.round ?? 1}, порядок инициативы` : 'Кто ведёт отряд'} aria-live="polite">
           {combatActive ? <>
-            <div className={`initiative-active-chip ${activeEnemy ? 'enemy' : activeSummon ? 'summon' : 'hero'}`}>
+            <div className={`initiative-active-chip ${activeEnemy ? 'enemy' : activeSummon ? 'summon' : 'hero'}${activeEnemy?.boss ? ' boss' : ''}`}>
               {activeHero
                 ? <span className="initiative-active-avatar portrait" style={{ backgroundImage: `url(${activeHero.portrait})`, backgroundPosition: activeHero.portraitPosition }} />
                 : activeEnemy
                   ? <span className="initiative-active-avatar enemy">{activeEnemy.image ? <img src={activeEnemy.image} alt="" /> : <EnemyGlyph kind={enemyVisualKind(activeEnemy)} />}</span>
                   : <span className="initiative-active-avatar summon"><Sparkles size={18} /></span>}
               <span><strong>{activeName}</strong><small>{activeTurnLabel}</small></span>
+              {activeEnemy?.legendary && <LegendaryPips legendary={activeEnemy.legendary} />}
             </div>
             <header>РАУНД <b>{combat.round ?? 1}</b></header>
             <ol>{combat.initiative?.map((entry, index) => {
@@ -2131,12 +2212,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               const nextUp = index === nextInitiativeIndex
               const statusLabel = defeated ? 'выбыл' : activeNow ? 'сейчас' : nextUp ? 'следующий' : ''
               const enemyKind = enemy ? enemyVisualKind(enemy) : null
-              return <li key={entry.actor_id} className={`${kind} ${activeNow ? 'active' : ''} ${nextUp ? 'next' : ''} ${defeated ? 'defeated' : ''}`} aria-current={activeNow ? 'step' : undefined}>
+              // Босса стол узнаёт в ленте с первого взгляда: он действует между
+              // чужими ходами, и очередь без этого читалась бы неправдой.
+              const boss = enemy?.boss === true
+              return <li key={entry.actor_id} className={`${kind} ${activeNow ? 'active' : ''} ${nextUp ? 'next' : ''} ${defeated ? 'defeated' : ''}${boss ? ' boss' : ''}`} aria-current={activeNow ? 'step' : undefined}>
                 <button
                   className={`initiative-avatar-button ${focusedParticipantId === entry.actor_id ? 'focused' : ''}`}
-                  aria-label={`Выделить на карте: ${name}${statusLabel ? `, ${statusLabel}` : ''}`}
+                  aria-label={`Выделить на карте: ${name}${boss ? ', босс' : ''}${statusLabel ? `, ${statusLabel}` : ''}`}
                   aria-pressed={focusedParticipantId === entry.actor_id}
-                  title={`${name}${statusLabel ? ` · ${statusLabel}` : ''}`}
+                  title={`${name}${boss ? ' · босс' : ''}${statusLabel ? ` · ${statusLabel}` : ''}`}
                   onClick={() => setFocusedParticipantId((current) => current === entry.actor_id ? null : entry.actor_id)}
                 >
                   <span className="initiative-order" aria-hidden="true">{index + 1}</span>
@@ -2145,6 +2229,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                     : enemy
                       ? <span className="initiative-avatar enemy">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
                       : <span className="initiative-avatar summon"><Sparkles size={18} /></span>}
+                  {boss && <span className="initiative-boss-badge" aria-hidden="true"><Crown size={11} /></span>}
+                  {boss && enemy?.legendary && !defeated && <LegendaryPips legendary={enemy.legendary} compact />}
                   {activeNow && <span className="initiative-turn-dot" aria-hidden="true" />}
                   {statusLabel && <span className={`initiative-status-label ${defeated ? 'defeated' : activeNow ? 'active' : 'next'}`}>{statusLabel}</span>}
                 </button>
@@ -2391,11 +2477,22 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {visibleBattleRoll && <BattleRollCard event={visibleBattleRoll} context={visibleBattleRollContext} />}
           <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
           <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>
-          {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}`}>
+          {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}${inspectedBoss ? ' boss' : ''}`}>
             {/* Дистанция и причина берутся из серверного прогноза, когда он
                 есть: снимок `inspectedTarget` делается в момент наведения и
                 после перемещения показывал прежние футы. */}
-            <span><small>{inspectedTarget.team === 'enemy' ? 'ПРОТИВНИК' : 'СОЮЗНИК'} · {inspectedForecast?.distance_feet ?? inspectedTarget.distanceFeet} ФТ</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ? `${inspectedTarget.healthLabel} · параметры скрыты` : `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em></span>
+            {/* Крупный портрет — только у босса, и он читается с доски: это
+                тот же снимок, что и в ленте, только в размер карточки. Признак
+                берётся из состояния по идентификатору, а не из снимка
+                наведения: снимок делается один раз, а запас тратится и
+                восстанавливается прямо во время боя. */}
+            {inspectedBoss && <span className="combat-target-portrait">
+              {inspectedBoss.image ? <img src={inspectedBoss.image} alt="" /> : <EnemyGlyph kind={enemyVisualKind(inspectedBoss)} />}
+              {/* Подпись не прячется от чтения с экрана: «босс» — это факт о
+                  порядке боя, а не украшение рамки. */}
+              <b><Crown size={11} aria-hidden="true" />БОСС</b>
+            </span>}
+            <span><small>{inspectedTarget.team === 'enemy' ? 'ПРОТИВНИК' : 'СОЮЗНИК'} · {inspectedForecast?.distance_feet ?? inspectedTarget.distanceFeet} ФТ</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ? `${inspectedTarget.healthLabel} · параметры скрыты` : `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em>{inspectedBoss?.legendary && <LegendaryPips legendary={inspectedBoss.legendary} />}</span>
             {(!inspectedForecast || !inspectedForecast.in_range) && <p>{inspectedTarget.reason}</p>}
             {inspectedForecast && <div className={`attack-forecast ${inspectedForecast.advantage && !inspectedForecast.disadvantage ? 'advantage' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? 'disadvantage' : ''}`}>
               <header>
@@ -3012,8 +3109,17 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 onFocus: () => setHoveredDoorId(door.id),
                 onBlur: () => setHoveredDoorId((current) => current === door.id ? null : current),
               }
+              /* У запертой двери путей два, и оба стоят кнопками рядом:
+                 отмычка у владеющего и плечо у всех. СЛ в подписи — это СЛ
+                 **выламывания**, она была здесь и раньше; у взлома своей
+                 подписи с числом нет, потому что сложность замка сервер не
+                 объявляет. Кнопка отмычки не прячется без владения, а гаснет с
+                 честной причиной: спрятанная кнопка ничему не учит. */
               return door.state === 'locked'
-                ? <button {...hoverProps} key={door.id} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Запертая дверь на ${direction}. Проверка Силы (Атлетика), СЛ ${lockDc}. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь ({direction}, СЛ {lockDc})</span></button>
+                ? <Fragment key={door.id}>
+                    <button {...hoverProps} className="door-control locked" disabled={!canAct || tacticalBusy || !lockpickAllowed} onClick={() => selected && onOperateDoor(selected, door.id, 'lockpick')} title={lockpickAllowed ? `Запертая дверь на ${direction}. Вскрыть замок отмычкой: Ловкость и владение воровскими инструментами. Дверь останется целой. Тратит действие` : lockpickBlockedHint}><CombatIcon id={`door-lockpick-${door.id}`} kind="action" hint="взломать замок отмычкой воровские инструменты" size={27} compact /><span>Взломать дверь ({direction})</span></button>
+                    <button {...hoverProps} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Запертая дверь на ${direction}. Проверка Силы (Атлетика), СЛ ${lockDc}. Дверь будет сломана. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь ({direction}, СЛ {lockDc})</span></button>
+                  </Fragment>
                 : <button {...hoverProps} key={door.id} className="door-control" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')} title={`${door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь на ${direction}: свободное взаимодействие`}><CombatIcon id={`door-${door.id}`} kind="swap" hint="открыть закрыть дверь проём" size={27} compact /><span>{door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь ({direction})</span></button>
             })}
             {selectedSceneObject && selectedSceneObjectVerbs.map((intent) => {
@@ -3030,13 +3136,21 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 type="button"
                 key={`${selectedSceneObject.id}:${intent}`}
                 className={`scene-object-control intent-${intent}`}
-                disabled={!canAct || tacticalBusy || unavailable || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive))}
+                disabled={!canAct || tacticalBusy || unavailable || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive)) || (intent === 'lockpick' && !lockpickAllowed)}
                 onClick={() => selected && onOperateSceneObject(selected, selectedSceneObject.id, intent)}
                 title={unavailable
                   ? 'Подойдите к объекту на соседнюю клетку'
                   : intent === 'pray'
                     ? (combatActive ? 'Посреди боя благословений не раздают' : blessingPrayerHint)
-                    : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
+                    /* Кнопка «Взломать» стоит у всякого сундука, потому что
+                       запертость сервер не объявляет: назови он её, игрок читал
+                       бы наличие замка, не притронувшись к крышке. Поэтому
+                       подсказка честна и про это тоже — замка может не быть. */
+                    : intent === 'lockpick'
+                      ? (lockpickAllowed
+                          ? 'Вскрыть замок отмычкой: Ловкость и владение воровскими инструментами. Тратит действие в бою. Замка может и не быть — тогда сервер откажет, и ход не пропадёт'
+                          : lockpickBlockedHint)
+                      : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
               >
                 {/* `prayer` в подсказке — не мусор: тема иконки выводится из
                     латинской сигнатуры (`abilityIconTheme`, `CombatIcon.tsx`), и

@@ -108,6 +108,14 @@ function QuoteBreakdown({ quote, quantity, direction }: { quote?: MerchantQuote;
           <i>→</i>
           <span title="Поправка за славу отряда у фракций этого торговца"><small>СЛАВА ОТРЯДА</small><b>{percentage(breakdown.reputation_adjustment_percent)}</b></span>
         </>}
+        {/* Скидка скупщика. Шаг появляется ровно там, где он есть: у честного
+            торговца краденое вообще не доходит до котировки, а у скупщика
+            цепочка обязана объяснить, почему вещь стоит меньше обычного, —
+            иначе разбор цены не сходится, и скидка читается как ошибка. */}
+        {Boolean(breakdown.stolen_adjustment_percent) && <>
+          <i>→</i>
+          <span className="merchant-stolen-step" title="Скупщик берёт чужую вещь дешевле обычного — и не задаёт вопросов"><small>КРАДЕНОЕ</small><b>{percentage(breakdown.stolen_adjustment_percent)}</b></span>
+        </>}
         <i>→</i>
         <span className="merchant-final-price"><small>ЦЕНА ЗА 1</small><b>{formatCopper(breakdown.final_unit_price_cp)}</b></span>
       </div> : <div className="merchant-price-flow compact">

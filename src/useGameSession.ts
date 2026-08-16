@@ -35,7 +35,7 @@ type TacticalCommand =
   | { command_type: 'CastSpell'; actor_id: string; spell_id: string; to: { x: number; y: number }; spell_option?: string }
   | { command_type: 'UseCombatAction'; actor_id: string; action_id: string; target_id?: string; item_id?: string }
   | { command_type: 'ChangeWeapon'; actor_id: string; item_id: string }
-  | { command_type: 'OperateDoor'; actor_id: string; door_id: string; intent: 'open' | 'close' | 'force' }
+  | { command_type: 'OperateDoor'; actor_id: string; door_id: string; intent: 'open' | 'close' | 'force' | 'lockpick' }
   | { command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent }
   | { command_type: 'UseLevelTransition'; actor_id: string; prop_id: string }
   | { command_type: 'EndTurn'; actor_id: string }
@@ -1292,8 +1292,12 @@ export function useGameSession() {
     return executeTacticalCommand({ command_type: 'ChangeWeapon', actor_id: playerId, item_id: itemId }, 'Сменить оружие')
   }, [executeTacticalCommand])
 
-  const operateDoor = useCallback((playerId: string, doorId: string, intent: 'open' | 'close' | 'force') => {
-    const label = intent === 'force' ? 'Выломать дверь' : intent === 'close' ? 'Закрыть дверь' : 'Открыть дверь'
+  const operateDoor = useCallback((playerId: string, doorId: string, intent: 'open' | 'close' | 'force' | 'lockpick') => {
+    // «Взломать» и «Выломать» — разные ярлыки, потому что это разные действия:
+    // после отмычки дверь цела, после плеча от неё остаются щепки.
+    const label = intent === 'lockpick'
+      ? 'Взломать замок двери'
+      : intent === 'force' ? 'Выломать дверь' : intent === 'close' ? 'Закрыть дверь' : 'Открыть дверь'
     return executeTacticalCommand({ command_type: 'OperateDoor', actor_id: playerId, door_id: doorId, intent }, label)
   }, [executeTacticalCommand])
 
@@ -1301,6 +1305,7 @@ export function useGameSession() {
     const label: Record<SceneObjectIntent, string> = {
       inspect: 'Осмотреть объект сцены',
       open: 'Открыть объект сцены',
+      lockpick: 'Взломать замок объекта сцены',
       take: 'Взять объект сцены',
       use: 'Использовать объект сцены',
       topple: 'Опрокинуть объект сцены',

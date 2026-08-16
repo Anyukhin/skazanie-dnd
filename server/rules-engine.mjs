@@ -157,6 +157,7 @@ import {
   normalizeLawState,
   pendingCrimeIdsFor,
   wantedFor,
+  wantedLevelHere,
 } from './law-and-order.mjs'
 import {
   TAVERN_CHEAT_ABILITY,
@@ -229,6 +230,7 @@ import {
   campaignElapsedMinutes,
   ensureNpcSocialState,
   npcPromiseDeadlineEvents,
+  npcRelationshipEventDrafts,
   npcSocialEvents,
   relationshipTier,
   validateNpcSocialCommand,
@@ -246,6 +248,7 @@ import {
   npcTargetsWithinArea,
   npcVitalFor,
   placedSceneNpcTargets,
+  presentSceneNpcs,
   normalizeNpcWorldState,
   planSceneNpcPlacementEvents,
   validateNpcWorldCommand,
@@ -300,7 +303,20 @@ import {
   trustedItemAppraisalFor,
   trustedStockAppraisalFor,
 } from './merchant-economy.mjs'
-import { catalogItem, materializeCatalogItem } from './item-catalog.mjs'
+import { catalogItem, materializeCatalogItem, normalizeItemOriginKind } from './item-catalog.mjs'
+import {
+  PICKPOCKET_ABILITY,
+  PICKPOCKET_POLICY_ID,
+  PICKPOCKET_SKILL,
+  npcPocketFor,
+  pickpocketDifficultyFor,
+} from './pickpocket.mjs'
+import {
+  STOLEN_DISCOUNT_BPS,
+  UNDERWORLD_POLICY_ID,
+  fenceDenunciationFor,
+  npcIsFence,
+} from './underworld.mjs'
 import {
   ITEM_DAWN_RECHARGE_EVENT_SCHEMA_VERSION,
   applyItemDawnRechargeToPlayers,
@@ -315,13 +331,30 @@ import {
   appraiseItem,
 } from './item-appraisal.mjs'
 import {
+  MONSTER_SPELL_USE_CONDITION_PREFIX,
   canonicalCombatSpellFor,
   combatSpellFor,
   combatSpellsFor,
   isPartySummon,
+  monsterCombatSpellFor,
+  monsterSpellRefusalFor,
+  monsterSpellUsesSpentIn,
+  monsterSpellcastingFor,
   normalizedSpellSelectionsFor,
   spellSlotMaximumsFor,
 } from './combat-spells.mjs'
+import {
+  LEGENDARY_ACTION_CONDITION_PREFIX,
+  legendaryActionFor,
+  legendaryActionMarker,
+  legendaryProfileFor,
+  legendaryResistanceDecision,
+  legendaryResistanceMarker,
+  legendaryResistanceSpent,
+  legendaryUsesSpent,
+  legendaryWindowKey,
+  legendaryWindowSpent,
+} from './legendary-actions.mjs'
 import {
   combatActionFor,
   combatActionsFor,
@@ -369,8 +402,17 @@ import {
   isSceneShrineAsset,
   sceneInteractionDefinition,
   sceneObjectDistance,
+  sceneObjectLabelFor,
   sceneObjectLoot,
 } from './scene-interactions.mjs'
+import {
+  LOCKPICKING_POLICY_ID,
+  THIEVES_TOOLS_REQUIRED_CODE,
+  THIEVES_TOOLS_REQUIRED_MESSAGE,
+  hasThievesTools,
+  lockpickNoiseFor,
+  lockpickTraceNoticedFor,
+} from './lockpicking.mjs'
 import {
   BLESSINGS_POLICY_ID,
   BLESSING_ATTACK_BONUS,
@@ -448,6 +490,9 @@ export const GAME_STATE_PROJECTOR_VERSION = 13
  * времени; без потолка автопропуск не гарантирует ничего.
  */
 export const TURN_REACTION_EXTENSION_LIMIT = 2
+
+/** На сколько падает отношение у того, кого поймали за руку в своём кармане. */
+const PICKPOCKET_CAUGHT_RELATIONSHIP_DELTA = -12
 
 export const RULE_IDS = Object.freeze({
   abilityCheck: `${DEFAULT_RULESET_ID}:checks:ability-check`,
@@ -543,6 +588,12 @@ const COMMAND_RULES = Object.freeze({
   AddCondition: [RULE_IDS.conditions],
   RemoveCondition: [RULE_IDS.conditions],
   CastSpell: [RULE_IDS.turns],
+  // Легендарное действие живёт вне экономики хода — оно её и не тратит, —
+  // но принадлежит очереди боя, поэтому провенанс у него тот же `turns`.
+  UseLegendaryAction: [RULE_IDS.turns],
+  // Карманная кража — проверка навыка, и её провенанс тот же, что у любой
+  // другой: чем судили, а не что унесли.
+  PickpocketNpc: [RULE_IDS.abilityCheck],
   UseCombatAction: [RULE_IDS.actions],
   MoveActor: [RULE_IDS.turns],
   // Открыть дверь — свободное взаимодействие с предметом, выломать — действие:
@@ -659,7 +710,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
+  'CastSpell', 'UseLegendaryAction', 'PickpocketNpc', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -1376,6 +1427,11 @@ function normalizeSceneInteractions(input) {
       loot_claimed: value.loot_claimed === true,
       loot_revealed: value.loot_revealed === true,
       trap_detected: value.trap_detected === true,
+      // След взлома. Живёт в памяти сцены рядом с остальными следами
+      // вмешательства и уезжает вместе с ней в стэш этажа: сорванный замок —
+      // свойство места, а не мира, и при возврате на этаж он на месте.
+      lockpicked: value.lockpicked === true,
+      lockpicked_by: value.lockpicked_by == null ? null : String(value.lockpicked_by).slice(0, 120),
       knowledge_ids: uniqueStrings(value.knowledge_ids).slice(0, 24),
       last_actor_id: value.last_actor_id == null ? null : String(value.last_actor_id).slice(0, 120),
     }]]
@@ -2213,6 +2269,8 @@ function sceneObjectState(state, prop, definition) {
     loot_claimed: projectedState === 'taken',
     loot_revealed: projectedState === 'open' || projectedState === 'taken',
     trap_detected: false,
+    lockpicked: false,
+    lockpicked_by: null,
     knowledge_ids: [],
     last_actor_id: null,
   }
@@ -2233,6 +2291,63 @@ function sceneObjectState(state, prop, definition) {
   }
 }
 
+/**
+ * Ключ следа взлома у двери. Двери — не пропсы, своего реестра у них нет, и
+ * заводить второй ради одного флага значило бы держать две памяти сцены вместо
+ * одной: `mechanics.scene_interactions` уже помнит, что в этой сцене трогали, и
+ * уже уезжает в стэш этажа целиком.
+ */
+function doorTraceKey(doorId) {
+  return `door:${String(doorId ?? '').slice(0, 110)}`
+}
+
+/**
+ * Модификатор проверки замка. Владение инструментом даёт бонус мастерства —
+ * ровно один раз: у вора он часто есть и от «Ловкости рук», а два бонуса
+ * мастерства в одной проверке редакция не складывает. Берётся больший, поэтому
+ * компетентность (двойной бонус за навык) не пропадает.
+ *
+ * Проверять само владение здесь нечем и незачем: до этой функции доходит
+ * только тот, кого пустил гейт вызывающей ветки.
+ */
+function lockpickCheckModifier(actor) {
+  const proficiency = Math.max(0, safeInteger(actor?.proficiency, 0))
+  return abilityModifier(actor?.abilities?.dex)
+    + Math.max(skillProficiencyBonus(actor, 'sleight_of_hand'), proficiency)
+}
+
+/**
+ * Последствие взлома для мира: услышали возню или увидели сорванный замок.
+ *
+ * Одна функция на дверь и на контейнер — расходиться этим двум ответам нельзя:
+ * шум у замка не зависит от того, что за этим замком. Свидетели считаются
+ * **здесь**, в момент команды, и уезжают в payload: к моменту редьюсера сцена
+ * уже может разойтись, а слышали замок те, кто стоял рядом тогда.
+ *
+ * Пустая сцена молчит: сорванный замок в безлюдном подземелье никого не обидел
+ * — тот же порог, что у выломанной двери и у взятого на людях добра
+ * (`recognizeDeed`, `server/world-deeds.mjs`).
+ */
+function lockpickNoticeEvents(state, command, { targetKind, targetId, targetLabel, check }) {
+  const witnessIds = presentSceneNpcs(state).map((npc) => String(npc.id)).sort()
+  if (!witnessIds.length) return []
+  const notice = check?.success === true
+    ? lockpickTraceNoticedFor(state, { targetId, witnessIds })
+    : lockpickNoiseFor({ success: false, natural: safeInteger(check?.kept ?? check?.die, 0) })
+  if (!notice) return []
+  return [eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'LockpickNoticed', {
+    hero_id: command.actor_id,
+    target_kind: targetKind,
+    target_id: String(targetId ?? '').slice(0, 160),
+    target_label: String(targetLabel ?? '').slice(0, 160),
+    reason: notice.reason,
+    severity: notice.severity,
+    loud: notice.loud === true,
+    witness_ids: witnessIds,
+    policy_id: LOCKPICKING_POLICY_ID,
+  }, [])]
+}
+
 function updateSceneObjectInteraction(state, propId, updater) {
   const id = String(propId ?? '').slice(0, 120)
   if (!id) return null
@@ -2248,6 +2363,8 @@ function updateSceneObjectInteraction(state, propId, updater) {
     loot_claimed: false,
     loot_revealed: false,
     trap_detected: false,
+    lockpicked: false,
+    lockpicked_by: null,
     knowledge_ids: [],
     last_actor_id: null,
   }
@@ -3380,6 +3497,11 @@ function normalizeCommand(input, state) {
     command.prop_id = String(command.prop_id ?? command.propId ?? '').slice(0, 120)
     command.intent = String(command.intent ?? 'inspect')
     command.approach = command.approach === 'force' ? 'force' : 'hand'
+    // Взлом объявляется глаголом, а не подходом: панель рисует кнопки по
+    // списку глаголов пропса, и второе имя для одного действия развело бы
+    // affordance карты с разбором команды. Подход при отмычке всегда «рукой» —
+    // силовая ветка у контейнера своя и осталась прежней.
+    if (command.intent === 'lockpick') command.approach = 'hand'
   }
   if (command.command_type === 'UseLevelTransition') {
     command.prop_id = String(command.prop_id ?? command.propId ?? '').slice(0, 120)
@@ -3633,6 +3755,111 @@ function validateNpcItemUseCommand(command, state, context = {}) {
   }
   result.target_ids = [result.target_id]
   return result
+}
+
+/** Сколько раз существо уже произносило это заклинание за день. */
+function monsterSpellUsesSpent(state, actorIdValue, spellId) {
+  return monsterSpellUsesSpentIn(conditionIdsFor(state, actorIdValue), spellId)
+}
+
+/**
+ * Магия стат-блока — и только руками сервера.
+ *
+ * Дверь та же, что у инвентаря противника (`validateNpcItemUseCommand` выше):
+ * `context.isNpcScheduler`. Флага нет ни в одном теле запроса, и `isAdmin` его
+ * не заменяет намеренно — иначе «сыграть за врага» означало бы «бросить его
+ * Огненный шар в свой же отряд». Прежняя ветка «враг-волшебник по роли»
+ * остаётся как была: у неё нет блока `spellcasting`, и сюда она не заходит.
+ */
+function validateMonsterSpellCommand(command, state, context = {}) {
+  if (context?.isNpcScheduler !== true) {
+    throw new RulesValidationError('Заклинаниями существа распоряжается только серверный планировщик ходов', 'NPC_SPELL_CAST_FORBIDDEN')
+  }
+  const actor = findActor(state, command.actor_id)
+  // «Нет в блоке» и «блок называет заклинание, которого нет в каталоге» — два
+  // разных ответа: первое правило, второе дефект записи бестиария. Молчать о
+  // втором нельзя, иначе опечатка читалась бы за столом как решение автора.
+  const refusal = monsterSpellRefusalFor(actor, command.spell_id)
+  if (refusal) throw new RulesValidationError(refusal[0], refusal[1])
+  const spell = monsterCombatSpellFor(actor, command.spell_id)
+  const perDay = spell?.monsterSpell?.perDay ?? null
+  if (perDay != null) {
+    const spent = monsterSpellUsesSpent(state, command.actor_id, spell.id)
+    if (spent >= perDay) {
+      throw new RulesValidationError('Это заклинание существо на сегодня исчерпало', 'MONSTER_SPELL_USES_SPENT')
+    }
+    return { monster_spell_use: { spell_id: spell.id, ordinal: spent + 1, per_day: perDay, remaining_after: perDay - spent - 1 } }
+  }
+  return { monster_spell_use: null }
+}
+
+/**
+ * Легендарное действие: вне своего хода и только руками сервера.
+ *
+ * Здесь три отдельные проверки, и все три — правила, а не осторожность:
+ *
+ * 1. дверь планировщика, та же, что у инвентаря и магии существа;
+ * 2. **не свой ход** — легендарное действие тем и легендарно, что тратится
+ *    между своими ходами; в собственный ход существо действует обычной
+ *    экономикой, и разрешить здесь оба означало бы выдать ему лишний ход;
+ * 3. запас: маркеры `legendary-action-used:<n>` считают потраченное, а
+ *    стоимость действия вычитается из остатка целиком.
+ */
+function validateLegendaryActionCommand(command, state, context = {}) {
+  if (context?.isNpcScheduler !== true) {
+    throw new RulesValidationError('Легендарными действиями распоряжается только серверный планировщик ходов', 'LEGENDARY_ACTION_FORBIDDEN')
+  }
+  const actor = findActor(state, command.actor_id)
+  if (!actor) throw new RulesValidationError('Существо не найдено', 'ACTOR_NOT_FOUND')
+  if (!isLivingActor(actor)) throw new RulesValidationError('Побеждённое существо не совершает легендарных действий', 'ACTOR_DEFEATED')
+  const profile = legendaryProfileFor(actor)
+  if (!profile) throw new RulesValidationError('У существа нет легендарных действий', 'LEGENDARY_ACTIONS_ABSENT')
+  const combat = state.mechanics.combat
+  if (!combat.active) throw new RulesValidationError('Легендарные действия совершаются только в бою', 'COMBAT_NOT_ACTIVE')
+  if (incapacitatingConditionFor(state, command.actor_id)) {
+    throw new RulesValidationError('Существо не в состоянии совершить легендарное действие', 'ACTOR_INCAPACITATED')
+  }
+  if (String(combat.initiative?.[safeInteger(combat.active_index, -1)]?.actor_id ?? '') === String(command.actor_id)) {
+    throw new RulesValidationError('Легендарное действие совершается вне своего хода', 'LEGENDARY_ACTION_OWN_TURN')
+  }
+  const action = legendaryActionFor(actor, command.legendary_action_id)
+  if (!action) throw new RulesValidationError('Такого легендарного действия нет в стат-блоке', 'LEGENDARY_ACTION_UNKNOWN')
+  const conditions = conditionIdsFor(state, command.actor_id)
+  const windowKey = legendaryWindowKey(combat)
+  // Одно действие на чужой ход. Без этой проверки весь запас сгорал бы после
+  // первого же хода героя, и «до трёх между своими ходами» превратилось бы в
+  // «три подряд по одному поводу».
+  if (legendaryWindowSpent(conditions, windowKey)) {
+    throw new RulesValidationError('Легендарное действие в этом ходу уже совершено', 'LEGENDARY_ACTION_WINDOW_SPENT')
+  }
+  const spent = legendaryUsesSpent(conditions)
+  if (spent + action.cost > profile.uses) {
+    throw new RulesValidationError('Запас легендарных действий исчерпан до начала следующего хода существа', 'LEGENDARY_ACTIONS_SPENT')
+  }
+  const targetId = String(command.target_id ?? '')
+  const target = findActor(state, targetId)
+  if (!target || !isLivingActor(target)) throw new RulesValidationError('Нужна живая цель легендарного действия', 'INVALID_TARGET')
+  if (isEnemyActor(state, targetId) === isEnemyActor(state, command.actor_id)) {
+    throw new RulesValidationError('Легендарное действие направлено против противника', 'INVALID_TARGET')
+  }
+  const distance = distanceBetweenActors(state, command.actor_id, targetId)
+  const reach = action.radiusFeet > 0 ? action.radiusFeet : action.rangeFeet
+  if (distance == null || distance > reach) {
+    throw new RulesValidationError('Цель находится вне досягаемости легендарного действия', 'TARGET_OUT_OF_RANGE')
+  }
+  return {
+    target_ids: [targetId],
+    legendary_action: {
+      id: action.id,
+      name: action.name,
+      cost: action.cost,
+      kind: action.kind,
+      uses_before: spent,
+      uses_after: spent + action.cost,
+      uses_max: profile.uses,
+      window_key: windowKey,
+    },
+  }
 }
 
 /**
@@ -4110,11 +4337,21 @@ export function validateCommand(input, rawState, context = {}) {
     command.ability = String(expected.ability)
     command.difficulty = safeInteger(expected.difficulty, 10)
     command.visibility = expected.visibility === 'specific_player' ? 'specific_player' : 'party'
+    // Подкуп приезжает из политики проверки, а не из тела запроса: сумму,
+    // ступень и знак сдвига считает сервер, и клиент их подсказать не может.
+    // Кошелёк проверяется здесь же — обещать монету, которой нет, нельзя.
+    if (expected.bribe) {
+      const purseCp = currencyToCopper(playerActor(state, expected.hero_id)?.currency)
+      if (purseCp < Math.max(0, safeInteger(expected.bribe.amount_cp, 0))) {
+        throw new RulesValidationError('На такую щедрость у героя не хватает монет', 'INSUFFICIENT_FUNDS')
+      }
+    }
     command.social_check = {
       check_id: String(expected.check_id),
       npc_id: String(expected.npc_id),
       skill: String(expected.skill),
       request_fingerprint: String(expected.request_fingerprint),
+      ...(expected.bribe ? { bribe: clone(expected.bribe) } : {}),
     }
     delete command.modifier
     command.advantage = Boolean(expected.advantage)
@@ -4459,6 +4696,17 @@ export function validateCommand(input, rawState, context = {}) {
   // набора правил. Ветка стоит **до** общего жизненного цикла предметов: тот
   // ищет героя по `state.players` и на существе отвечал бы «герой не найден»,
   // пряча настоящую причину отказа.
+  // Легендарное действие и магия стат-блока проверяются здесь же и по той же
+  // причине, по которой здесь стоит инвентарь противника: порядок нагружен.
+  // Ниже по тексту идёт `assertActorPermission`, и он ответил бы игроку общим
+  // `ACTOR_FORBIDDEN`, спрятав настоящую причину, а администратору — вообще
+  // ничем: у админского контура своя дверь, и здесь она намеренно закрыта.
+  if (command.command_type === 'UseLegendaryAction') {
+    Object.assign(command, validateLegendaryActionCommand(command, state, context))
+  }
+  if (command.command_type === 'CastSpell' && monsterSpellcastingFor(findActor(state, command.actor_id))) {
+    Object.assign(command, validateMonsterSpellCommand(command, state, context))
+  }
   const npcItemUse = command.command_type === 'UseItem' && isEnemyActor(state, command.actor_id)
   if (npcItemUse) {
     Object.assign(command, validateNpcItemUseCommand(command, state, context))
@@ -4800,7 +5048,15 @@ export function validateCommand(input, rawState, context = {}) {
         const code = item.equipped ? 'ITEM_EQUIPPED' : item.attuned_to ? 'ITEM_ATTUNED' : 'ITEM_NOT_SELLABLE'
         throw new RulesValidationError(allowed.reason, code)
       }
-      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id))
+      // Честный торговец краденое не берёт. Отказ здесь **не** исключение, и это
+      // разобрано, а не упущено: исключение откатывает коммит целиком, а у
+      // показанной честному лавочнику краденой вещи есть последствие — он мог
+      // и донести. Отказ поэтому становится исходом со своим событием: монеты
+      // не переходят, вещь остаётся в сумке, а мир узнаёт то, что увидел.
+      const fenceStance = fenceStanceFor(state, merchant.id, item)
+      command.merchant_refuses_stolen = fenceStance.refuses
+      if (fenceStance.refuses) return command
+      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id), fenceStance.discountBps)
       if (!quote) throw new RulesValidationError('Для предмета не задана серверная цена', 'PRICE_UNAVAILABLE')
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       if (normalizeMerchantPurseCp(merchant.purse_cp) < total) {
@@ -4813,14 +5069,58 @@ export function validateCommand(input, rawState, context = {}) {
       if (!matchingStock && merchant.stock.length >= 500) throw new RulesValidationError('Склад торговца заполнен', 'MERCHANT_STOCK_FULL')
     }
   }
+  /**
+   * Карманная кража у NPC.
+   *
+   * Три отказа здесь — правила, а не осторожность.
+   *
+   * 1. **Красть у героев нельзя.** Отряд играют живые люди за одним столом, и
+   *    «Ловкость рук против кармана Тарна» — это не приключение, а ссора между
+   *    игроками, которую движок обязан не начинать. Отказ приходит первым и
+   *    называет причину прямо, а не общим «нет такой цели».
+   * 2. **В бою карманов не чистят.** Кража живёт в социальной сцене; посреди
+   *    инициативы у неё нет ни цены хода, ни момента.
+   * 3. **Карман один.** Пул выведен из сида и не пополняется: без маркера
+   *    «уже обчищен» один и тот же человек отдавал бы свой кошелёк бесконечно.
+   */
+  if (command.command_type === 'PickpocketNpc') {
+    const actor = playerActor(state, command.actor_id)
+    const npcId = String(command.npc_id ?? '')
+    if (!actor || !isLivingActor(actor)) throw new RulesValidationError('Обчистить карман может только живой герой', 'ACTOR_DEFEATED')
+    if (!sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Карманы чистит герой отряда', 'ACTOR_FORBIDDEN')
+    if (playerActor(state, npcId) || findActor(state, npcId)) {
+      throw new RulesValidationError('У своих не крадут: обчистить можно только чужой карман', 'PICKPOCKET_PARTY_TARGET_FORBIDDEN')
+    }
+    if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя карманов не чистят', 'COMBAT_ACTIVE')
+    const npc = presentSceneNpcs(state).find((candidate) => String(candidate.id) === npcId)
+    if (!npc) throw new RulesValidationError('Этого человека нет рядом', 'NPC_NOT_PRESENT')
+    if (conditionIdsFor(state, npcId).has(pickpocketSpentCondition(npcId))) {
+      throw new RulesValidationError('У этого человека карман уже пуст', 'PICKPOCKET_POCKET_EMPTY')
+    }
+    const present = presentSceneNpcs(state).length + livingPartySize(state)
+    command.pickpocket = {
+      npc_id: npcId,
+      npc_name: String(npc.name ?? npcId).slice(0, 160),
+      ...pickpocketDifficultyFor(state, npc, present),
+      present_count: present,
+    }
+  }
   if (command.command_type === 'GrantItem') {
     const actor = findActor(state, command.actor_id)
     const source = command.item ?? {}
     const catalogId = String(source.catalog_id ?? source.catalogId ?? '').trim()
+    // Происхождение выдачи объявляет тот, кто выдаёт, но словарём, а не
+    // свободной строкой: `GrantItem` — рука ведущего и Режиссёра, и через неё
+    // приходит и награда за задание, и подарок NPC, и найденное по сюжету.
+    // Умолчание — «подарено»: вещь появилась у героя чужой волей, и это ближе
+    // к правде, чем «неизвестно». Краденое так выдать нельзя: кража —
+    // поступок, у неё своя команда и свои свидетели.
+    const declaredOrigin = normalizeItemOriginKind(source.origin, 'gifted')
     const item = normalizeInventoryItem(
       catalogId ? materializeCatalogItem(catalogId, source) : source,
       { idFallback: `grant:${command.command_id}`, preserveUnknown: true },
     )
+    item.origin = declaredOrigin === 'stolen' ? 'gifted' : declaredOrigin
     if (inventoryWeight(actor) + Math.max(0, Number(item.weight) || 0) * Math.max(1, safeInteger(item.quantity, 1)) > carryingCapacity(actor)) {
       throw new RulesValidationError('Награда превысит грузоподъёмность героя', 'CARRYING_CAPACITY_EXCEEDED')
     }
@@ -4903,7 +5203,12 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'CastSpell' && (command.server_authoritative || context.serverAuthoritativeCombat)) {
     const actor = findActor(state, command.actor_id)
-    const spell = combatSpellFor(actor, command.spell_id)
+    // Стат-блок объявляет магию сам — и тогда решает он, а не таблицы классов.
+    // `monsterSpellcastingFor` отвечает `null` всем, у кого блока нет, поэтому
+    // герои и прежние враги-«волшебники» по роли идут прежней веткой без
+    // единого изменения.
+    const monsterCasting = monsterSpellcastingFor(actor)
+    const spell = monsterCasting ? monsterCombatSpellFor(actor, command.spell_id) : combatSpellFor(actor, command.spell_id)
     if (!isLivingActor(actor)) throw new RulesValidationError('Побеждённый участник не может творить заклинания', 'ACTOR_DEFEATED')
     if (!spell) throw new RulesValidationError('Заклинание не найдено среди доступных герою', 'SPELL_NOT_AVAILABLE')
     /* Вне боя творится только то, что не бьёт: лечение, усиление, утилита,
@@ -5130,7 +5435,7 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'OperateSceneObject') {
     if (!command.prop_id) throw new RulesValidationError('Не выбран объект сцены', 'SCENE_OBJECT_REQUIRED')
-    if (!['inspect', 'open', 'take', 'use', 'topple', 'ignite', 'pray'].includes(command.intent)) {
+    if (!['inspect', 'open', 'lockpick', 'take', 'use', 'topple', 'ignite', 'pray'].includes(command.intent)) {
       throw new RulesValidationError('Неизвестный способ взаимодействия с объектом сцены', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
     }
     // Молитва — единственный глагол пропса, которому в бою не место, и запрет
@@ -5517,6 +5822,35 @@ function monsterRechargeAtTurnStart(state, command, actorIdValue, diceService) {
     }, [id]))
   }
   return { events, rolls }
+}
+
+/**
+ * Запас легендарных действий возвращается в начале хода существа.
+ *
+ * Момент выбран по редакции и совпадает с recharge выше: запас привязан к
+ * началу собственного хода босса, а не к кругу боя, поэтому сброс живёт в
+ * обработке `TurnStarted`, а не отдельной командой. Маркеры снимаются теми же
+ * `ConditionRemoved`, что и потраченный приём стат-блока, поэтому replay
+ * складывает то же число пипсов из тех же событий.
+ *
+ * Легендарного сопротивления это не касается: его запас суточный, и круг боя
+ * его не возвращает.
+ */
+function legendaryActionsResetAtTurnStart(state, command, actorIdValue) {
+  const id = String(actorIdValue ?? '')
+  const actor = findActor(state, id)
+  const profile = legendaryProfileFor(actor)
+  if (!profile || !isEnemyActor(state, id)) return []
+  const spent = [...conditionIdsFor(state, id)].filter((condition) => String(condition).startsWith(LEGENDARY_ACTION_CONDITION_PREFIX))
+  if (!spent.length) return []
+  const resetCommand = { ...command, actor_id: id, visibility: 'gm_only' }
+  return [
+    ...spent.map((condition) => eventFrom(commandWithRules(resetCommand, RULE_IDS.conditions), 'ConditionRemoved', { condition, trigger: 'legendary-reset' }, [id])),
+    eventFrom(commandWithRules({ ...command, actor_id: id }, RULE_IDS.turns), 'LegendaryActionsReset', {
+      uses: profile.uses,
+      restored: spent.length,
+    }, [id]),
+  ]
 }
 
 /**
@@ -6453,6 +6787,39 @@ function npcSpellTargetsAt(state, command, spell) {
     return candidates.filter(({ placement }) => wall.has(positionKey(placement)))
   }
   return candidates.filter(({ placement }) => Math.max(Math.abs(placement.x - to.x), Math.abs(placement.y - to.y)) * 5 <= radius)
+}
+
+/**
+ * Скупщик ли этот торговец и почём он берёт краденое.
+ *
+ * Одна функция на обе фазы — валидацию и исполнение, — чтобы отказ и цена
+ * читали одно и то же: разойдись они, сделка проходила бы проверку и падала на
+ * расчёте либо наоборот. Социальный профиль торговца ищется по его же
+ * идентификатору: скупщик — это человек, а не прилавок.
+ */
+function fenceStanceFor(state, merchantId, item) {
+  const stolen = String(item?.origin ?? '') === 'stolen'
+  const npc = (state?.social?.npcs ?? []).find((candidate) => String(candidate?.id ?? '') === String(merchantId ?? ''))
+    ?? { id: String(merchantId ?? '') }
+  const fence = npcIsFence(state, npc)
+  return {
+    stolen,
+    fence,
+    npc,
+    discountBps: stolen && fence ? STOLEN_DISCOUNT_BPS : 0,
+    refuses: stolen && !fence,
+  }
+}
+
+/** Маркер «карман этого человека уже обчищен». Пул выведен из сида и один. */
+function pickpocketSpentCondition(npcId) {
+  return `pocket-picked:${String(npcId ?? '')}`
+}
+
+/** Сколько живых героев отряда стоит рядом. Часть счёта людности сцены. */
+function livingPartySize(state) {
+  return (Array.isArray(state?.players) ? state.players : [])
+    .filter((player) => isLivingActor(player) && sameCampaignParty(state, actorId(player))).length
 }
 
 function conditionIdsFor(state, id) {
@@ -7527,6 +7894,42 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     return `combat:${safeInteger(combat.round, 1)}:${String(activeActor)}`
   }
 
+  /**
+   * Легендарное сопротивление: провалившийся спасбросок объявляется успешным.
+   *
+   * Счётчик потраченного живёт в маркерах состояния, но одна команда может
+   * потребовать двух трат подряд (площадное заклинание по двум боссам), а
+   * маркеры первой ещё не отражены в `state` — поэтому потраченное в этой же
+   * команде складывается здесь, в локальной карте. Решение о самой трате
+   * принимает закрытое правило `legendaryResistanceDecision`
+   * (`server/legendary-actions.mjs`); движок его только исполняет.
+   */
+  const legendarySpendsInCommand = new Map()
+  const legendaryResistanceFor = (sourceState, targetIdValue, { conditions = [], damage = 0 } = {}) => {
+    const id = String(targetIdValue ?? '')
+    const target = findActor(sourceState, id)
+    if (!target || !isEnemyActor(sourceState, id)) return null
+    const spent = legendaryResistanceSpent(conditionIdsFor(sourceState, id)) + (legendarySpendsInCommand.get(id) ?? 0)
+    const decision = legendaryResistanceDecision({
+      actor: target, spentUses: spent, conditions, damage, hpBefore: actorHp(target),
+    })
+    if (!decision) return null
+    legendarySpendsInCommand.set(id, (legendarySpendsInCommand.get(id) ?? 0) + 1)
+    // Маркер `gm_only`: суточный запас босса — та же закрытая бухгалтерия, что
+    // и потраченный приём стат-блока. Сам факт «босс устоял» стол увидит
+    // отдельным событием, у которого числа запаса не спрятаны, а просто нет.
+    const marker = eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: legendaryResistanceMarker(decision.ordinal),
+      duration: 'until-long-rest',
+      source_actor: id,
+    }, [id])
+    const announced = eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'LegendaryResistanceUsed', {
+      reason: decision.reason,
+      ...(decision.condition ? { condition: decision.condition } : {}),
+    }, [id])
+    return { events: [marker, announced], decision }
+  }
+
   const oiledTargets = new Set()
   const resolveDamagePayload = (sourceState, resolvedTargetId, rawAmount, damageType, existingResistance = null) => {
     // Облитая маслом цель: следующий огненный урон в течение минуты сильнее на
@@ -7724,6 +8127,32 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         } } : {}),
       }, [command.actor_id]))
       if (silveryFortune) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'silvery-fortune' }, [command.actor_id]))
+      // Монета уходит в любом случае — и когда помогла, и когда оскорбила.
+      // Забрать протянутую руку назад нельзя: за столом деньги уже показаны.
+      if (command.social_check?.bribe) {
+        const bribe = command.social_check.bribe
+        const amountCp = Math.max(0, safeInteger(bribe.amount_cp, 0))
+        const purseBeforeCp = currencyToCopper(playerActor(state, command.actor_id)?.currency)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), 'NpcBribeOffered', {
+          npc_id: String(command.social_check.npc_id),
+          tier_id: String(bribe.tier_id),
+          amount_cp: amountCp,
+          insulted: bribe.insulted === true,
+          balance_before_cp: purseBeforeCp,
+          balance_after_cp: Math.max(0, purseBeforeCp - amountCp),
+          currency_after: copperToCurrency(Math.max(0, purseBeforeCp - amountCp)),
+          policy_id: UNDERWORLD_POLICY_ID,
+        }, [command.actor_id]))
+        // Оскорблённый неподкупный — поступок на глазах у сцены: деньги
+        // показали при людях, и мир это запомнит наравне с прочим.
+        if (bribe.insulted === true) {
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), 'NpcBribeRefused', {
+            npc_id: String(command.social_check.npc_id),
+            hero_id: String(command.actor_id),
+            amount_cp: amountCp,
+          }, [String(command.social_check.npc_id)]))
+        }
+      }
       break
     }
     case 'MakeSavingThrow': {
@@ -9486,6 +9915,120 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       break
     }
+    /**
+     * Легендарное действие.
+     *
+     * Экономику хода оно не трогает вовсе — ни своего, ни чужого: в этом и
+     * состоит правило. Поэтому действие разрешается здесь целиком, а не
+     * переводится в `MakeAttack`: та команда списала бы боссу атаку из его
+     * собственного хода, и существо ушло бы в свой ход без действия.
+     *
+     * Запас тратится маркерами по одному на единицу стоимости — так «взмах
+     * крыльев за 2» и два удара хвостом по одному дают одинаковый счёт пипсов,
+     * и replay складывает то же число из тех же событий.
+     */
+    case 'UseLegendaryAction': {
+      const declared = command.legendary_action
+      const actor = findActor(state, command.actor_id)
+      const action = legendaryActionFor(actor, command.legendary_action_id)
+      const targetId = String(command.target_id ?? '')
+      const target = findActor(state, targetId)
+      for (let ordinal = declared.uses_before + 1; ordinal <= declared.uses_after; ordinal += 1) {
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+          condition: legendaryActionMarker(ordinal, declared.window_key),
+          duration: 'until-own-turn-start',
+          source_actor: command.actor_id,
+        }, [command.actor_id]))
+      }
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'LegendaryActionUsed', {
+        action_id: action.id,
+        name: action.name,
+        cost: action.cost,
+        uses_before: declared.uses_before,
+        uses_after: declared.uses_after,
+        uses_max: declared.uses_max,
+      }, [command.actor_id]))
+      if (action.kind === 'attack') {
+        const roll = diceService.rollD20({
+          modifier: action.attackModifier,
+          purpose: `legendary_attack:${action.id}`,
+          actorId: command.actor_id,
+          visibility: command.visibility ?? 'public',
+        })
+        rolls.push(roll)
+        const armorClass = effectiveArmorClass(state, target, targetId)
+        const critical = roll.kept === 20
+        const hit = critical || (roll.kept !== 1 && roll.total >= armorClass)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.attack), 'AttackResolved', {
+          ...roll, target_id: targetId, armor_class: armorClass, hit, critical, legendary_action_id: action.id,
+        }, [targetId]))
+        if (hit && action.damageExpression) {
+          const damageRoll = diceService.roll(action.damageExpression, `legendary_damage:${action.id}`, command.actor_id, command.visibility ?? 'public')
+          rolls.push(damageRoll)
+          events.push(eventFrom(command, 'DieRolled', damageRoll, []))
+          // Крит удваивает кости, а не итог: постоянная прибавка стат-блока
+          // остаётся одна. Второй бросок — настоящий, а не удвоение первого.
+          const criticalRoll = critical ? diceService.roll(action.damageExpression.replace(/[+-]\s*\d+$/u, ''), `legendary_damage_critical:${action.id}`, command.actor_id, command.visibility ?? 'public') : null
+          if (criticalRoll) {
+            rolls.push(criticalRoll)
+            events.push(eventFrom(command, 'DieRolled', criticalRoll, []))
+          }
+          const payload = resolveDamagePayload(state, targetId, damageRoll.total + (criticalRoll?.total ?? 0), action.damageType)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, legendary_action_id: action.id, critical }, [targetId]))
+          if (payload.hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [targetId]))
+        }
+      } else {
+        // Действие со спасброском бьёт по всем в радиусе, а не только по
+        // объявленной цели: цель у команды одна, потому что по ней проверялась
+        // досягаемость, но взмах крыльев не выбирает, кого задеть.
+        const centre = actorPosition(state, command.actor_id)
+        const difficulty = action.saveDc ?? monsterSpellcastingFor(actor)?.saveDc ?? 10
+        const caught = action.radiusFeet > 0
+          ? listActors(state).filter((candidate) => {
+            const at = actorPosition(state, actorId(candidate))
+            return isLivingActor(candidate)
+              && isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, command.actor_id)
+              && at && centre && Math.max(Math.abs(at.x - centre.x), Math.abs(at.y - centre.y)) * 5 <= action.radiusFeet
+          })
+          : [target].filter(Boolean)
+        const damageRoll = action.damageExpression
+          ? diceService.roll(action.damageExpression, `legendary_damage:${action.id}`, command.actor_id, command.visibility ?? 'public')
+          : null
+        if (damageRoll) {
+          rolls.push(damageRoll)
+          events.push(eventFrom(command, 'DieRolled', damageRoll, []))
+        }
+        let sweepState = state
+        for (const caughtActor of caught) {
+          const caughtId = actorId(caughtActor)
+          const save = rollSavingThrowD20(sweepState, diceService, caughtId, {
+            ability: action.saveAbility,
+            modifier: abilityModifier(caughtActor?.abilities?.[action.saveAbility]),
+            purpose: `legendary_save:${action.id}:${action.saveAbility}`,
+            visibility: command.visibility,
+          })
+          rolls.push(save)
+          const saved = savingThrowSucceeded(save, difficulty)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+            ...save, ability: action.saveAbility, difficulty, saved, legendary_action_id: action.id,
+          }, [caughtId]))
+          const amount = damageRoll ? (saved ? (action.halfOnSave ? Math.floor(damageRoll.total / 2) : 0) : damageRoll.total) : 0
+          if (amount > 0) {
+            const payload = resolveDamagePayload(sweepState, caughtId, amount, action.damageType)
+            const applied = eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, legendary_action_id: action.id, saved }, [caughtId])
+            events.push(applied)
+            sweepState = applyGameEvent(sweepState, applied)
+            if (payload.hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [caughtId]))
+          }
+          if (!saved && action.condition) {
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+              condition: action.condition, duration: 'until-next-turn', source_actor: command.actor_id, legendary_action_id: action.id,
+            }, [caughtId]))
+          }
+        }
+      }
+      break
+    }
     case 'StartConcentration':
       events.push(eventFrom(command, 'ConcentrationStarted', { effect_id: String(command.effect_id || command.effectId || randomUUID()) }, [command.actor_id]))
       break
@@ -9496,7 +10039,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const authoritative = Boolean(command.server_authoritative || context.serverAuthoritativeCombat)
       if (authoritative) {
         const actor = findActor(state, command.actor_id)
-        const spell = combatSpellFor(actor, command.spell_id)
+        // Та же развилка, что и в валидации, и по той же причине: блок
+        // `spellcasting` объявляет магию существа сам, и таблицы классов к ней
+        // отношения не имеют. Читать её здесь вторым способом значило бы, что
+        // движок исполняет не то, что проверил.
+        const spell = monsterSpellcastingFor(actor)
+          ? monsterCombatSpellFor(actor, command.spell_id)
+          : combatSpellFor(actor, command.spell_id)
         assertMechanicsSupported(spell, 'заклинания')
         /* Ритуал вне боя занимает своё время. Мир двигается до того, как ляжет
            эффект: десять минут накладывания — это десять минут, в которые отряд
@@ -9563,8 +10112,25 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         }
         const spellAbility = String(spell.spellcastingAbility || 'int')
         const spellModifier = abilityModifier(actor?.abilities?.[spellAbility])
-        const spellAttackModifier = spellModifier + Math.max(0, safeInteger(actor?.proficiency, 0))
-        const spellSaveDc = 8 + spellAttackModifier
+        // Стат-блок объявляет СЛ и бонус атаки числом, и вывести их по формуле
+        // героя нельзя: у существа нет ни уровня класса, ни бонуса мастерства в
+        // том же смысле, и расчёт разошёлся бы с напечатанной карточкой.
+        const monsterSpell = spell.monsterSpell ?? null
+        const spellAttackModifier = monsterSpell
+          ? monsterSpell.attackBonus
+          : spellModifier + Math.max(0, safeInteger(actor?.proficiency, 0))
+        const spellSaveDc = monsterSpell ? monsterSpell.saveDc : 8 + spellAttackModifier
+        // «X в день» тратится маркером состояния — тем же способом, что и
+        // потраченный приём стат-блока (`monster-action-used`). Порядковый
+        // номер приходит из валидации, поэтому повтор той же команды кладёт тот
+        // же маркер и второго применения не съедает.
+        if (command.monster_spell_use) {
+          events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: `${MONSTER_SPELL_USE_CONDITION_PREFIX}${command.monster_spell_use.spell_id}#${command.monster_spell_use.ordinal}`,
+            duration: 'until-long-rest',
+            source_actor: command.actor_id,
+          }, [command.actor_id]))
+        }
         const effectId = `${spell.id}:${command.command_id}`
         const spentSlotResource = context.additionalBeam || context.readiedRelease ? null : command.spell_slot_resource ?? spell.slotResource
         if (spentSlotResource) {
@@ -10117,9 +10683,19 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             const silveryFortune = targetConditions.has('silvery-fortune')
             const save = rollSavingThrowD20(state, diceService, resolvedTargetId, { ability: saveAbility, modifier: saveModifier, purpose: `spell_save:${spell.id}:${saveAbility}`, advantage: silveryFortune || (spell.saveAdvantageIfHostile === true && state.mechanics.combat.active), disadvantage: metamagic.has('metamagic-heightened'), avoid_or_end_condition: chosenConditions.includes('poisoned') ? 'poisoned' : null, visibility: command.visibility })
             if (silveryFortune) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'silvery-fortune' }, [resolvedTargetId]))
-            const saved = automaticSave || carefulProtectedIds.has(resolvedTargetId) || savingThrowSucceeded(save, spellSaveDc)
+            const naturalSave = automaticSave || carefulProtectedIds.has(resolvedTargetId) || savingThrowSucceeded(save, spellSaveDc)
+            // Провал босса — ещё не провал: сперва закрытое правило решает,
+            // стоит ли жечь суточный запас. Решение принимается **до** события
+            // спасброска, чтобы стол не увидел сперва «не устоял», а потом
+            // «всё-таки устоял»: за столом это один результат, а не два.
+            const legendaryResistance = naturalSave ? null : legendaryResistanceFor(state, resolvedTargetId, {
+              conditions: chosenConditions,
+              damage: sharedDamageRoll ? sharedDamageRoll.total + (bonusDamageRoll?.total ?? 0) : 0,
+            })
+            const saved = naturalSave || Boolean(legendaryResistance)
             rolls.push(save)
-            events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: spell.id, ability: saveAbility, difficulty: spellSaveDc, saved, automatic_success: automaticSave, immunity: immuneByType ? creatureTypeFor(target) : immuneByLanguage ? 'language' : spell.deafenedAutoSave === true && targetConditions.has('deafened') ? 'deafened' : null }, [resolvedTargetId]))
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: spell.id, ability: saveAbility, difficulty: spellSaveDc, saved, automatic_success: automaticSave, ...(legendaryResistance ? { legendary_resistance: true } : {}), immunity: immuneByType ? creatureTypeFor(target) : immuneByLanguage ? 'language' : spell.deafenedAutoSave === true && targetConditions.has('deafened') ? 'deafened' : null }, [resolvedTargetId]))
+            if (legendaryResistance) events.push(...legendaryResistance.events)
             const damage = sharedDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(sharedDamageRoll.total / 2) : 0) : sharedDamageRoll.total) : 0
             const bonusDamage = bonusDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(bonusDamageRoll.total / 2) : 0) : bonusDamageRoll.total) : 0
             if (damage > 0) {
@@ -10805,7 +11381,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (!doorsReachableFrom(map, at.x, at.y).some((entry) => entry.id === door.id)) {
         throw new RulesValidationError('До двери нужно дотянуться: встаньте вплотную', 'DOOR_OUT_OF_REACH')
       }
-      const intent = ['open', 'close', 'force'].includes(String(command.intent)) ? String(command.intent) : 'open'
+      const intent = ['open', 'close', 'force', 'lockpick'].includes(String(command.intent)) ? String(command.intent) : 'open'
       const before = String(door.state)
       // Распахнутый проём обязан открыть то, что за ним: пока раскрытия не
       // было, соседнее помещение оставалось чёрным пятном, в которое вдобавок
@@ -10814,6 +11390,45 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const cells = cellsVisibleFrom(map, at, { openedDoorId: door.id })
           .filter((cell) => cellAt(map, cell.x, cell.y)?.revealed !== true)
         if (cells.length) events.push(eventFrom(command, 'AreaRevealed', { cells }, []))
+      }
+      /**
+       * Замок двери под отмычкой. Ветка своя, а не подвид выламывания, и
+       * различие не косметическое: сила оставляет от полотна щепки
+       * (`broken`), отмычка — целую дверь с сорванным замком (`open`), и в
+       * летописи мира это два разных поступка. Закрыть взломанную дверь
+       * обратно можно, выломанную — нет.
+       *
+       * Гейт, СЛ и шум те же, что у сундука: владение проверяется до броска,
+       * сложность игроку не объявляется, бросок серверный. Ход тратится и на
+       * неудачу — время ушло одинаково.
+       */
+      if (intent === 'lockpick') {
+        if (before !== 'locked') throw new RulesValidationError('Взламывать нечего: замок не заперт', 'DOOR_NOT_LOCKED')
+        const picker = findActor(state, command.actor_id)
+        if (!hasThievesTools(picker)) throw new RulesValidationError(THIEVES_TOOLS_REQUIRED_MESSAGE, THIEVES_TOOLS_REQUIRED_CODE)
+        const pickEconomy = state.mechanics.combat.action_economy[command.actor_id]
+        if (state.mechanics.combat.active && pickEconomy && pickEconomy.action === false) {
+          throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+        }
+        const pickDifficulty = Math.max(10, safeInteger(door.lockDc, 0))
+        const pickCheck = diceService.rollCheck({
+          modifier: lockpickCheckModifier(picker),
+          difficulty: pickDifficulty,
+          purpose: 'door:lockpick',
+          actorId: command.actor_id,
+          visibility: command.visibility,
+        })
+        rolls.push(pickCheck)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', { ability: 'dex', skill: 'sleight_of_hand', ...pickCheck }, []))
+        events.push(eventFrom(command, 'DoorLockpicked', {
+          door_id: door.id, success: pickCheck.success, previous_state: before, difficulty: pickDifficulty, check_total: pickCheck.total,
+          policy_id: LOCKPICKING_POLICY_ID,
+        }, []))
+        events.push(...lockpickNoticeEvents(state, command, {
+          targetKind: 'door', targetId: door.id, targetLabel: 'дверь', check: pickCheck,
+        }))
+        if (pickCheck.success) revealBeyondDoor()
+        break
       }
       if (intent === 'open') {
         if (before === 'locked') throw new RulesValidationError('Дверь заперта: её придётся выломать', 'DOOR_LOCKED')
@@ -10875,9 +11490,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (definition.kind === 'campfire' && command.intent === 'use' && inCombat) {
         throw new RulesValidationError('Нельзя устраивать привал во время активного боя', 'REST_DURING_COMBAT')
       }
-      const resolveSceneCheck = (checkDefinition) => {
-        const modifier = abilityModifier(actor?.abilities?.[checkDefinition.ability])
-          + skillProficiencyBonus(actor, checkDefinition.skill)
+      // Модификатор считается по способности и навыку, если вызывающий не
+      // назвал свой. Своё называет ровно один случай — замок под отмычкой: там
+      // бонус даёт владение инструментом, а не навык (`lockpickCheckModifier`).
+      const resolveSceneCheck = (checkDefinition, modifierOverride = null) => {
+        const modifier = modifierOverride == null
+          ? abilityModifier(actor?.abilities?.[checkDefinition.ability]) + skillProficiencyBonus(actor, checkDefinition.skill)
+          : modifierOverride
         const check = diceService.rollCheck({
           modifier,
           difficulty: checkDefinition.dc,
@@ -11100,29 +11719,15 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         break
       }
 
-      if (command.intent === 'open') {
-        if (definition.kind !== 'container') throw new RulesValidationError('Открывать можно только контейнер', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
-        if (interaction.opened || interaction.state === 'open' || interaction.state === 'taken') {
-          throw new RulesValidationError('Этот контейнер уже открыт', 'SCENE_OBJECT_ALREADY_OPEN')
-        }
-        operated()
-        let success = true
-        if (interaction.state === 'locked') {
-          const lockCheck = command.approach === 'force'
-            ? { ability: 'str', skill: 'athletics', dc: definition.lock?.dc ?? 12, purpose: 'scene-object:container:force' }
-            : definition.lock
-          success = resolveSceneCheck(lockCheck).success
-        } else if (command.approach === 'force') {
-          success = resolveSceneCheck({ ability: 'str', skill: 'athletics', dc: 10, purpose: 'scene-object:container:force' }).success
-        }
-        if (!success) {
-          events.push(eventFrom(command, 'SceneObjectStateChanged', {
-            prop_id: prop.id, state: interaction.state, previous_state: interaction.state, success: false,
-          }, []))
-          break
-        }
+      /**
+       * Крышка откинута: находка на виду, ловушка сработала. Хвост общий у
+       * силового открытия и у отмычки — что за замком, от способа не зависит,
+       * и второй такой лестницы событий в проекте быть не должно.
+       */
+      const containerOpened = (previousState, openedIntent) => {
         events.push(eventFrom(command, 'SceneObjectStateChanged', {
-          prop_id: prop.id, state: 'open', previous_state: interaction.state, success: true,
+          prop_id: prop.id, state: 'open', previous_state: previousState, success: true, intent: openedIntent,
+          ...(openedIntent === 'lockpick' ? { lockpicked: true } : {}),
         }, []))
         events.push(eventFrom(command, 'SceneObjectLootRevealed', {
           prop_id: prop.id,
@@ -11147,6 +11752,75 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', damagePayload, [command.actor_id]))
           events.push(...zeroHitPointDamageConsequences(state, command, command.actor_id, damagePayload))
         }
+      }
+
+      /**
+       * Замок под отмычкой. Ветка стоит до обычного открытия и ничего у него не
+       * отнимает: глагол `lockpick` есть только у контейнера, и до этой строки
+       * доходит только он.
+       *
+       * Гейт — **владение воровскими инструментами**, и он стоит до броска:
+       * бросать кость ради заведомого отказа нельзя, а ход у отказа не
+       * списывается вовсе. Без владения у отряда остаётся сила — ровно как
+       * было до этой волны.
+       *
+       * СЛ замка не объявляется ни здесь, ни в отказе, ни карточкой: у взлома
+       * нет двухфазного броска, и запертость сундука игрок узнаёт, только
+       * взявшись за него.
+       */
+      if (command.intent === 'lockpick') {
+        if (definition.kind !== 'container') throw new RulesValidationError('Замок бывает только у контейнера', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+        if (interaction.opened || interaction.state === 'open' || interaction.state === 'taken') {
+          throw new RulesValidationError('Этот контейнер уже открыт', 'SCENE_OBJECT_ALREADY_OPEN')
+        }
+        if (!hasThievesTools(actor)) throw new RulesValidationError(THIEVES_TOOLS_REQUIRED_MESSAGE, THIEVES_TOOLS_REQUIRED_CODE)
+        if (interaction.state !== 'locked' || !definition.lock) {
+          throw new RulesValidationError('Замка на этом объекте нет — крышка просто откидывается', 'SCENE_OBJECT_NOT_LOCKED')
+        }
+        operated()
+        const check = resolveSceneCheck({ ...definition.lock, purpose: 'scene-object:container:lockpick' }, lockpickCheckModifier(actor))
+        events.push(...lockpickNoticeEvents(state, command, {
+          targetKind: 'prop',
+          targetId: prop.id,
+          targetLabel: sceneObjectLabelFor(prop.assetId) || 'чужой замок',
+          check,
+        }))
+        if (!check.success) {
+          events.push(eventFrom(command, 'SceneObjectStateChanged', {
+            prop_id: prop.id, state: interaction.state, previous_state: interaction.state, success: false, intent: command.intent,
+          }, []))
+          break
+        }
+        containerOpened(interaction.state, command.intent)
+        break
+      }
+
+      if (command.intent === 'open') {
+        if (definition.kind !== 'container') throw new RulesValidationError('Открывать можно только контейнер', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+        if (interaction.opened || interaction.state === 'open' || interaction.state === 'taken') {
+          throw new RulesValidationError('Этот контейнер уже открыт', 'SCENE_OBJECT_ALREADY_OPEN')
+        }
+        // Запертое рукой не открывают. Прежде эта ветка тихо катала «Ловкость
+        // рук» за любого героя — то есть вскрывала замок отмычками, которых у
+        // него нет и владения которыми тоже. Теперь путей ровно два и оба
+        // названы: отмычка у владеющего и сила у всех.
+        if (interaction.state === 'locked' && command.approach !== 'force') {
+          throw new RulesValidationError('Здесь замок: его вскрывают отмычками или ломают силой', 'SCENE_OBJECT_LOCKED')
+        }
+        operated()
+        let success = true
+        if (interaction.state === 'locked') {
+          success = resolveSceneCheck({ ability: 'str', skill: 'athletics', dc: definition.lock?.dc ?? 12, purpose: 'scene-object:container:force' }).success
+        } else if (command.approach === 'force') {
+          success = resolveSceneCheck({ ability: 'str', skill: 'athletics', dc: 10, purpose: 'scene-object:container:force' }).success
+        }
+        if (!success) {
+          events.push(eventFrom(command, 'SceneObjectStateChanged', {
+            prop_id: prop.id, state: interaction.state, previous_state: interaction.state, success: false,
+          }, []))
+          break
+        }
+        containerOpened(interaction.state, command.intent)
         break
       }
 
@@ -11583,6 +12257,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const recharge = monsterRechargeAtTurnStart(startTurnState, command, nextId, diceService)
       events.push(...recharge.events)
       rolls.push(...recharge.rolls)
+      events.push(...legendaryActionsResetAtTurnStart(startTurnState, command, nextId))
       break
     }
     case 'BargainWithMerchant': {
@@ -11641,7 +12316,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       const balanceBeforeCp = currencyToCopper(actor.currency)
       const merchantPurseBeforeCp = normalizeMerchantPurseCp(merchant.purse_cp)
-      const item = inventoryItemFromStock(stock)
+      // Купленное называет себя купленным. Штамп стоит здесь, а не в
+      // `inventoryItemFromStock`: та же функция собирает и запись склада
+      // торговца при перепродаже, а у товара на прилавке своего происхождения
+      // нет — он им становится ровно в тот миг, когда переходит в карман.
+      const item = { ...inventoryItemFromStock(stock), origin: 'purchased' }
       item.quantity = command.quantity
       const existingIndex = inventoryStackIndex(actor.inventory, item)
       if (existingIndex >= 0) item.id = actor.inventory[existingIndex].id
@@ -11713,8 +12392,34 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const actor = playerActor(state, command.actor_id)
       const merchant = findMerchant(state, command.merchant_id)
       const item = inventoryItem(actor, command.item_id)
+      if (command.merchant_refuses_stolen === true) {
+        const stance = fenceStanceFor(state, command.merchant_id, item)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.sellingEquipment), 'MerchantRefusedStolenGoods', {
+          merchant_id: String(command.merchant_id),
+          merchant_name: String(merchant?.name ?? command.merchant_id).slice(0, 160),
+          item_id: String(command.item_id),
+          item_name: String(item?.name ?? '').slice(0, 120),
+        }, [command.actor_id]))
+        // Донос — не бросок: один и тот же отказ на одном и том же состоянии
+        // обязан кончаться одинаково и после replay. Ниже второй ступени
+        // розыска никто не побежит за стражей из-за чужого ножа.
+        const denunciation = fenceDenunciationFor(state, stance.npc, {
+          wantedLevel: wantedLevelHere(state),
+          itemId: String(command.item_id),
+        })
+        if (denunciation) {
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.sellingEquipment), 'MerchantDenouncedThief', {
+            merchant_id: String(command.merchant_id),
+            merchant_name: String(merchant?.name ?? command.merchant_id).slice(0, 160),
+            hero_id: String(command.actor_id),
+            item_name: String(item?.name ?? '').slice(0, 120),
+          }, [String(command.merchant_id)]))
+        }
+        break
+      }
       const appraisal = trustedItemAppraisalFor(state, actor.id, item)
-      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id))
+      const quote = quoteMerchantSellUnit(merchant, actor.id, item, appraisal, reputationPriceBps(state, merchant.id),
+        fenceStanceFor(state, merchant.id, item).discountBps)
       const total = checkedTransactionTotal(quote.unit_price_cp, command.quantity)
       const balanceBeforeCp = currencyToCopper(actor.currency)
       const merchantPurseBeforeCp = normalizeMerchantPurseCp(merchant.purse_cp)
@@ -11798,6 +12503,93 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         policy_id: ECONOMY_POLICY_ID,
         request_fingerprint: command.request_fingerprint,
       }, []))
+      break
+    }
+    /**
+     * Карманная кража. Один бросок Ловкости рук против внимания жертвы —
+     * и два очень разных исхода.
+     *
+     * Успех отдаёт вору содержимое кармана и **не** зовёт свидетелей: удачная
+     * кража тем и удачна, что её не заметили. Провал зовёт всех: событие
+     * `NpcPickpocketNoticed` попадает в летопись поступков как `theft`, а
+     * дальше работает машинерия волны 2 — свидетели, слух, ступень розыска и,
+     * если она поднялась достаточно, встреча со стражей. Своей эскалации этот
+     * код не пишет ни строчки: второй путь к розыску означал бы, что кража
+     * судится не по тем же правилам, что поджог и погром.
+     *
+     * Маркер «карман обчищен» кладётся в обоих исходах: пойманная за руку
+     * попытка настораживает человека не меньше удачной, и повторять её до
+     * бесконечности он не даст.
+     */
+    case 'PickpocketNpc': {
+      const declared = command.pickpocket
+      const actor = playerActor(state, command.actor_id)
+      const npcId = declared.npc_id
+      const modifier = abilityModifier(actor?.abilities?.[PICKPOCKET_ABILITY]) + skillProficiencyBonus(actor, PICKPOCKET_SKILL)
+      const rollOptions = {
+        modifier,
+        difficulty: declared.difficulty,
+        purpose: `pickpocket:${npcId}`,
+        actorId: command.actor_id,
+        visibility: command.visibility ?? 'party',
+      }
+      const roll = checkRollFromVerified(command.verified_roll, rollOptions) ?? diceService.rollCheck(rollOptions)
+      rolls.push(roll)
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+        ...roll, ability: PICKPOCKET_ABILITY, skill: PICKPOCKET_SKILL, pickpocket: { npc_id: npcId },
+      }, [command.actor_id]))
+      // Маркер вешается на жертву: карман принадлежит ей, а не вору, и после
+      // replay счёт обчищенных карманов обязан сойтись по людям, а не по рукам.
+      events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+        condition: pickpocketSpentCondition(npcId),
+        duration: 'until-long-rest',
+        source_actor: command.actor_id,
+      }, [npcId]))
+      if (roll.success) {
+        const pocket = npcPocketFor(state, { id: npcId, name: declared.npc_name, role: declared.npc_role ?? '' })
+        const balanceBefore = currencyToCopper(actor?.currency)
+        const purseCp = Math.max(0, safeInteger(pocket?.purse_cp, 0))
+        const stolenItem = pocket?.catalog_id
+          ? normalizeInventoryItem(materializeCatalogItem(pocket.catalog_id, {
+            id: `stolen:${String(command.command_id).slice(0, 90)}`,
+            quantity: 1,
+            equipped: false,
+            origin: 'stolen',
+          }), { idFallback: `stolen:${command.command_id}`, preserveUnknown: true })
+          : null
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), 'NpcPocketPicked', {
+          npc_id: npcId,
+          npc_name: declared.npc_name,
+          purse_cp: purseCp,
+          balance_before_cp: balanceBefore,
+          balance_after_cp: balanceBefore + purseCp,
+          currency_after: copperToCurrency(balanceBefore + purseCp),
+          ...(stolenItem ? { item: stolenItem } : {}),
+          policy_id: PICKPOCKET_POLICY_ID,
+        }, [command.actor_id]))
+        break
+      }
+      // Провал — это скандал, а не молчаливый промах: рука была в чужом
+      // кармане, и её увидели. Имя жертвы и вора приходят в payload, потому
+      // что летопись поступков строится из события, а не из состояния.
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'NpcPickpocketNoticed', {
+        npc_id: npcId,
+        npc_name: declared.npc_name,
+        hero_id: command.actor_id,
+        crowd_label: declared.crowd_label,
+        policy_id: PICKPOCKET_POLICY_ID,
+      }, [npcId]))
+      // Отношение падает тем же черновиком, каким его двигают письма и
+      // обещания: второго счёта симпатии в игре нет, и пойманный за руку вор
+      // обязан считаться той же меркой, что и нарушенное слово.
+      for (const draft of npcRelationshipEventDrafts(state, {
+        npcId,
+        heroId: command.actor_id,
+        delta: PICKPOCKET_CAUGHT_RELATIONSHIP_DELTA,
+        reason: 'pickpocket-caught',
+      })) {
+        events.push(eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids))
+      }
       break
     }
     case 'PlaceNpc': {
@@ -14878,7 +15670,10 @@ export function applyGameEvent(rawState, event) {
       break
     }
     case 'AttackResolved': {
-      if (!payload.reaction_attack) {
+      // Легендарное действие экономику хода не тратит — в этом и состоит
+      // правило: иначе босс, ударивший хвостом после хода героя, приходил бы в
+      // свой ход без действия, то есть платил бы за подарок редакции.
+      if (!payload.reaction_attack && !payload.legendary_action_id) {
         // Extra Attack is part of the Attack action, so the action is still
         // spent here; what changes is that the economy remembers how many of
         // the granted weapon attacks have been made.
@@ -15838,6 +16633,29 @@ export function applyGameEvent(rawState, event) {
       spendCombatEconomy(state, event.actor_id, 'action')
       if (payload.success === true) setSceneDoorState(state, payload.door_id, 'broken')
       break
+    case 'DoorLockpicked':
+      spendCombatEconomy(state, event.actor_id, 'action')
+      if (payload.success === true) {
+        // Дверь остаётся целой и просто открывается: сорван замок, а не
+        // полотно. Именно этим взлом и отличается от выламывания — и в
+        // проходимости, и в летописи.
+        setSceneDoorState(state, payload.door_id, 'open')
+        // След в памяти сцены. Он переживает закрытие двери обратно: замка на
+        // ней больше нет, и вернуть его некому.
+        updateSceneObjectInteraction(state, doorTraceKey(payload.door_id), (current) => ({
+          ...current,
+          state: 'lockpicked',
+          lockpicked: true,
+          lockpicked_by: event.actor_id == null ? current.lockpicked_by : String(event.actor_id).slice(0, 120),
+          last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
+        }))
+      }
+      break
+    // Замеченный взлом состояния не меняет: он существует ради летописи
+    // поступков и молвы, а те выводятся из журнала событий редьюсером
+    // `applyWorldDeedEvent`. Своего следа в механике у него нет.
+    case 'LockpickNoticed':
+      break
     case 'SceneObjectOperated':
       updateSceneObjectInteraction(state, payload.prop_id, (current) => ({
         ...current,
@@ -15888,6 +16706,13 @@ export function applyGameEvent(rawState, event) {
         opened: current.opened || payload.state === 'open',
         taken: current.taken || payload.state === 'taken',
         used: current.used || payload.state === 'used',
+        // След взлома. Отдельным полем, а не состоянием: состояние у вскрытого
+        // сундука обычное — «открыт», — и потерять его значило бы забыть, что
+        // содержимое уже на виду.
+        lockpicked: current.lockpicked || payload.lockpicked === true,
+        lockpicked_by: payload.lockpicked === true && event.actor_id != null
+          ? String(event.actor_id).slice(0, 120)
+          : current.lockpicked_by,
         last_actor_id: event.actor_id == null ? current.last_actor_id : String(event.actor_id).slice(0, 120),
       }))
       if (next && payload.success !== false) setSceneObjectPropState(state, payload.prop_id, next.state)
@@ -15936,6 +16761,34 @@ export function applyGameEvent(rawState, event) {
       state.entities = [...(Array.isArray(state.entities) ? state.entities : []), clone(entity)]
       break
     }
+    /**
+     * Содержимое чужого кармана переезжает вору: монеты в кошелёк, мелочь — в
+     * сумку. Оба числа приходят готовыми из события, а не считаются здесь:
+     * редьюсер обязан быть чистым, и после replay кошелёк должен сойтись
+     * копейка в копейку.
+     */
+    case 'NpcBribeOffered':
+      replaceActor(state, target, (actor) => ({ ...actor, currency: normalizeCurrency(payload.currency_after) }))
+      refreshPlayerDerivedState(state, [target])
+      appendEconomyLog(state, event, {
+        type: 'bribe', actorId: target, npcId: payload.npc_id,
+        amountCp: safeInteger(payload.amount_cp, 0), insulted: payload.insulted === true,
+        policyId: payload.policy_id ?? null,
+      })
+      break
+    case 'NpcPocketPicked':
+      replaceActor(state, target, (actor) => ({
+        ...actor,
+        currency: normalizeCurrency(payload.currency_after),
+        ...(payload.item ? { inventory: addInventoryItem(actor.inventory, payload.item) } : {}),
+      }))
+      refreshPlayerDerivedState(state, [target])
+      appendEconomyLog(state, event, {
+        type: 'pickpocket', actorId: target, npcId: payload.npc_id,
+        amountCp: safeInteger(payload.purse_cp, 0), itemName: payload.item?.name ?? null,
+        policyId: payload.policy_id ?? null,
+      })
+      break
     case 'ItemGranted':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: [...(Array.isArray(actor.inventory) ? actor.inventory : []), clone(payload.item)] }))
       if (Number(event.event_schema_version) >= 2) refreshPlayerDerivedState(state, [target])
@@ -16275,6 +17128,26 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'ConditionAdded': return `Добавлено состояние: ${payload.condition}`
     case 'ConditionImmunityResolved': return `${named((event.target_ids ?? [])[0]) || 'Существо'} невосприимчиво: состояние ${payload.condition} не наложено`
     case 'MonsterAbilityRecharged': return `${named((event.target_ids ?? [])[0]) || 'Существо'}: «${payload.name || payload.action_id}» снова наготове`
+    case 'NpcBribeOffered': return payload.insulted === true
+      ? `${named(event.actor_id) || 'Герой'} протягивает монету — и её отталкивают`
+      : `${named(event.actor_id) || 'Герой'} подкрепляет слова монетой`
+    case 'NpcBribeRefused': return `${named((event.target_ids ?? [])[0]) || 'Собеседник'} не берёт денег`
+    case 'MerchantRefusedStolenGoods': return `${payload.merchant_name || 'Торговец'} отказывается брать вещь: «${payload.item_name || 'предмет'}»`
+    case 'MerchantDenouncedThief': return `${payload.merchant_name || 'Торговец'} отправляет весточку страже`
+    // «Взломана» и «выломана» — разные строки, и разница не в слове: после
+    // отмычки дверь цела и её можно закрыть обратно, после плеча от неё
+    // остаются щепки.
+    case 'DoorLockpicked': return payload.success === true
+      ? `${named(event.actor_id) || 'Герой'} вскрывает замок отмычкой: дверь взломана`
+      : `${named(event.actor_id) || 'Герой'} не справляется с замком двери`
+    case 'LockpickNoticed': return payload.reason === 'trace'
+      ? `Сорванный замок замечен: ${payload.target_label || 'чужой замок'}`
+      : `Возню у замка услышали: ${payload.target_label || 'чужой замок'}`
+    case 'NpcPocketPicked': return `${named(event.actor_id) || 'Герой'} незаметно обчищает карман: ${payload.npc_name || 'прохожий'}`
+    case 'NpcPickpocketNoticed': return `${payload.npc_name || 'Прохожий'} перехватывает чужую руку у своего кармана`
+    case 'LegendaryActionUsed': return `${named(event.actor_id) || 'Существо'} вне очереди: «${payload.name || payload.action_id}»`
+    case 'LegendaryActionsReset': return `${named((event.target_ids ?? [])[0]) || 'Существо'} снова полно сил: легендарные действия восстановлены`
+    case 'LegendaryResistanceUsed': return `${named((event.target_ids ?? [])[0]) || 'Существо'} стряхивает с себя чары — легендарная стойкость`
     case 'ConditionRemoved': return `Снято состояние: ${payload.condition}`
     // Семейство «падение и смерть» печатало сырой `target_ids[0]`: игрок
     // видел «hero выбывает из боя» вместо имени героя. Это самые заметные

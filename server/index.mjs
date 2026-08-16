@@ -405,6 +405,9 @@ const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelec
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
 const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem'])
 const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'])
+// Карманная кража. Отдельный набор, а не часть боевого: она живёт в социальной
+// сцене и посреди инициативы запрещена самим движком.
+const PLAYER_PICKPOCKET_COMMANDS = new Set(['PickpocketNpc'])
 // Действия с пленным. Отдельный набор, а не часть боевого: они доступны только
 // вне боя и не трогают экономику хода.
 const PLAYER_CAPTIVE_COMMANDS = CAPTIVE_PLAYER_COMMAND_TYPES
@@ -1260,6 +1263,45 @@ function sanitizePlayerCharacterCommand(user, state, input) {
           : [],
       }
   return { ...command, request_fingerprint: characterBuildFingerprint(command) }
+}
+
+/**
+ * Из запроса берутся только вор и жертва.
+ *
+ * Ни СЛ, ни содержимое чужого кармана, ни исход броска клиент подсказать не
+ * может: карман выводится сервером из сида кампании, а сложность — из внимания
+ * жертвы и людности сцены. Кража у героя отсюда тоже не пройдёт, но отказ за
+ * неё выдаёт движок и по имени: маршрут не знает, кто в этой кампании чей.
+ */
+function sanitizePlayerPickpocketCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_PICKPOCKET_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к карманной краже', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'npc_id', 'npcId',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда кражи содержит запрещённые поля: ${unexpected.join(', ')}`, 'PICKPOCKET_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Обчистить карман можно только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const npcId = String(input?.npc_id ?? input?.npcId ?? '').trim().slice(0, 120)
+  if (!npcId) throw commandPolicyError('Не выбран человек', 'NPC_NOT_FOUND')
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    npc_id: npcId,
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
 }
 
 /**
@@ -4387,6 +4429,7 @@ const server = createServer((req, res) => {
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
         if (PLAYER_CAPTIVE_COMMANDS.has(type)) return sanitizePlayerCaptiveCommand(user, authoritativeBefore, command)
+        if (PLAYER_PICKPOCKET_COMMANDS.has(type)) return sanitizePlayerPickpocketCommand(user, authoritativeBefore, command)
         if (PLAYER_LOOT_COMMANDS.has(type)) return sanitizePlayerLootCommand(user, authoritativeBefore, command)
         if (PLAYER_BEAST_COMMANDS.has(type)) return sanitizePlayerBeastCommand(user, authoritativeBefore, command)
         if (PLAYER_LAW_COMMANDS.has(type)) return sanitizePlayerLawCommand(user, authoritativeBefore, command)

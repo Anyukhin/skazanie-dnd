@@ -9,6 +9,57 @@ export const ITEM_CATALOG_SOURCE = Object.freeze({
 })
 
 export const ITEM_MECHANICS_STATUSES = Object.freeze(['verified', 'partial', 'ruling-only'])
+
+/**
+ * Откуда вещь взялась. Словарь один на оба мира: на экземпляры противников и
+ * контейнеров (`origin.kind`, `server/item-instances.mjs`) и на инвентарь героя
+ * (`item.origin`, `server/merchant-economy.mjs`). Живёт он здесь, в каталоге,
+ * потому что каталог не импортирует ничего, а те два модуля импортируют его:
+ * объявить список в любом из них значило бы либо цикл, либо второй словарь — а
+ * происхождение переезжает вместе с вещью, и разойдись списки, снятое с тела
+ * меняло бы имя своей истории на границе кармана.
+ *
+ * `unknown` — не «движок не знает», а честная запись про вещь из сохранения,
+ * сделанного до этой волны: происхождения у героев тогда не было вовсе, и
+ * выдумывать его задним числом значило бы соврать в летописи.
+ *
+ * Ключи английские по `AGENTS.md` §7 (поля и значения контракта — английские);
+ * подписи для стола — в `ITEM_ORIGIN_LABELS`.
+ */
+export const ITEM_ORIGIN_KINDS = Object.freeze([
+  'enemy_loadout', 'purchased', 'found', 'looted', 'stolen', 'gifted', 'reward', 'unknown',
+])
+
+export const DEFAULT_ITEM_ORIGIN_KIND = 'unknown'
+
+/**
+ * Происхождение, которое принадлежит только своему герою и ведущему.
+ *
+ * Краденое — единственный вид, который сам по себе улика: он называет, что
+ * герой взял чужое. Соседу по столу это знание не принадлежит — не из
+ * стыдливости, а потому что «у Ильмы в сумке краденое» решает за него, доносить
+ * ли, и обесценивает саму кражу. Список закрыт и читается обеими поверхностями
+ * сразу: проекцией (`server/viewer-projection.mjs`) и карточкой вещи.
+ */
+export const PRIVATE_ITEM_ORIGIN_KINDS = Object.freeze(['stolen'])
+
+/** Как происхождение называется за столом. */
+export const ITEM_ORIGIN_LABELS = Object.freeze({
+  enemy_loadout: 'снаряжение врага',
+  purchased: 'куплено',
+  found: 'найдено',
+  looted: 'снято с трупа',
+  stolen: 'украдено',
+  gifted: 'подарено',
+  reward: 'награда',
+  unknown: 'неизвестно',
+})
+
+/** Приведение недоверенного происхождения к словарю. */
+export function normalizeItemOriginKind(value, fallback = DEFAULT_ITEM_ORIGIN_KIND) {
+  const kind = String(value ?? '').trim()
+  return ITEM_ORIGIN_KINDS.includes(kind) ? kind : fallback
+}
 export const ITEM_AVAILABILITY_CHANNELS = Object.freeze(['shop', 'loot', 'magic_loot', 'crafting'])
 export const ITEM_RECHARGE_SCHEMA_VERSION = 1
 
@@ -1299,6 +1350,11 @@ const INSTANCE_FIELDS = new Set([
   'id',
   'item_id',
   'stock_id',
+  // Происхождение — свойство **этой** вещи, а не каталожной записи, и потому
+  // обязано пережить материализацию наравне с количеством и надетостью. Без
+  // строки здесь четыре пути разом (покупка, награда, `GrantItem` по каталогу и
+  // стартовый набор) молча теряли бы историю вещи на самом входе в карман.
+  'origin',
   'quantity',
   'equipped',
   'attuned_to',

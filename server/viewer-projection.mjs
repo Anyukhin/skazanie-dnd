@@ -1,7 +1,7 @@
 // @ts-check
 import { encounterDifficultyLabel } from './encounter-assembler.mjs'
 import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
-import { itemViewerCapabilities } from './item-catalog.mjs'
+import { PRIVATE_ITEM_ORIGIN_KINDS, itemViewerCapabilities } from './item-catalog.mjs'
 import { npcProfileForViewerAt, npcSocialForViewer } from './npc-social.mjs'
 import { suggestedActionsFor } from './action-hints.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
@@ -22,6 +22,7 @@ import { lootContainerForViewer, lootContainersForViewer } from './loot-containe
 import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
 import { blessingsForViewer } from './blessings.mjs'
+import { lockpickingForViewer } from './lockpicking.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { courierLetterForViewer, courierLettersForViewer } from './courier-letters.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -410,6 +411,32 @@ function exactEnemyHealthKnown(state, enemyId, actorId = '') {
 }
 
 /**
+ * Полоса легендарных действий: сколько их всего и сколько уже потрачено.
+ *
+ * Это качественная величина, а не число стат-блока: за столом видно, что босс
+ * бьёт между ходами, и видно, что запас кончается. Точный остаток на карточке
+ * — то же самое знание, только записанное честно, поэтому пипсы отряду
+ * принадлежат, а закрытая бухгалтерия (`legendary-action-used:<n>` в
+ * состояниях) — нет: маркеры несут ещё и суточный запас сопротивления.
+ *
+ * @param {Loose} enemy
+ * @param {LooseState} state
+ * @param {string} id
+ * @returns {{ uses: number, used: number } | null}
+ */
+function publicLegendaryFor(enemy, state, id) {
+  const declared = enemy?.legendary
+  if (!declared || typeof declared !== 'object' || Array.isArray(declared)) return null
+  if (!Array.isArray(declared.actions) || !declared.actions.length) return null
+  const uses = Math.max(1, Math.min(5, integer(declared.uses, 3)))
+  const spent = (state?.mechanics?.conditions?.[id] ?? [])
+    .map((/** @type {Loose} */ condition) => text(condition?.id ?? condition, 160))
+    .filter((/** @type {string} */ condition) => condition.startsWith('legendary-action-used:'))
+    .length
+  return { uses, used: Math.max(0, Math.min(uses, spent)) }
+}
+
+/**
  * @param {Loose} [enemy]
  * @param {LooseState} [state]
  * @param {string} [actorId]
@@ -421,9 +448,15 @@ export function publicEnemyFor(enemy = {}, state = {}, actorId = '') {
   const exactHealth = exactEnemyHealthKnown(state, id, actorId)
   const image = publicEnemyImage(enemy.image)
   const creatureType = text(enemy.creature_type, 80)
+  const legendary = publicLegendaryFor(enemy, state, id)
   return {
     id,
     name: text(enemy.name, 120),
+    // Босс объявляется отрядом с первого взгляда — это не тайна стат-блока, а
+    // то, что за столом видно: существо действует между чужими ходами. Ни СЛ,
+    // ни список заклинаний, ни сам блок `spellcasting` сюда не попадают по
+    // построению: карточка — белый список, и в нём их просто нет.
+    ...(legendary ? { boss: true, legendary } : {}),
     x: integer(enemy.x, 0),
     y: integer(enemy.y, 0),
     ...(image ? { image } : {}),
@@ -535,6 +568,18 @@ const OPAQUE_ENEMY_CONDITION_IDS = Object.freeze({
   'weapon-coated:': 'weapon-coated',
   'monster-action-used:': 'monster-action-used',
   'npc-tactic-used:': 'npc-tactic-used',
+  // Магия и легендарный запас существа считаются теми же маркерами, что и
+  // потраченный приём стат-блока, и закрываются так же. `monster-spell-used:`
+  // несёт в себе идентификатор заклинания, то есть весь список магии босса;
+  // легендарные маркеры — точный остаток запаса. Качественную его форму
+  // (пипсы) отряд получает отдельным полем карточки, а не чтением бухгалтерии.
+  'monster-spell-used:': 'monster-spell-used',
+  // «Карман этого человека уже обчищен» — служебная запись движка, а не
+  // состояние, которое видно на человеке. Столу она сказала бы и о самой краже,
+  // и о том, у кого именно уже побывала чужая рука.
+  'pocket-picked:': 'pocket-picked',
+  'legendary-action-used:': 'legendary-action-used',
+  'legendary-resistance-used:': 'legendary-resistance-used',
 })
 
 /**
@@ -544,7 +589,11 @@ const OPAQUE_ENEMY_CONDITION_IDS = Object.freeze({
  * это не состояние, которое видно на существе, а учётная запись движка. Сам
  * поступок игрок при этом видит — своей строкой и своим событием.
  */
-const ENEMY_BOOKKEEPING_CONDITIONS = Object.freeze(['monster-action-used', 'npc-tactic-used'])
+const ENEMY_BOOKKEEPING_CONDITIONS = Object.freeze([
+  'monster-action-used', 'npc-tactic-used',
+  'monster-spell-used', 'legendary-action-used', 'legendary-resistance-used',
+  'pocket-picked',
+])
 
 /**
  * Поля условия, которые принадлежат ведущему: добавка к следующему удару и
@@ -588,8 +637,18 @@ function publicConditionsFor(value, enemyIds) {
   /** @type {Record<string, any>} */
   const projected = {}
   for (const [ownerId, conditions] of Object.entries(value)) {
-    if (!enemyIds.has(String(ownerId)) || !Array.isArray(conditions)) {
+    if (!Array.isArray(conditions)) {
       projected[ownerId] = conditions
+      continue
+    }
+    // Служебная бухгалтерия движка снимается у **любого** владельца, а не
+    // только у противника. До карманной кражи все такие маркеры висели на
+    // существах, и ветка ниже закрывала их заодно с прочим; «карман обчищен»
+    // висит на мирном NPC, и прежний порядок отдал бы его столу целиком —
+    // вместе с ответом, у кого именно уже побывала чужая рука.
+    if (!enemyIds.has(String(ownerId))) {
+      projected[ownerId] = conditions.filter((condition) => !ENEMY_BOOKKEEPING_CONDITIONS
+        .includes(publicEnemyConditionId(/** @type {Loose} */ (condition)?.id ?? condition)))
       continue
     }
     projected[ownerId] = conditions.flatMap((condition) => {
@@ -947,6 +1006,13 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // Тайны в самом реестре нет ни одной, и ключ стоит здесь только затем, чтобы
   // строгий whitelist не выбросил его до подмены.
   'blessings',
+  // Взлом отмычками. Собственного ключа в состоянии нет: карточка выводится из
+  // листа героя-зрителя (`lockpickingForViewer`, `server/lockpicking.mjs`) и
+  // существует только в проекции. Скрытого в ней нет ни грамма — владение
+  // инструментом игрок и так читает в своей предыстории, — а того, что скрыто
+  // по-настоящему, там нет по построению: ни СЛ замка, ни запертости сундуков
+  // карточка не несёт и нести не должна.
+  'lockpicking',
   // Время суток и погода. Собственного ключа в состоянии нет: обе величины
   // выводятся из мировых минут и сида кампании (`server/weather.mjs`) и
   // существуют только в проекции. Решение осознанное и в обе стороны одинаковое:
@@ -982,17 +1048,37 @@ function viewerFor(state, user, actorId) {
 }
 
 /**
+ * Инвентарь героев для стола.
+ *
+ * Происхождение вещи столу принадлежит — кроме краденого. «У Ильмы в сумке
+ * краденое» решает за её игрока то, что должен решать он сам: рассказывать ли
+ * об этом отряду и доносить ли, — и обесценивает саму кражу, которая тем и
+ * интересна, что о ней знает один человек. Поэтому закрытые виды снимаются с
+ * **чужих** вещей поимённо, а не заменяются вежливым «неизвестно»: подменный
+ * вид был бы прямой ложью в карточке, а отсутствие поля — честным молчанием.
+ *
+ * Своё видно целиком: в собственном кармане герой знает, что где взял. У
+ * ведущего `viewerId` пуст — он видит всё.
+ *
  * @param {Loose[]} players
+ * @param {string} [viewerId]
  * @returns {Loose[]}
  */
-function playerItemsWithCapabilities(players) {
-  return (Array.isArray(players) ? players : []).map((player) => ({
-    ...player,
-    inventory: (Array.isArray(player?.inventory) ? player.inventory : []).map((item) => {
-      const capabilities = itemViewerCapabilities(item)
-      return capabilities ? { ...item, capabilities } : item
-    }),
-  }))
+function playerItemsWithCapabilities(players, viewerId = '') {
+  const viewer = String(viewerId ?? '')
+  return (Array.isArray(players) ? players : []).map((player) => {
+    const own = !viewer || String(player?.id ?? '') === viewer
+    return {
+      ...player,
+      inventory: (Array.isArray(player?.inventory) ? player.inventory : []).map((item) => {
+        const capabilities = itemViewerCapabilities(item)
+        const withCapabilities = capabilities ? { ...item, capabilities } : item
+        if (own || !PRIVATE_ITEM_ORIGIN_KINDS.includes(String(item?.origin ?? ''))) return withCapabilities
+        const { origin, ...rest } = withCapabilities
+        return rest
+      }),
+    }
+  })
 }
 
 /**
@@ -1050,6 +1136,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // сидит своим героем, и вторая форма панели была бы вторым ответом на один
     // вопрос.
     blessings: blessingsForViewer(state, { playerId: String(actorId ?? '') }),
+    // Взлом: умеет ли этот герой вскрывать замки и что ответить, если нет.
+    // Карточку собирает сервер целиком — второй формулы владения у клиента не
+    // появляется, а ни СЛ, ни запертости в ней нет.
+    lockpicking: lockpickingForViewer(state, { playerId: String(actorId ?? '') }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
     weather: weatherForViewer(state),
@@ -1170,7 +1260,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     : visible.mechanics
   const room = {
     ...publicState,
-    players: playerItemsWithCapabilities(publicState.players),
+    players: playerItemsWithCapabilities(publicState.players, actorId),
     scene,
     adventure: publicAdventureFor(visible.adventure),
     worldMap: publicWorldMapFor(visible.worldMap ?? state.worldMap),
@@ -1205,6 +1295,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // пожертвование. Карточку собирает сервер целиком — клиенту нечего
     // досчитывать.
     blessings: blessingsForViewer(state, { playerId: String(actorId ?? '') }),
+    // Взлом: умеет ли этот герой вскрывать замки и что ответить, если нет.
+    // Карточку собирает сервер целиком — второй формулы владения у клиента не
+    // появляется, а ни СЛ, ни запертости в ней нет.
+    lockpicking: lockpickingForViewer(state, { playerId: String(actorId ?? '') }),
     // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
     // на один вопрос.
@@ -1370,6 +1464,20 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (visible.event_type === 'NpcItemUsed') {
     for (const key of ['item_instance_id', 'catalog_id', 'item_name']) delete payload[key]
   }
+  // Карманная кража. Успех знает только вор: это его рука и его тайна, и
+  // событие уходит ему адресно. А вот пойманная за руку попытка — публичный
+  // скандал: её видели, и от стола её прятать нечем.
+  //
+  // Закрывается здесь другое — кошелёк **жертвы**. `purse_cp` называет, сколько
+  // у человека было денег, и это опись чужого кармана ровно того же рода, что
+  // и `npc_purse_before_cp` за костями. Свою прибыль вор видит собственным
+  // балансом, который остаётся целиком.
+  if (visible.event_type === 'NpcPocketPicked') delete payload.purse_cp
+  // Донос. Кому именно торговец отправил весточку и на какой ступени розыска
+  // он это сделал — знание закона, а не прилавка: игрок видит поступок и его
+  // последствия, а `wanted_level` в игре не показывается вовсе (см.
+  // `WANTED_LEVEL_LABELS`, `server/law-and-order.mjs`).
+  if (visible.event_type === 'MerchantDenouncedThief') delete payload.wanted_level
   if (visible.event_type === 'NpcPlaced') delete payload.vitality
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
@@ -1542,7 +1650,21 @@ function eventForViewer(event, user, actorId, state = {}) {
     for (const key of [
       'modifier', 'kept', 'attack_bonus', 'damage_expression', 'damage_dice', 'action_id', 'dice', 'expression',
       'item_id', 'item_name', 'catalog_id', 'effect_id',
+      // Идентификатор легендарного действия — ключ стат-блока ровно того же
+      // рода, что и `action_id` строкой выше. Поступок отряд видит по `name`.
+      'legendary_action_id',
     ]) delete payload[key]
+  }
+  // СЛ заклинания существа — число стат-блока, и закрыто оно наравне с КД и
+  // точными ОЗ. Ветка условная по **заклинателю**, а не по цели: когда чарами
+  // бьёт враг, спасбросок катит герой, и `enemyTargetId` ниже пуст, а
+  // `difficulty` в событии — это дословно «СЛ заклинаний босса».
+  //
+  // Исход при этом остаётся целиком: устоял герой или нет, сколько выбросил и
+  // что за заклинание прилетело — всё это за столом видно своими глазами.
+  // Своей магии героя ветка не касается: у неё `actor_id` — сам герой.
+  if (enemyActor && ['SpellSavingThrowResolved', 'SavingThrowResolved', 'NpcSavingThrowResolved', 'DamageApplied', 'ConditionAdded'].includes(String(visible.event_type))) {
+    for (const key of ['difficulty', 'save_dc']) delete payload[key]
   }
   // Состояние противника: тот же санитайзер, что и у проекции комнаты, — иначе
   // закрытое в состоянии уезжало бы игроку событием той же команды. Ветка

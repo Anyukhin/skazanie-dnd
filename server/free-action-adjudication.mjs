@@ -363,6 +363,59 @@ export function resolveInventoryTransfer(state = {}, actorId = '', text = '', re
   }
 }
 
+/**
+ * «Обчищаю карманы торговца», «залезаю в кошель стражнику», «тяну кошелёк».
+ *
+ * Ветка обязана стоять **до** обыска трупа: у того в шаблоне уже есть слово
+ * «карман», и без этого порядка живой купец разбирался бы как тело. Пустой
+ * список слов здесь не годится — «карман» в паре с живым человеком читается
+ * однозначно, а в паре с телом остаётся обыском.
+ */
+const PICKPOCKET_PHRASE = /(?:обчищ\p{L}*|обчист\p{L}*|очищ\p{L}*|шар\p{L}*|лез\p{L}*|залез\p{L}*|тян\p{L}*|крад\p{L}*|ворую|своро\p{L}*|срез\p{L}*|стащ\p{L}*|стян\p{L}*|подрез\p{L}*)[^.!?]{0,80}(?:карман\p{L}*|кошел\p{L}*|мошн\p{L}*|кошель)|(?:карман\p{L}*|кошел\p{L}*|мошн\p{L}*)[^.!?]{0,80}(?:обчищ\p{L}*|обчист\p{L}*|срез\p{L}*|стащ\p{L}*|стян\p{L}*|подрез\p{L}*)/iu
+
+/**
+ * Карманная кража свободной фразой.
+ *
+ * Контракт арбитра расширять не пришлось: `sleight_of_hand` уже есть в списке
+ * навыков (`action_adjudicator/v3.txt`), а `target_id` он и так называет.
+ * Не хватало **маршрута**: прочтение приходило честное, но разрешалось общей
+ * проверкой навыка с абстрактной ценой провала — то есть без кармана, без
+ * свидетелей и без розыска. Здесь заявка переводится в ту же команду, что
+ * приходит из меню NPC, и дальше обе идут одним путём.
+ */
+export function resolvePickpocket(state = {}, actorId = '', text = '', reading = {}) {
+  const looksLikeTheft = PICKPOCKET_PHRASE.test(text) || String(reading?.skill ?? '') === 'sleight-of-hand'
+  if (!looksLikeTheft) return null
+  const requested = clean(reading?.target_id, 120)
+  const npcs = currentSocialActors(state)
+  const named = npcs.filter((npc) => String(npc.id) === requested
+    || mentionsReference(text, referenceNames(npc)))
+  // Кража у своих не разбирается вовсе: у отряда нет карманов друг для друга, и
+  // честнее сказать это словами, чем молча судить проверкой навыка.
+  const party = (state?.players ?? []).filter((hero) => mentionsReference(text, referenceNames(hero)))
+  if (!named.length && party.length) {
+    return { status: 'clarification', narration: 'У своих не крадут: обчистить можно только чужой карман.' }
+  }
+  if (!PICKPOCKET_PHRASE.test(text)) return null
+  if (named.length !== 1) {
+    return {
+      status: 'clarification',
+      narration: named.length > 1
+        ? `Уточните, чей карман: подходят ${named.map((npc) => npc.name ?? npc.id).join(', ')}.`
+        : 'Уточните, у кого именно вы хотите обчистить карман.',
+    }
+  }
+  if (state?.mechanics?.combat?.active === true) {
+    return { status: 'clarification', narration: 'Посреди боя карманов не чистят.' }
+  }
+  const npc = named[0]
+  return {
+    status: 'command',
+    command: { command_type: 'PickpocketNpc', actor_id: String(actorId), npc_id: String(npc.id) },
+    narration: `Рука тянется к чужому кошельку: ${npc.name ?? npc.id}.`,
+  }
+}
+
 const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман)|(?:труп|тел[оаеу]|останки|карман)[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu
 
 /**

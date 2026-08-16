@@ -91,7 +91,12 @@ function dice(values) {
   })
 }
 
-function sceneState({ assetId = 'chest', seed = 'scene-seed', propX = 1, propY = 0, combat = false } = {}) {
+/**
+ * `thief` — предыстория с владением воровскими инструментами. Замок вскрывает
+ * только владеющий (`server/lockpicking.mjs`), и без этого признака запертый
+ * сундук отвечает отказом до всякого броска.
+ */
+function sceneState({ assetId = 'chest', seed = 'scene-seed', propX = 1, propY = 0, combat = false, thief = false } = {}) {
   const map = createTacticalMap({
     width: 5,
     height: 3,
@@ -118,6 +123,7 @@ function sceneState({ assetId = 'chest', seed = 'scene-seed', propX = 1, propY =
       proficiency: 2,
       abilities: { str: 16, dex: 14, int: 14, wis: 14, cha: 10, con: 12 },
       classSkillProficiencies: ['athletics', 'arcana', 'religion', 'investigation', 'perception', 'sleight_of_hand'],
+      ...(thief ? { backgroundId: 'criminal' } : {}),
       inventory: [],
       x: 0,
       y: 0,
@@ -222,14 +228,14 @@ test('дистанция и server-only силовой подход провер
   )
 })
 
-test('запертый контейнер с ловушкой открывается проверкой, наносит bounded урон и отдаёт loot ровно один раз', () => {
+test('запертый контейнер с ловушкой вскрывается отмычкой, наносит bounded урон и отдаёт loot ровно один раз', () => {
   const seed = containerSeed()
-  const initial = sceneState({ seed })
+  const initial = sceneState({ seed, thief: true })
   const opened = resolveCommand({
     command_type: 'OperateSceneObject',
     actor_id: 'hero',
     prop_id: 'prop-chest',
-    intent: 'open',
+    intent: 'lockpick',
   }, initial, { diceService: dice([20, 3]) })
   assert.ok(opened.events.some((event) => event.event_type === 'SceneObjectCheckResolved' && event.payload.success))
   assert.ok(opened.events.some((event) => event.event_type === 'SceneObjectStateChanged' && event.payload.state === 'open'))
@@ -259,13 +265,13 @@ test('запертый контейнер с ловушкой открывает
 
 test('ловушка при падении до нуля запускает те же последствия, что обычный урон', () => {
   const seed = containerSeed()
-  const initial = sceneState({ seed })
+  const initial = sceneState({ seed, thief: true })
   initial.players[0].hp = 1
   const opened = resolveCommand({
     command_type: 'OperateSceneObject',
     actor_id: 'hero',
     prop_id: 'prop-chest',
-    intent: 'open',
+    intent: 'lockpick',
   }, initial, { diceService: dice([20, 3]) })
   assert.ok(opened.events.some((event) => event.event_type === 'DamageApplied' && event.payload.hp_after === 0))
   assert.ok(opened.events.some((event) => event.event_type === 'HitPointsReducedToZero'))
