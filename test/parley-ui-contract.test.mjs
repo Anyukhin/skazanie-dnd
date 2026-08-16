@@ -60,8 +60,16 @@ test('клиент называет только подход и исход: С�
 test('ручной бросок парлея двухфазный: карточка проверки, затем та же команда с roll_id', () => {
   assert.match(session, /manual_roll: true/u)
   assert.match(session, /roll: \{ roll_id: dice\.roll\.roll_id \}/u)
-  assert.match(session, /result\?\.check && command\.command_type === 'ProposeParley'/u)
   assert.match(session, /check\.command/u)
+  // Развилка карточки закреплена **списком** двухфазных команд, а не одним
+  // парлеем. Раньше здесь стояло дословное
+  // `result?.check && command.command_type === 'ProposeParley'`, и проверка
+  // держала не контракт, а ошибку: с тем же условием карточки побега от стражи
+  // и ответного броска за костями приходили с сервера и молча пропадали.
+  // Полный сторож списка — `test/tavern-ui-contract.test.mjs`, здесь довольно
+  // того, что парлей из него не выпал.
+  assert.match(session, /result\?\.check && twoPhase/u)
+  assert.match(session, /function twoPhaseCheckCommandFor[\s\S]*?case 'ProposeParley':/u)
 })
 
 test('переговоры читаются в боевой хронике, а не остаются кодом события', () => {

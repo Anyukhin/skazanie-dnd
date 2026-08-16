@@ -12,6 +12,7 @@ import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
+import { BEAST_TAMING_ABILITY, BEAST_TAMING_POLICY_ID, BEAST_TAMING_SKILL, beastFor, beastIdFor, beastTamingPolicy, tameableBeasts } from './beast-taming.mjs'
 import { LAW_POLICY_ID, guardEncounterFor } from './law-and-order.mjs'
 import { PARLEY_ABILITY, PARLEY_POLICY_ID, mentionsParley, parleyMoraleFor, parleySkillFor, truceFor } from './parley.mjs'
 import {
@@ -21,7 +22,9 @@ import {
   deterministicNarration,
   verifyNarratorCraft,
 } from './narrator.mjs'
-import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check } from './rules-engine.mjs'
+import { TAVERN_DICE_APPROACHES, TAVERN_POLICY_ID, tavernRoundFor } from './tavern-life.mjs'
+import { BLESSINGS_POLICY_ID, PRAYER_ABILITY, PRAYER_DC, PRAYER_SKILL } from './blessings.mjs'
+import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
@@ -378,6 +381,16 @@ function rollForClient(roll) {
     modifier: Number(roll.modifier) || 0,
     total: Number(roll.total) || 0,
     label: rollPurposeLabel(roll.purpose),
+    // Видимость переезжает вместе с броском, и это не украшение ответа.
+    //
+    // Её читает санитайзер результата хода (`rollVisibleFor`,
+    // `server/viewer-projection.mjs`), и без этого поля фильтр видел
+    // `undefined`, подставлял `public` и пропускал в ответ игроку ровно то, что
+    // массив `rolls` того же ответа резал правильно. Защита стояла на одном
+    // канале из двух, и в дыру уезжала настоящая кость шулера: стол видел
+    // объявленные 12, а в `effects.roll` лежали выпавшие 7 — разница ровно в
+    // надбавке, которую игрок обязан искать Проницательностью, а не вычитанием.
+    visibility: String(roll.visibility ?? 'public'),
     success: typeof roll.success === 'boolean' ? roll.success : undefined,
   }
 }
@@ -862,6 +875,184 @@ export class GameOrchestrator {
     return { ...check, skill: preview.skill }
   }
 
+  /**
+   * Карточка проверки для ответного броска за костями. СЛ здесь честнее, чем у
+   * любой другой карточки: это ровно `бросок соперника + 1`, уже лежащий в
+   * состоянии, — раунд для того и разложен на две команды, чтобы игроку было
+   * против чего бросать.
+   *
+   * Подход уезжает в предпросмотр вместе с героем, и это не украшение: у
+   * подкрученной кости свой модификатор, и печатать «+0» там, где исполнение
+   * посчитает «+5», карточка не имеет права.
+   */
+  tavernDiceCheckCard({ campaignId, playerId, state, command }) {
+    const actorId = String(command.actor_id ?? playerId)
+    const round = tavernRoundFor(state, actorId)
+    if (!round) return null
+    const approach = String(command.approach ?? 'fair')
+    const preview = previewTavernDiceRoll(state, actorId, approach)
+    const check = this.rollRegistry.registerCheck({
+      campaignId,
+      actorId,
+      label: `Кости против ${round.npc_name || 'соперника'}`,
+      modifier: preview.modifier,
+      difficulty: round.target,
+      ability: null,
+      advantage: preview.advantage,
+      disadvantage: preview.disadvantage,
+      // Подход закрепляется здесь и только здесь. Иначе решение подкрутить
+      // кость принималось бы **после** просмотра кубика: первая фаза объявляла
+      // бы честный бросок, игрок видел бы выпавшее число, а вторая приносила бы
+      // `cheat` новой командой — и +5 доставался бы ровно тем, кому его не
+      // хватило. Модификатор карточки при этом уже посчитан по этому подходу.
+      context: { kind: 'tavern-dice', policy: TAVERN_POLICY_ID, round_id: round.id, approach },
+    })
+    return check
+  }
+
+  /**
+   * Карточка проверки для первой фазы молитвы у святыни. СЛ здесь серверная и
+   * постоянная (`PRAYER_DC`): у святыни нет замка, который можно было бы
+   * сделать сложнее, и объявленное число совпадает с тем, против которого
+   * бросит движок, по построению.
+   *
+   * `null` — молиться нельзя, и отказ должен случиться до кубика, а не после:
+   * бросать кость ради заведомого отказа — обман стола, а запись в реестре
+   * бросков после такого хода остаётся висеть.
+   *
+   * Отказы спрашиваются у движка целиком (`shrinePrayerRefusalFor`), а не
+   * пересчитываются здесь. Пока карточка знала только суточный откат, она
+   * выдавалась и посреди боя, и у несуществующего пропса, и через полкарты от
+   * алтаря: кнопка на доске эти случаи закрывала, а гонка (бой начался между
+   * фазами) и не-браузерный клиент — нет.
+   */
+  shrinePrayerCheckCard({ campaignId, playerId, state, command }) {
+    const actorId = String(command.actor_id ?? playerId)
+    if (shrinePrayerRefusalFor(state, { actorId, propId: String(command.prop_id ?? '') })) return null
+    const preview = previewD20Check(state, {
+      actorId,
+      kind: 'check',
+      ability: PRAYER_ABILITY,
+      skill: PRAYER_SKILL,
+      difficulty: PRAYER_DC,
+    })
+    const check = this.rollRegistry.registerCheck({
+      campaignId,
+      actorId,
+      label: d20CheckLabel({ kind: 'check', ability: preview.ability, skill: preview.skill }),
+      modifier: preview.modifier,
+      difficulty: PRAYER_DC,
+      ability: preview.ability,
+      advantage: preview.advantage,
+      disadvantage: preview.disadvantage,
+      // Пропс уезжает в контекст, потому что молитва привязана к святыне: между
+      // фазами герой мог отойти к другому алтарю, и кость, брошенная у одного,
+      // не должна исполняться у другого.
+      context: { kind: 'shrine-prayer', policy: BLESSINGS_POLICY_ID, prop_id: String(command.prop_id ?? '') },
+    })
+    return { ...check, skill: preview.skill }
+  }
+
+  /**
+   * Сторож второй фазы молитвы. Реестр бросков сверяет только кампанию и актора
+   * (`server/roll-registry.mjs`), поэтому всё остальное проверяется здесь:
+   * бросок обязан быть зарегистрирован **молитвой** и **у этой святыни**.
+   *
+   * Пропс важен ровно настолько, насколько в сцене бывает второй алтарь: кость,
+   * брошенная у одного, не должна исполняться у другого, а между фазами герой
+   * мог отойти. Без этой сверки во вторую фазу годился бы любой кубик того же
+   * героя против той же СЛ — в том числе от совсем другой проверки.
+   */
+  assertShrinePrayerRollContext(command, context) {
+    const reject = (message) => {
+      const error = new Error(message)
+      error.code = 'ROLL_CONTEXT_MISMATCH'
+      throw error
+    }
+    if (String(context?.kind ?? '') !== 'shrine-prayer') reject('Этот бросок регистрировался не для молитвы')
+    if (String(context?.prop_id ?? '') !== String(command?.prop_id ?? '')) reject('Этот бросок регистрировался у другой святыни')
+  }
+
+  /**
+   * Политика уговора конкретного зверя прямо сейчас. Одна функция на обе фазы
+   * ручного броска: карточка объявляет СЛ отсюда, и сторож второй фазы сверяет
+   * объявленное с текущим тоже отсюда. Две копии этого вычисления разошлись бы
+   * молча — ровно так, как разошлись бы две формулы сложности.
+   */
+  beastTamingPolicyFor(state, beastId) {
+    const candidate = tameableBeasts(state)
+      .find((entry) => (entry.beast?.id ?? beastIdFor(state, entry.enemy.id)) === String(beastId ?? ''))
+    if (!candidate || candidate.blocked_reason) return null
+    return beastTamingPolicy(state, candidate.enemy, candidate.beast)
+  }
+
+  /**
+   * Карточка проверки для первой фазы уговора зверя. СЛ — та же, которую
+   * применит движок во второй фазе: её считает одна серверная политика
+   * (`beastTamingPolicy`), и второго ответа на вопрос «насколько трудно» в
+   * проекте нет.
+   *
+   * В контекст уезжает и ступень, и **сама объявленная СЛ**, и это не
+   * дублирование: ступень не единственное её слагаемое. Между фазами зверя
+   * могли накормить (`fed` снимает четыре пункта), но могли и промахнуться
+   * вторым героем, ранить его или сломать ему мораль — ступень при этом не
+   * меняется, а число меняется. Карточка, объявившая 15, не имеет права
+   * исполниться ни против 11, ни против 16.
+   */
+  beastTamingCheckCard({ campaignId, playerId, state, command }) {
+    const actorId = String(command.actor_id ?? playerId)
+    const beastId = String(command.beast_id ?? '')
+    const policy = this.beastTamingPolicyFor(state, beastId)
+    if (!policy) return null
+    const preview = previewD20Check(state, {
+      actorId,
+      kind: 'check',
+      ability: BEAST_TAMING_ABILITY,
+      skill: BEAST_TAMING_SKILL,
+      difficulty: policy.difficulty,
+    })
+    const check = this.rollRegistry.registerCheck({
+      campaignId,
+      actorId,
+      label: d20CheckLabel({ kind: 'check', ability: preview.ability, skill: preview.skill }),
+      modifier: preview.modifier,
+      difficulty: policy.difficulty,
+      ability: preview.ability,
+      advantage: preview.advantage,
+      disadvantage: preview.disadvantage,
+      context: { kind: 'beast-taming', policy: BEAST_TAMING_POLICY_ID, beast_id: beastId, stage: policy.stage, difficulty: policy.difficulty },
+    })
+    return { ...check, skill: preview.skill, stage: policy.stage, difficulty_parts: policy.parts }
+  }
+
+  /**
+   * Сторож второй фазы уговора. Реестр бросков сверяет только кампанию и актора
+   * (`server/roll-registry.mjs`), поэтому всё остальное проверяется здесь:
+   * бросок обязан быть зарегистрирован уговором **этого** зверя, на той же
+   * ступени и против той же СЛ.
+   *
+   * Ступени мало, и это не перестраховка. СЛ складывается ещё из раны, из
+   * сломленной морали и из числа неудач: второй герой промахнулся между фазами
+   * — ступень осталась `wary`, а число выросло на пункт, и карточка,
+   * объявившая 13, исполнилась бы против 14. Расхождение — отказ и повторный
+   * бросок, а не тихое исправление: игрок бросает против того, что видел.
+   */
+  assertBeastRollContext(state, command, context) {
+    const reject = (message) => {
+      const error = new Error(message)
+      error.code = 'ROLL_CONTEXT_MISMATCH'
+      throw error
+    }
+    if (String(context?.kind ?? '') !== 'beast-taming') reject('Этот бросок регистрировался не для уговора зверя')
+    if (String(context?.beast_id ?? '') !== String(command?.beast_id ?? '')) reject('Этот бросок регистрировался для другого зверя')
+    const policy = this.beastTamingPolicyFor(state, String(command?.beast_id ?? ''))
+    const stage = policy?.stage ?? beastFor(state, String(command?.beast_id ?? ''))?.stage ?? 'wary'
+    if (String(context?.stage ?? '') !== stage) reject('Между броском и ходом зверь переменился: бросьте кость заново')
+    if (policy && Number(context?.difficulty) !== policy.difficulty) {
+      reject('Между броском и ходом СЛ уговора переменилась: бросьте кость заново')
+    }
+  }
+
   freeActionResponse({
     freeAction,
     campaignId,
@@ -1191,6 +1382,141 @@ export class GameOrchestrator {
           throw error
         }
         escapeCommand.verified_roll = verifiedRollPayload
+      }
+    }
+    // Ответный бросок за костями — тот же двухфазный ручной кубик, что у парлея
+    // и побега. Разница одна и она в пользу игрока: СЛ здесь не выведена
+    // политикой, а лежит на столе — это кость соперника, брошенная предыдущей
+    // командой.
+    const tavernAnswerCommand = (input.commands ?? [])
+      .find((candidate) => String(candidate?.command_type ?? '') === 'AnswerTavernDiceRound') ?? null
+    if (tavernAnswerCommand) {
+      if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
+        const card = this.tavernDiceCheckCard({ campaignId, playerId, state: authoritativeState, command: tavernAnswerCommand })
+        if (card) {
+          return {
+            narration: `Кость соперника на столе: нужно ${card.difficulty} или больше. Бросайте.`,
+            effects: emptyEffects(),
+            provider: 'RulesEngine',
+            model: 'deterministic',
+            turn_id: turnId,
+            engine_mode: mode,
+            state_version: authoritativeState.state_version,
+            mechanics: [],
+            visible_state_changes: [],
+            authoritative_state: authoritativeState,
+            check: { ...card, sides: 20 },
+            turn_consumed: false,
+          }
+        }
+      }
+      if (verifiedRoll) {
+        // Бросок обязан быть зарегистрирован **как кости**: реестр сверяет
+        // только кампанию и актора, поэтому без этой проверки во вторую фазу
+        // раунда можно было бы подать кубик от любой другой проверки того же
+        // героя — в том числе брошенный с модификатором навыка.
+        const { context: tavernCheckContext, ...verifiedRollPayload } = verifiedRoll
+        if (String(tavernCheckContext?.kind ?? '') !== 'tavern-dice') {
+          const error = new Error('Этот бросок регистрировался не для игры в кости')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        // Подход берётся из реестра, а не из этой команды, и расхождение —
+        // отказ, а не тихое исправление.
+        //
+        // Соблазн здесь ровно один и он крупный: между фазами игрок видит свой
+        // кубик. Если бы вторая фаза читала `approach` из новой команды, решение
+        // «а подкручу-ка» принималось бы уже после просмотра числа — и +5
+        // доставался бы только тем броскам, которым не хватило. Карточка при
+        // этом объявила бы честный модификатор, то есть соврала бы столу.
+        //
+        // Раунд сверяется тем же движением: карточка объявила СЛ по кости,
+        // лежавшей на столе в первой фазе, а между фазами раунд мог закрыться
+        // (соперник разорился, герой встал из-за стола) и открыться заново уже
+        // против другого числа.
+        const registeredApproach = String(tavernCheckContext?.approach ?? '')
+        if (!TAVERN_DICE_APPROACHES.includes(registeredApproach)) {
+          const error = new Error('Этот бросок регистрировался без подхода к игре: бросьте кость заново')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        if (String(tavernAnswerCommand.approach ?? registeredApproach) !== registeredApproach) {
+          const error = new Error('Подход к броску выбирается до кости, а не после: этот бросок регистрировался иначе')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        const registeredRoundId = String(tavernCheckContext?.round_id ?? '')
+        if (registeredRoundId !== String(tavernRoundFor(authoritativeState, String(tavernAnswerCommand.actor_id ?? playerId))?.id ?? '')) {
+          const error = new Error('За столом уже другой раунд: этот бросок к нему не относится')
+          error.code = 'ROLL_CONTEXT_MISMATCH'
+          throw error
+        }
+        tavernAnswerCommand.approach = registeredApproach
+        tavernAnswerCommand.verified_roll = verifiedRollPayload
+      }
+    }
+    // Молитва у святыни — тот же двухфазный ручной кубик, что у парлея, побега
+    // и костей. Отличие одно: карточки может не быть вовсе — если герой уже
+    // обращался к богам сегодня, отказ обязан прийти до кубика, а не после.
+    const prayerCommand = (input.commands ?? []).find((candidate) => (
+      String(candidate?.command_type ?? '') === 'OperateSceneObject'
+      && String(candidate?.intent ?? '') === 'pray'
+    )) ?? null
+    if (prayerCommand) {
+      if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
+        const card = this.shrinePrayerCheckCard({ campaignId, playerId, state: authoritativeState, command: prayerCommand })
+        if (card) {
+          return {
+            narration: `Требуется проверка: ${card.label}, СЛ ${card.difficulty}. Бросьте d20 — услышат ли молитву.`,
+            effects: emptyEffects(),
+            provider: 'RulesEngine',
+            model: 'deterministic',
+            turn_id: turnId,
+            engine_mode: mode,
+            state_version: authoritativeState.state_version,
+            mechanics: [],
+            visible_state_changes: [],
+            authoritative_state: authoritativeState,
+            check: { ...card, sides: 20 },
+            turn_consumed: false,
+          }
+        }
+      }
+      if (verifiedRoll) {
+        const { context: prayerCheckContext, ...verifiedRollPayload } = verifiedRoll
+        this.assertShrinePrayerRollContext(prayerCommand, prayerCheckContext)
+        prayerCommand.verified_roll = verifiedRollPayload
+      }
+    }
+    // Уговор зверя — тот же двухфазный ручной кубик, что у парлея, побега и
+    // костей. Разница одна: карточка везёт с собой ещё и слагаемые СЛ, потому
+    // что «СЛ 18» без разбора читается за столом как произвол ведущего.
+    const beastCommand = (input.commands ?? [])
+      .find((candidate) => String(candidate?.command_type ?? '') === 'CalmBeast') ?? null
+    if (beastCommand) {
+      if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
+        const card = this.beastTamingCheckCard({ campaignId, playerId, state: authoritativeState, command: beastCommand })
+        if (card) {
+          return {
+            narration: `Требуется проверка: ${card.label}, СЛ ${card.difficulty}. Бросьте d20 — зверь смотрит и решает.`,
+            effects: emptyEffects(),
+            provider: 'RulesEngine',
+            model: 'deterministic',
+            turn_id: turnId,
+            engine_mode: mode,
+            state_version: authoritativeState.state_version,
+            mechanics: [],
+            visible_state_changes: [],
+            authoritative_state: authoritativeState,
+            check: { ...card, sides: 20 },
+            turn_consumed: false,
+          }
+        }
+      }
+      if (verifiedRoll) {
+        const { context: beastCheckContext, ...verifiedRollPayload } = verifiedRoll
+        this.assertBeastRollContext(authoritativeState, beastCommand, beastCheckContext)
+        beastCommand.verified_roll = verifiedRollPayload
       }
     }
     let intent = input.commands

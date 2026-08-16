@@ -203,11 +203,21 @@ test('порядок детерминирован, приметное впере
 /**
  * Настоящая таверна: мебель, сундук, NPC за стойкой, цель и дверь.
  *
- * @param {{hiddenChest?: boolean}} [options]
+ * `leisure: false` переносит тот же зал в место, где ни костей, ни выпивки не
+ * подают. Понадобилось это после того, как в таверне появился досуг
+ * (`server/tavern-life.mjs`): его строка соперничает за слот панели, и без
+ * такой копии проверить подпись реквизита на настоящем пути проекции было бы
+ * негде.
+ *
+ * `pointOfInterest` делает сундук приметным — тем самым, ради чего панель и
+ * заводилась.
+ *
+ * @param {{hiddenChest?: boolean, leisure?: boolean, pointOfInterest?: boolean}} [options]
  */
-function tavernState({ hiddenChest = false } = {}) {
+function tavernState({ hiddenChest = false, leisure = true, pointOfInterest = false } = {}) {
+  const hallId = leisure ? 'tavern-hall' : 'guild-hall'
   const map = createTacticalMap({
-    width: 8, height: 6, locationId: 'tavern-hall', seed: 'hints-tavern',
+    width: 8, height: 6, locationId: hallId, seed: 'hints-tavern',
     fill: { passable: true, revealed: true, material: 'wood' },
   })
   if (hiddenChest) setCell(map, 6, 4, { revealed: false })
@@ -216,7 +226,14 @@ function tavernState({ hiddenChest = false } = {}) {
   addProp(map, { id: 'broom-1', assetId: 'broom', x: 2.5, y: 1.5, footprint: [{ x: 2, y: 1 }] })
   addProp(map, { id: 'cobweb-1', assetId: 'cobweb', x: 3.5, y: 1.5, footprint: [{ x: 3, y: 1 }] })
   addProp(map, { id: 'bar-1', assetId: 'bar_counter', x: 4.5, y: 1.5, footprint: [{ x: 4, y: 1 }] })
-  addProp(map, { id: 'chest-1', assetId: 'chest', x: 6.5, y: 4.5, footprint: [{ x: 6, y: 4 }] })
+  addProp(map, {
+    id: 'chest-1',
+    assetId: 'chest',
+    x: 6.5,
+    y: 4.5,
+    footprint: [{ x: 6, y: 4 }],
+    ...(pointOfInterest ? { interaction: { pointOfInterest: true } } : {}),
+  })
   setDoor(map, { id: 'door-out', x: 0, y: 2, dir: 'e' })
   return normalizeCampaignState({
     sessionCode: 'HINTS-TAVERN',
@@ -229,23 +246,23 @@ function tavernState({ hiddenChest = false } = {}) {
     scene: {
       turn: 1,
       title: 'Общий зал',
-      location: 'tavern-hall',
+      location: hallId,
       objective: 'Найти пропавшего писаря',
       cells: [],
       map: serializeTacticalMap(map),
     },
     social: {
       npcs: [
-        { id: 'brom', name: 'Бром', role: 'трактирщик', location: 'tavern-hall', visibility: 'public' },
-        { id: 'shade', name: 'Соглядатай', role: 'осведомитель', location: 'tavern-hall', visibility: 'gm_only' },
+        { id: 'brom', name: 'Бром', role: 'трактирщик', location: hallId, visibility: 'public' },
+        { id: 'shade', name: 'Соглядатай', role: 'осведомитель', location: hallId, visibility: 'gm_only' },
       ],
       relationships: {}, conversations: [], promises: [],
     },
     npc_world: {
       schema_version: 2,
       placements: [
-        { npc_id: 'brom', location_id: 'tavern-hall', x: 4, y: 2, placement_reason: 'test' },
-        { npc_id: 'shade', location_id: 'tavern-hall', x: 5, y: 2, placement_reason: 'test' },
+        { npc_id: 'brom', location_id: hallId, x: 4, y: 2, placement_reason: 'test' },
+        { npc_id: 'shade', location_id: hallId, x: 5, y: 2, placement_reason: 'test' },
       ],
       vitals: {}, stances: {}, inventories: {},
     },
@@ -255,8 +272,10 @@ function tavernState({ hiddenChest = false } = {}) {
 
 const projectedHints = (state) => campaignStateForViewer(state, { role: 'player', heroIds: ['hero'] }, 'hero').suggested_actions
 
-test('настоящая проекция таверны: сундук по-русски, а мебель — мимо', () => {
-  const hints = projectedHints(tavernState())
+test('настоящая проекция зала: сундук по-русски, а мебель — мимо', () => {
+  // Зал без досуга: тот же реквизит, те же NPC, но ни костей, ни выпивки здесь
+  // не подают — и панель занимают только находка, собеседник, цель и выход.
+  const hints = projectedHints(tavernState({ leisure: false }))
   const texts = hints.map((hint) => hint.text)
 
   assert.deepEqual(texts, [
@@ -275,10 +294,47 @@ test('настоящая проекция таверны: сундук по-ру
   assert.ok(texts.every((line) => !line.includes('Соглядатай')), 'gm_only NPC в подсказках быть не должно')
 })
 
+/**
+ * Тот же зал, но в таверне. Досуг заведения занимает одну строку и стоит в ней
+ * впереди рядовой обстановки: про кости и кружку новичку иначе никто не
+ * скажет, а сундук в углу зала он не вытесняет (следующий тест).
+ */
+test('в таверне досуг занимает строку панели, а не две', () => {
+  const hints = projectedHints(tavernState())
+  const texts = hints.map((hint) => hint.text)
+
+  assert.equal(texts.filter((line) => /кост|выпивк/iu.test(line)).length, 1, 'досуг — ровно одна строка')
+  assert.equal(texts[0], 'Можно сыграть в кости с местными или заказать выпивку (4 мм)')
+  assert.deepEqual(texts.slice(1), [
+    'Можно заговорить с кем-то из местных: Бром (трактирщик)',
+    'Цель отряда: Найти пропавшего писаря',
+    'Можно уйти из этого места через дверь',
+  ])
+  for (const line of texts) assert.doesNotMatch(line, /[A-Za-z]/u, `подсказка показала латиницу: ${line}`)
+})
+
+/**
+ * Зонд ревью: безусловный слот у досуга означал, что в трактире про находку не
+ * скажут никогда — собеседник, цель и выход занимали остальные три строки.
+ * Теперь строки соперничают: приметная находка досуг вытесняет, рядовая
+ * обстановка — нет.
+ */
+test('приметная находка в таверне сильнее приглашения за стол', () => {
+  const texts = projectedHints(tavernState({ pointOfInterest: true })).map((hint) => hint.text)
+
+  assert.deepEqual(texts, [
+    'Можно осмотреть: Сундук',
+    'Можно заговорить с кем-то из местных: Бром (трактирщик)',
+    'Цель отряда: Найти пропавшего писаря',
+    'Можно уйти из этого места через дверь',
+  ])
+  assert.equal(texts.some((line) => /кост|выпивк/iu.test(line)), false, 'досуг уступил слот находке')
+})
+
 test('зал из одной обстановки даёт подсказки без реквизита', () => {
   // Сундук спрятан за нераскрытой клеткой — проекция его вырезает, и подсказок
   // по реквизиту не остаётся вовсе. Прочие строки при этом не страдают.
-  const hints = projectedHints(tavernState({ hiddenChest: true }))
+  const hints = projectedHints(tavernState({ hiddenChest: true, leisure: false }))
   assert.deepEqual(hints.map((hint) => hint.text), [
     'Можно заговорить с кем-то из местных: Бром (трактирщик)',
     'Цель отряда: Найти пропавшего писаря',

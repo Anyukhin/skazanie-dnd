@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { listAssets } from './asset-registry.mjs'
 import { combatBoundsContain, combatBoundsUseful, computeCombatBounds } from './combat-bounds.mjs'
+import { enemyLoadoutFor } from './enemy-loadouts.mjs'
 import { SIZE_CLASSES } from './tactical-map.mjs'
 
 export const ENCOUNTER_PROPOSAL_VERSION = 'skazanie:encounter-proposal-v1'
@@ -1036,11 +1037,12 @@ function deterministicOrder(values, seed, label) {
   })
 }
 
-function enemyFrom(statBlockId, position, proposalHash, index, ordinal) {
+function enemyFrom(statBlockId, position, proposalHash, index, ordinal, proposalId) {
   const block = SRD_5_2_1_MONSTER_ALLOWLIST[statBlockId]
   const slug = statBlockId.split(':').at(-1)
+  const enemyId = `encounter-${proposalHash.slice(0, 16)}-${slug}-${index + 1}`.slice(0, 120)
   return {
-    id: `encounter-${proposalHash.slice(0, 16)}-${slug}-${index + 1}`.slice(0, 120),
+    id: enemyId,
     name: `${block.name} ${ordinal}`,
     hp: block.hp,
     maxHp: block.hp,
@@ -1067,6 +1069,20 @@ function enemyFrom(statBlockId, position, proposalHash, index, ordinal) {
     y: position.y,
     alive: true,
     stat_block_id: statBlockId,
+    // Инвентарь лежит **рядом** с боевой записью, а не в `inventory`: последнее
+    // поле читают `derivedEquipmentArmorClass` и `activeItemEffectTotals`, и
+    // надетая вещь молча изменила бы КД или спасбросок противника. Здесь
+    // экипировка — отражение стат-блока, а не его источник.
+    loadout: enemyLoadoutFor({
+      statBlockId,
+      block,
+      ownerId: enemyId,
+      // Сид кампании и встречи уже свёрнут в `proposalHash`, идентификатор
+      // существа добавляет третью составляющую: тот же бой после replay даёт
+      // те же карманы, а два гоблина рядом — разные.
+      seed: proposalHash,
+      sourceId: proposalId,
+    }),
     provenance: {
       kind: 'server-owned-srd-primary-attack-projection',
       ruleset_id: 'srd_5_2_1',
@@ -1117,14 +1133,15 @@ export class EncounterAssembler {
 
     const positions = deterministicOrder(availableCells, proposalHash, 'placement')
     const counts = new Map()
+    const proposalId = `encounter-proposal-${proposalHash.slice(0, 24)}`
     const enemies = allocation.stat_block_ids.map((statBlockId, index) => {
       const ordinal = (counts.get(statBlockId) ?? 0) + 1
       counts.set(statBlockId, ordinal)
-      return enemyFrom(statBlockId, positions[index], proposalHash, index, ordinal)
+      return enemyFrom(statBlockId, positions[index], proposalHash, index, ordinal, proposalId)
     })
     const spentXp = allocation.spent_xp
     const proposal = {
-      proposal_id: `encounter-proposal-${proposalHash.slice(0, 24)}`,
+      proposal_id: proposalId,
       version: ENCOUNTER_PROPOSAL_VERSION,
       difficulty: validated.difficulty,
       // Ярлык едет рядом с самим уровнем: столу показывают его, а не бюджет.

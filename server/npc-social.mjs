@@ -713,6 +713,28 @@ function relationshipEvents(state, npcId, heroId, delta, reason, promiseId = '',
   return { events, after }
 }
 
+/**
+ * Черновики событий отношения для тех, кто двигает его **не разговором**.
+ *
+ * Тонкая обёртка над `relationshipEvents` существует ради единственного
+ * инварианта: арифметика отношения — границы дельты, потолок счёта и порог
+ * смены ступени — живёт в одном месте. Дошедшее письмо (`server/courier-letters.mjs`)
+ * — такое же социальное действие, как реплика в разговоре, и считать его своей
+ * копией правил значило бы завести вторую таблицу ступеней, которая разойдётся с
+ * первой на первой же правке порогов.
+ *
+ * Возвращаются именно черновики (`event_type`/`payload`/`target_ids`/`visibility`),
+ * а не события: `event_id`, версию состояния и провенанс проставляет Rules Engine.
+ *
+ * @returns {Array<{ event_type: string, payload: any, target_ids: string[], visibility: string }>}
+ */
+export function npcRelationshipEventDrafts(state = {}, { npcId = '', heroId = '', delta = 0, reason = '', promiseId = '' } = {}) {
+  const npc = clean(npcId, 120)
+  const hero = clean(heroId, 120)
+  if (!npc || !hero) return []
+  return relationshipEvents(state, npc, hero, delta, reason, promiseId).events
+}
+
 export function npcSocialEvents(command, state = {}) {
   if (command.command_type === 'UpsertNpcSocialProfile') return [{ event_type: 'NpcSocialProfileUpserted', payload: { npc: clone(command.npc) }, target_ids: [], visibility: command.visibility }]
   if (command.command_type === 'RecordNpcSocialTurn') {

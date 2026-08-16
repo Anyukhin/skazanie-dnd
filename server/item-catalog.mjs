@@ -272,7 +272,7 @@ function ammunitionEntry({ id, name, amount, storage, weight, price }) {
     display_name: name,
     name,
     manifest_section: 'ammunition',
-    description: `${name}: комплект из ${amount} шт.; обычное хранилище — ${storage}. Расход боеприпасов в бою пока не учитывается.`,
+    description: `${name}: комплект из ${amount} шт.; обычное хранилище — ${storage}. У героев расход боеприпасов в бою пока не учитывается.`,
     category: 'ammunition',
     type: 'other',
     price_cp: price,
@@ -288,7 +288,7 @@ function ammunitionEntry({ id, name, amount, storage, weight, price }) {
     crafting: { implemented: false, hooks: [] },
     ammunition: { amount, storage },
     mechanics_status: 'partial',
-    limitation: 'Покупка, хранение и передача исполнимы; автоматический расход боеприпасов оружием не реализован.',
+    limitation: 'Покупка, хранение и передача исполнимы. Автоматический расход боеприпасов исполняется только у противников под управлением сервера (server/npc-equipment.mjs): выстрел снимает одну стрелу, а пустой колчан закрывает дальнее действие. У героев расход не учитывается.',
     availability: availability(catalogId),
     source_page: 96,
     provenance: provenance(96),
@@ -1121,6 +1121,71 @@ const MAGIC_ITEMS = [
   },
 ]
 
+/**
+ * Что сервер вправе положить противнику в карман **сам**, без решения автора.
+ *
+ * Категории оружия и боеприпасов входят целиком: это ровно то, чем стат-блок и
+ * так бьёт, и то, чем стреляет. Прочее снаряжение открывается поимённо —
+ * рюкзак или кандалы на теле гоблина не добыча, а мусор в списке.
+ *
+ * **Доспехов здесь нет, и это сторож, а не забывчивость.** В SRD 5.2.1
+ * стат-блок объявляет КД числом и доспех не называет, поэтому любая кольчуга в
+ * инвентаре противника была бы выдумкой — и вдобавок риском для расчёта КД,
+ * если вещь однажды переедет в `actor.inventory`. Пока категория закрыта
+ * здесь, `assertEnemyLoadoutItem` отклоняет доспех на входе в инвентарь, и
+ * «доспехов в инвентарях нет» держится проверкой, а не тем, что никто не
+ * написал строку. Снять доспех с тела это не запрещает: `corpse_loot_eligible`
+ * шире и категорию не смотрит.
+ */
+const ENEMY_LOADOUT_CATEGORIES = new Set(['weapon', 'ammunition'])
+const ENEMY_LOADOUT_GEAR_IDS = new Set([
+  'srd_5_2_1:acid',
+  'srd_5_2_1:alchemists-fire',
+  'srd_5_2_1:antitoxin',
+  'srd_5_2_1:caltrops',
+  'srd_5_2_1:healers-kit',
+  'srd_5_2_1:holy-water',
+  'srd_5_2_1:oil-flask',
+  'srd_5_2_1:poison-basic',
+  'srd_5_2_1:potion-of-healing',
+  'srd_5_2_1:rations-one-day',
+  'srd_5_2_1:rope-hempen-50-feet',
+  'srd_5_2_1:torch',
+])
+
+/**
+ * Два поля отвечают на два разных вопроса, и ни одно не выводится из другого:
+ *
+ * - `enemy_loadout_eligible` — сервер вправе выдать вещь противнику при сборке
+ *   встречи. Узкий список: обычное оружие, боеприпасы и поимённое полевое
+ *   снаряжение. Магия сюда не входит намеренно — она выдаётся отдельным
+ *   каналом `magic_loot` со своей политикой редкости, и «случайный бандит с
+ *   кольцом защиты» обесценил бы находку. Доспех не входит тоже: см. комментарий
+ *   к `ENEMY_LOADOUT_CATEGORIES`.
+ * - `corpse_loot_eligible` — вещь можно снять с тела и она что-то значит в
+ *   руках отряда. Шире: сюда попадает и магия, и доспех.
+ *
+ * Общая граница одна: `ruling-only` не материализуется нигде. Движок такую вещь
+ * всё равно блокирует до расхода ресурса (AGENTS.md, §6), и выдать её как
+ * добычу значило бы подсунуть отряду неисполнимую механику.
+ *
+ * Тематической классификации вещи здесь нет намеренно. Второй, вручную
+ * поддерживаемый список тем рядом с `LOOT_BY_THEME` уже заводился и был снят
+ * при ревью: у него не было ни одного потребителя в рантайме, а сверялся он в
+ * одну сторону — то есть работал не источником истины, а её будущим
+ * расхождением. Тему выдачи по-прежнему целиком держит `server/loot-tables.mjs`.
+ */
+function lootMetadata(entry) {
+  const executable = entry.mechanics_status !== 'ruling-only'
+  const transferable = entry.lifecycle?.transferable !== false
+  const magic = Boolean(entry.magic_item)
+  return {
+    enemy_loadout_eligible: executable && transferable && !magic
+      && (ENEMY_LOADOUT_CATEGORIES.has(entry.category) || ENEMY_LOADOUT_GEAR_IDS.has(entry.catalog_id)),
+    corpse_loot_eligible: executable && transferable,
+  }
+}
+
 const ENTRIES = [
   ...WEAPONS.map(weaponEntry),
   ...ARMOR.map(armorEntry),
@@ -1129,10 +1194,19 @@ const ENTRIES = [
   ...OTHER_TOOLS.map(toolEntry),
   ...GEAR.map(gearEntry),
   ...MAGIC_ITEMS,
-]
+].map((entry) => ({ ...entry, ...lootMetadata(entry) }))
 
 if (ENTRIES.length !== 107) {
   throw new Error(`Item catalog manifest must contain 107 entries, got ${ENTRIES.length}`)
+}
+
+{
+  const unknown = [...ENEMY_LOADOUT_GEAR_IDS].filter((catalogId) => (
+    !ENTRIES.some((entry) => entry.catalog_id === catalogId)
+  ))
+  if (unknown.length) {
+    throw new Error(`Enemy loadout gear allowlist references unknown catalog ids: ${unknown.join(', ')}`)
+  }
 }
 
 const entriesById = Object.fromEntries(ENTRIES.map((entry) => [entry.catalog_id, entry]))

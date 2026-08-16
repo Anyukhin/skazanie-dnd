@@ -37,21 +37,60 @@ export function classSkillRuleFor(actor) {
   return rule ? structuredClone(rule) : null
 }
 
+/**
+ * Один и тот же навык приходит сюда в двух написаниях: каталог правил хранит
+ * `animal_handling` и `sleight_of_hand`, а движок и свободные действия говорят
+ * дефисами (`canonicalSkillId`, `server/rules-engine.mjs`). Пока сравнение шло
+ * буквальным, эти два навыка — и только они — молча теряли и владение, и
+ * характеристику: `skillAbility('animal-handling')` возвращал `null`, а ловчий
+ * с классовым владением Уходом за животными бросал его без бонуса владения.
+ *
+ * Ключ сравнения нечувствителен к написанию, но сам по себе он проблему не
+ * закрывает: сравнивать мало, надо ещё и **отвечать** одним написанием.
+ */
+const canonicalSkillKey = (value) => String(value ?? '').trim().toLocaleLowerCase('en').replace(/_/gu, '-')
+
+const SKILL_ABILITY_BY_KEY = new Map([...SKILLS].map(([id, entry]) => [canonicalSkillKey(id), entry.ability]))
+const SKILL_ID_BY_KEY = new Map([...SKILLS.keys()].map((id) => [canonicalSkillKey(id), id]))
+
+/**
+ * Написание навыка в каноне проекта — том, в котором его хранит каталог правил
+ * и перечисляет лист героя (`SKILL_IDS`, `server/character-lifecycle.mjs`):
+ * подчёркивания. Это единственное место, где проект решает, как навык пишется.
+ *
+ * Нормализация стоит **на входе**, а не в каждом сравнении, и это не стилевое
+ * предпочтение. Пока `normalizedClassSkillProficiencies` отвечала написанием
+ * актора, лист и кость расходились молча: `isSkillProficient` сравнивал
+ * нечувствительно и давал владение, а `deriveCharacterSheet` сверял ответ с
+ * `SKILL_IDS` буквально и писал `proficient: false`. Следопыт с дефисным
+ * `animal-handling` получал в карточке броска +5, а в своём же листе — навык
+ * без владения.
+ *
+ * Незнакомое значение возвращается как есть: отбраковка не дело нормализатора,
+ * её делает список навыков класса шагом ниже.
+ */
+export function catalogSkillId(value) {
+  return SKILL_ID_BY_KEY.get(canonicalSkillKey(value)) ?? String(value ?? '')
+}
+
 export function normalizedClassSkillProficiencies(actor) {
   const rule = classSkillRuleFor(actor)
   if (!rule || !Array.isArray(actor?.classSkillProficiencies)) return []
-  const allowed = new Set(rule.skills)
-  return [...new Set(actor.classSkillProficiencies.map(String))].filter((id) => allowed.has(id)).slice(0, rule.choiceCount)
+  const allowed = new Set(rule.skills.map(canonicalSkillKey))
+  return [...new Set(actor.classSkillProficiencies.map(catalogSkillId))]
+    .filter((id) => allowed.has(canonicalSkillKey(id)))
+    .slice(0, rule.choiceCount)
 }
 
 export function isSkillProficient(actor, skillId) {
   const selected = actor?.classSkillProficiencies
   if (!Array.isArray(selected)) return true
-  return normalizedClassSkillProficiencies(actor).includes(String(skillId ?? ''))
+  const wanted = canonicalSkillKey(skillId)
+  return normalizedClassSkillProficiencies(actor).some((id) => canonicalSkillKey(id) === wanted)
 }
 
 export function skillAbility(skillId) {
-  return SKILLS.get(String(skillId ?? ''))?.ability ?? null
+  return SKILL_ABILITY_BY_KEY.get(canonicalSkillKey(skillId)) ?? null
 }
 
 function choiceCountAtLevel(group, level) {

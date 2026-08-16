@@ -732,8 +732,11 @@ function drawChannel(
   context.font = `900 ${Math.max(12, Math.round(scene.cellSize * .25))}px Manrope, sans-serif`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
+  // Величины может не быть вовсе: у неопознанного противника сервер её не
+  // присылает (точная десятка выдала бы зелье на 2к4 + 2). Тогда над клеткой
+  // стоит слово, а не «+0» — ноль означал бы, что лечение не сработало.
   const label = cue.channelType === 'healing'
-    ? `+${cue.amount ?? 0}`
+    ? cue.amount == null ? 'ЛЕЧЕНИЕ' : `+${cue.amount}`
     : cue.channelType === 'summon' ? 'ПРИЗЫВ' : style.label.toLocaleUpperCase('ru')
   context.fillText(label, center.x, center.y - scene.cellSize * (.28 + progress * .28))
   context.restore()

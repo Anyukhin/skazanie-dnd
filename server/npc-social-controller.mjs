@@ -6,6 +6,7 @@ import { ensureNpcSocialState, npcProfileAtWorldTime, relationshipTier } from '.
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { promptForModel } from './model-style-profiles.mjs'
 import { buildDataOnlyContext } from './security.mjs'
+import { tavernTableMood } from './tavern-life.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
 export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v3'
@@ -105,6 +106,10 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
       score: social.relationships[profile.id]?.[playerId] ?? 0,
       tier: relationshipTier(social.relationships[profile.id]?.[playerId] ?? 0),
     },
+    // Застолье собеседник видит: перед ним человек с кружкой, и разговор от
+    // этого другой. Данными, а не числом в СЛ — проверку это не подменяет, её
+    // считает Rules Engine той же прибавкой, что показал ручной бросок.
+    table: tavernTableMood(state, playerId),
     open_promises: social.promises
       .filter((entry) => entry.npc_id === profile.id && entry.hero_id === playerId && entry.status === 'open')
       .slice(-10)

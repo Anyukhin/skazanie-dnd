@@ -103,8 +103,12 @@ test('врезка в летописи — отдельная карточка, 
   assert.match(views, /message\.offscreen \? \(/u)
   assert.match(views, /<OffscreenChronicleEntry key=\{message\.id\}/u)
   assert.match(views, /ХОД МИРА · ДЕНЬ \{card\.day\}/u)
-  // Фильтр «Рассказ» врезку показывает, «Бой» — нет.
-  assert.match(views, /chronicleMatchesFilter\(message\.speaker, filter, Boolean\(message\.offscreen\)\)/u)
+  // Фильтр «Рассказ» врезку показывает, «Бой» — нет. Признак «это рассказ»
+  // с тех пор делят все системные карточки летописи (к ходу мира добавился
+  // конверт почты), поэтому сторож держит именно участие врезки в признаке, а
+  // не полный список его слагаемых: иначе каждая новая карточка ломала бы
+  // чужой тест, ничего не сломав по существу.
+  assert.match(views, /chronicleMatchesFilter\(message\.speaker, filter, Boolean\(message\.offscreen/u)
   assert.match(styles, /\.message\.system\.offscreen-step \{ margin-bottom: 14px; opacity: 1; \}/u)
   assert.match(styles, /\.offscreen-card \{/u)
   assert.match(styles, /\.offscreen-card li \{/u)

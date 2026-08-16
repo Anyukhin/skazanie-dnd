@@ -78,6 +78,11 @@ export const DEED_KINDS = Object.freeze({
   theft: Object.freeze({ alignment: 'dark', severity: 'major', label: 'Кража' }),
   destruction: Object.freeze({ alignment: 'dark', severity: 'major', label: 'Разрушение' }),
   violence: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Насилие' }),
+  // Шулерство за костями. Тяжесть мелкая и это осознанно: подкрученная кость —
+  // обман на глазах у стола, а не преступление, поэтому в таблицу закона
+  // (`WANTED_CRIME_POINTS`, `law-and-order.mjs`) этот вид не входит и ступень
+  // розыска не двигает. За руку здесь ловит хозяин заведения, а не стража.
+  cheating: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Шулерство' }),
   vandalism: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Погром' }),
   promise_broken: Object.freeze({ alignment: 'dark', severity: 'minor', label: 'Нарушенное слово' }),
   rescue: Object.freeze({ alignment: 'bright', severity: 'major', label: 'Спасение' }),
@@ -119,6 +124,11 @@ const RUMOR_PHRASES = Object.freeze({
     'В «{place}» человека избили до крови: пострадал(а) {what}. Свидетели указывают: {who}.',
     'Говорят, в «{place}» чужаки кого-то избили.',
     'Слыхал, будто в «{place}» пришлые чуть не убили человека.',
+  ]),
+  cheating: Object.freeze([
+    'В «{place}» поймали шулера за костями. Обыгрывали вот кого: {what}. Свидетели указывают: {who}.',
+    'Говорят, в «{place}» чужаки играют краплёными костями.',
+    'Слыхал, будто с теми пришлыми за кости лучше не садиться.',
   ]),
   arson: Object.freeze([
     'В «{place}» был пожар. Горело вот что: {what}. Свидетели указывают: {who}.',
@@ -285,7 +295,7 @@ function npcNameFor(state, npcId) {
 const DEED_EVENT_TYPES = new Set([
   'NpcDied', 'NpcHarmed', 'SceneObjectOperated', 'DoorForced',
   'NpcPromiseResolved', 'ItemTransferred', 'WitnessConsequencePropagated',
-  'CaptiveNeglected', 'TruceBroken',
+  'CaptiveNeglected', 'TruceBroken', 'TavernCheatCaught',
 ])
 
 /**
@@ -319,6 +329,19 @@ function recognizeDeed(state, event) {
       // бы в список сцены, а «свидетель собственного мучения» и репутацию
       // двигал бы за себя.
       witnessIds: sceneWitnessIds(state).filter((npcId) => npcId !== text(payload.npc_id, 120)),
+    }
+  }
+  if (type === 'TavernCheatCaught') {
+    // Шулерство ловят на людях по определению: за костями сидят в общем зале, и
+    // обыгранный сосед по столу — свидетель сам по себе, даже если больше в
+    // зале никого нет. Тот же приём, что у обещания и у перемирия.
+    const npcId = text(payload.npc_id, 120)
+    return {
+      kind: 'cheating',
+      key: npcId || text(payload.hero_id, 120),
+      subject: text(payload.npc_name, 160) || npcNameFor(state, npcId) || 'соперник за костями',
+      actorIds: [payload.hero_id ?? event.actor_id].filter(Boolean),
+      witnessIds: [...new Set([npcId, ...sceneWitnessIds(state)])].filter(Boolean).sort(),
     }
   }
   if (type === 'TruceBroken') {
@@ -455,6 +478,7 @@ function summaryFor(state, deed) {
     cruelty: `${who}: жестокость к пленному — ${what} (${place})`,
     treachery: `${who}: удар под перемирием — ${what} (${place})`,
     violence: `${who}: побои — ${what} (${place})`,
+    cheating: `${who}: шулерство за костями — ${what} (${place})`,
     arson: `${who}: поджог — ${what} (${place})`,
     vandalism: `${who}: погром — ${what} (${place})`,
     theft: `${who}: кража — ${what} (${place})`,

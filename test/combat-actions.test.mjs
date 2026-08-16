@@ -4,6 +4,7 @@ import test from 'node:test'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { combatActionsFor } from '../server/combat-actions.mjs'
 import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
+import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
 function dice(values = []) {
   let id = 0
@@ -279,6 +280,53 @@ test('Искусная острота отменяет попадание мен
   assert.equal(resolved.payload.kept, 15)
   const afterCheck = applyAll(afterReaction, check.events)
   assert.ok(!afterCheck.mechanics.conditions.ally.some((condition) => condition.id === 'silvery-fortune'))
+})
+
+test('игрок видит у Искусной остроты выбор получателя преимущества, а не только ведущий', () => {
+  // Белый список опций реакции (`publicReactionWindowFor`,
+  // `server/viewer-projection.mjs`) ронял `requires_beneficiary`, и окно
+  // приезжало игроку без единственного признака, по которому интерфейс
+  // показывает список получателей (`ReactionPrompt`, `src/App.tsx`): выбора не
+  // было, кнопка уходила без `beneficiary_id`. Ведущий, чья проекция сквозная,
+  // поле видел — две стороны стола расходились молча.
+  const initial = combatState()
+  // «Щит» подготовлен не для красоты: без второй реакции в окне отрицательный
+  // сторож в конце теста не выполнялся ни разу. Движок дописывает «Искусную
+  // остроту» либо когда своих реакций нет вовсе, либо когда заклинатель сам и
+  // есть цель (сборка `ReactionWindowOpened`, `server/rules-engine.mjs`), — и в
+  // первом случае опция в окне остаётся единственной.
+  initial.players[0] = { ...initial.players[0], characterClass: 'wizard', role: 'Волшебник · ур. 3', subclass: undefined, level: 3, abilities: { ...initial.players[0].abilities, int: 16 }, knownSpellIds: ['silvery-barbs', 'shield'], preparedSpellIds: ['silvery-barbs', 'shield'] }
+  const normalized = normalizeCampaignState(initial)
+  normalized.mechanics.combat.active_index = 1
+  normalized.mechanics.combat.action_economy.goblin = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
+  const attack = resolveCommand({ command_type: 'MakeAttack', actor_id: 'goblin', target_id: 'fighter', server_authoritative: true }, normalized, { diceService: dice([18, 6]), context: { serverAuthoritativeCombat: true } })
+  const afterAttack = applyAll(normalized, attack.events)
+
+  const authoritative = afterAttack.mechanics.combat.reaction_window.action_options
+    .find((option) => option.id === 'cast:silvery-barbs')
+  assert.ok(authoritative?.requires_beneficiary, 'движок обязан объявить получателя — иначе проверка ниже пуста')
+
+  const projected = campaignStateForViewer(afterAttack, { role: 'player', heroIds: ['fighter'] }, 'fighter')
+    .mechanics.combat.reaction_window.action_options
+    .find((option) => option.id === 'cast:silvery-barbs')
+  assert.equal(projected.requires_beneficiary, true)
+  assert.equal(projected.slot_level, authoritative.slot_level)
+  // Форма опции закреплена поимённо: это своя реакция игрока, и закрывать здесь
+  // нечего, но и лишнему полю проезжать незачем.
+  assert.deepEqual(Object.keys(projected).sort(), [
+    'cost', 'description', 'id', 'name', 'requires_beneficiary', 'resource', 'slot_level',
+  ])
+  assert.equal(projected.name, authoritative.name)
+  assert.equal(projected.cost, 1)
+
+  // Обычной реакции признак не выдумывается: список получателей над «Щитом»
+  // был бы ложным выбором — цель у него одна и это сам игрок.
+  const projectedOptions = campaignStateForViewer(afterAttack, { role: 'player', heroIds: ['fighter'] }, 'fighter')
+    .mechanics.combat.reaction_window.action_options
+  assert.deepEqual(projectedOptions.map((option) => option.id), ['cast:shield', 'cast:silvery-barbs'])
+  const plain = projectedOptions.find((option) => option.id === 'cast:shield')
+  assert.ok(plain, 'в окне обязана быть и вторая, обычная реакция — иначе проверка ниже пуста')
+  assert.deepEqual(Object.keys(plain).sort(), ['cost', 'description', 'id', 'name', 'resource', 'slot_level'])
 })
 
 test('Поглощение стихий даёт сопротивление подходящему урону и сохраняет его до следующего хода', () => {

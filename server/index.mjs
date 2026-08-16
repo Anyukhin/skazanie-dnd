@@ -68,7 +68,7 @@ import {
   PUBLIC_DICE_CAPABILITY,
   WORLD_RUMOR_CAPABILITY,
 } from './authoritative-executor.mjs'
-import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
+import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
@@ -89,9 +89,22 @@ import {
   merchantViewFor,
   planMerchantEconomyClock,
 } from './merchant-economy.mjs'
+import { BEAST_PLAYER_COMMAND_TYPES, beastChronicleEntry } from './beast-taming.mjs'
 import { CAPTIVE_PLAYER_COMMAND_TYPES, planCaptiveNeglectCommands } from './captives.mjs'
+import { MAX_LOOT_LINES, lootContainersForViewer } from './loot-containers.mjs'
+import { TAVERN_COMMAND_TYPES, TAVERN_DICE_APPROACHES, TAVERN_STAKES_CP } from './tavern-life.mjs'
+import { BLESSING_COMMAND_TYPES } from './blessings.mjs'
 import { planWorldRumorReputation, planWorldRumorTick } from './world-deeds.mjs'
 import { offscreenChronicleEntry } from './offscreen-world.mjs'
+import {
+  COURIER_LETTER_ADDRESSEE_KINDS,
+  COURIER_LETTER_BODY_LIMIT,
+  COURIER_LETTER_COMMAND_TYPES,
+  courierAddresseeFor,
+  courierLetterChronicleEntry,
+  courierLetterPromiseFrom,
+  courierToneFor,
+} from './courier-letters.mjs'
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
@@ -395,10 +408,88 @@ const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem',
 // Действия с пленным. Отдельный набор, а не часть боевого: они доступны только
 // вне боя и не трогают экономику хода.
 const PLAYER_CAPTIVE_COMMANDS = CAPTIVE_PLAYER_COMMAND_TYPES
+// Приручение зверя. Отдельный набор, а не часть боевого, потому что подход
+// идёт либо вне боя, либо к уже сломленному моралью зверю. Экономику хода эти
+// команды, в отличие от действий с пленным, как раз трогают: посреди боя
+// уговор и кормление стоят действия, а вне боя — игровых минут. Считает это
+// Rules Engine (`assertTurn`, `BEAST_APPROACH_MINUTES`), маршрут только
+// пропускает команду к нему. Список берётся у модуля приручения — второго
+// перечисления команд зверя в проекте быть не должно.
+const PLAYER_BEAST_COMMANDS = BEAST_PLAYER_COMMAND_TYPES
 // Ответ страже. Отдельный набор по той же причине, что у пленных: встреча с
 // законом идёт вне боя и не трогает экономику хода. `ClearWantedLevel` сюда не
 // входит намеренно — амнистия владельческая, и её проверяет Rules Engine.
 const PLAYER_LAW_COMMANDS = new Set(['ResolveGuardEncounter'])
+// Обыск контейнера. Отдельный набор, а не часть боевого: он доступен и в бою,
+// и вне его, а цену в экономике хода назначает Rules Engine, а не маршрут.
+const PLAYER_LOOT_COMMANDS = new Set(['LootContainer'])
+/**
+ * Отказы, после которых карточка обыска обязана перерисоваться: содержимое под
+ * игроком изменилось, и повтор той же команды разобьётся о ту же стену.
+ *
+ * Список нужен потому, что живой клиент 409 на обыске не получает вовсе:
+ * `STATE_VERSION_CONFLICT` требует присланного `expected_state_version`, а
+ * `normalizeCommand` (`server/rules-engine.mjs`) подставляет туда текущую
+ * версию сам. Настоящий исход гонки двух игроков за один кинжал — 400 с
+ * `LOOT_ITEM_GONE`, и свежий список нужен именно ему.
+ */
+const LOOT_STALE_ERROR_CODES = new Set([
+  'LOOT_ITEM_GONE',
+  'LOOT_QUANTITY_INVALID',
+  'LOOT_CONTAINER_EMPTY',
+  'LOOT_CONTAINER_NOT_FOUND',
+  'LOOT_CONTAINER_NOT_IN_SCENE',
+])
+
+/**
+ * Последняя запись летописи об обыске этого контейнера.
+ *
+ * Свежего списка проигравшему гонку мало: список говорит «тела больше нет», но
+ * не говорит, **кто** успел, — а имя лежит только в летописи, и до браузера она
+ * доезжает следующим опросом комнаты. К тому моменту карточка уже пропала
+ * молча, и объяснять стало нечего (`vanishedLootFrom`,
+ * `src/loot-panel-rules.mjs`). Сервер имя знает прямо сейчас, поэтому кладёт
+ * запись в тот же отказ.
+ *
+ * Наружу уходят только названные поля: летопись — внутреннее состояние, и
+ * пересылать её запись целиком означало бы отдавать игроку всё, что туда
+ * когда-нибудь допишут. Ключ `id` детерминирован (`eventJournalId`), поэтому
+ * та же запись из следующего опроса комнаты не задваивается.
+ */
+function lootTakenRecordFor(state, containerId) {
+  const expected = String(containerId ?? '')
+  if (!expected) return null
+  const log = Array.isArray(state?.battleLog) ? state.battleLog : []
+  for (let index = log.length - 1; index >= 0; index -= 1) {
+    const entry = log[index]
+    if (entry?.type !== 'loot-taken' || String(entry.containerId ?? '') !== expected) continue
+    return {
+      id: String(entry.id ?? ''),
+      type: 'loot-taken',
+      actorId: String(entry.actorId ?? ''),
+      recipientId: String(entry.recipientId ?? ''),
+      containerId: expected,
+      containerName: String(entry.containerName ?? ''),
+      itemCount: Math.max(0, Number(entry.itemCount) || 0),
+      remainingCount: Math.max(0, Number(entry.remainingCount) || 0),
+      statusAfter: String(entry.statusAfter ?? ''),
+    }
+  }
+  return null
+}
+// Досуг таверны. Отдельный набор по той же причине, что у пленных и у закона:
+// кости и кружка идут вне боя и экономику хода не трогают. Список берётся у
+// модуля заведения — второго перечисления команд таверны в проекте быть не
+// должно.
+const PLAYER_TAVERN_COMMANDS = TAVERN_COMMAND_TYPES
+// Письма. Отдельный набор по той же причине, что у таверны и у закона: письмо
+// пишут вне боя, и экономику хода оно не трогает. Список берётся у модуля почты
+// — второго перечисления команд писем в проекте быть не должно.
+const PLAYER_LETTER_COMMANDS = COURIER_LETTER_COMMAND_TYPES
+// Благословения. Отдельный набор по той же причине, что у таверны и у почты:
+// требу принимают вне боя, и экономику хода она не трогает. Список берётся у
+// модуля благословений — второго перечисления в проекте быть не должно.
+const PLAYER_BLESSING_COMMANDS = BLESSING_COMMAND_TYPES
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -616,6 +707,54 @@ function assertItemResultFingerprint(result, command) {
   const event = (result?.mechanics ?? []).find((candidate) => ITEM_PRIMARY_EVENT_TYPES.has(candidate?.event_type))
   if (!event || String(event.payload?.request_fingerprint ?? '') !== itemCommandFingerprint(command)) {
     throw commandPolicyError('Результат действия с предметом не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+const LOOT_PRIMARY_EVENT_TYPES = new Set(['LootContainerTaken'])
+
+/**
+ * Отпечаток запроса на обыск. Строки сортируются: «взять кинжал и стрелы» и
+ * «взять стрелы и кинжал» — это один и тот же запрос, и повтор с тем же ключом
+ * обязан вернуть прежний результат, а не жалобу на конфликт.
+ */
+function lootCommandFingerprint(command) {
+  const semantic = {
+    type: 'LootContainer',
+    actor_id: String(command?.actor_id ?? ''),
+    container_id: String(command?.container_id ?? ''),
+    recipient_id: String(command?.recipient_id ?? command?.actor_id ?? ''),
+    lines: [...(Array.isArray(command?.lines) ? command.lines : [])]
+      .map((line) => ({
+        item_instance_id: String(line?.item_instance_id ?? ''),
+        quantity: Number(line?.quantity ?? 1),
+      }))
+      .sort((left, right) => left.item_instance_id.localeCompare(right.item_instance_id)),
+  }
+  return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+/**
+ * Чужой ключ не раскрывает чужой результат: повтор с тем же ключом проходит
+ * только если это буквально тот же запрос. Иначе — 409 и ни строчки о том, что
+ * под этим ключом уже лежит.
+ */
+async function assertLootIdempotency(campaignId, idempotencyKey, command) {
+  const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+  if (!duplicate) return
+  const fingerprints = new Set((duplicate.events ?? [])
+    .filter((event) => LOOT_PRIMARY_EVENT_TYPES.has(event.event_type))
+    .map((event) => event.payload?.request_fingerprint)
+    .filter(Boolean)
+    .map(String))
+  if (fingerprints.size !== 1 || !fingerprints.has(lootCommandFingerprint(command))) {
+    throw commandPolicyError('Этот ключ идемпотентности уже использован для другого обыска', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+function assertLootResultFingerprint(result, command) {
+  const event = (result?.mechanics ?? []).find((candidate) => LOOT_PRIMARY_EVENT_TYPES.has(candidate?.event_type))
+  if (!event || String(event.payload?.request_fingerprint ?? '') !== lootCommandFingerprint(command)) {
+    throw commandPolicyError('Результат обыска не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
   }
 }
 
@@ -960,7 +1099,11 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
     return {
       ...base,
       prop_id: String(input?.prop_id ?? input?.propId ?? '').slice(0, 120),
-      intent: ['inspect', 'open', 'take', 'use'].includes(intent) ? intent : 'inspect',
+      // `pray` в списке есть, а `topple`/`ignite` нет, и это не забывчивость:
+      // опрокинуть и поджечь разрешает только серверный разбор свободного текста
+      // (там за это отвечает `approach`), а молитва — обычная кнопка пропса,
+      // которую сервер сам и объявил в его глаголах (`sceneShrineVerbsFor`).
+      intent: ['inspect', 'open', 'take', 'use', 'pray'].includes(intent) ? intent : 'inspect',
       // Силовой подход приходит только от серверного разбора свободного текста.
       // Кнопка не может подменить обычное взаимодействие готовым исходом взлома.
       approach: 'hand',
@@ -1158,6 +1301,105 @@ function sanitizePlayerCaptiveCommand(user, state, input) {
 }
 
 /**
+ * Обыск контейнера. Из запроса берутся только ключи: контейнер, экземпляры и
+ * количества. Ни названия, ни веса, ни цены, ни механики предмета клиент не
+ * подсказывает — всё это лежит в самом контейнере, и читает его Rules Engine.
+ *
+ * Получатель может отличаться от обыскивающего: вне боя добычу сразу кладут
+ * тому, кто её понесёт. Ограничение «в бою только себе» — правило движка, а не
+ * маршрута: маршрут не знает, идёт ли сейчас бой.
+ */
+function sanitizePlayerLootCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_LOOT_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к обыску добычи', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'container_id', 'containerId',
+    'recipient_id', 'recipientId',
+    'lines',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда обыска содержит запрещённые поля: ${unexpected.join(', ')}`, 'LOOT_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Обыскивать можно только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const containerId = String(input?.container_id ?? input?.containerId ?? '').trim().slice(0, 120)
+  if (!containerId) throw commandPolicyError('Не выбран контейнер добычи', 'LOOT_CONTAINER_NOT_FOUND')
+  if (!Array.isArray(input?.lines) || !input.lines.length) {
+    throw commandPolicyError('Не выбрано ни одного предмета', 'LOOT_LINES_REQUIRED')
+  }
+  const lines = input.lines.slice(0, MAX_LOOT_LINES).map((line) => {
+    if (!line || typeof line !== 'object' || Array.isArray(line)
+      || Object.keys(line).some((key) => !['item_instance_id', 'itemInstanceId', 'quantity'].includes(key))) {
+      throw commandPolicyError('Строка обыска содержит запрещённые поля', 'LOOT_COMMAND_UNKNOWN_FIELD')
+    }
+    const itemInstanceId = String(line.item_instance_id ?? line.itemInstanceId ?? '').trim().slice(0, 160)
+    if (!itemInstanceId) throw commandPolicyError('В строке обыска нет предмета', 'LOOT_LINES_REQUIRED')
+    const quantity = Number(line.quantity ?? 1)
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
+      throw commandPolicyError('Недопустимое количество предметов', 'LOOT_QUANTITY_INVALID')
+    }
+    return { item_instance_id: itemInstanceId, quantity }
+  })
+  const recipientId = String(input?.recipient_id ?? input?.recipientId ?? '').trim().slice(0, 120)
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const command = {
+    command_type: type,
+    actor_id: actor,
+    container_id: containerId,
+    recipient_id: recipientId || actor,
+    lines,
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+  return { ...command, request_fingerprint: lootCommandFingerprint(command) }
+}
+
+/**
+ * Действия со зверем. Из запроса берутся только зверь и герой — больше нечего:
+ * навык проверки один и объявлен сервером, СЛ считает политика приручения, а
+ * паёк для кормления сервер находит в рюкзаке сам. Если бы предмет называл
+ * клиент, «накормить зверя» стало бы способом списать из инвентаря что угодно.
+ */
+function sanitizePlayerBeastCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_BEAST_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к действиям со зверем', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'beast_id', 'beastId',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда зверя содержит запрещённые поля: ${unexpected.join(', ')}`, 'BEAST_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Подойти к зверю можно только от имени своего героя', 'ACTOR_FORBIDDEN')
+  }
+  const beastId = String(input?.beast_id ?? input?.beastId ?? '').trim().slice(0, 120)
+  if (!beastId) throw commandPolicyError('Не выбран зверь', 'BEAST_NOT_FOUND')
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    beast_id: beastId,
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
  * Ответ страже. Из запроса берутся только герой, исход и подход к побегу:
  * ступень розыска, размер виры и СЛ побега объявил сервер, и подсказать их
  * клиент не может — их пересчитает Rules Engine по своей же карточке встречи.
@@ -1189,6 +1431,183 @@ function sanitizePlayerLawCommand(user, state, input) {
     skill: input?.skill === 'athletics' ? 'athletics' : 'stealth',
     server_authoritative: true,
     ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
+ * Досуг таверны. Из запроса берутся только герой, соперник, ставка из закрытого
+ * серверного набора и подход к броску: характер соперника, его кость, СЛ
+ * спасброска за кружку и размер банка объявляет сервер, и подсказать их клиент
+ * не может.
+ */
+function sanitizePlayerTavernCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_TAVERN_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к досугу таверны', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'npc_id', 'npcId',
+    'stake_cp', 'stakeCp',
+    'approach',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда таверны содержит запрещённые поля: ${unexpected.join(', ')}`, 'TAVERN_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Сесть за стол можно только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const stake = Number(input?.stake_cp ?? input?.stakeCp)
+  return {
+    command_type: type,
+    actor_id: actor,
+    ...(type === 'OpenTavernDiceRound' ? {
+      npc_id: String(input?.npc_id ?? input?.npcId ?? '').trim().slice(0, 120),
+      stake_cp: TAVERN_STAKES_CP.includes(stake) ? stake : 0,
+    } : {}),
+    ...(type === 'AnswerTavernDiceRound' ? {
+      approach: TAVERN_DICE_APPROACHES.includes(String(input?.approach)) ? String(input.approach) : 'fair',
+    } : {}),
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
+ * Благословение жреца. Из запроса берутся только герой и служитель: размер
+ * пожертвования, срок благословения и суточный предел объявляет сервер
+ * (`server/blessings.mjs`), и подсказать их клиент не может.
+ */
+function sanitizePlayerBlessingCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_BLESSING_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к благословениям', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'npc_id', 'npcId',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Просьба о благословении содержит запрещённые поля: ${unexpected.join(', ')}`, 'BLESSING_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Благословение принимают только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    npc_id: String(input?.npc_id ?? input?.npcId ?? '').trim().slice(0, 120),
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
+ * Письмо. Из запроса берутся только герой, адрес и текст: дальность, цену,
+ * срок доставки и тон ответа объявляет сервер, а полировка ответа приезжает
+ * отдельным серверным полем и клиентом не подсказывается.
+ *
+ * `reply_draft` в белый список полей намеренно **не входит**: пришедший из
+ * браузера черновик стал бы ответом NPC дословно — то есть игрок писал бы за
+ * своего адресата. Ставит его сервер ниже, после санитайзера.
+ */
+function sanitizePlayerLetterCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_LETTER_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к почте отряда', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'addressee_kind', 'addresseeKind',
+    'addressee_id', 'addresseeId',
+    'body',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Команда письма содержит запрещённые поля: ${unexpected.join(', ')}`, 'COURIER_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Письмо можно написать только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  const kind = String(input?.addressee_kind ?? input?.addresseeKind ?? 'npc')
+  return {
+    command_type: type,
+    actor_id: actor,
+    addressee_kind: COURIER_LETTER_ADDRESSEE_KINDS.includes(kind) ? kind : 'npc',
+    addressee_id: String(input?.addressee_id ?? input?.addresseeId ?? '').trim().slice(0, 120),
+    // Текст игрока — творческий ввод и недоверенное поле наравне с репликой в
+    // разговоре. Здесь он только режется по длине; смысла в нём сервер не ищет.
+    body: String(input?.body ?? '').slice(0, COURIER_LETTER_BODY_LIMIT),
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+/**
+ * Полировка ответа на письмо — единственное место, где модель вообще касается
+ * почты, и касается она только слов.
+ *
+ * Вызов стоит **при отправке**, а не при доставке, и это следствие устройства
+ * мировых минут: доставка считается внутри Rules Engine, синхронно и
+ * детерминированно, и звать оттуда сеть нельзя — replay обязан воспроизвести
+ * тот же текст без провайдера. Поэтому ответ пишется, пока запрос игрока ещё
+ * живой, и запечатывается в письмо вместе с тоном, для которого его писали:
+ * если к моменту доставки отношение сменит ступень, черновик выбрасывается и
+ * звучит детерминированная основа (`courierLetterReplyFor`,
+ * `server/courier-letters.mjs`).
+ *
+ * Модели нет или она ответила ошибкой — в письмо ничего не кладётся, и стол
+ * получит ту же основу. Разницы в механике между двумя путями нет ни одной:
+ * тон, отношение, обещание и сроки считаются одинаково.
+ */
+async function withCourierReplyDraft(state, command) {
+  const addressee = courierAddresseeFor(state, command.addressee_kind, command.addressee_id)
+  // Фракции социальный движок не отыгрывает: у неё нет ни профиля, ни голоса,
+  // ни отношения к конкретному герою — ответ канцелярии остаётся
+  // детерминированным по построению.
+  if (!addressee || addressee.kind !== 'npc' || !npcSocialController.llmClient) return command
+  const score = (state.social?.relationships?.[addressee.id]?.[command.actor_id]) ?? 0
+  const tone = courierToneFor(score)
+  if (tone === 'silent') return command
+  const promise = courierLetterPromiseFrom(command.body)
+  try {
+    const result = await npcSocialController.respond({
+      state,
+      playerId: command.actor_id,
+      npcId: addressee.id,
+      // Письмо приходит в социальный движок как реплика — тем же недоверенным
+      // полем, через тот же `buildDataOnlyContext`. Приписка о том, что это
+      // письмо, а не разговор, нужна модели: ответ обязан читаться как письмо.
+      message: `[письмо, доставлено курьером] ${command.body}${promise ? ` [в письме дано слово: ${promise.text}]` : ''}`,
+      turnId: `letter:${command.command_id ?? ''}`,
+    })
+    const provider = String(result?.provider ?? '').slice(0, 80)
+    const reply = String(result?.reply ?? '').replace(/\s+/gu, ' ').trim().slice(0, 1_000)
+    // Свой фолбэк социального движка в письмо не кладётся. Он честно
+    // детерминирован, но написан для **разговора**: это реплика в лицо, а не
+    // ответное письмо, и звучала бы она в конверте чужой строкой. Раз модель
+    // промолчала, пусть звучит основа почты — она и писалась как письмо.
+    if (!reply || provider === 'deterministic-social-fallback') return command
+    return { ...command, reply_draft: reply, reply_draft_tone: tone, reply_provider: provider || 'llm' }
+  } catch {
+    // Провайдер молчит — письмо уедет с детерминированной основой. Отказывать
+    // игроку в отправке из-за недоступной модели нельзя: механика письма от
+    // неё не зависит.
+    return command
   }
 }
 
@@ -1377,10 +1796,52 @@ function journalOffscreen(offscreen) {
   }
 }
 
-function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null }) {
+/**
+ * Карточка-конверт в летописи. Поля собрал сервер (`server/courier-letters.mjs`):
+ * своей сборки у клиента нет намеренно — «от кого» и «кому» обязаны читаться
+ * одинаково у стола и у ведущего.
+ */
+function journalLetter(letter) {
+  if (!letter || typeof letter !== 'object') return null
+  const kinds = new Set(['sent', 'delivered', 'returned', 'answered', 'unanswered'])
+  const kind = String(letter.kind ?? '')
+  const body = String(letter.text ?? '').slice(0, 800)
+  if (!kinds.has(kind) || !body.trim()) return null
+  return {
+    kind,
+    title: String(letter.title || 'Почта отряда').slice(0, 80),
+    from: String(letter.from || '').slice(0, 120),
+    to: String(letter.to || '').slice(0, 120),
+    text: body,
+  }
+}
+
+/**
+ * Карточка ступени приручения в летописи. Поля собрал сервер
+ * (`server/beast-taming.mjs`): своей сборки у клиента нет намеренно — подписи
+ * ступеней обязаны читаться одинаково у стола и у ведущего.
+ */
+function journalBeast(beast) {
+  if (!beast || typeof beast !== 'object') return null
+  const kinds = new Set(['calmed', 'fed', 'tamed'])
+  const kind = String(beast.kind ?? '')
+  const body = String(beast.text ?? '').slice(0, 600)
+  if (!kinds.has(kind) || !body.trim()) return null
+  return {
+    kind,
+    title: String(beast.title || 'Зверь и отряд').slice(0, 80),
+    name: String(beast.name || '').slice(0, 120),
+    diet_label: String(beast.diet_label || '').slice(0, 40),
+    text: body,
+  }
+}
+
+function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null, letter = null, beast = null }) {
   const storedRoll = journalRoll(roll)
   const storedStakes = journalStakes(stakes)
   const storedOffscreen = journalOffscreen(offscreen)
+  const storedLetter = journalLetter(letter)
+  const storedBeast = journalBeast(beast)
   return {
     id: String(id),
     speaker: speaker === 'system' ? 'system' : speaker === 'player' ? 'player' : 'narrator',
@@ -1391,6 +1852,8 @@ function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = 
     ...(storedRoll ? { roll: storedRoll } : {}),
     ...(storedStakes ? { stakes: storedStakes } : {}),
     ...(storedOffscreen ? { offscreen: storedOffscreen } : {}),
+    ...(storedLetter ? { letter: storedLetter } : {}),
+    ...(storedBeast ? { beast: storedBeast } : {}),
   }
 }
 
@@ -2293,7 +2756,17 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // замком, и Режиссёр — трижды повторённый вызов разошёлся бы на первом же
     // новом маршруте. Идентификатор записи детерминирован (`chronicle:<шаг>`),
     // поэтому повторная проекция того же события её не удваивает.
-    for (const candidate of [...(Array.isArray(events) ? events : []).map(offscreenChronicleEntry), journalMessage].flat()) {
+    // Почта попадает в летопись тем же путём и по той же причине: письмо,
+    // доставка, возврат и ответ рождаются из мировых минут, а минуты двигают и
+    // привал, и сутки под замком, и Режиссёр. Идентификатор записи
+    // детерминирован (`chronicle:<письмо>:<вид>`), поэтому повторная проекция
+    // того же события её не удваивает.
+    const eventsForChronicle = Array.isArray(events) ? events : []
+    // Ступени приручения попадают в летопись тем же путём и по той же причине:
+    // подход к зверю приходит и с доски, и второй фазой ручного броска, а
+    // идентификатор карточки детерминирован (`chronicle:<зверь>:<ступень>`),
+    // поэтому повторная проекция того же события её не удваивает.
+    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
@@ -3850,6 +4323,13 @@ const server = createServer((req, res) => {
   const commandMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/commands$/)
   if (commandMatch && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
+    // Кто именно просил обыскать и какой контейнер — нужно уже в обработчике
+    // отказа: на гонке за один предмет проигравший обязан получить не только
+    // 409, но и свежий список содержимого вместе с записью о том, кто успел.
+    // Оба ключа снимаются с исходного тела запроса, потому что до санитайзера
+    // дело могло и не дойти.
+    let lootRequestActorId = ''
+    let lootRequestContainerId = ''
     try {
       const room = getRoom(commandMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
@@ -3857,6 +4337,11 @@ const server = createServer((req, res) => {
       const body = await readBody(req)
       let commands = Array.isArray(body.commands) ? body.commands : body.command ? [body.command] : []
       if (!commands.length) return json(res, 400, { error: 'Нужна command или commands' })
+      const lootRequest = commands.find((command) => PLAYER_LOOT_COMMANDS.has(commandType(command)))
+      if (lootRequest) {
+        lootRequestActorId = String(lootRequest.actor_id ?? lootRequest.actorId ?? '')
+        lootRequestContainerId = String(lootRequest.container_id ?? lootRequest.containerId ?? '').slice(0, 120)
+      }
       const authoritativeBefore = await latestCampaignState(commandMatch[1], room.state)
       const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
       const requestedMakeAttacks = commands.filter((command) => commandType(command) === 'MakeAttack')
@@ -3902,7 +4387,12 @@ const server = createServer((req, res) => {
         if (PLAYER_CHARACTER_COMMANDS.has(type) || PLAYER_CHARACTER_LIFECYCLE_COMMANDS.has(type)) return sanitizePlayerCharacterCommand(user, authoritativeBefore, command)
         if (PLAYER_ITEM_COMMANDS.has(type)) return sanitizePlayerItemCommand(user, authoritativeBefore, command)
         if (PLAYER_CAPTIVE_COMMANDS.has(type)) return sanitizePlayerCaptiveCommand(user, authoritativeBefore, command)
+        if (PLAYER_LOOT_COMMANDS.has(type)) return sanitizePlayerLootCommand(user, authoritativeBefore, command)
+        if (PLAYER_BEAST_COMMANDS.has(type)) return sanitizePlayerBeastCommand(user, authoritativeBefore, command)
         if (PLAYER_LAW_COMMANDS.has(type)) return sanitizePlayerLawCommand(user, authoritativeBefore, command)
+        if (PLAYER_TAVERN_COMMANDS.has(type)) return sanitizePlayerTavernCommand(user, authoritativeBefore, command)
+        if (PLAYER_LETTER_COMMANDS.has(type)) return sanitizePlayerLetterCommand(user, authoritativeBefore, command)
+        if (PLAYER_BLESSING_COMMANDS.has(type)) return sanitizePlayerBlessingCommand(user, authoritativeBefore, command)
         // Права администратора меняют авторизацию MakeAttack, но не делают
         // клиентские поля или request_fingerprint авторитетными. Ограничение
         // player→enemy остаётся только в player sanitizer.
@@ -3919,6 +4409,39 @@ const server = createServer((req, res) => {
       const lawCommands = commands.filter((command) => PLAYER_LAW_COMMANDS.has(commandType(command)))
       if (lawCommands.length && commands.length !== 1) {
         throw commandPolicyError('Ответ страже должен быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      const tavernCommands = commands.filter((command) => PLAYER_TAVERN_COMMANDS.has(commandType(command)))
+      if (tavernCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Кости и выпивка идут отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      // Треба — отдельная атомарная команда по той же причине: у неё своя цена в
+      // монете, свои минуты кампании и суточный предел на героя.
+      const blessingCommands = commands.filter((command) => PLAYER_BLESSING_COMMANDS.has(commandType(command)))
+      if (blessingCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Благословение идёт отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      // Письмо — отдельная атомарная команда по той же причине, что кости и
+      // ответ страже: у него своя цена в монете и свои минуты кампании.
+      // Полировка ответа моделью ставится **после** санитайзера и только
+      // сервером: черновик из браузера был бы ответом NPC, написанным игроком.
+      //
+      // Перед моделью стоят два сторожа, и оба про деньги. Первый — отказы
+      // движка (`assertSendLetterAllowed`, `server/rules-engine.mjs`): бой,
+      // пустой кошелёк, четвёртое письмо, адресат в сцене, герой без сознания.
+      // UI гасит кнопку по всем этим условиям, но по состоянию из последнего
+      // опроса — бой уже начался, монеты потратил сосед, адресат вошёл в зал, —
+      // и без этой строки каждый такой клик оплачивал completion, которое потом
+      // выбрасывалось. Второй — повтор: тот же `idempotency_key` возвращает уже
+      // подтверждённый коммит, и писать под него новый черновик незачем. Ровно
+      // так же устроен соседний соц.путь (`server/game-orchestrator.mjs`).
+      const letterCommands = commands.filter((command) => PLAYER_LETTER_COMMANDS.has(commandType(command)))
+      if (letterCommands.length) {
+        if (commands.length !== 1) {
+          throw commandPolicyError('Письмо идёт отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+        }
+        assertSendLetterAllowed(authoritativeBefore, commands[0])
+        const duplicateLetter = await eventStore.getByIdempotencyKey(commandMatch[1], idempotencyKey)
+        if (!duplicateLetter) commands = [await withCourierReplyDraft(authoritativeBefore, commands[0])]
       }
       // Драка со стражей — тот же двухшаговый план, что и у сборки столкновения
       // администратором: `ResolveGuardEncounter` ставит стражу на доску событием
@@ -3974,13 +4497,24 @@ const server = createServer((req, res) => {
       if (captiveCommands.length && commands.length !== 1) {
         throw commandPolicyError('Действие с пленным должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
+      // Обыск атомарен целиком: весь набор или ничего. Смешать его с другой
+      // командой значило бы разрешить «половину набора и ещё шаг».
+      const lootCommands = commands.filter((command) => PLAYER_LOOT_COMMANDS.has(commandType(command)))
+      if (lootCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Обыск должен быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      if (lootCommands.length) await assertLootIdempotency(commandMatch[1], idempotencyKey, lootCommands[0])
+      const beastCommands = commands.filter((command) => PLAYER_BEAST_COMMANDS.has(commandType(command)))
+      if (beastCommands.length && commands.length !== 1) {
+        throw commandPolicyError('Действие со зверем должно быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
       if (itemCommands.length) {
         await assertItemIdempotency(commandMatch[1], idempotencyKey, itemCommands[0])
       }
       if (restCommands.length) await assertRestIdempotency(commandMatch[1], idempotencyKey, restCommands[0])
       if (makeAttackCommands.length) await assertMakeAttackIdempotency(commandMatch[1], idempotencyKey, makeAttackCommands)
       // Двухфазный ручной бросок для команд доски, которые его поддерживают
-      // (сейчас — парлей). Первая фаза приходит без `roll` и получает карточку
+      // (парлей, побег от стражи, кости и уговор зверя). Первая фаза приходит без `roll` и получает карточку
       // проверки, вторая приносит серверный `roll_id`; выдуманный клиентом
       // результат сюда не проходит по построению — реестр знает только свои.
       const manualRoll = body.manual_roll === true || body.manualRoll === true
@@ -3997,12 +4531,13 @@ const server = createServer((req, res) => {
       if (merchantCommands.length) assertMerchantResultFingerprint(result, merchantCommands[0])
       if (characterCommands.length) assertCharacterBuildResultFingerprint(result, characterCommands)
       if (itemCommands.length) assertItemResultFingerprint(result, itemCommands[0])
+      if (lootCommands.length) assertLootResultFingerprint(result, lootCommands[0])
       if (restCommands.length) assertRestResultFingerprint(result, restCommands[0])
       if (makeAttackCommands.length) assertMakeAttackResultFingerprint(result, makeAttackCommands)
       if (result.authoritative_state) {
         const originalVersion = Number(result.state_version ?? result.authoritative_state.state_version ?? 0)
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))
-          || (types.has('UseItem') && Boolean(result.authoritative_state.mechanics?.combat?.active))
+          || ((types.has('UseItem') || types.has('LootContainer')) && Boolean(result.authoritative_state.mechanics?.combat?.active))
         const scheduler = shouldSettleCombat
           ? await settleCombatContinuation(commandMatch[1], {
             advanceNpc: types.has('StartCombat') || types.has('EndTurn') || resolvesReaction,
@@ -4067,7 +4602,32 @@ const server = createServer((req, res) => {
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code) ? 409 : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
-      return json(res, status, { error: error instanceof Error ? error.message : 'Команда отклонена', code: error?.code })
+      // Двое потянулись за одним кинжалом: первый его забрал, второй пришёл к
+      // уже пустому месту. Отказа мало — без свежего списка его карточка так и
+      // осталась бы с уже взятой вещью, и он бил бы в ту же стену. Список идёт
+      // и к 409 (конфликт версии), и к 400 с кодами `LOOT_*`: браузер приходит
+      // именно вторым путём, потому что версию в команде он не присылает.
+      // Список собирает та же функция, что и проекция комнаты, поэтому видно
+      // ровно то, что игроку и так позволено видеть.
+      const staleLoot = status === 409 || LOOT_STALE_ERROR_CODES.has(String(error?.code ?? ''))
+      const staleRoomState = staleLoot && lootRequestActorId ? getRoom(commandMatch[1]).state : null
+      const freshLoot = staleRoomState
+        ? lootContainersForViewer(staleRoomState, { actorId: lootRequestActorId, isAdmin: user.role === 'admin' })
+        : null
+      // Вместе со списком уезжает и запись летописи об этом контейнере: список
+      // говорит «тела больше нет», а имя успевшего знает только она. Без неё
+      // карточка проигравшего пропадала молча — свежий список переписывал
+      // «то, что было», и объяснять становилось уже нечего.
+      const lootRecord = freshLoot ? lootTakenRecordFor(staleRoomState, lootRequestContainerId) : null
+      return json(res, status, {
+        error: error instanceof Error ? error.message : 'Команда отклонена',
+        code: error?.code,
+        ...(freshLoot ? {
+          loot_containers: freshLoot,
+          ...(lootRecord ? { loot_taken: lootRecord } : {}),
+          state_version: Number(staleRoomState?.state_version ?? 0),
+        } : {}),
+      })
     }
   }
 

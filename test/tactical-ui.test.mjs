@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, renameSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -239,6 +239,68 @@ test('состояния честно помечаются как работаю
   assert.match(unknown.explanation, /пока не применяются/)
   assert.equal(unknown.duration, 'раундов: 3')
   assert.equal(tacticalUi.conditionPresentation('disengaged').label, 'Отход')
+})
+
+test('смазанный клинок читается в обеих формах: и чужой без ключа, и свой с ключом', () => {
+  // Проекция обезличивает только карман противника (`publicConditionsFor`,
+  // `server/viewer-projection.mjs`), поэтому в клиент приезжают две формы
+  // одного состояния. Подписи под непрозрачную форму подходят только
+  // противнику: без запасной ветки над своей фишкой вставало
+  // «Weapon Coated:hero Blade», собранное общим гуманизатором из ключа вещи.
+  const foe = tacticalUi.conditionPresentation({ id: 'weapon-coated' })
+  assert.equal(foe.label, 'Клинок смазан чем-то тёмным')
+  assert.equal(foe.status, 'implemented')
+  const own = tacticalUi.conditionPresentation({ id: 'weapon-coated:hero-blade' })
+  assert.equal(own.label, 'Оружие смазано ядом')
+  assert.equal(own.status, 'implemented')
+
+  // Знак под фишкой — та же развилка: точный ключ в словаре знаков не стоит и
+  // без сведения форм давал бы под своей фишкой первую букву подписи.
+  assert.equal(tacticalUi.tokenConditionGlyph(foe.id, foe.label), '☠')
+  assert.equal(tacticalUi.tokenConditionGlyph('weapon-coated:hero-blade', own.label), '☠')
+
+  // Проверяется настоящая функция, а не текст исходника: до переезда знаки жили
+  // внутри `DungeonMap.tsx` вместе с react и двумя десятками соседей, вызвать их
+  // из теста было нечем, и сторожем стояла регулярка по коду — она держала форму
+  // записи и молчала бы о любой правке поведения. Осталась ровно одна строка
+  // исходником — проводка: доска обязана звать функцию, а не собирать знак сама.
+  const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  assert.match(board, /\{tokenConditionGlyph\(condition\.id, condition\.label\)\}/u)
+})
+
+test('у постоянных состояний свои знаки, а не первые буквы подписей', () => {
+  // Значения закреплены поимённо — так же, как череп смазанного клинка выше, и
+  // ровно так же, как их держала прежняя регулярка по DungeonMap.tsx.
+  // Различимости и длины в один символ здесь мало: запасная ветка
+  // `label.slice(0, 1)` даёт для этих подписей «П», «О», «С» и «И»
+  // («Парализован», «Опутан», «Сбит с ног», «Испуган») — они тоже различимы и
+  // тоже односимвольны, поэтому удаление всех четырёх записей из
+  // TOKEN_CONDITION_GLYPHS такую проверку не роняло. Первая буква под фишкой
+  // ничего не говорит: «О» одинаково читается и как «Опутан», и как
+  // «Отравлен», и как «Ослеплён».
+  assert.deepEqual(tacticalUi.TOKEN_CONDITION_PRIORITY, ['paralyzed', 'restrained', 'prone', 'frightened'])
+  const glyphs = tacticalUi.TOKEN_CONDITION_PRIORITY.map((id) => tacticalUi.tokenConditionGlyph(id, tacticalUi.conditionPresentation(id).label))
+  assert.deepEqual(glyphs, ['✦', '⌁', '▰', '!'])
+
+  // Незнакомому состоянию остаётся первая буква подписи — знак не выдумывается.
+  const homebrew = tacticalUi.conditionPresentation('homebrew-omen')
+  assert.equal(tacticalUi.tokenConditionGlyph(homebrew.id, homebrew.label), 'H')
+})
+
+test('срок состояния подписан по-русски, а незнакомый отдаётся как есть', () => {
+  // Малое благословение и хмель таверны живут «до продолжительного отдыха», и
+  // панель обязана сказать это словами: сырое `until-long-rest` игрок читает
+  // как сбой, а не как срок.
+  const blessed = tacticalUi.conditionPresentation({ id: 'minor-blessing', duration: 'until-long-rest' })
+  assert.equal(blessed.label, 'Малое благословение')
+  assert.equal(blessed.status, 'implemented', 'движок действительно двигает бросок атаки')
+  assert.equal(blessed.duration, 'до продолжительного отдыха')
+  assert.equal(
+    tacticalUi.conditionPresentation({ id: 'disengaged', duration: 'until-next-turn' }).duration,
+    'до начала следующего хода',
+  )
+  // Незнакомый срок теряться не должен: показать сырым честнее, чем скрыть.
+  assert.equal(tacticalUi.conditionPresentation({ id: 'bless', duration: 'until-dawn' }).duration, 'until-dawn')
 })
 
 test('поддержка механики честно блокирует эвристику и ruling-only карточки', () => {

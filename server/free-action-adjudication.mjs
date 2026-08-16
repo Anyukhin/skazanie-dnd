@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { DIFFICULTY_CLASSES } from './adjudicator.mjs'
 import { findActor, skillProficiencyForActor } from './rules-engine.mjs'
+import { lootContainerList } from './loot-containers.mjs'
 
 /**
  * Серверное судейство свободного действия — то, что живой ведущий решает в уме.
@@ -367,6 +368,14 @@ const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*
 /**
  * Пока у тела нет явного server-owned контейнера, поиск не подменяется
  * проверкой Внимательности и не создаёт выдуманную добычу.
+ *
+ * Отказ обязан говорить правду о **конкретном** теле. С появлением инвентарей
+ * противников (`server/enemy-loadouts.mjs`) у трупа гуманоида есть авторитетное
+ * содержимое — оружие, боеприпасы, изредка расходник и карман медяков, — и
+ * ответ «у этого тела нет заданного сервером содержимого» стал бы ложью:
+ * состояние говорит одно, рассказчик другое. Поэтому источников содержимого
+ * здесь три, и все три учитываются: `loadout` существа, а также исторические
+ * `search_contents` / `corpse_contents` объектов сцены.
  */
 export function resolveCorpseSearch(state = {}, text = '', reading = {}) {
   if (!CORPSE_SEARCH.test(text)) return null
@@ -387,15 +396,47 @@ export function resolveCorpseSearch(state = {}, text = '', reading = {}) {
     }
   }
   const corpse = candidates[0]
+  const loadout = corpse?.loadout && typeof corpse.loadout === 'object' && !Array.isArray(corpse.loadout)
+    ? corpse.loadout
+    : null
+  const carried = (Array.isArray(loadout?.items) ? loadout.items.length : 0) > 0
+    || Number(loadout?.purse_cp) > 0
   const contents = Array.isArray(corpse?.search_contents) ? corpse.search_contents
     : Array.isArray(corpse?.corpse_contents) ? corpse.corpse_contents
       : null
+  // Контейнер добычи, заведённый той же фиксацией, что и смерть
+  // (`server/loot-containers.mjs`). С его появлением у обыска наконец есть
+  // авторитетный путь, и свободное действие обязано на него указывать, а не
+  // повторять прежнее «команды извлечения нет».
+  const container = lootContainerList(state)
+    .find((entry) => entry.source_enemy_id === String(corpse.id ?? '')
+      || entry.source_enemy_ids.includes(String(corpse.id ?? '')))
+  if (container?.status === 'available') {
+    return {
+      status: 'clarification',
+      narration: 'Тело обыскивается через панель добычи: подойдите к нему вплотную и заберите нужное. Набор выдаёт сервер — выдумывать находку я не стану.',
+      server_owned_contents: true,
+      corpse_id: String(corpse.id ?? ''),
+      loot_container_id: container.id,
+    }
+  }
+  if (container) {
+    return {
+      status: 'clarification',
+      narration: 'С этого тела уже всё сняли: контейнер добычи пуст.',
+      server_owned_contents: false,
+      corpse_id: String(corpse.id ?? ''),
+      loot_container_id: container.id,
+    }
+  }
   return {
     status: 'clarification',
-    narration: contents
-      ? 'У тела есть описанное содержимое, но оно ещё не оформлено как авторитетный контейнер. Нужна отдельная серверная команда извлечения.'
-      : 'У этого тела нет заданного сервером содержимого. Я не буду выдумывать находку или бросать проверку вместо неё.',
-    server_owned_contents: Array.isArray(contents),
+    narration: carried
+      ? 'На теле действительно есть снаряжение, но контейнера добычи у него не заведено: взять его сейчас нельзя. Я не буду ни выдумывать находку, ни бросать проверку вместо неё.'
+      : contents
+        ? 'У тела есть описанное содержимое, но оно ещё не оформлено как авторитетный контейнер. Нужна отдельная серверная команда извлечения.'
+        : 'У этого тела нет заданного сервером содержимого. Я не буду выдумывать находку или бросать проверку вместо неё.',
+    server_owned_contents: carried || Array.isArray(contents),
     corpse_id: String(corpse.id ?? ''),
   }
 }

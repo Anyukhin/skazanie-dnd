@@ -303,11 +303,123 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .captive-actions button:disabled { opacity: .38; cursor: default; }
 .captive-actions button.captive-execute { grid-column: 1 / -1; border-color: rgba(164,68,47,.4); background: rgba(120,42,28,.16); color: #c07a63; }
 .captive-actions button.captive-execute:hover:not(:disabled) { border-color: rgba(196,84,58,.65); background: rgba(120,42,28,.28); }
+/* Добыча в сцене. Панель повторяет пленников по конструкции: сервер решает, что
+   показывать, интерфейс только собирает набор и отправляет его одной командой. */
+.loot-panel { padding: 11px; border: 1px solid rgba(126,140,104,.3); border-radius: 7px; background: rgba(20,22,16,.9); }
+.loot-panel > header { display: flex; align-items: center; gap: 8px; color: #94a578; }
+.loot-panel > header span { display: grid; }
+.loot-panel > header small { color: #6b7554; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.loot-panel > header strong { color: #c6cdb2; font: 600 var(--fs-lg) Spectral, serif; }
+.loot-card { margin-top: 9px; padding: 8px 9px; border: 1px solid rgba(126,140,104,.22); border-left: 3px solid #6f7f52; border-radius: 6px; background: rgba(28,31,22,.7); transition: border-color .18s ease, box-shadow .18s ease, opacity .5s ease; }
+.loot-card.kind-captive { border-left-color: #8a6a45; }
+.loot-card.kind-abandoned { border-left-color: #6c7f8a; }
+.loot-card.kind-cache { border-left-color: #b08a4a; }
+/* Наведение на метку доски и на карточку — одно и то же выделение: игрок
+   обязан видеть, что подсвеченное тело и раскрытая карточка это один предмет. */
+.loot-card.focused { border-color: rgba(196,222,150,.6); box-shadow: 0 0 0 1px rgba(196,222,150,.28), 0 8px 20px rgba(0,0,0,.35); }
+/* Опустевший контейнер гаснет, а не исчезает рывком: иначе проигравший гонку
+   видел бы, как карточка пропала, и не понял бы почему. */
+.loot-card.taken { border-left-color: #5a5f4d; opacity: .62; }
+.loot-card > header { display: flex; align-items: flex-start; gap: 8px; }
+.loot-card > header > .loot-card-title { display: grid; gap: 2px; min-width: 0; }
+.loot-card > header b { color: #d3d6c2; font: 600 var(--fs-md) Spectral, serif; }
+.loot-card > header small { color: #737a63; font-size: var(--fs-xxs); }
+.loot-source-portrait { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(150,176,110,.32); border-radius: 5px; background: radial-gradient(circle, rgba(60,68,44,.7), rgba(18,20,14,.9) 72%); background-size: cover; background-position: center 22%; color: #97a87a; }
+.loot-source-portrait.neutral.kind-captive { border-color: rgba(196,147,92,.35); color: #c1965f; }
+.loot-source-portrait.neutral.spent { border-color: rgba(120,120,110,.3); color: #7d8073; }
+.loot-tag { justify-self: start; padding: 1px 6px; border: 1px solid rgba(150,176,110,.4); border-radius: 3px; background: rgba(105,127,74,.2); color: #a7bd80; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .1em; }
+.loot-far { margin: 6px 0 0; color: #7b8168; font-size: var(--fs-sm); font-style: italic; }
+.loot-refusal { margin: 6px 0 0; padding: 5px 7px; border: 1px solid rgba(180,96,74,.34); border-radius: 5px; background: rgba(96,42,30,.2); color: #c98d78; font-size: var(--fs-xs); }
+.loot-items { display: grid; gap: 4px; margin: 7px 0 8px; padding: 0; list-style: none; }
+.loot-items li { display: flex; align-items: stretch; gap: 5px; }
+.loot-items li > button { flex: 1; display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 3px 8px; border: 1px solid rgba(150,176,110,.24); border-radius: 5px; background: rgba(88,105,62,.1); color: #b6c197; text-align: left; cursor: pointer; }
+.loot-items li > button:hover:not(:disabled) { border-color: rgba(180,206,138,.5); background: rgba(88,105,62,.2); }
+.loot-items li > button:disabled { opacity: .38; cursor: default; }
+/* Именованный класс, а не `> span`: иначе то же правило растягивало бы и
+   картинку вещи, которая лежит в кнопке соседним узлом. */
+.loot-items li > button > .loot-item-info { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.loot-items li > button b { overflow: hidden; font: 600 var(--fs-sm) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.loot-items li > button small { color: #7f8768; font-size: var(--fs-xxs); white-space: nowrap; }
+.loot-items li > button .rarity { flex: 0 0 auto; }
+.loot-item-art { flex: 0 0 auto; width: 28px; height: 28px; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(150,176,110,.2); border-radius: 4px; background: radial-gradient(circle, rgba(58,66,42,.6), rgba(16,18,13,.9) 74%); color: #8d9c72; }
+.loot-item-art img { width: 100%; height: 100%; object-fit: cover; }
+.loot-item-art img[src*="item-atlas"] { width: 200%; height: 200%; max-width: none; }
+.loot-items li.picked > button { border-color: rgba(196,222,150,.7); background: rgba(112,136,78,.32); color: #e0e8c8; }
+.loot-items li > input { width: 52px; padding: 0 6px; border: 1px solid rgba(150,176,110,.24); border-radius: 5px; background: rgba(16,18,13,.8); color: #cdd4b6; font-size: var(--fs-sm); }
+/* Вес и прогноз перегруза. Предел переноски считает сервер, здесь только сумма
+   выбранного: обещание «унесёт» обязано совпадать с отказом движка. */
+.loot-load { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; padding: 5px 7px; border: 1px solid rgba(150,176,110,.18); border-radius: 5px; background: rgba(16,18,13,.55); color: #90a072; }
+.loot-load span { display: grid; }
+.loot-load b { color: #cbd4b1; font: 600 var(--fs-sm) Spectral, serif; }
+.loot-load small { color: #7b8168; font-size: var(--fs-xxs); }
+.loot-load.overloaded { border-color: rgba(190,104,74,.42); background: rgba(96,42,30,.18); color: #c2836a; }
+.loot-load.overloaded b { color: #dda183; }
+.loot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.loot-actions button { min-height: 30px; padding: 0 10px; border: 1px solid rgba(150,176,110,.26); border-radius: 5px; background: rgba(88,105,62,.12); color: #aebb8c; font-size: var(--fs-sm); cursor: pointer; }
+.loot-actions button:hover:not(:disabled) { border-color: rgba(186,214,142,.55); background: rgba(88,105,62,.22); }
+.loot-actions button:disabled { opacity: .38; cursor: default; }
+.loot-actions button.loot-take { margin-left: auto; border-color: rgba(196,222,150,.45); background: rgba(112,136,78,.24); color: #dfe7c4; font-weight: 600; }
+/* Кнопка называет цену и причину отказа собой, а не только подсказкой: цвет
+   отличает «стоит действия» от «не дотянуться» и от «уже забрали». */
+.loot-actions button.loot-take.tone-action { border-color: rgba(224,174,111,.5); background: rgba(163,101,43,.2); color: #e5b87f; }
+.loot-actions button.loot-take.tone-far { border-color: rgba(136,176,193,.4); background: rgba(44,72,86,.22); color: #a9cedb; opacity: .85; }
+.loot-actions button.loot-take.tone-heavy { border-color: rgba(190,104,74,.45); background: rgba(96,42,30,.2); color: #cd8f76; opacity: .9; }
+.loot-actions button.loot-take.tone-gone { border-color: rgba(120,120,110,.35); background: rgba(40,40,36,.4); color: #8d8f83; opacity: .9; }
+/* «Действие уже потрачено» — тот же янтарь, что и у объявленной цены: цена
+   названа, платить нечем, и цвет обязан связывать одно с другим. */
+.loot-actions button.loot-take.tone-spent { border-color: rgba(224,174,111,.32); background: rgba(163,101,43,.12); color: #b78e63; opacity: .9; }
+.loot-recipient { display: flex; align-items: center; gap: 5px; color: #7f8768; font-size: var(--fs-xs); }
+.loot-recipient select { min-height: 28px; padding: 0 6px; border: 1px solid rgba(150,176,110,.24); border-radius: 5px; background: rgba(16,18,13,.8); color: #cdd4b6; font-size: var(--fs-sm); }
+/* Послебоевая сводка: что осталось на полу. Карточка золотая, а не зелёная, —
+   она про итог боя, а не про очередной контейнер, и стоит выше панели. */
+.loot-aftermath { padding: 11px; border: 1px solid rgba(211,160,97,.34); border-radius: 7px; background: linear-gradient(180deg, rgba(48,36,22,.92), rgba(22,20,15,.92)); }
+.loot-aftermath > header { display: flex; align-items: center; gap: 8px; color: #d2a86a; }
+.loot-aftermath > header span { display: grid; flex: 1; }
+.loot-aftermath > header small { color: #9c7c4c; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.loot-aftermath > header strong { color: #e4d3b4; font: 600 var(--fs-lg) Spectral, serif; }
+.loot-aftermath > header button { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid rgba(211,160,97,.24); border-radius: 4px; background: rgba(0,0,0,.28); color: #a98d63; cursor: pointer; }
+.loot-aftermath-counts { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0 8px; }
+.loot-aftermath-counts > div { min-width: 92px; padding: 6px 9px; border: 1px solid rgba(211,160,97,.18); border-radius: 5px; background: rgba(0,0,0,.22); }
+.loot-aftermath-counts dt { color: #937b58; font-size: var(--fs-xxs); letter-spacing: .06em; }
+.loot-aftermath-counts dd { margin: 2px 0 0; color: #e0cba6; font: 600 var(--fs-lg) Spectral, serif; }
+.loot-aftermath-list { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.loot-aftermath-list button { width: 100%; display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 4px 8px; border: 1px solid rgba(211,160,97,.16); border-radius: 5px; background: rgba(0,0,0,.2); color: #cbb894; text-align: left; cursor: pointer; }
+.loot-aftermath-list button:hover { border-color: rgba(226,180,116,.48); background: rgba(120,84,38,.2); }
+.loot-aftermath-list b { flex: 1; overflow: hidden; font: 600 var(--fs-sm) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.loot-aftermath-list small { color: #8b7859; font-size: var(--fs-xxs); white-space: nowrap; }
+.loot-aftermath-list em { display: flex; align-items: center; gap: 3px; color: #a98d63; font-size: var(--fs-xxs); font-style: normal; white-space: nowrap; }
+.loot-aftermath > p { margin: 9px 0 0; color: #8b7859; font-size: var(--fs-xs); font-style: italic; }
 .npc-dialog-captive b { color: #d2a06a; }
 .npc-dialog-captive-actions { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
 .npc-dialog-captive-actions button { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid rgba(204,151,86,.28); border-radius: 5px; background: rgba(163,101,43,.12); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
 .npc-dialog-captive-actions button:hover:not(:disabled) { border-color: rgba(224,174,111,.5); background: rgba(163,101,43,.2); }
 .npc-dialog-captive-actions button:disabled { opacity: .38; cursor: default; }
+/* Звери отряда: кандидаты на приручение и уже приручённые спутники. Метка
+   слева — как у пленных, и это осознанно: обе панели отвечают на один вопрос
+   «кто идёт с нами и что с ним делать». Зелёная рамка спутника отличает его от
+   зверя, который ещё сторожится. */
+.beast-panel { padding: 11px; border: 1px solid rgba(116,142,104,.28); border-radius: 7px; background: rgba(19,24,17,.9); }
+.beast-panel > header { display: flex; align-items: center; gap: 8px; color: #8fae7c; }
+.beast-panel > header span { display: grid; }
+.beast-panel > header small { color: #6b7f5c; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.beast-panel > header strong { color: #c4d0b4; font: 600 var(--fs-lg) Spectral, serif; }
+.beast-card { margin-top: 9px; padding: 8px 9px; border: 1px solid rgba(116,142,104,.2); border-left: 3px solid #6d8a5e; border-radius: 6px; background: rgba(26,32,22,.7); }
+.beast-card.predator { border-left-color: #a4784a; }
+.beast-card.companion { border-left-color: #7db07a; background: rgba(28,38,26,.76); }
+.beast-card > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.beast-card > header b { color: #cfd6c1; font: 600 var(--fs-md) Spectral, serif; }
+.beast-card > header small { color: #74806a; font-size: var(--fs-xxs); }
+.beast-tag { padding: 1px 6px; border: 1px solid rgba(140,176,124,.42); border-radius: 3px; background: rgba(101,134,88,.18); color: #9dbd86; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .1em; }
+.beast-tag.predator { border-color: rgba(196,147,92,.45); background: rgba(138,106,69,.2); color: #d2a06a; }
+.beast-tag.companion { border-color: rgba(125,176,122,.5); background: rgba(96,142,92,.2); color: #a6cf9f; }
+.beast-card > p { margin: 5px 0 8px; color: #78826d; font-size: var(--fs-sm); }
+.beast-card.out-of-reach { border-left-color: #6a6f60; }
+.beast-card > p.beast-reach { margin: -3px 0 8px; color: #a08f63; font-size: var(--fs-xs); }
+.beast-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.beast-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 0 6px; border: 1px solid rgba(140,176,124,.26); border-radius: 5px; background: rgba(90,130,78,.1); color: #9dbd86; font-size: var(--fs-sm); cursor: pointer; }
+.beast-actions button:hover:not(:disabled) { border-color: rgba(168,206,150,.5); background: rgba(90,130,78,.18); }
+.beast-actions button:disabled { opacity: .38; cursor: default; }
+.beast-card.companion .beast-actions { grid-template-columns: 1fr; }
 /* --map-light-* — запечённый свет доски (`src/board-lighting.ts`): цвет тьмы и цвет огня. Значения по умолчанию продублированы в DEFAULT_BOARD_PALETTE, доска обязана рисоваться и без темы. */
 .map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); --map-light-shadow: #0d1016; --map-light-warm: #ffb257; position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
 .map-stage::before { content: ''; position: absolute; inset: 0; opacity: .12; background-image: repeating-linear-gradient(35deg, transparent 0 15px, rgba(255,255,255,.025) 16px 17px), repeating-linear-gradient(125deg, transparent 0 22px, rgba(0,0,0,.3) 23px 24px); }
@@ -346,7 +458,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .board-hotspot-cell { position: relative; min-width: 0; pointer-events: none; }
 .board-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; }
 .board-cell.interactive, .board-cell.hover-probe { pointer-events: auto; }
-.board-cell .map-token, .board-cell .enemy-token, .board-cell .token-conditions, .board-cell .neutral-token-menu { pointer-events: auto; }
+.board-cell .map-token, .board-cell .enemy-token, .board-cell .token-conditions, .board-cell .neutral-token-menu, .board-cell .loot-pin { pointer-events: auto; }
 .map-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 1px solid var(--map-grid-line); background-color: var(--map-floor); background-image: radial-gradient(circle at 35% 27%, rgba(255,255,255,.055) 0 2%, transparent 3%), linear-gradient(135deg, transparent 48%, rgba(0,0,0,.11) 50%); box-shadow: inset 1px 1px rgba(255,255,255,.025), inset -1px -1px rgba(0,0,0,.22); color: inherit; font: inherit; }
 .map-cell.parity-odd { background-color: var(--map-floor-alt); }
 .map-cell.wall { background-color: var(--map-wall); background-image: linear-gradient(rgba(30,24,19,.38), rgba(20,17,14,.5)), url('/assets/maps/terrain/stone.webp'); background-size: auto, 190px 190px; border-color: color-mix(in srgb, var(--map-grid-line), black 28%); box-shadow: inset 0 0 0 4px rgba(0,0,0,.18), inset 2px 2px 7px color-mix(in srgb, var(--map-grid-line), transparent 60%); }
@@ -565,6 +677,74 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .guard-escape-skill button { padding: 3px 8px; border: 1px solid rgba(132,141,158,.24); border-radius: 4px; background: transparent; color: #838a99; font-size: var(--fs-xs); cursor: pointer; }
 .guard-escape-skill button.active { border-color: rgba(168,178,198,.55); background: rgba(40,46,60,.7); color: #ccd2e0; }
 .guard-escape-skill button:disabled { opacity: .4; cursor: default; }
+/* Жизнь таверны: кости и выпивка. Панель тёплая, а не тревожная — это досуг, а
+   не встреча со стражей, и по цвету это должно быть видно с первого взгляда. */
+.tavern-panel { padding: 11px; border: 1px solid rgba(158,132,84,.34); border-radius: 7px; background: rgba(26,20,14,.9); }
+.tavern-panel > header { display: flex; align-items: center; gap: 8px; color: #a6906b; }
+.tavern-panel > header span { display: grid; }
+.tavern-panel > header small { color: #80704f; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.tavern-panel > header strong { color: #d8cbb0; font: 600 var(--fs-lg) Spectral, serif; }
+.tavern-note { margin: 7px 0 8px; color: #bdae92; font: var(--fs-md)/1.5 Spectral, serif; }
+.tavern-note b { color: #e6d6ae; }
+.tavern-approaches { display: grid; gap: 6px; }
+.tavern-approach { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 7px; padding: 7px 9px; border: 1px solid rgba(158,132,84,.28); border-left: 3px solid #8a7549; border-radius: 6px; background: rgba(36,28,20,.7); text-align: left; color: #bdae92; cursor: pointer; }
+.tavern-approach:hover:not(:disabled) { border-color: rgba(198,172,118,.6); background: rgba(48,38,26,.8); }
+.tavern-approach:disabled { opacity: .38; cursor: default; }
+.tavern-approach b { color: #e0d3b4; font: 600 var(--fs-md) Spectral, serif; }
+.tavern-approach small { grid-column: 2; color: #93866d; font-size: var(--fs-sm); }
+.tavern-approach.approach-cheat { border-left-color: #a4442f; }
+.tavern-approach.approach-watch { border-left-color: #5f7c8f; }
+.tavern-dice-setup { display: grid; gap: 7px; }
+.tavern-dice-setup label { display: grid; gap: 3px; }
+.tavern-dice-setup label span { color: #80704f; font-size: var(--fs-xxs); letter-spacing: .1em; }
+.tavern-dice-setup select { padding: 4px 7px; border: 1px solid rgba(158,132,84,.28); border-radius: 5px; background: rgba(20,16,12,.8); color: #d8cbb0; font-size: var(--fs-sm); }
+.tavern-stakes { display: flex; flex-wrap: wrap; gap: 6px; }
+.tavern-stakes button { padding: 3px 8px; border: 1px solid rgba(158,132,84,.24); border-radius: 4px; background: transparent; color: #93866d; font-size: var(--fs-xs); cursor: pointer; }
+.tavern-stakes button.active { border-color: rgba(198,172,118,.55); background: rgba(52,42,28,.7); color: #e0d3b4; }
+.tavern-stakes button:disabled { opacity: .4; cursor: default; }
+.tavern-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(158,132,84,.34); border-radius: 6px; background: rgba(40,31,20,.75); color: #e0d3b4; font: 600 var(--fs-md) Spectral, serif; cursor: pointer; }
+.tavern-action:hover:not(:disabled) { border-color: rgba(198,172,118,.6); background: rgba(54,42,27,.85); }
+.tavern-action:disabled { opacity: .38; cursor: default; }
+.tavern-drink { display: grid; gap: 4px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(158,132,84,.2); }
+.tavern-drink small { color: #93866d; font-size: var(--fs-sm); }
+.tavern-leave { display: grid; gap: 4px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(158,132,84,.2); }
+.tavern-leave small { color: #93866d; font-size: var(--fs-sm); }
+.tavern-action.action-leave { border-style: dashed; background: transparent; color: #a6906b; }
+/* Второй щелчок по сдаче: кнопка перестаёт быть пунктирной «дверью» и
+   становится тем, чем стала, — необратимой командой с ценой в подписи. */
+.tavern-leave.confirming { border-top-color: rgba(178,64,52,.42); }
+.tavern-leave.confirming small { color: #c08a7c; }
+.tavern-leave.confirming .tavern-action.action-leave { border-style: solid; border-color: rgba(178,64,52,.5); background: rgba(46,22,20,.7); color: #dba192; }
+.tavern-action.action-leave-cancel { border-style: dashed; background: transparent; color: #93866d; font-size: var(--fs-sm); }
+/* Почта отряда: письма и курьеры. Панель бумажная и холоднее таверны — это не
+   досуг за столом, а слово, отправленное туда, где отряда нет. Бланк по
+   умолчанию свёрнут: письмо не срочное действие, и держать его раскрытым рядом
+   с боем незачем. */
+.letters-panel { padding: 11px; border: 1px solid rgba(146,140,118,.3); border-radius: 7px; background: rgba(24,23,20,.9); }
+.letters-panel > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; color: #9d9781; }
+.letters-panel > header span { min-width: 0; display: grid; }
+.letters-panel > header small { color: #7d7866; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.letters-panel > header strong { color: #d3cfc0; font: 600 var(--fs-lg) Spectral, serif; }
+.letters-toggle { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid rgba(146,140,118,.28); border-radius: 4px; background: transparent; color: #9d9781; font-size: var(--fs-xs); cursor: pointer; }
+.letters-toggle:hover { border-color: rgba(190,183,158,.55); color: #d3cfc0; }
+.letters-list { display: grid; gap: 5px; margin: 9px 0 0; padding: 0; list-style: none; }
+.letter-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 4px 7px; padding: 6px 8px; border-left: 2px solid rgba(146,140,118,.4); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.022); color: #aca797; font-size: var(--fs-sm); }
+.letter-row b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d3cfc0; font: 600 var(--fs-md) Spectral, serif; }
+.letter-row i { color: #7d7866; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .08em; }
+.letter-row .letter-reply { grid-column: 2 / -1; color: #b6b1a0; font: var(--fs-sm)/1.5 Spectral, serif; }
+.letter-row.letter-answered { border-left-color: #7d9a72; }
+.letter-row.letter-returned,
+.letter-row.letter-unanswered { border-left-color: #a4442f; }
+.letters-compose { display: grid; gap: 7px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(146,140,118,.2); }
+.letters-compose label { display: grid; gap: 3px; }
+.letters-compose label span { color: #7d7866; font-size: var(--fs-xxs); letter-spacing: .1em; }
+.letters-compose select { padding: 4px 7px; border: 1px solid rgba(146,140,118,.26); border-radius: 5px; background: rgba(18,17,15,.8); color: #d3cfc0; font-size: var(--fs-sm); }
+.letters-compose textarea { padding: 7px 9px; border: 1px solid rgba(146,140,118,.26); border-radius: 5px; background: rgba(18,17,15,.8); color: #d3cfc0; font: var(--fs-md)/1.55 Spectral, serif; resize: vertical; }
+.letters-send { display: grid; gap: 4px; }
+.letters-send small { color: #8b8676; font-size: var(--fs-sm); }
+.letter-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(146,140,118,.34); border-radius: 6px; background: rgba(36,34,29,.75); color: #ddd8c7; font: 600 var(--fs-md) Spectral, serif; cursor: pointer; }
+.letter-action:hover:not(:disabled) { border-color: rgba(190,183,158,.6); background: rgba(48,45,38,.85); }
+.letter-action:disabled { opacity: .38; cursor: default; }
 /* Приметы розыска в шапке сцены: одна строка мира вместо индикатора. */
 .scene-wanted { display: flex; align-items: center; gap: 6px; max-width: 260px; padding: 4px 9px; border: 1px solid rgba(178,64,52,.32); border-radius: 14px; background: rgba(34,18,16,.7); color: #c08a7c; font: 600 var(--fs-xs) Manrope, sans-serif; }
 .scene-wanted span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -771,6 +951,38 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .offscreen-card ul { display: grid; gap: 5px; margin: 10px 0 0; padding: 0; list-style: none; }
 .offscreen-card li { padding: 7px 9px; border-left: 2px solid rgba(126,148,184,.3); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #b3b8c2; font: var(--fs-sm)/1.55 Spectral, serif; }
 .offscreen-elapsed { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; color: #6a7180; font-size: var(--fs-xs); }
+/* Конверт в летописи. Как и врезка хода мира, эта системная запись не гасится:
+   письмо ушло, дошло или вернулось — это событие мира, а не служебная строка.
+   Бумажный цвет отделяет её и от синевы «пока вас не было», и от золота
+   рассказчика: письмо принесли на бумаге, и читается оно как бумага. */
+.message.system.letter-entry { margin-bottom: 14px; opacity: 1; }
+.letter-card { padding: 12px 13px; border: 1px solid rgba(158,150,124,.28); border-radius: 8px; background: linear-gradient(160deg, rgba(52,48,38,.5), rgba(20,19,16,.72)); }
+.letter-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; color: #b0a888; }
+.letter-card header > span { min-width: 0; display: grid; }
+.letter-card header small { color: #8d866e; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.letter-card header strong { color: #e2ddca; font: 600 var(--fs-lg) Spectral, serif; }
+.letter-card header time { color: #6f6a59; font-size: var(--fs-xs); }
+.letter-route { margin: 9px 0 0; color: #9a9480; font: var(--fs-sm)/1.5 Manrope, sans-serif; }
+.letter-route b { color: #7d7866; font-weight: 700; letter-spacing: .06em; }
+.letter-text { margin: 7px 0 0; padding: 8px 10px; border-left: 2px solid rgba(158,150,124,.34); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #c7c2b0; font: var(--fs-md)/1.6 Spectral, serif; }
+.letter-entry.letter-answered .letter-card { border-color: rgba(125,154,114,.3); }
+.letter-entry.letter-returned .letter-card,
+.letter-entry.letter-unanswered .letter-card { border-color: rgba(164,68,47,.32); }
+/* Ступень приручения в летописи. Форма та же, что у конверта почты: это
+   системная карточка о том, что случилось между отрядом и зверем, а не реплика
+   рассказчика. Зелёная рамка последней ступени отмечает единственное, что
+   меняет игру, — зверь пошёл с отрядом. */
+.message.system.beast-entry { margin-bottom: 14px; opacity: 1; }
+.beast-chronicle-card { padding: 12px 13px; border: 1px solid rgba(124,150,112,.28); border-radius: 8px; background: linear-gradient(160deg, rgba(40,50,36,.5), rgba(17,20,16,.72)); }
+.beast-chronicle-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; color: #9cb489; }
+.beast-chronicle-card header > span { min-width: 0; display: grid; }
+.beast-chronicle-card header small { color: #7c8d6d; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.beast-chronicle-card header strong { color: #d9e0cc; font: 600 var(--fs-lg) Spectral, serif; }
+.beast-chronicle-card header time { color: #66705c; font-size: var(--fs-xs); }
+.beast-chronicle-who { margin: 9px 0 0; color: #93a084; font: var(--fs-sm)/1.5 Manrope, sans-serif; }
+.beast-chronicle-who b { color: #c3cdb4; font-weight: 700; }
+.beast-chronicle-text { margin: 7px 0 0; padding: 8px 10px; border-left: 2px solid rgba(124,150,112,.34); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #c0c7b2; font: var(--fs-md)/1.6 Spectral, serif; }
+.beast-entry.beast-tamed .beast-chronicle-card { border-color: rgba(125,176,122,.42); }
 /* Кнопка «Почему так?» не имела своего стиля и рендерилась системной серой
    кнопкой: светлый текст на светлом фоне. Теперь это тихая ссылка-подсказка. */
 .why-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 3px 9px; border: 1px solid rgba(201,149,85,.3); border-radius: 11px; background: rgba(34,28,22,.72); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }
@@ -2006,6 +2218,8 @@ button.campaign-title:hover strong { color: #edc996; }
   .deed-feed article { grid-template-columns: 1fr; }
   .wanted-region li { grid-template-columns: 1fr; }
   .wanted-region > header { flex-wrap: wrap; }
+  .tavern-approach { grid-template-columns: 1fr; }
+  .tavern-approach small { grid-column: 1; }
   .rumor-list li { grid-template-columns: 1fr; }
   .offscreen-feed li { grid-template-columns: 1fr; }
   .offscreen-feed > article > header { flex-wrap: wrap; }
@@ -2205,6 +2419,29 @@ button.campaign-title:hover strong { color: #edc996; }
 .board-cell.occupied-by-enemy { --footprint: #c86c5d; }
 .board-cell.occupied-by-summon { --footprint: #70a78b; }
 .board-cell.occupied-by-neutral { --footprint: #9d8f72; }
+
+/* Тело и добыча в клетке.
+   Слой тот же, что у фишек: обычные узлы внутри `.board-cell`, а не рисунок на
+   холсте. Павший становится затемнённой фишкой — тело обязано быть видно там,
+   где упало, — а рядом с ним висит метка «что-то осталось» с числом предметов. */
+/* Клетка с невзятой добычей помечена еле заметно — так, чтобы после боя было
+   видно, где ещё не смотрели, но чтобы это не спорило с подсветками команд. */
+.board-cell.loot-here { box-shadow: inset 0 0 0 1px rgba(157,176,114,.22); }
+/* Клетка с выбранным контейнером подсвечивается в обе стороны: наведение на
+   карточку панели зажигает клетку, щелчок по метке — карточку. */
+.board-cell.loot-focused { box-shadow: inset 0 0 0 2px rgba(196,222,150,.6), inset 0 0 18px rgba(112,136,78,.22); }
+.loot-cell-mark { position: absolute; z-index: 5; inset: 0; pointer-events: none; }
+.fallen-token { position: absolute; z-index: 3; left: 50%; top: 50%; width: clamp(24px, 4.6cqw, 38px); height: clamp(24px, 4.6cqw, 38px); display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(120,116,104,.5); border-radius: 50% 50% 42% 42%; background-color: rgba(24,22,19,.86); background-size: cover; background-position: center 26%; color: #7d7a6f; filter: grayscale(.85) brightness(.52); transform: translate(-50%, -50%) rotate(-8deg); }
+.loot-pin { position: absolute; z-index: 6; right: 6%; bottom: 6%; display: flex; align-items: center; gap: 2px; min-height: 17px; padding: 0 4px; border: 1px solid rgba(180,206,138,.62); border-radius: 4px; background: rgba(24,32,18,.92); color: #cfe0a6; font: 700 clamp(7px, 1.4cqw, 10px) Manrope, sans-serif; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.6); transition: transform .16s ease, opacity .5s ease, box-shadow .16s ease; }
+.loot-pin i { font-style: normal; font-variant-numeric: tabular-nums; }
+.loot-pin:hover, .loot-cell-mark.selected .loot-pin { transform: scale(1.16); box-shadow: 0 0 0 2px rgba(196,222,150,.55), 0 3px 9px rgba(0,0,0,.6); }
+.loot-cell-mark.kind-captive .loot-pin { border-color: rgba(204,151,86,.62); color: #dcb079; }
+.loot-cell-mark.kind-cache .loot-pin { border-color: rgba(226,180,116,.7); color: #e9c78a; }
+/* Опустошённый контейнер гаснет на месте: рывком исчезнувшая метка читалась бы
+   как сбой, а не как «здесь уже всё забрали». */
+.loot-cell-mark.spent .loot-pin { border-color: rgba(120,120,110,.4); color: #8a8c80; animation: loot-fade 3.6s ease forwards; }
+.loot-cell-mark.spent .fallen-token { animation: loot-fade 3.6s ease forwards; }
+@keyframes loot-fade { 0% { opacity: 1; } 55% { opacity: .5; } 100% { opacity: 0; } }
 
 /* Фишка стоит на своей клетке без всякой проекции: доска ортографическая, поэтому
    фишке не нужен ни подъём над плоскостью, ни контр-вращение, чтобы не уезжать вбок.
