@@ -15,6 +15,19 @@ export type Message = {
    * своей сборки у клиента нет, иначе стол и ведущий читали бы разный монтаж.
    */
   offscreen?: OffscreenChronicleCard
+  /**
+   * Конверт в летописи: отправленное письмо, доставка, возврат или пришедший
+   * ответ. Поля собраны на сервере (`server/courier-letters.mjs`); своей сборки
+   * у клиента нет, иначе «от кого» и «кому» читались бы по-разному у стола и у
+   * ведущего.
+   */
+  letter?: LetterChronicleCard
+  /**
+   * Ступень приручения зверя: подпустил, поел с руки, пошёл с отрядом. Подписи
+   * собраны на сервере (`server/beast-taming.mjs`); своей сборки у клиента нет,
+   * иначе лестница читалась бы по-разному у стола и у ведущего.
+   */
+  beast?: BeastChronicleCard
   turnConsumed?: boolean
 }
 
@@ -26,6 +39,30 @@ export type OffscreenChronicleCard = {
   lines: string[]
 }
 
+/** Что именно случилось с письмом. Список закрыт сервером. */
+export type LetterChronicleKind = 'sent' | 'delivered' | 'returned' | 'answered' | 'unanswered'
+
+/** Карточка-конверт в летописи. */
+export type LetterChronicleCard = {
+  kind: LetterChronicleKind
+  title: string
+  from: string
+  to: string
+  text: string
+}
+
+/** Ступень лестницы приручения. Список закрыт сервером. */
+export type BeastChronicleKind = 'calmed' | 'fed' | 'tamed'
+
+/** Карточка ступени приручения в летописи. */
+export type BeastChronicleCard = {
+  kind: BeastChronicleKind
+  title: string
+  name: string
+  diet_label?: string
+  text: string
+}
+
 export type RollResult = NonNullable<Message['roll']>
 
 /**
@@ -35,7 +72,9 @@ export type RollResult = NonNullable<Message['roll']>
  */
 export type DiceRollEvent = {
   id: string
-  kind: 'free' | 'party'
+  /* `tavern` — кость, брошенная за игровым столом внутри мира: соперник по
+     костям и ответ героя ложатся в тот же лоток, что и свободный бросок. */
+  kind: 'free' | 'party' | 'tavern'
   /* Свободный бросок теперь любой обычной костью, а не только d20. Набор
      закрыт на сервере (`PUBLIC_DIE_SIDES`), клиент выбирает из него. */
   sides: 4 | 6 | 8 | 10 | 12 | 20 | 100
@@ -60,12 +99,27 @@ export type PendingCheck = {
   status: 'ready' | 'rolling' | 'resolving'
   result?: RollResult
   /**
-   * Команда доски, ждущая броска. Есть только у двухфазных команд парлея:
-   * вторая фаза повторяет ту же команду с серверным `roll_id`, а не
-   * пересобирает свободное действие. Пусто — обычная проверка свободной фразы.
+   * Команда доски, ждущая броска: вторая фаза повторяет **ту же** команду с
+   * серверным `roll_id`, а не пересобирает свободное действие. Пусто — обычная
+   * проверка свободной фразы.
    */
-  command?: { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
+  command?: TwoPhaseCheckCommand
 }
+
+/**
+ * Команды доски, у которых первая фаза возвращает карточку броска вместо
+ * результата. Список закрыт и обязан совпадать с серверным: карточку выдают
+ * `parleyCheckCard`, `guardEscapeCheckCard`, `tavernDiceCheckCard` и `beastTamingCheckCard`
+ * (`server/game-orchestrator.mjs`), и команда, которой здесь нет, получает
+ * карточку от сервера и молча теряет её на клиенте — ход после этого не
+ * доиграть ничем, кроме перезагрузки.
+ */
+export type TwoPhaseCheckCommand =
+  | { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
+  | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
+  | { command_type: 'AnswerTavernDiceRound'; actor_id: string; approach: TavernDiceApproach }
+  | { command_type: 'CalmBeast'; actor_id: string; beast_id: string }
+  | { command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent }
 
 export type AgentInteractionOption = {
   id: string
@@ -719,7 +773,12 @@ export type TacticalDoor = {
   keyItemId: string | null
 }
 
-export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use' | 'topple' | 'ignite'
+/**
+ * `pray` объявляется сервером только у святыни (`sceneShrineVerbsFor`,
+ * `server/scene-interactions.mjs`) и в отличие от остальных глаголов бросает
+ * кость: молитва идёт двухфазной проверкой Религии.
+ */
+export type SceneObjectIntent = 'inspect' | 'open' | 'take' | 'use' | 'topple' | 'ignite' | 'pray'
 
 export type TacticalProp = {
   id: string
@@ -1251,16 +1310,39 @@ export type GameState = {
    */
   loot_containers?: LootContainersProjection
   /**
+   * Звери сцены и спутники отряда: кого можно уговорить, против какой СЛ и кто
+   * уже идёт следом. Ветка принадлежит игроку целиком, кроме стат-блока и CR.
+   */
+  beasts?: BeastsProjection
+  /**
    * Закон и розыск. Форма зависит от зрителя: игроку приезжают приметы мира и
    * встреча со стражей, ведущему — лента по краям. Общий тип держит обе ветки
    * необязательными, потому что второй проекции у клиента нет и быть не должно.
    */
   law?: LawProjection
   /**
+   * Жизнь таверны: кости и выпивка. Приезжает только в сцене заведения, и
+   * только собранной сервером карточкой — характера соперника, его пассивных
+   * значений и чужого счёта здесь нет.
+   */
+  tavern?: TavernProjection | null
+  /**
+   * Благословения: несёт ли герой малое благословение, прошли ли сутки с
+   * прошлого обращения и у кого в этой сцене можно попросить. Приезжает всегда
+   * — в отличие от таверны, святыня и жрец встречаются где угодно.
+   */
+  blessings?: BlessingProjection | null
+  /**
    * Ходы мира за спиной отряда. Ветка одинакова у игрока и у ведущего: «Пока
    * вас не было…» — монтаж для всего стола.
    */
   offscreen_world?: OffscreenWorldProjection
+  /**
+   * Почта отряда: кому уже написали, где сейчас курьер и сколько стоит письмо
+   * каждому известному адресату. Запечатанного ответа здесь нет — он приходит
+   * вместе со статусом «получен ответ».
+   */
+  courier_letters?: CourierLettersProjection
   /**
    * Время суток и погода. Ветка одинакова у игрока и у ведущего: небо над
    * отрядом тайной не является.
@@ -1572,6 +1654,91 @@ export type LootContainersProjection = {
   containers?: LootContainerCard[]
 }
 
+/** Ступень приручения и повадка зверя. Оба списка закрыты сервером. */
+export type BeastStage = 'wary' | 'calmed' | 'fed' | 'tamed'
+export type BeastDiet = 'predator' | 'herbivore'
+
+/**
+ * Зверь в реестре отряда. Стат-блока и CR здесь нет намеренно: серверная
+ * проекция их вырезает — подойти к волку не то же самое, что опознать его как
+ * строку бестиария (`beastForViewer`, `server/beast-taming.mjs`).
+ */
+export type BeastEntry = {
+  id: string
+  actor_id: string
+  name: string
+  diet: BeastDiet
+  diet_label?: string
+  stage: BeastStage
+  stage_label?: string
+  status: 'wild' | 'companion'
+  attempts?: number
+  bites?: number
+  location_name?: string
+  met_at_minutes?: number
+  calmed_at_minutes?: number | null
+  fed_at_minutes?: number | null
+  tamed_at_minutes?: number | null
+  scared_at_minutes?: number | null
+  /** Только у ведущего: из чего сложилась объявленная СЛ. */
+  stat_block_id?: string
+  challenge_rating?: string
+}
+
+/** Одно слагаемое объявленной СЛ: почему с этим зверем именно так трудно. */
+export type BeastDifficultyPart = { id: string; label: string; shift: number }
+
+/**
+ * Зверь, к которому отряд может подойти прямо сейчас. Всё посчитано сервером:
+ * СЛ, её слагаемые и повод отказа. Своей формулы сложности у клиента нет.
+ */
+export type BeastCandidate = {
+  id: string
+  actor_id: string
+  name: string
+  diet: BeastDiet
+  diet_label?: string
+  stage: BeastStage
+  stage_label?: string
+  wounded?: boolean
+  broken_morale?: boolean
+  difficulty: number
+  skill?: string
+  ability?: string
+  attempts?: number
+  bites_on_failure?: boolean
+  parts?: BeastDifficultyPart[]
+  /**
+   * Досягаемость по каждому герою отряда: ключ — идентификатор героя. Общей
+   * строки «до зверя далеко» здесь нет намеренно: команду движок принимает от
+   * действующего героя, и панель обязана читать строку того, кто жмёт кнопку,
+   * а не того, кто просто стоит ближе. `distance_feet: null` — сцена без
+   * клеток: расстояния в ней не существует.
+   */
+  reach_by_hero?: Record<string, { distance_feet: number | null; out_of_reach: boolean }>
+  /** С какого расстояния зверю протягивают руку. Считает сервер. */
+  reach_feet?: number
+  /** `combat_active` или `beast_down`: почему подойти нельзя. */
+  blocked_reason?: string
+}
+
+export type BeastCompanionCard = {
+  id: string
+  name: string
+  scare_cooldown_minutes: number
+  /** `combat_active` или `scare_cooldown`: почему спутник сейчас не отгоняет. */
+  blocked_reason?: string
+}
+
+export type BeastsProjection = {
+  schema_version?: number
+  beasts?: BeastEntry[]
+  candidates?: BeastCandidate[]
+  companions?: BeastCompanionCard[]
+  /** Идёт ли прямо сейчас страж лагеря: преимущество на Восприятие на привале. */
+  watch_advantage?: boolean
+}
+
 /** Чем можно ответить страже. Список закрыт сервером (`server/law-and-order.mjs`). */
 export type GuardResolution = 'fine' | 'surrender' | 'fight' | 'flee'
 
@@ -1637,6 +1804,160 @@ export type LawProjection = {
   signs?: string[]
   encounter?: GuardEncounterCard | null
   regions?: WantedRegionEntry[]
+}
+
+/** Как герой отвечает на бросок соперника. Список закрыт сервером (`server/tavern-life.mjs`). */
+export type TavernDiceApproach = 'fair' | 'cheat' | 'watch'
+
+/** Открытый раунд: кость соперника уже на столе, и её надо перебить. */
+export type TavernRoundCard = {
+  id: string
+  hero_id: string
+  npc_id: string
+  npc_name?: string
+  /** Ставка, **уже** ушедшая из кошелька на стол при открытии раунда. */
+  stake_cp: number
+  npc_total: number
+  /**
+   * Сколько нужно показать, чтобы забрать банк. Считает сервер.
+   *
+   * Поля «почему раунд уже не доиграть» здесь нет, и это не пропуск: касса
+   * соперника закрепляет выплату за раундом с самого открытия
+   * (`tavernFreePurseFor`, `server/tavern-life.mjs`), поэтому тупиков не бывает,
+   * а исходов у раунда ровно два — ответить или сдаться. Единственное, что
+   * закрывает ответ, — запрет входа, и о нём говорит своё поле карточки
+   * (`TavernProjection.ejected`).
+   */
+  target: number
+}
+
+/**
+ * Карточка заведения. Всё уже посчитано сервером: с кем можно сыграть, какие
+ * ставки открыты, сколько стоит кружка и против какой СЛ пойдёт следующая.
+ * Честен соперник или шулер — не приезжает никогда: это узнают Проницательностью.
+ */
+export type TavernProjection = {
+  schema_version?: number
+  place_name?: string
+  location_id?: string
+  opponents?: Array<{
+    id: string
+    name: string
+    role?: string
+    /**
+     * Самая крупная ставка, которую этот сосед может закрыть своим кошельком.
+     * `0` — он на мели. Считает сервер: своей таблицы касс у доски нет.
+     */
+    max_stake_cp?: number
+  }>
+  stakes?: Array<{ stake_cp: number; label: string }>
+  approaches?: TavernDiceApproach[]
+  round?: TavernRoundCard | null
+  drink_price_cp?: number
+  drinks?: number
+  /** `null` — следующая кружка ещё безопасна. */
+  next_drink_dc?: number | null
+  social_bonus?: number
+  ejected?: boolean
+}
+
+/**
+ * Карточка благословений. Всё уже посчитано сервером: цена требы, СЛ молитвы,
+ * срок и то, прошли ли сутки. Своей арифметики суток у клиента нет.
+ */
+export type BlessingProjection = {
+  schema_version?: number
+  /** Идентификатор состояния — тот же, что придёт в `mechanics.conditions`. */
+  condition?: string
+  attack_bonus?: number
+  donation_cp?: number
+  prayer_dc?: number
+  prayer_skill?: string
+  location_id?: string
+  /** Несёт ли герой благословение прямо сейчас. */
+  blessed?: boolean
+  /** Прошли ли сутки с прошлого обращения — молитвы или требы. */
+  available?: boolean
+  /** Сколько минут кампании ждать, если ещё не прошли. */
+  waits_minutes?: number
+  priests?: Array<{ id: string; name: string; role?: string }>
+  /** Чем кончилось прошлое обращение. `null` — герой ещё не обращался. */
+  last?: {
+    source?: 'shrine' | 'priest'
+    granted?: boolean
+    place_name?: string
+    npc_name?: string
+    at_minutes?: number
+  } | null
+}
+
+/** Куда едет письмо: к известному NPC или к фракции. Список закрыт сервером. */
+export type LetterAddresseeKind = 'npc' | 'faction'
+
+/**
+ * Состояние письма. Подпись к нему приходит с сервера готовой.
+ *
+ * `unanswered` — письмо дошло, а отвечать уже некому: адресата убили или увели
+ * между доставкой и ответом. Это не `returned`: возврат означает, что письмо не
+ * прочитал никто.
+ */
+export type LetterStatus = 'in_transit' | 'delivered' | 'answered' | 'returned' | 'unanswered'
+
+/**
+ * Один известный адресат с уже посчитанной дорогой. Цену и срок считает сервер
+ * по дорогам карты мира — своей арифметики дальности у клиента нет.
+ */
+export type LetterAddressee = {
+  kind: LetterAddresseeKind
+  id: string
+  name: string
+  role?: string
+  place_name?: string
+  leagues: number
+  fee_cp: number
+  travel_minutes: number
+  /** `true` — адресат стоит перед отрядом: это разговор, а не письмо. */
+  unreachable?: boolean
+}
+
+/**
+ * Письмо в публичной форме. Текста ответа здесь нет, пока он не пришёл: до
+ * этого он запечатан и не принадлежит ни игроку, ни ведущему.
+ */
+export type LetterCard = {
+  id: string
+  hero_id: string
+  hero_name?: string
+  addressee_kind: LetterAddresseeKind
+  addressee_id: string
+  addressee_name: string
+  place_name?: string
+  leagues: number
+  fee_cp: number
+  body: string
+  promise_text?: string
+  status: LetterStatus
+  status_label: string
+  sent_at_minutes: number
+  delivery_due_minutes: number
+  reply_due_minutes: number
+  delivered_at_minutes?: number | null
+  answered_at_minutes?: number | null
+  returned_at_minutes?: number | null
+  return_reason?: string
+  /** Появляется только вместе со статусом «получен ответ». */
+  reply?: string
+}
+
+/** Почта отряда: письма в дороге, доставленные и уже отвеченные. */
+export type CourierLettersProjection = {
+  schema_version?: number
+  letters?: LetterCard[]
+  addressees?: LetterAddressee[]
+  base_fee_cp?: number
+  fee_per_league_cp?: number
+  body_limit?: number
+  open_limit?: number
 }
 
 /** Время суток по серверным часам кампании (`server/weather.mjs`). */

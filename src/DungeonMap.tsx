@@ -17,9 +17,10 @@ import {
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
-  Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert,
+  Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Beer, Ear, Eye,
+  Mail, MailOpen, MailX, HandHeart,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -31,7 +32,7 @@ import { CharacterEditor, InventoryView } from './InventoryViews'
 import { LootCellMarker, LootPanel, PostCombatLootSummary, useVanishedLoot } from './LootPanel'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
-import { useGameSession, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
+import { useGameSession, type BeastAction, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
 import { TOKEN_CONDITION_PRIORITY, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
@@ -146,6 +147,7 @@ export const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
   use: 'Использовать',
   topple: 'Опрокинуть',
   ignite: 'Поджечь',
+  pray: 'Помолиться',
 }
 /**
  * Подписи условий перемирия. Какие из них доступны, решает сервер: здесь
@@ -230,7 +232,7 @@ export function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
   const projected = prop.interaction?.verbs ?? prop.interactionVerbs ?? []
   return [...new Set(projected.filter((verb): verb is SceneObjectIntent => (
     verb === 'inspect' || verb === 'open' || verb === 'take' || verb === 'use'
-    || verb === 'topple' || verb === 'ignite'
+    || verb === 'topple' || verb === 'ignite' || verb === 'pray'
   )))]
 }
 
@@ -622,7 +624,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onResolveGuardEncounter, onProposeParley, onSettleParley, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -652,9 +654,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onNpcAction: (text: string, npcId: string) => Promise<CommandOutcome>
   onCaptiveAction: (captiveId: string, action: CaptiveAction, skill?: CaptiveInterrogationSkill) => Promise<CommandOutcome>
   onLootContainer: (containerId: string, lines: Array<{ item_instance_id: string; quantity: number }>, recipientId?: string) => Promise<CommandOutcome>
+  onBeastAction: (beastId: string, action: BeastAction) => Promise<CommandOutcome>
   onResolveGuardEncounter: (resolution: GuardResolution, skill?: 'stealth' | 'athletics') => Promise<CommandOutcome>
   onProposeParley: (skill: 'persuasion' | 'intimidation') => Promise<CommandOutcome>
   onSettleParley: (outcome: ParleyOutcome) => Promise<CommandOutcome>
+  onOpenTavernDiceRound: (npcId: string, stakeCp: number) => Promise<CommandOutcome>
+  onAnswerTavernDiceRound: (approach: TavernDiceApproach) => Promise<CommandOutcome>
+  onLeaveTavernDiceRound: () => Promise<CommandOutcome>
+  onOrderTavernDrink: () => Promise<CommandOutcome>
+  onSendLetter: (addresseeKind: LetterAddresseeKind, addresseeId: string, body: string) => Promise<CommandOutcome>
+  onReceiveNpcBlessing: (npcId: string) => Promise<CommandOutcome>
   onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
   onStartRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
   onSpendHitPointDie: () => Promise<CommandOutcome>
@@ -681,6 +690,20 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // Какая победа уже отсмотрена. Ключ — идентификатор записи «бой завершён»,
   // поэтому следующая победа откроет сводку снова, а перерисовка — нет.
   const [dismissedVictoryId, setDismissedVictoryId] = useState<string | null>(null)
+  // С кем и на что играем. Оба поля — только выбор из серверных списков:
+  // соперника и ставку сервер всё равно проверит своей карточкой заведения.
+  const [tavernOpponentId, setTavernOpponentId] = useState('')
+  const [tavernStakeCp, setTavernStakeCp] = useState(0)
+  // Сдача ждёт подтверждения, как и любая необратимая команда на этой панели.
+  // Хранится идентификатор раунда, а не флаг: раунд может закрыться и открыться
+  // заново, пока игрок держит палец над кнопкой, и подтверждение от прошлой
+  // кости не должно достаться следующей.
+  const [tavernSurrenderRoundId, setTavernSurrenderRoundId] = useState('')
+  // Кому и что пишем. Оба поля — черновик в браузере и ничего больше: адресата
+  // сервер всё равно сверит со своим списком, а текст письма он режет сам.
+  const [letterAddresseeId, setLetterAddresseeId] = useState('')
+  const [letterBody, setLetterBody] = useState('')
+  const [lettersOpen, setLettersOpen] = useState(false)
   const [npcDialogueText, setNpcDialogueText] = useState('')
   const [selectedGiftItemId, setSelectedGiftItemId] = useState('')
   const [giftQuantity, setGiftQuantity] = useState(1)
@@ -908,17 +931,110 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     return closing?.reason === 'enemies_defeated' ? closing : null
   }, [combatActive, state.battleLog])
   const showLootAftermath = Boolean(victoryEntry && victoryEntry.id !== dismissedVictoryId && sceneLoot.length > 0)
+  // Звери приезжают отдельной серверной веткой проекции: и кандидаты с
+  // объявленной СЛ, и уже прирученные спутники. Своей формулы сложности здесь
+  // нет и быть не должно — карточку собрал сервер (`server/beast-taming.mjs`).
+  const beastCandidates = useMemo(
+    () => (state.beasts?.candidates ?? []).filter((candidate) => !candidate.blocked_reason),
+    [state.beasts],
+  )
+  const beastCompanions = useMemo(() => state.beasts?.companions ?? [], [state.beasts])
+  // Своих запретов доска здесь не выдумывает: кого нельзя трогать, сервер уже
+  // назвал полем `blocked_reason` — и у кандидата, и у спутника. «Идёт бой» сам
+  // по себе запретом не является: к зверю со сломленной моралью подходят прямо
+  // посреди схватки, платя действием, и слепой гейт по бою гасил кнопки там,
+  // где команда проходит. Остаются поводы самой доски: идёт рассказ, команда в
+  // полёте, герой не может действовать.
+  //
+  // И один повод — про чужой ход. Доступность считается по действующему герою
+  // (`turnActorId`, в бою это герой инициативы), а команда зверя уходит от того,
+  // которым игрок сейчас играет (`typingActorId`). У аккаунта с двумя героями и
+  // у ведущего это разные герои: на ходу героя Б при выбранном в сайдбаре
+  // герое А кнопки горели, а сервер отбивал команду `OUT_OF_TURN`. Раньше весь
+  // класс был скрыт боевым гейтом; сняв гейт, надо назвать настоящую причину.
+  const beastOffTurn = Boolean(combatActive && turnActorId !== typingActorId)
+  const beastActionsBlocked = Boolean(narrating || tacticalBusy || !canAct || beastOffTurn)
+  // Молчаливо неактивных кнопок в проекте нет (принцип 3): раз погасили — надо
+  // сказать, почему. Своей формулировки о запретах сервера здесь по-прежнему
+  // нет — эта строка только про чужой ход, который доска знает сама.
+  const beastOffTurnTitle = 'Сейчас ход другого героя: зверя уговаривает тот, чей ход'
   // Встреча со стражей приезжает готовой карточкой: подписи исходов, размер
   // виры и СЛ побега считает сервер (`server/law-and-order.mjs`). Своей таблицы
   // ступеней здесь нет и быть не может — точной ступени игрок не видит вовсе.
   const guardEncounter = state.law?.encounter ?? null
   const guardFineCp = Number(guardEncounter?.fine_cp ?? 0)
   const activeHeroPurse = players.find((player) => player.id === typingActorId)?.currency
-  const canPayGuardFine = (activeHeroPurse?.copper ?? 0)
+  // Кошелёк героя в медяках. Считается один раз: и вира стражи, и ставка за
+  // костями, и кружка спрашивают у него одно и то же, а три копии одной суммы
+  // разошлись бы при первой правке номиналов.
+  const activeHeroPurseCp = (activeHeroPurse?.copper ?? 0)
     + (activeHeroPurse?.silver ?? 0) * 10
     + (activeHeroPurse?.gold ?? 0) * 100
     + (activeHeroPurse?.platinum ?? 0) * 1_000
-    >= guardFineCp
+  const canPayGuardFine = activeHeroPurseCp >= guardFineCp
+  // Досуг таверны приезжает готовой карточкой: список соперников, набор ставок,
+  // цена кружки и СЛ следующего спасброска посчитаны сервером
+  // (`server/tavern-life.mjs`). Своей таблицы цен и своей проверки «а таверна
+  // ли это» здесь нет: карточки нет — панели нет.
+  const tavern = state.tavern ?? null
+  const tavernOpponents = tavern?.opponents ?? []
+  const tavernStakes = tavern?.stakes ?? []
+  const tavernRound = tavern?.round ?? null
+  const chosenTavernOpponentId = tavernOpponents.some((npc) => npc.id === tavernOpponentId)
+    ? tavernOpponentId
+    : tavernOpponents[0]?.id ?? ''
+  const chosenTavernStakeCp = tavernStakes.some((stake) => stake.stake_cp === tavernStakeCp)
+    ? tavernStakeCp
+    : tavernStakes[0]?.stake_cp ?? 0
+  // Ставка ограничена не только своим кошельком, но и чужим: банк соперника
+  // приходит из его кармана, и сервер откажет в ставке, которую ему нечем
+  // закрыть. Кнопка обязана показать это до клика, а не после отказа.
+  const tavernOpponentMaxStakeCp = Number(tavernOpponents.find((npc) => npc.id === chosenTavernOpponentId)?.max_stake_cp ?? 0)
+  const tavernActionsBlocked = Boolean(combatActive || narrating || tacticalBusy || !canAct)
+  // Ответить на кость нельзя ровно в одном положении: героя выставили за дверь,
+  // и с ним больше не садятся. Тупиком это не является — встать из-за стола он
+  // может, — но кнопки ответа обязаны гаснуть до клика, а не приносить отказ
+  // после него.
+  //
+  // Своей арифметики чужой кассы здесь нет и быть не должно: поводов «отвечать
+  // нечем» из-за денег соседа не существует по построению — касса закрепляет
+  // выплату за раундом с самого открытия (`tavernFreePurseFor`,
+  // `server/tavern-life.mjs`).
+  const tavernPatronEjected = tavern?.ejected === true
+  // Уход из-за стола стоит всей ставки всегда: она уже лежит на столе (её сняли
+  // с кошелька, когда кость легла), и назад её приносит только расчёт.
+  // Возвратов у сдачи нет ни одного, поэтому и вопрос «вернут ли» доска больше
+  // не задаёт — она называет цену.
+  //
+  // Раз цена одна и необратима, подтверждение спрашивается всегда — тем же
+  // порядком, каким на этой панели проходят команды с целью.
+  const tavernSurrenderPending = Boolean(tavernRound && tavernSurrenderRoundId === tavernRound.id)
+  // Почта отряда. Карточка приезжает готовой (`server/courier-letters.mjs`):
+  // список адресатов уже посчитан по дорогам карты мира, у каждого стоит своя
+  // цена курьера и свой срок. Досчитывать здесь нечего и нечем — второй
+  // арифметики дальности в проекте нет.
+  const letterAddressees = (state.courier_letters?.addressees ?? []).filter((entry) => entry.unreachable !== true)
+  const heroLetters = (state.courier_letters?.letters ?? []).filter((letter) => letter.hero_id === typingActorId)
+  const heroLettersInTransit = heroLetters.filter((letter) => letter.status === 'in_transit')
+  const letterOpenLimit = Number(state.courier_letters?.open_limit ?? 3)
+  const letterBodyLimit = Number(state.courier_letters?.body_limit ?? 1_200)
+  const chosenLetterAddressee = letterAddressees.find((entry) => entry.id === letterAddresseeId) ?? letterAddressees[0] ?? null
+  const letterFeeCp = Number(chosenLetterAddressee?.fee_cp ?? 0)
+  // Отказы движка названы до клика, а не после него: посреди боя писем не
+  // пишут, кошелёк не уходит в минус, и четвёртое письмо героя курьер не берёт.
+  const letterBlockReason = combatActive
+    ? 'Посреди боя писем не пишут'
+    : !canAct || narrating || tacticalBusy
+      ? 'Сейчас ход не ваш'
+      : !chosenLetterAddressee
+        ? 'Отряд пока не знает никого, кому можно написать'
+        : heroLettersInTransit.length >= letterOpenLimit
+          ? `У героя и так ${heroLettersInTransit.length} писем в дороге`
+          : activeHeroPurseCp < letterFeeCp
+            ? 'На курьера не хватает монет'
+            : !letterBody.trim()
+              ? 'Пустое письмо курьер не повезёт'
+              : ''
   const dossierSceneNpc = npcDossier ? sceneNpcs.find((npc) => npc.id === npcDossier.npcId) ?? null : null
   const dossierCaptive = dossierSceneNpc ? captiveByNpcId.get(dossierSceneNpc.id) ?? null : null
   const dossierSocialNpc = dossierSceneNpc
@@ -1128,6 +1244,28 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const selectedSceneObject = interactiveSceneObjects.find((prop) => prop.id === selectedSceneObjectId) ?? null
   const selectedSceneObjectAtHand = Boolean(selectedSceneObject && sceneObjectsAtHand.some((prop) => prop.id === selectedSceneObject.id))
   const selectedSceneObjectVerbs = selectedSceneObject ? sceneObjectVerbs(selectedSceneObject) : []
+  /* Благословения приезжают готовой карточкой: цена требы, СЛ молитвы и то,
+     прошли ли сутки, посчитаны сервером (`server/blessings.mjs`). Своей
+     арифметики суток здесь нет — иначе кнопка обещала бы одно, а движок делал
+     другое. */
+  const blessings = state.blessings ?? null
+  const blessingAvailable = blessings?.available !== false
+  /* Благословение, которое ещё не израсходовано, закрывает оба обращения:
+     второго поверх первого движок не даёт (`BLESSING_ALREADY_ACTIVE`). Одного
+     суточного слота здесь мало — сутки открывают его через 1440 минут, а
+     состояние снимает продолжительный отдых или первый удар, и сутки дороги без
+     ночёвки оставляли кнопку требы горящей над отказом. */
+  const blessingHeld = blessings?.blessed === true
+  const blessingWaitHours = Math.ceil(Math.max(0, Number(blessings?.waits_minutes) || 0) / 60)
+  const blessingHeldHint = 'Благословение этого героя ещё не израсходовано: оно уйдёт первым ударом или продолжительным отдыхом'
+  const blessingSpentHint = `Этот герой уже обращался к богам сегодня. Снова можно примерно через ${blessingWaitHours} ч`
+  const blessingPrayerHint = !blessingAvailable
+    ? blessingSpentHint
+    : blessingHeld
+      ? blessingHeldHint
+      : `Молитва: проверка Религии, СЛ ${Number(blessings?.prayer_dc) || 12}. Успех — малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) до продолжительного отдыха. Раз в сутки на героя`
+  const blessingPriests = blessings?.priests ?? []
+  const blessingDonationCp = Math.max(0, Number(blessings?.donation_cp) || 0)
   /* Этажи локации (`docs/multilevel-map-plan.md`, раздел 6). Номер активного
      этажа приходит проекцией; у старой кампании его нет, и это этаж входа. */
   const sceneLevelIndex = Number(state.scene.level?.index ?? boardMap?.levelIndex ?? 0) || 0
@@ -1804,6 +1942,28 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   onClick={() => onOpenMerchant(sceneNpc.id)}
                 ><Store size={13} />Торговать</button>
               : null}
+            {/* Треба у служителя. Кто служитель, решает сервер по роли профиля
+                (`blessingPriestsFor`, `server/blessings.mjs`): своего списка
+                ролей у доски нет, иначе кнопка появлялась бы там, где движок её
+                не принимает. */}
+            {blessingPriests.some((priest) => priest.id === sceneNpc.id)
+              ? <button
+                  type="button"
+                  disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct || blessingHeld || !blessingAvailable || activeHeroPurseCp < blessingDonationCp}
+                  title={combatActive
+                    ? 'Посреди боя благословений не раздают'
+                    : !sceneNpc.alive
+                      ? 'Служитель сейчас недоступен'
+                      : !blessingAvailable
+                        ? blessingSpentHint
+                        : blessingHeld
+                          ? blessingHeldHint
+                          : activeHeroPurseCp < blessingDonationCp
+                            ? `На пожертвование нужно ${blessingDonationCp} мм`
+                            : `Пожертвовать ${blessingDonationCp} мм и получить малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) без броска`}
+                  onClick={() => { void onReceiveNpcBlessing(sceneNpc.id) }}
+                ><HandHeart size={13} />Благословение ({blessingDonationCp} мм)</button>
+              : null}
           </div>}
         </>}
         {player && cell.revealed && (() => {
@@ -2365,6 +2525,208 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           onFocus={setFocusedLootId}
           onLoot={onLootContainer}
         />
+        {tavern && <section className="tavern-panel" aria-label="Жизнь таверны" aria-live="polite">
+          <header><Beer size={15} /><span><small>ЗАВЕДЕНИЕ · {tavern.place_name || 'таверна'}</small><strong>{tavernRound ? 'Кость на столе' : 'Кости и выпивка'}</strong></span></header>
+          {/* Заметка о запрете входа и блок раунда идут **рядом**, а не через
+              «или»: выставленный за дверь остаётся с открытым раундом на руках,
+              и до ревью панель рисовала ему одну заметку — кнопки «встать из-за
+              стола» выставленный не видел вовсе, хотя движок её ему разрешает.
+              Возврата за ней нет: скандал он устроил сам, и его уход — такая же
+              сдача, как любая другая. */}
+          {tavern.ejected && <p className="tavern-note">Отсюда героя выставили: за этим столом ему больше не наливают и в кости с ним не садятся.</p>}
+          {tavernRound
+            ? <>
+              <p className="tavern-note">
+                {tavernRound.npc_name || 'Соперник'} выбросил <b>{tavernRound.npc_total}</b>. Нужно <b>{tavernRound.target}</b> или больше,
+                чтобы забрать банк в {tavernRound.stake_cp * 2} мм. Ставка в {tavernRound.stake_cp} мм уже на столе.
+              </p>
+              <div className="tavern-approaches">
+                {([
+                  { id: 'fair' as const, label: 'Бросить честно', summary: 'Просто кость: чей бросок старше, тот и забрал банк.', icon: <Dices size={13} /> },
+                  { id: 'cheat' as const, label: 'Подкрутить кость', summary: 'Подменённая кость даёт +5 к вашему броску, но идёт Ловкость рук против чужой Проницательности: поймают — скандал и потерянная ставка.', icon: <Sparkles size={13} /> },
+                  { id: 'watch' as const, label: 'Следить за руками', summary: 'Проницательность: если сосед мечет краплёными, это можно разглядеть.', icon: <Eye size={13} /> },
+                ]).map((approach) => <button
+                  key={approach.id}
+                  type="button"
+                  className={`tavern-approach approach-${approach.id}`}
+                  disabled={tavernActionsBlocked || tavernPatronEjected}
+                  title={tavernPatronEjected ? 'Героя выставили за дверь: доигрывать не с кем' : approach.summary}
+                  onClick={() => { void onAnswerTavernDiceRound(approach.id) }}
+                >
+                  {approach.icon}
+                  <b>{approach.label}</b>
+                  <small>{approach.summary}</small>
+                </button>)}
+              </div>
+              {/* Встать из-за стола можно всегда — но никогда даром, и цену
+                  игрок обязан увидеть **до** клика, а не в подписи под ним.
+                  Ставка уже ушла из кошелька на стол, поэтому уход от кости —
+                  это сдача: она остаётся сопернику ровно как при проигрыше.
+                  Возвратов у неё нет ни одного, и обещать их доска не может.
+
+                  Поэтому кнопка двухщелчковая всегда: щелчок необратим и стоит
+                  до 200 мм. Тем же порядком на этой панели идут команды с целью
+                  (`combat-command-confirmation`), и заводить сдаче свой обычай
+                  незачем. Выставленному за дверь она нужна тем более: ответить
+                  ему нельзя, а деньги у него на столе. */}
+              <div className={`tavern-leave${tavernSurrenderPending ? ' confirming' : ''}`}>
+                <button
+                  type="button"
+                  className="tavern-action action-leave"
+                  disabled={tavernActionsBlocked}
+                  title={tavernSurrenderPending
+                    ? `Подтвердите: ${tavernRound.stake_cp} мм со стола останутся сопернику`
+                    : `Спросит подтверждения: ставка в ${tavernRound.stake_cp} мм со стола останется сопернику`}
+                  onClick={() => {
+                    if (!tavernSurrenderPending) { setTavernSurrenderRoundId(tavernRound.id); return }
+                    setTavernSurrenderRoundId('')
+                    void onLeaveTavernDiceRound()
+                  }}
+                ><DoorOpen size={13} />{tavernSurrenderPending ? `Подтвердить сдачу · −${tavernRound.stake_cp} мм` : 'Встать из-за стола'}</button>
+                {tavernSurrenderPending && <button
+                  type="button"
+                  className="tavern-action action-leave-cancel"
+                  onClick={() => setTavernSurrenderRoundId('')}
+                ><X size={13} />Остаться за столом</button>}
+                <small>
+                  {tavernPatronEjected
+                    ? `Доигрывать выставленному нельзя, и остаётся только сдаться: раунд закроется, а ставку в ${tavernRound.stake_cp} мм со стола заберёт ${tavernRound.npc_name || 'соперник'}.`
+                    : tavernSurrenderPending
+                      ? `Кость ${tavernRound.npc_name || 'соперника'} ещё жива: подтвердите — и ${tavernRound.stake_cp} мм со стола уйдут ему.`
+                      : `Ставка в ${tavernRound.stake_cp} мм уже на столе: встать можно, но это сдача — ставку заберёт ${tavernRound.npc_name || 'соперник'}.`}
+                </small>
+              </div>
+            </>
+            : tavern.ejected
+              ? null
+              : <>
+                <div className="tavern-dice-setup" role="group" aria-label="Игра в кости">
+                  <label>
+                    <span>Соперник</span>
+                    <select
+                      value={chosenTavernOpponentId}
+                      disabled={tavernActionsBlocked || !tavernOpponents.length}
+                      onChange={(event) => setTavernOpponentId(event.target.value)}
+                    >
+                      {tavernOpponents.length
+                        ? tavernOpponents.map((npc) => <option key={npc.id} value={npc.id}>{npc.name}{npc.role ? ` (${npc.role})` : ''}{Number(npc.max_stake_cp ?? 0) > 0 ? '' : ' · на мели'}</option>)
+                        : <option value="">за столом никого нет</option>}
+                    </select>
+                  </label>
+                  <div className="tavern-stakes" role="group" aria-label="Ставка">
+                    {tavernStakes.map((stake) => <button
+                      key={stake.stake_cp}
+                      type="button"
+                      className={chosenTavernStakeCp === stake.stake_cp ? 'active' : ''}
+                      disabled={tavernActionsBlocked || activeHeroPurseCp < stake.stake_cp || tavernOpponentMaxStakeCp < stake.stake_cp}
+                      title={activeHeroPurseCp < stake.stake_cp
+                        ? 'На такую ставку не хватает монет'
+                        : tavernOpponentMaxStakeCp < stake.stake_cp ? 'Соперник такую ставку не закроет' : `${stake.stake_cp} мм`}
+                      onClick={() => setTavernStakeCp(stake.stake_cp)}
+                    >{stake.label} · {stake.stake_cp} мм</button>)}
+                  </div>
+                  <button
+                    type="button"
+                    className="tavern-action action-dice"
+                    disabled={tavernActionsBlocked || !chosenTavernOpponentId || !chosenTavernStakeCp || activeHeroPurseCp < chosenTavernStakeCp || tavernOpponentMaxStakeCp < chosenTavernStakeCp}
+                    title={activeHeroPurseCp < chosenTavernStakeCp
+                      ? 'На ставку не хватает монет'
+                      : tavernOpponentMaxStakeCp < chosenTavernStakeCp
+                        ? 'У соперника столько не наберётся'
+                        : `Соперник мечет первым, отвечать будете вы. Ставка в ${chosenTavernStakeCp} мм уходит из кошелька на стол сразу`}
+                    onClick={() => { void onOpenTavernDiceRound(chosenTavernOpponentId, chosenTavernStakeCp) }}
+                  ><Dices size={13} />Сыграть в кости</button>
+                </div>
+                <div className="tavern-drink">
+                  <button
+                    type="button"
+                    className="tavern-action action-drink"
+                    disabled={tavernActionsBlocked || activeHeroPurseCp < Number(tavern.drink_price_cp ?? 0)}
+                    title={activeHeroPurseCp < Number(tavern.drink_price_cp ?? 0) ? 'На выпивку не хватает монет' : 'Кружка эля из кошелька'}
+                    onClick={() => { void onOrderTavernDrink() }}
+                  ><Beer size={13} />Заказать выпивку · {tavern.drink_price_cp ?? 0} мм</button>
+                  <small>
+                    Выпито за вечер: {tavern.drinks ?? 0}.
+                    {Number(tavern.social_bonus) > 0 ? ` Разговор идёт легче: +${tavern.social_bonus} к Убеждению до конца сцены.` : ''}
+                    {tavern.next_drink_dc != null ? ` Следующая кружка — спасбросок Телосложения СЛ ${tavern.next_drink_dc}.` : ''}
+                  </small>
+                </div>
+              </>}
+        </section>}
+        {/* Почта отряда. Панель складная и по умолчанию закрыта: письмо — не
+            срочное действие, и держать открытым бланк рядом с боем незачем.
+            Показывается она только там, где почте есть смысл, — когда отряд
+            знает хоть одного адресата или уже отправил хоть одно письмо. */}
+        {(letterAddressees.length > 0 || heroLetters.length > 0) && <section className="letters-panel" aria-label="Почта отряда" aria-live="polite">
+          <header>
+            <Mail size={15} />
+            <span><small>ПОЧТА ОТРЯДА{heroLettersInTransit.length ? ` · В ПУТИ: ${heroLettersInTransit.length}` : ''}</small><strong>Письма и курьеры</strong></span>
+            <button
+              type="button"
+              className="letters-toggle"
+              aria-expanded={lettersOpen}
+              onClick={() => setLettersOpen((value) => !value)}
+            >{lettersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{lettersOpen ? 'Свернуть' : 'Написать письмо'}</button>
+          </header>
+          {heroLetters.length > 0 && <ul className="letters-list">
+            {heroLetters.slice(0, 4).map((letter) => <li key={letter.id} className={`letter-row letter-${letter.status}`}>
+              {letter.status === 'answered'
+                ? <MailOpen size={13} />
+                : letter.status === 'returned' || letter.status === 'unanswered' ? <MailX size={13} /> : <Mail size={13} />}
+              <b>{letter.addressee_name}</b>
+              <i>{letter.status_label}</i>
+              {letter.reply ? <span className="letter-reply">{letter.reply}</span> : null}
+            </li>)}
+          </ul>}
+          {lettersOpen && <div className="letters-compose">
+            <label>
+              <span>Кому</span>
+              <select
+                value={chosenLetterAddressee?.id ?? ''}
+                disabled={!letterAddressees.length}
+                onChange={(event) => setLetterAddresseeId(event.target.value)}
+              >
+                {letterAddressees.length
+                  ? letterAddressees.map((entry) => <option key={`${entry.kind}:${entry.id}`} value={entry.id}>
+                    {entry.name}{entry.role ? ` (${entry.role})` : ''} · {entry.leagues} перех. · {entry.fee_cp} мм
+                  </option>)
+                  : <option value="">писать пока некому</option>}
+              </select>
+            </label>
+            <textarea
+              value={letterBody}
+              maxLength={letterBodyLimit}
+              rows={4}
+              placeholder="Что написать? Обещание в письме — обещание."
+              onChange={(event) => setLetterBody(event.target.value)}
+            />
+            <div className="letters-send">
+              <button
+                type="button"
+                className="letter-action action-send"
+                disabled={Boolean(letterBlockReason)}
+                title={letterBlockReason || `Курьер возьмёт ${letterFeeCp} мм и повезёт письмо ${chosenLetterAddressee?.leagues ?? 0} перех.`}
+                onClick={() => {
+                  if (!chosenLetterAddressee) return
+                  // Поле чистится **только по ok** — тем же порядком, что и
+                  // реплика в разговоре с NPC выше по файлу. Отказ движка (бой
+                  // начался, кошелёк потратил сосед, адресат вошёл в зал) или
+                  // обрыв сети иначе уничтожали бы до 1200 знаков, которые
+                  // игрок только что написал, без возможности их вернуть.
+                  void (async () => {
+                    const outcome = await onSendLetter(chosenLetterAddressee.kind, chosenLetterAddressee.id, letterBody)
+                    if (outcome.ok) setLetterBody('')
+                  })()
+                }}
+              ><Send size={13} />Отправить с курьером · {letterFeeCp} мм</button>
+              <small>
+                {letterBlockReason
+                  ? letterBlockReason
+                  : `Ответа ждать не раньше, чем отряд переночует: курьеру ехать ${chosenLetterAddressee?.leagues ?? 0} перех.${chosenLetterAddressee?.place_name ? ` до «${chosenLetterAddressee.place_name}»` : ''}.`}
+              </small>
+            </div>
+          </div>}
+        </section>}
         {heldCaptives.length > 0 && <section className="captive-panel" aria-label="Пленники отряда">
           <header><UserLock size={15} /><span><small>ПЛЕННИКИ · {heldCaptives.length}</small><strong>Судьба решается вами</strong></span></header>
           {heldCaptives.map((captive) => {
@@ -2400,6 +2762,85 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 <button className="captive-execute" type="button" disabled={captiveActionsBlocked} title="Убить связанного. Это поступок жестокости, и мир его запомнит" onClick={() => onCaptiveAction(captive.id, 'execute')}><Swords size={13} />Убить</button>
               </div>
             </article>
+          })}
+        </section>}
+        {(beastCandidates.length > 0 || beastCompanions.length > 0) && <section className="beast-panel" aria-label="Звери отряда">
+          <header><PawPrint size={15} /><span><small>ЗВЕРИ · {beastCandidates.length + beastCompanions.length}</small><strong>Кого можно увести с собой</strong></span></header>
+          {beastCompanions.map((companion) => <article key={companion.id} className="beast-card companion">
+            <header>
+              <i className="beast-tag companion">СПУТНИК</i>
+              <b>{companion.name}</b>
+              <small>идёт с отрядом · в бой не вводится</small>
+            </header>
+            <p>На привале держит стражу: Восприятие лагеря идёт с преимуществом.</p>
+            <div className="beast-actions">
+              <button
+                type="button"
+                disabled={beastActionsBlocked || Boolean(companion.blocked_reason)}
+                title={companion.blocked_reason === 'combat_active'
+                  ? 'В бою зверь не отгоняет: это не боевой спутник'
+                  : companion.blocked_reason === 'scare_cooldown'
+                    ? `Зверь только что отогнал одну тварь: ждать ещё ${companion.scare_cooldown_minutes} мин игрового времени`
+                    : 'Отогнать мелкую угрозу. Механики за этим нет — только строка в летописи'}
+                onClick={() => onBeastAction(companion.id, 'scare')}
+              ><Ear size={13} />Отогнать</button>
+            </div>
+          </article>)}
+          {beastCandidates.map((candidate) => {
+            // Досягаемость меряется по тому герою, которым игрок сейчас жмёт
+            // кнопку: сервер прислал строку на каждого героя отряда той же
+            // меркой, которой проверит команду. Своей геометрии у доски нет, и
+            // «сосед стоит ближе» ответом на этот вопрос не является.
+            //
+            // Умолчание при отсутствующей строке — «далеко». Строка есть на
+            // каждого героя отряда всегда, даже в сцене без карты
+            // (`distance_feet: null`, `out_of_reach: false`), поэтому её
+            // отсутствие означает одно из двух: вкладка со старым клиентом
+            // после выкладки или герой не из отряда. В обоих случаях горящая
+            // кнопка — обещание, которое сервер отобьёт `BEAST_OUT_OF_REACH`.
+            const reach = candidate.reach_by_hero?.[typingActorId]
+            const outOfReach = reach?.out_of_reach !== false
+            return <article key={candidate.id} className={`beast-card${candidate.diet === 'predator' ? ' predator' : ''}${outOfReach ? ' out-of-reach' : ''}`}>
+            <header>
+              <i className={`beast-tag${candidate.diet === 'predator' ? ' predator' : ''}`}>{(candidate.diet_label || 'зверь').toLocaleUpperCase('ru')}</i>
+              <b>{candidate.name}</b>
+              <small>{candidate.stage_label || 'сторожится'}{candidate.wounded ? ' · ранен' : ''}{candidate.broken_morale ? ' · сломлен' : ''}</small>
+            </header>
+            <p>
+              Уход за животными, СЛ {candidate.difficulty}
+              {candidate.parts?.length ? ` (${candidate.parts.filter((part) => part.id !== 'base').map((part) => `${part.label} ${part.shift > 0 ? `+${part.shift}` : part.shift}`).join(', ')})` : ''}.
+              {candidate.bites_on_failure ? ' При провале укусит.' : ''}
+            </p>
+            {/* Досягаемость: приручение — это ладонь и еда, а не окрик через
+                поляну. Карточка не исчезает, а гаснет и зовёт подойти. */}
+            {outOfReach && <p className="beast-reach">
+              До зверя ещё идти{typeof reach?.distance_feet === 'number' ? `: ${reach.distance_feet} фт` : ''}. Подойдите вплотную.
+            </p>}
+            <div className="beast-actions">
+              <button
+                type="button"
+                disabled={beastActionsBlocked || outOfReach || candidate.stage === 'calmed'}
+                title={beastOffTurn
+                  ? beastOffTurnTitle
+                  : outOfReach
+                  ? 'Сначала подойдите к зверю вплотную'
+                  : candidate.stage === 'calmed'
+                    ? 'Зверь успокоен и ждёт еды с руки'
+                    : candidate.stage === 'fed' ? 'Позвать за собой: проверка против объявленной СЛ' : 'Проверка Ухода за животными против серверной СЛ'}
+                onClick={() => onBeastAction(candidate.id, 'calm')}
+              ><PawPrint size={13} />{candidate.stage === 'fed' ? 'Приручить' : 'Успокоить'}</button>
+              <button
+                type="button"
+                disabled={beastActionsBlocked || outOfReach || candidate.stage !== 'calmed'}
+                title={beastOffTurn
+                  ? beastOffTurnTitle
+                  : outOfReach
+                  ? 'Еду с руки дают вплотную: сначала подойдите'
+                  : candidate.stage === 'calmed' ? 'Дать еду с руки: паёк спишется из рюкзака' : 'С руки едят только успокоенные'}
+                onClick={() => onBeastAction(candidate.id, 'feed')}
+              ><Soup size={13} />Покормить</button>
+            </div>
+          </article>
           })}
         </section>}
         {!combatActive && <section className="rest-controls" aria-label="Отдых">
@@ -2575,11 +3016,19 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 type="button"
                 key={`${selectedSceneObject.id}:${intent}`}
                 className={`scene-object-control intent-${intent}`}
-                disabled={!canAct || tacticalBusy || unavailable}
+                disabled={!canAct || tacticalBusy || unavailable || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive))}
                 onClick={() => selected && onOperateSceneObject(selected, selectedSceneObject.id, intent)}
-                title={unavailable ? 'Подойдите к объекту на соседнюю клетку' : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
+                title={unavailable
+                  ? 'Подойдите к объекту на соседнюю клетку'
+                  : intent === 'pray'
+                    ? (combatActive ? 'Посреди боя благословений не раздают' : blessingPrayerHint)
+                    : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
               >
-                <CombatIcon id={`scene-object-${intent}`} kind={intent === 'take' ? 'item' : intent === 'inspect' ? 'spellbook' : 'action'} hint={`${label} объект сцены`} size={27} compact />
+                {/* `prayer` в подсказке — не мусор: тема иконки выводится из
+                    латинской сигнатуры (`abilityIconTheme`, `CombatIcon.tsx`), и
+                    без этого слова молитва получила бы утилитарную тему вместо
+                    божественной. */}
+                <CombatIcon id={`scene-object-${intent}`} kind={intent === 'take' ? 'item' : intent === 'inspect' ? 'spellbook' : 'action'} hint={intent === 'pray' ? `${label} святыня prayer divine` : `${label} объект сцены`} size={27} compact />
                 <span>{label}</span>
               </button>
             })}

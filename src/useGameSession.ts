@@ -15,13 +15,15 @@ import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent } from './types'
+import type { AgentInteraction, AiTurnResult, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
 
 export type CaptiveInterrogationSkill = 'persuasion' | 'intimidation'
 export type CaptiveAction = 'interrogate' | 'release' | 'hand-over' | 'feed' | 'execute'
+/** Что герой делает со зверем. Список закрыт сервером (`server/beast-taming.mjs`). */
+export type BeastAction = 'calm' | 'feed' | 'scare'
 
 type TacticalCommand =
   | { command_type: 'StartCombat'; actor_id: string }
@@ -49,12 +51,51 @@ type TacticalCommand =
   | { command_type: 'HandCaptiveToGuards'; actor_id: string; captive_id: string }
   | { command_type: 'FeedCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'ExecuteCaptive'; actor_id: string; captive_id: string }
+  | { command_type: 'CalmBeast'; actor_id: string; beast_id: string }
+  | { command_type: 'FeedBeast'; actor_id: string; beast_id: string }
+  | { command_type: 'ScareWithBeast'; actor_id: string; beast_id: string }
   | { command_type: 'ResolveGuardEncounter'; actor_id: string; resolution: GuardResolution; skill: 'stealth' | 'athletics' }
   // Обыск: только ключи. Название, вес, цена и механика вещи лежат в самом
   // контейнере — клиент их не называет и назвать не может.
   | { command_type: 'LootContainer'; actor_id: string; container_id: string; lines: Array<{ item_instance_id: string; quantity: number }>; recipient_id?: string }
+  | { command_type: 'OpenTavernDiceRound'; actor_id: string; npc_id: string; stake_cp: number }
+  | { command_type: 'AnswerTavernDiceRound'; actor_id: string; approach: TavernDiceApproach }
+  | { command_type: 'LeaveTavernDiceRound'; actor_id: string }
+  | { command_type: 'OrderTavernDrink'; actor_id: string }
+  | { command_type: 'SendLetter'; actor_id: string; addressee_kind: LetterAddresseeKind; addressee_id: string; body: string }
+  | { command_type: 'ReceiveNpcBlessing'; actor_id: string; npc_id: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
+
+/**
+ * Двухфазная ли это команда — та, у которой первая фаза возвращает карточку
+ * броска, а не результат.
+ *
+ * Список закрыт и обязан совпадать с серверным (`server/game-orchestrator.mjs`:
+ * `parleyCheckCard`, `guardEscapeCheckCard`, `tavernDiceCheckCard`,
+ * `beastTamingCheckCard`, `shrinePrayerCheckCard`). Отдельная
+ * функция здесь стоит вместо трёх сравнений по месту потому, что забыть одно из
+ * них уже удалось: карточка приходит с сервера, клиент её не показывает, и ход
+ * зависает без единой ошибки в консоли.
+ *
+ * `OperateSceneObject` двухфазна **не целиком**, а ровно одним глаголом: кость
+ * бросает только молитва. Осмотр, взлом и поджог решаются серверным броском в
+ * тот же запрос, и просить у них карточку значило бы вешать ход на кубик,
+ * которого сервер не объявит.
+ */
+function twoPhaseCheckCommandFor(command: TacticalCommand): TwoPhaseCheckCommand | null {
+  switch (command.command_type) {
+    case 'ProposeParley':
+    case 'ResolveGuardEncounter':
+    case 'AnswerTavernDiceRound':
+    case 'CalmBeast':
+      return command
+    case 'OperateSceneObject':
+      return command.intent === 'pray' ? command : null
+    default:
+      return null
+  }
+}
 
 type CharacterBuildCommand =
   | {
@@ -839,9 +880,13 @@ export function useGameSession() {
     // Вторая фаза команды доски: та же команда с серверным `roll_id`, а не
     // пересборка свободного действия. Иначе парлей уходил бы в разбор текста и
     // терял уже объявленную СЛ.
+    //
+    // Команд здесь четыре (`twoPhaseCheckCommandFor`), и текст отказа общий: он
+    // достаётся не только парлею, но и побегу от стражи, ответному броску за
+    // костями и уговору зверя.
     if (check.command) {
       const outcome = await tacticalCommandRef.current?.(check.command, check.action, { roll: result })
-        ?? { ok: false as const, error: 'Команда переговоров недоступна' }
+        ?? { ok: false as const, error: 'Команда доски сейчас недоступна' }
       mutate((current) => ({
         ...current,
         isNarrating: false,
@@ -1058,16 +1103,24 @@ export function useGameSession() {
 
       // Карточка проверки вместо результата: сервер ничего не закоммитил и
       // ждёт второй фазы с собственным `roll_id`. Кубик остаётся за игроком.
-      if (result?.check && command.command_type === 'ProposeParley') {
-        const parleyCommand = command
+      //
+      // Развилка идёт по списку двухфазных команд, а не по одной из них. До
+      // ревью здесь стояло `command.command_type === 'ProposeParley'`, и обе
+      // остальные карточки — побег от стражи и ответный бросок за костями —
+      // приходили с сервера и молча пропадали: `result.check` отбрасывался,
+      // ниже начинался разбор `authoritative_state`, которого у неоткоммиченной
+      // первой фазы нет, и ход было нечем доиграть. С выключенным автобросом
+      // (значение по умолчанию) это ровно рабочий путь, а не редкий случай.
+      const twoPhase = twoPhaseCheckCommandFor(command)
+      if (result?.check && twoPhase) {
         mutate((state) => ({
           ...state,
           pendingCheck: {
             ...result.check!,
             action: message,
-            playerId: parleyCommand.actor_id,
+            playerId: twoPhase.actor_id,
             status: 'ready',
-            command: parleyCommand,
+            command: twoPhase,
           },
         }))
         return { ok: true }
@@ -1234,13 +1287,17 @@ export function useGameSession() {
       use: 'Использовать объект сцены',
       topple: 'Опрокинуть объект сцены',
       ignite: 'Поджечь объект сцены',
+      pray: 'Помолиться у святыни',
     }
     return executeTacticalCommand({
       command_type: 'OperateSceneObject',
       actor_id: actorId,
       prop_id: propId,
       intent,
-    }, label[intent])
+    }, label[intent],
+    // Двухфазный ручной кубик просит только молитва: остальные глаголы пропса
+    // сервер решает своим броском в тот же запрос, и карточки для них нет.
+    intent === 'pray' ? { manualRoll: !autoRollEnabled() } : undefined)
   }, [executeTacticalCommand])
 
   /* Переговоры посреди боя. Клиент называет только подход: кто отвечает за
@@ -1287,6 +1344,63 @@ export function useGameSession() {
     )
   }, [executeTacticalCommand])
 
+  /* Кости за столом. Раунд разложен на две команды, потому что бросок соперника
+     обязан лечь на стол первым: только после него у ручного кубика героя
+     появляется объявленная СЛ. Ставку клиент выбирает из серверного набора, а
+     подход к ответу — из серверного списка. */
+  const openTavernDiceRound = useCallback((actorId: string, npcId: string, stakeCp: number) => {
+    return executeTacticalCommand(
+      { command_type: 'OpenTavernDiceRound', actor_id: actorId, npc_id: npcId, stake_cp: stakeCp },
+      'Сыграть в кости',
+    )
+  }, [executeTacticalCommand])
+
+  const answerTavernDiceRound = useCallback((actorId: string, approach: TavernDiceApproach = 'fair') => {
+    const labels: Record<TavernDiceApproach, string> = {
+      fair: 'Ответить на бросок честно',
+      cheat: 'Подкрутить кость',
+      watch: 'Бросить и следить за чужими руками',
+    }
+    return executeTacticalCommand(
+      { command_type: 'AnswerTavernDiceRound', actor_id: actorId, approach },
+      labels[approach],
+      { manualRoll: !autoRollEnabled() },
+    )
+  }, [executeTacticalCommand])
+
+  /* Встать из-за стола. Броска нет и ставка не двигается — её до расчёта никто
+     не трогал; команда существует потому, что ответить герой может не всегда:
+     соперника мог обыграть дочиста товарищ по отряду, а свои деньги — уйти
+     другой командой. */
+  const leaveTavernDiceRound = useCallback((actorId: string) => {
+    return executeTacticalCommand({ command_type: 'LeaveTavernDiceRound', actor_id: actorId }, 'Встать из-за стола')
+  }, [executeTacticalCommand])
+
+  const orderTavernDrink = useCallback((actorId: string) => {
+    return executeTacticalCommand({ command_type: 'OrderTavernDrink', actor_id: actorId }, 'Заказать выпивку')
+  }, [executeTacticalCommand])
+
+  /* Письмо. Клиент называет только адресата и текст: дальность, плату курьеру,
+     срок доставки и тон ответа считает сервер, а полировку ответа моделью он
+     же и запечатывает — черновик из браузера был бы ответом NPC, написанным
+     игроком, поэтому такого поля в команде нет. */
+  const sendLetter = useCallback((actorId: string, addresseeKind: LetterAddresseeKind, addresseeId: string, body: string) => {
+    return executeTacticalCommand(
+      { command_type: 'SendLetter', actor_id: actorId, addressee_kind: addresseeKind, addressee_id: addresseeId, body },
+      'Написать письмо',
+    )
+  }, [executeTacticalCommand])
+
+  /* Треба у служителя. Клиент называет только жреца: размер пожертвования, срок
+     благословения и суточный предел объявляет сервер. Броска здесь нет — за него
+     и платят. */
+  const receiveNpcBlessing = useCallback((actorId: string, npcId: string) => {
+    return executeTacticalCommand(
+      { command_type: 'ReceiveNpcBlessing', actor_id: actorId, npc_id: npcId },
+      'Попросить благословение',
+    )
+  }, [executeTacticalCommand])
+
   /* Судьба пленного. Клиент называет только пленного и, для допроса, подход;
      СЛ, исход броска, награду и последствия считает сервер. */
   const captiveAction = useCallback((
@@ -1329,6 +1443,27 @@ export function useGameSession() {
       lines,
       ...(recipientId && recipientId !== actorId ? { recipient_id: recipientId } : {}),
     }, 'Обыскать добычу')
+  }, [executeTacticalCommand])
+
+  /* Зверь. Клиент называет только зверя: навык проверки один и объявлен
+     сервером, СЛ считает политика приручения, а паёк для кормления сервер
+     находит в рюкзаке сам. Уговор идёт двухфазным ручным броском — тем же
+     путём, что парлей и побег от стражи. */
+  const beastAction = useCallback((actorId: string, beastId: string, action: BeastAction) => {
+    if (action === 'feed') {
+      return executeTacticalCommand({ command_type: 'FeedBeast', actor_id: actorId, beast_id: beastId }, 'Накормить зверя с руки')
+    }
+    if (action === 'scare') {
+      return executeTacticalCommand({ command_type: 'ScareWithBeast', actor_id: actorId, beast_id: beastId }, 'Отогнать угрозу зверем')
+    }
+    // Уговор двухфазный, если игрок не включил автобросок: первая фаза
+    // возвращает карточку с объявленной СЛ, вторая приходит из
+    // `rollPendingCheck` — тем же путём, что парлей и побег от стражи.
+    return executeTacticalCommand(
+      { command_type: 'CalmBeast', actor_id: actorId, beast_id: beastId },
+      'Успокоить зверя',
+      { manualRoll: !autoRollEnabled() },
+    )
   }, [executeTacticalCommand])
 
   /* Переход между этажами — та же лёгкая команда, что и остальные действия у
@@ -1727,7 +1862,14 @@ export function useGameSession() {
     operateSceneObject,
     captiveAction,
     lootContainer,
+    beastAction,
     resolveGuardEncounter,
+    openTavernDiceRound,
+    answerTavernDiceRound,
+    leaveTavernDiceRound,
+    orderTavernDrink,
+    sendLetter,
+    receiveNpcBlessing,
     proposeParley,
     settleParley,
     useLevelTransition,

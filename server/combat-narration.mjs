@@ -1,4 +1,5 @@
 import { NARRATOR_PRIORITY, assertNarratorContract } from './deterministic-narration.mjs'
+import { BLESSING_CONDITION } from './blessings.mjs'
 import { sceneInteractionNarration } from './scene-interactions.mjs'
 import { WORLD_CLOCK_EVENT_TYPES, worldClockNarration } from './weather.mjs'
 
@@ -311,6 +312,53 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(payload.outcome === 'resume'
         ? 'Переговоры кончились ничем: стороны расходятся по местам, и бой продолжается.'
         : `Уговор заключён: ${String(payload.term_summary || payload.term_label || 'условия приняты')}${Number(payload.tribute_cp) > 0 ? ` Отряду остаётся ${Math.max(0, Number(payload.tribute_cp) || 0)} мм.` : ''}`)
+    } else if (event.event_type === 'TavernDiceRoundOpened') {
+      // Про ставку сказано в прошедшем времени не для красоты: она уже ушла из
+      // кошелька на стол, и обратно её приносит только расчёт.
+      meaningful.push(`${String(payload.npc_name || 'Сосед по столу')} мечет кости: выпало ${Number(payload.npc_total) || 0}. ${Math.max(0, Number(payload.stake_cp) || 0)} мм легли на стол — ${actor} свою ставку сделал(а).`)
+    } else if (event.event_type === 'TavernDiceRoundResolved') {
+      const hero = Number(payload.hero_total) || 0
+      const opponent = Number(payload.npc_total) || 0
+      const stake = Math.max(0, Number(payload.stake_cp) || 0)
+      // Про скандал и разоблачение говорят свои события: здесь только сам
+      // раунд, иначе один бросок звучал бы дважды.
+      if (payload.outcome === 'win') meaningful.push(`${actor} выбрасывает ${hero} против ${opponent} — банк в ${stake * 2} мм уходит герою.`)
+      else if (payload.outcome === 'loss') meaningful.push(`${actor} выбрасывает ${hero} против ${opponent}: ставка в ${stake} мм остаётся на столе.`)
+      else if (payload.outcome === 'push') meaningful.push(`Ровно ${hero} у обоих — ставки возвращаются владельцам.`)
+      else if (payload.outcome === 'caught') meaningful.push(`${actor} тянется к костям — и руку перехватывают. Ставка потеряна.`)
+      else meaningful.push(`${actor} не сводит глаз с чужих рук и раунд не доигрывает.`)
+      if (payload.watch_result === 'clean') meaningful.push('Ничего подозрительного: играют честно.')
+    } else if (event.event_type === 'TavernDiceRoundCancelled') {
+      // Раунд закрылся без броска, и повод у этого один — сдача. Встал ли герой
+      // из-за стола сам или вышел из зала дверью, цена одна: ставка со стола
+      // достаётся соседу ровно как при проигрыше.
+      meaningful.push(`${actor} отодвигает скамью и встаёт, не ответив на кость. ${Math.max(0, Number(payload.forfeited_cp) || 0)} мм со стола забирает ${String(payload.npc_name || 'сосед')}.`)
+    } else if (event.event_type === 'TavernCheatCaught') {
+      meaningful.push(`Скандал за столом: ${String(payload.npc_name || 'сосед')} во весь голос объявляет героя шулером. Это видели.`)
+    } else if (event.event_type === 'TavernCheatExposed') {
+      meaningful.push(`${String(payload.npc_name || 'Сосед по столу')} играет краплёными: подмену заметили, и уговор кончен.`)
+    } else if (event.event_type === 'TavernPatronEjected') {
+      meaningful.push(`${actor} выставлен за дверь: за этим столом ему больше не наливают.`)
+    } else if (event.event_type === 'TavernDrinkOrdered') {
+      const drinks = Math.max(1, Number(payload.drinks) || 1)
+      meaningful.push(Number(payload.social_bonus) > 0
+        ? `${actor} берёт кружку (${drinks}-я за вечер) — язык развязывается, разговор идёт легче.`
+        : `${actor} берёт ещё одну кружку. Это уже ${drinks}-я.`)
+    } else if (event.event_type === 'ShrinePrayerResolved') {
+      // Три исхода, и ни один из них ничего не отнимает. Знамение говорит само
+      // за себя строкой из закрытой серверной таблицы: додумывать его на ходу
+      // нельзя — при replay та же неудача рассказалась бы иначе.
+      if (payload.outcome === 'blessed') meaningful.push(`${actor} склоняет голову у святыни, и слова находят ответ: благословение принято.`)
+      else if (payload.outcome === 'omen') meaningful.push(`${actor} молится, но ответа нет. ${String(payload.omen || 'Что-то в этом месте отзывается неправильно.')}`)
+      else meaningful.push(`${actor} молится у святыни. Ответа нет — только тишина и камень.`)
+    } else if (event.event_type === 'NpcBlessingGranted') {
+      meaningful.push(`${String(payload.npc_name || 'Служитель')} принимает пожертвование в ${Math.max(0, Number(payload.donation_cp) || 0)} мм и кладёт ладонь на голову героя: благословение дано.`)
+    } else if (event.event_type === 'ConditionAdded' && String(payload.source ?? '').startsWith('blessing:')) {
+      meaningful.push(`${target} несёт малое благословение: первый же удар пойдёт вернее (+${Math.max(0, Number(payload.attack_bonus) || 0)}), и держится оно до продолжительного отдыха.`)
+    } else if (event.event_type === 'ConditionRemoved' && payload.condition === BLESSING_CONDITION && payload.trigger === 'attack') {
+      meaningful.push(`Благословение израсходовано этим ударом.`)
+    } else if (event.event_type === 'ConditionAdded' && payload.source === 'tavern-drink') {
+      meaningful.push(`${target} перебрал(а): всё плывёт, и до отдыха любая проверка идёт с помехой.`)
     } else if (event.event_type === 'CaptiveTaken') {
       const captive = payload.captive ?? {}
       meaningful.push(captive.origin === 'knocked_out'
@@ -334,6 +382,26 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${actor} добивает связанного. Этого уже не отменить.`)
     } else if (event.event_type === 'CaptiveMoved') {
       meaningful.push('Пленного уводят с собой.')
+    } else if (event.event_type === 'BeastEncountered') {
+      meaningful.push(`${String(payload.beast?.name || 'Зверь')} не бросается: ${actor} опускает оружие и делает шаг навстречу.`)
+    } else if (event.event_type === 'BeastSoothingResolved') {
+      meaningful.push(payload.success === true
+        ? (payload.stage_after === 'tamed'
+          ? `${String(payload.beast_name || 'Зверь')} подходит сам и больше не смотрит на отряд как на добычу.`
+          : `${String(payload.beast_name || 'Зверь')} перестаёт скалиться: ${actor} говорит с ним, и это работает.`)
+        : `${String(payload.beast_name || 'Зверь')} пятится и не подпускает: уговор не вышел.`)
+    } else if (event.event_type === 'BeastBit') {
+      meaningful.push(`${String(payload.beast_name || 'Зверь')} бросается и кусает: ${Math.max(0, Number(payload.amount) || 0)} урона.`)
+    } else if (event.event_type === 'BeastFed') {
+      meaningful.push(`${actor} протягивает ${String(payload.item_name || 'паёк')} — и ${String(payload.beast_name || 'зверь')} берёт еду с руки.`)
+    } else if (event.event_type === 'BeastTamed') {
+      // Прямо в строке сказано, чего спутник не делает: за столом это снимает
+      // единственный вопрос, который иначе задают в первом же бою.
+      meaningful.push(`${String(payload.beast_name || 'Зверь')} идёт с отрядом. В строй он не встанет, но и один больше не останется.`)
+    } else if (event.event_type === 'BeastMoved') {
+      meaningful.push(`${String(payload.beast_name || 'Зверь')} трусит следом за отрядом.`)
+    } else if (event.event_type === 'BeastScaredThreat') {
+      meaningful.push(String(payload.line || `${String(payload.beast_name || 'Зверь')} отгоняет мелкую тварь.`))
     } else if (event.event_type === 'CombatEnded') {
       meaningful.push(`Бой завершён в раунде ${Number(payload.round) || 1}.`)
     } else if (event.event_type === 'TurnEnded') {
@@ -357,6 +425,8 @@ function tacticalNarration(events, state) {
 /** Типы событий, про которые этот рассказчик умеет говорить. */
 export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'ActionReadied', 'ActorMoved', 'AreaAttackResolved', 'AttackResolved',
+  'BeastBit', 'BeastEncountered', 'BeastFed', 'BeastMoved',
+  'BeastScaredThreat', 'BeastSoothingResolved', 'BeastTamed',
   'CaptiveExecuted', 'CaptiveFed', 'CaptiveHandedOver', 'CaptiveInterrogated',
   'CaptiveMoved', 'CaptiveNeglected', 'CaptiveReleased', 'CaptiveTaken',
   'CombatEnded', 'CombatStarted', 'ConcentrationEnded', 'ConcentrationSavingThrowResolved',
@@ -364,14 +434,17 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
-  'ItemEffectIneffective', 'MonsterAbilityRecharged',
+  'ItemEffectIneffective', 'MonsterAbilityRecharged', 'NpcBlessingGranted',
   'NpcEquipmentSpent', 'NpcItemUsed',
   'KnockoutEnded', 'MapLevelChanged', 'ParleyProposed', 'ParleyRejected', 'ParleySettled',
-  'ReadiedActionExpired', 'RestCompleted', 'SpellCast',
+  'ReadiedActionExpired', 'RestCompleted', 'ShrinePrayerResolved', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',
   'StableRecoveryScheduled', 'SummonedCreatureCreated', 'SummonedCreatureDismissed',
+  'TavernCheatCaught', 'TavernCheatExposed',
+  'TavernDiceRoundCancelled', 'TavernDiceRoundOpened', 'TavernDiceRoundResolved',
+  'TavernDrinkOrdered', 'TavernPatronEjected',
   'TimeOfDayChanged', 'TruceBroken', 'TruceEstablished', 'TurnEnded',
   'TurnStarted', 'WeatherChanged',
 ]))

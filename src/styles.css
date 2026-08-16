@@ -391,6 +391,32 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .npc-dialog-captive-actions button { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid rgba(204,151,86,.28); border-radius: 5px; background: rgba(163,101,43,.12); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
 .npc-dialog-captive-actions button:hover:not(:disabled) { border-color: rgba(224,174,111,.5); background: rgba(163,101,43,.2); }
 .npc-dialog-captive-actions button:disabled { opacity: .38; cursor: default; }
+/* Звери отряда: кандидаты на приручение и уже приручённые спутники. Метка
+   слева — как у пленных, и это осознанно: обе панели отвечают на один вопрос
+   «кто идёт с нами и что с ним делать». Зелёная рамка спутника отличает его от
+   зверя, который ещё сторожится. */
+.beast-panel { padding: 11px; border: 1px solid rgba(116,142,104,.28); border-radius: 7px; background: rgba(19,24,17,.9); }
+.beast-panel > header { display: flex; align-items: center; gap: 8px; color: #8fae7c; }
+.beast-panel > header span { display: grid; }
+.beast-panel > header small { color: #6b7f5c; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.beast-panel > header strong { color: #c4d0b4; font: 600 var(--fs-lg) Spectral, serif; }
+.beast-card { margin-top: 9px; padding: 8px 9px; border: 1px solid rgba(116,142,104,.2); border-left: 3px solid #6d8a5e; border-radius: 6px; background: rgba(26,32,22,.7); }
+.beast-card.predator { border-left-color: #a4784a; }
+.beast-card.companion { border-left-color: #7db07a; background: rgba(28,38,26,.76); }
+.beast-card > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.beast-card > header b { color: #cfd6c1; font: 600 var(--fs-md) Spectral, serif; }
+.beast-card > header small { color: #74806a; font-size: var(--fs-xxs); }
+.beast-tag { padding: 1px 6px; border: 1px solid rgba(140,176,124,.42); border-radius: 3px; background: rgba(101,134,88,.18); color: #9dbd86; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .1em; }
+.beast-tag.predator { border-color: rgba(196,147,92,.45); background: rgba(138,106,69,.2); color: #d2a06a; }
+.beast-tag.companion { border-color: rgba(125,176,122,.5); background: rgba(96,142,92,.2); color: #a6cf9f; }
+.beast-card > p { margin: 5px 0 8px; color: #78826d; font-size: var(--fs-sm); }
+.beast-card.out-of-reach { border-left-color: #6a6f60; }
+.beast-card > p.beast-reach { margin: -3px 0 8px; color: #a08f63; font-size: var(--fs-xs); }
+.beast-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.beast-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 0 6px; border: 1px solid rgba(140,176,124,.26); border-radius: 5px; background: rgba(90,130,78,.1); color: #9dbd86; font-size: var(--fs-sm); cursor: pointer; }
+.beast-actions button:hover:not(:disabled) { border-color: rgba(168,206,150,.5); background: rgba(90,130,78,.18); }
+.beast-actions button:disabled { opacity: .38; cursor: default; }
+.beast-card.companion .beast-actions { grid-template-columns: 1fr; }
 /* --map-light-* — запечённый свет доски (`src/board-lighting.ts`): цвет тьмы и цвет огня. Значения по умолчанию продублированы в DEFAULT_BOARD_PALETTE, доска обязана рисоваться и без темы. */
 .map-stage { --map-floor: #8b7658; --map-floor-alt: #927d5e; --map-wall: #493f34; --map-grid-line: rgba(67,48,29,.2); --map-light-shadow: #0d1016; --map-light-warm: #ffb257; position: relative; grid-area: board; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: radial-gradient(ellipse at 54% 43%, #79694f 0%, #30281f 54%, #100e0c 88%); }
 .map-stage::before { content: ''; position: absolute; inset: 0; opacity: .12; background-image: repeating-linear-gradient(35deg, transparent 0 15px, rgba(255,255,255,.025) 16px 17px), repeating-linear-gradient(125deg, transparent 0 22px, rgba(0,0,0,.3) 23px 24px); }
@@ -648,6 +674,74 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .guard-escape-skill button { padding: 3px 8px; border: 1px solid rgba(132,141,158,.24); border-radius: 4px; background: transparent; color: #838a99; font-size: var(--fs-xs); cursor: pointer; }
 .guard-escape-skill button.active { border-color: rgba(168,178,198,.55); background: rgba(40,46,60,.7); color: #ccd2e0; }
 .guard-escape-skill button:disabled { opacity: .4; cursor: default; }
+/* Жизнь таверны: кости и выпивка. Панель тёплая, а не тревожная — это досуг, а
+   не встреча со стражей, и по цвету это должно быть видно с первого взгляда. */
+.tavern-panel { padding: 11px; border: 1px solid rgba(158,132,84,.34); border-radius: 7px; background: rgba(26,20,14,.9); }
+.tavern-panel > header { display: flex; align-items: center; gap: 8px; color: #a6906b; }
+.tavern-panel > header span { display: grid; }
+.tavern-panel > header small { color: #80704f; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.tavern-panel > header strong { color: #d8cbb0; font: 600 var(--fs-lg) Spectral, serif; }
+.tavern-note { margin: 7px 0 8px; color: #bdae92; font: var(--fs-md)/1.5 Spectral, serif; }
+.tavern-note b { color: #e6d6ae; }
+.tavern-approaches { display: grid; gap: 6px; }
+.tavern-approach { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 7px; padding: 7px 9px; border: 1px solid rgba(158,132,84,.28); border-left: 3px solid #8a7549; border-radius: 6px; background: rgba(36,28,20,.7); text-align: left; color: #bdae92; cursor: pointer; }
+.tavern-approach:hover:not(:disabled) { border-color: rgba(198,172,118,.6); background: rgba(48,38,26,.8); }
+.tavern-approach:disabled { opacity: .38; cursor: default; }
+.tavern-approach b { color: #e0d3b4; font: 600 var(--fs-md) Spectral, serif; }
+.tavern-approach small { grid-column: 2; color: #93866d; font-size: var(--fs-sm); }
+.tavern-approach.approach-cheat { border-left-color: #a4442f; }
+.tavern-approach.approach-watch { border-left-color: #5f7c8f; }
+.tavern-dice-setup { display: grid; gap: 7px; }
+.tavern-dice-setup label { display: grid; gap: 3px; }
+.tavern-dice-setup label span { color: #80704f; font-size: var(--fs-xxs); letter-spacing: .1em; }
+.tavern-dice-setup select { padding: 4px 7px; border: 1px solid rgba(158,132,84,.28); border-radius: 5px; background: rgba(20,16,12,.8); color: #d8cbb0; font-size: var(--fs-sm); }
+.tavern-stakes { display: flex; flex-wrap: wrap; gap: 6px; }
+.tavern-stakes button { padding: 3px 8px; border: 1px solid rgba(158,132,84,.24); border-radius: 4px; background: transparent; color: #93866d; font-size: var(--fs-xs); cursor: pointer; }
+.tavern-stakes button.active { border-color: rgba(198,172,118,.55); background: rgba(52,42,28,.7); color: #e0d3b4; }
+.tavern-stakes button:disabled { opacity: .4; cursor: default; }
+.tavern-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(158,132,84,.34); border-radius: 6px; background: rgba(40,31,20,.75); color: #e0d3b4; font: 600 var(--fs-md) Spectral, serif; cursor: pointer; }
+.tavern-action:hover:not(:disabled) { border-color: rgba(198,172,118,.6); background: rgba(54,42,27,.85); }
+.tavern-action:disabled { opacity: .38; cursor: default; }
+.tavern-drink { display: grid; gap: 4px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(158,132,84,.2); }
+.tavern-drink small { color: #93866d; font-size: var(--fs-sm); }
+.tavern-leave { display: grid; gap: 4px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(158,132,84,.2); }
+.tavern-leave small { color: #93866d; font-size: var(--fs-sm); }
+.tavern-action.action-leave { border-style: dashed; background: transparent; color: #a6906b; }
+/* Второй щелчок по сдаче: кнопка перестаёт быть пунктирной «дверью» и
+   становится тем, чем стала, — необратимой командой с ценой в подписи. */
+.tavern-leave.confirming { border-top-color: rgba(178,64,52,.42); }
+.tavern-leave.confirming small { color: #c08a7c; }
+.tavern-leave.confirming .tavern-action.action-leave { border-style: solid; border-color: rgba(178,64,52,.5); background: rgba(46,22,20,.7); color: #dba192; }
+.tavern-action.action-leave-cancel { border-style: dashed; background: transparent; color: #93866d; font-size: var(--fs-sm); }
+/* Почта отряда: письма и курьеры. Панель бумажная и холоднее таверны — это не
+   досуг за столом, а слово, отправленное туда, где отряда нет. Бланк по
+   умолчанию свёрнут: письмо не срочное действие, и держать его раскрытым рядом
+   с боем незачем. */
+.letters-panel { padding: 11px; border: 1px solid rgba(146,140,118,.3); border-radius: 7px; background: rgba(24,23,20,.9); }
+.letters-panel > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; color: #9d9781; }
+.letters-panel > header span { min-width: 0; display: grid; }
+.letters-panel > header small { color: #7d7866; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.letters-panel > header strong { color: #d3cfc0; font: 600 var(--fs-lg) Spectral, serif; }
+.letters-toggle { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid rgba(146,140,118,.28); border-radius: 4px; background: transparent; color: #9d9781; font-size: var(--fs-xs); cursor: pointer; }
+.letters-toggle:hover { border-color: rgba(190,183,158,.55); color: #d3cfc0; }
+.letters-list { display: grid; gap: 5px; margin: 9px 0 0; padding: 0; list-style: none; }
+.letter-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 4px 7px; padding: 6px 8px; border-left: 2px solid rgba(146,140,118,.4); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.022); color: #aca797; font-size: var(--fs-sm); }
+.letter-row b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d3cfc0; font: 600 var(--fs-md) Spectral, serif; }
+.letter-row i { color: #7d7866; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .08em; }
+.letter-row .letter-reply { grid-column: 2 / -1; color: #b6b1a0; font: var(--fs-sm)/1.5 Spectral, serif; }
+.letter-row.letter-answered { border-left-color: #7d9a72; }
+.letter-row.letter-returned,
+.letter-row.letter-unanswered { border-left-color: #a4442f; }
+.letters-compose { display: grid; gap: 7px; margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(146,140,118,.2); }
+.letters-compose label { display: grid; gap: 3px; }
+.letters-compose label span { color: #7d7866; font-size: var(--fs-xxs); letter-spacing: .1em; }
+.letters-compose select { padding: 4px 7px; border: 1px solid rgba(146,140,118,.26); border-radius: 5px; background: rgba(18,17,15,.8); color: #d3cfc0; font-size: var(--fs-sm); }
+.letters-compose textarea { padding: 7px 9px; border: 1px solid rgba(146,140,118,.26); border-radius: 5px; background: rgba(18,17,15,.8); color: #d3cfc0; font: var(--fs-md)/1.55 Spectral, serif; resize: vertical; }
+.letters-send { display: grid; gap: 4px; }
+.letters-send small { color: #8b8676; font-size: var(--fs-sm); }
+.letter-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(146,140,118,.34); border-radius: 6px; background: rgba(36,34,29,.75); color: #ddd8c7; font: 600 var(--fs-md) Spectral, serif; cursor: pointer; }
+.letter-action:hover:not(:disabled) { border-color: rgba(190,183,158,.6); background: rgba(48,45,38,.85); }
+.letter-action:disabled { opacity: .38; cursor: default; }
 /* Приметы розыска в шапке сцены: одна строка мира вместо индикатора. */
 .scene-wanted { display: flex; align-items: center; gap: 6px; max-width: 260px; padding: 4px 9px; border: 1px solid rgba(178,64,52,.32); border-radius: 14px; background: rgba(34,18,16,.7); color: #c08a7c; font: 600 var(--fs-xs) Manrope, sans-serif; }
 .scene-wanted span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -854,6 +948,38 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .offscreen-card ul { display: grid; gap: 5px; margin: 10px 0 0; padding: 0; list-style: none; }
 .offscreen-card li { padding: 7px 9px; border-left: 2px solid rgba(126,148,184,.3); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #b3b8c2; font: var(--fs-sm)/1.55 Spectral, serif; }
 .offscreen-elapsed { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; color: #6a7180; font-size: var(--fs-xs); }
+/* Конверт в летописи. Как и врезка хода мира, эта системная запись не гасится:
+   письмо ушло, дошло или вернулось — это событие мира, а не служебная строка.
+   Бумажный цвет отделяет её и от синевы «пока вас не было», и от золота
+   рассказчика: письмо принесли на бумаге, и читается оно как бумага. */
+.message.system.letter-entry { margin-bottom: 14px; opacity: 1; }
+.letter-card { padding: 12px 13px; border: 1px solid rgba(158,150,124,.28); border-radius: 8px; background: linear-gradient(160deg, rgba(52,48,38,.5), rgba(20,19,16,.72)); }
+.letter-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; color: #b0a888; }
+.letter-card header > span { min-width: 0; display: grid; }
+.letter-card header small { color: #8d866e; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.letter-card header strong { color: #e2ddca; font: 600 var(--fs-lg) Spectral, serif; }
+.letter-card header time { color: #6f6a59; font-size: var(--fs-xs); }
+.letter-route { margin: 9px 0 0; color: #9a9480; font: var(--fs-sm)/1.5 Manrope, sans-serif; }
+.letter-route b { color: #7d7866; font-weight: 700; letter-spacing: .06em; }
+.letter-text { margin: 7px 0 0; padding: 8px 10px; border-left: 2px solid rgba(158,150,124,.34); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #c7c2b0; font: var(--fs-md)/1.6 Spectral, serif; }
+.letter-entry.letter-answered .letter-card { border-color: rgba(125,154,114,.3); }
+.letter-entry.letter-returned .letter-card,
+.letter-entry.letter-unanswered .letter-card { border-color: rgba(164,68,47,.32); }
+/* Ступень приручения в летописи. Форма та же, что у конверта почты: это
+   системная карточка о том, что случилось между отрядом и зверем, а не реплика
+   рассказчика. Зелёная рамка последней ступени отмечает единственное, что
+   меняет игру, — зверь пошёл с отрядом. */
+.message.system.beast-entry { margin-bottom: 14px; opacity: 1; }
+.beast-chronicle-card { padding: 12px 13px; border: 1px solid rgba(124,150,112,.28); border-radius: 8px; background: linear-gradient(160deg, rgba(40,50,36,.5), rgba(17,20,16,.72)); }
+.beast-chronicle-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; color: #9cb489; }
+.beast-chronicle-card header > span { min-width: 0; display: grid; }
+.beast-chronicle-card header small { color: #7c8d6d; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.beast-chronicle-card header strong { color: #d9e0cc; font: 600 var(--fs-lg) Spectral, serif; }
+.beast-chronicle-card header time { color: #66705c; font-size: var(--fs-xs); }
+.beast-chronicle-who { margin: 9px 0 0; color: #93a084; font: var(--fs-sm)/1.5 Manrope, sans-serif; }
+.beast-chronicle-who b { color: #c3cdb4; font-weight: 700; }
+.beast-chronicle-text { margin: 7px 0 0; padding: 8px 10px; border-left: 2px solid rgba(124,150,112,.34); border-radius: 0 4px 4px 0; background: rgba(255,255,255,.024); color: #c0c7b2; font: var(--fs-md)/1.6 Spectral, serif; }
+.beast-entry.beast-tamed .beast-chronicle-card { border-color: rgba(125,176,122,.42); }
 /* Кнопка «Почему так?» не имела своего стиля и рендерилась системной серой
    кнопкой: светлый текст на светлом фоне. Теперь это тихая ссылка-подсказка. */
 .why-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 3px 9px; border: 1px solid rgba(201,149,85,.3); border-radius: 11px; background: rgba(34,28,22,.72); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }
@@ -2089,6 +2215,8 @@ button.campaign-title:hover strong { color: #edc996; }
   .deed-feed article { grid-template-columns: 1fr; }
   .wanted-region li { grid-template-columns: 1fr; }
   .wanted-region > header { flex-wrap: wrap; }
+  .tavern-approach { grid-template-columns: 1fr; }
+  .tavern-approach small { grid-column: 1; }
   .rumor-list li { grid-template-columns: 1fr; }
   .offscreen-feed li { grid-template-columns: 1fr; }
   .offscreen-feed > article > header { flex-wrap: wrap; }

@@ -599,14 +599,15 @@ export function createStarterMerchant({ location = '', location_id = '', locatio
         properties: 'Боеприпасы для лука; не являются самостоятельным оружием.',
       }),
     ],
-    services: [{
-      service_id: 'starter-courier',
-      name: 'Доставка письма',
-      description: 'Торговец передаст обычное письмо по ближайшему безопасному торговому маршруту.',
-      kind: 'other',
-      base_price_cp: 50,
-      duration_minutes: 10,
-    }],
+    // Услуги у стартового торговца больше нет ни одной, и пустой список здесь
+    // — решение, а не недоделка. Единственной была «Доставка письма» за 50
+    // медяков: `PurchaseMerchantService` выпускал только
+    // `MerchantServicePurchased`, то есть списывал деньги и не заводил ни
+    // адресата, ни срока, ни ответа — игрок платил за строку в чеке. Всю дугу
+    // письма теперь ведёт `SendLetter` (`server/courier-letters.mjs`), и два
+    // способа отправить письмо, один из которых молча ест деньги, за столом
+    // держать нельзя.
+    services: [],
     restock_policy: {
       enabled: true,
       interval_minutes: 1_440,

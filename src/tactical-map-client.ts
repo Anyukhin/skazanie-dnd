@@ -24,8 +24,9 @@ export const FLOOR_DIRECTIONS: readonly TacticalFloorDirection[] = ['horizontal'
 export const SPAWN_ROLES: readonly TacticalSpawnRole[] = ['party', 'enemy', 'neutral']
 /* Зеркало серверного контракта глаголов. `topple` и `ignite` приезжают только
    у тяжёлого и горючего реквизита — их объявляет `server/scene-hazards.mjs`
-   вместе с обычными операциями, и клиент их не выводит, а перечисляет. */
-const SCENE_OBJECT_INTENTS: readonly SceneObjectIntent[] = ['inspect', 'open', 'take', 'use', 'topple', 'ignite']
+   вместе с обычными операциями, а `pray` — только у святыни
+   (`server/scene-interactions.mjs`). Клиент их не выводит, а перечисляет. */
+const SCENE_OBJECT_INTENTS: readonly SceneObjectIntent[] = ['inspect', 'open', 'take', 'use', 'topple', 'ignite', 'pray']
 
 const MAX_WIDTH = 100
 const MAX_HEIGHT = 100

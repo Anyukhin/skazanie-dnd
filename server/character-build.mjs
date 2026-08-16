@@ -1,6 +1,6 @@
 import { normalizedSpellSelectionsFor, spellSelectionRulesFor } from './combat-spells.mjs'
 import { normalizedCombatSubclassFor } from './combat-actions.mjs'
-import { normalizedClassSkillProficiencies, normalizedSelectedFeatureIds } from './character-progression.mjs'
+import { catalogSkillId, normalizedClassSkillProficiencies, normalizedSelectedFeatureIds } from './character-progression.mjs'
 
 export const CHARACTER_BUILD_COMMAND_TYPES = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 
@@ -52,10 +52,14 @@ export function validateCharacterBuildCommand(command, state, context = {}) {
 
   if (command.command_type === 'SetCharacterChoices') {
     const subclass = clean(command.subclass, 160)
-    const classSkillProficiencies = uniqueIds(
+    // Написание навыка приводится к канону каталога сразу на входе: дальше
+    // команда сверяется с `normalizedClassSkillProficiencies` буквально, и
+    // дефисный `animal-handling` от старого клиента читался бы как выбор,
+    // «недоступный для уровня героя», хотя это тот же самый навык.
+    const classSkillProficiencies = [...new Set(uniqueIds(
       command.class_skill_proficiencies ?? command.classSkillProficiencies ?? [],
       'class_skill_proficiencies',
-    )
+    ).map(catalogSkillId))]
     const selectedFeatureIds = uniqueIds(
       command.selected_feature_ids ?? command.selectedFeatureIds ?? [],
       'selected_feature_ids',

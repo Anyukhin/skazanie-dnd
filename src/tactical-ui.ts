@@ -372,6 +372,10 @@ const CONDITION_LABELS: Record<string, string> = {
   'aura-of-life': 'Аура жизни',
   'aura-of-protection': 'Аура защиты',
   bless: 'Благословение',
+  /* Малое благословение алтаря или жреца (`server/blessings.mjs`). Имя у него
+     своё, отдельное от заклинания «Благословение»: у того кость на каждый
+     бросок и концентрация, у этого — плоская единица до первой атаки. */
+  'minor-blessing': 'Малое благословение',
   bane: 'Порча',
   'metamagic-quickened': 'Ускоренное заклинание',
   'favored-foe': 'Избранный враг',
@@ -386,7 +390,7 @@ const CONDITION_LABELS: Record<string, string> = {
 }
 
 const IMPLEMENTED_CONDITIONS = new Set([
-  'unconscious', 'disengaged', 'bless', 'bane', 'beacon-of-hope', 'death-ward',
+  'unconscious', 'disengaged', 'bless', 'bane', 'minor-blessing', 'beacon-of-hope', 'death-ward',
   'aura-of-life', 'aura-of-protection', 'metamagic-quickened', 'fled', 'surrendered',
 ])
 
@@ -397,6 +401,24 @@ const PARTIAL_CONDITIONS = new Set([
 
 function humanizeConditionId(id: string) {
   return id.split('-').filter(Boolean).map((part) => part.charAt(0).toLocaleUpperCase('ru') + part.slice(1)).join(' ')
+}
+
+/**
+ * Подписи сроков состояний. Ключи — те же строки, которыми срок объявляет
+ * движок (`duration` в `ConditionAdded`), и переводятся они здесь, а не в
+ * движке: это подпись для глаза, а не значение для правила.
+ *
+ * Незнакомый срок отдаётся как есть — молча потерять его хуже, чем показать
+ * сырым.
+ */
+const CONDITION_DURATION_LABELS: Record<string, string> = {
+  'until-long-rest': 'до продолжительного отдыха',
+  'until-short-rest': 'до короткого отдыха',
+  'until-next-turn': 'до начала следующего хода',
+}
+
+function conditionDurationLabel(duration: string) {
+  return CONDITION_DURATION_LABELS[duration] ?? duration.replace(/^rounds:/, 'раундов: ')
 }
 
 export function conditionPresentation(condition: { id: string; duration?: string | null } | string) {
@@ -420,7 +442,7 @@ export function conditionPresentation(condition: { id: string; duration?: string
     status,
     statusLabel,
     explanation,
-    duration: duration ? String(duration).replace(/^rounds:/, 'раундов: ') : null,
+    duration: duration ? conditionDurationLabel(String(duration)) : null,
   }
 }
 

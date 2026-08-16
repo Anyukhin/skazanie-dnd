@@ -67,6 +67,26 @@ import {
   normalizeWorldDeedsState,
 } from './world-deeds.mjs'
 import {
+  BEAST_APPROACH_MINUTES,
+  BEAST_COMMAND_TYPES,
+  BEAST_TAMING_ABILITY,
+  BEAST_TAMING_POLICY_ID,
+  BEAST_TAMING_SKILL,
+  applyBeastEvent,
+  beastDraftFor,
+  beastFoodItemFor,
+  beastFor,
+  beastIdFor,
+  beastOutOfReach,
+  beastScareCooldownLeft,
+  beastScareLine,
+  beastTamingPolicy,
+  beastWatchSwing,
+  normalizeBeastState,
+  planBeastFollowDrafts,
+  tameableBeasts,
+} from './beast-taming.mjs'
+import {
   CAPTIVES_POLICY_ID,
   CAPTIVE_COMMAND_TYPES,
   CAPTIVE_INTERROGATION_SKILLS,
@@ -139,11 +159,63 @@ import {
   wantedFor,
 } from './law-and-order.mjs'
 import {
+  TAVERN_CHEAT_ABILITY,
+  TAVERN_CHEAT_BONUS,
+  TAVERN_CHEAT_RELATIONSHIP_DELTA,
+  TAVERN_CHEAT_SKILL,
+  TAVERN_COMMAND_TYPES,
+  TAVERN_DICE_APPROACHES,
+  TAVERN_DICE_ROUND_MINUTES,
+  TAVERN_DRINK_MINUTES,
+  TAVERN_DRINK_PRICE_CP,
+  TAVERN_DRUNK_CONDITION,
+  TAVERN_DRUNK_DURATION,
+  TAVERN_EXPOSED_RELATIONSHIP_DELTA,
+  TAVERN_POLICY_ID,
+  TAVERN_SCANDALS_BEFORE_EJECTION,
+  TAVERN_SOBER_DRINKS,
+  TAVERN_SOCIAL_BONUS,
+  TAVERN_SOCIAL_SKILL,
+  TAVERN_SPOT_SKILL,
+  TAVERN_STAKES_CP,
+  applyTavernEvent,
+  isTavernOpponent,
+  isTavernScene,
+  normalizeTavernState,
+  tavernDrinksFor,
+  tavernEjected,
+  tavernFreePurseFor,
+  tavernGamblerFor,
+  tavernGamblerPurseFor,
+  tavernNextDrinkDc,
+  tavernOpenRounds,
+  tavernOpponentDie,
+  tavernPurseTransfer,
+  tavernPurseTransferPayload,
+  tavernRoundFor,
+  tavernScandalsFor,
+  tavernSocialBonus,
+} from './tavern-life.mjs'
+import {
   OFFSCREEN_WORLD_EVENT_TYPE,
   applyOffscreenWorldEvent,
   normalizeOffscreenWorldState,
   planOffscreenWorldStep,
 } from './offscreen-world.mjs'
+import {
+  COURIER_LETTERS_POLICY_ID,
+  COURIER_LETTER_BODY_LIMIT,
+  COURIER_LETTER_COMMAND_TYPES,
+  COURIER_LETTER_EVENT_TYPES,
+  COURIER_LETTER_OPEN_LIMIT,
+  COURIER_LETTER_WRITING_MINUTES,
+  applyCourierLetterEvent,
+  courierAddresseeFor,
+  normalizeCourierLetterState,
+  openCourierLettersFor,
+  planCourierLetter,
+  planCourierLetterTicks,
+} from './courier-letters.mjs'
 import {
   ensureSceneWorldMemory,
   sceneWorldMemoryEventId,
@@ -293,10 +365,32 @@ import {
 } from './character-lifecycle.mjs'
 import {
   SCENE_INTERACTION_POLICY_ID,
+  isSceneShrineAsset,
   sceneInteractionDefinition,
   sceneObjectDistance,
   sceneObjectLoot,
 } from './scene-interactions.mjs'
+import {
+  BLESSINGS_POLICY_ID,
+  BLESSING_ATTACK_BONUS,
+  BLESSING_COMMAND_TYPES,
+  BLESSING_CONDITION,
+  BLESSING_DONATION_CP,
+  BLESSING_DURATION,
+  BLESSING_REPUTATION_DELTA,
+  NPC_BLESSING_MINUTES,
+  PRAYER_ABILITY,
+  PRAYER_DC,
+  PRAYER_MINUTES,
+  PRAYER_SKILL,
+  applyBlessingEvent,
+  blessingAvailabilityFor,
+  blessingFactionIdsFor,
+  blessingOmenFor,
+  heroIsBlessed,
+  isBlessingPriest,
+  normalizeBlessingState,
+} from './blessings.mjs'
 import {
   burningPropEffect,
   fireSourceNear,
@@ -340,7 +434,12 @@ const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // преступлений не содержит, а хвост журнала после снимка восстановил бы розыск
 // только за те преступления, что случились после его границы, — то есть отряд
 // въезжал бы в город чистым просто потому, что сервер перезапустили.
-export const GAME_STATE_PROJECTOR_VERSION = 12
+// 13: реестр зверей `beasts` выводится редьюсером из `BeastEncountered` и
+// последующих событий. Причина бампа четвёртый раз та же: снимок двенадцатой
+// версии реестра не содержит, а доигранный хвост журнала вернул бы отряду
+// только тех зверей, к кому подошли после границы снимка, — то есть приручённый
+// спутник исчезал бы из панели просто потому, что сервер перезапустили.
+export const GAME_STATE_PROJECTOR_VERSION = 13
 
 /**
  * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
@@ -500,6 +599,22 @@ const COMMAND_RULES = Object.freeze({
   FeedCaptive: [],
   ExecuteCaptive: [RULE_IDS.damage],
   NeglectCaptive: [],
+  // Уговор зверя — проверка характеристики против серверной СЛ; провал хищнику
+  // стоит укуса, поэтому урон объявлен здесь же. Обе ступени лестницы платят
+  // ещё и ценой подхода: в бою — действием (`combat:turn-economy`), вне боя —
+  // игровыми минутами, которые движок списывает той же осью, что и любой
+  // расход (`resources:spending`). Объявление обязано называть то, что команда
+  // действительно трогает: пока кормление стояло пустым списком, оно ехало в
+  // белый список `PROVENANCE_REQUIRED` с подписью «редакция этого не
+  // описывает» — и подпись перестала быть правдой в тот день, когда кормление
+  // начало двигать часы мира.
+  //
+  // Отпугивание пустым списком остаётся честно: ни урона, ни проверки, ни
+  // расхода — только строка в летописи, и это подписано в самом событии
+  // (`mechanical_effect: false`).
+  CalmBeast: [RULE_IDS.abilityCheck, RULE_IDS.damage, RULE_IDS.turns, RULE_IDS.resource],
+  FeedBeast: [RULE_IDS.turns, RULE_IDS.resource],
+  ScareWithBeast: [],
   // Парлей стоит действия и решается проверкой Харизмы против серверной СЛ:
   // обе оси ruleset здесь настоящие, а не декоративные.
   ProposeParley: [RULE_IDS.abilityCheck, RULE_IDS.turns],
@@ -511,6 +626,23 @@ const COMMAND_RULES = Object.freeze({
   // Обыск в бою стоит действия — это ось очерёдности ruleset; сама добыча
   // считается серверной политикой и провенанс держит в `house_rule_id`.
   LootContainer: [RULE_IDS.turns],
+  // Кости на деньги: бросок соперника — обычный d20 стола, ответ героя — тот же
+  // d20 плюс, если он полез мухлевать, проверка Ловкости рук. Банк считает та же
+  // ось экономики, что и покупки.
+  OpenTavernDiceRound: [RULE_IDS.economyCoins],
+  AnswerTavernDiceRound: [RULE_IDS.abilityCheck, RULE_IDS.economyCoins],
+  // Встать из-за стола — без броска, но не без монеты: зарезервированная ставка
+  // либо возвращается герою (тупик), либо остаётся сопернику (сдача), и считает
+  // это та же ось экономики, что и банк.
+  LeaveTavernDiceRound: [RULE_IDS.economyCoins],
+  // Выпивка: монета из кошелька и спасбросок Телосложения за перебор.
+  OrderTavernDrink: [RULE_IDS.savingThrow, RULE_IDS.economyCoins],
+  // Письмо: броска нет, а монета есть — курьеру платят по дальности той же осью
+  // экономики, что и торговцу.
+  SendLetter: [RULE_IDS.economyCoins],
+  // Благословение жреца: броска нет (за него платят), монета есть, и состояние
+  // на герое — тоже. Три оси, и все три настоящие.
+  ReceiveNpcBlessing: [RULE_IDS.economyCoins, RULE_IDS.conditions],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   EquipItem: [RULE_IDS.actions],
@@ -538,9 +670,13 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
   ...NPC_WORLD_COMMAND_TYPES,
   ...CAPTIVE_COMMAND_TYPES,
+  ...BEAST_COMMAND_TYPES,
   ...PARLEY_COMMAND_TYPES,
   ...LAW_COMMAND_TYPES,
   ...LOOT_CONTAINER_COMMAND_TYPES,
+  ...TAVERN_COMMAND_TYPES,
+  ...COURIER_LETTER_COMMAND_TYPES,
+  ...BLESSING_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
   'CompleteCampaign', 'AdvanceCampaignArc',
@@ -1592,11 +1728,15 @@ export function normalizeCampaignState(input = {}) {
   state.npc_world = normalizeNpcWorldState(state.npc_world)
   state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
   state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
+  state.courier_letters = normalizeCourierLetterState(state.courier_letters)
   state.captives = normalizeCaptivesState(state.captives)
   // Контейнеры добычи живут в состоянии кампании, а не в сцене: невзятое
   // обязано пережить и уход со сцены, и подъём на другой этаж.
   state.loot_containers = normalizeLootContainersState(state.loot_containers)
+  state.beasts = normalizeBeastState(state.beasts)
   state.law = normalizeLawState(state.law)
+  state.tavern = normalizeTavernState(state.tavern)
+  state.blessings = normalizeBlessingState(state.blessings)
   state.autonomy = normalizeAutonomyState(state.autonomy)
   state.partyDecisionPolicy = normalizePartyDecisionPolicy(state.partyDecisionPolicy)
   if (state.agentInteraction && typeof state.agentInteraction === 'object' && !Array.isArray(state.agentInteraction)) {
@@ -2933,6 +3073,12 @@ const CONDITION_EFFECTS = Object.freeze({
   // же, как давно устроено Божественное благоволение.
   'magic-weapon': { attackBonus: 1, weaponDamageBonus: 1 },
   'elemental-weapon': { attackBonus: 1, weaponDamageDice: '1d4' },
+  // Малое благословение алтаря или жреца (`server/blessings.mjs`). Своей
+  // арифметики у него нет ни строки: оно двигает то же число, что и зачарование
+  // оружия, — плоскую единицу к броску атаки. Отличие одно и оно в расходе:
+  // благословение снимается первой же атакой, где применилось, а до неё держится
+  // до продолжительного отдыха.
+  [BLESSING_CONDITION]: { attackBonus: BLESSING_ATTACK_BONUS },
   'crusader-s-mantle': { weaponDamageDice: '1d4' },
   'holy-weapon': { weaponDamageDice: '2d8' },
   // Обратная сторона зачарования: ослабленный бьёт вполсилы — но только теми
@@ -3137,6 +3283,16 @@ function normalizeCommand(input, state) {
     // правила редакции, но провенанс у механического решения обязан быть.
     if (!command.house_rule_id) command.house_rule_id = LOOT_CONTAINERS_POLICY_ID
   }
+  if (BEAST_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берётся только зверь и герой. Ни СЛ, ни повадка, ни выбранный
+    // паёк клиентом не называются: первые две считает серверная политика, а
+    // еду сервер находит в инвентаре сам — иначе «накормить» стало бы способом
+    // списать любой предмет из рюкзака.
+    command.beast_id = String(command.beast_id ?? command.beastId ?? '').slice(0, 120)
+    delete command.beastId
+    command.target_id = null
+    command.target_ids = []
+  }
   if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
     // Из запроса берутся только герой, подход и выбранный исход. Ни СЛ, ни
     // список доступных исходов, ни сумма откупа клиент подсказать не может:
@@ -3173,6 +3329,48 @@ function normalizeCommand(input, state) {
     // правила редакции, но провенанс у механического решения обязан быть.
     if (!command.house_rule_id) command.house_rule_id = LAW_POLICY_ID
   }
+  if (TAVERN_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только герой, соперник, ставка из закрытого набора и
+    // подход. Ни характер соперника, ни его бросок, ни СЛ спасброска клиент
+    // подсказать не может: их считает серверная политика заведения.
+    command.target_id = null
+    command.target_ids = []
+    if (command.command_type === 'OpenTavernDiceRound') {
+      command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
+      delete command.npcId
+      const stake = safeInteger(command.stake_cp ?? command.stakeCp, 0)
+      command.stake_cp = TAVERN_STAKES_CP.includes(stake) ? stake : 0
+      delete command.stakeCp
+    }
+    if (command.command_type === 'AnswerTavernDiceRound') {
+      command.approach = TAVERN_DICE_APPROACHES.includes(String(command.approach)) ? String(command.approach) : 'fair'
+    }
+    // Кости и выпивка — серверная политика заведения, а не ось ruleset:
+    // провенанс у механического решения обязан быть. Тот же приём, что у
+    // экономики торговца и у закона.
+    if (!command.house_rule_id) command.house_rule_id = TAVERN_POLICY_ID
+  }
+  if (COURIER_LETTER_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только герой, адрес и текст письма. Цену, дальность,
+    // срок доставки и тон ответа объявляет сервер: подсказать их клиент не
+    // может, а полировка ответа моделью приезжает отдельным серверным полем
+    // (`reply_draft`, `server/index.mjs`) и в игрока не упирается.
+    command.target_id = null
+    command.target_ids = []
+    command.addressee_kind = String(command.addressee_kind ?? command.addresseeKind ?? 'npc').slice(0, 20)
+    command.addressee_id = String(command.addressee_id ?? command.addresseeId ?? '').slice(0, 120)
+    delete command.addresseeKind
+    delete command.addresseeId
+    // Текст игрока — недоверенное поле наравне с репликой в разговоре: он
+    // схлопывается по пробелам и режется по длине здесь, до любой проверки.
+    command.body = String(command.body ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, COURIER_LETTER_BODY_LIMIT)
+    command.reply_draft = String(command.reply_draft ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 1_000)
+    command.reply_draft_tone = String(command.reply_draft_tone ?? '').slice(0, 20)
+    command.reply_provider = String(command.reply_provider ?? '').slice(0, 80)
+    // Почта — серверная политика, а не ось ruleset: у курьера нет правила
+    // редакции, но провенанс у механического решения обязан быть.
+    if (!command.house_rule_id) command.house_rule_id = COURIER_LETTERS_POLICY_ID
+  }
   if (command.command_type === 'ResolveHeroDeath') {
     command.resolution = String(command.resolution ?? '')
     command.replacement_name = command.replacement_name == null ? '' : String(command.replacement_name).trim().slice(0, 120)
@@ -3185,6 +3383,12 @@ function normalizeCommand(input, state) {
   if (command.command_type === 'UseLevelTransition') {
     command.prop_id = String(command.prop_id ?? command.propId ?? '').slice(0, 120)
   }
+  if (command.command_type === 'ReceiveNpcBlessing') {
+    command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
+    // Благословение — серверная политика, а не ось ruleset: у храма нет правила
+    // редакции, но провенанс у механического решения обязан быть.
+    if (!command.house_rule_id) command.house_rule_id = BLESSINGS_POLICY_ID
+  }
   command.expected_state_version = safeInteger(command.expected_state_version ?? command.expectedStateVersion, state.state_version)
   return command
 }
@@ -3195,6 +3399,9 @@ function needsActor(type) {
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
     'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer',
+    'CalmBeast', 'FeedBeast', 'ScareWithBeast',
+    'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
+    'SendLetter', 'ReceiveNpcBlessing',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -3526,7 +3733,11 @@ function assertTurn(command, state, context = {}) {
   // `SettleParley` в списке нет намеренно: перемирие уже заморозило очередь, и
   // уговор заключает отряд, а не тот, на ком стоит указатель инициативы.
   // Дееспособность и сторона проверяются в собственной ветке команды.
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'MoveActor', 'OperateSceneObject', 'LootContainer', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  // `CalmBeast` и `FeedBeast` стоят в списке по той же причине, что и парлей:
+  // посреди боя они доступны только к сломленному моралью зверю, но доступны —
+  // и подойти к нему с открытой ладонью посреди чужого хода нельзя. Вне боя
+  // функция выходит первой же проверкой, и там уговор ничего не стоит.
+  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'OperateSceneObject', 'LootContainer', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   // Дополнительные лучи одного заклинания — часть уже совершённого действия,
   // а не новое применение: экономика хода за них не платит второй раз.
@@ -3613,6 +3824,14 @@ function assertTurn(command, state, context = {}) {
     // Окрик посреди схватки стоит действия — и стоит его даже тогда, когда в
     // ответ летит только насмешка. Бесплатный парлей превратился бы в
     // ежераундовую лотерею без цены.
+    const economy = combat.action_economy[command.actor_id]
+    if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+  } else if (['CalmBeast', 'FeedBeast'].includes(command.command_type)) {
+    // Та же цена и по той же причине, что у окрика: подойти к сломленному
+    // зверю посреди боя — это потраченный ход. Резолв обоих команд помечает
+    // действие потраченным (`CombatActionUsed`), и без этой ветки отметка
+    // ставилась бы, но никогда не читалась: вся лестница (уговор → корм →
+    // уговор) укладывалась в один ход бесплатно.
     const economy = combat.action_economy[command.actor_id]
     if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'ResolveImprovisedAction') {
@@ -3763,6 +3982,112 @@ function assembleEncounterFromState(state, command) {
   })
 }
 
+/**
+ * Отказы почты — все, что стоят движку дешевле одного обращения к сети.
+ *
+ * Вынесены из `validateCommand` отдельной экспортируемой функцией потому, что
+ * их обязан задать **и** HTTP-слой, до полировки ответа моделью
+ * (`withCourierReplyDraft`, `server/index.mjs`). Раньше он этого не делал:
+ * бой, пустой кошелёк, четвёртое письмо, адресат в сцене и неизвестный
+ * адресат отлавливались уже после completion, и каждый отказ был оплачен
+ * впустую — при объявленном бюджете вечера это заметная доля. Второй копии
+ * правил при этом заводить нельзя: расписание, цена и порог очереди обязаны
+ * отвечать одинаково у движка и у сервера.
+ *
+ * Состояние ждётся нормализованным (`normalizeCampaignState`).
+ *
+ * @throws {RulesValidationError}
+ */
+export function assertSendLetterAllowed(state, command) {
+  if (state.mechanics.combat.active) {
+    throw new RulesValidationError('Посреди боя писем не пишут', 'COURIER_DURING_COMBAT')
+  }
+  if (!playerActor(state, command.actor_id)) {
+    throw new RulesValidationError('Письмо пишет герой отряда', 'ACTOR_FORBIDDEN')
+  }
+  if (!isLivingActor(findActor(state, command.actor_id))) {
+    throw new RulesValidationError('Герой без сознания писем не пишет', 'ACTOR_DEFEATED')
+  }
+  if (!String(command.body ?? '').trim()) {
+    throw new RulesValidationError('Пустое письмо курьер не повезёт', 'COURIER_LETTER_EMPTY')
+  }
+  // Адресат берётся той же функцией, что собирает список для панели и считает
+  // цену: второй ответ на вопрос «кому можно писать» разошёлся бы с первым.
+  const addressee = courierAddresseeFor(state, command.addressee_kind, command.addressee_id)
+  if (!addressee) {
+    throw new RulesValidationError('Такого адресата отряд не знает', 'COURIER_ADDRESSEE_NOT_FOUND')
+  }
+  if (addressee.unreachable) {
+    throw new RulesValidationError('Адресат стоит перед отрядом: это разговор, а не письмо', 'COURIER_ADDRESSEE_PRESENT')
+  }
+  if (openCourierLettersFor(state, command.actor_id).length >= COURIER_LETTER_OPEN_LIMIT) {
+    throw new RulesValidationError('У героя и так слишком много писем в дороге', 'COURIER_TOO_MANY_LETTERS')
+  }
+  // Плата проверяется **до** первого события: кошелёк не уходит в минус
+  // потому, что в него не лезут, а не потому, что итог потом подрежут.
+  if (currencyToCopper(playerActor(state, command.actor_id).currency) < addressee.fee_cp) {
+    throw new RulesValidationError('На курьера не хватает монет', 'INSUFFICIENT_FUNDS')
+  }
+  return addressee
+}
+
+/**
+ * Зверь, к которому относится команда, и всё, что должно быть верно раньше
+ * первого события. Возвращает поля, которые дописываются в команду: дальше и
+ * исполнение, и карточка ручного броска читают одного и того же зверя, а не
+ * ищут его заново по идентификатору.
+ *
+ * Спутник разбирается **до** остальных проверок: он уже не боевой актор, его
+ * нет в `tameableBeasts`, и без отдельной ветки «отогнать зверем» упиралось бы
+ * в «такого зверя рядом нет».
+ *
+ * @returns {{ beast_actor_id: string }}
+ */
+function validatedBeastTarget(state, command) {
+  const registered = beastFor(state, command.beast_id)
+  if (command.command_type === 'ScareWithBeast') {
+    if (!registered || registered.status !== 'companion') {
+      throw new RulesValidationError('Отогнать угрозу может только прирученный спутник', 'BEAST_NOT_COMPANION')
+    }
+    if (state.mechanics.combat.active) {
+      throw new RulesValidationError('В бою зверь не отгоняет: это не боевой спутник', 'BEAST_DURING_COMBAT')
+    }
+    if (beastScareCooldownLeft(registered, campaignElapsedMinutes(state)) > 0) {
+      throw new RulesValidationError('Зверь только что отогнал одну тварь и на вторую пока не встанет', 'BEAST_SCARE_COOLDOWN')
+    }
+    return { beast_actor_id: registered.actor_id }
+  }
+  const candidate = tameableBeasts(state).find((entry) => (entry.beast?.id ?? beastIdFor(state, entry.enemy.id)) === command.beast_id)
+  if (!candidate) throw new RulesValidationError('Такого зверя рядом нет', 'BEAST_NOT_FOUND')
+  if (candidate.blocked_reason === 'beast_down') {
+    throw new RulesValidationError('Зверь уже не на ногах', 'BEAST_DOWN')
+  }
+  if (candidate.blocked_reason === 'combat_active') {
+    throw new RulesValidationError('Посреди боя зверя не уговаривают: сначала он должен сломаться', 'BEAST_DURING_COMBAT')
+  }
+  const stage = candidate.beast?.stage ?? 'wary'
+  if (command.command_type === 'FeedBeast' && stage !== 'calmed') {
+    throw new RulesValidationError(stage === 'wary'
+      ? 'С руки едят только успокоенные: сначала уговор'
+      : 'Этот зверь уже поел с руки', 'BEAST_STAGE_MISMATCH')
+  }
+  if (command.command_type === 'CalmBeast' && stage === 'calmed') {
+    throw new RulesValidationError('Зверь успокоен и ждёт еды, а не второго уговора', 'BEAST_STAGE_MISMATCH')
+  }
+  if (command.command_type === 'FeedBeast' && !beastFoodItemFor(playerActor(state, command.actor_id), catalogItem)) {
+    throw new RulesValidationError('Кормить нечем: в рюкзаке нет ни пайка, ни другой снеди', 'BEAST_NO_FOOD')
+  }
+  // Досягаемость. Приручение — это ладонь, еда и доверие, поэтому цена та же,
+  // что у двери и объекта сцены: встать вплотную. Без неё зверя уводили с
+  // собой через полкарты, ни разу к нему не подойдя, а укус при провале летел
+  // герою на пятьдесят пять футов. Сцена без клеток проверке не подлежит:
+  // расстояния в ней не существует, и отказывать там нечему.
+  if (beastOutOfReach(state, command.actor_id, candidate.enemy.id)) {
+    throw new RulesValidationError('До зверя нужно дойти: протянуть руку можно только вплотную', 'BEAST_OUT_OF_REACH')
+  }
+  return { beast_actor_id: String(candidate.enemy.id) }
+}
+
 export function validateCommand(input, rawState, context = {}) {
   const state = normalizeCampaignState(rawState)
   const command = normalizeCommand(input, state)
@@ -3862,6 +4187,15 @@ export function validateCommand(input, rawState, context = {}) {
       throw error
     }
   }
+  if (BEAST_COMMAND_TYPES.has(command.command_type)) {
+    if (!playerActor(state, command.actor_id)) {
+      throw new RulesValidationError('Подойти к зверю может только герой отряда', 'ACTOR_FORBIDDEN')
+    }
+    if (!isLivingActor(findActor(state, command.actor_id))) {
+      throw new RulesValidationError('Герой без сознания к зверю не подойдёт', 'ACTOR_DEFEATED')
+    }
+    Object.assign(command, validatedBeastTarget(state, command))
+  }
   if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
     if (!state.mechanics.combat.active) {
       throw new RulesValidationError('Переговоры посреди боя возможны только в бою', 'COMBAT_NOT_ACTIVE')
@@ -3954,6 +4288,153 @@ export function validateCommand(input, rawState, context = {}) {
       }
     }
   }
+  if (TAVERN_COMMAND_TYPES.has(command.command_type)) {
+    // Досуг — это досуг: кости и кружка существуют только там, где для них
+    // накрыт стол, и только пока никто не взялся за оружие.
+    if (!isTavernScene(state)) {
+      throw new RulesValidationError('Ни костей, ни выпивки здесь не подают: это не таверна', 'TAVERN_SCENE_REQUIRED')
+    }
+    if (state.mechanics.combat.active) {
+      throw new RulesValidationError('Посреди боя не играют и не пьют', 'TAVERN_DURING_COMBAT')
+    }
+    if (!playerActor(state, command.actor_id)) {
+      throw new RulesValidationError('За стол садится только герой отряда', 'ACTOR_FORBIDDEN')
+    }
+    if (!isLivingActor(findActor(state, command.actor_id))) {
+      throw new RulesValidationError('Герой без сознания за стол не садится', 'ACTOR_DEFEATED')
+    }
+    // Выставленному за дверь не наливают и с ним не садятся — но встать из-за
+    // стола ему никто помешать не может.
+    //
+    // Исключение это сегодня **недостижимо**, и говорится об этом прямо: ревью
+    // проверило зондом, что состояния «выставлен, и раунд открыт» живыми
+    // командами не бывает. `TavernPatronEjected` пишется ровно в одном месте —
+    // внутри `AnswerTavernDiceRound` самого героя, — и в том же пакете событий
+    // раньше него идёт `TavernDiceRoundResolved`, который раунд уже снял. Прежний
+    // комментарий обещал здесь «чужую команду»: скандал считается по
+    // `patron.scandals` того же героя, чужая команда запрет входа не вешает.
+    //
+    // Исключение всё равно стоит, и стоит осознанно: у героя на столе лежат
+    // деньги, и запрет входа не должен запирать раунд до конца сцены. Уход этот
+    // — такая же сдача, как любой другой: скандал выставленный устроил сам.
+    // Появится второй производитель запрета (драка в зале, хозяин выгнал
+    // отряд) — выход из-за стола будет открыт заранее, а не после жалобы игрока.
+    if (command.command_type !== 'LeaveTavernDiceRound' && tavernEjected(state, command.actor_id)) {
+      throw new RulesValidationError('Героя уже выставили за дверь этого заведения', 'TAVERN_PATRON_EJECTED')
+    }
+    // Раунд у каждого героя свой: стол на пятерых, и общий слот запирал бы
+    // кости всему залу, пока один игрок не ответит.
+    const round = tavernRoundFor(state, command.actor_id)
+    if (command.command_type === 'OpenTavernDiceRound') {
+      if (round) throw new RulesValidationError('Кость соперника уже на столе: сначала ответьте на бросок', 'TAVERN_ROUND_ALREADY_OPEN')
+      if (!TAVERN_STAKES_CP.includes(command.stake_cp)) {
+        throw new RulesValidationError('Такой ставки за этим столом не принимают', 'TAVERN_STAKE_FORBIDDEN')
+      }
+      if (!isTavernOpponent(state, command.npc_id)) {
+        throw new RulesValidationError('С этим за костями никто не сидит', 'TAVERN_OPPONENT_NOT_FOUND')
+      }
+      // Ставку проверяем **до** первого события: кошелёк не уходит в минус
+      // потому, что в него не лезут, а не потому, что итог потом подрежут. И
+      // проверка эта — единственная: ставка уходит из кошелька здесь же, вместе
+      // с костью на столе, а ответ героя не стоит уже ничего.
+      if (currencyToCopper(playerActor(state, command.actor_id).currency) < command.stake_cp) {
+        throw new RulesValidationError('На такую ставку у героя не хватает монет', 'INSUFFICIENT_FUNDS')
+      }
+      // Тем же условием проверяется и чужой кошелёк — но по **свободной**
+      // кассе, а не по всей. Это и есть закрепление покрытия: выигранный банк
+      // приходит из кармана соперника, а не из ниоткуда, и сумма, за которую он
+      // уже отвечает по чужим открытым раундам, второй раз не обещается.
+      //
+      // Стол на пятерых — норма формата, и без свободной кассы пятеро героев
+      // открывали бы против 500 мм пять раундов по 200: первые двое забирали
+      // банк, а третьему платить было уже нечем. Отказ поэтому стоит здесь, на
+      // открытии, — это единственное место, где ещё ничего не поставлено.
+      if (tavernFreePurseFor(state, command.npc_id) < command.stake_cp) {
+        throw new RulesValidationError('Соперник такую ставку не закроет: у него столько нет', 'TAVERN_OPPONENT_BROKE')
+      }
+    }
+    if (command.command_type === 'AnswerTavernDiceRound') {
+      if (!round) throw new RulesValidationError('Кости на стол ещё никто не бросал', 'TAVERN_ROUND_NOT_OPEN')
+      // Своего кошелька здесь не спрашивают, и это следствие эскроу, а не
+      // послабление: ставка ушла из кармана вместе с костью на столе, ответ не
+      // стоит ни медяка, и бедность герою не мешает. Пока проверка стояла здесь,
+      // кружка эля за 4 мм роняла кошелёк ниже сделанной ставки и открывала
+      // бесплатный выход из проигрышного раунда.
+      //
+      // Чужого — тоже, и это уже следствие покрытия: сумма банка закреплена за
+      // этим раундом с самого открытия, и потратить её на чужой выигрыш нельзя.
+      // Проверка ниже — сторож, а не правило: живыми командами до неё не
+      // добраться, но снимок кассы можно принести и руками (легаси-журнал,
+      // правка состояния), а платить банк из воздуха нельзя и тогда.
+      if (tavernGamblerPurseFor(state, round.npc_id) < round.stake_cp) {
+        throw new RulesValidationError('Соперник уже спустил всё: банк ему нечем закрыть', 'TAVERN_OPPONENT_BROKE')
+      }
+    }
+    // Встать из-за стола можно всегда, и запрета здесь нет.
+    //
+    // Он и стоял-то не ради строгости, а ради цены: число соперника лежит на
+    // столе **до** решения (оно и в проекции, и в событии, и на панели доски),
+    // а уход из раунда не стоил ничего — «выпало много, встал; выпало мало,
+    // ответил» приносил +600 мм при нулевых потерях. Запрет эту дыру закрыл
+    // наполовину: второй зонд прошёл сквозь него кружкой эля, уронив кошелёк
+    // ниже ставки и превратив бедность в законный повод уйти даром.
+    //
+    // Цену берёт эскроу, а не запрет: ставка уже уплачена при открытии раунда,
+    // поэтому уход от кости — это сдача, и стоит она ровно столько же, сколько
+    // проигрыш. Возвратов у неё нет ни одного: тупиков, ради которых их
+    // заводили, с закреплённым покрытием не существует.
+    if (command.command_type === 'LeaveTavernDiceRound') {
+      if (!round) throw new RulesValidationError('Из-за стола можно встать только с открытым раундом', 'TAVERN_ROUND_NOT_OPEN')
+    }
+    if (command.command_type === 'OrderTavernDrink') {
+      if (currencyToCopper(playerActor(state, command.actor_id).currency) < TAVERN_DRINK_PRICE_CP) {
+        throw new RulesValidationError('На выпивку не хватает монет', 'INSUFFICIENT_FUNDS')
+      }
+    }
+  }
+  if (BLESSING_COMMAND_TYPES.has(command.command_type)) {
+    // Благословение просят у живого человека в мирной сцене: посреди боя жрецу
+    // не до треб, а бессознательному герою — не до молитвы.
+    if (state.mechanics.combat.active) {
+      throw new RulesValidationError('Посреди боя благословений не раздают', 'BLESSING_DURING_COMBAT')
+    }
+    if (!playerActor(state, command.actor_id)) {
+      throw new RulesValidationError('Благословение принимает только герой отряда', 'ACTOR_FORBIDDEN')
+    }
+    if (!isLivingActor(findActor(state, command.actor_id))) {
+      throw new RulesValidationError('Герой без сознания благословения не принимает', 'ACTOR_DEFEATED')
+    }
+    if (!isBlessingPriest(state, command.npc_id)) {
+      throw new RulesValidationError('Этот человек благословений не даёт', 'BLESSING_PRIEST_NOT_FOUND')
+    }
+    // Пожертвование проверяется **до** первого события: кошелёк не уходит в
+    // минус потому, что в него не лезут, а не потому, что итог потом подрежут.
+    if (currencyToCopper(playerActor(state, command.actor_id).currency) < BLESSING_DONATION_CP) {
+      throw new RulesValidationError('На пожертвование не хватает монет', 'INSUFFICIENT_FUNDS')
+    }
+    // Сутки закрывает любое обращение — и молитва у алтаря, и приём у жреца.
+    // Иначе отряд обходил бы храм по кругу: помолился, не вышло — пошёл платить.
+    if (!blessingAvailabilityFor(state, command.actor_id, campaignElapsedMinutes(state)).available) {
+      throw new RulesValidationError('Этот герой уже обращался к богам сегодня', 'BLESSING_ALREADY_TODAY')
+    }
+    // Второго благословения поверх первого не бывает, и одних суток для этого
+    // мало. Слот и срок — два разных числа: слот открывается через
+    // `BLESSING_COOLDOWN_MINUTES`, а состояние снимает продолжительный отдых
+    // или первый удар. Сутки мировых минут без ночёвки и без боя (переход,
+    // дорога, разговоры) открывали окно, в котором треба списывала золотой,
+    // двигала репутацию и писала в летопись «благословение дано» — а состояния
+    // не появлялось: вешать второе поверх первого движок и так не умеет, но
+    // делал это молча. Отказ стоит **до** первого события, чтобы платы за ничто
+    // не было; стоит он последним, потому что «сегодня уже обращались» — ответ
+    // точнее там, где верны оба.
+    if (heroIsBlessed(state, command.actor_id)) {
+      throw new RulesValidationError('Благословение этого героя ещё не израсходовано', 'BLESSING_ALREADY_ACTIVE')
+    }
+  }
+  // Отказы почты вынесены целиком: их же, до обращения к модели, спрашивает
+  // HTTP-слой (`server/index.mjs`). Второй копии этих правил быть не должно —
+  // разошлась бы на первой правке цены или порога очереди.
+  if (COURIER_LETTER_COMMAND_TYPES.has(command.command_type)) assertSendLetterAllowed(state, command)
   if (CHARACTER_BUILD_COMMAND_TYPES.has(command.command_type)) {
     try {
       Object.assign(command, validateCharacterBuildCommand(command, state, context))
@@ -4616,7 +5097,14 @@ export function validateCommand(input, rawState, context = {}) {
   // страже — решения о судьбе NPC, а не механика редакции. Допрос и казнь из
   // этого списка исключены — у них своя проверка и свой урон, и правило у них
   // есть (`COMMAND_RULES`).
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CAPTIVE_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  //
+  // Отпугивание — из того же теста: рыкнуть в темноту редакция не описывает, и
+  // это подписано в самом событии (`mechanical_effect: false`). Кормление
+  // отсюда ушло: оно платит действием в бою и десятью игровыми минутами вне
+  // боя, то есть редакция его как раз описывает, и оси у него теперь объявлены
+  // (`COMMAND_RULES`). `CalmBeast` сюда не входил и не входит — это проверка
+  // характеристики с укусом на провале, и правила у неё свои.
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', 'ScareWithBeast', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CAPTIVE_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -4632,8 +5120,21 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'OperateSceneObject') {
     if (!command.prop_id) throw new RulesValidationError('Не выбран объект сцены', 'SCENE_OBJECT_REQUIRED')
-    if (!['inspect', 'open', 'take', 'use', 'topple', 'ignite'].includes(command.intent)) {
+    if (!['inspect', 'open', 'take', 'use', 'topple', 'ignite', 'pray'].includes(command.intent)) {
       throw new RulesValidationError('Неизвестный способ взаимодействия с объектом сцены', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
+    }
+    // Молитва — единственный глагол пропса, которому в бою не место, и запрет
+    // здесь не про уместность, а про минуты: обращение к богам стоит четверти
+    // часа кампании (`PRAYER_MINUTES`), а четверть часа посреди раунда в шесть
+    // секунд двигает всё, что на мировых минутах и висит, — сроки обещаний NPC и
+    // подъём стабилизированного героя. Опрокинуть и поджечь при этом остаются
+    // боевыми приёмами: они не стоят ни минуты.
+    //
+    // Тот же запрет и той же причины стоит у требы (`BLESSING_DURING_COMBAT`
+    // выше): два пути к одному благословению обязаны закрываться одинаково,
+    // иначе бой обходили бы через алтарь.
+    if (command.intent === 'pray' && state.mechanics.combat.active) {
+      throw new RulesValidationError('Посреди боя благословений не раздают', 'BLESSING_DURING_COMBAT')
     }
     if (command.approach === 'force' && command.server_authoritative !== true && context.serverAuthoritativeCombat !== true) {
       throw new RulesValidationError('Силовой подход выбирает только серверный разбор свободного действия', 'SCENE_OBJECT_FORCE_FORBIDDEN')
@@ -4672,6 +5173,42 @@ function npcWorldEventsFrom(command, drafts) {
     )
     return draft.event_id ? { ...event, event_id: draft.event_id } : event
   })
+}
+
+/**
+ * Поправка личного отношения NPC к герою — одним способом отовсюду.
+ *
+ * Счёт до и после берётся из состояния, а не проставляется константой: редьюсер
+ * считает по `delta`, но payload не имеет права расходиться с журналом. Границы
+ * те же, что у социального движка (`relationshipEvents`, `npc-social.mjs`), —
+ * там же живёт и второй производитель этих событий, разговор с NPC.
+ *
+ * @returns {Array<Record<string, any>>}
+ */
+function npcRelationshipEventsFrom(command, state, { npcId, heroId, delta, reason }) {
+  const npc = String(npcId ?? '')
+  const hero = String(heroId ?? '')
+  if (!npc || !hero) return []
+  const before = ensureNpcSocialState(state.social, state).relationships[npc]?.[hero] ?? 0
+  const bounded = Math.max(-25, Math.min(25, safeInteger(delta, 0)))
+  if (!bounded) return []
+  const after = Math.max(-100, Math.min(100, before + bounded))
+  const payload = {
+    npc_id: npc,
+    hero_id: hero,
+    delta: after - before,
+    score_before: before,
+    score_after: after,
+    tier_before: relationshipTier(before),
+    tier_after: relationshipTier(after),
+    reason: String(reason ?? '').slice(0, 80),
+    promise_id: '',
+  }
+  const events = [eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipAdjusted', payload, [hero])]
+  if (payload.tier_before !== payload.tier_after) {
+    events.push(eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipTierChanged', payload, [hero]))
+  }
+  return events
 }
 
 function heroDiedEventFrom(command, payload = {}, targets = command.target_ids) {
@@ -6391,10 +6928,19 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
   const skillProficiency = checkSkill ? skillProficiencyForActor(actor, checkSkill) : null
   const modifier = abilityModifier(actor?.abilities?.[checkAbility])
     + (skillProficiency?.bonus ?? (proficient ? safeInteger(actor?.proficiency, 0) : 0))
+    // Застолье — такая же прибавка к проверке, как погода к Восприятию, и
+    // считается той же функцией, что применит движок: карточка ручного броска
+    // обязана показать то самое число.
+    + tavernSocialBonus(state, actorId, checkSkill)
   // Небо участвует в проверке наравне с состояниями, поэтому оно обязано быть
   // и в предпросмотре: карточка ручного броска показывает игроку тот же режим,
   // с которым сервер потом сложит две кости.
   const weatherSwing = weatherCheckSwing(state, checkSkill)
+  // Зверь на страже лагеря — такая же поправка к Восприятию, как небо, и
+  // считается той же функцией, что применит движок: карточка ручного броска
+  // обязана показать тот самый режим кубиков. Актор обязателен: стража спутника
+  // партийная, и врагу, который ищет отряд, волк отряда не помогает.
+  const watchSwing = beastWatchSwing(state, checkSkill, actorId)
   return {
     kind: 'check',
     ability: checkAbility,
@@ -6403,12 +6949,254 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
     difficulty: safeInteger(difficulty, 10),
     advantage: Boolean(checkAdvantageConditionFor(state, actorId, checkAbility))
       || conditionIdsFor(state, actorId).has('silvery-fortune')
-      || weatherSwing?.swing === 'advantage',
+      || weatherSwing?.swing === 'advantage'
+      || watchSwing != null,
     disadvantage: Boolean(checkDisadvantageConditionFor(state, actorId))
       || (checkSkill === 'stealth' && armorStealthDisadvantage(actor))
       || weatherSwing?.swing === 'disadvantage',
     ...(weatherSwing ? { weather_reason: weatherSwing.reason } : {}),
+    ...(watchSwing ? { beast_watch_reason: watchSwing.reason } : {}),
   }
+}
+
+/**
+ * Предпросмотр ответного броска за костями. Отдельный от `previewD20Check`
+ * намеренно: за столом кидают удачу, а не характеристику, поэтому навыка у
+ * этого броска нет и быть не должно — общий предпросмотр приписал бы сюда Силу
+ * просто потому, что навык не назван.
+ *
+ * Кость двигают ровно две вещи. Первая — состояния, мешающие любой проверке:
+ * перебравший играет хуже трезвого, и это та же помеха, которой считается
+ * истощение. Вторая — подкрученная кость: подход `cheat` даёт свои `+5`, и они
+ * приходят **отсюда**, а не из исполнения команды.
+ *
+ * Это второе и есть смысл функции. Карточка ручного броска собирается до того,
+ * как движок бросит Ловкость рук, поэтому раньше она печатала «модификатор +0»,
+ * а исполнение считало с `+5`: игрок видел «нужно 16», а хватало 11. Числа
+ * сходятся только если надбавка известна до карточки — и она известна, потому
+ * что подход герой называет сам. Проверка Ловкости рук решает не размер
+ * надбавки, а то, поймают ли за руку: пойманный теряет ставку независимо от
+ * того, что показала кость.
+ *
+ * СЛ равна объявленному числу соперника плюс один: перебить — значит показать
+ * больше.
+ *
+ * Подход сюда приходит из **реестра бросков**, а не из команды второй фазы
+ * (`server/game-orchestrator.mjs`): иначе решение подкрутить принималось бы уже
+ * после просмотра кубика.
+ */
+export function previewTavernDiceRoll(state, actorId, approach = 'fair') {
+  const round = tavernRoundFor(state, actorId)
+  const penalty = checkDisadvantageConditionFor(state, actorId)
+  return {
+    kind: 'check',
+    ability: null,
+    skill: null,
+    modifier: String(approach) === 'cheat' ? TAVERN_CHEAT_BONUS : 0,
+    difficulty: round ? round.target : 11,
+    advantage: false,
+    disadvantage: Boolean(penalty),
+    ...(penalty ? { check_disadvantage_condition: penalty } : {}),
+  }
+}
+
+/**
+ * Раунд закрыт без броска — то есть сдан.
+ *
+ * Производителей у закрытия два и живут они в разных командах: герой встал
+ * из-за стола сам (`LeaveTavernDiceRound`) или ушёл из зала, не ответив на кость
+ * (`AdvanceScene`). Событие обязано быть одним: у проекции, летописи и редьюсера
+ * второго ответа на «раунд закрылся» быть не должно. Дверь при этом стоит того
+ * же, что и скамья, — иначе выход за порог был бы бесплатным перебросом чужой
+ * кости.
+ *
+ * `actor_id` события — **владелец раунда**, а не тот, чья команда его закрыла:
+ * закрывается стол героя, и в летописи должен стоять он. Поэтому и `hero_id` в
+ * payload берётся из самого раунда.
+ *
+ * `reason` остаётся полем с единственным значением `surrendered`, и это не
+ * забытый рудимент: событие читают летопись, проекция и редьюсер, и «почему
+ * стол закрылся» они обязаны узнавать из журнала, а не из молчания.
+ *
+ * Возвратов у закрытия нет ни одного, и это следствие закреплённого покрытия, а
+ * не суровость. Возврат заводили ради тупиков — «соперник разорился, пока герой
+ * думал», — и три захода политика качалась между двумя лазейками: вернуть — и
+ * сговор отряда прибылен (зонд ревью: 62 возврата заведомо проигранной ставки на
+ * сотню попыток), не вернуть — и ставку теряет невиновный. Касса соперника
+ * закрепляет выплату за раундом с самого открытия
+ * (`tavernFreePurseFor`, `server/tavern-life.mjs`), поэтому тупика больше нет, а
+ * исходов у раунда два: доиграть или сдаться.
+ *
+ * Половинчатый возврат тут не работал бы и раньше, и это считается, а не
+ * ощущается: ответ на чужие 19 стоит герою всей ставки (перебить нечем), поэтому
+ * любая доля, вернувшаяся со стола, оставляет цикл «увидел много — ушёл»
+ * выгодным.
+ *
+ * `forfeited_cp` — что герой потерял со стола, и сходится он с переездом кассы:
+ * `moved_cp + house_cut_cp`. Летопись и карточка берут число отсюда, а не
+ * считают его второй раз. Кошелёк героя при этом не двигается вовсе — ставка
+ * ушла из него ещё на открытии раунда, — и полей о нём в payload нет.
+ *
+ * `npcPurseBeforeCp` приходит параметром, а не читается из состояния, ровно
+ * из-за ухода из сцены: одним пакетом событий закрываются все столы зала, и
+ * второй раунд против того же соседа обязан класть ставку в кассу, уже принявшую
+ * первую. `state` для них всех — снимок **до** команды.
+ */
+function tavernRoundCancelledEvent(command, state, round, minutes, npcPurseBeforeCp = null) {
+  // Ставка закрытого раунда уезжает сопернику той же дорогой, что и проигранная:
+  // за этим столом деньги переезжают, а не исчезают. На потолке чужой кассы
+  // остаток достаётся заведению и назван в payload — молча он исчезал до ревью.
+  const purse = tavernPurseTransfer(
+    npcPurseBeforeCp == null ? tavernGamblerPurseFor(state, round.npc_id) : npcPurseBeforeCp,
+    round.stake_cp,
+  )
+  return eventFrom(commandWithRules({ ...command, actor_id: round.hero_id, visibility: 'party' }, RULE_IDS.economyCoins), 'TavernDiceRoundCancelled', {
+    round_id: round.id,
+    hero_id: round.hero_id,
+    npc_id: round.npc_id,
+    npc_name: round.npc_name,
+    stake_cp: round.stake_cp,
+    npc_total: round.npc_total,
+    forfeited_cp: round.stake_cp,
+    reason: 'surrendered',
+    ...tavernPurseTransferPayload(purse),
+    at_minutes: minutes,
+    policy_id: TAVERN_POLICY_ID,
+  }, [round.hero_id, round.npc_id])
+}
+
+/**
+ * Столы, закрытые уходом из зала. Возвращает готовые события — по одному на
+ * каждый открытый раунд, в порядке героев (`tavernOpenRounds`).
+ *
+ * Касса соседа идёт **бегущим** числом, а не снимком: за одним и тем же соседом
+ * может сидеть весь отряд, и вторая сдача обязана лечь в кассу, уже принявшую
+ * первую. Читать состояние внутри нельзя — оно снимок до команды.
+ */
+function tavernRoundsClosedByDeparture(command, state, minutes) {
+  const running = new Map()
+  return tavernOpenRounds(state).map((round) => {
+    const before = running.has(round.npc_id) ? running.get(round.npc_id) : tavernGamblerPurseFor(state, round.npc_id)
+    const event = tavernRoundCancelledEvent(command, state, round, minutes, before)
+    running.set(round.npc_id, safeInteger(event.payload.npc_purse_after_cp, before))
+    return event
+  })
+}
+
+/**
+ * Почему молиться у этой святыни нельзя прямо сейчас — либо `null`, если можно.
+ *
+ * Функция одна на две стороны хода, и это её единственный смысл. Движок
+ * спрашивает её перед первым событием, а оркестратор — **перед карточкой первой
+ * фазы** (`shrinePrayerCheckCard`, `server/game-orchestrator.mjs`), потому что
+ * бросать кость ради заведомого отказа — обман стола: ход вернётся ошибкой уже
+ * после кубика, а запись в реестре бросков останется висеть.
+ *
+ * Пока отказов было два ответа, карточка знала ровно один из шести — суточный
+ * откат, — и выдавалась посреди боя, у несуществующего пропса и через полкарты
+ * от алтаря. Порядок проверок здесь тот же, каким их задаёт разбор
+ * `OperateSceneObject`, и помощники те же самые: расходиться этим двум ответам
+ * нечем.
+ */
+export function shrinePrayerRefusalFor(state, { actorId = '', propId = '' } = {}) {
+  const refuse = (code, message) => ({ code, message })
+  // Бой закрывает молитву не из-за уместности, а из-за минут: обращение стоит
+  // четверти часа кампании, а четверть часа посреди раунда в шесть секунд
+  // двигает всё, что висит на мировых минутах.
+  if (state?.mechanics?.combat?.active) return refuse('BLESSING_DURING_COMBAT', 'Посреди боя благословений не раздают')
+  const map = ensureSceneTacticalMap(state)
+  if (!map) return refuse('TACTICAL_MAP_REQUIRED', 'Для объекта нужна тактическая карта')
+  const prop = map.props.find((candidate) => String(candidate.id) === String(propId))
+  if (!prop) return refuse('SCENE_OBJECT_NOT_FOUND', 'Такого объекта нет на карте')
+  if (prop.interactive !== true) return refuse('SCENE_OBJECT_NOT_INTERACTIVE', 'Этот объект не отмечен как интерактивный')
+  const definition = sceneInteractionDefinition({ mapSeed: map.seed, props: map.props, propId: prop.id })
+  if (!definition) return refuse('SCENE_OBJECT_UNSUPPORTED', 'Для этого объекта нет серверного правила взаимодействия')
+  // Глагол и ассет спрашиваются оба: `pray` объявляет каталог, но состояние
+  // пропса можно принести и руками, а молиться сундуку нельзя и тогда.
+  if (!definition.verbs.includes('pray') || !isSceneShrineAsset(prop.assetId)) {
+    return refuse('SCENE_OBJECT_INTENT_NOT_ALLOWED', 'Молиться можно только у святыни')
+  }
+  const at = actorPosition(state, actorId)
+  if (!at) return refuse('MAP_POSITION_REQUIRED', 'Участник должен находиться на карте')
+  if (sceneObjectDistance(prop, at) > 1) return refuse('SCENE_OBJECT_OUT_OF_REACH', 'До объекта нужно дотянуться: встаньте вплотную')
+  if (!isLivingActor(findActor(state, actorId))) return refuse('ACTOR_DEFEATED', 'Взаимодействовать может только дееспособный участник')
+  // Сутки закрывает любое обращение — и молитва, и жрец. Считается по попытке,
+  // а не по успеху: иначе неудачную молитву повторяли бы до двадцатки, у алтаря
+  // ведь никто никуда не спешит.
+  if (!blessingAvailabilityFor(state, actorId, campaignElapsedMinutes(state)).available) {
+    return refuse('BLESSING_ALREADY_TODAY', 'Этот герой уже обращался к богам сегодня')
+  }
+  // Благословение поверх благословения — та же дыра, что у требы, только вместо
+  // золотого она стоила правды: молитва проходила целиком, объявляла исход
+  // `blessed`, писала факт мира и жгла суточный слот, а состояния не добавляла.
+  // Факт мира читают рассказчик и NPC, и replay повторил бы ту же неправду.
+  // Порядок с суточным слотом тот же, что у требы: там, где верны оба, ответ
+  // точнее — «сегодня уже обращались».
+  if (heroIsBlessed(state, actorId)) return refuse('BLESSING_ALREADY_ACTIVE', 'Благословение этого героя ещё не израсходовано')
+  return null
+}
+
+/**
+ * Что оставляет за собой полученное благословение. Функция одна на оба
+ * источника — алтарь и жреца — намеренно: состояние, срок и факт мира у них те
+ * же, и второй набор событий разошёлся бы с первым на первой правке.
+ *
+ * Факт мира здесь не украшение, а вся «тематическая стыковка»: рассказчик и NPC
+ * читают память мира, и благословение обязано в ней быть — иначе оно живёт
+ * только иконкой на панели и для мира не случается вовсе.
+ */
+function blessingGrantedEvents(command, state, {
+  heroId, source, placeName = '', npcId = '', npcName = '', minutes = 0, sourceEventId = '',
+} = {}) {
+  const events = []
+  const hero = playerActor(state, heroId)
+  const heroName = String(hero?.character ?? hero?.name ?? heroId).slice(0, 120)
+  // Второго благословения поверх первого не вешаем — но молчаливым пропуском
+  // эта ветка больше не распоряжается. Раньше она была единственной защитой, и
+  // защищала неправильно: обращение доходило сюда целиком, платило золотой или
+  // жгло суточный слот, объявляло исход «благословлён» и записывало факт мира —
+  // а состояния не появлялось. Отказ теперь стоит до первого события
+  // (`BLESSING_ALREADY_ACTIVE`), и живыми командами сюда с висящим
+  // благословением не добраться; проверка остаётся страховкой на случай нового
+  // источника благословений, а не заменой отказа.
+  if (!conditionIdsFor(state, heroId).has(BLESSING_CONDITION)) {
+    events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: BLESSING_CONDITION,
+      duration: BLESSING_DURATION,
+      source: `blessing:${source}`,
+      attack_bonus: BLESSING_ATTACK_BONUS,
+    }, [heroId]))
+  }
+  // Подлежащее факта — **локация**, а не герой, и это не стилистика: память
+  // мира хранит факты только о своих сущностях (`normalizeWorldMemory`,
+  // `server/world-memory.mjs`), а героя отряда среди них нет — запись с
+  // `subject_id: heroId` молча отбрасывалась бы нормализатором, и «благословение
+  // живёт в памяти мира» осталось бы обещанием в комментарии. Локация сущностью
+  // является всегда: её заводит `ensureSceneWorldMemory` по названию сцены.
+  const placeKey = String(state.scene?.location ?? state.scene?.title ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('ru')
+  const placeEntity = (state.worldMemory?.entities ?? []).find((entity) => String(entity?.kind ?? '') === 'location'
+    && String(entity?.name ?? '').toLocaleLowerCase('ru') === placeKey)
+  const where = source === 'priest'
+    ? (npcName ? `от кого: ${npcName}` : 'у служителя храма')
+    : (placeName ? `место: ${placeName}` : 'у придорожной святыни')
+  // Локации нет — факта тоже нет. Молчание здесь честнее выдумки: подвесить
+  // запись к несуществующей сущности значит записать её в никуда.
+  if (placeEntity) {
+    events.push(eventFrom({ ...command, visibility: 'party' }, 'WorldFactRecorded', {
+      fact: {
+        id: `fact:blessing:${String(heroId).slice(0, 60)}:${Math.max(0, safeInteger(minutes, 0))}`,
+        subject_id: String(placeEntity.id),
+        predicate: source === 'priest' ? 'blessed_by_priest' : 'blessed_at_shrine',
+        object: String(heroId).slice(0, 180),
+        summary: `${heroName} принял(а) малое благословение (${where}).`,
+        visibility: 'party',
+        ...(sourceEventId ? { source_event_ids: [sourceEventId] } : {}),
+        status: 'active',
+        recorded_at_minutes: Math.max(0, safeInteger(minutes, 0)),
+      },
+    }, []))
+  }
+  return events
 }
 
 /**
@@ -6712,6 +7500,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     for (const draft of offscreen?.drafts ?? []) {
       events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids ?? []))
     }
+    // Почта. Курьер едет теми же минутами и никакого своего счётчика не
+    // заводит: доставка, возврат и ответ считаются от **дособытийного**
+    // состояния, поэтому длинный отдых доводит письмо до ответа целиком, а
+    // короткий привал не двигает его вовсе (`planCourierLetterTicks`,
+    // `server/courier-letters.mjs`).
+    for (const draft of planCourierLetterTicks(state, { elapsedMinutes })) {
+      events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids ?? []))
+    }
   }
 
   const damageTurnKey = (sourceState) => {
@@ -6868,9 +7664,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const skill = canonicalSkillId(command.skill)
       const ability = String(skillAbility(skill) || command.ability || 'str').toLowerCase()
       const skillProficiency = skill ? skillProficiencyForActor(actor, skill) : null
+      // Прибавка застолья входит в базовый модификатор, а не поверх присланного
+      // числа: команда с явным `modifier` приходит от серверных контуров,
+      // которые уже посчитали своё, и складывать с ними ещё раз нельзя.
+      const tavernBonus = tavernSocialBonus(state, command.actor_id, skill)
       let modifier = Number.isSafeInteger(Number(command.modifier))
         ? Number(command.modifier)
-        : abilityModifier(actor?.abilities?.[ability]) + (skillProficiency?.bonus ?? (command.proficient ? safeInteger(actor?.proficiency, 0) : 0))
+        : abilityModifier(actor?.abilities?.[ability]) + (skillProficiency?.bonus ?? (command.proficient ? safeInteger(actor?.proficiency, 0) : 0)) + tavernBonus
       if (conditionIdsFor(state, command.actor_id).has('guidance-d4')) {
         const guidance = diceService.roll('1d4', 'spell:guidance', command.actor_id, command.visibility ?? 'public')
         rolls.push(guidance)
@@ -6888,10 +7688,14 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const weatherSwing = weatherCheckSwing(state, skill)
       const weatherPenalty = weatherSwing?.swing === 'disadvantage' ? weatherSwing.reason : null
       const weatherBoost = weatherSwing?.swing === 'advantage' ? weatherSwing.reason : null
-      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || Boolean(weatherBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty) || armorStealthPenalty || Boolean(weatherPenalty), visibility: command.visibility }
+      // Прирученный зверь держит стражу на привале: Восприятие лагеря идёт с
+      // преимуществом, пока отряд отдыхает. Единственный механический эффект
+      // спутника, и он считается здесь же — рядом с небом, а не отдельной веткой.
+      const beastWatchBoost = beastWatchSwing(state, skill, command.actor_id)?.reason ?? null
+      const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || Boolean(weatherBoost) || Boolean(beastWatchBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty) || armorStealthPenalty || Boolean(weatherPenalty), visibility: command.visibility }
       const roll = checkRollFromVerified(command.verified_roll, checkRollOptions) ?? diceService.rollCheck(checkRollOptions)
       rolls.push(roll)
-      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost || weatherPenalty || weatherBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
+      events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost || weatherPenalty || weatherBoost || beastWatchBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
         ability, ...(skill ? { skill } : {}), ...roll,
         ...(skillProficiency ? {
           proficient: skillProficiency.proficient,
@@ -6903,6 +7707,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         ...(checkBoost ? { check_advantage_condition: checkBoost } : {}),
         ...(weatherPenalty ? { weather_disadvantage: weatherPenalty } : {}),
         ...(weatherBoost ? { weather_advantage: weatherBoost } : {}),
+        ...(beastWatchBoost ? { beast_watch_advantage: beastWatchBoost } : {}),
         ...(command.social_check ? { social_check: {
           check_id: command.social_check.check_id, npc_id: command.social_check.npc_id,
           skill: command.social_check.skill, request_fingerprint: command.social_check.request_fingerprint,
@@ -7210,6 +8015,20 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (actorConditions.has('disadvantage-next-weapon-attack')) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'disadvantage-next-weapon-attack' }, [command.actor_id]))
       if (trueStrike) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'true-strike' }, [command.actor_id]))
       if (silveryFortune) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'silvery-fortune' }, [command.actor_id]))
+      // Благословение расходуется здесь и только здесь. Прибавку к броску оно
+      // отдало выше — общей таблицей состояний (`conditionNumericBonus`), — и
+      // снимается ровно там, где применилось: без расхода малое благословение
+      // было бы постоянным `+1` до самого отдыха, то есть уже не малым.
+      //
+      // Заклинательская атака в этой ветке не участвует, и это не упущение, а
+      // та же граница, что у «Зачарования оружия» и «Стихийного оружия»:
+      // `attackBonus` читает только удар оружием. Благословение поэтому и не
+      // тратится на луч — оно его и не усилило.
+      if (actorConditions.has(BLESSING_CONDITION)) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', {
+          condition: BLESSING_CONDITION, trigger: 'attack',
+        }, [command.actor_id]))
+      }
       if (guidingBoltAdvantage) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'guiding-bolt-advantage' }, [targetId]))
       // Порог recharge в payload не кладётся: событие видно игроку, а порог —
       // строка стат-блока. Движок читает его из профиля существа, а не отсюда.
@@ -10077,6 +10896,88 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         policy_id: SCENE_INTERACTION_POLICY_ID,
       }, []))
 
+      /**
+       * Молитва у святыни. Единственная ветка `OperateSceneObject`, где кость
+       * бывает **ручной**: карточку первой фазы собирает оркестратор
+       * (`shrinePrayerCheckCard`, `server/game-orchestrator.mjs`) тем же
+       * предпросмотром, которым считается модификатор здесь.
+       *
+       * Ветка стоит до обычных операций и ничего у них не отнимает: глагол
+       * `pray` есть только у святыни (`sceneShrineVerbsFor`), и до этой строки
+       * доходит только он.
+       */
+      if (command.intent === 'pray') {
+        // Все отказы молитвы спрашиваются одной функцией — той же, которой их
+        // спрашивает карточка первой фазы. Второго ответа на «можно ли
+        // молиться» в проекте нет: разойдясь, эти двое дали бы игроку кость,
+        // брошенную ради заведомого отказа.
+        const refusal = shrinePrayerRefusalFor(state, { actorId: command.actor_id, propId: prop.id })
+        if (refusal) throw new RulesValidationError(refusal.message, refusal.code)
+        const prayerMinutes = campaignElapsedMinutes(state)
+        operated()
+        const preview = previewD20Check(state, {
+          actorId: command.actor_id,
+          kind: 'check',
+          ability: PRAYER_ABILITY,
+          skill: PRAYER_SKILL,
+          difficulty: PRAYER_DC,
+        })
+        const prayerRollOptions = {
+          modifier: preview.modifier,
+          difficulty: PRAYER_DC,
+          purpose: `shrine-prayer:${PRAYER_SKILL}`,
+          actorId: command.actor_id,
+          advantage: preview.advantage,
+          disadvantage: preview.disadvantage,
+          visibility: 'party',
+        }
+        const prayerCheck = checkRollFromVerified(command.verified_roll, prayerRollOptions) ?? diceService.rollCheck(prayerRollOptions)
+        rolls.push(prayerCheck)
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+          ability: preview.ability, skill: preview.skill, ...prayerCheck,
+        }, [command.actor_id]))
+        // Натуральная единица отвечает знамением. Механики за ним нет ни на
+        // грош, и это осознанно: карать за обращение к богам значит отучить от
+        // него стол, а тревогу стол додумает сам.
+        const omen = !prayerCheck.success && safeInteger(prayerCheck.kept, 0) === 1
+          ? blessingOmenFor(`${state.sessionCode ?? ''}:${prop.id}:${prayerMinutes}`)
+          : ''
+        const prayerOutcome = prayerCheck.success ? 'blessed' : omen ? 'omen' : 'silence'
+        const shrineName = String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180)
+        const prayerEventId = `shrine-prayer:${String(command.command_id).slice(0, 100)}`
+        events.push({
+          ...eventFrom({ ...command, visibility: 'party' }, 'ShrinePrayerResolved', {
+            hero_id: command.actor_id,
+            prop_id: prop.id,
+            place_name: shrineName,
+            outcome: prayerOutcome,
+            skill: PRAYER_SKILL,
+            difficulty: PRAYER_DC,
+            total: safeInteger(prayerCheck.total, 0),
+            ...(omen ? { omen } : {}),
+            ...(prayerOutcome === 'blessed' ? {
+              condition: BLESSING_CONDITION,
+              attack_bonus: BLESSING_ATTACK_BONUS,
+              duration: BLESSING_DURATION,
+            } : {}),
+            at_minutes: prayerMinutes,
+            policy_id: BLESSINGS_POLICY_ID,
+          }, [command.actor_id]),
+          event_id: prayerEventId,
+        })
+        if (prayerOutcome === 'blessed') {
+          events.push(...blessingGrantedEvents(command, state, {
+            heroId: command.actor_id,
+            source: 'shrine',
+            placeName: shrineName,
+            minutes: prayerMinutes,
+            sourceEventId: prayerEventId,
+          }))
+        }
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), PRAYER_MINUTES, 'minute')
+        break
+      }
+
       // Обстановка как оружие: опрокинуть тяжёлое и поджечь горючее. Обе ветки
       // стоят до обычных операций, потому что меняют состояние пропса
       // необратимо — с поваленным стеллажом больше ничего не сделать.
@@ -11001,26 +11902,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         event_id: releaseEventId,
       })
       // Пощажённый помнит. Отношение и слава двигаются существующими событиями:
-      // отдельной «памяти о милосердии» рядом с ними заводить нельзя. Счёт до и
-      // после берётся из состояния, а не проставляется константой: редьюсер
-      // считает по `delta`, но payload не имеет права расходиться с журналом.
-      const socialBefore = ensureNpcSocialState(state.social, state).relationships[captive.npc_id]?.[command.actor_id] ?? 0
-      const socialAfter = Math.max(-100, Math.min(100, socialBefore + CAPTIVE_SPARED_RELATIONSHIP_DELTA))
-      const relationshipPayload = {
-        npc_id: captive.npc_id,
-        hero_id: command.actor_id,
-        delta: socialAfter - socialBefore,
-        score_before: socialBefore,
-        score_after: socialAfter,
-        tier_before: relationshipTier(socialBefore),
-        tier_after: relationshipTier(socialAfter),
+      // отдельной «памяти о милосердии» рядом с ними заводить нельзя.
+      events.push(...npcRelationshipEventsFrom(command, state, {
+        npcId: captive.npc_id,
+        heroId: command.actor_id,
+        delta: CAPTIVE_SPARED_RELATIONSHIP_DELTA,
         reason: 'captive-spared',
-        promise_id: '',
-      }
-      events.push(eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipAdjusted', relationshipPayload, [command.actor_id]))
-      if (relationshipPayload.tier_before !== relationshipPayload.tier_after) {
-        events.push(eventFrom({ ...command, visibility: 'specific_player' }, 'NpcRelationshipTierChanged', relationshipPayload, [command.actor_id]))
-      }
+      }))
       events.push(eventFrom({ ...command, visibility: 'party' }, 'NpcStanceChanged', {
         npc_id: captive.npc_id,
         npc_name: captive.name,
@@ -11163,6 +12051,180 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         at_minutes: campaignElapsedMinutes(state),
         policy_id: CAPTIVES_POLICY_ID,
       }, [captive.npc_id, command.actor_id]))
+      break
+    }
+    case 'CalmBeast': {
+      const enemy = (state.enemies ?? []).find((candidate) => actorId(candidate) === command.beast_actor_id)
+      const registered = beastFor(state, command.beast_id)
+      const policy = beastTamingPolicy(state, enemy, registered)
+      const minutes = campaignElapsedMinutes(state)
+      // Посреди боя уговор стоит действия при любом исходе — тем же правилом,
+      // что и окрик о переговорах: попытка договориться, пока рядом дерутся,
+      // это потраченный ход, а не бесплатная проверка.
+      //
+      // Вне боя действия нет, но и бесплатным уговор быть не может: провал у
+      // травоядного не стоит ничего, прибавка за неудачи упирается в потолок, и
+      // без цены приручение было формальностью — жать кнопку, пока не выпадет.
+      // Платит мир: каждая попытка сдвигает часы кампании со всеми следствиями
+      // (небо, сроки обещаний, привалы), тем же путём, что круг за костями и
+      // написанное письмо.
+      if (state.mechanics.combat.active) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+          action_id: 'calm-beast',
+          name: 'Успокоить зверя',
+          action_type: 'action',
+        }, [command.actor_id]))
+      }
+      // Запись реестра заводится первым же подходом. До него зверь — обычный
+      // враг на доске, и заводить на каждого встреченного волка строчку в
+      // состоянии незачем.
+      if (!registered) {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastEncountered', {
+          beast: beastDraftFor(state, enemy),
+        }, [command.beast_actor_id]))
+      }
+      // Модификатор и режим берутся у того же `previewD20Check`, который собирал
+      // игроку карточку броска: объявленное число и посчитанное обязаны совпасть.
+      const preview = previewD20Check(state, {
+        actorId: command.actor_id,
+        kind: 'check',
+        ability: BEAST_TAMING_ABILITY,
+        skill: BEAST_TAMING_SKILL,
+        difficulty: policy.difficulty,
+      })
+      const checkOptions = {
+        modifier: preview.modifier,
+        difficulty: policy.difficulty,
+        purpose: `beast_taming:${policy.stage}`,
+        actorId: command.actor_id,
+        advantage: preview.advantage,
+        disadvantage: preview.disadvantage,
+        visibility: command.visibility,
+      }
+      const roll = checkRollFromVerified(command.verified_roll, checkOptions) ?? diceService.rollCheck(checkOptions)
+      rolls.push(roll)
+      const soothingEventId = `beast-soothed:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'BeastSoothingResolved', {
+          beast_id: command.beast_id,
+          actor_id: command.beast_actor_id,
+          beast_name: String(enemy?.name ?? '').slice(0, 160),
+          hero_id: command.actor_id,
+          skill: policy.skill,
+          ability: policy.ability,
+          diet: policy.diet,
+          wounded: policy.wounded,
+          broken_morale: policy.broken_morale,
+          stage_before: policy.stage,
+          stage_after: policy.stage_after,
+          difficulty_parts: policy.parts,
+          ...roll,
+          success: roll.success,
+          at_minutes: minutes,
+          policy_id: BEAST_TAMING_POLICY_ID,
+        }, [command.beast_actor_id, command.actor_id]),
+        event_id: soothingEventId,
+      })
+      if (roll.success && policy.stage_after === 'tamed') {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastTamed', {
+          beast_id: command.beast_id,
+          actor_id: command.beast_actor_id,
+          beast_name: String(enemy?.name ?? '').slice(0, 160),
+          hero_id: command.actor_id,
+          diet: policy.diet,
+          source_event_id: soothingEventId,
+          at_minutes: minutes,
+          // Подписано в самом событии, чтобы не спорить об этом за столом:
+          // спутник в бой не вводится. Боевой питомец — отдельное решение
+          // владельца (`server/beast-taming.mjs`).
+          combat_companion: false,
+          policy_id: BEAST_TAMING_POLICY_ID,
+        }, [command.beast_actor_id, command.actor_id]))
+      }
+      // Укус: не «попробуйте ещё раз», а цена ошибки, и платят её только рядом с
+      // хищником, которого ещё не подпустили.
+      if (!roll.success && policy.bites_on_failure) {
+        const bite = diceService.roll(policy.bite_damage, 'beast_taming:bite', command.beast_actor_id, command.visibility ?? 'public')
+        rolls.push(bite)
+        const bitePayload = resolveDamagePayload(state, command.actor_id, bite.total, 'piercing')
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastBit', {
+          beast_id: command.beast_id,
+          actor_id: command.beast_actor_id,
+          beast_name: String(enemy?.name ?? '').slice(0, 160),
+          hero_id: command.actor_id,
+          expression: policy.bite_damage,
+          amount: bite.total,
+          source_event_id: soothingEventId,
+          at_minutes: minutes,
+          policy_id: BEAST_TAMING_POLICY_ID,
+        }, [command.actor_id]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', bitePayload, [command.actor_id]))
+        events.push(...zeroHitPointDamageConsequences(state, command, command.actor_id, bitePayload))
+      }
+      // Цена попытки вне боя — игровое время, и списывается оно последним, как
+      // у круга за костями: сперва случилось то, что случилось, потом сдвинулись
+      // часы мира со всеми следствиями (небо, сроки обещаний, привалы).
+      if (!state.mechanics.combat.active) {
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), BEAST_APPROACH_MINUTES, 'minute')
+      }
+      break
+    }
+    case 'FeedBeast': {
+      const actor = playerActor(state, command.actor_id)
+      const food = beastFoodItemFor(actor, catalogItem)
+      const registered = beastFor(state, command.beast_id)
+      // Та же цена, что у уговора: посреди боя протянуть зверю паёк — это ход.
+      if (state.mechanics.combat.active) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+          action_id: 'feed-beast',
+          name: 'Накормить зверя',
+          action_type: 'action',
+        }, [command.actor_id]))
+      }
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastFed', {
+        beast_id: command.beast_id,
+        actor_id: command.beast_actor_id,
+        beast_name: registered?.name ?? '',
+        diet: registered?.diet ?? '',
+        hero_id: command.actor_id,
+        item_id: String(food.id),
+        item_name: String(food.name ?? '').slice(0, 120),
+        at_minutes: campaignElapsedMinutes(state),
+        policy_id: BEAST_TAMING_POLICY_ID,
+      }, [command.beast_actor_id, command.actor_id]))
+      // Паёк списывается тем же событием, что и любой расходник: своей ветки
+      // инвентаря у кормления нет и быть не должно.
+      events.push(eventFrom(command, 'ItemConsumed', {
+        item_id: String(food.id),
+        item_name: String(food.name ?? '').slice(0, 120),
+        quantity: 1,
+      }, [command.actor_id]))
+      // И та же цена вне боя, что у уговора: подойти с открытой ладонью, сесть
+      // и дождаться, пока зверь возьмёт еду, — это не мгновение. Без этой
+      // строки средняя ступень лестницы была единственной бесплатной: в бою
+      // кормление платило действием, а вне боя не стоило ни минуты, и цена
+      // подхода обходилась ровно через неё.
+      if (!state.mechanics.combat.active) {
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), BEAST_APPROACH_MINUTES, 'minute')
+      }
+      break
+    }
+    case 'ScareWithBeast': {
+      const registered = beastFor(state, command.beast_id)
+      const minutes = campaignElapsedMinutes(state)
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'BeastScaredThreat', {
+        beast_id: registered.id,
+        actor_id: registered.actor_id,
+        beast_name: registered.name,
+        hero_id: command.actor_id,
+        line: beastScareLine(registered, minutes),
+        // Механики за этой строкой нет и не заявлено: ни урона, ни проверки, ни
+        // изменения сцены. Поле стоит в самом событии, чтобы летопись не
+        // притворялась правилом.
+        mechanical_effect: false,
+        at_minutes: minutes,
+        policy_id: BEAST_TAMING_POLICY_ID,
+      }, [registered.actor_id, command.actor_id]))
       break
     }
     case 'ProposeParley': {
@@ -11392,6 +12454,477 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       break
     }
+    case 'OpenTavernDiceRound': {
+      const gambler = tavernGamblerFor(state, command.npc_id)
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      // Ставка уходит из кошелька здесь, вместе с костью на столе, и это
+      // главный инвариант этого стола. Пока она лежала в кармане до расчёта, у
+      // героя оставался бесплатный выход из проигрышного раунда: чужое число
+      // видно до решения, а «встать из-за стола» ничего не стоило — второй зонд
+      // ревью добрался туда даже под запретом, уронив кошелёк кружкой эля ниже
+      // сделанной ставки.
+      //
+      // Кошелёк при этом в минус не уходит: сумма проверена валидацией до
+      // первого события.
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const balanceAfterCp = Math.max(0, balanceBeforeCp - command.stake_cp)
+      // Соперник мечет первым — и это не вежливость, а требование ручного
+      // броска: карточка героя обязана объявить число, которое надо перебить, а
+      // до чужой кости такого числа не существует.
+      //
+      // Настоящая кость бросается с видимостью `gm_only`: если шулер подменил
+      // её, разница между выпавшим и показанным — это ровно то, что игрок ищет
+      // Проницательностью, и отдавать её ему броском нельзя.
+      const roll = diceService.rollD20({ purpose: 'tavern-dice:opponent', actorId: gambler.npc_id, visibility: 'gm_only' })
+      rolls.push(roll)
+      const shown = tavernOpponentDie(gambler, roll.kept)
+      const round = {
+        id: `tavern-round:${String(command.command_id).slice(0, 100)}`,
+        hero_id: command.actor_id,
+        npc_id: gambler.npc_id,
+        npc_name: gambler.name,
+        stake_cp: command.stake_cp,
+        npc_total: shown,
+        target: shown + 1,
+        opened_at_minutes: minutes,
+      }
+      events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'TavernDiceRoundOpened', {
+        round,
+        hero_id: command.actor_id,
+        npc_id: gambler.npc_id,
+        npc_name: gambler.name,
+        stake_cp: command.stake_cp,
+        npc_total: shown,
+        // Кошелёк до и после — это и есть эскроу. Отдельного `escrow_cp` здесь
+        // нет намеренно: он равнялся бы ставке всегда (валидация не пускает
+        // раунд с недостачей), и третье имя одного числа однажды разошлось бы с
+        // двумя первыми.
+        currency_before: normalizeCurrency(actor.currency),
+        currency_after: copperToCurrency(balanceAfterCp),
+        balance_before_cp: balanceBeforeCp,
+        balance_after_cp: balanceAfterCp,
+        at_minutes: minutes,
+        policy_id: TAVERN_POLICY_ID,
+      }, [command.actor_id, gambler.npc_id]))
+      // Общий бросок стола в проекте уже есть, и второго такого механизма
+      // заводить нельзя: кость соперника ложится в тот же лоток, где стол видит
+      // любой кубик, бросаемый вручную.
+      events.push(eventFrom({ ...command, visibility: 'public' }, 'PublicDieRolled', {
+        roll: {
+          id: roll.roll_id,
+          kind: 'tavern',
+          sides: 20,
+          value: shown,
+          playerId: gambler.npc_id,
+          playerName: gambler.name,
+          rolledAt: Date.parse(String(roll.created_at ?? '')) || 0,
+        },
+      }, []))
+      break
+    }
+    case 'AnswerTavernDiceRound': {
+      const round = tavernRoundFor(state, command.actor_id)
+      const gambler = tavernGamblerFor(state, round.npc_id)
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const npcPurseBeforeCp = tavernGamblerPurseFor(state, round.npc_id)
+      const settleEventId = `tavern-round-settled:${String(command.command_id).slice(0, 100)}`
+
+      // 1. Жульничество героя. Ловкость рук против пассивной Проницательности
+      //    соперника, и бросок здесь серверный: ручной кубик у героя один, и
+      //    принадлежит он самой игре, а не подготовке к ней.
+      //
+      //    Проверка решает не размер надбавки, а то, поймают ли за руку.
+      //    Подменить кость герой успевает в любом случае — иначе карточка
+      //    ручного броска не смогла бы назвать модификатор до броска, потому
+      //    что до броска этой проверки ещё не было.
+      let caught = false
+      if (command.approach === 'cheat') {
+        const preview = previewD20Check(state, {
+          actorId: command.actor_id,
+          kind: 'check',
+          ability: TAVERN_CHEAT_ABILITY,
+          skill: TAVERN_CHEAT_SKILL,
+          difficulty: gambler.insight_passive,
+        })
+        const check = diceService.rollCheck({
+          modifier: preview.modifier,
+          difficulty: gambler.insight_passive,
+          purpose: `tavern-dice:${TAVERN_CHEAT_SKILL}`,
+          actorId: command.actor_id,
+          advantage: preview.advantage,
+          disadvantage: preview.disadvantage,
+          visibility: 'party',
+        })
+        rolls.push(check)
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+          ability: preview.ability,
+          skill: preview.skill,
+          ...check,
+        }, [command.actor_id]))
+        caught = !check.success
+      }
+
+      // 2. Ловля шулера. Проницательность героя против чужой ловкости рук;
+      //    честного соперника разоблачить нельзя даже двадцаткой — разглядеть
+      //    можно только то, что есть.
+      let watchResult = null
+      if (command.approach === 'watch') {
+        const preview = previewD20Check(state, {
+          actorId: command.actor_id,
+          kind: 'check',
+          skill: TAVERN_SPOT_SKILL,
+          difficulty: gambler.tell_dc,
+        })
+        const check = diceService.rollCheck({
+          modifier: preview.modifier,
+          difficulty: gambler.tell_dc,
+          purpose: `tavern-dice:${TAVERN_SPOT_SKILL}`,
+          actorId: command.actor_id,
+          advantage: preview.advantage,
+          disadvantage: preview.disadvantage,
+          visibility: 'party',
+        })
+        rolls.push(check)
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+          ability: preview.ability,
+          skill: preview.skill,
+          ...check,
+        }, [command.actor_id]))
+        watchResult = !check.success ? 'missed' : gambler.crooked ? 'exposed' : 'clean'
+      }
+      const exposed = watchResult === 'exposed'
+
+      // 3. Ответный бросок героя. Ручной кубик приходит карточкой, иначе
+      //    бросает сервер; помеха у перебравшего та же, что у любой проверки.
+      //    Модификатор берётся из того же предпросмотра, который собрал
+      //    карточку (`server/game-orchestrator.mjs`), — второго ответа на
+      //    вопрос «с чем герой кидает» быть не должно.
+      const preview = previewTavernDiceRoll(state, command.actor_id, command.approach)
+      const rollOptions = {
+        modifier: preview.modifier,
+        difficulty: round.target,
+        purpose: 'tavern-dice:hero',
+        actorId: command.actor_id,
+        advantage: false,
+        disadvantage: preview.disadvantage,
+        visibility: 'public',
+      }
+      const heroRoll = checkRollFromVerified(command.verified_roll, rollOptions) ?? diceService.rollCheck(rollOptions)
+      rolls.push(heroRoll)
+      events.push(eventFrom({ ...command, visibility: 'public' }, 'PublicDieRolled', {
+        roll: {
+          id: heroRoll.roll_id,
+          kind: 'tavern',
+          sides: 20,
+          value: safeInteger(heroRoll.kept, 1),
+          playerId: String(command.actor_id),
+          playerName: String(actor?.character ?? actor?.name ?? command.actor_id).slice(0, 80),
+          rolledAt: Date.parse(String(heroRoll.created_at ?? '')) || 0,
+        },
+      }, []))
+
+      const heroTotal = safeInteger(heroRoll.total, 0)
+      const outcome = caught ? 'caught'
+        : exposed ? 'exposed'
+          : heroTotal > round.npc_total ? 'win'
+            : heroTotal === round.npc_total ? 'push' : 'loss'
+      // Со стола в кошелёк возвращается банк, а не разница: своя ставка ушла из
+      // кармана ещё на открытии раунда, и здесь она либо приходит обратно с
+      // призом, либо не приходит вовсе.
+      //
+      // Победа отдаёт обе ставки, ничья и разоблачённый шулер — только свою,
+      // поражение и поимка за руку не возвращают ничего: пойманному ставку за
+      // столом забирают, и это дешевле, чем то, что теряется вместе с ней.
+      const payoutCp = outcome === 'win' ? round.stake_cp * 2
+        : outcome === 'push' || outcome === 'exposed' ? round.stake_cp
+          : 0
+      const balanceAfterCp = Math.max(0, Math.min(MAX_CURRENCY_CP, balanceBeforeCp + payoutCp))
+      // Что раунд стоил герою в итоге: возврат минус то, что было на столе.
+      // Именно это число и уезжает из кассы соперника — деньги за этим столом
+      // не рождаются, а переезжают.
+      const netCp = balanceAfterCp - balanceBeforeCp - round.stake_cp
+      // Переезд считает общий помощник стола, а не своя арифметика: на потолке
+      // чужой кассы проигранная ставка в неё уже не влезает, и до ревью этот
+      // остаток исчезал из мира молча. Теперь он назван долей заведения.
+      const purse = tavernPurseTransfer(npcPurseBeforeCp, -netCp)
+      const npcPurseAfterCp = purse.after_cp
+      events.push({
+        ...eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'TavernDiceRoundResolved', {
+          round_id: round.id,
+          hero_id: command.actor_id,
+          npc_id: round.npc_id,
+          npc_name: round.npc_name,
+          approach: command.approach,
+          stake_cp: round.stake_cp,
+          npc_total: round.npc_total,
+          hero_total: heroTotal,
+          outcome,
+          // «Подкрутил и не попался»: пойманному за руку надбавка уже не
+          // помогает, ставку у него забирают независимо от показанного числа.
+          cheated: command.approach === 'cheat' && !caught,
+          ...(watchResult ? { watch_result: watchResult } : {}),
+          // Два числа про деньги, и каждое отвечает на свой вопрос: `delta_cp` —
+          // сколько пришло в кошелёк сейчас (банк), `net_cp` — чем раунд кончился
+          // для героя вместе с уплаченной на открытии ставкой. Второе и есть то,
+          // что уехало из кассы соседа.
+          delta_cp: balanceAfterCp - balanceBeforeCp,
+          net_cp: netCp,
+          currency_before: normalizeCurrency(actor.currency),
+          currency_after: copperToCurrency(balanceAfterCp),
+          balance_before_cp: balanceBeforeCp,
+          balance_after_cp: balanceAfterCp,
+          npc_purse_before_cp: npcPurseBeforeCp,
+          npc_purse_after_cp: npcPurseAfterCp,
+          // Сколько от проигранной ставки съел потолок чужой кассы. Поле
+          // появляется только тогда, когда съел: на обычном раунде его нет, и
+          // числу «ноль» в payload взяться неоткуда.
+          ...(purse.house_cut_cp > 0 ? { house_cut_cp: purse.house_cut_cp } : {}),
+          at_minutes: minutes,
+          policy_id: TAVERN_POLICY_ID,
+        }, [command.actor_id, round.npc_id]),
+        event_id: settleEventId,
+      })
+      if (caught) {
+        const scandals = tavernScandalsFor(state, command.actor_id) + 1
+        const ejected = scandals >= TAVERN_SCANDALS_BEFORE_EJECTION
+        events.push({
+          ...eventFrom({ ...command, visibility: 'party' }, 'TavernCheatCaught', {
+            hero_id: command.actor_id,
+            npc_id: round.npc_id,
+            npc_name: round.npc_name,
+            stake_cp: round.stake_cp,
+            forfeited_cp: round.stake_cp,
+            scandal_count: scandals,
+            place_name: String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180),
+            at_minutes: minutes,
+            policy_id: TAVERN_POLICY_ID,
+          }, [command.actor_id, round.npc_id]),
+          event_id: `tavern-cheat-caught:${String(command.command_id).slice(0, 100)}`,
+        })
+        events.push(...npcRelationshipEventsFrom(command, state, {
+          npcId: round.npc_id,
+          heroId: command.actor_id,
+          delta: TAVERN_CHEAT_RELATIONSHIP_DELTA,
+          reason: 'tavern-cheat-caught',
+        }))
+        if (ejected) {
+          events.push(eventFrom({ ...command, visibility: 'party' }, 'TavernPatronEjected', {
+            hero_id: command.actor_id,
+            npc_id: round.npc_id,
+            reason: 'cheating',
+            scandal_count: scandals,
+            at_minutes: minutes,
+            policy_id: TAVERN_POLICY_ID,
+          }, [command.actor_id]))
+        }
+      }
+      if (exposed) {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'TavernCheatExposed', {
+          hero_id: command.actor_id,
+          npc_id: round.npc_id,
+          npc_name: round.npc_name,
+          stake_cp: round.stake_cp,
+          at_minutes: minutes,
+          policy_id: TAVERN_POLICY_ID,
+        }, [command.actor_id, round.npc_id]))
+        events.push(...npcRelationshipEventsFrom(command, state, {
+          npcId: round.npc_id,
+          heroId: command.actor_id,
+          delta: TAVERN_EXPOSED_RELATIONSHIP_DELTA,
+          reason: 'tavern-cheat-exposed',
+        }))
+        // Разоблачённый шулер отряду больше не друг: разговор с ним отсюда идёт
+        // штатной социальной сценой, а не отдельной механикой ссоры.
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'NpcStanceChanged', {
+          npc_id: round.npc_id,
+          npc_name: round.npc_name,
+          stance: 'guarded',
+          reason: 'tavern-cheat-exposed',
+          source_event_id: settleEventId,
+          propagation_depth: 0,
+          policy_id: NPC_WORLD_POLICY_ID,
+        }, [round.npc_id]))
+      }
+      // Автозакрытия чужих раундов здесь больше нет, и это не упущение, а
+      // следствие покрытия: выплата по каждому открытому раунду закреплена в
+      // кассе соседа с самого открытия (`tavernFreePurseFor`), а расчёт снимает
+      // ровно своё закрепление. Свободная касса от чужого выигрыша не убывает,
+      // поэтому «сосед разорился, пока второй герой думал» больше не бывает —
+      // и закрывать за него нечего.
+      appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), TAVERN_DICE_ROUND_MINUTES, 'minute')
+      break
+    }
+    case 'LeaveTavernDiceRound': {
+      // Встать из-за стола можно всегда, и стоит это всегда одного: ставка
+      // уплачена при открытии раунда, поэтому уход от кости — сдача, и эскроу
+      // достаётся сопернику ровно как при проигрыше. Поводов и возвратов у
+      // закрытия нет: тупиков, ради которых их заводили, с закреплённым
+      // покрытием не существует.
+      //
+      // Броска здесь нет: раунд закрывается счётом, а не кубиком.
+      const round = tavernRoundFor(state, command.actor_id)
+      events.push(tavernRoundCancelledEvent(command, state, round, campaignElapsedMinutes(state)))
+      break
+    }
+    case 'OrderTavernDrink': {
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const balanceAfterCp = Math.max(0, balanceBeforeCp - TAVERN_DRINK_PRICE_CP)
+      const drinks = tavernDrinksFor(state, command.actor_id) + 1
+      const difficulty = tavernNextDrinkDc(state, command.actor_id)
+      // Первые две кружки развязывают язык и ничего не стоят телу; дальше за
+      // каждую отвечает спасбросок Телосложения по нарастающей СЛ.
+      const save = difficulty == null ? null : rollSavingThrowCheck(state, diceService, command.actor_id, {
+        modifier: abilityModifier(actor?.abilities?.con) + (isSavingThrowProficient(actor, 'con') ? safeInteger(actor?.proficiency, 0) : 0),
+        difficulty,
+        purpose: 'tavern-drink:con',
+        ability: 'con',
+        // Помеха от состояний читается здесь же, а не внутри: `rollSavingThrowCheck`
+        // знает про ауру и ярость, но помеху ждёт параметром — так же, как её
+        // передаёт прямой спасбросок командой.
+        disadvantage: Boolean(saveDisadvantageConditionFor(state, command.actor_id, 'con')),
+        visibility: 'party',
+      })
+      if (save) rolls.push(save)
+      const withstood = save ? savingThrowSucceeded(save, difficulty) : true
+      events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'TavernDrinkOrdered', {
+        hero_id: command.actor_id,
+        drinks,
+        price_cp: TAVERN_DRINK_PRICE_CP,
+        currency_before: normalizeCurrency(actor.currency),
+        currency_after: copperToCurrency(balanceAfterCp),
+        balance_before_cp: balanceBeforeCp,
+        balance_after_cp: balanceAfterCp,
+        social_bonus: drinks <= TAVERN_SOBER_DRINKS ? TAVERN_SOCIAL_BONUS : 0,
+        social_skill: TAVERN_SOCIAL_SKILL,
+        ...(difficulty == null ? {} : { difficulty }),
+        at_minutes: minutes,
+        policy_id: TAVERN_POLICY_ID,
+      }, [command.actor_id]))
+      if (save) {
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+          ability: 'con',
+          reason: 'tavern-drink',
+          ...save,
+        }, [command.actor_id]))
+      }
+      // Опьянение — существующее состояние, а не своё: помеха на проверки нужна
+      // была вся, и второй записи с тем же смыслом в таблице быть не должно.
+      // Держится оно до продолжительного отдыха и раундами не тикает.
+      if (!withstood && !conditionIdsFor(state, command.actor_id).has(TAVERN_DRUNK_CONDITION)) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+          condition: TAVERN_DRUNK_CONDITION,
+          duration: TAVERN_DRUNK_DURATION,
+          source: 'tavern-drink',
+          drinks,
+        }, [command.actor_id]))
+      }
+      appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), TAVERN_DRINK_MINUTES, 'minute')
+      break
+    }
+    /**
+     * Благословение жреца за пожертвование. Броска здесь нет ни одного, и это
+     * не поблажка, а цена: молитва бесплатна и может не сбыться, храм берёт
+     * деньги и отвечает наверняка. Сутки при этом закрываются те же — выбор
+     * между алтарём и жрецом герой делает один раз.
+     */
+    case 'ReceiveNpcBlessing': {
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      const priest = (state.social?.npcs ?? []).find((npc) => String(npc?.id ?? '') === String(command.npc_id)) ?? null
+      const priestName = String(priest?.name ?? command.npc_id).slice(0, 160)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const balanceAfterCp = Math.max(0, balanceBeforeCp - BLESSING_DONATION_CP)
+      const blessingEventId = `npc-blessing:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), 'NpcBlessingGranted', {
+          hero_id: command.actor_id,
+          npc_id: String(command.npc_id),
+          npc_name: priestName,
+          place_name: String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180),
+          donation_cp: BLESSING_DONATION_CP,
+          condition: BLESSING_CONDITION,
+          duration: BLESSING_DURATION,
+          attack_bonus: BLESSING_ATTACK_BONUS,
+          currency_before: normalizeCurrency(actor.currency),
+          currency_after: copperToCurrency(balanceAfterCp),
+          balance_before_cp: balanceBeforeCp,
+          balance_after_cp: balanceAfterCp,
+          at_minutes: minutes,
+          policy_id: BLESSINGS_POLICY_ID,
+        }, [command.actor_id, String(command.npc_id)]),
+        event_id: blessingEventId,
+      })
+      // Пожертвование не пропадает в никуда: фракции самого жреца замечают, что
+      // отряд оставил в храме золотой. Своей «репутации храма» модуль не
+      // заводит — это та же репутация, которую двигают слухи и поступки, и у
+      // жреца без тега `faction:` благодарить попросту некого.
+      for (const factionId of blessingFactionIdsFor(state, command.npc_id)) {
+        events.push(eventFrom({ ...command, visibility: 'party' }, 'FactionReputationAdjusted', {
+          faction_id: factionId,
+          delta: BLESSING_REPUTATION_DELTA,
+          source_event_id: blessingEventId,
+          provenance: { source: 'server-blessing-policy', policy: BLESSINGS_POLICY_ID },
+        }, []))
+      }
+      events.push(...blessingGrantedEvents(command, state, {
+        heroId: command.actor_id,
+        source: 'priest',
+        placeName: String(state.scene?.location ?? state.scene?.title ?? '').slice(0, 180),
+        npcId: String(command.npc_id),
+        npcName: priestName,
+        minutes,
+        sourceEventId: blessingEventId,
+      }))
+      appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), NPC_BLESSING_MINUTES, 'minute')
+      break
+    }
+    case 'SendLetter': {
+      const actor = playerActor(state, command.actor_id)
+      const minutes = campaignElapsedMinutes(state)
+      const addressee = courierAddresseeFor(state, command.addressee_kind, command.addressee_id)
+      const balanceBeforeCp = currencyToCopper(actor.currency)
+      const balanceAfterCp = Math.max(0, balanceBeforeCp - addressee.fee_cp)
+      // Письмо целиком собирает модуль почты: срок ответа выводится из срока
+      // доставки, обещание — из самого текста, тон — из отношения на минуту
+      // отправки. Считать это здесь значило бы завести вторую дату для одной
+      // дороги.
+      const letter = planCourierLetter(state, {
+        heroId: command.actor_id,
+        heroName: String(actor?.character ?? actor?.name ?? '').slice(0, 120),
+        addressee,
+        body: command.body,
+        commandId: command.command_id,
+        atMinutes: minutes,
+        replyDraft: command.reply_draft,
+        replyDraftTone: command.reply_draft_tone,
+        replyProvider: command.reply_provider,
+      })
+      events.push(eventFrom(commandWithRules({ ...command, visibility: 'party' }, RULE_IDS.economyCoins), COURIER_LETTER_EVENT_TYPES.sent, {
+        letter,
+        hero_id: command.actor_id,
+        addressee_kind: letter.addressee_kind,
+        addressee_id: letter.addressee_id,
+        addressee_name: letter.addressee_name,
+        fee_cp: letter.fee_cp,
+        leagues: letter.leagues,
+        currency_before: normalizeCurrency(actor.currency),
+        currency_after: copperToCurrency(balanceAfterCp),
+        balance_before_cp: balanceBeforeCp,
+        balance_after_cp: balanceAfterCp,
+        at_minutes: minutes,
+        policy_id: COURIER_LETTERS_POLICY_ID,
+      }, [command.actor_id, letter.addressee_id]))
+      // Полчаса за столом — столько же, сколько уходит на кружку и раунд
+      // костей. Ход мира на этих минутах письма не двигает: они считаются от
+      // состояния **до** команды, где нового письма ещё нет.
+      appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), COURIER_LETTER_WRITING_MINUTES, 'minute')
+      break
+    }
     case 'ClearWantedLevel': {
       const regionId = String(command.region_id)
       const wanted = wantedFor(state, regionId)
@@ -11598,6 +13131,17 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           resolved_option_id: currentDecision.resolvedOptionId,
         }, currentDecision.eligibleActorIds ?? []))
       }
+      // Столы зала закрываются **до** смены сцены и закрываются событием.
+      //
+      // Открытый раунд уходит вместе со счётом заведения (`applyTavernEvent`,
+      // `server/tavern-life.mjs`), и раньше вместе с ним молча сгорала лежащая
+      // на столе ставка: кошелёк героя похудел ещё на открытии, а соседу деньги
+      // так и не доезжали — сумма мира падала на ставку без единого события.
+      // Дверь — тот же уход от кости, что и скамья, поэтому и стоит она того же:
+      // сдача, эскроу сопернику. Иначе выход за порог был бы бесплатным
+      // перебросом чужой кости, а «деньги за этим столом переезжают, а не
+      // исчезают» — неправдой.
+      events.push(...tavernRoundsClosedByDeparture(command, state, campaignElapsedMinutes(state)))
       const transition = createSceneTransition(command.scene_args, state)
       const metadata = canonicalSceneMetadata(command.scene_args, transition)
       const canonicalTransition = { ...transition, scene: { ...transition.scene, ...metadata } }
@@ -11635,6 +13179,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       for (const relocation of npcWorldEventsFrom(command, planCaptiveRelocationDrafts(transitionedState))) {
         events.push(relocation)
         transitionedState = applyGameEvent(transitionedState, relocation)
+      }
+      // Спутник идёт следом тем же движением, что и пленный. Разница одна: у
+      // зверя нет ни поста в сцене, ни социального профиля — он не боевой актор
+      // и не житель локации, поэтому переезжает только запись реестра.
+      for (const follow of npcWorldEventsFrom(command, planBeastFollowDrafts(transitionedState))) {
+        events.push(follow)
+        transitionedState = applyGameEvent(transitionedState, follow)
       }
       events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(transitionedState)))
       // Закон встречает отряд на входе. Триггер детерминированный и считается по
@@ -13890,6 +15441,22 @@ export function applyGameEvent(rawState, event) {
       }
       break
     }
+    case 'BeastTamed': {
+      // Приручённый перестаёт быть боевым актором — тем же движением, что и
+      // пленный (`CaptiveTaken` выше). Заодно снимается сломанная мораль: `fled`
+      // и `surrendered` описывали врага, а врага больше нет. Если этого не
+      // сделать, следующий `StartCombat` поставил бы спутника в инициативу
+      // против отряда, который его накормил.
+      const beastActorId = String(payload.actor_id ?? '')
+      if (beastActorId) {
+        replaceActor(state, beastActorId, (actor) => ({ ...actor, alive: false, tamed: true }))
+        delete state.mechanics.resting[beastActorId]
+        state.mechanics.conditions[beastActorId] = (state.mechanics.conditions[beastActorId] ?? [])
+          .filter((condition) => !['fled', 'surrendered', 'morale-tested'].includes(String(condition?.id ?? condition)))
+        appendBattleLog(state, event, { type: 'beast-tamed', actorId: beastActorId, reason: String(payload.diet ?? 'predator') })
+      }
+      break
+    }
     case 'CaptiveHandedOver': {
       const recipient = String(payload.hero_id ?? event.actor_id ?? '')
       if (recipient && payload.currency_after) {
@@ -13963,6 +15530,56 @@ export function applyGameEvent(rawState, event) {
       const payer = String(payload.hero_id ?? event.actor_id ?? '')
       if (payer && payload.currency_after) {
         state.players = state.players.map((player) => (actorId(player) === payer
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player))
+      }
+      break
+    }
+    case 'NpcBlessingGranted': {
+      // Реестр благословений обновляет `applyBlessingEvent` в конце редьюсера —
+      // здесь остаётся только кошелёк: размер пожертвования объявил движок,
+      // редьюсер переносит уже подтверждённый баланс. Само состояние приходит
+      // отдельным `ConditionAdded`, как и у любого другого эффекта.
+      const donor = String(payload.hero_id ?? event.actor_id ?? '')
+      if (donor && payload.currency_after) {
+        state.players = state.players.map((player) => (actorId(player) === donor
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player))
+      }
+      break
+    }
+    case 'CourierLetterSent': {
+      // Почту обновляет `applyCourierLetterEvent` в конце редьюсера — здесь
+      // остаётся только кошелёк: плату курьеру посчитал движок по дальности,
+      // редьюсер переносит уже подтверждённый баланс. Доставка, возврат и ответ
+      // денег не касаются вовсе: дорога оплачена вперёд.
+      const sender = String(payload.hero_id ?? event.actor_id ?? '')
+      if (sender && payload.currency_after) {
+        state.players = state.players.map((player) => (actorId(player) === sender
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player))
+      }
+      break
+    }
+    case 'TavernDiceRoundOpened':
+    case 'TavernDiceRoundCancelled':
+    case 'TavernDiceRoundResolved':
+    case 'TavernDrinkOrdered': {
+      // Счёт таверны обновляет `applyTavernEvent` в конце редьюсера — здесь
+      // остаётся только кошелёк: ставку, банк и цену кружки посчитал движок,
+      // редьюсер переносит уже подтверждённый баланс.
+      //
+      // Открытие раунда стоит здесь наравне с расчётом, и это тот самый эскроу:
+      // ставка уходит из кошелька в банк стола вместе с костью соперника, и
+      // обратно её приносит только расчёт.
+      //
+      // Закрытие раунда кошелька не касается вовсе — сдача ничего не возвращает,
+      // и `currency_after` в его payload нет. Ветка стоит здесь ради журналов,
+      // написанных до закрепления покрытия: там у отмены был возврат, и replay
+      // обязан повторить то, что записано, а не то, что правильно сегодня.
+      const patron = String(payload.hero_id ?? event.actor_id ?? '')
+      if (patron && payload.currency_after) {
+        state.players = state.players.map((player) => (actorId(player) === patron
           ? { ...player, currency: clone(payload.currency_after) }
           : player))
       }
@@ -14481,11 +16098,25 @@ export function applyGameEvent(rawState, event) {
   // Порядок здесь и есть та самая гарантия — без него преступление считалось бы
   // по второму разбору того же события.
   state.law = applyLawEvent(state.law, event, state)
+  // Счёт таверны — такой же вывод из журнала: открытый раунд, кружки и
+  // скандалы восстанавливаются replay-ем без отдельного снимка.
+  state.tavern = applyTavernEvent(state.tavern, event, state)
+  // Реестр благословений — такой же вывод из журнала: суточный слот и то, чем
+  // кончилось обращение, восстанавливаются replay-ем без отдельного снимка.
+  state.blessings = applyBlessingEvent(state.blessings, event, state)
   // Лента ходов мира — такой же вывод из журнала, как летопись поступков: сам
   // ход посчитан до коммита, здесь остаётся только запомнить его и список
   // заданий под наблюдением.
   state.offscreen_world = applyOffscreenWorldEvent(state.offscreen_world, event)
+  // Почта — такой же вывод из журнала: письмо заводится отправкой, а доставка,
+  // возврат и ответ только меняют его состояние, поэтому replay восстанавливает
+  // всю дугу без отдельного снимка.
+  state.courier_letters = applyCourierLetterEvent(state.courier_letters, event)
   state.captives = applyCaptiveEvent(state.captives, event, state)
+  // Реестр зверей — такой же вывод из журнала: подход заводит запись, а ступени,
+  // укусы и переезды спутника только меняют её, поэтому replay восстанавливает
+  // всю лестницу без отдельного снимка.
+  state.beasts = applyBeastEvent(state.beasts, event, state)
   state.autonomy = applyAutonomyEvent(state.autonomy, event)
   state.state_version = Number.isSafeInteger(event.state_version_after)
     ? event.state_version_after
@@ -14669,6 +16300,13 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'CaptiveHandedOver': return `Пленный передан страже «${payload.settlement_name || ''}»`
     case 'CaptiveExecuted': return `${payload.captive_name || 'Пленный'} убит связанным`
     case 'CaptiveMoved': return 'Пленного увели с отрядом'
+    case 'BeastEncountered': return `${payload.beast?.name || 'Зверь'}: к нему подошли без оружия`
+    case 'BeastSoothingResolved': return `Уход за животными: ${payload.success === true ? 'успех' : 'провал'} (СЛ ${payload.difficulty})`
+    case 'BeastBit': return `${payload.beast_name || 'Зверь'} кусает: ${payload.amount} урона`
+    case 'BeastFed': return `${payload.beast_name || 'Зверя'} накормили с руки (${payload.item_name || 'паёк'})`
+    case 'BeastTamed': return `${payload.beast_name || 'Зверь'} идёт с отрядом`
+    case 'BeastMoved': return `${payload.beast_name || 'Спутник'} следует за отрядом`
+    case 'BeastScaredThreat': return `${payload.beast_name || 'Спутник'} отогнал мелкую тварь`
     case 'ParleyProposed': return payload.refused === true
       ? 'Окрик о переговорах остался без ответа'
       : `Попытка переговоров: ${payload.success === true ? 'услышан' : 'не услышан'} (СЛ ${payload.difficulty})`
@@ -14688,6 +16326,20 @@ export function eventSummary(event, resolveName = (id) => id) {
           : `Побег от стражи: ${payload.success === true ? 'ушли' : 'не ушли'} (${safeInteger(payload.successes, 0)} из ${safeInteger(payload.participants, 0)}, СЛ ${safeInteger(payload.difficulty, 0)})`
     case 'WantedLevelRaised': return `Розыск усилен: ${payload.crime?.summary || payload.reason || 'сопротивление страже'}`
     case 'WantedCleared': return `Розыск снят в крае «${payload.region_name || payload.region_id || ''}» (${payload.reason === 'fine' ? 'вира' : payload.reason === 'surrender' ? 'сдача' : 'амнистия'})`
+    case 'TavernDiceRoundOpened': return `Кости на стол: ${payload.npc_name || 'соперник'} показывает ${safeInteger(payload.npc_total, 0)}, ставка ${safeInteger(payload.stake_cp, 0)} мм ушла на стол`
+    case 'TavernDiceRoundResolved': return `Раунд костей: ${safeInteger(payload.hero_total, 0)} против ${safeInteger(payload.npc_total, 0)} — ${payload.outcome === 'win' ? 'банк уходит герою' : payload.outcome === 'loss' ? 'ставка потеряна' : payload.outcome === 'push' ? 'ничья' : payload.outcome === 'caught' ? 'героя поймали за руку' : 'соперник разоблачён'}`
+    case 'TavernDiceRoundCancelled': return `${named(payload.hero_id) || 'Герой'} встал из-за стола, не ответив: ставка ${safeInteger(payload.forfeited_cp, 0)} мм осталась сопернику`
+    case 'TavernCheatCaught': return `Скандал за столом: ${named(payload.hero_id) || 'герой'} пойман на шулерстве (${safeInteger(payload.scandal_count, 1)}-й раз)`
+    case 'TavernCheatExposed': return `${payload.npc_name || 'Соперник'} уличён в шулерстве`
+    case 'TavernPatronEjected': return `${named(payload.hero_id) || 'Героя'} выставили из заведения`
+    case 'TavernDrinkOrdered': return `Заказана выпивка: кружка №${safeInteger(payload.drinks, 1)} за ${safeInteger(payload.price_cp, 0)} мм`
+    case 'ShrinePrayerResolved': return `Молитва у святыни «${payload.place_name || 'без названия'}»: ${payload.outcome === 'blessed' ? 'малое благословение получено' : payload.outcome === 'omen' ? 'ответа нет, но было знамение' : 'ответа нет'}`
+    case 'NpcBlessingGranted': return `${payload.npc_name || 'Служитель'} благословляет ${named(payload.hero_id) || 'героя'} за пожертвование ${safeInteger(payload.donation_cp, 0)} мм`
+    case 'CourierLetterSent': return `Письмо к ${payload.addressee_name || payload.addressee_id || 'адресату'} отдано курьеру за ${safeInteger(payload.fee_cp, 0)} мм (${safeInteger(payload.leagues, 1)} перех.)`
+    case 'CourierLetterDelivered': return `Письмо доставлено: ${payload.addressee_name || payload.addressee_id || 'адресат'} прочитал(а)${payload.answer_expected === false ? ', ответа не будет' : ''}`
+    case 'CourierLetterReturned': return `Письмо вернулось: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата не нашли'}`
+    case 'CourierLetterUnanswered': return `Ответа от ${payload.addressee_name || payload.addressee_id || 'адресата'} не будет: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата больше не найти'}`
+    case 'CourierLetterAnswered': return `Пришёл ответ от ${payload.addressee_name || payload.addressee_id || 'адресата'}`
     default: return event.event_type
   }
 }

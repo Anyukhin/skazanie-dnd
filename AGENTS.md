@@ -143,7 +143,8 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 `adjudicator.mjs`, `intent-parser.mjs`, `world-memory.mjs`,
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`,
 `world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`,
-`weather.mjs`, `offscreen-world.mjs`, `loot-containers.mjs`.
+`weather.mjs`, `offscreen-world.mjs`, `loot-containers.mjs`, `tavern-life.mjs`,
+`courier-letters.mjs`.
 Не описывать их как «агентов».
 
 `server/player-request-router.mjs` объявляет роли маршрутизации ввода игрока (`PLAYER_REQUEST_ROLES`). `prompt_id` там стоит
@@ -170,7 +171,18 @@ pnpm backup           # СЛОМАН: запускает CLI без аргуме
 мира, время и летопись поступков, и ничего из `server/` не импортирует. Это не
 случайность и не аскеза: розыск влияет на цены через `reputation-policy.mjs`, а
 та лежит в основании цепочки `merchant-economy` → `npc-positioning`, и любой
-импорт отсюда замкнул бы её в кольцо; `creative-director.mjs`
+импорт отсюда замкнул бы её в кольцо; `tavern-life.mjs` — досуг заведения: кто
+сидит за столом, честен он или шулер (выводится из сида кампании и **не
+хранится** в состоянии), ставки, цена кружки и нарастающая СЛ спасброска.
+Импортирует он только `npc-positioning.mjs` — список живых NPC сцены;
+`courier-letters.mjs` — почта отряда: кому можно написать, сколько курьер берёт
+по дорогам карты мира, когда письмо дойдёт и что ответит адресат. Своих часов у
+писем нет — доставка, возврат и ответ тикают внутри
+`appendWorldTimeConsequences` теми же мировыми минутами, что и обещания NPC;
+модель касается только слов ответа и только при отправке
+(`withCourierReplyDraft`, `server/index.mjs`), а без неё звучит
+детерминированная основа по тону отношения;
+`creative-director.mjs`
 (`CriticalNarrationCoordinator`) — только текст критического момента после
 commit, механики он не касается.
 
