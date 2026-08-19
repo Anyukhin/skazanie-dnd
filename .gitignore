@@ -2,6 +2,8 @@ node_modules
 .pnpm-store
 dist
 storage/
+# Резервные копии storage (pnpm backup): зашифрованные, но это данные игроков.
+backups/
 PUBLIC_LINK.txt
 .env*
 !.env.example

@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react'
+import { CircleAlert, X } from 'lucide-react'
 import type { CombatMechanics, GameState, Player, ReputationTier, SummonedCreature } from './types'
 
 
@@ -11,6 +13,91 @@ import type { CombatMechanics, GameState, Player, ReputationTier, SummonedCreatu
 
 export function PageHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return <div className="page-header"><span>{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>
+}
+
+/** Сколько отказов видно разом и сколько живёт каждый. */
+const ERROR_TOAST_LIMIT = 3
+const ERROR_TOAST_LIFETIME_MS = 9000
+
+/** Источник отказа: готовый текст и, если он у источника есть, способ снять его. */
+export type ErrorToastSource = { text: string | null | undefined; onDismiss?: () => void }
+
+/**
+ * Общая лента отказов. Источников несколько — команда доски, жизненный цикл
+ * кампании, вход в комнату, — и каждый рисовал свою строку в своём углу: вторая
+ * ошибка затирала первую раньше, чем её успевали прочитать. Здесь они встают в
+ * очередь, видно до трёх подряд, каждая уходит сама. Тексты приходят готовыми и
+ * не переписываются: причину формулирует тот, кто отказал.
+ */
+export function ErrorToasts({ sources }: { sources: ErrorToastSource[] }) {
+  const [toasts, setToasts] = useState<Array<{ id: number; text: string; onDismiss?: () => void }>>([])
+  const shownRef = useRef<string[]>([])
+  const nextIdRef = useRef(0)
+  const sourcesRef = useRef(sources)
+  sourcesRef.current = sources
+  // Ключ вместо массива в зависимостях: массив собирается заново на каждом
+  // рендере родителя, и эффект перезапускался бы вхолостую.
+  const sourcesKey = JSON.stringify(sources.map((source) => source.text ?? ''))
+  useEffect(() => {
+    const incoming = sourcesRef.current
+    const previous = shownRef.current
+    shownRef.current = incoming.map((source) => source.text ?? '')
+    // Новое — только то, что изменилось у своего источника: пока текст висит
+    // прежним, тост не дублируется.
+    const fresh = incoming.filter((source, index) => source.text && source.text !== previous[index])
+    if (!fresh.length) return
+    setToasts((current) => [
+      ...current,
+      ...fresh.map((source) => ({ id: ++nextIdRef.current, text: String(source.text), onDismiss: source.onDismiss })),
+    ].slice(-ERROR_TOAST_LIMIT))
+  }, [sourcesKey])
+  // Гасим по одному с головы очереди: следующий отсчёт начинается, когда
+  // предыдущий тост ушёл, и три отказа подряд не исчезают одним махом.
+  useEffect(() => {
+    const oldest = toasts[0]
+    if (!oldest) return
+    const timer = window.setTimeout(() => {
+      oldest.onDismiss?.()
+      setToasts((current) => current.filter((entry) => entry.id !== oldest.id))
+    }, ERROR_TOAST_LIFETIME_MS)
+    return () => window.clearTimeout(timer)
+  }, [toasts])
+  if (!toasts.length) return null
+  return <div className="toast-stack">
+    {toasts.map((toast) => <div key={toast.id} className="toast toast-error" role="alert">
+      <CircleAlert size={15} aria-hidden="true" />
+      <span>{toast.text}</span>
+      <button
+        type="button"
+        aria-label="Закрыть сообщение"
+        onClick={() => { toast.onDismiss?.(); setToasts((current) => current.filter((entry) => entry.id !== toast.id)) }}
+      ><X size={13} /></button>
+    </div>)}
+  </div>
+}
+
+/**
+ * Escape закрывает окно и возвращает фокус тому элементу, который его открыл:
+ * без этого после закрытия обход по Tab начинался заново с верха страницы.
+ */
+export function useDialogEscape(onClose: () => void, open = true) {
+  // Обработчик держим в ref: `onClose` приходит новой стрелкой на каждый рендер
+  // родителя, и эффект иначе переподписывался бы на каждое обновление.
+  const close = useRef(onClose)
+  close.current = onClose
+  // `open` — именно «окно на экране», а не «действие разрешено»: по этому же
+  // признаку запоминается и возвращается фокус. Окна, которые монтируются
+  // условно, признак не передают вовсе — им хватает жизни компонента.
+  useEffect(() => {
+    if (!open) return
+    const invoker = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close.current() }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (invoker?.isConnected) invoker.focus()
+    }
+  }, [open])
 }
 
 /**

@@ -12,11 +12,11 @@ import test from 'node:test'
  * рядом с JSX, а корпус запускает интерфейс только через `tsc` во временный
  * каталог, и эмитированный `react/jsx-runtime` оттуда не разрешается.
  *
- * Поэтому среда JSX подменяется заглушкой: модуль компилируется как есть, а
- * единственный оставшийся у него импорт переписывается на пустышку рядом.
- * Компонент `PageHeader` тест не вызывает — проверяется чистая функция, и
- * подмена нужна лишь для того, чтобы модуль вообще загрузился. Так под сторожем
- * оказывается настоящий исходник, а не его копия.
+ * Поэтому среда интерфейса подменяется заглушкой: модуль компилируется как
+ * есть, а все его внешние импорты — среда JSX, хуки React и набор значков —
+ * переписываются на одну пустышку рядом. Компоненты и хуки тест не вызывает,
+ * проверяется чистая функция; подмена нужна лишь для того, чтобы модуль вообще
+ * загрузился. Так под сторожем оказывается настоящий исходник, а не его копия.
  *
  * Держит он два обещания шага «враги пускают в ход снаряжение»: лечение без
  * величины называется словами, а не «+0», и лечение самого себя не превращается
@@ -31,12 +31,22 @@ const compiled = spawnSync(process.execPath, [
 ], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 writeFileSync(
-  join(buildDir, 'jsx-runtime.mjs'),
-  'export const Fragment = Symbol("fragment")\nexport const jsx = () => null\nexport const jsxs = () => null\n',
+  join(buildDir, 'ui-runtime.mjs'),
+  [
+    'export const Fragment = Symbol("fragment")',
+    'export const jsx = () => null',
+    'export const jsxs = () => null',
+    'export const useEffect = () => {}',
+    'export const useRef = (value) => ({ current: value })',
+    'export const useState = (value) => [value, () => {}]',
+    'export const CircleAlert = () => null',
+    'export const X = () => null',
+    '',
+  ].join('\n'),
 )
 const modulePath = join(buildDir, 'app-shared.mjs')
 writeFileSync(modulePath, readFileSync(join(buildDir, 'app-shared.js'), 'utf8')
-  .replace(/(["'])react\/jsx-runtime\1/gu, '"./jsx-runtime.mjs"'))
+  .replace(/from (["'])(?:react\/jsx-runtime|react|lucide-react)\1/gu, 'from "./ui-runtime.mjs"'))
 const { battleEventText } = await import(pathToFileURL(modulePath).href)
 
 test.after(() => rmSync(buildDir, { recursive: true, force: true }))

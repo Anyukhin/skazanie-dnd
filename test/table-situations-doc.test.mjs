@@ -138,7 +138,7 @@ const WORLD_CLOCK_CONSUMERS = Object.freeze([
   },
 ])
 
-const NUMERALS = Object.freeze(['ноль', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять', 'десять', 'одиннадцать', 'двенадцать'])
+const NUMERALS = Object.freeze(['ноль', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять', 'десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать', 'шестнадцать', 'семнадцать', 'восемнадцать'])
 
 /** Формулировки, опровергнутые кодом. Возврат любой из них — регресс документа. */
 const REFUTED_CLAIMS = Object.freeze([
@@ -146,6 +146,10 @@ const REFUTED_CLAIMS = Object.freeze([
   ['Фигурки двигаются, события — нет', 'executeNpcSchedules пишет RecordWorldFact на каждое сработавшее расписание'],
   ['не порождают событий', 'факт памяти мира о расписании рождается — нет только механического последствия'],
   ['нет ни в одной форме', 'pact-chain вешает состояние pact-familiar, а find-familiar лежит в каталоге заклинаний'],
+  ['Монеты передать нельзя', 'NpcBribeOffered списывает монету из кошелька героя в той же фиксации, что и проверку'],
+  ['подарок ничего не меняет', 'крупный дар поднимает светлый поступок generosity и двигает славу фракций'],
+  ['между тихим вскрытием и грохотом', 'LockpickNoticed различает тихий след и сорвавшуюся отмычку ступенью поступка'],
+  ['у тела нет контейнера', 'loot-containers заводит контейнер в той же фиксации, что и выбытие противника'],
 ])
 
 test('каждый живой потребитель мировых минут назван в сквозном пробеле про время', () => {
@@ -197,6 +201,82 @@ test('F1 не отрицает спутника, который в коде ес
   for (const marker of ['pact-chain', 'pact-familiar', 'find-familiar']) {
     assert.ok(f1.includes(marker), `F1 обещает отсутствие спутника, не упомянув ${marker}`)
   }
+})
+
+/**
+ * Контуры, закрытые волнами 3–4. Каждый простоял в каталоге строкой «частично»
+ * уже после того, как код его закрыл, — поэтому они здесь: `code` опознаёт
+ * механику в коде, `markers` — то, чем ситуация обязана её назвать. Пока код на
+ * месте, статус ситуации обязан быть «работает»; исчезнет контур — покраснеет
+ * `code`, и статус придётся пересматривать вместе с ним.
+ */
+const CLOSED_SITUATIONS = Object.freeze([
+  {
+    id: 'A5',
+    title: 'подкуп монетой',
+    code: () => source('server/underworld.mjs').includes('export const BRIBE_TIERS')
+      && source('server/underworld.mjs').includes('export function npcIsIncorruptible')
+      && source('server/rules-engine.mjs').includes("'NpcBribeOffered'")
+      && source('server/world-deeds.mjs').includes('bribery_attempt'),
+    markers: ['NpcBribeOffered', 'NpcBribeRefused', 'server/underworld.mjs', 'bribery_attempt'],
+  },
+  {
+    id: 'B3',
+    title: 'взлом отмычками',
+    code: () => source('server/lockpicking.mjs').includes('export function hasThievesTools')
+      && source('server/lockpicking.mjs').includes('export const LOCKPICK_TRACE_SHARE')
+      && source('server/rules-engine.mjs').includes("intent === 'lockpick'")
+      && source('server/world-deeds.mjs').includes("'LockpickNoticed'")
+      && source('data/backgrounds-srd-5-2-1.json').includes('thieves_tools'),
+    markers: ['server/lockpicking.mjs', 'thieves_tools', 'LOCKPICK_TRACE_SHARE', 'LockpickNoticed'],
+  },
+  {
+    id: 'F5',
+    title: 'контейнер добычи у тела',
+    // Свободная фраза опознаётся по импорту, а не по имени вызова: сам разбор
+    // сейчас переписывают, и придираться к строке вызова значило бы краснеть на
+    // чужой правке. Важно ровно одно — что фраза знает про контейнеры.
+    code: () => source('server/loot-containers.mjs').includes('export function lootContainerList')
+      && source('server/free-action-adjudication.mjs').includes('export function resolveCorpseSearch')
+      && source('server/free-action-adjudication.mjs').includes("from './loot-containers.mjs'")
+      && source('server/free-action-adjudication.mjs').includes('loot_container_id'),
+    markers: ['server/loot-containers.mjs', 'LootContainer', 'resolveCorpseSearch', 'loot_container_id'],
+  },
+])
+
+/** Виды поступка из закрытой таблицы `DEED_KINDS` (`server/world-deeds.mjs`). */
+function deedKindIds() {
+  const module = source('server/world-deeds.mjs')
+  const start = module.indexOf('export const DEED_KINDS = Object.freeze({')
+  assert.notEqual(start, -1, 'в world-deeds не найдена таблица DEED_KINDS')
+  const end = module.indexOf('\n})', start)
+  assert.ok(end > start, 'таблица DEED_KINDS не закрыта — проверьте разбор')
+  return [...module.slice(start, end).matchAll(/^ {2}(\w+): Object\.freeze\(\{/gm)].map(([, id]) => id)
+}
+
+test('закрытые волнами 3–4 контуры названы в своих ситуациях, а не занижены', () => {
+  for (const closed of CLOSED_SITUATIONS) {
+    assert.ok(closed.code(), `контур «${closed.title}» пропал из кода — перепишите ситуацию ${closed.id}`)
+    const section = situation(closed.id)
+    assert.ok(
+      section.split('\n')[0].includes('**работает**'),
+      `${closed.id} занижает статус: контур «${closed.title}» в коде есть целиком`,
+    )
+    for (const marker of closed.markers) {
+      assert.ok(section.includes(marker), `${closed.id} не называет «${closed.title}» (нет маркера ${marker})`)
+    }
+  }
+})
+
+test('B5 называет столько видов поступка, сколько их в таблице движка', () => {
+  const kinds = deedKindIds()
+  assert.ok(kinds.length >= 10, 'таблица DEED_KINDS распалась — проверьте разбор')
+  const numeral = NUMERALS[kinds.length]
+  assert.ok(numeral, `видов поступка стало ${kinds.length} — обновите словарь числительных`)
+  assert.ok(
+    situation('B5').replace(/\s+/g, ' ').includes(`${numeral} видов поступка`),
+    `B5 обязан называть число видов поступка словом «${numeral}»`,
+  )
 })
 
 test('каждый путь и раздел плана, на которые ссылается каталог, существуют', () => {

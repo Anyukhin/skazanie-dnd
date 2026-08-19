@@ -28,7 +28,7 @@ import {
 } from './campaign-loop-policy.mjs'
 import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
-import { planHeroTurn } from './party-tactics.mjs'
+import { planHeroReaction, planHeroTurn } from './party-tactics.mjs'
 import {
   RulesValidationError,
   actorPosition,
@@ -982,7 +982,7 @@ export class AutonomousCampaignOrchestrator {
         duplicate: Boolean(commit.duplicate),
       }
     }
-    const corpseSearch = resolveCorpseSearch(loaded.state, text, reading)
+    const corpseSearch = resolveCorpseSearch(loaded.state, actorId, text, reading)
     if (corpseSearch) {
       return {
         kind: 'clarification',
@@ -1281,12 +1281,14 @@ export class AutonomousCampaignOrchestrator {
       let commands
       let heroRule = null
       if (combat.reaction_window) {
-        commands = [{
-          command_type: 'UseCombatAction',
-          actor_id: String(combat.reaction_window.actor_id),
-          action_id: 'decline-reaction',
-          server_authoritative: true,
-        }]
+        // Выбор реакции — такая же серверная политика, как и выбор хода
+        // (`party-tactics.mjs`). Раньше здесь стоял безусловный
+        // `decline-reaction`, и автономная партия не била вдогонку и не
+        // поднимала «Щит»; окно реакции живого игрока эта ветка по-прежнему не
+        // трогает — оно закрывается вручную или часами хода координатора.
+        const plan = planHeroReaction(state, combat.reaction_window)
+        commands = plan.commands
+        heroRule = plan.rule
       } else if (!livingEnemies.length || !livingHeroes.length) {
         commands = [{ command_type: 'EndCombat', actor_id: actorId || livingHeroes[0]?.id || livingEnemies[0]?.id, reason: livingEnemies.length ? 'party_defeated' : 'enemies_defeated' }]
       } else if (!isLivingActor(actor)) {

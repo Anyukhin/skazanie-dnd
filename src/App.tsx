@@ -14,9 +14,9 @@ import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettin
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
-  ABILITY_LABELS, DIFFICULTY_LABELS, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
+  ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
   REPUTATION_TIER_LABELS, UI_SCALE_PRESETS, battleEventText, canonicalLocationKey, clampUiScale,
-  combatState, locationsMatch,
+  combatState, locationsMatch, useDialogEscape,
 } from './app-shared'
 import type { BoardCombatant } from './app-shared'
 import { AdminView, AgentInteractionCard, CampaignModal, ChatPanel, JournalView, SettingsView } from './AppViews'
@@ -249,6 +249,7 @@ function NewbieGuide({ onDismiss }: { onDismiss: () => void }) {
   // Панель висит поверх карты и перехватывает клики по клеткам под собой:
   // игрок целится в клетку, попадает в шпаргалку — и герой «не реагирует».
   // Поэтому любой клик по панели закрывает её: прочитал — кликнул — играешь.
+  useDialogEscape(onDismiss)
   return <aside className="newbie-guide" role="dialog" aria-modal="false" aria-labelledby="newbie-guide-title" onClick={onDismiss}>
     <header>
       <HelpCircle size={21} />
@@ -340,7 +341,9 @@ function SceneWeather({ weather }: { weather?: WeatherProjection }) {
   )
 }
 
-function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, wantedSigns, weather, onOpenMerchant, onReset }: {
+const RESET_CONFIRMATION = 'Снять бой и поднять героев только в этом окне?\n\nЭто диагностика интерфейса, а не команда миру: сервер такой правки не получит и не подтвердит её. Остальные за столом увидят прежнюю картину, а ближайший снимок состояния вернёт бой и раны и вам.'
+
+function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, wantedSigns, weather, canReset, onOpenMerchant, onReset }: {
   title: string
   location: string
   objective: string
@@ -367,6 +370,11 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
    * крышей» приходят готовыми из проекции (`server/weather.mjs`).
    */
   weather?: WeatherProjection
+  /**
+   * Сброс — приборная диагностика вида, а не команда миру: сервер её не
+   * получает. Поэтому кнопка есть только у владельца кампании и у админа.
+   */
+  canReset: boolean
   onOpenMerchant: () => void
   onReset: () => void
 }) {
@@ -432,7 +440,16 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
           остальные — в подсказке. Цифры ступени в проекции нет, и выводить её
           из числа строк клиенту нечем и незачем. */}
       {wantedSigns.length > 0 && <div className="scene-wanted" role="note" aria-label="Приметы розыска" title={wantedSigns.join('\n')}><ShieldAlert size={13} /><span>{wantedSigns[0]}</span></div>}
-      <button className="icon-button reset-button" onClick={onReset} title="Снять бой и поднять павших героев"><RotateCcw size={17} /></button>
+      {/* Кнопка правит только эту вкладку: `reset` меняет локальный снимок и
+          ничего не отправляет серверу. Раньше она стояла у всех и обещала
+          «снять бой», после чего ближайший серверный снимок возвращал бой на
+          место — выглядело это как поломка. Теперь и права, и подтверждение, и
+          подпись говорят ровно то, что кнопка делает. */}
+      {canReset && <button
+        className="icon-button reset-button"
+        title="Диагностика вида: снять бой и поднять героев только в этом окне. Серверу правка не уходит — ближайший снимок состояния её отменит"
+        onClick={() => { if (window.confirm(RESET_CONFIRMATION)) onReset() }}
+      ><RotateCcw size={17} /></button>}
     </div>
   )
 }
@@ -492,6 +509,7 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  useDialogEscape(onClose)
   const copy = async () => {
     setBusy(true)
     setError('')
@@ -1401,7 +1419,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           </div>
         </header>
         {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'} ${state.isNarrating ? 'is-narrating' : ''}`}>
-          {(directorError || joinError || lifecycleError) && <div className="admin-error director-error">{directorError || joinError || lifecycleError}</div>}
           {lifecycleStatus === 'paused' && <CampaignPausedNotice
             canManage={canManageLifecycle}
             busy={lifecycleBusy}
@@ -1415,26 +1432,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             window.localStorage.setItem(NEWBIE_GUIDE_DISMISSED_KEY, 'true')
             setNewbieGuideOpen(false)
           }} />}
-          {cinematicNarrationId && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
-            <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => {
-              if (visibleNarrationPreview) setDismissedNarrationPreviewId(visibleNarrationPreview.messageId)
-              else setCinematicNarration(null)
-            }} aria-label="Скрыть текст сцены"><X size={15} /></button></header>
-            <p>{cinematicNarrationText || 'Сцена складывается…'}</p>
-            <small><ScrollText size={13} />{visibleNarrationPreview?.phase === 'streaming' || visibleNarrationPreview?.phase === 'start' ? 'Текст приходит от Рассказчика…' : 'Сохранено в журнале кампании'}</small>
-          </section>}
           {/* Свободный бросок переехал из правой колонки в угол карты: он нужен
               в любой момент, а карточка с подписями занимала место рядом с
               состоянием героя. */}
           <DiceTray key={state.sessionCode} compact latestRoll={state.lastDiceRoll} onRoll={(sides) => rollFreeDie(activePlayer.id, sides)} />
-          {state.pendingCheck && (
-            <details key={state.pendingCheck.check_id ?? state.pendingCheck.action} className="pending-check-overlay" open aria-live="polite">
-              <summary><Dices size={15} /><span>Ожидающая проверка</span><ChevronDown size={16} /></summary>
-              {canAct
-                ? <DiceCheckCard check={state.pendingCheck} onRoll={rollPendingCheck} onCancel={cancelPendingCheck} />
-                : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnActorName}</small></span></div>}
-            </details>
-          )}
           <DungeonMap
             state={state}
             players={partyPlayers}
@@ -1447,7 +1448,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             scenicBackdrop={scenicBackdrop}
             combatAnimations={combatAnimations}
             visualBatch={combatVisualBatch}
-            onClearTacticalError={clearTacticalError}
             onStartCombat={() => startCombat(activePlayer.id)}
             onMove={movePlayer}
             onAttack={attackEnemy}
@@ -1481,7 +1481,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather} onOpenMerchant={() => openMerchant()} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather} canReset={canManageLifecycle || isAdmin} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
             <div className="player-hud-stack">
@@ -1512,6 +1512,39 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
+      {/* Рассказчик и требование броска стоят поверх ЛЮБОГО раздела, а не
+          только комнаты: игрок, ушедший в инвентарь или журнал, до этого не
+          видел ни стрима, ни карточки «Ожидающая проверка» — и узнавал о своём
+          броске, только вернувшись на карту. Слой прижат к рабочей области
+          (боковое меню слева, в комнате — правая колонка справа), поэтому
+          прежние отступы карточек внутри него не изменились. */}
+      <div className={`scene-overlay-layer ${view === 'room' ? 'beside-server-column' : ''}`}>
+        {cinematicNarrationId && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
+          <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => {
+            if (visibleNarrationPreview) setDismissedNarrationPreviewId(visibleNarrationPreview.messageId)
+            else setCinematicNarration(null)
+          }} aria-label="Скрыть текст сцены"><X size={15} /></button></header>
+          <p>{cinematicNarrationText || 'Сцена складывается…'}</p>
+          <small><ScrollText size={13} />{visibleNarrationPreview?.phase === 'streaming' || visibleNarrationPreview?.phase === 'start' ? 'Текст приходит от Рассказчика…' : 'Сохранено в журнале кампании'}</small>
+        </section>}
+        {state.pendingCheck && (
+          <details key={state.pendingCheck.check_id ?? state.pendingCheck.action} className="pending-check-overlay" open aria-live="polite">
+            <summary><Dices size={15} /><span>Ожидающая проверка</span><ChevronDown size={16} /></summary>
+            {canAct
+              ? <DiceCheckCard check={state.pendingCheck} onRoll={rollPendingCheck} onCancel={cancelPendingCheck} />
+              : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnActorName}</small></span></div>}
+          </details>
+        )}
+      </div>
+      {/* Одна лента на все отказы: раньше их было три в трёх углах, и вторая
+          ошибка затирала первую. Тексты не переписываются — очередь только
+          показывает их по порядку. */}
+      <ErrorToasts sources={[
+        { text: directorError },
+        { text: joinError },
+        { text: lifecycleError },
+        { text: tacticalError, onDismiss: clearTacticalError },
+      ]} />
       {merchantOpen && <MerchantScreen merchants={merchantScreenMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantOpen(false)} />}
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
       {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}

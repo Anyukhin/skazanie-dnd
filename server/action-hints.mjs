@@ -15,7 +15,9 @@
  * точнее любой строки, и вторая подсказка рядом только мешала бы.
  */
 
+import { currencyToCopper } from './merchant-economy.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionRewardKinds, sceneObjectLabelFor } from './scene-interactions.mjs'
+import { MIN_BRIBE_CP } from './underworld.mjs'
 
 export const ACTION_HINTS_POLICY_ID = 'skazanie:action-hints-v1'
 
@@ -42,6 +44,19 @@ export const MAX_LOOT_HINTS = 2
 
 /** Виды реквизита, за которыми сервер держит находку, тайник или знание. */
 const REWARD_BEARING_KINDS = new Set(sceneInteractionRewardKinds())
+
+/**
+ * На каком расстоянии подсказка называет чужой карман.
+ *
+ * Своей мерки у кражи нет: движок требует только присутствия человека в сцене
+ * (`PickpocketNpc`, `server/rules-engine.mjs`), и запрещать здесь то, что он
+ * разрешает, подсказка не вправе. Но и звать обчистить трактирщика через весь
+ * зал незачем — строк в панели четыре, а мирных людей в зале бывает пятеро.
+ * Пять футов здесь поэтому **отбор**, а не правило: они решают, о ком сказать,
+ * а не что разрешено. Померить нечем — считается, что рядом: сцена без доски
+ * (разговор в трактире) кражи не запрещает.
+ */
+export const THEFT_HINT_REACH_FEET = 5
 
 const text = (value, maximum = 120) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 
@@ -83,6 +98,10 @@ const HINT_PRIORITY = Object.freeze({
   // карточкой в летописи.
   letter: 2,
   prop: 3,
+  // Карман, монета и краденое стоят в одной очереди с рядовым реквизитом:
+  // это возможность, а не срочность, — тот же ранг, что у запертой двери.
+  // Между равными порядок решает идентификатор, и он детерминирован.
+  underworld: 3,
   npc: 4,
   objective: 5,
   exit: 6,
@@ -174,10 +193,139 @@ function lootHints(room) {
     })
 }
 
-function npcHints(room) {
-  const npcs = Array.isArray(room?.scene_npcs) ? room.scene_npcs : []
-  return npcs
+/**
+ * Живые мирные люди сцены. Один список на все строки, которые их называют:
+ * заговорить, обчистить карман, подкрепить слова монетой. Разойдись эти
+ * фильтры — и панель звала бы обчистить того, с кем «не о чем говорить».
+ */
+function peacefulSceneNpcs(room) {
+  return (Array.isArray(room?.scene_npcs) ? room.scene_npcs : [])
     .filter((npc) => npc?.alive !== false && npc?.stance !== 'hostile')
+}
+
+/** Клетка героя-читателя. Позиция механики главнее листа: по ней ходит доска. */
+function heroCell(room, actorId) {
+  const id = String(actorId ?? '')
+  if (!id) return null
+  const position = room?.mechanics?.positions?.[id]
+  const hero = (Array.isArray(room?.players) ? room.players : []).find((player) => String(player?.id ?? '') === id)
+  const x = Number(position?.x ?? hero?.x)
+  const y = Number(position?.y ?? hero?.y)
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+}
+
+/** Футы между клетками — та же шахматная мерка, что у доски. `null` — не измерить. */
+function feetBetween(from, to) {
+  const x = Number(to?.x)
+  const y = Number(to?.y)
+  if (!from || !Number.isFinite(x) || !Number.isFinite(y)) return null
+  return Math.max(Math.abs(from.x - x), Math.abs(from.y - y)) * 5
+}
+
+/** Герой-читатель в уже спроецированной комнате. */
+function readerHero(room, actorId) {
+  const id = String(actorId ?? '')
+  if (!id) return null
+  return (Array.isArray(room?.players) ? room.players : []).find((player) => String(player?.id ?? '') === id) ?? null
+}
+
+/**
+ * Чужой карман под рукой.
+ *
+ * Строка одна и достаётся ближайшему: панель на четыре строки, а мирных людей в
+ * зале бывает пятеро. Ни СЛ, ни содержимого кармана в ней нет и быть не может —
+ * в проекции их нет вовсе (карман выводится из сида, `server/pickpocket.mjs`), и
+ * подсказка обещает попытку, а не добычу. Формулировка та же, что у кнопки
+ * досье: обе шлют одну свободную фразу и разбираются одним `resolvePickpocket`.
+ *
+ * Уже обчищенный карман строка назвать может, и это осознанная цена: маркер
+ * «здесь побывала чужая рука» проекция снимает намеренно (`publicConditionsFor`,
+ * `server/viewer-projection.mjs`), второго источника у подсказки нет, а
+ * промолчать вышло бы только ценой утечки того, чего столу знать не положено.
+ */
+function theftHints(room, actorId) {
+  // Строка личная: спрашивают, дотянулась ли рука **этого** героя. Читателю без
+  // героя отвечать нечем — как и `beastHints`, подсказка тогда молчит.
+  if (!readerHero(room, actorId)) return []
+  const cell = heroCell(room, actorId)
+  const nearest = peacefulSceneNpcs(room)
+    .map((npc) => ({ npc, feet: feetBetween(cell, npc) }))
+    .filter((entry) => entry.feet == null || entry.feet <= THEFT_HINT_REACH_FEET)
+    .sort((left, right) => (left.feet ?? Number.POSITIVE_INFINITY) - (right.feet ?? Number.POSITIVE_INFINITY)
+      || String(left.npc?.id ?? '').localeCompare(String(right.npc?.id ?? '')))[0]
+  const name = text(nearest?.npc?.name, 60)
+  if (!name) return []
+  return [{
+    id: `theft:${text(nearest.npc?.id, 80)}`,
+    priority: HINT_PRIORITY.underworld,
+    text: `Можно незаметно обчистить карманы: ${name} (Ловкость рук)`,
+  }]
+}
+
+/**
+ * Монета поверх слов.
+ *
+ * Подкуп живёт внутри самой реплики (`classifyBribeTier`,
+ * `server/npc-social-check.mjs`), поэтому строка появляется там, где реплика уже
+ * прозвучала: с этим человеком отряд говорил, и он стоит здесь. Разговор берётся
+ * из уже спроецированной переписки — чужие и закрытые записи проекция отсеяла до
+ * подсказки (`npcSocialForViewer`, `server/npc-social.mjs`).
+ *
+ * Кошелёк проверяется по той же границе, по которой откажет движок
+ * (`INSUFFICIENT_FUNDS` против `MIN_BRIBE_CP`): звать доставать монету того, у
+ * кого её нет, — это подсказка наоборот.
+ *
+ * Чем кончится протянутая рука, строка не знает и знать не вправе: «неподкупный»
+ * выводится из сида (`server/underworld.mjs`), в проекции его нет, и назови
+ * подсказка хоть намёк — риск подкупа исчез бы вместе с игрой.
+ */
+function bribeHints(room, actorId) {
+  const hero = readerHero(room, actorId)
+  if (!hero || currencyToCopper(hero.currency) < MIN_BRIBE_CP) return []
+  const present = new Map(peacefulSceneNpcs(room).map((npc) => [String(npc?.id ?? ''), npc]))
+  const conversations = Array.isArray(room?.social?.conversations) ? room.social.conversations : []
+  const spoken = [...conversations].reverse().find((entry) => present.has(String(entry?.npc_id ?? '')))
+  const npc = spoken ? present.get(String(spoken.npc_id)) : null
+  const name = text(npc?.name, 60)
+  if (!name) return []
+  return [{
+    id: `bribe:${text(npc?.id, 80)}`,
+    priority: HINT_PRIORITY.underworld,
+    text: `Можно подкрепить убеждение монетой: ${name}`,
+  }]
+}
+
+/**
+ * Краденое и торговец.
+ *
+ * Строка нарочно **никого не называет**. Берёт ли этот человек чужие вещи,
+ * выводится из сида (`npcIsFence`, `server/underworld.mjs`) и в проекцию не
+ * едет по построению; назови подсказка торговца по имени там, где их в зале
+ * трое, — и она ответила бы на единственный вопрос, ради которого скупщик
+ * заведён. Поэтому здесь ровно предложение попробовать: чем кончится, отряд
+ * узнает у прилавка, и честный торговец вправе отказаться, а под розыском —
+ * и донести.
+ *
+ * Само краденое — знание владельца, а не стола: `origin` чужих вещей проекция
+ * снимает (`playerItemsWithCapabilities`, `server/viewer-projection.mjs`),
+ * поэтому спрашивается только сумка героя-читателя.
+ */
+function fenceHints(room, actorId) {
+  const merchants = Array.isArray(room?.merchants) ? room.merchants : []
+  if (!merchants.length) return []
+  const hero = readerHero(room, actorId)
+  const stolen = (Array.isArray(hero?.inventory) ? hero.inventory : [])
+    .some((item) => String(item?.origin ?? '') === 'stolen')
+  if (!stolen) return []
+  return [{
+    id: 'fence:offer',
+    priority: HINT_PRIORITY.underworld,
+    text: 'Можно попробовать сбыть краденое торговцу',
+  }]
+}
+
+function npcHints(room) {
+  return peacefulSceneNpcs(room)
     .map((npc) => {
       const name = text(npc?.name, 60)
       if (!name) return null
@@ -440,9 +588,11 @@ function exitHints(room) {
  * вытесняет, рядовая обстановка — нет (`HINT_PRIORITY`).
  *
  * Герой-читатель приезжает вторым доводом и нужен там, где строка панели
- * заведена на каждого героя отряда по отдельности: досягаемость зверя. Комната
- * уже персональная, viewer в ней известен, и партийный вопрос вместо личного
- * был бы второй меркой на тот же вопрос кнопки.
+ * заведена на каждого героя отряда по отдельности: досягаемость зверя, чужой
+ * карман под рукой, свой кошелёк и своё краденое. Комната уже персональная,
+ * viewer в ней известен, и партийный вопрос вместо личного был бы второй меркой
+ * на тот же вопрос кнопки — а у краденого ещё и утечкой: чужое происхождение
+ * вещи проекция снимает намеренно.
  *
  * @param {Record<string, any> | null | undefined} room
  * @param {string} [actorId] герой, которому показывается панель
@@ -473,7 +623,19 @@ export function suggestedActionsFor(room, actorId = '') {
     ...exitHints(room),
   ])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
-  const props = ordered([...propHints(room), ...lockpickHints(room), ...tavern.leisure, ...blessingHints(room), ...beastHints(room, actorId), ...letterHints(room)]).slice(0, budget)
+  const props = ordered([
+    ...propHints(room),
+    ...lockpickHints(room),
+    ...tavern.leisure,
+    ...blessingHints(room),
+    ...beastHints(room, actorId),
+    ...letterHints(room),
+    // Изнанка. Все три строки личные: карман меряется от героя-читателя,
+    // кошелёк и краденое — его собственные, и партийного ответа тут нет.
+    ...theftHints(room, actorId),
+    ...bribeHints(room, actorId),
+    ...fenceHints(room, actorId),
+  ]).slice(0, budget)
   return [...props, ...reserved]
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
     .slice(0, MAX_ACTION_HINTS)

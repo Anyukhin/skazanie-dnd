@@ -63,6 +63,83 @@ export function normalizeItemOriginKind(value, fallback = DEFAULT_ITEM_ORIGIN_KI
 export const ITEM_AVAILABILITY_CHANNELS = Object.freeze(['shop', 'loot', 'magic_loot', 'crafting'])
 export const ITEM_RECHARGE_SCHEMA_VERSION = 1
 
+/**
+ * Чем стреляет оружие со свойством `ammunition`.
+ *
+ * Второй такой таблицей владеет `server/enemy-loadouts.mjs`
+ * (`AMMUNITION_BY_WEAPON`) — она выдаёт колчан противнику **до** боя. Здесь
+ * список повторён нарочно, а не вынесен: каталог не импортирует ничего, а
+ * `enemy-loadouts` импортирует каталог, и общий модуль замкнул бы их кольцом.
+ * Расхождение ловит сторож в `test/item-catalog.test.mjs`: таблицы обязаны
+ * совпадать поимённо, иначе герой и существо стреляли бы разными стрелами.
+ *
+ * `unit` — как один снаряд называется за столом: он попадает в счётчик хотбара
+ * («12×стрела»), где «Стрелы, 20 штук» звучало бы неправдой.
+ */
+const WEAPON_AMMUNITION = Object.freeze({
+  'srd_5_2_1:blowgun': 'srd_5_2_1:needles-50',
+  'srd_5_2_1:hand-crossbow': 'srd_5_2_1:bolts-20',
+  'srd_5_2_1:heavy-crossbow': 'srd_5_2_1:bolts-20',
+  'srd_5_2_1:light-crossbow': 'srd_5_2_1:bolts-20',
+  'srd_5_2_1:longbow': 'srd_5_2_1:arrows-20',
+  'srd_5_2_1:musket': 'srd_5_2_1:firearm-bullets-10',
+  'srd_5_2_1:pistol': 'srd_5_2_1:firearm-bullets-10',
+  'srd_5_2_1:shortbow': 'srd_5_2_1:arrows-20',
+  'srd_5_2_1:sling': 'srd_5_2_1:sling-bullets-20',
+})
+
+export const AMMUNITION_CATALOG_BY_WEAPON = WEAPON_AMMUNITION
+
+/** Каталожный боеприпас этого оружия. `null` — оружие не требует снарядов. */
+export function ammunitionCatalogIdForWeapon(weaponCatalogId) {
+  return WEAPON_AMMUNITION[String(weaponCatalogId ?? '')] ?? null
+}
+
+/**
+ * Сколько выстрелов в одном комплекте. В каталоге снаряды лежат пачками
+ * (`ammunition.amount`), и в инвентаре считаются пачками же: у героя с двумя
+ * колчанами сорок выстрелов, а не два.
+ */
+export function ammunitionBundleAmount(catalogId) {
+  const amount = Number(catalogItem(catalogId)?.ammunition?.amount)
+  return Number.isSafeInteger(amount) && amount > 0 ? amount : 1
+}
+
+/**
+ * Ёмкость пачек: сколько выстрелов было бы в этом стеке, будь он нестрелянным.
+ * Она же уезжает в событие расхода как `charges.max`.
+ */
+export function ammunitionCapacity(item) {
+  const quantity = Math.max(0, Number.isSafeInteger(Number(item?.quantity)) ? Number(item.quantity) : 1)
+  return quantity * ammunitionBundleAmount(String(item?.catalog_id ?? item?.catalogId ?? ''))
+}
+
+/**
+ * Остаток выстрелов в экземпляре боеприпасов.
+ *
+ * Считается по `charges` — тому же полю, которым набор лекаря считает свои
+ * применения, а колчан противника — свои стрелы (`server/npc-equipment.mjs`).
+ * Пока не стреляли ни разу, поля нет, и остаток выводится из числа пачек по
+ * живому каталогу. В событие расхода уезжают уже посчитанные абсолютные числа,
+ * поэтому replay старого боя не зависит от будущей перебалансировки пачки.
+ *
+ * Докупленная пачка складывается со стреляным колчаном молча: торговля и добыча
+ * сливают одинаковые вещи в один стек по `stack_key`, где остатка нет вовсе, —
+ * и без слагаемого ниже двадцать купленных стрел просто не появились бы в
+ * колчане, из которого один раз выстрелили. Поэтому к остатку прибавляется
+ * прирост ёмкости: `charges.max` помнит, на сколько пачек этот остаток был
+ * посчитан, а всё, что появилось в стеке сверх того, ещё не стреляно.
+ */
+export function ammunitionShotsLeft(item) {
+  if (!item) return 0
+  const capacity = ammunitionCapacity(item)
+  if (capacity <= 0) return 0
+  const charges = item.charges && typeof item.charges === 'object' ? Number(item.charges.current) : Number.NaN
+  if (!Number.isSafeInteger(charges)) return capacity
+  const countedCapacity = Math.max(0, Number.isSafeInteger(Number(item.charges.max)) ? Number(item.charges.max) : capacity)
+  return Math.max(0, charges) + Math.max(0, capacity - countedCapacity)
+}
+
 const SHOP_IDS = new Set([
   'srd_5_2_1:dagger',
   'srd_5_2_1:longsword',
@@ -253,7 +330,7 @@ function weaponEntry({
     crafting: { implemented: false, hooks: [] },
     weapon: { group, damage, damage_type: damageType, properties, mastery, normal_range_feet: normalRange, long_range_feet: longRange },
     mechanics_status: 'partial',
-    limitation: 'Базовая атака, выбор хвата, finesse, reach и метание исполняются сервером; mastery, расход ammunition и возврат брошенного оружия пока не автоматизированы.',
+    limitation: 'Базовая атака, выбор хвата, finesse, reach, метание и расход ammunition исполняются сервером; mastery, возврат брошенного оружия и подбор выпущенных снарядов пока не автоматизированы.',
     availability: availability(catalogId),
     source_page: 91,
     provenance: provenance(91),
@@ -315,7 +392,7 @@ function armorEntry({
   }
 }
 
-function ammunitionEntry({ id, name, amount, storage, weight, price }) {
+function ammunitionEntry({ id, name, unit, amount, storage, weight, price }) {
   const catalogId = `srd_5_2_1:${id}`
   return {
     catalog_id: catalogId,
@@ -323,7 +400,7 @@ function ammunitionEntry({ id, name, amount, storage, weight, price }) {
     display_name: name,
     name,
     manifest_section: 'ammunition',
-    description: `${name}: комплект из ${amount} шт.; обычное хранилище — ${storage}. У героев расход боеприпасов в бою пока не учитывается.`,
+    description: `${name}: комплект из ${amount} шт.; обычное хранилище — ${storage}. Каждый выстрел снимает один снаряд — и у героя, и у противника.`,
     category: 'ammunition',
     type: 'other',
     price_cp: price,
@@ -337,9 +414,9 @@ function ammunitionEntry({ id, name, amount, storage, weight, price }) {
     charges: null,
     recharge: null,
     crafting: { implemented: false, hooks: [] },
-    ammunition: { amount, storage },
+    ammunition: { amount, storage, unit },
     mechanics_status: 'partial',
-    limitation: 'Покупка, хранение и передача исполнимы. Автоматический расход боеприпасов исполняется только у противников под управлением сервера (server/npc-equipment.mjs): выстрел снимает одну стрелу, а пустой колчан закрывает дальнее действие. У героев расход не учитывается.',
+    limitation: 'Покупка, хранение, передача и расход исполнимы: выстрел оружием со свойством ammunition снимает один снаряд и у героя, и у противника, промах тратит его наравне с попаданием, а пустой колчан закрывает дальнюю атаку до броска. Не исполнен подбор снарядов после боя — выпущенная стрела не возвращается.',
     availability: availability(catalogId),
     source_page: 96,
     provenance: provenance(96),
@@ -497,11 +574,11 @@ const ARMOR = [
 ]
 
 const AMMUNITION = [
-  { id: 'arrows-20', name: 'Стрелы, 20 штук', amount: 20, storage: 'quiver', weight: 1, price: 100 },
-  { id: 'bolts-20', name: 'Арбалетные болты, 20 штук', amount: 20, storage: 'case', weight: 1.5, price: 100 },
-  { id: 'firearm-bullets-10', name: 'Огнестрельные пули, 10 штук', amount: 10, storage: 'pouch', weight: 2, price: 300 },
-  { id: 'sling-bullets-20', name: 'Пули для пращи, 20 штук', amount: 20, storage: 'pouch', weight: 1.5, price: 4 },
-  { id: 'needles-50', name: 'Иглы, 50 штук', amount: 50, storage: 'pouch', weight: 1, price: 100 },
+  { id: 'arrows-20', name: 'Стрелы, 20 штук', unit: 'стрела', amount: 20, storage: 'quiver', weight: 1, price: 100 },
+  { id: 'bolts-20', name: 'Арбалетные болты, 20 штук', unit: 'болт', amount: 20, storage: 'case', weight: 1.5, price: 100 },
+  { id: 'firearm-bullets-10', name: 'Огнестрельные пули, 10 штук', unit: 'пуля', amount: 10, storage: 'pouch', weight: 2, price: 300 },
+  { id: 'sling-bullets-20', name: 'Пули для пращи, 20 штук', unit: 'пуля', amount: 20, storage: 'pouch', weight: 1.5, price: 4 },
+  { id: 'needles-50', name: 'Иглы, 50 штук', unit: 'игла', amount: 50, storage: 'pouch', weight: 1, price: 100 },
 ]
 
 const TOOLS = [
@@ -1466,6 +1543,26 @@ export function itemViewerCapabilities(item = {}) {
         requires_attunement: entry.activation.requires_attunement === true,
       }
     : null
+  // Боеприпасы описываются проекцией, а не выводятся клиентом: какой снаряд
+  // просит лук и сколько их в пачке знает каталог, и повторить эту таблицу в
+  // браузере значило бы завести второй источник истины ровно там, где сервер
+  // уже отказывает в выстреле. Пачка отдаёт остаток, оружие — чем стреляет;
+  // сложить одно с другим клиент умеет сам, потому что весь карман героя у
+  // него уже есть.
+  const ammunition = entry.category === 'ammunition' && entry.ammunition
+    ? {
+        role: 'ammunition',
+        shots: ammunitionShotsLeft(item),
+        per_bundle: Math.max(1, Number(entry.ammunition.amount) || 1),
+        unit: String(entry.ammunition.unit ?? entry.name),
+      }
+    : ammunitionCatalogIdForWeapon(entry.catalog_id) && entry.combat?.ammunition === true
+      ? {
+          role: 'weapon',
+          catalog_id: ammunitionCatalogIdForWeapon(entry.catalog_id),
+          unit: String(catalogItem(ammunitionCatalogIdForWeapon(entry.catalog_id))?.ammunition?.unit ?? 'снаряд'),
+        }
+      : null
   return clone({
     equippable: entry.lifecycle?.equippable === true,
     equip_slot: entry.lifecycle?.equip_slot ?? null,
@@ -1476,6 +1573,7 @@ export function itemViewerCapabilities(item = {}) {
       activation,
       activated: item?.activated === true,
     } : {}),
+    ...(ammunition ? { ammunition } : {}),
     charges: catalogChargeState(entry, item),
     recharge: normalizeItemRechargeProfile(entry.recharge),
     requires_attunement: entry.attunement?.required === true,

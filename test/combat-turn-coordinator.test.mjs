@@ -444,6 +444,14 @@ test('истёкшее окно реакции автоматически отк
   ))
   assert.equal(automaticDeclines.length, 1)
   assert.equal(automaticDeclines[0].payload.auto_decline_reason, 'turn-timeout')
+  // Часы хода принадлежат живому игроку, и политика автономной партии
+  // (`planHeroReaction`) сюда не заходит: окно с доступной атакой вдогонку
+  // истекает отказом, а не разыгрывается за человека сервером.
+  assert.equal(
+    events.some((event) => event.event_type === 'CombatActionUsed' && event.payload?.action_id === 'opportunity-attack'),
+    false,
+    'реакцию живого игрока сервер не отыгрывает сам',
+  )
   assert.match(automaticDeclines[0].idempotency_key, /^reaction-timeout:REACTION-TIMEOUT:[a-f0-9]{20}$/u)
   assert.equal(events.some((event) => event.event_type === 'TurnEnded'), false)
   assert.equal((await store.load('REACTION-TIMEOUT')).state.mechanics.combat.reaction_window, null)

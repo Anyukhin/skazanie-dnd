@@ -63,10 +63,12 @@ pnpm props:rights     # хеши атласа в data/asset-rights.json (ина�
 pnpm terrain:tiles    # пересборка фактур пола, поверхностей и стен из assets-src/floor-wall-stamps:
                       # сшивает края, уменьшает, пишет палитровым PNG. Затем pnpm terrain:rights
 pnpm migrate:dry-run  # прогон миграций без записи
-pnpm backup           # СЛОМАН: запускает CLI без аргументов, печатает usage и выходит с 1.
-                      # Рабочий вызов: node tools/storage-backup.mjs create ./storage <файл>,
-                      # плюс DND_BACKUP_KEY от 32 байт — этой переменной в проекте нет.
-                      # Подробности и обходной путь — docs/pre-m0-baseline.md.
+pnpm backup           # зашифрованная копия storage в ./backups/skazanie-<дата>.skzbackup;
+                      # каталог источника — DND_STORAGE_DIR, иначе ./storage. Нужен ключ
+                      # DND_BACKUP_KEY от 32 байт (см. .env.example): без того же значения
+                      # копия не расшифровывается, потеря ключа равна потере копии.
+                      # Проверка копии — pnpm backup -- verify <файл>,
+                      # остальные команды — node tools/storage-backup.mjs --help
 ```
 
 Порт и хост задаются `AGENT_PORT` / `AGENT_HOST` (по умолчанию `8787` / `0.0.0.0`).

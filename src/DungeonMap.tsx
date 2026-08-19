@@ -25,7 +25,7 @@ import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
   HARMFUL_SPELL_KINDS, REPUTATION_TIER_LABELS, battleEventText, boardTrajectoryBlockReason,
-  canonicalLocationKey, combatState,
+  canonicalLocationKey, combatState, useDialogEscape,
 } from './app-shared'
 import type { BoardCombatant } from './app-shared'
 import { CharacterEditor, InventoryView } from './InventoryViews'
@@ -38,7 +38,6 @@ import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-en
 import { TOKEN_CONDITION_PRIORITY, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
-import { AgentLabView } from './AgentLabView'
 import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
@@ -260,6 +259,29 @@ export function inferredCombatItem(item: Player['inventory'][number]) {
             ? { kind: 'ranged' as const, ability: 'dex' as const, damage: '1d6', damageType: 'piercing', normalRange: 80, longRange: 320, twoHanded: true, ammunition: true }
             : null
   return combat ? { ...item, combat } : null
+}
+
+/**
+ * Сколько выстрелов осталось у этого оружия и как снаряд называется.
+ * `null` — оружию боеприпас не нужен (ближний бой, метание, самодельный лук из
+ * старого сохранения без каталожной записи).
+ *
+ * Считает сервер: у пачки снарядов в проекции лежит готовый остаток
+ * (`capabilities.ammunition.shots`), у оружия — какой снаряд оно просит. Здесь
+ * только сложение по карману, потому что таблицу «лук → стрелы» и размер пачки
+ * знает каталог (`server/item-catalog.mjs`), и второй её копии в браузере быть
+ * не должно: разойдись они, счётчик обещал бы выстрел, в котором сервер
+ * откажет.
+ */
+export function ammunitionSupplyFor(inventory: Player['inventory'] | undefined, item: Player['inventory'][number]) {
+  const weapon = item.capabilities?.ammunition
+  if (!weapon || weapon.role !== 'weapon') return null
+  const shots = (inventory ?? []).reduce((total, candidate) => {
+    const pack = candidate.capabilities?.ammunition
+    if (!pack || pack.role !== 'ammunition' || candidate.catalog_id !== weapon.catalog_id) return total
+    return total + Math.max(0, Number(pack.shots) || 0)
+  }, 0)
+  return { shots, unit: weapon.unit }
 }
 
 export function enemyVisualKind(enemy: Enemy): EnemyVisualKind {
@@ -645,7 +667,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onClearTacticalError, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -657,7 +679,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   scenicBackdrop: boolean
   combatAnimations: boolean
   visualBatch: CombatVisualBatch | null
-  onClearTacticalError: () => void
   onStartCombat: () => Promise<CommandOutcome>
   onMove: (actorId: string, x: number, y: number) => Promise<CommandOutcome>
   onAttack: (actorId: string, enemyId: string, itemId?: string, choice?: WeaponAttackChoice) => Promise<CommandOutcome>
@@ -701,6 +722,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
   const [linkedParticipantIds, setLinkedParticipantIds] = useState<string[]>([])
   const [npcDossier, setNpcDossier] = useState<{ npcId: string; mode: 'talk' | 'inspect' | 'transfer' } | null>(null)
+  useDialogEscape(() => setNpcDossier(null), Boolean(npcDossier))
   // Как отряд собирается уходить от стражи. Выбор влияет только на навык
   // проверки: СЛ и состав проверяющих остаются серверными.
   const [guardEscapeSkill, setGuardEscapeSkill] = useState<'stealth' | 'athletics'>('stealth')
@@ -827,6 +849,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [sneakAttack, setSneakAttack] = useState(false)
   const [knockOut, setKnockOut] = useState(false)
   const [spellbookOpen, setSpellbookOpen] = useState(false)
+  // Escape закрывает книгу заклинаний и разговор с NPC и возвращает фокус тому,
+  // кто их открыл. Оба окна живут прямо в разметке доски, поэтому признак «окно
+  // на экране» передаётся хуку, а не изображается условным вызовом.
+  useDialogEscape(() => setSpellbookOpen(false), spellbookOpen)
   const [spellSearch, setSpellSearch] = useState('')
   const [spellLevelFilter, setSpellLevelFilter] = useState<number | 'all'>('all')
   const [hotbarSpellIds, setHotbarSpellIds] = useState<string[]>([])
@@ -2157,7 +2183,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const deckTiles: Array<{ id: string; node: React.ReactElement }> = []
   if (activeDeck === 'common') deckTiles.push({ id: 'movement', node: <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || actionsLocked} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Перемещение — выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button> })
   if (activeDeck === 'weapon') deckTiles.push({ id: BASE_ATTACK_ID, node: <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button> })
-  if (activeDeck === 'weapon') combatItems.filter((item) => item.type === 'weapon').forEach((item) => deckTiles.push({ id: item.id, node: <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт</small><i className="action-cost action">действие</i></button> }))
+  /* Колчан объясняется той же кнопкой, что и всё остальное на панели: пустой —
+     плитка гаснет и в подсказке названа причина, ровно как у потраченной ячейки
+     или занятого действия. Числа берутся из серверной проекции, поэтому
+     счётчик не может обещать выстрел, в котором движок откажет. */
+  if (activeDeck === 'weapon') combatItems.filter((item) => item.type === 'weapon').forEach((item) => { const ammunition = ammunitionSupplyFor(activeHero?.inventory, item); const quiverEmpty = Boolean(ammunition && ammunition.shots <= 0); const ammunitionLabel = ammunition ? `${ammunition.shots}×${ammunition.unit}` : ''; deckTiles.push({ id: item.id, node: <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked || quiverEmpty} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={quiverEmpty ? `${item.name}: колчан пуст — для выстрела нужен боеприпас «${ammunition?.unit}»` : ammunition ? `${item.name} ${ammunitionLabel}: ${item.description || item.properties}` : `${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт{ammunition ? ` · ${ammunitionLabel}` : ''}</small>{ammunition && <em>{ammunition.shots}</em>}<i className="action-cost action">действие</i></button> }) })
   if (activeDeck === 'magic') deckTiles.push({ id: 'spellbook', node: <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={!spells.length || tacticalBusy} title={`Открыть полный каталог: ${spells.length} заклинаний доступно герою`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{spells.length} доступно</small></button> })
   if (activeDeck === 'magic') hotbarSpells.forEach((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); deckTiles.push({ id: spell.id, node: <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || (combatActive ? tacticalBusy : !castableOutOfCombat(spell))} onClick={() => selectSpell(spell)} title={`${spell.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} priority /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'бонус' : actionType === 'reaction' ? 'реакция' : actionType === 'long_cast' ? 'вне боя' : 'действие'}</i></button>  }) })
   if (activeDeck === 'common' || activeDeck === 'class') combatActions.filter((action) => action.category === activeDeck && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
@@ -2552,6 +2582,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <ol>{npcSummaryEvents.map((event) => <li key={event.id}>{battleEventText(state, event)}</li>)}</ol>
         </section>}
         </section>}
+        {/* Ситуативные панели — перемирие, стража, добыча, таверна, почта,
+            пленники, звери, отдых — живут в одной прокручиваемой области. По
+            отдельности они уезжали в неявные строки сетки колонки ниже HUD и
+            срезались `overflow: hidden`: панель существовала, но добраться до
+            неё было нечем. Разметка их уже перечисляет подряд, поэтому обёртка
+            ничего не переставляет — только даёт им общую полосу и полосу
+            прокрутки. Отступ содержимого оставлен без сдвига намеренно: смысл
+            вложенности виден по этой обёртке, а не по лишним 430 строкам
+            диффа. */}
+        <div className="server-situational">
         {truce && <section className="truce-panel" aria-label="Условия перемирия" aria-live="polite">
           <header><Handshake size={15} /><span><small>ПЕРЕМИРИЕ · РАУНД {truce.round ?? combat.round ?? 1}</small><strong>Говорит {truce.leader_name || 'предводитель уцелевших'}</strong></span></header>
           <p>
@@ -2980,6 +3020,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 </div>
               </>}
         </section>}
+        </div>
         {children}
       </aside>
       <section className="turn-rail">
@@ -3227,7 +3268,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </aside>
         </div>
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
-        {tacticalError && <div className="tactical-command-error" role="alert"><span>{tacticalError}</span><button onClick={onClearTacticalError} aria-label="Закрыть ошибку"><X size={12} /></button></div>}
+        {/* Отказ команды больше не рисуется здесь своей строкой: он уходит в
+            общую ленту тостов над всем экраном (`ErrorToasts`). Раньше строка
+            жила только под хотбаром и только в комнате, а следующий отказ
+            затирал предыдущий. */}
       </section>
       </section>
     </>

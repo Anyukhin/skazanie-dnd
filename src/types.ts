@@ -457,6 +457,23 @@ export type InventoryItem = {
       requires_attunement: boolean
     } | null
     activated?: boolean
+    /**
+     * Боеприпасы, посчитанные сервером (`itemViewerCapabilities`).
+     * У пачки снарядов это остаток выстрелов, у дальнобойного оружия — какой
+     * снаряд оно просит. Клиент их только складывает: какой лук чем стреляет и
+     * сколько штук в пачке, знает каталог, и второй такой таблицы в браузере
+     * быть не должно — иначе счётчик разошёлся бы с серверным отказом.
+     */
+    ammunition?: {
+      role: 'ammunition'
+      shots: number
+      per_bundle: number
+      unit: string
+    } | {
+      role: 'weapon'
+      catalog_id: string
+      unit: string
+    }
     charges: { current: number; max: number } | null
     recharge: ItemRechargeProfile | null
     requires_attunement: boolean

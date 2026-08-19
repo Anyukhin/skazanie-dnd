@@ -923,6 +923,32 @@ function distanceFeetTo(state, actor, container) {
 }
 
 /**
+ * Решение о досягаемости вместе с числом, которым оно объясняется.
+ *
+ * Панель спрашивает про пять футов карточкой (`lootContainersForViewer`), а
+ * свободная фраза «обыскиваю тело» — судейством (`resolveCorpseSearch`,
+ * `server/free-action-adjudication.mjs`), и мерка у них обязана быть одна.
+ * Заведи там свою геометрию доски — и однажды кнопка «Взять» окажется
+ * доступной ровно там, где фраза отвечает «подойдите ближе».
+ *
+ * Расстояние `null` — «померить нечем», и `reachable` в этом случае истинно
+ * (см. `reachable` выше): подпись обязана совпадать с решением, а не спорить с
+ * ним.
+ *
+ * @param {Record<string, any>} state
+ * @param {Record<string, any> | null} actor герой, от лица которого задан вопрос
+ * @param {Record<string, any>} container контейнер после `normalizeLootContainer`
+ * @returns {{ reachable: boolean, distance_feet: number | null }}
+ */
+export function lootContainerReachFor(state = {}, actor = null, container = {}) {
+  if (!actor) return { reachable: false, distance_feet: null }
+  return {
+    reachable: reachable(state, actor, container),
+    distance_feet: distanceFeetTo(state, actor, container),
+  }
+}
+
+/**
  * Публичная форма контейнера. Содержимое отдаётся **только** по защищённому
  * чтению: `withContents` ставит вызывающая сторона, доказав, что герой игрока
  * стоит рядом. Без этого карточка называет вид, место и число предметов — то,

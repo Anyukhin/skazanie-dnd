@@ -9,7 +9,7 @@ import {
 import { fetchWithTimeout } from './ai-client'
 import {
   ABILITY_LABELS, DIFFICULTY_LABELS, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
-  UI_SCALE_PRESETS, battleEventText, clampUiScale, locationsMatch,
+  UI_SCALE_PRESETS, battleEventText, clampUiScale, locationsMatch, useDialogEscape,
 } from './app-shared'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import type { NarrationVoiceMode } from './narration-tts.mjs'
@@ -56,6 +56,7 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
   const [improvMode, setImprovMode] = useState<CampaignAiSettings['improvMode']>('story')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  useDialogEscape(onClose)
 
   const load = async () => {
     setCampaignsLoading(true)

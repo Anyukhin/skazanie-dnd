@@ -124,7 +124,7 @@ test('обыск тела без server-owned contents блокируется д
   })
   const text = 'Обыскиваю тело гоблина'
   const reading = bindFreeActionReadingToState(state, 'hero', text, interpretFreeAction(text))
-  const result = resolveCorpseSearch(state, text, reading)
+  const result = resolveCorpseSearch(state, 'hero', text, reading)
   assert.equal(result.status, 'clarification')
   assert.equal(result.server_owned_contents, false)
   assert.match(result.narration, /не буду выдумывать/u)
@@ -155,7 +155,7 @@ test('обыск тела с инвентарём не отрицает соде
 
   const text = 'Обыскиваю тело капитана стражи'
   const reading = bindFreeActionReadingToState(state, 'hero', text, interpretFreeAction(text))
-  const result = resolveCorpseSearch(state, text, reading)
+  const result = resolveCorpseSearch(state, 'hero', text, reading)
   assert.equal(result.status, 'clarification')
   assert.equal(result.server_owned_contents, true, 'содержимое у тела есть, и отрицать его нельзя')
   assert.equal(result.corpse_id, 'captain')
@@ -177,7 +177,7 @@ test('пустой инвентарь с монетами всё равно сч
   })
   const text = 'Проверяю карманы тела головореза'
   const reading = bindFreeActionReadingToState(state, 'hero', text, interpretFreeAction(text))
-  const result = resolveCorpseSearch(state, text, reading)
+  const result = resolveCorpseSearch(state, 'hero', text, reading)
   assert.equal(result.server_owned_contents, true)
   assert.equal(result.corpse_id, 'thug')
 })

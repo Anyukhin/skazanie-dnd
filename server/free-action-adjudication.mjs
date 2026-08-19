@@ -2,7 +2,13 @@ import { createHash } from 'node:crypto'
 
 import { DIFFICULTY_CLASSES } from './adjudicator.mjs'
 import { findActor, skillProficiencyForActor } from './rules-engine.mjs'
-import { lootContainerList } from './loot-containers.mjs'
+import {
+  LOOT_CONTAINER_REACH_FEET,
+  lootContainerList,
+  lootContainerReachFor,
+  lootContainersInScene,
+  lootItemForViewer,
+} from './loot-containers.mjs'
 
 /**
  * Серверное судейство свободного действия — то, что живой ведущий решает в уме.
@@ -419,6 +425,163 @@ export function resolvePickpocket(state = {}, actorId = '', text = '', reading =
 const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман)|(?:труп|тел[оаеу]|останки|карман)[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu
 
 /**
+ * Как фраза называет вид контейнера. Таблица работает в одну сторону: названный
+ * вид **сужает** выбор и вправе не совпасть ни с чем — сказавшему «обыскиваю
+ * тело» нельзя подсунуть мешок брошенного, — а неназванный ничего не запрещает.
+ */
+const LOOT_KIND_WORDS = Object.freeze({
+  // «Тело» кончается здесь и не продолжается: без границы слова `тел[оаеу]\p{L}*`
+  // считал телом всякую телегу.
+  corpse: /(?:труп\p{L}*|тел[оаеу](?![\p{L}\p{M}])|телами|останк\p{L}*|павш\p{L}*|мертвец\p{L}*|убит\p{L}*)/iu,
+  captive: /(?:пленн\p{L}*|сдавш\p{L}*|связанн\p{L}*)/iu,
+  abandoned: /(?:брошенн\p{L}*|оставленн\p{L}*|откуп\p{L}*)/iu,
+  cache: /(?:схрон\p{L}*|тайник\p{L}*|заначк\p{L}*)/iu,
+})
+
+/** Столько предметов помещается в устный ответ; остальное считается числом. */
+const MAX_SPOKEN_LOOT_ITEMS = 8
+
+/**
+ * Имена, которыми фраза может назвать контейнер: своё и павшего.
+ *
+ * Имя контейнера начинается с вида («Тело: Разбойник»), поэтому в список идёт и
+ * хвост после двоеточия: «обыскиваю разбойника» — та же заявка, что и
+ * «обыскиваю тело разбойника».
+ */
+function lootContainerReferenceNames(state, container) {
+  const sources = new Set([container.source_enemy_id, ...container.source_enemy_ids].filter(Boolean).map(String))
+  const enemyNames = (state?.enemies ?? [])
+    .filter((enemy) => sources.has(String(enemy?.id ?? '')))
+    .flatMap((enemy) => referenceNames(enemy))
+  const name = clean(container.name, 160)
+  const subject = name.includes(': ') ? name.slice(name.indexOf(': ') + 2) : ''
+  return [name, subject, ...enemyNames].filter(Boolean)
+}
+
+/**
+ * Контейнеры яруса, которые могла иметь в виду фраза. Отбор идёт от узкого к
+ * широкому: явная цель прочтения, затем имя из фразы, затем названный вид.
+ * Пустой ответ означает «фраза говорила не об этом», а не «здесь пусто».
+ */
+function lootContainersNamedBy(state, text, reading, containers) {
+  const requested = clean(reading?.target_id, 120)
+  // Прочтение назвало конкретного актора — значит, речь о нём одном, и пустой
+  // ответ здесь означает «контейнера у него нет», а не «поищем кого-нибудь ещё».
+  if (requested) {
+    return containers.filter((container) => container.source_enemy_id === requested
+      || container.source_enemy_ids.includes(requested))
+  }
+  const named = containers.filter((container) => mentionsReference(text, lootContainerReferenceNames(state, container)))
+  if (named.length) return named
+  const kinds = Object.keys(LOOT_KIND_WORDS).filter((kind) => LOOT_KIND_WORDS[kind].test(text))
+  return kinds.length ? containers.filter((container) => kinds.includes(container.kind)) : containers
+}
+
+/**
+ * Кого из названных фраза имела в виду.
+ *
+ * Ближе — значит вероятнее: стоящий над телом и сказавший «обыскиваю тело»
+ * говорит именно про него. Но ничья расстоянием — это неоднозначность, а не
+ * повод выбрать по алфавиту: между двумя телами под ногами выбирает игрок, и
+ * `null` здесь означает «нужно уточнение».
+ */
+function nearestLootContainer(state, hero, containers) {
+  const measured = containers.map((container) => ({ container, ...lootContainerReachFor(state, hero, container) }))
+  const within = measured.filter((entry) => entry.reachable)
+  const pool = within.length ? within : measured
+  const distance = (entry) => entry.distance_feet ?? Number.POSITIVE_INFINITY
+  const [first, second] = [...pool].sort((left, right) => distance(left) - distance(right)
+    || left.container.id.localeCompare(right.container.id))
+  if (!first) return null
+  return second && distance(second) === distance(first) ? null : first
+}
+
+/** Содержимое словами. Вид — тот же `lootItemForViewer`, что отдаёт панель. */
+function spokenLootContents(container) {
+  const items = container.items.map((item) => lootItemForViewer(item))
+  const spoken = items.slice(0, MAX_SPOKEN_LOOT_ITEMS)
+    .map((item) => (item.quantity > 1 ? `${item.name} (${item.quantity})` : item.name))
+    .join(', ')
+  const rest = items.length - Math.min(items.length, MAX_SPOKEN_LOOT_ITEMS)
+  return { items, summary: rest > 0 ? `${spoken} и ещё ${rest}` : spoken }
+}
+
+/**
+ * Ответ про один найденный контейнер — тот же, что даёт панель, только словами.
+ *
+ * Содержимое отдаётся ровно по тому же условию, по которому его отдаёт карточка
+ * (`lootContainersForViewer`): герой дотянулся. Дальше пяти футов ответ честно
+ * зовёт подойти и **называет** контейнер — его имя игрок и так видит в панели,
+ * поэтому нового здесь не открывается. Взятия не происходит ни в одном случае:
+ * осмотр бесплатен, а набор выдаёт команда обыска.
+ */
+function lootContainerAnswer(state, hero, container) {
+  const { reachable: withinReach, distance_feet: distanceFeet } = lootContainerReachFor(state, hero, container)
+  const common = {
+    status: 'clarification',
+    server_owned_contents: container.status === 'available',
+    corpse_id: String(container.source_enemy_id || container.source_enemy_ids[0] || ''),
+    loot_container_id: container.id,
+    loot_container_kind: container.kind,
+    loot_container_name: container.name,
+    ...(distanceFeet == null ? {} : { distance_feet: distanceFeet }),
+  }
+  if (container.status !== 'available') {
+    return { ...common, narration: `${container.name}: здесь уже всё сняли, контейнер добычи пуст.` }
+  }
+  if (!withinReach) {
+    return {
+      ...common,
+      narration: `${container.name}: отсюда не дотянуться${distanceFeet == null ? '' : ` — идти ещё ${distanceFeet} фт`}.`
+        + ` Обыскивают в пределах ${LOOT_CONTAINER_REACH_FEET} футов: подойдите вплотную, и я скажу, что там.`,
+    }
+  }
+  const { items, summary } = spokenLootContents(container)
+  // Цену обыска называет тот же признак, которым её решает правило
+  // (`validateLootContainerCommand`): смотреть бесплатно всегда, а вот забрать
+  // посреди боя стоит действия — и узнать об этом игрок обязан до, а не после.
+  const combat = state?.mechanics?.combat?.active === true
+  return {
+    ...common,
+    narration: `${container.name}: ${summary}. Забрать нужное можно через панель добычи — набор выдаёт сервер,`
+      + ` и выдумывать находку я не стану.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
+    loot_items: items,
+    loot_action_cost: combat ? 'action' : null,
+  }
+}
+
+/**
+ * Обыск контейнера добычи свободной фразой.
+ *
+ * Путь у кнопки и у фразы один: контейнеры берутся тем же `lootContainersInScene`
+ * (значит, с тем же ярусом), досягаемость — той же меркой, содержимое — тем же
+ * bounded-видом. Событий здесь не рождается вовсе: осмотр бесплатен и хода не
+ * стоит, а взять набор можно только командой обыска.
+ *
+ * `null` означает «фраза не про здешние контейнеры» — разбираться будет прежняя
+ * ветка ниже.
+ */
+function resolveLootContainerSearch(state, hero, text, reading) {
+  const inScene = lootContainersInScene(state, { includeEmptied: true })
+  if (!inScene.length) return null
+  const candidates = lootContainersNamedBy(state, text, reading, inScene)
+  if (!candidates.length) return null
+  // Полный контейнер интереснее обобранного: пустой становится ответом только
+  // тогда, когда другого фраза не назвала.
+  const available = candidates.filter((container) => container.status === 'available')
+  const pool = available.length ? available : candidates
+  const chosen = nearestLootContainer(state, hero, pool)
+  if (!chosen) {
+    return {
+      status: 'clarification',
+      narration: `Уточните, что именно обыскивает герой: рядом ${pool.map((container) => container.name).join(', ')}.`,
+      server_owned_contents: available.length > 0,
+    }
+  }
+  return lootContainerAnswer(state, hero, chosen.container)
+}
+
+/**
  * Пока у тела нет явного server-owned контейнера, поиск не подменяется
  * проверкой Внимательности и не создаёт выдуманную добычу.
  *
@@ -429,9 +592,17 @@ const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*
  * состояние говорит одно, рассказчик другое. Поэтому источников содержимого
  * здесь три, и все три учитываются: `loadout` существа, а также исторические
  * `search_contents` / `corpse_contents` объектов сцены.
+ *
+ * Настоящая добыча разбирается **до** этого: контейнеры волны 3
+ * (`resolveLootContainerSearch` выше) — и есть тот авторитетный путь, ради
+ * которого писался прежний отказ. Ниже остаётся ровно то, до чего он не
+ * дотянулся: тело без контейнера и тело, оставшееся на другом ярусе.
  */
-export function resolveCorpseSearch(state = {}, text = '', reading = {}) {
+export function resolveCorpseSearch(state = {}, actorId = '', text = '', reading = {}) {
   if (!CORPSE_SEARCH.test(text)) return null
+  const hero = (state?.players ?? []).find((player) => String(player?.id ?? '') === String(actorId)) ?? null
+  const containerAnswer = resolveLootContainerSearch(state, hero, text, reading)
+  if (containerAnswer) return containerAnswer
   const corpses = [
     ...(state?.enemies ?? []).filter((actor) => actor?.alive === false || Number(actor?.hp ?? 1) <= 0),
     ...(state?.entities ?? []).filter((entity) => ['corpse', 'body', 'remains'].includes(String(entity?.kind ?? ''))),
@@ -458,26 +629,22 @@ export function resolveCorpseSearch(state = {}, text = '', reading = {}) {
     : Array.isArray(corpse?.corpse_contents) ? corpse.corpse_contents
       : null
   // Контейнер добычи, заведённый той же фиксацией, что и смерть
-  // (`server/loot-containers.mjs`). С его появлением у обыска наконец есть
-  // авторитетный путь, и свободное действие обязано на него указывать, а не
-  // повторять прежнее «команды извлечения нет».
+  // (`server/loot-containers.mjs`). Сюда доходят два случая, до которых отбор по
+  // фразе не дотянулся: контейнер этого тела назван другим видом («оружие
+  // пленного» на заявку «обыскиваю тело») — и контейнер, оставшийся на другом
+  // ярусе. Первый разбирается тем же ответом, что и панель; второй обязан
+  // сказать правду про место, а не отрицать содержимое.
   const container = lootContainerList(state)
     .find((entry) => entry.source_enemy_id === String(corpse.id ?? '')
       || entry.source_enemy_ids.includes(String(corpse.id ?? '')))
-  if (container?.status === 'available') {
-    return {
-      status: 'clarification',
-      narration: 'Тело обыскивается через панель добычи: подойдите к нему вплотную и заберите нужное. Набор выдаёт сервер — выдумывать находку я не стану.',
-      server_owned_contents: true,
-      corpse_id: String(corpse.id ?? ''),
-      loot_container_id: container.id,
-    }
-  }
   if (container) {
+    const here = lootContainersInScene(state, { includeEmptied: true })
+      .some((entry) => entry.id === container.id)
+    if (here) return { ...lootContainerAnswer(state, hero, container), corpse_id: String(corpse.id ?? '') }
     return {
       status: 'clarification',
-      narration: 'С этого тела уже всё сняли: контейнер добычи пуст.',
-      server_owned_contents: false,
+      narration: `Добыча с этого тела осталась на другом ярусе (${container.name}): обыскать её можно, вернувшись туда.`,
+      server_owned_contents: container.status === 'available',
       corpse_id: String(corpse.id ?? ''),
       loot_container_id: container.id,
     }

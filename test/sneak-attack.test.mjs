@@ -135,7 +135,14 @@ test('дееспособный союзник в 5 футах от вражде�
 })
 
 test('server-owned ranged weapon подходит без свойства finesse', () => {
-  const state = sneakState({ inventory: [weapon('srd_5_2_1:longbow')] })
+  // Колчан обязателен: выстрел из лука снимает стрелу, и пустой колчан
+  // закрывает атаку до броска (`AMMUNITION_SPENT`).
+  const state = sneakState({
+    inventory: [
+      weapon('srd_5_2_1:longbow'),
+      materializeCatalogItem('srd_5_2_1:arrows-20', { id: 'rogue-quiver', quantity: 1 }),
+    ],
+  })
   state.mechanics.positions.enemy = { x: 3, y: 1 }
   state.mechanics.positions.ally = { x: 3, y: 2 }
   const result = resolveCommand(command(), state, options([15, 3, 1, 1, 1]))

@@ -1,4 +1,4 @@
-import { materializeCatalogItem } from './item-catalog.mjs'
+import { ammunitionCatalogIdForWeapon, catalogItem, materializeCatalogItem } from './item-catalog.mjs'
 
 const STARTING_GOLD = 20
 
@@ -71,6 +71,30 @@ function starterWeapon(heroId, weaponKey) {
   })
 }
 
+/**
+ * Колчан к стартовому оружию. Выводится из самого оружия, а не приписан классу:
+ * с 2026-08-18 выстрел снимает снаряд у героя так же, как у противника
+ * (`server/npc-equipment.mjs`), и лук без стрел означал бы следопыта, которому
+ * сервер честно отказывает в первой же дальней атаке. Оружие без свойства
+ * `ammunition` (кинжал, длинный меч) колчана не получает — возвращается `null`.
+ */
+function starterAmmunition(heroId, weaponKey) {
+  const template = WEAPONS[weaponKey] ?? WEAPONS.dagger
+  const catalogId = ammunitionCatalogIdForWeapon(template.catalog_id)
+  const entry = catalogId ? catalogItem(catalogId) : null
+  if (!entry) return null
+  return materializeCatalogItem(catalogId, {
+    id: `${heroId}-starter-ammunition`.slice(0, 120),
+    description: 'Полный комплект снарядов из стартового снаряжения героя.',
+    properties: `Комплект из ${Math.max(1, Number(entry.ammunition?.amount) || 1)} шт. Каждый выстрел снимает один снаряд.`,
+    quantity: 1,
+    equipped: false,
+    rarity: 'обычный',
+    image: '',
+    imageStatus: 'ready',
+  })
+}
+
 function starterGear(heroId, gearKey) {
   const template = ARMOUR[gearKey]
   if (!template) return null
@@ -95,6 +119,7 @@ export function withStarterKit(hero) {
     ? structuredClone(hero.inventory)
     : [
         starterWeapon(heroId, profile?.weapon ?? 'dagger'),
+        ...[starterAmmunition(heroId, profile?.weapon ?? 'dagger')].filter(Boolean),
         ...(profile?.gear ?? []).map((key) => starterGear(heroId, key)).filter(Boolean),
       ]
   const currency = totalCurrency(hero?.currency) > 0

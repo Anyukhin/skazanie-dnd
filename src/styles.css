@@ -48,6 +48,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .app { width: 100%; height: 100vh; min-height: 0; display: grid; grid-template-columns: 276px minmax(0, 1fr); background: #0d0c0b; transition: grid-template-columns .25s ease; }
 .app.sidebar-is-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
+/* Геометрия оболочки объявлена на корне, а не на игровой области: по этим же
+   размерам выравнивается слой оверлеев (рассказчик, ожидающая проверка) —
+   он стоит рядом с `main`, чтобы быть виден из любого раздела, и обязан
+   совпадать с рабочей областью. `.game-area` берёт `--status` и
+   `--server-column` отсюда по наследованию, как и раньше. */
+.app { --shell-left: var(--ui-sidebar-width, 276px); --shell-top: 72px; --status: 60px; --server-column: var(--ui-server-column, 320px); }
+.app.sidebar-is-collapsed { --shell-left: 76px; }
 .sidebar { position: relative; z-index: 20; min-width: 0; height: 100vh; display: flex; flex-direction: column; background: linear-gradient(160deg, #1b1815 0%, #11100e 70%); border-right: 1px solid var(--line); overflow: hidden; box-shadow: 16px 0 40px rgba(0,0,0,.22); }
 .sidebar-top { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 17px 0 21px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
 .logo { display: flex; align-items: center; gap: 11px; white-space: nowrap; overflow: hidden; }
@@ -206,8 +213,28 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    вычитается из полотна: на 1440×900 те же 420/320 px оставили бы доске 744×436 и
    клетку 33 px — ровно ту, из-за которой бой и был тесным. Компактные значения по
    умолчанию, просторные — только когда ширины действительно хватает. */
-.game-area { --status: 60px; --server-column: var(--ui-server-column, 320px); --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--ui-rail-height, auto); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
-.pending-check-overlay { position: absolute; z-index: 45; top: calc(var(--status) + 14px); right: calc(var(--server-column) + 14px); width: min(520px, calc(100% - var(--server-column) - 28px)); pointer-events: auto; }
+.game-area { --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--ui-rail-height, auto); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
+/* Слой оверлеев стоит рядом с `main`, а не внутри игровой области: рассказчик и
+   требование броска нужны игроку и в инвентаре, и в журнале, а раньше жили
+   только в комнате. Слой повторяет рабочую область — от бокового меню слева и
+   (в комнате) до правой колонки справа, — поэтому отступы карточек внутри него
+   считаются от тех же краёв, что и прежде, и не переписаны. Модалки (z-index
+   ≥ 100) остаются выше слоя и по-прежнему перекрывают его. */
+.scene-overlay-layer { position: fixed; z-index: 46; top: var(--shell-top, 72px); right: 0; bottom: 0; left: var(--shell-left, 276px); pointer-events: none; transition: left .25s ease; }
+.scene-overlay-layer.beside-server-column { right: var(--server-column, 320px); }
+.scene-overlay-layer > * { pointer-events: auto; }
+/* Общая лента отказов. Источников было три в трёх углах — строка над доской,
+   строка под хотбаром и своя у лавки, — и вторая ошибка затирала первую раньше,
+   чем её успевали прочитать. Очередь стоит выше модалок (z-index ≥ 100
+   намеренно перекрыт): отказ приходит и на действие, начатое в окне. */
+.toast-stack { position: fixed; z-index: 250; top: calc(var(--shell-top, 72px) + 12px); right: 16px; width: min(380px, calc(100vw - 32px)); display: grid; gap: 8px; pointer-events: none; }
+.toast { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid rgba(183,78,67,.34); border-radius: 6px; background: rgba(37,20,17,.97); color: #d09184; font: var(--fs-sm)/1.4 Manrope, sans-serif; box-shadow: 0 14px 34px rgba(0,0,0,.55); pointer-events: auto; animation: toast-arrive .18s ease-out; }
+.toast > svg { flex: 0 0 auto; margin-top: 1px; color: #c26a5b; }
+.toast > span { flex: 1; min-width: 0; }
+.toast > button { flex: 0 0 auto; width: 18px; min-height: 18px; margin: -2px -2px 0 0; padding: 0; border: 0; background: transparent; color: #a97068; cursor: pointer; }
+.toast > button:hover { color: #d09184; }
+@keyframes toast-arrive { from { opacity: 0; transform: translateY(-6px); } }
+.pending-check-overlay { position: absolute; z-index: 45; top: calc(var(--status) + 14px); right: 14px; width: min(520px, calc(100% - 28px)); pointer-events: auto; }
 .pending-check-overlay > summary { min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid rgba(204,151,86,.3); border-radius: 8px; background: rgba(12,10,8,.94); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; list-style: none; box-shadow: 0 12px 30px rgba(0,0,0,.36); }
 .pending-check-overlay > summary::-webkit-details-marker { display: none; }
 .pending-check-overlay > summary span { flex: 1; }
@@ -222,7 +249,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   /* На широком экране другие умолчания, но заданный игроком размер остаётся
      главнее: раньше это правило жёстко ставило 420 и перетаскивание колонки в
      полноэкранном режиме переставало работать вовсе. */
-  .game-area { --status: 72px; --server-column: var(--ui-server-column, 420px); --rail: var(--ui-rail-height, 320px); --slot: 76px; }
+  .app { --status: 72px; --server-column: var(--ui-server-column, 420px); }
+  .game-area { --rail: var(--ui-rail-height, 320px); --slot: 76px; }
 }
 .status-bar { grid-area: status; min-width: 0; display: flex; align-items: center; gap: 18px; padding: 0 26px; border-bottom: 1px solid var(--line); background: rgba(18,16,14,.97); overflow: hidden; }
 .scene-header { position: relative; z-index: auto; flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 18px; pointer-events: none; }
@@ -266,12 +294,32 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    мышь — из подсказки, а словами пункт «Торговец» стоит в боковом меню. */
 .scene-merchant { flex: 0 0 auto; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(114,150,120,.45); border-radius: 50%; background: rgba(23,32,25,.75); color: #9ec2a4; cursor: pointer; pointer-events: auto; }
 .scene-merchant:hover { border-color: rgba(140,193,148,.75); background: rgba(37,55,41,.88); color: #c4e1c8; }
-.server-column { position: relative; grid-area: server; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow: hidden; }
-.server-column > .combat-context-panel { grid-row: 1; min-width: 0; min-height: 0; max-height: 34vh; overflow: auto; }
-.server-column > .rest-controls { grid-row: 1; }
-.server-column > .chat-panel { grid-row: 2; min-width: 0; min-height: 0; }
-.server-column > .chat-closed { grid-row: 2; position: static; inset: auto; width: 100%; justify-self: stretch; align-self: start; }
-.server-column > .player-hud-stack { grid-row: 3; }
+/* Колонка набирается сверху вниз, а не по трём именованным строкам: строк было
+   ровно три, а панелей в разметке — двенадцать, и всё, кроме боевого контекста,
+   хроники и HUD, уезжало в неявные строки под HUD и срезалось `overflow:
+   hidden`. Прокрутить туда было нечем. Поток вместо сетки: боевой контекст
+   первым, ситуативные панели одной прокручиваемой полосой, хроника забирает
+   остаток, HUD прижат к низу. */
+.server-column { position: relative; grid-area: server; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow-y: auto; overscroll-behavior: contain; }
+/* Кто кому уступает высоту, решают веса сжатия. Замерено: на 1366×768 колонке
+   достаётся 358 px, и на всех четверых их хватает только при этих пределах —
+   72 + 44 + 78 + карточка героя. Сами веса обязаны в сумме давать не меньше
+   единицы: при дробных долях (0.45 и 0.25) браузер распределяет не весь
+   дефицит, и остаток вылезает за край колонки — HUD срезался снизу.
+   Боевой контекст стоит первым и уступает высоту вдвое медленнее панелей: в
+   бою это главный ответ на «что сейчас происходит». */
+.server-column > .combat-context-panel { flex: 0 1.8 auto; min-width: 0; min-height: 72px; max-height: 32vh; overflow: auto; }
+/* Полоса ситуативных панелей: короткое содержимое — короткая полоса, длинное
+   прокручивается на месте, а не выталкивает хронику и HUD из колонки. Нижний
+   предел оставляет видимым хотя бы заголовок открытой панели. */
+.server-column > .server-situational { flex: 0 4 auto; min-width: 0; min-height: 44px; display: grid; align-content: start; gap: 10px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #4a3f34 transparent; }
+.server-column > .server-situational:empty { display: none; }
+/* Хроника забирает весь остаток, а при нехватке высоты уступает вчетверо
+   медленнее панелей: 150px — доля, от которой считается сжатие, а не желаемый
+   размер. Иначе десяток открытых панелей оставлял бы от ленты полторы строки. */
+.server-column > .chat-panel { flex: 1 1 150px; min-width: 0; min-height: 78px; }
+.server-column > .chat-closed { flex: 0 0 auto; position: static; inset: auto; width: 100%; justify-self: stretch; align-self: start; }
+.server-column > .player-hud-stack { flex: 0 0 auto; margin-top: auto; }
 .rest-controls { padding: 11px; border: 1px solid rgba(204,151,86,.22); border-radius: 7px; background: rgba(21,17,13,.88); }
 .rest-controls > header { display: flex; align-items: center; gap: 8px; color: #bd8750; }
 .rest-controls > header span { display: grid; }
@@ -770,7 +818,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @keyframes narration-light-two { from { transform: translate3d(5%,-3%,0) scale(1.07); } to { transform: translate3d(-8%,6%,0) scale(.93); } }
 @keyframes narration-vignette { from { opacity: .52; } to { opacity: .92; } }
 
-.cinematic-narration { position: absolute; z-index: 54; left: calc((100% - var(--server-column)) / 2); top: calc(var(--status) + 34px); width: min(680px, calc(100% - var(--server-column) - 54px)); max-height: min(44vh, 430px); display: grid; gap: 12px; padding: 18px 22px 17px; overflow: auto; border: 1px solid rgba(222,180,120,.42); border-radius: 10px; background: radial-gradient(circle at 50% -30%, rgba(154,102,58,.24), transparent 58%), rgba(12,10,10,.94); color: #e6d7c3; transform: translateX(-50%); box-shadow: 0 22px 70px rgba(0,0,0,.72), inset 0 1px rgba(255,244,220,.06); backdrop-filter: blur(14px); animation: cinematic-narration-arrive .34s ease-out; }
+/* Врезка центрируется по слою оверлеев — он уже вырезан по рабочей области,
+   поэтому вычитать правую колонку из ширины больше не нужно. */
+.cinematic-narration { position: absolute; z-index: 54; left: 50%; top: calc(var(--status) + 34px); width: min(680px, calc(100% - 54px)); max-height: min(44vh, 430px); display: grid; gap: 12px; padding: 18px 22px 17px; overflow: auto; border: 1px solid rgba(222,180,120,.42); border-radius: 10px; background: radial-gradient(circle at 50% -30%, rgba(154,102,58,.24), transparent 58%), rgba(12,10,10,.94); color: #e6d7c3; transform: translateX(-50%); box-shadow: 0 22px 70px rgba(0,0,0,.72), inset 0 1px rgba(255,244,220,.06); backdrop-filter: blur(14px); animation: cinematic-narration-arrive .34s ease-out; }
 .cinematic-narration > header { display: flex; align-items: center; gap: 8px; color: #d4a668; font: 700 var(--fs-xs) Manrope,sans-serif; letter-spacing: .16em; }
 .cinematic-narration > header button { margin-left: auto; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.08); border-radius: 50%; background: rgba(255,255,255,.03); color: #9b8e80; cursor: pointer; }
 .cinematic-narration p { margin: 0; color: #eadfce; font: 500 clamp(var(--fs-xl),2.05vw,var(--fs-3xl))/1.56 Spectral,Georgia,serif; text-wrap: pretty; }
@@ -883,6 +933,31 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .hud-hazards { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; padding: 7px 8px; border: 1px solid rgba(190,76,55,.28); border-radius: 4px; background: rgba(139,45,34,.13); color: #c36b59; }
 .hud-hazards span { min-width: 0; display: grid; }.hud-hazards small { color: #8d5147; font-size: var(--fs-xs); font-weight: 800; letter-spacing: .1em; }.hud-hazards b { overflow: hidden; color: #d39a8e; font: 600 var(--fs-md) Spectral,serif; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Компактный HUD вместо спрятанного. Три правила гасили карточку героя
+   насовсем: две по ширине и одно по высоте (≤850 px) — а под последнее попадают
+   ровно те экраны, за которыми играют, 1366×768 и 1440×900. Вместе с карточкой
+   уходили КБ, ОЗ, скорость и обе кнопки листа героя, и узнать их было негде.
+   Здесь она ужимается со 183 до 134 px: портрет меньше, поля и подписи короче,
+   числа и кнопки на месте. Условия те же, что у прежних `display: none`. */
+@media (max-width: 1120px), (max-height: 850px) and (min-width: 681px) {
+  .player-hud { padding: 7px 8px; }
+  .player-hud-stack { gap: 6px; }
+  /* Подпись, имя и роль остаются все три — но в двух строках вместо трёх:
+     «ВАШ ГЕРОЙ» и роль встают рядом. Состав карточки не меняется, при
+     свёрнутом боковом меню роль героя больше нигде не написана. */
+  .hud-identity { gap: 8px; padding-bottom: 5px; line-height: 1.15; }
+  .hud-identity > span { grid-template-columns: auto minmax(0, 1fr); align-items: baseline; column-gap: 7px; }
+  .hud-identity strong { grid-row: 1; grid-column: 1 / -1; }
+  .hud-identity small { grid-row: 2; grid-column: 1; }
+  .hud-identity em { grid-row: 2; grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hud-portrait { width: 34px; height: 34px; }
+  .hud-vitals { padding: 4px 0; }
+  .hud-vitals b { font-size: var(--fs-md); }
+  .hud-vitals small { margin-top: 0; font-size: var(--fs-xxs); }
+  .hud-actions button { height: 26px; }
+  .hud-hazards { margin-bottom: 6px; padding: 5px 7px; }
+}
+
 .chat-panel { position: static; z-index: auto; left: auto; right: auto; top: auto; bottom: auto; width: auto; height: auto; min-width: 0; min-height: 0; display: grid; grid-template-rows: 41px minmax(0, 1fr) auto; border: 1px solid rgba(211,184,149,.15); border-radius: 7px; background: rgba(20,18,15,.95); box-shadow: 0 20px 60px rgba(0,0,0,.75); backdrop-filter: blur(18px); overflow: hidden; animation: chatIn .22s ease-out; }
 .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 15px; border-bottom: 1px solid var(--line); }
 .chat-head > div { display: flex; align-items: center; gap: 9px; }
@@ -892,7 +967,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    у него не было вовсе, и он брал корневой шрифт: 16px, обычного начертания,
    почти белый — из-за этого и выделялся. */
 .chat-head-eyebrow { color: #856944; font: 700 var(--fs-sm) Manrope, sans-serif; letter-spacing: .14em; }
-.chronicle-filters { display: none; align-items: center; gap: 2px; padding: 2px; border: 1px solid rgba(211,184,149,.09); border-radius: 15px; background: rgba(5,4,3,.24); }
+/* Фильтр хроники доступен на любой ширине, где видна сама хроника. Раньше он
+   включался только с 1280px: на ноутбуке лента шла сплошняком, и отделить
+   рассказ от боя было нечем. На узкой колонке пилюли уходят во второй ряд
+   шапки — правило переноса стоит ниже, у `.chat-head > div`. */
+.chronicle-filters { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid rgba(211,184,149,.09); border-radius: 15px; background: rgba(5,4,3,.24); }
 .chronicle-filters button { height: 22px; padding: 0 8px; border: 0; border-radius: 11px; background: transparent; color: #746b61; font: 700 var(--fs-xs) Manrope,sans-serif; cursor: pointer; }
 .chronicle-filters button:hover { color: #b39777; }
 .chronicle-filters button.active { background: rgba(190,137,73,.15); color: #c79b65; }
@@ -919,15 +998,27 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .message.player .message-meta strong { color: #9ca08b; }
 .message-meta time { color: #5e5852; font-size: var(--fs-sm); }
 .message-body p { margin: 2px 0 0; color: #b8afa4; font-family: Spectral, Georgia, serif; font-size: var(--fs-xs); line-height: 1.5; }
-.chronicle-to-latest { position: absolute; z-index: 3; right: 14px; bottom: 13px; min-width: 31px; height: 31px; display: none; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 1px solid rgba(201,149,85,.34); border-radius: 16px; background: rgba(34,28,22,.96); color: #c3935d; cursor: pointer; box-shadow: 0 5px 16px rgba(0,0,0,.55); }
+/* «К последним» — тоже на любой ширине: кнопка плавает над лентой и ничего не
+   двигает, а без неё прочитанная назад хроника не возвращается к свежим
+   записям иначе как прокруткой руками. */
+.chronicle-to-latest { position: absolute; z-index: 3; right: 14px; bottom: 13px; min-width: 31px; height: 31px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 1px solid rgba(201,149,85,.34); border-radius: 16px; background: rgba(34,28,22,.96); color: #c3935d; cursor: pointer; box-shadow: 0 5px 16px rgba(0,0,0,.55); }
 .chronicle-to-latest b { min-width: 15px; height: 15px; display: grid; place-items: center; border-radius: 8px; background: rgba(198,139,72,.18); font-size: var(--fs-xs); }
 @media (min-width: 1280px) {
   .chat-panel { grid-template-rows: auto auto minmax(0, 1fr); }
   .chat-head { min-height: 47px; gap: 8px; padding: 5px 8px 5px 13px; }
   .chat-head > div { min-width: 0; gap: 10px; }
   .chat-interaction-slot:empty { display: block; }
-  .chronicle-filters { display: flex; }
-  .chronicle-to-latest { display: flex; }
+}
+/* Ниже 1280px фильтры не помещаются в строку с подписью — подпись и пилюли
+   встают друг под другом, а кнопка сворачивания остаётся справа на первой
+   строке. Переносить саму шапку нельзя: кнопка уезжала третьим рядом и съедала
+   у ленты сорок пикселей. */
+@media (max-width: 1279px) {
+  .chat-panel { grid-template-rows: auto minmax(0, 1fr) auto; }
+  .chat-head { min-height: 41px; gap: 6px; padding: 4px 10px 4px 15px; }
+  .chat-head > div { min-width: 0; flex-wrap: wrap; gap: 3px 6px; }
+  .chat-head > .icon-button { flex: 0 0 auto; }
+  .chronicle-filters button { height: 20px; padding: 0 7px; }
 }
 /* Служебные записи («Разбор правил», отказы) приглушены на любой ширине
    экрана: раньше стиль жил только в @media ≥1280px, и на ноутбуке разбор
@@ -1165,7 +1256,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media (max-width: 920px) {
   .auth-screen { grid-template-columns: 1fr; overflow-y: auto; }.auth-story { min-height: 340px; padding: 35px; }.auth-story > div:nth-child(2) { margin: 55px 0; }.auth-card { padding: 45px 25px 60px; }
   .objective { display: none; }
-  .player-hud-stack, .player-hud { display: none; }
+  /* Карточка героя не гасится: её ужимает правило «компактный HUD» рядом с
+     самим HUD — на этой ширине оно и срабатывает. */
   .input-wrap > span { display: none; }
   .character-grid { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
   .admin-layout { grid-template-columns: 1fr; }.admin-user { grid-template-columns: minmax(140px,.7fr) minmax(250px,1.3fr) auto; }
@@ -1174,6 +1266,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media (max-width: 680px) {
   body { overflow: auto; }
   .app, .app.sidebar-is-collapsed { display: block; min-height: 0; }
+  /* Меню уезжает за край, верхняя панель ниже — слой оверлеев идёт за ними. */
+  .app, .app.sidebar-is-collapsed { --shell-left: 0px; --shell-top: 58px; }
   .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 246px; transform: translateX(0); transition: transform .25s ease; }
   .sidebar.collapsed { transform: translateX(-100%); }
   .sidebar:not(.collapsed) .logo > span, .sidebar:not(.collapsed) .nav-item span, .sidebar:not(.collapsed) .section-label, .sidebar:not(.collapsed) .player-meta, .sidebar:not(.collapsed) .demo-badge span { display: initial; }
@@ -1523,8 +1617,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    может быть закрыта боем или расстоянием, а назначение перехода видно всегда. */
 .hotbar-turn-controls .scene-object-lead { overflow: hidden; color: #9c8a6c; font: 600 var(--fs-sm) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .combat-hotbar > .tactical-command-status { position: absolute; left: 10px; bottom: calc(100% + 45px); margin: 0; padding: 6px 9px; border-radius: 4px; background: rgba(15,13,11,.92); }
-.combat-hotbar > .tactical-command-error { position: absolute; right: 0; bottom: calc(100% + 44px); width: min(360px, 70vw); margin: 0; }
-.combat-hotbar > .tactical-command-error button { width: 18px; margin: -3px -3px 0 0; }
 /* Отдельной панели исследования больше нет — её место заняла общая панель
    действий в режиме `out-of-combat`. Классы ниже остались: ими размечены строка
    режима и бросок инициативы внутри неё. */
@@ -1564,7 +1656,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
      описание. */
   .hotbar-main { grid-template-columns: auto minmax(0, 1fr) minmax(360px, 46%); gap: 10px; }
   .hotbar-turn-controls { min-width: 112px; }
-  .player-hud-stack, .player-hud { display: none; }
 }
 
 @media (max-width: 820px) {
@@ -1578,8 +1669,14 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .spellbook-tools label { flex-basis: 100%; }
   .combat-hotbar.tactical-control { bottom: 8px; width: calc(100% - 16px); }
   .exploration-path-status { display: none; }
-  .hotbar-main { grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
-  .hotbar-detail { display: none; }
+  /* Описание действия не исчезает молча: третьей колонки на такой ширине нет,
+     поэтому оно переезжает под плитки узкой полосой со своей прокруткой.
+     Дальность, шанс попасть и ожидаемый урон больше нигде не показаны — до
+     броска это единственное место, где их видно. */
+  .hotbar-main { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; }
+  .hotbar-detail { grid-column: 1 / -1; grid-row: 2; align-self: stretch; max-height: 78px; gap: 3px; padding: 6px 0 0; border-top: 1px solid var(--line); }
+  .hotbar-detail strong { font-size: var(--fs-xl); }
+  .hotbar-detail p, .hotbar-detail span { font-size: var(--fs-sm); line-height: 1.35; }
   .hotbar-turn-controls { min-width: 94px; }
   .combat-hotbar .action-tile { width: 138px; min-width: 138px; height: 140px; }
   .map-legend { display: none; }
@@ -1596,11 +1693,14 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .rail-free-input > button { width: 48px; padding: 0; justify-content: center; font-size: 0; }
 }
 
-/* На ноутбуке высота важнее декоративной карточки героя: голосование, ожидание
-   броска и групповой typing живут в правой колонке и обязаны оставаться видимыми. */
+/* На ноутбуке нижняя панель уступает высоту правой колонке: голосование,
+   ожидание броска и групповой typing живут там и обязаны оставаться видимыми.
+   Карточку героя это правило раньше гасило целиком — а под условие попадают
+   ровно те экраны, за которыми играют (1366×768 и 1440×900), и стол терял КБ,
+   ОЗ, скорость и обе кнопки листа героя. Теперь она ужимается, а не исчезает
+   (правило «компактный HUD» рядом с самим HUD). */
 @media (max-height: 850px) and (min-width: 681px) {
   .game-area { --rail: 230px; }
-  .server-column > .player-hud-stack { display: none; }
 }
 
 @media (max-width: 560px) {
@@ -1866,9 +1966,6 @@ button.campaign-title:hover strong { color: #edc996; }
 .action-economy > span.spent { opacity: .5; }
 .action-economy > span.ready { border-color: rgba(119,162,127,.15); }
 .tactical-command-status { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; color: #a88a67; font-size: var(--fs-sm); }
-.tactical-command-error { display: flex; align-items: flex-start; gap: 5px; margin-top: 8px; padding: 7px; border: 1px solid rgba(183,78,67,.28); border-radius: 4px; background: rgba(119,42,35,.14); color: #c28176; font: var(--fs-sm)/1.4 Manrope, sans-serif; }
-.tactical-command-error span { flex: 1; }
-.tactical-control .tactical-command-error button { width: 18px; min-height: 18px; flex: 0 0 18px; margin: -3px -3px 0 0; padding: 0; border: 0; background: transparent; color: #a97068; }
 
 .initiative-ribbon { position: relative; z-index: auto; flex: 0 1 620px; min-width: 0; width: min(620px, 100%); height: 52px; display: flex; flex-wrap: nowrap; align-items: center; gap: 9px; overflow: hidden; padding: 2px 8px; border: 1px solid rgba(206,165,109,.16); border-radius: 6px; background: rgba(14,12,10,.88); box-shadow: 0 8px 24px rgba(0,0,0,.3); backdrop-filter: blur(10px); }
 .initiative-ribbon.exploration { flex: 0 0 auto; width: auto; border-color: rgba(112,185,148,.3); background: rgba(24,46,34,.32); }
@@ -2402,7 +2499,7 @@ button.campaign-title:hover strong { color: #edc996; }
      рамка. Значение обязано остаться длиной, а не `auto`: на `--status` стоит
      `calc()` в позиции кубика (`.dice-tray--compact`), и `calc(auto + 18px)`
      обнуляет отступ — свободный бросок уезжает в самый верх, на планку. */
-  .game-area { --status: 84px; }
+  .app { --status: 84px; }
   .initiative-ribbon { height: auto; min-height: 52px; width: max-content; max-width: min(860px, calc(100% - 560px)); gap: 12px; padding: 7px 12px; }
   /* Свои поля вместо срезки родителем — и только по вертикали: два пикселя по
      бокам уводили ленту за предел `max-width`, планка вылезала из своей колонки

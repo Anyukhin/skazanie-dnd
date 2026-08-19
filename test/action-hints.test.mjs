@@ -15,6 +15,7 @@ import test from 'node:test'
 
 import { MAX_ACTION_HINTS, MAX_PROP_HINTS, suggestedActionsFor } from '../server/action-hints.mjs'
 import { normalizeCampaignState } from '../server/rules-engine.mjs'
+import { INCORRUPTIBLE_TAG } from '../server/underworld.mjs'
 import { addProp, createTacticalMap, serializeTacticalMap, setCell, setDoor } from '../server/tactical-map.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
@@ -377,4 +378,164 @@ test('подсказки не выносят из проекции ничего 
 
   // Каждая подсказка выводится только из того, что уже уехало игроку.
   assert.deepEqual(projected.suggested_actions, suggestedActionsFor(projected))
+})
+
+// ---------------------------------------------------------------------------
+// Изнанка: карман, монета и краденое (волна 4)
+//
+// Проверок здесь две породы. Первая — «строка появляется там, где движок скажет
+// да»: обчистить можно того, до кого дотянулась рука, монету доставать — тому, у
+// кого она есть. Вторая, и она важнее, — «строка не отвечает на вопрос, ради
+// которого механика заведена»: скупщик и неподкупный выводятся из сида, в
+// проекции их нет, и подсказка обязана звучать одинаково по обе стороны сида.
+
+const STOLEN_SPOON = Object.freeze({
+  id: 'spoon-1', name: 'Серебряная ложка', type: 'treasure', quantity: 1, weight: 0.1, origin: 'stolen',
+})
+
+/**
+ * Рыночная площадь: живой мирный человек, торговец за прилавком и герой,
+ * который может стоять вплотную или в другом конце площади.
+ *
+ * `tags` профиля принимает `INCORRUPTIBLE_TAG` — это единственный способ
+ * назначить неподкупность руками, и он нужен, чтобы сверить обе стороны сида на
+ * одном и том же состоянии.
+ */
+function underworldState({
+  heroCell = { x: 4, y: 2 },
+  conversation = false,
+  purse = { copper: 50 },
+  inventory = [],
+  mateInventory = [],
+  merchant = true,
+  combat = false,
+  tags = [],
+} = {}) {
+  const hallId = 'market'
+  const abilities = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
+  const grid = []
+  for (let y = 0; y < 4; y += 1) for (let x = 0; x < 8; x += 1) grid.push({ x, y, type: 'floor', revealed: true })
+  return normalizeCampaignState({
+    sessionCode: 'HINTS-UNDERWORLD',
+    partyMemberIds: ['hero', 'mate'],
+    players: [
+      { id: 'hero', character: 'Мира', hp: 20, maxHp: 20, armor: 14, abilities, currency: purse, inventory, ...heroCell },
+      { id: 'mate', character: 'Тарн', hp: 20, maxHp: 20, armor: 14, abilities, inventory: mateInventory, x: 0, y: 0 },
+    ],
+    enemies: [],
+    scene: { turn: 1, title: 'Рыночная площадь', location: hallId, objective: '', cells: grid },
+    social: {
+      npcs: [{ id: 'brom', name: 'Бром', role: 'лавочник', location: hallId, visibility: 'public', tags }],
+      relationships: {},
+      conversations: conversation
+        ? [{ id: 'talk-1', npc_id: 'brom', hero_id: 'hero', player_message: 'Нам нужен проводник', npc_reply: 'Поглядим.' }]
+        : [],
+      promises: [],
+    },
+    npc_world: {
+      schema_version: 2,
+      placements: [{ npc_id: 'brom', location_id: hallId, x: 5, y: 2, placement_reason: 'test' }],
+      vitals: {}, stances: {}, inventories: {},
+    },
+    merchants: merchant
+      ? [{
+          id: 'brom', name: 'Бром', location: hallId, available: true, purse_cp: 50_000,
+          stock: [{ stock_id: 'stock-1', catalog_id: 'srd_5_2_1:dagger', quantity: 2, name: 'Кинжал', type: 'weapon', weight: 1, rarity: 'обычный' }],
+        }]
+      : [],
+    mechanics: {
+      positions: { hero: { ...heroCell }, mate: { x: 0, y: 0 } },
+      combat: { active: combat },
+    },
+  })
+}
+
+const hintsFor = (state, actorId = 'hero') => campaignStateForViewer(state, { role: 'player', heroIds: [actorId] }, actorId).suggested_actions ?? []
+const hintTexts = (state, actorId = 'hero') => hintsFor(state, actorId).map((hint) => hint.text)
+
+test('карман называют тому, кто до него дотянулся, и никому больше', () => {
+  const close = hintTexts(underworldState())
+  assert.ok(close.includes('Можно незаметно обчистить карманы: Бром (Ловкость рук)'), JSON.stringify(close))
+
+  // Через площадь рука не дотягивается — и строки нет: панель на четыре строки,
+  // и звать обчистить каждого встречного она не должна.
+  const across = hintTexts(underworldState({ heroCell: { x: 0, y: 2 } }))
+  assert.equal(across.some((line) => /обчистить карманы/u.test(line)), false, JSON.stringify(across))
+
+  // Ни СЛ, ни содержимого кармана в строке нет: в проекции их нет вовсе.
+  assert.equal(close.some((line) => /СЛ|мм|монет/u.test(line)), false, JSON.stringify(close))
+})
+
+test('в бою изнанки нет: ни кармана, ни монеты, ни краденого', () => {
+  const state = underworldState({ combat: true, conversation: true, inventory: [STOLEN_SPOON] })
+  assert.deepEqual(hintsFor(state), [], 'в бою действия перечисляет хотбар')
+})
+
+test('монету предлагают после разговора и по кошельку, но о неподкупности молчат', () => {
+  const silent = hintTexts(underworldState({ heroCell: { x: 0, y: 2 } }))
+  assert.equal(silent.some((line) => /монет/u.test(line)), false, 'разговора не было — и подкреплять нечего')
+
+  const talked = hintTexts(underworldState({ heroCell: { x: 0, y: 2 }, conversation: true }))
+  assert.ok(talked.includes('Можно подкрепить убеждение монетой: Бром'), JSON.stringify(talked))
+
+  // Пустой кошелёк движок встретит отказом (`INSUFFICIENT_FUNDS`), и звать
+  // доставать монету того, у кого её нет, — подсказка наоборот.
+  const broke = hintTexts(underworldState({ heroCell: { x: 0, y: 2 }, conversation: true, purse: { copper: 3 } }))
+  assert.equal(broke.some((line) => /монет/u.test(line)), false, JSON.stringify(broke))
+
+  // Неподкупный назначен руками — строка обязана остаться той же буква в букву.
+  const incorruptible = hintTexts(underworldState({
+    heroCell: { x: 0, y: 2 }, conversation: true, tags: [INCORRUPTIBLE_TAG],
+  }))
+  assert.deepEqual(incorruptible, talked, 'подкупность читалась бы из панели раньше, чем из разговора')
+  assert.doesNotMatch(JSON.stringify(incorruptible), /неподкуп|оскорб/iu)
+})
+
+test('сбыть краденое предлагают нейтрально: торговца строка не выдаёт', () => {
+  const far = { x: 0, y: 2 }
+  const withLoot = hintTexts(underworldState({ heroCell: far, inventory: [STOLEN_SPOON] }))
+  assert.ok(withLoot.includes('Можно попробовать сбыть краденое торговцу'), JSON.stringify(withLoot))
+  // Кто берёт чужое, выводится из сида и в проекцию не едет: назови строка
+  // торговца по имени — она ответила бы на вопрос, ради которого скупщик заведён.
+  assert.equal(withLoot.some((line) => /сбыть краденое.*Бром|скупщик/iu.test(line)), false, JSON.stringify(withLoot))
+
+  // Нет краденого — нет и предложения.
+  assert.equal(
+    hintTexts(underworldState({ heroCell: far })).some((line) => /краденое/u.test(line)),
+    false,
+  )
+  // Нет торговца — сбывать некому.
+  assert.equal(
+    hintTexts(underworldState({ heroCell: far, inventory: [STOLEN_SPOON], merchant: false })).some((line) => /краденое/u.test(line)),
+    false,
+  )
+})
+
+test('краденое соседа по столу подсказку не рождает: чужая история вещи закрыта', () => {
+  const state = underworldState({ heroCell: { x: 0, y: 2 }, mateInventory: [STOLEN_SPOON] })
+  const room = campaignStateForViewer(state, { role: 'player', heroIds: ['hero'] }, 'hero')
+  const mate = room.players.find((player) => player.id === 'mate')
+  assert.equal(mate.inventory[0].origin, undefined, 'происхождение чужой вещи проекция снимает')
+  assert.equal(
+    (room.suggested_actions ?? []).some((hint) => /краденое/u.test(hint.text)),
+    false,
+    'подсказка не вправе знать больше проекции',
+  )
+
+  // Своему герою та же вещь видна вместе с историей — и строка появляется.
+  assert.ok(hintTexts(state, 'mate').includes('Можно попробовать сбыть краденое торговцу'))
+})
+
+test('строки изнанки не выносят из проекции ни латиницы, ни закрытых тегов', () => {
+  const state = underworldState({ conversation: true, inventory: [STOLEN_SPOON], tags: [INCORRUPTIBLE_TAG] })
+  const hints = hintsFor(state)
+  const serialized = JSON.stringify(hints.map((hint) => hint.text))
+  for (const line of hints) assert.doesNotMatch(line.text, /[A-Za-z]/u, `подсказка показала латиницу: ${line.text}`)
+  for (const secret of ['gm_only', 'скупщик', 'неподкупный', 'pocket-picked']) {
+    assert.doesNotMatch(serialized, new RegExp(secret, 'iu'), `подсказки выдали ${secret}`)
+  }
+  assert.ok(hints.length <= MAX_ACTION_HINTS)
+  // Тот же вход — тот же список: перестановка читалась бы как изменение мира.
+  const room = campaignStateForViewer(state, { role: 'player', heroIds: ['hero'] }, 'hero')
+  assert.deepEqual(suggestedActionsFor(room, 'hero'), hints)
 })
