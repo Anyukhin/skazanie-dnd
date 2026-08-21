@@ -14,9 +14,9 @@ import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettin
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
-  ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
+  ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, HeroFaceInitials, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
   REPUTATION_TIER_LABELS, UI_SCALE_PRESETS, battleEventText, canonicalLocationKey, clampUiScale,
-  combatState, locationsMatch, useDialogEscape,
+  combatState, hasHeroPortrait, heroFaceMode, heroFaceStyle, locationsMatch, useDialogEscape,
 } from './app-shared'
 import type { BoardCombatant } from './app-shared'
 import { AdminView, AgentInteractionCard, CampaignModal, ChatPanel, JournalView, SettingsView } from './AppViews'
@@ -80,6 +80,9 @@ type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'set
 /** Слава приходит с сервера ступенями, а не числом: показываем то же словом. */
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
+// Свет и тени доски — настройка устройства, как и фон локации: за одним столом
+// у кого-то экран поярче, у кого-то потемнее, и общий выбор навязывать нечем.
+const BOARD_LIGHTING_KEY = 'skazanie-board-lighting-v1'
 const COMBAT_ANIMATIONS_KEY = 'skazanie-combat-animations-v1'
 // Озвучка — настройка устройства, а не кампании: за одним столом кто-то слушает,
 // кто-то читает, и навязывать общий выбор нельзя.
@@ -141,6 +144,11 @@ function loadScenicBackdrop() {
   return window.localStorage.getItem(SCENIC_BACKDROP_KEY) !== 'false'
 }
 
+/** Свет доски включён, пока его не выключили: умолчание — прежняя картинка. */
+function loadBoardLighting() {
+  return window.localStorage.getItem(BOARD_LIGHTING_KEY) !== 'false'
+}
+
 function Logo() {
   return <div className="logo"><div className="logo-mark"><Dices size={21} /></div><span>СКАЗАНИЕ</span></div>
 }
@@ -154,7 +162,8 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, on
   const downedLabel = deathSaves?.stable ? 'СТАБИЛИЗИРОВАН' : 'БЕЗ СОЗНАНИЯ'
   return (
     <button className={`player-card ${selected ? 'active' : ''} ${accessible ? '' : 'locked'} ${downed ? 'downed' : ''}`} onClick={onClick} disabled={!accessible} title={accessible ? `${player.character}: ${player.online ? 'в сети' : 'не в сети'}${typing ? ', формулирует намерение' : ''}` : `${player.character}: этот герой закреплён за другим игроком`}>
-      <div className="avatar portrait-avatar" style={{ '--avatar': player.color, backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition } as React.CSSProperties}>
+      <div className="avatar portrait-avatar" data-face={heroFaceMode(player)} style={heroFaceStyle(player, { '--avatar': player.color } as React.CSSProperties)}>
+        {!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}
         <span className={`presence ${player.online ? 'online' : ''}`} aria-label={player.online ? 'В сети' : 'Не в сети'} />
       </div>
       <div className="player-meta">
@@ -488,7 +497,9 @@ function PlayerHud({ player, hazards = [], onCharacter, onInventory }: { player:
   return (
     <aside className="player-hud">
       <div className="hud-identity">
-        <div className="hud-portrait" style={{ backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition }} />
+        <div className="hud-portrait" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>
+          {!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}
+        </div>
         <span><small>ВАШ ГЕРОЙ</small><strong>{player.character}</strong><em>{player.role}</em></span>
       </div>
       <div className="hud-vitals">
@@ -556,7 +567,7 @@ function CharactersView({ players, selectedId, turnId, accessibleHeroIds, onSele
       <div className="character-grid">
         {players.map((player) => (
           <button key={player.id} disabled={!accessibleHeroIds.includes(player.id)} className={`character-sheet ${selectedId === player.id ? 'active' : ''} ${accessibleHeroIds.includes(player.id) ? '' : 'locked'}`} onClick={() => onSelect(player.id)}>
-            <div className="character-art" style={{ backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition }}><span className={player.online ? 'online' : ''}>{player.online ? 'В СЕТИ' : 'НЕ В СЕТИ'}</span></div>
+            <div className="character-art" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}<span className={player.online ? 'online' : ''}>{player.online ? 'В СЕТИ' : 'НЕ В СЕТИ'}</span></div>
             <div className="character-info"><small>{player.name} играет за</small><h2>{player.character}</h2><p>{player.role}</p>
               <div className="character-stats"><span><b>{player.hp}</b> / {player.maxHp}<small>ЗДОРОВЬЕ</small></span><span><b>{player.armor}</b><small>КЛАСС БРОНИ</small></span><span><b>{player.speed} фт</b><small>СКОРОСТЬ</small></span></div>
             </div>
@@ -633,7 +644,7 @@ function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve
         const controllable = canResolve(hero.id)
         const replacing = replacementOpen[hero.id] === true
         return <article key={hero.id} className="fallen-hero-card">
-          <div className="fallen-hero-portrait" style={{ backgroundImage: `url(${hero.portrait})`, backgroundPosition: hero.portraitPosition }}><Skull size={22} /></div>
+          <div className="fallen-hero-portrait" data-face={heroFaceMode(hero)} style={heroFaceStyle(hero)}>{!hasHeroPortrait(hero) && <HeroFaceInitials hero={hero} />}<Skull size={22} /></div>
           <div className="fallen-hero-name"><small>ПОГИБШИЙ ГЕРОЙ</small><strong>{hero.character}</strong><span>{hero.role} · {hero.level} уровень</span></div>
           {controllable ? <div className="death-resolution-actions">
             <button className="resurrect-hero" disabled={busy} onClick={() => { setLocalError(null); onResolve(hero.id, 'resurrect') }}><Sparkles size={17} /><span><strong>Воскресить</strong><small>Вернётся с 1 ОЗ</small></span></button>
@@ -743,6 +754,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // По умолчанию кубик бросает игрок: автоматика включается осознанно.
   const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') === 'true')
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
+  const [boardLighting, setBoardLighting] = useState(loadBoardLighting)
   const [combatAnimations, setCombatAnimations] = useState(() => window.localStorage.getItem(COMBAT_ANIMATIONS_KEY) !== 'false')
   const [atmosphereSettings, setAtmosphereSettings] = useState(loadAtmosphereSettings)
   const [voiceMode, setVoiceMode] = useState<NarrationVoiceMode>(() => normalizeVoiceMode(window.localStorage.getItem(NARRATION_VOICE_KEY)))
@@ -1005,6 +1017,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [uiScale])
   useEffect(() => { window.localStorage.setItem('skazanie-auto-attack-roll', String(autoAttackRoll)) }, [autoAttackRoll])
   useEffect(() => { window.localStorage.setItem(SCENIC_BACKDROP_KEY, String(scenicBackdrop)) }, [scenicBackdrop])
+  useEffect(() => { window.localStorage.setItem(BOARD_LIGHTING_KEY, String(boardLighting)) }, [boardLighting])
   useEffect(() => { window.localStorage.setItem(COMBAT_ANIMATIONS_KEY, String(combatAnimations)) }, [combatAnimations])
   useEffect(() => { window.localStorage.setItem(NARRATION_VOICE_KEY, voiceMode) }, [voiceMode])
   useEffect(() => { window.localStorage.setItem(ACTION_HINTS_KEY, String(actionHintsEnabled)) }, [actionHintsEnabled])
@@ -1446,6 +1459,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             tacticalError={tacticalError}
             autoAttackRoll={autoAttackRoll}
             scenicBackdrop={scenicBackdrop}
+            boardLighting={boardLighting}
             combatAnimations={combatAnimations}
             visualBatch={combatVisualBatch}
             onStartCombat={() => startCombat(activePlayer.id)}
@@ -1508,7 +1522,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
           onActivate={(itemId, activated) => activateItem(activePlayer.id, itemId, activated)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
+        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>

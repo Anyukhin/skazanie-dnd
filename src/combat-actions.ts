@@ -9,6 +9,44 @@ type CatalogAction = CombatAction & { classKey: string; subclass?: string | null
 type CatalogClass = { classKey: string; label: string; subclassLevel: number; sourceUrl: string; subclasses: Array<{ id: string; name: string; sourceUrl: string }>; actions: CatalogAction[] }
 
 const generatedClasses = new Map((catalogPayload.classes as unknown as CatalogClass[]).map((entry) => [entry.classKey, entry]))
+
+/**
+ * Имена, снятые с dndsu, местами набраны капсом целиком. В подсказке запаса это
+ * крик, а не подпись, поэтому целиком заглавное имя опускается до обычного.
+ * Смешанный регистр не трогаем: «Песнь клинка» уже написана как надо.
+ */
+function catalogSentenceCase(value: string): string {
+  return value && value === value.toLocaleUpperCase('ru')
+    ? value.charAt(0) + value.slice(1).toLocaleLowerCase('ru')
+    : value
+}
+
+/**
+ * Имя способности по ключу её запаса.
+ *
+ * Серверная проекция называет такие запасы `feature_<id>`
+ * (`server/combat-actions.mjs:295`), где `id` — слуг из каталога классов:
+ * латиницей и в транслите (`feature_wizard-magicheskoe-vosstanovlenie`).
+ * Игроку он не говорит ничего, а в ряду запасов панели действий ещё и
+ * обрезается до «feature_wi…». Пополнять словарь подписей по ключу на
+ * способность нечестно: таких способностей 115 на двенадцать классов, и
+ * следующая пропущенная снова уйдёт игроку латиницей. Каталог у клиента тот
+ * же самый, что у сервера, и имя в нём русское — берём имя оттуда.
+ *
+ * Ключ строится по всем действиям каталога, а не только по тем, у кого есть
+ * `uses`: карта нужна только для показа, и лишняя запись в ней не стоит ничего,
+ * а недостающая снова покажет игроку транслит.
+ */
+const featureResourceNames = new Map<string, string>()
+for (const catalog of (catalogPayload.classes as unknown as CatalogClass[])) {
+  for (const entry of catalog.actions ?? []) {
+    if (entry.id && entry.name) featureResourceNames.set(`feature_${entry.id}`, catalogSentenceCase(entry.name))
+  }
+}
+
+export function featureResourceName(key: string): string | null {
+  return featureResourceNames.get(key) ?? null
+}
 const curatedPassiveFeatures: Partial<Record<NonNullable<Player['characterClass']>, CatalogAction[]>> = {
   fighter: [{
     id: 'fighter-indomitable', classKey: 'fighter', name: 'Несгибаемый', category: 'class', target: 'self', actionType: 'free', range: 0, minimumLevel: 9,

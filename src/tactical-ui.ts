@@ -294,6 +294,11 @@ export function battleRollContext(events: readonly GameEvent[] | null | undefine
   if (payload.pack_tactics === true) advantageReasons.push('тактика стаи')
   if (payload.high_ground === 'higher') advantageReasons.push('позиция выше цели')
   if (payload.high_ground === 'lower') disadvantageReasons.push('позиция ниже цели')
+  // Формулировка совпадает с серверной (`attackSwingShape`,
+  // `server/rules-engine.mjs`) и с `LONG_RANGE_ROLL_REASON` в `app-shared.tsx`,
+  // по которому хроника узнаёт эту причину и не печатает её дважды. Импортом
+  // это не связано нарочно: модуль собирается тестом в одиночку, и ссылка на
+  // соседа с JSX ломает его сборку.
   if (payload.long_range === true) disadvantageReasons.push('дальний диапазон')
   return {
     mode,

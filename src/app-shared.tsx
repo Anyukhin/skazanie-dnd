@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { CircleAlert, X } from 'lucide-react'
 import type { CombatMechanics, GameState, Player, ReputationTier, SummonedCreature } from './types'
 
@@ -13,6 +14,71 @@ import type { CombatMechanics, GameState, Player, ReputationTier, SummonedCreatu
 
 export function PageHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return <div className="page-header"><span>{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>
+}
+
+/**
+ * Лицо героя: всё, из чего собирается аватар. Тип нарочно шире `Player` —
+ * тем же приёмом рисуется черновик листа в редакторе и павший герой, а у них
+ * своя форма записи.
+ */
+export type HeroFace = {
+  portrait?: string
+  portraitPosition?: string
+  character?: string
+  name?: string
+  initials?: string
+  color?: string
+}
+
+/** Портрет есть только тогда, когда в поле лежит непустая ссылка. */
+export function hasHeroPortrait(hero: HeroFace | null | undefined): boolean {
+  return Boolean(String(hero?.portrait ?? '').trim())
+}
+
+/**
+ * Инициалы героя. Приоритет у явного поля листа (`initials`), дальше — первые
+ * буквы имени персонажа, и лишь в самом крайнем случае вопросительный знак:
+ * герой без имени бывает ровно один миг — в свежесозданном пустом слоте.
+ */
+export function heroInitials(hero: HeroFace | null | undefined): string {
+  const explicit = String(hero?.initials ?? '').trim()
+  if (explicit) return explicit.slice(0, 2).toLocaleUpperCase('ru')
+  const source = String(hero?.character || hero?.name || '').trim()
+  const letters = source.split(/\s+/u).filter(Boolean).slice(0, 2).map((part) => part.slice(0, 1)).join('')
+  return (letters || '?').toLocaleUpperCase('ru')
+}
+
+/**
+ * Стиль аватара героя. Портрет есть — рисуем его по своей позиции в спрайте
+ * отряда; портрета нет — не выставляем `backgroundImage` **вовсе** и отдаём
+ * цвет героя переменной `--face-color`.
+ *
+ * Инлайновый `backgroundImage: url()` от пустой строки и был причиной пустых
+ * кружков: браузер честно запрашивал сам адрес страницы, ничего не рисовал, а
+ * перебить инлайновый стиль из листа стилей нельзя. Поэтому фолбэк не
+ * «поверх» портрета, а вместо него.
+ */
+export function heroFaceStyle(hero: HeroFace | null | undefined, extra: CSSProperties = {}): CSSProperties {
+  if (hasHeroPortrait(hero)) {
+    return { ...extra, backgroundImage: `url(${hero?.portrait})`, backgroundPosition: hero?.portraitPosition }
+  }
+  return { ...extra, ['--face-color' as string]: hero?.color || '#6d5b45' }
+}
+
+/** Значение `data-face` для оправы аватара: метка «здесь инициалы, а не фото». */
+export function heroFaceMode(hero: HeroFace | null | undefined): 'initials' | undefined {
+  return hasHeroPortrait(hero) ? undefined : 'initials'
+}
+
+/**
+ * Инициалы поверх цвета героя — единственная замена портрету во всём
+ * интерфейсе: на фишке доски, в списке отряда, в ленте инициативы и в
+ * ресурсном кластере панели. `aria-hidden` намеренно: имя героя рядом уже
+ * названо подписью или `aria-label` оправы, и скринридер не обязан слышать
+ * «Л В» вторым голосом.
+ */
+export function HeroFaceInitials({ hero }: { hero: HeroFace | null | undefined }) {
+  return <b className="hero-face-initials" aria-hidden="true">{heroInitials(hero)}</b>
 }
 
 /** Сколько отказов видно разом и сколько живёт каждый. */
@@ -114,7 +180,140 @@ export function itemCountLabel(count: number) {
   return `${value} предметов`
 }
 
-export function battleEventText(state: GameState, event: NonNullable<GameState['battleLog']>[number]) {
+/**
+ * Виды урона по-русски, в именительном падеже. Один словарь на всех
+ * потребителей: строку хроники, историю урона у наведённой фишки и список
+ * вариантов заклинания на панели (`SPELL_OPTION_LABELS`, `DungeonMap.tsx`) —
+ * раньше он жил там же и обслуживал заодно урон, отчего «колющий» существовал
+ * в интерфейсе ровно в одном месте и хронике не доставался.
+ */
+export const DAMAGE_TYPE_LABELS: Record<string, string> = {
+  acid: 'Кислота', bludgeoning: 'Дробящий', cold: 'Холод', fire: 'Огонь', force: 'Сила',
+  lightning: 'Молния', necrotic: 'Некротический', piercing: 'Колющий', poison: 'Яд',
+  psychic: 'Психический', radiant: 'Излучение', slashing: 'Рубящий', thunder: 'Звук',
+}
+
+/**
+ * Тот же список в родительном падеже: «8 колющего», «6 огненного». Второй
+ * словарь нужен именно потому, что первый не склоняется правилом — половина
+ * видов урона это прилагательные («колющий»), половина существительные
+ * («огонь», «яд»), и вывести одно из другого нечем.
+ */
+const DAMAGE_TYPE_AMOUNT_LABELS: Record<string, string> = {
+  acid: 'кислотного', bludgeoning: 'дробящего', cold: 'холодного', fire: 'огненного',
+  force: 'силового', lightning: 'электрического', necrotic: 'некротического',
+  piercing: 'колющего', poison: 'ядовитого', psychic: 'психического',
+  radiant: 'сияющего', slashing: 'рубящего', thunder: 'звукового',
+}
+
+/** Название вида урона для подписи. Пустая строка — вида нет или он незнаком. */
+export function damageTypeLabel(damageType: string | null | undefined): string {
+  return DAMAGE_TYPE_LABELS[String(damageType ?? '').toLowerCase()] ?? ''
+}
+
+/**
+ * «8 колющего» — величина вместе с видом. Незнакомый или отсутствующий вид даёт
+ * прежнее «8 урона»: выдумывать слово вместо неизвестного вида хуже, чем
+ * промолчать о нём.
+ */
+export function damageAmountText(amount: number | null | undefined, damageType?: string | null): string {
+  const value = Number(amount) || 0
+  return `${value} ${DAMAGE_TYPE_AMOUNT_LABELS[String(damageType ?? '').toLowerCase()] ?? 'урона'}`
+}
+
+/**
+ * Глагол по виду атаки. Вид приходит с сервера полем `attackKind` и отвечает за
+ * обе стороны стола: у героя он берётся из выбранного режима оружия, у
+ * существа — из его действия стат-блока. Без этого поля (бой, сыгранный до
+ * появления признака) глагол остаётся прежним нейтральным «атакует».
+ */
+const ATTACK_VERB_LABELS: Record<'melee' | 'ranged' | 'thrown', string> = {
+  melee: 'бьёт', ranged: 'стреляет в', thrown: 'мечет в',
+}
+
+/**
+ * Причина помехи от стрельбы за пределы обычной дальности. Формулировку задаёт
+ * сервер (`attackSwingShape`, `server/rules-engine.mjs`), здесь она названа
+ * именем, чтобы хроника не напечатала её дважды: «дальний выстрел с помехой» в
+ * голове строки и та же причина ещё раз после исхода.
+ */
+const LONG_RANGE_ROLL_REASON = 'дальний диапазон'
+
+/**
+ * Характеристика спасброска по-русски. Раньше в строку уезжал сырой ключ
+ * («спасбросок DEX от «Огненного шара»») — единственное английское слово во
+ * всей хронике. Сокращение, а не полное имя, выбрано ради падежа: «спасбросок
+ * Ловкость» неграмотно, «спасбросок Ловкости» потребовало бы третьего словаря
+ * на шесть строк, а сокращения не склоняются вовсе. Незнакомый ключ остаётся
+ * собой, а не превращается в выдумку.
+ */
+function abilitySaveLabel(ability: string | null | undefined): string {
+  const key = String(ability ?? '').toLowerCase()
+  return ABILITY_SHORT_LABELS[key] ?? (key ? key.toLocaleUpperCase('ru') : '')
+}
+
+/**
+ * Чем и с какого расстояния бьют — короткая скобка после цели.
+ *
+ * Название не зависит от вида атаки: удар легендарного действия и луч
+ * заклинания вида не несут вовсе, но названы оба, и молчать о них значило бы
+ * терять «чем» ради «как». Расстояние — наоборот: без вида атаки неизвестно,
+ * дальний это удар или обычные пять футов, и число тогда не печатается.
+ */
+function attackAimText(event: BattleLogEvent, kind?: 'melee' | 'ranged' | 'thrown'): string {
+  const parts: string[] = []
+  // Имя оружия героя, имя действия существа и имя заклинания публичны все три:
+  // своё снаряжение отряд видит в листе, а поступок противника — своими
+  // глазами. Ни ключа вещи, ни идентификатора действия здесь нет и быть не
+  // может — сервер их до стола не довозит.
+  const weapon = String(event.itemName || event.actionName || event.spellName || '').trim()
+  if (weapon) parts.push(`«${weapon}»`)
+  if (kind && kind !== 'melee' && event.distanceFeet != null) parts.push(`${event.distanceFeet} фт`)
+  if (event.longRange) parts.push('дальний выстрел с помехой')
+  return parts.length ? ` (${parts.join(', ')})` : ''
+}
+
+/**
+ * Почему бросок был с преимуществом или помехой. Причины приходят готовыми
+ * русскими строками с сервера — тем же списком, что объясняет прогноз удара, —
+ * и здесь только выбираются и обрезаются: в строку хроники входят две, дальше
+ * она перестаёт читаться с одного взгляда.
+ */
+function rollModeText(event: BattleLogEvent): string {
+  if (event.rollMode !== 'advantage' && event.rollMode !== 'disadvantage') return ''
+  const advantage = event.rollMode === 'advantage'
+  const reasons = [...new Set(((advantage ? event.advantageReasons : event.disadvantageReasons) ?? []).map(String))]
+    .map((reason) => reason.trim())
+    .filter((reason) => reason && !(event.longRange && reason === LONG_RANGE_ROLL_REASON))
+    .slice(0, 2)
+  if (!reasons.length) {
+    // Дальний выстрел уже назван в голове строки вместе со своей помехой:
+    // второе «с помехой» после исхода пересказывало бы тот же факт.
+    if (!advantage && event.longRange) return ''
+    return advantage ? ' (с преимуществом)' : ' (с помехой)'
+  }
+  return ` (${advantage ? 'преимущество' : 'помеха'}: ${reasons.join(', ')})`
+}
+
+/**
+ * Разбор броска атаки: «к20 14+4=18». Кость и модификатор есть только у своих —
+ * у удара противника проекция оставляет один итог (`publicBattleEventFor`,
+ * `server/viewer-projection.mjs`), потому что модификатор атаки существа —
+ * число его стат-блока, закрытое наравне с КД. Тогда печатается сам итог, как
+ * и печатался.
+ */
+function attackRollText(roll: BattleLogEvent['roll']): string {
+  const die = Number(roll?.die)
+  const modifier = Number(roll?.modifier)
+  const total = roll?.total ?? '?'
+  if (!Number.isFinite(die) || die <= 0) return `${total}`
+  if (!Number.isFinite(modifier) || modifier === 0) return `к20 ${die}`
+  return `к20 ${die}${modifier > 0 ? '+' : '−'}${Math.abs(modifier)}=${total}`
+}
+
+type BattleLogEvent = NonNullable<GameState['battleLog']>[number]
+
+export function battleEventText(state: GameState, event: BattleLogEvent) {
   const actorName = (id?: string) => state.players.find((player) => player.id === id)?.character
     ?? state.actors?.find((actor) => actor.id === id)?.name
     ?? state.enemies?.find((enemy) => enemy.id === id)?.name
@@ -166,15 +365,15 @@ export function battleEventText(state: GameState, event: NonNullable<GameState['
     const modifier = Number(event.roll?.modifier) || 0
     const formula = `${event.roll?.die ?? '?'} ${modifier >= 0 ? '+' : '−'} ${Math.abs(modifier)} = ${event.roll?.total ?? '?'}`
     const outcome = event.result === 'success' ? 'успех' : 'провал'
-    const damage = event.damage != null ? ` · ${event.damage} урона` : ''
+    const damage = event.damage != null ? ` · ${damageAmountText(event.damage, event.damageType)}` : ''
     const hp = !hideTargetFacts && event.hpAfter != null ? ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter}` : ''
     const automatic = event.automaticSuccess ? ' · автоматический успех' : event.immunity ? ` · иммунитет: ${event.immunity}` : ''
     const itemBonus = event.itemSavingThrowBonus ? ` · предмет +${event.itemSavingThrowBonus}` : ''
     return hideTargetFacts
       ? `${actorName(event.targetId)} делает спасбросок от «${event.spellName ?? event.spellId ?? 'заклинания'}» — ${outcome}${automatic}${itemBonus}${damage}.`
-      : `${actorName(event.targetId)}: спасбросок ${event.ability?.toUpperCase() ?? ''} от «${event.spellName ?? event.spellId ?? 'заклинания'}» ${formula} против СЛ ${event.roll?.difficulty ?? '?'} — ${outcome}${automatic}${itemBonus}${damage}${hp}.`
+      : `${actorName(event.targetId)}: спасбросок ${abilitySaveLabel(event.ability)} от «${event.spellName ?? event.spellId ?? 'заклинания'}» ${formula} против СЛ ${event.roll?.difficulty ?? '?'} — ${outcome}${automatic}${itemBonus}${damage}${hp}.`
   }
-  if (event.type === 'spell-damage') return `${actorName(event.actorId)} применяет «${event.spellName ?? event.spellId ?? 'заклинание'}» к ${actorName(event.targetId)}: ${event.damage ?? 0} урона${hideTargetFacts ? '' : ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
+  if (event.type === 'spell-damage') return `${actorName(event.actorId)} применяет «${event.spellName ?? event.spellId ?? 'заклинание'}» к ${actorName(event.targetId)}: ${damageAmountText(event.damage ?? 0, event.damageType)}${hideTargetFacts ? '' : ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
   if (event.type === 'healing') {
     const source = event.spellId ? ` заклинанием «${event.spellName ?? event.spellId}»` : ''
     // «Лечит себя» — для любого участника, а не только для противника: зелье
@@ -187,7 +386,16 @@ export function battleEventText(state: GameState, event: NonNullable<GameState['
     if (event.healing == null) return `${actorName(event.actorId)} лечит ${whom}${source}: раны затягиваются.`
     return `${actorName(event.actorId)} лечит ${whom}${source}: +${event.healing} ОЗ${hideTargetFacts ? '' : ` · ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
   }
-  if (event.type === 'area-attack') return `${actorName(event.actorId)} применяет «${event.itemName ?? 'областную атаку'}» в области радиусом ${event.area?.radiusFeet ?? '?'} фт.`
+  // Область называет и то, от чего спасаются, и то, чем бьёт: раньше строка
+  // обрывалась на радиусе, а СЛ с видом урона оставались только в карточке
+  // вещи. Исход по каждой цели приходит своими записями.
+  if (event.type === 'area-attack') {
+    const save = event.savingThrowDifficulty != null
+      ? ` · спасбросок ${abilitySaveLabel(event.ability)} против СЛ ${event.savingThrowDifficulty}`
+      : ''
+    const kind = damageTypeLabel(event.damageType)
+    return `${actorName(event.actorId)} применяет «${event.itemName ?? 'областную атаку'}» в области радиусом ${event.area?.radiusFeet ?? '?'} фт${save}${kind ? ` · урон ${kind.toLocaleLowerCase('ru')}` : ''}.`
+  }
   if (event.type === 'equipment') return `${actorName(event.actorId)} экипирует «${event.itemName ?? 'оружие'}».`
   if (event.type === 'summon') return `${actorName(event.actorId)} призывает ${actorName(event.targetId)}.`
   if (event.type === 'summon-end') return `${actorName(event.actorId)}: призыв ${actorName(event.targetId)} завершён.`
@@ -212,12 +420,40 @@ export function battleEventText(state: GameState, event: NonNullable<GameState['
     ? `${actorName(event.actorId)} использует «${event.actionName ?? 'Несгибаемый'}»: исходный итог ${event.indomitableOriginalTotal ?? '?'}, бонус переброска +${event.indomitableBonus}.`
     : `${actorName(event.actorId)} использует «${event.actionName ?? event.actionId ?? 'боевое действие'}».`
   if (event.type === 'attack') {
-    const outcome = event.roll?.hit ? `попадание${event.damage != null ? `, ${event.damage} урона` : ''}` : 'промах'
+    // «Кто, чем, как, исход» одной строкой. Глагол берётся из серверного вида
+    // атаки, а не угадывается по дальности: в живой партии багбир метнул копьё
+    // с 25 футов, а хроника печатала «атакует», и стол принял бросок за удар
+    // вплотную. Вида нет — значит, бой сыгран до появления признака, и строка
+    // остаётся ровно прежней.
+    const kind = event.attackKind
+    const verb = kind ? ATTACK_VERB_LABELS[kind] : 'атакует'
+    const head = `${actorName(event.actorId)} ${verb} ${actorName(event.targetId)}${attackAimText(event, kind)}`
+    const damage = event.roll?.hit && event.damage != null ? `, ${damageAmountText(event.damage, event.damageType)}` : ''
+    const outcome = `${event.roll?.hit ? 'попадание' : 'промах'}${rollModeText(event)}${damage}`
     const hp = !hideTargetFacts && event.hpAfter != null ? ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter}` : ''
     return hideActorFacts
-      ? `${actorName(event.actorId)} атакует ${actorName(event.targetId)} — ${outcome}${hp}.`
-      : `${actorName(event.actorId)} атакует ${actorName(event.targetId)}: ${event.roll?.total ?? '?'}${hideTargetFacts ? '' : ` против КД ${event.roll?.difficulty ?? '?'}`} — ${outcome}${hp}.`
+      ? `${head} — ${outcome}${hp}.`
+      : `${head}: ${attackRollText(event.roll)}${hideTargetFacts ? '' : ` против КД ${event.roll?.difficulty ?? '?'}`} — ${outcome}${hp}.`
   }
+  // Реакция называлась в хронике одним своим ключом — строкой «reaction».
+  // Имя приёма приходит с сервера тем же полем, что и у боевого действия.
+  if (event.type === 'reaction') {
+    if (event.countered) return `${actorName(event.actorId)} обрывает «${event.spellName ?? event.spellId ?? 'заклинание'}»: заклинание ${actorName(event.targetId)} не срабатывает.`
+    // Только имя, без ключа: `actionId` — служебная строка латиницей
+    // («uncanny-dodge»), и в русской хронике она была бы хуже молчания. У
+    // записи, сделанной до появления имени, остаётся честное «отвечает
+    // реакцией» и величина срезанного урона.
+    const name = String(event.actionName ?? '').trim()
+    const prevented = event.preventedDamage ? `, урон снижен на ${event.preventedDamage}` : ''
+    return `${actorName(event.actorId)} отвечает реакцией${name ? ` «${name}»` : ''}${prevented}.`
+  }
+  if (event.type === 'encounter-created') {
+    const participants = (event.participantIds ?? []).map(actorName).join(', ')
+    return participants ? `Новое столкновение: ${participants}.` : 'Новое столкновение готово.'
+  }
+  if (event.type === 'encounter-ended') return `Столкновение завершено${event.reason ? ` · ${event.reason}` : ''}.`
+  if (event.type === 'beast-tamed') return `${actorName(event.actorId)} успокоен и больше не нападает.`
+  if (event.type === 'max-hp-increase') return `${actorName(event.targetId)}: максимум ОЗ ${event.maximumHpBefore ?? '?'} → ${event.maximumHpAfter ?? '?'}.`
   return event.type
 }
 
@@ -239,6 +475,10 @@ export const SKILL_LABELS: Record<string, string> = {
 }
 export const ABILITY_LABELS: Record<string, string> = {
   str: 'Сила', dex: 'Ловкость', con: 'Телосложение', int: 'Интеллект', wis: 'Мудрость', cha: 'Харизма',
+}
+/** Те же характеристики сокращённо: лист героя, хроника боя, узкие подписи. */
+export const ABILITY_SHORT_LABELS: Record<string, string> = {
+  str: 'СИЛ', dex: 'ЛОВ', con: 'ТЕЛ', int: 'ИНТ', wis: 'МДР', cha: 'ХАР',
 }
 export const DIFFICULTY_LABELS: Record<string, string> = {
   trivial: 'просто', easy: 'легко', medium: 'непросто', hard: 'трудно', extreme: 'почти невозможно',

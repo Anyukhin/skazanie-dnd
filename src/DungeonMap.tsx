@@ -24,8 +24,9 @@ import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettin
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
-  HARMFUL_SPELL_KINDS, REPUTATION_TIER_LABELS, battleEventText, boardTrajectoryBlockReason,
-  canonicalLocationKey, combatState, useDialogEscape,
+  DAMAGE_TYPE_LABELS, HARMFUL_SPELL_KINDS, HeroFaceInitials, REPUTATION_TIER_LABELS, battleEventText,
+  boardTrajectoryBlockReason, canonicalLocationKey, combatState, damageTypeLabel, hasHeroPortrait,
+  heroFaceMode, heroFaceStyle, useDialogEscape,
 } from './app-shared'
 import type { BoardCombatant } from './app-shared'
 import { CharacterEditor, InventoryView } from './InventoryViews'
@@ -36,7 +37,7 @@ import { useGameSession, type BeastAction, type CaptiveAction, type CaptiveInter
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
 import { TOKEN_CONDITION_PRIORITY, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
-import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
+import { fallbackCombatActions, fallbackCombatResources, featureResourceName } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
@@ -160,23 +161,19 @@ export const PARLEY_TERM_LABELS: Record<ParleyOutcome, { label: string; summary:
   surrender: { label: 'Сложить оружие', summary: 'Противник сдаётся и переходит в плен, когда бой будет закрыт.' },
   resume: { label: 'Продолжить бой', summary: 'Уговора нет: перемирие снимается, очередь оживает.' },
 }
+/**
+ * Варианты, которые предлагает заклинание. Виды урона среди них те же самые,
+ * что печатает боевая хроника, поэтому берутся из общего словаря
+ * (`DAMAGE_TYPE_LABELS`, `app-shared.tsx`), а не переписываются здесь второй
+ * раз: пока они жили только тут, «колющего» в строке журнала не было вовсе.
+ */
 export const SPELL_OPTION_LABELS: Record<string, string> = {
   approach: 'Подойди',
   drop: 'Брось',
   flee: 'Убегай',
   grovel: 'Падай',
   halt: 'Стой',
-  acid: 'Кислота',
-  bludgeoning: 'Дробящий',
-  cold: 'Холод',
-  fire: 'Огонь',
-  lightning: 'Молния',
-  necrotic: 'Некротический',
-  piercing: 'Колющий',
-  poison: 'Яд',
-  radiant: 'Излучение',
-  slashing: 'Рубящий',
-  thunder: 'Звук',
+  ...DAMAGE_TYPE_LABELS,
 }
 
 export const WEAPON_ATTACK_MODE_LABELS: Record<NonNullable<WeaponAttackChoice['attackMode']>, string> = {
@@ -189,6 +186,103 @@ export const WEAPON_ATTACK_MODE_LABELS: Record<NonNullable<WeaponAttackChoice['a
 export const WEAPON_ATTACK_ABILITY_LABELS: Record<NonNullable<WeaponAttackChoice['attackAbility']>, string> = {
   str: 'Сила',
   dex: 'Ловкость',
+}
+
+/**
+ * Подписи запасов героя для ресурсного кластера у панели действий. Список
+ * открытый намеренно: ключей в серверной проекции (`mechanics.resources`)
+ * больше, чем перечислено здесь, и незнакомый запас показывается своим ключом.
+ * Молча прятать чужой ресурс хуже, чем назвать его сырым именем: спрятанное
+ * игрок не пересчитает, а сырое имя хотя бы совпадёт с листом героя.
+ */
+export const HERO_RESOURCE_LABELS: Record<string, string> = {
+  pact_slots: 'Ячейки договора',
+  mystic_arcanum_6: 'Мистический арканум',
+  ki: 'Ци',
+  rage: 'Ярость',
+  second_wind: 'Второе дыхание',
+  action_surge: 'Всплеск действий',
+  indomitable: 'Несгибаемость',
+  superiority_dice: 'Кости превосходства',
+  bardic_inspiration: 'Вдохновение барда',
+  channel_divinity: 'Божественный канал',
+  wild_shape: 'Дикий облик',
+  lay_on_hands: 'Наложение рук',
+  sorcery_points: 'Единицы чародейства',
+  /* «Восстановление сил» было вольным синонимом: сама способность и здесь, и на
+     сервере называется «Магическое восстановление» (`combat-actions.ts`,
+     `server/combat-actions.mjs:139`). Из-за расхождения свой же двойник
+     `feature_wizard-magicheskoe-vosstanovlenie` не узнавался как двойник и
+     стоял в ряду вторым чипом. */
+  arcane_recovery: 'Магическое восстановление',
+}
+
+/**
+ * Незнакомый ключ — опрятно, но без подлога: срезаем служебный префикс
+ * серверной проекции, разделители превращаем в пробелы, поднимаем первую букву.
+ * Переводом это не притворяется, и потому сырой ключ не теряется — он уходит в
+ * подсказку чипа (`heroResourceTitle`), чтобы запас можно было сверить с листом
+ * героя. Раньше ключ показывался как есть и вдобавок обрезался на середине.
+ */
+export function heroResourceFallbackLabel(key: string): string {
+  const tidy = key.replace(/^(?:feature|resource)_/u, '').replace(/[_-]+/gu, ' ').trim()
+  return tidy ? tidy.charAt(0).toLocaleUpperCase('ru') + tidy.slice(1) : key
+}
+
+/** Знаем ли мы запас по имени — от этого зависит, нужен ли сырой ключ в подсказке. */
+function heroResourceKnown(key: string): boolean {
+  return /^spell_slots_[1-9]$/u.test(key) || Boolean(HERO_RESOURCE_LABELS[key]) || Boolean(featureResourceName(key))
+}
+
+/** Полное имя запаса — для подсказки и для скринридера. */
+export function heroResourceLabel(key: string): string {
+  const slot = /^spell_slots_([1-9])$/u.exec(key)
+  if (slot) return `Ячейки ${slot[1]} круга`
+  return HERO_RESOURCE_LABELS[key] ?? featureResourceName(key) ?? heroResourceFallbackLabel(key)
+}
+
+/**
+ * Подсказка чипа запаса: имя и счёт, а у выведенного имени — ещё и сырой ключ.
+ * Чип узкий и обрывается многоточием, поэтому подсказка обязана нести всё, чего
+ * в нём не поместилось.
+ */
+export function heroResourceTitle(keys: string[], current: number, max: number): string {
+  const [first = ''] = keys
+  const head = `${heroResourceLabel(first)}: ${current} из ${max}`
+  /* Ключей несколько — это схлопнутые близнецы, и назвать оба обязательно:
+     игрок вправе знать, из чего сложился единственный чип, а мастеру это
+     единственный след серверного задвоения. */
+  if (keys.length > 1) return `${head} · ключи: ${keys.join(', ')}`
+  return `${head}${heroResourceKnown(first) ? '' : ` · ключ ${first}`}`
+}
+
+/** Короткая подпись в ряду: у ячейки — цифра круга, у прочего — имя строчными. */
+export function heroResourceShortLabel(key: string): string {
+  const slot = /^spell_slots_([1-9])$/u.exec(key)
+  if (slot) return slot[1]
+  return heroResourceLabel(key).toLocaleLowerCase('ru')
+}
+
+/** Порядок ряда: ячейки по кругам, следом договор и арканум, дальше классовое. */
+export function heroResourceRank(key: string): number {
+  const slot = /^spell_slots_([1-9])$/u.exec(key)
+  if (slot) return Number(slot[1])
+  if (key === 'pact_slots') return 10
+  if (key === 'mystic_arcanum_6') return 11
+  return 20
+}
+
+/**
+ * Стоимость плитки — та же строка, что стоит на бейдже плитки. Фильтр по клику
+ * на пипсе сравнивает именно её, поэтому список стоимостей и список пипсов
+ * обязаны сходиться.
+ */
+export type TileCost = 'action' | 'bonus_action' | 'reaction' | 'free' | 'movement' | 'long_cast'
+export type HotbarCostFilter = 'action' | 'bonus_action' | 'reaction'
+export const HOTBAR_COST_FILTER_LABELS: Record<HotbarCostFilter, string> = {
+  action: 'действия',
+  bonus_action: 'бонусные действия',
+  reaction: 'реакции',
 }
 
 export type CombatMode = 'weapon' | 'magic' | 'action'
@@ -667,7 +761,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -677,6 +771,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   tacticalError: string | null
   autoAttackRoll: boolean
   scenicBackdrop: boolean
+  /** Запечённый свет и тени доски. Настройка зрителя — механики не касается. */
+  boardLighting: boolean
   combatAnimations: boolean
   visualBatch: CombatVisualBatch | null
   onStartCombat: () => Promise<CommandOutcome>
@@ -848,6 +944,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [attackAbility, setAttackAbility] = useState<WeaponAttackChoice['attackAbility']>()
   const [sneakAttack, setSneakAttack] = useState(false)
   const [knockOut, setKnockOut] = useState(false)
+  /* Фильтр колоды по стоимости — чисто экранная выборка по клику на пипсе
+     ресурса. Никуда не сохраняется и ничего не запрещает: закрытая плитка
+     остаётся закрытой, а видимая — видимой, просто рядом с ней стоят только
+     плитки той же цены. */
+  const [costFilter, setCostFilter] = useState<HotbarCostFilter | null>(null)
   const [spellbookOpen, setSpellbookOpen] = useState(false)
   // Escape закрывает книгу заклинаний и разговор с NPC и возвращает фокус тому,
   // кто их открыл. Оба окна живут прямо в разметке доски, поэтому признак «окно
@@ -1363,6 +1464,79 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const weaponAttackReady = actionReady || (weaponAttacksUsed > 0 && weaponAttacksLeft > 0)
   const bonusReady = economy?.bonus_action !== false
   const reactionReady = economy?.reaction !== false
+  /* Ресурсный кластер и кнопка конца хода читают ту же серверную
+     `action_economy`, что и плашка над картой: своей арифметики хода у панели
+     нет и быть не должно — иначе панель обещала бы одно, а движок делал другое. */
+  const movementRatio = movementAvailable && speedFeet > 0 ? Math.max(0, Math.min(1, remainingFeet / speedFeet)) : 0
+  const heroPips: Array<{ id: HotbarCostFilter; label: string; ready: boolean; note: string }> = [
+    // «Дополнительная атака» не заводит второго пипса: действие одно, а сколько
+    // ударов оно ещё несёт — подпись рядом с кругом.
+    { id: 'action', label: 'Действие', ready: actionReady || weaponAttackReady, note: weaponAttacksAllowed > 1 ? `атаки ${weaponAttacksUsed}/${weaponAttacksAllowed}` : '' },
+    { id: 'bonus_action', label: 'Бонус', ready: bonusReady, note: '' },
+    { id: 'reaction', label: 'Реакция', ready: reactionReady, note: '' },
+  ]
+  /* Показываем только то, что у героя есть: пустого ряда «ячейки» у воина не
+     будет вовсе, потому что в `activeResources` их нет. */
+  /* Один запас приезжает под двумя ключами: рукописным (`second_wind`) и
+     каталожным (`feature_fighter-vtoroe-dyhanie`) — сервер кладёт оба
+     (`server/combat-actions.mjs:288` и `:295`), и после резолва подписи
+     близнецы неотличимы: у воина в ряду стояли два чипа «второе дыхан… ●».
+     Схлопываем их в один — но только когда сходятся и подпись, и заряд, и
+     запас. Разошедшиеся счётчики схлопывать нельзя: это уже серверный баг, и
+     спрятанный он покажет игроку один заряд там, где учтено два. Оба сырых
+     ключа уходят в подсказку чипа. Перебор здесь линейный по ряду: запасов у
+     героя единицы, а порядок сортировки схлопывание не ломает. */
+  const heroResourceRows = Object.entries(activeResources)
+    .map(([key, pool]) => ({ key, current: Math.max(0, Number(pool?.current ?? 0)), max: Math.max(0, Number(pool?.max ?? 0)) }))
+    .filter((entry) => entry.max > 0)
+    .sort((left, right) => heroResourceRank(left.key) - heroResourceRank(right.key) || left.key.localeCompare(right.key, 'ru'))
+    .reduce<Array<{ keys: string[]; current: number; max: number }>>((rows, entry) => {
+      const twin = rows.find((row) => row.current === entry.current && row.max === entry.max
+        && heroResourceLabel(row.keys[0]) === heroResourceLabel(entry.key))
+      if (twin) twin.keys.push(entry.key)
+      else rows.push({ keys: [entry.key], current: entry.current, max: entry.max })
+      return rows
+    }, [])
+  /* Что в ходу ещё не потрачено — списком, из которого собирается честная
+     подсказка «Завершить ход». Реакции здесь нет намеренно: она переживает
+     конец своего хода и тратится на чужом. */
+  const unspentTurnResources = [
+    ...(actionReady ? ['действие'] : weaponAttackReady ? [`атаки ${weaponAttacksLeft} из ${weaponAttacksAllowed}`] : []),
+    ...(bonusReady ? ['бонусное действие'] : []),
+    ...(movementAvailable && remainingFeet > 0 ? [`движение ${remainingFeet} фт`] : []),
+  ]
+  const turnFullySpent = combatActive && unspentTurnResources.length === 0
+  /* Escape снимает фильтр стоимости — и только его. Пока книга заклинаний
+     открыта, Escape принадлежит ей (`useDialogEscape`), иначе одно нажатие
+     закрывало бы окно и заодно сбрасывало выборку под ним. */
+  useEffect(() => {
+    if (!costFilter || spellbookOpen) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setCostFilter(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [costFilter, spellbookOpen])
+  /* Пробел завершает ход — но только когда ход вообще можно завершить и когда
+     клавиша никому больше не нужна: в поле ввода это пробел между словами, а на
+     кнопке в фокусе — её собственное нажатие. */
+  const finishTurnRef = useRef(onFinishTurn)
+  finishTurnRef.current = onFinishTurn
+  useEffect(() => {
+    if (!combatActive || !canAct || tacticalBusy) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' && event.key !== ' ') return
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return
+      const focused = document.activeElement
+      const tag = focused instanceof HTMLElement ? focused.tagName : ''
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return
+      // Пробел на элементе, который сам считает его нажатием (клетка мира,
+      // редактируемый текст), принадлежит этому элементу, а не ходу.
+      if (focused instanceof HTMLElement && (focused.isContentEditable || focused.getAttribute('role') === 'button')) return
+      event.preventDefault()
+      void finishTurnRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [combatActive, canAct, tacticalBusy])
   const selectedSpellSupport = mechanicsSupportPresentation(selectedSpell?.mechanicsSupport, selectedSpell?.supportNote)
   /* Вне боя экономики хода нет, а длинное накладывание, наоборот, доступно
      только там: боевая панель его не вмещает. Совпадает с правилом движка —
@@ -1810,10 +1984,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       ? 'higher'
       : enemyForecast?.disadvantage_sources.includes('позиция ниже цели') ? 'lower' : null
 
-    // Область команды и недоступный маршрут накрывают почти всю карту, поэтому
-    // они рисуются на холсте: в разметке это был бы узел на каждую клетку.
+    // Область команды накрывает почти всю карту, поэтому рисуется на холсте: в
+    // разметке это был бы узел на каждую клетку.
     if (commandRangeVisible && cell.revealed) boardOverlay.push({ x: cell.x, y: cell.y, kind: cellInCommandRange ? 'command-range' : 'command-out-of-range' })
-    if (moveUnavailable && !canAimHere && !cellInCommandRange) boardOverlay.push({ x: cell.x, y: cell.y, kind: 'move-unavailable' })
+    /* «Сюда не дойти» — признак клетки, а не слой карты. Раньше на каждую такую
+       клетку уходил красноватый × на холст, и вся карта покрывалась ковром
+       крестов: достижимого пятачка вокруг героя это не касалось, зато поле боя
+       за ним читать становилось нечем. Метку рисует доска и ровно на той
+       клетке, где сейчас курсор (`src/TacticalBoard.tsx`), а причина — та же
+       `moveReason`, что и в подсказке. */
+    const moveBlockedHere = moveUnavailable && !canAimHere && !cellInCommandRange
 
     const stateClasses = [
       canMoveHere && !canAimHere && previewMoveKey === cellKey ? 'move-target' : '',
@@ -1842,7 +2022,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     // без этой ветки тело в пустом углу зала не рисовалось бы вовсе.
     const hasLootLayer = Boolean(cell.revealed && (lootHere || lootGhostHere))
     if (!stateClasses.length && !cellFeedback.length && !cellIsInteractive && !hasLootLayer) {
-      if (cellTitle || cellLabel) boardHints.set(cellKey, { title: cellTitle, ariaLabel: cellLabel })
+      if (cellTitle || cellLabel || moveBlockedHere) boardHints.set(cellKey, { title: cellTitle, ariaLabel: cellLabel, blocked: moveBlockedHere })
       continue
     }
 
@@ -1853,6 +2033,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       interactive: cellIsInteractive,
       ariaLabel: cellLabel,
       title: cellTitle,
+      blocked: moveBlockedHere,
       onPointerEnter: () => {
         if (sceneObject) setHoveredSceneObjectId(sceneObject.id)
         if (canAimHere) setAimCell({ x: cell.x, y: cell.y })
@@ -2101,7 +2282,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           return <button
             className={'map-token hero-token ' + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (linkedParticipantIds.includes(player.id) ? 'journal-linked ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
             data-actor-id={player.id}
-            style={{ '--token': player.color, backgroundImage: 'url(' + player.portrait + ')', backgroundPosition: player.portraitPosition } as React.CSSProperties}
+            data-face={heroFaceMode(player)}
+            style={heroFaceStyle(player, { '--token': player.color } as React.CSSProperties)}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
             onMouseEnter={() => { setLinkedParticipantIds([player.id]); if (canHeal) setAimCell({ x: player.x, y: player.y }); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
@@ -2113,6 +2295,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             aria-disabled={!canHeal && !canAid && !canThrowHere}
             title={playerTargetReason}
           >
+            {!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}
             <TokenConditionIcons conditions={playerConditions} />
             {openTokenLabelId === player.id && <span className="token-label">{player.character}<small>{player.hp} ОЗ · {combatActive ? `${remainingFeet} фт` : 'свободный ход'}</small></span>}
           </button>
@@ -2180,18 +2363,21 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   /* Плитки собираются в один список, чтобы их можно было переставлять:
      порядок хранится по герою и колоде и переживает перезагрузку. Пока замок
      закрыт, список только читается. */
-  const deckTiles: Array<{ id: string; node: React.ReactElement }> = []
-  if (activeDeck === 'common') deckTiles.push({ id: 'movement', node: <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || actionsLocked} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Перемещение — выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button> })
-  if (activeDeck === 'weapon') deckTiles.push({ id: BASE_ATTACK_ID, node: <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button> })
+  /* Стоимость плитки едет рядом с ней отдельным полем, а не вычитывается из
+     разметки: по нему работает фильтр от пипсов ресурсов, и бейдж на плитке и
+     фильтр обязаны читать одно и то же значение. */
+  const deckTiles: Array<{ id: string; node: React.ReactElement; cost?: TileCost }> = []
+  if (activeDeck === 'common') deckTiles.push({ id: 'movement', cost: 'movement', node: <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || actionsLocked} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Перемещение — выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button> })
+  if (activeDeck === 'weapon') deckTiles.push({ id: BASE_ATTACK_ID, cost: 'action', node: <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button> })
   /* Колчан объясняется той же кнопкой, что и всё остальное на панели: пустой —
      плитка гаснет и в подсказке названа причина, ровно как у потраченной ячейки
      или занятого действия. Числа берутся из серверной проекции, поэтому
      счётчик не может обещать выстрел, в котором движок откажет. */
-  if (activeDeck === 'weapon') combatItems.filter((item) => item.type === 'weapon').forEach((item) => { const ammunition = ammunitionSupplyFor(activeHero?.inventory, item); const quiverEmpty = Boolean(ammunition && ammunition.shots <= 0); const ammunitionLabel = ammunition ? `${ammunition.shots}×${ammunition.unit}` : ''; deckTiles.push({ id: item.id, node: <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked || quiverEmpty} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={quiverEmpty ? `${item.name}: колчан пуст — для выстрела нужен боеприпас «${ammunition?.unit}»` : ammunition ? `${item.name} ${ammunitionLabel}: ${item.description || item.properties}` : `${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт{ammunition ? ` · ${ammunitionLabel}` : ''}</small>{ammunition && <em>{ammunition.shots}</em>}<i className="action-cost action">действие</i></button> }) })
+  if (activeDeck === 'weapon') combatItems.filter((item) => item.type === 'weapon').forEach((item) => { const ammunition = ammunitionSupplyFor(activeHero?.inventory, item); const quiverEmpty = Boolean(ammunition && ammunition.shots <= 0); const ammunitionLabel = ammunition ? `${ammunition.shots}×${ammunition.unit}` : ''; deckTiles.push({ id: item.id, cost: 'action', node: <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked || quiverEmpty} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={quiverEmpty ? `${item.name}: колчан пуст — для выстрела нужен боеприпас «${ammunition?.unit}»` : ammunition ? `${item.name} ${ammunitionLabel}: ${item.description || item.properties}` : `${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт{ammunition ? ` · ${ammunitionLabel}` : ''}</small>{ammunition && <em>{ammunition.shots}</em>}<i className="action-cost action">действие</i></button> }) })
   if (activeDeck === 'magic') deckTiles.push({ id: 'spellbook', node: <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={!spells.length || tacticalBusy} title={`Открыть полный каталог: ${spells.length} заклинаний доступно герою`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{spells.length} доступно</small></button> })
-  if (activeDeck === 'magic') hotbarSpells.forEach((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); deckTiles.push({ id: spell.id, node: <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || (combatActive ? tacticalBusy : !castableOutOfCombat(spell))} onClick={() => selectSpell(spell)} title={`${spell.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} priority /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'бонус' : actionType === 'reaction' ? 'реакция' : actionType === 'long_cast' ? 'вне боя' : 'действие'}</i></button>  }) })
-  if (activeDeck === 'common' || activeDeck === 'class') combatActions.filter((action) => action.category === activeDeck && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
-  if (activeDeck === 'items') combatItems.filter((item) => item.type !== 'weapon').forEach((item) => deckTiles.push({ id: item.id, node: <button key={item.id} className={`action-tile item ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name} — ${item.description}`}><CombatIcon id={item.id} kind="item" hint={`${item.name} ${item.type} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.quantity} шт. · {item.combat?.radius ? `радиус ${item.combat.radius} фт` : 'предмет'}</small><i className="action-cost action">действие</i></button> }))
+  if (activeDeck === 'magic') hotbarSpells.forEach((spell) => { const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote); const pools = !spell.slotResource ? [] : spell.slotResource === 'pact_slots' || spell.slotResource === 'mystic_arcanum_6' ? [activeResources[spell.slotResource]].filter(Boolean) : Array.from({ length: Math.max(0, 7 - spell.level) }, (_, index) => activeResources[`spell_slots_${spell.level + index}`]).filter(Boolean); const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]; const ready = !spell.slotResource || pools.some((candidate) => Number(candidate.current ?? 0) > 0); const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell); const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady); deckTiles.push({ id: spell.id, cost: actionType, node: <button key={spell.id} className={`action-tile spell support-${support.status} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || (combatActive ? tacticalBusy : !castableOutOfCombat(spell))} onClick={() => selectSpell(spell)} title={`${spell.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`}`}><CombatIcon id={spell.id} kind="spell" hint={`${spell.kind} ${spell.damageType ?? ''} ${spell.name}`} priority /><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${actionType}`}>{actionType === 'bonus_action' ? 'бонус' : actionType === 'reaction' ? 'реакция' : actionType === 'long_cast' ? 'вне боя' : 'действие'}</i></button>  }) })
+  if (activeDeck === 'common' || activeDeck === 'class') combatActions.filter((action) => action.category === activeDeck && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
+  if (activeDeck === 'items') combatItems.filter((item) => item.type !== 'weapon').forEach((item) => deckTiles.push({ id: item.id, cost: 'action', node: <button key={item.id} className={`action-tile item ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name} — ${item.description}`}><CombatIcon id={item.id} kind="item" hint={`${item.name} ${item.type} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.quantity} шт. · {item.combat?.radius ? `радиус ${item.combat.radius} фт` : 'предмет'}</small><i className="action-cost action">действие</i></button> }))
   const tileOrderKey = `${turnActorId}:${activeDeck}`
   const savedTileOrder = tileOrder[tileOrderKey] ?? []
   const orderedTiles = savedTileOrder.length
@@ -2204,6 +2390,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         return leftIndex - rightIndex
       })
     : deckTiles
+  /* Фильтр — только выборка на экран. Перестановка плиток по-прежнему считает
+     полный порядок колоды (`orderedTiles`), иначе перетаскивание при включённом
+     фильтре стирало бы из памяти всё, что фильтр спрятал. */
+  const visibleTiles = costFilter ? orderedTiles.filter((tile) => tile.cost === costFilter) : orderedTiles
   const moveTile = (targetId: string) => {
     if (!draggedTileId || draggedTileId === targetId) return
     const ids = orderedTiles.map((tile) => tile.id)
@@ -2223,7 +2413,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {combatActive ? <>
             <div className={`initiative-active-chip ${activeEnemy ? 'enemy' : activeSummon ? 'summon' : 'hero'}${activeEnemy?.boss ? ' boss' : ''}`}>
               {activeHero
-                ? <span className="initiative-active-avatar portrait" style={{ backgroundImage: `url(${activeHero.portrait})`, backgroundPosition: activeHero.portraitPosition }} />
+                ? <span className="initiative-active-avatar portrait" data-face={heroFaceMode(activeHero)} style={heroFaceStyle(activeHero)}>{!hasHeroPortrait(activeHero) && <HeroFaceInitials hero={activeHero} />}</span>
                 : activeEnemy
                   ? <span className="initiative-active-avatar enemy">{activeEnemy.image ? <img src={activeEnemy.image} alt="" /> : <EnemyGlyph kind={enemyVisualKind(activeEnemy)} />}</span>
                   : <span className="initiative-active-avatar summon"><Sparkles size={18} /></span>}
@@ -2255,7 +2445,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 >
                   <span className="initiative-order" aria-hidden="true">{index + 1}</span>
                   {hero
-                    ? <span className="initiative-avatar portrait" style={{ backgroundImage: `url(${hero.portrait})`, backgroundPosition: hero.portraitPosition }} />
+                    ? <span className="initiative-avatar portrait" data-face={heroFaceMode(hero)} style={heroFaceStyle(hero)}>{!hasHeroPortrait(hero) && <HeroFaceInitials hero={hero} />}</span>
                     : enemy
                       ? <span className="initiative-avatar enemy">{enemy.image ? <img src={enemy.image} alt="" /> : <EnemyGlyph kind={enemyKind ?? 'raider'} />}</span>
                       : <span className="initiative-avatar summon"><Sparkles size={18} /></span>}
@@ -2269,7 +2459,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </> : <div className="initiative-exploration-lead">
             <span className="initiative-ribbon-label">СВОБОДНАЯ СЦЕНА</span>
             <div className="initiative-active-chip exploration">
-              <span className="initiative-active-avatar portrait" style={{ backgroundImage: `url(${activeHero?.portrait ?? ''})`, backgroundPosition: activeHero?.portraitPosition }} />
+              <span className="initiative-active-avatar portrait" data-face={heroFaceMode(activeHero)} style={heroFaceStyle(activeHero)}>{!hasHeroPortrait(activeHero) && <HeroFaceInitials hero={activeHero} />}</span>
               <span><strong>Говорит любой герой</strong><small>Групповые решения — голосованием</small></span>
             </div>
           </div>}
@@ -2299,6 +2489,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         irregular={irregularMap}
         themeKey={visualTheme}
         artUrl={scenicBackdrop ? mapArt.url : null}
+        lighting={boardLighting}
         ariaLabel={`Тактическая карта, вид сверху. Колесо меняет масштаб, перетаскивание двигает полотно, двойной клик центрирует. Активный участник: ${activeName}`}
         cells={boardCells}
         cellHints={boardHints}
@@ -2545,7 +2736,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <ol>{inspectedDamageHistory.map((entry) => <li key={entry.id}>
                 <span>{entry.round != null ? `Р${entry.round}` : entry.sceneTurn != null ? `Х${entry.sceneTurn}` : '·'}</span>
                 <b>−{entry.amount}</b>
-                <em>{actorNameById(entry.actorId) || 'источник'}{entry.damageType ? ` · ${(SPELL_OPTION_LABELS[entry.damageType] ?? entry.damageType).toLocaleLowerCase('ru')}` : ''}</em>
+                {/* Вид урона называется тем же словом, что и в строке хроники:
+                    словарь общий, и «колющий» под фишкой не расходится с
+                    «колющего» в журнале. */}
+                <em>{actorNameById(entry.actorId) || 'источник'}{entry.damageType ? ` · ${(damageTypeLabel(entry.damageType) || entry.damageType).toLocaleLowerCase('ru')}` : ''}</em>
               </li>)}</ol>
             </div>}
           </div>}
@@ -3123,8 +3317,61 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               между колодой и описанием рвала строку надвое. Прокрутка плиток их
               не уносит — они лежат рядом с областью прокрутки, а не в ней. */}
           <div className="hotbar-actions-shell">
+          {/* Ресурсный кластер активного героя: кто ходит и чем он ещё
+              располагает — слева от самих плиток, в той же оправе. Все числа
+              приезжают серверной `action_economy` и `mechanics.resources`;
+              панель их только показывает. Вне боя кластера нет: экономики хода
+              вне инициативы не существует, и рисовать пустые пипсы не за что. */}
+          {combatActive && <div className="hotbar-hero-cluster" aria-label={`Ресурсы хода: ${activeName}`}>
+            {/* Строка 1 — «кто ходит и чем платит»: лицо, имя и сразу три пипса
+                экономики. Раньше лицо с именем стояло отдельной колонкой слева,
+                а пипсы начинались во второй, — и первая строка кластера уходила
+                в пустоту. Теперь всё три вещи в одном ряду. */}
+            <div className="hero-cluster-face">
+              <span className="hero-cluster-avatar" data-face={heroFaceMode(activeHero)} style={heroFaceStyle(activeHero)}>
+                {!hasHeroPortrait(activeHero) && <HeroFaceInitials hero={activeHero} />}
+              </span>
+              <b title={activeName}>{activeName}</b>
+              <div className="hero-cluster-pips" role="group" aria-label="Экономика хода">
+                {heroPips.map((pip) => <button
+                  type="button"
+                  key={pip.id}
+                  className={`hero-pip ${pip.id} ${pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
+                  aria-pressed={costFilter === pip.id}
+                  onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
+                  title={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? ` · ${pip.note}` : ''}. Нажмите, чтобы оставить в колоде только плитки этой стоимости`}
+                  aria-label={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? `, ${pip.note}` : ''}`}
+                ><i className="hero-pip-shape" aria-hidden="true" />{pip.note && <em>{pip.note}</em>}</button>)}
+              </div>
+            </div>
+            {/* Строка 2 — движение. Полоса короткая и стоит перед числом: длинная
+                во всю ширину она обещала бы точность, которой в ней нет, а число
+                футов рядом и есть настоящий ответ. */}
+            <div
+              className={`hero-cluster-move ${movementAvailable && remainingFeet > 0 ? 'ready' : 'spent'}`}
+              title={movementAvailable ? `Движение: осталось ${remainingFeet} из ${speedFeet} фт` : 'Движение: потрачено'}
+              aria-label={movementAvailable ? `Движение: осталось ${remainingFeet} из ${speedFeet} футов` : 'Движение: потрачено'}
+            ><span aria-hidden="true"><i style={{ width: `${Math.round(movementRatio * 100)}%` }} /></span><b>{movementAvailable ? `${remainingFeet} фт` : '0 фт'}</b></div>
+            {/* Строки 3 и ниже — запасы. Рисуются только с содержимым: у воина
+                ячеек нет, и пустой полосы под пипсами он не увидит. Мелкий запас
+                показан пипсами, крупный (наложение рук — пять хитов за уровень)
+                — числом: тридцать точек в ряду никто не пересчитает. */}
+            {heroResourceRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
+              {heroResourceRows.map((row) => <span
+                key={row.keys.join('+')}
+                className={`hero-resource ${row.current > 0 ? 'ready' : 'spent'}`}
+                title={heroResourceTitle(row.keys, row.current, row.max)}
+                aria-label={heroResourceTitle(row.keys, row.current, row.max)}
+              ><em>{heroResourceShortLabel(row.keys[0])}</em>{row.max <= 6
+                ? <i aria-hidden="true">{Array.from({ length: row.max }, (_, index) => <u key={index} className={index < row.current ? '' : 'spent'} />)}</i>
+                : <b>{row.current}/{row.max}</b>}</span>)}
+            </div>}
+            {/* Пока выборка держится, её видно словами, а не только рамкой
+                пипса: снять её можно и мышью, и Escape. */}
+            {costFilter && <p className="hero-cluster-filter" role="status">Показаны: {HOTBAR_COST_FILTER_LABELS[costFilter]} · <button type="button" onClick={() => setCostFilter(null)} title="Снять фильтр стоимости (Escape)">сбросить</button></p>}
+          </div>}
           <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия">
-            {orderedTiles.map(({ id, node }) => cloneElement(node as React.ReactElement<Record<string, unknown>>, {
+            {visibleTiles.map(({ id, node }) => cloneElement(node as React.ReactElement<Record<string, unknown>>, {
               key: id,
               draggable: !tilesLocked,
               onDragStart: () => setDraggedTileId(id),
@@ -3134,6 +3381,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               className: `${(node.props as { className?: string }).className ?? ''}${tilesLocked ? '' : ' movable'}`,
             }))}
             {((activeDeck === 'magic' && !spells.length) || (activeDeck === 'class' && !combatActions.some((action) => action.category === 'class')) || (activeDeck === 'items' && !combatItems.some((item) => item.type !== 'weapon'))) && <div className="hotbar-empty"><LockKeyhole size={18} /><span>У героя нет доступных действий этой категории</span></div>}
+            {/* Фильтр может не оставить ничего — и тогда пустая карточка обязана
+                сказать почему, иначе она читается как «у героя ничего нет». */}
+            {costFilter && !visibleTiles.length && orderedTiles.length > 0 && <div className="hotbar-empty"><LockKeyhole size={18} /><span>В этой колоде нет плиток стоимостью «{HOTBAR_COST_FILTER_LABELS[costFilter]}»</span></div>}
           </div>
           {/* Кнопки шага: вне боя это подтверждение выбранной цели и двери под
               рукой, в бою — ещё нокаут, смена оружия и завершение хода. Без
@@ -3228,7 +3478,19 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={27} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
-            {combatActive && <button className="end-turn-hotbar" disabled={!canAct || tacticalBusy} onClick={onFinishTurn}><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход</span></button>}
+            {/* Завершение хода — главное решение этого ряда, и выглядит оно так
+                же: выше соседей, в золоте отправки. Когда тратить больше нечего,
+                рамка мягко пульсирует; при `prefers-reduced-motion` она просто
+                светлее. Подсказка не хвалит кнопку, а перечисляет, что игрок
+                уносит с собой неистраченным. */}
+            {combatActive && <button
+              className={`end-turn-hotbar ${turnFullySpent ? 'exhausted' : ''}`}
+              disabled={!canAct || tacticalBusy}
+              onClick={onFinishTurn}
+              title={turnFullySpent
+                ? 'Ресурсы хода израсходованы. Завершить ход — клавиша «Пробел»'
+                : `Остались: ${unspentTurnResources.join(', ')}. Завершить ход — клавиша «Пробел»`}
+            ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>}
           </div>}
           </div>
           <aside className="hotbar-detail" aria-live="polite">

@@ -7,6 +7,7 @@ import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioni
 import { serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
 import { withStarterKit } from './starter-kit.mjs'
+import { partyPresentationFor } from './character-lifecycle.mjs'
 import { ensureSceneWorldMemory } from './scene-memory.mjs'
 import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
@@ -66,6 +67,15 @@ function normalizeHero(input, index) {
   if (!/^[a-z0-9-]{1,40}$/i.test(id)) throw new Error(`У героя ${index + 1} некорректный id`)
   if (!character) throw new Error(`У героя ${index + 1} нет имени персонажа`)
   const maxHp = integer(input.maxHp, 10, 1, 999)
+  /* Портрет героя мастерского пути. Слоты, которые сервер заводит сам
+     (`createCharacterSlot`), портрет получали всегда, а вот кампания, собранная
+     администратором с готовым списком героев, приезжала сюда без него — и
+     `clean(undefined)` давал пустую строку. Клиент честно рисовал этой строкой
+     фон, и на доске оставался пустой цветной кружок: ровно то, на что и
+     пожаловался владелец. Здесь тот же детерминированный подбор по номеру
+     места; своё значение из входа, разумеется, сильнее. */
+  const presentation = partyPresentationFor(index)
+  const portrait = clean(input.portrait, 240)
   return {
     ...structuredClone(input),
     id,
@@ -91,10 +101,12 @@ function normalizeHero(input, index) {
     inventory: Array.isArray(input.inventory) ? structuredClone(input.inventory).slice(0, 100) : [],
     currency: input.currency && typeof input.currency === 'object' ? structuredClone(input.currency) : { copper: 0, silver: 0, gold: 0, platinum: 0 },
     abilities: input.abilities && typeof input.abilities === 'object' ? structuredClone(input.abilities) : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
-    color: clean(input.color, 20) || ['#d79b5b', '#758f78', '#8b789e', '#9a745d'][index % 4],
+    color: clean(input.color, 20) || presentation.color,
     initials: clean(input.initials, 4) || character.slice(0, 2).toLocaleUpperCase('ru'),
-    portrait: clean(input.portrait, 240),
-    portraitPosition: clean(input.portraitPosition, 40) || '50% 50%',
+    portrait: portrait || presentation.portrait,
+    // Своя картинка приходит целым файлом и центрируется; позиция из спрайта
+    // отряда имеет смысл только вместе с самим спрайтом.
+    portraitPosition: clean(input.portraitPosition, 40) || (portrait ? '50% 50%' : presentation.portraitPosition),
     experience: integer(input.experience, 0, 0, 9999999),
     alignment: clean(input.alignment, 100) || 'Не определено',
   }

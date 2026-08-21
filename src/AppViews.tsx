@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import {
-  BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Globe2, HelpCircle, History, Hourglass,
+  BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Flame, Globe2, HelpCircle, History, Hourglass,
   Mail, MailOpen, MailX, MessageSquare, Moon, PawPrint, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Soup, Sparkles,
   Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
@@ -1024,7 +1024,7 @@ export function AtmosphereRange({ label, description, value, onChange }: { label
   </label>
 }
 
-export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
+export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
   campaignAiBusy: boolean
@@ -1032,6 +1032,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   uiScale: number
   autoAttackRoll: boolean
   scenicBackdrop: boolean
+  boardLighting: boolean
   combatAnimations: boolean
   atmosphereSettings: AtmosphereSettings
   notificationPermission: NotificationPermission | 'unsupported'
@@ -1042,6 +1043,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   onUiScaleChange: (value: number) => void
   onAutoAttackRollChange: (value: boolean) => void
   onScenicBackdropChange: (value: boolean) => void
+  onBoardLightingChange: (value: boolean) => void
   onCombatAnimationsChange: (value: boolean) => void
   onAmbientVolumeChange: (value: number) => void
   onEffectsVolumeChange: (value: number) => void
@@ -1132,6 +1134,10 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
           </label>
           <ToggleRow icon={<Sparkles size={17} />} title="Подсказки «что можно сделать»" description="Короткий список доступного в текущей сцене над лентой истории; в бою подсказок нет" value={actionHintsEnabled} onChange={() => onActionHintsEnabledChange(!actionHintsEnabled)} />
           <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — иллюстрация и окружение соответствуют месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
+          {/* Свет доски — только картинка. Формулировка обещает ровно это: туман
+              войны и правила видимости считает сервер, и тумблер их не трогает.
+              Иначе игрок решил бы, что выключил себе темноту в подземелье. */}
+          <ToggleRow icon={<Flame size={17} />} title="Освещение и тени доски" description="Включено — запечённые свет, тени и ореолы от факелов и костров; выключено — ровный свет по всей карте. Туман войны и правила видимости не меняются" value={boardLighting} onChange={() => onBoardLightingChange(!boardLighting)} />
           {/* Озвучка спрашивается только там, где её есть чем исполнить: без
               русского голоса в системе выбор был бы обещанием без механики. */}
           {voiceSupported && (

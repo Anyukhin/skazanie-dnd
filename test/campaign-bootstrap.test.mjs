@@ -186,3 +186,42 @@ test('bootstrap fixes a deterministic one-evening structure and matching quest b
   assert.equal(chapterQuest.clock.max, 2)
   assert.equal(mainQuest.clock.max, first.campaignConcept.arc.target_scenes)
 })
+
+test('герой без портрета получает лицо из спрайта отряда по номеру места', async () => {
+  // Мастерский путь: администратор присылает готовый список героев, и портрета
+  // в нём нет. Раньше поле оставалось пустой строкой, клиент красил ею фишку —
+  // и на доске стоял пустой цветной кружок. Поле презентационное, механики оно
+  // не касается, но пустым быть не имеет права.
+  const state = await new CampaignBootstrapper().create({
+    code: 'FACES-01',
+    world: {},
+    players: [
+      { ...hero, id: 'face-one', character: 'Первая' },
+      { ...hero, id: 'face-two', character: 'Второй' },
+      { ...hero, id: 'face-three', character: 'Третья' },
+      { ...hero, id: 'face-four', character: 'Четвёртый' },
+      { ...hero, id: 'face-five', character: 'Пятая' },
+    ],
+  })
+
+  const faces = state.players.map((player) => ({ portrait: player.portrait, position: player.portraitPosition }))
+  assert.deepEqual(faces.map((face) => face.portrait), Array.from({ length: 5 }, () => '/assets/party-portraits.png'))
+  // Подбор детерминированный и по номеру места: четыре подряд идущих героя
+  // получают четыре разных лица, пятый идёт по кругу.
+  assert.deepEqual(faces.map((face) => face.position), ['0% 0%', '100% 0%', '0% 100%', '100% 100%', '0% 0%'])
+  // Цвет фишки подбирается той же таблицей и тоже не повторяется подряд.
+  assert.equal(new Set(state.players.slice(0, 4).map((player) => player.color)).size, 4)
+})
+
+test('свой портрет героя сильнее подбора по месту и центрируется, а не режется по спрайту', async () => {
+  const state = await new CampaignBootstrapper().create({
+    code: 'FACES-02',
+    world: {},
+    players: [{ ...hero, id: 'own-face', portrait: 'data:image/png;base64,AAAA' }],
+  })
+
+  assert.equal(state.players[0].portrait, 'data:image/png;base64,AAAA')
+  // Позиция из спрайта отряда имеет смысл только вместе со спрайтом: своя
+  // картинка приходит целым файлом.
+  assert.equal(state.players[0].portraitPosition, '50% 50%')
+})

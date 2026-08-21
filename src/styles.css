@@ -83,6 +83,41 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .portrait-avatar { background-size: 200% 200%; background-repeat: no-repeat; box-shadow: inset 0 0 0 2px rgba(0,0,0,.22), 0 3px 8px rgba(0,0,0,.25); }
 .presence { position: absolute; right: -1px; bottom: 0; width: 9px; height: 9px; border: 2px solid #171512; border-radius: 50%; background: #5a5550; }
 .presence.online { background: #76a37b; }
+
+/* Герой без портрета: инициалы поверх его цвета.
+   ------------------------------------------------------------------------
+   Кампания, собранная сырым bootstrap без мастера, приезжает с пустым
+   `portrait` — и всюду, где фишка, аватар или лента красились
+   `background-image: url(<пусто>)`, оставался пустой цветной кружок. Заглушка
+   рисуется одним слоем поверх оправы: она наследует её скругление и потому
+   годится и круглой фишке доски, и прямоугольной карточке героя.
+
+   Слой стоит **первым** ребёнком и без `z-index`: всё, что оправа рисует
+   поверх портрета — точка присутствия, череп павшего, метка «В СЕТИ», кнопка
+   «Сменить фото», — объявлено позже и остаётся сверху само.
+
+   `position: relative` оправе выдаётся правилом нулевого веса: у фишки доски
+   своя `position: absolute`, и обычное правило её бы сломало. */
+:where([data-face="initials"]) { position: relative; }
+/* Селектор с оправой — не украшение, а вес. Заглушка живёт внутри чужих блоков
+   («ВЛАДЕЛЕЦ» в инвентаре, ряд имени в кластере), и правила вида
+   `.inventory-owner b` или `.hero-cluster-face b` весом (0,1,1) перебивали бы
+   одноклассовое правило и навязывали заглушке свой цвет, шрифт и ширину. */
+[data-face="initials"] > .hero-face-initials { position: absolute; inset: 0; min-width: 0; display: grid; place-items: center; overflow: hidden; border-radius: inherit; background: color-mix(in srgb, var(--face-color, #6d5b45), #17130f 46%); color: #f2e5d0; font: 600 .92em/1 Spectral, Georgia, serif; letter-spacing: .05em; text-shadow: 0 1px 2px rgba(0,0,0,.55); pointer-events: none; }
+/* Кегль инициалов задаёт оправа, а не наследование: у фишки доски свой
+   контейнерный `clamp`, а у карточки отряда — кегль подписи, который на
+   46-пиксельном круге читался бы иголкой. */
+.avatar > .hero-face-initials { font-size: var(--fs-lg); }
+.hud-portrait > .hero-face-initials { font-size: var(--fs-2xl); }
+.character-art > .hero-face-initials { font-size: var(--fs-5xl); }
+.fallen-hero-portrait > .hero-face-initials { font-size: var(--fs-2xl); }
+.initiative-active-avatar > .hero-face-initials { font-size: var(--fs-md); }
+.initiative-avatar > .hero-face-initials { font-size: var(--fs-xs); }
+.hero-cluster-avatar > .hero-face-initials { font-size: var(--fs-xxs); }
+/* Оправы из `inventory.css`: правило живёт здесь вместе с остальной заглушкой,
+   вес селектора (0,2,0) не зависит от порядка подключения файлов. */
+.editor-avatar > .hero-face-initials { font-size: var(--fs-4xl); }
+.mini-owner-avatar > .hero-face-initials { font-size: var(--fs-md); }
 .player-meta { min-width: 0; }
 .player-name-row { display: flex; align-items: center; gap: 5px; }
 /* Имя героя крупнее подписи под ним. Раньше было наоборот — имя 13px, роль
@@ -1451,6 +1486,87 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    верху ряда, поэтому при любой высоте панели они выровнены между собой. */
 .hotbar-detail { grid-column: 3; grid-row: 1; align-self: start; }
 
+/* Ресурсный кластер активного героя: первый блок внутри карточки действий,
+   слева от плиток и под общей с ними рамкой. От колоды его отделяет такая же
+   тонкая линия, какой отделены кнопки хода справа — это тот же разряд знания:
+   не «что нажать», а «чем герой сейчас располагает». Ширина ограничена, а
+   переполнение уходит в собственную прокрутку: карточка высотой ровно под ряды
+   плиток, и кластер не имеет права её раздвинуть. */
+/* `safe center` — не украшение: при одном ряде плиток карточка ниже кластера, и
+   обычное центрирование срезало бы его сверху так, что до срезанного не
+   доскроллить. `safe` в переполнении прижимает содержимое к началу.
+
+   Одна колонка вместо прежних двух: лицо, имя и пипсы теперь стоят в общей
+   первой строке, а не в отдельной колонке слева, из-за которой у кластера
+   оставалась пустая половина. Ширина взята под самое длинное имя запаса
+   («магическое восстановление»), высота — прежняя, ровно под ряды плиток. */
+.hotbar-hero-cluster { flex: 0 0 auto; min-width: 0; max-width: 236px; max-height: 100%; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; display: grid; align-content: safe center; gap: 5px; padding: 0 10px 0 0; border-right: 1px solid rgba(255,255,255,.07); }
+.hotbar-hero-cluster::-webkit-scrollbar { display: none; }
+/* Строка 1: лицо, имя и три пипса экономики в один ряд. Аватар и пипсы не
+   жмутся, имя тянется — но не ниже 64px: без этого пола «Дополнительная атака»
+   со своей подписью «атаки 1/2» съедала строку, и от имени героя оставалась
+   пара букв под многоточием. Когда пол не соблюсти, ряд честно переносит пипсы
+   на свою строку — это лучше, чем врать, что имя поместилось. */
+.hero-cluster-face { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; }
+.hero-cluster-avatar { width: 27px; height: 27px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(214,161,96,.55); border-radius: 50%; background: radial-gradient(circle at 50% 22%, rgba(128,91,53,.32), rgba(17,15,13,.95) 72%); background-size: 200% 200%; background-repeat: no-repeat; color: #e2b879; font: 600 var(--fs-xxs) Spectral, serif; letter-spacing: .04em; }
+/* Только прямой ребёнок: заглушка портрета внутри аватара — тоже `b`, и
+   правило-потомок навязывало ей и `min-width: 64px`, и чужой цвет. Инициалы
+   уезжали за край кружка и пропадали под его `overflow: hidden`. */
+.hero-cluster-face > b { flex: 1 1 auto; min-width: 64px; overflow: hidden; color: #a2957f; font: 600 var(--fs-xxs) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.hero-cluster-pips { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
+/* Пипс — кнопка: фигура несёт смысл стоимости, а рамка кнопки показывает, что
+   по ней сейчас отфильтрована колода. Две роли на разных слоях, чтобы фигура
+   не меняла очертаний от состояния фильтра. */
+.combat-hotbar .hero-pip { width: auto; min-width: 0; min-height: 21px; height: 21px; display: flex; align-items: center; gap: 4px; margin: 0; padding: 0 4px; border: 1px solid transparent; border-radius: 5px; background: none; color: #c99556; font-size: var(--fs-xxs); cursor: pointer; }
+.combat-hotbar .hero-pip:hover { border-color: rgba(222,201,171,.24); background: rgba(255,255,255,.04); }
+.combat-hotbar .hero-pip.filtering { border-color: #e2b879; background: rgba(192,132,66,.18); }
+.hero-pip-shape { width: 12px; height: 12px; flex: 0 0 auto; background: currentColor; clip-path: circle(50% at 50% 50%); }
+.hero-pip.bonus_action { color: #d79a4e; }
+.hero-pip.bonus_action .hero-pip-shape { clip-path: polygon(50% 2%, 100% 98%, 0 98%); }
+.hero-pip.reaction { color: #8ba7bd; }
+.hero-pip.reaction .hero-pip-shape { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+/* Потраченное гасится, а не подменяется другой фигурой: форма кодирует вид
+   ресурса и обязана остаться узнаваемой на пустом пипсе. */
+.combat-hotbar .hero-pip.spent { color: #6d6459; }
+.hero-pip.spent .hero-pip-shape { opacity: .45; }
+.hero-pip em { color: #9c8a6c; font: 600 var(--fs-xxs) Manrope, sans-serif; font-style: normal; white-space: nowrap; }
+/* Строка 2. Полоса короткая и с фиксированным потолком: во всю ширину
+   кластера она обещала точность, которой в ней нет, и была самой пустой
+   строкой панели. Настоящий ответ — число футов сразу за ней. */
+.hero-cluster-move { min-width: 0; display: grid; grid-template-columns: minmax(0, 64px) auto; justify-content: start; align-items: center; gap: 6px; }
+.hero-cluster-move > span { height: 5px; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.07); }
+.hero-cluster-move > span > i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #c99556, #e2b879); }
+.hero-cluster-move b { color: #c9a36f; font: 700 var(--fs-xxs) Manrope, sans-serif; white-space: nowrap; }
+.hero-cluster-move.spent b { color: #8d857b; }
+.hero-cluster-move.spent > span > i { background: rgba(222,201,171,.18); }
+/* Строки 3 и ниже. Запасы переносятся строками, а не уезжают вбок:
+   горизонтальная прокрутка в ряду высотой в шесть пикселей ничем себя не
+   объявляет, и половина ячеек пропала бы молча. Лишняя строка помещается —
+   карточка высотой в два ряда плиток её вмещает, а на один ряд у кластера есть
+   своя прокрутка. */
+.hero-cluster-resources { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+/* Запас — неразрывный чип: имя и его пипсы не расходятся по разным строкам, и
+   ряд переносится целыми чипами, а не серединой слова. `max-width: 100%`
+   держит чип в кластере: тот прячет горизонтальное переполнение, и вылезший
+   край пропал бы молча.
+
+   Потолок подписи поднят с 88px до 176px — под самое длинное имя в каталоге
+   («магическое восстановление»). Прежние 88px резали слово ровно посередине
+   («магическое в…»), и это владелец и увидел. Многоточие осталось, но теперь
+   оно для аномалии, а не для штатного имени; полное имя вместе с сырым ключом
+   всё так же лежит в подсказке (`heroResourceTitle`). */
+.hero-resource { flex: 0 0 auto; min-width: 0; max-width: 100%; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; }
+.hero-resource em { flex: 0 1 auto; min-width: 0; max-width: 176px; overflow: hidden; color: #8d857b; font: 700 var(--fs-xxs) Manrope, sans-serif; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+/* Пипсы и счётчик не жмутся: обрезать разрешено только подпись — число заряда
+   с многоточием врало бы о запасе. */
+.hero-resource i { flex: 0 0 auto; display: flex; gap: 3px; }
+.hero-resource u { width: 6px; height: 6px; border: 1px solid rgba(212,161,93,.55); border-radius: 50%; background: #d4a15d; text-decoration: none; }
+.hero-resource u.spent { border-color: rgba(212,161,93,.28); background: transparent; }
+.hero-resource b { flex: 0 0 auto; color: #c9a36f; font: 700 var(--fs-xxs) Manrope, sans-serif; white-space: nowrap; }
+.hero-resource.spent em, .hero-resource.spent b { color: #6d6459; }
+.hero-cluster-filter { grid-column: 1 / -1; margin: 0; color: #9c8a6c; font: 600 var(--fs-xxs) Manrope, sans-serif; }
+.combat-hotbar .hero-cluster-filter button { width: auto; min-width: 0; min-height: 0; height: auto; display: inline; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; color: #e2b879; font: inherit; text-decoration: underline; cursor: pointer; }
+
 /* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
    заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
    рисунку осознанно: название и описание уже показывает колонка шага справа, а на
@@ -1486,9 +1602,23 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .combat-hotbar .action-tile em { position: absolute; right: 2px; top: 2px; z-index: 4; min-width: 0; padding: 0 3px; border-radius: 5px; background: rgba(10,9,8,.88); color: #ddc49c; font: normal 700 var(--fs-xxs)/1.35 Manrope, sans-serif; }
 
 /* Стоимость — слово, а не буква в кружке: «хватит ли» должно читаться без расшифровки. */
-.action-cost { position: static; width: max-content; height: 20px; display: flex; align-items: center; padding: 0 9px; border: 0; border-radius: 10px; background: rgba(209,152,83,.22); color: #e0b47a; font: normal 600 var(--fs-xs) Manrope, sans-serif; }
-.action-cost.bonus_action { background: rgba(130,103,183,.24); color: #bba0db; }
-.action-cost.reaction { background: rgba(80,145,154,.24); color: #8abdc1; }
+.action-cost { position: static; width: max-content; height: 20px; display: flex; align-items: center; gap: 5px; padding: 0 9px 0 7px; border: 0; border-radius: 10px; background: rgba(209,152,83,.22); color: #e0b47a; font: normal 600 var(--fs-xs) Manrope, sans-serif; }
+/* Перед словом — фигура той же семантики, что у пипсов ресурсного кластера:
+   круг у действия, треугольник у бонуса, ромб у реакции, стрелка у движения,
+   контурный кружок у свободного. Слово остаётся: фигура ускоряет узнавание, но
+   заучивать её никто не обязан. Правило одно на все плитки. */
+.action-cost::before { content: ''; flex: 0 0 auto; width: 9px; height: 9px; background: currentColor; clip-path: circle(50% at 50% 50%); }
+.action-cost.bonus_action::before { clip-path: polygon(50% 2%, 100% 98%, 0 98%); }
+.action-cost.reaction::before { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.action-cost.movement::before { clip-path: polygon(0 32%, 56% 32%, 56% 6%, 100% 50%, 56% 94%, 56% 68%, 0 68%); }
+.action-cost.free::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; border-radius: 50%; clip-path: none; }
+.action-cost.long_cast::before { clip-path: polygon(0 34%, 100% 34%, 100% 66%, 0 66%); }
+/* Бонус и реакция взяли цвета ресурсного кластера: один и тот же ресурс не
+   имеет права быть сиреневым у плитки и янтарным у пипса. Круг от треугольника
+   теперь различает форма, а не оттенок, и тёплая пара «действие — бонус»
+   честно говорит, что оба тратятся из своего хода. */
+.action-cost.bonus_action { background: rgba(199,140,64,.22); color: #d79a4e; }
+.action-cost.reaction { background: rgba(120,150,175,.24); color: #8ba7bd; }
 .action-cost.free { background: rgba(110,165,120,.24); color: #a2ccab; }
 .action-cost.movement { background: rgba(110,165,120,.24); color: #a2ccab; }
 .action-cost.long_cast { background: rgba(140,130,120,.24); color: #b6ada2; }
@@ -1496,7 +1626,11 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* На слоте стоимость — цветная полоска снизу: слово туда не влезает, а цвет
    различает действие, бонус, реакцию и свободное без расшифровки. Слово остаётся
    в разметке для скринридера и для колонки шага. */
-.combat-hotbar .action-tile .action-cost { position: absolute; right: 0; bottom: 0; left: 0; z-index: 4; width: auto; height: 3px; padding: 0; border-radius: 0; font-size: 0; }
+.combat-hotbar .action-tile .action-cost { position: absolute; right: 0; bottom: 0; left: 0; z-index: 4; width: auto; height: 3px; gap: 0; padding: 0; border-radius: 0; font-size: 0; }
+/* Фигура стоимости на слоте — угловая метка над полоской: цвет отвечает на
+   «какой ценой», фигура — на «чем именно», и обе видны, не наводя курсор.
+   Тень нужна, чтобы метка читалась поверх рисунка любой яркости. */
+.combat-hotbar .action-tile .action-cost::before { position: absolute; right: 4px; bottom: 7px; width: 10px; height: 10px; filter: drop-shadow(0 0 2px rgba(0,0,0,.95)) drop-shadow(0 1px 1px rgba(0,0,0,.8)); }
 /* Поддержка механики — точка в углу вместо слова: цвет статуса тот же. */
 .combat-hotbar .action-tile .mechanics-support-badge { top: auto; right: auto; bottom: 3px; left: 3px; width: 7px; height: 7px; max-width: none; padding: 0; border: 0; border-radius: 50%; background: currentColor; font-size: 0; }
 /* Выбранный слот: кольцо внутрь, чтобы рамка не съезжала на соседей. */
@@ -1593,8 +1727,15 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .knockout-toggle.active { border-color: rgba(220,157,84,.68); background: rgba(126,72,31,.42); color: #e0b47e; }
 .combat-hotbar .hotbar-turn-controls .knockout-turn-toggle.active { border-color: rgba(220,157,84,.72); background: linear-gradient(145deg, rgba(126,76,36,.72), rgba(78,47,29,.82)); color: #edbd82; box-shadow: inset 0 0 0 1px rgba(238,183,111,.12); }
 .spell-option-picker { display: flex; flex-wrap: wrap; gap: 3px; }
-.spell-option-picker button { min-height: 20px; padding: 2px 6px; border: 1px solid rgba(202,164,105,.2); border-radius: 4px; background: rgba(29,22,18,.88); color: #9f8c75; font: 600 var(--fs-xs) Spectral, serif; cursor: pointer; }
-.spell-option-picker button:hover, .spell-option-picker button.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
+/* Вариант заклинания, режим атаки и характеристика — это чипы в строку, а не
+   ряд кнопок. Класс панели в селекторе не украшение: общее правило
+   `.tactical-control button` той же силы (0,1,1) объявлено ниже по файлу и
+   перебивало компактный вид — «Одной рукой», «Метнуть», «Сила» растягивались
+   на всю колонку описания красноватыми кнопками. Отсюда (0,2,1) и явные
+   `width`/`margin`: их задаёт только общее правило, и без возврата они
+   протекают сюда. Само общее правило не трогаем — на нём висит вся панель. */
+.combat-hotbar .spell-option-picker button { width: auto; min-height: 20px; margin: 0; padding: 2px 6px; border: 1px solid rgba(202,164,105,.2); border-radius: 4px; background: rgba(29,22,18,.88); color: #9f8c75; font: 600 var(--fs-xs) Spectral, serif; cursor: pointer; }
+.combat-hotbar .spell-option-picker button:hover, .combat-hotbar .spell-option-picker button.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
 .weapon-rider-toggle { width: fit-content; display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px; border: 1px solid rgba(202,164,105,.2); border-radius: 5px; background: rgba(29,22,18,.88); color: #a99a87; font: 600 var(--fs-xs) Manrope, sans-serif; cursor: pointer; }
 .weapon-rider-toggle input { margin: 0; accent-color: #bd7d3b; }
 .weapon-rider-toggle.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
@@ -1604,7 +1745,25 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    ширина по содержимому, но не уже 132px — «Сменить оружие» иначе режется. */
 .hotbar-turn-controls { flex: 0 0 auto; min-width: 132px; max-width: 176px; display: grid; align-content: center; gap: 6px; padding: 0 0 0 12px; border-left: 1px solid rgba(255,255,255,.07); }
 .combat-hotbar .hotbar-turn-controls button { width: 100%; min-width: 0; overflow: hidden; font-size: var(--fs-sm); min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 5px; margin: 0; padding: 5px; border: 1px solid rgba(211,160,97,.2); border-radius: 5px; background: rgba(127,81,36,.08); color: #a9845d; font-size: var(--fs-sm); cursor: pointer; }
-.combat-hotbar .hotbar-turn-controls .end-turn-hotbar { border-color: rgba(146,177,113,.3); background: rgba(71,105,52,.12); color: #abc48e; }
+/* «Завершить ход» — главное решение ряда, и выглядит оно главным: выше соседних
+   кнопок и в том же золоте, что «Отправить» у строки намерения. Раньше оно
+   стояло тихой зелёной кнопкой в общем столбце и терялось между дверью и
+   нокаутом. Прижата к правому краю столбца — дальше края панели уже некуда. */
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar { min-height: 46px; justify-self: end; gap: 8px; border-color: rgba(217,166,101,.55); border-radius: 6px; background: linear-gradient(145deg, #7e5732, #533a25); color: #f0d3a6; }
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar:hover:not(:disabled) { border-color: #e2b879; color: #f7e2c1; }
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar span { display: grid; gap: 2px; justify-items: start; overflow: visible; font: 600 var(--fs-md) Manrope, sans-serif; text-align: left; }
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar kbd { padding: 0 4px; border: 1px solid rgba(222,201,171,.24); border-radius: 4px; background: rgba(0,0,0,.28); color: #c2a274; font: 600 var(--fs-xxs) Manrope, sans-serif; }
+/* Когда действие, бонус и движение уже израсходованы, рамка мягко дышит: это
+   единственный оставшийся шаг хода. Анимации не будет там, где системе велено
+   её не показывать — вместо неё ровная яркая рамка. */
+@keyframes end-turn-ready-pulse {
+  0%, 100% { border-color: rgba(217,166,101,.55); box-shadow: 0 0 0 0 rgba(226,184,121,0); }
+  50% { border-color: #e2b879; box-shadow: 0 0 12px 1px rgba(226,184,121,.3); }
+}
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar.exhausted { animation: end-turn-ready-pulse 2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .combat-hotbar .hotbar-turn-controls .end-turn-hotbar.exhausted { animation: none; border-color: #e2b879; box-shadow: 0 0 0 1px rgba(226,184,121,.3); }
+}
 /* Дверь под рукой: обычная — в цвете панели, запертая — тревожным красным,
    потому что она стоит хода и может не поддаться. */
 .combat-hotbar .hotbar-turn-controls .door-control.locked { border-color: rgba(188,79,63,.36); background: rgba(126,48,39,.16); color: #cf8174; }
@@ -1678,6 +1837,14 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .hotbar-detail strong { font-size: var(--fs-xl); }
   .hotbar-detail p, .hotbar-detail span { font-size: var(--fs-sm); line-height: 1.35; }
   .hotbar-turn-controls { min-width: 94px; }
+  /* Плитки на такой ширине втрое крупнее, и место кластеру приходится урезать:
+     ряд запасов уходит первым — те же числа стоят счётчиком на самих плитках
+     заклинаний, а имя и пипсы экономики нигде больше не показаны. Первая
+     строка расходится надвое: лицо с именем сверху, пипсы под ними — вместо
+     того чтобы сжимать имя до одной буквы. */
+  .hotbar-hero-cluster { max-width: 150px; }
+  .hero-cluster-face > .hero-cluster-pips { flex-basis: 100%; }
+  .hero-cluster-resources { display: none; }
   .combat-hotbar .action-tile { width: 138px; min-width: 138px; height: 140px; }
   .map-legend { display: none; }
 }
@@ -1717,6 +1884,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
      карточки, а плиткам нужна вся оставшаяся ширина. */
   .hotbar-turn-controls { min-width: 0; padding-left: 8px; }
   .hotbar-turn-controls button span { display: none; }
+  /* От кластера остаётся самое необходимое: инициалы того, кто ходит, и пипсы
+     экономики. Имя целиком есть в подписи самой панели. */
+  .hotbar-hero-cluster { max-width: 118px; padding-right: 8px; }
+  .hero-cluster-face b { display: none; }
   .combat-hotbar .action-tile { width: 128px; min-width: 128px; height: 134px; padding: 10px 6px; }
   .map-economy { gap: 5px; padding: 5px 6px; }
   .map-economy > span { padding: 0 9px; }
@@ -1854,6 +2025,19 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Campaign, party and tactical map controls */
 button.campaign-title { padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
 button.campaign-title:hover strong { color: #edc996; }
+/* «Сюда не дойти» — одна клетка под курсором, а не слой по всей карте.
+   Раньше красноватый × рисовался холстом на каждой недостижимой клетке разом
+   (`drawBoardOverlay`), и карта пропадала под ковром крестов: достижимый
+   пятачок был виден, а поле боя за ним — уже нет. Достижимая область
+   показывается по-прежнему, отказ объясняется по наведению — это то же
+   решение, что и UI-001 в `docs/manual-review-findings.md`. Причина словами
+   приходит подсказкой клетки, метка нужна лишь затем, чтобы курсор не гадал,
+   к чему относится подсказка. */
+.board-cell.move-unavailable { cursor: not-allowed; background-color: rgba(20,10,8,.36); }
+.cell-block-mark { position: absolute; z-index: 3; inset: 26%; pointer-events: none; }
+.cell-block-mark::before, .cell-block-mark::after { content: ''; position: absolute; left: 0; top: calc(50% - 1px); width: 100%; height: 2px; border-radius: 2px; background: rgba(196,110,100,.88); box-shadow: 0 0 4px rgba(0,0,0,.7); }
+.cell-block-mark::before { transform: rotate(45deg); }
+.cell-block-mark::after { transform: rotate(-45deg); }
 .board-cell.move-target { cursor: crosshair; box-shadow: inset 0 0 0 2px rgba(102,177,118,.38), inset 0 0 18px rgba(69,141,86,.18); }
 .board-cell.move-target::after { content: ''; position: absolute; z-index: 1; width: 10px; height: 10px; border: 1px solid rgba(146,213,158,.72); border-radius: 50%; background: rgba(83,157,99,.18); box-shadow: 0 0 10px rgba(82,176,104,.55); }
 .board-cell.move-target.opportunity-risk { box-shadow: inset 0 0 0 2px rgba(216,92,70,.68), inset 0 0 22px rgba(165,48,35,.28); }

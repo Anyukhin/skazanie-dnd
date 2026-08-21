@@ -1035,7 +1035,7 @@ export type BattleEvent = {
   id: string
   sceneTurn?: number
   round?: number
-  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'npc-item' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken' | 'captive-taken' | 'loot-container' | 'loot-taken'
+  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'max-hp-increase' | 'beast-tamed' | 'npc-item' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken' | 'captive-taken' | 'loot-container' | 'loot-taken'
   actorId?: string
   actorKind?: 'player' | 'enemy' | 'summon' | 'system'
   targetId?: string
@@ -1058,6 +1058,20 @@ export type BattleEvent = {
   packTactics?: boolean
   charge?: boolean
   bloodiedFrenzy?: boolean
+  /**
+   * Вид атаки: удар, выстрел или бросок. Считает его сервер — герою по
+   * выбранному режиму оружия, существу по его действию стат-блока, — и от него
+   * зависит глагол строки хроники. У боя, сыгранного до появления признака,
+   * поля нет, и строка остаётся прежней нейтральной «атакует».
+   */
+  attackKind?: 'melee' | 'ranged' | 'thrown'
+  /** Выстрел за пределы обычной дальности: он же помеха на бросок. */
+  longRange?: boolean
+  /** Насколько реакция срезала урон и было ли перебито заклинание. */
+  preventedDamage?: number
+  countered?: boolean
+  /** СЛ спасброска у областной атаки: своя вещь героя, число с её карточки. */
+  savingThrowDifficulty?: number
   damage?: number
   damageType?: string
   healing?: number

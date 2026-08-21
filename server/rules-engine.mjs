@@ -2832,6 +2832,34 @@ function itemAttackProfile(state, actor, itemId, { attackMode = null, attackAbil
 }
 
 /**
+ * Вид атаки для боевой хроники: `melee`, `ranged` или `thrown`.
+ *
+ * Поле публичное намеренно: за столом видно, ударили ли копьём в упор, метнули
+ * его или выстрелили с тетивы, — и без этого строка журнала врала игроку. В
+ * живой партии багбир метнул копьё с 25 футов, а хроника напечатала «атакует»,
+ * и стол принял дальний бросок за удар вплотную.
+ *
+ * Герою вид называет **выбранный режим оружия** (`itemAttackProfile`): у
+ * метательного режима стоит `thrown`, и он же отличает брошенный кинжал от
+ * удара тем же кинжалом. Существу — его собственное действие стат-блока, но
+ * `kind` там знает только два значения: «Метательное копьё» багбира записано
+ * как `ranged`, хотя летит из руки. Различает их каталожная запись
+ * привязанного оружия — свойство `thrown` у самой вещи. Ни `catalog_id`, ни
+ * имя вещи из привязки при этом наружу не идут: в событие уезжает одно слово
+ * из трёх, и опознать по нему чужой инвентарь нельзя.
+ */
+function attackKindFor(selectedProfile, profile, npcBinding) {
+  if (selectedProfile) {
+    if (selectedProfile.thrown === true) return 'thrown'
+    return selectedProfile.kind === 'ranged' ? 'ranged' : 'melee'
+  }
+  const kind = profile?.kind === 'ranged' ? 'ranged' : 'melee'
+  if (kind !== 'ranged' || !npcBinding) return kind
+  const properties = catalogItem(String(npcBinding.catalog_id ?? ''))?.weapon?.properties
+  return (Array.isArray(properties) ? properties.map(String) : []).includes('thrown') ? 'thrown' : 'ranged'
+}
+
+/**
  * Что герой тратит выстрелом из этого оружия. `null` — ничего: ближний бой,
  * метание и оружие без каталожной записи снаряда.
  *
@@ -8652,6 +8680,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         item_name: selectedProfile?.item.name ?? null,
         attack_mode: selectedProfile?.mode ?? null,
         attack_ability: selectedProfile?.ability ?? null,
+        // Вид атаки одним словом — и для героя, и для существа. Рядом лежащий
+        // `thrown` описывает только режим оружия героя и у действия существа
+        // не заполняется вовсе; `attack_kind` отвечает за обоих, поэтому
+        // хроника берёт глагол отсюда, а не достраивает его сама.
+        attack_kind: attackKindFor(selectedProfile, profile, npcBinding),
         ...(selectedProfile?.two_handed ? { two_handed: true } : {}),
         ...(selectedProfile?.thrown ? { thrown: true } : {}),
         ...(sneakAttackRequested ? {
@@ -9218,7 +9251,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const affectedIds = [...affected.map(actorId), ...npcAffected.map(({ npc }) => String(npc.id))]
       const areaEventId = `area-attack:${String(command.command_id).slice(0, 100)}`
       events.push({
-        ...eventFrom(command, 'AreaAttackResolved', { item_id: item.id, item_name: item.name, from, to, trajectory, radius_feet: radiusFeet, damage_expression: combat.damage, damage_type: combat.damageType, affected_ids: affectedIds }, affectedIds),
+        // СЛ и характеристика спасброска едут в событие вместе с видом урона:
+        // это числа **своей** вещи героя, они и так стоят на её карточке, а без
+        // них строка хроники про область не называла ни от чего спасаются, ни
+        // чем бьёт склянка.
+        ...eventFrom(command, 'AreaAttackResolved', { item_id: item.id, item_name: item.name, from, to, trajectory, radius_feet: radiusFeet, damage_expression: combat.damage, damage_type: combat.damageType, save_ability: combat.saveAbility || 'dex', save_dc: safeInteger(combat.saveDc, 12), affected_ids: affectedIds }, affectedIds),
         event_id: areaEventId,
       })
       const damageRoll = affectedIds.length ? diceService.roll(combat.damage, 'area_damage', command.actor_id, command.visibility ?? 'public') : null
@@ -9603,12 +9640,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         let resumeSpell = false
         if (action.spell.id === 'shield') {
           const restored = Math.max(0, safeInteger(reactionWindow.damage?.applied_amount, 0) + safeInteger(reactionWindow.damage?.temporary_hp_absorbed, 0))
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, restored) }, [command.actor_id]))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, restored) }, [command.actor_id]))
           events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'shielded', duration: 'until-next-turn', source_actor: command.actor_id }, [command.actor_id]))
         } else if (action.spell.id === 'absorb-elements') {
           const originalDamage = Math.max(0, safeInteger(reactionWindow.damage?.applied_amount, 0) + safeInteger(reactionWindow.damage?.temporary_hp_absorbed, 0))
           const restored = reactionWindow.damage?.resistant ? 0 : Math.ceil(originalDamage / 2)
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, restored) }, [command.actor_id]))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, restored) }, [command.actor_id]))
           events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `absorbing-element:${reactionWindow.damage?.damage_type ?? 'elemental'}`, duration: 'until-next-turn', source_actor: command.actor_id }, [command.actor_id]))
         } else if (action.spell.id === 'hellish-rebuke') {
           const source = findActor(state, reactionWindow.source_actor_id)
@@ -9643,7 +9680,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           }, [String(reactionWindow.source_actor_id)]))
           if (!hitAfterReroll && reactionWindow.damage) {
             const restored = safeInteger(reactionWindow.damage.applied_amount, 0) + safeInteger(reactionWindow.damage.temporary_hp_absorbed, 0)
-            events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, restored) }, [String(reactionWindow.target_id)]))
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, restored) }, [String(reactionWindow.target_id)]))
           }
           events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'silvery-fortune', duration: 'rounds:10', source_actor: command.actor_id }, [String(command.beneficiary_id ?? command.actor_id)]))
         } else if (action.spell.id === 'counterspell') {
@@ -9685,7 +9722,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (resumeSpell) resumePendingSpell()
       } else if (action.id === 'uncanny-dodge' && reactionWindow) {
         const originalDamage = Math.max(0, safeInteger(reactionWindow.damage?.applied_amount, 0) + safeInteger(reactionWindow.damage?.temporary_hp_absorbed, 0))
-        events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, Math.ceil(originalDamage / 2)) }, [command.actor_id]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, Math.ceil(originalDamage / 2)) }, [command.actor_id]))
         events.push(actionEvent({ reaction_window_id: reactionWindow.id }))
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: true, action_id: action.id }, [command.actor_id]))
       } else if (action.id === 'parry' && reactionWindow) {
@@ -9693,7 +9730,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         rolls.push(parryRoll)
         events.push(eventFrom(command, 'DieRolled', parryRoll, []))
         spendActionResource()
-        events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, parryRoll.total) }, [command.actor_id]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, parryRoll.total) }, [command.actor_id]))
         events.push(actionEvent({ reaction_window_id: reactionWindow.id }))
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: true, action_id: action.id }, [command.actor_id]))
       } else if (action.id === 'riposte' && reactionWindow) {
@@ -16153,6 +16190,13 @@ export function applyGameEvent(rawState, event) {
         attackAbility: payload.attack_ability ? String(payload.attack_ability) : undefined,
         twoHanded: payload.two_handed === true,
         thrown: payload.thrown === true,
+        // Вид атаки, расстояние и признак дальнего выстрела. Все три — то, что
+        // видно за столом своими глазами, и все три опциональны: у боя,
+        // сыгранного до этой правки, их в событии нет, и хроника печатает
+        // прежнюю нейтральную строку, а не выдумывает глагол.
+        attackKind: ['melee', 'ranged', 'thrown'].includes(String(payload.attack_kind)) ? String(payload.attack_kind) : undefined,
+        distanceFeet: Number.isFinite(Number(payload.distance_feet)) ? Math.max(0, safeInteger(payload.distance_feet, 0)) : undefined,
+        ...(payload.long_range === true ? { longRange: true } : {}),
         // Почему удар случился именно так. Признаки уже посчитал сервер и уже
         // лежат в событии; журнал боя входит в проекцию, поэтому подпись хода
         // NPC видит **вся партия**, а не только тот, чей браузер отправил
@@ -16170,7 +16214,7 @@ export function applyGameEvent(rawState, event) {
     }
     case 'AreaAttackResolved': {
       spendCombatEconomy(state, event.actor_id, 'action')
-      appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'area-attack', actorId: event.actor_id, actorKind: 'player', itemId: payload.item_id, itemName: payload.item_name, area: { ...payload.to, radiusFeet: safeInteger(payload.radius_feet, 5) } })
+      appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'area-attack', actorId: event.actor_id, actorKind: 'player', itemId: payload.item_id, itemName: payload.item_name, area: { ...payload.to, radiusFeet: safeInteger(payload.radius_feet, 5) }, damageType: payload.damage_type ? String(payload.damage_type) : undefined, ability: payload.save_ability ? String(payload.save_ability) : undefined, savingThrowDifficulty: payload.save_dc != null ? safeInteger(payload.save_dc, 12) : undefined })
       break
     }
     case 'EquipmentChanged': {
@@ -16607,7 +16651,10 @@ export function applyGameEvent(rawState, event) {
           break
         }
       }
-      appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'reaction', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id), targetId: target, actionId: payload.action_id, preventedDamage: safeInteger(payload.prevented_amount, 0) })
+      // Имя реакции едет вместе с её ключом: без него хроника печатала голый
+      // `reaction`, и «Щит» с «Невероятным уклонением» выглядели одинаково
+      // безымянно. Ключ остаётся для механики, имя — для стола.
+      appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'reaction', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id), targetId: target, actionId: payload.action_id, actionName: payload.name ? String(payload.name) : undefined, preventedDamage: safeInteger(payload.prevented_amount, 0) })
       break
     case 'SpellCountered':
       appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'reaction', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id), targetId: target, actionId: 'counterspell', spellId: payload.spell_id, spellName: payload.spell_name, countered: true })
