@@ -49,6 +49,7 @@ import {
 } from './spell-effects'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
+import { LeaveLocationPicker, SceneTransitionBanner, sceneTransitionNotice, type SceneTransitionNotice } from './SceneTransitionOverlay'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
 import { boardMapArtForTheme, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
 import {
@@ -774,6 +775,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [levelUpCelebration, setLevelUpCelebration] = useState<ConfirmedLevelUp | null>(null)
   const [cinematicNarration, setCinematicNarration] = useState<Message | null>(null)
   const [dismissedNarrationPreviewId, setDismissedNarrationPreviewId] = useState('')
+  // Смена сцены объявляется плашкой: сервер менял карту молча, и игрок, нажав
+  // «покинуть локацию», не понимал, что уже стоит в другом месте.
+  const [sceneNotice, setSceneNotice] = useState<SceneTransitionNotice | null>(null)
+  const previousSceneState = useRef<GameState | null>(null)
+  const [leavePickerOpen, setLeavePickerOpen] = useState(false)
   const levelUpCursor = useRef({
     sessionCode: state.sessionCode,
     ready: state.campaign !== 'Загрузка кампании…',
@@ -1207,6 +1213,22 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     }
   }, [state.scene.location])
   useEffect(() => {
+    // Плашка смены сцены сравнивает два снимка: первая загрузка кампании и
+    // смена комнаты — не переход, объявлять там нечего.
+    const notice = sceneTransitionNotice(previousSceneState.current, state)
+    previousSceneState.current = state
+    if (notice) {
+      setSceneNotice((current) => current?.key === notice.key ? current : notice)
+      setLeavePickerOpen(false)
+    }
+  }, [state.sessionCode, state.scene.location_id, state.scene.location])
+  const combatUnderway = Boolean(state.mechanics?.combat?.active)
+  useEffect(() => {
+    // Выбор пути закрывается, когда отряд уже в пути или в бою.
+    if (state.isNarrating || combatUnderway) setLeavePickerOpen(false)
+  }, [state.isNarrating, combatUnderway])
+  const closeSceneNotice = useCallback(() => setSceneNotice(null), [])
+  useEffect(() => {
     if (!accessibleHeroIds.includes(selectedHeroId)) setSelectedHeroId(accessibleHeroIds[0])
   }, [state.sessionCode, state.partyMemberIds?.join(',')])
   useEffect(() => {
@@ -1340,8 +1362,17 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // голосование. Кнопка отправляет ровно то намерение, которое игрок мог бы
   // написать словами, — своего скрытого канала у неё нет, и переход всё равно
   // исполняет сервер по результату голосования.
-  const proposeLeaveLocation = () => {
+  const leaveWithoutDestination = () => {
+    setLeavePickerOpen(false)
     void submitAction(`Предлагаю покинуть локацию «${state.scene.location || state.scene.title}»`, activePlayer.id)
+  }
+  // Сначала — куда. Кнопка открывает выбор пункта назначения по карте мира;
+  // уйти «куда глаза глядят» по-прежнему можно, но как осознанный выбор, а не
+  // как единственный.
+  const proposeLeaveLocation = () => setLeavePickerOpen((current) => !current)
+  const proposeTravelFromBoard = (action: string) => {
+    setLeavePickerOpen(false)
+    void submitAction(action, activePlayer.id)
   }
   const mapHero = partyPlayers.find((player) => player.id === mapActorId)
   const mapSummon = state.actors?.find((actor) => actor.id === mapActorId && actor.alive)
@@ -1521,6 +1552,15 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           (боковое меню слева, в комнате — правая колонка справа), поэтому
           прежние отступы карточек внутри него не изменились. */}
       <div className={`scene-overlay-layer ${view === 'room' ? 'beside-server-column' : ''}`}>
+        {sceneNotice && <SceneTransitionBanner key={sceneNotice.key} notice={sceneNotice} onClose={closeSceneNotice} />}
+        {leavePickerOpen && view === 'room' && !combatActive && <LeaveLocationPicker
+          state={state}
+          busy={state.isNarrating || tacticalBusy}
+          onTravel={proposeTravelFromBoard}
+          onNarratorDecides={leaveWithoutDestination}
+          onOpenWorldMap={() => { setLeavePickerOpen(false); navigate('world-map') }}
+          onClose={() => setLeavePickerOpen(false)}
+        />}
         {cinematicNarrationId && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
           <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => {
             if (visibleNarrationPreview) setDismissedNarrationPreviewId(visibleNarrationPreview.messageId)

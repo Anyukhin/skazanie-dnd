@@ -1,16 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Castle, Check, Clock3, Compass, MapPin, Minus, Mountain, Navigation, Plus, Route, ScrollText, Trees } from 'lucide-react'
 import type { GameState, WorldMapLocation, WorldMapRoute } from './types'
+import { KIND_LABELS, ROUTE_LABELS, routeDanger, shortestRoute, travelProposalText } from './world-travel'
 import './world-map.css'
-
-const KIND_LABELS: Record<WorldMapLocation['kind'], string> = {
-  capital: 'Столица', city: 'Город', town: 'Городок', village: 'Поселение', port: 'Порт', fortress: 'Крепость',
-  ruin: 'Руины', dungeon: 'Подземелье', landmark: 'Ориентир', wilds: 'Дикая местность',
-}
-
-const ROUTE_LABELS: Record<WorldMapRoute['kind'], string> = {
-  road: 'тракт', trail: 'тропа', river: 'река', sea: 'морской путь', pass: 'перевал',
-}
 
 function seedNumber(value: string) {
   let result = 2166136261
@@ -34,33 +26,6 @@ function routePath(route: WorldMapRoute, byId: Map<string, WorldMapLocation>) {
   const mx = (from.x + to.x) / 2 + (random() - .5) * 54
   const my = (from.y + to.y) / 2 + (random() - .5) * 42
   return `M ${from.x} ${from.y} Q ${mx} ${my} ${to.x} ${to.y}`
-}
-
-function shortestRoute(start: string, target: string, routes: WorldMapRoute[]) {
-  if (!start || !target || start === target) return { locationIds: start ? [start] : [], routes: [] as WorldMapRoute[] }
-  const queue = [start]
-  const previous = new Map<string, { locationId: string; route: WorldMapRoute } | null>([[start, null]])
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const current = queue[cursor]
-    if (current === target) break
-    for (const route of routes.filter((candidate) => candidate.discovered && (candidate.from === current || candidate.to === current))) {
-      const next = route.from === current ? route.to : route.from
-      if (previous.has(next)) continue
-      previous.set(next, { locationId: current, route })
-      queue.push(next)
-    }
-  }
-  if (!previous.has(target)) return { locationIds: [], routes: [] as WorldMapRoute[] }
-  const locationIds = [target]
-  const selectedRoutes: WorldMapRoute[] = []
-  for (let current = target; current !== start;) {
-    const step = previous.get(current)
-    if (!step) break
-    selectedRoutes.unshift(step.route)
-    locationIds.unshift(step.locationId)
-    current = step.locationId
-  }
-  return { locationIds, routes: selectedRoutes }
 }
 
 function Terrain({ state }: { state: GameState }) {
@@ -123,7 +88,7 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const routeIds = new Set(route.routes.map((item) => item.id))
   const routeNames = route.locationIds.map((id) => byId.get(id)?.name).filter(Boolean) as string[]
   const totalDays = route.routes.reduce((sum, item) => sum + item.distance, 0)
-  const highestDanger = route.routes.some((item) => item.danger === 'высокая') ? 'высокая' : route.routes.some((item) => item.danger === 'средняя') ? 'средняя' : 'низкая'
+  const highestDanger = routeDanger(route.routes)
   const selectedRegion = map.regions.find((region) => region.id === selected?.regionId)
   const viewWidth = map.width / zoom
   const viewHeight = map.height / zoom
@@ -134,16 +99,16 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const combatActive = state.mechanics?.combat?.active === true
   const travelBlocked = busy || combatActive
 
-  // Формат строки — договор с сервером, а не проза. `detectPartyExitRequest`
-  // (`server/party-exit-intent.mjs`) читает маркер и берёт из кавычек первое
-  // место как исходное, а второе как пункт назначения. Пока договора не было,
-  // кнопка отправляла текст, который не подходил ни под один шаблон ухода:
-  // голосование не открывалось, решения группы не появлялось, а без него сервер
-  // отказывается менять сцену — кнопка не работала вовсе.
+  // Формат строки — договор с сервером, а не проза (`travelProposalText`,
+  // `src/world-travel.ts`): `detectPartyExitRequest` читает маркер и берёт из
+  // кавычек первое место как исходное, а второе как пункт назначения. Пока
+  // договора не было, кнопка отправляла текст, который не подходил ни под один
+  // шаблон ухода: голосование не открывалось, решения группы не появлялось, а
+  // без него сервер отказывается менять сцену — кнопка не работала вовсе.
   // Сторож на обе стороны — `test/party-exit-intent.test.mjs`.
   const proposeTravel = () => {
     if (!selected || !current || selected.id === current.id || !route.locationIds.length || travelBlocked) return
-    onTravel(`[ГЛОБАЛЬНАЯ КАРТА] Отряд предлагает отправиться из «${current.name}» в «${selected.name}». Выбранный путь: ${routeNames.join(' → ')}.`)
+    onTravel(travelProposalText(current, selected, routeNames))
   }
 
   return <section className="world-map-page">
